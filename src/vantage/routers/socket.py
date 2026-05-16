@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from urllib.parse import urlparse
 
@@ -8,6 +9,18 @@ from vantage.services.socket_manager import manager
 from vantage.version import BUILD_VERSION
 
 logger = logging.getLogger(__name__)
+client_logger = logging.getLogger("vantage.client")
+
+# Map JS console levels onto Python logging levels.  Anything else falls
+# back to INFO so unexpected payloads are still captured.
+_LEVEL_MAP: dict[str, int] = {
+    "debug": logging.DEBUG,
+    "info": logging.INFO,
+    "log": logging.INFO,
+    "warn": logging.WARNING,
+    "warning": logging.WARNING,
+    "error": logging.ERROR,
+}
 
 router = APIRouter()
 
@@ -46,6 +59,57 @@ async def _warm_caches() -> None:
         logger.debug("Cache warming skipped", exc_info=True)
 
 
+def _handle_client_message(websocket: WebSocket, raw: str) -> None:
+    """Parse a frame from the browser and route ``client_log`` payloads.
+
+    Currently only ``client_log`` messages are interpreted; other types
+    are ignored so future additions on the frontend (e.g. heartbeats)
+    don't crash the loop.
+
+    Expected shape::
+
+        {
+          "type": "client_log",
+          "level": "info" | "warn" | "error" | "debug",
+          "ts": <ms since epoch>,
+          "msg": "<rendered message string>"
+        }
+
+    Buffered batches are also accepted::
+
+        {"type": "client_log_batch", "entries": [<entry>, <entry>, …]}
+    """
+    try:
+        payload = json.loads(raw)
+    except (ValueError, TypeError):
+        # Browsers shouldn't send non-JSON, but don't poison the loop.
+        return
+    if not isinstance(payload, dict):
+        return
+
+    msg_type = payload.get("type")
+    client = websocket.client
+    addr = f"{client.host}:{client.port}" if client else "unknown"
+
+    entries: list[dict[str, object]] = []
+    if msg_type == "client_log":
+        entries = [payload]
+    elif msg_type == "client_log_batch":
+        raw_entries = payload.get("entries")
+        if isinstance(raw_entries, list):
+            entries = [e for e in raw_entries if isinstance(e, dict)]
+    else:
+        return
+
+    for entry in entries:
+        level_raw = str(entry.get("level", "info")).lower()
+        level = _LEVEL_MAP.get(level_raw, logging.INFO)
+        msg = str(entry.get("msg", ""))
+        # Tag with the client address so multiple browser tabs are
+        # distinguishable when we read the journal back.
+        client_logger.log(level, "[%s] %s", addr, msg)
+
+
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
     # Only accept WebSocket connections from localhost origins
@@ -66,7 +130,8 @@ async def websocket_endpoint(websocket: WebSocket):
         asyncio.create_task(_warm_caches())
     try:
         while True:
-            await websocket.receive_text()
+            raw = await websocket.receive_text()
+            _handle_client_message(websocket, raw)
     except WebSocketDisconnect as exc:
         logger.info(
             "WebSocket client disconnected: code=%s reason=%s", exc.code, exc.reason or "(none)"
