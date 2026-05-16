@@ -36,7 +36,14 @@ class ConnectionManager:
 
     async def broadcast(self, message: dict[str, Any]):
         if not self.active_connections:
-            logger.info("Broadcast skipped: no active connections")
+            # Surface message type + repo so it's obvious which broadcast
+            # was lost — the most common reason live reload silently
+            # fails is the WebSocket dropped without the client noticing.
+            logger.info(
+                "Broadcast skipped: no active connections (type=%s repo=%s)",
+                message.get("type", "?"),
+                message.get("repo", "-"),
+            )
             return
 
         dead: list[WebSocket] = []

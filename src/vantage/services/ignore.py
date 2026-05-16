@@ -82,6 +82,44 @@ class IgnoreMatcher:
             normalized = normalized + "/"
         return self._combined.match_file(normalized)
 
+    def explain(self, rel_path: str, *, is_dir: bool = False) -> str | None:
+        """Return the source/pattern that matched *rel_path*, or None.
+
+        Used by the watcher's DEBUG log so it's obvious *why* an event
+        was dropped (e.g. ``user:.yolo/`` vs ``workspace:.worktrees/``).
+        Applies last-match-wins semantics: a negation pattern (``!``)
+        that follows a positive match clears the explanation.
+        """
+        if not self.enabled:
+            return None
+        normalized = rel_path.replace(os.sep, "/")
+        if is_dir and not normalized.endswith("/"):
+            normalized = normalized + "/"
+        match: str | None = None
+        for source, loaded in (
+            ("user", self._user_loaded),
+            ("workspace", self._workspace_loaded),
+        ):
+            if loaded is None:
+                continue
+            for line in loaded.lines:
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#"):
+                    continue
+                if stripped.startswith("!"):
+                    # Negation only meaningful when something currently
+                    # matches; check the bare pattern against the path.
+                    if match is None:
+                        continue
+                    bare = GitIgnoreSpec.from_lines([stripped[1:]])
+                    if bare.match_file(normalized):
+                        match = None
+                    continue
+                spec = GitIgnoreSpec.from_lines([stripped])
+                if spec.match_file(normalized):
+                    match = f"{source}:{stripped}"
+        return match
+
     def _maybe_reload(self) -> None:
         now = time.monotonic()
         if now - self._last_check < _RELOAD_CHECK_TTL:
