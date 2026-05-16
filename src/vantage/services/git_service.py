@@ -368,6 +368,16 @@ class GitService:
                 cmd.extend(["--exclude", d])
             # Also exclude hidden directories (matches old os.walk behaviour)
             cmd.extend(["--exclude", ".*"])
+            # Layer in vantage's user/workspace ignore files so the git
+            # walk prunes these subtrees at the C level.
+            from vantage.services.ignore import USER_IGNORE_PATH, WORKSPACE_IGNORE_NAME
+
+            if settings.use_ignore_files:
+                if USER_IGNORE_PATH.is_file():
+                    cmd.extend(["--exclude-from", str(USER_IGNORE_PATH)])
+                ws_ignore = self.repo_path / WORKSPACE_IGNORE_NAME
+                if ws_ignore.is_file():
+                    cmd.extend(["--exclude-from", str(ws_ignore)])
 
             with contextlib.suppress(Exception):
                 proc = subprocess.run(
@@ -685,14 +695,20 @@ class GitService:
         exclude = self.exclude_dirs
         ext_lower = tuple(e.lower() for e in extensions)
 
+        from vantage.services.ignore import get_matcher
+
+        ignore_matcher = get_matcher(self.repo_path)
+
         def _matches_ext(name: str) -> bool:
             lower = name.lower()
             return any(lower.endswith(e) for e in ext_lower)
 
         def should_skip(path: str) -> bool:
-            """Check if a path falls under an excluded directory."""
+            """Check if a path falls under an excluded directory or ignore file."""
             parts = path.split("/")
-            return any(part in exclude for part in parts)
+            if any(part in exclude for part in parts):
+                return True
+            return ignore_matcher.is_ignored(path)
 
         if not self.repo or not self.repo.working_dir:
             # No git repo at repo_path itself.  Check for child git repos
@@ -722,6 +738,20 @@ class GitService:
         # which respects .gitignore natively and is dramatically faster
         # than Python's os.walk on large repos (100K+ files).
         # ------------------------------------------------------------------
+        # Pass vantage's ignore files to git ls-files so the C-level walk
+        # prunes these subtrees before returning paths.  Without this,
+        # git walks the entire repo (incl. .yolo/, .worktrees/, …) and
+        # our post-filter only trims the result list — no time is saved.
+        from vantage.services.ignore import USER_IGNORE_PATH, WORKSPACE_IGNORE_NAME
+
+        _extra_exclude_args: list[str] = []
+        if settings.use_ignore_files:
+            if USER_IGNORE_PATH.is_file():
+                _extra_exclude_args.extend(["--exclude-from", str(USER_IGNORE_PATH)])
+            ws_ignore = self.repo_path / WORKSPACE_IGNORE_NAME
+            if ws_ignore.is_file():
+                _extra_exclude_args.extend(["--exclude-from", str(ws_ignore)])
+
         def _git_ls_untracked() -> str:
             timeout = settings.walk_timeout
             with contextlib.suppress(Exception):
@@ -730,6 +760,7 @@ class GitService:
                     "ls-files",
                     "--others",
                     *(["--exclude-standard"] if not show_gitignored else []),
+                    *_extra_exclude_args,
                     "--",
                     *ext_globs,
                 ]

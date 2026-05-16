@@ -153,14 +153,29 @@ class _GitAwareFilter(DefaultFilter):
         return len(parts) == git_idx + 2 and parts[-1] in _GIT_STATE_FILES
 
 
-def _is_relevant(path: str) -> bool:
-    """Check if a changed file is relevant for live-reload."""
+def _is_relevant(path: str, repo_root: Path | None = None) -> bool:
+    """Check if a changed file is relevant for live-reload.
+
+    If *repo_root* is given, paths matched by that repo's vantage ignore
+    files are rejected — this keeps noisy subtrees (``.yolo/`` etc.) out
+    of the live-reload broadcast.
+    """
     lower = path.lower()
-    if any(lower.endswith(ext) for ext in _WATCHED_EXTENSIONS):
-        return True
-    # Detect git state changes (commits, branch switches, etc.)
-    parts = path.replace("\\", "/").split("/")
-    return len(parts) >= 2 and parts[0] == ".git" and parts[-1] in _GIT_STATE_FILES
+    is_md = any(lower.endswith(ext) for ext in _WATCHED_EXTENSIONS)
+    normalized = path.replace("\\", "/")
+    parts = normalized.split("/")
+    is_git_state = len(parts) >= 2 and parts[0] == ".git" and parts[-1] in _GIT_STATE_FILES
+
+    if not (is_md or is_git_state):
+        return False
+
+    if repo_root is not None:
+        from vantage.services.ignore import get_matcher
+
+        matcher = get_matcher(repo_root)
+        if matcher.is_ignored(normalized):
+            return False
+    return True
 
 
 def _is_git_state_change(path: str) -> bool:
@@ -235,9 +250,20 @@ async def watch_repo():
                     )
                     _log_inotify_usage("after startup")
                     first = False
+                # Drop ignored paths before queueing so they don't
+                # flood the log or wake the async side for nothing.
+                filtered: set[tuple[Change, str]] = set()
                 for change, path in changes:
+                    try:
+                        rel = str(Path(path).relative_to(target))
+                    except ValueError:
+                        continue
+                    if not _is_relevant(rel, repo_root=target):
+                        continue
                     logger.info("[watcher] %s %s", change.name, path)
-                loop.call_soon_threadsafe(queue.put_nowait, changes)
+                    filtered.add((change, path))
+                if filtered:
+                    loop.call_soon_threadsafe(queue.put_nowait, filtered)
         except Exception:
             logger.exception("[watcher] watch() thread crashed — live reload will stop")
 
@@ -262,7 +288,7 @@ async def watch_repo():
                 rel_path = str(Path(abs_path).relative_to(target))
             except ValueError:
                 continue
-            if _is_relevant(rel_path):
+            if _is_relevant(rel_path, repo_root=target):
                 pending.add(rel_path)
 
         if not pending:
@@ -349,9 +375,28 @@ async def watch_multi_repo():
                         )
                         _log_inotify_usage("after startup")
                         first = False
+                    # Pre-filter against each repo's ignore files so
+                    # noisy subtrees (.yolo/, .worktrees/, …) never
+                    # reach the async side or the journal.
+                    filtered: set[tuple[Change, str]] = set()
                     for change, path in changes:
-                        logger.info("[watcher] %s %s", change.name, path)
-                    loop.call_soon_threadsafe(q.put_nowait, changes)
+                        abs_obj = Path(path)
+                        matched = False
+                        for root in paths:
+                            try:
+                                rel = str(abs_obj.relative_to(root))
+                            except ValueError:
+                                continue
+                            if _is_relevant(rel, repo_root=root):
+                                logger.info("[watcher] %s %s", change.name, path)
+                                filtered.add((change, path))
+                            matched = True
+                            break
+                        if not matched:
+                            # Outside every watched repo — unusual; log and drop.
+                            logger.debug("[watcher] ignoring path outside repos: %s", path)
+                    if filtered:
+                        loop.call_soon_threadsafe(q.put_nowait, filtered)
             except Exception:
                 logger.exception("[watcher] watch() thread crashed — live reload will stop")
             # Signal the async side that the watcher exited
@@ -378,7 +423,7 @@ async def watch_multi_repo():
                         rel_path = str(abs_path_obj.relative_to(repo_path))
                     except ValueError:
                         continue
-                    if _is_relevant(rel_path):
+                    if _is_relevant(rel_path, repo_root=repo_path):
                         pending.setdefault(name, set()).add(rel_path)
                     break
 

@@ -155,6 +155,11 @@ class FileSystemService:
                 ignored.add(os.path.basename(p))
         return ignored
 
+    def _ignore_matcher(self):
+        from vantage.services.ignore import get_matcher
+
+        return get_matcher(self.root_path)
+
     @timed("fs", "list_directory")
     def list_directory(self, path: str = ".", include_git: bool = False) -> list[FileNode]:
         """List a directory's contents.
@@ -175,6 +180,7 @@ class FileSystemService:
         gitignored_names = (
             self._get_gitignored_names(target_dir) if not self.show_gitignored else set()
         )
+        ignore_matcher = self._ignore_matcher()
         try:
             scandir_iter = os.scandir(target_dir)
         except PermissionError:
@@ -221,6 +227,10 @@ class FileSystemService:
                 continue
             # Skip gitignored files/dirs if configured
             if not self.show_gitignored and entry.name in gitignored_names:
+                continue
+            # Skip paths matched by vantage's ignore files
+            entry_rel = os.path.relpath(entry.path, self.root_path)
+            if ignore_matcher.is_ignored(entry_rel, is_dir=is_dir):
                 continue
 
             symlink_target: str | None = None
@@ -328,6 +338,7 @@ class FileSystemService:
             extensions = [".md"]
 
         results: list[str] = []
+        ignore_matcher = self._ignore_matcher()
 
         def _on_walk_error(err: OSError) -> None:
             logger.debug("list_all_files: skipping unreadable path: %s", err)
@@ -335,12 +346,20 @@ class FileSystemService:
         for dirpath, dirnames, filenames in os.walk(
             self.root_path, followlinks=False, onerror=_on_walk_error
         ):
-            # Prune excluded directories and optionally hidden directories
-            dirnames[:] = [
-                d
-                for d in dirnames
-                if d not in self.exclude_dirs and (self.show_hidden or not d.startswith("."))
-            ]
+            # Prune excluded and ignored directories (+ optionally hidden).
+            # Pruning at dirnames level keeps the walk itself fast — we
+            # never descend into .yolo/ or .worktrees/ if ignored.
+            kept: list[str] = []
+            for d in dirnames:
+                if d in self.exclude_dirs:
+                    continue
+                if not self.show_hidden and d.startswith("."):
+                    continue
+                sub_rel = os.path.relpath(os.path.join(dirpath, d), self.root_path)
+                if ignore_matcher.is_ignored(sub_rel, is_dir=True):
+                    continue
+                kept.append(d)
+            dirnames[:] = kept
             for fname in filenames:
                 if extensions and not any(fname.lower().endswith(ext) for ext in extensions):
                     continue
@@ -348,6 +367,8 @@ class FileSystemService:
                 if os.path.islink(full):
                     continue
                 rel = os.path.relpath(full, self.root_path)
+                if ignore_matcher.is_ignored(rel):
+                    continue
                 results.append(rel)
 
         results.sort()

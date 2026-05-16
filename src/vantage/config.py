@@ -67,6 +67,7 @@ class DaemonConfig:
     walk_timeout: float = 30.0
     disable_whats_new: bool = False
     log_level: str = "INFO"
+    use_ignore_files: bool = True
 
     @classmethod
     def from_file(cls, config_path: Path | None = None) -> "DaemonConfig":
@@ -108,6 +109,7 @@ class DaemonConfig:
             walk_timeout=data.get("walk_timeout", 30.0),
             disable_whats_new=data.get("disable_whats_new", False),
             log_level=str(data.get("log_level", "INFO")),
+            use_ignore_files=bool(data.get("use_ignore_files", True)),
         )
 
         if source_dirs:
@@ -257,6 +259,14 @@ port = 8000
 # walk_timeout: timeout in seconds for the git ls-files subprocess that
 #   discovers untracked files. Default: 30 seconds.
 # walk_timeout = 30.0
+
+# Ignore files: vantage reads two optional gitignore-style files to hide
+# noisy paths from the sidebar, file search, and live-reload watcher:
+#   ~/.config/vantage/ignore   (user-level, every repo)
+#   <repo>/.vantageignore      (per-workspace, checked in)
+# Both files use full gitignore syntax (**, negation with !, comments).
+# Set use_ignore_files = false to disable both layers.
+# use_ignore_files = true
 
 # Source directories: parent directories that are automatically scanned
 # for git repos.  Any subdirectory containing a .git folder is added as
