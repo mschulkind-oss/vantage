@@ -3,6 +3,7 @@ import logging
 import os
 import threading
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import override
 
@@ -129,6 +130,34 @@ _QUIET_PERIOD_S = 0.1
 # Maximum time before forced broadcast even if changes keep arriving.
 _MAX_WAIT_S = 1.0
 
+# How often the watcher logs a heartbeat (counts of events seen, kept,
+# dropped by extension, dropped by the vantage ignore filter).  This
+# makes it possible to tell at a glance whether the inotify thread is
+# alive but silent vs. truly dead.
+_HEARTBEAT_INTERVAL_S = 60.0
+
+
+@dataclass
+class _WatcherStats:
+    """Counters reported by the heartbeat logger.
+
+    Reset at every heartbeat so the numbers describe the most recent
+    interval, not the lifetime of the process.
+    """
+
+    events_total: int = 0
+    kept: int = 0
+    dropped_extension: int = 0  # not .md / not a tracked git state file
+    dropped_ignore: int = 0  # matched .vantageignore / user ignore
+    dropped_outside_repo: int = 0  # event under no watched root
+
+    def reset(self) -> None:
+        self.events_total = 0
+        self.kept = 0
+        self.dropped_extension = 0
+        self.dropped_ignore = 0
+        self.dropped_outside_repo = 0
+
 
 class _GitAwareFilter(DefaultFilter):
     """Extends the default watchfiles filter to allow git state-file changes.
@@ -153,12 +182,13 @@ class _GitAwareFilter(DefaultFilter):
         return len(parts) == git_idx + 2 and parts[-1] in _GIT_STATE_FILES
 
 
-def _is_relevant(path: str, repo_root: Path | None = None) -> bool:
-    """Check if a changed file is relevant for live-reload.
+def _classify(path: str, repo_root: Path | None = None) -> tuple[bool, str]:
+    """Classify *path* for live-reload.
 
-    If *repo_root* is given, paths matched by that repo's vantage ignore
-    files are rejected — this keeps noisy subtrees (``.yolo/`` etc.) out
-    of the live-reload broadcast.
+    Returns ``(keep, reason)`` where reason is one of:
+      ``"kept"``                — relevant and not ignored
+      ``"dropped_extension"``   — not .md, not a tracked git state file
+      ``"dropped_ignore:<src>:<pattern>"`` — matched a vantage ignore rule
     """
     lower = path.lower()
     is_md = any(lower.endswith(ext) for ext in _WATCHED_EXTENSIONS)
@@ -167,15 +197,22 @@ def _is_relevant(path: str, repo_root: Path | None = None) -> bool:
     is_git_state = len(parts) >= 2 and parts[0] == ".git" and parts[-1] in _GIT_STATE_FILES
 
     if not (is_md or is_git_state):
-        return False
+        return False, "dropped_extension"
 
     if repo_root is not None:
         from vantage.services.ignore import get_matcher
 
         matcher = get_matcher(repo_root)
         if matcher.is_ignored(normalized):
-            return False
-    return True
+            explanation = matcher.explain(normalized) or "?"
+            return False, f"dropped_ignore:{explanation}"
+    return True, "kept"
+
+
+def _is_relevant(path: str, repo_root: Path | None = None) -> bool:
+    """Back-compat wrapper around _classify for the async-side loop."""
+    keep, _ = _classify(path, repo_root)
+    return keep
 
 
 def _is_git_state_change(path: str) -> bool:
@@ -233,6 +270,7 @@ async def watch_repo():
 
     loop = asyncio.get_running_loop()
     queue: asyncio.Queue[set[tuple[Change, str]]] = asyncio.Queue()
+    stats = _WatcherStats()
 
     def _run_sync_watcher() -> None:
         logger.info("Initializing file watcher...")
@@ -254,12 +292,23 @@ async def watch_repo():
                 # flood the log or wake the async side for nothing.
                 filtered: set[tuple[Change, str]] = set()
                 for change, path in changes:
+                    stats.events_total += 1
                     try:
                         rel = str(Path(path).relative_to(target))
                     except ValueError:
+                        stats.dropped_outside_repo += 1
                         continue
-                    if not _is_relevant(rel, repo_root=target):
+                    keep, reason = _classify(rel, repo_root=target)
+                    if not keep:
+                        if reason == "dropped_extension":
+                            stats.dropped_extension += 1
+                        else:
+                            stats.dropped_ignore += 1
+                            # DEBUG so it's there when you turn the dial up,
+                            # but doesn't flood the journal by default.
+                            logger.debug("[watcher] DROP %s %s (%s)", change.name, path, reason)
                         continue
+                    stats.kept += 1
                     logger.info("[watcher] %s %s", change.name, path)
                     filtered.add((change, path))
                 if filtered:
@@ -269,6 +318,28 @@ async def watch_repo():
 
     thread = threading.Thread(target=_run_sync_watcher, daemon=True)
     thread.start()
+
+    async def _heartbeat() -> None:
+        """Periodically log watcher stats so silent failures are visible."""
+        while True:
+            await asyncio.sleep(_HEARTBEAT_INTERVAL_S)
+            alive = thread.is_alive()
+            logger.info(
+                "[watcher] heartbeat thread=%s events=%d kept=%d "
+                "dropped_ext=%d dropped_ignore=%d dropped_outside=%d",
+                "alive" if alive else "DEAD",
+                stats.events_total,
+                stats.kept,
+                stats.dropped_extension,
+                stats.dropped_ignore,
+                stats.dropped_outside_repo,
+            )
+            if not alive:
+                logger.warning("[watcher] inotify thread is not alive — live reload has stopped")
+            _log_inotify_usage("heartbeat")
+            stats.reset()
+
+    asyncio.create_task(_heartbeat())
 
     pending: set[str] = set()
     quiet_task: asyncio.Task[None] | None = None
@@ -332,6 +403,8 @@ async def watch_multi_repo():
     loop = asyncio.get_running_loop()
     pending: dict[str, set[str]] = {}  # repo_name -> paths
     batch_start: float | None = None
+    stats = _WatcherStats()
+    current_thread_holder: dict[str, threading.Thread | None] = {"thread": None}
 
     async def flush() -> None:
         nonlocal batch_start
@@ -340,6 +413,28 @@ async def watch_multi_repo():
         batch_start = None
         for repo_name, paths in snapshot.items():
             await _coalesce_and_broadcast(paths, repo_name)
+
+    async def _heartbeat() -> None:
+        while True:
+            await asyncio.sleep(_HEARTBEAT_INTERVAL_S)
+            t = current_thread_holder["thread"]
+            alive = t.is_alive() if t else False
+            logger.info(
+                "[watcher] heartbeat thread=%s events=%d kept=%d "
+                "dropped_ext=%d dropped_ignore=%d dropped_outside=%d",
+                "alive" if alive else "DEAD",
+                stats.events_total,
+                stats.kept,
+                stats.dropped_extension,
+                stats.dropped_ignore,
+                stats.dropped_outside_repo,
+            )
+            if t is not None and not alive:
+                logger.warning("[watcher] inotify thread is not alive — live reload has stopped")
+            _log_inotify_usage("heartbeat")
+            stats.reset()
+
+    asyncio.create_task(_heartbeat())
 
     while True:
         _watcher_stop_event.clear()
@@ -380,21 +475,37 @@ async def watch_multi_repo():
                     # reach the async side or the journal.
                     filtered: set[tuple[Change, str]] = set()
                     for change, path in changes:
+                        stats.events_total += 1
                         abs_obj = Path(path)
-                        matched = False
+                        matched_root: Path | None = None
+                        rel: str = ""
                         for root in paths:
                             try:
                                 rel = str(abs_obj.relative_to(root))
                             except ValueError:
                                 continue
-                            if _is_relevant(rel, repo_root=root):
-                                logger.info("[watcher] %s %s", change.name, path)
-                                filtered.add((change, path))
-                            matched = True
+                            matched_root = root
                             break
-                        if not matched:
-                            # Outside every watched repo — unusual; log and drop.
-                            logger.debug("[watcher] ignoring path outside repos: %s", path)
+                        if matched_root is None:
+                            stats.dropped_outside_repo += 1
+                            logger.debug("[watcher] DROP %s (outside repos)", path)
+                            continue
+                        keep, reason = _classify(rel, repo_root=matched_root)
+                        if not keep:
+                            if reason == "dropped_extension":
+                                stats.dropped_extension += 1
+                            else:
+                                stats.dropped_ignore += 1
+                                logger.debug(
+                                    "[watcher] DROP %s %s (%s)",
+                                    change.name,
+                                    path,
+                                    reason,
+                                )
+                            continue
+                        stats.kept += 1
+                        logger.info("[watcher] %s %s", change.name, path)
+                        filtered.add((change, path))
                     if filtered:
                         loop.call_soon_threadsafe(q.put_nowait, filtered)
             except Exception:
@@ -404,6 +515,7 @@ async def watch_multi_repo():
 
         thread = threading.Thread(target=_start_watcher, args=(watch_paths, queue), daemon=True)
         thread.start()
+        current_thread_holder["thread"] = thread
 
         quiet_task: asyncio.Task[None] | None = None
         restarting = False

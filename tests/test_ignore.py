@@ -105,6 +105,18 @@ def test_get_matcher_respects_settings(temp_repo: Path, monkeypatch: pytest.Monk
     assert m.is_ignored(".yolo/sessions/noisy.md")
 
 
+def test_explain_reports_matched_pattern(temp_repo: Path):
+    ignore_mod.USER_IGNORE_PATH.write_text(".yolo/\n")
+    (temp_repo / ".vantageignore").write_text(".worktrees/\n*.tmp\n!keep.tmp\n")
+    m = IgnoreMatcher(temp_repo)
+    assert m.explain(".yolo/sessions/noisy.md") == "user:.yolo/"
+    assert m.explain(".worktrees/wt/notes.md") == "workspace:.worktrees/"
+    # Direct negation un-matches the same pattern in the same file.
+    assert m.explain("keep.tmp") is None
+    assert m.explain("scratch.tmp") == "workspace:*.tmp"
+    assert m.explain("docs/README.md") is None
+
+
 def test_fs_list_directory_hides_ignored(temp_repo: Path):
     (temp_repo / ".vantageignore").write_text(".yolo/\n.worktrees/\n")
     fs = FileSystemService(temp_repo)
