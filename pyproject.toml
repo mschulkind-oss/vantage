@@ -18,6 +18,7 @@ dependencies = [
     "fastapi>=0.128.0",
     "gitpython>=3.1.46",
     "httpx>=0.28.1",
+    "pathspec>=0.12",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.12.0",
     "python-multipart>=0.0.26",
