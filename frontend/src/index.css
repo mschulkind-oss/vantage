@@ -484,60 +484,22 @@ h6:hover > .heading-anchor,
   }
 }
 
-/* Hover-to-comment button: floats in the gutter next to the block the
-   user is currently hovering, so they can comment on a whole paragraph
-   without having to drag-select every word.
-   The ::before pseudo-element creates a generous invisible hit zone so
-   the user's mouse doesn't lose the button while traveling from the
-   block text to the gutter. */
-.review-block-comment-button {
-  z-index: 80;
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border-radius: 6px;
-  border: 1px solid rgb(148 163 184 / 0.4); /* slate-400/40 */
-  background: rgb(255 255 255 / 0.95);
-  color: rgb(71 85 105); /* slate-600 */
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
+/* Hover-to-comment: highlight the whole block whose vertical span the
+   cursor is over, regardless of horizontal position.  Clicking anywhere
+   on a highlighted block opens the comment popover.  Text selection still
+   works — the click handler defers to any active selection. */
+.review-block-hovered {
   cursor: pointer;
-  opacity: 0.75;
+  background: rgb(59 130 246 / 0.08); /* blue-500/8 */
+  box-shadow: inset 2px 0 0 rgb(59 130 246 / 0.5);
+  border-radius: 4px;
   transition:
-    opacity 0.12s,
     background 0.12s,
-    color 0.12s,
-    border-color 0.12s;
+    box-shadow 0.12s;
 }
-.review-block-comment-button::before {
-  content: "";
-  position: absolute;
-  /* Top/bottom are driven by inline vars so the hit zone matches the
-     hovered block's full height — the user can travel leftward from any
-     line in the block and stay in the hover zone. */
-  top: var(--hit-top, -12px);
-  bottom: var(--hit-bottom, -12px);
-  left: -12px;
-  right: -20px; /* extend 20px right, toward the block text */
-}
-.review-block-comment-button:hover {
-  opacity: 1;
-  color: rgb(37 99 235); /* blue-600 */
-  border-color: rgb(59 130 246 / 0.5);
-  background: rgb(239 246 255); /* blue-50 */
-}
-.dark .review-block-comment-button {
-  border-color: rgb(71 85 105 / 0.6); /* slate-600/60 */
-  background: rgb(30 41 59 / 0.95); /* slate-800/95 */
-  color: rgb(148 163 184); /* slate-400 */
-}
-.dark .review-block-comment-button:hover {
-  color: rgb(96 165 250); /* blue-400 */
-  border-color: rgb(96 165 250 / 0.5);
-  background: rgb(30 58 138 / 0.4); /* blue-900/40 */
+.dark .review-block-hovered {
+  background: rgb(96 165 250 / 0.1); /* blue-400/10 */
+  box-shadow: inset 2px 0 0 rgb(96 165 250 / 0.5);
 }
 
 /* Collapsed resolved-comment indicator */

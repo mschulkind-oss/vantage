@@ -4,10 +4,7 @@ import React, {
   useEffect,
   useMemo,
   useRef,
-  useState,
 } from "react";
-import { createPortal } from "react-dom";
-import { MessageSquarePlus } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -211,30 +208,6 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   const editComment = useReviewStore((s) => s.editComment);
   const resolveComment = useReviewStore((s) => s.resolveComment);
 
-  // Which block is currently being hovered (for the hover-to-comment button).
-  const [hoveredBlock, setHoveredBlock] = useState<HTMLElement | null>(null);
-  const hideHoverTimerRef = useRef<number | null>(null);
-
-  const cancelHideHoverButton = useCallback(() => {
-    if (hideHoverTimerRef.current !== null) {
-      clearTimeout(hideHoverTimerRef.current);
-      hideHoverTimerRef.current = null;
-    }
-  }, []);
-
-  const scheduleHideHoverButton = useCallback(() => {
-    cancelHideHoverButton();
-    // Long delay — the user may pause mid-travel while moving from the
-    // paragraph toward the gutter button.  The hit-zone ::before bridges
-    // the visual gap but a pause still ends the timer; 1500ms is lenient
-    // enough that a deliberate mouse pause doesn't lose the button, while
-    // still hiding it promptly when the user has actually moved away.
-    hideHoverTimerRef.current = window.setTimeout(() => {
-      setHoveredBlock(null);
-      hideHoverTimerRef.current = null;
-    }, 1500);
-  }, [cancelHideHoverButton]);
-
   // Check whether a range/element is inside a changed block of a past
   // snapshot (commenting on changed text is blocked in snapshot view).
   const isInChangedBlock = useCallback(
@@ -340,49 +313,95 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     return () => clearTimeout(id);
   }, [isReviewMode, captureCurrentSelection]);
 
-  // Hover-to-comment: track which block the mouse is over so we can render
-  // a floating "comment on this block" button.  Avoids the user having to
-  // drag-select the entire paragraph by hand.
+  // Hover-to-comment: highlight the block whose vertical span contains the
+  // mouse cursor, regardless of horizontal position.  Click anywhere on the
+  // highlighted block opens the comment popover for that block's text.
+  // Text selection still works normally — the click handler defers to any
+  // active selection so drag-selecting a phrase isn't intercepted.
+  const hoveredBlockRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     if (!isReviewMode) return;
     const el = containerRef.current;
     if (!el) return;
 
     const BLOCK_SELECTOR = "p, h1, h2, h3, h4, h5, h6, li, blockquote";
+    const HOVERED_CLASS = "review-block-hovered";
 
-    const onOver = (e: MouseEvent) => {
+    const clear = () => {
+      if (hoveredBlockRef.current) {
+        hoveredBlockRef.current.classList.remove(HOVERED_CLASS);
+        hoveredBlockRef.current = null;
+      }
+    };
+
+    const findBlockAtY = (clientY: number): HTMLElement | null => {
+      const blocks = el.querySelectorAll(
+        BLOCK_SELECTOR,
+      ) as NodeListOf<HTMLElement>;
+      let best: HTMLElement | null = null;
+      let bestDepth = -1;
+      for (const block of blocks) {
+        // Skip review-UI elements rendered inside the prose container.
+        if (block.closest("[data-review-inline-comment]")) continue;
+        const text = (block.innerText || block.textContent || "").trim();
+        if (text.length < 3) continue;
+        const r = block.getBoundingClientRect();
+        if (clientY < r.top || clientY > r.bottom) continue;
+        // Prefer the deepest matching block (e.g. an `li` inside an outer
+        // wrapper) so nested lists don't always resolve to their parent.
+        let depth = 0;
+        let cur: Element | null = block;
+        while (cur && cur !== el) {
+          depth++;
+          cur = cur.parentElement;
+        }
+        if (depth > bestDepth) {
+          bestDepth = depth;
+          best = block;
+        }
+      }
+      return best;
+    };
+
+    const onMove = (e: MouseEvent) => {
+      const block = findBlockAtY(e.clientY);
+      if (block === hoveredBlockRef.current) return;
+      clear();
+      if (block) {
+        block.classList.add(HOVERED_CLASS);
+        hoveredBlockRef.current = block;
+      }
+    };
+
+    el.addEventListener("mousemove", onMove);
+    el.addEventListener("mouseleave", clear);
+    return () => {
+      el.removeEventListener("mousemove", onMove);
+      el.removeEventListener("mouseleave", clear);
+      clear();
+    };
+  }, [isReviewMode]);
+
+  // Click on a hovered block opens the comment popover — unless the user is
+  // making a text selection (then captureCurrentSelection on mouseup wins).
+  useEffect(() => {
+    if (!isReviewMode) return;
+    const el = containerRef.current;
+    if (!el) return;
+
+    const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
       if (!target) return;
-      // Ignore hovering over existing inline comment blocks — those are
-      // review UI, not document content.
-      if (target.closest("[data-review-inline-comment]")) return;
-      const block = target.closest(BLOCK_SELECTOR) as HTMLElement | null;
+      // Don't intercept clicks on links, buttons, or existing review UI.
+      if (target.closest("a, button, [data-review-inline-comment]")) return;
+      // Defer to a non-empty text selection.
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed && sel.toString().trim().length > 0) return;
+
+      const block = hoveredBlockRef.current;
       if (!block || !el.contains(block)) return;
-      // Skip list items that just wrap nested lists (no direct text).
-      const text = (block.innerText || "").trim();
-      if (text.length < 3) return;
-      cancelHideHoverButton();
-      setHoveredBlock((prev) => (prev === block ? prev : block));
-    };
 
-    el.addEventListener("mouseover", onOver);
-    el.addEventListener("mouseleave", scheduleHideHoverButton);
-    return () => {
-      el.removeEventListener("mouseover", onOver);
-      el.removeEventListener("mouseleave", scheduleHideHoverButton);
-      cancelHideHoverButton();
-      setHoveredBlock(null);
-    };
-  }, [isReviewMode, cancelHideHoverButton, scheduleHideHoverButton]);
-
-  // Click-handler for the hover-to-comment button: synthesize a "selection"
-  // from the block's text and open the comment popover.
-  const handleCommentOnBlock = useCallback(
-    (block: HTMLElement) => {
-      const el = containerRef.current;
-      if (!el) return;
-      // Strip revision badge text if present (inserted at start of block
-      // when viewing a past snapshot).
+      // Strip revision badge text if present.
       const badge = block.querySelector(".review-revision-badge");
       let text = block.innerText || block.textContent || "";
       if (badge) {
@@ -395,40 +414,16 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       if (text.length < 3) return;
 
       const rect = block.getBoundingClientRect();
-
       if (snapshotLabel && isInChangedBlock(el, block)) {
         showSelectionBlockedToast(rect);
         return;
       }
-
       setPendingSelection(text, rect);
-      setHoveredBlock(null);
-    },
-    [setPendingSelection, snapshotLabel, isInChangedBlock],
-  );
+    };
 
-  // Position of the hover-to-comment button (fixed coords, recalculated
-  // every render so it follows scroll/resize via the parent re-render).
-  const hoverButtonPosition = useMemo(() => {
-    if (!hoveredBlock) return null;
-    const rect = hoveredBlock.getBoundingClientRect();
-    // Put the button in the left gutter of the prose column.
-    const BUTTON_SIZE = 24;
-    const GAP = 6;
-    let left = rect.left - BUTTON_SIZE - GAP;
-    // If that would go off-screen, place it inside the block at top-left.
-    if (left < 4) left = rect.left + 4;
-    const top = rect.top + 4;
-    // Extend the button's invisible hit zone (via ::before) to cover the full
-    // block height so users can travel left from any line in the block to the
-    // gutter button without the hover state being lost.
-    const hitZoneTopExtend = 12; // extra padding above button
-    const hitZoneBottomExtend = Math.max(
-      12,
-      rect.height - (top - rect.top) - 4,
-    );
-    return { top, left, hitZoneTopExtend, hitZoneBottomExtend };
-  }, [hoveredBlock]);
+    el.addEventListener("click", onClick);
+    return () => el.removeEventListener("click", onClick);
+  }, [isReviewMode, setPendingSelection, snapshotLabel, isInChangedBlock]);
 
   // Factory for heading components with hover anchor links
   const headingWithAnchor = useCallback(
@@ -603,33 +598,6 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
           onCancel={clearPendingSelection}
         />
       )}
-      {/* Review mode: hover-to-comment button on the current block */}
-      {isReviewMode &&
-        !pendingSelection &&
-        hoveredBlock &&
-        hoverButtonPosition &&
-        createPortal(
-          <button
-            type="button"
-            onMouseEnter={cancelHideHoverButton}
-            onMouseLeave={scheduleHideHoverButton}
-            onClick={() => handleCommentOnBlock(hoveredBlock)}
-            title="Comment on this block"
-            className="review-block-comment-button"
-            style={
-              {
-                position: "fixed",
-                top: hoverButtonPosition.top,
-                left: hoverButtonPosition.left,
-                "--hit-top": `-${hoverButtonPosition.hitZoneTopExtend}px`,
-                "--hit-bottom": `-${hoverButtonPosition.hitZoneBottomExtend}px`,
-              } as React.CSSProperties
-            }
-          >
-            <MessageSquarePlus size={14} />
-          </button>,
-          document.body,
-        )}
     </div>
   );
 };
