@@ -186,9 +186,9 @@ def _classify(path: str, repo_root: Path | None = None) -> tuple[bool, str]:
     """Classify *path* for live-reload.
 
     Returns ``(keep, reason)`` where reason is one of:
-      ``"kept"``                — relevant and not ignored
-      ``"dropped_extension"``   — not .md, not a tracked git state file
-      ``"dropped_ignore:<src>:<pattern>"`` — matched a vantage ignore rule
+      ``"kept"``               — relevant and not ignored
+      ``"dropped_extension"``  — not .md, not a tracked git state file
+      ``"dropped_ignore"``     — matched a vantage ignore rule
     """
     lower = path.lower()
     is_md = any(lower.endswith(ext) for ext in _WATCHED_EXTENSIONS)
@@ -204,8 +204,7 @@ def _classify(path: str, repo_root: Path | None = None) -> tuple[bool, str]:
 
         matcher = get_matcher(repo_root)
         if matcher.is_ignored(normalized):
-            explanation = matcher.explain(normalized) or "?"
-            return False, f"dropped_ignore:{explanation}"
+            return False, "dropped_ignore"
     return True, "kept"
 
 
@@ -304,9 +303,18 @@ async def watch_repo():
                             stats.dropped_extension += 1
                         else:
                             stats.dropped_ignore += 1
-                            # DEBUG so it's there when you turn the dial up,
-                            # but doesn't flood the journal by default.
-                            logger.debug("[watcher] DROP %s %s (%s)", change.name, path, reason)
+                            # explain() is expensive (walks every ignore line);
+                            # only build the reason string when DEBUG is on.
+                            if logger.isEnabledFor(logging.DEBUG):
+                                from vantage.services.ignore import get_matcher
+
+                                explanation = get_matcher(target).explain(rel) or "?"
+                                logger.debug(
+                                    "[watcher] DROP %s %s (dropped_ignore:%s)",
+                                    change.name,
+                                    path,
+                                    explanation,
+                                )
                         continue
                     stats.kept += 1
                     logger.info("[watcher] %s %s", change.name, path)
@@ -496,12 +504,16 @@ async def watch_multi_repo():
                                 stats.dropped_extension += 1
                             else:
                                 stats.dropped_ignore += 1
-                                logger.debug(
-                                    "[watcher] DROP %s %s (%s)",
-                                    change.name,
-                                    path,
-                                    reason,
-                                )
+                                if logger.isEnabledFor(logging.DEBUG):
+                                    from vantage.services.ignore import get_matcher
+
+                                    explanation = get_matcher(matched_root).explain(rel) or "?"
+                                    logger.debug(
+                                        "[watcher] DROP %s %s (dropped_ignore:%s)",
+                                        change.name,
+                                        path,
+                                        explanation,
+                                    )
                             continue
                         stats.kept += 1
                         logger.info("[watcher] %s %s", change.name, path)

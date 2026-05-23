@@ -47,10 +47,19 @@ _matcher_cache: dict[_MatcherKey, IgnoreMatcher] = {}
 
 
 @dataclass
+class _CompiledLine:
+    raw: str  # original line, for the explain() reason string
+    stripped: str
+    is_negation: bool
+    spec: GitIgnoreSpec  # precompiled once at load time
+
+
+@dataclass
 class _LoadedSpec:
     mtime: float
     path: Path
     lines: list[str]
+    compiled: list[_CompiledLine]
 
 
 class IgnoreMatcher:
@@ -102,22 +111,15 @@ class IgnoreMatcher:
         ):
             if loaded is None:
                 continue
-            for line in loaded.lines:
-                stripped = line.strip()
-                if not stripped or stripped.startswith("#"):
-                    continue
-                if stripped.startswith("!"):
-                    # Negation only meaningful when something currently
-                    # matches; check the bare pattern against the path.
+            for cl in loaded.compiled:
+                if cl.is_negation:
                     if match is None:
                         continue
-                    bare = GitIgnoreSpec.from_lines([stripped[1:]])
-                    if bare.match_file(normalized):
+                    if cl.spec.match_file(normalized):
                         match = None
                     continue
-                spec = GitIgnoreSpec.from_lines([stripped])
-                if spec.match_file(normalized):
-                    match = f"{source}:{stripped}"
+                if cl.spec.match_file(normalized):
+                    match = f"{source}:{cl.stripped}"
         return match
 
     def _maybe_reload(self) -> None:
@@ -167,7 +169,26 @@ class IgnoreMatcher:
             return True
 
         lines = text.splitlines()
-        setattr(self, attr, _LoadedSpec(mtime=mtime, path=path, lines=lines))
+        compiled: list[_CompiledLine] = []
+        for line in lines:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            is_negation = stripped.startswith("!")
+            pattern = stripped[1:] if is_negation else stripped
+            compiled.append(
+                _CompiledLine(
+                    raw=line,
+                    stripped=stripped,
+                    is_negation=is_negation,
+                    spec=GitIgnoreSpec.from_lines([pattern]),
+                )
+            )
+        setattr(
+            self,
+            attr,
+            _LoadedSpec(mtime=mtime, path=path, lines=lines, compiled=compiled),
+        )
         logger.info("[ignore] loaded %s (%d lines)", path, len(lines))
         return True
 
