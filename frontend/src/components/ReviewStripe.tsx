@@ -32,7 +32,8 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
     const stripeEl = stripeRef.current;
     if (!scrollEl || !stripeEl || active.length === 0) return;
 
-    const updatePositions = () => {
+    // Defer one frame so comment blocks are rendered before measuring.
+    const raf = requestAnimationFrame(() => {
       const scrollHeight = scrollEl.scrollHeight;
       if (scrollHeight === 0) return;
 
@@ -55,14 +56,9 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
         marker.addEventListener("click", () => scrollToComment(comment.id));
         stripeEl.appendChild(marker);
       }
-    };
+    });
 
-    updatePositions();
-
-    const observer = new MutationObserver(updatePositions);
-    observer.observe(scrollEl, { childList: true, subtree: true });
-
-    return () => observer.disconnect();
+    return () => cancelAnimationFrame(raf);
   }, [scrollRef, active, scrollToComment]);
 
   if (active.length === 0) return null;
