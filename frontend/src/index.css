@@ -783,6 +783,7 @@ h6:hover > .heading-anchor,
   background: rgb(243 232 255);
   border-radius: 4px;
   overflow: hidden;
+  cursor: pointer;
 }
 
 .dark .review-stripe-track {
@@ -796,8 +797,21 @@ h6:hover > .heading-anchor,
   background: rgb(192 132 252 / 0.3);
   border: 1px solid rgb(192 132 252 / 0.6);
   border-radius: 3px;
-  transition: top 0.1s ease-out;
-  pointer-events: none;
+  transition: top 0.08s linear;
+  cursor: grab;
+  min-height: 12px;
+}
+
+.review-stripe-viewport:hover {
+  background: rgb(192 132 252 / 0.45);
+  border-color: rgb(192 132 252 / 0.8);
+}
+
+.review-stripe-viewport--dragging {
+  background: rgb(147 51 234 / 0.4);
+  border-color: rgb(147 51 234 / 0.9);
+  cursor: grabbing;
+  transition: none;
 }
 
 .dark .review-stripe-viewport {
@@ -805,42 +819,64 @@ h6:hover > .heading-anchor,
   border-color: rgb(168 85 247 / 0.5);
 }
 
+.dark .review-stripe-viewport:hover {
+  background: rgb(168 85 247 / 0.4);
+  border-color: rgb(168 85 247 / 0.7);
+}
+
+.dark .review-stripe-viewport--dragging {
+  background: rgb(168 85 247 / 0.5);
+  border-color: rgb(168 85 247 / 0.9);
+}
+
 .review-stripe-marker {
   position: absolute;
   left: 4px;
   right: 4px;
   width: auto;
-  height: 6px;
+  height: 8px;
   border-radius: 3px;
   background: rgb(147 51 234);
-  border: none;
+  border: 2px solid rgb(126 34 206);
   padding: 0;
   cursor: pointer;
   transform: translateY(-50%);
-  opacity: 0.9;
   z-index: 1;
   transition:
     opacity 0.15s,
-    transform 0.15s;
+    transform 0.15s,
+    box-shadow 0.15s;
+  box-shadow: 0 1px 3px rgb(147 51 234 / 0.4);
 }
 
 .review-stripe-marker:hover {
-  opacity: 1;
-  transform: translateY(-50%) scaleY(2);
+  transform: translateY(-50%) scaleY(1.8);
+  box-shadow: 0 2px 6px rgb(147 51 234 / 0.6);
 }
 
 .review-stripe-marker--addressed {
-  background: rgb(34 197 94);
-  opacity: 0.6;
+  background: rgb(233 213 255);
+  border-color: rgb(192 132 252);
+  border-style: dashed;
+  box-shadow: none;
+  opacity: 0.5;
+}
+
+.review-stripe-marker--addressed:hover {
+  opacity: 0.8;
 }
 
 .dark .review-stripe-marker {
   background: rgb(168 85 247);
+  border-color: rgb(192 132 252);
+  box-shadow: 0 1px 3px rgb(168 85 247 / 0.5);
 }
 
 .dark .review-stripe-marker--addressed {
-  background: rgb(74 222 128);
-  opacity: 0.6;
+  background: rgb(59 7 100);
+  border-color: rgb(107 33 168);
+  box-shadow: none;
+  opacity: 0.5;
 }
 
 /* ──────────────────────────────────────────
