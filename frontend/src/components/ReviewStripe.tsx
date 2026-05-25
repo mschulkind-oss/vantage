@@ -260,7 +260,16 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
     setTooltipPos({ top });
   }, []);
 
-  if (active.length === 0) return null;
+  if (active.length === 0) {
+    return (
+      <div className="review-stripe review-stripe--empty" data-review-stripe="">
+        <div className="review-stripe-header">
+          <span className="review-stripe-count">0</span>
+        </div>
+        <div className="review-stripe-track" />
+      </div>
+    );
+  }
 
   const label =
     currentIdx >= 0

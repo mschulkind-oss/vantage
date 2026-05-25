@@ -406,7 +406,7 @@ h6:hover > .heading-anchor,
 }
 .review-inline-comment-actions {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 4px;
   flex-shrink: 0;
 }
@@ -834,6 +834,12 @@ h6:hover > .heading-anchor,
 .dark .review-stripe {
   background: rgb(30 20 50);
   border-right-color: rgb(88 28 135);
+}
+.review-stripe--empty {
+  opacity: 0.5;
+}
+.review-stripe--empty .review-stripe-track {
+  flex: 1;
 }
 
 .review-stripe-header {
