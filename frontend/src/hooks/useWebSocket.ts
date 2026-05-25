@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from "react";
 import { useRepoStore } from "../stores/useRepoStore";
 import { useGitStore } from "../stores/useGitStore";
 import { useConnectionStore } from "../stores/useConnectionStore";
+import { useReviewStore } from "../stores/useReviewStore";
 import { WebSocketMessage } from "../types";
 import { isStaticMode } from "../lib/staticMode";
 import { wsLog, bindLoggerSocket } from "../lib/wsLogger";
@@ -100,6 +101,12 @@ export const useWebSocket = () => {
     if (path && changedPaths.has(path)) {
       promises.push(loadFile(path));
       promises.push(fetchStatus(path));
+      // Re-fetch review data so server-written reactions (from the
+      // changelog parser running in the watcher) surface live, without
+      // requiring a page reload.
+      if (path.toLowerCase().endsWith(".md")) {
+        promises.push(useReviewStore.getState().loadReview(path));
+      }
     }
 
     if (path && !path.toLowerCase().endsWith(".md")) {

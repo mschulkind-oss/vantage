@@ -51,7 +51,6 @@ export function useRelativeTime(
         : date
       : null;
 
-    // Recursive setTimeout so the delay adapts as the age grows
     const tick = () => {
       setText(format());
       timerRef.current = setTimeout(tick, getDelay(parsed));
