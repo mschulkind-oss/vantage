@@ -19,7 +19,6 @@ from vantage.settings import settings
 logger = logging.getLogger(__name__)
 
 # Cache the injected index.html so we only do string replacement once.
-_cached_index_html: str | None = None
 
 
 @asynccontextmanager
@@ -116,11 +115,12 @@ def _get_frontend_config() -> dict[str, object]:
 
 
 def _get_index_html(frontend_dir: str) -> str:
-    """Read index.html and inject __VANTAGE_CONFIG__. Result is cached."""
-    global _cached_index_html
-    if _cached_index_html is not None:
-        return _cached_index_html
+    """Read index.html and inject __VANTAGE_CONFIG__.
 
+    Re-reads from disk every time so that frontend rebuilds (which
+    produce new content-hashed JS filenames) take effect without a
+    daemon restart.  The file is <2 KB — disk read is negligible.
+    """
     index_path = os.path.join(frontend_dir, "index.html")
     with open(index_path) as f:
         html = f.read()
@@ -128,7 +128,6 @@ def _get_index_html(frontend_dir: str) -> str:
     config_json = json.dumps(_get_frontend_config(), separators=(",", ":"))
     config_script = f"<script>window.__VANTAGE_CONFIG__={config_json}</script>"
     html = html.replace("<head>", f"<head>{config_script}", 1)
-    _cached_index_html = html
     return html
 
 
