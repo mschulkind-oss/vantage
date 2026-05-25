@@ -125,6 +125,12 @@ code {
   line-height: inherit !important;
   display: block;
 }
+.prose a code {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 2px;
+}
 
 /* Flash animation for content that just changed */
 @keyframes flash-update {
@@ -307,13 +313,15 @@ h6:hover > .heading-anchor,
   background: rgb(30 41 59);
 }
 .review-inline-comment-text code a,
-.review-inline-comment-text pre a {
+.review-inline-comment-text pre a,
+.review-inline-comment-text a code {
   color: rgb(37 99 235);
   text-decoration: underline;
   text-decoration-style: dotted;
 }
 .dark .review-inline-comment-text code a,
-.dark .review-inline-comment-text pre a {
+.dark .review-inline-comment-text pre a,
+.dark .review-inline-comment-text a code {
   color: rgb(96 165 250);
 }
 .review-inline-comment-delete {
@@ -709,7 +717,8 @@ h6:hover > .heading-anchor,
   font-weight: 400;
 }
 .review-reaction-summary code a,
-.review-reaction-summary pre a {
+.review-reaction-summary pre a,
+.review-reaction-summary a code {
   color: rgb(37 99 235);
   text-decoration: underline;
   text-decoration-style: dotted;
@@ -727,7 +736,8 @@ h6:hover > .heading-anchor,
   background: rgb(30 41 59);
 }
 .dark .review-reaction-summary code a,
-.dark .review-reaction-summary pre a {
+.dark .review-reaction-summary pre a,
+.dark .review-reaction-summary a code {
   color: rgb(96 165 250);
 }
 .review-reaction-diff {
