@@ -1,7 +1,13 @@
 import { create } from "zustand";
 import axios from "axios";
 import { useRepoStore } from "./useRepoStore";
-import type { ReviewComment, ReviewData, ReviewSnapshot } from "../types";
+import type {
+  CommentAnchor,
+  CommentReaction,
+  ReviewComment,
+  ReviewData,
+  ReviewSnapshot,
+} from "../types";
 
 const getApiBase = (): string | null => {
   const { currentRepo, isMultiRepo } = useRepoStore.getState();
@@ -44,9 +50,13 @@ const writeReviewModePref = (filePath: string, on: boolean): void => {
   }
 };
 
-interface PendingSelection {
-  text: string;
+export interface PendingSelection {
+  anchor: CommentAnchor;
   rect: DOMRect;
+  /** Visible text for the popover preview. */
+  displayText: string;
+  /** True when the selection's start and end blocks differed and we clamped. */
+  clamped?: boolean;
 }
 
 interface ReviewState {
@@ -62,9 +72,8 @@ interface ReviewState {
   comments: ReviewComment[];
   pendingSelection: PendingSelection | null;
 
-  // Snapshots
+  // Snapshots (still kept for reaction before/after capture; no UI)
   snapshots: ReviewSnapshot[];
-  currentSnapshotIndex: number | null; // null = viewing live file
 
   // Loading
   isLoading: boolean;
@@ -72,15 +81,21 @@ interface ReviewState {
   // Actions
   loadReview: (filePath: string) => Promise<void>;
   saveReview: () => Promise<void>;
-  setPendingSelection: (text: string, rect: DOMRect) => void;
+  setPendingSelection: (sel: PendingSelection) => void;
   clearPendingSelection: () => void;
-  addComment: (selectedText: string, comment: string) => void;
+  addComment: (
+    anchor: CommentAnchor,
+    comment: string,
+    fallbackText: string,
+  ) => void;
   deleteComment: (id: string) => void;
   editComment: (id: string, newComment: string) => void;
+  /** Resolve with a "noted" reviewer reaction (means "I accept the agent's fix"). */
   resolveComment: (id: string) => void;
+  /** Dismiss without writing a reaction (means "I'm done with this comment"). */
+  dismissComment: (id: string) => void;
   clearAllComments: () => void;
   addSnapshot: (content: string) => void;
-  setSnapshotIndex: (index: number | null) => void;
   setLastContent: (content: string) => void;
   copyAllToClipboard: () => Promise<boolean>;
   deleteReview: () => Promise<void>;
@@ -97,7 +112,6 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   comments: [],
   pendingSelection: null,
   snapshots: [],
-  currentSnapshotIndex: null,
   isLoading: false,
 
   toggleReviewMode: () => {
@@ -124,7 +138,6 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
         comments: [],
         snapshots: [],
         pendingSelection: null,
-        currentSnapshotIndex: null,
         isReviewMode: false,
       });
     }
@@ -178,18 +191,24 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     }
   },
 
-  setPendingSelection: (text: string, rect: DOMRect) => {
-    set({ pendingSelection: { text, rect } });
+  setPendingSelection: (sel: PendingSelection) => {
+    set({ pendingSelection: sel });
   },
 
   clearPendingSelection: () => {
     set({ pendingSelection: null });
   },
 
-  addComment: (selectedText: string, comment: string) => {
+  addComment: (
+    anchor: CommentAnchor,
+    comment: string,
+    fallbackText: string,
+  ) => {
     const newComment: ReviewComment = {
       id: crypto.randomUUID(),
-      selected_text: selectedText,
+      anchor,
+      fallback_text: fallbackText,
+      reactions: [],
       comment,
       created_at: Date.now() / 1000,
     };
@@ -217,6 +236,29 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   },
 
   resolveComment: (id: string) => {
+    const reaction: CommentReaction = {
+      actor: "reviewer",
+      kind: "noted",
+      summary: "Accepted",
+      before_text: "",
+      after_text: "",
+      timestamp: Date.now() / 1000,
+    };
+    set((s) => ({
+      comments: s.comments.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              resolved: true,
+              reactions: [...(c.reactions ?? []), reaction],
+            }
+          : c,
+      ),
+    }));
+    get().saveReview();
+  },
+
+  dismissComment: (id: string) => {
     set((s) => ({
       comments: s.comments.map((c) =>
         c.id === id ? { ...c, resolved: true } : c,
@@ -240,23 +282,23 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     get().saveReview();
   },
 
-  setSnapshotIndex: (index: number | null) => {
-    set({ currentSnapshotIndex: index, pendingSelection: null });
-  },
-
   setLastContent: (content: string) => {
     set({ lastContent: content });
   },
 
   copyAllToClipboard: async () => {
     const { filePath, lastContent, comments } = get();
-    const active = comments.filter((c) => !c.resolved);
+    const active = comments.filter(
+      (c) =>
+        !c.resolved &&
+        !(c.reactions ?? []).some(
+          (r) => r.actor === "agent" && r.kind === "addressed",
+        ),
+    );
     if (!filePath || active.length === 0) return false;
 
     const contentLines = (lastContent || "").split("\n");
-    const CONTEXT = 2; // lines of context before/after selection
 
-    // Build the base URL for line anchors (works for both single and multi-repo)
     const { currentRepo, isMultiRepo } = useRepoStore.getState();
     const pathPrefix =
       isMultiRepo && currentRepo
@@ -265,38 +307,23 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
 
     const output = [`## Review Comments for \`${filePath}\``, ""];
     for (const c of active) {
-      // Find the selected text in the file to get line numbers
-      const loc = findTextLocation(contentLines, c.selected_text);
       const shortId = c.id.slice(0, 8);
-      if (loc) {
-        const { startLine, endLine } = loc;
-        // Show context: a few lines before and after the selection
-        const ctxStart = Math.max(0, startLine - CONTEXT);
-        const ctxEnd = Math.min(contentLines.length - 1, endLine + CONTEXT);
-        const anchor =
-          startLine === endLine
-            ? `#L${startLine + 1}`
-            : `#L${startLine + 1}-L${endLine + 1}`;
-        const label =
-          startLine === endLine
-            ? `Line ${startLine + 1}`
-            : `Lines ${startLine + 1}-${endLine + 1}`;
-        output.push(`### [${label}](${pathPrefix}${anchor}) \`[${shortId}]\``);
+      const anchorLine = c.anchor?.source_line ?? null;
+      const quoted = quotedFor(c, contentLines);
+      const heading =
+        anchorLine !== null
+          ? `### [Line ${anchorLine}](${pathPrefix}#L${anchorLine}) \`[${shortId}]\``
+          : `### Comment \`[${shortId}]\``;
+      output.push(heading);
+      output.push("");
+      if (quoted.text) {
+        output.push(`**Selected text:** "${quoted.text}"`);
         output.push("");
-        output.push(`**Selected text:** "${c.selected_text}"`);
-        output.push("");
+      }
+      if (quoted.contextBlock) {
         output.push("```");
-        for (let i = ctxStart; i <= ctxEnd; i++) {
-          const marker = i >= startLine && i <= endLine ? ">" : " ";
-          output.push(
-            `${marker} ${String(i + 1).padStart(4)} | ${contentLines[i]}`,
-          );
-        }
+        output.push(quoted.contextBlock);
         output.push("```");
-      } else {
-        output.push(`### Comment \`[${shortId}]\``);
-        output.push("");
-        output.push(`**Selected text:** "${c.selected_text}"`);
       }
       output.push("");
       output.push(`**Comment:** ${c.comment}`);
@@ -305,24 +332,33 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       output.push("");
     }
 
-    // Agent response instructions
     output.push("## Responding to Comments");
     output.push("");
     output.push(
-      "After addressing a comment, append a **changelist entry** to the end of this document with the comment ID:",
+      "After addressing a comment, append a **changelog entry** to the END of this document. The format is parsed by Vantage and must match exactly:",
     );
     output.push("");
     output.push("```markdown");
     output.push("<!-- changelog -->");
-    output.push("- [<id>] <brief description of what you changed>");
+    output.push("- [<short-id>] <one-line summary of what you changed>");
     output.push("```");
     output.push("");
     output.push(
-      "For example: `- [${active[0]?.id.slice(0, 8)}] Reworded paragraph for clarity`",
+      `Example (using a real id from this batch): \`- [${active[0]?.id.slice(0, 8)}] Reworded paragraph for clarity\``,
     );
     output.push("");
+    output.push("Rules:");
     output.push(
-      "The reviewer will match the `[<id>]` tag to auto-resolve the corresponding comment.",
+      "- The marker line must be exactly `<!-- changelog -->` (HTML comment, nothing else on the line).",
+    );
+    output.push(
+      "- Each entry is a single bullet: `- [<short-id>] <summary>` — no nested lists, no extra prose between bullets.",
+    );
+    output.push(
+      "- One bullet per comment you addressed. Skip comments you didn't act on.",
+    );
+    output.push(
+      "- Vantage parses this block on save and records a reaction against the matching comment, including a before/after capture of the affected block.",
     );
     output.push("");
 
@@ -347,7 +383,6 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     set({
       comments: [],
       snapshots: [],
-      currentSnapshotIndex: null,
       pendingSelection: null,
     });
   },
@@ -370,7 +405,6 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       isReviewMode: false,
       comments: [],
       snapshots: [],
-      currentSnapshotIndex: null,
       pendingSelection: null,
       lastContent: null,
     });
@@ -383,35 +417,30 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
 }));
 
 /**
- * Find the line range of `needle` in the source lines.
- * The needle comes from rendered markdown text selection, so we normalize
- * whitespace for matching against the raw markdown source.
+ * Build a quoted/contextualized chunk for the clipboard prompt.  Uses the
+ * comment's anchor.source_line when available, falling back to a text
+ * search against `selected_text`/`fallback_text` for legacy comments.
  */
-function findTextLocation(
-  lines: string[],
-  needle: string,
-): { startLine: number; endLine: number } | null {
-  const full = lines.join("\n");
-  const idx = full.indexOf(needle);
-  if (idx !== -1) {
-    const startLine = full.substring(0, idx).split("\n").length - 1;
-    const endLine = startLine + needle.split("\n").length - 1;
-    return { startLine, endLine };
-  }
-
-  // Fuzzy: normalize whitespace (rendered text collapses whitespace)
-  const norm = (s: string) => s.replace(/\s+/g, " ").trim();
-  const needleNorm = norm(needle);
-
-  // Sliding window over lines
-  for (let start = 0; start < lines.length; start++) {
-    let acc = "";
-    for (let end = start; end < lines.length && end < start + 50; end++) {
-      acc += (end > start ? " " : "") + lines[end];
-      if (norm(acc).includes(needleNorm)) {
-        return { startLine: start, endLine: end };
+function quotedFor(
+  c: ReviewComment,
+  contentLines: string[],
+): { text: string; contextBlock: string } {
+  const fallback = c.fallback_text || c.selected_text || "";
+  if (c.anchor?.source_line) {
+    const idx = c.anchor.source_line - 1;
+    if (idx >= 0 && idx < contentLines.length) {
+      const CONTEXT = 2;
+      const start = Math.max(0, idx - CONTEXT);
+      const end = Math.min(contentLines.length - 1, idx + CONTEXT);
+      const lines: string[] = [];
+      for (let i = start; i <= end; i++) {
+        const marker = i === idx ? ">" : " ";
+        lines.push(
+          `${marker} ${String(i + 1).padStart(4)} | ${contentLines[i]}`,
+        );
       }
+      return { text: fallback, contextBlock: lines.join("\n") };
     }
   }
-  return null;
+  return { text: fallback, contextBlock: "" };
 }

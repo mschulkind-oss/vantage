@@ -32,6 +32,7 @@ import {
   FolderGit2,
   PanelLeftClose,
 } from "lucide-react";
+// History icon retained for the file-history link in the breadcrumb area.
 import { RelativeTime } from "../components/RelativeTime";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { cn } from "../lib/utils";
@@ -47,12 +48,11 @@ import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { RecentsModal } from "../components/RecentsModal";
 import { useReviewStore } from "../stores/useReviewStore";
 import { ReviewPanel } from "../components/ReviewPanel";
-import { ReviewToolbar } from "../components/ReviewToolbar";
 import { MessageSquarePlus, ClipboardCopy, Lightbulb } from "lucide-react";
 import { useLineAnchor } from "../hooks/useLineAnchor";
 import { StyleGuideModal } from "../components/StyleGuideModal";
 import { ConnectionBanner } from "../components/ConnectionBanner";
-import { Modal } from "../components/Modal";
+import { ReviewStripe } from "../components/ReviewStripe";
 import { analyzeDoc, type DocTip } from "../lib/docTips";
 
 /** Format an ISO date string as a short local datetime (e.g. "Mar 2, 2026 3:45 PM"). */
@@ -166,31 +166,26 @@ export const ViewerPage: React.FC = () => {
   // --- Review mode ---
   const isReviewMode = useReviewStore((s) => s.isReviewMode);
   const toggleReviewMode = useReviewStore((s) => s.toggleReviewMode);
-  const endReview = useReviewStore((s) => s.endReview);
-  const hasReviewData = useReviewStore((s) => s.hasReviewData);
   const loadReview = useReviewStore((s) => s.loadReview);
-  const reviewAddSnapshot = useReviewStore((s) => s.addSnapshot);
   const reviewSetLastContent = useReviewStore((s) => s.setLastContent);
-  const reviewLastContent = useReviewStore((s) => s.lastContent);
   const reviewComments = useReviewStore((s) => s.comments);
-  const activeReviewCount = reviewComments.filter((c) => !c.resolved).length;
+  const pendingReviewCount = reviewComments.filter(
+    (c) =>
+      !c.resolved &&
+      !(c.reactions ?? []).some(
+        (r) => r.actor === "agent" && r.kind === "addressed",
+      ),
+  ).length;
   const copyAllReviewComments = useReviewStore((s) => s.copyAllToClipboard);
-  const reviewSnapshots = useReviewStore((s) => s.snapshots);
-  const reviewSnapshotIndex = useReviewStore((s) => s.currentSnapshotIndex);
   const [reviewPanelOpen, setReviewPanelOpen] = useState(false);
   const [reviewCopied, setReviewCopied] = useState(false);
-  const [showEndReviewConfirm, setShowEndReviewConfirm] = useState(false);
 
   const handleReviewToggle = useCallback(() => {
-    if (isReviewMode && hasReviewData()) {
-      setShowEndReviewConfirm(true);
-    } else if (isReviewMode) {
-      // No data, just turn off
-      endReview();
-    } else {
-      toggleReviewMode();
-    }
-  }, [isReviewMode, hasReviewData, endReview, toggleReviewMode]);
+    // PR2: review mode is now a plain on/off toggle.  Destructive
+    // "End review" lives in the side-panel `…` menu (ReviewPanel)
+    // because the day-to-day toggle shouldn't risk losing data.
+    toggleReviewMode();
+  }, [toggleReviewMode]);
 
   // Load review data when file changes
   useEffect(() => {
@@ -199,33 +194,18 @@ export const ViewerPage: React.FC = () => {
     }
   }, [currentPath, loadReview]);
 
-  // Track content for auto-snapshot: when content changes and review mode is on,
-  // snapshot the previous version
+  // Track lastContent so the clipboard prompt has source lines to render.
+  // Snapshots themselves are written server-side by the watcher (it
+  // caches the previous file content per (repo,path) and uses it as the
+  // before-text when the changelog parser fires).  The frontend no
+  // longer issues an auto-snapshot PUT — that PUT was racing with the
+  // server's reaction write and clobbering reactions when the agent
+  // edited the file while the browser was open.
   useEffect(() => {
     if (!fileContent || !isReviewMode) return;
-    const content = fileContent.content;
-    if (reviewLastContent && reviewLastContent !== content) {
-      // Content changed while in review mode — snapshot the old version
-      reviewAddSnapshot(reviewLastContent);
-    }
-    reviewSetLastContent(content);
+    reviewSetLastContent(fileContent.content);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileContent?.content, isReviewMode]);
-
-  // When viewing a past snapshot, use its content instead of the live file
-  const reviewDisplayContent = React.useMemo(() => {
-    if (!isReviewMode || reviewSnapshotIndex === null || !fileContent) {
-      return null; // use live file
-    }
-    const snap = reviewSnapshots[reviewSnapshotIndex];
-    return snap ? snap.content : null;
-  }, [isReviewMode, reviewSnapshotIndex, reviewSnapshots, fileContent]);
-
-  // e.g. "1/3" when viewing past snapshot, null when live
-  const reviewSnapshotLabel = React.useMemo(() => {
-    if (!isReviewMode || reviewSnapshotIndex === null) return null;
-    const total = reviewSnapshots.length + 1; // snapshots + live
-    return `${reviewSnapshotIndex + 1}/${total}`;
-  }, [isReviewMode, reviewSnapshotIndex, reviewSnapshots.length]);
 
   // --- Style guide & doc tips ---
   const [styleGuideOpen, setStyleGuideOpen] = useState(false);
@@ -1097,8 +1077,7 @@ export const ViewerPage: React.FC = () => {
                         </button>
                         {isReviewMode && (
                           <>
-                            <ReviewToolbar />
-                            {activeReviewCount > 0 && (
+                            {pendingReviewCount > 0 && (
                               <button
                                 onClick={async () => {
                                   const ok = await copyAllReviewComments();
@@ -1121,7 +1100,7 @@ export const ViewerPage: React.FC = () => {
                                 <span className="hidden sm:inline">
                                   {reviewCopied
                                     ? "Copied!"
-                                    : `Copy ${activeReviewCount}`}
+                                    : `Copy ${pendingReviewCount}`}
                                 </span>
                               </button>
                             )}
@@ -1225,8 +1204,7 @@ export const ViewerPage: React.FC = () => {
                       </button>
                       {isReviewMode && (
                         <>
-                          <ReviewToolbar />
-                          {activeReviewCount > 0 && (
+                          {pendingReviewCount > 0 && (
                             <button
                               onClick={async () => {
                                 const ok = await copyAllReviewComments();
@@ -1249,7 +1227,7 @@ export const ViewerPage: React.FC = () => {
                               <span className="hidden sm:inline">
                                 {reviewCopied
                                   ? "Copied!"
-                                  : `Copy ${activeReviewCount}`}
+                                  : `Copy ${pendingReviewCount}`}
                               </span>
                             </button>
                           )}
@@ -1279,14 +1257,14 @@ export const ViewerPage: React.FC = () => {
             ref={contentRef}
             data-content-scroll
             className={cn(
-              "flex-1 overflow-y-auto bg-white dark:bg-slate-900",
+              "flex-1 overflow-y-auto bg-white dark:bg-slate-900 relative",
               isReviewMode &&
-                !reviewSnapshotLabel &&
                 "ring-1 ring-inset ring-purple-200 dark:ring-purple-800/50",
-              reviewSnapshotLabel &&
-                "ring-1 ring-inset ring-amber-300 dark:ring-amber-700/50",
             )}
           >
+            {isReviewMode && (
+              <ReviewStripe scrollRef={contentRef} comments={reviewComments} />
+            )}
             <div className="max-w-5xl mx-auto py-4 px-4 sm:py-6 sm:px-8">
               {error ? (
                 <div className="flex flex-col items-center justify-center h-64 text-red-500">
@@ -1344,33 +1322,10 @@ export const ViewerPage: React.FC = () => {
                       </div>
                     ) : (
                       <>
-                        {reviewSnapshotLabel && (
-                          <div className="mb-4 flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 text-amber-800 dark:text-amber-300 text-sm">
-                            <History size={14} className="shrink-0" />
-                            <span>
-                              Viewing past revision{" "}
-                              <strong className="font-semibold tabular-nums">
-                                {reviewSnapshotLabel}
-                              </strong>
-                              {" — "}
-                              <button
-                                onClick={() =>
-                                  useReviewStore
-                                    .getState()
-                                    .setSnapshotIndex(null)
-                                }
-                                className="font-medium text-amber-600 dark:text-amber-400 underline underline-offset-2 hover:text-amber-800 dark:hover:text-amber-200 cursor-pointer"
-                              >
-                                Go to Latest
-                              </button>
-                            </span>
-                          </div>
-                        )}
                         <MarkdownViewer
-                          content={reviewDisplayContent ?? fileContent.content}
+                          content={fileContent.content}
                           currentPath={fileContent.path}
                           isReviewMode={isReviewMode}
-                          snapshotLabel={reviewSnapshotLabel}
                         />
                         {visibleTips.length > 0 && (
                           <div className="mt-6 space-y-2">
@@ -1587,55 +1542,6 @@ export const ViewerPage: React.FC = () => {
           isOpen={styleGuideOpen}
           onClose={() => setStyleGuideOpen(false)}
         />
-        {/* End Review Confirmation */}
-        {showEndReviewConfirm && (
-          <Modal
-            isOpen={showEndReviewConfirm}
-            onClose={() => setShowEndReviewConfirm(false)}
-            title="End Review?"
-          >
-            <div className="space-y-4">
-              <p className="text-sm text-slate-600 dark:text-slate-400">
-                This will clear{" "}
-                <strong>
-                  {reviewComments.length} comment
-                  {reviewComments.length !== 1 && "s"}
-                </strong>
-                {reviewSnapshots.length > 0 && (
-                  <>
-                    {" "}
-                    and{" "}
-                    <strong>
-                      {reviewSnapshots.length} revision snapshot
-                      {reviewSnapshots.length !== 1 && "s"}
-                    </strong>
-                  </>
-                )}
-                . This cannot be undone.
-              </p>
-              <p className="text-xs text-slate-400 dark:text-slate-500">
-                Tip: copy your comments to the clipboard first if you need them.
-              </p>
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  onClick={() => setShowEndReviewConfirm(false)}
-                  className="px-3 py-1.5 text-sm text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-md transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => {
-                    setShowEndReviewConfirm(false);
-                    endReview();
-                  }}
-                  className="px-3 py-1.5 text-sm text-white bg-red-500 hover:bg-red-600 rounded-md transition-colors"
-                >
-                  End Review & Clear Data
-                </button>
-              </div>
-            </div>
-          </Modal>
-        )}
       </div>
     </div>
   );

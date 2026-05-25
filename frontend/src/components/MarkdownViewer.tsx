@@ -23,40 +23,95 @@ import { useDeltaFlash } from "../hooks/useDeltaFlash";
 import { useReviewHighlights } from "../hooks/useReviewHighlights";
 import { useReviewStore } from "../stores/useReviewStore";
 import { ReviewCommentPopover } from "./ReviewCommentPopover";
+import {
+  blockVisibleText,
+  canonicalOffsetsFromRange,
+  hashBlockText,
+  stripBlockText,
+} from "../lib/reviewAnchor";
+import type { CommentAnchor } from "../types";
 
 interface MarkdownViewerProps {
   content: string;
   currentPath: string;
   isReviewMode?: boolean;
-  /** e.g. "1/3" when viewing a past snapshot, null when live */
-  snapshotLabel?: string | null;
 }
 
-/** Show a brief floating toast near the selection when commenting on changed text in a past snapshot. */
-function showSelectionBlockedToast(rect: DOMRect) {
-  const existing = document.getElementById("review-blocked-toast");
+// Tags eligible to be the anchor block for a comment.  We deliberately
+// exclude container-only tags that `rehypeSourceLines` also tags
+// (`ul`, `ol`, `tr`, `div`, `hr`) — selecting "an item in a list"
+// should anchor on the `<li>`, not collapse to the parent `<ul>`.
+const ANCHOR_TAGS = "p, h1, h2, h3, h4, h5, h6, li, blockquote, pre, table";
+
+const MULTIBLOCK_HINT_KEY = "vantage.reviewMode.multiBlockHintShown";
+
+function showMultiBlockHintToast(rect: DOMRect) {
+  // One-time per browser; once dismissed, never again.  The hint exists
+  // to teach the clamp behavior on first encounter.
+  try {
+    if (localStorage.getItem(MULTIBLOCK_HINT_KEY) === "1") return;
+  } catch {
+    /* ignore */
+  }
+  const existing = document.getElementById("review-multiblock-hint");
   if (existing) existing.remove();
 
   const toast = document.createElement("div");
-  toast.id = "review-blocked-toast";
+  toast.id = "review-multiblock-hint";
   toast.className = "review-blocked-toast";
-  toast.textContent = "Go to Latest to comment on changed text";
+  toast.textContent = "Comment will attach to the first paragraph";
   document.body.appendChild(toast);
 
-  // Position near the selection
   const top = rect.top + window.scrollY - 36;
   const left = rect.left + window.scrollX + rect.width / 2;
   toast.style.top = `${Math.max(8, top)}px`;
   toast.style.left = `${left}px`;
 
   setTimeout(() => toast.remove(), 2500);
+  try {
+    localStorage.setItem(MULTIBLOCK_HINT_KEY, "1");
+  } catch {
+    /* ignore */
+  }
+}
+
+interface CapturedSelection {
+  anchor: CommentAnchor;
+  block: HTMLElement;
+  displayText: string;
+  rect: DOMRect;
+  clamped: boolean;
+}
+
+/**
+ * Resolve the anchor block for a DOM node.  Walks ancestors looking for
+ * the closest `[data-source-line]` whose tag is in ANCHOR_TAGS — this
+ * keeps comments off of pure-container elements.
+ */
+function resolveAnchorBlock(
+  container: HTMLElement,
+  node: Node | null,
+): HTMLElement | null {
+  if (!node) return null;
+  const start =
+    node.nodeType === Node.ELEMENT_NODE
+      ? (node as HTMLElement)
+      : node.parentElement;
+  if (!start) return null;
+  let cur: HTMLElement | null = start;
+  while (cur && cur !== container) {
+    if (cur.matches?.(ANCHOR_TAGS) && cur.hasAttribute("data-source-line")) {
+      return cur;
+    }
+    cur = cur.parentElement;
+  }
+  return null;
 }
 
 const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   content,
   currentPath,
   isReviewMode = false,
-  snapshotLabel = null,
 }) => {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -193,7 +248,6 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
 
   // --- Review mode ---
   const comments = useReviewStore((s) => s.comments);
-  const snapshots = useReviewStore((s) => s.snapshots);
   const pendingSelection = useReviewStore((s) => s.pendingSelection);
   const setPendingSelection = useReviewStore((s) => s.setPendingSelection);
   const clearPendingSelection = useReviewStore((s) => s.clearPendingSelection);
@@ -201,39 +255,75 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   const deleteComment = useReviewStore((s) => s.deleteComment);
   const editComment = useReviewStore((s) => s.editComment);
   const resolveComment = useReviewStore((s) => s.resolveComment);
-
-  // Check whether a range/element is inside a changed block of a past
-  // snapshot (commenting on changed text is blocked in snapshot view).
-  const isInChangedBlock = useCallback(
-    (container: HTMLElement, node: Node | Element | null): boolean => {
-      let current = node as Element | null;
-      while (current && current !== container) {
-        if (
-          current.nodeType === Node.ELEMENT_NODE &&
-          current.hasAttribute?.("data-review-changed-block")
-        ) {
-          return true;
-        }
-        const parent: Element | null = current.parentElement;
-        current = parent;
-      }
-      return false;
-    },
-    [],
-  );
-
-  const previousSnapshot =
-    snapshots.length > 0 ? snapshots[snapshots.length - 1] : null;
+  const dismissComment = useReviewStore((s) => s.dismissComment);
 
   useReviewHighlights(
     containerRef,
     isReviewMode ? comments : [],
-    isReviewMode ? previousSnapshot : null,
     isReviewMode ? body : null,
     deleteComment,
     resolveComment,
+    dismissComment,
     editComment,
-    snapshotLabel,
+  );
+
+  // Build a CapturedSelection from the current window selection or a
+  // hovered block (whole-block click).  Returns null if nothing is
+  // capture-worthy at this moment.
+  const buildCapturedSelection = useCallback(
+    (block: HTMLElement, range: Range | null): CapturedSelection | null => {
+      const sourceLineAttr = block.getAttribute("data-source-line");
+      if (!sourceLineAttr) return null;
+      const sourceLine = Number.parseInt(sourceLineAttr, 10);
+      if (!Number.isFinite(sourceLine)) return null;
+
+      const blockText = blockVisibleText(block);
+      const blockHash = hashBlockText(blockText);
+      const canonicalBlock = stripBlockText(blockText);
+
+      let offset = 0;
+      let length = 0;
+      let displayText = canonicalBlock;
+      let clamped = false;
+      let rect: DOMRect;
+
+      if (range && !range.collapsed) {
+        const offsets = canonicalOffsetsFromRange(block, range);
+        if (offsets && offsets.length >= 3) {
+          offset = offsets.offset;
+          length = offsets.length;
+          displayText = canonicalBlock.slice(offset, offset + length);
+        }
+        rect = range.getBoundingClientRect();
+      } else {
+        rect = block.getBoundingClientRect();
+      }
+
+      if (range && !range.collapsed) {
+        const startBlock = resolveAnchorBlock(
+          (block.closest("[data-content-scroll]") as HTMLElement | null) ??
+            block.parentElement!,
+          range.startContainer,
+        );
+        const endBlock = resolveAnchorBlock(
+          (block.closest("[data-content-scroll]") as HTMLElement | null) ??
+            block.parentElement!,
+          range.endContainer,
+        );
+        if (startBlock && endBlock && startBlock !== endBlock) {
+          clamped = true;
+        }
+      }
+
+      const anchor: CommentAnchor = {
+        source_line: sourceLine,
+        block_text_hash: blockHash,
+        selection_offset: offset,
+        selection_length: length,
+      };
+      return { anchor, block, displayText, rect, clamped };
+    },
+    [],
   );
 
   // Capture the current window selection (if any) and promote it to a
@@ -263,19 +353,24 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     const rect = range.getBoundingClientRect();
     if (rect.width === 0 && rect.height === 0) return false;
 
-    // When viewing a past snapshot, block commenting on changed blocks.
-    if (snapshotLabel) {
-      const startEl = range.startContainer.parentElement;
-      const endEl = range.endContainer.parentElement;
-      if (isInChangedBlock(el, startEl) || isInChangedBlock(el, endEl)) {
-        showSelectionBlockedToast(rect);
-        return false;
-      }
+    const startBlock = resolveAnchorBlock(el, range.startContainer);
+    if (!startBlock) return false;
+
+    const captured = buildCapturedSelection(startBlock, range);
+    if (!captured) return false;
+
+    if (captured.clamped) {
+      showMultiBlockHintToast(rect);
     }
 
-    setPendingSelection(text, rect);
+    setPendingSelection({
+      anchor: captured.anchor,
+      rect: captured.rect,
+      displayText: captured.displayText,
+      clamped: captured.clamped,
+    });
     return true;
-  }, [setPendingSelection, snapshotLabel, isInChangedBlock]);
+  }, [setPendingSelection, buildCapturedSelection]);
 
   // Text selection handler for review mode.
   // We listen on the document for mouseup so we catch selections that start
@@ -392,32 +487,29 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       const sel = window.getSelection();
       if (sel && !sel.isCollapsed && sel.toString().trim().length > 0) return;
 
-      const block = hoveredBlockRef.current;
-      if (!block || !el.contains(block)) return;
+      const hovered = hoveredBlockRef.current;
+      if (!hovered || !el.contains(hovered)) return;
 
-      // Strip revision badge text if present.
-      const badge = block.querySelector(".review-revision-badge");
-      let text = block.innerText || block.textContent || "";
-      if (badge) {
-        const badgeText = badge.textContent || "";
-        if (badgeText && text.startsWith(badgeText)) {
-          text = text.slice(badgeText.length);
-        }
-      }
-      text = text.trim();
-      if (text.length < 3) return;
+      // The hover-block selector includes p, h1-h6, li, blockquote;
+      // resolveAnchorBlock walks to the nearest tag with data-source-line
+      // (which may be the same element or a closer ancestor).
+      const block = resolveAnchorBlock(el, hovered) ?? hovered;
+      if (!block.hasAttribute("data-source-line")) return;
 
-      const rect = block.getBoundingClientRect();
-      if (snapshotLabel && isInChangedBlock(el, block)) {
-        showSelectionBlockedToast(rect);
-        return;
-      }
-      setPendingSelection(text, rect);
+      const captured = buildCapturedSelection(block as HTMLElement, null);
+      if (!captured) return;
+
+      setPendingSelection({
+        anchor: captured.anchor,
+        rect: captured.rect,
+        displayText: captured.displayText,
+        clamped: false,
+      });
     };
 
     el.addEventListener("click", onClick);
     return () => el.removeEventListener("click", onClick);
-  }, [isReviewMode, setPendingSelection, snapshotLabel, isInChangedBlock]);
+  }, [isReviewMode, setPendingSelection, buildCapturedSelection]);
 
   // Factory for heading components with hover anchor links
   const headingWithAnchor = useCallback(
@@ -586,9 +678,15 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       {/* Review mode: comment popover for new selections */}
       {isReviewMode && pendingSelection && (
         <ReviewCommentPopover
-          selectedText={pendingSelection.text}
+          selectedText={pendingSelection.displayText}
           rect={pendingSelection.rect}
-          onSave={(comment) => addComment(pendingSelection.text, comment)}
+          onSave={(comment) =>
+            addComment(
+              pendingSelection.anchor,
+              comment,
+              pendingSelection.displayText,
+            )
+          }
           onCancel={clearPendingSelection}
         />
       )}
@@ -603,8 +701,7 @@ export const MarkdownViewer = memo(
     return (
       prevProps.content === nextProps.content &&
       prevProps.currentPath === nextProps.currentPath &&
-      prevProps.isReviewMode === nextProps.isReviewMode &&
-      prevProps.snapshotLabel === nextProps.snapshotLabel
+      prevProps.isReviewMode === nextProps.isReviewMode
     );
   },
 );

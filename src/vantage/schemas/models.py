@@ -111,12 +111,50 @@ class ReviewSnapshot(BaseModel):
     timestamp: float  # epoch seconds
 
 
+class CommentAnchor(BaseModel):
+    """Block-level anchor for a review comment.
+
+    Comments attach to a markdown block identified by source_line (its
+    position in the rendered DOM via data-source-line) and verified by
+    block_text_hash.  The selection_offset/selection_length describe a
+    substring within that block; selection_length=0 means the whole block.
+    """
+
+    source_line: int
+    block_text_hash: str
+    selection_offset: int = 0
+    selection_length: int = 0
+
+
+class CommentReaction(BaseModel):
+    """A record of an action taken in response to a comment.
+
+    Created either by the agent (via a server-parsed `<!-- changelog -->`
+    block) or by the reviewer (when they resolve/dismiss).
+    """
+
+    actor: str  # "agent" | "reviewer"
+    kind: str  # "addressed" | "wont_fix" | "needs_clarification" | "noted"
+    summary: str
+    before_text: str = ""
+    after_text: str = ""
+    timestamp: float = 0.0
+
+
 class ReviewComment(BaseModel):
     id: str
-    selected_text: str
     comment: str
     created_at: float  # epoch seconds
     resolved: bool = False
+    # New (block-anchored) fields.  Optional during the migration window —
+    # legacy comments lazily acquire an anchor on first frontend load.
+    anchor: CommentAnchor | None = None
+    fallback_text: str = ""
+    reactions: list[CommentReaction] = []
+    # Legacy: original verbatim selection.  Kept for migration of records
+    # written before block-anchoring.  New comments leave this empty and
+    # store the original text in fallback_text instead.
+    selected_text: str = ""
 
 
 class ReviewData(BaseModel):

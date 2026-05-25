@@ -106,12 +106,41 @@ export interface ReviewSnapshot {
   timestamp: number;
 }
 
+export interface CommentAnchor {
+  source_line: number;
+  block_text_hash: string;
+  /** Char offset within the canonicalized block text. 0 + length=0 = whole-block. */
+  selection_offset: number;
+  /** Length of the selection within the block; 0 means whole-block. */
+  selection_length: number;
+}
+
+export type ReactionActor = "agent" | "reviewer";
+export type ReactionKind =
+  | "addressed"
+  | "wont_fix"
+  | "needs_clarification"
+  | "noted";
+
+export interface CommentReaction {
+  actor: ReactionActor;
+  kind: ReactionKind;
+  summary: string;
+  before_text: string;
+  after_text: string;
+  timestamp: number;
+}
+
 export interface ReviewComment {
   id: string;
-  selected_text: string;
   comment: string;
   created_at: number;
   resolved?: boolean;
+  anchor?: CommentAnchor | null;
+  fallback_text?: string;
+  reactions?: CommentReaction[];
+  /** Legacy: pre-anchor schema kept the verbatim selection here. */
+  selected_text?: string;
 }
 
 export interface ReviewData {

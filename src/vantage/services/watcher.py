@@ -223,8 +223,15 @@ def _is_git_state_change(path: str) -> bool:
 async def _coalesce_and_broadcast(
     pending: set[str],
     repo_name: str | None = None,
+    repo_root: Path | None = None,
 ) -> None:
-    """Send a single batched message for accumulated paths."""
+    """Send a single batched message for accumulated paths.
+
+    When ``repo_root`` is provided, also runs the review-mode changelog
+    parser on every changed .md file — this is what turns an agent's
+    appended ``<!-- changelog -->`` block into a recorded reaction
+    against the matching comment, even when no browser is open.
+    """
     if not pending:
         return
 
@@ -245,6 +252,24 @@ async def _coalesce_and_broadcast(
     if has_git_change:
         clear_recent_files_cache()
         logger.debug("Cleared recent-files + git-status caches due to git state change")
+
+    # Review-mode changelog parsing.  Best-effort: any error here is
+    # logged and ignored — must not block live-reload broadcast.
+    if repo_root is not None:
+        try:
+            from vantage.services import review_changelog
+
+            for rel in pending:
+                if not rel.lower().endswith(".md"):
+                    continue
+                abs_path = repo_root / rel
+                try:
+                    content = abs_path.read_text(encoding="utf-8")
+                except (OSError, UnicodeDecodeError):
+                    continue
+                review_changelog.apply_changelog(rel, content, repo=repo_name)
+        except Exception:
+            logger.exception("[watcher] review changelog parser raised — ignoring")
 
     unique_paths = sorted(pending)
     msg: dict[str, object] = {"type": "files_changed", "paths": unique_paths}
@@ -358,7 +383,7 @@ async def watch_repo():
         paths = set(pending)
         pending.clear()
         batch_start = None
-        await _coalesce_and_broadcast(paths)
+        await _coalesce_and_broadcast(paths, repo_root=target)
 
     while True:
         changes = await queue.get()
@@ -420,7 +445,11 @@ async def watch_multi_repo():
         pending.clear()
         batch_start = None
         for repo_name, paths in snapshot.items():
-            await _coalesce_and_broadcast(paths, repo_name)
+            root = next(
+                (Path(p) for p, name in path_to_repo.items() if name == repo_name),
+                None,
+            )
+            await _coalesce_and_broadcast(paths, repo_name, repo_root=root)
 
     async def _heartbeat() -> None:
         while True:

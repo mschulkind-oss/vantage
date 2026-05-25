@@ -1,19 +1,44 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Check,
   ClipboardCopy,
   MessageSquare,
+  MoreHorizontal,
   Pencil,
   Trash2,
   X,
   CheckCircle2,
 } from "lucide-react";
+import { diffWords } from "diff";
 import { useReviewStore } from "../stores/useReviewStore";
+import type { ReviewComment } from "../types";
 
 interface ReviewPanelProps {
   isOpen: boolean;
   onClose: () => void;
+}
+
+type Filter = "all" | "with_reaction" | "awaiting" | "resolved";
+
+const FILTER_LABEL: Record<Filter, string> = {
+  all: "All",
+  with_reaction: "With reaction",
+  awaiting: "Awaiting reaction",
+  resolved: "Resolved",
+};
+
+function hasAgentReaction(c: ReviewComment): boolean {
+  return (c.reactions ?? []).some((r) => r.actor === "agent");
+}
+
+function commentMatchesFilter(c: ReviewComment, f: Filter): boolean {
+  if (f === "all") return true;
+  if (f === "resolved") return !!c.resolved;
+  if (c.resolved) return false;
+  if (f === "with_reaction") return hasAgentReaction(c);
+  if (f === "awaiting") return !hasAgentReaction(c);
+  return true;
 }
 
 export const ReviewPanel: React.FC<ReviewPanelProps> = ({
@@ -23,19 +48,46 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   const comments = useReviewStore((s) => s.comments);
   const deleteComment = useReviewStore((s) => s.deleteComment);
   const editComment = useReviewStore((s) => s.editComment);
+  const resolveComment = useReviewStore((s) => s.resolveComment);
+  const dismissComment = useReviewStore((s) => s.dismissComment);
   const copyAllToClipboard = useReviewStore((s) => s.copyAllToClipboard);
-  const deleteReview = useReviewStore((s) => s.deleteReview);
+  const endReview = useReviewStore((s) => s.endReview);
 
+  const [filter, setFilter] = useState<Filter>("all");
   const [copied, setCopied] = useState(false);
-  const [confirmClear, setConfirmClear] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const editRef = useRef<HTMLTextAreaElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmEnd, setConfirmEnd] = useState(false);
+
+  // Counts (computed from full comment list, regardless of active filter)
+  const counts = useMemo(() => {
+    const total = comments.length;
+    const resolved = comments.filter((c) => c.resolved).length;
+    const active = total - resolved;
+    const withReaction = comments.filter(
+      (c) => !c.resolved && hasAgentReaction(c),
+    ).length;
+    const awaiting = active - withReaction;
+    return { all: total, withReaction, awaiting, resolved };
+  }, [comments]);
+
+  const visible = useMemo(
+    () => comments.filter((c) => commentMatchesFilter(c, filter)),
+    [comments, filter],
+  );
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = () => setMenuOpen(false);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [menuOpen]);
 
   if (!isOpen) return null;
 
-  const activeComments = comments.filter((c) => !c.resolved);
-  const resolvedComments = comments.filter((c) => c.resolved);
+  const activeCount = counts.all - counts.resolved;
 
   const handleCopy = async () => {
     const ok = await copyAllToClipboard();
@@ -45,44 +97,102 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
     }
   };
 
-  const handleClear = () => {
-    if (confirmClear) {
-      deleteReview();
-      setConfirmClear(false);
+  const handleEndReview = () => {
+    if (confirmEnd) {
+      endReview();
+      setConfirmEnd(false);
+      setMenuOpen(false);
+      onClose();
     } else {
-      setConfirmClear(true);
-      setTimeout(() => setConfirmClear(false), 3000);
+      setConfirmEnd(true);
+      setTimeout(() => setConfirmEnd(false), 3000);
     }
   };
 
   return createPortal(
     <>
-      {/* Backdrop */}
       <div className="fixed inset-0 z-[90] bg-black/20" onClick={onClose} />
-      {/* Panel */}
       <div className="fixed right-0 top-0 bottom-0 z-[91] w-96 max-w-[90vw] bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700 shadow-2xl flex flex-col">
-        {/* Header */}
         <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
             <MessageSquare size={16} className="text-slate-500" />
             <span className="font-semibold text-sm text-slate-800 dark:text-slate-200">
               Review Comments
             </span>
-            {activeComments.length > 0 && (
+            {activeCount > 0 && (
               <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
-                {activeComments.length}
+                {activeCount}
               </span>
             )}
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400"
-          >
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-1">
+            <div className="relative">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen((v) => !v);
+                }}
+                className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400"
+                title="More actions"
+              >
+                <MoreHorizontal size={18} />
+              </button>
+              {menuOpen && (
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute right-0 top-full mt-1 w-56 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg py-1 z-10"
+                >
+                  <button
+                    onClick={handleEndReview}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+                  >
+                    <Trash2 size={12} />
+                    {confirmEnd
+                      ? "Confirm end & delete data?"
+                      : "End review (delete all data)"}
+                  </button>
+                </div>
+              )}
+            </div>
+            <button
+              onClick={onClose}
+              className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
-        {/* Comment list */}
+        {comments.length > 0 && (
+          <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-700/50 flex flex-wrap gap-1.5">
+            {(["all", "with_reaction", "awaiting", "resolved"] as Filter[]).map(
+              (f) => {
+                const count =
+                  f === "all"
+                    ? counts.all
+                    : f === "with_reaction"
+                      ? counts.withReaction
+                      : f === "awaiting"
+                        ? counts.awaiting
+                        : counts.resolved;
+                return (
+                  <button
+                    key={f}
+                    onClick={() => setFilter(f)}
+                    className={
+                      filter === f
+                        ? "px-2 py-0.5 text-[11px] rounded-full bg-blue-600 text-white"
+                        : "px-2 py-0.5 text-[11px] rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600"
+                    }
+                  >
+                    {FILTER_LABEL[f]} ({count})
+                  </button>
+                );
+              },
+            )}
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto">
           {comments.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-48 text-slate-400 text-sm">
@@ -92,18 +202,46 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                 Select text in the document to add comments
               </p>
             </div>
+          ) : visible.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-32 text-slate-400 text-sm">
+              <p>No comments in this view</p>
+            </div>
           ) : (
-            <>
-              {/* Active comments */}
-              {activeComments.length > 0 && (
-                <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
-                  {activeComments.map((c) => (
-                    <div key={c.id} className="px-4 py-3 group">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900 rounded px-2 py-1 border-l-2 border-blue-400 line-clamp-2 flex-1">
-                          {c.selected_text}
-                        </div>
-                        <div className="flex items-center gap-0.5 shrink-0">
+            <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
+              {visible.map((c) => {
+                const agentReaction = (c.reactions ?? [])
+                  .slice()
+                  .reverse()
+                  .find((r) => r.actor === "agent");
+                const showResolve = !c.resolved && !!agentReaction;
+                const showDismiss = !c.resolved && !agentReaction;
+                const fallback = c.fallback_text || c.selected_text || "";
+                return (
+                  <div key={c.id} className="px-4 py-3 group">
+                    <div className="flex items-start justify-between gap-2">
+                      <div
+                        className={
+                          c.resolved
+                            ? "flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500 flex-1"
+                            : "text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900 rounded px-2 py-1 border-l-2 border-blue-400 line-clamp-2 flex-1"
+                        }
+                      >
+                        {c.resolved && (
+                          <CheckCircle2
+                            size={12}
+                            className="text-green-500 shrink-0"
+                          />
+                        )}
+                        <span
+                          className={
+                            c.resolved ? "line-clamp-1 line-through" : undefined
+                          }
+                        >
+                          {fallback || "(whole-block comment)"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        {!c.resolved && (
                           <button
                             onClick={() => {
                               setEditingId(c.id);
@@ -115,116 +253,110 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                           >
                             <Pencil size={12} />
                           </button>
-                          <button
-                            onClick={() => deleteComment(c.id)}
-                            className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 transition-opacity"
-                            title="Delete comment"
-                          >
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
+                        )}
+                        <button
+                          onClick={() => deleteComment(c.id)}
+                          className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 transition-opacity"
+                          title="Delete comment"
+                        >
+                          <Trash2 size={12} />
+                        </button>
                       </div>
-                      {editingId === c.id ? (
-                        <div className="mt-1.5">
-                          <textarea
-                            ref={editRef}
-                            value={editText}
-                            onChange={(e) => setEditText(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (
-                                e.key === "Enter" &&
-                                (e.metaKey || e.ctrlKey)
-                              ) {
-                                e.preventDefault();
-                                const trimmed = editText.trim();
-                                if (trimmed && trimmed !== c.comment) {
-                                  editComment(c.id, trimmed);
-                                }
-                                setEditingId(null);
-                              }
-                              if (e.key === "Escape") setEditingId(null);
-                            }}
-                            rows={3}
-                            className="w-full text-sm rounded-md border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 px-2 py-1.5 resize-y min-h-[48px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          />
-                          <div className="flex justify-end gap-1.5 mt-1">
-                            <button
-                              onClick={() => setEditingId(null)}
-                              className="px-2 py-1 text-[11px] rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              onClick={() => {
-                                const trimmed = editText.trim();
-                                if (trimmed && trimmed !== c.comment) {
-                                  editComment(c.id, trimmed);
-                                }
-                                setEditingId(null);
-                              }}
-                              className="px-2 py-1 text-[11px] rounded bg-blue-600 text-white hover:bg-blue-700"
-                            >
-                              Save
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <p className="mt-1.5 text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap">
-                          {c.comment}
-                        </p>
-                      )}
                     </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Resolved comments */}
-              {resolvedComments.length > 0 && (
-                <>
-                  <div className="px-4 py-2 bg-slate-50 dark:bg-slate-900/50 border-y border-slate-100 dark:border-slate-700/50">
-                    <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wide">
-                      Resolved ({resolvedComments.length})
-                    </span>
-                  </div>
-                  <div className="divide-y divide-slate-100 dark:divide-slate-700/50 opacity-60">
-                    {resolvedComments.map((c) => (
-                      <div key={c.id} className="px-4 py-3 group">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500 flex-1">
-                            <CheckCircle2
-                              size={12}
-                              className="text-green-500 shrink-0"
-                            />
-                            <span className="line-clamp-1 line-through">
-                              {c.selected_text}
-                            </span>
-                          </div>
+                    {editingId === c.id ? (
+                      <div className="mt-1.5">
+                        <textarea
+                          ref={editRef}
+                          value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                              e.preventDefault();
+                              const trimmed = editText.trim();
+                              if (trimmed && trimmed !== c.comment) {
+                                editComment(c.id, trimmed);
+                              }
+                              setEditingId(null);
+                            }
+                            if (e.key === "Escape") setEditingId(null);
+                          }}
+                          rows={3}
+                          className="w-full text-sm rounded-md border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 px-2 py-1.5 resize-y min-h-[48px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                        <div className="flex justify-end gap-1.5 mt-1">
                           <button
-                            onClick={() => deleteComment(c.id)}
-                            className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 transition-opacity shrink-0"
-                            title="Delete comment"
+                            onClick={() => setEditingId(null)}
+                            className="px-2 py-1 text-[11px] rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
                           >
-                            <Trash2 size={12} />
+                            Cancel
+                          </button>
+                          <button
+                            onClick={() => {
+                              const trimmed = editText.trim();
+                              if (trimmed && trimmed !== c.comment) {
+                                editComment(c.id, trimmed);
+                              }
+                              setEditingId(null);
+                            }}
+                            className="px-2 py-1 text-[11px] rounded bg-blue-600 text-white hover:bg-blue-700"
+                          >
+                            Save
                           </button>
                         </div>
-                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 whitespace-pre-wrap line-through">
-                          {c.comment}
-                        </p>
                       </div>
-                    ))}
+                    ) : (
+                      <p
+                        className={
+                          c.resolved
+                            ? "mt-1 text-xs text-slate-500 dark:text-slate-400 whitespace-pre-wrap line-through"
+                            : "mt-1.5 text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap"
+                        }
+                      >
+                        {c.comment}
+                      </p>
+                    )}
+
+                    {agentReaction && (
+                      <ReactionView
+                        before={agentReaction.before_text}
+                        after={agentReaction.after_text}
+                        summary={agentReaction.summary}
+                      />
+                    )}
+
+                    {(showResolve || showDismiss) && (
+                      <div className="mt-2 flex justify-end">
+                        {showResolve ? (
+                          <button
+                            onClick={() => resolveComment(c.id)}
+                            className="px-2 py-1 text-[11px] rounded bg-blue-600 text-white hover:bg-blue-700"
+                            title="Accept the agent's fix"
+                          >
+                            Resolve
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => dismissComment(c.id)}
+                            className="px-2 py-1 text-[11px] rounded text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700"
+                            title="Dismiss without recording an agent reaction"
+                          >
+                            Dismiss
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
-                </>
-              )}
-            </>
+                );
+              })}
+            </div>
           )}
         </div>
 
-        {/* Footer actions */}
         {comments.length > 0 && (
           <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-700 flex items-center gap-2 shrink-0">
             <button
               onClick={handleCopy}
-              disabled={activeComments.length === 0}
+              disabled={activeCount === 0}
               className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {copied ? (
@@ -233,21 +365,51 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                 </>
               ) : (
                 <>
-                  <ClipboardCopy size={12} /> Copy All ({activeComments.length})
+                  <ClipboardCopy size={12} /> Copy All ({activeCount})
                 </>
               )}
-            </button>
-            <button
-              onClick={handleClear}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
-            >
-              <Trash2 size={12} />
-              {confirmClear ? "Confirm?" : "Clear All"}
             </button>
           </div>
         )}
       </div>
     </>,
     document.body,
+  );
+};
+
+const ReactionView: React.FC<{
+  before: string;
+  after: string;
+  summary: string;
+}> = ({ before, after, summary }) => {
+  const parts = useMemo(() => {
+    if (!before && !after) return [];
+    return diffWords(before || "", after || "");
+  }, [before, after]);
+  return (
+    <div className="review-reaction mt-2">
+      <div className="review-reaction-header">
+        <span className="review-reaction-badge">Agent</span>
+        <span className="review-reaction-summary">{summary}</span>
+      </div>
+      {parts.length > 0 && (
+        <div className="review-reaction-diff">
+          {parts.map((p, i) => (
+            <span
+              key={i}
+              className={
+                p.added
+                  ? "review-reaction-diff-add"
+                  : p.removed
+                    ? "review-reaction-diff-del"
+                    : "review-reaction-diff-eq"
+              }
+            >
+              {p.value}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
   );
 };
