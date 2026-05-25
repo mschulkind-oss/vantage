@@ -829,75 +829,90 @@ h6:hover > .heading-anchor,
 
 .review-stripe-marker {
   position: absolute;
-  left: 4px;
-  right: 4px;
+  left: 2px;
+  right: 2px;
   width: auto;
   min-height: 4px;
   border-radius: 3px;
-  background: rgb(147 51 234);
-  border: 1px solid rgb(126 34 206);
+  background: rgb(109 40 217);
+  border: 1px solid rgb(88 28 135);
   padding: 0;
   cursor: pointer;
   z-index: 1;
   transition:
-    opacity 0.15s,
-    transform 0.15s,
-    box-shadow 0.15s,
-    background 0.15s;
-  box-shadow: 0 1px 3px rgb(147 51 234 / 0.4);
+    opacity 0.12s,
+    box-shadow 0.12s,
+    background 0.12s;
 }
 
 .review-stripe-marker:hover {
-  transform: scaleX(1.2);
-  box-shadow: 0 2px 8px rgb(147 51 234 / 0.7);
+  background: rgb(88 28 135);
+  box-shadow: 0 0 6px rgb(147 51 234 / 0.8);
+}
+
+.review-stripe-marker--visible {
   background: rgb(126 34 206);
-  border-color: rgb(107 33 168);
+  border-color: rgb(109 40 217);
+  box-shadow: 0 0 4px rgb(147 51 234 / 0.5);
 }
 
 .review-stripe-marker--active {
-  background: rgb(126 34 206);
-  border-color: rgb(88 28 135);
+  background: rgb(88 28 135);
+  border-color: rgb(67 20 107);
   box-shadow:
-    0 0 0 2px rgb(243 232 255),
-    0 2px 8px rgb(147 51 234 / 0.6);
+    0 0 0 2px rgb(233 213 255),
+    0 0 8px rgb(147 51 234 / 0.7);
 }
 
 .review-stripe-marker--addressed {
-  background: rgb(233 213 255);
-  border-color: rgb(192 132 252);
+  background: rgb(192 132 252);
+  border-color: rgb(168 85 247);
   border-style: dashed;
   box-shadow: none;
-  opacity: 0.5;
+  opacity: 0.45;
 }
 
 .review-stripe-marker--addressed:hover {
-  opacity: 0.9;
-  transform: scaleX(1.2);
-  background: rgb(216 180 254);
+  opacity: 0.85;
+  background: rgb(168 85 247);
+}
+
+.review-stripe-marker--addressed.review-stripe-marker--visible {
+  opacity: 0.6;
 }
 
 .review-stripe-marker--addressed.review-stripe-marker--active {
-  opacity: 0.8;
-  box-shadow: 0 0 0 2px rgb(243 232 255);
+  opacity: 0.75;
+  box-shadow: 0 0 0 2px rgb(233 213 255);
 }
 
 .dark .review-stripe-marker {
+  background: rgb(192 132 252);
+  border-color: rgb(168 85 247);
+}
+
+.dark .review-stripe-marker:hover {
+  background: rgb(216 180 254);
+  box-shadow: 0 0 6px rgb(168 85 247 / 0.8);
+}
+
+.dark .review-stripe-marker--visible {
   background: rgb(168 85 247);
-  border-color: rgb(192 132 252);
-  box-shadow: 0 1px 3px rgb(168 85 247 / 0.5);
+  border-color: rgb(147 51 234);
+  box-shadow: 0 0 4px rgb(168 85 247 / 0.5);
 }
 
 .dark .review-stripe-marker--active {
-  background: rgb(147 51 234);
-  border-color: rgb(216 180 254);
+  background: rgb(216 180 254);
+  border-color: rgb(192 132 252);
   box-shadow:
     0 0 0 2px rgb(59 7 100),
-    0 2px 8px rgb(168 85 247 / 0.6);
+    0 0 8px rgb(168 85 247 / 0.7);
 }
 
 .dark .review-stripe-marker--addressed {
-  background: rgb(59 7 100);
-  border-color: rgb(107 33 168);
+  background: rgb(107 33 168);
+  border-color: rgb(88 28 135);
   box-shadow: none;
   opacity: 0.5;
 }
@@ -905,6 +920,68 @@ h6:hover > .heading-anchor,
 .dark .review-stripe-marker--addressed.review-stripe-marker--active {
   opacity: 0.8;
   box-shadow: 0 0 0 2px rgb(46 16 80);
+}
+
+/* Tooltip */
+.review-stripe-tooltip {
+  position: absolute;
+  left: calc(100% + 8px);
+  transform: translateY(-50%);
+  width: 220px;
+  padding: 8px 10px;
+  background: white;
+  border: 1px solid rgb(226 232 240);
+  border-radius: 8px;
+  box-shadow:
+    0 4px 12px rgb(0 0 0 / 0.1),
+    0 1px 3px rgb(0 0 0 / 0.06);
+  z-index: 50;
+  pointer-events: none;
+}
+
+.dark .review-stripe-tooltip {
+  background: rgb(30 41 59);
+  border-color: rgb(51 65 85);
+  box-shadow:
+    0 4px 12px rgb(0 0 0 / 0.3),
+    0 1px 3px rgb(0 0 0 / 0.2);
+}
+
+.review-stripe-tooltip-comment {
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgb(30 41 59);
+  font-weight: 500;
+}
+
+.dark .review-stripe-tooltip-comment {
+  color: rgb(226 232 240);
+}
+
+.review-stripe-tooltip-reaction {
+  font-size: 11px;
+  line-height: 1.3;
+  color: rgb(34 197 94);
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid rgb(241 245 249);
+}
+
+.dark .review-stripe-tooltip-reaction {
+  color: rgb(74 222 128);
+  border-top-color: rgb(51 65 85);
+}
+
+.review-stripe-tooltip-context {
+  font-size: 11px;
+  line-height: 1.3;
+  color: rgb(100 116 139);
+  margin-top: 4px;
+  font-style: italic;
+}
+
+.dark .review-stripe-tooltip-context {
+  color: rgb(148 163 184);
 }
 
 /* ──────────────────────────────────────────

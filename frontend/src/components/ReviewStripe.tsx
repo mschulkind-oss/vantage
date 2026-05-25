@@ -24,8 +24,11 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [viewportPct, setViewportPct] = useState({ top: 0, height: 100 });
   const [currentIdx, setCurrentIdx] = useState(-1);
+  const [visibleSet, setVisibleSet] = useState<Set<number>>(new Set());
   const [markers, setMarkers] = useState<MarkerInfo[]>([]);
   const [dragging, setDragging] = useState(false);
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ top: number } | null>(null);
 
   const active = comments.filter((c) => !c.resolved);
   const hasReaction = (c: ReviewComment) =>
@@ -64,10 +67,11 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
     setMarkers(result);
   }, [scrollRef, active]);
 
-  const updateCurrentIdx = useCallback(() => {
+  const updateVisibility = useCallback(() => {
     const scrollEl = scrollRef.current;
     if (!scrollEl || markers.length === 0) {
       setCurrentIdx(-1);
+      setVisibleSet(new Set());
       return;
     }
 
@@ -75,23 +79,24 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
     const clientHeight = scrollEl.clientHeight;
     const scrollHeight = scrollEl.scrollHeight;
 
-    // First comment whose top is within the viewport
     const viewTop = (scrollTop / scrollHeight) * 100;
     const viewBottom = ((scrollTop + clientHeight) / scrollHeight) * 100;
 
-    let firstInView = -1;
+    const visible = new Set<number>();
+    let first = -1;
     for (let i = 0; i < markers.length; i++) {
       const mTop = markers[i].topPct;
-      if (mTop >= viewTop && mTop <= viewBottom) {
-        firstInView = i;
-        break;
+      const mBottom = mTop + markers[i].heightPct;
+      if (mBottom >= viewTop && mTop <= viewBottom) {
+        visible.add(i);
+        if (first < 0) first = i;
       }
     }
 
-    if (firstInView >= 0) {
-      setCurrentIdx(firstInView);
+    setVisibleSet(visible);
+    if (first >= 0) {
+      setCurrentIdx(first);
     } else {
-      // None in view — pick closest above viewport
       let closest = 0;
       for (let i = markers.length - 1; i >= 0; i--) {
         if (markers[i].topPct < viewTop) {
@@ -112,7 +117,6 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
       const scrollHeight = scrollEl.scrollHeight;
       const clientHeight = scrollEl.clientHeight;
       const targetTop = (marker.topPct / 100) * scrollHeight;
-      // Center the comment in the viewport
       const scrollTarget = targetTop - clientHeight / 3;
       scrollEl.scrollTo({
         top: Math.max(0, scrollTarget),
@@ -162,7 +166,7 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
     return () => document.removeEventListener("keydown", handler);
   }, [active.length, navigateComment]);
 
-  // Track scroll position for viewport indicator + current index
+  // Track scroll position for viewport indicator + visibility
   useEffect(() => {
     const scrollEl = scrollRef.current;
     if (!scrollEl) return;
@@ -173,7 +177,7 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
       const top = (scrollTop / scrollHeight) * 100;
       const height = (clientHeight / scrollHeight) * 100;
       setViewportPct({ top, height: Math.min(height, 100) });
-      updateCurrentIdx();
+      updateVisibility();
     };
 
     update();
@@ -185,7 +189,7 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
       scrollEl.removeEventListener("scroll", update);
       ro.disconnect();
     };
-  }, [scrollRef, updateCurrentIdx]);
+  }, [scrollRef, updateVisibility]);
 
   // Measure markers after DOM settles
   useEffect(() => {
@@ -246,12 +250,27 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
     [scrollRef],
   );
 
+  const handleMarkerHover = useCallback((idx: number, e: React.MouseEvent) => {
+    const trackEl = trackRef.current;
+    if (!trackEl) return;
+    const trackRect = trackEl.getBoundingClientRect();
+    const markerRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const top = markerRect.top - trackRect.top + markerRect.height / 2;
+    setHoveredIdx(idx);
+    setTooltipPos({ top });
+  }, []);
+
   if (active.length === 0) return null;
 
   const label =
     currentIdx >= 0
       ? `${currentIdx + 1} / ${markers.length}`
       : `${active.length}`;
+
+  const hoveredComment =
+    hoveredIdx !== null
+      ? active.find((c) => c.id === markers[hoveredIdx]?.id)
+      : null;
 
   return (
     <div className="review-stripe" data-review-stripe="">
@@ -286,20 +305,60 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
         {markers.map((m, i) => (
           <button
             key={m.id}
-            className={`review-stripe-marker${m.addressed ? " review-stripe-marker--addressed" : ""}${i === currentIdx ? " review-stripe-marker--active" : ""}`}
+            className={[
+              "review-stripe-marker",
+              m.addressed && "review-stripe-marker--addressed",
+              visibleSet.has(i) && "review-stripe-marker--visible",
+              i === currentIdx && "review-stripe-marker--active",
+            ]
+              .filter(Boolean)
+              .join(" ")}
             style={{
               top: `${m.topPct}%`,
               height: `${m.heightPct}%`,
             }}
-            title={
-              active.find((c) => c.id === m.id)?.comment.slice(0, 60) ?? ""
-            }
             onClick={(e) => {
               e.stopPropagation();
               scrollToMarker(i);
             }}
+            onMouseEnter={(e) => handleMarkerHover(i, e)}
+            onMouseLeave={() => {
+              setHoveredIdx(null);
+              setTooltipPos(null);
+            }}
           />
         ))}
+
+        {/* Tooltip */}
+        {hoveredComment && tooltipPos && (
+          <div
+            className="review-stripe-tooltip"
+            style={{ top: tooltipPos.top }}
+          >
+            <div className="review-stripe-tooltip-comment">
+              {hoveredComment.comment.length > 120
+                ? hoveredComment.comment.slice(0, 120) + "…"
+                : hoveredComment.comment}
+            </div>
+            {hoveredComment.reactions &&
+              hoveredComment.reactions.length > 0 && (
+                <div className="review-stripe-tooltip-reaction">
+                  {hoveredComment.reactions[
+                    hoveredComment.reactions.length - 1
+                  ].summary.slice(0, 80)}
+                </div>
+              )}
+            {hoveredComment.fallback_text && (
+              <div className="review-stripe-tooltip-context">
+                &ldquo;
+                {hoveredComment.fallback_text.length > 60
+                  ? hoveredComment.fallback_text.slice(0, 60) + "…"
+                  : hoveredComment.fallback_text}
+                &rdquo;
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Next button */}
