@@ -306,6 +306,16 @@ h6:hover > .heading-anchor,
 .dark .review-inline-comment-text pre {
   background: rgb(30 41 59);
 }
+.review-inline-comment-text code a,
+.review-inline-comment-text pre a {
+  color: rgb(37 99 235);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+.dark .review-inline-comment-text code a,
+.dark .review-inline-comment-text pre a {
+  color: rgb(96 165 250);
+}
 .review-inline-comment-delete {
   flex-shrink: 0;
   width: 28px;
@@ -698,6 +708,12 @@ h6:hover > .heading-anchor,
   margin: 0.25em 0;
   font-weight: 400;
 }
+.review-reaction-summary code a,
+.review-reaction-summary pre a {
+  color: rgb(37 99 235);
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
 .dark .review-reaction-summary {
   color: rgb(203 213 225);
 }
@@ -709,6 +725,10 @@ h6:hover > .heading-anchor,
 }
 .dark .review-reaction-summary pre {
   background: rgb(30 41 59);
+}
+.dark .review-reaction-summary code a,
+.dark .review-reaction-summary pre a {
+  color: rgb(96 165 250);
 }
 .review-reaction-diff {
   font-family:
