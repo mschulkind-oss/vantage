@@ -1253,209 +1253,213 @@ export const ViewerPage: React.FC = () => {
           )}
 
           {/* Viewer */}
-          <div
-            ref={contentRef}
-            data-content-scroll
-            className={cn(
-              "flex-1 overflow-y-auto bg-white dark:bg-slate-900 relative",
-              isReviewMode &&
-                "ring-1 ring-inset ring-purple-200 dark:ring-purple-800/50",
-            )}
-          >
+          <div className="flex-1 flex min-h-0 relative">
             {isReviewMode && (
               <ReviewStripe scrollRef={contentRef} comments={reviewComments} />
             )}
-            <div className="max-w-5xl mx-auto py-4 px-4 sm:py-6 sm:px-8">
-              {error ? (
-                <div className="flex flex-col items-center justify-center h-64 text-red-500">
-                  <div className="w-16 h-16 rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center mb-4">
-                    <AlertCircle size={32} className="text-red-400" />
-                  </div>
-                  <p className="text-lg font-medium text-red-600">{error}</p>
-                  {currentPath && (
-                    <p className="text-sm text-red-400 mt-1 font-mono">
-                      {currentPath}
-                    </p>
-                  )}
-                  <AppLink
-                    to="/"
-                    className="mt-4 px-4 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-medium rounded-lg hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors no-underline inline-block"
-                  >
-                    Go to Home
-                  </AppLink>
-                </div>
-              ) : isLoading && !fileContent && !currentDirectory ? (
-                <div className="flex flex-col items-center justify-center h-64 text-slate-400">
-                  <Loader2
-                    size={32}
-                    className="animate-spin text-blue-500 mb-4"
-                  />
-                  <p className="text-sm text-slate-500">Loading...</p>
-                </div>
-              ) : fileContent ? (
-                fileContent.encoding === "binary" ? (
-                  <div className="flex flex-col items-center justify-center h-64 text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800">
-                    <File size={48} className="mb-3 text-slate-300" />
-                    <p className="text-sm">
-                      Binary file content cannot be displayed.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="pb-8">
-                    {showRaw ? (
-                      <div className="relative">
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(fileContent.content);
-                            setCopied(true);
-                            setTimeout(() => setCopied(false), 2000);
-                          }}
-                          className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-md transition-colors z-10"
-                          title="Copy to clipboard"
-                        >
-                          {copied ? <Check size={12} /> : <Copy size={12} />}
-                          {copied ? "Copied!" : "Copy"}
-                        </button>
-                        <pre className="p-4 pr-24 text-sm font-mono whitespace-pre-wrap break-words bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg overflow-auto max-h-[80vh] text-slate-700 dark:text-slate-300">
-                          {fileContent.content}
-                        </pre>
-                      </div>
-                    ) : (
-                      <>
-                        <MarkdownViewer
-                          content={fileContent.content}
-                          currentPath={fileContent.path}
-                          isReviewMode={isReviewMode}
-                        />
-                        {visibleTips.length > 0 && (
-                          <div className="mt-6 space-y-2">
-                            {visibleTips.map((tip) => (
-                              <div
-                                key={tip.id}
-                                className="flex items-start gap-2.5 px-3 py-2 rounded-lg bg-blue-50/60 dark:bg-blue-900/15 border border-blue-100 dark:border-blue-800/30 text-sm text-blue-700 dark:text-blue-300"
-                              >
-                                <Lightbulb
-                                  size={14}
-                                  className="shrink-0 mt-0.5 text-blue-400"
-                                />
-                                <span className="flex-1">{tip.message}</span>
-                                <div className="flex items-center gap-2 shrink-0">
-                                  <button
-                                    onClick={() => setStyleGuideOpen(true)}
-                                    className="text-xs text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-200 underline underline-offset-2"
-                                  >
-                                    Style guide
-                                  </button>
-                                  <button
-                                    onClick={() => dismissTip(tip.id)}
-                                    className="text-blue-300 dark:text-blue-600 hover:text-blue-500 dark:hover:text-blue-400"
-                                    title="Dismiss"
-                                  >
-                                    <X size={14} />
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </>
+            <div
+              ref={contentRef}
+              data-content-scroll
+              className={cn(
+                "flex-1 overflow-y-auto bg-white dark:bg-slate-900",
+                isReviewMode &&
+                  "ring-1 ring-inset ring-purple-200 dark:ring-purple-800/50",
+              )}
+            >
+              <div className="max-w-5xl mx-auto py-4 px-4 sm:py-6 sm:px-8">
+                {error ? (
+                  <div className="flex flex-col items-center justify-center h-64 text-red-500">
+                    <div className="w-16 h-16 rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center mb-4">
+                      <AlertCircle size={32} className="text-red-400" />
+                    </div>
+                    <p className="text-lg font-medium text-red-600">{error}</p>
+                    {currentPath && (
+                      <p className="text-sm text-red-400 mt-1 font-mono">
+                        {currentPath}
+                      </p>
                     )}
+                    <AppLink
+                      to="/"
+                      className="mt-4 px-4 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-medium rounded-lg hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors no-underline inline-block"
+                    >
+                      Go to Home
+                    </AppLink>
                   </div>
-                )
-              ) : currentDirectory ? (
-                <DirectoryViewer
-                  nodes={currentDirectory}
-                  currentPath={currentPath || "."}
-                />
-              ) : isMultiRepo && !currentRepo ? (
-                <div className="max-w-2xl mx-auto w-full py-12 md:py-16">
-                  <div className="flex items-end justify-between mb-8">
-                    <div>
-                      <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">
-                        Projects
-                      </h1>
-                      <p className="text-sm text-slate-400 dark:text-slate-500 mt-1">
-                        {repos.length}{" "}
-                        {repos.length === 1 ? "repository" : "repositories"}
+                ) : isLoading && !fileContent && !currentDirectory ? (
+                  <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+                    <Loader2
+                      size={32}
+                      className="animate-spin text-blue-500 mb-4"
+                    />
+                    <p className="text-sm text-slate-500">Loading...</p>
+                  </div>
+                ) : fileContent ? (
+                  fileContent.encoding === "binary" ? (
+                    <div className="flex flex-col items-center justify-center h-64 text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800">
+                      <File size={48} className="mb-3 text-slate-300" />
+                      <p className="text-sm">
+                        Binary file content cannot be displayed.
                       </p>
                     </div>
-                    <button
-                      onClick={() =>
-                        setRepoSortMode(
-                          repoSortMode === "alphabetical"
-                            ? "recent"
-                            : "alphabetical",
-                        )
-                      }
-                      className={cn(
-                        "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
-                        "border border-slate-200 dark:border-slate-700",
-                        "text-slate-500 dark:text-slate-400",
-                        "hover:bg-slate-50 dark:hover:bg-slate-800",
-                      )}
-                      title={
-                        repoSortMode === "alphabetical"
-                          ? "Sort by recent activity"
-                          : "Sort alphabetically"
-                      }
-                    >
-                      {repoSortMode === "alphabetical" ? (
-                        <>
-                          <ArrowDownAZ size={14} />
-                          <span>A–Z</span>
-                        </>
+                  ) : (
+                    <div className="pb-8">
+                      {showRaw ? (
+                        <div className="relative">
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(
+                                fileContent.content,
+                              );
+                              setCopied(true);
+                              setTimeout(() => setCopied(false), 2000);
+                            }}
+                            className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-md transition-colors z-10"
+                            title="Copy to clipboard"
+                          >
+                            {copied ? <Check size={12} /> : <Copy size={12} />}
+                            {copied ? "Copied!" : "Copy"}
+                          </button>
+                          <pre className="p-4 pr-24 text-sm font-mono whitespace-pre-wrap break-words bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg overflow-auto max-h-[80vh] text-slate-700 dark:text-slate-300">
+                            {fileContent.content}
+                          </pre>
+                        </div>
                       ) : (
                         <>
-                          <Clock size={14} />
-                          <span>Recent</span>
+                          <MarkdownViewer
+                            content={fileContent.content}
+                            currentPath={fileContent.path}
+                            isReviewMode={isReviewMode}
+                          />
+                          {visibleTips.length > 0 && (
+                            <div className="mt-6 space-y-2">
+                              {visibleTips.map((tip) => (
+                                <div
+                                  key={tip.id}
+                                  className="flex items-start gap-2.5 px-3 py-2 rounded-lg bg-blue-50/60 dark:bg-blue-900/15 border border-blue-100 dark:border-blue-800/30 text-sm text-blue-700 dark:text-blue-300"
+                                >
+                                  <Lightbulb
+                                    size={14}
+                                    className="shrink-0 mt-0.5 text-blue-400"
+                                  />
+                                  <span className="flex-1">{tip.message}</span>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <button
+                                      onClick={() => setStyleGuideOpen(true)}
+                                      className="text-xs text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-200 underline underline-offset-2"
+                                    >
+                                      Style guide
+                                    </button>
+                                    <button
+                                      onClick={() => dismissTip(tip.id)}
+                                      className="text-blue-300 dark:text-blue-600 hover:text-blue-500 dark:hover:text-blue-400"
+                                      title="Dismiss"
+                                    >
+                                      <X size={14} />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </>
                       )}
-                    </button>
-                  </div>
-                  <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-800/50 shadow-sm divide-y divide-slate-100 dark:divide-slate-700/50">
-                    {sortedRepos().map((repo) => (
-                      <AppLink
-                        key={repo.name}
-                        to={`/${repo.name}`}
-                        onBeforeNavigate={() => {
-                          setCurrentRepo(repo.name);
-                        }}
+                    </div>
+                  )
+                ) : currentDirectory ? (
+                  <DirectoryViewer
+                    nodes={currentDirectory}
+                    currentPath={currentPath || "."}
+                  />
+                ) : isMultiRepo && !currentRepo ? (
+                  <div className="max-w-2xl mx-auto w-full py-12 md:py-16">
+                    <div className="flex items-end justify-between mb-8">
+                      <div>
+                        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">
+                          Projects
+                        </h1>
+                        <p className="text-sm text-slate-400 dark:text-slate-500 mt-1">
+                          {repos.length}{" "}
+                          {repos.length === 1 ? "repository" : "repositories"}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() =>
+                          setRepoSortMode(
+                            repoSortMode === "alphabetical"
+                              ? "recent"
+                              : "alphabetical",
+                          )
+                        }
                         className={cn(
-                          "flex items-center gap-3 px-5 py-4 no-underline transition-colors group",
-                          "hover:bg-blue-50/50 dark:hover:bg-slate-700/40",
+                          "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                          "border border-slate-200 dark:border-slate-700",
+                          "text-slate-500 dark:text-slate-400",
+                          "hover:bg-slate-50 dark:hover:bg-slate-800",
                         )}
+                        title={
+                          repoSortMode === "alphabetical"
+                            ? "Sort by recent activity"
+                            : "Sort alphabetically"
+                        }
                       >
-                        <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center shrink-0 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/50 transition-colors">
-                          <FolderGit2
-                            size={18}
-                            className="text-blue-500 dark:text-blue-400"
-                          />
-                        </div>
-                        <span className="font-semibold text-slate-800 dark:text-slate-200 truncate text-[15px]">
-                          {repo.name}
-                        </span>
-                        {repo.last_activity && (
-                          <span className="ml-auto pl-4 text-xs text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0 tabular-nums">
-                            <RelativeTime date={repo.last_activity} />
-                          </span>
+                        {repoSortMode === "alphabetical" ? (
+                          <>
+                            <ArrowDownAZ size={14} />
+                            <span>A–Z</span>
+                          </>
+                        ) : (
+                          <>
+                            <Clock size={14} />
+                            <span>Recent</span>
+                          </>
                         )}
-                      </AppLink>
-                    ))}
+                      </button>
+                    </div>
+                    <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-800/50 shadow-sm divide-y divide-slate-100 dark:divide-slate-700/50">
+                      {sortedRepos().map((repo) => (
+                        <AppLink
+                          key={repo.name}
+                          to={`/${repo.name}`}
+                          onBeforeNavigate={() => {
+                            setCurrentRepo(repo.name);
+                          }}
+                          className={cn(
+                            "flex items-center gap-3 px-5 py-4 no-underline transition-colors group",
+                            "hover:bg-blue-50/50 dark:hover:bg-slate-700/40",
+                          )}
+                        >
+                          <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center shrink-0 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/50 transition-colors">
+                            <FolderGit2
+                              size={18}
+                              className="text-blue-500 dark:text-blue-400"
+                            />
+                          </div>
+                          <span className="font-semibold text-slate-800 dark:text-slate-200 truncate text-[15px]">
+                            {repo.name}
+                          </span>
+                          {repo.last_activity && (
+                            <span className="ml-auto pl-4 text-xs text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0 tabular-nums">
+                              <RelativeTime date={repo.last_activity} />
+                            </span>
+                          )}
+                        </AppLink>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-64 text-slate-400">
-                  <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
-                    <GitBranch size={32} className="text-slate-300" />
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+                    <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
+                      <GitBranch size={32} className="text-slate-300" />
+                    </div>
+                    <p className="text-lg font-medium text-slate-500">
+                      Select a file or folder to browse
+                    </p>
+                    <p className="text-sm text-slate-400 mt-1">
+                      Vantage supports Markdown and Mermaid diagrams
+                    </p>
                   </div>
-                  <p className="text-lg font-medium text-slate-500">
-                    Select a file or folder to browse
-                  </p>
-                  <p className="text-sm text-slate-400 mt-1">
-                    Vantage supports Markdown and Mermaid diagrams
-                  </p>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
         </div>
