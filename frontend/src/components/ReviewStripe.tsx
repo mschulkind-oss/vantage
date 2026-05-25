@@ -13,94 +13,132 @@ interface ReviewStripeProps {
   comments: ReviewComment[];
 }
 
+interface MarkerInfo {
+  id: string;
+  topPct: number;
+  heightPct: number;
+  addressed: boolean;
+}
+
 export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [viewportPct, setViewportPct] = useState({ top: 0, height: 100 });
   const [currentIdx, setCurrentIdx] = useState(-1);
+  const [markers, setMarkers] = useState<MarkerInfo[]>([]);
   const [dragging, setDragging] = useState(false);
 
   const active = comments.filter((c) => !c.resolved);
   const hasReaction = (c: ReviewComment) =>
     (c.reactions ?? []).some((r) => r.actor === "agent");
 
-  const getPositions = useCallback(() => {
+  const measureMarkers = useCallback(() => {
     const scrollEl = scrollRef.current;
-    if (!scrollEl || active.length === 0) return [];
+    if (!scrollEl || active.length === 0) {
+      setMarkers([]);
+      return;
+    }
 
-    const positions: { id: string; top: number }[] = [];
+    const scrollHeight = scrollEl.scrollHeight;
+    if (scrollHeight === 0) {
+      setMarkers([]);
+      return;
+    }
+
+    const result: MarkerInfo[] = [];
     for (const comment of active) {
       const target = scrollEl.querySelector(
         `[data-review-inline-comment="${comment.id}"]`,
-      );
-      if (target) {
-        positions.push({
-          id: comment.id,
-          top: (target as HTMLElement).offsetTop,
-        });
-      }
+      ) as HTMLElement | null;
+      if (!target) continue;
+
+      const top = target.offsetTop;
+      const height = target.offsetHeight;
+      result.push({
+        id: comment.id,
+        topPct: (top / scrollHeight) * 100,
+        heightPct: Math.max((height / scrollHeight) * 100, 0.8),
+        addressed: hasReaction(comment),
+      });
     }
-    positions.sort((a, b) => a.top - b.top);
-    return positions;
+    result.sort((a, b) => a.topPct - b.topPct);
+    setMarkers(result);
   }, [scrollRef, active]);
 
   const updateCurrentIdx = useCallback(() => {
     const scrollEl = scrollRef.current;
-    if (!scrollEl) return;
-
-    const positions = getPositions();
-    if (positions.length === 0) {
+    if (!scrollEl || markers.length === 0) {
       setCurrentIdx(-1);
       return;
     }
 
     const scrollTop = scrollEl.scrollTop;
     const clientHeight = scrollEl.clientHeight;
-    const viewCenter = scrollTop + clientHeight / 2;
+    const scrollHeight = scrollEl.scrollHeight;
 
-    let closest = 0;
-    let closestDist = Math.abs(positions[0].top - viewCenter);
-    for (let i = 1; i < positions.length; i++) {
-      const dist = Math.abs(positions[i].top - viewCenter);
-      if (dist < closestDist) {
-        closest = i;
-        closestDist = dist;
+    // First comment whose top is within the viewport
+    const viewTop = (scrollTop / scrollHeight) * 100;
+    const viewBottom = ((scrollTop + clientHeight) / scrollHeight) * 100;
+
+    let firstInView = -1;
+    for (let i = 0; i < markers.length; i++) {
+      const mTop = markers[i].topPct;
+      if (mTop >= viewTop && mTop <= viewBottom) {
+        firstInView = i;
+        break;
       }
     }
-    setCurrentIdx(closest);
-  }, [scrollRef, getPositions]);
 
-  const scrollToComment = useCallback(
-    (commentId: string) => {
-      const scrollEl = scrollRef.current;
-      if (!scrollEl) return;
-      const target = scrollEl.querySelector(
-        `[data-review-inline-comment="${commentId}"]`,
-      );
-      if (target) {
-        target.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (firstInView >= 0) {
+      setCurrentIdx(firstInView);
+    } else {
+      // None in view — pick closest above viewport
+      let closest = 0;
+      for (let i = markers.length - 1; i >= 0; i--) {
+        if (markers[i].topPct < viewTop) {
+          closest = i;
+          break;
+        }
       }
+      setCurrentIdx(closest);
+    }
+  }, [scrollRef, markers]);
+
+  const scrollToMarker = useCallback(
+    (idx: number) => {
+      const scrollEl = scrollRef.current;
+      if (!scrollEl || idx < 0 || idx >= markers.length) return;
+
+      const marker = markers[idx];
+      const scrollHeight = scrollEl.scrollHeight;
+      const clientHeight = scrollEl.clientHeight;
+      const targetTop = (marker.topPct / 100) * scrollHeight;
+      // Center the comment in the viewport
+      const scrollTarget = targetTop - clientHeight / 3;
+      scrollEl.scrollTo({
+        top: Math.max(0, scrollTarget),
+        behavior: "smooth",
+      });
+      setCurrentIdx(idx);
     },
-    [scrollRef],
+    [scrollRef, markers],
   );
 
   const navigateComment = useCallback(
     (direction: "next" | "prev") => {
-      const positions = getPositions();
-      if (positions.length === 0) return;
+      if (markers.length === 0) return;
 
       let nextIdx: number;
       if (currentIdx < 0) {
         nextIdx = 0;
       } else if (direction === "next") {
-        nextIdx = (currentIdx + 1) % positions.length;
+        nextIdx = (currentIdx + 1) % markers.length;
       } else {
-        nextIdx = (currentIdx - 1 + positions.length) % positions.length;
+        nextIdx = (currentIdx - 1 + markers.length) % markers.length;
       }
 
-      setCurrentIdx(nextIdx);
-      scrollToComment(positions[nextIdx].id);
+      scrollToMarker(nextIdx);
     },
-    [getPositions, currentIdx, scrollToComment],
+    [markers, currentIdx, scrollToMarker],
   );
 
   // Keyboard shortcuts: ] for next, [ for prev
@@ -149,6 +187,17 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
     };
   }, [scrollRef, updateCurrentIdx]);
 
+  // Measure markers after DOM settles
+  useEffect(() => {
+    const scrollEl = scrollRef.current;
+    if (!scrollEl || active.length === 0) return;
+
+    const raf = requestAnimationFrame(() => {
+      measureMarkers();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [scrollRef, active, measureMarkers]);
+
   // Draggable viewport handle
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
@@ -158,7 +207,6 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
       if (!scrollEl || !trackEl) return;
 
       setDragging(true);
-
       const trackRect = trackEl.getBoundingClientRect();
 
       const onMove = (ev: MouseEvent) => {
@@ -187,58 +235,22 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
       const trackEl = trackRef.current;
       if (!scrollEl || !trackEl) return;
       if ((e.target as HTMLElement).closest(".review-stripe-viewport")) return;
+      if ((e.target as HTMLElement).closest(".review-stripe-marker")) return;
 
       const trackRect = trackEl.getBoundingClientRect();
       const y = e.clientY - trackRect.top;
       const pct = Math.max(0, Math.min(1, y / trackRect.height));
       const maxScroll = scrollEl.scrollHeight - scrollEl.clientHeight;
-      scrollEl.scrollTop = pct * maxScroll;
+      scrollEl.scrollTo({ top: pct * maxScroll, behavior: "smooth" });
     },
     [scrollRef],
   );
-
-  // Render markers imperatively after DOM is ready
-  useEffect(() => {
-    const scrollEl = scrollRef.current;
-    const trackEl = trackRef.current;
-    if (!scrollEl || !trackEl || active.length === 0) return;
-
-    const raf = requestAnimationFrame(() => {
-      const scrollHeight = scrollEl.scrollHeight;
-      if (scrollHeight === 0) return;
-
-      trackEl
-        .querySelectorAll(".review-stripe-marker")
-        .forEach((el) => el.remove());
-
-      for (const comment of active) {
-        const target = scrollEl.querySelector(
-          `[data-review-inline-comment="${comment.id}"]`,
-        );
-        if (!target) continue;
-
-        const targetTop = (target as HTMLElement).offsetTop;
-        const pct = (targetTop / scrollHeight) * 100;
-
-        const marker = document.createElement("button");
-        marker.className = hasReaction(comment)
-          ? "review-stripe-marker review-stripe-marker--addressed"
-          : "review-stripe-marker";
-        marker.style.top = `${pct}%`;
-        marker.title = comment.comment.slice(0, 60);
-        marker.addEventListener("click", () => scrollToComment(comment.id));
-        trackEl.appendChild(marker);
-      }
-    });
-
-    return () => cancelAnimationFrame(raf);
-  }, [scrollRef, active, scrollToComment]);
 
   if (active.length === 0) return null;
 
   const label =
     currentIdx >= 0
-      ? `${currentIdx + 1} / ${active.length}`
+      ? `${currentIdx + 1} / ${markers.length}`
       : `${active.length}`;
 
   return (
@@ -271,6 +283,23 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
           }}
           onMouseDown={handleDragStart}
         />
+        {markers.map((m, i) => (
+          <button
+            key={m.id}
+            className={`review-stripe-marker${m.addressed ? " review-stripe-marker--addressed" : ""}${i === currentIdx ? " review-stripe-marker--active" : ""}`}
+            style={{
+              top: `${m.topPct}%`,
+              height: `${m.heightPct}%`,
+            }}
+            title={
+              active.find((c) => c.id === m.id)?.comment.slice(0, 60) ?? ""
+            }
+            onClick={(e) => {
+              e.stopPropagation();
+              scrollToMarker(i);
+            }}
+          />
+        ))}
       </div>
 
       {/* Next button */}
