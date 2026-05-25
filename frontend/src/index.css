@@ -797,7 +797,6 @@ h6:hover > .heading-anchor,
   background: rgb(192 132 252 / 0.3);
   border: 1px solid rgb(192 132 252 / 0.6);
   border-radius: 3px;
-  transition: top 0.08s linear;
   cursor: grab;
   min-height: 12px;
 }
@@ -811,7 +810,6 @@ h6:hover > .heading-anchor,
   background: rgb(147 51 234 / 0.4);
   border-color: rgb(147 51 234 / 0.9);
   cursor: grabbing;
-  transition: none;
 }
 
 .dark .review-stripe-viewport {
@@ -850,8 +848,10 @@ h6:hover > .heading-anchor,
 }
 
 .review-stripe-marker:hover {
-  transform: translateY(-50%) scaleY(1.8);
-  box-shadow: 0 2px 6px rgb(147 51 234 / 0.6);
+  transform: translateY(-50%) scale(1.15, 2);
+  box-shadow: 0 2px 8px rgb(147 51 234 / 0.7);
+  background: rgb(126 34 206);
+  border-color: rgb(107 33 168);
 }
 
 .review-stripe-marker--addressed {
@@ -863,7 +863,9 @@ h6:hover > .heading-anchor,
 }
 
 .review-stripe-marker--addressed:hover {
-  opacity: 0.8;
+  opacity: 0.9;
+  transform: translateY(-50%) scale(1.15, 2);
+  background: rgb(216 180 254);
 }
 
 .dark .review-stripe-marker {
