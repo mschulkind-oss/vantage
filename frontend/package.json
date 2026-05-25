@@ -15,7 +15,6 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "vantage-md": "file:../packages/vantage-md",
     "@tailwindcss/typography": "^0.5.19",
     "axios": "^1.13.2",
     "clsx": "^2.1.1",
@@ -24,6 +23,7 @@
     "gray-matter": "^4.0.3",
     "katex": "^0.16.33",
     "lucide-react": "^1.8.0",
+    "marked": "^18.0.4",
     "mermaid": "^11.12.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
@@ -38,6 +38,7 @@
     "remark-math": "^6.0.0",
     "smol-toml": "^1.6.1",
     "tailwind-merge": "^3.4.0",
+    "vantage-md": "file:../packages/vantage-md",
     "yaml": "^2.8.2",
     "zustand": "^5.0.9"
   },

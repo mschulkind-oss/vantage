@@ -1,11 +1,22 @@
 import { useEffect, type RefObject } from "react";
 import type { ReviewComment } from "../types";
 import { diffWords } from "diff";
+import { marked } from "marked";
 import {
   blockVisibleText,
   hashBlockText,
   rangeFromCanonicalOffsets,
 } from "../lib/reviewAnchor";
+
+const mdRenderer = new marked.Renderer();
+const mdOptions = { renderer: mdRenderer, breaks: true, gfm: true };
+
+function renderMarkdownInline(text: string): string {
+  const html = (marked.parse(text, mdOptions) as string).trim();
+  const singlePara = /^<p>([\s\S]*)<\/p>$/.exec(html);
+  if (singlePara) return singlePara[1];
+  return html;
+}
 
 const MARK_ATTR = "data-review-comment-id";
 const INLINE_COMMENT_ATTR = "data-review-inline-comment";
@@ -395,7 +406,7 @@ function createCommentBlock(
   `;
 
   const textEl = wrapper.querySelector(".review-inline-comment-text");
-  if (textEl) textEl.textContent = comment.comment;
+  if (textEl) textEl.innerHTML = renderMarkdownInline(comment.comment);
 
   // Render the diff after innerHTML is set, since diff text needs DOM nodes.
   if (hasAgentReaction) {
@@ -403,7 +414,8 @@ function createCommentBlock(
       .reverse()
       .find((r) => r.actor === "agent");
     const summaryEl = wrapper.querySelector(".review-reaction-summary");
-    if (latest && summaryEl) summaryEl.textContent = latest.summary;
+    if (latest && summaryEl)
+      summaryEl.innerHTML = renderMarkdownInline(latest.summary);
     const diffEl = wrapper.querySelector(".review-reaction-diff");
     if (latest && diffEl)
       populateDiff(
@@ -458,14 +470,15 @@ function createOutdatedBlock(
   if (quoteEl)
     quoteEl.textContent = comment.fallback_text || comment.selected_text || "";
   const textEl = wrapper.querySelector(".review-inline-comment-text");
-  if (textEl) textEl.textContent = comment.comment;
+  if (textEl) textEl.innerHTML = renderMarkdownInline(comment.comment);
 
   if (hasAgentReaction) {
     const latest = [...(comment.reactions ?? [])]
       .reverse()
       .find((r) => r.actor === "agent");
     const summaryEl = wrapper.querySelector(".review-reaction-summary");
-    if (latest && summaryEl) summaryEl.textContent = latest.summary;
+    if (latest && summaryEl)
+      summaryEl.innerHTML = renderMarkdownInline(latest.summary);
     const diffEl = wrapper.querySelector(".review-reaction-diff");
     if (latest && diffEl)
       populateDiff(

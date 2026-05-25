@@ -262,8 +262,49 @@ h6:hover > .heading-anchor,
 }
 .review-inline-comment-text {
   flex: 1;
-  white-space: pre-wrap;
   word-break: break-word;
+}
+.review-inline-comment-text code {
+  background: rgb(241 245 249);
+  padding: 0.15em 0.35em;
+  border-radius: 3px;
+  font-size: 0.85em;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+}
+.dark .review-inline-comment-text code {
+  background: rgb(30 41 59);
+}
+.review-inline-comment-text a {
+  color: rgb(37 99 235);
+  text-decoration: underline;
+}
+.dark .review-inline-comment-text a {
+  color: rgb(96 165 250);
+}
+.review-inline-comment-text p {
+  margin: 0.25em 0;
+}
+.review-inline-comment-text p:first-child {
+  margin-top: 0;
+}
+.review-inline-comment-text p:last-child {
+  margin-bottom: 0;
+}
+.review-inline-comment-text ul,
+.review-inline-comment-text ol {
+  margin: 0.25em 0;
+  padding-left: 1.4em;
+}
+.review-inline-comment-text pre {
+  background: rgb(241 245 249);
+  padding: 0.4em 0.6em;
+  border-radius: 4px;
+  font-size: 0.85em;
+  overflow-x: auto;
+  margin: 0.3em 0;
+}
+.dark .review-inline-comment-text pre {
+  background: rgb(30 41 59);
 }
 .review-inline-comment-delete {
   flex-shrink: 0;
@@ -622,8 +663,52 @@ h6:hover > .heading-anchor,
   font-weight: 500;
   color: rgb(51 65 85);
 }
+.review-reaction-summary code {
+  background: rgb(241 245 249);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  font-size: 0.85em;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+  font-weight: 400;
+}
+.review-reaction-summary a {
+  color: rgb(37 99 235);
+  text-decoration: underline;
+}
+.review-reaction-summary p {
+  margin: 0.2em 0;
+}
+.review-reaction-summary p:first-child {
+  margin-top: 0;
+}
+.review-reaction-summary p:last-child {
+  margin-bottom: 0;
+}
+.review-reaction-summary ul,
+.review-reaction-summary ol {
+  margin: 0.2em 0;
+  padding-left: 1.4em;
+}
+.review-reaction-summary pre {
+  background: rgb(241 245 249);
+  padding: 0.3em 0.5em;
+  border-radius: 4px;
+  font-size: 0.82em;
+  overflow-x: auto;
+  margin: 0.25em 0;
+  font-weight: 400;
+}
 .dark .review-reaction-summary {
   color: rgb(203 213 225);
+}
+.dark .review-reaction-summary code {
+  background: rgb(30 41 59);
+}
+.dark .review-reaction-summary a {
+  color: rgb(96 165 250);
+}
+.dark .review-reaction-summary pre {
+  background: rgb(30 41 59);
 }
 .review-reaction-diff {
   font-family:
