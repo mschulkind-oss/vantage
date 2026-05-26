@@ -50,7 +50,7 @@ test.describe("Live reload", () => {
     await page.goto("/");
 
     // Wait for sidebar
-    const sidebar = page.locator(".w-72");
+    const sidebar = page.locator('[data-testid="sidebar"]');
     await expect(sidebar).toBeVisible();
 
     // Find subdir

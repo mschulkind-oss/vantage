@@ -1117,8 +1117,8 @@ h6:hover > .heading-anchor,
   }
 
   /* Hide all chrome: sidebar, header bar, modals, buttons, scrollbars */
-  /* Sidebar (w-72 fixed/relative) */
-  .flex.h-screen > .w-72,
+  /* Sidebar */
+  [data-testid="sidebar"],
   /* Mobile sidebar backdrop */
   .fixed.inset-0.z-40,
   /* Header / breadcrumb bar */
