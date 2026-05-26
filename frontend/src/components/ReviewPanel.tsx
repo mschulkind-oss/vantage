@@ -10,7 +10,6 @@ import {
   X,
   CheckCircle2,
 } from "lucide-react";
-import { diffWords } from "diff";
 import { useReviewStore } from "../stores/useReviewStore";
 import type { ReviewComment } from "../types";
 
@@ -325,11 +324,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                     )}
 
                     {agentReaction && (
-                      <ReactionView
-                        before={agentReaction.before_text}
-                        after={agentReaction.after_text}
-                        summary={agentReaction.summary}
-                      />
+                      <ReactionView summary={agentReaction.summary} />
                     )}
 
                     {(showResolve || showDismiss) && (
@@ -399,38 +394,14 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
 };
 
 const ReactionView: React.FC<{
-  before: string;
-  after: string;
   summary: string;
-}> = ({ before, after, summary }) => {
-  const parts = useMemo(() => {
-    if (!before && !after) return [];
-    return diffWords(before || "", after || "");
-  }, [before, after]);
+}> = ({ summary }) => {
   return (
     <div className="review-reaction mt-2">
       <div className="review-reaction-header">
         <span className="review-reaction-badge">Agent</span>
         <span className="review-reaction-summary">{summary}</span>
       </div>
-      {parts.length > 0 && (
-        <div className="review-reaction-diff">
-          {parts.map((p, i) => (
-            <span
-              key={i}
-              className={
-                p.added
-                  ? "review-reaction-diff-add"
-                  : p.removed
-                    ? "review-reaction-diff-del"
-                    : "review-reaction-diff-eq"
-              }
-            >
-              {p.value}
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 };

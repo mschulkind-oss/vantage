@@ -1,6 +1,5 @@
 import { useEffect, type RefObject } from "react";
 import type { ReviewComment } from "../types";
-import { diffWords } from "diff";
 import { marked } from "marked";
 import {
   blockVisibleText,
@@ -407,7 +406,6 @@ function createCommentBlock(
   const textEl = wrapper.querySelector(".review-inline-comment-text");
   if (textEl) textEl.innerHTML = renderMarkdownInline(comment.comment);
 
-  // Render the diff after innerHTML is set, since diff text needs DOM nodes.
   if (hasAgentReaction) {
     const latest = [...(comment.reactions ?? [])]
       .reverse()
@@ -415,13 +413,6 @@ function createCommentBlock(
     const summaryEl = wrapper.querySelector(".review-reaction-summary");
     if (latest && summaryEl)
       summaryEl.innerHTML = renderMarkdownInline(latest.summary);
-    const diffEl = wrapper.querySelector(".review-reaction-diff");
-    if (latest && diffEl)
-      populateDiff(
-        diffEl as HTMLElement,
-        latest.before_text,
-        latest.after_text,
-      );
   }
 
   wireCommentButtons(wrapper, comment, onDelete, onResolve, onDismiss, onEdit);
@@ -478,13 +469,6 @@ function createOutdatedBlock(
     const summaryEl = wrapper.querySelector(".review-reaction-summary");
     if (latest && summaryEl)
       summaryEl.innerHTML = renderMarkdownInline(latest.summary);
-    const diffEl = wrapper.querySelector(".review-reaction-diff");
-    if (latest && diffEl)
-      populateDiff(
-        diffEl as HTMLElement,
-        latest.before_text,
-        latest.after_text,
-      );
   }
 
   wireCommentButtons(wrapper, comment, onDelete, onResolve, onDismiss, onEdit);
@@ -593,25 +577,8 @@ function renderReactionBlockHtml(): string {
         <span class="review-reaction-badge">Agent</span>
         <span class="review-reaction-summary"></span>
       </div>
-      <div class="review-reaction-diff"></div>
     </div>
   `;
-}
-
-function populateDiff(target: HTMLElement, before: string, after: string) {
-  if (!before && !after) {
-    target.textContent = "";
-    return;
-  }
-  const parts = diffWords(before || "", after || "");
-  for (const part of parts) {
-    const span = document.createElement("span");
-    if (part.added) span.className = "review-reaction-diff-add";
-    else if (part.removed) span.className = "review-reaction-diff-del";
-    else span.className = "review-reaction-diff-eq";
-    span.textContent = part.value;
-    target.appendChild(span);
-  }
 }
 
 function insertResolvedIndicator(container: HTMLElement, count: number) {
@@ -631,13 +598,6 @@ function insertResolvedIndicator(container: HTMLElement, count: number) {
   } else {
     container.appendChild(bar);
   }
-}
-
-export function getWordDiff(
-  oldText: string,
-  newText: string,
-): Array<{ added?: boolean; removed?: boolean; value: string }> {
-  return diffWords(oldText, newText);
 }
 
 // Used by stripBlockText callers that also want a hash for the same text.
