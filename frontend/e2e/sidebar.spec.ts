@@ -5,7 +5,7 @@ test.describe("Sidebar file tree", () => {
     await page.goto("/");
 
     // Wait for the sidebar to load
-    const sidebar = page.locator(".w-72");
+    const sidebar = page.locator('[data-testid="sidebar"]');
     await expect(sidebar).toBeVisible();
 
     // Verify subdir is visible in the sidebar tree
@@ -33,7 +33,7 @@ test.describe("Sidebar file tree", () => {
   test("navigating via sidebar updates URL", async ({ page }) => {
     await page.goto("/");
 
-    const sidebar = page.locator(".w-72");
+    const sidebar = page.locator('[data-testid="sidebar"]');
     await expect(sidebar).toBeVisible();
 
     // Click on a markdown file in the sidebar

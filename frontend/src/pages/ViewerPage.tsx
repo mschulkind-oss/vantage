@@ -140,6 +140,56 @@ export const ViewerPage: React.FC = () => {
       return false;
     }
   });
+  const SIDEBAR_MIN_WIDTH = 200;
+  const SIDEBAR_MAX_WIDTH = 800;
+  const SIDEBAR_DEFAULT_WIDTH = 288;
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    try {
+      const raw = localStorage.getItem("vantage:sidebarWidth");
+      const v = raw == null ? NaN : parseInt(raw, 10);
+      return Number.isFinite(v) &&
+        v >= SIDEBAR_MIN_WIDTH &&
+        v <= SIDEBAR_MAX_WIDTH
+        ? v
+        : SIDEBAR_DEFAULT_WIDTH;
+    } catch {
+      return SIDEBAR_DEFAULT_WIDTH;
+    }
+  });
+  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+  const isResizingSidebarRef = useRef(false);
+  useEffect(() => {
+    try {
+      localStorage.setItem("vantage:sidebarWidth", String(sidebarWidth));
+    } catch {
+      /* ignore */
+    }
+  }, [sidebarWidth]);
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      if (!isResizingSidebarRef.current) return;
+      const w = Math.max(
+        SIDEBAR_MIN_WIDTH,
+        Math.min(SIDEBAR_MAX_WIDTH, e.clientX),
+      );
+      setSidebarWidth(w);
+    };
+    const onUp = () => {
+      if (!isResizingSidebarRef.current) return;
+      isResizingSidebarRef.current = false;
+      setIsResizingSidebar(false);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, []);
   const [showRaw, setShowRaw] = useState(false);
   const [copied, setCopied] = useState(false);
   const [pathCopied, setPathCopied] = useState(false);
@@ -689,8 +739,10 @@ export const ViewerPage: React.FC = () => {
         {/* Sidebar - hidden on repo picker page, collapsible on desktop */}
         {showSidebar && (
           <div
+            data-testid="sidebar"
+            style={{ width: `${sidebarWidth}px` }}
             className={cn(
-              "w-72 border-r border-slate-200 dark:border-slate-700 flex flex-col bg-white dark:bg-slate-800 shadow-sm",
+              "flex-shrink-0 border-r border-slate-200 dark:border-slate-700 flex flex-col bg-white dark:bg-slate-800 shadow-sm relative",
               "fixed inset-y-0 left-0 z-50 transition-transform duration-200 ease-in-out md:relative md:z-auto",
               sidebarOpen ? "translate-x-0" : "-translate-x-full",
               sidebarCollapsed
@@ -866,6 +918,24 @@ export const ViewerPage: React.FC = () => {
                 </div>
               </div>
             )}
+            <div
+              data-testid="sidebar-resize-handle"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize sidebar"
+              onPointerDown={(e) => {
+                e.preventDefault();
+                isResizingSidebarRef.current = true;
+                setIsResizingSidebar(true);
+                document.body.style.cursor = "col-resize";
+                document.body.style.userSelect = "none";
+              }}
+              className={cn(
+                "hidden md:block absolute top-0 right-0 h-full w-1 -mr-0.5 cursor-col-resize z-10 touch-none",
+                "hover:bg-blue-400/60 active:bg-blue-500/80 transition-colors",
+                isResizingSidebar && "bg-blue-500/80",
+              )}
+            />
           </div>
         )}
 

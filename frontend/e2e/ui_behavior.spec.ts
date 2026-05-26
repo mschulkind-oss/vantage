@@ -5,7 +5,7 @@ test.describe("UI Behavior", () => {
     page,
   }) => {
     await page.goto("/");
-    const sidebar = page.locator(".w-72");
+    const sidebar = page.locator('[data-testid="sidebar"]');
     await expect(sidebar).toBeVisible();
 
     // Find the row containing "subdir"
@@ -51,7 +51,7 @@ test.describe("UI Behavior", () => {
     await page.goto("/");
     // Navigate to page1.md - click the one in the table (main view) to be safe
     // or use sidebar. The table one is a link in a cell.
-    await page.locator(".w-72").getByText("page1.md").click();
+    await page.locator('[data-testid="sidebar"]').getByText("page1.md").click();
 
     // Wait for content (Page 1)
     const h1 = page.locator(".prose h1");

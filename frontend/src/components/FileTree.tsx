@@ -172,8 +172,8 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
       <a
         href={isSymlinkError ? undefined : nodeHref}
         className={cn(
-          "flex items-center py-1.5 px-2 cursor-pointer rounded-md text-sm transition-all duration-150",
-          "hover:bg-slate-100 dark:hover:bg-slate-700 no-underline",
+          "group/row relative flex items-center py-1.5 px-2 cursor-pointer rounded-md text-sm transition-all duration-150",
+          "hover:bg-slate-100 dark:hover:bg-slate-700 hover:z-10 no-underline",
           isActive &&
             !isSymlinkError &&
             "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium",
@@ -237,8 +237,11 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
         </span>
         <span
           className={cn(
-            "truncate",
-            isActive && !isSymlinkError ? undefined : nameColor,
+            "truncate group-hover/row:overflow-visible group-hover/row:text-clip",
+            "group-hover/row:bg-slate-100 dark:group-hover/row:bg-slate-700 group-hover/row:pr-2",
+            isActive && !isSymlinkError
+              ? "group-hover/row:bg-blue-50 dark:group-hover/row:bg-blue-900/30"
+              : nameColor,
           )}
         >
           {node.name}
