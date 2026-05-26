@@ -139,6 +139,8 @@ export interface ReviewComment {
   anchor?: CommentAnchor | null;
   fallback_text?: string;
   reactions?: CommentReaction[];
+  /** Snapshot of all block hashes at creation time. Maps source_line → hash. */
+  block_hashes_at_creation?: Record<string, string>;
   /** Legacy: pre-anchor schema kept the verbatim selection here. */
   selected_text?: string;
 }

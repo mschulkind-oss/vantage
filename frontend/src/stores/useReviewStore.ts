@@ -72,6 +72,10 @@ interface ReviewState {
   comments: ReviewComment[];
   pendingSelection: PendingSelection | null;
 
+  // Hover highlight
+  hoveredCommentId: string | null;
+  setHoveredCommentId: (id: string | null) => void;
+
   // Snapshots (still kept for reaction before/after capture; no UI)
   snapshots: ReviewSnapshot[];
 
@@ -87,6 +91,7 @@ interface ReviewState {
     anchor: CommentAnchor,
     comment: string,
     fallbackText: string,
+    blockHashes?: Record<string, string>,
   ) => void;
   deleteComment: (id: string) => void;
   editComment: (id: string, newComment: string) => void;
@@ -94,6 +99,10 @@ interface ReviewState {
   resolveComment: (id: string) => void;
   /** Dismiss without writing a reaction (means "I'm done with this comment"). */
   dismissComment: (id: string) => void;
+  /** Reply to an agent-addressed comment (keeps it unresolved for another round). */
+  replyToComment: (id: string, replyText: string) => void;
+  /** Reopen a resolved comment and add a follow-up reply. */
+  reopenAndReply: (id: string, replyText: string) => void;
   clearAllComments: () => void;
   addSnapshot: (content: string) => void;
   setLastContent: (content: string) => void;
@@ -111,6 +120,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   lastContent: null,
   comments: [],
   pendingSelection: null,
+  hoveredCommentId: null,
   snapshots: [],
   isLoading: false,
 
@@ -199,10 +209,15 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     set({ pendingSelection: null });
   },
 
+  setHoveredCommentId: (id: string | null) => {
+    set({ hoveredCommentId: id });
+  },
+
   addComment: (
     anchor: CommentAnchor,
     comment: string,
     fallbackText: string,
+    blockHashes?: Record<string, string>,
   ) => {
     const newComment: ReviewComment = {
       id: crypto.randomUUID(),
@@ -211,6 +226,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       reactions: [],
       comment,
       created_at: Date.now() / 1000,
+      block_hashes_at_creation: blockHashes ?? {},
     };
     set((s) => ({
       comments: [...s.comments, newComment],
@@ -262,6 +278,48 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     set((s) => ({
       comments: s.comments.map((c) =>
         c.id === id ? { ...c, resolved: true } : c,
+      ),
+    }));
+    get().saveReview();
+  },
+
+  replyToComment: (id: string, replyText: string) => {
+    const reaction: CommentReaction = {
+      actor: "reviewer",
+      kind: "needs_clarification",
+      summary: replyText,
+      before_text: "",
+      after_text: "",
+      timestamp: Date.now() / 1000,
+    };
+    set((s) => ({
+      comments: s.comments.map((c) =>
+        c.id === id
+          ? { ...c, reactions: [...(c.reactions ?? []), reaction] }
+          : c,
+      ),
+    }));
+    get().saveReview();
+  },
+
+  reopenAndReply: (id: string, replyText: string) => {
+    const reaction: CommentReaction = {
+      actor: "reviewer",
+      kind: "needs_clarification",
+      summary: replyText,
+      before_text: "",
+      after_text: "",
+      timestamp: Date.now() / 1000,
+    };
+    set((s) => ({
+      comments: s.comments.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              resolved: false,
+              reactions: [...(c.reactions ?? []), reaction],
+            }
+          : c,
       ),
     }));
     get().saveReview();
@@ -328,6 +386,21 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       output.push("");
       output.push(`**Comment:** ${c.comment}`);
       output.push("");
+      // Include agent response and reviewer follow-ups if present
+      const agentReaction = (c.reactions ?? []).find(
+        (r) => r.actor === "agent" && r.kind === "addressed",
+      );
+      if (agentReaction) {
+        output.push(`**Agent response:** ${agentReaction.summary}`);
+        output.push("");
+      }
+      const reviewerReplies = (c.reactions ?? []).filter(
+        (r) => r.actor === "reviewer" && r.kind === "needs_clarification",
+      );
+      for (const reply of reviewerReplies) {
+        output.push(`**Follow-up:** ${reply.summary}`);
+        output.push("");
+      }
       output.push("---");
       output.push("");
     }

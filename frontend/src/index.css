@@ -741,6 +741,21 @@ h6:hover > .heading-anchor,
   color: rgb(96 165 250);
 }
 
+/* Hover-triggered highlight for blocks that changed since the hovered
+   comment was created.  Intentionally faint — transient on hover. */
+.review-changed-block-highlight {
+  background: rgb(239 68 68 / 0.08);
+  box-shadow: inset 3px 0 0 rgb(239 68 68 / 0.4);
+  border-radius: 4px;
+  transition:
+    background 0.15s,
+    box-shadow 0.15s;
+}
+.dark .review-changed-block-highlight {
+  background: rgb(239 68 68 / 0.1);
+  box-shadow: inset 3px 0 0 rgb(239 68 68 / 0.35);
+}
+
 /* Dismiss button: same shape as resolve, slate-toned to communicate
    "close without committing to a reaction." */
 .review-inline-comment-dismiss {

@@ -49,6 +49,8 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   const editComment = useReviewStore((s) => s.editComment);
   const resolveComment = useReviewStore((s) => s.resolveComment);
   const dismissComment = useReviewStore((s) => s.dismissComment);
+  const replyToComment = useReviewStore((s) => s.replyToComment);
+  const reopenAndReply = useReviewStore((s) => s.reopenAndReply);
   const copyAllToClipboard = useReviewStore((s) => s.copyAllToClipboard);
   const endReview = useReviewStore((s) => s.endReview);
 
@@ -56,6 +58,9 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   const [copied, setCopied] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const [replyingId, setReplyingId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const replyRef = useRef<HTMLTextAreaElement>(null);
   const editRef = useRef<HTMLTextAreaElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
@@ -327,23 +332,108 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                       <ReactionView summary={agentReaction.summary} />
                     )}
 
-                    {(showResolve || showDismiss) && (
-                      <div className="mt-2 flex justify-end">
-                        {showResolve ? (
+                    {replyingId === c.id && (
+                      <div className="mt-1.5">
+                        <textarea
+                          ref={replyRef}
+                          value={replyText}
+                          onChange={(e) => setReplyText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                              e.preventDefault();
+                              const trimmed = replyText.trim();
+                              if (trimmed) {
+                                if (c.resolved) {
+                                  reopenAndReply(c.id, trimmed);
+                                } else {
+                                  replyToComment(c.id, trimmed);
+                                }
+                              }
+                              setReplyingId(null);
+                              setReplyText("");
+                            }
+                            if (e.key === "Escape") {
+                              setReplyingId(null);
+                              setReplyText("");
+                            }
+                          }}
+                          rows={2}
+                          placeholder="Follow-up for the agent..."
+                          className="w-full text-sm rounded-md border border-blue-300 dark:border-blue-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 px-2 py-1.5 resize-y min-h-[40px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                        <div className="flex justify-end gap-1.5 mt-1">
                           <button
-                            onClick={() => resolveComment(c.id)}
-                            className="px-2 py-1 text-[11px] rounded bg-blue-600 text-white hover:bg-blue-700"
-                            title="Accept the agent's fix"
+                            onClick={() => {
+                              setReplyingId(null);
+                              setReplyText("");
+                            }}
+                            className="px-2 py-1 text-[11px] rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
                           >
-                            Resolve
+                            Cancel
                           </button>
-                        ) : (
+                          <button
+                            onClick={() => {
+                              const trimmed = replyText.trim();
+                              if (trimmed) {
+                                if (c.resolved) {
+                                  reopenAndReply(c.id, trimmed);
+                                } else {
+                                  replyToComment(c.id, trimmed);
+                                }
+                              }
+                              setReplyingId(null);
+                              setReplyText("");
+                            }}
+                            className="px-2 py-1 text-[11px] rounded bg-blue-600 text-white hover:bg-blue-700"
+                          >
+                            {c.resolved ? "Reopen & Reply" : "Reply"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {replyingId !== c.id && (
+                      <div className="mt-2 flex justify-end gap-1.5">
+                        {showResolve && (
+                          <>
+                            <button
+                              onClick={() => {
+                                setReplyingId(c.id);
+                                setReplyText("");
+                                setTimeout(() => replyRef.current?.focus(), 0);
+                              }}
+                              className="px-2 py-1 text-[11px] rounded text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700"
+                            >
+                              Reply
+                            </button>
+                            <button
+                              onClick={() => resolveComment(c.id)}
+                              className="px-2 py-1 text-[11px] rounded text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700"
+                              title="Dismiss — the agent already addressed this"
+                            >
+                              Dismiss
+                            </button>
+                          </>
+                        )}
+                        {showDismiss && (
                           <button
                             onClick={() => dismissComment(c.id)}
                             className="px-2 py-1 text-[11px] rounded text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700"
                             title="Dismiss without recording an agent reaction"
                           >
                             Dismiss
+                          </button>
+                        )}
+                        {c.resolved && hasAgentReaction(c) && (
+                          <button
+                            onClick={() => {
+                              setReplyingId(c.id);
+                              setReplyText("");
+                              setTimeout(() => replyRef.current?.focus(), 0);
+                            }}
+                            className="px-2 py-1 text-[11px] rounded text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30"
+                          >
+                            Reopen &amp; Reply
                           </button>
                         )}
                       </div>
@@ -367,7 +457,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                 }}
                 className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
               >
-                <Check size={12} /> Resolve All ({respondedCount})
+                <Check size={12} /> Dismiss All ({respondedCount})
               </button>
             )}
             <button

@@ -151,6 +151,10 @@ class ReviewComment(BaseModel):
     anchor: CommentAnchor | None = None
     fallback_text: str = ""
     reactions: list[CommentReaction] = []
+    # Snapshot of every block's hash at the moment the comment was created.
+    # Maps source_line (as string key) → block_text_hash.  Used to highlight
+    # which blocks changed since this comment was written.
+    block_hashes_at_creation: dict[str, str] = {}
     # Legacy: original verbatim selection.  Kept for migration of records
     # written before block-anchoring.  New comments leave this empty and
     # store the original text in fallback_text instead.
