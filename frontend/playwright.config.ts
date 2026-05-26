@@ -14,12 +14,12 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: { ...devices["Desktop Chrome"], channel: "chrome" },
     },
   ],
   webServer: {
     command:
-      "cd .. && TARGET_REPO=tests/e2e/test_repo uv run vantage serve --port 8101 & VITE_API_TARGET=http://localhost:8101 VITE_WS_TARGET=ws://localhost:8101 npm run dev -- --port 5201",
+      "cd .. && TARGET_REPO=tests/e2e/test_repo uv run vantage serve --port 8101 --no-open & VITE_API_TARGET=http://localhost:8101 VITE_WS_TARGET=ws://localhost:8101 npm run dev -- --port 5201",
     url: "http://localhost:5201",
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
