@@ -8,8 +8,7 @@ import {
   rangeFromCanonicalOffsets,
 } from "../lib/reviewAnchor";
 
-const mdRenderer = new marked.Renderer();
-const mdOptions = { renderer: mdRenderer, breaks: true, gfm: true };
+const mdOptions = { breaks: false, gfm: true };
 
 function renderMarkdownInline(text: string): string {
   const html = (marked.parse(text, mdOptions) as string).trim();
