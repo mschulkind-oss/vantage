@@ -347,7 +347,23 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       `Example (using a real id from this batch): \`- [${active[0]?.id.slice(0, 8)}] Reworded paragraph for clarity\``,
     );
     output.push("");
-    output.push("Rules:");
+    output.push("### How your response is displayed");
+    output.push("");
+    output.push(
+      "Your summary text is rendered **inline in the document**, directly below the commented paragraph — the reviewer sees it right next to the original text and the comment. This means:",
+    );
+    output.push(
+      "- **Do NOT restate context.** The reviewer already sees the paragraph and their comment. Your summary should say *what you did*, not re-explain what the paragraph says.",
+    );
+    output.push(
+      "- **Keep it short.** One sentence is ideal. The summary shares a narrow column with the comment text and a before/after diff.",
+    );
+    output.push(
+      '- **Be specific about your action.** Good: "Split into two paragraphs and added the exception case." Bad: "The substrate is a typed-dataflow graph so I updated the text to reflect..."',
+    );
+    output.push("");
+    output.push("### Format rules");
+    output.push("");
     output.push(
       "- The marker line must be exactly `<!-- changelog -->` (HTML comment, nothing else on the line).",
     );
