@@ -6,6 +6,7 @@ import {
   hashBlockText,
   rangeFromCanonicalOffsets,
 } from "../lib/reviewAnchor";
+import { useReviewStore } from "../stores/useReviewStore";
 
 const mdOptions = { breaks: false, gfm: true };
 
@@ -254,6 +255,67 @@ export function useReviewHighlights(
     onDismissComment,
     onEditComment,
   ]);
+
+  // Hover-highlight: when a comment is hovered (from inline block or stripe),
+  // highlight all document blocks that have changed since the comment was created.
+  const hoveredCommentId = useReviewStore((s) => s.hoveredCommentId);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const CLASS = "review-changed-block-highlight";
+    el.querySelectorAll(`.${CLASS}`).forEach((node) =>
+      node.classList.remove(CLASS),
+    );
+
+    if (!hoveredCommentId) return;
+
+    const comment = comments.find((c) => c.id === hoveredCommentId);
+    const creationHashes = comment?.block_hashes_at_creation;
+    if (!creationHashes || Object.keys(creationHashes).length === 0) return;
+
+    const allBlocks = el.querySelectorAll<HTMLElement>("[data-source-line]");
+    for (const block of allBlocks) {
+      const line = block.getAttribute("data-source-line");
+      if (!line) continue;
+      const currentHash = hashBlockText(blockVisibleText(block));
+      const creationHash = creationHashes[line];
+      if (creationHash && creationHash !== currentHash) {
+        block.classList.add(CLASS);
+      }
+    }
+  }, [containerRef, hoveredCommentId, comments]);
+
+  // Wire hover events on inline comment blocks to set hoveredCommentId
+  const setHoveredCommentId = useReviewStore((s) => s.setHoveredCommentId);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const handlers: Array<{
+      node: Element;
+      enter: () => void;
+      leave: () => void;
+    }> = [];
+    el.querySelectorAll(`[${INLINE_COMMENT_ATTR}]`).forEach((node) => {
+      const id = node.getAttribute(INLINE_COMMENT_ATTR);
+      if (!id) return;
+      const enter = () => setHoveredCommentId(id);
+      const leave = () => setHoveredCommentId(null);
+      node.addEventListener("mouseenter", enter);
+      node.addEventListener("mouseleave", leave);
+      handlers.push({ node, enter, leave });
+    });
+
+    return () => {
+      for (const { node, enter, leave } of handlers) {
+        node.removeEventListener("mouseenter", enter);
+        node.removeEventListener("mouseleave", leave);
+      }
+    };
+  }, [containerRef, comments, currentContent, setHoveredCommentId]);
 }
 
 /** Walk neighbors by source line, find one whose hash matches. */
@@ -385,7 +447,7 @@ function createCommentBlock(
   }
 
   const actionButton = hasAgentReaction
-    ? `<button class="review-inline-comment-resolve" title="Accept the agent's fix">Resolve</button>`
+    ? `<button class="review-inline-comment-resolve" title="Dismiss — the agent addressed this">Dismiss</button>`
     : `<button class="review-inline-comment-dismiss" title="Dismiss comment">Dismiss</button>`;
 
   wrapper.innerHTML = `
@@ -440,7 +502,7 @@ function createOutdatedBlock(
   }
 
   const actionButton = hasAgentReaction
-    ? `<button class="review-inline-comment-resolve" title="Accept the agent's fix">Resolve</button>`
+    ? `<button class="review-inline-comment-resolve" title="Dismiss — the agent addressed this">Dismiss</button>`
     : `<button class="review-inline-comment-dismiss" title="Dismiss comment">Dismiss</button>`;
 
   wrapper.innerHTML = `

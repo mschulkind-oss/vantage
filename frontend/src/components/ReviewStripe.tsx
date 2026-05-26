@@ -7,6 +7,7 @@ import {
 } from "react";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import type { ReviewComment } from "../types";
+import { useReviewStore } from "../stores/useReviewStore";
 
 interface ReviewStripeProps {
   scrollRef: RefObject<HTMLElement | null>;
@@ -29,6 +30,7 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
   const [dragging, setDragging] = useState(false);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ top: number } | null>(null);
+  const setHoveredCommentId = useReviewStore((s) => s.setHoveredCommentId);
 
   const active = comments.filter((c) => !c.resolved);
   const hasReaction = (c: ReviewComment) =>
@@ -330,10 +332,14 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
               e.stopPropagation();
               scrollToMarker(i);
             }}
-            onMouseEnter={(e) => handleMarkerHover(i, e)}
+            onMouseEnter={(e) => {
+              handleMarkerHover(i, e);
+              setHoveredCommentId(m.id);
+            }}
             onMouseLeave={() => {
               setHoveredIdx(null);
               setTooltipPos(null);
+              setHoveredCommentId(null);
             }}
           />
         ))}
