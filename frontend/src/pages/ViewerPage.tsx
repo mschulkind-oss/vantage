@@ -227,15 +227,31 @@ export const ViewerPage: React.FC = () => {
       ),
   ).length;
   const copyAllReviewComments = useReviewStore((s) => s.copyAllToClipboard);
+  const endReview = useReviewStore((s) => s.endReview);
+  const hasReviewData = useReviewStore((s) => s.hasReviewData);
   const [reviewPanelOpen, setReviewPanelOpen] = useState(false);
   const [reviewCopied, setReviewCopied] = useState(false);
+  const [reviewExitConfirm, setReviewExitConfirm] = useState(false);
 
   const handleReviewToggle = useCallback(() => {
-    // PR2: review mode is now a plain on/off toggle.  Destructive
-    // "End review" lives in the side-panel `…` menu (ReviewPanel)
-    // because the day-to-day toggle shouldn't risk losing data.
-    toggleReviewMode();
-  }, [toggleReviewMode]);
+    if (isReviewMode && hasReviewData()) {
+      if (reviewExitConfirm) {
+        endReview();
+        setReviewExitConfirm(false);
+      } else {
+        setReviewExitConfirm(true);
+        setTimeout(() => setReviewExitConfirm(false), 3000);
+      }
+    } else {
+      toggleReviewMode();
+    }
+  }, [
+    isReviewMode,
+    hasReviewData,
+    reviewExitConfirm,
+    endReview,
+    toggleReviewMode,
+  ]);
 
   // Load review data when file changes
   useEffect(() => {
@@ -1132,18 +1148,24 @@ export const ViewerPage: React.FC = () => {
                           onClick={handleReviewToggle}
                           className={cn(
                             "flex items-center space-x-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
-                            isReviewMode
-                              ? "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 ring-1 ring-purple-300 dark:ring-purple-700"
-                              : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
+                            reviewExitConfirm
+                              ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 ring-1 ring-red-300 dark:ring-red-700"
+                              : isReviewMode
+                                ? "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 ring-1 ring-purple-300 dark:ring-purple-700"
+                                : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
                           )}
                           title={
-                            isReviewMode
-                              ? "Exit review mode"
-                              : "Enter review mode"
+                            reviewExitConfirm
+                              ? "Click again to end review & clear data"
+                              : isReviewMode
+                                ? "Exit review mode"
+                                : "Enter review mode"
                           }
                         >
                           <MessageSquarePlus size={14} />
-                          <span className="hidden sm:inline">Review</span>
+                          <span className="hidden sm:inline">
+                            {reviewExitConfirm ? "End review?" : "Review"}
+                          </span>
                         </button>
                         {isReviewMode && (
                           <>
@@ -1259,18 +1281,24 @@ export const ViewerPage: React.FC = () => {
                         onClick={handleReviewToggle}
                         className={cn(
                           "flex items-center space-x-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
-                          isReviewMode
-                            ? "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 ring-1 ring-purple-300 dark:ring-purple-700"
-                            : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
+                          reviewExitConfirm
+                            ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 ring-1 ring-red-300 dark:ring-red-700"
+                            : isReviewMode
+                              ? "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 ring-1 ring-purple-300 dark:ring-purple-700"
+                              : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
                         )}
                         title={
-                          isReviewMode
-                            ? "Exit review mode"
-                            : "Enter review mode"
+                          reviewExitConfirm
+                            ? "Click again to end review & clear data"
+                            : isReviewMode
+                              ? "Exit review mode"
+                              : "Enter review mode"
                         }
                       >
                         <MessageSquarePlus size={14} />
-                        <span className="hidden sm:inline">Review</span>
+                        <span className="hidden sm:inline">
+                          {reviewExitConfirm ? "End review?" : "Review"}
+                        </span>
                       </button>
                       {isReviewMode && (
                         <>

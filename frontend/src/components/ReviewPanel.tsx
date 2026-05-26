@@ -88,6 +88,14 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   if (!isOpen) return null;
 
   const activeCount = counts.all - counts.resolved;
+  const pendingCount = comments.filter(
+    (c) =>
+      !c.resolved &&
+      !(c.reactions ?? []).some(
+        (r) => r.actor === "agent" && r.kind === "addressed",
+      ),
+  ).length;
+  const respondedCount = counts.withReaction;
 
   const handleCopy = async () => {
     const ok = await copyAllToClipboard();
@@ -354,9 +362,22 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
 
         {comments.length > 0 && (
           <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-700 flex items-center gap-2 shrink-0">
+            {respondedCount > 0 && (
+              <button
+                onClick={() => {
+                  const responded = comments.filter(
+                    (c) => !c.resolved && hasAgentReaction(c),
+                  );
+                  for (const c of responded) resolveComment(c.id);
+                }}
+                className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              >
+                <Check size={12} /> Resolve All ({respondedCount})
+              </button>
+            )}
             <button
               onClick={handleCopy}
-              disabled={activeCount === 0}
+              disabled={pendingCount === 0}
               className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {copied ? (
@@ -365,7 +386,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                 </>
               ) : (
                 <>
-                  <ClipboardCopy size={12} /> Copy All ({activeCount})
+                  <ClipboardCopy size={12} /> Copy ({pendingCount})
                 </>
               )}
             </button>
