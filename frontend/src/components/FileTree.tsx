@@ -1,4 +1,5 @@
-import React, { memo, useCallback } from "react";
+import React, { memo, useCallback, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Folder,
   File,
@@ -117,6 +118,26 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
     ],
   );
 
+  const nameRef = useRef<HTMLSpanElement>(null);
+  const [hoverOverlay, setHoverOverlay] = useState<{
+    left: number;
+    top: number;
+    height: number;
+  } | null>(null);
+
+  const handleNameHover = useCallback(() => {
+    const span = nameRef.current;
+    if (!span) return;
+    if (span.scrollWidth <= span.clientWidth + 1) return;
+    const rect = span.getBoundingClientRect();
+    setHoverOverlay({
+      left: rect.left,
+      top: rect.top,
+      height: rect.height,
+    });
+  }, []);
+  const clearHoverOverlay = useCallback(() => setHoverOverlay(null), []);
+
   const isActive = currentPath === node.path;
   const nodeHref = buildPath(node.path);
   const isDimmed = node.is_dir && node.has_markdown === false;
@@ -172,8 +193,8 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
       <a
         href={isSymlinkError ? undefined : nodeHref}
         className={cn(
-          "group/row relative flex items-center py-1.5 px-2 cursor-pointer rounded-md text-sm transition-all duration-150",
-          "hover:bg-slate-100 dark:hover:bg-slate-700 hover:z-10 no-underline",
+          "relative flex items-center py-1.5 px-2 cursor-pointer rounded-md text-sm transition-all duration-150",
+          "hover:bg-slate-100 dark:hover:bg-slate-700 no-underline",
           isActive &&
             !isSymlinkError &&
             "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium",
@@ -181,6 +202,8 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
           isRecentlyChanged && "animate-flash-update",
           isSymlinkError && "cursor-not-allowed opacity-60",
         )}
+        onMouseEnter={handleNameHover}
+        onMouseLeave={clearHoverOverlay}
         onClick={
           isSymlinkError
             ? (e: React.MouseEvent) => e.preventDefault()
@@ -236,12 +259,10 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
           )}
         </span>
         <span
+          ref={nameRef}
           className={cn(
-            "truncate group-hover/row:overflow-visible group-hover/row:text-clip",
-            "group-hover/row:bg-slate-100 dark:group-hover/row:bg-slate-700 group-hover/row:pr-2",
-            isActive && !isSymlinkError
-              ? "group-hover/row:bg-blue-50 dark:group-hover/row:bg-blue-900/30"
-              : nameColor,
+            "truncate",
+            isActive && !isSymlinkError ? undefined : nameColor,
           )}
         >
           {node.name}
@@ -255,6 +276,34 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
           />
         )}
       </a>
+      {hoverOverlay &&
+        createPortal(
+          <span
+            aria-hidden="true"
+            style={{
+              position: "fixed",
+              left: hoverOverlay.left,
+              top: hoverOverlay.top,
+              height: hoverOverlay.height,
+              lineHeight: `${hoverOverlay.height}px`,
+              paddingRight: "0.5rem",
+              whiteSpace: "nowrap",
+              width: "max-content",
+              maxWidth: `calc(100vw - ${hoverOverlay.left}px)`,
+              zIndex: 60,
+              pointerEvents: "none",
+            }}
+            className={cn(
+              "text-sm",
+              isActive && !isSymlinkError
+                ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium"
+                : cn("bg-slate-100 dark:bg-slate-700", nameColor),
+            )}
+          >
+            {node.name}
+          </span>,
+          document.body,
+        )}
       {node.is_dir &&
         isExpanded &&
         (node.children ? (
