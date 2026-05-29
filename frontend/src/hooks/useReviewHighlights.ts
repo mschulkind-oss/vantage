@@ -55,6 +55,7 @@ export function useReviewHighlights(
   onResolveComment: (id: string) => void,
   onDismissComment: (id: string) => void,
   onEditComment: (id: string, newComment: string) => void,
+  onReplyComment: (id: string, replyText: string) => void,
 ) {
   useEffect(() => {
     const el = containerRef.current;
@@ -140,6 +141,7 @@ export function useReviewHighlights(
           onResolveComment,
           onDismissComment,
           onEditComment,
+          onReplyComment,
         );
         continue;
       }
@@ -201,6 +203,7 @@ export function useReviewHighlights(
           onResolveComment,
           onDismissComment,
           onEditComment,
+          onReplyComment,
           findClosestPriorBlock(blocksByLine, anchor.source_line),
         );
         continue;
@@ -243,6 +246,7 @@ export function useReviewHighlights(
         onResolveComment,
         onDismissComment,
         onEditComment,
+        onReplyComment,
         divergent,
       );
     }
@@ -254,6 +258,7 @@ export function useReviewHighlights(
     onResolveComment,
     onDismissComment,
     onEditComment,
+    onReplyComment,
   ]);
 
   // Hover-highlight: when a comment is hovered (from inline block or stripe),
@@ -286,36 +291,6 @@ export function useReviewHighlights(
       }
     }
   }, [containerRef, hoveredCommentId, comments]);
-
-  // Wire hover events on inline comment blocks to set hoveredCommentId
-  const setHoveredCommentId = useReviewStore((s) => s.setHoveredCommentId);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-
-    const handlers: Array<{
-      node: Element;
-      enter: () => void;
-      leave: () => void;
-    }> = [];
-    el.querySelectorAll(`[${INLINE_COMMENT_ATTR}]`).forEach((node) => {
-      const id = node.getAttribute(INLINE_COMMENT_ATTR);
-      if (!id) return;
-      const enter = () => setHoveredCommentId(id);
-      const leave = () => setHoveredCommentId(null);
-      node.addEventListener("mouseenter", enter);
-      node.addEventListener("mouseleave", leave);
-      handlers.push({ node, enter, leave });
-    });
-
-    return () => {
-      for (const { node, enter, leave } of handlers) {
-        node.removeEventListener("mouseenter", enter);
-        node.removeEventListener("mouseleave", leave);
-      }
-    };
-  }, [containerRef, comments, currentContent, setHoveredCommentId]);
 }
 
 /** Walk neighbors by source line, find one whose hash matches. */
@@ -367,6 +342,7 @@ function insertInlineCommentAfter(
   onResolve: (id: string) => void,
   onDismiss: (id: string) => void,
   onEdit: (id: string, newComment: string) => void,
+  onReply: (id: string, replyText: string) => void,
   divergent: boolean,
 ) {
   const wrapper = createCommentBlock(
@@ -375,6 +351,7 @@ function insertInlineCommentAfter(
     onResolve,
     onDismiss,
     onEdit,
+    onReply,
     divergent,
   );
   if (blockEl.nextSibling) {
@@ -391,6 +368,7 @@ function insertOutdatedComment(
   onResolve: (id: string) => void,
   onDismiss: (id: string) => void,
   onEdit: (id: string, newComment: string) => void,
+  onReply: (id: string, replyText: string) => void,
   anchorBlock: HTMLElement | null = null,
 ) {
   const wrapper = createOutdatedBlock(
@@ -399,6 +377,7 @@ function insertOutdatedComment(
     onResolve,
     onDismiss,
     onEdit,
+    onReply,
   );
   if (anchorBlock?.parentNode) {
     if (anchorBlock.nextSibling) {
@@ -422,6 +401,7 @@ function createCommentBlock(
   onResolve: (id: string) => void,
   onDismiss: (id: string) => void,
   onEdit: (id: string, newComment: string) => void,
+  onReply: (id: string, replyText: string) => void,
   divergent: boolean,
 ): HTMLElement {
   const wrapper = document.createElement("div");
@@ -434,30 +414,25 @@ function createCommentBlock(
     (r) => r.actor === "agent",
   );
 
-  // Reaction sub-block (only when an agent reaction exists).
-  let reactionHtml = "";
-  if (hasAgentReaction) {
-    const latest = [...(comment.reactions ?? [])]
-      .reverse()
-      .find((r) => r.actor === "agent");
-    if (latest) {
-      void latest; // template HTML is static; summary + diff are populated below
-      reactionHtml = renderReactionBlockHtml();
-    }
-  }
+  const threadHtml = renderThreadHtml(comment);
 
   const actionButton = hasAgentReaction
     ? `<button class="review-inline-comment-resolve" title="Dismiss — the agent addressed this">Dismiss</button>`
     : `<button class="review-inline-comment-dismiss" title="Dismiss comment">Dismiss</button>`;
+
+  const replyButton = hasAgentReaction
+    ? `<button class="review-inline-comment-reply" title="Reply">Reply</button>`
+    : "";
 
   wrapper.innerHTML = `
     <div class="review-inline-comment-body">
       <span class="review-inline-comment-icon" title="Review comment">&#x1f4ac;</span>
       <div class="review-inline-comment-content">
         <div class="review-inline-comment-text"></div>
-        ${reactionHtml}
+        ${threadHtml}
       </div>
       <div class="review-inline-comment-actions">
+        ${replyButton}
         ${actionButton}
         <button class="review-inline-comment-edit" title="Edit comment">&#x270E;</button>
         <button class="review-inline-comment-delete" title="Delete comment">&times;</button>
@@ -468,16 +443,10 @@ function createCommentBlock(
   const textEl = wrapper.querySelector(".review-inline-comment-text");
   if (textEl) textEl.innerHTML = renderMarkdownInline(comment.comment);
 
-  if (hasAgentReaction) {
-    const latest = [...(comment.reactions ?? [])]
-      .reverse()
-      .find((r) => r.actor === "agent");
-    const summaryEl = wrapper.querySelector(".review-reaction-summary");
-    if (latest && summaryEl)
-      summaryEl.innerHTML = renderMarkdownInline(latest.summary);
-  }
+  populateThreadSummaries(wrapper, comment);
 
   wireCommentButtons(wrapper, comment, onDelete, onResolve, onDismiss, onEdit);
+  wireReplyButton(wrapper, comment, onReply);
   return wrapper;
 }
 
@@ -487,6 +456,7 @@ function createOutdatedBlock(
   onResolve: (id: string) => void,
   onDismiss: (id: string) => void,
   onEdit: (id: string, newComment: string) => void,
+  onReply: (id: string, replyText: string) => void,
 ): HTMLElement {
   const wrapper = document.createElement("div");
   wrapper.setAttribute(INLINE_COMMENT_ATTR, comment.id);
@@ -496,14 +466,15 @@ function createOutdatedBlock(
     (r) => r.actor === "agent",
   );
 
-  let reactionHtml = "";
-  if (hasAgentReaction) {
-    reactionHtml = renderReactionBlockHtml();
-  }
+  const threadHtml = renderThreadHtml(comment);
 
   const actionButton = hasAgentReaction
     ? `<button class="review-inline-comment-resolve" title="Dismiss — the agent addressed this">Dismiss</button>`
     : `<button class="review-inline-comment-dismiss" title="Dismiss comment">Dismiss</button>`;
+
+  const replyButton = hasAgentReaction
+    ? `<button class="review-inline-comment-reply" title="Reply">Reply</button>`
+    : "";
 
   wrapper.innerHTML = `
     <div class="review-inline-comment-body review-inline-comment-body--outdated">
@@ -511,9 +482,10 @@ function createOutdatedBlock(
         <div class="review-outdated-badge">${hasAgentReaction ? "Addressed" : "Outdated"}</div>
         <div class="review-outdated-quote"></div>
         <div class="review-inline-comment-text"></div>
-        ${reactionHtml}
+        ${threadHtml}
       </div>
       <div class="review-inline-comment-actions">
+        ${replyButton}
         ${actionButton}
       </div>
     </div>
@@ -524,16 +496,10 @@ function createOutdatedBlock(
   const textEl = wrapper.querySelector(".review-inline-comment-text");
   if (textEl) textEl.innerHTML = renderMarkdownInline(comment.comment);
 
-  if (hasAgentReaction) {
-    const latest = [...(comment.reactions ?? [])]
-      .reverse()
-      .find((r) => r.actor === "agent");
-    const summaryEl = wrapper.querySelector(".review-reaction-summary");
-    if (latest && summaryEl)
-      summaryEl.innerHTML = renderMarkdownInline(latest.summary);
-  }
+  populateThreadSummaries(wrapper, comment);
 
   wireCommentButtons(wrapper, comment, onDelete, onResolve, onDismiss, onEdit);
+  wireReplyButton(wrapper, comment, onReply);
   return wrapper;
 }
 
@@ -632,15 +598,101 @@ function wireCommentButtons(
   }
 }
 
-function renderReactionBlockHtml(): string {
-  return `
-    <div class="review-reaction">
-      <div class="review-reaction-header">
-        <span class="review-reaction-badge">Agent</span>
-        <span class="review-reaction-summary"></span>
-      </div>
-    </div>
-  `;
+function renderThreadHtml(comment: ReviewComment): string {
+  const reactions = comment.reactions ?? [];
+  if (reactions.length === 0) return "";
+
+  let html = '<div class="review-thread">';
+  for (let i = 0; i < reactions.length; i++) {
+    const r = reactions[i];
+    const badge =
+      r.actor === "agent"
+        ? '<span class="review-thread-badge review-thread-badge--agent">Agent</span>'
+        : '<span class="review-thread-badge review-thread-badge--reviewer">You</span>';
+    html += `<div class="review-thread-entry" data-thread-idx="${i}">${badge}<span class="review-thread-text"></span></div>`;
+  }
+  html += "</div>";
+  return html;
+}
+
+function populateThreadSummaries(
+  wrapper: HTMLElement,
+  comment: ReviewComment,
+): void {
+  const reactions = comment.reactions ?? [];
+  const entries = wrapper.querySelectorAll(".review-thread-entry");
+  for (let i = 0; i < entries.length && i < reactions.length; i++) {
+    const textEl = entries[i].querySelector(".review-thread-text");
+    if (textEl) textEl.innerHTML = renderMarkdownInline(reactions[i].summary);
+  }
+}
+
+function wireReplyButton(
+  wrapper: HTMLElement,
+  comment: ReviewComment,
+  onReply: (id: string, replyText: string) => void,
+): void {
+  const replyBtn = wrapper.querySelector(".review-inline-comment-reply");
+  if (!replyBtn) return;
+
+  replyBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (wrapper.querySelector(".review-inline-reply-area")) return;
+
+    const content = wrapper.querySelector(".review-inline-comment-content");
+    if (!content) return;
+
+    const textarea = document.createElement("textarea");
+    textarea.className = "review-inline-reply-area";
+    textarea.placeholder = "Write a reply…";
+    textarea.rows = 2;
+
+    const btnRow = document.createElement("div");
+    btnRow.className = "review-inline-edit-buttons";
+
+    const sendBtn = document.createElement("button");
+    sendBtn.textContent = "Reply";
+    sendBtn.className = "review-inline-edit-save";
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.textContent = "Cancel";
+    cancelBtn.className = "review-inline-edit-cancel";
+
+    btnRow.appendChild(cancelBtn);
+    btnRow.appendChild(sendBtn);
+
+    content.appendChild(textarea);
+    content.appendChild(btnRow);
+    textarea.focus();
+
+    const cleanup = () => {
+      textarea.remove();
+      btnRow.remove();
+    };
+
+    sendBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const text = textarea.value.trim();
+      if (text) onReply(comment.id, text);
+      cleanup();
+    });
+
+    cancelBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      cleanup();
+    });
+
+    textarea.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" && (ev.metaKey || ev.ctrlKey)) {
+        ev.preventDefault();
+        sendBtn.click();
+      }
+      if (ev.key === "Escape") {
+        ev.preventDefault();
+        cancelBtn.click();
+      }
+    });
+  });
 }
 
 function insertResolvedIndicator(container: HTMLElement, count: number) {

@@ -236,6 +236,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   },
 
   deleteComment: (id: string) => {
+    if (get().hoveredCommentId === id) set({ hoveredCommentId: null });
     set((s) => ({
       comments: s.comments.filter((c) => c.id !== id),
     }));
@@ -252,6 +253,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   },
 
   resolveComment: (id: string) => {
+    if (get().hoveredCommentId === id) set({ hoveredCommentId: null });
     const reaction: CommentReaction = {
       actor: "reviewer",
       kind: "noted",
@@ -275,6 +277,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   },
 
   dismissComment: (id: string) => {
+    if (get().hoveredCommentId === id) set({ hoveredCommentId: null });
     set((s) => ({
       comments: s.comments.map((c) =>
         c.id === id ? { ...c, resolved: true } : c,

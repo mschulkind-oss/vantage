@@ -8,6 +8,7 @@ import {
 import { ChevronUp, ChevronDown } from "lucide-react";
 import type { ReviewComment } from "../types";
 import { useReviewStore } from "../stores/useReviewStore";
+import { blockVisibleText, hashBlockText } from "../lib/reviewAnchor";
 
 interface ReviewStripeProps {
   scrollRef: RefObject<HTMLElement | null>;
@@ -31,10 +32,61 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ top: number } | null>(null);
   const setHoveredCommentId = useReviewStore((s) => s.setHoveredCommentId);
+  const hoveredCommentId = useReviewStore((s) => s.hoveredCommentId);
 
   const active = comments.filter((c) => !c.resolved);
   const hasReaction = (c: ReviewComment) =>
     (c.reactions ?? []).some((r) => r.actor === "agent");
+
+  const [changeMarkers, setChangeMarkers] = useState<
+    { topPct: number; heightPct: number }[]
+  >([]);
+
+  const measureChangeMarkers = useCallback(() => {
+    const scrollEl = scrollRef.current;
+    if (!scrollEl || !hoveredCommentId) {
+      setChangeMarkers([]);
+      return;
+    }
+
+    const comment = comments.find((c) => c.id === hoveredCommentId);
+    const creationHashes = comment?.block_hashes_at_creation;
+    if (!creationHashes || Object.keys(creationHashes).length === 0) {
+      setChangeMarkers([]);
+      return;
+    }
+
+    const scrollHeight = scrollEl.scrollHeight;
+    if (scrollHeight === 0) {
+      setChangeMarkers([]);
+      return;
+    }
+
+    const result: { topPct: number; heightPct: number }[] = [];
+    const blocks = scrollEl.querySelectorAll<HTMLElement>("[data-source-line]");
+    for (const block of blocks) {
+      const line = block.getAttribute("data-source-line");
+      if (!line) continue;
+      const currentHash = hashBlockText(blockVisibleText(block));
+      const creationHash = creationHashes[line];
+      if (creationHash && creationHash !== currentHash) {
+        const top = block.offsetTop;
+        const height = block.offsetHeight;
+        result.push({
+          topPct: (top / scrollHeight) * 100,
+          heightPct: Math.max((height / scrollHeight) * 100, 0.5),
+        });
+      }
+    }
+    setChangeMarkers(result);
+  }, [scrollRef, hoveredCommentId, comments]);
+
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      measureChangeMarkers();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [measureChangeMarkers]);
 
   const measureMarkers = useCallback(() => {
     const scrollEl = scrollRef.current;
@@ -340,6 +392,18 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
               setHoveredIdx(null);
               setTooltipPos(null);
               setHoveredCommentId(null);
+            }}
+          />
+        ))}
+
+        {/* Change markers — shown on hover to indicate blocks that changed */}
+        {changeMarkers.map((cm, i) => (
+          <div
+            key={`chg-${i}`}
+            className="review-stripe-change-marker"
+            style={{
+              top: `${cm.topPct}%`,
+              height: `${cm.heightPct}%`,
             }}
           />
         ))}
