@@ -256,6 +256,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   const editComment = useReviewStore((s) => s.editComment);
   const resolveComment = useReviewStore((s) => s.resolveComment);
   const dismissComment = useReviewStore((s) => s.dismissComment);
+  const replyToComment = useReviewStore((s) => s.replyToComment);
 
   useReviewHighlights(
     containerRef,
@@ -265,6 +266,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     resolveComment,
     dismissComment,
     editComment,
+    replyToComment,
   );
 
   // Build a CapturedSelection from the current window selection or a

@@ -741,19 +741,141 @@ h6:hover > .heading-anchor,
   color: rgb(96 165 250);
 }
 
-/* Hover-triggered highlight for blocks that changed since the hovered
-   comment was created.  Intentionally faint — transient on hover. */
-.review-changed-block-highlight {
-  background: rgb(239 68 68 / 0.08);
-  box-shadow: inset 3px 0 0 rgb(239 68 68 / 0.4);
+/* Thread: conversation-style stacked replies below the original comment. */
+.review-thread {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.review-thread-entry {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 4px 8px;
+  border-left: 2px solid rgb(148 163 184 / 0.3);
+  border-radius: 0 4px 4px 0;
+  font-size: 12px;
+  line-height: 1.45;
+  background: rgb(241 245 249 / 0.5);
+}
+.dark .review-thread-entry {
+  border-left-color: rgb(100 116 139 / 0.4);
+  background: rgb(30 41 59 / 0.5);
+}
+.review-thread-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 6px;
   border-radius: 4px;
+  flex-shrink: 0;
+}
+.review-thread-badge--agent {
+  color: rgb(37 99 235);
+  background: rgb(59 130 246 / 0.12);
+}
+.dark .review-thread-badge--agent {
+  color: rgb(147 197 253);
+  background: rgb(59 130 246 / 0.22);
+}
+.review-thread-badge--reviewer {
+  color: rgb(22 163 74);
+  background: rgb(34 197 94 / 0.12);
+}
+.dark .review-thread-badge--reviewer {
+  color: rgb(134 239 172);
+  background: rgb(34 197 94 / 0.22);
+}
+.review-thread-text {
+  flex: 1;
+  font-weight: 400;
+  color: rgb(51 65 85);
+}
+.dark .review-thread-text {
+  color: rgb(203 213 225);
+}
+.review-thread-text code {
+  background: rgb(241 245 249);
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+  font-size: 0.85em;
+  font-family: "JetBrains Mono", "Fira Code", monospace;
+}
+.dark .review-thread-text code {
+  background: rgb(30 41 59);
+}
+
+/* Reply button in inline comment actions */
+.review-inline-comment-reply {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgb(37 99 235);
+  background: none;
+  border: 1px solid rgb(59 130 246 / 0.4);
+  border-radius: 4px;
+  padding: 2px 10px;
+  cursor: pointer;
+  white-space: nowrap;
   transition:
-    background 0.15s,
-    box-shadow 0.15s;
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
+}
+.review-inline-comment-reply:hover {
+  background: rgb(59 130 246 / 0.08);
+  border-color: rgb(59 130 246 / 0.6);
+}
+.dark .review-inline-comment-reply {
+  color: rgb(96 165 250);
+  border-color: rgb(96 165 250 / 0.4);
+}
+.dark .review-inline-comment-reply:hover {
+  background: rgb(59 130 246 / 0.15);
+  border-color: rgb(96 165 250 / 0.7);
+}
+
+/* Reply textarea (same style as edit but distinct class) */
+.review-inline-reply-area {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px 8px;
+  border: 1px solid rgb(59 130 246 / 0.4);
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: inherit;
+  line-height: 1.4;
+  resize: vertical;
+  background: rgb(255 255 255);
+  color: rgb(30 41 59);
+}
+.review-inline-reply-area:focus {
+  outline: none;
+  border-color: rgb(59 130 246 / 0.7);
+  box-shadow: 0 0 0 2px rgb(59 130 246 / 0.12);
+}
+.dark .review-inline-reply-area {
+  background: rgb(30 41 59);
+  color: rgb(226 232 240);
+  border-color: rgb(96 165 250 / 0.4);
+}
+.dark .review-inline-reply-area:focus {
+  border-color: rgb(96 165 250 / 0.7);
+  box-shadow: 0 0 0 2px rgb(96 165 250 / 0.15);
+}
+
+/* Hover-triggered highlight for blocks that changed since the hovered
+   comment was created.  Left border only — subtle, non-intrusive. */
+.review-changed-block-highlight {
+  box-shadow: inset 3px 0 0 rgb(239 68 68 / 0.55);
+  border-radius: 2px;
+  transition: box-shadow 0.15s;
 }
 .dark .review-changed-block-highlight {
-  background: rgb(239 68 68 / 0.1);
-  box-shadow: inset 3px 0 0 rgb(239 68 68 / 0.35);
+  box-shadow: inset 3px 0 0 rgb(239 68 68 / 0.5);
 }
 
 /* Dismiss button: same shape as resolve, slate-toned to communicate
@@ -1023,6 +1145,22 @@ h6:hover > .heading-anchor,
 }
 
 /* Tooltip */
+/* Change markers in stripe — shown on hover to indicate blocks that changed */
+.review-stripe-change-marker {
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  width: auto;
+  min-height: 2px;
+  border-radius: 1px;
+  background: rgb(239 68 68 / 0.5);
+  pointer-events: none;
+  z-index: 0;
+}
+.dark .review-stripe-change-marker {
+  background: rgb(239 68 68 / 0.45);
+}
+
 .review-stripe-tooltip {
   position: absolute;
   left: calc(100% + 8px);
