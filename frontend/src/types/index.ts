@@ -72,32 +72,6 @@ export interface FileDiff {
   raw_diff: string;
 }
 
-// --- jj (Jujutsu) types ---
-
-export interface JJRevision {
-  change_id: string;
-  commit_id: string;
-  description: string;
-  author: string;
-  timestamp: string;
-  bookmarks: string[];
-  is_working_copy: boolean;
-}
-
-export interface JJEvoEntry {
-  commit_id: string;
-  description: string;
-  author: string;
-  timestamp: string;
-  operation: string;
-  hidden: boolean;
-}
-
-export interface JJInfo {
-  is_jj: boolean;
-  working_copy_change_id: string | null;
-}
-
 // --- Review mode types ---
 
 export interface ReviewSnapshot {
