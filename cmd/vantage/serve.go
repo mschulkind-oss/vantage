@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -40,6 +42,7 @@ func newServeCmd() *cobra.Command {
 		useIgnore   bool
 		walkDepth   int
 		walkTimeout float64
+		noOpen      bool
 	)
 
 	cmd := &cobra.Command{
@@ -96,7 +99,7 @@ func newServeCmd() *cobra.Command {
 				return err
 			}
 
-			return runServers(cmd.Context(), s, cfg.Host, cfg.Port)
+			return runServers(cmd.Context(), s, cfg.Host, cfg.Port, !noOpen)
 		},
 	}
 
@@ -108,6 +111,7 @@ func newServeCmd() *cobra.Command {
 	f.BoolVar(&useIgnore, "use-ignore-files", true, "Honor .vantageignore and the user ignore file")
 	f.IntVar(&walkDepth, "walk-max-depth", 0, "Maximum depth for untracked-file discovery (0 = unlimited)")
 	f.Float64Var(&walkTimeout, "walk-timeout", 30, "Timeout in seconds for untracked-file discovery")
+	f.BoolVar(&noOpen, "no-open", false, "Do not open the browser on start")
 
 	return cmd
 }
@@ -115,12 +119,21 @@ func newServeCmd() *cobra.Command {
 // runServers starts one http.Server per bind address sharing the assembled
 // handler, runs the server's background lifecycle, and shuts everything down
 // gracefully on SIGINT/SIGTERM. It returns the first non-shutdown error.
-func runServers(parent context.Context, s *server.Server, hosts []string, port int) error {
+func runServers(parent context.Context, s *server.Server, hosts []string, port int, open bool) error {
 	if parent == nil {
 		parent = context.Background()
 	}
 	ctx, stop := signal.NotifyContext(parent, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	if open && len(hosts) > 0 {
+		url := fmt.Sprintf("http://%s:%d", browserHost(hosts[0]), port)
+		go func() {
+			// Give the listener a moment to come up before launching the browser.
+			time.Sleep(500 * time.Millisecond)
+			_ = openInBrowser(url) // best-effort; headless/CI environments simply skip
+		}()
+	}
 
 	handler := s.Handler()
 
@@ -189,4 +202,31 @@ func warnNonLocal(hosts []string) {
 		"WARNING: Binding to non-localhost address(es): %v. "+
 			"Vantage has no authentication — all files in the served directory will be accessible.\n",
 		nonLocal)
+}
+
+// browserHost maps a bind address to a host usable in a browser URL: wildcard
+// binds become loopback so the opened tab actually connects.
+func browserHost(host string) string {
+	switch host {
+	case "0.0.0.0", "":
+		return "127.0.0.1"
+	case "::":
+		return "[::1]"
+	default:
+		return host
+	}
+}
+
+// openInBrowser launches the platform's default browser at url. It returns
+// immediately and any error is the caller's to ignore (headless environments
+// have no opener).
+func openInBrowser(url string) error {
+	switch runtime.GOOS {
+	case "darwin":
+		return exec.Command("open", url).Start()
+	case "windows":
+		return exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	default:
+		return exec.Command("xdg-open", url).Start()
+	}
 }

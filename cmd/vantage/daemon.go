@@ -81,7 +81,8 @@ func newDaemonCmd() *cobra.Command {
 				return err
 			}
 
-			return runServers(cmd.Context(), s, cfg.Host, cfg.Port)
+			// Daemon mode serves many repos headlessly; never open a browser.
+			return runServers(cmd.Context(), s, cfg.Host, cfg.Port, false)
 		},
 	}
 
