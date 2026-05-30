@@ -1,6 +1,8 @@
 package perf
 
 import (
+	"bufio"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -90,6 +92,44 @@ func TestMiddlewareSkipsNonAPIAndPerf(t *testing.T) {
 
 	require.Equal(t, 4, served, "all requests reach the handler")
 	require.Equal(t, 0, s.Diagnostics().Requests.Total, "skipped paths are not recorded")
+}
+
+// fakeHijacker is a ResponseWriter that supports hijacking, used to prove the
+// middleware's wrapper stays transparent to connection upgrades.
+type fakeHijacker struct {
+	http.ResponseWriter
+	hijacked bool
+}
+
+func (f *fakeHijacker) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	f.hijacked = true
+	return nil, nil, nil
+}
+
+// TestMiddlewareSkipsWebSocket confirms the long-lived /api/ws upgrade is passed
+// through untimed (wrapping its writer would block the handshake — a 501).
+func TestMiddlewareSkipsWebSocket(t *testing.T) {
+	s := NewStore()
+	served := 0
+	handler := Middleware(s)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		served++
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/api/ws", nil)
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	require.Equal(t, 1, served)
+	require.Equal(t, 0, s.Diagnostics().Requests.Total, "/api/ws must not be timed")
+}
+
+// TestStatusRecorderUnwrapEnablesHijack guards the regression where the
+// status-capturing wrapper hid the underlying Hijacker, breaking WebSockets.
+func TestStatusRecorderUnwrapEnablesHijack(t *testing.T) {
+	base := &fakeHijacker{ResponseWriter: httptest.NewRecorder()}
+	rec := &statusRecorder{ResponseWriter: base, status: http.StatusOK}
+
+	_, _, err := http.NewResponseController(rec).Hijack()
+	require.NoError(t, err, "ResponseController must reach the Hijacker via Unwrap")
+	require.True(t, base.hijacked)
 }
 
 // TestMiddlewareRecordsAPIPath confirms a plain /api/ path is recorded with the
