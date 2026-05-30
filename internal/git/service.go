@@ -103,6 +103,14 @@ func NewService(repoPath string, opts Options) *GitService {
 		abs = repoPath
 	}
 	abs = filepath.Clean(abs)
+	// Canonicalize symlinks so repoPath matches what "git rev-parse
+	// --show-toplevel" reports. Without this, a repo under a symlinked path
+	// (notably macOS, where t.TempDir/$TMPDIR live under /var -> /private/var)
+	// makes every file look like it is outside the work tree, so history,
+	// status, and diffs all come back empty.
+	if resolved, rerr := filepath.EvalSymlinks(abs); rerr == nil {
+		abs = resolved
+	}
 
 	excl := make(map[string]struct{}, len(opts.ExcludeDirs))
 	for _, d := range opts.ExcludeDirs {
