@@ -123,6 +123,14 @@ build: bundle-frontend
 run path=".":
     go run ./cmd/vantage serve {{path}}
 
+# Build the static user-guide documentation site into dist/docs.
+build-docs:
+    ./scripts/build-site.sh
+
+# Deploy the user-guide site to Cloudflare.
+deploy-docs: build-docs
+    npx wrangler deploy --config docs-wrangler.toml
+
 # ── Housekeeping ────────────────────────────────────────────────────
 
 # Verify the repo is clean and in sync at the end of a task.

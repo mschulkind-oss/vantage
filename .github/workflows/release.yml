@@ -3,26 +3,25 @@ name: Release
 on:
   push:
     tags:
-      - "v*"            # Full release: v0.3.5
+      - "v*"            # Full release: v0.3.5 — Go binaries + Homebrew tap
       - "vantage-md@*"  # npm-only release: vantage-md@0.1.5
 
 permissions:
-  contents: write  # gh release create
+  contents: write  # gh release create / goreleaser
   id-token: write  # npm provenance (OIDC trusted publishing)
 
 jobs:
-  release:
+  # --- npm publish for the standalone vantage-md library ---
+  # vantage-md is an independent Markdown-rendering package with its own
+  # version. Both v* and vantage-md@* tags pass through here; the publish
+  # itself is skipped when the version is already on the registry.
+  npm:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0  # setuptools-scm needs tags to compute the version
 
       - name: Install mise
         uses: jdx/mise-action@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
 
       - name: Setup Node with npm registry
         uses: actions/setup-node@v6
@@ -30,18 +29,11 @@ jobs:
           node-version: "24"
           registry-url: https://registry.npmjs.org
 
-      - name: Install Python dependencies
-        run: uv sync
-
       - name: Build vantage-md
         run: cd packages/vantage-md && npm ci && npx tsup
 
-      - name: Install frontend deps
-        run: cd frontend && npm ci
-
-      # --- npm publish with provenance ---
       # Skip if the version in package.json is already on the registry. This
-      # lets `v*` tags (Python releases) ride past a stale npm version without
+      # lets `v*` tags (Go releases) ride past a stale npm version without
       # failing the whole workflow; only `vantage-md@*` tags or v* tags that
       # also bumped npm actually publish.
       - name: Check if npm version needs publishing
@@ -60,33 +52,33 @@ jobs:
       - name: Publish vantage-md to npm
         if: steps.npm_check.outputs.skip == 'false'
         run: cd packages/vantage-md && npm publish --provenance --access public
-
-      # --- Python build + GitHub release (only for v* tags) ---
-      - name: Build frontend
-        if: startsWith(github.ref_name, 'v')
-        run: cd frontend && npm run build
-
-      - name: Bundle frontend into Python package
-        if: startsWith(github.ref_name, 'v')
-        run: python3 -c "import shutil; from pathlib import Path; dst=Path('src/vantage/frontend_dist'); shutil.rmtree(dst, ignore_errors=True); shutil.copytree('frontend/dist', dst)"
-
-      - name: Build Python wheel
-        if: startsWith(github.ref_name, 'v')
-        run: uv build
-
-      - name: Create or update GitHub release
-        if: startsWith(github.ref_name, 'v')
-        run: |
-          set -euo pipefail
-          tag="${{ github.ref_name }}"
-          if gh release view "$tag" >/dev/null 2>&1; then
-            echo "Release $tag already exists; uploading artifacts."
-            gh release upload "$tag" dist/*.whl dist/*.tar.gz --clobber
-          else
-            echo "Creating release $tag."
-            gh release create "$tag" dist/*.whl dist/*.tar.gz \
-              --title "$tag" \
-              --generate-notes
-          fi
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  # --- Go cross-compile + GitHub release + Homebrew tap (only for v* tags) ---
+  # GoReleaser's `before` hook builds the Vite frontend and copies it into
+  # web/dist so the embedded bundle is the real one, then cross-compiles the
+  # vantage binary for linux/darwin (amd64+arm64), attaches the archives to the
+  # GitHub release, and pushes the updated formula to the Homebrew tap.
+  goreleaser:
+    if: startsWith(github.ref_name, 'v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # goreleaser needs the full history + tags
+
+      - name: Install mise
+        uses: jdx/mise-action@v4
+
+      - name: Download Go modules
+        run: go mod download
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

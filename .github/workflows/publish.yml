@@ -1,187 +1,60 @@
 name: Publish
 
+# Recovery / backfill entry point. The normal release path runs from a pushed
+# `v*` tag (see release.yml) and produces the GitHub release archives plus the
+# Homebrew tap update via GoReleaser. This workflow re-runs that same GoReleaser
+# release for an existing tag — use it to recover a partially-failed release or
+# to backfill the Homebrew tap without cutting a new tag.
 on:
   release:
     types: [published]
   workflow_dispatch:
     inputs:
-      version:
-        description: "Version to (re)publish to the homebrew tap, e.g. 0.4.0. PyPI upload is skipped — must already be on PyPI."
+      tag:
+        description: "Existing tag to (re)release, e.g. v0.4.0"
         required: true
         type: string
 
 permissions:
-  contents: read
+  contents: write  # gh release / goreleaser
   id-token: write
 
 jobs:
-  build:
-    # Skip on workflow_dispatch — dispatch only re-runs the brew job to
-    # backfill or recover; the package must already be on PyPI.
-    if: github.event_name == 'release'
+  goreleaser:
     runs-on: ubuntu-latest
     steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "release" ]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            tag="${{ github.event.inputs.tag }}"
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "Releasing vantage ${tag}"
+
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0  # setuptools-scm needs tags
+          ref: ${{ steps.tag.outputs.tag }}
+          fetch-depth: 0  # goreleaser needs the full history + tags
 
       - name: Install mise
         uses: jdx/mise-action@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
+      - name: Download Go modules
+        run: go mod download
 
-      - name: Install Python dependencies
-        run: uv sync
-
-      # The frontend imports from the local `vantage-md` package; build it
-      # first so TypeScript + Vite can resolve the module.
-      - name: Build local vantage-md package
-        run: cd packages/vantage-md && npm ci && npx tsup
-
-      - name: Install frontend deps
-        run: cd frontend && npm ci
-
-      - name: Build frontend
-        run: cd frontend && npm run build
-
-      - name: Bundle frontend into Python package
-        run: python3 -c "import shutil; from pathlib import Path; dst=Path('src/vantage/frontend_dist'); shutil.rmtree(dst, ignore_errors=True); shutil.copytree('frontend/dist', dst)"
-
-      - name: Build sdist + wheel
-        run: uv build
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v7
+      # GoReleaser's `before` hook builds the Vite frontend and bundles it into
+      # web/dist, then cross-compiles the vantage binary for linux/darwin
+      # (amd64+arm64), (re)uploads the archives to the GitHub release, and
+      # updates the Homebrew tap formula. `--clean` makes the run idempotent.
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
         with:
-          name: dist
-          path: dist/
-
-  publish-pypi:
-    if: github.event_name == 'release'
-    needs: build
-    runs-on: ubuntu-latest
-    environment: pypi
-    steps:
-      - name: Download build artifacts
-        uses: actions/download-artifact@v8
-        with:
-          name: dist
-          path: dist/
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-
-      - name: Publish to PyPI
-        run: uv publish dist/* --check-url https://pypi.org/simple/
-
-  brew:
-    # Run after publish-pypi on release events, or standalone on workflow_dispatch.
-    # `always()` is required so the job still runs when upstream jobs are
-    # skipped (manual dispatch); the inner condition gates on either PyPI
-    # having succeeded, or the event being manual.
-    if: |
-      always() &&
-      (github.event_name == 'workflow_dispatch' ||
-       needs.publish-pypi.result == 'success')
-    needs: [publish-pypi]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Determine version
-        id: version
-        run: |
-          if [ "$GITHUB_EVENT_NAME" = "release" ]; then
-            VERSION="${GITHUB_REF_NAME#v}"
-          else
-            VERSION="${{ github.event.inputs.version }}"
-          fi
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Publishing vantage-md ${VERSION} to homebrew tap"
-
-      - name: Check out homebrew tap
-        uses: actions/checkout@v6
-        with:
-          repository: mschulkind-oss/homebrew-tap
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          path: tap
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-
-      - name: Install homebrew-pypi-poet + vantage-md from PyPI
-        run: |
-          python -m venv /tmp/poet-venv
-          # poet still uses the deprecated pkg_resources API, which was removed
-          # in setuptools 81. Pin below that for the lifetime of this job.
-          /tmp/poet-venv/bin/pip install --quiet 'setuptools<81' homebrew-pypi-poet
-          # Retry the vantage-md install in case PyPI index replication lags
-          # behind the publish step (rare but documented).
-          VERSION="${{ steps.version.outputs.version }}"
-          for i in 1 2 3 4 5 6; do
-            if /tmp/poet-venv/bin/pip install --quiet "vantage-md==${VERSION}"; then
-              echo "Installed vantage-md==${VERSION}"
-              break
-            fi
-            echo "PyPI not ready yet, retrying in 15s..."
-            sleep 15
-          done
-
-      - name: Generate + patch formula
-        run: |
-          set -euo pipefail
-          /tmp/poet-venv/bin/poet -f vantage-md > /tmp/formula.rb
-
-          # Poet leaves placeholder fields — patch them here instead of
-          # maintaining a separate template that could drift from poet's output.
-          python3 <<'PY'
-          from pathlib import Path
-
-          f = Path("/tmp/formula.rb")
-          text = f.read_text()
-
-          text = text.replace(
-              'desc "Shiny new formula"',
-              'desc "Beautiful local Markdown viewer with live reload and Git awareness"',
-          )
-          text = text.replace(
-              'homepage "None"',
-              'homepage "https://github.com/mschulkind-oss/vantage"\n  license "Apache-2.0"',
-          )
-
-          # vantage-md's pyproject.toml requires Python >=3.13.
-          text = text.replace(
-              'depends_on "python3"',
-              'depends_on "python@3.13"',
-          )
-
-          # Replace poet's `false` test stub with a real smoke test.
-          # `--version` exits 0 without binding a port or loading a repo.
-          text = text.replace(
-              "  test do\n    false\n  end",
-              '  test do\n    assert_match "vantage-md", shell_output("#{bin}/vantage-md --version")\n  end',
-          )
-
-          f.write_text(text)
-          PY
-
-          echo "--- Generated formula ---"
-          cat /tmp/formula.rb
-
-      - name: Commit and push to tap
-        run: |
-          set -euo pipefail
-          VERSION="${{ steps.version.outputs.version }}"
-          mkdir -p tap/Formula
-          cp /tmp/formula.rb tap/Formula/vantage-md.rb
-          cd tap
-          git config user.name "vantage-md release bot"
-          git config user.email "noreply@github.com"
-          git add Formula/vantage-md.rb
-          if git diff --cached --quiet; then
-            echo "Formula unchanged; nothing to commit."
-            exit 0
-          fi
-          git commit -m "vantage-md ${VERSION}"
-          git push
+          version: "~> v2"
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}

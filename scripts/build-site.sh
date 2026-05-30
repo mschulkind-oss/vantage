@@ -1,14 +1,20 @@
 #!/bin/bash
 set -e
 
-echo "--- Building Frontend ---"
+echo "--- Building frontend ---"
 cd frontend
-npm install
+npm ci
 npm run build
 cd ..
 
-echo "--- Building Static Documentation Site ---"
-# 'vantage' was installed via 'pip install .' by Cloudflare automatically
-vantage build userguide/ -o dist/docs --frontend-dist frontend/dist -n "Vantage User Guide"
+echo "--- Bundling frontend into the binary ---"
+rm -rf web/dist
+cp -r frontend/dist web/dist
 
-echo "--- Build Complete ---"
+echo "--- Building vantage ---"
+go build -o vantage ./cmd/vantage
+
+echo "--- Building static documentation site ---"
+./vantage build userguide/ -o dist/docs -n "Vantage User Guide"
+
+echo "--- Build complete ---"
