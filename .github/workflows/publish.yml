@@ -51,7 +51,7 @@ jobs:
       # (amd64+arm64), (re)uploads the archives to the GitHub release, and
       # updates the Homebrew tap formula. `--clean` makes the run idempotent.
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v7
         with:
           version: "~> v2"
           args: release --clean
