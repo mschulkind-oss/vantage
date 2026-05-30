@@ -35,6 +35,13 @@ func (r *statusRecorder) Write(b []byte) (int, error) {
 	return r.ResponseWriter.Write(b)
 }
 
+// Unwrap exposes the underlying writer so that http.ResponseController can
+// reach its Hijacker/Flusher. Without this, wrapping the writer would break
+// connection upgrades (WebSocket) and streaming responses.
+func (r *statusRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
+
 // Middleware returns net/http middleware that records request timings into the
 // given Store. Requests outside /api/ and the /api/perf* endpoints are passed
 // through untimed. The recorded operation is "METHOD path" with the repo name
@@ -43,7 +50,10 @@ func Middleware(store *Store) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			path := req.URL.Path
-			if !strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/api/perf") {
+			// Skip non-API paths, the perf endpoints themselves, and the
+			// long-lived WebSocket (timing it is meaningless and wrapping its
+			// writer would block the connection upgrade).
+			if !strings.HasPrefix(path, "/api/") || strings.HasPrefix(path, "/api/perf") || path == "/api/ws" {
 				next.ServeHTTP(w, req)
 				return
 			}
