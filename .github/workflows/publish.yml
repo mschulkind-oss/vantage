@@ -1,60 +1,112 @@
 name: Publish
 
-# Recovery / backfill entry point. The normal release path runs from a pushed
-# `v*` tag (see release.yml) and produces the GitHub release archives plus the
-# Homebrew tap update via GoReleaser. This workflow re-runs that same GoReleaser
-# release for an existing tag — use it to recover a partially-failed release or
-# to backfill the Homebrew tap without cutting a new tag.
+# Mirrors the release flow: publishing a GitHub Release builds the binaries,
+# attaches them to the release, and updates the Homebrew tap. A manual dispatch
+# re-runs only the tap update (the binaries must already be on the release) to
+# recover or backfill a formula without cutting a new release.
 on:
   release:
     types: [published]
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Existing tag to (re)release, e.g. v0.4.0"
+      version:
+        description: "Existing version to refresh the Homebrew tap for, e.g. 0.4.0 (binaries must already be on the release)."
         required: true
         type: string
 
 permissions:
-  contents: write  # gh release / goreleaser
-  id-token: write
+  contents: write # upload release assets
 
 jobs:
-  goreleaser:
+  # Build the vantage binary for each platform with the frontend embedded and
+  # attach the archives to the GitHub release.
+  build:
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: darwin, goarch: arm64 }
     steps:
-      - name: Resolve tag
-        id: tag
-        run: |
-          set -euo pipefail
-          if [ "$GITHUB_EVENT_NAME" = "release" ]; then
-            tag="${GITHUB_REF_NAME}"
-          else
-            tag="${{ github.event.inputs.tag }}"
-          fi
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
-          echo "Releasing vantage ${tag}"
-
       - uses: actions/checkout@v6
         with:
-          ref: ${{ steps.tag.outputs.tag }}
-          fetch-depth: 0  # goreleaser needs the full history + tags
+          fetch-depth: 0
 
       - name: Install mise
         uses: jdx/mise-action@v4
 
-      - name: Download Go modules
-        run: go mod download
+      - name: Build and bundle the frontend
+        run: |
+          cd frontend && npm ci && npm run build && cd ..
+          rm -rf web/dist && cp -r frontend/dist web/dist
 
-      # GoReleaser's `before` hook builds the Vite frontend and bundles it into
-      # web/dist, then cross-compiles the vantage binary for linux/darwin
-      # (amd64+arm64), (re)uploads the archives to the GitHub release, and
-      # updates the Homebrew tap formula. `--clean` makes the run idempotent.
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: "~> v2"
-          args: release --clean
+      - name: Cross-compile and archive
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          go build -trimpath \
+            -ldflags "-s -w \
+              -X github.com/mschulkind-oss/vantage/internal/buildinfo.version=${version} \
+              -X github.com/mschulkind-oss/vantage/internal/buildinfo.commit=${GITHUB_SHA::7}" \
+            -o vantage ./cmd/vantage
+          tar -czf "vantage_${version}_${GOOS}_${GOARCH}.tar.gz" vantage LICENSE README.md
+
+      - name: Upload archive to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${GITHUB_REF_NAME}" vantage_*.tar.gz --clobber
+
+  # Regenerate the Homebrew formula from the released archives and push it to the
+  # tap. Runs after a successful build on release events, or standalone on a
+  # manual dispatch (always() lets it run when build is skipped).
+  brew:
+    if: always() && (github.event_name == 'workflow_dispatch' || needs.build.result == 'success')
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine version
+        id: version
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "release" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="${{ github.event.inputs.version }}"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Updating Homebrew tap for vantage ${version}"
+
+      - name: Check out vantage (for the formula generator)
+        uses: actions/checkout@v6
+
+      - name: Check out the Homebrew tap
+        uses: actions/checkout@v6
+        with:
+          repository: mschulkind-oss/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: tap
+
+      - name: Generate the formula
+        run: ./scripts/update-brew-tap.sh "${{ steps.version.outputs.version }}" tap
+
+      - name: Commit and push to the tap
+        run: |
+          set -euo pipefail
+          cd tap
+          git config user.name "vantage release bot"
+          git config user.email "noreply@github.com"
+          git add Formula/vantage.rb
+          if git diff --cached --quiet; then
+            echo "Formula unchanged; nothing to commit."
+            exit 0
+          fi
+          git commit -m "vantage ${{ steps.version.outputs.version }}"
+          git push
