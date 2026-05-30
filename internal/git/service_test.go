@@ -55,6 +55,35 @@ func writeFile(t *testing.T, dir, rel, content string) {
 	require.NoError(t, os.WriteFile(full, []byte(content), 0o644))
 }
 
+// TestSymlinkedRepoPathResolves guards the macOS regression where the repo path
+// lives under a symlink (on macOS, t.TempDir/$TMPDIR sit under /var ->
+// /private/var). "git rev-parse --show-toplevel" reports the physical path, so
+// unless the service canonicalizes its repo path, every file looks outside the
+// work tree and history/status/diff come back empty. Reproduced cross-platform
+// here with an explicit symlink.
+func TestSymlinkedRepoPathResolves(t *testing.T) {
+	ClearStatusCache()
+	ClearRecentFilesCache()
+
+	real := initRepo(t)
+	writeFile(t, real, "README.md", "line one\nline two\n")
+	runGit(t, real, "add", "README.md")
+	runGit(t, real, "commit", "-m", "initial commit")
+
+	// Point the service at a symlink to the repo rather than the real path.
+	link := filepath.Join(t.TempDir(), "repo-link")
+	require.NoError(t, os.Symlink(real, link))
+
+	svc := NewService(link, Options{})
+
+	hist := svc.History("README.md", 10)
+	require.Len(t, hist, 1, "history must resolve through a symlinked repo path")
+	require.Equal(t, "initial commit", hist[0].Message)
+
+	last := svc.LastCommit("README.md")
+	require.NotNil(t, last, "last commit must resolve through a symlinked repo path")
+}
+
 func TestIntegrationRootCommitHistoryAndDiff(t *testing.T) {
 	ClearStatusCache()
 	ClearRecentFilesCache()
