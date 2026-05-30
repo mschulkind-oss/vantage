@@ -1,0 +1,33 @@
+name: Publish npm
+
+# The vantage-md package is an independent Markdown-rendering library with its
+# own version. Pushing a `vantage-md@<version>` tag builds and publishes it to
+# npm. This is separate from the application release in publish.yml.
+on:
+  push:
+    tags:
+      - "vantage-md@*"
+
+permissions:
+  contents: read
+  id-token: write # npm provenance (OIDC)
+
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node with the npm registry
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+
+      - name: Build vantage-md
+        run: cd packages/vantage-md && npm ci && npx tsup
+
+      - name: Publish to npm
+        run: cd packages/vantage-md && npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
