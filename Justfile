@@ -9,22 +9,16 @@ export OVERMIND_TITLE := "vantage-dev"
 default:
     @just --list
 
-# Setup the entire project (never modifies tracked files)
+# ── Setup ───────────────────────────────────────────────────────────
+
+# Install everything needed to build, test, and run the project.
 setup: install-hooks
-    #!/usr/bin/env bash
-    set -euo pipefail
-    # Create a relocatable venv so shebangs use #!/usr/bin/env python
-    # instead of absolute paths — works across host and jail mounts.
-    if [ ! -d .venv ] || ! head -1 .venv/bin/pip | grep -q 'env python'; then
-        rm -rf .venv
-        uv venv --relocatable
-    fi
-    uv sync --frozen
-    cd packages/vantage-md && npm ci && npx tsup && cd ../..
+    mise install
+    go mod download
+    cd packages/vantage-md && npm ci && npx tsup
     cd frontend && npm ci
 
-# Point git at the tracked hooks dir. Idempotent — safe to run on every
-# setup. No copying; hooks always match the tracked files at scripts/hooks/.
+# Point git at the tracked hooks dir. Idempotent.
 install-hooks:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -32,9 +26,47 @@ install-hooks:
     git config core.hooksPath scripts/hooks
     echo "Hooks active via core.hooksPath=scripts/hooks"
 
-# Run the backend server in development mode
-dev-py path=".":
-    uv run vantage {{path}}
+# ── Quality gate ────────────────────────────────────────────────────
+
+# Local dev gate: format in place, fix lint, run tests.
+check: format lint test
+
+# Read-only gate used by the pre-commit hook and CI.
+check-ci: lint-ci test
+
+format: format-go format-js
+format-go:
+    gofmt -w cmd internal web
+format-js:
+    cd frontend && npm run format
+
+lint: lint-go lint-js
+lint-go:
+    go vet ./...
+    staticcheck ./...
+lint-js:
+    cd frontend && npm run lint
+    cd frontend && npx tsc --noEmit
+
+lint-ci: lint-ci-go lint-js
+lint-ci-go:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    unformatted="$(gofmt -l cmd internal web)"
+    if [ -n "$unformatted" ]; then echo "gofmt needed:"; echo "$unformatted"; exit 1; fi
+    go vet ./...
+    staticcheck ./...
+
+test: test-go test-js
+test-go *args:
+    go test ./... {{args}}
+test-js:
+    cd frontend && npm run test
+
+# ── Dev servers (overmind) ──────────────────────────────────────────
+
+dev-go path=".":
+    go run ./cmd/vantage serve {{path}}
 
 dev-js:
     cd frontend && npm run dev
@@ -43,295 +75,66 @@ dev-js:
 dev path=".":
     #!/usr/bin/env bash
     set -euo pipefail
-    # If overmind is already running and responsive, just say so
     if [ -e "$OVERMIND_SOCKET" ] && overmind status &>/dev/null; then
-        echo "Dev servers already running. Use 'just dev-stop' to stop or 'just dev-restart' to restart."
+        echo "Dev servers already running. Use 'just dev-stop' or 'just dev-restart'."
         exit 0
     fi
-    # Clean up any stale state (dead socket, orphaned processes)
     rm -f "$OVERMIND_SOCKET"
     pkill -f "overmind-${OVERMIND_TITLE}" 2>/dev/null || true
     sleep 0.5
     TARGET_REPO={{path}} overmind start -D
     echo "Dev servers started. Use 'just dev-connect' to view logs."
 
-# Stop the dev servers (idempotent — safe to call repeatedly)
 dev-stop:
     #!/usr/bin/env bash
     set -euo pipefail
     if [ -e "$OVERMIND_SOCKET" ]; then
-        # Try graceful quit via the socket
-        if overmind quit 2>/dev/null; then
-            # Wait for clean shutdown
-            for i in $(seq 1 30); do
-                [ ! -e "$OVERMIND_SOCKET" ] && break
-                sleep 0.1
-            done
-        fi
-        # Remove stale socket if still present
+        overmind quit 2>/dev/null || true
+        for _ in $(seq 1 30); do [ ! -e "$OVERMIND_SOCKET" ] && break; sleep 0.1; done
         rm -f "$OVERMIND_SOCKET"
     fi
-    # Kill any orphaned overmind/tmux processes for this project
     pkill -f "overmind-${OVERMIND_TITLE}" 2>/dev/null || true
     echo "Dev servers stopped."
 
-# Restart dev servers
 dev-restart path=".":
     just dev-stop
     just dev {{path}}
 
-# Connect to running dev servers (view logs)
 dev-connect:
     overmind connect
 
-check: format lint typecheck test build-frontend
+# ── Build ───────────────────────────────────────────────────────────
 
-# Read-only verification (used by pre-commit hook and CI)
-check-ci: lint-ci typecheck test
+# Build the frontend single-page app.
+build-frontend:
+    cd frontend && npm run build
 
-# Verify the repo is in a clean, reportable state at the end of a task.
+# Copy the built frontend into the Go embed directory.
+bundle-frontend: build-frontend
+    rm -rf web/dist
+    cp -r frontend/dist web/dist
+
+# Build the vantage binary with the frontend embedded.
+build: bundle-frontend
+    go build -ldflags "-X github.com/mschulkind-oss/vantage/internal/buildinfo.commit=$(git rev-parse --short HEAD)" -o vantage ./cmd/vantage
+
+# Run the server directly (dev — frontend served from web/dist placeholder
+# unless you have run bundle-frontend).
+run path=".":
+    go run ./cmd/vantage serve {{path}}
+
+# ── Housekeeping ────────────────────────────────────────────────────
+
+# Verify the repo is clean and in sync at the end of a task.
 done:
     @echo "== branch =="
     @current=$(git symbolic-ref --short HEAD); \
-     if [ "$current" != "main" ]; then \
-         echo "FAIL: on branch '$current', expected 'main'"; exit 1; \
+     if [ "$current" != "main" ]; then echo "FAIL: on '$current', expected 'main'"; exit 1; \
      else echo "OK: on main"; fi
     @echo "== working tree =="
-    @if [ -n "$(git status --porcelain)" ]; then \
-         echo "FAIL: working tree is not clean:"; \
-         git status --short; exit 1; \
+    @if [ -n "$(git status --porcelain)" ]; then echo "FAIL: working tree not clean:"; git status --short; exit 1; \
      else echo "OK: clean"; fi
-    @echo "== ahead of origin =="
-    @ahead=$(git rev-list --count @{u}..HEAD 2>/dev/null || echo 0); \
-     if [ "$ahead" -gt 0 ]; then \
-         echo "WARN: $ahead unpushed commits on main"; \
-         git log --oneline @{u}..HEAD; \
-     else echo "OK: in sync with origin"; fi
     @echo "== quality gate =="
     @just check-ci
     @echo ""
     @echo "done: ready to report task complete."
-
-lint-ci: lint-py lint-js
-    uv run ruff format --check .
-    cd frontend && npm run format:check
-
-format-py:
-    uv run ruff check --fix .
-    uv run ruff format .
-
-format-js:
-    cd frontend && npm run format
-
-format: format-py format-js
-
-lint-py:
-    uv run ruff check .
-
-lint-js:
-    cd frontend && npm run lint
-
-lint: lint-py lint-js
-
-typecheck:
-    uv run basedpyright src/ --warnings || true
-
-test-py:
-    uv run python -m pytest tests/ -v
-
-test-js:
-    cd frontend && npm run test
-
-test-e2e:
-    cd frontend && npx playwright test
-
-test: test-py test-js
-
-coverage-py:
-    uv run python -m pytest tests/ -v --cov=src/vantage --cov-report=term-missing --cov-report=html
-
-coverage-js:
-    cd frontend && npm run test:coverage
-
-coverage: coverage-py coverage-js
-
-# Build the frontend
-build-frontend:
-    cd frontend && npm run build
-
-# Copy frontend dist into the Python package
-bundle-frontend: build-frontend
-    python3 -c "import shutil; from pathlib import Path; dst=Path('src/vantage/frontend_dist'); shutil.rmtree(dst, ignore_errors=True); shutil.copytree('frontend/dist', dst)"
-
-# Ensure venv + deps exist (idempotent, no-op if already set up)
-_ensure-env:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [ ! -d .venv ] || ! head -1 .venv/bin/pip 2>/dev/null | grep -q 'env python'; then
-        rm -rf .venv
-        uv venv --relocatable
-    fi
-    uv sync --frozen
-    if [ ! -d packages/vantage-md/node_modules ]; then
-        cd packages/vantage-md && npm ci && cd ../..
-    fi
-    if [ ! -d packages/vantage-md/dist ]; then
-        cd packages/vantage-md && npx tsup && cd ../..
-    fi
-    if [ ! -d frontend/node_modules ]; then
-        cd frontend && npm ci
-    fi
-
-# Build the Python package (includes frontend)
-# Version is derived automatically from git tags by setuptools-scm.
-build: _ensure-env bundle-frontend
-    rm -rf dist/
-    uv build
-
-# Install the built package as a uv tool
-install: build
-    #!/usr/bin/env bash
-    set -euo pipefail
-    whl=(dist/*.whl)
-    uv tool install "${whl[0]}" --force
-
-# Uninstall the uv tool
-uninstall:
-    uv tool uninstall vantage-md || true
-    uv tool uninstall vantage || true
-
-# Reinstall the package (useful for development)
-reinstall: uninstall install
-
-# Restart the systemd service (after install)
-restart-service:
-    systemctl --user restart vantage
-
-# Full rebuild and restart: build, install, restart service
-deploy: install restart-service
-    @echo "Vantage deployed and service restarted"
-
-# Show service status
-status:
-    systemctl --user status vantage
-
-# View service logs
-logs:
-    journalctl --user -u vantage -f
-
-# Clean build artifacts (optional, for fresh builds)
-clean:
-    python3 -c "import shutil; from pathlib import Path; \
-        [shutil.rmtree(p) for p in [Path('dist'), Path('build'), Path('src/vantage/frontend_dist'), Path('src/vantage.egg-info')] if p.exists()]"
-
-# ── Release ─────────────────────────────────────────────────────────
-
-# Release both packages: tag, build, publish to PyPI + npm, create GitHub release.
-# Python version is derived from git tags by setuptools-scm — we only create
-# the tag. npm version is bumped in package.json (npm has no scm plugin).
-# Usage: just release patch  (or: minor, major)
-release bump="patch": _ensure-env
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    # — 1. Preflight: run all checks on current code —
-    just check-ci
-
-    # — 2. Compute new versions —
-    cur_py=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null | sed 's/^v//' || echo "0.0.0")
-    IFS='.' read -r maj min pat <<< "$cur_py"
-    case "{{bump}}" in
-        major) new_py="$((maj+1)).0.0" ;;
-        minor) new_py="${maj}.$((min+1)).0" ;;
-        patch) new_py="${maj}.${min}.$((pat+1))" ;;
-        *)     echo "Usage: just release [major|minor|patch]"; exit 1 ;;
-    esac
-
-    cur_npm=$(node -p "require('./packages/vantage-md/package.json').version")
-    IFS='.' read -r nmaj nmin npat <<< "$cur_npm"
-    case "{{bump}}" in
-        major) new_npm="$((nmaj+1)).0.0" ;;
-        minor) new_npm="${nmaj}.$((nmin+1)).0" ;;
-        patch) new_npm="${nmaj}.${nmin}.$((npat+1))" ;;
-    esac
-
-    echo ""
-    echo "Python:  ${cur_py} → ${new_py}"
-    echo "npm:     ${cur_npm} → ${new_npm}"
-    echo ""
-    read -rp "Proceed? [y/N] " confirm < /dev/tty
-    [[ "$confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 1; }
-
-    # — 3. Bump npm version (Python version comes from the tag) —
-    cd packages/vantage-md && npm version "${new_npm}" --no-git-tag-version && cd ../..
-    cd frontend && npm install && cd ..
-
-    # — 4. Commit + tag —
-    git add packages/vantage-md/package.json frontend/package-lock.json
-    git commit -m "release: v${new_py} / vantage-md@${new_npm}" --no-verify
-    git tag -a "v${new_py}" -m "v${new_py}"
-
-    # — 5. Push (CI handles build, PyPI + npm publish, and GitHub release) —
-    git push origin main --follow-tags
-
-    echo ""
-    echo "Pushed: v${new_py} / vantage-md@${new_npm}"
-    echo "CI will publish to PyPI + npm and create GitHub release."
-
-# Release only the npm package (vantage-md).
-# Usage: just release-npm patch
-release-npm bump="patch": _ensure-env
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    # — 1. Preflight —
-    just check-ci
-
-    # — 2. Compute new version —
-    cur=$(node -p "require('./packages/vantage-md/package.json').version")
-    IFS='.' read -r maj min pat <<< "$cur"
-    case "{{bump}}" in
-        major) new="$((maj+1)).0.0" ;;
-        minor) new="${maj}.$((min+1)).0" ;;
-        patch) new="${maj}.${min}.$((pat+1))" ;;
-        *)     echo "Usage: just release-npm [major|minor|patch]"; exit 1 ;;
-    esac
-
-    echo ""
-    echo "vantage-md: ${cur} → ${new}"
-    read -rp "Proceed? [y/N] " confirm < /dev/tty
-    [[ "$confirm" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 1; }
-
-    # — 3. Bump, build, commit —
-    cd packages/vantage-md
-    npm version "${new}" --no-git-tag-version
-    npx tsup
-    cd ../..
-    cd frontend && npm install && cd ..
-
-    git add packages/vantage-md/package.json frontend/package-lock.json
-    git commit -m "release: vantage-md@${new}" --no-verify
-    git tag -a "vantage-md@${new}" -m "vantage-md@${new}"
-
-    # — 4. Push (CI handles npm publish) —
-    git push origin main --follow-tags
-
-    echo ""
-    echo "Pushed: vantage-md@${new}"
-    echo "CI will publish to npm."
-
-# Build the static user guide docs
-build-docs:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    echo "--- Building frontend ---"
-    cd frontend && npm run build && cd ..
-    echo "--- Building static user guide ---"
-    uv run vantage build userguide/ -o dist/docs --frontend-dist frontend/dist -n "Vantage User Guide"
-    rm -f dist/docs/_redirects  # Workers routing, not Pages
-    echo "--- Done: dist/docs/ ---"
-
-# Deploy user guide to Cloudflare Workers
-deploy-docs: build-docs
-    npx wrangler deploy --config docs-wrangler.toml
-
