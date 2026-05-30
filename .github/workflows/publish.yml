@@ -39,6 +39,9 @@ jobs:
       - name: Install mise
         uses: jdx/mise-action@v4
 
+      - name: Build the vantage-md library
+        run: cd packages/vantage-md && npm ci && npx tsup
+
       - name: Build and bundle the frontend
         run: |
           cd frontend && npm ci && npm run build && cd ..

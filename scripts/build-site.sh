@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e
 
+echo "--- Building the vantage-md library (frontend depends on it) ---"
+cd packages/vantage-md
+npm ci
+npx tsup
+cd ../..
+
 echo "--- Building frontend ---"
 cd frontend
 npm ci
