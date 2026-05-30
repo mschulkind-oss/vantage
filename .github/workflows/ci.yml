@@ -30,43 +30,28 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0  # setuptools-scm needs tags
+          fetch-depth: 0 # buildinfo reads vcs metadata
 
       - name: Install mise
         uses: jdx/mise-action@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-
-      - name: Install Python dependencies
-        run: uv sync
-
       - name: Build vantage-md package
         run: cd packages/vantage-md && npm ci && npx tsup
 
-      - name: Install Node dependencies
+      - name: Install frontend dependencies
         run: cd frontend && npm ci
 
-      - name: Lint Python
-        run: uv run ruff check .
+      - name: Download Go modules
+        run: go mod download
 
-      - name: Format check Python
-        run: uv run ruff format --check .
+      - name: Lint
+        run: just lint-ci
 
-      - name: Type check Python
-        run: uv run basedpyright src/ --warnings || true
-
-      - name: Lint JavaScript
-        run: cd frontend && npm run lint
-
-      - name: Type check TypeScript
-        run: cd frontend && npx tsc --noEmit
-
-      - name: Test Python
-        run: uv run pytest tests/ -v
-
-      - name: Test JavaScript
-        run: cd frontend && npm run test
+      - name: Test
+        run: just test
 
       - name: Build frontend
-        run: cd frontend && npm run build
+        run: just build-frontend
+
+      - name: Build binary
+        run: go build ./...
