@@ -2,28 +2,48 @@
 
 Vantage is a local Markdown viewer that renders your files the way GitHub does — with live reload, Mermaid diagrams, and Git integration. Point it at a directory and start reading.
 
-> **Platform:** Linux with Python 3.13+. macOS is untested.
+Vantage is a single self-contained Go binary with the React frontend embedded. There is nothing to install at runtime beyond the binary itself.
 
 ## Installation
 
-Vantage is installed from source using [uv](https://docs.astral.sh/uv/) and [just](https://just.systems/).
+### Go install
+
+If you have a Go toolchain, install the latest release directly:
+
+```bash
+go install github.com/mschulkind-oss/vantage/cmd/vantage@latest
+```
+
+This places a `vantage` binary in your `GOBIN` (typically `~/go/bin` — make sure it's on your `PATH`).
+
+### Homebrew
+
+```bash
+brew install mschulkind-oss/tap/vantage
+```
+
+### From source
+
+Building from source uses [mise](https://mise.jdx.dev/) to pin the toolchain and [just](https://just.systems/) as the command runner:
 
 ```bash
 git clone https://github.com/mschulkind-oss/vantage.git
 cd vantage
-just install
+mise install   # installs Go 1.26, Node.js 22, and just
+just build     # builds the frontend and embeds it into ./vantage
 ```
 
-This builds the frontend, packages the application, and installs the `vantage` command to your PATH (typically `~/.local/bin/vantage`).
+The result is a `./vantage` binary in the repository root. Copy it onto your `PATH` or run it in place.
 
 ### Prerequisites
 
-| Tool                               | Purpose                | Install                                                          |
-| ---------------------------------- | ---------------------- | ---------------------------------------------------------------- |
-| [Python 3.13+](https://python.org) | Runtime                | Usually pre-installed or via your package manager                |
-| [uv](https://docs.astral.sh/uv/)   | Python package manager | `curl -LsSf https://astral.sh/uv/install.sh \| sh`               |
-| [Node.js 22+](https://nodejs.org/) | Building the frontend  | Via your package manager or [nvm](https://github.com/nvm-sh/nvm) |
-| [just](https://just.systems/)      | Command runner         | `cargo install just` or `brew install just`                      |
+You only need these to build from source. The `go install` and Homebrew paths require none of them.
+
+| Tool                               | Purpose                          | Install                                                       |
+| ---------------------------------- | -------------------------------- | ------------------------------------------------------------- |
+| [Go 1.26+](https://go.dev/)        | Compiling the binary             | Managed by `mise`, or via your package manager                |
+| [Node.js 22+](https://nodejs.org/) | Building the embedded frontend   | Managed by `mise`, or via [nvm](https://github.com/nvm-sh/nvm) |
+| [just](https://just.systems/)      | Command runner                   | Managed by `mise`, or `brew install just`                     |
 
 ## Quick Start
 

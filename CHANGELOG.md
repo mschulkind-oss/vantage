@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `just deploy` now works after `git pull` without needing `just setup` — the build bootstraps its own environment.
-- `just setup` no longer modifies lockfiles (`uv sync --frozen`, `npm ci`).
-- `just build` safely patches `pyproject.toml` for dev versioning via backup+restore instead of fragile `git checkout` trap.
+- `just build` now works after `git pull` without needing `just setup` — the build bootstraps its own environment.
+- `just setup` no longer modifies lockfiles (`go mod download`, `npm ci`).
+- `just build` safely stamps dev version metadata via linker flags instead of a fragile `git checkout` trap.
 
 ## [0.3.0] - 2026-04-06
 
@@ -63,8 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Markdown rendering with GitHub-flavored markdown, syntax highlighting, and KaTeX math support.
 - Mermaid diagram rendering with click-to-zoom.
 - Live reload via WebSocket — files update automatically when saved.
-- Git integration — view commit history, diffs, and file status.
-- Jujutsu (jj) support — view revisions, evolution log, and diffs.
+- Git integration — view commit history, diffs, working-tree diffs, and file status.
 - Fuzzy file picker with `t` keyboard shortcut.
 - Dark mode with `Shift+D` toggle.
 - Vim-style keyboard navigation (`j`/`k` scroll, `g g`/`G` jump, `g h` home).

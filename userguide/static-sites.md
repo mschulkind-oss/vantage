@@ -14,11 +14,11 @@ This is ideal for:
 # Build a static site from your docs directory
 vantage build ~/projects/my-docs -o ./output -n "My Docs"
 
-# Preview it locally
-cd output && python -m http.server 8080
+# Preview it locally with any static file server, e.g.
+npx serve ./output
 ```
 
-Open `http://localhost:8080` — you'll see the full Vantage UI with file tree, Markdown rendering, Mermaid diagrams, Git history, and diffs, all running entirely from static files.
+Open the URL your static server prints — you'll see the full Vantage UI with file tree, Markdown rendering, Mermaid diagrams, Git history, and diffs, all running entirely from static files.
 
 ## How It Works
 
@@ -28,17 +28,7 @@ The `vantage build` command:
 2. **Pre-renders all API data** — every file, directory listing, Git commit, and diff is saved as a JSON file
 3. **Injects static mode** — the frontend detects it's running without a backend and reads from the JSON files instead of making API calls
 
-The result is a completely static site. No Python, no server, no WebSocket — just files.
-
-## Deploying Under a Subpath
-
-If your static site will be hosted at a subpath (e.g., `https://example.com/docs/` instead of `https://example.com/`), use the `--base-path` option:
-
-```bash
-vantage build ./content -o ./output -n "My Docs" --base-path /docs/
-```
-
-This ensures all asset paths and internal links resolve correctly.
+The result is a completely static site. No backend, no server process, no WebSocket — just files.
 
 ## Deployment Examples
 
@@ -56,8 +46,8 @@ Or configure automatic deployments by adding a build step to your Cloudflare Pag
 
 ```bash
 # In your build command:
-pip install .  # or: uv pip install .
-vantage build docs/ -o site/docs --base-path /docs/
+go install github.com/mschulkind-oss/vantage/cmd/vantage@latest
+vantage build docs/ -o site/docs -n "My Docs"
 ```
 
 ### GitHub Pages
@@ -90,7 +80,7 @@ Add `vantage build` to your CI/CD pipeline or site generation workflow:
 # Example GitHub Actions step
 - name: Build documentation
   run: |
-    pip install .
+    go install github.com/mschulkind-oss/vantage/cmd/vantage@latest
     vantage build docs/ -o site/ -n "Project Docs"
 
 - name: Deploy to Pages
@@ -135,11 +125,10 @@ output/
 
 | Option            | Default            | Description                                |
 | ----------------- | ------------------ | ------------------------------------------ |
-| `PATH`            | _required_         | Source directory with Markdown files       |
-| `--output`, `-o`  | `./vantage-static` | Where to write the static site             |
+| `PATH`            | `.` (current dir)  | Source directory with Markdown files       |
+| `--output`, `-o`  | _required_         | Where to write the static site             |
 | `--name`, `-n`    | Directory name     | Display name shown in the UI header        |
-| `--base-path`     | `/`                | URL base path for subpath deployments      |
-| `--frontend-dist` | _(auto-build)_     | Pre-built frontend assets (skips building) |
+| `--frontend-dist` | _(embedded)_       | Override the embedded frontend bundle (ignored) |
 
 ## Limitations
 

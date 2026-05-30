@@ -13,167 +13,172 @@
 
 ### Design Principles
 
-- **Backend as a Proxy:** The Python backend is a thin layer over the file system and `git` command. It does not maintain complex state databases.
-- **Event-Driven UI:** The frontend reacts to WebSocket events for file changes, ensuring freshness.
+- **Single binary:** Vantage is one Go binary that embeds the React/Vite
+  single-page app. There is nothing to install alongside it.
+- **Backend as a proxy:** The Go backend is a thin layer over the file system
+  and the `git` binary. It maintains no database; review-mode state is the only
+  thing it persists, as JSON files on disk.
+- **Event-driven UI:** The frontend reacts to WebSocket events for file
+  changes, ensuring freshness.
+- **The frontend is the contract authority:** The `model` package mirrors the
+  TypeScript types in `frontend/src/types/index.ts`. JSON key names and the
+  values the frontend branches on are load-bearing.
 - **Polished UX:** Mimic GitHub's clean, functional aesthetic.
 
 ---
 
-## 2. Backend Design (Python / FastAPI)
+## 2. Backend Design (Go)
 
-The backend is organized into three layers: **Routers** (HTTP/WS), **Services** (Business Logic), and **Domain** (Data Models).
+The backend is a set of `internal/` packages assembled by the `server` package.
+The CLI in `cmd/vantage` parses arguments (via cobra) and hands a resolved
+`config.Config` to the server, which builds the services and runs the router.
 
-### 2.1 Domain Models (`src/schemas/`)
+### 2.1 Domain Models (`internal/model`)
 
-We use Pydantic models for type-safe communication.
+`model` is the leaf package every other internal package imports; it depends
+only on the standard library and defines the wire-format DTOs exchanged with the
+frontend.
 
-- `FileNode`: Represents a file or directory in the tree.
-  ```python
-  class FileNode(BaseModel):
-      name: str
-      path: str
-      is_dir: bool
-      children: List["FileNode"] | None = None
-  ```
-- `GitCommit`: Represents a single commit.
-  ```python
-  class GitCommit(BaseModel):
-      hexsha: str
-      author_name: str
-      author_email: str
-      date: datetime
-      message: str
-  ```
-- `FileStatus`: Status of a specific file.
-  ```python
-  class FileStatus(BaseModel):
-      last_commit: GitCommit | None
-      git_status: str | None  # 'modified', 'added', 'deleted', 'untracked', or None
-  ```
-- `FileContent`: The content of a file.
-  ```python
-  class FileContent(BaseModel):
-      path: str
-      content: str  # Raw text or base64 if binary
-      encoding: str # 'utf-8' or 'base64'
-  ```
-- `JJRevision`: A Jujutsu revision (change).
-  ```python
-  class JJRevision(BaseModel):
-      change_id: str          # Short change ID (e.g., "wosnyxlu")
-      commit_id: str          # Commit hash (12 chars)
-      description: str
-      author: str
-      timestamp: datetime
-      bookmarks: list[str]
-      is_working_copy: bool
-  ```
-- `JJEvoEntry`: An entry in a jj evolution log.
-  ```python
-  class JJEvoEntry(BaseModel):
-      commit_id: str
-      description: str
-      author: str
-      timestamp: datetime
-      operation: str          # What jj operation caused this entry
-      hidden: bool
-  ```
-- `JJInfo`: jj repository detection info.
-  ```python
-  class JJInfo(BaseModel):
-      is_jj: bool
-      working_copy_change_id: str | None
-  ```
+- `FileNode`: a file or directory in the tree. Directories may carry
+  `Children`; `HasMarkdown` is always emitted (false rather than omitted) so the
+  frontend can hide markdown-free directories.
+- `GitCommit`: a single commit (`hexsha`, author, date, message). The 40-char
+  `hexsha` is strict — the frontend feeds it back as a diff request.
+- `FileStatus`: a file's most-recent commit plus a `git_status` enum string
+  (`modified`, `added`, `deleted`, `untracked`, or null when clean).
+- `FileContent`: a readable file's content with `encoding` of `utf-8` or
+  `binary`.
+- `DiffLine` / `DiffHunk` / `FileDiff`: a parsed diff. `OldLineNo`/`NewLineNo`
+  are `*int` and always present (null on the absent side). `FileDiff.CommitHexsha`
+  is the real SHA, except for working-directory diffs where it is the literal
+  sentinel `"working"`.
+- `RecentFile`: a recently changed file; untracked entries set `Untracked=true`.
+- `RepoInfo` / `RepoInfoResponse`: repository identity for `/repos` and `/info`.
+- `VersionInfo`: short HEAD SHA + dirty flag for `/version`.
+- `ReviewData`, `ReviewComment`, `ReviewSnapshot`, `CommentAnchor`,
+  `CommentReaction`: the review-mode record (see §2.5). Review timestamps are
+  JSON numbers (epoch seconds authored client-side), distinct from the RFC3339
+  `time.Time` used elsewhere.
 
-### 2.2 Configuration
+Constructors `NewReviewData` and `NewReviewComment` initialize slice/map fields
+to non-nil empties so they marshal as `[]`/`{}` rather than `null`.
 
-Configuration is managed via `pydantic-settings` in `src/settings.py` and `src/config.py`.
+### 2.2 Configuration (`internal/config`)
 
-- **Environment Variables / CLI Args (single-repo mode):**
-  - `TARGET_REPO`: Path to the repository to view (default: current directory).
-  - `HOST`: Server host (default: `127.0.0.1`).
-  - `PORT`: Server port (default: `8000`).
+A single `Config` models both run modes.
 
-- **Config File (daemon mode, `~/.config/vantage/config.toml`):**
-  - `host`, `port`: Server bind settings.
-  - `repos[]`: Explicit repo list with `name`, `path`, and optional `allowed_read_roots`.
-  - `source_dirs`: Parent directories to scan for git repos (auto-discovery).
-  - `exclude_dirs`: Directories hidden from all listings (overrides defaults).
-  - `show_hidden`: Whether to show dotfiles in the sidebar.
-  - `walk_max_depth`: Max directory depth for untracked file discovery (default: unlimited).
-  - `walk_timeout`: Timeout in seconds for git ls-files subprocess (default: 30.0).
+- **Single-repo (`serve`) mode:** built from `Defaults`, then `ApplyEnv`
+  (environment variables via `caarlos0/env`), then explicit flag overrides
+  (flag > env > default).
+- **Daemon mode:** built from `Defaults`, then `LoadDaemonFile` (TOML via
+  `BurntSushi/toml`), then flag overrides, with `MultiRepo` set.
 
-- **Source Directory Auto-Discovery (`config.py`):**
-  - `_discover_repos_from_source_dirs()`: Scans each `source_dirs` entry for subdirectories containing `.git`. Skips repos whose resolved path matches an existing `[[repos]]` entry. Assigns unique names with numeric suffix if collisions occur.
+Config file (`~/.config/vantage/config.toml`, generated by `vantage init-config`):
 
-### 2.3 Services (`src/services/`)
+- `host`, `port`: server bind settings (defaults `127.0.0.1`, `8000`).
+- `[[repos]]`: explicit repo list with `name`, `path`, and optional
+  `allowed_read_roots`.
+- `source_dirs`: parent directories scanned for git repos (auto-discovery —
+  each subdirectory containing `.git` becomes a repo, skipping any whose path
+  already matches a `[[repos]]` entry, with numeric suffixes on name collisions).
+- `exclude_dirs`: directories hidden from all listings. Absent ⇒ the built-in
+  defaults; present (even empty) ⇒ replace the defaults wholesale.
+- `show_hidden`: whether to show dotfiles in the sidebar.
+- `walk_max_depth`: max directory depth for untracked file discovery.
+- `walk_timeout`: a bare TOML number, interpreted as seconds, stored as a
+  `time.Duration`.
+- `use_ignore_files`, `disable_whats_new`, `log_level`.
 
-- **`FileSystemService` (`fs_service.py`)**
+### 2.3 Services (one pair per repository)
 
-  - **Responsibility:** Safe file access.
-  - **Methods:**
-    - `list_directory(path: str) -> List[FileNode]`: Recursive or flat listing (start flat for performance).
-    - `read_file(path: str) -> FileContent`: Reads text, handles binary gracefully.
-    - `validate_path(path: str)`: Security check (prevent `../` traversal outside repo).
+The server builds a git+fs service pair per configured repository (single-repo:
+one pair keyed by the empty name; daemon: one per repo). Shared singletons (the
+review store, perf store, and live Manager) are built once.
 
-- **`GitService` (`git_service.py`)**
+- **`fs.FileSystemService`** — safe file access scoped to one repository root.
+  - `ListDirectory`: directory listing (flat for the tree, recursive for
+    markdown discovery). Rolls up directory git status to `contains_changes`
+    when a directory holds any changed file.
+  - `ReadFile`: reads text, reports binary gracefully.
+  - `validatePath`: rejects absolute paths, `.git` access, and traversal
+    outside the root with a typed `*PathError` (mapped to HTTP 400).
+  - Symlinks are reported tri-state: `IsSymlink` plus a `SymlinkTarget` that is
+    the repo-relative target when it resolves inside the root.
 
-  - **Responsibility:** Interfacing with `gitpython`.
-  - **Methods:**
-    - `get_history(path: str, limit: int = 10) -> List[GitCommit]`: Log for a file.
-    - `get_last_commit(path: str) -> GitCommit`: Optimize for just the latest info.
-    - `get_repository_root() -> str`: Find `.git` folder.
-    - `get_working_dir_diff(path: str) -> FileDiff | None`: Get uncommitted diff for a file. Uses `git diff HEAD` for tracked files, generates synthetic all-add diffs for untracked files.
-    - `get_git_status() -> dict`: Run `git status --porcelain` and parse results.
+- **`git.GitService`** — shells out to the `git` binary.
+  - Every operation runs `git` with an explicit argument slice (never a shell
+    string), placing user paths after a literal `--` so they cannot be read as
+    flags. The argv for each operation is a contract the output parsing depends
+    on.
+  - Errors degrade to empty results: a failed invocation yields `[]`, nil, `""`,
+    or false rather than an error, which the HTTP layer turns into a
+    200-with-`[]` or a 404 — never a 500.
+  - Methods: history for a file, last commit, repository root, working-tree
+    diff (`git diff HEAD -- <path>` for tracked files, a synthetic all-add diff
+    for untracked ones), porcelain status, and recently changed files.
+  - Two package-level TTL caches back the hottest calls (status and recent
+    files); the file watcher flushes them via `ClearStatusCache` /
+    `ClearRecentFilesCache` when git state changes on disk.
 
-- **`JJService` (`jj_service.py`)**
+- **`live.Manager` + `live.Watcher`** — the realtime layer.
+  - The `Manager` owns a set of WebSocket connections, each driven by its own
+    writer goroutine fed from a buffered channel. `Broadcast` marshals a message
+    once and fans the bytes out; a connection whose buffer overflows is evicted
+    as a slow client rather than blocking the broadcaster.
+  - The `Watcher` (fsnotify) coalesces filesystem events, invalidates the
+    git/fs caches, applies review changelog blocks for changed Markdown files,
+    and broadcasts a sorted `files_changed` payload.
 
-  - **Responsibility:** Wrapping the `jj` CLI for Jujutsu VCS support.
-  - **Design:** Subprocess-based (calls `jj` CLI with `--no-pager`). Uses custom templates with Unicode separator (`␞`) for machine-parseable output. Gracefully returns empty/None when repo is not a jj repo.
-  - **Methods:**
-    - `get_info() -> JJInfo`: Detect if repo uses jj, get working copy change ID.
-    - `get_log(path?, limit) -> list[JJRevision]`: Revision log with custom template.
-    - `get_evolog(rev, limit) -> list[JJEvoEntry]`: Evolution log showing how a change evolved over time (squashes, rebases, description changes).
-    - `get_diff(rev, path?) -> FileDiff | None`: Git-format diff for a revision.
-    - `get_interdiff(from_rev, to_rev, path?) -> FileDiff | None`: Diff between two revisions.
+- **`review.Store`** — review-mode persistence (see §2.5).
 
-- **`WatcherService` (`watcher.py`)**
+- **`perf`** — in-memory timing instrumentation: a ring buffer of timing
+  records, request-timing middleware, percentile diagnostics, and an anonymized
+  repo-shape walk.
 
-  - **Responsibility:** Monitor file system events using `watchfiles`.
-  - **Design:** Async generator or callback-based background task that pushes events to the `ConnectionManager`.
+### 2.4 API Routes (`internal/api`)
 
-- **`ConnectionManager` (`socket_manager.py`)**
-  - **Responsibility:** Manage active WebSocket connections and broadcast messages.
-  - **Methods:**
-    - `connect(websocket)`
-    - `disconnect(websocket)`
-    - `broadcast(message: dict)`
+Routes are declared in a single table (`routes.go`) with a `Scope`:
 
-### 2.4 API Routes (`src/routers/`)
+- **`ScopeGlobal`** routes mount once under `/api{Pattern}` (cross-repo or
+  repo-agnostic): `/health`, `/repos`, `/files/all`, `/recent/all`,
+  `/perf/diagnostics`, `/perf/reset`.
+- **`ScopeRepo`** routes mount twice, sharing one handler: the legacy form
+  `/api{Pattern}` (single-repo; 404 in daemon mode) and the multi form
+  `/api/r/{repo}{Pattern}`. The handler reads the resolved `RepoServices` from
+  the request context either way; the server's resolve middleware injects the
+  right pair.
 
-- **`api.py`**:
-  - `GET /api/health`: Health check endpoint.
-  - `GET /api/version`: Server version info.
-  - `GET /api/repos`: List configured repositories (daemon mode).
-  - `GET /api/tree`: Calls `FileSystemService.list_directory`.
-  - `GET /api/content`: Calls `FileSystemService.read_file`.
-  - `GET /api/files`: List all Markdown files.
-  - `GET /api/info`: Repository metadata.
-  - `GET /api/git/history`: Calls `GitService.get_history`.
-  - `GET /api/git/status`: Returns `FileStatus` (last commit + git working tree status).
-  - `GET /api/git/diff`: Returns diff for a specific commit.
-  - `GET /api/git/diff/working?path=`: Returns uncommitted diff for a file.
-  - `GET /api/git/recent?limit=`: Recently changed files by git commit date.
-  - `GET /api/jj/info`: Returns `JJInfo` (jj detection + working copy ID).
-  - `GET /api/jj/log?path=&limit=`: Returns `list[JJRevision]`.
-  - `GET /api/jj/evolog?rev=&limit=`: Returns `list[JJEvoEntry]`.
-  - `GET /api/jj/diff?rev=&path=`: Returns `FileDiff` for a jj revision.
-  - `GET /api/jj/interdiff?from_rev=&to_rev=&path=`: Diff between two jj revisions.
-  - `GET /api/perf/diagnostics`: Anonymized performance timing data.
-  - `POST /api/perf/reset`: Reset performance counters.
-  - All file/git/jj endpoints also exist under `/api/r/{repo}/...` for multi-repo mode.
-- **`socket.py`**:
-  - `WS /api/ws`: Handshake -> Add to `ConnectionManager` -> Await disconnect.
+Repo-scoped routes: `/version`, `/info`, `/files`, `/tree`, `/content`,
+`/git/history`, `/git/status`, `/git/diff`, `/git/diff/working`, `/git/recent`,
+and `/review` (GET/PUT/DELETE).
+
+The `/api/ws` WebSocket route is not in the table; the `live` package mounts it
+directly.
+
+### 2.5 Review Mode (`internal/review`, `internal/reviewanchor`)
+
+- **`review.Store`** persists one JSON file per reviewed document under a base
+  directory (default `~/.local/share/vantage/reviews`). The filename flattens
+  the repo-relative path (separators → `__`, repo-name prefix in multi-repo
+  mode).
+- **Changelog reactions:** the store applies agent-authored `<!-- changelog -->`
+  bullets, turning each `[<id>] <summary>` line into a reviewer-visible
+  `CommentReaction`. The watcher invokes this when a reviewed Markdown file
+  changes, so reactions are captured even when no browser is open.
+- **`reviewanchor`** canonicalizes and hashes a Markdown block's rendered text.
+  The hash must remain byte-identical to the frontend implementation in
+  `frontend/src/lib/reviewAnchor.ts`; golden vectors pin the contract.
+
+### 2.6 Static Export (`internal/static`)
+
+`static` builds a self-contained site from a Markdown repository: every API
+endpoint the frontend calls is pre-rendered to a JSON file under `api/`, the
+embedded SPA is copied alongside, and `index.html` is patched into static mode
+(`window.__VANTAGE_STATIC__ = true`) with assets rewritten to relative paths.
+The per-file JSON is produced by the same `api.Build*` response builders the
+live server uses, so the live and static payloads cannot drift. The output path
+scheme is the producer side of a contract with the frontend's static-mode axios
+interceptor (`frontend/src/lib/staticMode.ts`).
 
 ---
 
@@ -181,102 +186,85 @@ Configuration is managed via `pydantic-settings` in `src/settings.py` and `src/c
 
 ### 3.1 State Management (Zustand)
 
-We will use `zustand` for cleaner state management than React Context.
-
 - **`useRepoStore`**
-  - `currentPath`: string | null
-  - `fileTree`: FileNode[]
-  - `fileContent`: string | null
-  - `isLoading`: boolean
-  - `repoSortMode`: "alpha" | "recent" (persisted to localStorage)
-  - `refreshTree()`: Re-fetch tree structure.
-  - `loadFile(path)`: Fetch content + update URL.
-  - `sortedRepos()`: Returns repos sorted by current mode (name or last_activity).
-  - `setRepoSortMode(mode)`: Switch sort mode.
+  - `currentPath`, `fileTree`, `fileContent`, `isLoading`.
+  - `repoSortMode`: `"alpha" | "recent"` (persisted to localStorage).
+  - `refreshTree()`, `loadFile(path)`, `sortedRepos()`, `setRepoSortMode(mode)`.
 - **`useGitStore`**
-  - `history`: GitCommit[]
-  - `latestCommit`: GitCommit | null
-  - `fileGitStatus`: string | null (e.g., 'modified', 'added', 'untracked')
-  - `isLoading`: boolean
-  - `fetchHistory(path)`: Load history for current file.
-  - `fetchWorkingDiff(path)`: Fetch uncommitted diff for a file.
-- **`useJJStore`**
-  - `info`: JJInfo | null
-  - `revisions`: JJRevision[]
-  - `evolog`: JJEvoEntry[]
-  - `diff`: FileDiff | null
-  - `fetchInfo()`: Detect jj repo and get working copy info.
-  - `fetchLog(path?, limit?)`: Load jj revision log.
-  - `fetchEvolog(rev?, limit?)`: Load evolution log for a revision.
-  - `fetchDiff(rev, path?)`: Load diff for a jj revision.
+  - `history`, `latestCommit`, `fileGitStatus`, `isLoading`.
+  - `fetchHistory(path)`, `fetchWorkingDiff(path)`.
+- **`useReviewStore`**
+  - Comments, snapshots, and reactions for the current file.
+  - Loads via `GET /api/review`, saves via `PUT /api/review`, and ends a review
+    via `DELETE /api/review`.
 
 ### 3.2 Component Architecture (`frontend/src/components/`)
 
-- **`Layout`**: Main application shell.
-  - **`Sidebar`**: Left panel.
-    - **`FileTree`**: Recursive component rendering `FileNode`s. Uses `lucide-react` icons (Folder, File, FileCode).
-  - **`MainContent`**: Center panel.
-    - **`Breadcrumbs`**: Navigation aid (`root > docs > design`).
-    - **`Header`**: Shows `latestCommit` info (avatar, message, time).
-    - **`MarkdownViewer`**: The core view.
-      - Wrapper around `react-markdown`.
-      - **Plugins:** `remark-gfm` (tables, strikethrough), `rehype-raw` (html), `rehype-highlight` (code blocks).
-      - **Custom Components:**
-        - `code`: Detects `mermaid` language class. If found, renders `MermaidDiagram`. Otherwise, renders syntax-highlighted code.
-  - **`RightPanel` (Optional/Collapsible)**:
-    - **`GitHistory`**: Vertical timeline of commits for this file.
+- **`Layout`**: main application shell.
+  - **`Sidebar`**: left panel.
+    - **`FileTree`**: recursive component rendering `FileNode`s, with
+      `lucide-react` icons.
+  - **`MainContent`**: center panel.
+    - **`Breadcrumbs`**: navigation aid (`root > docs > design`).
+    - **`Header`**: shows `latestCommit` info (avatar, message, time) and the
+      uncommitted-changes badge.
+    - **`MarkdownViewer`**: the core view, built on the `vantage-md` package
+      (remark-gfm tables/strikethrough, rehype-raw, syntax highlighting, KaTeX
+      math, and a `mermaid` code-fence renderer). It also hosts review-mode
+      gestures (hover-to-comment, drag-select).
+    - **`DiffViewer`**: committed and working-directory diffs.
+  - **`RightPanel`**: collapsible — `GitHistory` timeline, review comment panel.
 
 ### 3.3 Data Flow & Live Updates
 
-1.  **Mount:** App connects `WS /api/ws`.
-2.  **Navigation:** User clicks file in Sidebar -> `useRepoStore.loadFile(path)` -> `GET /api/content`.
-3.  **Update:**
-    - `WatcherService` detects change in `docs/design.md`.
-    - Backend sends WS event: `{"type": "file_changed", "path": "docs/design.md"}`.
-    - Frontend receives event.
-    - If `currentPath` matches `path`, trigger `loadFile(path)` (content refresh).
-    - Always trigger `refreshTree()` (in case file was added/removed).
+1. **Mount:** the app connects `WS /api/ws`.
+2. **Navigation:** user clicks a file → `useRepoStore.loadFile(path)` →
+   `GET /api/content`.
+3. **Update:**
+   - The `Watcher` detects a change in `docs/design.md`.
+   - The backend broadcasts a `files_changed` WebSocket event.
+   - The frontend receives it. If `currentPath` matches, it triggers
+     `loadFile(path)` (content refresh); it always triggers `refreshTree()` (in
+     case a file was added or removed).
 
 ---
 
 ## 4. Dependencies
 
-### Backend
+### Backend (`go.mod`)
 
-- **Core:**
-  - `fastapi`, `uvicorn[standard]`: Server.
-  - `pydantic`, `pydantic-settings`: Validation & Config.
-- **Functionality:**
-  - `gitpython`: Git operations.
-  - `watchfiles`: efficient file watching (Rust-based).
-- **Testing:**
-  - `pytest`, `pytest-asyncio`: Test runner.
-  - `httpx`: For `TestClient`.
+- **Router:** `github.com/go-chi/chi/v5`.
+- **CLI:** `github.com/spf13/cobra`.
+- **WebSocket:** `github.com/coder/websocket`.
+- **File watching:** `github.com/fsnotify/fsnotify`.
+- **Config:** `github.com/BurntSushi/toml`, `github.com/caarlos0/env/v11`.
+- **Ignore matching:** `github.com/sabhiram/go-gitignore`.
+- **Concurrency:** `golang.org/x/sync`.
+- **Testing:** `github.com/stretchr/testify`.
+- **Git:** the `git` binary on `PATH` (shelled out to; no library).
 
 ### Frontend
 
 - **Core:** `react`, `react-dom`, `react-router-dom`.
 - **Build:** `vite`.
-- **Styling:** `tailwindcss`, `postcss`, `autoprefixer`, `clsx`, `tailwind-merge` (for dynamic classes).
+- **Styling:** `tailwindcss`, `postcss`, `autoprefixer`, `clsx`,
+  `tailwind-merge`.
 - **State:** `zustand`.
-- **Rendering:**
-  - `react-markdown`: Main renderer.
-  - `remark-gfm`, `rehype-raw`, `rehype-highlight`: Extensions.
-  - `mermaid`: Diagram generation.
-- **Utils:**
-  - `date-fns`: Time formatting ("2 hours ago").
-  - `lucide-react`: Icons.
+- **Rendering:** `react-markdown` with `remark-gfm`, `rehype-raw`, syntax
+  highlighting, KaTeX, and `mermaid`, wrapped in the in-repo `vantage-md`
+  package (`packages/vantage-md`).
+- **Utils:** `date-fns`, `lucide-react`.
 - **Testing:** `vitest`, `@testing-library/react`.
 
 ---
 
-## 5. Development Plan
+## 5. Build & Distribution
 
-1.  **Scaffold:** `uv init`, `npm create vite`, configure `Justfile`.
-2.  **Backend Core:** Implement `FileSystemService` and basic `api` routes.
-3.  **Frontend Core:** Setup `Layout`, `FileTree`, and routing.
-4.  **Markdown:** Implement `MarkdownViewer` with GFM support.
-5.  **Git Integration:** Implement `GitService` and connect to Frontend `Header`.
-6.  **Mermaid:** Add `mermaid` support to the viewer.
-7.  **Real-time:** Implement `WatcherService` and WebSocket connection.
-8.  **Polish:** Styling, error handling (404s), loading states.
+1. **Frontend bundle:** `just bundle-frontend` runs the Vite build and copies
+   `frontend/dist` into `web/dist`.
+2. **Embed:** `web/embed.go` embeds `web/dist` with `//go:embed all:dist`, so
+   the SPA ships inside the binary.
+3. **Binary:** `just build` runs `go build` against `./cmd/vantage`, stamping
+   the short commit SHA into `internal/buildinfo` via `-ldflags`.
+4. **Install:** `go install github.com/mschulkind-oss/vantage/cmd/vantage@latest`,
+   `brew install mschulkind-oss/tap/vantage`, or build from source.

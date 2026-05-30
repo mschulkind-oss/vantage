@@ -10,7 +10,7 @@
 
 Vantage renders your Markdown files the way GitHub does — locally, instantly, with live reload as you edit. Point it at one directory or several, and browse your docs in a polished web UI with file tree navigation, Mermaid diagrams, commit history, and diffs.
 
-Built for developers who write docs alongside code — especially useful for reviewing LLM-generated Markdown output in real time.
+Vantage ships as a single Go binary with an embedded React frontend — no runtime dependencies, no background services to babysit. Built for developers who write docs alongside code, and especially useful for reviewing LLM-generated Markdown output in real time.
 
 > **Platform:** Linux and macOS are fully supported. Windows is not supported.
 
@@ -18,25 +18,18 @@ Built for developers who write docs alongside code — especially useful for rev
 
 ## Install
 
-The fastest way to try Vantage — no install, just run:
+### go install
 
 ```bash
-uvx vantage-md ~/Documents/notes          # open a directory
-uvx vantage-md ~/Documents/notes/intro.md # open a specific file
+go install github.com/mschulkind-oss/vantage/cmd/vantage@latest
 ```
 
-The server starts, your default browser opens to the file (or directory root), and the sidebar focuses on the parent directory of what you opened.
+This installs a `vantage` binary to your `$GOBIN` (typically `~/go/bin`). Make sure it's on your `PATH`.
 
 ### Homebrew (recommended)
 
 ```bash
-brew install mschulkind-oss/tap/vantage-md
-```
-
-### pipx / uvx
-
-```bash
-pipx install vantage-md    # or: uvx vantage-md <path>
+brew install mschulkind-oss/tap/vantage
 ```
 
 ### From source
@@ -44,29 +37,11 @@ pipx install vantage-md    # or: uvx vantage-md <path>
 ```bash
 git clone https://github.com/mschulkind-oss/vantage
 cd vantage
-mise install               # installs Python 3.13, Node 22, just
-just install               # or: just deploy (with systemd service, Linux only)
+mise install               # installs Go 1.26, Node 22, just
+just build                 # produces ./vantage
 ```
 
-Both `vantage-md` and the shorter alias `vantage` are installed and do the same thing.
-
----
-
-## ✨ Features
-
-- **GitHub-Style Rendering** — Full GitHub Flavored Markdown with syntax highlighting, tables, task lists, and footnotes
-- **Mermaid Diagrams** — Renders Mermaid diagrams inline from fenced code blocks
-- **Live Reload** — Files update instantly in the browser via WebSocket when modified on disk
-- **Git Integration** — View commit history, diffs, file status, and recent changes for any file
-- **Jujutsu (jj) Support** — Revision log, evolution log, diffs, and interdiff for jj-managed repos
-- **Multi-Repo Mode** — Serve multiple directories from a single daemon, each accessible by name
-- **Source Directory Auto-Discovery** — Point at parent directories to automatically find and add all git repos
-- **File Tree Navigation** — Lazy-loaded sidebar with directory expansion
-- **Frontmatter Support** — Displays YAML frontmatter as a clean metadata table
-- **Dark Mode** — Toggle with Shift+D, persisted across sessions
-- **Keyboard Shortcuts** — Quick file picker with `t`, fuzzy search, keyboard navigation
-- **Performance Diagnostics** — Built-in `perf-report` command for anonymized timing data
-- **systemd Service** (Linux) — Run as a background service that starts on login
+The resulting `./vantage` binary embeds the compiled frontend, so it's fully self-contained.
 
 ---
 
@@ -77,11 +52,11 @@ Both `vantage-md` and the shorter alias `vantage` are installed and do the same 
 Point Vantage at any directory containing Markdown files — or a specific file:
 
 ```bash
-vantage-md ~/Documents/notes
-vantage-md ~/Documents/notes/intro.md
+vantage ~/Documents/notes          # open a directory
+vantage ~/Documents/notes/intro.md # open a specific file
 ```
 
-Your default browser opens automatically. Pass `--no-open` to suppress.
+The server starts, your default browser opens to the file (or directory root), and the sidebar focuses on the parent directory of what you opened. Pass `--no-open` to suppress the browser launch.
 
 ### Multiple Directories (Daemon Mode)
 
@@ -89,14 +64,33 @@ To serve several directories at once, create a config and run the daemon:
 
 ```bash
 # Generate a config file
-vantage-md init-config
+vantage init-config
 
 # Edit it
 $EDITOR ~/.config/vantage/config.toml
 
 # Start the daemon
-vantage-md daemon
+vantage daemon
 ```
+
+---
+
+## ✨ Features
+
+- **GitHub-Style Rendering** — Full GitHub Flavored Markdown with syntax highlighting, tables, task lists, and footnotes
+- **Math & Diagrams** — KaTeX math rendering and inline Mermaid diagrams from fenced code blocks
+- **Live Reload** — Files update instantly in the browser via WebSocket when modified on disk
+- **Git Integration** — View commit history, diffs, working-tree changes, file status, and recent changes for any file
+- **Review Mode** — Inline comments, snapshots, and agent changelog reactions for collaborative review
+- **Multi-Repo Mode** — Serve multiple directories from a single daemon, each accessible by name
+- **Source Directory Auto-Discovery** — Point at parent directories to automatically find and add all git repos
+- **File Tree Navigation** — Lazy-loaded sidebar with directory expansion
+- **Frontmatter Support** — Displays YAML and TOML frontmatter as a clean metadata table
+- **Static Site Export** — Build a standalone static site from a directory of Markdown
+- **Dark Mode** — Toggle with Shift+D, persisted across sessions
+- **Keyboard Shortcuts** — Quick file picker with `t`, fuzzy search, keyboard navigation
+- **Performance Diagnostics** — Built-in `perf-report` command for anonymized timing data
+- **systemd Service** (Linux) — Run as a background service that starts on login
 
 ---
 
@@ -132,41 +126,42 @@ Each repo is accessible at `http://localhost:8000/{name}/`.
 
 ### Configuration Reference
 
-| Key                        | Type             | Default            | Description                                           |
-| -------------------------- | ---------------- | ------------------ | ----------------------------------------------------- |
-| `host`                     | string           | `"127.0.0.1"`      | Server bind address                                   |
-| `port`                     | integer          | `8000`             | Server port                                           |
-| `repos[].name`             | string           | _required_         | Display name and URL slug for the directory            |
-| `repos[].path`             | string           | _required_         | Path to directory (supports `~`)                      |
-| `repos[].allowed_read_roots` | array of strings | `[]`             | Additional directories this repo may read              |
-| `source_dirs`              | array of strings | `[]`               | Parent directories to scan for git repos               |
-| `exclude_dirs`             | array of strings | _(see below)_      | Directories to hide from file listings                 |
-| `show_hidden`              | boolean          | `true`             | Show dotfiles in sidebar                               |
-| `walk_max_depth`           | integer or null  | `null` (unlimited) | Max directory depth for untracked file discovery       |
-| `walk_timeout`             | float            | `30.0`             | Timeout (seconds) for git ls-files subprocess          |
+| Key                          | Type             | Default            | Description                                      |
+| ---------------------------- | ---------------- | ------------------ | ------------------------------------------------ |
+| `host`                       | string           | `"127.0.0.1"`      | Server bind address                              |
+| `port`                       | integer          | `8000`             | Server port                                      |
+| `source_dirs`                | array of strings | `[]`               | Parent directories to scan for git repos         |
+| `repos[].name`               | string           | _required_         | Display name and URL slug for the directory      |
+| `repos[].path`               | string           | _required_         | Path to directory (supports `~`)                 |
+| `repos[].allowed_read_roots` | array of strings | `[]`               | Additional directories this repo may read        |
+| `exclude_dirs`               | array of strings | _(see below)_      | Directories to hide from file listings            |
+| `show_hidden`                | boolean          | `true`             | Show dotfiles in sidebar                          |
+| `walk_max_depth`             | integer or null  | `null` (unlimited) | Max directory depth for untracked file discovery  |
+| `walk_timeout`               | float            | `30.0`             | Timeout (seconds) for git ls-files subprocess     |
+| `use_ignore_files`           | boolean          | `true`             | Honor `.gitignore` and ignore files during walks  |
+| `disable_whats_new`          | boolean          | `false`            | Hide the "What's New" panel                       |
+| `log_level`                  | string           | `"info"`           | Logging verbosity                                 |
 
 ### Excluded Directories
 
-By default, Vantage hides common build/dependency directories from the sidebar, file picker, and recent files:
-
-`node_modules`, `.venv`, `venv`, `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.egg-info`, `.tox`, `.nox`, `dist`, `build`, `.cache`, `.git`, `.hg`, `.svn`
+By default, Vantage hides common build and dependency directories from the sidebar, file picker, and recent files — for example `node_modules`, `dist`, `build`, `.cache`, `.git`, `.hg`, and `.svn`.
 
 Override this in your config:
 
 ```toml
-exclude_dirs = ["node_modules", ".venv", "vendor", "dist"]
+exclude_dirs = ["node_modules", "vendor", "dist"]
 ```
 
 ---
 
 ## 🔧 Service Management (Linux)
 
-On Linux, Vantage can run as a systemd user service that starts automatically on login. On macOS, run `vantage-md` directly or wrap it in a `launchd` agent yourself.
+On Linux, Vantage can run as a systemd user service that starts automatically on login. On macOS, run `vantage` directly or wrap it in a `launchd` agent yourself.
 
 ### Install the Service
 
 ```bash
-vantage-md install-service
+vantage install-service
 ```
 
 ### Enable and Start
@@ -205,24 +200,36 @@ loginctl enable-linger $USER
 
 ## 🖥️ CLI Reference
 
-The primary command is `vantage-md`; `vantage` is kept as a shorter alias.
+The command is `vantage`.
 
 ```
-vantage-md [PATH]                   # Serve a dir or file, auto-open browser
-vantage-md serve [PATH] [--no-open] # Same as above; --no-open disables browser
-vantage-md daemon                   # Serve multiple directories from config
-vantage-md daemon -c /path/to.toml  # Use a custom config file
-vantage-md init-config              # Generate example config file
-vantage-md install-service          # Install systemd user service (Linux only)
-vantage-md build PATH -o OUTPUT     # Build a static site
-vantage-md perf-report              # Performance diagnostics from a running instance
+vantage [PATH]                      # Serve a dir or file, auto-open browser
+vantage serve [PATH] [flags]        # Same as above, with explicit flags
+vantage daemon [-c config.toml]     # Serve multiple directories from config
+vantage init-config                 # Generate example config file
+vantage install-service             # Install systemd user service (Linux only)
+vantage build PATH -o OUTPUT        # Build a static site
+vantage perf-report [--url]         # Performance diagnostics from a running instance
 ```
+
+### `serve` flags
+
+| Flag                  | Description                                          |
+| --------------------- | ---------------------------------------------------- |
+| `--host`              | Bind address (default `127.0.0.1`)                   |
+| `--port`              | Server port (default `8000`)                         |
+| `--no-open`           | Don't open the browser on start                      |
+| `--show-hidden`       | Show dotfiles in the sidebar                         |
+| `--exclude-dirs`      | Directories to hide from file listings               |
+| `--use-ignore-files`  | Honor `.gitignore` and ignore files during walks     |
+| `--walk-max-depth`    | Max directory depth for untracked file discovery     |
+| `--walk-timeout`      | Timeout (seconds) for git ls-files subprocess        |
 
 ---
 
 ## 🔌 API
 
-Vantage exposes a REST API for programmatic access.
+Vantage exposes a REST API for programmatic access under `/api`.
 
 ### Single-Repo Endpoints
 
@@ -231,44 +238,44 @@ Vantage exposes a REST API for programmatic access.
 | `GET /api/tree?path=.`                      | File tree listing                    |
 | `GET /api/content?path=file.md`             | File content                         |
 | `GET /api/files`                            | List all Markdown files              |
+| `GET /api/files/all`                        | List all files                       |
+| `GET /api/recent/all`                       | Recently accessed files              |
 | `GET /api/info`                             | Repository metadata                  |
 | `GET /api/git/history?path=file.md`         | Commit history                       |
 | `GET /api/git/diff?path=file.md&commit=SHA` | Diff for a commit                    |
 | `GET /api/git/diff/working?path=file.md`    | Uncommitted changes diff             |
 | `GET /api/git/status?path=file.md`          | File status (modified, committed)    |
 | `GET /api/git/recent?limit=20`              | Recently changed files               |
-| `GET /api/jj/info`                          | Jujutsu repo info (if jj is present) |
-| `GET /api/jj/log?path=file.md`             | Jujutsu revision log                 |
-| `GET /api/jj/evolog?rev=@`                 | Jujutsu evolution log                |
-| `GET /api/jj/diff?rev=REV`                 | Jujutsu revision diff                |
-| `GET /api/jj/interdiff?from_rev=A&to_rev=B` | Compare two jj revisions           |
+| `GET /api/review`                           | Read review comments and snapshots   |
+| `PUT /api/review`                           | Create or update review data         |
+| `DELETE /api/review`                        | Remove review data                   |
 
 ### Multi-Repo Endpoints
 
 In daemon mode, endpoints are prefixed with `/api/r/{repo}/`:
 
-| Endpoint                                 | Description                  |
-| ---------------------------------------- | ---------------------------- |
-| `GET /api/repos`                         | List configured repositories |
-| `GET /api/r/{repo}/tree?path=.`          | File tree for a repo         |
-| `GET /api/r/{repo}/content?path=file.md` | File content for a repo      |
+| Endpoint                                 | Description                   |
+| ---------------------------------------- | ----------------------------- |
+| `GET /api/repos`                         | List configured repositories  |
+| `GET /api/r/{repo}/tree?path=.`          | File tree for a repo          |
+| `GET /api/r/{repo}/content?path=file.md` | File content for a repo       |
 | _(all single-repo endpoints above)_      | Prefixed with `/api/r/{repo}` |
 
 ### Utility Endpoints
 
-| Endpoint                  | Description                              |
-| ------------------------- | ---------------------------------------- |
-| `GET /api/health`         | Health check                             |
-| `GET /api/version`        | Server version info                      |
-| `GET /api/perf/diagnostics` | Performance diagnostics (anonymized)   |
-| `POST /api/perf/reset`   | Reset performance counters               |
-| `WS /ws`                 | WebSocket for live reload notifications  |
+| Endpoint                    | Description                             |
+| --------------------------- | --------------------------------------- |
+| `GET /api/health`           | Health check                            |
+| `GET /api/version`          | Server version info                     |
+| `GET /api/perf/diagnostics` | Performance diagnostics (anonymized)    |
+| `POST /api/perf/reset`      | Reset performance counters              |
+| `WS /ws`                    | WebSocket for live reload notifications |
 
 ---
 
 ## 🛠️ Development
 
-See [docs/development.md](docs/development.md) for instructions on building, testing, and contributing to Vantage.
+Run the quality gate with `just check` (gofmt, go vet, staticcheck, go test, plus frontend lint, tsc, and vitest). See [docs/development.md](docs/development.md) for more on building, testing, and contributing to Vantage.
 
 ---
 
