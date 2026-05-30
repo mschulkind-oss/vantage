@@ -4,7 +4,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -12,11 +11,6 @@ import (
 	"github.com/mschulkind-oss/vantage/internal/buildinfo"
 	"github.com/spf13/cobra"
 )
-
-// errNotImplemented marks subcommands whose behavior is wired up in a later
-// build stage. The command tree and the serve-by-default routing are real now;
-// the bodies arrive with their packages.
-var errNotImplemented = errors.New("not yet implemented")
 
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{
@@ -65,52 +59,4 @@ func serveByDefault(argv []string, root *cobra.Command) []string {
 	rewritten := make([]string, 0, len(argv)+1)
 	rewritten = append(rewritten, argv[0], "serve")
 	return append(rewritten, argv[1:]...)
-}
-
-func newServeCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "serve [path]",
-		Short: "Serve a single repository (default command)",
-		RunE:  func(_ *cobra.Command, _ []string) error { return errNotImplemented },
-	}
-}
-
-func newDaemonCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "daemon",
-		Short: "Serve multiple repositories from a config file",
-		RunE:  func(_ *cobra.Command, _ []string) error { return errNotImplemented },
-	}
-}
-
-func newInitConfigCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "init-config",
-		Short: "Write an example multi-repo configuration file",
-		RunE:  func(_ *cobra.Command, _ []string) error { return errNotImplemented },
-	}
-}
-
-func newInstallServiceCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "install-service",
-		Short: "Install vantage as a user service",
-		RunE:  func(_ *cobra.Command, _ []string) error { return errNotImplemented },
-	}
-}
-
-func newBuildCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "build [path]",
-		Short: "Build a self-contained static site",
-		RunE:  func(_ *cobra.Command, _ []string) error { return errNotImplemented },
-	}
-}
-
-func newPerfReportCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "perf-report",
-		Short: "Print performance diagnostics from a running server",
-		RunE:  func(_ *cobra.Command, _ []string) error { return errNotImplemented },
-	}
 }
