@@ -65,9 +65,9 @@ func readFileReplace(path string) (string, error) {
 	return strings.ToValidUTF8(string(data), "�"), nil
 }
 
-// splitLinesNoTrailing splits s on newlines like Python's str.splitlines (used
-// by the untracked-file diff): a final trailing newline does not produce a
-// trailing empty element. "\r\n" and "\r" are normalized to "\n" first.
+// splitLinesNoTrailing splits s on newlines (used by the untracked-file diff):
+// a final trailing newline does not produce a trailing empty element. "\r\n"
+// and "\r" are normalized to "\n" first.
 func splitLinesNoTrailing(s string) []string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\r", "\n")

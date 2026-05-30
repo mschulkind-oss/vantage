@@ -292,9 +292,8 @@ type block struct {
 
 // splitLines splits content the way the changelog parser needs: on "\n",
 // "\r\n", and "\r", dropping a single trailing empty element so that a
-// final newline does not create a spurious blank line. This mirrors Python's
-// str.splitlines for these terminators without pulling in its full Unicode
-// line-boundary set.
+// final newline does not create a spurious blank line. Only these three
+// terminators are recognized (no full Unicode line-boundary set).
 func splitLines(content string) []string {
 	if content == "" {
 		return nil
