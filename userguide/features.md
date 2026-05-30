@@ -159,16 +159,15 @@ source_dirs = ["~/code", "~/projects"]
 
 Manually listed `[[repos]]` take precedence — duplicates are skipped. See [Configuration](configuration.md#source-directory-auto-discovery) for details.
 
-## Jujutsu (jj) Support
+## Review Mode
 
-If a repository uses [Jujutsu](https://martinvonz.github.io/jj/) as its version control system, Vantage provides additional integration:
+Vantage includes a built-in review mode for annotating documents:
 
-- **Revision log** — View the jj revision history for any file
-- **Evolution log** — See the evolution history of a revision
-- **Diffs** — View changes in any revision
-- **Interdiff** — Compare two revisions side-by-side
+- **Inline comments** — attach a comment to any line or block of rendered Markdown
+- **Snapshots** — capture the state of a document so a review references a fixed version
+- **Agent changelog reactions** — react to entries in an agent-generated changelog
 
-Jujutsu support is automatic — if a repo has a `.jj` directory, the jj-specific features appear alongside the standard Git integration.
+Reviews are stored on disk and persist across server restarts.
 
 ## What's New
 

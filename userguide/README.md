@@ -9,11 +9,11 @@ You're looking at a live instance of Vantage, serving its own documentation. Eve
 ## Quick Start
 
 ```bash
-pip install vantage
+go install github.com/mschulkind-oss/vantage/cmd/vantage@latest
 vantage ~/my-docs
 ```
 
-Then open [http://localhost:7000](http://localhost:7000) in your browser.
+Then open [http://localhost:8000](http://localhost:8000) in your browser.
 
 See [Getting Started](getting-started.md) for full installation instructions.
 

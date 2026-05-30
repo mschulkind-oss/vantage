@@ -59,7 +59,10 @@ Each directory is accessible at `http://localhost:8000/{name}/`.
 | `exclude_dirs`             | array of strings | _(see below)_ | Directories to hide from all listings                |
 | `show_hidden`              | boolean          | `true`        | Show hidden files/directories (dotfiles) in the sidebar |
 | `walk_max_depth`           | integer or null  | `null` (unlimited) | Max directory depth for untracked file discovery |
-| `walk_timeout`             | float            | `30.0`        | Timeout in seconds for git ls-files subprocess       |
+| `walk_timeout`             | float            | `30.0`        | Timeout in seconds for the file-discovery subprocess |
+| `use_ignore_files`         | boolean          | `true`        | Honor `~/.config/vantage/ignore` and `.vantageignore` |
+| `disable_whats_new`        | boolean          | `false`       | Suppress the "What's New" popup                      |
+| `log_level`                | string           | `"INFO"`      | Log verbosity: `DEBUG`, `INFO`, `WARNING`, or `ERROR` |
 
 ## Source Directory Auto-Discovery
 
@@ -88,14 +91,12 @@ This allows Vantage to read files under `~/.dotfiles/gemini/skills` when serving
 
 ## Excluded Directories
 
-By default, Vantage hides common build and dependency directories from the sidebar, file picker, and recent files list:
-
-> `node_modules`, `.venv`, `venv`, `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.egg-info`, `.tox`, `.nox`, `dist`, `build`, `.cache`, `.git`, `.hg`, `.svn`
+By default, Vantage hides common version-control, dependency, cache, and build directories from the sidebar, file picker, and recent files list — for example `.git`, `.hg`, `.svn`, `node_modules`, `vendor`, `dist`, `build`, and `.cache`.
 
 You can override this list in your config:
 
 ```toml
-exclude_dirs = ["node_modules", ".venv", "vendor", "dist", "build"]
+exclude_dirs = ["node_modules", "vendor", "dist", "build"]
 ```
 
 Setting `exclude_dirs` replaces the default list entirely — include everything you want hidden.
@@ -108,7 +109,7 @@ For very large repositories with deep directory trees, two settings control how 
 # Limit scan depth (default: unlimited)
 walk_max_depth = 5
 
-# Timeout for git ls-files subprocess (default: 30 seconds)
+# Timeout for the file-discovery subprocess (default: 30 seconds)
 walk_timeout = 30.0
 ```
 
@@ -118,9 +119,15 @@ These settings only affect the discovery of files not tracked by Git. Tracked fi
 
 When running in single-directory mode (`vantage serve`), you can also configure via environment variables:
 
-| Variable      | Description                    |
-| ------------- | ------------------------------ |
-| `TARGET_REPO` | Path to the directory to serve |
-| `HOST`        | Server bind address            |
-| `PORT`        | Server port                    |
-| `SHOW_HIDDEN` | Show hidden files (`true`/`false`, default `true`) |
+| Variable             | Description                                          |
+| -------------------- | ---------------------------------------------------- |
+| `TARGET_REPO`        | Path to the directory to serve                       |
+| `HOST`               | Server bind address                                  |
+| `PORT`               | Server port                                          |
+| `SHOW_HIDDEN`        | Show hidden files (`true`/`false`, default `true`)   |
+| `EXCLUDE_DIRS`       | Comma-separated directory names to hide (replaces defaults) |
+| `WALK_MAX_DEPTH`     | Max directory depth for untracked-file discovery     |
+| `WALK_TIMEOUT`       | Timeout in seconds for the file-discovery subprocess |
+| `USE_IGNORE_FILES`   | Honor ignore files (`true`/`false`, default `true`)  |
+| `DISABLE_WHATS_NEW`  | Suppress the "What's New" popup (`true`/`false`)      |
+| `VANTAGE_LOG_LEVEL`  | Log verbosity (`DEBUG`/`INFO`/`WARNING`/`ERROR`)     |

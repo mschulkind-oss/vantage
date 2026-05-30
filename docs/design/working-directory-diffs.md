@@ -4,7 +4,7 @@ Design document for Vantage's uncommitted change (working directory diff) featur
 
 ## Problem
 
-Previously, Vantage only showed committed diffs from git history. Users couldn't see uncommitted changes — the most common state when actively editing files.
+Showing only committed diffs from git history leaves a blind spot: users can't see uncommitted changes — the most common state when actively editing files. Vantage surfaces working-directory diffs so that in-progress edits are visible alongside committed history.
 
 ## Design
 
@@ -44,11 +44,11 @@ Returns the uncommitted diff for a file. Uses a sentinel `commit_hexsha: "workin
 
 ### Backend Implementation
 
-In `GitService`:
+In `git.GitService`:
 
-- **`get_working_dir_diff(path)`**: Runs `git diff HEAD -- <path>` for tracked files. For untracked files, calls `_diff_untracked_file()` which generates a synthetic all-add diff.
-- **`_diff_untracked_file(path)`**: Reads the file content and produces a `FileDiff` where every line is a `+` (add) line.
-- The diff is returned as a standard `FileDiff` model with `commit_hexsha="working"` as a sentinel value.
+- **`WorkingDiff(path)`**: Runs `git diff HEAD -- <path>` for tracked files. For untracked files, it generates a synthetic all-add diff where every line is a `+` (add) line, read straight from the file content.
+- The diff is returned as a standard `model.FileDiff` with `commit_hexsha="working"` as a sentinel value.
+- As with every git operation, the service shells out to the `git` binary with an explicit argument slice and degrades to an empty result rather than erroring on failure.
 
 ### Frontend Implementation
 
@@ -69,11 +69,11 @@ We use `commit_hexsha: "working"` as a sentinel to distinguish working directory
 ## File Changes
 
 ```
-src/vantage/services/git_service.py    # get_working_dir_diff(), _diff_untracked_file()
-src/vantage/routers/api.py             # GET /git/diff/working, enhanced /git/status
-src/vantage/schemas/models.py          # FileStatus.git_status replaces .is_modified
-frontend/src/stores/useGitStore.ts     # fetchWorkingDiff(), fileGitStatus
-frontend/src/types/index.ts            # FileStatus interface
-frontend/src/pages/ViewerPage.tsx      # Modified badge, click handlers
-frontend/src/components/DiffViewer.tsx  # Working diff header styling
+internal/git/service.go                 # WorkingDiff() + untracked synthetic diff
+internal/api/git_handlers.go            # GET /git/diff/working, /git/status
+internal/model/models.go                # FileStatus.GitStatus, FileDiff sentinel
+frontend/src/stores/useGitStore.ts      # fetchWorkingDiff(), fileGitStatus
+frontend/src/types/index.ts             # FileStatus interface
+frontend/src/pages/ViewerPage.tsx       # Modified badge, click handlers
+frontend/src/components/DiffViewer.tsx   # Working diff header styling
 ```

@@ -222,7 +222,7 @@ This relies on **block index alignment**, which falls apart any time a block is 
      - [a3f9c2d1] Reworded paragraph: tax is now described as invoice-time
      ```
 
-3. **Gap:** Nothing parses the changelog. `rg 'changelog' src/ frontend/src/` returns only the clipboard-emit code. The "agent → reviewer" channel that the prompt promises *does not exist server-side*. The reviewer never sees the agent's per-comment summary; they just see "Outdated" labels and blocks with `✓ addressed` heuristic badges.
+3. **Gap:** Nothing parses the changelog. `rg 'changelog' internal/ frontend/src/` returns only the clipboard-emit code. The "agent → reviewer" channel that the prompt promises *does not exist server-side*. The reviewer never sees the agent's per-comment summary; they just see "Outdated" labels and blocks with `✓ addressed` heuristic badges.
 
 4. **Gap:** The agent has no way to push back. If comment #2 says "delete this section" but the agent thinks the section is load-bearing, there's no `won't_fix(reason)` channel. The agent either silently complies or silently doesn't.
 
@@ -271,19 +271,21 @@ We already have **`data-source-line`** on every rendered block (added by `rehype
 
 A comment becomes:
 
-```python
-class CommentAnchor(BaseModel):
-    source_line: int        # block's data-source-line at comment time
-    block_text_hash: str    # sha1 of the block's stripped text, for drift check
-    selection_offset: int   # char offset within the block (display only)
-    selection_length: int   # selection length (display only)
-    fallback_text: str      # for the truly-outdated case
+```go
+type CommentAnchor struct {
+    SourceLine      int    // block's data-source-line at comment time
+    BlockTextHash   string // hash of the block's stripped text, for drift check
+    SelectionOffset int    // char offset within the block (display only)
+    SelectionLength int    // selection length (display only)
+    FallbackText    string // for the truly-outdated case
+}
 
-class ReviewComment(BaseModel):
-    id: str
-    anchor: CommentAnchor
-    body: str
-    # ...
+type ReviewComment struct {
+    ID     string
+    Anchor CommentAnchor
+    Body   string
+    // ...
+}
 ```
 
 On render:
@@ -343,15 +345,16 @@ A **reaction** is a per-comment record of what changed in response. Bound to a c
 
 Data:
 
-```python
-class CommentReaction(BaseModel):
-    comment_id: str
-    actor: str                # "agent" | "reviewer"
-    kind: str                 # "addressed" | "wont_fix" | "needs_clarification" | "noted"
-    summary: str              # one-line description from the agent
-    before_text: str          # block text before the change
-    after_text: str           # block text after the change (for "addressed")
-    timestamp: float
+```go
+type CommentReaction struct {
+    CommentID  string  // the comment this reacts to
+    Actor      string  // "agent" | "reviewer"
+    Kind       string  // "addressed" | "wont_fix" | "needs_clarification" | "noted"
+    Summary    string  // one-line description from the agent
+    BeforeText string  // block text before the change
+    AfterText  string  // block text after the change (for "addressed")
+    Timestamp  float64 // epoch seconds
+}
 ```
 
 How it gets created:
@@ -429,7 +432,7 @@ Scope:
 
 3. **Does the changelog parser run server-side or client-side?**
 
-   Server-side is more robust — runs even if no browser is open. Client-side avoids Python-side markdown parsing and keeps the watcher simple.
+   Server-side is more robust — runs even if no browser is open. Client-side avoids parsing markdown in the backend and keeps the watcher simple.
 
    _Leaning:_ Client-side, in the same `useEffect` that auto-snapshots. When `fileContent.content` changes and review is on, scan for `<!-- changelog -->` blocks, post reactions to the server. Server stays dumb storage.
 
