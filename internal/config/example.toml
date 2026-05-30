@@ -1,0 +1,63 @@
+# Vantage Daemon Configuration
+#
+# This file configures the Vantage daemon to serve multiple directories.
+# Each repository will appear as a top-level item in the sidebar.
+
+# Server settings
+host = "127.0.0.1"
+port = 8000
+
+# Log level for vantage logging.  One of: DEBUG, INFO, WARNING, ERROR.
+# Can be overridden at runtime with the VANTAGE_LOG_LEVEL env var.
+# log_level = "INFO"
+
+# Directories to exclude from file listings and recent files.
+# These are filtered out of the sidebar, file picker, and recent files.
+# Defaults (if omitted): node_modules, .venv, venv, __pycache__,
+#   .pytest_cache, .mypy_cache, .ruff_cache, .egg-info, .tox, .nox,
+#   dist, build, .cache, .git, .hg, .svn
+#
+# To override the defaults with your own list:
+# exclude_dirs = ["node_modules", ".venv", "vendor"]
+
+# Performance tuning for very large repos.
+# walk_max_depth: limit how deep to scan for untracked markdown files.
+#   Default: no limit (all depths scanned).
+#   Set to e.g. 5 if repos have enormous deeply-nested non-markdown trees.
+# walk_max_depth = 5
+#
+# walk_timeout: timeout in seconds for the git ls-files subprocess that
+#   discovers untracked files. Default: 30 seconds.
+# walk_timeout = 30.0
+
+# Ignore files: vantage reads two optional gitignore-style files to hide
+# noisy paths from the sidebar, file search, and live-reload watcher:
+#   ~/.config/vantage/ignore   (user-level, every repo)
+#   <repo>/.vantageignore      (per-workspace, checked in)
+# Both files use full gitignore syntax (**, negation with !, comments).
+# Set use_ignore_files = false to disable both layers.
+# use_ignore_files = true
+
+# Source directories: parent directories that are automatically scanned
+# for git repos.  Any subdirectory containing a .git folder is added as
+# a repo (using the directory name).  Repos already listed in [[repos]]
+# are not duplicated.  This is off by default — uncomment to enable.
+#
+# source_dirs = ["~/code", "~/projects"]
+
+# Repositories to serve
+# Each repo needs a unique name (used in URLs) and a path to the directory.
+#
+# Example:
+# [[repos]]
+# name = "notes"
+# path = "~/Documents/notes"
+#
+# [[repos]]
+# name = "work"
+# path = "~/work/documentation"
+# allowed_read_roots = ["~/.dotfiles/gemini/skills"]
+
+[[repos]]
+name = "example"
+path = "."
