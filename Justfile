@@ -113,10 +113,13 @@ dev-connect:
 build-frontend:
     cd frontend && npm run build
 
-# Copy the built frontend into the Go embed directory.
+# Copy the built frontend into the Go embed directory (preserving .gitkeep so
+# the build never dirties a tracked file).
 bundle-frontend: build-frontend
     rm -rf web/dist
-    cp -r frontend/dist web/dist
+    mkdir -p web/dist
+    cp -R frontend/dist/. web/dist/
+    @touch web/dist/.gitkeep
 
 # Build the vantage binary with the frontend embedded.
 build: bundle-frontend
@@ -126,6 +129,28 @@ build: bundle-frontend
 # unless you have run bundle-frontend).
 run path=".":
     go run ./cmd/vantage serve {{path}}
+
+# ── Install & service (host) ────────────────────────────────────────
+
+# Install the vantage binary (with the frontend embedded) onto PATH via GOBIN.
+install: bundle-frontend
+    go install -ldflags "-X github.com/mschulkind-oss/vantage/internal/buildinfo.commit=$(git rev-parse --short HEAD)" ./cmd/vantage
+
+# Restart the systemd user service (after install).
+restart-service:
+    systemctl --user restart vantage
+
+# Build, install, and restart the service.
+deploy: install restart-service
+    @echo "Vantage deployed and service restarted"
+
+# Show the systemd service status.
+status:
+    systemctl --user status vantage
+
+# Follow the service logs.
+logs:
+    journalctl --user -u vantage -f
 
 # Build the static user-guide documentation site into dist/docs.
 build-docs:
