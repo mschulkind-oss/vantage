@@ -103,17 +103,20 @@ Bug fixes must include a regression test that demonstrates the bug.
 ## Code Quality
 
 ```bash
-just check       # format in place, lint, type-check, and test — run before committing
-just check-ci    # read-only variant used by the pre-commit hook and CI
+just format      # format Go + frontend (gofmt + prettier), no tests — run before committing
+just check       # format, then lint, type-check, and test (the full local gate)
+just check-ci    # read-only: errors on unformatted/lint issues, never rewrites
 ```
 
-`just check` covers both halves of the codebase (format and lint are folded in):
+Run `just format` before committing. The pre-commit hook (and CI) run
+`just check-ci`, which *fails* on unformatted or lint-dirty code rather than
+rewriting it — so formatting stays an explicit, staged step (no surprise
+reformats showing up after a commit).
+
+`just check` covers both halves of the codebase:
 
 - **Go:** `gofmt`, `go vet`, `staticcheck`, `go test ./...`
 - **Frontend:** prettier, eslint, `tsc --noEmit`, vitest
-
-The pre-commit hook runs `just check-ci`, which *fails* on unformatted code
-rather than rewriting it — so run `just check` first.
 
 ## Building & Installing
 

@@ -23,19 +23,23 @@ deploy: _bundle
     go install -ldflags "-X github.com/mschulkind-oss/vantage/internal/buildinfo.commit=$(git rev-parse --short HEAD)" ./cmd/vantage
     systemctl --user restart vantage
 
-# Format, lint, type-check, and test. Run before committing.
-check:
+# Format the code (Go + frontend). No tests — run this before committing.
+format:
     gofmt -w cmd internal web
+    cd frontend && npm run format
+
+# Format, then lint, type-check, and test. The full local gate.
+check: format
     go vet ./...
     staticcheck ./...
     go test ./...
-    cd frontend && npm run format && npm run lint && npx tsc --noEmit && npm run test
+    cd frontend && npm run lint && npx tsc --noEmit && npm run test
 
-# Read-only verification — used by the pre-commit hook and CI.
+# Read-only gate (errors on issues, never rewrites) — used by the pre-commit hook and CI.
 check-ci:
     #!/usr/bin/env bash
     set -euo pipefail
-    test -z "$(gofmt -l cmd internal web)" || { echo "gofmt needed:"; gofmt -l cmd internal web; exit 1; }
+    test -z "$(gofmt -l cmd internal web)" || { echo "unformatted Go (run: just format):"; gofmt -l cmd internal web; exit 1; }
     go vet ./...
     staticcheck ./...
     go test ./...
