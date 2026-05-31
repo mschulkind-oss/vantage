@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mschulkind-oss/vantage/internal/config"
+	"github.com/mschulkind-oss/vantage/web"
 )
 
 // initRepo creates a temp git repo with one committed markdown file and returns
@@ -239,6 +240,9 @@ func TestDaemonPerfDiagnosticsShape(t *testing.T) {
 }
 
 func TestSPAFallbackServesIndex(t *testing.T) {
+	if _, err := web.IndexHTML(); err != nil {
+		t.Skip("frontend bundle not embedded; run 'just build' (CI bundles before tests)")
+	}
 	srv, _ := singleRepoServer(t)
 	rec := doGET(t, srv.Handler(), "/some/client/route")
 	require.Equal(t, http.StatusOK, rec.Code)
