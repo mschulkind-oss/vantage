@@ -212,9 +212,7 @@ export const HistoryPage: React.FC = () => {
                           </div>
                           <div className="flex items-center space-x-1.5">
                             <Clock size={12} />
-                            <span
-                              title={format(new Date(commit.date), "PPpp")}
-                            >
+                            <span title={format(new Date(commit.date), "PPpp")}>
                               <RelativeTime date={commit.date} />
                             </span>
                           </div>
