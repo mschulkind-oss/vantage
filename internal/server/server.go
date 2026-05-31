@@ -57,10 +57,6 @@ import (
 // (possibly stale) values instantly and the loop keeps them fresh.
 const activityRefreshInterval = 30 * time.Second
 
-// activityTimeout bounds the per-repo "git log -1 --format=%ct" probe so one
-// slow repository cannot stall a refresh pass.
-const activityTimeout = 5 * time.Second
-
 // repoServices is the server-side bundle for one repository: its name plus the
 // git and fs services scoped to it. It is the value the resolve middleware
 // converts into an [api.RepoServices] for the request context.
@@ -343,7 +339,7 @@ func (s *Server) activityLoop(ctx context.Context) {
 // warmActivity recomputes last-activity for every repository concurrently and
 // swaps the cache atomically. A repo whose probe fails keeps a name-only
 // RepoInfo (last_activity null). It is a no-op in single-repo mode.
-func (s *Server) warmActivity(ctx context.Context) {
+func (s *Server) warmActivity(_ context.Context) {
 	if !s.cfg.MultiRepo {
 		return
 	}
@@ -355,11 +351,17 @@ func (s *Server) warmActivity(ctx context.Context) {
 	}
 	results := make([]result, len(s.order))
 
-	g, gctx := errgroup.WithContext(ctx)
+	g := new(errgroup.Group)
 	for i, name := range s.order {
 		rs := s.repos[name]
 		g.Go(func() error {
-			results[i] = result{name: name, info: lastActivityInfo(gctx, name, rs.root)}
+			recents := rs.git.Recents(1, nil, true, true)
+			if len(recents) > 0 {
+				t := recents[0].Date.UTC()
+				results[i] = result{name: name, info: model.RepoInfo{Name: name, LastActivity: &t}}
+			} else {
+				results[i] = result{name: name, info: model.RepoInfo{Name: name}}
+			}
 			return nil
 		})
 	}

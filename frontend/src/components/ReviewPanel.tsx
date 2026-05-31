@@ -49,6 +49,9 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   const editComment = useReviewStore((s) => s.editComment);
   const resolveComment = useReviewStore((s) => s.resolveComment);
   const dismissComment = useReviewStore((s) => s.dismissComment);
+  const dismissAll = useReviewStore((s) => s.dismissAll);
+  const dismissOutdated = useReviewStore((s) => s.dismissOutdated);
+  const outdatedCommentIds = useReviewStore((s) => s.outdatedCommentIds);
   const replyToComment = useReviewStore((s) => s.replyToComment);
   const reopenAndReply = useReviewStore((s) => s.reopenAndReply);
   const copyAllToClipboard = useReviewStore((s) => s.copyAllToClipboard);
@@ -64,6 +67,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   const editRef = useRef<HTMLTextAreaElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
+  const [confirmDismiss, setConfirmDismiss] = useState(false);
 
   // Counts (computed from full comment list, regardless of active filter)
   const counts = useMemo(() => {
@@ -92,6 +96,9 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   if (!isOpen) return null;
 
   const activeCount = counts.all - counts.resolved;
+  const outdatedCount = comments.filter(
+    (c) => !c.resolved && outdatedCommentIds.has(c.id),
+  ).length;
   const pendingCount = comments.filter(
     (c) =>
       !c.resolved &&
@@ -99,7 +106,6 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
         (r) => r.actor === "agent" && r.kind === "addressed",
       ),
   ).length;
-  const respondedCount = counts.withReaction;
 
   const handleCopy = async () => {
     const ok = await copyAllToClipboard();
@@ -118,6 +124,18 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
     } else {
       setConfirmEnd(true);
       setTimeout(() => setConfirmEnd(false), 3000);
+    }
+  };
+
+  const handleDismiss = () => {
+    if (confirmDismiss) {
+      dismissAll();
+      setConfirmDismiss(false);
+    } else if (outdatedCount > 0) {
+      dismissOutdated();
+    } else {
+      setConfirmDismiss(true);
+      setTimeout(() => setConfirmDismiss(false), 3000);
     }
   };
 
@@ -447,17 +465,21 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
 
         {comments.length > 0 && (
           <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-700 flex items-center gap-2 shrink-0">
-            {respondedCount > 0 && (
+            {activeCount > 0 && (
               <button
-                onClick={() => {
-                  const responded = comments.filter(
-                    (c) => !c.resolved && hasAgentReaction(c),
-                  );
-                  for (const c of responded) resolveComment(c.id);
-                }}
-                className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                onClick={handleDismiss}
+                className={`flex items-center justify-center gap-1.5 min-w-[160px] px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                  confirmDismiss
+                    ? "bg-red-600 text-white hover:bg-red-700"
+                    : "bg-slate-700 dark:bg-slate-600 text-white hover:bg-slate-800 dark:hover:bg-slate-500"
+                }`}
               >
-                <Check size={12} /> Dismiss All ({respondedCount})
+                <Check size={12} />
+                {confirmDismiss
+                  ? "Confirm dismiss all?"
+                  : outdatedCount > 0
+                    ? `Dismiss Outdated (${outdatedCount})`
+                    : `Dismiss All (${activeCount})`}
               </button>
             )}
             <button

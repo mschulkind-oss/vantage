@@ -131,9 +131,9 @@ export const useRepoStore = create<RepoState>((set, get) => ({
   })(),
   showHidden: (() => {
     try {
-      return localStorage.getItem("vantage:showHidden") !== "false";
+      return localStorage.getItem("vantage:showHidden") === "true";
     } catch {
-      return true;
+      return false;
     }
   })(),
   showGitignored: (() => {
