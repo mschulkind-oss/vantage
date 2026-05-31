@@ -35,6 +35,9 @@ export default defineConfig(({ mode }) => {
       dedupe: ["react", "react-dom"],
     },
     build: {
+      // The heavy diagram/markdown libs are lazy-loaded separate chunks and the
+      // app is served locally, so large chunks are fine here. Silence the nudge.
+      chunkSizeWarningLimit: 2000,
       rollupOptions: {
         output: {
           manualChunks: {
