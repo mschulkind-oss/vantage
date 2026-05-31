@@ -18,9 +18,16 @@ dev path=".":
 build: _bundle
     go build -ldflags "-X github.com/mschulkind-oss/vantage/internal/buildinfo.commit=$(git rev-parse --short HEAD)" -o vantage ./cmd/vantage
 
-# Build, install onto PATH (GOBIN), and restart the systemd user service.
-deploy: _bundle
-    go install -ldflags "-X github.com/mschulkind-oss/vantage/internal/buildinfo.commit=$(git rev-parse --short HEAD)" ./cmd/vantage
+# Build, install onto PATH, and restart the systemd user service.
+deploy: build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    bindir="$(go env GOBIN)"
+    [ -n "$bindir" ] || bindir="$(go env GOPATH)/bin"
+    mkdir -p "$bindir"
+    rm -f "$bindir/vantage"   # replace any stale binary/symlink from a previous install
+    install -m 0755 ./vantage "$bindir/vantage"
+    echo "Installed $bindir/vantage"
     systemctl --user restart vantage
 
 # Format the code (Go + frontend). No tests — run this before committing.
