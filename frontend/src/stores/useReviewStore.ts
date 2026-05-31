@@ -76,6 +76,10 @@ interface ReviewState {
   hoveredCommentId: string | null;
   setHoveredCommentId: (id: string | null) => void;
 
+  // Outdated tracking (set by useReviewHighlights)
+  outdatedCommentIds: Set<string>;
+  setOutdatedCommentIds: (ids: Set<string>) => void;
+
   // Snapshots (still kept for reaction before/after capture; no UI)
   snapshots: ReviewSnapshot[];
 
@@ -99,6 +103,10 @@ interface ReviewState {
   resolveComment: (id: string) => void;
   /** Dismiss without writing a reaction (means "I'm done with this comment"). */
   dismissComment: (id: string) => void;
+  /** Dismiss all unresolved comments at once. */
+  dismissAll: () => void;
+  /** Dismiss only outdated (orphaned) comments. */
+  dismissOutdated: () => void;
   /** Reply to an agent-addressed comment (keeps it unresolved for another round). */
   replyToComment: (id: string, replyText: string) => void;
   /** Reopen a resolved comment and add a follow-up reply. */
@@ -121,6 +129,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   comments: [],
   pendingSelection: null,
   hoveredCommentId: null,
+  outdatedCommentIds: new Set<string>(),
   snapshots: [],
   isLoading: false,
 
@@ -213,6 +222,10 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     set({ hoveredCommentId: id });
   },
 
+  setOutdatedCommentIds: (ids: Set<string>) => {
+    set({ outdatedCommentIds: ids });
+  },
+
   addComment: (
     anchor: CommentAnchor,
     comment: string,
@@ -281,6 +294,28 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     set((s) => ({
       comments: s.comments.map((c) =>
         c.id === id ? { ...c, resolved: true } : c,
+      ),
+    }));
+    get().saveReview();
+  },
+
+  dismissAll: () => {
+    set({ hoveredCommentId: null });
+    set((s) => ({
+      comments: s.comments.map((c) =>
+        c.resolved ? c : { ...c, resolved: true },
+      ),
+    }));
+    get().saveReview();
+  },
+
+  dismissOutdated: () => {
+    const outdated = get().outdatedCommentIds;
+    if (outdated.size === 0) return;
+    set({ hoveredCommentId: null });
+    set((s) => ({
+      comments: s.comments.map((c) =>
+        !c.resolved && outdated.has(c.id) ? { ...c, resolved: true } : c,
       ),
     }));
     get().saveReview();

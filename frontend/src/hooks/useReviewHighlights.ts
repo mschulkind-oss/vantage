@@ -88,7 +88,10 @@ export function useReviewHighlights(
       );
     });
 
-    if (comments.length === 0) return;
+    if (comments.length === 0) {
+      useReviewStore.getState().setOutdatedCommentIds(new Set());
+      return;
+    }
 
     console.log(
       "[review] useReviewHighlights: %d comments, blocksByLine will be built from %d blocks",
@@ -103,7 +106,12 @@ export function useReviewHighlights(
       insertResolvedIndicator(el, resolved.length);
     }
 
-    if (active.length === 0) return;
+    if (active.length === 0) {
+      useReviewStore.getState().setOutdatedCommentIds(new Set());
+      return;
+    }
+
+    const outdatedIds = new Set<string>();
 
     // Tag every block once with data-block-hash so the neighbor walk
     // can do synchronous lookups.  Skips containers we never anchor on.
@@ -134,6 +142,7 @@ export function useReviewHighlights(
           comment.id.slice(0, 8),
           comment,
         );
+        outdatedIds.add(comment.id);
         insertOutdatedComment(
           el,
           comment,
@@ -196,6 +205,7 @@ export function useReviewHighlights(
           anchor.source_line,
           anchor.block_text_hash,
         );
+        outdatedIds.add(comment.id);
         insertOutdatedComment(
           el,
           comment,
@@ -250,6 +260,8 @@ export function useReviewHighlights(
         divergent,
       );
     }
+
+    useReviewStore.getState().setOutdatedCommentIds(outdatedIds);
   }, [
     containerRef,
     comments,

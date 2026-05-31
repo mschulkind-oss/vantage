@@ -1,15 +1,11 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
-	"os/exec"
 	"sort"
 	"strconv"
-	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/sync/errgroup"
@@ -198,29 +194,6 @@ func (s *Server) handlePerfDiagnosticsMulti(w http.ResponseWriter, r *http.Reque
 // ---------------------------------------------------------------------------
 // Repo activity probe
 // ---------------------------------------------------------------------------
-
-// lastActivityInfo returns a RepoInfo for name with last_activity set to the
-// time of the repository's most recent commit ("git log -1 --format=%ct"), or
-// name-only (null activity) when the probe fails or the repo has no commits.
-func lastActivityInfo(ctx context.Context, name, root string) model.RepoInfo {
-	cctx, cancel := context.WithTimeout(ctx, activityTimeout)
-	defer cancel()
-
-	cmd := exec.CommandContext(cctx, "git", "log", "-1", "--format=%ct")
-	cmd.Dir = root
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = nil
-	if err := cmd.Run(); err != nil {
-		return model.RepoInfo{Name: name}
-	}
-	secs, err := strconv.ParseInt(strings.TrimSpace(out.String()), 10, 64)
-	if err != nil {
-		return model.RepoInfo{Name: name}
-	}
-	t := time.Unix(secs, 0).UTC()
-	return model.RepoInfo{Name: name, LastActivity: &t}
-}
 
 // ---------------------------------------------------------------------------
 // Local HTTP/query helpers

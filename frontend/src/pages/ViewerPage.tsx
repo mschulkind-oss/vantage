@@ -226,12 +226,20 @@ export const ViewerPage: React.FC = () => {
         (r) => r.actor === "agent" && r.kind === "addressed",
       ),
   ).length;
+  const activeReviewCount = reviewComments.filter((c) => !c.resolved).length;
   const copyAllReviewComments = useReviewStore((s) => s.copyAllToClipboard);
+  const dismissAllReview = useReviewStore((s) => s.dismissAll);
+  const dismissOutdatedReview = useReviewStore((s) => s.dismissOutdated);
+  const outdatedCommentIds = useReviewStore((s) => s.outdatedCommentIds);
+  const outdatedReviewCount = reviewComments.filter(
+    (c) => !c.resolved && outdatedCommentIds.has(c.id),
+  ).length;
   const endReview = useReviewStore((s) => s.endReview);
   const hasReviewData = useReviewStore((s) => s.hasReviewData);
   const [reviewPanelOpen, setReviewPanelOpen] = useState(false);
   const [reviewCopied, setReviewCopied] = useState(false);
   const [reviewExitConfirm, setReviewExitConfirm] = useState(false);
+  const [reviewDismissConfirm, setReviewDismissConfirm] = useState(false);
 
   const handleReviewToggle = useCallback(() => {
     if (isReviewMode && hasReviewData()) {
@@ -251,6 +259,23 @@ export const ViewerPage: React.FC = () => {
     reviewExitConfirm,
     endReview,
     toggleReviewMode,
+  ]);
+
+  const handleReviewDismiss = useCallback(() => {
+    if (reviewDismissConfirm) {
+      dismissAllReview();
+      setReviewDismissConfirm(false);
+    } else if (outdatedReviewCount > 0) {
+      dismissOutdatedReview();
+    } else {
+      setReviewDismissConfirm(true);
+      setTimeout(() => setReviewDismissConfirm(false), 3000);
+    }
+  }, [
+    reviewDismissConfirm,
+    outdatedReviewCount,
+    dismissAllReview,
+    dismissOutdatedReview,
   ]);
 
   // Load review data when file changes
@@ -1169,6 +1194,32 @@ export const ViewerPage: React.FC = () => {
                         </button>
                         {isReviewMode && (
                           <>
+                            {activeReviewCount > 0 && (
+                              <button
+                                onClick={handleReviewDismiss}
+                                className={`flex items-center space-x-1.5 text-xs rounded-lg min-w-[100px] px-2 py-1.5 transition-colors cursor-pointer ${
+                                  reviewDismissConfirm
+                                    ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50"
+                                    : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600/50"
+                                }`}
+                                title={
+                                  reviewDismissConfirm
+                                    ? "Click again to dismiss all"
+                                    : outdatedReviewCount > 0
+                                      ? "Dismiss outdated comments"
+                                      : "Dismiss all comments"
+                                }
+                              >
+                                <Check size={14} />
+                                <span className="hidden sm:inline">
+                                  {reviewDismissConfirm
+                                    ? "Confirm?"
+                                    : outdatedReviewCount > 0
+                                      ? `Dismiss ${outdatedReviewCount} outdated`
+                                      : `Dismiss ${activeReviewCount}`}
+                                </span>
+                              </button>
+                            )}
                             {pendingReviewCount > 0 && (
                               <button
                                 onClick={async () => {
@@ -1302,6 +1353,32 @@ export const ViewerPage: React.FC = () => {
                       </button>
                       {isReviewMode && (
                         <>
+                          {activeReviewCount > 0 && (
+                            <button
+                              onClick={handleReviewDismiss}
+                              className={`flex items-center space-x-1.5 text-xs rounded-lg min-w-[100px] px-2 py-1.5 transition-colors cursor-pointer ${
+                                reviewDismissConfirm
+                                  ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50"
+                                  : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600/50"
+                              }`}
+                              title={
+                                reviewDismissConfirm
+                                  ? "Click again to dismiss all"
+                                  : outdatedReviewCount > 0
+                                    ? "Dismiss outdated comments"
+                                    : "Dismiss all comments"
+                              }
+                            >
+                              <Check size={14} />
+                              <span className="hidden sm:inline">
+                                {reviewDismissConfirm
+                                  ? "Confirm?"
+                                  : outdatedReviewCount > 0
+                                    ? `Dismiss ${outdatedReviewCount} outdated`
+                                    : `Dismiss ${activeReviewCount}`}
+                              </span>
+                            </button>
+                          )}
                           {pendingReviewCount > 0 && (
                             <button
                               onClick={async () => {

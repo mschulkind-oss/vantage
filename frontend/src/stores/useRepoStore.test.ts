@@ -19,6 +19,8 @@ describe("useRepoStore", () => {
       isLoading: false,
       error: null,
       expandedDirs: {},
+      showHidden: true,
+      showGitignored: true,
     });
     vi.clearAllMocks();
   });
