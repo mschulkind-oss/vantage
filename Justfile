@@ -48,7 +48,7 @@ lint-js:
     cd frontend && npm run lint
     cd frontend && npx tsc --noEmit
 
-lint-ci: lint-ci-go lint-js
+lint-ci: lint-ci-go lint-ci-js
 lint-ci-go:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -56,6 +56,10 @@ lint-ci-go:
     if [ -n "$unformatted" ]; then echo "gofmt needed:"; echo "$unformatted"; exit 1; fi
     go vet ./...
     staticcheck ./...
+lint-ci-js:
+    cd frontend && npm run format:check
+    cd frontend && npm run lint
+    cd frontend && npx tsc --noEmit
 
 test: test-go test-js
 test-go *args:
