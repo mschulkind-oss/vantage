@@ -1,8 +1,8 @@
 // Package web embeds the built frontend single-page application.
 //
 // The real assets are produced by `just bundle-frontend` (Vite build copied
-// into web/dist). A placeholder index.html is committed so the module always
-// compiles; a production build overwrites web/dist with the real bundle.
+// into web/dist). A committed .gitkeep keeps the directory present so this
+// package always compiles; a production build fills it with the real bundle.
 package web
 
 import (
