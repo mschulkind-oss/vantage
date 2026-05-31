@@ -44,14 +44,8 @@ jobs:
       - name: Download Go modules
         run: go mod download
 
-      - name: Lint
-        run: just lint-ci
+      - name: Check (lint, type-check, test)
+        run: just check-ci
 
-      - name: Test
-        run: just test
-
-      - name: Build frontend
-        run: just build-frontend
-
-      - name: Build binary
-        run: go build ./...
+      - name: Build
+        run: just build
