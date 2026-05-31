@@ -72,33 +72,24 @@ just setup        # go mod download + build vantage-md + npm ci
 ## Running in Development
 
 ```bash
-just dev [PATH]       # Start both frontend + backend (default path: .)
-just dev-connect      # View logs (Ctrl+B D to detach)
-just dev-stop         # Stop both servers
+just dev [PATH]    # Run the Go server + Vite dev server together (Ctrl-C to stop; default path: .)
 ```
 
-`just dev` runs the Go server and the Vite dev server together under overmind.
-You can also run them separately:
+`just dev` starts both processes under overmind (see `Procfile`). To run one
+half on its own:
 
 ```bash
-just dev-go [PATH]    # Backend only (go run ./cmd/vantage serve PATH)
-just dev-js           # Frontend only (Vite dev server)
+go run ./cmd/vantage serve [PATH]   # backend only
+cd frontend && npm run dev          # frontend only
 ```
 
 ## Testing
 
-```bash
-just test             # Run all tests (Go + frontend)
-just test-go [args]   # Go tests only (go test ./...)
-just test-js          # Frontend tests only (vitest)
-```
-
-`just test-go` forwards any extra arguments to `go test`, so you can target a
-single package or run with verbose output:
+`just check` runs the whole suite; while iterating, run a half directly:
 
 ```bash
-just test-go ./internal/git/...
-just test-go -run TestWorkingDiff -v
+go test ./...                       # Go tests (add -run / -v / a package to narrow)
+cd frontend && npm run test         # frontend tests (vitest)
 ```
 
 ### TDD Workflow
@@ -112,32 +103,28 @@ Bug fixes must include a regression test that demonstrates the bug.
 ## Code Quality
 
 ```bash
-just check            # Local gate: format in place, fix lint, run tests
-just check-ci         # Read-only gate used by the pre-commit hook and CI
-just format           # Auto-format all code (gofmt + prettier)
-just lint             # Lint all code (go vet, staticcheck, eslint, tsc)
+just check       # format in place, lint, type-check, and test — run before committing
+just check-ci    # read-only variant used by the pre-commit hook and CI
 ```
 
-`just check` formats, lints, and tests both halves of the codebase:
+`just check` covers both halves of the codebase (format and lint are folded in):
 
 - **Go:** `gofmt`, `go vet`, `staticcheck`, `go test ./...`
 - **Frontend:** prettier, eslint, `tsc --noEmit`, vitest
 
-**Always run `just check` before committing.** The pre-commit hook runs
-`just check-ci` (the read-only variant: it fails on unformatted code rather
-than rewriting it).
+The pre-commit hook runs `just check-ci`, which *fails* on unformatted code
+rather than rewriting it — so run `just check` first.
 
 ## Building & Installing
 
 ```bash
-just build            # Build the frontend, embed it, build the vantage binary
-just bundle-frontend  # Build the SPA and copy it into web/dist
+just build       # build the frontend, embed it, and build ./vantage
+just deploy      # build, `go install` onto your PATH, and restart the systemd service
 ```
 
-`just build` runs `bundle-frontend` (Vite build copied into `web/dist`) and
-then `go build`, stamping the short commit SHA into `internal/buildinfo` via
-`-ldflags`. The result is a single self-contained `./vantage` binary with the
-frontend embedded.
+`just build` builds the SPA, copies it into `web/dist`, and runs `go build`,
+stamping the short commit SHA into `internal/buildinfo` via `-ldflags`. The
+result is a single self-contained `./vantage` binary with the frontend embedded.
 
 To install from the module path:
 
@@ -165,9 +152,9 @@ go install github.com/mschulkind-oss/vantage/cmd/vantage@latest
 - **Testing:** Vitest + React Testing Library.
 - **Tests** are co-located with source files (`Component.test.tsx`).
 
-The compiled frontend is committed into the Go build only at release time
-(`just bundle-frontend` overwrites `web/dist`); a placeholder `index.html`
-keeps the `web` package compiling during day-to-day backend work.
+The compiled frontend is embedded into the Go binary at build time (`just build`
+copies the Vite output into `web/dist`); a committed `web/dist/.gitkeep` keeps
+the `web` package compiling during day-to-day backend work.
 
 ## Additional Docs
 

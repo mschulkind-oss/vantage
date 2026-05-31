@@ -260,11 +260,11 @@ interceptor (`frontend/src/lib/staticMode.ts`).
 
 ## 5. Build & Distribution
 
-1. **Frontend bundle:** `just bundle-frontend` runs the Vite build and copies
-   `frontend/dist` into `web/dist`.
+1. **Frontend bundle + binary:** `just build` runs the Vite build, copies
+   `frontend/dist` into `web/dist`, and runs `go build` against `./cmd/vantage`,
+   stamping the short commit SHA into `internal/buildinfo` via `-ldflags`.
 2. **Embed:** `web/embed.go` embeds `web/dist` with `//go:embed all:dist`, so
-   the SPA ships inside the binary.
-3. **Binary:** `just build` runs `go build` against `./cmd/vantage`, stamping
-   the short commit SHA into `internal/buildinfo` via `-ldflags`.
+   the SPA ships inside the binary (a committed `web/dist/.gitkeep` keeps the
+   package compiling before the first build).
 4. **Install:** `go install github.com/mschulkind-oss/vantage/cmd/vantage@latest`,
    `brew install mschulkind-oss/tap/vantage`, or build from source.
