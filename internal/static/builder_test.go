@@ -11,12 +11,24 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/mschulkind-oss/vantage/web"
 )
 
 // testLogger returns a slog logger that discards output, keeping test runs
 // quiet while still exercising the builder's logging calls.
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+// requireEmbeddedFrontend skips a test when no frontend bundle is embedded
+// (web/dist holds only the .gitkeep sentinel). CI bundles the frontend before
+// running tests, so these run for real there; locally, run `just build` first.
+func requireEmbeddedFrontend(t *testing.T) {
+	t.Helper()
+	if _, err := web.IndexHTML(); err != nil {
+		t.Skip("frontend bundle not embedded; run 'just build'")
+	}
 }
 
 // gitAvailable reports whether a git binary is on PATH. Git-dependent
@@ -60,6 +72,7 @@ func initRepo(t *testing.T, dir string) string {
 // TestBuildEmitsExpectedFileSet builds a tiny markdown repo and asserts the
 // scheme files the frontend will request all exist with valid JSON.
 func TestBuildEmitsExpectedFileSet(t *testing.T) {
+	requireEmbeddedFrontend(t)
 	src := t.TempDir()
 	out := t.TempDir()
 	writeFile(t, src, "README.md", "# Readme\n")
@@ -206,6 +219,7 @@ func TestInjectStaticModeTransforms(t *testing.T) {
 // TestInjectStaticModeEmbeddedSentinel confirms the sentinel injection works on
 // the actual embedded bundle's index.html (the full Build path).
 func TestInjectStaticModeEmbeddedSentinel(t *testing.T) {
+	requireEmbeddedFrontend(t)
 	src := t.TempDir()
 	out := t.TempDir()
 	writeFile(t, src, "README.md", "# Readme\n")

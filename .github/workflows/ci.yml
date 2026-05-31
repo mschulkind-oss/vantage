@@ -44,8 +44,10 @@ jobs:
       - name: Download Go modules
         run: go mod download
 
-      - name: Check (lint, type-check, test)
-        run: just check-ci
-
+      # Build first so the frontend is bundled into web/dist; the embed-dependent
+      # server/static tests then run for real in check-ci instead of skipping.
       - name: Build
         run: just build
+
+      - name: Check (lint, type-check, test)
+        run: just check-ci
