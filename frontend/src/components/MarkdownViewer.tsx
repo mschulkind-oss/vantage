@@ -148,7 +148,9 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       if (href.startsWith("#")) {
         e.preventDefault();
         const id = href.slice(1);
-        const el = document.getElementById(id);
+        const el =
+          document.getElementById(id) ||
+          document.getElementById(`user-content-${id}`);
         if (el) {
           // Find the scrollable content container (has overflow-y-auto)
           const scrollContainer =
@@ -535,7 +537,9 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
                 // Update URL hash without scrolling
                 window.history.replaceState(null, "", `#${id}`);
                 // Scroll to the heading
-                const el = document.getElementById(id);
+                const el =
+                  document.getElementById(id) ||
+                  document.getElementById(`user-content-${id}`);
                 if (el) {
                   const scrollContainer =
                     el.closest("[data-content-scroll]") ||
