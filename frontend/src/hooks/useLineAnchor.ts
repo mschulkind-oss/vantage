@@ -69,6 +69,21 @@ export function useLineAnchor(
       }
     }
 
+    // If no block-level match, try inline anchors (id="user-content-L{n}")
+    // which exist inside large blocks that span many source lines.
+    if (!firstMatch) {
+      for (let ln = range.start; ln <= range.end; ln++) {
+        const anchor = el.querySelector(
+          `#user-content-L${ln}`,
+        ) as HTMLElement | null;
+        if (anchor) {
+          anchor.classList.add(HIGHLIGHT_CLASS);
+          if (!firstMatch) firstMatch = anchor;
+        }
+      }
+    }
+
+    // Last resort: find the nearest block before the target line
     if (!firstMatch) {
       let closest: HTMLElement | null = null;
       let closestLine = 0;
