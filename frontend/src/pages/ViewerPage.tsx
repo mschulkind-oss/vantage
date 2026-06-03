@@ -514,7 +514,9 @@ export const ViewerPage: React.FC = () => {
     const anchor = location.hash ? location.hash.slice(1) : "";
     if (anchor) {
       requestAnimationFrame(() => {
-        const el = document.getElementById(anchor);
+        const el =
+          document.getElementById(anchor) ||
+          document.getElementById(`user-content-${anchor}`);
         if (el && contentRef.current?.scrollTo) {
           const offset =
             el.getBoundingClientRect().top -

@@ -118,24 +118,22 @@ export function useLineAnchor(
     return true;
   }, [location.hash, containerRef, scrollContainerRef, clearHighlights]);
 
-  // Apply highlights when hash changes or content renders
+  // Apply highlights when hash changes or content renders.
+  // Observes document.body so it works even when the scroll container hasn't
+  // mounted yet (e.g. behind a loading gate).
   useEffect(() => {
     if (!location.hash || !parseLineAnchor(location.hash)) return;
 
     if (applyAnchor()) return;
-
-    // Content not rendered yet — observe the container for new child elements
-    const el = containerRef.current;
-    if (!el) return;
 
     const observer = new MutationObserver(() => {
       if (applyAnchor()) {
         observer.disconnect();
       }
     });
-    observer.observe(el, { childList: true, subtree: true });
+    observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [location.hash, containerRef, applyAnchor]);
+  }, [location.hash, applyAnchor]);
 
   // Dismiss on Escape
   useEffect(() => {
