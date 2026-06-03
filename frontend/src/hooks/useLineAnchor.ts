@@ -44,19 +44,18 @@ export function useLineAnchor(
     });
   }, [containerRef]);
 
-  // Apply highlights when hash changes
-  useEffect(() => {
+  const applyAnchor = useCallback(() => {
     const el = containerRef.current;
-    if (!el) return;
+    if (!el) return false;
 
-    // Clear existing highlights
     clearHighlights();
 
     const range = parseLineAnchor(location.hash);
-    if (!range) return;
+    if (!range) return false;
 
-    // Find all block elements whose source line falls in the range
     const blocks = el.querySelectorAll("[data-source-line]");
+    if (blocks.length === 0) return false;
+
     let firstMatch: HTMLElement | null = null;
 
     for (const block of blocks) {
@@ -70,7 +69,6 @@ export function useLineAnchor(
       }
     }
 
-    // If exact line not found, find the nearest block before the target line
     if (!firstMatch) {
       let closest: HTMLElement | null = null;
       let closestLine = 0;
@@ -90,7 +88,6 @@ export function useLineAnchor(
       }
     }
 
-    // Scroll to the first highlighted element
     if (firstMatch) {
       const scrollContainer = scrollContainerRef.current;
       if (scrollContainer) {
@@ -103,7 +100,27 @@ export function useLineAnchor(
         });
       }
     }
+    return true;
   }, [location.hash, containerRef, scrollContainerRef, clearHighlights]);
+
+  // Apply highlights when hash changes or content renders
+  useEffect(() => {
+    if (!location.hash || !parseLineAnchor(location.hash)) return;
+
+    if (applyAnchor()) return;
+
+    // Content not rendered yet — observe the container for new child elements
+    const el = containerRef.current;
+    if (!el) return;
+
+    const observer = new MutationObserver(() => {
+      if (applyAnchor()) {
+        observer.disconnect();
+      }
+    });
+    observer.observe(el, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [location.hash, containerRef, applyAnchor]);
 
   // Dismiss on Escape
   useEffect(() => {
