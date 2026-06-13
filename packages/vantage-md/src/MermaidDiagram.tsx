@@ -1,4 +1,11 @@
-import React, { useEffect, useState, useRef, useMemo, memo } from "react";
+import React, {
+  useEffect,
+  useState,
+  useRef,
+  useMemo,
+  useCallback,
+  memo,
+} from "react";
 import { svgCache } from "./mermaidCache.js";
 import { getMermaid } from "./mermaidLoader.js";
 
@@ -32,6 +39,176 @@ const CloseIcon = () => (
     <path d="M18 6 6 18" /><path d="m6 6 12 12" />
   </svg>
 );
+
+const PlusIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <path d="M5 12h14" /><path d="M12 5v14" />
+  </svg>
+);
+
+const MinusIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <path d="M5 12h14" />
+  </svg>
+);
+
+const ResetIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" />
+  </svg>
+);
+
+const MIN_SCALE = 0.2;
+const MAX_SCALE = 8;
+
+/**
+ * Zoom + pan viewport for the maximized diagram. Wheel/buttons zoom (anchored
+ * on the cursor), drag pans, double-click resets, and it fills whatever space
+ * the modal gives it.
+ */
+function ZoomableSvg({ svg }: { svg: string }) {
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+  } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const viewportRef = useRef<HTMLDivElement>(null);
+
+  const reset = useCallback(() => {
+    setScale(1);
+    setOffset({ x: 0, y: 0 });
+  }, []);
+
+  const zoomBy = useCallback(
+    (factor: number, anchor?: { x: number; y: number }) => {
+      setScale((prev) => {
+        const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, prev * factor));
+        if (next === prev) return prev;
+        // Keep the anchor point (cursor, or viewport center) stationary.
+        const rect = viewportRef.current?.getBoundingClientRect();
+        if (rect) {
+          const ax = (anchor?.x ?? rect.width / 2) - rect.width / 2;
+          const ay = (anchor?.y ?? rect.height / 2) - rect.height / 2;
+          setOffset((o) => ({
+            x: ax - ((ax - o.x) * next) / prev,
+            y: ay - ((ay - o.y) * next) / prev,
+          }));
+        }
+        return next;
+      });
+    },
+    [],
+  );
+
+  const handleWheel = useCallback(
+    (e: React.WheelEvent) => {
+      e.preventDefault();
+      const rect = viewportRef.current?.getBoundingClientRect();
+      const anchor = rect
+        ? { x: e.clientX - rect.left, y: e.clientY - rect.top }
+        : undefined;
+      zoomBy(e.deltaY < 0 ? 1.15 : 1 / 1.15, anchor);
+    },
+    [zoomBy],
+  );
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      originX: offset.x,
+      originY: offset.y,
+    };
+    setIsDragging(true);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    const d = dragRef.current;
+    if (!d) return;
+    setOffset({
+      x: d.originX + (e.clientX - d.startX),
+      y: d.originY + (e.clientY - d.startY),
+    });
+  };
+
+  const endDrag = (e: React.PointerEvent) => {
+    if (dragRef.current) {
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        // pointer may already be released
+      }
+    }
+    dragRef.current = null;
+    setIsDragging(false);
+  };
+
+  return (
+    <div className="relative w-full h-full">
+      <div
+        ref={viewportRef}
+        onWheel={handleWheel}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={endDrag}
+        onPointerLeave={endDrag}
+        onDoubleClick={reset}
+        className="w-full h-full overflow-hidden touch-none select-none"
+        style={{ cursor: isDragging ? "grabbing" : "grab" }}
+      >
+        <div
+          className="mermaid-zoom flex items-center justify-center w-full h-full"
+          style={{
+            transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+            transformOrigin: "center center",
+            transition: isDragging ? "none" : "transform 0.08s ease-out",
+          }}
+          dangerouslySetInnerHTML={{ __html: svg }}
+        />
+      </div>
+
+      <div className="absolute bottom-4 right-4 flex items-center gap-1 rounded-lg bg-white/95 shadow-md border border-gray-200 px-1.5 py-1">
+        <button
+          onClick={() => zoomBy(1 / 1.3)}
+          className="p-1.5 rounded hover:bg-gray-100 text-gray-600"
+          aria-label="Zoom out"
+          title="Zoom out"
+        >
+          <MinusIcon />
+        </button>
+        <button
+          onClick={reset}
+          className="px-2 py-1 text-xs font-medium rounded hover:bg-gray-100 text-gray-600 min-w-[3rem]"
+          title="Reset zoom (or double-click)"
+        >
+          {Math.round(scale * 100)}%
+        </button>
+        <button
+          onClick={() => zoomBy(1.3)}
+          className="p-1.5 rounded hover:bg-gray-100 text-gray-600"
+          aria-label="Zoom in"
+          title="Zoom in"
+        >
+          <PlusIcon />
+        </button>
+        <div className="w-px h-5 bg-gray-200 mx-0.5" />
+        <button
+          onClick={reset}
+          className="p-1.5 rounded hover:bg-gray-100 text-gray-600"
+          aria-label="Reset view"
+          title="Reset view"
+        >
+          <ResetIcon />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 interface MermaidDiagramProps {
   code: string;
@@ -80,13 +257,14 @@ function DiagramModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
       onClick={onClose}
     >
+      {/* overflow-hidden keeps the header's border from poking past the rounded corners */}
       <div
-        className="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col"
+        className="bg-white rounded-lg shadow-xl w-[96vw] h-[94vh] flex flex-col overflow-hidden"
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex items-center justify-between p-4 border-b shrink-0">
           <h2 className="text-lg font-semibold">Mermaid Diagram</h2>
           <button
             onClick={onClose}
@@ -96,7 +274,7 @@ function DiagramModal({
             <CloseIcon />
           </button>
         </div>
-        <div className="p-4 overflow-auto flex-1">{children}</div>
+        <div className="flex-1 overflow-hidden bg-gray-50">{children}</div>
       </div>
     </div>
   );
@@ -219,10 +397,7 @@ const MermaidDiagramInner: React.FC<MermaidDiagramProps> = ({ code }) => {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
       >
-        <div
-          className="flex justify-center items-center min-h-[50vh]"
-          dangerouslySetInnerHTML={{ __html: svg }}
-        />
+        <ZoomableSvg svg={svg} />
       </DiagramModal>
     </>
   );

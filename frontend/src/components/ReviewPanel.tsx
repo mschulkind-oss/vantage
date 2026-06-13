@@ -10,7 +10,7 @@ import {
   X,
   CheckCircle2,
 } from "lucide-react";
-import { useReviewStore } from "../stores/useReviewStore";
+import { isPendingForAgent, useReviewStore } from "../stores/useReviewStore";
 import type { ReviewComment } from "../types";
 
 interface ReviewPanelProps {
@@ -55,10 +55,14 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   const replyToComment = useReviewStore((s) => s.replyToComment);
   const reopenAndReply = useReviewStore((s) => s.reopenAndReply);
   const copyAllToClipboard = useReviewStore((s) => s.copyAllToClipboard);
+  const copyCommentToClipboard = useReviewStore(
+    (s) => s.copyCommentToClipboard,
+  );
   const endReview = useReviewStore((s) => s.endReview);
 
   const [filter, setFilter] = useState<Filter>("all");
   const [copied, setCopied] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [replyingId, setReplyingId] = useState<string | null>(null);
@@ -99,19 +103,21 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   const outdatedCount = comments.filter(
     (c) => !c.resolved && outdatedCommentIds.has(c.id),
   ).length;
-  const pendingCount = comments.filter(
-    (c) =>
-      !c.resolved &&
-      !(c.reactions ?? []).some(
-        (r) => r.actor === "agent" && r.kind === "addressed",
-      ),
-  ).length;
+  const pendingCount = comments.filter(isPendingForAgent).length;
 
   const handleCopy = async () => {
     const ok = await copyAllToClipboard();
     if (ok) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const handleCopyComment = async (id: string) => {
+    const ok = await copyCommentToClipboard(id);
+    if (ok) {
+      setCopiedId(id);
+      setTimeout(() => setCopiedId((cur) => (cur === id ? null : cur)), 2000);
     }
   };
 
@@ -412,6 +418,23 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
 
                     {replyingId !== c.id && (
                       <div className="mt-2 flex justify-end gap-1.5">
+                        {isPendingForAgent(c) && hasAgentReaction(c) && (
+                          <button
+                            onClick={() => handleCopyComment(c.id)}
+                            className="flex items-center gap-1 px-2 py-1 text-[11px] rounded text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30"
+                            title="Copy this comment thread to send back to the agent"
+                          >
+                            {copiedId === c.id ? (
+                              <>
+                                <Check size={11} /> Copied!
+                              </>
+                            ) : (
+                              <>
+                                <ClipboardCopy size={11} /> Copy
+                              </>
+                            )}
+                          </button>
+                        )}
                         {showResolve && (
                           <>
                             <button

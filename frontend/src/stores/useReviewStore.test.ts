@@ -1,8 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { useReviewStore } from "./useReviewStore";
+import { isPendingForAgent, useReviewStore } from "./useReviewStore";
 import { useRepoStore } from "./useRepoStore";
 import axios from "axios";
-import type { ReviewComment, ReviewData, ReviewSnapshot } from "../types";
+import type {
+  CommentReaction,
+  ReviewComment,
+  ReviewData,
+  ReviewSnapshot,
+} from "../types";
 
 vi.mock("axios");
 const mockedAxios = vi.mocked(axios, true);
@@ -311,6 +316,123 @@ describe("useReviewStore", () => {
         snapshots: [{ id: "s1", content: "x", timestamp: 0 }],
       });
       expect(useReviewStore.getState().hasReviewData()).toBe(true);
+    });
+  });
+
+  describe("isPendingForAgent", () => {
+    const mk = (
+      reactions: CommentReaction[],
+      resolved = false,
+    ): ReviewComment => ({
+      id: "c1",
+      selected_text: "x",
+      comment: "y",
+      created_at: 0,
+      resolved,
+      reactions,
+    });
+    const agentAddressed: CommentReaction = {
+      actor: "agent",
+      kind: "addressed",
+      summary: "fixed it",
+      before_text: "",
+      after_text: "",
+      timestamp: 1,
+    };
+    const reviewerFollowup: CommentReaction = {
+      actor: "reviewer",
+      kind: "needs_clarification",
+      summary: "still wrong",
+      before_text: "",
+      after_text: "",
+      timestamp: 2,
+    };
+
+    it("is pending when there are no reactions yet", () => {
+      expect(isPendingForAgent(mk([]))).toBe(true);
+    });
+
+    it("is not pending once the agent has addressed it", () => {
+      expect(isPendingForAgent(mk([agentAddressed]))).toBe(false);
+    });
+
+    it("is pending again after a reviewer follow-up", () => {
+      expect(isPendingForAgent(mk([agentAddressed, reviewerFollowup]))).toBe(
+        true,
+      );
+    });
+
+    it("is never pending when resolved", () => {
+      expect(
+        isPendingForAgent(mk([agentAddressed, reviewerFollowup], true)),
+      ).toBe(false);
+    });
+  });
+
+  describe("copyCommentToClipboard", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+
+    beforeEach(() => {
+      writeText.mockClear();
+      Object.assign(navigator, { clipboard: { writeText } });
+    });
+
+    it("includes the agent response and reviewer follow-up in the payload", async () => {
+      useReviewStore.setState({
+        filePath: "doc.md",
+        lastContent: "line one\nline two\n",
+        comments: [
+          {
+            id: "abcdef12-0000",
+            selected_text: "line two",
+            fallback_text: "line two",
+            comment: "please clarify",
+            created_at: 0,
+            anchor: {
+              source_line: 2,
+              block_text_hash: "",
+              selection_offset: 0,
+              selection_length: 0,
+            },
+            reactions: [
+              {
+                actor: "agent",
+                kind: "addressed",
+                summary: "I clarified it",
+                before_text: "",
+                after_text: "",
+                timestamp: 1,
+              },
+              {
+                actor: "reviewer",
+                kind: "needs_clarification",
+                summary: "not quite, expand more",
+                before_text: "",
+                after_text: "",
+                timestamp: 2,
+              },
+            ],
+          },
+        ],
+      });
+
+      const ok = await useReviewStore
+        .getState()
+        .copyCommentToClipboard("abcdef12-0000");
+
+      expect(ok).toBe(true);
+      const payload = writeText.mock.calls[0][0] as string;
+      expect(payload).toContain("please clarify");
+      expect(payload).toContain("**Agent response:** I clarified it");
+      expect(payload).toContain("**Follow-up:** not quite, expand more");
+    });
+
+    it("returns false for an unknown comment id", async () => {
+      useReviewStore.setState({ filePath: "doc.md", comments: [] });
+      const ok = await useReviewStore
+        .getState()
+        .copyCommentToClipboard("missing");
+      expect(ok).toBe(false);
     });
   });
 });
