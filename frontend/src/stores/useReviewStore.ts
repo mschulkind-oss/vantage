@@ -50,6 +50,20 @@ const writeReviewModePref = (filePath: string, on: boolean): void => {
   }
 };
 
+/**
+ * A comment is "pending" (still needs to go back to the agent) when it's
+ * unresolved AND its most recent reaction is NOT an agent "addressed" — i.e.
+ * either the agent hasn't responded yet, or the reviewer has posted a
+ * follow-up reply since the agent's last response. This is what gates the
+ * Copy button and what gets included in the clipboard payload.
+ */
+export function isPendingForAgent(c: ReviewComment): boolean {
+  if (c.resolved) return false;
+  const reactions = c.reactions ?? [];
+  const last = reactions[reactions.length - 1];
+  return !(last && last.actor === "agent" && last.kind === "addressed");
+}
+
 export interface PendingSelection {
   anchor: CommentAnchor;
   rect: DOMRect;
@@ -115,6 +129,8 @@ interface ReviewState {
   addSnapshot: (content: string) => void;
   setLastContent: (content: string) => void;
   copyAllToClipboard: () => Promise<boolean>;
+  /** Copy a single comment's thread to the clipboard for the agent. */
+  copyCommentToClipboard: (id: string) => Promise<boolean>;
   deleteReview: () => Promise<void>;
   /** End review mode and clear all data (comments, snapshots). */
   endReview: () => Promise<void>;
@@ -384,110 +400,37 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
 
   copyAllToClipboard: async () => {
     const { filePath, lastContent, comments } = get();
-    const active = comments.filter(
-      (c) =>
-        !c.resolved &&
-        !(c.reactions ?? []).some(
-          (r) => r.actor === "agent" && r.kind === "addressed",
-        ),
-    );
+    const active = comments.filter(isPendingForAgent);
     if (!filePath || active.length === 0) return false;
 
     const contentLines = (lastContent || "").split("\n");
-
-    const { currentRepo, isMultiRepo } = useRepoStore.getState();
-    const pathPrefix =
-      isMultiRepo && currentRepo
-        ? `/${currentRepo}/${filePath}`
-        : `/${filePath}`;
+    const pathPrefix = clipboardPathPrefix(filePath);
 
     const output = [`## Review Comments for \`${filePath}\``, ""];
     for (const c of active) {
-      const shortId = c.id.slice(0, 8);
-      const anchorLine = c.anchor?.source_line ?? null;
-      const quoted = quotedFor(c, contentLines);
-      const heading =
-        anchorLine !== null
-          ? `### [Line ${anchorLine}](${pathPrefix}#L${anchorLine}) \`[${shortId}]\``
-          : `### Comment \`[${shortId}]\``;
-      output.push(heading);
-      output.push("");
-      if (quoted.text) {
-        output.push(`**Selected text:** "${quoted.text}"`);
-        output.push("");
-      }
-      if (quoted.contextBlock) {
-        output.push("```");
-        output.push(quoted.contextBlock);
-        output.push("```");
-      }
-      output.push("");
-      output.push(`**Comment:** ${c.comment}`);
-      output.push("");
-      // Include agent response and reviewer follow-ups if present
-      const agentReaction = (c.reactions ?? []).find(
-        (r) => r.actor === "agent" && r.kind === "addressed",
-      );
-      if (agentReaction) {
-        output.push(`**Agent response:** ${agentReaction.summary}`);
-        output.push("");
-      }
-      const reviewerReplies = (c.reactions ?? []).filter(
-        (r) => r.actor === "reviewer" && r.kind === "needs_clarification",
-      );
-      for (const reply of reviewerReplies) {
-        output.push(`**Follow-up:** ${reply.summary}`);
-        output.push("");
-      }
-      output.push("---");
-      output.push("");
+      output.push(...commentBlock(c, contentLines, pathPrefix));
     }
+    output.push(...respondingInstructions(active[0]));
 
-    output.push("## Responding to Comments");
-    output.push("");
-    output.push(
-      "After addressing a comment, append a **changelog entry** to the END of this document. The format is parsed by Vantage and must match exactly:",
-    );
-    output.push("");
-    output.push("```markdown");
-    output.push("<!-- changelog -->");
-    output.push("- [<short-id>] <one-line summary of what you changed>");
-    output.push("```");
-    output.push("");
-    output.push(
-      `Example (using a real id from this batch): \`- [${active[0]?.id.slice(0, 8)}] Reworded paragraph for clarity\``,
-    );
-    output.push("");
-    output.push("### How your response is displayed");
-    output.push("");
-    output.push(
-      "Your summary text is rendered **inline in the document**, directly below the commented paragraph — the reviewer sees it right next to the original text and the comment. This means:",
-    );
-    output.push(
-      "- **Do NOT restate context.** The reviewer already sees the paragraph and their comment. Your summary should say *what you did*, not re-explain what the paragraph says.",
-    );
-    output.push(
-      "- **Keep it short.** One sentence is ideal. The summary shares a narrow column with the comment text and a before/after diff.",
-    );
-    output.push(
-      '- **Be specific about your action.** Good: "Split into two paragraphs and added the exception case." Bad: "The substrate is a typed-dataflow graph so I updated the text to reflect..."',
-    );
-    output.push("");
-    output.push("### Format rules");
-    output.push("");
-    output.push(
-      "- The marker line must be exactly `<!-- changelog -->` (HTML comment, nothing else on the line).",
-    );
-    output.push(
-      "- Each entry is a single bullet: `- [<short-id>] <summary>` — no nested lists, no extra prose between bullets.",
-    );
-    output.push(
-      "- One bullet per comment you addressed. Skip comments you didn't act on.",
-    );
-    output.push(
-      "- Vantage parses this block on save and records a reaction against the matching comment, including a before/after capture of the affected block.",
-    );
-    output.push("");
+    try {
+      await navigator.clipboard.writeText(output.join("\n"));
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  copyCommentToClipboard: async (id: string) => {
+    const { filePath, lastContent, comments } = get();
+    const c = comments.find((x) => x.id === id);
+    if (!filePath || !c) return false;
+
+    const contentLines = (lastContent || "").split("\n");
+    const pathPrefix = clipboardPathPrefix(filePath);
+
+    const output = [`## Review Comment for \`${filePath}\``, ""];
+    output.push(...commentBlock(c, contentLines, pathPrefix));
+    output.push(...respondingInstructions(c));
 
     try {
       await navigator.clipboard.writeText(output.join("\n"));
@@ -542,6 +485,89 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     return comments.length > 0 || snapshots.length > 0;
   },
 }));
+
+/** Repo-aware path prefix for clipboard anchor links. */
+function clipboardPathPrefix(filePath: string): string {
+  const { currentRepo, isMultiRepo } = useRepoStore.getState();
+  return isMultiRepo && currentRepo
+    ? `/${currentRepo}/${filePath}`
+    : `/${filePath}`;
+}
+
+/** Render one comment (heading, quote, comment, agent response, follow-ups). */
+function commentBlock(
+  c: ReviewComment,
+  contentLines: string[],
+  pathPrefix: string,
+): string[] {
+  const out: string[] = [];
+  const shortId = c.id.slice(0, 8);
+  const anchorLine = c.anchor?.source_line ?? null;
+  const quoted = quotedFor(c, contentLines);
+  out.push(
+    anchorLine !== null
+      ? `### [Line ${anchorLine}](${pathPrefix}#L${anchorLine}) \`[${shortId}]\``
+      : `### Comment \`[${shortId}]\``,
+  );
+  out.push("");
+  if (quoted.text) {
+    out.push(`**Selected text:** "${quoted.text}"`);
+    out.push("");
+  }
+  if (quoted.contextBlock) {
+    out.push("```");
+    out.push(quoted.contextBlock);
+    out.push("```");
+  }
+  out.push("");
+  out.push(`**Comment:** ${c.comment}`);
+  out.push("");
+  // Interleave agent responses and reviewer follow-ups in chronological order
+  // so a back-and-forth thread reads correctly.
+  for (const r of c.reactions ?? []) {
+    if (r.actor === "agent" && r.kind === "addressed") {
+      out.push(`**Agent response:** ${r.summary}`);
+      out.push("");
+    } else if (r.actor === "reviewer" && r.kind === "needs_clarification") {
+      out.push(`**Follow-up:** ${r.summary}`);
+      out.push("");
+    }
+  }
+  out.push("---");
+  out.push("");
+  return out;
+}
+
+/** The "how to respond" instructions appended after the comment(s). */
+function respondingInstructions(example?: ReviewComment): string[] {
+  return [
+    "## Responding to Comments",
+    "",
+    "After addressing a comment, append a **changelog entry** to the END of this document. The format is parsed by Vantage and must match exactly:",
+    "",
+    "```markdown",
+    "<!-- changelog -->",
+    "- [<short-id>] <one-line summary of what you changed>",
+    "```",
+    "",
+    `Example (using a real id from this batch): \`- [${example?.id.slice(0, 8)}] Reworded paragraph for clarity\``,
+    "",
+    "### How your response is displayed",
+    "",
+    "Your summary text is rendered **inline in the document**, directly below the commented paragraph — the reviewer sees it right next to the original text and the comment. This means:",
+    "- **Do NOT restate context.** The reviewer already sees the paragraph and their comment. Your summary should say *what you did*, not re-explain what the paragraph says.",
+    "- **Keep it short.** One sentence is ideal. The summary shares a narrow column with the comment text and a before/after diff.",
+    '- **Be specific about your action.** Good: "Split into two paragraphs and added the exception case." Bad: "The substrate is a typed-dataflow graph so I updated the text to reflect..."',
+    "",
+    "### Format rules",
+    "",
+    "- The marker line must be exactly `<!-- changelog -->` (HTML comment, nothing else on the line).",
+    "- Each entry is a single bullet: `- [<short-id>] <summary>` — no nested lists, no extra prose between bullets.",
+    "- One bullet per comment you addressed. Skip comments you didn't act on.",
+    "- Vantage parses this block on save and records a reaction against the matching comment, including a before/after capture of the affected block.",
+    "",
+  ];
+}
 
 /**
  * Build a quoted/contextualized chunk for the clipboard prompt.  Uses the

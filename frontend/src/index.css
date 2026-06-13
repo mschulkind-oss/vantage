@@ -2,6 +2,11 @@
 @plugin "@tailwindcss/typography";
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* The vantage-md package ships its own components (e.g. the mermaid zoom
+   modal). Tailwind v4 skips node_modules by default, so scan the package's
+   built output explicitly to keep classes used only there from being purged. */
+@source "../../packages/vantage-md/dist";
+
 body {
   margin: 0;
   font-family:
@@ -216,6 +221,20 @@ h6:hover > .heading-anchor,
 }
 .dark .line-anchor-highlight:hover {
   background: rgb(59 130 246 / 0.16);
+}
+
+/* ──────────────────────────────────────────
+   Maximized mermaid diagram (zoom/pan viewport)
+   ────────────────────────────────────────── */
+/* Inside the zoom viewport, let the diagram render at its natural size and
+   fill the available space — overriding mermaid's default width:100% cap so
+   small diagrams aren't stuck tiny in a huge modal. */
+.mermaid-zoom svg {
+  max-width: 100% !important;
+  max-height: 100% !important;
+  width: auto !important;
+  height: auto !important;
+  display: block;
 }
 
 /* ──────────────────────────────────────────
