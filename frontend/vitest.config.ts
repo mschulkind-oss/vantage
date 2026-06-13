@@ -1,11 +1,30 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
+import path from "path";
 import { changelogPlugin } from "./vite-changelog-plugin";
 
 export default defineConfig({
   plugins: [react(), changelogPlugin()],
   resolve: {
     dedupe: ["react", "react-dom"],
+    // Match vite.config.ts: resolve vantage-md to package source so tests run
+    // against the same code the app builds, with no dependency on dist/.
+    alias: [
+      {
+        find: /^vantage-md\/react$/,
+        replacement: path.resolve(
+          __dirname,
+          "../packages/vantage-md/src/react.ts",
+        ),
+      },
+      {
+        find: /^vantage-md$/,
+        replacement: path.resolve(
+          __dirname,
+          "../packages/vantage-md/src/index.ts",
+        ),
+      },
+    ],
   },
   test: {
     globals: true,

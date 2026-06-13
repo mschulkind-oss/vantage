@@ -33,6 +33,26 @@ export default defineConfig(({ mode }) => {
     envDir: envDir,
     resolve: {
       dedupe: ["react", "react-dom"],
+      // Resolve the in-repo vantage-md package to its TypeScript source, not
+      // its built dist/. Vite/esbuild compiles the TS on the fly, so editing
+      // the package is picked up instantly with HMR and no separate build
+      // step. dist/ is only produced at `npm publish` time (prepublishOnly).
+      alias: [
+        {
+          find: /^vantage-md\/react$/,
+          replacement: path.resolve(
+            __dirname,
+            "../packages/vantage-md/src/react.ts",
+          ),
+        },
+        {
+          find: /^vantage-md$/,
+          replacement: path.resolve(
+            __dirname,
+            "../packages/vantage-md/src/index.ts",
+          ),
+        },
+      ],
     },
     build: {
       // The heavy diagram/markdown libs are lazy-loaded separate chunks and the

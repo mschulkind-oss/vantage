@@ -8,6 +8,14 @@
     "types": ["vite/client"],
     "skipLibCheck": true,
 
+    /* Resolve vantage-md to package source (matches vite/vitest aliases) so
+       typechecking reads the same TS the app builds, with no dependency on
+       the package's built dist/ type declarations. */
+    "paths": {
+      "vantage-md": ["../packages/vantage-md/src/index.ts"],
+      "vantage-md/react": ["../packages/vantage-md/src/react.ts"]
+    },
+
     /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
@@ -28,6 +36,12 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"],
-  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/test"]
+  "include": ["src", "../packages/vantage-md/src"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/test",
+    "../packages/vantage-md/src/**/*.test.ts",
+    "../packages/vantage-md/src/**/*.test.tsx"
+  ]
 }
