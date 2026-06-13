@@ -3,9 +3,9 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* The vantage-md package ships its own components (e.g. the mermaid zoom
-   modal). Tailwind v4 skips node_modules by default, so scan the package's
-   built output explicitly to keep classes used only there from being purged. */
-@source "../../packages/vantage-md/dist";
+   modal). The app resolves it to package source (see vite.config.ts), so scan
+   that source to keep classes used only inside the package from being purged. */
+@source "../../packages/vantage-md/src";
 
 body {
   margin: 0;

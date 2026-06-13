@@ -7,7 +7,10 @@ default:
 setup: _hooks
     mise install
     go mod download
-    cd packages/vantage-md && npm ci && npx tsup
+    # Install the package's own deps so the app can resolve it from source.
+    # No tsup build needed — the frontend imports vantage-md's TS source
+    # directly (see frontend/vite.config.ts). dist/ is built only at release.
+    cd packages/vantage-md && npm ci
     cd frontend && npm ci
 
 # Run the backend + frontend dev servers (Ctrl-C to stop).
@@ -51,6 +54,24 @@ check-ci:
     staticcheck ./...
     go test ./...
     cd frontend && npm run format:check && npm run lint && npx tsc --noEmit && npm run test
+
+# npm runs prepublishOnly (tsup) automatically, so dist/ is built fresh at
+# publish time — it is never committed and never needed for app development.
+#
+# Publish the vantage-md npm package (optional bump: patch/minor/major/X.Y.Z).
+release-md bump="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    test -z "$(git status --porcelain)" || { echo "working tree dirty — commit or stash first"; exit 1; }
+    just check-ci
+    cd packages/vantage-md
+    if [ -n "{{bump}}" ]; then
+        npm version "{{bump}}"
+    fi
+    version="$(node -p "require('./package.json').version")"
+    npm publish --access public
+    echo "Published vantage-md@${version}"
+    echo "Remember to commit the version bump and tag if you ran a bump."
 
 # ── helpers ─────────────────────────────────────────────────────────
 
