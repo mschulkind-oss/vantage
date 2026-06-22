@@ -20,7 +20,6 @@ func TestDefaults(t *testing.T) {
 	require.True(t, c.ShowHidden)
 	require.Nil(t, c.WalkMaxDepth)
 	require.Equal(t, 30*time.Second, c.WalkTimeout)
-	require.False(t, c.DisableWhatsNew)
 	require.True(t, c.UseIgnoreFiles)
 	require.Equal(t, "INFO", c.LogLevel)
 
@@ -37,7 +36,6 @@ func TestApplyEnvResolvesConfig(t *testing.T) {
 	t.Setenv("SHOW_HIDDEN", "false")
 	t.Setenv("WALK_MAX_DEPTH", "7")
 	t.Setenv("WALK_TIMEOUT", "12.5")
-	t.Setenv("DISABLE_WHATS_NEW", "true")
 	t.Setenv("USE_IGNORE_FILES", "false")
 	t.Setenv("VANTAGE_LOG_LEVEL", "DEBUG")
 
@@ -54,7 +52,6 @@ func TestApplyEnvResolvesConfig(t *testing.T) {
 	require.NotNil(t, c.WalkMaxDepth)
 	require.Equal(t, 7, *c.WalkMaxDepth)
 	require.Equal(t, 12500*time.Millisecond, c.WalkTimeout)
-	require.True(t, c.DisableWhatsNew)
 	require.False(t, c.UseIgnoreFiles)
 	require.Equal(t, "DEBUG", c.LogLevel)
 }
@@ -125,7 +122,6 @@ port = 8080
 show_hidden = false
 walk_max_depth = 5
 walk_timeout = 45.0
-disable_whats_new = true
 use_ignore_files = false
 log_level = "WARNING"
 
@@ -148,7 +144,6 @@ path = "` + repoB + `"
 	require.NotNil(t, c.WalkMaxDepth)
 	require.Equal(t, 5, *c.WalkMaxDepth)
 	require.Equal(t, 45*time.Second, c.WalkTimeout)
-	require.True(t, c.DisableWhatsNew)
 	require.False(t, c.UseIgnoreFiles)
 	require.Equal(t, "WARNING", c.LogLevel)
 

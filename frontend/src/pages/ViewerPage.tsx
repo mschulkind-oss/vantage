@@ -8,8 +8,6 @@ import { DiffViewer } from "../components/DiffViewer";
 import { FilePicker } from "../components/FilePicker";
 import type { GlobalFile } from "../components/FilePicker";
 import { ProjectPicker } from "../components/ProjectPicker";
-import { WhatsNewModal } from "../components/WhatsNewModal";
-import { useWhatsNew } from "../hooks/useWhatsNew";
 import { AppLink } from "../components/AppLink";
 import { useWebSocket } from "../hooks/useWebSocket";
 import {
@@ -329,8 +327,6 @@ export const ViewerPage: React.FC = () => {
       return next;
     });
   }, []);
-
-  const whatsNew = useWhatsNew();
 
   // Helper to get API base
   const getApiBase = useCallback((): string => {
@@ -835,7 +831,6 @@ export const ViewerPage: React.FC = () => {
                   onShowGitignoredChange={setShowGitignored}
                   keyboardShortcutsEnabled={keyboardShortcutsEnabled}
                   onKeyboardShortcutsEnabledChange={setKeyboardShortcutsEnabled}
-                  onOpenWhatsNew={whatsNew.open}
                   onOpenStyleGuide={() => setStyleGuideOpen(true)}
                 />
                 <button
@@ -1711,8 +1706,6 @@ export const ViewerPage: React.FC = () => {
           isOpen={shortcutsOpen}
           onClose={() => setShortcutsOpen(false)}
         />
-        {/* What's New Modal */}
-        <WhatsNewModal isOpen={whatsNew.isOpen} onClose={whatsNew.close} />
         {/* Review Panel */}
         <ReviewPanel
           isOpen={reviewPanelOpen}

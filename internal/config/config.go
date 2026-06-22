@@ -110,8 +110,6 @@ type Config struct {
 	// WalkTimeout bounds the untracked-file discovery subprocess. A TOML
 	// number is read as seconds.
 	WalkTimeout time.Duration
-	// DisableWhatsNew suppresses the "What's New" modal.
-	DisableWhatsNew bool
 	// UseIgnoreFiles toggles honoring ~/.config/vantage/ignore and
 	// <repo>/.vantageignore. When false vantage acts as if neither existed.
 	UseIgnoreFiles bool
@@ -127,17 +125,16 @@ func Defaults() *Config {
 	excl := make([]string, len(DefaultExcludeDirs))
 	copy(excl, DefaultExcludeDirs)
 	return &Config{
-		TargetRepo:      ".",
-		Host:            []string{defaultHost},
-		Port:            defaultPort,
-		ExcludeDirs:     excl,
-		ExcludeDirsSet:  false,
-		ShowHidden:      true,
-		WalkMaxDepth:    nil,
-		WalkTimeout:     defaultWalkTimeout,
-		DisableWhatsNew: false,
-		UseIgnoreFiles:  true,
-		LogLevel:        "INFO",
+		TargetRepo:     ".",
+		Host:           []string{defaultHost},
+		Port:           defaultPort,
+		ExcludeDirs:    excl,
+		ExcludeDirsSet: false,
+		ShowHidden:     true,
+		WalkMaxDepth:   nil,
+		WalkTimeout:    defaultWalkTimeout,
+		UseIgnoreFiles: true,
+		LogLevel:       "INFO",
 	}
 }
 
@@ -146,14 +143,13 @@ func Defaults() *Config {
 // EXCLUDE_DIRS and WALK_TIMEOUT are handled separately so their presence can be
 // tracked and their units interpreted.
 type envInputs struct {
-	TargetRepo      *string `env:"TARGET_REPO"`
-	Host            *string `env:"HOST"`
-	Port            *int    `env:"PORT"`
-	ShowHidden      *bool   `env:"SHOW_HIDDEN"`
-	WalkMaxDepth    *int    `env:"WALK_MAX_DEPTH"`
-	DisableWhatsNew *bool   `env:"DISABLE_WHATS_NEW"`
-	UseIgnoreFiles  *bool   `env:"USE_IGNORE_FILES"`
-	LogLevel        *string `env:"VANTAGE_LOG_LEVEL"`
+	TargetRepo     *string `env:"TARGET_REPO"`
+	Host           *string `env:"HOST"`
+	Port           *int    `env:"PORT"`
+	ShowHidden     *bool   `env:"SHOW_HIDDEN"`
+	WalkMaxDepth   *int    `env:"WALK_MAX_DEPTH"`
+	UseIgnoreFiles *bool   `env:"USE_IGNORE_FILES"`
+	LogLevel       *string `env:"VANTAGE_LOG_LEVEL"`
 }
 
 // ApplyEnv overlays environment variables onto c, modeling the env tier of the
@@ -180,9 +176,6 @@ func (c *Config) ApplyEnv() error {
 	}
 	if in.WalkMaxDepth != nil {
 		c.WalkMaxDepth = in.WalkMaxDepth
-	}
-	if in.DisableWhatsNew != nil {
-		c.DisableWhatsNew = *in.DisableWhatsNew
 	}
 	if in.UseIgnoreFiles != nil {
 		c.UseIgnoreFiles = *in.UseIgnoreFiles
@@ -229,7 +222,6 @@ type daemonFile struct {
 	ShowHidden   *bool        `toml:"show_hidden"`
 	WalkMaxDepth *int         `toml:"walk_max_depth"`
 	WalkTimeout  *float64     `toml:"walk_timeout"`
-	DisableNew   *bool        `toml:"disable_whats_new"`
 	UseIgnore    *bool        `toml:"use_ignore_files"`
 	LogLevel     *string      `toml:"log_level"`
 }
@@ -307,9 +299,6 @@ func LoadDaemonFile(path string) (*Config, error) {
 	}
 	if df.WalkTimeout != nil {
 		c.WalkTimeout = secondsToDuration(*df.WalkTimeout)
-	}
-	if df.DisableNew != nil {
-		c.DisableWhatsNew = *df.DisableNew
 	}
 	if df.UseIgnore != nil {
 		c.UseIgnoreFiles = *df.UseIgnore

@@ -5,7 +5,6 @@ import {
   Moon,
   FolderOpen,
   Keyboard,
-  Sparkles,
   Eye,
   FileX,
   BookOpen,
@@ -48,7 +47,6 @@ interface SettingsDropdownProps {
   onShowGitignoredChange: (show: boolean) => void;
   keyboardShortcutsEnabled: boolean;
   onKeyboardShortcutsEnabledChange: (enabled: boolean) => void;
-  onOpenWhatsNew?: () => void;
   onOpenStyleGuide?: () => void;
 }
 
@@ -61,7 +59,6 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
   onShowGitignoredChange,
   keyboardShortcutsEnabled,
   onKeyboardShortcutsEnabledChange,
-  onOpenWhatsNew,
   onOpenStyleGuide,
 }) => {
   const [open, setOpen] = useState(false);
@@ -231,18 +228,6 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
               >
                 <BookOpen size={13} />
                 Agent Style Guide
-              </button>
-            )}
-            {onOpenWhatsNew && (
-              <button
-                onClick={() => {
-                  onOpenWhatsNew();
-                  setOpen(false);
-                }}
-                className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white w-full text-left py-1"
-              >
-                <Sparkles size={13} />
-                What's New
               </button>
             )}
           </div>

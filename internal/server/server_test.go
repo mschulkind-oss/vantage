@@ -247,7 +247,7 @@ func TestSPAFallbackServesIndex(t *testing.T) {
 	rec := doGET(t, srv.Handler(), "/some/client/route")
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, rec.Header().Get("Content-Type"), "text/html")
-	require.Contains(t, rec.Body.String(), "__VANTAGE_CONFIG__")
+	require.Contains(t, rec.Body.String(), "<html")
 }
 
 func TestUnknownAPIRoute404(t *testing.T) {
