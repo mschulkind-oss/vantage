@@ -61,7 +61,6 @@ Each directory is accessible at `http://localhost:8000/{name}/`.
 | `walk_max_depth`           | integer or null  | `null` (unlimited) | Max directory depth for untracked file discovery |
 | `walk_timeout`             | float            | `30.0`        | Timeout in seconds for the file-discovery subprocess |
 | `use_ignore_files`         | boolean          | `true`        | Honor `~/.config/vantage/ignore` and `.vantageignore` |
-| `disable_whats_new`        | boolean          | `false`       | Suppress the "What's New" popup                      |
 | `log_level`                | string           | `"INFO"`      | Log verbosity: `DEBUG`, `INFO`, `WARNING`, or `ERROR` |
 
 ## Source Directory Auto-Discovery
@@ -129,5 +128,4 @@ When running in single-directory mode (`vantage serve`), you can also configure 
 | `WALK_MAX_DEPTH`     | Max directory depth for untracked-file discovery     |
 | `WALK_TIMEOUT`       | Timeout in seconds for the file-discovery subprocess |
 | `USE_IGNORE_FILES`   | Honor ignore files (`true`/`false`, default `true`)  |
-| `DISABLE_WHATS_NEW`  | Suppress the "What's New" popup (`true`/`false`)      |
 | `VANTAGE_LOG_LEVEL`  | Log verbosity (`DEBUG`/`INFO`/`WARNING`/`ERROR`)     |

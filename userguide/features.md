@@ -169,14 +169,6 @@ Vantage includes a built-in review mode for annotating documents:
 
 Reviews are stored on disk and persist across server restarts.
 
-## What's New
-
-Vantage includes a built-in changelog. When a new version introduces features, a "What's New" popup appears on your next visit. You can:
-
-- **Dismiss** — click "Got it" to close (it won't show again for this version)
-- **Opt out** — check "Don't show automatically" to never see auto-popups
-- **View manually** — open Settings (gear icon) → "What's New" anytime
-
 ## Dark Mode
 
 Press **Shift+D** to toggle between light and dark themes. The setting is persisted across sessions.

@@ -1,8 +1,6 @@
 package server
 
 import (
-	"bytes"
-	"encoding/json"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -32,7 +30,7 @@ func securityHeaders(next http.Handler) http.Handler {
 // config-injected index.html so the React router can handle client-side routes.
 func (s *Server) spaHandler() http.HandlerFunc {
 	dist := web.Dist()
-	index := s.indexHTML(dist)
+	index := indexHTML(dist)
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		// /api paths reaching here did not match a real API route. Never serve
@@ -88,36 +86,15 @@ func serveStaticAsset(w http.ResponseWriter, r *http.Request, dist fs.FS, rel st
 	return true
 }
 
-// indexHTML reads the bundle's index.html and injects the window.__VANTAGE_CONFIG__
-// script the frontend reads at boot. It is computed once at construction; the
+// indexHTML reads the bundle's index.html, computed once at construction; the
 // embedded bundle is immutable for the process lifetime, so re-reading per
-// request would be wasted work. On any failure it returns a minimal placeholder
-// so the server still serves something rather than a blank 500.
-func (s *Server) indexHTML(dist fs.FS) []byte {
+// request would be wasted work. On failure it returns a minimal placeholder so
+// the server still serves something rather than a blank 500.
+func indexHTML(dist fs.FS) []byte {
 	raw, err := fs.ReadFile(dist, "index.html")
 	if err != nil {
 		slog.Warn("server: embedded index.html missing; serving placeholder", "error", err)
 		return []byte("<!doctype html><html><head><title>Vantage</title></head><body>Frontend bundle not found.</body></html>")
-	}
-
-	cfg := map[string]any{
-		"disableWhatsNew": s.cfg.DisableWhatsNew,
-	}
-	cfgJSON, err := json.Marshal(cfg)
-	if err != nil {
-		cfgJSON = []byte("{}")
-	}
-	script := []byte("<script>window.__VANTAGE_CONFIG__=" + string(cfgJSON) + "</script>")
-
-	// Inject right after the opening <head> so config is set before any module
-	// script runs. If <head> is absent (unexpected), serve the html untouched.
-	if idx := bytes.Index(raw, []byte("<head>")); idx >= 0 {
-		insertAt := idx + len("<head>")
-		out := make([]byte, 0, len(raw)+len(script))
-		out = append(out, raw[:insertAt]...)
-		out = append(out, script...)
-		out = append(out, raw[insertAt:]...)
-		return out
 	}
 	return raw
 }

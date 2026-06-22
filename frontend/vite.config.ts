@@ -2,7 +2,6 @@ import type { Plugin } from "vite";
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
-import { changelogPlugin } from "./vite-changelog-plugin";
 
 /**
  * Drop legacy font formats (.ttf, .woff) from the build.
@@ -29,7 +28,7 @@ export default defineConfig(({ mode }) => {
   const port = parseInt(env.VITE_PORT || "8201");
 
   return {
-    plugins: [react(), dropLegacyFonts(), changelogPlugin()],
+    plugins: [react(), dropLegacyFonts()],
     envDir: envDir,
     resolve: {
       dedupe: ["react", "react-dom"],

@@ -139,7 +139,6 @@ Each repo is accessible at `http://localhost:8000/{name}/`.
 | `walk_max_depth`             | integer or null  | `null` (unlimited) | Max directory depth for untracked file discovery  |
 | `walk_timeout`               | float            | `30.0`             | Timeout (seconds) for git ls-files subprocess     |
 | `use_ignore_files`           | boolean          | `true`             | Honor `.gitignore` and ignore files during walks  |
-| `disable_whats_new`          | boolean          | `false`            | Hide the "What's New" panel                       |
 | `log_level`                  | string           | `"info"`           | Logging verbosity                                 |
 
 ### Excluded Directories
