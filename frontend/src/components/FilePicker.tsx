@@ -262,7 +262,7 @@ export const FilePicker: React.FC<FilePickerProps> = ({
   // Reset selection when results change — but use ref to avoid setState in effect
   useEffect(() => {
     if (isMountedRef.current) {
-      setSelectedIndex(0); // eslint-disable-line react-hooks/set-state-in-effect
+      setSelectedIndex(0);
     }
   }, [results]);
 
