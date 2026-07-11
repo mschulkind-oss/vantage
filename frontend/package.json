@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@tailwindcss/typography": "^0.5.19",
-    "axios": "^1.13.2",
+    "axios": "^1.18.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
     "diff": "^8.0.3",
