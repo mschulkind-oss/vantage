@@ -1,5 +1,9 @@
 {
   "compilerOptions": {
+    // tsup's dts build (rollup-plugin-dts) injects a synthetic `baseUrl`, which
+    // TypeScript 6 deprecates; this is the TS-endorsed bridge until it is
+    // removed in 7.0. Safe to drop once the dts toolchain stops setting baseUrl.
+    "ignoreDeprecations": "6.0",
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
