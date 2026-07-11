@@ -32,7 +32,7 @@ jobs:
           - { goos: darwin, goarch: amd64 }
           - { goos: darwin, goarch: arm64 }
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -88,10 +88,10 @@ jobs:
           echo "Updating Homebrew tap for vantage ${version}"
 
       - name: Check out vantage (for the formula generator)
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Check out the Homebrew tap
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: mschulkind-oss/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
