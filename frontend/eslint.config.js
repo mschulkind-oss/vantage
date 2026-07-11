@@ -20,4 +20,12 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    // The Vite entry wires up routing at the root; it is never a fast-refresh
+    // boundary, so react-refresh's component-export rule does not apply here.
+    files: ["src/main.tsx"],
+    rules: {
+      "react-refresh/only-export-components": "off",
+    },
+  },
 ]);
