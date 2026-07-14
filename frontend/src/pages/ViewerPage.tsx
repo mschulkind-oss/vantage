@@ -46,12 +46,11 @@ import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { RecentsModal } from "../components/RecentsModal";
 import { useReviewStore } from "../stores/useReviewStore";
 import { ReviewPanel } from "../components/ReviewPanel";
-import { MessageSquarePlus, ClipboardCopy, Lightbulb } from "lucide-react";
+import { MessageSquarePlus, ClipboardCopy } from "lucide-react";
 import { useLineAnchor } from "../hooks/useLineAnchor";
 import { StyleGuideModal } from "../components/StyleGuideModal";
 import { ConnectionBanner } from "../components/ConnectionBanner";
 import { ReviewStripe } from "../components/ReviewStripe";
-import { analyzeDoc, type DocTip } from "../lib/docTips";
 
 /** Format an ISO date string as a short local datetime (e.g. "Mar 2, 2026 3:45 PM"). */
 function formatDateTime(dateStr: string): string {
@@ -296,37 +295,8 @@ export const ViewerPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileContent?.content, isReviewMode]);
 
-  // --- Style guide & doc tips ---
+  // --- Style guide ---
   const [styleGuideOpen, setStyleGuideOpen] = useState(false);
-  const [dismissedTips, setDismissedTips] = useState<Set<string>>(() => {
-    try {
-      const stored = localStorage.getItem("vantage:dismissedDocTips");
-      return stored ? new Set(JSON.parse(stored)) : new Set();
-    } catch {
-      return new Set();
-    }
-  });
-  const fileContentStr = fileContent?.content ?? null;
-  const docTips = React.useMemo<DocTip[]>(() => {
-    if (!fileContentStr || showRaw) return [];
-    return analyzeDoc(fileContentStr);
-  }, [fileContentStr, showRaw]);
-  const visibleTips = docTips.filter((t) => !dismissedTips.has(t.id));
-  const dismissTip = useCallback((id: string) => {
-    setDismissedTips((prev) => {
-      const next = new Set(prev);
-      next.add(id);
-      try {
-        localStorage.setItem(
-          "vantage:dismissedDocTips",
-          JSON.stringify([...next]),
-        );
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-  }, []);
 
   // Helper to get API base
   const getApiBase = useCallback((): string => {
@@ -1496,44 +1466,11 @@ export const ViewerPage: React.FC = () => {
                           </pre>
                         </div>
                       ) : (
-                        <>
-                          <MarkdownViewer
-                            content={fileContent.content}
-                            currentPath={fileContent.path}
-                            isReviewMode={isReviewMode}
-                          />
-                          {visibleTips.length > 0 && (
-                            <div className="mt-6 space-y-2">
-                              {visibleTips.map((tip) => (
-                                <div
-                                  key={tip.id}
-                                  className="flex items-start gap-2.5 px-3 py-2 rounded-lg bg-blue-50/60 dark:bg-blue-900/15 border border-blue-100 dark:border-blue-800/30 text-sm text-blue-700 dark:text-blue-300"
-                                >
-                                  <Lightbulb
-                                    size={14}
-                                    className="shrink-0 mt-0.5 text-blue-400"
-                                  />
-                                  <span className="flex-1">{tip.message}</span>
-                                  <div className="flex items-center gap-2 shrink-0">
-                                    <button
-                                      onClick={() => setStyleGuideOpen(true)}
-                                      className="text-xs text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-200 underline underline-offset-2"
-                                    >
-                                      Style guide
-                                    </button>
-                                    <button
-                                      onClick={() => dismissTip(tip.id)}
-                                      className="text-blue-300 dark:text-blue-600 hover:text-blue-500 dark:hover:text-blue-400"
-                                      title="Dismiss"
-                                    >
-                                      <X size={14} />
-                                    </button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </>
+                        <MarkdownViewer
+                          content={fileContent.content}
+                          currentPath={fileContent.path}
+                          isReviewMode={isReviewMode}
+                        />
                       )}
                     </div>
                   )
