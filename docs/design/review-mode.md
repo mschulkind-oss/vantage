@@ -91,15 +91,37 @@ Comments key on `selected_text` — the exact string the reviewer captured. On e
 
 Step 1 is what we want to happen. Steps 2-4 are damage control.
 
-### "Changed block" highlights (snapshot mode)
+### "Changed block" highlights (snapshot mode) — ABANDONED / INFEASIBLE
 
+> **Status: removed and not to be resurrected.** This feature — the red/faint
+> "changed-block" highlight (a left-bar + background over blocks that differed
+> from a prior snapshot, plus the `✓ addressed` badge and the `1/N` revision
+> badge) — was deleted in commit `1af72ce` ("feat: remove the
+> changed-doc-highlight feature"). It never worked reliably and is considered
+> **infeasible**, not merely unfinished. The description below is retained only
+> as a record of *why* the approach fails, so nobody re-attempts it.
+>
+> **Why it's infeasible:** reliable change-detection *at the block level* was
+> never achievable. The mechanism depended on **block index alignment** between
+> two `splitBlocks()` renderings, which falls apart the moment a block is
+> inserted, deleted, reordered, or a heading is renamed (because `stripMarkdown`
+> normalizes text its own way). There is no stable block identity to diff
+> against across edits, so the highlight lands on the wrong blocks — or none —
+> for any non-trivial change. The "what got addressed?" question it tried to
+> answer is instead handled by the changelog-reaction model (see Part 3), which
+> keys on comment ids rather than guessed block positions. The supporting DOM
+> attributes (`data-review-changed-block`, `.review-changed-block`), the
+> `findChangedBlocks` logic, the `hoveredCommentId` wiring, and the
+> `block_hashes_at_creation` field were all removed with the feature.
+
+_Historical description (of the removed implementation):_
 `splitBlocks(previousSnapshot.content)` and `splitBlocks(currentContent)` — split by blank lines, position-aligned. Blocks at the same index that differ are flagged. Then for each `<p|h1-6|li|blockquote|pre|table>` in the rendered DOM, if its `textContent` matches a "changed" stripped-markdown text, it gets:
 
 - `data-review-changed-block` + `.review-changed-block` class (left bar, faint background)
 - Position-aligned check vs. resolved comments → a `✓ addressed` pseudo-badge if the block's old counterpart contained a resolved comment's text
 - Otherwise, when viewing a past snapshot, a `1/N` revision badge in the corner
 
-This relies on **block index alignment**, which falls apart any time a block is inserted, deleted, reordered, or any time a heading was renamed (because `stripMarkdown` does its own thing).
+This relied on **block index alignment**, which falls apart any time a block is inserted, deleted, reordered, or any time a heading was renamed (because `stripMarkdown` does its own thing) — the core reason the feature was abandoned.
 
 ---
 
