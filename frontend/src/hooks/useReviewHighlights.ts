@@ -272,37 +272,6 @@ export function useReviewHighlights(
     onEditComment,
     onReplyComment,
   ]);
-
-  // Hover-highlight: when a comment is hovered (from inline block or stripe),
-  // highlight all document blocks that have changed since the comment was created.
-  const hoveredCommentId = useReviewStore((s) => s.hoveredCommentId);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-
-    const CLASS = "review-changed-block-highlight";
-    el.querySelectorAll(`.${CLASS}`).forEach((node) =>
-      node.classList.remove(CLASS),
-    );
-
-    if (!hoveredCommentId) return;
-
-    const comment = comments.find((c) => c.id === hoveredCommentId);
-    const creationHashes = comment?.block_hashes_at_creation;
-    if (!creationHashes || Object.keys(creationHashes).length === 0) return;
-
-    const allBlocks = el.querySelectorAll<HTMLElement>("[data-source-line]");
-    for (const block of allBlocks) {
-      const line = block.getAttribute("data-source-line");
-      if (!line) continue;
-      const currentHash = hashBlockText(blockVisibleText(block));
-      const creationHash = creationHashes[line];
-      if (creationHash && creationHash !== currentHash) {
-        block.classList.add(CLASS);
-      }
-    }
-  }, [containerRef, hoveredCommentId, comments]);
 }
 
 /** Walk neighbors by source line, find one whose hash matches. */

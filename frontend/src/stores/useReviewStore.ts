@@ -86,10 +86,6 @@ interface ReviewState {
   comments: ReviewComment[];
   pendingSelection: PendingSelection | null;
 
-  // Hover highlight
-  hoveredCommentId: string | null;
-  setHoveredCommentId: (id: string | null) => void;
-
   // Outdated tracking (set by useReviewHighlights)
   outdatedCommentIds: Set<string>;
   setOutdatedCommentIds: (ids: Set<string>) => void;
@@ -109,7 +105,6 @@ interface ReviewState {
     anchor: CommentAnchor,
     comment: string,
     fallbackText: string,
-    blockHashes?: Record<string, string>,
   ) => void;
   deleteComment: (id: string) => void;
   editComment: (id: string, newComment: string) => void;
@@ -144,7 +139,6 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   lastContent: null,
   comments: [],
   pendingSelection: null,
-  hoveredCommentId: null,
   outdatedCommentIds: new Set<string>(),
   snapshots: [],
   isLoading: false,
@@ -234,10 +228,6 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     set({ pendingSelection: null });
   },
 
-  setHoveredCommentId: (id: string | null) => {
-    set({ hoveredCommentId: id });
-  },
-
   setOutdatedCommentIds: (ids: Set<string>) => {
     set({ outdatedCommentIds: ids });
   },
@@ -246,7 +236,6 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     anchor: CommentAnchor,
     comment: string,
     fallbackText: string,
-    blockHashes?: Record<string, string>,
   ) => {
     const newComment: ReviewComment = {
       id: crypto.randomUUID(),
@@ -255,7 +244,6 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       reactions: [],
       comment,
       created_at: Date.now() / 1000,
-      block_hashes_at_creation: blockHashes ?? {},
     };
     set((s) => ({
       comments: [...s.comments, newComment],
@@ -265,7 +253,6 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   },
 
   deleteComment: (id: string) => {
-    if (get().hoveredCommentId === id) set({ hoveredCommentId: null });
     set((s) => ({
       comments: s.comments.filter((c) => c.id !== id),
     }));
@@ -282,7 +269,6 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   },
 
   resolveComment: (id: string) => {
-    if (get().hoveredCommentId === id) set({ hoveredCommentId: null });
     const reaction: CommentReaction = {
       actor: "reviewer",
       kind: "noted",
@@ -306,7 +292,6 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   },
 
   dismissComment: (id: string) => {
-    if (get().hoveredCommentId === id) set({ hoveredCommentId: null });
     set((s) => ({
       comments: s.comments.map((c) =>
         c.id === id ? { ...c, resolved: true } : c,
@@ -316,7 +301,6 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   },
 
   dismissAll: () => {
-    set({ hoveredCommentId: null });
     set((s) => ({
       comments: s.comments.map((c) =>
         c.resolved ? c : { ...c, resolved: true },
@@ -328,7 +312,6 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   dismissOutdated: () => {
     const outdated = get().outdatedCommentIds;
     if (outdated.size === 0) return;
-    set({ hoveredCommentId: null });
     set((s) => ({
       comments: s.comments.map((c) =>
         !c.resolved && outdated.has(c.id) ? { ...c, resolved: true } : c,

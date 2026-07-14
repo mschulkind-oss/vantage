@@ -18,10 +18,9 @@
 //     branches on its falsiness and its TS type is string|null.
 //   - FileNode.HasMarkdown is non-omitempty so a no-markdown directory sends
 //     has_markdown:false rather than omitting the key.
-//   - Review slices and maps (Snapshots, Comments, Reactions,
-//     BlockHashesAtCreation) must marshal as []/{} rather than null. Construct
-//     review values with NewReviewData / NewReviewComment, or initialize those
-//     fields to non-nil empties before marshaling.
+//   - Review slices (Snapshots, Comments, Reactions) must marshal as [] rather
+//     than null. Construct review values with NewReviewData / NewReviewComment,
+//     or initialize those fields to non-nil empties before marshaling.
 package model
 
 import "time"
@@ -172,21 +171,17 @@ type CommentReaction struct {
 }
 
 // ReviewComment is a single review comment. CreatedAt is epoch seconds
-// (float64). Reactions and BlockHashesAtCreation must marshal as []/{} rather
-// than null — use NewReviewComment or initialize them to non-nil empties.
-//
-// BlockHashesAtCreation maps a source line (as a string key) to that block's
-// text hash at the moment the comment was created.
+// (float64). Reactions must marshal as [] rather than null — use
+// NewReviewComment or initialize it to a non-nil empty slice.
 type ReviewComment struct {
 	ID        string  `json:"id"`
 	Comment   string  `json:"comment"`
 	CreatedAt float64 `json:"created_at"`
 	Resolved  bool    `json:"resolved,omitempty"`
 	// Anchor is omitted while a legacy comment has not yet acquired one.
-	Anchor                *CommentAnchor    `json:"anchor,omitempty"`
-	FallbackText          string            `json:"fallback_text,omitempty"`
-	Reactions             []CommentReaction `json:"reactions"`
-	BlockHashesAtCreation map[string]string `json:"block_hashes_at_creation"`
+	Anchor       *CommentAnchor    `json:"anchor,omitempty"`
+	FallbackText string            `json:"fallback_text,omitempty"`
+	Reactions    []CommentReaction `json:"reactions"`
 	// SelectedText is legacy: the verbatim selection of pre-anchor comments.
 	SelectedText string `json:"selected_text,omitempty"`
 }
@@ -211,15 +206,13 @@ func NewReviewData(filePath string) *ReviewData {
 	}
 }
 
-// NewReviewComment returns a ReviewComment with its Reactions slice and
-// BlockHashesAtCreation map initialized to non-nil empties, so it marshals them
-// as [] and {} rather than null.
+// NewReviewComment returns a ReviewComment with its Reactions slice
+// initialized to a non-nil empty, so it marshals as [] rather than null.
 func NewReviewComment(id, comment string, createdAt float64) ReviewComment {
 	return ReviewComment{
-		ID:                    id,
-		Comment:               comment,
-		CreatedAt:             createdAt,
-		Reactions:             []CommentReaction{},
-		BlockHashesAtCreation: map[string]string{},
+		ID:        id,
+		Comment:   comment,
+		CreatedAt: createdAt,
+		Reactions: []CommentReaction{},
 	}
 }
