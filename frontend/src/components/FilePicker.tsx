@@ -256,15 +256,15 @@ export const FilePicker: React.FC<FilePickerProps> = ({
     return matched.slice(0, 100);
   }, [debouncedQuery, files, isGlobal, globalFiles]);
 
-  // Track mounting state for cleanup
-  const isMountedRef = useRef(true);
-
-  // Reset selection when results change — but use ref to avoid setState in effect
-  useEffect(() => {
-    if (isMountedRef.current) {
-      setSelectedIndex(0);
-    }
-  }, [results]);
+  // Reset selection to the top whenever the result set changes. This is the
+  // "adjusting state during render" pattern (react.dev/learn/you-might-not-need-an-effect):
+  // deriving it here instead of in an effect avoids the extra render pass — and
+  // the react-hooks/set-state-in-effect error — that a useEffect would cause.
+  const [prevResults, setPrevResults] = useState(results);
+  if (results !== prevResults) {
+    setPrevResults(results);
+    setSelectedIndex(0);
+  }
 
   // Focus input when opened
   useEffect(() => {
