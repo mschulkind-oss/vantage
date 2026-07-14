@@ -27,7 +27,8 @@ func securityHeaders(next http.Handler) http.Handler {
 // spaHandler serves the embedded single-page application for every non-/api
 // route. An existing static asset (favicon, hashed JS/CSS, images) is served
 // directly with the correct content type; anything else falls back to the
-// config-injected index.html so the React router can handle client-side routes.
+// bundle's index.html (served as-is) so the React router can handle client-side
+// routes.
 func (s *Server) spaHandler() http.HandlerFunc {
 	dist := web.Dist()
 	index := indexHTML(dist)
