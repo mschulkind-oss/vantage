@@ -687,21 +687,10 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
           selectedText={pendingSelection.displayText}
           rect={pendingSelection.rect}
           onSave={(comment) => {
-            const hashes: Record<string, string> = {};
-            const el = containerRef.current;
-            if (el) {
-              for (const block of el.querySelectorAll<HTMLElement>(
-                "[data-source-line]",
-              )) {
-                const line = block.getAttribute("data-source-line");
-                if (line) hashes[line] = hashBlockText(blockVisibleText(block));
-              }
-            }
             addComment(
               pendingSelection.anchor,
               comment,
               pendingSelection.displayText,
-              hashes,
             );
           }}
           onCancel={clearPendingSelection}

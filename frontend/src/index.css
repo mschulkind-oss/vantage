@@ -886,17 +886,6 @@ h6:hover > .heading-anchor,
   box-shadow: 0 0 0 2px rgb(96 165 250 / 0.15);
 }
 
-/* Hover-triggered highlight for blocks that changed since the hovered
-   comment was created.  Left border only — subtle, non-intrusive. */
-.review-changed-block-highlight {
-  box-shadow: inset 3px 0 0 rgb(239 68 68 / 0.55);
-  border-radius: 2px;
-  transition: box-shadow 0.15s;
-}
-.dark .review-changed-block-highlight {
-  box-shadow: inset 3px 0 0 rgb(239 68 68 / 0.5);
-}
-
 /* Dismiss button: same shape as resolve, slate-toned to communicate
    "close without committing to a reaction." */
 .review-inline-comment-dismiss {
@@ -1164,22 +1153,6 @@ h6:hover > .heading-anchor,
 }
 
 /* Tooltip */
-/* Change markers in stripe — shown on hover to indicate blocks that changed */
-.review-stripe-change-marker {
-  position: absolute;
-  left: 1px;
-  right: 1px;
-  width: auto;
-  min-height: 2px;
-  border-radius: 1px;
-  background: rgb(239 68 68 / 0.5);
-  pointer-events: none;
-  z-index: 0;
-}
-.dark .review-stripe-change-marker {
-  background: rgb(239 68 68 / 0.45);
-}
-
 .review-stripe-tooltip {
   position: absolute;
   left: calc(100% + 8px);

@@ -244,13 +244,11 @@ func TestEmptyReviewDataMarshalsWithBrackets(t *testing.T) {
 		"file_path": true, "snapshots": true, "comments": true,
 	}, keySet(t, rd))
 
-	// And a constructed empty comment marshals reactions/[] and hashes/{}.
+	// And a constructed empty comment marshals reactions/[].
 	c := NewReviewComment("id-1", "looks good", 1717000000)
 	require.Equal(t, "[]", rawField(t, c, "reactions"))
-	require.Equal(t, "{}", rawField(t, c, "block_hashes_at_creation"))
 	keys := keySet(t, c)
 	require.True(t, keys["reactions"])
-	require.True(t, keys["block_hashes_at_creation"])
 	// Optional legacy/anchor fields stay omitted when zero.
 	require.False(t, keys["anchor"])
 	require.False(t, keys["fallback_text"])
@@ -278,8 +276,7 @@ func TestReviewDataFullRoundTrip(t *testing.T) {
 				Reactions: []CommentReaction{
 					{Actor: "agent", Kind: "addressed", Summary: "done", Timestamp: 1717000002},
 				},
-				BlockHashesAtCreation: map[string]string{"4": "d58b3fa7"},
-				SelectedText:          "legacy text",
+				SelectedText: "legacy text",
 			},
 		},
 	}

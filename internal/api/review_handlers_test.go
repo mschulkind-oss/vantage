@@ -41,9 +41,8 @@ func TestReviewPutThenGetRoundTrips(t *testing.T) {
 	require.Equal(t, "c1", got.Comments[0].ID)
 	require.NotNil(t, got.Comments[0].Anchor)
 	require.Equal(t, "d58b3fa7", got.Comments[0].Anchor.BlockTextHash)
-	// Empty slices/maps round-trip as []/{}.
+	// Empty slices round-trip as [].
 	require.NotNil(t, got.Comments[0].Reactions)
-	require.NotNil(t, got.Comments[0].BlockHashesAtCreation)
 }
 
 // TestReviewPutDoesNotApplyChangelog verifies PUT is pure persistence: it must

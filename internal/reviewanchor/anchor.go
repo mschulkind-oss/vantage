@@ -67,7 +67,7 @@ func FNV1a(s string) string {
 }
 
 // HashBlockText is the canonicalize-then-hash value stored in a comment
-// anchor's block_text_hash and in block_hashes_at_creation.
+// anchor's block_text_hash.
 func HashBlockText(s string) string {
 	return FNV1a(StripBlockText(s))
 }
