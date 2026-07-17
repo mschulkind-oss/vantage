@@ -18,7 +18,7 @@
     "@tailwindcss/typography": "^0.5.19",
     "axios": "^1.18.1",
     "clsx": "^2.1.1",
-    "date-fns": "^4.1.0",
+    "date-fns": "^4.4.0",
     "diff": "^8.0.3",
     "gray-matter": "^4.0.3",
     "katex": "^0.16.33",
