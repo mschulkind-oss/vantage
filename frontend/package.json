@@ -37,7 +37,7 @@
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "smol-toml": "^1.6.1",
-    "tailwind-merge": "^3.4.0",
+    "tailwind-merge": "^3.6.0",
     "vantage-md": "file:../packages/vantage-md",
     "yaml": "^2.8.2",
     "zustand": "^5.0.9"
