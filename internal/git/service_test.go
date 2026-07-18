@@ -7,12 +7,14 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/mschulkind-oss/vantage/internal/gitenv"
 )
 
 // gitEnv is a deterministic environment for git invocations in tests: fixed
 // identity, no global/system config interference, and a stable default branch.
 func gitEnv() []string {
-	return append(os.Environ(),
+	return append(gitenv.Scrubbed(),
 		"GIT_AUTHOR_NAME=Tester",
 		"GIT_AUTHOR_EMAIL=tester@example.com",
 		"GIT_COMMITTER_NAME=Tester",

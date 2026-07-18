@@ -31,6 +31,7 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"github.com/mschulkind-oss/vantage/internal/gitenv"
 	"github.com/mschulkind-oss/vantage/internal/ignore"
 	"github.com/mschulkind-oss/vantage/internal/model"
 	"github.com/mschulkind-oss/vantage/internal/perf"
@@ -158,6 +159,7 @@ func (s *GitService) run(cwd string, timeout time.Duration, args ...string) ([]b
 
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = cwd
+	cmd.Env = gitenv.Scrubbed()
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = nil

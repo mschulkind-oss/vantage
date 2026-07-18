@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mschulkind-oss/vantage/internal/git"
+	"github.com/mschulkind-oss/vantage/internal/gitenv"
 	"github.com/mschulkind-oss/vantage/internal/model"
 )
 
@@ -21,7 +22,7 @@ func jsonMarshal(v any) (string, error) {
 
 // gitEnv is a deterministic environment for git invocations in tests.
 func gitEnv() []string {
-	return append(os.Environ(),
+	return append(gitenv.Scrubbed(),
 		"GIT_AUTHOR_NAME=Tester",
 		"GIT_AUTHOR_EMAIL=tester@example.com",
 		"GIT_COMMITTER_NAME=Tester",

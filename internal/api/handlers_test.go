@@ -13,6 +13,7 @@ import (
 	"github.com/mschulkind-oss/vantage/internal/config"
 	"github.com/mschulkind-oss/vantage/internal/fs"
 	"github.com/mschulkind-oss/vantage/internal/git"
+	"github.com/mschulkind-oss/vantage/internal/gitenv"
 	"github.com/mschulkind-oss/vantage/internal/perf"
 	"github.com/mschulkind-oss/vantage/internal/review"
 	"github.com/stretchr/testify/require"
@@ -57,6 +58,7 @@ func runGit(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
+	cmd.Env = gitenv.Scrubbed()
 	out, err := cmd.CombinedOutput()
 	require.NoErrorf(t, err, "git %s: %s", strings.Join(args, " "), out)
 	return string(out)

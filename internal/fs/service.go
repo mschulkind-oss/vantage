@@ -31,6 +31,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/mschulkind-oss/vantage/internal/git"
+	"github.com/mschulkind-oss/vantage/internal/gitenv"
 	"github.com/mschulkind-oss/vantage/internal/ignore"
 	"github.com/mschulkind-oss/vantage/internal/model"
 	"github.com/mschulkind-oss/vantage/internal/perf"
@@ -509,6 +510,7 @@ func (s *FileSystemService) gitignoredNames(dir string) map[string]struct{} {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", "check-ignore", "--stdin", "-z")
 	cmd.Dir = s.rootPath
+	cmd.Env = gitenv.Scrubbed()
 	cmd.Stdin = strings.NewReader(strings.Join(paths, "\x00"))
 	out, err := cmd.Output()
 	if err != nil {
