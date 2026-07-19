@@ -101,9 +101,8 @@ export const useWebSocket = () => {
     if (path && changedPaths.has(path)) {
       promises.push(loadFile(path));
       promises.push(fetchStatus(path));
-      // Re-fetch review data so server-written reactions (from the
-      // changelog parser running in the watcher) surface live, without
-      // requiring a page reload.
+      // Re-fetch review data so server-written state (e.g. anchor-relevant
+      // captures after an agent edit) stays fresh without a page reload.
       if (path.toLowerCase().endsWith(".md")) {
         promises.push(useReviewStore.getState().loadReview(path));
       }
@@ -144,10 +143,9 @@ export const useWebSocket = () => {
       if (path.toLowerCase().endsWith(".md")) {
         loadFile(path);
         fetchStatus(path);
-        // Reactions the agent wrote during the outage arrived as file-change
+        // Reactions delivered during the outage arrived as review_changed
         // events we never received. Without this reload the client keeps a
-        // stale comments array and the reviewer's next action PUTs it back,
-        // erasing every agent response written while we were disconnected.
+        // stale comments array until the next server push or manual refresh.
         useReviewStore.getState().loadReview(path);
       } else {
         viewDirectory(path);
@@ -186,6 +184,20 @@ export const useWebSocket = () => {
         } else {
           wsLog.log("[ws] Server hello: version=%s (unchanged)", version);
         }
+        return;
+      }
+
+      if (message.type === "changelog_ignored" && message.path) {
+        // A saved document still carries a retired-protocol changelog block:
+        // the agent followed a stale clipboard payload and its response was
+        // NOT recorded. Flag it so the viewer can tell the reviewer to re-copy
+        // the comments (which carry the current instructions).
+        const { isMultiRepo, currentRepo } = useRepoStore.getState();
+        if (isMultiRepo && (!currentRepo || message.repo !== currentRepo)) {
+          return;
+        }
+        wsLog.log("[ws] changelog_ignored: %s", message.path);
+        useReviewStore.getState().warnStaleProtocol(message.path);
         return;
       }
 

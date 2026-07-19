@@ -64,7 +64,7 @@ describe("ViewerPage", () => {
       isReviewMode: false,
       filePath: null,
       comments: [],
-      snapshots: [],
+      staleProtocolWarning: null,
     });
 
     (useRepoStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
@@ -332,6 +332,46 @@ describe("ViewerPage", () => {
       expect(screen.getAllByTitle("Manage comments")).toHaveLength(
         rendered.panel,
       );
+    });
+  });
+
+  describe("stale-protocol warning banner", () => {
+    const WARNING_TEXT = /retired changelog protocol/i;
+
+    it("renders the notice when the flag matches the document on screen", () => {
+      useReviewStore.setState({
+        staleProtocolWarning: { path: "path/to/file.md" },
+      });
+      renderPage();
+
+      expect(screen.getByText(WARNING_TEXT)).toBeInTheDocument();
+      expect(screen.getByText(/Copy the comments again/i)).toBeInTheDocument();
+    });
+
+    it("stays hidden when the flag names a different document", () => {
+      useReviewStore.setState({
+        staleProtocolWarning: { path: "other/doc.md" },
+      });
+      renderPage();
+
+      expect(screen.queryByText(WARNING_TEXT)).not.toBeInTheDocument();
+    });
+
+    it("stays hidden with no flag set", () => {
+      renderPage();
+      expect(screen.queryByText(WARNING_TEXT)).not.toBeInTheDocument();
+    });
+
+    it("dismiss clears the flag and removes the notice", () => {
+      useReviewStore.setState({
+        staleProtocolWarning: { path: "path/to/file.md" },
+      });
+      renderPage();
+
+      fireEvent.click(screen.getByLabelText("Dismiss stale protocol warning"));
+
+      expect(useReviewStore.getState().staleProtocolWarning).toBeNull();
+      expect(screen.queryByText(WARNING_TEXT)).not.toBeInTheDocument();
     });
   });
 

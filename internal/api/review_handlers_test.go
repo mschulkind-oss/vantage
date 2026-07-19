@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -17,26 +16,16 @@ func TestReviewGetAbsentReturnsNullAt200(t *testing.T) {
 	require.Equal(t, "null", w.Body.String())
 }
 
-func TestReviewPutThenGetRoundTrips(t *testing.T) {
+// A review seeded through the store comes back whole: keys, anchors, and
+// []-not-null reaction slices survive the GET encode path.
+func TestReviewGetReturnsStoredReview(t *testing.T) {
 	e := newTestEnv(t, false)
 	rd := model.NewReviewData("a.md")
 	c := model.NewReviewComment("c1", "tighten this", 1717000000)
 	c.Anchor = &model.CommentAnchor{SourceLine: 3, BlockTextHash: "d58b3fa7"}
 	rd.Comments = append(rd.Comments, c)
-	body, err := json.Marshal(rd)
-	require.NoError(t, err)
+	require.NoError(t, e.h.deps.Reviews.Save("a.md", "", rd))
 
-	// PUT persists verbatim and echoes what was stored, so a client whose copy
-	// predated a server-side agent reaction learns about it from its own write.
-	wput := e.do(e.h.ReviewPut, http.MethodPut, "/review?path=a.md", string(body), true)
-	require.Equal(t, http.StatusOK, wput.Code)
-	var echoed model.ReviewData
-	decode(t, wput, &echoed)
-	require.Equal(t, "a.md", echoed.FilePath)
-	require.Len(t, echoed.Comments, 1)
-	require.Equal(t, "c1", echoed.Comments[0].ID)
-
-	// GET returns the stored data with all keys, including the anchor + hash.
 	wget := e.do(e.h.ReviewGet, http.MethodGet, "/review?path=a.md", "", true)
 	require.Equal(t, http.StatusOK, wget.Code)
 	var got model.ReviewData
@@ -48,37 +37,6 @@ func TestReviewPutThenGetRoundTrips(t *testing.T) {
 	require.Equal(t, "d58b3fa7", got.Comments[0].Anchor.BlockTextHash)
 	// Empty slices round-trip as [].
 	require.NotNil(t, got.Comments[0].Reactions)
-}
-
-// TestReviewPutDoesNotApplyChangelog verifies PUT is pure persistence: it must
-// not add any reaction (which an apply-on-PUT would do). The stored record
-// equals exactly what was sent.
-func TestReviewPutDoesNotApplyChangelog(t *testing.T) {
-	e := newTestEnv(t, false)
-	rd := model.NewReviewData("a.md")
-	c := model.NewReviewComment("c1", "fix this", 1717000000)
-	rd.Comments = append(rd.Comments, c)
-	body, err := json.Marshal(rd)
-	require.NoError(t, err)
-
-	wput := e.do(e.h.ReviewPut, http.MethodPut, "/review?path=a.md", string(body), true)
-	require.Equal(t, http.StatusOK, wput.Code)
-
-	stored, err := e.h.deps.Reviews.Get("a.md", "")
-	require.NoError(t, err)
-	require.NotNil(t, stored)
-	require.Len(t, stored.Comments, 1)
-	// No reactions were synthesized — apply-on-PUT would have added one.
-	require.Empty(t, stored.Comments[0].Reactions)
-}
-
-func TestReviewPutMalformedBody400(t *testing.T) {
-	e := newTestEnv(t, false)
-	w := e.do(e.h.ReviewPut, http.MethodPut, "/review?path=a.md", "{not json", true)
-	require.Equal(t, http.StatusBadRequest, w.Code)
-	var env map[string]string
-	decode(t, w, &env)
-	require.Contains(t, env, "error")
 }
 
 func TestReviewDeleteMiss404(t *testing.T) {
@@ -110,7 +68,6 @@ func TestReviewMissingPath400(t *testing.T) {
 		method  string
 	}{
 		{e.h.ReviewGet, http.MethodGet},
-		{e.h.ReviewPut, http.MethodPut},
 		{e.h.ReviewDelete, http.MethodDelete},
 	} {
 		w := e.do(tc.handler, tc.method, "/review", "{}", true)

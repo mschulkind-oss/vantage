@@ -35,9 +35,13 @@ export interface FileContent {
 }
 
 export interface WebSocketMessage {
-  type: "files_changed" | "review_changed" | "hello";
+  type: "files_changed" | "review_changed" | "changelog_ignored" | "hello";
   paths?: string[];
-  /** review_changed: the document whose review state changed server-side. */
+  /**
+   * review_changed: the document whose review state changed server-side.
+   * changelog_ignored: the document that was saved still carrying a
+   * retired-protocol changelog block (the agent's response went nowhere).
+   */
   path?: string;
   repo?: string;
   version?: string;
@@ -76,6 +80,10 @@ export interface FileDiff {
 
 // --- Review mode types ---
 
+/**
+ * Legacy: nothing writes snapshots anymore. The type survives only so review
+ * files written before snapshots were retired still typecheck when loaded.
+ */
 export interface ReviewSnapshot {
   id: string;
   content: string;
@@ -133,7 +141,8 @@ export interface ReviewComment {
 
 export interface ReviewData {
   file_path: string;
-  snapshots: ReviewSnapshot[];
+  /** Legacy tolerance only: present on old review files, never written. */
+  snapshots?: ReviewSnapshot[];
   comments: ReviewComment[];
   /** Delivery dedup keys, most-recent-last. Server-side only. */
   nonces?: string[];

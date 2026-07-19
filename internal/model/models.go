@@ -18,9 +18,10 @@
 //     branches on its falsiness and its TS type is string|null.
 //   - FileNode.HasMarkdown is non-omitempty so a no-markdown directory sends
 //     has_markdown:false rather than omitting the key.
-//   - Review slices (Snapshots, Comments, Reactions) must marshal as [] rather
-//     than null. Construct review values with NewReviewData / NewReviewComment,
+//   - Review slices (Comments, Reactions) must marshal as [] rather than
+//     null. Construct review values with NewReviewData / NewReviewComment,
 //     or initialize those fields to non-nil empties before marshaling.
+//     (Snapshots is deprecated legacy tolerance: omitempty, never written.)
 package model
 
 import "time"
@@ -140,6 +141,9 @@ type RepoInfoResponse struct {
 
 // ReviewSnapshot is a saved copy of a file's content at a point in time. The
 // timestamp is epoch seconds (float64), authored client-side.
+//
+// Deprecated: nothing writes snapshots anymore. The type survives only so
+// legacy review files carrying them still parse (and round-trip) cleanly.
 type ReviewSnapshot struct {
 	ID        string  `json:"id"`
 	Content   string  `json:"content"`
@@ -158,7 +162,7 @@ type CommentAnchor struct {
 }
 
 // CommentReaction records an action taken in response to a comment, by either
-// the agent (parsed from a <!-- changelog --> block) or the reviewer. Actor is
+// the agent (an inbox delivery or a pasted response) or the reviewer. Actor is
 // "agent" or "reviewer"; Kind is one of "addressed", "wont_fix",
 // "needs_clarification", "noted". Timestamp is epoch seconds (float64).
 type CommentReaction struct {
@@ -195,19 +199,18 @@ type ReviewComment struct {
 	SelectedText string `json:"selected_text,omitempty"`
 }
 
-// ReviewData is the full review record persisted for one file. Snapshots and
-// Comments must marshal as [] rather than null — use NewReviewData or
-// initialize them to non-nil empties.
+// ReviewData is the full review record persisted for one file. Comments must
+// marshal as [] rather than null — use NewReviewData or initialize it to a
+// non-nil empty.
 type ReviewData struct {
 	FilePath string `json:"file_path"`
-	// AppliedChangelog fingerprints the last "<!-- changelog -->" block that was
-	// turned into reactions. The block stays in the document, so every later
-	// save re-parses it; without a record of what was already applied it would
-	// be re-applied and would auto-answer the reviewer's follow-up. Empty on
-	// reviews written before this field existed.
-	AppliedChangelog string           `json:"applied_changelog,omitempty"`
-	Snapshots        []ReviewSnapshot `json:"snapshots"`
-	Comments         []ReviewComment  `json:"comments"`
+	// Snapshots is dead weight kept only so legacy review files that carry
+	// snapshots still parse and round-trip. Nothing writes it; the frontend
+	// tolerates its absence.
+	//
+	// Deprecated: do not read or write; retained for legacy-file tolerance.
+	Snapshots []ReviewSnapshot `json:"snapshots,omitempty"`
+	Comments  []ReviewComment  `json:"comments"`
 	// Nonces are the delivery dedup keys of agent responses already applied,
 	// most-recent-last, capped at 200 (oldest dropped). Stored inside the review
 	// so the record survives restarts and is written in the same atomic save as
@@ -215,14 +218,13 @@ type ReviewData struct {
 	Nonces []string `json:"nonces,omitempty"`
 }
 
-// NewReviewData returns a ReviewData for filePath with its slice fields
-// initialized to non-nil empties, so it marshals snapshots/comments as []
-// rather than null.
+// NewReviewData returns a ReviewData for filePath with Comments initialized
+// to a non-nil empty, so it marshals comments as [] rather than null. The
+// deprecated Snapshots field stays nil (omitted from the JSON).
 func NewReviewData(filePath string) *ReviewData {
 	return &ReviewData{
-		FilePath:  filePath,
-		Snapshots: []ReviewSnapshot{},
-		Comments:  []ReviewComment{},
+		FilePath: filePath,
+		Comments: []ReviewComment{},
 	}
 }
 

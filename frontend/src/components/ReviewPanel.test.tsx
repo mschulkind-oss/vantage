@@ -720,7 +720,7 @@ describe("ReviewPanel — paste agent response", () => {
     baseComment({ id: "abcd1234-0000", reactions: [] });
 
   const serverCopy = (comments: ReviewComment[]): { data: ReviewData } => ({
-    data: { file_path: "doc.md", snapshots: [], comments },
+    data: { file_path: "doc.md", comments },
   });
 
   /** A promise whose settlement the test controls, for racing two requests. */

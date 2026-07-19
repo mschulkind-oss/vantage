@@ -63,7 +63,6 @@ func (h *Handlers) Routes() []Route {
 
 		// --- Repo-scoped: review ---
 		{http.MethodGet, "/review", h.ReviewGet, ScopeRepo},
-		{http.MethodPut, "/review", h.ReviewPut, ScopeRepo},
 		{http.MethodDelete, "/review", h.ReviewDelete, ScopeRepo},
 
 		// --- Repo-scoped: review commands ---

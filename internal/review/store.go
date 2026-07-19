@@ -1,6 +1,7 @@
-// Package review persists review-mode data (snapshots + comments) and applies
-// the agent-authored changelog that turns "<!-- changelog -->" bullets into
-// reviewer-visible reactions.
+// Package review persists review-mode data (threaded comments) and applies
+// agent responses delivered through the .vantage/inbox files or the panel's
+// paste box, turning "- [<short_id>] <summary>" bullets into reviewer-visible
+// reactions.
 //
 // On-disk layout: one JSON file per reviewed document under a base directory
 // (default ~/.local/share/vantage/reviews). The filename flattens the
@@ -28,9 +29,10 @@ import (
 // The zero value is not usable; construct one with NewStore or DefaultStore.
 //
 // Writes are serialized per review file. Two writers race otherwise: the file
-// watcher does a read-modify-write to append agent reactions, while a browser
-// PUTs the whole review. Without the lock their steps interleave and one
-// silently overwrites the other.
+// watcher's inbox consumer does a read-modify-write to append agent reactions
+// (ApplyResponses), while browser-driven commands read-modify-write the same
+// file. Without the lock their steps interleave and one silently overwrites
+// the other.
 type Store struct {
 	dir string
 	// A fixed set of mutexes, chosen by hashing the review file path. Keeping a
@@ -171,138 +173,6 @@ func (s *Store) saveLocked(filePath, repo string, data *model.ReviewData) error 
 	}
 	cleanup = false
 	return nil
-}
-
-// SaveFromClient persists a review PUT by a browser, preserving any agent
-// reactions the client's copy predates.
-//
-// A browser holds the whole review in memory and PUTs all of it on every edit.
-// Meanwhile the watcher appends agent reactions server-side. If the browser
-// last read the review before a reaction landed — it was disconnected, or the
-// reaction arrived mid-edit — a blind Save would erase that reaction
-// permanently, and nothing would ever bring it back: the changelog dedup would
-// treat a re-run as a replay.
-//
-// So an incoming comment keeps everything the client sent (its text, resolved
-// flag and reviewer turns are the client's to own) and gets back only the
-// stored AGENT reactions it is missing. Comments absent from the payload stay
-// deleted — deletion is a real client intent, not staleness.
-//
-// Server-owned fields are carried across too. The client neither knows nor
-// sends AppliedChangelog, so taking the payload at face value would blank it
-// and let the watcher re-apply a changelog block it had already consumed.
-func (s *Store) SaveFromClient(filePath, repo string, data *model.ReviewData) error {
-	defer s.lock(filePath, repo)()
-
-	stored, err := s.getLocked(filePath, repo)
-	if err != nil {
-		// Unreadable stored copy: nothing to merge, but the client's write must
-		// still land or the reviewer silently loses the comment they just made.
-		slog.Warn("review: could not read stored review to merge; saving client copy as-is",
-			"path", filePath, "error", err)
-	} else if stored != nil {
-		mergeAgentReactions(stored.Comments, data.Comments)
-		if data.AppliedChangelog == "" {
-			data.AppliedChangelog = stored.AppliedChangelog
-		}
-	}
-	return s.saveLocked(filePath, repo, data)
-}
-
-// mergeAgentReactions re-inserts agent reactions present on disk but missing
-// from the incoming copy of the same comment.
-//
-// Position is recovered by splicing against the turns both sides already share,
-// NOT by sorting on Timestamp. Sorting would be wrong: agent turns are stamped
-// server-side (whole seconds) and reviewer turns browser-side, so a skewed
-// client clock could order a reply BEFORE the answer it responds to — and since
-// isPendingForAgent reads the last element, that silently marks the reply
-// answered. Both arrays are append-ordered, so relative order is authoritative
-// and clock-free.
-func mergeAgentReactions(stored, incoming []model.ReviewComment) {
-	byID := make(map[string]*model.ReviewComment, len(stored))
-	for i := range stored {
-		byID[stored[i].ID] = &stored[i]
-	}
-
-	for i := range incoming {
-		prev, ok := byID[incoming[i].ID]
-		if !ok {
-			continue
-		}
-		merged, restored := spliceMissingAgentTurns(prev.Reactions, incoming[i].Reactions)
-		if restored == 0 {
-			continue
-		}
-		incoming[i].Reactions = merged
-		short := incoming[i].ID
-		if len(short) > 8 {
-			short = short[:8]
-		}
-		slog.Info("review: restored agent reactions a stale client write omitted",
-			"comment", short, "count", restored)
-	}
-}
-
-// spliceMissingAgentTurns walks the stored sequence and rebuilds the incoming
-// one, inserting each stored agent turn the client lacks at the position the
-// stored order puts it. Turns the client dropped that are not agent turns stay
-// dropped — reviewer turns are the client's to own.
-func spliceMissingAgentTurns(stored, incoming []model.CommentReaction) ([]model.CommentReaction, int) {
-	out := make([]model.CommentReaction, 0, len(incoming)+len(stored))
-	next := 0 // next unconsumed index in incoming
-	restored := 0
-
-	for _, s := range stored {
-		if at := indexOfReaction(incoming, next, s); at >= 0 {
-			// Shared turn: emit everything the client had before it, then it.
-			out = append(out, incoming[next:at+1]...)
-			next = at + 1
-			continue
-		}
-		if s.Actor == "agent" {
-			out = append(out, s)
-			restored++
-		}
-	}
-	out = append(out, incoming[next:]...)
-	return out, restored
-}
-
-// indexOfReaction finds r in reactions at or after from, or -1.
-func indexOfReaction(reactions []model.CommentReaction, from int, r model.CommentReaction) int {
-	for i := from; i < len(reactions); i++ {
-		if keyOf(reactions[i]) == keyOf(r) {
-			return i
-		}
-	}
-	return -1
-}
-
-// reactionKey identifies a reaction for dedup during a merge.
-//
-// The before/after capture is part of the key: ApplyChangelog stamps a whole
-// batch with one whole-second timestamp, so (actor, kind, summary, timestamp)
-// alone cannot tell two genuinely different answers apart when they land in the
-// same second — and dropping one would lose its diff silently.
-type reactionKey struct {
-	actor      string
-	kind       string
-	summary    string
-	beforeText string
-	afterText  string
-	timestamp  float64
-}
-
-func keyOf(r model.CommentReaction) reactionKey {
-	return reactionKey{
-		actor:      r.Actor,
-		kind:       r.Kind,
-		summary:    r.Summary,
-		beforeText: r.BeforeText,
-		afterText:  r.AfterText,
-		timestamp:  r.Timestamp,
-	}
 }
 
 // Delete removes the review file for filePath in repo. It reports whether a

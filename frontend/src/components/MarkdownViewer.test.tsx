@@ -13,7 +13,7 @@ import { useRepoStore } from "../stores/useRepoStore";
 import { blockVisibleText, hashBlockText } from "../lib/reviewAnchor";
 import type { CommentReaction, ReviewComment } from "../types";
 
-// Store writes (resolve, dismiss, reply, …) call saveReview, which PUTs.
+// Store writes (resolve, dismiss, reply, …) fire command requests via axios.
 vi.mock("axios");
 
 // Mock MermaidDiagram (imported from vantage-md/react by MarkdownViewer)

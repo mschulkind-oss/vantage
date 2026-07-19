@@ -30,9 +30,9 @@ type ResponseEntry struct {
 
 // ParseResponses parses agent response text — the paste-box door — into
 // entries. Every line that parses as a "- [<short_id>] <summary>" bullet
-// counts, in order; anything else (prose, blank lines, a stray changelog
-// marker) is skipped. Unlike the changelog path there is no marker to scope to:
-// the whole text is scanned. Nonce is left empty for the caller to assign.
+// counts, in order; anything else (prose, blank lines, a stray retired-protocol
+// changelog marker) is skipped. There is no marker to scope to: the whole text
+// is scanned. Nonce is left empty for the caller to assign.
 func ParseResponses(text string) []ResponseEntry {
 	var out []ResponseEntry
 	for _, line := range splitLines(text) {
