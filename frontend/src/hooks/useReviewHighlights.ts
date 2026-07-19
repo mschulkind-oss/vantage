@@ -527,6 +527,9 @@ function wireCommentButtons(
       // confirm indefinitely while the agent writes.
       timer = setTimeout(
         () => {
+          // A rebuilt copy of this button owns the arm now; this one is
+          // detached and must not retire it.
+          if (!deleteBtn.isConnected) return;
           // Retire only the arm this timer was scheduled for; a later arm on the
           // same comment owns itself.
           if (armedDelete?.id === comment.id && armedDelete.at === at) {
@@ -558,6 +561,16 @@ function wireCommentButtons(
         paintDisarmed();
         onDelete(comment.id);
         return;
+      }
+      // Only one comment is ever armed, so any button still painted armed from
+      // a previous arm must be reset — otherwise two read "Delete?" at once and
+      // clicking the stale one looks like it will delete when it only re-arms.
+      for (const stale of document.querySelectorAll(
+        ".review-inline-comment-delete--armed",
+      )) {
+        stale.textContent = "×";
+        stale.classList.remove("review-inline-comment-delete--armed");
+        stale.setAttribute("title", "Delete comment");
       }
       armedDelete = { id: comment.id, at: Date.now() };
       paintArmed(armedDelete.at);

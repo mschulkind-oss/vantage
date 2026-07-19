@@ -438,8 +438,13 @@ func TestApplyChangelogSecondRoundMayReuseSummary(t *testing.T) {
 		model.CommentReaction{Actor: "reviewer", Kind: "needs_clarification", Summary: "still wrong", Timestamp: 1700000200},
 	)
 
+	// The agent appends a fresh block per round, so the document carries the
+	// first round's block as well as the new one.
 	content := strings.Join([]string{
 		"Updated heading",
+		"",
+		"<!-- changelog -->",
+		"- [abcd1234] Fixed it",
 		"",
 		"<!-- changelog -->",
 		"- [abcd1234] Fixed it",
@@ -479,6 +484,9 @@ func TestApplyChangelogDedupWindowStartsAtLastReviewerReaction(t *testing.T) {
 		"Updated heading",
 		"",
 		"<!-- changelog -->",
+		"- [abcd1234] a previous round",
+		"",
+		"<!-- changelog -->",
 		"- [abcd1234] first pass",
 		"- [abcd1234] second pass",
 	}, nl)
@@ -508,6 +516,9 @@ func TestApplyChangelogDedupWindowUsesTheLastReviewerReactionNotTheFirst(t *test
 
 	content := strings.Join([]string{
 		"<!-- changelog -->",
+		"- [abcd1234] a previous round",
+		"",
+		"<!-- changelog -->",
 		"- [abcd1234] round one",
 		"- [abcd1234] round two",
 	}, nl)
@@ -535,7 +546,8 @@ func TestApplyChangelogAnyReviewerReactionKindOpensANewRound(t *testing.T) {
 		model.CommentReaction{Actor: "reviewer", Kind: "noted", Summary: "thanks", Timestamp: 1700000200},
 	)
 
-	content := "<!-- changelog -->" + nl + "- [abcd1234] Fixed it"
+	content := "<!-- changelog -->" + nl + "- [abcd1234] a previous round" + nl + nl +
+		"<!-- changelog -->" + nl + "- [abcd1234] Fixed it"
 	require.Equal(t, 1, s.ApplyChangelog("doc.md", content, ""))
 
 	got, err := s.Get("doc.md", "")
@@ -611,8 +623,12 @@ func TestApplyChangelogEditOpensANewRoundWithoutAReviewerReaction(t *testing.T) 
 		model.CommentReaction{Actor: "agent", Kind: "addressed", Summary: "Fixed it", Timestamp: 1700000100},
 	)
 
+	// The agent appends a fresh block for the new round.
 	content := strings.Join([]string{
 		"Updated heading",
+		"",
+		"<!-- changelog -->",
+		"- [abcd1234] a previous round",
 		"",
 		"<!-- changelog -->",
 		"- [abcd1234] Fixed it",
@@ -969,4 +985,43 @@ func appendReviewerFollowUp(t *testing.T, s *Store, summary string, ts float64) 
 	data.Comments[0].Reactions = append(data.Comments[0].Reactions,
 		model.CommentReaction{Actor: "reviewer", Kind: "needs_clarification", Summary: summary, Timestamp: ts})
 	require.NoError(t, s.Save("doc.md", "", data))
+}
+
+// The agent edits the LIVE block in place — typically to add a bullet for
+// another comment — rather than appending a fresh one. The bullets already
+// applied from that block are not new answers: replaying them lands the old
+// response on top of their reviewers' follow-ups and marks those answered.
+func TestApplyChangelogEditedBlockDoesNotReplayItsAppliedBullets(t *testing.T) {
+	ResetCacheForTests()
+	s := NewStore(t.TempDir())
+	data := model.NewReviewData("doc.md")
+	for _, id := range []string{
+		"aaaa1111-0000-0000-0000-000000000001",
+		"bbbb2222-0000-0000-0000-000000000002",
+	} {
+		c := model.NewReviewComment(id, "please fix", 1700000000)
+		c.Anchor = &model.CommentAnchor{SourceLine: 1}
+		data.Comments = append(data.Comments, c)
+	}
+	require.NoError(t, s.Save("doc.md", "", data))
+
+	one := "Head\n\n<!-- changelog -->\n- [aaaa1111] Fixed A\n"
+	require.Equal(t, 1, s.ApplyChangelog("doc.md", one, ""))
+	appendReviewerFollowUp(t, s, "not good enough", 1700000200)
+
+	// Same block, one bullet added for B. Only B's is new.
+	two := "Head\n\n<!-- changelog -->\n- [aaaa1111] Fixed A\n- [bbbb2222] Fixed B\n"
+	require.Equal(t, 1, s.ApplyChangelog("doc.md", two, ""))
+
+	got, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+
+	a := got.Comments[0].Reactions
+	require.Equal(t, "reviewer", a[len(a)-1].Actor,
+		"A's follow-up must still be the last turn — its bullet was already applied")
+	require.Len(t, a, 2)
+
+	b := got.Comments[1].Reactions
+	require.Len(t, b, 1, "B's bullet is new and must land")
+	require.Equal(t, "Fixed B", b[0].Summary)
 }

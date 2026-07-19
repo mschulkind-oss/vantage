@@ -329,6 +329,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     if (!base || !filePath) return;
 
     const seq = ++saveSeq;
+    const loadSeqAtStart = loadSeq;
     const data: ReviewData = { file_path: filePath, snapshots, comments };
     try {
       const res = await axios.put<ReviewData | null>(`${base}/review`, data, {
@@ -337,10 +338,16 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       // The server may have restored agent reactions this copy predated. Adopt
       // what it actually persisted, or the reviewer keeps working against a
       // thread that is missing the agent's reply until they refresh by hand.
-      // Skipped if another write or a file switch has happened since, whose
-      // state is newer than this response.
+      // Skipped if anything newer has landed meanwhile: another write, a file
+      // switch, or a reload — a reload that completed after this PUT was sent
+      // carries the server's own newer state, which this echo would undo.
       const saved = res.data;
-      if (saved?.comments && seq === saveSeq && get().filePath === filePath) {
+      if (
+        saved?.comments &&
+        seq === saveSeq &&
+        loadSeq === loadSeqAtStart &&
+        get().filePath === filePath
+      ) {
         set({ comments: saved.comments });
       }
     } catch (e) {

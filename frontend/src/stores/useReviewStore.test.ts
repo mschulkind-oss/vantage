@@ -1086,6 +1086,41 @@ describe("useReviewStore", () => {
       expect(isPendingForAgent(c)).toBe(true);
     });
 
+    it("ignores a response overtaken by a reload of the same file", async () => {
+      // A reload that finished after this PUT was sent carries the server's own
+      // newer state — including anything the agent wrote meanwhile. Adopting a
+      // response that predates it would undo that.
+      const local = mkThreadComment("aaaaaaaa-0001", "please clarify", []);
+      useReviewStore.setState({ filePath: "doc.md", comments: [local] });
+
+      const slow = deferred<{ data: ReviewData }>();
+      mockedAxios.put.mockReturnValueOnce(slow.promise);
+      const inFlight = useReviewStore.getState().saveReview();
+
+      // Same file, reloaded while the PUT is still out.
+      mockedAxios.get.mockResolvedValueOnce({
+        data: {
+          file_path: "doc.md",
+          snapshots: [],
+          comments: [{ ...local, comment: "reloaded from the server" }],
+        },
+      });
+      await useReviewStore.getState().loadReview("doc.md");
+
+      slow.resolve({
+        data: {
+          file_path: "doc.md",
+          snapshots: [],
+          comments: [{ ...local, comment: "stale echo" }],
+        },
+      });
+      await inFlight;
+
+      expect(useReviewStore.getState().comments[0].comment).toBe(
+        "reloaded from the server",
+      );
+    });
+
     it("ignores a response for a file the reviewer has already left", async () => {
       const local = mkThreadComment("aaaaaaaa-0001", "doc-a comment", []);
       useReviewStore.setState({ filePath: "doc-a.md", comments: [local] });
