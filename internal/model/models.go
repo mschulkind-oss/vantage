@@ -165,13 +165,21 @@ type CommentAnchor struct {
 // the agent (an inbox delivery or a pasted response) or the reviewer. Actor is
 // "agent" or "reviewer"; Kind is one of "addressed", "wont_fix",
 // "needs_clarification", "noted". Timestamp is epoch seconds (float64).
+//
+// AnswersRound is set only on agent reactions whose delivery named the thread
+// round it was written against (the comment's reaction count as of the payload
+// the agent read). It exists because a reaction's position in the slice implies
+// which turn it answers, and that implication is wrong for a delivery that
+// lands after the reviewer posted a follow-up. Absent means "not stated", which
+// readers treat as answering the newest turn.
 type CommentReaction struct {
-	Actor      string  `json:"actor"`
-	Kind       string  `json:"kind"`
-	Summary    string  `json:"summary"`
-	BeforeText string  `json:"before_text"`
-	AfterText  string  `json:"after_text"`
-	Timestamp  float64 `json:"timestamp"`
+	Actor        string  `json:"actor"`
+	Kind         string  `json:"kind"`
+	Summary      string  `json:"summary"`
+	BeforeText   string  `json:"before_text"`
+	AfterText    string  `json:"after_text"`
+	Timestamp    float64 `json:"timestamp"`
+	AnswersRound *int    `json:"answers_round,omitempty"`
 }
 
 // ReviewComment is a single review comment. CreatedAt is epoch seconds

@@ -116,12 +116,17 @@ func isChangelogMarker(line string) bool {
 	return strings.TrimSpace(line) == changelogMarker
 }
 
-// parseBullet parses a "- [<short_id>] <summary>" line. The short id is a hex
-// run of at least 4 characters and is lowercased; the summary is trimmed and
-// must be non-empty. ok is false for any line that does not match.
+// parseBullet parses a "- [<short_id>] <summary>" line. Any of the three
+// standard Markdown unordered-list markers opens the bullet: the payload
+// documents "-", but a model rendering a list is free to normalize to "*" or
+// "+", and rejecting those turns a delivery into a 400 the reviewer has to
+// diagnose. The short id is a run of hex digits and hyphens carrying at least
+// four hex digits — hyphens so a full UUID parses the same way the inbox door
+// accepts one — and is lowercased; the summary is trimmed and must be
+// non-empty. ok is false for any line that does not match.
 func parseBullet(line string) (shortID, summary string, ok bool) {
 	rest := strings.TrimLeft(line, " \t")
-	if !strings.HasPrefix(rest, "-") {
+	if rest == "" || (rest[0] != '-' && rest[0] != '*' && rest[0] != '+') {
 		return "", "", false
 	}
 	rest = strings.TrimLeft(rest[1:], " \t")
@@ -133,7 +138,7 @@ func parseBullet(line string) (shortID, summary string, ok bool) {
 		return "", "", false
 	}
 	id := rest[1:close]
-	if len(id) < 4 || !isHex(id) {
+	if !isHexID(id) {
 		return "", "", false
 	}
 	summary = strings.TrimSpace(rest[close+1:])
@@ -143,22 +148,23 @@ func parseBullet(line string) (shortID, summary string, ok bool) {
 	return strings.ToLower(id), summary, true
 }
 
-// isHex reports whether s is a non-empty run of ASCII hex digits.
-func isHex(s string) bool {
-	if s == "" {
-		return false
-	}
+// isHexID reports whether s is a comment short id: ASCII hex digits and
+// hyphens, with at least four hex digits. The hex-count floor (rather than a
+// length floor) is what keeps the Markdown task-list forms "- [x]" and "- [ ]"
+// and a bare rule like "- [----]" from parsing as deliveries.
+func isHexID(s string) bool {
+	hexCount := 0
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		switch {
-		case c >= '0' && c <= '9':
-		case c >= 'a' && c <= 'f':
-		case c >= 'A' && c <= 'F':
+		case c >= '0' && c <= '9', c >= 'a' && c <= 'f', c >= 'A' && c <= 'F':
+			hexCount++
+		case c == '-':
 		default:
 			return false
 		}
 	}
-	return true
+	return hexCount >= 4
 }
 
 // resolveCommentID returns the single comment id that has shortID as a prefix.

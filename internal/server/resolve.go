@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 
@@ -41,10 +42,25 @@ func (s *Server) resolveLegacy(next http.HandlerFunc) http.HandlerFunc {
 // looks up the {repo} path parameter and injects its services into the context;
 // an unknown repository name is a 404. In single-repo mode the only repository
 // is keyed by the empty name, so a named "/r/{repo}" request 404s there too.
+//
+// The lookup tries the raw segment first and only then its percent-decoded
+// form. chi routes on the wire form when Go leaves RawPath set, which it does
+// for exactly the sub-delims the browser's encodeURIComponent escapes but Go
+// does not ($ & + , ; = : @ /), so a repo named "c++" or "notes@work" appeared
+// in the sidebar while every request against it 404'd. Raw-first keeps
+// exact-match semantics: a repo whose literal name contains a percent sign
+// still wins, and "a%2Fb" cannot silently resolve to a repo named "a/b".
 func (s *Server) resolveRepo(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := chi.URLParam(r, "repo")
 		rs, ok := s.repos[name]
+		if !ok {
+			if decoded, err := url.PathUnescape(name); err == nil && decoded != name {
+				if drs, dok := s.repos[decoded]; dok {
+					name, rs, ok = decoded, drs, true
+				}
+			}
+		}
 		if !ok || name == "" {
 			writeJSONError(w, http.StatusNotFound, "Repository not found: "+name)
 			return

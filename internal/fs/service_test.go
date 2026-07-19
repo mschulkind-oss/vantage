@@ -429,3 +429,39 @@ func TestListDirectoryNotADirectory(t *testing.T) {
 	_, err := svc.ListDirectory("file.md", Options{})
 	require.ErrorIs(t, err, ErrInvalidPath)
 }
+
+// TestVantageDirIsNeitherListedNorServed pins the ignore package's promise that
+// the always-ignored set is one "which no configuration can surface". Both
+// halves regressed independently: listings leaked .vantage whenever
+// use_ignore_files was off (the matcher was nil, and a nil matcher skips the
+// always-ignored check), and direct reads served it under every configuration
+// because path validation never consulted the matcher at all.
+func TestVantageDirIsNeitherListedNorServed(t *testing.T) {
+	for _, useIgnore := range []bool{true, false} {
+		t.Run(map[bool]string{true: "ignore-on", false: "ignore-off"}[useIgnore], func(t *testing.T) {
+			dir := t.TempDir()
+			require.NoError(t, os.MkdirAll(filepath.Join(dir, ".vantage", "inbox"), 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, ".vantage", "inbox", "x.jsonl"), []byte("{}\n"), 0o644))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"), []byte("# hi\n"), 0o644))
+
+			svc := New(Config{RootPath: dir, UseIgnoreFiles: useIgnore})
+
+			// Hidden from the tree even with the user's "show hidden files"
+			// setting on, which is the only reason .vantage stayed invisible in
+			// the default UI.
+			nodes, err := svc.ListDirectory(".", Options{ShowHidden: true, ShowGitignored: true})
+			require.NoError(t, err)
+			names := make([]string, 0, len(nodes))
+			for _, n := range nodes {
+				names = append(names, n.Name)
+			}
+			require.Equal(t, []string{"README.md"}, names)
+
+			// And not fetchable by typing the path either.
+			_, err = svc.ReadFile(".vantage/inbox/x.jsonl")
+			require.ErrorAs(t, err, new(*PathError))
+			_, err = svc.ListDirectory(".vantage", Options{ShowHidden: true})
+			require.ErrorAs(t, err, new(*PathError))
+		})
+	}
+}

@@ -231,6 +231,14 @@ func (s *FileSystemService) validatePath(path string) (string, error) {
 			return "", newPathError("Access to .git directory is not allowed")
 		}
 	}
+	// .vantage is vantage's own machine-to-machine state, hidden from every
+	// listing and search. Hiding it from listings but still serving it by direct
+	// path left it fetchable — and openable as a "document" to annotate — by
+	// anyone who typed the path. Hard-blocked here like .git so every
+	// caller-supplied path into this service is covered by one rule.
+	if ignore.IsAlwaysIgnored(normalized) {
+		return "", newPathError("Access to .vantage directory is not allowed")
+	}
 
 	full := filepath.Clean(filepath.Join(s.rootPath, normalized))
 	rel, err := filepath.Rel(s.rootPath, full)
@@ -460,13 +468,16 @@ func (s *FileSystemService) annotateGit(nodes []model.FileNode, relPaths []strin
 	}
 }
 
-// matcher returns the layered ignore matcher for this root, or nil when ignore
-// files are disabled.
+// matcher returns the layered ignore matcher for this root.
+//
+// A disabled matcher is returned rather than nil, matching what the watcher
+// already does: [ignore.Matcher.IsIgnored] consults the built-in always-ignored
+// set before its enabled check, so returning nil here made
+// use_ignore_files=false surface .vantage in listings — the one thing the
+// ignore package promises no configuration can do. Building a disabled matcher
+// costs nothing: it skips loading the ignore files entirely.
 func (s *FileSystemService) matcher() *ignore.Matcher {
-	if !s.useIgnore {
-		return nil
-	}
-	return ignore.GetMatcher(s.rootPath, true)
+	return ignore.GetMatcher(s.rootPath, s.useIgnore)
 }
 
 // relPath returns full as a slash-separated path relative to the root. A path
