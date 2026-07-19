@@ -1,5 +1,12 @@
 # Review Mode — Current Design and Where the Tiny Gaps Are
 
+> **2026-07-19 postscript:** the changelog-as-only-channel decision recorded in
+> open question 4 below has a proposed reversal, with the incident history that
+> motivates it, in
+> [review-state-architecture.md](review-state-architecture.md). The prescient
+> part of that answer — "the changelog grammar is now load-bearing" — is
+> exactly what came true.
+
 This is a design audit of Vantage's review mode as of `7652eb7`. The goal is to walk a real reviewer through the current UI click-by-click, find the small modeling gaps that make the flow feel awkward, and propose two focused changes:
 
 1. **Simplify display.** The "what does this comment attach to" logic is a tower of fallbacks that breaks in surprising ways. Apply the same pattern that worked for hover-to-comment (`7652eb7`): pick a stable unit (a block), do one obvious thing, drop the heuristics.
