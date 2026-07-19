@@ -20,7 +20,7 @@ internal/             Backend packages (not importable outside the module)
   api/                HTTP handlers + the route table
   git/                GitService — shells out to the git binary
   fs/                 FileSystemService — file tree + file content
-  review/             Review-mode persistence + changelog reactions
+  review/             Review-mode persistence + agent response delivery (inbox + paste)
   reviewanchor/       Block hashing that anchors comments (mirrors the frontend)
   live/               WebSocket Manager + fsnotify file watcher
   static/             Self-contained static-site builder

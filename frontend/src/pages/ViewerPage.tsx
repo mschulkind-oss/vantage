@@ -227,6 +227,10 @@ export const ViewerPage: React.FC = () => {
   ).length;
   const endReview = useReviewStore((s) => s.endReview);
   const hasReviewData = useReviewStore((s) => s.hasReviewData);
+  const staleProtocolWarning = useReviewStore((s) => s.staleProtocolWarning);
+  const dismissStaleProtocolWarning = useReviewStore(
+    (s) => s.dismissStaleProtocolWarning,
+  );
   const [reviewPanelOpen, setReviewPanelOpen] = useState(false);
   const [reviewCopied, setReviewCopied] = useState(false);
   const [reviewExitConfirm, setReviewExitConfirm] = useState(false);
@@ -277,12 +281,8 @@ export const ViewerPage: React.FC = () => {
   }, [currentPath, loadReview]);
 
   // Track lastContent so the clipboard prompt has source lines to render.
-  // Snapshots themselves are written server-side by the watcher (it
-  // caches the previous file content per (repo,path) and uses it as the
-  // before-text when the changelog parser fires).  The frontend no
-  // longer issues an auto-snapshot PUT — that PUT was racing with the
-  // server's reaction write and clobbering reactions when the agent
-  // edited the file while the browser was open.
+  // Before/after capture is entirely server-side: the comment's anchored
+  // block is captured at create/reply time and again at delivery time.
   useEffect(() => {
     if (!fileContent || !isReviewMode) return;
     reviewSetLastContent(fileContent.content);
@@ -1389,6 +1389,29 @@ export const ViewerPage: React.FC = () => {
           {isReviewMode && (
             <div className="h-1 bg-gradient-to-r from-purple-500 via-purple-400 to-purple-500 shrink-0" />
           )}
+
+          {/* Stale-protocol warning: the agent wrote a retired-protocol
+              changelog block into this document, so its response went
+              nowhere. Dismissible; only shown for the document on screen. */}
+          {staleProtocolWarning &&
+            staleProtocolWarning.path === currentPath && (
+              <div className="bg-amber-50 dark:bg-amber-900/30 border-b border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 px-4 py-2 flex items-center gap-3 text-sm shrink-0">
+                <AlertCircle size={16} className="shrink-0 text-amber-500" />
+                <span className="flex-1">
+                  The agent responded using the retired changelog protocol —
+                  nothing was recorded. Copy the comments again to hand it the
+                  current instructions.
+                </span>
+                <button
+                  onClick={dismissStaleProtocolWarning}
+                  className="p-1 rounded-md hover:bg-amber-100 dark:hover:bg-amber-900/50 text-amber-600 dark:text-amber-300 transition-colors shrink-0"
+                  aria-label="Dismiss stale protocol warning"
+                  title="Dismiss"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
 
           {/* Viewer */}
           <div className="flex-1 flex min-h-0 relative">

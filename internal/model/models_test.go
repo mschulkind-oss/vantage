@@ -235,13 +235,14 @@ func TestCommentAnchorKeys(t *testing.T) {
 
 // TestEmptyReviewDataMarshalsWithBrackets is the load-bearing policy test:
 // an empty ReviewData built via the constructor must serialize slices/maps as
-// []/{} rather than null, so the frontend always gets iterable values.
+// []/{} rather than null, so the frontend always gets iterable values. The
+// deprecated snapshots field is omitted entirely (the frontend tolerates its
+// absence).
 func TestEmptyReviewDataMarshalsWithBrackets(t *testing.T) {
 	rd := NewReviewData("a.md")
-	require.Equal(t, "[]", rawField(t, rd, "snapshots"))
 	require.Equal(t, "[]", rawField(t, rd, "comments"))
 	require.Equal(t, map[string]bool{
-		"file_path": true, "snapshots": true, "comments": true,
+		"file_path": true, "comments": true,
 	}, keySet(t, rd))
 
 	// And a constructed empty comment marshals reactions/[].
@@ -256,7 +257,9 @@ func TestEmptyReviewDataMarshalsWithBrackets(t *testing.T) {
 	require.False(t, keys["resolved"])
 }
 
-// TestReviewDataFullRoundTrip exercises a populated record end to end.
+// TestReviewDataFullRoundTrip exercises a populated record end to end. It
+// includes a legacy snapshot to pin the tolerance contract: files written
+// before snapshots were retired must keep parsing and round-tripping.
 func TestReviewDataFullRoundTrip(t *testing.T) {
 	in := ReviewData{
 		FilePath: "doc.md",

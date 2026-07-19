@@ -262,6 +262,85 @@ func TestWatcherFlushEmptyIsNoop(t *testing.T) {
 	require.Len(t, c.send, 0)
 }
 
+// --- stale-payload warning (retired changelog protocol) ---
+
+// drainMessages empties the test connection's buffered sends and returns the
+// decoded messages.
+func drainMessages(t *testing.T, c *conn) []map[string]any {
+	t.Helper()
+	var out []map[string]any
+	for {
+		select {
+		case data := <-c.send:
+			var msg map[string]any
+			require.NoError(t, json.Unmarshal(data, &msg))
+			out = append(out, msg)
+		default:
+			return out
+		}
+	}
+}
+
+// A saved document that still carries a "<!-- changelog -->" block means an
+// agent followed a stale clipboard payload: its response went nowhere. The
+// watcher must warn — one changelog_ignored broadcast for the document — and
+// must NOT touch the review (the retired protocol is never applied).
+func TestWatcherFlushWarnsOnChangelogBlockAndDoesNotMutateReview(t *testing.T) {
+	root := t.TempDir()
+	store := review.NewStore(t.TempDir())
+	seedReviewedDoc(t, store, root, "repoX", "docs/a.md", "c1a2b3c4deadbeef")
+
+	// The agent "responded" the retired way: a changelog block in the document,
+	// with a bullet that would have resolved to the seeded comment.
+	stale := testDoc + "\n<!-- changelog -->\n- [c1a2b3c4] pretended to fix it\n"
+	require.NoError(t, os.WriteFile(
+		filepath.Join(root, "docs", "a.md"), []byte(stale), 0o644))
+
+	m := NewManager(quietLogger())
+	c := m.newTestConn(8)
+	w, err := NewWatcher(root, "repoX", m, store, false, quietLogger())
+	require.NoError(t, err)
+
+	w.flush([]string{"docs/a.md"})
+
+	msgs := drainMessages(t, c)
+	var ignored []map[string]any
+	for _, msg := range msgs {
+		if msg["type"] == "changelog_ignored" {
+			ignored = append(ignored, msg)
+		}
+	}
+	require.Len(t, ignored, 1, "exactly one changelog_ignored per save")
+	require.Equal(t, "repoX", ignored[0]["repo"])
+	require.Equal(t, "docs/a.md", ignored[0]["path"])
+
+	// The bullet was NOT applied: the review is untouched.
+	data, err := store.Get("docs/a.md", "repoX")
+	require.NoError(t, err)
+	require.Len(t, data.Comments, 1)
+	require.Empty(t, data.Comments[0].Reactions,
+		"the retired protocol must never record a reaction")
+}
+
+// The common case stays quiet: a document without a marker triggers no
+// changelog_ignored broadcast.
+func TestWatcherFlushNoWarningWithoutChangelogBlock(t *testing.T) {
+	root := t.TempDir()
+	store := review.NewStore(t.TempDir())
+	seedReviewedDoc(t, store, root, "", "a.md", "c1a2b3c4deadbeef")
+
+	m := NewManager(quietLogger())
+	c := m.newTestConn(8)
+	w, err := NewWatcher(root, "", m, store, false, quietLogger())
+	require.NoError(t, err)
+
+	w.flush([]string{"a.md"})
+
+	for _, msg := range drainMessages(t, c) {
+		require.NotEqual(t, "changelog_ignored", msg["type"])
+	}
+}
+
 // --- inbox consumption ---
 
 // seedReviewedDoc writes doc content at rel under root and stores a review for

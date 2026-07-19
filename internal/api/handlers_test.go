@@ -133,8 +133,14 @@ func TestRoutesTableShapes(t *testing.T) {
 	require.Equal(t, ScopeRepo, scopeOf("/git/history", http.MethodGet))
 	require.Equal(t, ScopeRepo, scopeOf("/tree", http.MethodGet))
 	require.Equal(t, ScopeRepo, scopeOf("/review", http.MethodGet))
-	require.Equal(t, ScopeRepo, scopeOf("/review", http.MethodPut))
 	require.Equal(t, ScopeRepo, scopeOf("/review", http.MethodDelete))
+	require.Equal(t, ScopeRepo, scopeOf("/review/responses", http.MethodPost))
+
+	// The retired whole-state PUT must not come back.
+	for _, rt := range routes {
+		require.False(t, rt.Method == http.MethodPut && rt.Pattern == "/review",
+			"PUT /review is retired; reviewer writes go through the command endpoints")
+	}
 }
 
 func TestReposSentinel(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -73,6 +74,67 @@ func TestSaveThenGetRoundTrips(t *testing.T) {
 	require.Equal(t, 1700000000.5, got.Comments[0].CreatedAt)
 }
 
+// EditedAt persistence: the frontend's "an edit re-queues the comment for the
+// agent" rule compares edited_at against the agent's last response time, so the
+// field is worthless unless it survives the store's JSON round trip.
+func TestEditedAtRoundTrips(t *testing.T) {
+	s := NewStore(t.TempDir())
+	data := model.NewReviewData("doc.md")
+
+	edited := model.NewReviewComment("edited-1", "please fix (reworded)", 1700000000)
+	edited.EditedAt = 1700000500.5
+	untouched := model.NewReviewComment("untouched-1", "please fix", 1700000000)
+	data.Comments = append(data.Comments, edited, untouched)
+
+	require.NoError(t, s.Save("doc.md", "", data))
+
+	got, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	require.Len(t, got.Comments, 2)
+	require.Equal(t, 1700000500.5, got.Comments[0].EditedAt)
+	require.Zero(t, got.Comments[1].EditedAt)
+
+	// A never-edited comment must not emit the key at all, so existing review
+	// files stay byte-identical after a rewrite.
+	raw, err := os.ReadFile(s.reviewFile("doc.md", ""))
+	require.NoError(t, err)
+	var probe struct {
+		Comments []map[string]any `json:"comments"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &probe))
+	require.Len(t, probe.Comments, 2)
+	require.Contains(t, probe.Comments[0], "edited_at")
+	require.NotContains(t, probe.Comments[1], "edited_at")
+	require.Equal(t, 1, strings.Count(string(raw), `"edited_at"`),
+		"only the edited comment may carry the key in the file bytes")
+}
+
+// A legacy review file carrying snapshots must still parse, and the snapshots
+// must survive a read-modify-write cycle (the field is deprecated, not
+// destroyed).
+func TestLegacyFileWithSnapshotsRoundTrips(t *testing.T) {
+	s := NewStore(t.TempDir())
+	legacy := `{
+  "file_path": "doc.md",
+  "snapshots": [{"id": "s1", "content": "old body", "timestamp": 1700000000}],
+  "comments": []
+}`
+	require.NoError(t, os.MkdirAll(s.Dir(), 0o755))
+	require.NoError(t, os.WriteFile(s.reviewFile("doc.md", ""), []byte(legacy), 0o644))
+
+	got, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	require.NotNil(t, got, "a legacy file with snapshots must still parse")
+
+	// A rewrite keeps the legacy data intact. Asserted on the file bytes so
+	// the test never touches the deprecated field itself.
+	require.NoError(t, s.Save("doc.md", "", got))
+	raw, err := os.ReadFile(s.reviewFile("doc.md", ""))
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"snapshots"`)
+	require.Contains(t, string(raw), `"old body"`)
+}
+
 func TestSaveIsAtomicNoTempLeftBehind(t *testing.T) {
 	dir := t.TempDir()
 	s := NewStore(dir)
@@ -110,67 +172,26 @@ func TestDelete(t *testing.T) {
 	require.Nil(t, got)
 }
 
-// --- SaveFromClient: merging a stale browser PUT -----------------------------
+// --- Concurrency: inbox deliveries vs browser commands -----------------------
 //
-// Two writers share one review file. The watcher appends agent reactions
-// server-side (ApplyChangelog); the browser holds the whole review in memory
-// and PUTs all of it on every edit. A browser payload is therefore always
-// potentially stale, and a blind Save would erase reactions it never saw.
-// SaveFromClient is the merge that fixes that, so these tests are written from
-// the outside: seed the disk, hand a client a copy, let the disk move on,
-// then PUT the client's copy and read back what a subsequent GET would return.
+// Two writers share one review file. The watcher's inbox consumer applies
+// agent deliveries (ConsumeInbox → ApplyResponses) while browser-driven
+// commands (Reply, SetResolved, …) read-modify-write the same file. The
+// per-file lock is what keeps their steps from interleaving; these tests are
+// written from the outside: hammer both doors at once, then read back what a
+// subsequent Get returns.
 
-const mergeDoc = "doc.md"
+const raceDoc = "doc.md"
 
-// agentTurn and reviewerTurn build the two writers' reactions. Only "agent"
-// turns are ever merged back; "reviewer" turns belong to the client.
+// agentTurn builds an agent reaction for fixtures.
 func agentTurn(kind, summary string, ts float64) model.CommentReaction {
 	return model.CommentReaction{Actor: "agent", Kind: kind, Summary: summary, Timestamp: ts}
-}
-
-func reviewerTurn(kind, summary string, ts float64) model.CommentReaction {
-	return model.CommentReaction{Actor: "reviewer", Kind: kind, Summary: summary, Timestamp: ts}
-}
-
-// storedReview seeds a Store with one comment carrying the given reaction
-// history, and returns the store.
-func storedReview(t *testing.T, id string, reactions ...model.CommentReaction) *Store {
-	t.Helper()
-	s := NewStore(t.TempDir())
-	data := model.NewReviewData(mergeDoc)
-	c := model.NewReviewComment(id, "please fix", 1700000000)
-	c.Reactions = append(c.Reactions, reactions...)
-	data.Comments = append(data.Comments, c)
-	require.NoError(t, s.Save(mergeDoc, "", data))
-	return s
-}
-
-// clientPayload is what a browser PUTs: an independent deep copy of some
-// earlier read of the review. Round-tripping through JSON is exactly what the
-// real client does, and guarantees the payload shares no memory with the store.
-func clientPayload(t *testing.T, from *model.ReviewData) *model.ReviewData {
-	t.Helper()
-	raw, err := json.Marshal(from)
-	require.NoError(t, err)
-	var out model.ReviewData
-	require.NoError(t, json.Unmarshal(raw, &out))
-	return &out
-}
-
-// trace renders a comment's reactions as "actor/kind@ts" so an assertion can
-// pin both membership and order in one readable expectation.
-func trace(c model.ReviewComment) []string {
-	out := make([]string, 0, len(c.Reactions))
-	for _, r := range c.Reactions {
-		out = append(out, fmt.Sprintf("%s/%s@%g", r.Actor, r.Kind, r.Timestamp))
-	}
-	return out
 }
 
 // readComment reads the review back from disk and returns the comment with id.
 func readComment(t *testing.T, s *Store, id string) model.ReviewComment {
 	t.Helper()
-	got, err := s.Get(mergeDoc, "")
+	got, err := s.Get(raceDoc, "")
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	for _, c := range got.Comments {
@@ -182,221 +203,45 @@ func readComment(t *testing.T, s *Store, id string) model.ReviewComment {
 	return model.ReviewComment{}
 }
 
-// A stale PUT must not erase an agent reaction it predates, and the restored
-// reaction belongs where it happened — not tacked onto the end.
-func TestSaveFromClientRestoresAgentReactionMissedByAStaleClient(t *testing.T) {
-	const id = "abcd1234-0000-0000-0000-000000000001"
-	// On disk: the agent answered, the reviewer asked for more, the agent
-	// answered again.
-	s := storedReview(t, id,
-		agentTurn("addressed", "fixed the heading", 100),
-		reviewerTurn("needs_clarification", "what about the table?", 200),
-		agentTurn("addressed", "fixed the table too", 300),
-	)
-
-	// The client last read the review before that second agent turn landed, and
-	// has since added a reviewer turn of its own.
-	stale := model.NewReviewData(mergeDoc)
-	c := model.NewReviewComment(id, "please fix", 1700000000)
-	c.Reactions = []model.CommentReaction{
-		agentTurn("addressed", "fixed the heading", 100),
-		reviewerTurn("needs_clarification", "what about the table?", 200),
-		reviewerTurn("noted", "thanks", 400),
+// reactionSummaries splits a comment's reactions by actor, sorted, so an
+// assertion can pin exactly-once delivery for both writers at once.
+func reactionSummaries(c model.ReviewComment) (agent, reviewer []string) {
+	for _, r := range c.Reactions {
+		switch r.Actor {
+		case "agent":
+			agent = append(agent, r.Summary)
+		case "reviewer":
+			reviewer = append(reviewer, r.Summary)
+		}
 	}
-	stale.Comments = append(stale.Comments, c)
-
-	require.NoError(t, s.SaveFromClient(mergeDoc, "", stale))
-
-	got := readComment(t, s, id)
-	require.Equal(t, []string{
-		"agent/addressed@100",
-		"reviewer/needs_clarification@200",
-		"agent/addressed@300", // restored, in the middle where it belongs
-		"reviewer/noted@400",
-	}, trace(got), "the agent turn the client never saw must survive, in order")
+	sort.Strings(agent)
+	sort.Strings(reviewer)
+	return agent, reviewer
 }
 
-// Everything the client sends is the client's to own: its comment text, its
-// resolved flag, its edited_at and its reviewer turns all land verbatim, and a
-// reviewer turn it just added is neither dropped nor duplicated.
-func TestSaveFromClientKeepsTheClientsOwnData(t *testing.T) {
-	const id = "abcd1234-0000-0000-0000-000000000001"
-	s := storedReview(t, id, agentTurn("addressed", "fixed it", 100))
-
-	stale := model.NewReviewData(mergeDoc)
-	c := model.NewReviewComment(id, "please fix the heading, not the title", 1700000000)
-	c.EditedAt = 500
-	c.Resolved = true
-	// The client's copy predates the stored agent turn and carries a brand new
-	// reviewer turn.
-	c.Reactions = []model.CommentReaction{reviewerTurn("noted", "good enough", 400)}
-	stale.Comments = append(stale.Comments, c)
-
-	require.NoError(t, s.SaveFromClient(mergeDoc, "", stale))
-
-	got := readComment(t, s, id)
-	require.Equal(t, "please fix the heading, not the title", got.Comment)
-	require.True(t, got.Resolved)
-	require.Equal(t, float64(500), got.EditedAt)
-	require.Equal(t, []string{
-		"agent/addressed@100",
-		"reviewer/noted@400",
-	}, trace(got), "the client's reviewer turn survives exactly once, and the agent turn is restored")
-}
-
-// The mirror image: a reviewer turn that exists only on disk is NOT merged
-// back. Only agent reactions are restored — the client is authoritative for its
-// own turns, so a turn it dropped stays dropped.
-func TestSaveFromClientDoesNotRestoreReviewerTurns(t *testing.T) {
-	const id = "abcd1234-0000-0000-0000-000000000001"
-	s := storedReview(t, id,
-		agentTurn("addressed", "fixed it", 100),
-		reviewerTurn("noted", "thanks", 200),
-	)
-
-	stale := model.NewReviewData(mergeDoc)
-	c := model.NewReviewComment(id, "please fix", 1700000000)
-	c.Reactions = []model.CommentReaction{}
-	stale.Comments = append(stale.Comments, c)
-
-	require.NoError(t, s.SaveFromClient(mergeDoc, "", stale))
-
-	require.Equal(t, []string{"agent/addressed@100"}, trace(readComment(t, s, id)))
-}
-
-// Deleting a comment is a real intent, not staleness: a comment the client
-// omitted must stay gone, and its agent reactions must not be resurrected onto
-// anything else.
-func TestSaveFromClientKeepsOmittedCommentsDeleted(t *testing.T) {
-	const keep = "abcd1234-0000-0000-0000-000000000001"
-	const drop = "beef5678-0000-0000-0000-000000000002"
-
-	s := NewStore(t.TempDir())
-	seed := model.NewReviewData(mergeDoc)
-	kept := model.NewReviewComment(keep, "please fix", 1700000000)
-	kept.Reactions = []model.CommentReaction{agentTurn("addressed", "fixed it", 100)}
-	dropped := model.NewReviewComment(drop, "and this too", 1700000001)
-	dropped.Reactions = []model.CommentReaction{agentTurn("wont_fix", "out of scope", 150)}
-	seed.Comments = append(seed.Comments, kept, dropped)
-	require.NoError(t, s.Save(mergeDoc, "", seed))
-
-	// The reviewer deleted the second comment, so the client PUTs only the
-	// first — and its copy of that one predates the agent's reaction.
-	payload := model.NewReviewData(mergeDoc)
-	survivor := model.NewReviewComment(keep, "please fix", 1700000000)
-	survivor.Reactions = []model.CommentReaction{}
-	payload.Comments = append(payload.Comments, survivor)
-
-	require.NoError(t, s.SaveFromClient(mergeDoc, "", payload))
-
-	got, err := s.Get(mergeDoc, "")
-	require.NoError(t, err)
-	require.Len(t, got.Comments, 1, "the deleted comment must not come back")
-	require.Equal(t, keep, got.Comments[0].ID)
-	require.Equal(t, []string{"agent/addressed@100"}, trace(got.Comments[0]),
-		"the deleted comment's reaction must not migrate onto the survivor")
-}
-
-// Re-PUTting the same stale payload — the browser saves on every keystroke-ish
-// edit — must converge, not accumulate copies of the merged-back reaction.
-func TestSaveFromClientIsIdempotent(t *testing.T) {
-	const id = "abcd1234-0000-0000-0000-000000000001"
-	s := storedReview(t, id, agentTurn("addressed", "fixed it", 100))
-
-	stale := model.NewReviewData(mergeDoc)
-	c := model.NewReviewComment(id, "please fix", 1700000000)
-	c.Reactions = []model.CommentReaction{reviewerTurn("noted", "thanks", 200)}
-	stale.Comments = append(stale.Comments, c)
-
-	// Fresh decode each time: the client keeps PUTting the copy it holds, which
-	// still does not contain the agent turn.
-	require.NoError(t, s.SaveFromClient(mergeDoc, "", clientPayload(t, stale)))
-	first := trace(readComment(t, s, id))
-
-	require.NoError(t, s.SaveFromClient(mergeDoc, "", clientPayload(t, stale)))
-	second := trace(readComment(t, s, id))
-
-	require.Equal(t, []string{"agent/addressed@100", "reviewer/noted@200"}, first)
-	require.Equal(t, first, second, "a repeated PUT must not duplicate the merged-back reaction")
-}
-
-// SaveFromClient hands the merged review back through the pointer it was given,
-// and the PUT handler serializes exactly that value as its response. So this is
-// the property the client's "adopt what the server persisted" step depends on:
-// a reaction the caller never sent must be visible in the caller's own struct
-// once the call returns. Without it the browser keeps working against a thread
-// missing the agent's reply until someone refreshes by hand.
-func TestSaveFromClientEchoesTheMergedDataBackToTheCaller(t *testing.T) {
-	const id = "abcd1234-0000-0000-0000-000000000001"
-	s := storedReview(t, id, agentTurn("addressed", "fixed the heading", 100))
-
-	// Give the stored copy a server-owned field the client never sends, so the
-	// echo can be checked to carry that back too.
-	stored, err := s.Get(mergeDoc, "")
-	require.NoError(t, err)
-	stored.AppliedChangelog = "fingerprint-of-the-consumed-block"
-	require.NoError(t, s.Save(mergeDoc, "", stored))
-
-	// The client's copy predates the agent turn and adds a reviewer turn.
-	payload := model.NewReviewData(mergeDoc)
-	c := model.NewReviewComment(id, "please fix", 1700000000)
-	c.Reactions = []model.CommentReaction{reviewerTurn("noted", "thanks", 400)}
-	payload.Comments = append(payload.Comments, c)
-
-	require.NoError(t, s.SaveFromClient(mergeDoc, "", payload))
-
-	// The value the handler responds with is this same payload.
-	require.Equal(t, []string{
-		"agent/addressed@100",
-		"reviewer/noted@400",
-	}, trace(payload.Comments[0]),
-		"the caller's own struct must come back carrying the agent turn it omitted")
-	require.Equal(t, "fingerprint-of-the-consumed-block", payload.AppliedChangelog,
-		"the server-owned fingerprint must be carried into the echoed value too")
-
-	// And the echo is honest: it is what a later GET returns.
-	require.Equal(t, trace(payload.Comments[0]), trace(readComment(t, s, id)))
-}
-
-// An empty store is not a merge failure: the client's write must still land.
-func TestSaveFromClientWithNothingStoredSavesAsIs(t *testing.T) {
-	const id = "abcd1234-0000-0000-0000-000000000001"
-	s := NewStore(t.TempDir())
-
-	data := model.NewReviewData(mergeDoc)
-	data.Comments = append(data.Comments, model.NewReviewComment(id, "first comment", 1700000000))
-	require.NoError(t, s.SaveFromClient(mergeDoc, "", data))
-
-	require.Equal(t, "first comment", readComment(t, s, id).Comment)
-}
-
-// --- Per-file locking --------------------------------------------------------
-
-// The load-bearing concurrency property: the watcher and the browser hammer the
-// same review file at once, every browser PUT carrying a snapshot taken before
-// any agent reaction existed. Not one agent reaction may be lost, and no reader
-// may ever observe a half-written file.
+// The load-bearing concurrency property: the watcher's inbox consumer and
+// browser commands hammer the same review file at once. Not one turn — agent
+// delivery or reviewer command — may be lost or duplicated, and no reader may
+// ever observe a half-written file. Nonce dedup must also hold under
+// concurrent ConsumeInbox passes racing over the same delivery files.
 //
 // Run with -race.
-func TestApplyChangelogAndSaveFromClientConcurrentlyLoseNoAgentReactions(t *testing.T) {
-	ResetCacheForTests()
+func TestConsumeInboxAndCommandsConcurrentlyLoseNoTurns(t *testing.T) {
 	const id = "abcd1234-0000-0000-0000-000000000001"
 
-	s := NewStore(t.TempDir())
-	seed := model.NewReviewData(mergeDoc)
-	seed.Comments = append(seed.Comments, model.NewReviewComment(id, "please fix", 1700000000))
-	require.NoError(t, s.Save(mergeDoc, "", seed))
+	root := t.TempDir()
+	inbox := InboxDir(root)
+	require.NoError(t, os.MkdirAll(inbox, 0o755))
 
-	// Every writer goroutine PUTs from this one stale snapshot: zero reactions.
-	// A blind Save from it would wipe whatever the watcher had written.
-	staleJSON, err := json.Marshal(seed)
-	require.NoError(t, err)
+	s := NewStore(t.TempDir())
+	seed := model.NewReviewData(raceDoc)
+	seed.Comments = append(seed.Comments, model.NewReviewComment(id, "please fix", 1700000000))
+	require.NoError(t, s.Save(raceDoc, "", seed))
 
 	const rounds = 40
 	var (
 		writers  sync.WaitGroup
 		reader   sync.WaitGroup
-		written  int64
 		mu       sync.Mutex
 		failures []string
 	)
@@ -413,7 +258,7 @@ func TestApplyChangelogAndSaveFromClientConcurrentlyLoseNoAgentReactions(t *test
 	reader.Add(1)
 	go func() {
 		defer reader.Done()
-		p := s.reviewFile(mergeDoc, "")
+		p := s.reviewFile(raceDoc, "")
 		for {
 			select {
 			case <-stop:
@@ -438,25 +283,32 @@ func TestApplyChangelogAndSaveFromClientConcurrentlyLoseNoAgentReactions(t *test
 	}()
 
 	for i := 0; i < rounds; i++ {
-		summary := fmt.Sprintf("change %02d", i)
+		i := i
 
+		// Agent door: drop one delivery file (unique summary + nonce), then run
+		// a consume pass. Passes race over each other's files; at-least-once
+		// consumption plus nonce dedup must still land each delivery exactly
+		// once.
 		writers.Add(1)
 		go func() {
 			defer writers.Done()
-			content := "<!-- changelog -->" + nl + "- [abcd1234] " + summary
-			atomic.AddInt64(&written, int64(s.ApplyChangelog(mergeDoc, content, "")))
-		}()
-
-		writers.Add(1)
-		go func() {
-			defer writers.Done()
-			var payload model.ReviewData
-			if err := json.Unmarshal(staleJSON, &payload); err != nil {
-				fail("decode stale payload: %v", err)
+			line := fmt.Sprintf(
+				`{"path":%q,"id":"abcd1234","summary":"agent change %02d","nonce":"nonce-%02d"}`+"\n",
+				raceDoc, i, i)
+			name := filepath.Join(inbox, fmt.Sprintf("delivery-%02d.jsonl", i))
+			if err := os.WriteFile(name, []byte(line), 0o644); err != nil {
+				fail("write delivery: %v", err)
 				return
 			}
-			if err := s.SaveFromClient(mergeDoc, "", &payload); err != nil {
-				fail("SaveFromClient: %v", err)
+			s.ConsumeInbox(root, "")
+		}()
+
+		// Browser door: a reviewer follow-up through the command path.
+		writers.Add(1)
+		go func() {
+			defer writers.Done()
+			if _, err := s.Reply(raceDoc, "", id, fmt.Sprintf("reviewer note %02d", i), ""); err != nil {
+				fail("Reply: %v", err)
 			}
 		}()
 	}
@@ -469,26 +321,22 @@ func TestApplyChangelogAndSaveFromClientConcurrentlyLoseNoAgentReactions(t *test
 	require.Empty(t, failures)
 	mu.Unlock()
 
-	// Each summary is unique, so a correct run writes each exactly once. A
-	// higher count would mean a reaction was lost and then re-written by a
-	// later apply.
-	require.Equal(t, int64(rounds), atomic.LoadInt64(&written),
-		"every changelog bullet should be written exactly once")
+	// Every delivery file was consumed and deleted.
+	ents, err := os.ReadDir(inbox)
+	require.NoError(t, err)
+	require.Empty(t, ents, "every delivery must be consumed and deleted")
 
 	got := readComment(t, s, id)
-	require.Len(t, got.Reactions, rounds, "no agent reaction may be lost, and none duplicated")
+	agent, reviewer := reactionSummaries(got)
 
-	summaries := make([]string, 0, len(got.Reactions))
-	for _, r := range got.Reactions {
-		require.Equal(t, "agent", r.Actor)
-		summaries = append(summaries, r.Summary)
-	}
-	sort.Strings(summaries)
-	want := make([]string, 0, rounds)
+	wantAgent := make([]string, 0, rounds)
+	wantReviewer := make([]string, 0, rounds)
 	for i := 0; i < rounds; i++ {
-		want = append(want, fmt.Sprintf("change %02d", i))
+		wantAgent = append(wantAgent, fmt.Sprintf("agent change %02d", i))
+		wantReviewer = append(wantReviewer, fmt.Sprintf("reviewer note %02d", i))
 	}
-	require.Equal(t, want, summaries)
+	require.Equal(t, wantAgent, agent, "no agent delivery may be lost or duplicated")
+	require.Equal(t, wantReviewer, reviewer, "no reviewer command may be lost or duplicated")
 }
 
 // Concurrent plain Save/Get on the same file must also stay serialized: a Get
@@ -505,11 +353,11 @@ func TestConcurrentSaveAndGetNeverTearsARecord(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			data := model.NewReviewData(mergeDoc)
+			data := model.NewReviewData(raceDoc)
 			c := model.NewReviewComment(id, "please fix", 1700000000)
 			c.Reactions = []model.CommentReaction{agentTurn("addressed", "fixed it", 100)}
 			data.Comments = append(data.Comments, c)
-			if err := s.Save(mergeDoc, "", data); err != nil {
+			if err := s.Save(raceDoc, "", data); err != nil {
 				mu.Lock()
 				failures = append(failures, err.Error())
 				mu.Unlock()
@@ -518,7 +366,7 @@ func TestConcurrentSaveAndGetNeverTearsARecord(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			got, err := s.Get(mergeDoc, "")
+			got, err := s.Get(raceDoc, "")
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
@@ -588,19 +436,15 @@ func collidingReviewPaths(t *testing.T, s *Store) (string, string) {
 	return "", ""
 }
 
-// hammerOneFile runs the watcher-vs-browser workload against one review file:
-// `rounds` ApplyChangelog calls, each with a unique summary, interleaved with
-// the same number of SaveFromClient calls carrying a snapshot taken before any
-// of them existed. It returns how many reactions ApplyChangelog reports writing,
-// plus any error the goroutines hit (assertions belong to the caller's
-// goroutine).
+// hammerOneFile runs the delivery-vs-command workload against one review file:
+// `rounds` ApplyResponses batches — each one entry with a unique summary and
+// nonce, the store-level door ConsumeInbox drives — interleaved with the same
+// number of Reply commands. It returns how many reactions ApplyResponses
+// reports applying, plus any error the goroutines hit (assertions belong to
+// the caller's goroutine).
 func hammerOneFile(s *Store, doc, id, tag string, rounds int) (int64, []string) {
 	seed := model.NewReviewData(doc)
 	seed.Comments = append(seed.Comments, model.NewReviewComment(id, "please fix", 1700000000))
-	staleJSON, err := json.Marshal(seed)
-	if err != nil {
-		return 0, []string{"marshal seed: " + err.Error()}
-	}
 	if err := s.Save(doc, "", seed); err != nil {
 		return 0, []string{"seed save: " + err.Error()}
 	}
@@ -619,24 +463,26 @@ func hammerOneFile(s *Store, doc, id, tag string, rounds int) (int64, []string) 
 
 	for i := 0; i < rounds; i++ {
 		summary := fmt.Sprintf("%s change %02d", tag, i)
+		reply := fmt.Sprintf("%s reviewer %02d", tag, i)
+		nonce := fmt.Sprintf("%s-nonce-%02d", tag, i)
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			content := "<!-- changelog -->" + nl + "- [" + id[:8] + "] " + summary
-			atomic.AddInt64(&written, int64(s.ApplyChangelog(doc, content, "")))
+			entries := []ResponseEntry{{ShortID: id[:8], Summary: summary, Nonce: nonce}}
+			_, n, err := s.ApplyResponses(doc, "", entries, "")
+			if err != nil {
+				fail("ApplyResponses: %v", err)
+				return
+			}
+			atomic.AddInt64(&written, int64(n))
 		}()
 
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			var payload model.ReviewData
-			if err := json.Unmarshal(staleJSON, &payload); err != nil {
-				fail("decode stale payload: %v", err)
-				return
-			}
-			if err := s.SaveFromClient(doc, "", &payload); err != nil {
-				fail("SaveFromClient: %v", err)
+			if _, err := s.Reply(doc, "", id, reply, ""); err != nil {
+				fail("Reply: %v", err)
 			}
 		}()
 	}
@@ -647,14 +493,14 @@ func hammerOneFile(s *Store, doc, id, tag string, rounds int) (int64, []string) 
 	return atomic.LoadInt64(&written), failures
 }
 
-// Two documents that share a lock shard, each under the full watcher-vs-browser
-// storm at the same time. Every agent reaction in BOTH files must survive: a
-// shard is allowed to over-serialize, never to under-serialize. Cross-file
-// contamination and deadlock (the test would time out) are ruled out too.
+// Two documents that share a lock shard, each under the full
+// delivery-vs-command storm at the same time. Every reaction in BOTH files
+// must survive: a shard is allowed to over-serialize, never to
+// under-serialize. Cross-file contamination and deadlock (the test would time
+// out) are ruled out too.
 //
 // Run with -race.
 func TestShardedLockSerializesEachFileWhenTwoFilesShareAShard(t *testing.T) {
-	ResetCacheForTests()
 	s := NewStore(t.TempDir())
 
 	docA, docB := collidingReviewPaths(t, s)
@@ -688,28 +534,28 @@ func TestShardedLockSerializesEachFileWhenTwoFilesShareAShard(t *testing.T) {
 	for i, doc := range []string{docA, docB} {
 		tag := []string{"A", "B"}[i]
 		require.Empty(t, res[i].failures, "%s", doc)
-		// Each summary is unique, so a correct run writes it exactly once. More
-		// would mean a reaction was lost and re-written by a later apply.
+		// Each entry carries a unique nonce, so a correct run applies it exactly
+		// once. More would mean a reaction was lost and re-written by a later
+		// apply.
 		require.Equal(t, int64(rounds), res[i].written,
-			"%s: every changelog bullet should be written exactly once", doc)
+			"%s: every delivery should be applied exactly once", doc)
 
 		got, err := s.Get(doc, "")
 		require.NoError(t, err)
 		require.Len(t, got.Comments, 1, "%s", doc)
 
-		summaries := make([]string, 0, rounds)
-		for _, r := range got.Comments[0].Reactions {
-			require.Equal(t, "agent", r.Actor, "%s", doc)
-			summaries = append(summaries, r.Summary)
-		}
-		sort.Strings(summaries)
+		agent, reviewer := reactionSummaries(got.Comments[0])
 
-		want := make([]string, 0, rounds)
+		wantAgent := make([]string, 0, rounds)
+		wantReviewer := make([]string, 0, rounds)
 		for j := 0; j < rounds; j++ {
-			want = append(want, fmt.Sprintf("%s change %02d", tag, j))
+			wantAgent = append(wantAgent, fmt.Sprintf("%s change %02d", tag, j))
+			wantReviewer = append(wantReviewer, fmt.Sprintf("%s reviewer %02d", tag, j))
 		}
-		require.Equal(t, want, summaries,
-			"%s: no agent reaction may be lost, duplicated, or leak in from the file sharing its shard", doc)
+		require.Equal(t, wantAgent, agent,
+			"%s: no agent delivery may be lost, duplicated, or leak in from the file sharing its shard", doc)
+		require.Equal(t, wantReviewer, reviewer,
+			"%s: no reviewer command may be lost, duplicated, or leak in from the file sharing its shard", doc)
 	}
 }
 

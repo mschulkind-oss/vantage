@@ -357,6 +357,71 @@ describe("useWebSocket", () => {
     });
   });
 
+  describe("changelog_ignored", () => {
+    // Reuse review_changed's helpers: the message is the stale-payload
+    // warning — an agent wrote a retired-protocol changelog block into a
+    // saved document, so its response was ignored server-side.
+    const installRepoState = (overrides: Record<string, unknown> = {}) => {
+      const repoState = makeRepoStoreState(overrides);
+      const mockStore = (selector?: (state: typeof repoState) => unknown) => {
+        if (typeof selector === "function") return selector(repoState);
+        return repoState;
+      };
+      mockStore.getState = () => repoState;
+      (useRepoStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+        mockStore,
+      );
+      (
+        useRepoStore as unknown as { getState: () => typeof repoState }
+      ).getState = () => repoState;
+    };
+
+    const send = (msg: Record<string, unknown>) => {
+      act(() => {
+        mockWebSocket.onmessage!({
+          data: JSON.stringify(msg),
+        } as MessageEvent);
+      });
+    };
+
+    beforeEach(() => {
+      useReviewStore.setState({ staleProtocolWarning: null });
+    });
+
+    it("sets the stale-protocol flag for the flagged document", () => {
+      renderHook(() => useWebSocket());
+
+      send({ type: "changelog_ignored", repo: "", path: "test.md" });
+
+      expect(useReviewStore.getState().staleProtocolWarning).toEqual({
+        path: "test.md",
+      });
+      // The warning is a flag, not a reload: nothing else may fire.
+      expect(mockLoadReview).not.toHaveBeenCalled();
+      expect(mockLoadFile).not.toHaveBeenCalled();
+    });
+
+    it("ignores a message from another repo in multi-repo mode", () => {
+      installRepoState({ isMultiRepo: true, currentRepo: "repo-a" });
+      renderHook(() => useWebSocket());
+
+      send({ type: "changelog_ignored", repo: "repo-b", path: "test.md" });
+
+      expect(useReviewStore.getState().staleProtocolWarning).toBeNull();
+    });
+
+    it("sets the flag when the repo matches in multi-repo mode", () => {
+      installRepoState({ isMultiRepo: true, currentRepo: "repo-a" });
+      renderHook(() => useWebSocket());
+
+      send({ type: "changelog_ignored", repo: "repo-a", path: "test.md" });
+
+      expect(useReviewStore.getState().staleProtocolWarning).toEqual({
+        path: "test.md",
+      });
+    });
+  });
+
   describe("reconnect on visibility change", () => {
     it("force-reconnects after being hidden for more than 30s", () => {
       renderHook(() => useWebSocket());

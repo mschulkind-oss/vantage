@@ -81,7 +81,7 @@ vantage daemon
 - **Math & Diagrams** — KaTeX math rendering and inline Mermaid diagrams from fenced code blocks
 - **Live Reload** — Files update instantly in the browser via WebSocket when modified on disk
 - **Git Integration** — View commit history, diffs, working-tree changes, file status, and recent changes for any file
-- **Review Mode** — Inline comments, snapshots, and agent changelog reactions for collaborative review
+- **Review Mode** — Inline comments with tracked agent responses (delivered via `.vantage/inbox` files or pasted into the panel) for collaborative review
 - **Multi-Repo Mode** — Serve multiple directories from a single daemon, each accessible by name
 - **Source Directory Auto-Discovery** — Point at parent directories to automatically find and add all git repos
 - **File Tree Navigation** — Lazy-loaded sidebar with directory expansion
@@ -245,9 +245,10 @@ Vantage exposes a REST API for programmatic access under `/api`.
 | `GET /api/git/diff/working?path=file.md`    | Uncommitted changes diff             |
 | `GET /api/git/status?path=file.md`          | File status (modified, committed)    |
 | `GET /api/git/recent?limit=20`              | Recently changed files               |
-| `GET /api/review`                           | Read review comments and snapshots   |
-| `PUT /api/review`                           | Create or update review data         |
+| `GET /api/review`                           | Read review comments                 |
 | `DELETE /api/review`                        | Remove review data                   |
+| `POST /api/review/comments` (+ subroutes)   | Review commands (create, reply, …)   |
+| `POST /api/review/responses`                | Record a pasted agent response       |
 
 ### Multi-Repo Endpoints
 

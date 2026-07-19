@@ -16,7 +16,6 @@ import type {
   ReactionKind,
   ReviewComment,
   ReviewData,
-  ReviewSnapshot,
 } from "../types";
 
 vi.mock("axios");
@@ -30,8 +29,7 @@ const resetStores = () => {
     comments: [],
     pendingSelection: null,
     outdatedCommentIds: new Set<string>(),
-    snapshots: [],
-    currentSnapshotIndex: null,
+    staleProtocolWarning: null,
     isLoading: false,
   });
   useRepoStore.setState({
@@ -218,11 +216,10 @@ describe("useReviewStore", () => {
     it("enables review mode on refresh when localStorage has the toggle", async () => {
       // Simulate: user toggled review mode on before the refresh
       localStorage.setItem("vantage.reviewMode:doc.md", "on");
-      // Server returns empty (no comments / snapshots yet)
+      // Server returns empty (no comments yet)
       const emptyReview: ReviewData = {
         file_path: "doc.md",
         comments: [],
-        snapshots: [],
       };
       mockedAxios.get.mockResolvedValueOnce({ data: emptyReview });
 
@@ -241,7 +238,6 @@ describe("useReviewStore", () => {
       const review: ReviewData = {
         file_path: "doc.md",
         comments: [comment],
-        snapshots: [],
       };
       mockedAxios.get.mockResolvedValueOnce({ data: review });
 
@@ -255,7 +251,6 @@ describe("useReviewStore", () => {
       const emptyReview: ReviewData = {
         file_path: "doc.md",
         comments: [],
-        snapshots: [],
       };
       mockedAxios.get.mockResolvedValueOnce({ data: emptyReview });
 
@@ -282,7 +277,7 @@ describe("useReviewStore", () => {
       expect(useReviewStore.getState().isReviewMode).toBe(true);
     });
 
-    it("resets comments/snapshots when switching files", async () => {
+    it("resets comments when switching files", async () => {
       // Set up state as if the user had been reviewing doc-a
       useReviewStore.setState({
         filePath: "doc-a.md",
@@ -301,7 +296,6 @@ describe("useReviewStore", () => {
         data: {
           file_path: "doc-b.md",
           comments: [],
-          snapshots: [],
         },
       });
 
@@ -485,27 +479,19 @@ describe("useReviewStore", () => {
       expect(useReviewStore.getState().isReviewMode).toBe(false);
     });
 
-    it("clears all review data (comments, snapshots)", async () => {
-      const snap: ReviewSnapshot = {
-        id: "s1",
-        content: "old",
-        timestamp: 0,
-      };
+    it("clears all review data (comments)", async () => {
       useReviewStore.setState({
         filePath: "doc.md",
         isReviewMode: true,
         comments: [
           { id: "c1", selected_text: "x", comment: "y", created_at: 0 },
         ],
-        snapshots: [snap],
       });
       mockedAxios.delete.mockResolvedValueOnce({ data: {} });
 
       await useReviewStore.getState().endReview();
 
-      const state = useReviewStore.getState();
-      expect(state.comments).toEqual([]);
-      expect(state.snapshots).toEqual([]);
+      expect(useReviewStore.getState().comments).toEqual([]);
     });
 
     it("still clears local state even if server delete fails", async () => {
@@ -534,12 +520,19 @@ describe("useReviewStore", () => {
       });
       expect(useReviewStore.getState().hasReviewData()).toBe(true);
     });
+  });
 
-    it("returns true when any snapshots exist", () => {
-      useReviewStore.setState({
-        snapshots: [{ id: "s1", content: "x", timestamp: 0 }],
+  describe("staleProtocolWarning", () => {
+    it("warnStaleProtocol sets the flag and dismiss clears it", () => {
+      expect(useReviewStore.getState().staleProtocolWarning).toBeNull();
+
+      useReviewStore.getState().warnStaleProtocol("docs/a.md");
+      expect(useReviewStore.getState().staleProtocolWarning).toEqual({
+        path: "docs/a.md",
       });
-      expect(useReviewStore.getState().hasReviewData()).toBe(true);
+
+      useReviewStore.getState().dismissStaleProtocolWarning();
+      expect(useReviewStore.getState().staleProtocolWarning).toBeNull();
     });
   });
 
@@ -1060,7 +1053,7 @@ describe("useReviewStore", () => {
 
       // The user navigates to another document before doc-a's GET comes back.
       mockedAxios.get.mockResolvedValueOnce({
-        data: { file_path: "doc-b.md", comments: [], snapshots: [] },
+        data: { file_path: "doc-b.md", comments: [] },
       });
       await useReviewStore.getState().loadReview("doc-b.md");
 
@@ -1068,7 +1061,6 @@ describe("useReviewStore", () => {
         data: {
           file_path: "doc-a.md",
           comments: [mkThreadComment("aaaaaaaa-0001", "doc-a comment", [])],
-          snapshots: [],
         },
       });
       await inFlight;
@@ -1099,7 +1091,7 @@ describe("useReviewStore", () => {
 
       // The response was rendered server-side before the reply was saved.
       slow.resolve({
-        data: { file_path: "doc.md", comments: [seeded], snapshots: [] },
+        data: { file_path: "doc.md", comments: [seeded] },
       });
       await inFlight;
 
@@ -1107,171 +1099,6 @@ describe("useReviewStore", () => {
       expect(c.reactions).toHaveLength(2);
       expect(c.reactions?.[1].summary).toBe("expand on it");
       expect(isPendingForAgent(c)).toBe(true);
-    });
-  });
-
-  describe("saveReview — adopting what the server persisted", () => {
-    // saveReview is unused since the command migration but stays alive until
-    // the retirement wave deletes the PUT path end to end; these tests pin
-    // its guard until then and leave with it.
-    //
-    // The watcher can record an agent reaction between this browser's last
-    // load and its next write. The server merges that reaction back into the
-    // saved copy and echoes it; loadReview's staleness guard would discard the
-    // reload that could otherwise teach the client about it, so the write's own
-    // response is the only thing that keeps the two in agreement.
-    const seeded = () => mkThreadComment("aaaaaaaa-0001", "please clarify", []);
-
-    const serverCopy = (comments: ReviewComment[]): { data: ReviewData } => ({
-      data: { file_path: "doc.md", snapshots: [], comments },
-    });
-
-    // saveReview swallows its own failures, so "ignored" and "blew up and was
-    // caught" look identical from the store. The log tells them apart.
-    let consoleError: MockInstance;
-    beforeEach(() => {
-      consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    });
-    afterEach(() => {
-      consoleError.mockRestore();
-    });
-
-    it("adopts an agent reaction the merge restored, so the comment stops being pending", async () => {
-      const local = seeded();
-      useReviewStore.setState({ filePath: "doc.md", comments: [local] });
-      expect(isPendingForAgent(useReviewStore.getState().comments[0])).toBe(
-        true,
-      );
-
-      mockedAxios.put.mockResolvedValueOnce(
-        serverCopy([{ ...local, reactions: [agentAddressed] }]),
-      );
-
-      await useReviewStore.getState().saveReview();
-
-      const c = useReviewStore.getState().comments[0];
-      expect(c.reactions).toEqual([agentAddressed]);
-      expect(isPendingForAgent(c)).toBe(false);
-      expect(isAnsweredByAgent(c)).toBe(true);
-    });
-
-    it("ignores a response overtaken by a write the reviewer made meanwhile", async () => {
-      const local = seeded();
-      useReviewStore.setState({ filePath: "doc.md", comments: [local] });
-
-      const slow = deferred<{ data: ReviewData }>();
-      mockedAxios.put.mockReturnValueOnce(slow.promise);
-      const inFlight = useReviewStore.getState().saveReview();
-
-      // The reviewer replies before that PUT comes back. Their reply is newer
-      // than anything the in-flight response can carry, so adopting the
-      // response would silently swallow it.
-      mockedAxios.post.mockResolvedValueOnce({ data: null });
-      useReviewStore.getState().replyToComment("aaaaaaaa-0001", "expand on it");
-
-      slow.resolve(serverCopy([{ ...local, reactions: [agentAddressed] }]));
-      await inFlight;
-
-      const c = useReviewStore.getState().comments[0];
-      expect(c.reactions).toHaveLength(1);
-      expect(c.reactions?.[0]).toMatchObject({
-        actor: "reviewer",
-        summary: "expand on it",
-      });
-      expect(isPendingForAgent(c)).toBe(true);
-    });
-
-    it("ignores a response overtaken by a reload of the same file", async () => {
-      // A reload that finished after this PUT was sent carries the server's own
-      // newer state — including anything the agent wrote meanwhile. Adopting a
-      // response that predates it would undo that.
-      const local = mkThreadComment("aaaaaaaa-0001", "please clarify", []);
-      useReviewStore.setState({ filePath: "doc.md", comments: [local] });
-
-      const slow = deferred<{ data: ReviewData }>();
-      mockedAxios.put.mockReturnValueOnce(slow.promise);
-      const inFlight = useReviewStore.getState().saveReview();
-
-      // Same file, reloaded while the PUT is still out.
-      mockedAxios.get.mockResolvedValueOnce({
-        data: {
-          file_path: "doc.md",
-          snapshots: [],
-          comments: [{ ...local, comment: "reloaded from the server" }],
-        },
-      });
-      await useReviewStore.getState().loadReview("doc.md");
-
-      slow.resolve({
-        data: {
-          file_path: "doc.md",
-          snapshots: [],
-          comments: [{ ...local, comment: "stale echo" }],
-        },
-      });
-      await inFlight;
-
-      expect(useReviewStore.getState().comments[0].comment).toBe(
-        "reloaded from the server",
-      );
-    });
-
-    it("ignores a response for a file the reviewer has already left", async () => {
-      const local = mkThreadComment("aaaaaaaa-0001", "doc-a comment", []);
-      useReviewStore.setState({ filePath: "doc-a.md", comments: [local] });
-
-      const slow = deferred<{ data: ReviewData }>();
-      mockedAxios.put.mockReturnValueOnce(slow.promise);
-      const inFlight = useReviewStore.getState().saveReview();
-
-      // The reviewer opens another document before doc-a's PUT comes back.
-      mockedAxios.get.mockResolvedValueOnce({
-        data: { file_path: "doc-b.md", comments: [], snapshots: [] },
-      });
-      await useReviewStore.getState().loadReview("doc-b.md");
-
-      slow.resolve({
-        data: {
-          file_path: "doc-a.md",
-          snapshots: [],
-          comments: [{ ...local, reactions: [agentAddressed] }],
-        },
-      });
-      await inFlight;
-
-      const state = useReviewStore.getState();
-      expect(state.filePath).toBe("doc-b.md");
-      // doc-a's thread must not reappear under doc-b.
-      expect(state.comments).toEqual([]);
-    });
-
-    it("leaves the local copy alone when the response has no body", async () => {
-      const local = seeded();
-      useReviewStore.setState({ filePath: "doc.md", comments: [local] });
-      mockedAxios.put.mockResolvedValueOnce({ data: null });
-
-      await expect(
-        useReviewStore.getState().saveReview(),
-      ).resolves.toBeUndefined();
-
-      expect(useReviewStore.getState().comments).toEqual([local]);
-      expect(consoleError).not.toHaveBeenCalled();
-    });
-
-    it("leaves the local copy alone when the response carries no comments", async () => {
-      // An older server answers the write with an acknowledgement rather than
-      // the saved review; that must read as "nothing to adopt", not as "the
-      // server has no comments".
-      const local = seeded();
-      useReviewStore.setState({ filePath: "doc.md", comments: [local] });
-      mockedAxios.put.mockResolvedValueOnce({ data: { status: "ok" } });
-
-      await expect(
-        useReviewStore.getState().saveReview(),
-      ).resolves.toBeUndefined();
-
-      expect(useReviewStore.getState().comments).toEqual([local]);
-      expect(consoleError).not.toHaveBeenCalled();
     });
   });
 
@@ -1455,7 +1282,7 @@ describe("useReviewStore", () => {
     const seeded = () => mkThreadComment("aaaaaaaa-0001", "please clarify", []);
 
     const serverCopy = (comments: ReviewComment[]): { data: ReviewData } => ({
-      data: { file_path: "doc.md", snapshots: [], comments },
+      data: { file_path: "doc.md", comments },
     });
 
     /** Lets a fire-and-forget command's await chain drain. */
@@ -1522,7 +1349,7 @@ describe("useReviewStore", () => {
       useReviewStore.getState().replyToComment("aaaaaaaa-0001", "for doc-a");
 
       mockedAxios.get.mockResolvedValueOnce({
-        data: { file_path: "doc-b.md", comments: [], snapshots: [] },
+        data: { file_path: "doc-b.md", comments: [] },
       });
       await useReviewStore.getState().loadReview("doc-b.md");
 
@@ -1548,7 +1375,6 @@ describe("useReviewStore", () => {
       mockedAxios.get.mockResolvedValueOnce({
         data: {
           file_path: "doc.md",
-          snapshots: [],
           comments: [{ ...local, comment: "reloaded from the server" }],
         },
       });

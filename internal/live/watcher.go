@@ -99,7 +99,7 @@ func isInboxPath(rel string) bool {
 }
 
 // Watcher recursively watches a repository for Markdown and git-state changes,
-// coalesces them, invalidates caches, applies review changelog blocks, and
+// coalesces them, invalidates caches, consumes review inbox deliveries, and
 // broadcasts files_changed messages through a Manager.
 type Watcher struct {
 	root     string
@@ -127,10 +127,10 @@ type watcherStats struct {
 }
 
 // NewWatcher constructs a Watcher rooted at the repository at root. repoName is
-// echoed in broadcast payloads (empty for single-repo mode). store applies
-// review changelog blocks for changed Markdown files; it may be nil to disable
-// that step. useIgnoreFiles toggles .vantageignore/user-ignore pruning. If
-// logger is nil the default slog logger is used.
+// echoed in broadcast payloads (empty for single-repo mode). store consumes
+// review inbox deliveries and backs the stale-changelog warning; it may be nil
+// to disable both. useIgnoreFiles toggles .vantageignore/user-ignore pruning.
+// If logger is nil the default slog logger is used.
 func NewWatcher(root, repoName string, mgr *Manager, store *review.Store, useIgnoreFiles bool, logger *slog.Logger) (*Watcher, error) {
 	if logger == nil {
 		logger = slog.Default()
@@ -313,8 +313,9 @@ func (w *Watcher) handleEvent(ev fsnotify.Event, co *coalescer) {
 	co.add(rel)
 }
 
-// flush processes a coalesced change set: invalidate caches, apply review
-// changelog blocks for changed Markdown files, and broadcast files_changed.
+// flush processes a coalesced change set: invalidate caches, warn about saved
+// documents still carrying retired-protocol changelog blocks, and broadcast
+// files_changed.
 func (w *Watcher) flush(paths []string) {
 	if len(paths) == 0 {
 		return
@@ -349,8 +350,16 @@ func (w *Watcher) flush(paths []string) {
 			if err != nil {
 				continue
 			}
-			w.store.ApplyChangelog(rel, string(content), w.repoName)
-			review.SeedPrevContent(rel, string(content), w.repoName)
+			// The changelog protocol is retired: a marker in a saved document
+			// means an agent is following a stale clipboard payload, and its
+			// response was NOT recorded. Warn loudly (log + UI notice) instead of
+			// silently reproducing the old lost-turn failure. Once per save.
+			if review.ContainsChangelogBlock(string(content)) {
+				w.logger.Warn("review: document contains a retired-protocol changelog block; "+
+					"the agent's response was NOT recorded — copy the comments again to hand it "+
+					"the current instructions", "path", rel)
+				w.manager.Broadcast(changelogIgnoredMessage{Type: "changelog_ignored", Repo: w.repoName, Path: rel})
+			}
 		}
 	}
 
@@ -376,6 +385,15 @@ type filesChangedMessage struct {
 // intentionally not omitempty: the frontend matches it against its current
 // repo, and the single-repo sentinel is the empty string, not an absent key.
 type reviewChangedMessage struct {
+	Type string `json:"type"`
+	Repo string `json:"repo"`
+	Path string `json:"path"`
+}
+
+// changelogIgnoredMessage is the stale-payload warning push: a saved document
+// still carries a retired-protocol changelog block, so whatever the agent
+// wrote there was ignored. Same repo semantics as reviewChangedMessage.
+type changelogIgnoredMessage struct {
 	Type string `json:"type"`
 	Repo string `json:"repo"`
 	Path string `json:"path"`

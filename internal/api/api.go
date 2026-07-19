@@ -87,7 +87,8 @@ func RepoServicesFromContext(ctx context.Context) (RepoServices, bool) {
 // constructs these once and passes them to [NewHandlers]. All fields are
 // required (non-nil) for the corresponding routes to function.
 type Deps struct {
-	// Reviews is the persistence store backing the GET/PUT/DELETE review routes.
+	// Reviews is the persistence store backing the review routes (GET/DELETE
+	// plus the command endpoints).
 	Reviews *review.Store
 	// Perf is the timing store the perf diagnostics/reset routes read and clear.
 	Perf *perf.Store

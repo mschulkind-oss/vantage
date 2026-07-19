@@ -6,7 +6,6 @@ import type {
   CommentReaction,
   ReviewComment,
   ReviewData,
-  ReviewSnapshot,
 } from "../types";
 
 const getApiBase = (): string | null => {
@@ -21,7 +20,7 @@ const getApiBase = (): string | null => {
 // Per-file review-mode toggle is persisted to localStorage so refreshing a
 // file where the user has turned review mode ON but hasn't added any
 // comments yet doesn't silently drop the toggle.  (Files with saved
-// comments/snapshots auto-enable review mode from server data.)
+// comments auto-enable review mode from server data.)
 const REVIEW_MODE_KEY_PREFIX = "vantage.reviewMode:";
 
 const reviewModeKey = (filePath: string): string => {
@@ -196,15 +195,21 @@ interface ReviewState {
   outdatedCommentIds: Set<string>;
   setOutdatedCommentIds: (ids: Set<string>) => void;
 
-  // Snapshots (still kept for reaction before/after capture; no UI)
-  snapshots: ReviewSnapshot[];
+  /**
+   * Set when the server reports a saved document still carrying a
+   * retired-protocol changelog block: the agent followed a stale clipboard
+   * payload and its response was NOT recorded. Rendered as a dismissible
+   * notice when the path matches the document on screen.
+   */
+  staleProtocolWarning: { path: string } | null;
+  warnStaleProtocol: (path: string) => void;
+  dismissStaleProtocolWarning: () => void;
 
   // Loading
   isLoading: boolean;
 
   // Actions
   loadReview: (filePath: string) => Promise<void>;
-  saveReview: () => Promise<void>;
   /**
    * Shared plumbing for the review command endpoints: fires the request
    * against the current repo base + file, adopts the comments the server
@@ -240,13 +245,12 @@ interface ReviewState {
   replyToComment: (id: string, replyText: string) => void;
   /** Reopen a resolved comment and add a follow-up reply. */
   reopenAndReply: (id: string, replyText: string) => void;
-  addSnapshot: (content: string) => void;
   setLastContent: (content: string) => void;
   copyAllToClipboard: () => Promise<boolean>;
   /** Copy a single comment's thread to the clipboard for the agent. */
   copyCommentToClipboard: (id: string) => Promise<boolean>;
   deleteReview: () => Promise<void>;
-  /** End review mode and clear all data (comments, snapshots). */
+  /** End review mode and clear all data (comments). */
   endReview: () => Promise<void>;
   /** Whether ending review mode needs confirmation (has data to lose). */
   hasReviewData: () => boolean;
@@ -259,7 +263,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   comments: [],
   pendingSelection: null,
   outdatedCommentIds: new Set<string>(),
-  snapshots: [],
+  staleProtocolWarning: null,
   isLoading: false,
 
   toggleReviewMode: () => {
@@ -275,16 +279,15 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     if (!base) return;
 
     // Review state is per-file: when switching files, reset the transient
-    // state (comments, snapshots, pending selection, and *review mode
-    // itself*).  The new file's mode is then re-derived below from whether
-    // it has saved review data.  This prevents review mode from bleeding
-    // from one file to another just because it was enabled on the previous.
+    // state (comments, pending selection, and *review mode itself*).  The
+    // new file's mode is then re-derived below from whether it has saved
+    // review data.  This prevents review mode from bleeding from one file
+    // to another just because it was enabled on the previous.
     const switchingFile = get().filePath !== filePath;
     if (switchingFile) {
       set({
         filePath,
         comments: [],
-        snapshots: [],
         pendingSelection: null,
         isReviewMode: false,
       });
@@ -310,10 +313,9 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       if (isStale()) return;
       const persistedOn = readReviewModePref(filePath);
       if (data) {
-        const hasData = data.comments.length > 0 || data.snapshots.length > 0;
+        const hasData = data.comments.length > 0;
         set({
           comments: data.comments,
-          snapshots: data.snapshots,
           filePath: data.file_path,
           // Auto-enable review mode if the file has saved review data OR if
           // the user explicitly toggled it on for this file (persisted in
@@ -334,41 +336,6 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       }
     } finally {
       if (seq === loadSeq) set({ isLoading: false });
-    }
-  },
-
-  // Unused since the command migration — every action now goes through its
-  // own endpoint via runCommand. Kept until the retirement wave deletes the
-  // PUT path end to end.
-  saveReview: async () => {
-    const { filePath, comments, snapshots } = get();
-    const base = getApiBase();
-    if (!base || !filePath) return;
-
-    const seq = ++saveSeq;
-    const loadSeqAtStart = loadSeq;
-    const data: ReviewData = { file_path: filePath, snapshots, comments };
-    try {
-      const res = await axios.put<ReviewData | null>(`${base}/review`, data, {
-        params: { path: filePath },
-      });
-      // The server may have restored agent reactions this copy predated. Adopt
-      // what it actually persisted, or the reviewer keeps working against a
-      // thread that is missing the agent's reply until they refresh by hand.
-      // Skipped if anything newer has landed meanwhile: another write, a file
-      // switch, or a reload — a reload that completed after this PUT was sent
-      // carries the server's own newer state, which this echo would undo.
-      const saved = res.data;
-      if (
-        saved?.comments &&
-        seq === saveSeq &&
-        loadSeq === loadSeqAtStart &&
-        get().filePath === filePath
-      ) {
-        set({ comments: saved.comments });
-      }
-    } catch (e) {
-      console.error("Failed to save review", e);
     }
   },
 
@@ -412,6 +379,14 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
 
   setOutdatedCommentIds: (ids: Set<string>) => {
     set({ outdatedCommentIds: ids });
+  },
+
+  warnStaleProtocol: (path: string) => {
+    set({ staleProtocolWarning: { path } });
+  },
+
+  dismissStaleProtocolWarning: () => {
+    set({ staleProtocolWarning: null });
   },
 
   addComment: (
@@ -629,16 +604,6 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     );
   },
 
-  addSnapshot: (content: string) => {
-    const snap: ReviewSnapshot = {
-      id: newId(),
-      content,
-      timestamp: Date.now() / 1000,
-    };
-    set((s) => ({ snapshots: [...s.snapshots, snap] }));
-    get().saveReview();
-  },
-
   setLastContent: (content: string) => {
     set({ lastContent: content });
   },
@@ -700,7 +665,6 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     saveSeq++;
     set({
       comments: [],
-      snapshots: [],
       pendingSelection: null,
     });
   },
@@ -725,15 +689,13 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     set({
       isReviewMode: false,
       comments: [],
-      snapshots: [],
       pendingSelection: null,
       lastContent: null,
     });
   },
 
   hasReviewData: () => {
-    const { comments, snapshots } = get();
-    return comments.length > 0 || snapshots.length > 0;
+    return get().comments.length > 0;
   },
 }));
 
