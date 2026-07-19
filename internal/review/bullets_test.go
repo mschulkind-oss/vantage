@@ -144,6 +144,12 @@ func TestContainsChangelogBlock(t *testing.T) {
 		// Prose merely mentioning the marker inline is not a marker line.
 		{"inline mention is not a marker", "the `<!-- changelog -->` marker is retired\n", false},
 		{"similar comment is not the marker", "<!-- changelog: notes -->\n", false},
+		// Documentation quoting the retired format — this project's own design
+		// docs do exactly this — must not read as a delivery attempt.
+		{"marker inside a fenced example", "See:\n\n```markdown\n<!-- changelog -->\n- [abcd1234] did it\n```\n", false},
+		{"marker inside a tilde fence", "~~~\n<!-- changelog -->\n~~~\n", false},
+		{"real marker after a fenced example", "```\n<!-- changelog -->\n```\n\n<!-- changelog -->\n- [abcd1234] did it\n", true},
+		{"unterminated fence swallows the rest", "```\n<!-- changelog -->\n", false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

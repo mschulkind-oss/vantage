@@ -451,3 +451,39 @@ func TestRoutesTableIncludesReviewCommands(t *testing.T) {
 		require.Equal(t, ScopeRepo, scope, "%s %s must be repo-scoped", want.method, want.pattern)
 	}
 }
+
+// The count is the only thing distinguishing "recorded" from "matched
+// nothing": bullets naming comments this document does not have — a block
+// pasted into the wrong panel — parse fine and apply nothing, and reporting
+// that as success is the silent swallow this protocol replaced.
+func TestReviewResponsesReportsAppliedCount(t *testing.T) {
+	e := newCmdEnv(t)
+	writeFile(t, e.dir, "a.md", cmdDoc)
+	e.createComment(t, "aaaa1111", 3)
+
+	applied := func(body string) (int, int) {
+		t.Helper()
+		w := e.do(e.h.ReviewResponses, http.MethodPost, "/review/responses?path=a.md", body, true)
+		require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
+		var got struct {
+			model.ReviewData
+			Applied int `json:"applied"`
+		}
+		decode(t, w, &got)
+		return got.Applied, len(got.Comments[0].Reactions)
+	}
+
+	n, reactions := applied(`{"text":"- [aaaa1111] Fixed it"}`)
+	require.Equal(t, 1, n)
+	require.Equal(t, 1, reactions)
+
+	// Same block again: deduped by the content nonce, so nothing lands.
+	n, reactions = applied(`{"text":"- [aaaa1111] Fixed it"}`)
+	require.Equal(t, 0, n, "a re-paste applies nothing and must say so")
+	require.Equal(t, 1, reactions)
+
+	// A well-formed bullet for a comment on some other document.
+	n, reactions = applied(`{"text":"- [99999999] Fixed something elsewhere"}`)
+	require.Equal(t, 0, n, "bullets matching no comment here apply nothing")
+	require.Equal(t, 1, reactions)
+}

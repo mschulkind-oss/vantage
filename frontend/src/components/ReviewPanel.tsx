@@ -139,7 +139,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   const [pasteText, setPasteText] = useState("");
   const [pasteBusy, setPasteBusy] = useState(false);
   const [pasteStatus, setPasteStatus] = useState<
-    { ok: true } | { ok: false; message: string } | null
+    { ok: true; applied: number } | { ok: false; message: string } | null
   >(null);
   const pasteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -317,14 +317,15 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
     // swallows the failure after resyncing.
     let invoked = false;
     let failure: unknown;
+    let applied: number | undefined;
     await runCommand(async (base, path) => {
       invoked = true;
       try {
-        return await axios.post<ReviewData | null>(
-          `${base}/review/responses`,
-          { text },
-          { params: { path } },
-        );
+        const res = await axios.post<
+          (ReviewData & { applied?: number }) | null
+        >(`${base}/review/responses`, { text }, { params: { path } });
+        applied = res.data?.applied;
+        return res;
       } catch (e) {
         failure = e;
         throw e;
@@ -336,9 +337,17 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
       setPasteStatus({ ok: false, message: "No document loaded" });
     } else if (failure !== undefined) {
       setPasteStatus({ ok: false, message: applyErrorMessage(failure) });
+    } else if (!applied) {
+      // Well-formed bullets that matched no comment on THIS document — the
+      // usual cause is pasting into the wrong document's panel. Keep the text
+      // so it can be pasted where it belongs.
+      setPasteStatus({
+        ok: false,
+        message: "No matching comments on this document",
+      });
     } else {
       setPasteText("");
-      setPasteStatus({ ok: true });
+      setPasteStatus({ ok: true, applied });
       pasteTimer.current = setTimeout(() => setPasteStatus(null), 2000);
     }
   };
@@ -739,7 +748,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                   {pasteStatus &&
                     (pasteStatus.ok ? (
                       <span className="flex items-center gap-1 text-[11px] text-green-600 dark:text-green-400">
-                        <Check size={11} /> Applied
+                        <Check size={11} /> Applied {pasteStatus.applied}
                       </span>
                     ) : (
                       <span className="flex items-center gap-1 text-[11px] text-red-600 dark:text-red-400">

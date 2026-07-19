@@ -350,16 +350,25 @@ func (w *Watcher) flush(paths []string) {
 			if err != nil {
 				continue
 			}
-			// The changelog protocol is retired: a marker in a saved document
+			if !review.ContainsChangelogBlock(string(content)) {
+				continue
+			}
+			// Only a document under review can be receiving a delivery. Without
+			// this gate every document that merely *discusses* the retired
+			// format — this project's own design docs among them — nags on
+			// every save.
+			data, err := w.store.Get(rel, w.repoName)
+			if err != nil || data == nil || len(data.Comments) == 0 {
+				continue
+			}
+			// The changelog protocol is retired: a marker in a reviewed document
 			// means an agent is following a stale clipboard payload, and its
 			// response was NOT recorded. Warn loudly (log + UI notice) instead of
 			// silently reproducing the old lost-turn failure. Once per save.
-			if review.ContainsChangelogBlock(string(content)) {
-				w.logger.Warn("review: document contains a retired-protocol changelog block; "+
-					"the agent's response was NOT recorded — copy the comments again to hand it "+
-					"the current instructions", "path", rel)
-				w.manager.Broadcast(changelogIgnoredMessage{Type: "changelog_ignored", Repo: w.repoName, Path: rel})
-			}
+			w.logger.Warn("review: document contains a retired-protocol changelog block; "+
+				"the agent's response was NOT recorded — copy the comments again to hand it "+
+				"the current instructions", "path", rel)
+			w.manager.Broadcast(changelogIgnoredMessage{Type: "changelog_ignored", Repo: w.repoName, Path: rel})
 		}
 	}
 
