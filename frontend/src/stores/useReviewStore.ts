@@ -51,18 +51,110 @@ const writeReviewModePref = (filePath: string, on: boolean): void => {
 };
 
 /**
+ * The canonical comment-state predicates.  Every surface (inline document,
+ * sidebar panel, toolbar, minimap stripe) must derive button visibility from
+ * these rather than re-deriving the rules locally — divergent local copies are
+ * how the Copy button silently stopped re-lighting after a reply.
+ */
+
+/**
  * A comment is "pending" (still needs to go back to the agent) when it's
- * unresolved AND its most recent reaction is NOT an agent "addressed" — i.e.
- * either the agent hasn't responded yet, or the reviewer has posted a
- * follow-up reply since the agent's last response. This is what gates the
- * Copy button and what gets included in the clipboard payload.
+ * unresolved AND the agent has not answered its current wording — i.e. either
+ * the agent hasn't responded yet, or the reviewer has posted a follow-up reply
+ * or edited the comment since the agent's last response. This is what gates
+ * every Copy affordance and what gets included in the clipboard payload.
  */
 export function isPendingForAgent(c: ReviewComment): boolean {
   if (c.resolved) return false;
   const reactions = c.reactions ?? [];
-  const last = reactions[reactions.length - 1];
-  return !(last && last.actor === "agent" && last.kind === "addressed");
+  // A trailing reviewer "noted" is an acceptance — a turn that CLOSES a round,
+  // which is how every surface renders it. Skip it when deciding whose turn it
+  // is, so reopening an accepted comment doesn't re-send it to the agent under
+  // "your earlier answer did not satisfy the reviewer". A reviewer who wants
+  // another round replies, which appends needs_clarification instead.
+  let i = reactions.length - 1;
+  while (
+    i >= 0 &&
+    reactions[i].actor === "reviewer" &&
+    reactions[i].kind === "noted"
+  ) {
+    i--;
+  }
+  const last = i >= 0 ? reactions[i] : undefined;
+  const answered =
+    !!last && last.actor === "agent" && last.kind === "addressed";
+  if (!answered) return true;
+  // The agent answered the *previous* wording; a later edit re-queues it.
+  return (c.edited_at ?? 0) > last.timestamp;
 }
+
+/** Whether the agent has ever responded to this comment. */
+export function hasAgentReaction(c: ReviewComment): boolean {
+  return (c.reactions ?? []).some((r) => r.actor === "agent");
+}
+
+/** The agent's most recent response, or undefined if it has never replied. */
+export function latestAgentReaction(
+  c: ReviewComment,
+): CommentReaction | undefined {
+  const reactions = c.reactions ?? [];
+  for (let i = reactions.length - 1; i >= 0; i--) {
+    if (reactions[i].actor === "agent") return reactions[i];
+  }
+  return undefined;
+}
+
+/** Unresolved and never yet answered by the agent — the first-round state. */
+export function isAwaitingFirstResponse(c: ReviewComment): boolean {
+  return !c.resolved && !hasAgentReaction(c);
+}
+
+/**
+ * Unresolved, answered by the agent, and not re-queued since — the state where
+ * the ball is in the reviewer's court (accept it, or reply for another round).
+ */
+export function isAnsweredByAgent(c: ReviewComment): boolean {
+  return !c.resolved && hasAgentReaction(c) && !isPendingForAgent(c);
+}
+
+/**
+ * `crypto.randomUUID` only exists in a secure context, so it is undefined when
+ * Vantage is served over plain HTTP to another machine on the LAN — the common
+ * `vantage serve` setup.  Without the fallback, creating a comment throws and
+ * the popover silently does nothing.
+ */
+function newId(): string {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
+    return crypto.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    crypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i++) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  // RFC 4122 version 4 / variant 10xx bits.
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join(
+    "",
+  );
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/**
+ * Monotonic counters that make the review round-trip safe against races.
+ * `loadSeq` discards a GET whose response lost the race to a newer one;
+ * `saveSeq` discards a GET that started before a local write, so a
+ * websocket-triggered reload can't revert a reply the reviewer just made.
+ */
+let loadSeq = 0;
+let saveSeq = 0;
 
 export interface PendingSelection {
   anchor: CommentAnchor;
@@ -112,6 +204,8 @@ interface ReviewState {
   resolveComment: (id: string) => void;
   /** Dismiss without writing a reaction (means "I'm done with this comment"). */
   dismissComment: (id: string) => void;
+  /** Reopen a resolved comment without writing a follow-up reply. */
+  unresolveComment: (id: string) => void;
   /** Dismiss all unresolved comments at once. */
   dismissAll: () => void;
   /** Dismiss only outdated (orphaned) comments. */
@@ -171,11 +265,24 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       });
     }
 
+    const seq = ++loadSeq;
+    const saveSeqAtStart = saveSeq;
+    // A response is stale if a newer load started, if a local write happened
+    // while it was in flight, or if the user has since moved to a different
+    // file.  Applying it would resurrect the previous file's comments, revert
+    // a reply the reviewer just made, or leave filePath pointing at the wrong
+    // document.
+    const isStale = () =>
+      seq !== loadSeq ||
+      saveSeq !== saveSeqAtStart ||
+      get().filePath !== filePath;
+
     set({ isLoading: true });
     try {
       const { data } = await axios.get<ReviewData | null>(`${base}/review`, {
         params: { path: filePath },
       });
+      if (isStale()) return;
       const persistedOn = readReviewModePref(filePath);
       if (data) {
         const hasData = data.comments.length > 0 || data.snapshots.length > 0;
@@ -197,11 +304,11 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       }
     } catch {
       // No review data yet — still honor the persisted toggle if present.
-      if (readReviewModePref(filePath)) {
+      if (!isStale() && readReviewModePref(filePath)) {
         set({ isReviewMode: true });
       }
     } finally {
-      set({ isLoading: false });
+      if (seq === loadSeq) set({ isLoading: false });
     }
   },
 
@@ -210,6 +317,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     const base = getApiBase();
     if (!base || !filePath) return;
 
+    saveSeq++;
     const data: ReviewData = { file_path: filePath, snapshots, comments };
     try {
       await axios.put(`${base}/review`, data, {
@@ -238,7 +346,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     fallbackText: string,
   ) => {
     const newComment: ReviewComment = {
-      id: crypto.randomUUID(),
+      id: newId(),
       anchor,
       fallback_text: fallbackText,
       reactions: [],
@@ -260,9 +368,12 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   },
 
   editComment: (id: string, newComment: string) => {
+    // Stamping edited_at re-queues a comment the agent had already addressed:
+    // it answered the old wording, so the new wording still needs a response.
+    const now = Date.now() / 1000;
     set((s) => ({
       comments: s.comments.map((c) =>
-        c.id === id ? { ...c, comment: newComment } : c,
+        c.id === id ? { ...c, comment: newComment, edited_at: now } : c,
       ),
     }));
     get().saveReview();
@@ -339,6 +450,15 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     get().saveReview();
   },
 
+  unresolveComment: (id: string) => {
+    set((s) => ({
+      comments: s.comments.map((c) =>
+        c.id === id ? { ...c, resolved: false } : c,
+      ),
+    }));
+    get().saveReview();
+  },
+
   reopenAndReply: (id: string, replyText: string) => {
     const reaction: CommentReaction = {
       actor: "reviewer",
@@ -369,7 +489,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
 
   addSnapshot: (content: string) => {
     const snap: ReviewSnapshot = {
-      id: crypto.randomUUID(),
+      id: newId(),
       content,
       timestamp: Date.now() / 1000,
     };
@@ -393,7 +513,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     for (const c of active) {
       output.push(...commentBlock(c, contentLines, pathPrefix));
     }
-    output.push(...respondingInstructions(active[0]));
+    output.push(...respondingInstructions(active[0], active));
 
     try {
       await navigator.clipboard.writeText(output.join("\n"));
@@ -413,7 +533,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
 
     const output = [`## Review Comment for \`${filePath}\``, ""];
     output.push(...commentBlock(c, contentLines, pathPrefix));
-    output.push(...respondingInstructions(c));
+    output.push(...respondingInstructions(c, [c]));
 
     try {
       await navigator.clipboard.writeText(output.join("\n"));
@@ -477,6 +597,15 @@ function clipboardPathPrefix(filePath: string): string {
     : `/${filePath}`;
 }
 
+/** Human label for one turn in a comment thread, used in the clipboard payload. */
+function turnLabel(r: CommentReaction): string {
+  if (r.actor === "agent") {
+    return r.kind === "wont_fix" ? "Agent declined" : "Agent response";
+  }
+  if (r.kind === "noted") return "Reviewer accepted";
+  return "Follow-up";
+}
+
 /** Render one comment (heading, quote, comment, agent response, follow-ups). */
 function commentBlock(
   c: ReviewComment,
@@ -504,17 +633,14 @@ function commentBlock(
   }
   out.push("");
   out.push(`**Comment:** ${c.comment}`);
+  if (c.edited_at) out.push("_(the reviewer edited this comment)_");
   out.push("");
-  // Interleave agent responses and reviewer follow-ups in chronological order
-  // so a back-and-forth thread reads correctly.
+  // Interleave every turn in chronological order so a back-and-forth thread
+  // reads correctly.  No reaction kind is skipped: dropping one silently
+  // removes a turn from the transcript the agent reads.
   for (const r of c.reactions ?? []) {
-    if (r.actor === "agent" && r.kind === "addressed") {
-      out.push(`**Agent response:** ${r.summary}`);
-      out.push("");
-    } else if (r.actor === "reviewer" && r.kind === "needs_clarification") {
-      out.push(`**Follow-up:** ${r.summary}`);
-      out.push("");
-    }
+    out.push(`**${turnLabel(r)}:** ${r.summary}`);
+    out.push("");
   }
   out.push("---");
   out.push("");
@@ -522,10 +648,28 @@ function commentBlock(
 }
 
 /** The "how to respond" instructions appended after the comment(s). */
-function respondingInstructions(example?: ReviewComment): string[] {
+function respondingInstructions(
+  example?: ReviewComment,
+  batch: ReviewComment[] = [],
+): string[] {
+  const followUps = batch.filter((c) => hasAgentReaction(c));
+  const plural = followUps.length !== 1;
+  const subject =
+    followUps.length === batch.length
+      ? plural
+        ? "These are follow-up rounds."
+        : "This is a follow-up round."
+      : `${followUps.length} of these are follow-up round${plural ? "s" : ""}.`;
+  const followUpNote = followUps.length
+    ? [
+        `> **${subject}** A thread above that already shows an _Agent response_ means your earlier answer did not satisfy the reviewer — read their **Follow-up** and address *that*, rather than restating what you already did.`,
+        "",
+      ]
+    : [];
   return [
     "## Responding to Comments",
     "",
+    ...followUpNote,
     "After addressing a comment, append a **changelog entry** to the END of this document. The format is parsed by Vantage and must match exactly:",
     "",
     "```markdown",
@@ -547,6 +691,7 @@ function respondingInstructions(example?: ReviewComment): string[] {
     "- The marker line must be exactly `<!-- changelog -->` (HTML comment, nothing else on the line).",
     "- Each entry is a single bullet: `- [<short-id>] <summary>` — no nested lists, no extra prose between bullets.",
     "- One bullet per comment you addressed. Skip comments you didn't act on.",
+    "- On a follow-up round, write a **new** summary describing what you changed this time — do not repeat your previous summary for that comment verbatim.",
     "- Vantage parses this block on save and records a reaction against the matching comment, including a before/after capture of the affected block.",
     "",
   ];

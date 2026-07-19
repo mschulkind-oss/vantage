@@ -44,7 +44,7 @@ import {
 } from "../components/KeyboardShortcuts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { RecentsModal } from "../components/RecentsModal";
-import { useReviewStore } from "../stores/useReviewStore";
+import { isPendingForAgent, useReviewStore } from "../stores/useReviewStore";
 import { ReviewPanel } from "../components/ReviewPanel";
 import { MessageSquarePlus, ClipboardCopy } from "lucide-react";
 import { useLineAnchor } from "../hooks/useLineAnchor";
@@ -216,13 +216,7 @@ export const ViewerPage: React.FC = () => {
   const loadReview = useReviewStore((s) => s.loadReview);
   const reviewSetLastContent = useReviewStore((s) => s.setLastContent);
   const reviewComments = useReviewStore((s) => s.comments);
-  const pendingReviewCount = reviewComments.filter(
-    (c) =>
-      !c.resolved &&
-      !(c.reactions ?? []).some(
-        (r) => r.actor === "agent" && r.kind === "addressed",
-      ),
-  ).length;
+  const pendingReviewCount = reviewComments.filter(isPendingForAgent).length;
   const activeReviewCount = reviewComments.filter((c) => !c.resolved).length;
   const copyAllReviewComments = useReviewStore((s) => s.copyAllToClipboard);
   const dismissAllReview = useReviewStore((s) => s.dismissAll);
@@ -1132,10 +1126,13 @@ export const ViewerPage: React.FC = () => {
                       </span>
                     </button>
                   )}
-                  {currentPath &&
-                    currentPath.toLowerCase().endsWith(".md") &&
-                    !showRaw && (
-                      <>
+                  {/* Raw view can't host inline highlights, but the review
+                      controls must stay reachable: hiding them stranded a
+                      reviewer with pending comments and no way to copy,
+                      dismiss, or open the panel without switching back. */}
+                  {currentPath && currentPath.toLowerCase().endsWith(".md") && (
+                    <>
+                      {!showRaw && (
                         <button
                           onClick={handleReviewToggle}
                           className={cn(
@@ -1159,72 +1156,73 @@ export const ViewerPage: React.FC = () => {
                             {reviewExitConfirm ? "End review?" : "Review"}
                           </span>
                         </button>
-                        {isReviewMode && (
-                          <>
-                            {activeReviewCount > 0 && (
-                              <button
-                                onClick={handleReviewDismiss}
-                                className={`flex items-center space-x-1.5 text-xs rounded-lg min-w-[100px] px-2 py-1.5 transition-colors cursor-pointer ${
-                                  reviewDismissConfirm
-                                    ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50"
-                                    : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600/50"
-                                }`}
-                                title={
-                                  reviewDismissConfirm
-                                    ? "Click again to dismiss all"
-                                    : outdatedReviewCount > 0
-                                      ? "Dismiss outdated comments"
-                                      : "Dismiss all comments"
-                                }
-                              >
-                                <Check size={14} />
-                                <span className="hidden sm:inline">
-                                  {reviewDismissConfirm
-                                    ? "Confirm?"
-                                    : outdatedReviewCount > 0
-                                      ? `Dismiss ${outdatedReviewCount} outdated`
-                                      : `Dismiss ${activeReviewCount}`}
-                                </span>
-                              </button>
-                            )}
-                            {pendingReviewCount > 0 && (
-                              <button
-                                onClick={async () => {
-                                  const ok = await copyAllReviewComments();
-                                  if (ok) {
-                                    setReviewCopied(true);
-                                    setTimeout(
-                                      () => setReviewCopied(false),
-                                      2000,
-                                    );
-                                  }
-                                }}
-                                className="flex items-center space-x-1.5 text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg px-2 py-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors cursor-pointer"
-                                title="Copy all comments to clipboard"
-                              >
-                                {reviewCopied ? (
-                                  <Check size={14} />
-                                ) : (
-                                  <ClipboardCopy size={14} />
-                                )}
-                                <span className="hidden sm:inline">
-                                  {reviewCopied
-                                    ? "Copied!"
-                                    : `Copy ${pendingReviewCount}`}
-                                </span>
-                              </button>
-                            )}
+                      )}
+                      {isReviewMode && (
+                        <>
+                          {activeReviewCount > 0 && (
                             <button
-                              onClick={() => setReviewPanelOpen(true)}
-                              className="flex items-center space-x-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
-                              title="Manage comments"
+                              onClick={handleReviewDismiss}
+                              className={`flex items-center space-x-1.5 text-xs rounded-lg min-w-[100px] px-2 py-1.5 transition-colors cursor-pointer ${
+                                reviewDismissConfirm
+                                  ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50"
+                                  : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600/50"
+                              }`}
+                              title={
+                                reviewDismissConfirm
+                                  ? "Click again to dismiss all"
+                                  : outdatedReviewCount > 0
+                                    ? "Dismiss outdated comments"
+                                    : "Dismiss all comments"
+                              }
                             >
-                              <MessageSquare size={14} />
+                              <Check size={14} />
+                              <span className="hidden sm:inline">
+                                {reviewDismissConfirm
+                                  ? "Confirm?"
+                                  : outdatedReviewCount > 0
+                                    ? `Dismiss ${outdatedReviewCount} outdated`
+                                    : `Dismiss ${activeReviewCount}`}
+                              </span>
                             </button>
-                          </>
-                        )}
-                      </>
-                    )}
+                          )}
+                          {pendingReviewCount > 0 && (
+                            <button
+                              onClick={async () => {
+                                const ok = await copyAllReviewComments();
+                                if (ok) {
+                                  setReviewCopied(true);
+                                  setTimeout(
+                                    () => setReviewCopied(false),
+                                    2000,
+                                  );
+                                }
+                              }}
+                              className="flex items-center space-x-1.5 text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg px-2 py-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors cursor-pointer"
+                              title="Copy all comments to clipboard"
+                            >
+                              {reviewCopied ? (
+                                <Check size={14} />
+                              ) : (
+                                <ClipboardCopy size={14} />
+                              )}
+                              <span className="hidden sm:inline">
+                                {reviewCopied
+                                  ? "Copied!"
+                                  : `Copy ${pendingReviewCount}`}
+                              </span>
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setReviewPanelOpen(true)}
+                            className="flex items-center space-x-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
+                            title="Manage comments"
+                          >
+                            <MessageSquare size={14} />
+                          </button>
+                        </>
+                      )}
+                    </>
+                  )}
                 </div>
               ) : currentPath && currentPath.toLowerCase().endsWith(".md") ? (
                 <div className="flex items-center space-x-2 shrink-0">
@@ -1293,8 +1291,9 @@ export const ViewerPage: React.FC = () => {
                       {showRaw ? "Rendered" : "Raw"}
                     </span>
                   </button>
-                  {!showRaw && (
-                    <>
+                  {/* Same as the wide toolbar: review controls survive raw view. */}
+                  <>
+                    {!showRaw && (
                       <button
                         onClick={handleReviewToggle}
                         className={cn(
@@ -1318,72 +1317,69 @@ export const ViewerPage: React.FC = () => {
                           {reviewExitConfirm ? "End review?" : "Review"}
                         </span>
                       </button>
-                      {isReviewMode && (
-                        <>
-                          {activeReviewCount > 0 && (
-                            <button
-                              onClick={handleReviewDismiss}
-                              className={`flex items-center space-x-1.5 text-xs rounded-lg min-w-[100px] px-2 py-1.5 transition-colors cursor-pointer ${
-                                reviewDismissConfirm
-                                  ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50"
-                                  : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600/50"
-                              }`}
-                              title={
-                                reviewDismissConfirm
-                                  ? "Click again to dismiss all"
-                                  : outdatedReviewCount > 0
-                                    ? "Dismiss outdated comments"
-                                    : "Dismiss all comments"
-                              }
-                            >
-                              <Check size={14} />
-                              <span className="hidden sm:inline">
-                                {reviewDismissConfirm
-                                  ? "Confirm?"
-                                  : outdatedReviewCount > 0
-                                    ? `Dismiss ${outdatedReviewCount} outdated`
-                                    : `Dismiss ${activeReviewCount}`}
-                              </span>
-                            </button>
-                          )}
-                          {pendingReviewCount > 0 && (
-                            <button
-                              onClick={async () => {
-                                const ok = await copyAllReviewComments();
-                                if (ok) {
-                                  setReviewCopied(true);
-                                  setTimeout(
-                                    () => setReviewCopied(false),
-                                    2000,
-                                  );
-                                }
-                              }}
-                              className="flex items-center space-x-1.5 text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg px-2 py-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors cursor-pointer"
-                              title="Copy all comments to clipboard"
-                            >
-                              {reviewCopied ? (
-                                <Check size={14} />
-                              ) : (
-                                <ClipboardCopy size={14} />
-                              )}
-                              <span className="hidden sm:inline">
-                                {reviewCopied
-                                  ? "Copied!"
-                                  : `Copy ${pendingReviewCount}`}
-                              </span>
-                            </button>
-                          )}
+                    )}
+                    {isReviewMode && (
+                      <>
+                        {activeReviewCount > 0 && (
                           <button
-                            onClick={() => setReviewPanelOpen(true)}
-                            className="flex items-center space-x-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
-                            title="Manage comments"
+                            onClick={handleReviewDismiss}
+                            className={`flex items-center space-x-1.5 text-xs rounded-lg min-w-[100px] px-2 py-1.5 transition-colors cursor-pointer ${
+                              reviewDismissConfirm
+                                ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50"
+                                : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600/50"
+                            }`}
+                            title={
+                              reviewDismissConfirm
+                                ? "Click again to dismiss all"
+                                : outdatedReviewCount > 0
+                                  ? "Dismiss outdated comments"
+                                  : "Dismiss all comments"
+                            }
                           >
-                            <MessageSquare size={14} />
+                            <Check size={14} />
+                            <span className="hidden sm:inline">
+                              {reviewDismissConfirm
+                                ? "Confirm?"
+                                : outdatedReviewCount > 0
+                                  ? `Dismiss ${outdatedReviewCount} outdated`
+                                  : `Dismiss ${activeReviewCount}`}
+                            </span>
                           </button>
-                        </>
-                      )}
-                    </>
-                  )}
+                        )}
+                        {pendingReviewCount > 0 && (
+                          <button
+                            onClick={async () => {
+                              const ok = await copyAllReviewComments();
+                              if (ok) {
+                                setReviewCopied(true);
+                                setTimeout(() => setReviewCopied(false), 2000);
+                              }
+                            }}
+                            className="flex items-center space-x-1.5 text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg px-2 py-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors cursor-pointer"
+                            title="Copy all comments to clipboard"
+                          >
+                            {reviewCopied ? (
+                              <Check size={14} />
+                            ) : (
+                              <ClipboardCopy size={14} />
+                            )}
+                            <span className="hidden sm:inline">
+                              {reviewCopied
+                                ? "Copied!"
+                                : `Copy ${pendingReviewCount}`}
+                            </span>
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setReviewPanelOpen(true)}
+                          className="flex items-center space-x-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
+                          title="Manage comments"
+                        >
+                          <MessageSquare size={14} />
+                        </button>
+                      </>
+                    )}
+                  </>
                 </div>
               ) : null}
             </div>
@@ -1643,11 +1639,15 @@ export const ViewerPage: React.FC = () => {
           isOpen={shortcutsOpen}
           onClose={() => setShortcutsOpen(false)}
         />
-        {/* Review Panel */}
-        <ReviewPanel
-          isOpen={reviewPanelOpen}
-          onClose={() => setReviewPanelOpen(false)}
-        />
+        {/* Review Panel — mounted only while open, so its local state (armed
+            destructive confirms, half-typed replies, copy flashes) cannot
+            survive a close and reappear when the reviewer opens it again. */}
+        {reviewPanelOpen && (
+          <ReviewPanel
+            isOpen={reviewPanelOpen}
+            onClose={() => setReviewPanelOpen(false)}
+          />
+        )}
         {/* Style Guide Modal */}
         <StyleGuideModal
           isOpen={styleGuideOpen}

@@ -7,6 +7,7 @@ import {
 } from "react";
 import { ChevronUp, ChevronDown } from "lucide-react";
 import type { ReviewComment } from "../types";
+import { isPendingForAgent } from "../stores/useReviewStore";
 
 interface ReviewStripeProps {
   scrollRef: RefObject<HTMLElement | null>;
@@ -31,8 +32,10 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
   const [tooltipPos, setTooltipPos] = useState<{ top: number } | null>(null);
 
   const active = comments.filter((c) => !c.resolved);
-  const hasReaction = (c: ReviewComment) =>
-    (c.reactions ?? []).some((r) => r.actor === "agent");
+  // "Addressed" on the minimap must mean "the agent has answered the current
+  // wording" — not merely "the agent replied at some point". Deriving it from
+  // the canonical predicate keeps a replied-to thread showing as still open.
+  const isAddressed = (c: ReviewComment) => !isPendingForAgent(c);
 
   const measureMarkers = useCallback(() => {
     const scrollEl = scrollRef.current;
@@ -60,7 +63,7 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
         id: comment.id,
         topPct: (top / scrollHeight) * 100,
         heightPct: Math.max((height / scrollHeight) * 100, 0.8),
-        addressed: hasReaction(comment),
+        addressed: isAddressed(comment),
       });
     }
     result.sort((a, b) => a.topPct - b.topPct);
@@ -352,13 +355,22 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
                 : hoveredComment.comment}
             </div>
             {hoveredComment.reactions &&
-              hoveredComment.reactions.length > 0 && (
-                <div className="review-stripe-tooltip-reaction">
-                  {hoveredComment.reactions[
-                    hoveredComment.reactions.length - 1
-                  ].summary.slice(0, 80)}
-                </div>
-              )}
+              hoveredComment.reactions.length > 0 &&
+              (() => {
+                // Label the last turn by its actor. Unlabelled, the reviewer's
+                // own follow-up rendered in agent styling, so a thread still
+                // waiting on the agent read as already answered.
+                const last =
+                  hoveredComment.reactions[hoveredComment.reactions.length - 1];
+                return (
+                  <div className="review-stripe-tooltip-reaction">
+                    <span className="review-stripe-tooltip-actor">
+                      {last.actor === "agent" ? "Agent" : "You"}
+                    </span>
+                    {last.summary.slice(0, 80)}
+                  </div>
+                );
+              })()}
             {hoveredComment.fallback_text && (
               <div className="review-stripe-tooltip-context">
                 &ldquo;

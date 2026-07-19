@@ -3,8 +3,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ViewerPage } from "./ViewerPage";
 import { useRepoStore } from "../stores/useRepoStore";
 import { useGitStore } from "../stores/useGitStore";
+import { useReviewStore } from "../stores/useReviewStore";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { BrowserRouter } from "react-router-dom";
+import type { CommentReaction, ReviewComment } from "../types";
 
 // Mocks
 vi.mock("../stores/useRepoStore");
@@ -23,6 +25,10 @@ vi.mock("../components/DirectoryViewer", () => ({
 }));
 vi.mock("../components/DiffViewer", () => ({
   DiffViewer: () => <div data-testid="diff-viewer">DiffViewer</div>,
+}));
+// Renders only in review mode and needs ResizeObserver, which jsdom lacks.
+vi.mock("../components/ReviewStripe", () => ({
+  ReviewStripe: () => <div data-testid="review-stripe">ReviewStripe</div>,
 }));
 
 // Mock useNavigate and useParams
@@ -51,6 +57,15 @@ describe("ViewerPage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+
+    // Zustand stores are module singletons — reset review state so seeded
+    // comments don't leak between cases.
+    useReviewStore.setState({
+      isReviewMode: false,
+      filePath: null,
+      comments: [],
+      snapshots: [],
+    });
 
     (useRepoStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       fileTree: [],
@@ -216,6 +231,108 @@ describe("ViewerPage", () => {
     expect(
       screen.getAllByText(/does-not-exist.md/i).length,
     ).toBeGreaterThanOrEqual(1);
+  });
+
+  describe("review toolbar copy button", () => {
+    const agentAddressed: CommentReaction = {
+      actor: "agent",
+      kind: "addressed",
+      summary: "Reworded the paragraph",
+      before_text: "",
+      after_text: "",
+      timestamp: 1,
+    };
+    const reviewerFollowup: CommentReaction = {
+      actor: "reviewer",
+      kind: "needs_clarification",
+      summary: "Still not right",
+      before_text: "",
+      after_text: "",
+      timestamp: 2,
+    };
+
+    const mkComment = (reactions: CommentReaction[]): ReviewComment => ({
+      id: "11111111-2222-3333-4444-555555555555",
+      anchor: {
+        source_line: 1,
+        block_text_hash: "hash",
+        selection_offset: 0,
+        selection_length: 0,
+      },
+      fallback_text: "some text",
+      reactions,
+      comment: "please fix",
+      created_at: 0,
+    });
+
+    const seedReview = (reactions: CommentReaction[]) => {
+      useReviewStore.setState({
+        isReviewMode: true,
+        // Matching the mocked currentPath keeps loadReview from treating this
+        // as a file switch and clearing the seeded comments.
+        filePath: "path/to/file.md",
+        comments: [mkComment(reactions)],
+      });
+    };
+
+    const copyButtons = () =>
+      screen.queryAllByTitle("Copy all comments to clipboard");
+
+    it("shows Copy when the agent has not responded yet", () => {
+      seedReview([]);
+      renderPage();
+      expect(copyButtons().length).toBeGreaterThan(0);
+    });
+
+    it("hides Copy once the agent has addressed the comment", () => {
+      seedReview([agentAddressed]);
+      renderPage();
+      expect(copyButtons()).toHaveLength(0);
+    });
+
+    it("shows Copy again after the reviewer replies to an agent response", () => {
+      seedReview([agentAddressed, reviewerFollowup]);
+      renderPage();
+      expect(copyButtons().length).toBeGreaterThan(0);
+    });
+
+    it("shows Copy again after the reviewer edits an addressed comment", () => {
+      // The agent answered the OLD wording, so the new wording is still owed.
+      useReviewStore.setState({
+        isReviewMode: true,
+        filePath: "path/to/file.md",
+        comments: [
+          {
+            ...mkComment([agentAddressed]),
+            comment: "reworded ask",
+            edited_at: agentAddressed.timestamp + 10,
+          },
+        ],
+      });
+      renderPage();
+      expect(copyButtons().length).toBeGreaterThan(0);
+    });
+
+    it("keeps the review controls reachable in raw view", () => {
+      // Raw view can't host inline highlights, but hiding the whole review
+      // toolbar stranded a reviewer holding pending comments with no way to
+      // copy them or open the panel.  The page renders a wide and a narrow
+      // toolbar, so compare counts rather than presence — asserting only
+      // "> 0" passes while one of the two variants is still hidden.
+      seedReview([]);
+      renderPage();
+      const rendered = {
+        copy: copyButtons().length,
+        panel: screen.getAllByTitle("Manage comments").length,
+      };
+      expect(rendered.copy).toBeGreaterThan(0);
+
+      fireEvent.click(screen.getAllByTitle("View raw markdown")[0]);
+      expect(copyButtons()).toHaveLength(rendered.copy);
+      expect(screen.getAllByTitle("Manage comments")).toHaveLength(
+        rendered.panel,
+      );
+    });
   });
 
   it("shows loading state before repos are loaded (prevents flash of wrong UI)", () => {
