@@ -15,6 +15,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import {
+  commandErrorMessage,
   hasAgentReaction,
   isAnsweredByAgent,
   isPendingForAgent,
@@ -74,18 +75,6 @@ function commentMatchesFilter(c: ReviewComment, f: Filter): boolean {
   return true;
 }
 
-/**
- * The server's {"error": …} envelope when the failure carries one. Duck-typed
- * rather than axios.isAxiosError so a non-HTTP failure (network down) still
- * falls through to the generic label instead of throwing here.
- */
-function applyErrorMessage(e: unknown): string {
-  const data = (e as { response?: { data?: { error?: unknown } } } | null)
-    ?.response?.data;
-  if (data && typeof data.error === "string" && data.error) return data.error;
-  return "Apply failed";
-}
-
 export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   isOpen,
   onClose,
@@ -100,6 +89,8 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   const outdatedCommentIds = useReviewStore((s) => s.outdatedCommentIds);
   const replyToComment = useReviewStore((s) => s.replyToComment);
   const reopenAndReply = useReviewStore((s) => s.reopenAndReply);
+  const commandError = useReviewStore((s) => s.commandError);
+  const clearCommandError = useReviewStore((s) => s.clearCommandError);
   const unresolveComment = useReviewStore((s) => s.unresolveComment);
   const copyAllToClipboard = useReviewStore((s) => s.copyAllToClipboard);
   const copyCommentToClipboard = useReviewStore(
@@ -306,15 +297,39 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
     }
   };
 
+  // Closing the reply box is a success-only action. Clearing it up front —
+  // which is what fire-and-forget did — destroys the only copy of the text the
+  // reviewer typed the moment the command fails, and a 404 from a comment
+  // deleted in another tab is a real way for that to happen.
+  const submitReply = async (c: ReviewComment) => {
+    const trimmed = replyText.trim();
+    if (!trimmed) {
+      setReplyingId(null);
+      setReplyText("");
+      return;
+    }
+    if (c.resolved) {
+      await reopenAndReply(c.id, trimmed);
+    } else {
+      await replyToComment(c.id, trimmed);
+    }
+    if (useReviewStore.getState().commandError) return;
+    setReplyingId(null);
+    setReplyText("");
+  };
+
   const handleApplyPaste = async () => {
     const text = pasteText.trim();
     if (!text || pasteBusy) return;
     setPasteBusy(true);
     clearCopyTimer(pasteTimer);
     setPasteStatus(null);
-    // runCommand supplies the echo-adoption guard and the on-error resync;
-    // the locals only tell this box which feedback to show, since runCommand
-    // swallows the failure after resyncing.
+    // runCommand supplies the echo-adoption guard, the on-error resync, and the
+    // global failure banner; the locals drive this box's own inline feedback,
+    // which is finer-grained (it also reports a paste that applied nothing).
+    // The text goes along as the draft because this box is mounted only while
+    // the document has comments — if the resync finds the review gone, the box
+    // unmounts and the banner becomes the only place the paste still exists.
     let invoked = false;
     let failure: unknown;
     let applied: number | undefined;
@@ -330,13 +345,16 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
         failure = e;
         throw e;
       }
-    });
+    }, text);
     setPasteBusy(false);
     if (!invoked) {
       // No file or repo selected — runCommand bailed before sending.
       setPasteStatus({ ok: false, message: "No document loaded" });
     } else if (failure !== undefined) {
-      setPasteStatus({ ok: false, message: applyErrorMessage(failure) });
+      setPasteStatus({
+        ok: false,
+        message: commandErrorMessage(failure, "Apply failed"),
+      });
     } else if (!applied) {
       // Well-formed bullets that matched no comment on THIS document — the
       // usual cause is pasting into the wrong document's panel. Keep the text
@@ -405,6 +423,30 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
             </button>
           </div>
         </div>
+
+        {commandError && (
+          <div className="px-3 py-2 border-b border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/20 flex items-start gap-2">
+            <AlertCircle
+              size={13}
+              className="mt-0.5 shrink-0 text-red-600 dark:text-red-400"
+            />
+            <div className="min-w-0 flex-1 text-[11px] text-red-700 dark:text-red-300">
+              <p className="font-medium">Not saved: {commandError.message}</p>
+              {commandError.draft && (
+                <p className="mt-0.5 whitespace-pre-wrap break-words opacity-80">
+                  Your text: {commandError.draft}
+                </p>
+              )}
+            </div>
+            <button
+              onClick={clearCommandError}
+              className="shrink-0 p-0.5 rounded text-red-500 hover:bg-red-100 dark:hover:bg-red-900/40"
+              title="Dismiss"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
 
         {comments.length > 0 && (
           <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-700/50 flex flex-wrap gap-1.5">
@@ -574,16 +616,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                           onKeyDown={(e) => {
                             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
                               e.preventDefault();
-                              const trimmed = replyText.trim();
-                              if (trimmed) {
-                                if (c.resolved) {
-                                  reopenAndReply(c.id, trimmed);
-                                } else {
-                                  replyToComment(c.id, trimmed);
-                                }
-                              }
-                              setReplyingId(null);
-                              setReplyText("");
+                              void submitReply(c);
                             }
                             if (e.key === "Escape") {
                               setReplyingId(null);
@@ -605,18 +638,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                             Cancel
                           </button>
                           <button
-                            onClick={() => {
-                              const trimmed = replyText.trim();
-                              if (trimmed) {
-                                if (c.resolved) {
-                                  reopenAndReply(c.id, trimmed);
-                                } else {
-                                  replyToComment(c.id, trimmed);
-                                }
-                              }
-                              setReplyingId(null);
-                              setReplyText("");
-                            }}
+                            onClick={() => void submitReply(c)}
                             className="px-2 py-1 text-[11px] rounded bg-blue-600 text-white hover:bg-blue-700"
                           >
                             {c.resolved ? "Reopen & Reply" : "Reply"}

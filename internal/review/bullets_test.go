@@ -84,8 +84,19 @@ func TestParseBullet(t *testing.T) {
 		{"lowercased-id", "- [ABCD1234] fixed it", "abcd1234", "fixed it", true},
 		{"leading-ws", "   -   [abcd] note", "abcd", "note", true},
 		{"trailing-ws", "- [abcd] note   ", "abcd", "note", true},
+		// A model rendering a Markdown list may normalize the marker; the inbox
+		// door has no such restriction, so neither should the paste door.
+		{"asterisk-marker", "* [abcd1234] fixed it", "abcd1234", "fixed it", true},
+		{"plus-marker", "+ [abcd1234] fixed it", "abcd1234", "fixed it", true},
+		// The inbox door accepts a full id (resolveCommentID prefix-matches it
+		// exactly); the hyphens must not disqualify it here.
+		{"full-uuid", "- [11112222-3333-4444-5555-666677778888] fixed it",
+			"11112222-3333-4444-5555-666677778888", "fixed it", true},
 		{"too-short-id", "- [abc] note", "", "", false},
 		{"non-hex-id", "- [zzzz] note", "", "", false},
+		{"task-list-unchecked", "- [ ] note", "", "", false},
+		{"task-list-checked", "- [x] task", "", "", false},
+		{"hyphens-only-id", "- [----] note", "", "", false},
 		{"empty-summary", "- [abcd] ", "", "", false},
 		{"no-bracket", "- abcd note", "", "", false},
 		{"not-a-bullet", "abcd note", "", "", false},

@@ -85,6 +85,25 @@ func TestContentImageDotGitRejected(t *testing.T) {
 	require.Contains(t, env, "detail")
 }
 
+func TestContentVantageDirRejected(t *testing.T) {
+	e := newTestEnv(t, false)
+	writeFile(t, e.dir, ".vantage/inbox/x.jsonl", `{"secret":"payload"}`)
+	writeFile(t, e.dir, ".vantage/pic.png", "\x89PNGdata")
+
+	// .vantage is hidden from the tree and from search, so serving it by direct
+	// path made a "hidden" directory fetchable — and openable as a document to
+	// annotate — by anyone who typed the URL. Both branches of /content, the
+	// JSON one and the raw-image one, must refuse it; the image branch has its
+	// own validator that previously only knew about .git.
+	for _, path := range []string{".vantage/inbox/x.jsonl", ".vantage/pic.png", ".vantage"} {
+		w := e.do(e.h.Content, http.MethodGet, "/content?path="+path, "", true)
+		require.Equal(t, http.StatusBadRequest, w.Code, "path %s", path)
+		var env map[string]string
+		decode(t, w, &env)
+		require.Contains(t, env, "detail")
+	}
+}
+
 func TestContentImageMissingFile404(t *testing.T) {
 	e := newTestEnv(t, false)
 	// Valid path, no such file: 404 with {"error":…}.

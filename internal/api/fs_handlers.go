@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/mschulkind-oss/vantage/internal/fs"
+	"github.com/mschulkind-oss/vantage/internal/ignore"
 )
 
 // imageExtensions are the file suffixes the /content endpoint serves as raw
@@ -153,6 +154,12 @@ func resolveImagePath(root, path string) (string, error) {
 		if part == ".git" {
 			return "", &fs.PathError{Detail: "Access to .git directory is not allowed"}
 		}
+	}
+	// This validator bypasses the fs service entirely, so it needs its own copy
+	// of the .vantage block — otherwise images under .vantage stream raw while
+	// every other read of the same tree is refused.
+	if ignore.IsAlwaysIgnored(normalized) {
+		return "", &fs.PathError{Detail: "Access to .vantage directory is not allowed"}
 	}
 	full := filepath.Clean(filepath.Join(root, normalized))
 	rel, err := filepath.Rel(root, full)

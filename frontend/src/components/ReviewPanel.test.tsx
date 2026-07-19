@@ -814,9 +814,15 @@ describe("ReviewPanel — paste agent response", () => {
     const consoleError = vi
       .spyOn(console, "error")
       .mockImplementation(() => {});
-    setComments([seeded()]);
+    const local = seeded();
+    setComments([local]);
     mockedAxios.post.mockRejectedValueOnce({
       response: { data: { error: "No response bullets found" } },
+    });
+    // A 400 for unparseable bullets does not mean the review is gone, so the
+    // failure resync finds it still there and the box stays mounted.
+    mockedAxios.get.mockResolvedValueOnce({
+      data: { file_path: "doc.md", comments: [local] },
     });
     render(<ReviewPanel isOpen onClose={() => {}} />);
 
@@ -828,6 +834,31 @@ describe("ReviewPanel — paste agent response", () => {
     expect(screen.getByText("No response bullets found")).toBeTruthy();
     // The paste survives so the reviewer can correct it instead of re-pasting.
     expect(box().value).toBe("just some prose");
+    consoleError.mockRestore();
+  });
+
+  it("keeps the paste recoverable from the banner when the review is gone", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    setComments([seeded()]);
+    mockedAxios.post.mockRejectedValueOnce({
+      response: { data: { error: "No review found" } },
+    });
+    // The review really was deleted out of band. The resync clears the
+    // comments, which unmounts the paste box along with them — so the banner
+    // is the only thing left holding what the reviewer pasted.
+    mockedAxios.get.mockResolvedValueOnce({ data: null });
+    render(<ReviewPanel isOpen onClose={() => {}} />);
+
+    openWithText("- [ab12cd34] fixed it");
+    await act(async () => {
+      fireEvent.click(applyButton());
+    });
+
+    expect(box()).toBeNull();
+    expect(screen.getByText("Not saved: No review found")).toBeTruthy();
+    expect(screen.getByText("Your text: - [ab12cd34] fixed it")).toBeTruthy();
     consoleError.mockRestore();
   });
 

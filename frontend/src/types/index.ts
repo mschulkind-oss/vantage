@@ -113,6 +113,15 @@ export interface CommentReaction {
   before_text: string;
   after_text: string;
   timestamp: number;
+  /**
+   * On an agent reaction, the thread's turn count as of the payload the agent
+   * was answering — copied from the clipboard payload onto the delivery.  A
+   * reaction's position implies which turn it answers, and that implication is
+   * wrong for a delivery that lands after the reviewer replied; this records
+   * the fact instead of inferring it.  Absent on the paste door and on any
+   * delivery predating the field, which reads as "answers the newest turn".
+   */
+  answers_round?: number;
 }
 
 export interface ReviewComment {

@@ -138,7 +138,9 @@ func (h *Handlers) ReviewCommentPatch(w http.ResponseWriter, r *http.Request) {
 		err  error
 	)
 	if req.Comment != nil {
-		data, err = h.deps.Reviews.EditCommentText(path, svc.Repo, id, *req.Comment)
+		// The document is read before the store lock, exactly as the add and
+		// reply handlers do: editing re-captures the anchored block.
+		data, err = h.deps.Reviews.EditCommentText(path, svc.Repo, id, *req.Comment, currentDocContent(svc, path))
 	} else {
 		data, err = h.deps.Reviews.SetResolved(path, svc.Repo, id, *req.Resolved)
 	}
@@ -270,6 +272,7 @@ func (h *Handlers) ReviewResponses(w http.ResponseWriter, r *http.Request) {
 	for i := range entries {
 		entries[i].Nonce = nonce
 	}
+	// Bullets carry no round; ParseResponses already marks them RoundUnknown.
 	data, applied, err := h.deps.Reviews.ApplyResponses(path, svc.Repo, entries, currentDocContent(svc, path))
 	if err != nil || data == nil {
 		// Absent review, or a real failure: the shared tail writes null-at-200

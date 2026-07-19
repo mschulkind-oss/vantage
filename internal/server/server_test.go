@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -372,4 +373,52 @@ func TestRunAndShutdown(t *testing.T) {
 		t.Fatal("Run did not return after context cancel")
 	}
 	require.NoError(t, srv.Shutdown(context.Background()))
+}
+
+// jsEncodeURIComponent mirrors the browser's encodeURIComponent, which is what
+// the frontend builds every /api/r/{repo}/… URL with. url.PathEscape is not a
+// substitute: it leaves the sub-delims literal, which is precisely the class of
+// character this test is about, so using it would make the test vacuous.
+func jsEncodeURIComponent(s string) string {
+	const unreserved = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()"
+	var b strings.Builder
+	for _, by := range []byte(s) {
+		if strings.IndexByte(unreserved, by) >= 0 {
+			b.WriteByte(by)
+			continue
+		}
+		fmt.Fprintf(&b, "%%%02X", by)
+	}
+	return b.String()
+}
+
+func TestRepoRouteResolvesAwkwardNames(t *testing.T) {
+	// Repo names come from an explicit config name or a discovered directory
+	// basename, neither of which is validated or slugified. Go leaves the
+	// sub-delims literal in a URL path, so encodeURIComponent's escaping of them
+	// survives into chi.URLParam and missed the map — the repo listed in the
+	// sidebar and 404'd on every request against it.
+	names := []string{"a+b", "at@x", "a&b", "re:po", "a=b", "a,b", "a;b", "a$b", "my repo", "café", "plain-repo_1.2"}
+
+	cfg := config.Defaults()
+	cfg.MultiRepo = true
+	for _, name := range names {
+		cfg.Repos = append(cfg.Repos, config.RepoConfig{
+			Name: name,
+			Path: initRepo(t, map[string]string{"doc.md": "# D\n"}),
+		})
+	}
+	require.NoError(t, cfg.Resolve())
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+	h := srv.Handler()
+
+	for _, name := range names {
+		rec := doGET(t, h, "/api/r/"+jsEncodeURIComponent(name)+"/tree?path=.")
+		require.Equal(t, http.StatusOK, rec.Code, "repo %q -> %s", name, jsEncodeURIComponent(name))
+	}
+
+	// A genuinely unknown repo still 404s, decoded or not.
+	rec := doGET(t, h, "/api/r/"+jsEncodeURIComponent("no&such")+"/tree?path=.")
+	require.Equal(t, http.StatusNotFound, rec.Code)
 }

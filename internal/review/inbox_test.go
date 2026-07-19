@@ -3,6 +3,7 @@ package review
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -128,10 +129,174 @@ func TestConsumeInboxPreservesPartialFinalLine(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, partial, string(got))
 
+	require.True(t, strings.HasSuffix(names[0], partialSuffix),
+		"the preserved tail is parked under a name ConsumeInbox skips")
+
 	// A later pass leaves the still-partial file alone instead of shuttling it
 	// through rename-and-rewrite forever.
 	require.Empty(t, s.ConsumeInbox(root, ""))
 	require.Equal(t, names, inboxEntries(t, root))
+}
+
+// breakStore makes every load and save under dir fail the way a durable I/O
+// fault would (a root-owned reviews directory, a read-only or full $HOME): dir
+// becomes a regular file, so every path beneath it is ENOTDIR. It returns a
+// repair func that restores the store's contents.
+func breakStore(t *testing.T, dir string) (repair func()) {
+	t.Helper()
+	stashed := dir + ".stashed"
+	require.NoError(t, os.Rename(dir, stashed))
+	require.NoError(t, os.WriteFile(dir, []byte("not a directory"), 0o644))
+	return func() {
+		t.Helper()
+		require.NoError(t, os.Remove(dir))
+		require.NoError(t, os.Rename(stashed, dir))
+	}
+}
+
+func TestConsumeInboxDoesNotRePreserveTailWhileApplyFails(t *testing.T) {
+	root := t.TempDir()
+	storeDir := filepath.Join(t.TempDir(), "reviews")
+	s := NewStore(storeDir)
+	seedDocWithComment(t, s, root, "a.md", "c1a2b3c4deadbeef", cmdDoc, 3)
+
+	partial := `{"path":"a.md","id":"c1a2b3c4","summary":"unfini`
+	writeInboxFile(t, root, "a.jsonl",
+		`{"path":"a.md","id":"c1a2b3c4","summary":"finished","nonce":"n-1"}`+"\n"+partial)
+
+	repair := breakStore(t, storeDir)
+
+	// Every pass fails to apply and therefore keeps the claimed file. Preserving
+	// the tail here too would mint a fresh file per pass — and since each new
+	// inbox file is an event the watcher consumes synchronously, that is a loop
+	// that fills the disk on its own.
+	for range 5 {
+		require.Empty(t, s.ConsumeInbox(root, ""))
+	}
+	require.Equal(t, []string{"a.jsonl" + consumingSuffix}, inboxEntries(t, root),
+		"a failed apply keeps the claimed file, which still holds the tail verbatim, and preserves nothing")
+
+	// Once the fault clears, the tail is preserved exactly once.
+	repair()
+	require.Equal(t, []string{"a.md"}, s.ConsumeInbox(root, ""))
+
+	names := inboxEntries(t, root)
+	require.Len(t, names, 1)
+	require.True(t, strings.HasSuffix(names[0], partialSuffix))
+	got, err := os.ReadFile(filepath.Join(InboxDir(root), names[0]))
+	require.NoError(t, err)
+	require.Equal(t, partial, string(got))
+}
+
+func TestConsumeInboxDedupsNonceLessLineAcrossConsumingLeftover(t *testing.T) {
+	root := t.TempDir()
+	s := NewStore(t.TempDir())
+	seedDocWithComment(t, s, root, "a.md", "c1a2b3c4deadbeef", cmdDoc, 3)
+
+	// The payload documents "one fresh nonce per line", but that is prompt text
+	// to an LLM. An agent that skips the field must still not double-record when
+	// an at-least-once replay re-delivers its line.
+	line := `{"path":"a.md","id":"c1a2b3c4","summary":"done"}` + "\n"
+	writeInboxFile(t, root, "a.jsonl", line)
+	require.Equal(t, []string{"a.md"}, s.ConsumeInbox(root, ""))
+
+	writeInboxFile(t, root, "a.jsonl"+consumingSuffix, line)
+	require.Empty(t, s.ConsumeInbox(root, ""))
+
+	data, err := s.Get("a.md", "")
+	require.NoError(t, err)
+	require.Len(t, data.Comments[0].Reactions, 1, "replayed keyless delivery must not double-record")
+	require.Len(t, data.Nonces, 1)
+	require.True(t, strings.HasPrefix(data.Nonces[0], "auto-"),
+		"the synthesized key is recorded so the next replay is a lookup")
+}
+
+func TestConsumeInboxResolvesUppercaseID(t *testing.T) {
+	root := t.TempDir()
+	s := NewStore(t.TempDir())
+	seedDocWithComment(t, s, root, "a.md", "c1a2b3c4deadbeef", cmdDoc, 3)
+
+	// Comment ids are generated lowercase and resolveCommentID prefix-matches
+	// case-sensitively; the paste door lowercases what it parses, so an inbox
+	// line must too or the same id works pasted and vanishes when delivered.
+	writeInboxFile(t, root, "a.jsonl",
+		`{"path":"a.md","id":"C1A2B3C4","summary":"done","nonce":"n-up"}`+"\n")
+	require.Equal(t, []string{"a.md"}, s.ConsumeInbox(root, ""))
+
+	data, err := s.Get("a.md", "")
+	require.NoError(t, err)
+	require.Len(t, data.Comments[0].Reactions, 1)
+}
+
+func TestConsumeInboxQuarantinesOversizeFile(t *testing.T) {
+	root := t.TempDir()
+	s := NewStore(t.TempDir())
+	seedDocWithComment(t, s, root, "a.md", "c1a2b3c4deadbeef", cmdDoc, 3)
+
+	writeInboxFile(t, root, "a.jsonl",
+		`{"path":"a.md","id":"c1a2b3c4","summary":"`+strings.Repeat("x", maxInboxFileBytes)+`","nonce":"n"}`+"\n")
+
+	require.Empty(t, s.ConsumeInbox(root, ""))
+	parked := []string{"a.jsonl" + oversizeSuffix}
+	require.Equal(t, parked, inboxEntries(t, root),
+		"an oversize delivery is parked for inspection, never parsed and never deleted")
+
+	// Parked means parked: the watcher re-runs ConsumeInbox on every inbox
+	// event, so a file left under its own name would be re-read forever.
+	require.Empty(t, s.ConsumeInbox(root, ""))
+	require.Equal(t, parked, inboxEntries(t, root))
+
+	data, err := s.Get("a.md", "")
+	require.NoError(t, err)
+	require.Empty(t, data.Comments[0].Reactions)
+}
+
+func TestHasCompleteLineDoesNotReadWholeFile(t *testing.T) {
+	// The claim probe answers one boolean — "is anything consumable yet" — and
+	// the bytes are read again anyway once the file is claimed. Reading the file
+	// to answer it (os.ReadFile plus a string conversion) cost two more copies
+	// of every delivery, on every watcher event, forever for a file that never
+	// becomes consumable.
+	const size = 8 << 20
+	p := filepath.Join(t.TempDir(), "big.jsonl")
+	require.NoError(t, os.WriteFile(p, []byte("{}\n"+strings.Repeat("x", size)), 0o644))
+
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	require.True(t, hasCompleteLine(p))
+	runtime.ReadMemStats(&after)
+
+	require.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(size/8),
+		"probing for a newline must not pull the delivery into memory")
+}
+
+func TestReadCompleteLinesSeparatesUnterminatedTail(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, content string) string {
+		t.Helper()
+		p := filepath.Join(dir, name)
+		require.NoError(t, os.WriteFile(p, []byte(content), 0o644))
+		return p
+	}
+
+	// The distinction a bufio.Scanner cannot make: it yields the unterminated
+	// tail as an ordinary token, which would have the consumer eat deliveries
+	// the agent is still in the middle of appending.
+	lines, partial, err := readCompleteLines(write("tail.jsonl", "a\nb"))
+	require.NoError(t, err)
+	require.Equal(t, []string{"a"}, lines)
+	require.Equal(t, "b", partial)
+
+	lines, partial, err = readCompleteLines(write("clean.jsonl", "a\nb\n"))
+	require.NoError(t, err)
+	require.Equal(t, []string{"a", "b"}, lines)
+	require.Empty(t, partial)
+
+	lines, partial, err = readCompleteLines(write("empty.jsonl", ""))
+	require.NoError(t, err)
+	require.Empty(t, lines)
+	require.Empty(t, partial)
 }
 
 func TestConsumeInboxLeavesUnfinishedFiles(t *testing.T) {
@@ -221,4 +386,46 @@ func TestConsumeInboxNoReviewIsNoop(t *testing.T) {
 func TestConsumeInboxMissingInboxDir(t *testing.T) {
 	s := NewStore(t.TempDir())
 	require.Empty(t, s.ConsumeInbox(t.TempDir(), ""))
+}
+
+func TestConsumeInboxCarriesTheRound(t *testing.T) {
+	root := t.TempDir()
+	s := NewStore(t.TempDir())
+	seedDocWithComment(t, s, root, "a.md", "c1a2b3c4deadbeef", cmdDoc, 3)
+
+	// The reviewer replied while the agent was working, so the delivery lands
+	// after a follow-up it never saw. The round it names is what lets the
+	// reader tell that apart from an answer to the follow-up itself.
+	_, _, err := s.ApplyResponses("a.md", "",
+		[]ResponseEntry{{ShortID: "c1a2b3c4", Summary: "round one", Nonce: "n1", Round: 0}}, cmdDoc)
+	require.NoError(t, err)
+	_, err = s.Reply("a.md", "", "c1a2b3c4deadbeef", "not quite, also X", cmdDoc)
+	require.NoError(t, err)
+
+	writeInboxFile(t, root, "a.jsonl",
+		`{"path":"a.md","id":"c1a2b3c4","round":0,"summary":"also fixed spelling","nonce":"n2"}`+"\n")
+	require.Equal(t, []string{"a.md"}, s.ConsumeInbox(root, ""))
+
+	data, err := s.Get("a.md", "")
+	require.NoError(t, err)
+	last := data.Comments[0].Reactions[2]
+	require.Equal(t, "also fixed spelling", last.Summary)
+	require.NotNil(t, last.AnswersRound)
+	require.Equal(t, 0, *last.AnswersRound)
+}
+
+func TestConsumeInboxWithoutRoundRecordsNone(t *testing.T) {
+	root := t.TempDir()
+	s := NewStore(t.TempDir())
+	seedDocWithComment(t, s, root, "a.md", "c1a2b3c4deadbeef", cmdDoc, 3)
+
+	// An omitted round is distinguishable from round 0, so a payload predating
+	// the field keeps behaving exactly as it did.
+	writeInboxFile(t, root, "a.jsonl",
+		`{"path":"a.md","id":"c1a2b3c4","summary":"done","nonce":"n1"}`+"\n")
+	require.Equal(t, []string{"a.md"}, s.ConsumeInbox(root, ""))
+
+	data, err := s.Get("a.md", "")
+	require.NoError(t, err)
+	require.Nil(t, data.Comments[0].Reactions[0].AnswersRound)
 }

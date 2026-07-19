@@ -21,12 +21,26 @@ var ErrReviewNotFound = errors.New("review: no review found")
 const maxNonces = 200
 
 // ResponseEntry is one parsed agent response: a comment short id, the summary
-// to record, and the delivery's dedup nonce.
+// to record, the delivery's dedup nonce, and the thread round it answers.
+//
+// Round is the comment's reaction count as of the payload the agent read, or
+// [RoundUnknown] when the delivery did not name one (the paste door, and any
+// inbox line written without the field). It is a plain int rather than a
+// pointer because [Store.ApplyResponses] uses ResponseEntry as a map key to
+// collapse byte-identical entries within a batch — two pointers to equal ints
+// are not equal, so a pointer here would silently defeat that.
 type ResponseEntry struct {
 	ShortID string
 	Summary string
 	Nonce   string
+	Round   int
 }
+
+// RoundUnknown marks a delivery that carries no round. Reactions recorded from
+// one omit answers_round, which is exactly the pre-round behavior: the reader
+// falls back to treating the newest agent reaction as answering the newest
+// reviewer turn.
+const RoundUnknown = -1
 
 // ParseResponses parses agent response text — the paste-box door — into
 // entries. Every line that parses as a "- [<short_id>] <summary>" bullet
@@ -40,7 +54,7 @@ func ParseResponses(text string) []ResponseEntry {
 		if !ok {
 			continue
 		}
-		out = append(out, ResponseEntry{ShortID: shortID, Summary: summary})
+		out = append(out, ResponseEntry{ShortID: shortID, Summary: summary, Round: RoundUnknown})
 	}
 	return out
 }
@@ -68,12 +82,20 @@ func (s *Store) AddComment(filePath, repo string, c model.ReviewComment, docCont
 	return data, nil
 }
 
-// EditCommentText rewrites the comment's text and stamps EditedAt, which is
-// what marks pre-edit agent responses as answering different wording.
-func (s *Store) EditCommentText(filePath, repo, id, text string) (*model.ReviewData, error) {
-	return s.mutateComment(filePath, repo, id, func(c *model.ReviewComment, _ float64) {
+// EditCommentText rewrites the comment's text, stamps EditedAt — which is what
+// marks pre-edit agent responses as answering different wording — and
+// re-captures the anchored block from docContent.
+//
+// Editing is a capture point for the same reason replying is: a reviewer
+// rewording a comment is looking at the document as it stands now, so the next
+// response's "before" is this block now. Keeping the original capture would
+// make the round-2 diff span round 1 as well, crediting the agent's second
+// answer with changes its first answer made.
+func (s *Store) EditCommentText(filePath, repo, id, text, docContent string) (*model.ReviewData, error) {
+	return s.mutateComment(filePath, repo, id, func(c *model.ReviewComment, now float64) {
 		c.Comment = text
-		c.EditedAt = float64(time.Now().Unix())
+		c.EditedAt = now
+		c.CapturedBlock = blockTextAt(docContent, anchorLineOf(c))
 	})
 }
 
@@ -220,7 +242,7 @@ func (s *Store) ApplyResponses(filePath, repo string, entries []ResponseEntry, d
 	recorded := map[string]struct{}{}
 
 	applied := 0
-	now := float64(time.Now().Unix())
+	now := nowSeconds()
 	for _, e := range entries {
 		if _, dup := inBatch[e]; dup {
 			continue
@@ -243,13 +265,23 @@ func (s *Store) ApplyResponses(filePath, repo string, entries []ResponseEntry, d
 			continue
 		}
 
+		// AnswersRound records which turn the agent was answering rather than
+		// letting the reaction's position imply it: a delivery that lands after
+		// the reviewer posted a follow-up sits at the end of the thread but
+		// answers something older, and only the delivery itself knows that.
+		var answersRound *int
+		if e.Round >= 0 {
+			round := e.Round
+			answersRound = &round
+		}
 		comment.Reactions = append(comment.Reactions, model.CommentReaction{
-			Actor:      "agent",
-			Kind:       "addressed",
-			Summary:    e.Summary,
-			BeforeText: comment.CapturedBlock,
-			AfterText:  blockTextAt(docContent, anchorLineOf(comment)),
-			Timestamp:  now,
+			Actor:        "agent",
+			Kind:         "addressed",
+			Summary:      e.Summary,
+			BeforeText:   comment.CapturedBlock,
+			AfterText:    blockTextAt(docContent, anchorLineOf(comment)),
+			Timestamp:    now,
+			AnswersRound: answersRound,
 		})
 		applied++
 		if e.Nonce != "" {
@@ -295,11 +327,24 @@ func (s *Store) mutateComment(filePath, repo, id string, fn func(c *model.Review
 	if comment == nil {
 		return nil, ErrCommentNotFound
 	}
-	fn(comment, float64(time.Now().Unix()))
+	fn(comment, nowSeconds())
 	if err := s.saveLocked(filePath, repo, data); err != nil {
 		return nil, err
 	}
 	return data, nil
+}
+
+// nowSeconds is the server clock for every review timestamp: epoch seconds
+// carrying sub-second precision.
+//
+// Whole seconds made ties routine, and the frontend's pending predicate
+// compares them with a strict ">": an edit stamped in the same second as the
+// delivery it follows compared equal, so the comment counted as already
+// answered and the reviewer's re-queue was silently dropped. Fractional seconds
+// also make these directly comparable to the browser's own Date.now()/1000
+// stamps, which the store adopts on the command echo.
+func nowSeconds() float64 {
+	return float64(time.Now().UnixNano()) / 1e9
 }
 
 // anchorLineOf returns the comment's anchor source line, or 0 (the "no block"

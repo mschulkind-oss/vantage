@@ -66,6 +66,7 @@ const writeReviewModePref = (filePath: string, on: boolean): void => {
 export function isPendingForAgent(c: ReviewComment): boolean {
   if (c.resolved) return false;
   const reactions = c.reactions ?? [];
+  if (answeredAnOlderRound(reactions)) return true;
   // A trailing reviewer "noted" is an acceptance — a turn that CLOSES a round,
   // which is how every surface renders it. Skip it when deciding whose turn it
   // is, so reopening an accepted comment doesn't re-send it to the agent under
@@ -96,6 +97,34 @@ export function isPendingForAgent(c: ReviewComment): boolean {
   if (!answered) return true;
   // The agent answered the *previous* wording; a later edit re-queues it.
   return (c.edited_at ?? 0) > Math.max(last.timestamp, acceptedAt);
+}
+
+/**
+ * Whether the newest agent turn answered a round the reviewer has since moved
+ * past — an answer written before a follow-up that landed while the agent was
+ * working.
+ *
+ * A reaction's position in the array implies which turn it answers, and that
+ * implication is wrong for a delivery that arrives after the reviewer replied:
+ * the answer sits last, so the thread reads as "agent had the last word" and
+ * the follow-up drops out of the agent queue having never been seen. The
+ * delivery is the only party that knows which turn it was written against, so
+ * it carries `answers_round` (the thread length as of the payload it read) and
+ * this compares that against where the reviewer's follow-ups actually sit.
+ *
+ * A delivery that names no round — the paste door, and any payload predating
+ * the field — yields false, which is exactly the old behavior.
+ */
+function answeredAnOlderRound(reactions: CommentReaction[]): boolean {
+  const last = reactions[reactions.length - 1];
+  if (!last || last.actor !== "agent" || last.answers_round == null) {
+    return false;
+  }
+  const round = last.answers_round;
+  return reactions.some(
+    (r, i) =>
+      i >= round && r.actor === "reviewer" && r.kind === "needs_clarification",
+  );
 }
 
 /** Whether the agent has ever responded to this comment. */
@@ -205,6 +234,16 @@ interface ReviewState {
   warnStaleProtocol: (path: string) => void;
   dismissStaleProtocolWarning: () => void;
 
+  /**
+   * The last review command that failed, so the failure is visible instead of
+   * living only in the console. A failed command is that operation lost —
+   * unlike the retired whole-state PUT, no later write retransmits it — and
+   * `draft` carries the text the reviewer typed so a reply whose surface has
+   * since unmounted is still recoverable from the banner.
+   */
+  commandError: { message: string; draft?: string } | null;
+  clearCommandError: () => void;
+
   // Loading
   isLoading: boolean;
 
@@ -221,6 +260,7 @@ interface ReviewState {
    */
   runCommand: (
     fn: (base: string, path: string) => Promise<{ data: ReviewData | null }>,
+    draft?: string,
   ) => Promise<void>;
   setPendingSelection: (sel: PendingSelection) => void;
   clearPendingSelection: () => void;
@@ -228,9 +268,9 @@ interface ReviewState {
     anchor: CommentAnchor,
     comment: string,
     fallbackText: string,
-  ) => void;
+  ) => Promise<void>;
   deleteComment: (id: string) => void;
-  editComment: (id: string, newComment: string) => void;
+  editComment: (id: string, newComment: string) => Promise<void>;
   /** Resolve with a "noted" reviewer reaction (means "I accept the agent's fix"). */
   resolveComment: (id: string) => void;
   /** Dismiss without writing a reaction (means "I'm done with this comment"). */
@@ -241,10 +281,14 @@ interface ReviewState {
   dismissAll: () => void;
   /** Dismiss only outdated (orphaned) comments. */
   dismissOutdated: () => void;
-  /** Reply to an agent-addressed comment (keeps it unresolved for another round). */
-  replyToComment: (id: string, replyText: string) => void;
+  /**
+   * Reply to an agent-addressed comment (keeps it unresolved for another
+   * round). Resolves once the command has landed or failed; callers that clear
+   * a textarea must await it, or a failure discards what the reviewer typed.
+   */
+  replyToComment: (id: string, replyText: string) => Promise<void>;
   /** Reopen a resolved comment and add a follow-up reply. */
-  reopenAndReply: (id: string, replyText: string) => void;
+  reopenAndReply: (id: string, replyText: string) => Promise<void>;
   setLastContent: (content: string) => void;
   copyAllToClipboard: () => Promise<boolean>;
   /** Copy a single comment's thread to the clipboard for the agent. */
@@ -264,6 +308,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   pendingSelection: null,
   outdatedCommentIds: new Set<string>(),
   staleProtocolWarning: null,
+  commandError: null,
   isLoading: false,
 
   toggleReviewMode: () => {
@@ -290,6 +335,11 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
         comments: [],
         pendingSelection: null,
         isReviewMode: false,
+        // A command failure belongs to the document it happened on. It is
+        // deliberately NOT cleared on a same-file reload: runCommand's error
+        // path resyncs through here, and clearing there would erase the
+        // failure a moment after setting it.
+        commandError: null,
       });
     }
 
@@ -324,10 +374,25 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
           // would silently revert to off.
           isReviewMode: hasData || persistedOn,
         });
-      } else if (persistedOn) {
-        // Server has nothing, but the user had toggled review mode on
-        // before the refresh — honor that preference.
-        set({ isReviewMode: true });
+      } else {
+        // Null at 200 means specifically "no review file" — deleting every
+        // comment still persists an empty review. So the review was removed
+        // out of band (another tab's End review, a branch switch, git clean),
+        // or this is runCommand's resync after a command 404'd. Either way the
+        // local comments are gone server-side and must go here too: the resync
+        // exists so an optimistic mutation cannot stand as a lie, and leaving
+        // them would do exactly that, with every later command 404ing and no
+        // path back to truth short of a reload.
+        //
+        // isStale() above already guarantees this response matches the current
+        // file and that no local write landed while the GET was in flight, so
+        // this cannot clobber a fresh reviewer action.
+        set({ comments: [] });
+        if (persistedOn) {
+          // Honor the toggle rather than kicking the reviewer out of review
+          // mode mid-session; they land in an empty review instead.
+          set({ isReviewMode: true });
+        }
       }
     } catch {
       // No review data yet — still honor the persisted toggle if present.
@@ -339,13 +404,18 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     }
   },
 
-  runCommand: async (fn) => {
+  clearCommandError: () => {
+    set({ commandError: null });
+  },
+
+  runCommand: async (fn, draft) => {
     const base = getApiBase();
     const filePath = get().filePath;
     if (!base || !filePath) return;
 
     const seq = ++saveSeq;
     const loadSeqAtStart = loadSeq;
+    set({ commandError: null });
     try {
       const res = await fn(base, filePath);
       // Adopt what the server actually persisted. Skipped if anything newer
@@ -362,9 +432,13 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
         set({ comments: saved.comments });
       }
     } catch (e) {
-      // A failed command is that operation lost. Reload server truth so the
-      // UI doesn't keep showing a mutation that never happened.
+      // A failed command is that operation lost — no later write retransmits
+      // it, the way the retired whole-state PUT did. Resync so the UI doesn't
+      // keep showing a mutation that never happened, and surface the failure:
+      // resyncing silently just deletes the reviewer's turn from the screen
+      // with no explanation, which is the same silent loss in a new place.
       console.error("Review command failed", e);
+      set({ commandError: { message: commandErrorMessage(e), draft } });
       get().loadReview(filePath);
     }
   },
@@ -407,18 +481,20 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       pendingSelection: null,
     }));
     // The server captures captured_block from the document at the anchor.
-    get().runCommand((base, path) =>
-      axios.post<ReviewData | null>(
-        `${base}/review/comments`,
-        {
-          id: newComment.id,
-          comment: newComment.comment,
-          anchor: newComment.anchor,
-          fallback_text: newComment.fallback_text,
-          created_at: newComment.created_at,
-        },
-        { params: { path } },
-      ),
+    return get().runCommand(
+      (base, path) =>
+        axios.post<ReviewData | null>(
+          `${base}/review/comments`,
+          {
+            id: newComment.id,
+            comment: newComment.comment,
+            anchor: newComment.anchor,
+            fallback_text: newComment.fallback_text,
+            created_at: newComment.created_at,
+          },
+          { params: { path } },
+        ),
+      comment,
     );
   },
 
@@ -445,12 +521,14 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
         c.id === id ? { ...c, comment: newComment, edited_at: now } : c,
       ),
     }));
-    get().runCommand((base, path) =>
-      axios.patch<ReviewData | null>(
-        `${base}/review/comments/${encodeURIComponent(id)}`,
-        { comment: newComment },
-        { params: { path } },
-      ),
+    return get().runCommand(
+      (base, path) =>
+        axios.patch<ReviewData | null>(
+          `${base}/review/comments/${encodeURIComponent(id)}`,
+          { comment: newComment },
+          { params: { path } },
+        ),
+      newComment,
     );
   },
 
@@ -551,12 +629,14 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
           : c,
       ),
     }));
-    get().runCommand((base, path) =>
-      axios.post<ReviewData | null>(
-        `${base}/review/comments/${encodeURIComponent(id)}/replies`,
-        { text: replyText },
-        { params: { path } },
-      ),
+    return get().runCommand(
+      (base, path) =>
+        axios.post<ReviewData | null>(
+          `${base}/review/comments/${encodeURIComponent(id)}/replies`,
+          { text: replyText },
+          { params: { path } },
+        ),
+      replyText,
     );
   },
 
@@ -595,12 +675,14 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
           : c,
       ),
     }));
-    get().runCommand((base, path) =>
-      axios.post<ReviewData | null>(
-        `${base}/review/comments/${encodeURIComponent(id)}/reopen-reply`,
-        { text: replyText },
-        { params: { path } },
-      ),
+    return get().runCommand(
+      (base, path) =>
+        axios.post<ReviewData | null>(
+          `${base}/review/comments/${encodeURIComponent(id)}/reopen-reply`,
+          { text: replyText },
+          { params: { path } },
+        ),
+      replyText,
     );
   },
 
@@ -699,6 +781,23 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   },
 }));
 
+/**
+ * Human-readable text for a failed review command. Prefers the server's own
+ * {"error":…} envelope — "No comment found" is far more actionable than a
+ * status code — and falls back to `fallback` for a transport failure that
+ * carries no body. Duck-typed rather than axios.isAxiosError so a non-HTTP
+ * failure (network down) falls through instead of throwing here.
+ */
+export function commandErrorMessage(
+  e: unknown,
+  fallback = "Review command failed",
+): string {
+  const data = (e as { response?: { data?: { error?: unknown } } } | null)
+    ?.response?.data;
+  if (data && typeof data.error === "string" && data.error) return data.error;
+  return fallback;
+}
+
 /** Repo-aware path prefix for clipboard anchor links. */
 function clipboardPathPrefix(filePath: string): string {
   const { currentRepo, isMultiRepo } = useRepoStore.getState();
@@ -726,10 +825,15 @@ function commentBlock(
   const shortId = c.id.slice(0, 8);
   const anchorLine = c.anchor?.source_line ?? null;
   const quoted = quotedFor(c, contentLines);
+  // The round is this thread's turn count right now. The agent echoes it back
+  // on its delivery so a follow-up the reviewer posts while the agent works is
+  // not mistaken for something that answer addressed.
+  const round = (c.reactions ?? []).length;
+  const idToken = `\`[${shortId}]\` \`round:${round}\``;
   out.push(
     anchorLine !== null
-      ? `### [Line ${anchorLine}](${pathPrefix}#L${anchorLine}) \`[${shortId}]\``
-      : `### Comment \`[${shortId}]\``,
+      ? `### [Line ${anchorLine}](${pathPrefix}#L${anchorLine}) ${idToken}`
+      : `### Comment ${idToken}`,
   );
   out.push("");
   if (quoted.text) {
@@ -757,23 +861,64 @@ function commentBlock(
   return out;
 }
 
+/**
+ * Whether the thread carries a reviewer turn the agent has not answered — a
+ * reaction that is not an acceptance, sitting after the agent's last one. This
+ * is exactly what [turnLabel] renders as "Follow-up", so a note referring the
+ * agent to that label is only accurate when this holds.
+ */
+function hasTrueFollowUp(c: ReviewComment): boolean {
+  const reactions = c.reactions ?? [];
+  let lastAgent = -1;
+  for (let i = reactions.length - 1; i >= 0; i--) {
+    if (reactions[i].actor === "agent") {
+      lastAgent = i;
+      break;
+    }
+  }
+  if (lastAgent < 0) return false;
+  return reactions.some(
+    (r, i) => i > lastAgent && r.actor === "reviewer" && r.kind !== "noted",
+  );
+}
+
 /** The agent-facing delivery instructions appended after the comment(s). */
 function respondingInstructions(
   filePath: string,
   example?: ReviewComment,
   batch: ReviewComment[] = [],
 ): string[] {
-  const followUps = batch.filter((c) => hasAgentReaction(c));
-  const plural = followUps.length !== 1;
+  // Two different reasons a thread can come back, and they need different
+  // instructions. A "Follow-up" turn is a reviewer reaction that lands AFTER
+  // the agent's last one — the same rule turnLabel uses to print that label, so
+  // pointing the agent at it is guaranteed to find something. A comment
+  // re-queued purely by an edit has no such turn: telling the agent to read the
+  // reviewer's Follow-up sends it looking for text that is not there.
+  const trueFollowUps = batch.filter(hasTrueFollowUp);
+  const editRequeued = batch.filter(
+    (c) => hasAgentReaction(c) && !hasTrueFollowUp(c),
+  );
+  const returning = trueFollowUps.length + editRequeued.length;
+  const plural = returning !== 1;
   const subject =
-    followUps.length === batch.length
+    returning === batch.length
       ? plural
         ? "These are follow-up rounds."
         : "This is a follow-up round."
-      : `${followUps.length} of these are follow-up round${plural ? "s" : ""}.`;
-  const followUpNote = followUps.length
+      : `${returning} of these are follow-up round${plural ? "s" : ""}.`;
+  const followUpNote = returning
     ? [
-        `> **${subject}** A thread above that already shows an _Agent response_ means your earlier answer did not satisfy the reviewer — read their **Follow-up** and address *that*, rather than restating what you already did.`,
+        `> **${subject}**`,
+        ...(trueFollowUps.length
+          ? [
+              `> A thread above that already shows an _Agent response_ followed by a **Follow-up** means your earlier answer did not satisfy the reviewer — address *that*, rather than restating what you already did.`,
+            ]
+          : []),
+        ...(editRequeued.length
+          ? [
+              `> A thread marked _(the reviewer edited this comment)_ means the reviewer rewrote the request itself. Re-read the comment text as it now stands and answer that, rather than restating what you already did.`,
+            ]
+          : []),
         "",
       ]
     : [];
@@ -782,6 +927,7 @@ function respondingInstructions(
   // giving the exact name keeps every agent writing to one file per document.
   const inboxFile = `.vantage/inbox/${filePath.replace(/[/\\]/g, "__")}.jsonl`;
   const exampleId = example?.id.slice(0, 8) ?? "<short-id>";
+  const exampleRound = example ? (example.reactions ?? []).length : 0;
   return [
     "## Responding to Comments",
     "",
@@ -791,15 +937,16 @@ function respondingInstructions(
     "Each line is a single JSON object, newline-terminated:",
     "",
     "```",
-    `{"path":"${filePath}","id":"<short-id>","summary":"<one sentence: what you changed>","nonce":"<fresh random string>"}`,
+    `{"path":"${filePath}","id":"<short-id>","round":<round>,"summary":"<one sentence: what you changed>","nonce":"<fresh random string>"}`,
     "```",
     "",
-    `Example (using a real id from this batch): \`{"path":"${filePath}","id":"${exampleId}","summary":"Reworded the paragraph for clarity","nonce":"k7f29qd1x4"}\``,
+    `Example (using a real id from this batch): \`{"path":"${filePath}","id":"${exampleId}","round":${exampleRound},"summary":"Reworded the paragraph for clarity","nonce":"k7f29qd1x4"}\``,
     "",
     "### Delivery rules",
     "",
     "- **Save the document before appending your line.** Vantage reads the document from disk at delivery time to record what changed; delivering first records a stale version.",
     "- **One line per comment you acted on.** Skip the rest — a line claiming work you did not do reads to the reviewer as an answered comment.",
+    "- **Copy `id` and `round` from the heading of the comment you are answering** (they are shown there as `` `[id]` `` and `` `round:N` ``). The round says which turn you answered, so a follow-up the reviewer writes while you work is not mistaken for something your answer already covered.",
     "- **Generate a fresh random nonce for every line you write** (never copy the example's), and **never re-append a line you have already written**. The nonce is how Vantage tells a new response from a redelivered one; a line with a reused nonce is silently dropped.",
     "- **Append only.** Never edit or delete lines already in the file — Vantage consumes and deletes it.",
     "",
@@ -812,7 +959,7 @@ function respondingInstructions(
     "",
     "### If you cannot write files",
     "",
-    "Reply in chat with a fenced code block containing one bullet per comment you addressed; the reviewer will paste it into the Review panel:",
+    "Reply in chat with a fenced code block containing one bullet per comment you addressed; the reviewer will paste it into the Review panel. Any of `-`, `*` or `+` opens a bullet:",
     "",
     "```",
     "- [<short-id>] <one sentence: what you changed>",

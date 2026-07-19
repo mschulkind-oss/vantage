@@ -2,6 +2,7 @@ package review
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -72,7 +73,7 @@ func TestEditCommentTextStampsEditedAt(t *testing.T) {
 	_, err := s.AddComment("a.md", "", anchoredComment("c1", "old wording", 3), cmdDoc)
 	require.NoError(t, err)
 
-	data, err := s.EditCommentText("a.md", "", "c1", "new wording")
+	data, err := s.EditCommentText("a.md", "", "c1", "new wording", cmdDoc)
 	require.NoError(t, err)
 	require.Equal(t, "new wording", data.Comments[0].Comment)
 	require.Greater(t, data.Comments[0].EditedAt, float64(0))
@@ -83,13 +84,13 @@ func TestEditCommentTextUnknownID(t *testing.T) {
 	_, err := s.AddComment("a.md", "", anchoredComment("c1", "x", 3), cmdDoc)
 	require.NoError(t, err)
 
-	_, err = s.EditCommentText("a.md", "", "nope", "text")
+	_, err = s.EditCommentText("a.md", "", "nope", "text", cmdDoc)
 	require.ErrorIs(t, err, ErrCommentNotFound)
 }
 
 func TestCommandsOnAbsentReviewReturnNotFound(t *testing.T) {
 	s := NewStore(t.TempDir())
-	_, err := s.EditCommentText("ghost.md", "", "c1", "x")
+	_, err := s.EditCommentText("ghost.md", "", "c1", "x", cmdDoc)
 	require.ErrorIs(t, err, ErrCommentNotFound)
 	_, err = s.SetResolved("ghost.md", "", "c1", true)
 	require.ErrorIs(t, err, ErrCommentNotFound)
@@ -304,8 +305,10 @@ func TestApplyResponsesExactDuplicateEntryInBatchSkipped(t *testing.T) {
 	seedForResponses(t, s)
 
 	// An agent re-appending its identical inbox line lands in one batch; the
-	// byte-identical duplicate is applied once.
-	e := ResponseEntry{ShortID: "abcd", Summary: "Fixed it", Nonce: "n1"}
+	// byte-identical duplicate is applied once. The non-zero Round is load
+	// bearing: ResponseEntry is the map key here, so making Round a pointer
+	// would silently stop collapsing duplicates.
+	e := ResponseEntry{ShortID: "abcd", Summary: "Fixed it", Nonce: "n1", Round: 2}
 	data, applied, err := s.ApplyResponses("a.md", "", []ResponseEntry{e, e}, cmdDoc)
 	require.NoError(t, err)
 	require.Equal(t, 1, applied)
@@ -398,15 +401,84 @@ func TestParseResponses(t *testing.T) {
 		{"empty", "", nil},
 		{"prose only", "I fixed everything.\nThanks!", nil},
 		{"single bullet", "- [abcd1234] Fixed the thing",
-			[]ResponseEntry{{ShortID: "abcd1234", Summary: "Fixed the thing"}}},
+			[]ResponseEntry{{ShortID: "abcd1234", Summary: "Fixed the thing", Round: RoundUnknown}}},
 		{"bullets with junk and marker", "<!-- changelog -->\n- [abcd] One\nnot a bullet\n  - [EF56] Two\n- [xy] too short",
-			[]ResponseEntry{{ShortID: "abcd", Summary: "One"}, {ShortID: "ef56", Summary: "Two"}}},
+			[]ResponseEntry{{ShortID: "abcd", Summary: "One", Round: RoundUnknown}, {ShortID: "ef56", Summary: "Two", Round: RoundUnknown}}},
 		{"fenced paste", "```\n- [abcd] Fixed\n```",
-			[]ResponseEntry{{ShortID: "abcd", Summary: "Fixed"}}},
+			[]ResponseEntry{{ShortID: "abcd", Summary: "Fixed", Round: RoundUnknown}}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want, ParseResponses(tc.text))
 		})
 	}
+}
+
+func TestEditCommentTextRecapturesBlock(t *testing.T) {
+	s := NewStore(t.TempDir())
+	_, err := s.AddComment("a.md", "", anchoredComment("c1", "please tighten", 3), cmdDoc)
+	require.NoError(t, err)
+
+	// Round 1: the agent rewrites the anchored block and delivers.
+	v2 := strings.Replace(cmdDoc, "First Paragraph text.", "Version two text.", 1)
+	_, applied, err := s.ApplyResponses("a.md", "",
+		[]ResponseEntry{{ShortID: "c1", Summary: "round one", Nonce: "n1", Round: RoundUnknown}}, v2)
+	require.NoError(t, err)
+	require.Equal(t, 1, applied)
+
+	// The reviewer rewords the comment while looking at v2 — the same situation
+	// a reply puts them in, so the same capture point.
+	data, err := s.EditCommentText("a.md", "", "c1", "still too long", v2)
+	require.NoError(t, err)
+	require.Equal(t, "version two text.", data.Comments[0].CapturedBlock)
+
+	v3 := strings.Replace(v2, "Version two text.", "Version three text.", 1)
+	data, _, err = s.ApplyResponses("a.md", "",
+		[]ResponseEntry{{ShortID: "c1", Summary: "round two", Nonce: "n2", Round: RoundUnknown}}, v3)
+	require.NoError(t, err)
+
+	r2 := data.Comments[0].Reactions[1]
+	require.Equal(t, "version two text.", r2.BeforeText,
+		"round two's diff must not span round one's changes")
+	require.Equal(t, "version three text.", r2.AfterText)
+}
+
+func TestEditAfterDeliveryOutranksItInTheSameSecond(t *testing.T) {
+	s := NewStore(t.TempDir())
+	_, err := s.AddComment("a.md", "", anchoredComment("c1", "please tighten", 3), cmdDoc)
+	require.NoError(t, err)
+
+	data, _, err := s.ApplyResponses("a.md", "",
+		[]ResponseEntry{{ShortID: "c1", Summary: "done", Nonce: "n1", Round: RoundUnknown}}, cmdDoc)
+	require.NoError(t, err)
+	delivered := data.Comments[0].Reactions[0].Timestamp
+
+	data, err = s.EditCommentText("a.md", "", "c1", "still too long", cmdDoc)
+	require.NoError(t, err)
+
+	// Both stamps come from the same server clock, and the frontend's pending
+	// predicate compares them with a strict ">". At whole-second resolution
+	// these two calls tie, and the tie reads as "already answered" — the
+	// reviewer's re-queue disappears with no trace.
+	require.Greater(t, data.Comments[0].EditedAt, delivered,
+		"an edit that follows a delivery must outrank it, not tie with it")
+}
+
+func TestApplyResponsesRecordsTheRoundItAnswers(t *testing.T) {
+	s := NewStore(t.TempDir())
+	seedForResponses(t, s)
+
+	data, _, err := s.ApplyResponses("a.md", "",
+		[]ResponseEntry{{ShortID: "abcd", Summary: "answered turn 0", Nonce: "n1", Round: 0}}, cmdDoc)
+	require.NoError(t, err)
+	require.NotNil(t, data.Comments[0].Reactions[0].AnswersRound)
+	require.Equal(t, 0, *data.Comments[0].Reactions[0].AnswersRound,
+		"round 0 is a real round, not an absent one")
+
+	// A delivery that names no round records none — the paste door and any
+	// clipboard payload predating the field keep behaving exactly as before.
+	data, _, err = s.ApplyResponses("a.md", "",
+		[]ResponseEntry{{ShortID: "abcd", Summary: "no round", Nonce: "n2", Round: RoundUnknown}}, cmdDoc)
+	require.NoError(t, err)
+	require.Nil(t, data.Comments[0].Reactions[1].AnswersRound)
 }

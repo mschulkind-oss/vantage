@@ -30,6 +30,7 @@ const resetStores = () => {
     pendingSelection: null,
     outdatedCommentIds: new Set<string>(),
     staleProtocolWarning: null,
+    commandError: null,
     isLoading: false,
   });
   useRepoStore.setState({
@@ -978,7 +979,7 @@ describe("useReviewStore", () => {
       seedNested();
       const payload = await copiedPayload();
       expect(payload).toContain(
-        '{"path":"docs/design/guide.md","id":"<short-id>","summary":"<one sentence: what you changed>","nonce":"<fresh random string>"}',
+        '{"path":"docs/design/guide.md","id":"<short-id>","round":<round>,"summary":"<one sentence: what you changed>","nonce":"<fresh random string>"}',
       );
     });
 
@@ -1406,5 +1407,236 @@ describe("useReviewStore", () => {
       // The optimistic reply is rolled back to what the server actually has.
       expect(useReviewStore.getState().comments).toEqual([local]);
     });
+  });
+});
+
+describe("loadReview null-at-200 clears local comments", () => {
+  beforeEach(() => {
+    resetStores();
+    vi.clearAllMocks();
+  });
+  afterEach(() => localStorage.clear());
+
+  // Null at 200 means specifically "no review file": deleting every comment
+  // still persists an empty review. So it is proof the review is gone, and
+  // holding on to local comments leaves the UI showing reviewer state the
+  // server does not have — with every later command 404ing and no way back.
+  it("drops comments when the server reports no review for this file", async () => {
+    useReviewStore.setState({
+      filePath: "doc.md",
+      comments: [mkThreadComment("abcdef12-0000", "please clarify", [])],
+    });
+    mockedAxios.get.mockResolvedValueOnce({ data: null });
+
+    await useReviewStore.getState().loadReview("doc.md");
+
+    expect(useReviewStore.getState().comments).toEqual([]);
+  });
+
+  it("keeps review mode on so the reviewer is not ejected mid-session", async () => {
+    localStorage.setItem("vantage.reviewMode:doc.md", "on");
+    useReviewStore.setState({
+      filePath: "doc.md",
+      comments: [mkThreadComment("abcdef12-0000", "please clarify", [])],
+    });
+    mockedAxios.get.mockResolvedValueOnce({ data: null });
+
+    await useReviewStore.getState().loadReview("doc.md");
+
+    expect(useReviewStore.getState().comments).toEqual([]);
+    expect(useReviewStore.getState().isReviewMode).toBe(true);
+  });
+
+  it("keeps comments when the GET itself fails", async () => {
+    // A transport failure is not evidence the review is gone.
+    useReviewStore.setState({
+      filePath: "doc.md",
+      comments: [mkThreadComment("abcdef12-0000", "please clarify", [])],
+    });
+    mockedAxios.get.mockRejectedValueOnce(new Error("network down"));
+
+    await useReviewStore.getState().loadReview("doc.md");
+
+    expect(useReviewStore.getState().comments).toHaveLength(1);
+  });
+
+  it("undoes the optimistic mutation when a command 404s into a deleted review", async () => {
+    useReviewStore.setState({
+      filePath: "doc.md",
+      comments: [mkThreadComment("abcdef12-0000", "please clarify", [])],
+    });
+    mockedAxios.post.mockRejectedValueOnce({
+      response: { status: 404, data: { error: "No comment found" } },
+    });
+    mockedAxios.get.mockResolvedValueOnce({ data: null });
+
+    await useReviewStore.getState().resolveComment("abcdef12-0000");
+    // resolveComment fires runCommand without awaiting the resync it queues.
+    await new Promise((r) => setTimeout(r, 0));
+
+    const state = useReviewStore.getState();
+    expect(state.comments).toEqual([]);
+    expect(state.commandError?.message).toBe("No comment found");
+  });
+});
+
+describe("command failures are surfaced, not swallowed", () => {
+  beforeEach(() => {
+    resetStores();
+    vi.clearAllMocks();
+  });
+
+  // A failed command is that operation lost — no later write retransmits it.
+  // Resyncing silently just deletes the reviewer's turn from the screen.
+  it("records the failure and the text the reviewer typed", async () => {
+    useReviewStore.setState({
+      filePath: "doc.md",
+      comments: [
+        mkThreadComment("abcdef12-0000", "please clarify", [agentAddressed]),
+      ],
+    });
+    mockedAxios.post.mockRejectedValueOnce({
+      response: { status: 404, data: { error: "No comment found" } },
+    });
+    mockedAxios.get.mockResolvedValueOnce({ data: null });
+
+    await useReviewStore
+      .getState()
+      .replyToComment("abcdef12-0000", "you missed the point");
+
+    const err = useReviewStore.getState().commandError;
+    expect(err?.message).toBe("No comment found");
+    expect(err?.draft).toBe("you missed the point");
+  });
+
+  it("clears the error when the next command succeeds", async () => {
+    useReviewStore.setState({
+      filePath: "doc.md",
+      comments: [mkThreadComment("abcdef12-0000", "x", [])],
+      commandError: { message: "stale", draft: "old" },
+    });
+    mockedAxios.patch.mockResolvedValueOnce({
+      data: { file_path: "doc.md", comments: [] },
+    });
+
+    await useReviewStore.getState().editComment("abcdef12-0000", "reworded");
+
+    expect(useReviewStore.getState().commandError).toBeNull();
+  });
+});
+
+describe("isPendingForAgent and the round a delivery answered", () => {
+  const withRound = (r: CommentReaction, round: number): CommentReaction => ({
+    ...r,
+    answers_round: round,
+  });
+
+  // The agent read the payload when the thread was empty, worked, and the
+  // reviewer posted a follow-up meanwhile. Its answer lands last and reads as
+  // "agent had the last word", so the follow-up it never saw drops out of the
+  // agent queue: a reviewer turn silently marked answered.
+  it("re-queues when the agent answered a round older than the reviewer's follow-up", () => {
+    const c = mk([
+      mkReaction("agent", "addressed", "done", 1),
+      mkReaction("reviewer", "needs_clarification", "not quite, also X", 2),
+      withRound(mkReaction("agent", "addressed", "also fixed spelling", 3), 0),
+    ]);
+    expect(isPendingForAgent(c)).toBe(true);
+    expect(isAnsweredByAgent(c)).toBe(false);
+  });
+
+  it("stays answered when the agent answered the current round", () => {
+    const c = mk([
+      mkReaction("agent", "addressed", "done", 1),
+      mkReaction("reviewer", "needs_clarification", "not quite", 2),
+      withRound(mkReaction("agent", "addressed", "fixed that too", 3), 2),
+    ]);
+    expect(isPendingForAgent(c)).toBe(false);
+  });
+
+  it("is unchanged for a delivery that names no round", () => {
+    // The paste door and any payload predating the field.
+    const c = mk([
+      mkReaction("agent", "addressed", "done", 1),
+      mkReaction("reviewer", "needs_clarification", "not quite", 2),
+      mkReaction("agent", "addressed", "also fixed spelling", 3),
+    ]);
+    expect(isPendingForAgent(c)).toBe(false);
+  });
+
+  it("does not re-queue on a reviewer acceptance at or after the round", () => {
+    // Accepting closes a round; it is not an unanswered follow-up.
+    const c = mk([
+      withRound(mkReaction("agent", "addressed", "done", 1), 0),
+      mkReaction("reviewer", "noted", "Accepted", 2),
+    ]);
+    expect(isPendingForAgent(c)).toBe(false);
+  });
+});
+
+describe("the follow-up note matches the turns actually in the payload", () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+
+  /** Re-queued by a bare edit: an agent answer, then a reviewer edit, no reply. */
+  const editRequeued = (): ReviewComment => ({
+    ...mkThreadComment("abcdef12-0000", "please tighten (edited wording)", [
+      mkReaction("agent", "addressed", "Tightened the paragraph", 100),
+    ]),
+    edited_at: 500,
+  });
+
+  beforeEach(() => {
+    resetStores();
+    writeText.mockClear();
+    Object.assign(navigator, { clipboard: { writeText } });
+  });
+
+  const payloadFor = async (comments: ReviewComment[]): Promise<string> => {
+    useReviewStore.setState({
+      filePath: "doc.md",
+      lastContent: "line one\nline two\n",
+      comments,
+    });
+    await useReviewStore.getState().copyAllToClipboard();
+    return writeText.mock.calls[0][0] as string;
+  };
+
+  // An edit re-queues a comment without appending any reviewer reaction, so
+  // the thread has no turn labelled "Follow-up". Sending the agent to read one
+  // points it at text that is not there.
+  it("does not send the agent to a Follow-up turn that does not exist", async () => {
+    const payload = await payloadFor([editRequeued()]);
+
+    // No turn in the thread carries the "Follow-up" label...
+    expect(payload).not.toContain("**Follow-up:**");
+    // ...so the note must not tell the agent to go read one.
+    expect(payload).not.toMatch(/followed by a \*\*Follow-up\*\*/);
+    expect(payload).toContain("_(the reviewer edited this comment)_");
+    expect(payload).toMatch(/rewrote the request itself/);
+  });
+
+  it("sends the agent to the Follow-up turn when the thread has one", async () => {
+    const payload = await payloadFor([
+      mkThreadComment("aaaaaaaa-0001", "please clarify", multiRoundThread),
+    ]);
+
+    expect(payload).toContain("**Follow-up:**");
+    expect(payload).toMatch(/followed by a \*\*Follow-up\*\*/);
+    expect(payload).not.toMatch(/rewrote the request itself/);
+  });
+
+  // A batch draws from both categories, so gating on either one alone drops
+  // the guidance the other half needs.
+  it("explains both reasons when the batch mixes them", async () => {
+    const payload = await payloadFor([
+      mkThreadComment("aaaaaaaa-0001", "please clarify", multiRoundThread),
+      editRequeued(),
+      mkThreadComment("bbbbbbbb-0002", "typo in this line", []),
+    ]);
+
+    expect(payload).toMatch(/followed by a \*\*Follow-up\*\*/);
+    expect(payload).toMatch(/rewrote the request itself/);
+    // Both returning threads are counted, not just the replied-to one.
+    expect(payload).toContain("2 of these are follow-up rounds.");
   });
 });
