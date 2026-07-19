@@ -1,6 +1,8 @@
 package review
 
 import (
+	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -20,6 +22,38 @@ func reviewWithComment(t *testing.T, id string, sourceLine int) *Store {
 	data := model.NewReviewData("doc.md")
 	c := model.NewReviewComment(id, "please fix", 1700000000)
 	c.Anchor = &model.CommentAnchor{SourceLine: sourceLine}
+	data.Comments = append(data.Comments, c)
+	require.NoError(t, s.Save("doc.md", "", data))
+	return s
+}
+
+// reviewWithReactions is reviewWithComment for a comment that already carries a
+// reaction history — the multi-round cases.
+func reviewWithReactions(t *testing.T, id string, sourceLine int, reactions ...model.CommentReaction) *Store {
+	t.Helper()
+	ResetCacheForTests()
+	s := NewStore(t.TempDir())
+	data := model.NewReviewData("doc.md")
+	c := model.NewReviewComment(id, "please fix", 1700000000)
+	c.Anchor = &model.CommentAnchor{SourceLine: sourceLine}
+	c.Reactions = append(c.Reactions, reactions...)
+	data.Comments = append(data.Comments, c)
+	require.NoError(t, s.Save("doc.md", "", data))
+	return s
+}
+
+// reviewWithEditedComment is reviewWithReactions for a comment the reviewer has
+// since reworded. editComment stamps EditedAt and appends NO reaction, so the
+// edit is invisible in the reaction history — the timestamp is the only record.
+func reviewWithEditedComment(t *testing.T, id string, editedAt float64, reactions ...model.CommentReaction) *Store {
+	t.Helper()
+	ResetCacheForTests()
+	s := NewStore(t.TempDir())
+	data := model.NewReviewData("doc.md")
+	c := model.NewReviewComment(id, "please fix (reworded)", 1700000000)
+	c.Anchor = &model.CommentAnchor{SourceLine: 1}
+	c.EditedAt = editedAt
+	c.Reactions = append(c.Reactions, reactions...)
 	data.Comments = append(data.Comments, c)
 	require.NoError(t, s.Save("doc.md", "", data))
 	return s
@@ -380,4 +414,251 @@ func TestApplyChangelogUnknownShortIDSkipped(t *testing.T) {
 
 	content := "<!-- changelog -->" + nl + "- [ffffffff] unrelated"
 	require.Equal(t, 0, s.ApplyChangelog("doc.md", content, ""))
+}
+
+func TestApplyChangelogSecondRoundMayReuseSummary(t *testing.T) {
+	id := "abcd1234-0000-0000-0000-000000000001"
+	// The agent answered once; the reviewer pushed back. That push-back opens a
+	// new round, so the agent's next response counts even when it happens to be
+	// worded exactly like the first one.
+	s := reviewWithReactions(t, id, 1,
+		model.CommentReaction{Actor: "agent", Kind: "addressed", Summary: "Fixed it", Timestamp: 1700000100},
+		model.CommentReaction{Actor: "reviewer", Kind: "needs_clarification", Summary: "still wrong", Timestamp: 1700000200},
+	)
+
+	content := strings.Join([]string{
+		"Updated heading",
+		"",
+		"<!-- changelog -->",
+		"- [abcd1234] Fixed it",
+	}, nl)
+
+	require.Equal(t, 1, s.ApplyChangelog("doc.md", content, ""))
+
+	got, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	require.Len(t, got.Comments[0].Reactions, 3, "the second-round response must not be dropped as a replay")
+	last := got.Comments[0].Reactions[2]
+	require.Equal(t, "agent", last.Actor)
+	require.Equal(t, "addressed", last.Kind)
+	require.Equal(t, "Fixed it", last.Summary)
+	require.Greater(t, last.Timestamp, 1700000200.0)
+
+	// Idempotency still holds within the round: re-running the same content with
+	// no intervening reviewer reaction writes nothing more.
+	require.Equal(t, 0, s.ApplyChangelog("doc.md", content, ""))
+
+	got, err = s.Get("doc.md", "")
+	require.NoError(t, err)
+	require.Len(t, got.Comments[0].Reactions, 3, "no double reaction within a round")
+}
+
+func TestApplyChangelogDedupWindowStartsAtLastReviewerReaction(t *testing.T) {
+	id := "abcd1234-0000-0000-0000-000000000001"
+	// "first pass" belongs to the previous round; "second pass" is this round's
+	// answer. Only the latter is a replay.
+	s := reviewWithReactions(t, id, 1,
+		model.CommentReaction{Actor: "agent", Kind: "addressed", Summary: "first pass", Timestamp: 1700000100},
+		model.CommentReaction{Actor: "reviewer", Kind: "needs_clarification", Summary: "not quite", Timestamp: 1700000200},
+		model.CommentReaction{Actor: "agent", Kind: "addressed", Summary: "second pass", Timestamp: 1700000300},
+	)
+
+	content := strings.Join([]string{
+		"Updated heading",
+		"",
+		"<!-- changelog -->",
+		"- [abcd1234] first pass",
+		"- [abcd1234] second pass",
+	}, nl)
+
+	require.Equal(t, 1, s.ApplyChangelog("doc.md", content, ""))
+
+	got, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	summaries := []string{}
+	for _, r := range got.Comments[0].Reactions {
+		summaries = append(summaries, r.Summary)
+	}
+	require.Equal(t, []string{"first pass", "not quite", "second pass", "first pass"}, summaries)
+}
+
+func TestApplyChangelogDedupWindowUsesTheLastReviewerReactionNotTheFirst(t *testing.T) {
+	id := "abcd1234-0000-0000-0000-000000000001"
+	// Three rounds. The current round opens at the SECOND reviewer reaction, so
+	// only "round two" is a replay; "round one" predates the window and is new
+	// again even though it appears in the history.
+	s := reviewWithReactions(t, id, 1,
+		model.CommentReaction{Actor: "reviewer", Kind: "needs_clarification", Summary: "start here", Timestamp: 1700000100},
+		model.CommentReaction{Actor: "agent", Kind: "addressed", Summary: "round one", Timestamp: 1700000200},
+		model.CommentReaction{Actor: "reviewer", Kind: "needs_clarification", Summary: "still not it", Timestamp: 1700000300},
+		model.CommentReaction{Actor: "agent", Kind: "addressed", Summary: "round two", Timestamp: 1700000400},
+	)
+
+	content := strings.Join([]string{
+		"<!-- changelog -->",
+		"- [abcd1234] round one",
+		"- [abcd1234] round two",
+	}, nl)
+
+	require.Equal(t, 1, s.ApplyChangelog("doc.md", content, ""))
+
+	got, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	summaries := []string{}
+	for _, r := range got.Comments[0].Reactions {
+		summaries = append(summaries, r.Summary)
+	}
+	require.Equal(t,
+		[]string{"start here", "round one", "still not it", "round two", "round one"},
+		summaries)
+}
+
+func TestApplyChangelogAnyReviewerReactionKindOpensANewRound(t *testing.T) {
+	id := "abcd1234-0000-0000-0000-000000000001"
+	// Accepting a response appends {reviewer, noted} rather than
+	// needs_clarification. That still closes the round, so a later agent response
+	// reusing the earlier wording is a genuine answer, not a replay.
+	s := reviewWithReactions(t, id, 1,
+		model.CommentReaction{Actor: "agent", Kind: "addressed", Summary: "Fixed it", Timestamp: 1700000100},
+		model.CommentReaction{Actor: "reviewer", Kind: "noted", Summary: "thanks", Timestamp: 1700000200},
+	)
+
+	content := "<!-- changelog -->" + nl + "- [abcd1234] Fixed it"
+	require.Equal(t, 1, s.ApplyChangelog("doc.md", content, ""))
+
+	got, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	require.Len(t, got.Comments[0].Reactions, 3)
+	require.Equal(t, "agent", got.Comments[0].Reactions[2].Actor)
+	require.Equal(t, "Fixed it", got.Comments[0].Reactions[2].Summary)
+}
+
+func TestApplyChangelogDedupIgnoresReviewerReactionsBeforeTheAgentsFirst(t *testing.T) {
+	id := "abcd1234-0000-0000-0000-000000000001"
+	// A reviewer reaction as the newest entry (e.g. a reply on a thread the agent
+	// never answered) leaves an empty current round, so any bullet is new.
+	s := reviewWithReactions(t, id, 1,
+		model.CommentReaction{Actor: "reviewer", Kind: "needs_clarification", Summary: "bumping this", Timestamp: 1700000100},
+	)
+
+	content := "<!-- changelog -->" + nl + "- [abcd1234] done now"
+	require.Equal(t, 1, s.ApplyChangelog("doc.md", content, ""))
+
+	got, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	require.Len(t, got.Comments[0].Reactions, 2)
+	require.Equal(t, "agent", got.Comments[0].Reactions[1].Actor)
+	require.Equal(t, "done now", got.Comments[0].Reactions[1].Summary)
+}
+
+// EditedAt persistence: the frontend's "an edit re-queues the comment for the
+// agent" rule compares edited_at against the agent's last response time, so the
+// field is worthless unless it survives the store's JSON round trip.
+
+func TestEditedAtRoundTrips(t *testing.T) {
+	ResetCacheForTests()
+	s := NewStore(t.TempDir())
+	data := model.NewReviewData("doc.md")
+
+	edited := model.NewReviewComment("edited-1", "please fix (reworded)", 1700000000)
+	edited.EditedAt = 1700000500.5
+	untouched := model.NewReviewComment("untouched-1", "please fix", 1700000000)
+	data.Comments = append(data.Comments, edited, untouched)
+
+	require.NoError(t, s.Save("doc.md", "", data))
+
+	got, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	require.Len(t, got.Comments, 2)
+	require.Equal(t, 1700000500.5, got.Comments[0].EditedAt)
+	require.Zero(t, got.Comments[1].EditedAt)
+
+	// A never-edited comment must not emit the key at all, so existing review
+	// files stay byte-identical after a rewrite.
+	raw, err := os.ReadFile(s.reviewFile("doc.md", ""))
+	require.NoError(t, err)
+	var probe struct {
+		Comments []map[string]any `json:"comments"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &probe))
+	require.Len(t, probe.Comments, 2)
+	require.Contains(t, probe.Comments[0], "edited_at")
+	require.NotContains(t, probe.Comments[1], "edited_at")
+	require.Equal(t, 1, strings.Count(string(raw), `"edited_at"`),
+		"only the edited comment may carry the key in the file bytes")
+}
+
+func TestApplyChangelogEditOpensANewRoundWithoutAReviewerReaction(t *testing.T) {
+	id := "abcd1234-0000-0000-0000-000000000001"
+	// The reviewer reworded the comment instead of replying, so there is no
+	// reviewer reaction to open the round — only EditedAt. Without the edit
+	// clause the agent's answer to the NEW wording is dropped as a replay of its
+	// answer to the old wording, and the thread deadlocks: the reviewer keeps
+	// seeing an unanswered comment the agent believes it answered.
+	s := reviewWithEditedComment(t, id, 1700000200,
+		model.CommentReaction{Actor: "agent", Kind: "addressed", Summary: "Fixed it", Timestamp: 1700000100},
+	)
+
+	content := strings.Join([]string{
+		"Updated heading",
+		"",
+		"<!-- changelog -->",
+		"- [abcd1234] Fixed it",
+	}, nl)
+
+	require.Equal(t, 1, s.ApplyChangelog("doc.md", content, ""))
+
+	got, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	require.Len(t, got.Comments[0].Reactions, 2,
+		"the response to the reworded comment must not be dropped as a replay")
+	last := got.Comments[0].Reactions[1]
+	require.Equal(t, "agent", last.Actor)
+	require.Equal(t, "addressed", last.Kind)
+	require.Equal(t, "Fixed it", last.Summary)
+	require.Greater(t, last.Timestamp, 1700000200.0)
+}
+
+func TestApplyChangelogEditBeforeTheResponseStillDedups(t *testing.T) {
+	id := "abcd1234-0000-0000-0000-000000000001"
+	// The converse guard: the edit PREDATES the agent's response, so that
+	// response already answered the current wording. Re-running the same
+	// changelog must still dedup — otherwise the edit clause degenerates into
+	// "never dedup" and every watcher pass appends a duplicate reaction.
+	s := reviewWithEditedComment(t, id, 1700000050,
+		model.CommentReaction{Actor: "agent", Kind: "addressed", Summary: "Fixed it", Timestamp: 1700000100},
+	)
+
+	content := strings.Join([]string{
+		"Updated heading",
+		"",
+		"<!-- changelog -->",
+		"- [abcd1234] Fixed it",
+	}, nl)
+
+	require.Equal(t, 0, s.ApplyChangelog("doc.md", content, ""))
+
+	got, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	require.Len(t, got.Comments[0].Reactions, 1, "no duplicate reaction")
+	require.Equal(t, 1700000100.0, got.Comments[0].Reactions[0].Timestamp)
+}
+
+func TestApplyChangelogPreservesEditedAt(t *testing.T) {
+	ResetCacheForTests()
+	s := NewStore(t.TempDir())
+	data := model.NewReviewData("doc.md")
+	c := model.NewReviewComment("abcd1234-0000-0000-0000-000000000001", "please fix (reworded)", 1700000000)
+	c.EditedAt = 1700000500
+	c.Anchor = &model.CommentAnchor{SourceLine: 1}
+	data.Comments = append(data.Comments, c)
+	require.NoError(t, s.Save("doc.md", "", data))
+
+	content := "<!-- changelog -->" + nl + "- [abcd1234] handled the reworded ask"
+	require.Equal(t, 1, s.ApplyChangelog("doc.md", content, ""))
+
+	got, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	require.Equal(t, 1700000500.0, got.Comments[0].EditedAt,
+		"the watcher's rewrite must not drop edited_at")
 }

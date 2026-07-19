@@ -177,7 +177,11 @@ type ReviewComment struct {
 	ID        string  `json:"id"`
 	Comment   string  `json:"comment"`
 	CreatedAt float64 `json:"created_at"`
-	Resolved  bool    `json:"resolved,omitempty"`
+	// EditedAt is when the reviewer last reworded Comment. It is compared
+	// against the agent's last response time to decide whether the agent has
+	// answered the comment's current wording. Zero means never edited.
+	EditedAt float64 `json:"edited_at,omitempty"`
+	Resolved bool    `json:"resolved,omitempty"`
 	// Anchor is omitted while a legacy comment has not yet acquired one.
 	Anchor       *CommentAnchor    `json:"anchor,omitempty"`
 	FallbackText string            `json:"fallback_text,omitempty"`
