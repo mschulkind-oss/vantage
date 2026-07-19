@@ -255,8 +255,8 @@ The agent stops writing responses into the document. It *delivers* them, once,
 through any of three doors — all events, not regions of a persistent file:
 
 1. **API / CLI** (preferred): the clipboard payload embeds the complete
-   invocation — server URL, repo, and path included, e.g.
-   `vantage respond --server http://host:8200 --path docs/a.md <short-id> "summary"`
+   invocation — server URL, repo (in multi-repo mode), and path included, e.g.
+   `vantage respond --server http://host:8200 [--repo X] --path docs/a.md <short-id> "summary"`
    — with a raw `curl` form as the fallback (and for the cases where the
    URL the browser sees is not reachable from the agent's machine). The
    `respond` verb is new; today's CLI has no such command.
@@ -414,5 +414,31 @@ chase is what careful compensation for its violation looks like. And one
 design consequence worth carrying forward even if nothing else here is
 adopted: **prefer failure modes that are visible** — the new design's residual
 is a duplicate a human can see and dismiss; the old design's residuals were
-silent, in both directions, which is why they were bugs for months before
-anyone could report one.
+silent in both directions, which is why the first report arrived as a UI
+mystery ("the button won't light up") rather than as what it actually was: a
+conversation system losing turns.
+
+## 10. Recommendation and open questions
+
+**Recommendation: adopt the direction, but do not build it now.** The current
+implementation is correct, mutation-tested, and stable; the migration is
+surgery on a healthy patient. The right trigger is the *next* time review
+work touches the dedup or merge paths — at that point, execute §8 instead of
+extending the inference machinery, which this doc should make a firing
+offense. Until then, the doc's value is as a tripwire: the protocol is
+explicitly not frozen, so nothing accumulates around it.
+
+Open questions, for whenever the trigger fires:
+
+1. **Which agent door ships first?** CLI/API covers the primary flow
+   (coding agents on the same machine); the paste box covers tool-less chat;
+   the inbox is the most work for the narrowest audience. Plausibly ship CLI
+   + paste and skip the inbox until someone asks.
+2. **Flag or fast retirement?** §8 phase 4 assumes one compatibility release,
+   but with no external users and no frozen protocol, retiring the changelog
+   parser immediately (keeping only the stale-payload warning) may be the
+   better trade.
+3. **Does review history need to travel with the repo?** If yes, an export
+   command joins the addition list; if machine-local is fine, nothing does.
+4. **Priority against the Go-port roadmap** — this competes with port stages
+   for attention and should not preempt them.
