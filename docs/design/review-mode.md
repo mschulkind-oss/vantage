@@ -1,8 +1,10 @@
 # Review Mode — Current Design and Where the Tiny Gaps Are
 
-> **2026-07-19 postscript:** the changelog-as-only-channel decision recorded in
-> open question 4 below has a proposed reversal, with the incident history that
-> motivates it, in
+> **2026-07-19 postscript:** this audit is historical — several gaps it names
+> have since closed (the changelog parser now runs server-side in the watcher;
+> reactions shipped; snapshots are a dead field). The changelog-as-only-channel
+> decision recorded in open question 4 below has a proposed reversal, with the
+> incident history that motivates it, in
 > [review-state-architecture.md](review-state-architecture.md). The prescient
 > part of that answer — "the changelog grammar is now load-bearing" — is
 > exactly what came true.
