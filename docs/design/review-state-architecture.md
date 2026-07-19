@@ -251,27 +251,26 @@ visible outcome, unlike today's silent erasure of the other client's replies.
 
 ### 6.2 Agent responses become deliveries
 
-This reverses a recorded decision, and should say so. The original design
+This revisits a recorded decision, and should say so. The original design
 ([review-mode.md](review-mode.md), open question 4) chose "changelog block
 only — no REST endpoint, ever," on the grounds that the agent's contract is
 editing Markdown and a second channel was out of scope — while presciently
 warning that this made the changelog grammar load-bearing. That was a
 reasonable call made *before the parser existed*, when the dedup tax was
 invisible; §3–§5 of this document are what the single-channel simplicity
-turned out to cost. The reversal is of the channel's *medium*, not its
-spirit: the agent still does one simple thing, it just does it somewhere
-that can be consumed.
+turned out to cost. The 2026-07-19 review reaffirmed the original constraint
+on the *medium* — no direct agent-to-server comms, no CLI; agents transfer by
+copy/paste and file writes — so the change here is deliberately minimal: the
+agent still responds by writing a file. What changes is *which* file — one
+that exists to be consumed, instead of the reviewed document, which exists to
+be kept.
 
-The agent stops writing responses into the document. It *delivers* them, once,
-through any of three doors — all events, not regions of a persistent file:
+The agent stops writing responses into the reviewed document. It *delivers*
+them, once, through one of two doors — both events, not regions of a
+persistent artifact:
 
-1. **API / CLI** (preferred): the clipboard payload embeds the complete
-   invocation — server URL, repo (in multi-repo mode), and path included, e.g.
-   `vantage respond --server http://host:8200 [--repo X] --path docs/a.md <short-id> "summary"`
-   — with a raw `curl` form as the fallback (and for the cases where the
-   URL the browser sees is not reachable from the agent's machine). The
-   `respond` verb is new; today's CLI has no such command.
-2. **Inbox file** (for file-only agents): append a line to
+1. **Inbox file** (primary): the clipboard payload instructs the agent to
+   append one JSON line — comment short-id, summary, nonce — to
    `.vantage/inbox/<flattened-doc-path>.jsonl` (same path-flattening scheme as
    the review store). The watcher — taught to watch this directory explicitly;
    today it drops non-Markdown paths — consumes it: rename, parse whole
@@ -280,28 +279,34 @@ through any of three doors — all events, not regions of a persistent file:
    between persist and delete re-consumes rather than loses, making the inbox
    at-least-once — which is precisely why inbox lines carry nonces (below).
    `.vantage/` joins the default ignore set for both git and the file tree.
-3. **Paste into the panel** (for tool-less chat models): the reviewer pastes
-   the model's response block into a box in the Review panel, which issues the
-   API call. The paste grammar is the *existing* bullet format — which means
-   `parseChangelog`/`parseBullet`/`resolveCommentID` survive as the paste
-   parser. What retires is the format's role as a *document-embedded
+2. **Paste into the panel** (for tool-less chat models): the reviewer pastes
+   the model's response block into a box in the Review panel, which records it
+   through the server. The paste grammar is the *existing* bullet format —
+   which means `parseChangelog`/`parseBullet`/`resolveCommentID` survive as
+   the paste parser. What retires is the format's role as a *document-embedded
    protocol*, not the parser. A double-paste is deduped by deriving the nonce
    from the pasted content — a deliberate, contained re-admission of
    content-as-identity, acceptable because this door is human-mediated.
 
-**Nonces, specified honestly.** Every delivery carries a client-generated
-nonce. The server stores seen nonces *inside `ReviewData`*, written in the
+There is deliberately no third door. An agent-facing REST endpoint or CLI
+verb was considered and rejected in review: it would teach agents a second
+transfer medium when file writes already suffice, and it reopens exactly the
+scope the original design refused.
+
+**Nonces, specified honestly.** Every delivery carries a nonce — written into
+its inbox line by the agent, or derived from the pasted content for the paste
+door. The server stores seen nonces *inside `ReviewData`*, written in the
 same atomic save as the reactions they guard (an in-memory set would die on
 restart — the exact flaw this doc criticizes in the prev-content cache), and
 capped (last N per review) so client-supplied input cannot grow server state
 unboundedly — the exact flaw the lock table had. A crash between apply and
 record is impossible because they are one write.
 
-What nonces buy is **transport idempotency**: a retried or replayed *call*
+What nonces buy is **transport idempotency**: a retried or replayed *delivery*
 is a lookup, not a fingerprint investigation. What they do not buy is
-protection against an agent that *re-issues the command afresh* (crashed
-harness re-running its scrollback): that mints a new nonce and lands a
-duplicate reaction. This is the residual of the new design, replacing the
+protection against an agent that *writes a fresh line for the same answer*
+(crashed harness re-running its scrollback): that carries a new nonce and
+lands a duplicate reaction. This is the residual of the new design, replacing the
 byte-identical-rewrite residual of the old one — and it is the better failure
 class by construction: a **visible duplicate** the reviewer can see and
 dismiss, instead of a silently swallowed answer or a silently answered
@@ -347,32 +352,33 @@ parser, demoted from protocol to paste-box input format.
 
 **Costs, honestly:**
 
-- **A durability downgrade, named as such.** The doc-block channel is
-  zero-infrastructure at-least-once delivery: it survives server crashes and
-  arbitrary downtime, re-offered on every save — the entire dedup tax of §5
-  is the *price* of that durability. The API door fails loudly when the
-  server is down (arguably better than silent buffering — the agent knows);
-  the inbox door, built re-consumable as specified above, retains real
-  buffering. But the default posture moves from "cannot be lost, hard to
-  dedup" to "deduped by construction, loud when undeliverable."
-- **The transcript stops traveling with the repository.** Changelog blocks
-  ride along in git; the review JSON lives in machine-local state and does
-  not. If cross-machine review history matters, an export command covers it
-  later.
+- **Durability, mostly preserved.** The doc-block channel was
+  zero-infrastructure at-least-once delivery — it survived server crashes and
+  arbitrary downtime, re-offered on every save, and the entire dedup tax of
+  §5 was the *price* of that property. With the inbox as the primary door the
+  class is kept: lines buffer through downtime and survive crashes
+  (consumption is rename → persist → delete), now deduped by nonce instead of
+  by inference. What is lost is only the re-offered-forever behavior — which
+  was the disease.
+- **The transcript stays machine-local — decided, and preferred**
+  (2026-07-19 review). Changelog blocks used to ride along in git; the review
+  JSON does not travel, and reviewed documents stay free of review litter. No
+  export command joins the addition list.
 - **Reviewer commands need surfaced failure.** Today's PUT is self-healing —
   any later successful PUT retransmits everything, so a failed one costs
   nothing durable. A failed command is that operation lost, so failures must
   be surfaced (re-enable the button, show a toast) or queued; that is part of
   the addition list, not an afterthought.
-- "Any agent that can edit a file can respond" becomes "any agent that can
-  run a command, write one inbox line, or whose reviewer can paste a block."
+- "Any agent that can edit a file can respond" survives intact: responding is
+  still one file write — an inbox line instead of a document edit. Tool-less
+  chat models are covered by the paste box.
 - Static exports are unaffected: review is already inert there (no review
   data is exported; the static interceptor strips writes), though hiding the
   Review toggle in static builds would be honest — independent of this
   proposal.
 - **Net size, claimed carefully:** product code is roughly break-even — five
-  thin handlers, a push message, a CLI verb, an inbox consumer, and a paste
-  box against the deletions above. The decisive win is elsewhere: the ~1,750
+  thin handlers, a push message, an inbox consumer, and a paste box against
+  the deletions above. The decisive win is elsewhere: the ~1,750
   test lines pinning inference behavior mostly go, and the lines that replace
   the deleted ones are boring CRUD where the deleted ones were the most
   carefully-commented inference code in the repo. Boring is the point.
@@ -387,16 +393,19 @@ parser, demoted from protocol to paste-box input format.
    (agents are still editing documents, so watcher-triggered reloads still
    race local writes). The store's public action surface (`addComment`,
    `replyToComment`, …) does not change, so no component changes.
-3. **Add `/responses` + nonces, the CLI verb, the inbox consumer, and the
-   panel paste box.** Update the clipboard payload to instruct delivery
-   ("save the file, then respond") instead of doc-editing.
-4. **Retire the changelog protocol — parser-as-protocol and dedup apparatus
-   together, never separately** — after one release behind a compatibility
-   flag. During that release, the watcher warns loudly (log + UI notice) when
-   a changelog block still arrives: clipboard payloads are long-lived — they
-   sit in agents' chat contexts — and a stale payload driving a retired
-   protocol would otherwise reproduce this doc's headline failure, silently.
-   After removal, keep a cheap marker-detection warning for one more release.
+3. **Add the nonce-deduped inbox consumer and the panel paste box** (the
+   paste box records through an internal endpoint — internal to the browser,
+   not agent-facing). Update the clipboard payload to instruct the inbox
+   write ("save the document, then append your response line") instead of
+   doc-editing.
+4. **Retire the changelog protocol in the same change — parser-as-protocol
+   and dedup apparatus together, never separately.** No compatibility release
+   (decided 2026-07-19: no external users, no frozen protocol). Keep one
+   cheap permanent safety net: the watcher warns loudly (log + UI notice)
+   when a document arrives carrying a changelog block, because clipboard
+   payloads are long-lived — they sit in agents' chat contexts — and a stale
+   payload driving the retired protocol would otherwise reproduce this doc's
+   headline failure, silently.
 
 Each phase lands independently green, provided the write-race guard survives
 through phase 2 and the parser/dedup pair is treated as one unit in phase 4.
@@ -429,7 +438,7 @@ silent in both directions, which is why the first report arrived as a UI
 mystery ("the button won't light up") rather than as what it actually was: a
 conversation system losing turns.
 
-## 10. Recommendation and open questions
+## 10. Recommendation and decisions
 
 **Recommendation: adopt the direction, but do not build it now.** The current
 implementation is correct, mutation-tested, and stable; the migration is
@@ -439,17 +448,22 @@ extending the inference machinery; extending it further is the one outcome
 this doc exists to prevent. Until then, the doc's value is as a tripwire: the
 protocol is explicitly not frozen, so nothing accumulates around it.
 
-Open questions, for whenever the trigger fires:
+The first draft's open questions were answered in review (2026-07-19 —
+conducted, fittingly, through the changelog protocol this doc retires):
 
-1. **Which agent door ships first?** CLI/API covers the primary flow
-   (coding agents on the same machine); the paste box covers tool-less chat;
-   the inbox is the most work for the narrowest audience. Plausibly ship CLI
-   + paste and skip the inbox until someone asks.
-2. **Flag or fast retirement?** §8 phase 4 assumes one compatibility release,
-   but with no external users and no frozen protocol, retiring the changelog
-   parser immediately (keeping only the stale-payload warning) may be the
-   better trade.
-3. **Does review history need to travel with the repo?** If yes, an export
-   command joins the addition list; if machine-local is fine, nothing does.
-4. **Priority against the Go-port roadmap** — this competes with port stages
-   for attention and should not preempt them.
+1. **Delivery doors: inbox + paste only.** No agent-facing API or CLI, ever —
+   copy/paste and file writes are the transfer mediums. This reaffirms the
+   original design's constraint on medium (§6.2) rather than reversing it.
+2. **Fast retirement.** No transition release: the changelog protocol and its
+   dedup apparatus go in one change, leaving only the stale-payload warning.
+3. **History is machine-local, by preference.** No export command; reviewed
+   documents stay free of review litter in git.
+
+(The first draft also asked how this ranks against the Go-port roadmap — a
+stale premise, since the port completed long ago. Question withdrawn.)
+
+<!-- changelog -->
+- [e8aca84a] Dropped the API/CLI door entirely — delivery is inbox file (primary) + paste only, keeping agent transfer to file writes and copy/paste.
+- [0a1e8813] Phase 4 now retires the changelog protocol in one change, no compatibility release; only the stale-payload warning stays.
+- [249ed210] Recorded machine-local history as the decision and removed the export-command contingency.
+- [8febbe4a] Removed the Go-port priority question — stale premise, the port is long complete.
