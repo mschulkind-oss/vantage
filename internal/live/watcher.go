@@ -65,7 +65,9 @@ func classify(rel string) (keep bool, isGitState bool) {
 // shouldPruneDir reports whether a directory (repo-relative, slash-separated)
 // should be excluded from the recursive watch set. The .git subtree is pruned
 // except for its immediate top level (so one-level state files remain watched);
-// ignored/excluded directories are pruned via the ignore matcher.
+// .vantage is pruned except for its inbox (so review deliveries generate
+// events even though the dir is always-ignored elsewhere); ignored/excluded
+// directories are pruned via the ignore matcher.
 func shouldPruneDir(rel string, matcher *ignore.Matcher) bool {
 	norm := filepath.ToSlash(rel)
 	if norm == "." || norm == "" {
@@ -77,10 +79,23 @@ func shouldPruneDir(rel string, matcher *ignore.Matcher) bool {
 	if parts[0] == ".git" {
 		return len(parts) > 1
 	}
+	// Keep ".vantage" and its inbox — checked before the matcher, which
+	// always-ignores the dir. Anything deeper is vantage-owned state the
+	// watcher has no business in.
+	if parts[0] == ".vantage" {
+		return len(parts) > 1 && norm != review.InboxRel
+	}
 	if matcher != nil && matcher.IsIgnored(norm, true) {
 		return true
 	}
 	return false
+}
+
+// isInboxPath reports whether a repo-relative slash path is the review inbox
+// directory or anything inside it. Inbox events trigger consumption instead of
+// the files_changed pipeline (classify would drop them: they are not Markdown).
+func isInboxPath(rel string) bool {
+	return rel == review.InboxRel || strings.HasPrefix(rel, review.InboxRel+"/")
 }
 
 // Watcher recursively watches a repository for Markdown and git-state changes,
@@ -146,6 +161,10 @@ func (w *Watcher) Start(ctx context.Context) error {
 
 	added := w.addRecursive(w.root)
 	w.logger.Info("watcher started", "root", w.root, "watched_dirs", added)
+
+	// Deliveries that landed while the server was down are consumed before the
+	// first event can arrive.
+	w.consumeInbox()
 
 	out := make(chan []string, 1)
 	co := newCoalescer(quietPeriod, maxWait, func(paths []string) { out <- paths })
@@ -240,6 +259,11 @@ func (w *Watcher) handleEvent(ev fsnotify.Event, co *coalescer) {
 			rel, relErr := filepath.Rel(w.root, ev.Name)
 			if relErr == nil && !shouldPruneDir(rel, w.matcher) {
 				w.addRecursive(ev.Name)
+				// A .vantage or inbox dir appearing after startup may already
+				// hold deliveries written before its watch existed.
+				if norm := filepath.ToSlash(rel); norm == ".vantage" || isInboxPath(norm) {
+					w.consumeInbox()
+				}
 			}
 			return
 		}
@@ -253,6 +277,18 @@ func (w *Watcher) handleEvent(ev fsnotify.Event, co *coalescer) {
 		return
 	}
 	rel = filepath.ToSlash(rel)
+
+	// Inbox traffic is consumed immediately; it never enters the coalesced
+	// files_changed flow. Consumption's own renames and deletes re-trigger
+	// this path, each a cheap pass over an empty directory.
+	if isInboxPath(rel) {
+		w.mu.Lock()
+		w.stats.kept++
+		w.mu.Unlock()
+		w.logger.Debug("watcher inbox event", "op", ev.Op.String(), "path", rel)
+		w.consumeInbox()
+		return
+	}
 
 	keep, _ := classify(rel)
 	if !keep {
@@ -333,6 +369,30 @@ type filesChangedMessage struct {
 	Type  string   `json:"type"`
 	Repo  string   `json:"repo,omitempty"`
 	Paths []string `json:"paths"`
+}
+
+// reviewChangedMessage mirrors the server's review_changed push so inbox
+// deliveries and API commands look identical to the browser. Repo is
+// intentionally not omitempty: the frontend matches it against its current
+// repo, and the single-repo sentinel is the empty string, not an absent key.
+type reviewChangedMessage struct {
+	Type string `json:"type"`
+	Repo string `json:"repo"`
+	Path string `json:"path"`
+}
+
+// consumeInbox drains the repo's review inbox and pushes review_changed for
+// every document a delivery mutated, so open browsers reload that review. It
+// runs at startup and on every event under the inbox; a missing or empty
+// inbox is a cheap no-op.
+func (w *Watcher) consumeInbox() {
+	if w.store == nil {
+		return
+	}
+	for _, p := range w.store.ConsumeInbox(w.root, w.repoName) {
+		w.logger.Info("review: consumed inbox delivery", "path", p)
+		w.manager.Broadcast(reviewChangedMessage{Type: "review_changed", Repo: w.repoName, Path: p})
+	}
 }
 
 // handleError surfaces an fsnotify error, adding a hint for the common inotify

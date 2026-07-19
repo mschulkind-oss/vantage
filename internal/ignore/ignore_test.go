@@ -56,6 +56,23 @@ func TestIsIgnored(t *testing.T) {
 	}
 }
 
+func TestVantageAlwaysIgnored(t *testing.T) {
+	// .vantage is vantage-owned machine traffic (the review inbox): hidden
+	// even with ignore files disabled, and no negation can resurface it.
+	_, disabled := newWorkspaceMatcher(t, "", false)
+	require.True(t, disabled.IsIgnored(".vantage", true))
+	require.True(t, disabled.IsIgnored(".vantage/inbox", true))
+	require.True(t, disabled.IsIgnored(".vantage/inbox/x.jsonl", false))
+
+	_, negated := newWorkspaceMatcher(t, "!.vantage\n!.vantage/**\n", true)
+	require.True(t, negated.IsIgnored(".vantage", true))
+	require.True(t, negated.IsIgnored(".vantage/inbox/x.jsonl", false))
+	require.Equal(t, "builtin:.vantage", negated.Explain(".vantage/inbox/x.jsonl"))
+
+	require.True(t, IsAlwaysIgnored("./.vantage/inbox"), "leading ./ normalizes")
+	require.False(t, IsAlwaysIgnored(".vantageignore"), "prefix must not swallow siblings")
+}
+
 func TestDisabledMatcherIgnoresNothing(t *testing.T) {
 	_, m := newWorkspaceMatcher(t, ".yolo/\nnode_modules\n*.log\n", false)
 	require.False(t, m.IsIgnored(".yolo", true))

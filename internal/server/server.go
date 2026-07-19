@@ -130,9 +130,10 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	}
 
 	handlers := api.NewHandlers(api.Deps{
-		Reviews: s.reviews,
-		Perf:    s.perf,
-		Config:  cfg,
+		Reviews:       s.reviews,
+		Perf:          s.perf,
+		Config:        cfg,
+		ReviewChanged: s.broadcastReviewChanged,
 	})
 
 	s.router = s.buildRouter(handlers)
@@ -246,6 +247,23 @@ func (s *Server) daemonOverrides() map[string]http.HandlerFunc {
 		"/recent/all":       s.handleRecentAllMulti,
 		"/perf/diagnostics": s.handlePerfDiagnosticsMulti,
 	}
+}
+
+// reviewChangedMessage is the push sent when a review command or delivery
+// mutates review state, mirroring the watcher's filesChangedMessage. Repo is
+// intentionally not omitempty: the frontend matches it against its current
+// repo, and the single-repo sentinel is the empty string, not an absent key.
+type reviewChangedMessage struct {
+	Type string `json:"type"`
+	Repo string `json:"repo"`
+	Path string `json:"path"`
+}
+
+// broadcastReviewChanged pushes a review_changed message through the live hub.
+// It is the api package's Deps.ReviewChanged, invoked after every successful
+// review command so open browsers reload the document's review state.
+func (s *Server) broadcastReviewChanged(repo, path string) {
+	s.manager.Broadcast(reviewChangedMessage{Type: "review_changed", Repo: repo, Path: path})
 }
 
 // warmFunc returns the cache-warm closure handed to the WebSocket Handler. On

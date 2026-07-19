@@ -183,9 +183,14 @@ type ReviewComment struct {
 	EditedAt float64 `json:"edited_at,omitempty"`
 	Resolved bool    `json:"resolved,omitempty"`
 	// Anchor is omitted while a legacy comment has not yet acquired one.
-	Anchor       *CommentAnchor    `json:"anchor,omitempty"`
-	FallbackText string            `json:"fallback_text,omitempty"`
-	Reactions    []CommentReaction `json:"reactions"`
+	Anchor       *CommentAnchor `json:"anchor,omitempty"`
+	FallbackText string         `json:"fallback_text,omitempty"`
+	// CapturedBlock is the canonicalized text of the anchored block at the
+	// moment the comment was created or last replied-to/reopened — the text the
+	// reviewer was actually looking at. Written server-side only; it becomes an
+	// agent reaction's before_text at delivery time.
+	CapturedBlock string            `json:"captured_block,omitempty"`
+	Reactions     []CommentReaction `json:"reactions"`
 	// SelectedText is legacy: the verbatim selection of pre-anchor comments.
 	SelectedText string `json:"selected_text,omitempty"`
 }
@@ -203,6 +208,11 @@ type ReviewData struct {
 	AppliedChangelog string           `json:"applied_changelog,omitempty"`
 	Snapshots        []ReviewSnapshot `json:"snapshots"`
 	Comments         []ReviewComment  `json:"comments"`
+	// Nonces are the delivery dedup keys of agent responses already applied,
+	// most-recent-last, capped at 200 (oldest dropped). Stored inside the review
+	// so the record survives restarts and is written in the same atomic save as
+	// the reactions it guards.
+	Nonces []string `json:"nonces,omitempty"`
 }
 
 // NewReviewData returns a ReviewData for filePath with its slice fields
