@@ -26,10 +26,15 @@ func TestReviewPutThenGetRoundTrips(t *testing.T) {
 	body, err := json.Marshal(rd)
 	require.NoError(t, err)
 
-	// PUT persists verbatim and returns {"status":"ok"}.
+	// PUT persists verbatim and echoes what was stored, so a client whose copy
+	// predated a server-side agent reaction learns about it from its own write.
 	wput := e.do(e.h.ReviewPut, http.MethodPut, "/review?path=a.md", string(body), true)
 	require.Equal(t, http.StatusOK, wput.Code)
-	require.JSONEq(t, `{"status":"ok"}`, wput.Body.String())
+	var echoed model.ReviewData
+	decode(t, wput, &echoed)
+	require.Equal(t, "a.md", echoed.FilePath)
+	require.Len(t, echoed.Comments, 1)
+	require.Equal(t, "c1", echoed.Comments[0].ID)
 
 	// GET returns the stored data with all keys, including the anchor + hash.
 	wget := e.do(e.h.ReviewGet, http.MethodGet, "/review?path=a.md", "", true)

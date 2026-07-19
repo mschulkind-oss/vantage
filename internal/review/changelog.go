@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -52,9 +53,11 @@ type changelogEntry struct {
 //     Malformed lines are skipped, not treated as terminators.
 //   - A bullet's short id must uniquely resolve to one comment; ambiguous or
 //     unknown ids are skipped.
-//   - Idempotency: a bullet whose (comment_id, summary) already has an
-//     agent/addressed reaction is skipped, so re-running on unchanged content
-//     writes nothing.
+//   - Idempotency, two layers. The whole call is skipped when the document's
+//     changelog content fingerprints to what was last applied, so the block
+//     living on in the document is not re-consumed on every later save. Within
+//     a block that is new, a bullet whose (comment_id, summary) already has an
+//     agent/addressed reaction this round is skipped.
 //   - The reaction's before text is the cached previous content's block at the
 //     comment's anchor line; the after text is the new content's block. Both
 //     are canonicalized via reviewanchor.StripBlockText.
@@ -87,11 +90,30 @@ func (s *Store) ApplyChangelog(filePath, newContent, repo string) int {
 	// The changelog block is part of the document, so it is re-parsed on every
 	// subsequent save. Applying it again would append the agent's old answer
 	// after the reviewer's follow-up and silently mark that follow-up answered.
-	// A fingerprint of the block distinguishes "the agent wrote a new answer"
-	// from "we are seeing the same block a second time"; it is persisted in the
-	// review so a server restart cannot lose it.
-	fingerprint := changelogFingerprint(entries)
-	if review.AppliedChangelog == fingerprint {
+	// What was last consumed is therefore recorded, persisted so a restart
+	// cannot lose it.
+	//
+	// The marker is a block COUNT plus a digest of the last block's bullets —
+	// the only bullets parseChangelog reads. A round is new when the count rose
+	// (the agent appended a block, which is a real answer even if its bullets
+	// repeat the previous round's verbatim) or the last block's bullets changed.
+	// Both halves are needed: a digest alone drops a verbatim repeat, while
+	// hashing the whole document would treat editing or pruning an EARLIER
+	// block — which the parser never reads — as a new answer and replay it.
+	cur := changelogStateOf(newContent)
+	stored, parsed := parseChangelogState(review.AppliedChangelog)
+	// A review with no marker, or one written in an older format, cannot say
+	// what it already consumed — see the dedup note below.
+	legacy := !parsed
+	if !legacy && cur.blocks <= stored.blocks && cur.digest == stored.digest {
+		if review.AppliedChangelog != cur.String() {
+			// Nothing new to apply, but the document moved (an earlier block was
+			// pruned). Track it so a later append still reads as a higher count.
+			review.AppliedChangelog = cur.String()
+			if err := s.saveLocked(filePath, repo, review); err != nil {
+				slog.Warn("review: failed to save changelog marker", "path", filePath, "error", err)
+			}
+		}
 		setPrevContent(key, newContent)
 		return 0
 	}
@@ -116,7 +138,15 @@ func (s *Store) ApplyChangelog(filePath, newContent, repo string) int {
 		}
 
 		// Idempotency: dedup by (comment_id, summary).
-		if hasAddressedReaction(comment, entry.summary) {
+		//
+		// A review stored before AppliedChangelog existed has no record of what
+		// it already consumed, so the first pass after an upgrade cannot tell a
+		// new answer from one applied months ago. Round-scoping would re-apply
+		// the old answer on top of the reviewer's follow-up and mark it
+		// answered. Legacy reviews therefore fall back to the whole-history scan
+		// — the pre-upgrade behaviour — for that one pass, after which the
+		// fingerprint recorded below makes the scoped window safe.
+		if hasAddressedReaction(comment, entry.summary, !legacy) {
 			continue
 		}
 
@@ -149,7 +179,7 @@ func (s *Store) ApplyChangelog(filePath, newContent, repo string) int {
 
 	// The fingerprint is recorded even when nothing was written, so a block
 	// whose bullets all resolved to nothing is not re-examined on every save.
-	review.AppliedChangelog = fingerprint
+	review.AppliedChangelog = cur.String()
 	if err := s.saveLocked(filePath, repo, review); err != nil {
 		slog.Warn("review: failed to save changelog reactions", "path", filePath, "error", err)
 	}
@@ -157,16 +187,50 @@ func (s *Store) ApplyChangelog(filePath, newContent, repo string) int {
 	return written
 }
 
-// changelogFingerprint identifies a parsed changelog block by its bullets, so
-// re-parsing the same block is distinguishable from the agent writing a new
-// one — even when a later block reuses an earlier summary verbatim.
-func changelogFingerprint(entries []changelogEntry) string {
+// changelogState records what ApplyChangelog last consumed: how many changelog
+// blocks the document held, and a digest of the bullets in the last one.
+type changelogState struct {
+	blocks int
+	digest string
+}
+
+// String is the persisted form, "<blocks>:<digest>".
+func (c changelogState) String() string {
+	return strconv.Itoa(c.blocks) + ":" + c.digest
+}
+
+// parseChangelogState reads the persisted form. ok is false for the empty
+// string and for any value written before this format existed, both of which
+// mean "cannot say what was already consumed".
+func parseChangelogState(s string) (changelogState, bool) {
+	sep := strings.IndexByte(s, ':')
+	if sep < 0 {
+		return changelogState{}, false
+	}
+	n, err := strconv.Atoi(s[:sep])
+	if err != nil {
+		return changelogState{}, false
+	}
+	return changelogState{blocks: n, digest: s[sep+1:]}, true
+}
+
+// changelogStateOf measures a document. The digest covers only the last block's
+// bullets, matching exactly what parseChangelog returns and ApplyChangelog acts
+// on, so edits to earlier blocks — which are never applied — cannot register as
+// a new answer.
+func changelogStateOf(content string) changelogState {
+	blocks := 0
+	for _, line := range splitLines(content) {
+		if isChangelogMarker(line) {
+			blocks++
+		}
+	}
 	h := sha256.New()
-	for _, e := range entries {
+	for _, e := range parseChangelog(content) {
 		// Length-prefixed so ("ab","c") and ("a","bc") cannot collide.
 		fmt.Fprintf(h, "%d:%s%d:%s", len(e.shortID), e.shortID, len(e.summary), e.summary)
 	}
-	return hex.EncodeToString(h.Sum(nil))
+	return changelogState{blocks: blocks, digest: hex.EncodeToString(h.Sum(nil))}
 }
 
 // commentByID returns the comment with the given id, or nil. comments is
@@ -189,14 +253,19 @@ func commentByID(comments []model.ReviewComment, id string) *model.ReviewComment
 // second-round response that happens to reuse its earlier summary as a replay
 // and silently drop it, deadlocking the thread — the reviewer would keep seeing
 // an unanswered follow-up while the agent believed it had answered.
-func hasAddressedReaction(comment *model.ReviewComment, summary string) bool {
+// With scoped=false the whole history is scanned instead — the conservative
+// pre-upgrade behaviour, used for a review that carries no AppliedChangelog and
+// so cannot say which blocks it has already consumed.
+func hasAddressedReaction(comment *model.ReviewComment, summary string, scoped bool) bool {
 	start := 0
-	for i, r := range comment.Reactions {
-		// A reviewer turn opens a new round. So does an edit: the reviewer
-		// reworded the comment, so every response recorded before the edit
-		// answered different text and must not dedup a fresh one.
-		if r.Actor == "reviewer" || (comment.EditedAt > 0 && r.Timestamp <= comment.EditedAt) {
-			start = i + 1
+	if scoped {
+		for i, r := range comment.Reactions {
+			// A reviewer turn opens a new round. So does an edit: the reviewer
+			// reworded the comment, so every response recorded before the edit
+			// answered different text and must not dedup a fresh one.
+			if r.Actor == "reviewer" || (comment.EditedAt > 0 && r.Timestamp <= comment.EditedAt) {
+				start = i + 1
+			}
 		}
 	}
 	for _, r := range comment.Reactions[start:] {

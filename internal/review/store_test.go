@@ -9,6 +9,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -319,6 +320,44 @@ func TestSaveFromClientIsIdempotent(t *testing.T) {
 	require.Equal(t, first, second, "a repeated PUT must not duplicate the merged-back reaction")
 }
 
+// SaveFromClient hands the merged review back through the pointer it was given,
+// and the PUT handler serializes exactly that value as its response. So this is
+// the property the client's "adopt what the server persisted" step depends on:
+// a reaction the caller never sent must be visible in the caller's own struct
+// once the call returns. Without it the browser keeps working against a thread
+// missing the agent's reply until someone refreshes by hand.
+func TestSaveFromClientEchoesTheMergedDataBackToTheCaller(t *testing.T) {
+	const id = "abcd1234-0000-0000-0000-000000000001"
+	s := storedReview(t, id, agentTurn("addressed", "fixed the heading", 100))
+
+	// Give the stored copy a server-owned field the client never sends, so the
+	// echo can be checked to carry that back too.
+	stored, err := s.Get(mergeDoc, "")
+	require.NoError(t, err)
+	stored.AppliedChangelog = "fingerprint-of-the-consumed-block"
+	require.NoError(t, s.Save(mergeDoc, "", stored))
+
+	// The client's copy predates the agent turn and adds a reviewer turn.
+	payload := model.NewReviewData(mergeDoc)
+	c := model.NewReviewComment(id, "please fix", 1700000000)
+	c.Reactions = []model.CommentReaction{reviewerTurn("noted", "thanks", 400)}
+	payload.Comments = append(payload.Comments, c)
+
+	require.NoError(t, s.SaveFromClient(mergeDoc, "", payload))
+
+	// The value the handler responds with is this same payload.
+	require.Equal(t, []string{
+		"agent/addressed@100",
+		"reviewer/noted@400",
+	}, trace(payload.Comments[0]),
+		"the caller's own struct must come back carrying the agent turn it omitted")
+	require.Equal(t, "fingerprint-of-the-consumed-block", payload.AppliedChangelog,
+		"the server-owned fingerprint must be carried into the echoed value too")
+
+	// And the echo is honest: it is what a later GET returns.
+	require.Equal(t, trace(payload.Comments[0]), trace(readComment(t, s, id)))
+}
+
 // An empty store is not a merge failure: the client's write must still land.
 func TestSaveFromClientWithNothingStoredSavesAsIs(t *testing.T) {
 	const id = "abcd1234-0000-0000-0000-000000000001"
@@ -501,6 +540,176 @@ func TestConcurrentSaveAndGetNeverTearsARecord(t *testing.T) {
 	require.NoError(t, err)
 	for _, e := range entries {
 		require.NotContains(t, e.Name(), ".tmp")
+	}
+}
+
+// --- Sharded locking ---------------------------------------------------------
+//
+// The per-file mutexes are a fixed array indexed by a hash of the review file
+// path, so two unrelated documents can share one mutex. That is safe only if
+// sharing costs nothing but throughput: each file must still be serialized
+// exactly as before, the two must not interfere, and sharing a mutex must not
+// deadlock. These tests probe the real lock rather than recomputing the hash,
+// so they cannot drift from however the sharding is implemented.
+
+// sharesLockShard reports whether the store lock for path b is blocked while the
+// lock for path a is held — i.e. whether the two paths land on one shard.
+func sharesLockShard(s *Store, a, b string) bool {
+	releaseA := s.lock(a, "")
+	acquired := make(chan func(), 1)
+	go func() { acquired <- s.lock(b, "") }()
+
+	select {
+	case releaseB := <-acquired:
+		releaseB()
+		releaseA()
+		return false
+	case <-time.After(100 * time.Millisecond):
+		// Still blocked, so b waits on the mutex a holds. Let it through.
+		releaseA()
+		(<-acquired)()
+		return true
+	}
+}
+
+// collidingReviewPaths finds two distinct document paths that share a lock
+// shard. With a fixed shard count one always exists; the search is bounded so a
+// broken lock (one that never blocks) fails loudly instead of hanging.
+func collidingReviewPaths(t *testing.T, s *Store) (string, string) {
+	t.Helper()
+	const first = "shard-0000.md"
+	for i := 1; i < 1024; i++ {
+		other := fmt.Sprintf("shard-%04d.md", i)
+		if sharesLockShard(s, first, other) {
+			return first, other
+		}
+	}
+	t.Fatalf("no path shared a lock shard with %q", first)
+	return "", ""
+}
+
+// hammerOneFile runs the watcher-vs-browser workload against one review file:
+// `rounds` ApplyChangelog calls, each with a unique summary, interleaved with
+// the same number of SaveFromClient calls carrying a snapshot taken before any
+// of them existed. It returns how many reactions ApplyChangelog reports writing,
+// plus any error the goroutines hit (assertions belong to the caller's
+// goroutine).
+func hammerOneFile(s *Store, doc, id, tag string, rounds int) (int64, []string) {
+	seed := model.NewReviewData(doc)
+	seed.Comments = append(seed.Comments, model.NewReviewComment(id, "please fix", 1700000000))
+	staleJSON, err := json.Marshal(seed)
+	if err != nil {
+		return 0, []string{"marshal seed: " + err.Error()}
+	}
+	if err := s.Save(doc, "", seed); err != nil {
+		return 0, []string{"seed save: " + err.Error()}
+	}
+
+	var (
+		wg       sync.WaitGroup
+		mu       sync.Mutex
+		failures []string
+		written  int64
+	)
+	fail := func(format string, args ...any) {
+		mu.Lock()
+		defer mu.Unlock()
+		failures = append(failures, fmt.Sprintf(format, args...))
+	}
+
+	for i := 0; i < rounds; i++ {
+		summary := fmt.Sprintf("%s change %02d", tag, i)
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			content := "<!-- changelog -->" + nl + "- [" + id[:8] + "] " + summary
+			atomic.AddInt64(&written, int64(s.ApplyChangelog(doc, content, "")))
+		}()
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			var payload model.ReviewData
+			if err := json.Unmarshal(staleJSON, &payload); err != nil {
+				fail("decode stale payload: %v", err)
+				return
+			}
+			if err := s.SaveFromClient(doc, "", &payload); err != nil {
+				fail("SaveFromClient: %v", err)
+			}
+		}()
+	}
+	wg.Wait()
+
+	mu.Lock()
+	defer mu.Unlock()
+	return atomic.LoadInt64(&written), failures
+}
+
+// Two documents that share a lock shard, each under the full watcher-vs-browser
+// storm at the same time. Every agent reaction in BOTH files must survive: a
+// shard is allowed to over-serialize, never to under-serialize. Cross-file
+// contamination and deadlock (the test would time out) are ruled out too.
+//
+// Run with -race.
+func TestShardedLockSerializesEachFileWhenTwoFilesShareAShard(t *testing.T) {
+	ResetCacheForTests()
+	s := NewStore(t.TempDir())
+
+	docA, docB := collidingReviewPaths(t, s)
+	require.NotEqual(t, docA, docB)
+
+	const idA = "aaaa1111-0000-0000-0000-000000000001"
+	const idB = "bbbb2222-0000-0000-0000-000000000002"
+	const rounds = 40
+
+	type result struct {
+		written  int64
+		failures []string
+	}
+	var (
+		wg  sync.WaitGroup
+		res [2]result
+	)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		w, f := hammerOneFile(s, docA, idA, "A", rounds)
+		res[0] = result{w, f}
+	}()
+	go func() {
+		defer wg.Done()
+		w, f := hammerOneFile(s, docB, idB, "B", rounds)
+		res[1] = result{w, f}
+	}()
+	wg.Wait()
+
+	for i, doc := range []string{docA, docB} {
+		tag := []string{"A", "B"}[i]
+		require.Empty(t, res[i].failures, "%s", doc)
+		// Each summary is unique, so a correct run writes it exactly once. More
+		// would mean a reaction was lost and re-written by a later apply.
+		require.Equal(t, int64(rounds), res[i].written,
+			"%s: every changelog bullet should be written exactly once", doc)
+
+		got, err := s.Get(doc, "")
+		require.NoError(t, err)
+		require.Len(t, got.Comments, 1, "%s", doc)
+
+		summaries := make([]string, 0, rounds)
+		for _, r := range got.Comments[0].Reactions {
+			require.Equal(t, "agent", r.Actor, "%s", doc)
+			summaries = append(summaries, r.Summary)
+		}
+		sort.Strings(summaries)
+
+		want := make([]string, 0, rounds)
+		for j := 0; j < rounds; j++ {
+			want = append(want, fmt.Sprintf("%s change %02d", tag, j))
+		}
+		require.Equal(t, want, summaries,
+			"%s: no agent reaction may be lost, duplicated, or leak in from the file sharing its shard", doc)
 	}
 }
 

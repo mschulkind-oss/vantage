@@ -38,6 +38,12 @@ func reviewWithReactions(t *testing.T, id string, sourceLine int, reactions ...m
 	c.Anchor = &model.CommentAnchor{SourceLine: sourceLine}
 	c.Reactions = append(c.Reactions, reactions...)
 	data.Comments = append(data.Comments, c)
+	// A review that already carries agent reactions has been through
+	// ApplyChangelog, so in practice it also carries a marker. Setting one keeps
+	// these fixtures on the post-upgrade path; the legacy (absent) case has its
+	// own test. The digest is deliberately not the fixture document's, so the
+	// content under test still reads as a new round.
+	data.AppliedChangelog = "1:some-earlier-block-digest"
 	require.NoError(t, s.Save("doc.md", "", data))
 	return s
 }
@@ -55,6 +61,12 @@ func reviewWithEditedComment(t *testing.T, id string, editedAt float64, reaction
 	c.EditedAt = editedAt
 	c.Reactions = append(c.Reactions, reactions...)
 	data.Comments = append(data.Comments, c)
+	// A review that already carries agent reactions has been through
+	// ApplyChangelog, so in practice it also carries a marker. Setting one keeps
+	// these fixtures on the post-upgrade path; the legacy (absent) case has its
+	// own test. The digest is deliberately not the fixture document's, so the
+	// content under test still reads as a new round.
+	data.AppliedChangelog = "1:some-earlier-block-digest"
 	require.NoError(t, s.Save("doc.md", "", data))
 	return s
 }
@@ -661,4 +673,300 @@ func TestApplyChangelogPreservesEditedAt(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1700000500.0, got.Comments[0].EditedAt,
 		"the watcher's rewrite must not drop edited_at")
+}
+
+// A changelog block stays in the document, so every later save re-parses it.
+// Re-applying it would append the agent's old answer after the reviewer's
+// follow-up and mark that follow-up answered — the reply silently swallowed by
+// an unrelated edit somewhere else in the file.
+func TestApplyChangelogIgnoresAReReadOfTheSameBlock(t *testing.T) {
+	id := "abcd1234-0000-0000-0000-000000000001"
+	s := reviewWithReactions(t, id, 1)
+
+	withChangelog := strings.Join([]string{
+		"Heading",
+		"",
+		"<!-- changelog -->",
+		"- [abcd1234] Fixed it",
+	}, "\n")
+	require.Equal(t, 1, s.ApplyChangelog("doc.md", withChangelog, ""))
+
+	// The reviewer is not satisfied and replies.
+	data, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	data.Comments[0].Reactions = append(data.Comments[0].Reactions,
+		model.CommentReaction{Actor: "reviewer", Kind: "needs_clarification", Summary: "still wrong", Timestamp: 1700000300})
+	require.NoError(t, s.Save("doc.md", "", data))
+
+	// An edit elsewhere in the document re-triggers the watcher.
+	unrelated := withChangelog + "\n\nAn unrelated new paragraph.\n"
+	require.Equal(t, 0, s.ApplyChangelog("doc.md", unrelated, ""),
+		"re-reading the same changelog block must not record another answer")
+
+	got, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	last := got.Comments[0].Reactions[len(got.Comments[0].Reactions)-1]
+	require.Equal(t, "reviewer", last.Actor,
+		"the reviewer's follow-up must remain the last turn, i.e. still owed to the agent")
+}
+
+// The converse: a genuine second round whose summary repeats the first round's
+// verbatim. The agent appends a fresh block, so the document's changelog region
+// changes even though the bullets read identically — fingerprinting only the
+// parsed bullets would drop this real answer and deadlock the thread.
+func TestApplyChangelogAcceptsANewBlockRepeatingTheSameSummary(t *testing.T) {
+	id := "abcd1234-0000-0000-0000-000000000001"
+	s := reviewWithReactions(t, id, 1)
+
+	round1 := strings.Join([]string{
+		"Heading",
+		"",
+		"<!-- changelog -->",
+		"- [abcd1234] Reworded for clarity",
+	}, "\n")
+	require.Equal(t, 1, s.ApplyChangelog("doc.md", round1, ""))
+
+	data, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	data.Comments[0].Reactions = append(data.Comments[0].Reactions,
+		model.CommentReaction{Actor: "reviewer", Kind: "needs_clarification", Summary: "still wrong", Timestamp: 1700000300})
+	require.NoError(t, s.Save("doc.md", "", data))
+
+	// Same wording, but a new block: the agent answered again.
+	round2 := round1 + "\n\n<!-- changelog -->\n- [abcd1234] Reworded for clarity\n"
+	require.Equal(t, 1, s.ApplyChangelog("doc.md", round2, ""),
+		"a fresh block is a real answer even when its summary repeats verbatim")
+
+	got, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	rs := got.Comments[0].Reactions
+	require.Len(t, rs, 3)
+	require.Equal(t, "agent", rs[2].Actor, "round two must land as the newest turn")
+}
+
+// A review stored before AppliedChangelog existed carries no record of what it
+// already consumed. On the first watcher pass after an upgrade the block in the
+// document has already been applied — possibly months ago — and the reviewer
+// may have replied since. Re-applying it would append the stale answer on top
+// of that follow-up and mark it answered, across every existing review at once.
+func TestApplyChangelogDoesNotReapplyToALegacyReview(t *testing.T) {
+	id := "abcd1234-0000-0000-0000-000000000001"
+	// Pre-upgrade shape: the answer is already recorded, the reviewer has since
+	// replied, and there is no AppliedChangelog fingerprint.
+	ResetCacheForTests()
+	s := NewStore(t.TempDir())
+	data := model.NewReviewData("doc.md")
+	c := model.NewReviewComment(id, "please fix", 1700000000)
+	c.Anchor = &model.CommentAnchor{SourceLine: 1}
+	c.Reactions = append(c.Reactions,
+		model.CommentReaction{Actor: "agent", Kind: "addressed", Summary: "Fixed it", Timestamp: 1700000100},
+		model.CommentReaction{Actor: "reviewer", Kind: "needs_clarification", Summary: "still wrong", Timestamp: 1700000200},
+	)
+	data.Comments = append(data.Comments, c)
+	require.NoError(t, s.Save("doc.md", "", data)) // note: no AppliedChangelog
+	before, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	require.Empty(t, before.AppliedChangelog, "fixture must look like a pre-upgrade review")
+
+	content := strings.Join([]string{
+		"Heading",
+		"",
+		"<!-- changelog -->",
+		"- [abcd1234] Fixed it",
+	}, "\n")
+	require.Equal(t, 0, s.ApplyChangelog("doc.md", content, ""),
+		"the already-consumed answer must not be re-applied on the first pass after upgrade")
+
+	got, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	rs := got.Comments[0].Reactions
+	require.Len(t, rs, 2)
+	require.Equal(t, "reviewer", rs[len(rs)-1].Actor,
+		"the reviewer's follow-up must remain the last turn")
+	require.NotEmpty(t, got.AppliedChangelog,
+		"the pass should record a fingerprint so later passes use the scoped window")
+}
+
+// The upgrade path in its plainest form: a legacy review (no AppliedChangelog)
+// whose comment already carries the exact reaction the block in the document
+// would produce, and no reviewer has replied since. The block was consumed
+// before the fingerprint field existed, so the first pass after the upgrade has
+// nothing but the reaction history to tell it so. Duplicating here would double
+// every answer in every existing review the moment the new build starts.
+func TestApplyChangelogDoesNotDuplicateAReactionALegacyReviewAlreadyHas(t *testing.T) {
+	id := "abcd1234-0000-0000-0000-000000000001"
+	ResetCacheForTests()
+	s := NewStore(t.TempDir())
+	data := model.NewReviewData("doc.md")
+	c := model.NewReviewComment(id, "please fix", 1700000000)
+	c.Anchor = &model.CommentAnchor{SourceLine: 1}
+	c.Reactions = append(c.Reactions,
+		model.CommentReaction{Actor: "agent", Kind: "addressed", Summary: "Fixed it", Timestamp: 1700000100})
+	data.Comments = append(data.Comments, c)
+	require.NoError(t, s.Save("doc.md", "", data)) // note: no AppliedChangelog
+
+	before, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	require.Empty(t, before.AppliedChangelog, "fixture must look like a pre-upgrade review")
+
+	content := strings.Join([]string{
+		"Heading",
+		"",
+		"<!-- changelog -->",
+		"- [abcd1234] Fixed it",
+	}, nl)
+
+	require.Equal(t, 0, s.ApplyChangelog("doc.md", content, ""),
+		"a block already consumed before the fingerprint existed must not be consumed again")
+
+	got, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	require.Len(t, got.Comments[0].Reactions, 1,
+		"the reaction the legacy review already holds must not be duplicated")
+	require.Equal(t, 1700000100.0, got.Comments[0].Reactions[0].Timestamp,
+		"the original reaction must survive untouched, not be replaced by a fresh stamp")
+	require.NotEmpty(t, got.AppliedChangelog,
+		"the upgrade pass must record a fingerprint so the review stops being legacy")
+}
+
+// The agent adds a bullet to the EXISTING block rather than appending a fresh
+// one — a second comment answered in the same round. The document's changelog
+// region changed, so the block is not a re-read: the new bullet must land. The
+// bullet that was already applied must not land a second time, or the first
+// comment collects a duplicate answer every time the agent touches the block.
+func TestApplyChangelogAppliesABulletAddedToTheBlockInPlace(t *testing.T) {
+	const idA = "aaaa1111-0000-0000-0000-000000000001"
+	const idB = "bbbb2222-0000-0000-0000-000000000002"
+
+	ResetCacheForTests()
+	s := NewStore(t.TempDir())
+	data := model.NewReviewData("doc.md")
+	for _, id := range []string{idA, idB} {
+		c := model.NewReviewComment(id, "please fix", 1700000000)
+		c.Anchor = &model.CommentAnchor{SourceLine: 1}
+		data.Comments = append(data.Comments, c)
+	}
+	require.NoError(t, s.Save("doc.md", "", data))
+
+	round1 := strings.Join([]string{
+		"Heading",
+		"",
+		"<!-- changelog -->",
+		"- [aaaa1111] fixed the heading",
+	}, nl)
+	require.Equal(t, 1, s.ApplyChangelog("doc.md", round1, ""))
+
+	// Same block, edited in place to answer the second comment too.
+	round2 := round1 + nl + "- [bbbb2222] fixed the table"
+	require.Equal(t, 1, s.ApplyChangelog("doc.md", round2, ""),
+		"a bullet added to the block in place is a new answer, not a re-read")
+
+	got, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	require.Len(t, got.Comments[0].Reactions, 1,
+		"the bullet applied in round one must not be applied again")
+	require.Equal(t, "fixed the heading", got.Comments[0].Reactions[0].Summary)
+	require.Len(t, got.Comments[1].Reactions, 1)
+	require.Equal(t, "fixed the table", got.Comments[1].Reactions[0].Summary)
+	require.Equal(t, "agent", got.Comments[1].Reactions[0].Actor)
+}
+
+// Prose is not an answer. Editing the document around an already-consumed block
+// — appending a paragraph after it, or inserting one before it — must read as
+// the same block seen again. Otherwise the reviewer's follow-up gets buried
+// under a replay of the agent's old answer by an edit that said nothing.
+func TestApplyChangelogTreatsProseAroundTheBlockAsAReRead(t *testing.T) {
+	id := "abcd1234-0000-0000-0000-000000000001"
+	s := reviewWithReactions(t, id, 1)
+
+	block := strings.Join([]string{
+		"Heading",
+		"",
+		"<!-- changelog -->",
+		"- [abcd1234] Fixed it",
+	}, nl)
+	require.Equal(t, 1, s.ApplyChangelog("doc.md", block, ""))
+
+	// The reviewer pushes back, so a replay would be visibly destructive: it
+	// would land after this turn and mark it answered.
+	data, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	data.Comments[0].Reactions = append(data.Comments[0].Reactions,
+		model.CommentReaction{Actor: "reviewer", Kind: "needs_clarification", Summary: "still wrong", Timestamp: 1700000300})
+	require.NoError(t, s.Save("doc.md", "", data))
+
+	require.Equal(t, 0, s.ApplyChangelog("doc.md", block+nl+nl+"A paragraph written after the block."+nl, ""),
+		"prose appended after the block is a re-read")
+	require.Equal(t, 0, s.ApplyChangelog("doc.md", "An introduction written before the block."+nl+nl+block, ""),
+		"prose inserted before the block is a re-read")
+
+	got, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	require.Len(t, got.Comments[0].Reactions, 2, "neither prose edit may record an answer")
+	last := got.Comments[0].Reactions[1]
+	require.Equal(t, "reviewer", last.Actor,
+		"the reviewer's follow-up must remain the last turn, i.e. still owed to the agent")
+}
+
+// Only the LAST changelog block is ever applied, so editing or removing an
+// earlier one is not a new answer. Treating it as one replays the live round's
+// answer on top of the reviewer's follow-up and marks that follow-up answered.
+func TestApplyChangelogIgnoresEditsToEarlierBlocks(t *testing.T) {
+	const round1 = "Heading\n\n<!-- changelog -->\n- [abcd1234] Round one\n"
+	const both = round1 + "\n<!-- changelog -->\n- [abcd1234] Round two\n"
+
+	// Two rounds answered, and the reviewer has pushed back on the second.
+	// Built per subtest: each is an alternative branch, not a continuation.
+	twoRoundsThenFollowUp := func(t *testing.T) *Store {
+		t.Helper()
+		s := reviewWithComment(t, "abcd1234-0000-0000-0000-000000000001", 1)
+		require.Equal(t, 1, s.ApplyChangelog("doc.md", round1, ""))
+		appendReviewerFollowUp(t, s, "not enough", 1700000200)
+		require.Equal(t, 1, s.ApplyChangelog("doc.md", both, ""))
+		appendReviewerFollowUp(t, s, "still not enough", 1700000400)
+		return s
+	}
+
+	for _, tc := range []struct {
+		name    string
+		content string
+	}{
+		// The agent tidies up: the superseded first block goes away. The live
+		// block — the last one — is untouched, so there is nothing new to apply.
+		{"earlier block pruned", "Heading\n\n<!-- changelog -->\n- [abcd1234] Round two\n"},
+		// Same, for a reworded earlier bullet.
+		{"earlier block reworded", "Heading\n\n<!-- changelog -->\n- [abcd1234] Round ONE (typo fixed)\n\n<!-- changelog -->\n- [abcd1234] Round two\n"},
+		// And prose churn around the blocks is likewise not an answer.
+		{"prose appended after the block", both + "\nAn unrelated new paragraph.\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := twoRoundsThenFollowUp(t)
+			require.Equal(t, 0, s.ApplyChangelog("doc.md", tc.content, ""))
+
+			got, err := s.Get("doc.md", "")
+			require.NoError(t, err)
+			rs := got.Comments[0].Reactions
+			require.Equal(t, "reviewer", rs[len(rs)-1].Actor,
+				"the reviewer's follow-up must remain the last turn, i.e. still owed to the agent")
+		})
+	}
+
+	t.Run("a genuine next round still lands after the housekeeping", func(t *testing.T) {
+		s := twoRoundsThenFollowUp(t)
+		pruned := "Heading\n\n<!-- changelog -->\n- [abcd1234] Round two\n"
+		require.Equal(t, 0, s.ApplyChangelog("doc.md", pruned, ""))
+		require.Equal(t, 1, s.ApplyChangelog("doc.md",
+			pruned+"\n<!-- changelog -->\n- [abcd1234] Round three\n", ""))
+	})
+}
+
+// appendReviewerFollowUp records a reviewer reply straight into the store, the
+// way a browser PUT would.
+func appendReviewerFollowUp(t *testing.T, s *Store, summary string, ts float64) {
+	t.Helper()
+	data, err := s.Get("doc.md", "")
+	require.NoError(t, err)
+	data.Comments[0].Reactions = append(data.Comments[0].Reactions,
+		model.CommentReaction{Actor: "reviewer", Kind: "needs_clarification", Summary: summary, Timestamp: ts})
+	require.NoError(t, s.Save("doc.md", "", data))
 }

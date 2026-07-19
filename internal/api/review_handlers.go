@@ -36,7 +36,8 @@ func (h *Handlers) ReviewGet(w http.ResponseWriter, r *http.Request) {
 // double-record agent reactions the client already holds), but it is not a
 // blind overwrite either: agent reactions the client's copy predates are
 // preserved — see [review.Store.SaveFromClient]. A malformed body is a 400; a
-// persistence failure is a 500. Success returns {"status":"ok"}.
+// persistence failure is a 500. Success returns the persisted [model.ReviewData]
+// rather than an acknowledgement, so the client sees anything the merge restored.
 func (h *Handlers) ReviewPut(w http.ResponseWriter, r *http.Request) {
 	svc, ok := h.repoOr400(w, r)
 	if !ok {
@@ -58,7 +59,11 @@ func (h *Handlers) ReviewPut(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Failed to save review")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	// Echo what was actually persisted. SaveFromClient may have restored agent
+	// reactions the client's copy lacked, and the client would otherwise never
+	// learn of them: its own staleness guard discards the reload that would have
+	// taught it, leaving the two disagreeing until a manual refresh.
+	writeJSON(w, http.StatusOK, &data)
 }
 
 // ReviewDelete handles DELETE /review (and /r/{repo}/review). When a review file

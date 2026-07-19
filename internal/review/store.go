@@ -13,6 +13,7 @@ package review
 import (
 	"encoding/json"
 	"errors"
+	"hash/fnv"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -31,9 +32,18 @@ import (
 // PUTs the whole review. Without the lock their steps interleave and one
 // silently overwrites the other.
 type Store struct {
-	dir   string
-	locks sync.Map // review file path -> *sync.Mutex
+	dir string
+	// A fixed set of mutexes, chosen by hashing the review file path. Keeping a
+	// mutex per path would grow without bound and is keyed by a client-supplied
+	// path, so it doubles as a way to grow the server's memory from outside.
+	// Sharding costs only occasional false sharing between unrelated documents,
+	// which over-serializes and never under-serializes.
+	locks [lockShards]sync.Mutex
 }
+
+// lockShards is a power of two comfortably above the number of documents a
+// reviewer has open at once, so contention between unrelated files is rare.
+const lockShards = 64
 
 // NewStore returns a Store rooted at dir. The directory is created lazily on
 // the first save, so dir need not exist yet.
@@ -45,9 +55,9 @@ func NewStore(dir string) *Store {
 // func. Callers must hold it across an entire read-modify-write, not just the
 // write, or the read half still races.
 func (s *Store) lock(filePath, repo string) func() {
-	key := s.reviewFile(filePath, repo)
-	m, _ := s.locks.LoadOrStore(key, &sync.Mutex{})
-	mu := m.(*sync.Mutex)
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(s.reviewFile(filePath, repo)))
+	mu := &s.locks[h.Sum32()%lockShards]
 	mu.Lock()
 	return mu.Unlock
 }
