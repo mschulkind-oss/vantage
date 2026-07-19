@@ -119,7 +119,7 @@ meaning can change without content changing (verbatim repeat rounds).
 
 The rule this violates: **messages need identity, and identity must travel
 with the message.** When it does, dedup is a lookup. When it must be inferred
-from content, dedup is this repository's last nine commits.
+from content, dedup is the nine-commit chase in §3.
 
 ### 4.2 Full-state replacement from two writers
 
