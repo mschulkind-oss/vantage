@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import axios from "axios";
 import {
   Check,
+  ChevronDown,
+  ChevronRight,
   ClipboardCopy,
   MessageSquare,
   MoreHorizontal,
@@ -17,7 +20,7 @@ import {
   isPendingForAgent,
   useReviewStore,
 } from "../stores/useReviewStore";
-import type { CommentReaction, ReviewComment } from "../types";
+import type { CommentReaction, ReviewComment, ReviewData } from "../types";
 
 interface ReviewPanelProps {
   isOpen: boolean;
@@ -71,6 +74,18 @@ function commentMatchesFilter(c: ReviewComment, f: Filter): boolean {
   return true;
 }
 
+/**
+ * The server's {"error": …} envelope when the failure carries one. Duck-typed
+ * rather than axios.isAxiosError so a non-HTTP failure (network down) still
+ * falls through to the generic label instead of throwing here.
+ */
+function applyErrorMessage(e: unknown): string {
+  const data = (e as { response?: { data?: { error?: unknown } } } | null)
+    ?.response?.data;
+  if (data && typeof data.error === "string" && data.error) return data.error;
+  return "Apply failed";
+}
+
 export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   isOpen,
   onClose,
@@ -91,6 +106,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
     (s) => s.copyCommentToClipboard,
   );
   const endReview = useReviewStore((s) => s.endReview);
+  const runCommand = useReviewStore((s) => s.runCommand);
 
   const [filter, setFilter] = useState<Filter>("all");
   const [copied, setCopied] = useState(false);
@@ -117,6 +133,15 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const deleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const armedDeleteAt = useRef(0);
+  // Paste box — the delivery door for tool-less chat agents: the reviewer
+  // pastes the model's "- [id] summary" block and the server records it.
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [pasteBusy, setPasteBusy] = useState(false);
+  const [pasteStatus, setPasteStatus] = useState<
+    { ok: true } | { ok: false; message: string } | null
+  >(null);
+  const pasteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Counts (computed from full comment list, regardless of active filter)
   const counts = useMemo(
@@ -191,6 +216,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
       clearCopyTimer(confirmTimer);
       clearCopyTimer(endTimer);
       clearCopyTimer(deleteTimer);
+      clearCopyTimer(pasteTimer);
     },
     [],
   );
@@ -277,6 +303,43 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
       dismissOutdated();
     } else {
       armConfirm(confirmTimer, setConfirmDismiss);
+    }
+  };
+
+  const handleApplyPaste = async () => {
+    const text = pasteText.trim();
+    if (!text || pasteBusy) return;
+    setPasteBusy(true);
+    clearCopyTimer(pasteTimer);
+    setPasteStatus(null);
+    // runCommand supplies the echo-adoption guard and the on-error resync;
+    // the locals only tell this box which feedback to show, since runCommand
+    // swallows the failure after resyncing.
+    let invoked = false;
+    let failure: unknown;
+    await runCommand(async (base, path) => {
+      invoked = true;
+      try {
+        return await axios.post<ReviewData | null>(
+          `${base}/review/responses`,
+          { text },
+          { params: { path } },
+        );
+      } catch (e) {
+        failure = e;
+        throw e;
+      }
+    });
+    setPasteBusy(false);
+    if (!invoked) {
+      // No file or repo selected — runCommand bailed before sending.
+      setPasteStatus({ ok: false, message: "No document loaded" });
+    } else if (failure !== undefined) {
+      setPasteStatus({ ok: false, message: applyErrorMessage(failure) });
+    } else {
+      setPasteText("");
+      setPasteStatus({ ok: true });
+      pasteTimer.current = setTimeout(() => setPasteStatus(null), 2000);
     }
   };
 
@@ -639,6 +702,62 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
             </div>
           )}
         </div>
+
+        {comments.length > 0 && (
+          <div className="border-t border-slate-200 dark:border-slate-700 shrink-0">
+            <button
+              onClick={() => setPasteOpen((v) => !v)}
+              className="w-full flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50"
+              title="Paste an agent's response block to record it"
+            >
+              {pasteOpen ? (
+                <ChevronDown size={12} />
+              ) : (
+                <ChevronRight size={12} />
+              )}
+              Paste agent response
+            </button>
+            {pasteOpen && (
+              <div className="px-4 pb-3">
+                <textarea
+                  value={pasteText}
+                  onChange={(e) => {
+                    setPasteText(e.target.value);
+                    setPasteStatus(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                      e.preventDefault();
+                      handleApplyPaste();
+                    }
+                  }}
+                  rows={3}
+                  placeholder="- [ab12cd34] What the agent changed"
+                  className="w-full text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 px-2 py-1.5 resize-y min-h-[48px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <div className="flex items-center justify-end gap-2 mt-1">
+                  {pasteStatus &&
+                    (pasteStatus.ok ? (
+                      <span className="flex items-center gap-1 text-[11px] text-green-600 dark:text-green-400">
+                        <Check size={11} /> Applied
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-[11px] text-red-600 dark:text-red-400">
+                        <AlertCircle size={11} /> {pasteStatus.message}
+                      </span>
+                    ))}
+                  <button
+                    onClick={handleApplyPaste}
+                    disabled={pasteBusy || !pasteText.trim()}
+                    className="px-2 py-1 text-[11px] rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Apply
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {comments.length > 0 && (
           <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-700 flex items-center gap-2 shrink-0">

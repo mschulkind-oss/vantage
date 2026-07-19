@@ -35,8 +35,10 @@ export interface FileContent {
 }
 
 export interface WebSocketMessage {
-  type: "files_changed" | "hello";
+  type: "files_changed" | "review_changed" | "hello";
   paths?: string[];
+  /** review_changed: the document whose review state changed server-side. */
+  path?: string;
   repo?: string;
   version?: string;
 }
@@ -119,6 +121,12 @@ export interface ReviewComment {
   anchor?: CommentAnchor | null;
   fallback_text?: string;
   reactions?: CommentReaction[];
+  /**
+   * Server-captured text of the anchored block as of the comment's creation
+   * or last reply/reopen — it becomes a delivered reaction's `before_text`.
+   * Written server-side only; never sent by the client.
+   */
+  captured_block?: string;
   /** Legacy: pre-anchor schema kept the verbatim selection here. */
   selected_text?: string;
 }
@@ -127,4 +135,6 @@ export interface ReviewData {
   file_path: string;
   snapshots: ReviewSnapshot[];
   comments: ReviewComment[];
+  /** Delivery dedup keys, most-recent-last. Server-side only. */
+  nonces?: string[];
 }

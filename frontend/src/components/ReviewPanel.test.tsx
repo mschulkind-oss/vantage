@@ -7,6 +7,7 @@ import {
   within,
 } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import axios from "axios";
 import { ReviewPanel } from "./ReviewPanel";
 import { isPendingForAgent, useReviewStore } from "../stores/useReviewStore";
 import { useRepoStore } from "../stores/useRepoStore";
@@ -15,10 +16,12 @@ import type {
   ReactionActor,
   ReactionKind,
   ReviewComment,
+  ReviewData,
 } from "../types";
 
-// Store writes (reopen, delete, …) call saveReview, which PUTs to the API.
+// Store writes (reopen, delete, …) and the paste box fire command requests.
 vi.mock("axios");
+const mockedAxios = vi.mocked(axios, true);
 
 const reaction = (
   actor: ReactionActor,
@@ -702,5 +705,157 @@ describe("ReviewPanel — the delete arm expires", () => {
     expect(deleteButton().textContent).toBe("Delete?");
     fireEvent.click(deleteButton());
     expect(useReviewStore.getState().comments).toHaveLength(0);
+  });
+});
+
+/**
+ * The paste box is the delivery door for tool-less chat agents: the reviewer
+ * pastes the model's "- [id] summary" block and the server records it through
+ * POST /review/responses, echoing the persisted review back.
+ */
+describe("ReviewPanel — paste agent response", () => {
+  const PASTE = "- [abcd1234] Fixed the wording";
+
+  const seeded = (): ReviewComment =>
+    baseComment({ id: "abcd1234-0000", reactions: [] });
+
+  const serverCopy = (comments: ReviewComment[]): { data: ReviewData } => ({
+    data: { file_path: "doc.md", snapshots: [], comments },
+  });
+
+  /** A promise whose settlement the test controls, for racing two requests. */
+  const deferred = <T,>() => {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((r) => {
+      resolve = r;
+    });
+    return { promise, resolve };
+  };
+
+  const toggle = () =>
+    screen.getByRole("button", { name: /Paste agent response/i });
+  const box = () =>
+    screen.queryByPlaceholderText(/^- \[ab12cd34\]/) as HTMLTextAreaElement;
+  const applyButton = () => screen.getByRole("button", { name: "Apply" });
+
+  const openWithText = (text: string) => {
+    fireEvent.click(toggle());
+    fireEvent.change(box(), { target: { value: text } });
+  };
+
+  beforeEach(() => {
+    useReviewStore.setState({ comments: [], filePath: null });
+    vi.clearAllMocks();
+    mockedAxios.post.mockResolvedValue({ data: null });
+    mockedAxios.get.mockResolvedValue({ data: null });
+  });
+
+  it("is collapsed until opened, and the toggle reveals textarea + Apply", () => {
+    setComments([seeded()]);
+    render(<ReviewPanel isOpen onClose={() => {}} />);
+
+    expect(box()).toBeNull();
+    fireEvent.click(toggle());
+    expect(box()).toBeTruthy();
+    expect(applyButton()).toBeTruthy();
+    // Nothing to apply yet — an empty paste must not be sendable.
+    expect(applyButton()).toBeDisabled();
+
+    fireEvent.click(toggle());
+    expect(box()).toBeNull();
+  });
+
+  it("POSTs the pasted text, adopts the persisted copy, and clears on success", async () => {
+    const local = seeded();
+    setComments([local]);
+    mockedAxios.post.mockResolvedValueOnce(
+      serverCopy([
+        {
+          ...local,
+          reactions: [reaction("agent", "addressed", "Fixed the wording", 1)],
+        },
+      ]),
+    );
+    render(<ReviewPanel isOpen onClose={() => {}} />);
+
+    openWithText(`  ${PASTE}\n`);
+    await act(async () => {
+      fireEvent.click(applyButton());
+    });
+
+    expect(mockedAxios.post).toHaveBeenCalledWith(
+      "/api/review/responses",
+      { text: PASTE },
+      { params: { path: "doc.md" } },
+    );
+    // The echo carried the recorded reaction — the panel now shows it.
+    expect(useReviewStore.getState().comments[0].reactions).toHaveLength(1);
+    expect(screen.getByText("Fixed the wording")).toBeTruthy();
+    expect(box().value).toBe("");
+    expect(screen.getByText("Applied")).toBeTruthy();
+  });
+
+  it("applies on Cmd/Ctrl+Enter", async () => {
+    setComments([seeded()]);
+    render(<ReviewPanel isOpen onClose={() => {}} />);
+
+    openWithText(PASTE);
+    await act(async () => {
+      fireEvent.keyDown(box(), { key: "Enter", metaKey: true });
+    });
+
+    expect(mockedAxios.post).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces the server's error inline and keeps the text for fixing", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    setComments([seeded()]);
+    mockedAxios.post.mockRejectedValueOnce({
+      response: { data: { error: "No response bullets found" } },
+    });
+    render(<ReviewPanel isOpen onClose={() => {}} />);
+
+    openWithText("just some prose");
+    await act(async () => {
+      fireEvent.click(applyButton());
+    });
+
+    expect(screen.getByText("No response bullets found")).toBeTruthy();
+    // The paste survives so the reviewer can correct it instead of re-pasting.
+    expect(box().value).toBe("just some prose");
+    consoleError.mockRestore();
+  });
+
+  it("discards an echo overtaken by a newer write, like every command", async () => {
+    const local = seeded();
+    setComments([local]);
+    render(<ReviewPanel isOpen onClose={() => {}} />);
+
+    const slow = deferred<{ data: ReviewData }>();
+    mockedAxios.post.mockReturnValueOnce(slow.promise);
+    openWithText(PASTE);
+    fireEvent.click(applyButton());
+
+    // The reviewer replies while the paste is in flight; the paste's echo
+    // predates that reply and must not be adopted over it.
+    mockedAxios.post.mockResolvedValueOnce({ data: null });
+    act(() => {
+      useReviewStore.getState().replyToComment("abcd1234-0000", "also this");
+    });
+
+    await act(async () => {
+      slow.resolve(
+        serverCopy([
+          { ...local, reactions: [reaction("agent", "addressed", "done", 1)] },
+        ]),
+      );
+    });
+
+    const c = useReviewStore.getState().comments[0];
+    expect(c.reactions?.map((r) => r.summary)).toEqual(["also this"]);
+    // The delivery itself still succeeded, so the box reports it applied.
+    expect(screen.getByText("Applied")).toBeTruthy();
   });
 });

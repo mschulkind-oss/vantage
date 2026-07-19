@@ -29,6 +29,7 @@ const resetStores = () => {
     lastContent: null,
     comments: [],
     pendingSelection: null,
+    outdatedCommentIds: new Set<string>(),
     snapshots: [],
     currentSnapshotIndex: null,
     isLoading: false,
@@ -324,7 +325,9 @@ describe("useReviewStore", () => {
         filePath: "doc.md",
         comments: [baseComment],
       });
-      mockedAxios.put.mockResolvedValue({ data: {} });
+      mockedAxios.post.mockResolvedValue({ data: null });
+      mockedAxios.patch.mockResolvedValue({ data: null });
+      mockedAxios.delete.mockResolvedValue({ data: null });
     });
 
     it("editComment updates the comment text", () => {
@@ -334,13 +337,9 @@ describe("useReviewStore", () => {
 
     it("editComment saves to the server", () => {
       useReviewStore.getState().editComment("c1", "revised");
-      expect(mockedAxios.put).toHaveBeenCalledWith(
-        "/api/review",
-        expect.objectContaining({
-          comments: expect.arrayContaining([
-            expect.objectContaining({ id: "c1", comment: "revised" }),
-          ]),
-        }),
+      expect(mockedAxios.patch).toHaveBeenCalledWith(
+        "/api/review/comments/c1",
+        { comment: "revised" },
         { params: { path: "doc.md" } },
       );
     });
@@ -363,20 +362,10 @@ describe("useReviewStore", () => {
       expect(editedAt as number).toBeGreaterThanOrEqual(before);
     });
 
-    it("editComment persists edited_at to the server", () => {
+    it("editComment sends only the new text — the server stamps edited_at", () => {
       useReviewStore.getState().editComment("c1", "revised");
-      expect(mockedAxios.put).toHaveBeenCalledWith(
-        "/api/review",
-        expect.objectContaining({
-          comments: expect.arrayContaining([
-            expect.objectContaining({
-              id: "c1",
-              edited_at: expect.any(Number),
-            }),
-          ]),
-        }),
-        { params: { path: "doc.md" } },
-      );
+      const body = mockedAxios.patch.mock.calls[0][1];
+      expect(body).toEqual({ comment: "revised" });
     });
 
     it("editComment re-queues a comment the agent had already addressed", () => {
@@ -410,7 +399,7 @@ describe("useReviewStore", () => {
 
   describe("unresolveComment", () => {
     beforeEach(() => {
-      mockedAxios.put.mockResolvedValue({ data: {} });
+      mockedAxios.patch.mockResolvedValue({ data: null });
     });
 
     it("reopens an accepted comment without adding a reaction", () => {
@@ -457,13 +446,9 @@ describe("useReviewStore", () => {
 
       useReviewStore.getState().unresolveComment("c1");
 
-      expect(mockedAxios.put).toHaveBeenCalledWith(
-        "/api/review",
-        expect.objectContaining({
-          comments: expect.arrayContaining([
-            expect.objectContaining({ id: "c1", resolved: false }),
-          ]),
-        }),
+      expect(mockedAxios.patch).toHaveBeenCalledWith(
+        "/api/review/comments/c1",
+        { resolved: false },
         { params: { path: "doc.md" } },
       );
     });
@@ -961,6 +946,112 @@ describe("useReviewStore", () => {
     });
   });
 
+  describe("clipboard payload — inbox delivery protocol", () => {
+    // These pin the agent-facing contract: the payload must teach the inbox
+    // line protocol (design §6.2) and must no longer teach the retired
+    // changelog protocol — a stale instruction here would send agents back to
+    // writing response blocks into the reviewed document.
+    const writeText = vi.fn().mockResolvedValue(undefined);
+
+    beforeEach(() => {
+      writeText.mockClear();
+      Object.assign(navigator, { clipboard: { writeText } });
+    });
+
+    // A nested path proves the separator flattening, not just interpolation.
+    const seedNested = () =>
+      useReviewStore.setState({
+        filePath: "docs/design/guide.md",
+        lastContent: "line one\nline two\n",
+        comments: [mkThreadComment("abcdef12-0000", "please clarify", [])],
+      });
+
+    const copiedPayload = async (): Promise<string> => {
+      const ok = await useReviewStore.getState().copyAllToClipboard();
+      expect(ok).toBe(true);
+      return writeText.mock.calls[0][0] as string;
+    };
+
+    it("names this document's exact inbox file, separators flattened to __", async () => {
+      seedNested();
+      const payload = await copiedPayload();
+      expect(payload).toContain(
+        "`.vantage/inbox/docs__design__guide.md.jsonl`",
+      );
+      expect(payload).toContain("at the root of this document's repository");
+    });
+
+    it("spells out the JSON line format with this document's path embedded", async () => {
+      seedNested();
+      const payload = await copiedPayload();
+      expect(payload).toContain(
+        '{"path":"docs/design/guide.md","id":"<short-id>","summary":"<one sentence: what you changed>","nonce":"<fresh random string>"}',
+      );
+    });
+
+    it("shows an example line using a real short id from the batch", async () => {
+      seedNested();
+      const payload = await copiedPayload();
+      expect(payload).toContain('"id":"abcdef12"');
+    });
+
+    it("instructs saving the document before delivering", async () => {
+      seedNested();
+      const payload = await copiedPayload();
+      expect(payload).toContain("**save the document first**");
+      expect(payload).toContain("Save the document before appending");
+    });
+
+    it("requires a fresh nonce per line and forbids re-appending", async () => {
+      seedNested();
+      const payload = await copiedPayload();
+      expect(payload).toContain("fresh random nonce for every line");
+      expect(payload).toContain(
+        "never re-append a line you have already written",
+      );
+    });
+
+    it("keeps one line per comment acted on, skipping the rest", async () => {
+      seedNested();
+      const payload = await copiedPayload();
+      expect(payload).toContain("One line per comment you acted on");
+    });
+
+    it("offers the fenced bullet fallback for agents that cannot write files", async () => {
+      seedNested();
+      const payload = await copiedPayload();
+      expect(payload).toContain("### If you cannot write files");
+      // The fallback block itself, fenced so the reviewer can paste it whole.
+      expect(payload).toContain(
+        "```\n- [<short-id>] <one sentence: what you changed>\n```",
+      );
+      expect(payload).toContain("paste it into the Review panel");
+    });
+
+    it("no longer teaches the changelog protocol", async () => {
+      seedNested();
+      const payload = await copiedPayload();
+      expect(payload).not.toContain("<!-- changelog -->");
+      expect(payload.toLowerCase()).not.toContain("changelog");
+      expect(payload).not.toContain("no-op entry");
+      expect(payload).not.toContain("END of this document");
+    });
+
+    it("copyCommentToClipboard carries the same delivery instructions", async () => {
+      seedNested();
+      const ok = await useReviewStore
+        .getState()
+        .copyCommentToClipboard("abcdef12-0000");
+      expect(ok).toBe(true);
+      const payload = writeText.mock.calls[0][0] as string;
+      expect(payload).toContain(
+        "`.vantage/inbox/docs__design__guide.md.jsonl`",
+      );
+      expect(payload).toContain('"id":"abcdef12"');
+      expect(payload.toLowerCase()).not.toContain("changelog");
+    });
+  });
+
   describe("loadReview — race guards", () => {
     it("ignores a response that lands after the user moved to another file", async () => {
       const slow = deferred<{ data: ReviewData }>();
@@ -996,7 +1087,7 @@ describe("useReviewStore", () => {
         isReviewMode: true,
         comments: [seeded],
       });
-      mockedAxios.put.mockResolvedValue({ data: {} });
+      mockedAxios.post.mockResolvedValue({ data: null });
 
       // A websocket file-change event triggers a reload...
       const slow = deferred<{ data: ReviewData }>();
@@ -1020,6 +1111,10 @@ describe("useReviewStore", () => {
   });
 
   describe("saveReview — adopting what the server persisted", () => {
+    // saveReview is unused since the command migration but stays alive until
+    // the retirement wave deletes the PUT path end to end; these tests pin
+    // its guard until then and leave with it.
+    //
     // The watcher can record an agent reaction between this browser's last
     // load and its next write. The server merges that reaction back into the
     // saved copy and echoes it; loadReview's staleness guard would discard the
@@ -1071,7 +1166,7 @@ describe("useReviewStore", () => {
       // The reviewer replies before that PUT comes back. Their reply is newer
       // than anything the in-flight response can carry, so adopting the
       // response would silently swallow it.
-      mockedAxios.put.mockResolvedValueOnce({ data: null });
+      mockedAxios.post.mockResolvedValueOnce({ data: null });
       useReviewStore.getState().replyToComment("aaaaaaaa-0001", "expand on it");
 
       slow.resolve(serverCopy([{ ...local, reactions: [agentAddressed] }]));
@@ -1177,6 +1272,313 @@ describe("useReviewStore", () => {
 
       expect(useReviewStore.getState().comments).toEqual([local]);
       expect(consoleError).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("command endpoints", () => {
+    const baseComment: ReviewComment = {
+      id: "c1",
+      comment: "original",
+      created_at: 0,
+      anchor: commentAnchor,
+      fallback_text: "line two",
+      reactions: [],
+    };
+
+    beforeEach(() => {
+      useReviewStore.setState({
+        filePath: "doc.md",
+        comments: [baseComment],
+      });
+      mockedAxios.post.mockResolvedValue({ data: null });
+      mockedAxios.patch.mockResolvedValue({ data: null });
+      mockedAxios.delete.mockResolvedValue({ data: null });
+    });
+
+    it("addComment POSTs the new comment with its client-side id and stamp", () => {
+      useReviewStore.getState().addComment(commentAnchor, "new note", "quoted");
+
+      const created = useReviewStore.getState().comments.at(-1)!;
+      expect(created.comment).toBe("new note");
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        "/api/review/comments",
+        {
+          id: created.id,
+          comment: "new note",
+          anchor: commentAnchor,
+          fallback_text: "quoted",
+          created_at: created.created_at,
+        },
+        { params: { path: "doc.md" } },
+      );
+    });
+
+    it("resolveComment accepts through the accept endpoint", () => {
+      useReviewStore.getState().resolveComment("c1");
+
+      // Optimistic: resolved plus a reviewer "noted" turn, mirroring what
+      // the server records.
+      const c = useReviewStore.getState().comments[0];
+      expect(c.resolved).toBe(true);
+      expect(c.reactions?.at(-1)).toMatchObject({
+        actor: "reviewer",
+        kind: "noted",
+      });
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        "/api/review/comments/c1/accept",
+        {},
+        { params: { path: "doc.md" } },
+      );
+    });
+
+    it("dismissComment PATCHes resolved:true", () => {
+      useReviewStore.getState().dismissComment("c1");
+
+      expect(useReviewStore.getState().comments[0].resolved).toBe(true);
+      expect(mockedAxios.patch).toHaveBeenCalledWith(
+        "/api/review/comments/c1",
+        { resolved: true },
+        { params: { path: "doc.md" } },
+      );
+    });
+
+    it("replyToComment POSTs the reply text", () => {
+      useReviewStore.getState().replyToComment("c1", "expand on it");
+
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        "/api/review/comments/c1/replies",
+        { text: "expand on it" },
+        { params: { path: "doc.md" } },
+      );
+    });
+
+    it("reopenAndReply POSTs through reopen-reply", () => {
+      useReviewStore.setState({
+        comments: [{ ...baseComment, resolved: true }],
+      });
+
+      useReviewStore.getState().reopenAndReply("c1", "one more thing");
+
+      const c = useReviewStore.getState().comments[0];
+      expect(c.resolved).toBe(false);
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        "/api/review/comments/c1/reopen-reply",
+        { text: "one more thing" },
+        { params: { path: "doc.md" } },
+      );
+    });
+
+    it("deleteComment DELETEs the comment", () => {
+      useReviewStore.getState().deleteComment("c1");
+
+      expect(useReviewStore.getState().comments).toEqual([]);
+      expect(mockedAxios.delete).toHaveBeenCalledWith(
+        "/api/review/comments/c1",
+        { params: { path: "doc.md" } },
+      );
+    });
+
+    it("dismissAll POSTs a single scope:all dismissal", () => {
+      useReviewStore.setState({
+        comments: [baseComment, { ...baseComment, id: "c2" }],
+      });
+
+      useReviewStore.getState().dismissAll();
+
+      expect(useReviewStore.getState().comments.every((c) => c.resolved)).toBe(
+        true,
+      );
+      expect(mockedAxios.post).toHaveBeenCalledTimes(1);
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        "/api/review/dismissals",
+        { scope: "all" },
+        { params: { path: "doc.md" } },
+      );
+    });
+
+    it("dismissOutdated POSTs only the unresolved outdated ids", () => {
+      useReviewStore.setState({
+        comments: [
+          baseComment, // outdated + unresolved → dismissed
+          { ...baseComment, id: "c2", resolved: true }, // already resolved → skipped
+          { ...baseComment, id: "c3" }, // not outdated → untouched
+        ],
+        outdatedCommentIds: new Set(["c1", "c2"]),
+      });
+
+      useReviewStore.getState().dismissOutdated();
+
+      const [c1, , c3] = useReviewStore.getState().comments;
+      expect(c1.resolved).toBe(true);
+      expect(c3.resolved).toBeFalsy();
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        "/api/review/dismissals",
+        { scope: "ids", ids: ["c1"] },
+        { params: { path: "doc.md" } },
+      );
+    });
+
+    it("dismissOutdated sends nothing when no outdated comment is unresolved", () => {
+      useReviewStore.setState({
+        comments: [{ ...baseComment, resolved: true }],
+        outdatedCommentIds: new Set(["c1"]),
+      });
+
+      useReviewStore.getState().dismissOutdated();
+
+      expect(mockedAxios.post).not.toHaveBeenCalled();
+    });
+
+    it("routes through the repo base in multi-repo mode", () => {
+      useRepoStore.setState({ isMultiRepo: true, currentRepo: "my-repo" });
+
+      useReviewStore.getState().replyToComment("c1", "more");
+
+      expect(mockedAxios.post).toHaveBeenCalledWith(
+        "/api/r/my-repo/review/comments/c1/replies",
+        { text: "more" },
+        { params: { path: "doc.md" } },
+      );
+    });
+
+    it("keeps the optimistic mutation but skips the request before a repo is selected", () => {
+      useRepoStore.setState({ isMultiRepo: true, currentRepo: null });
+
+      useReviewStore.getState().dismissComment("c1");
+
+      expect(useReviewStore.getState().comments[0].resolved).toBe(true);
+      expect(mockedAxios.patch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("review commands — echo adoption and error resync", () => {
+    const seeded = () => mkThreadComment("aaaaaaaa-0001", "please clarify", []);
+
+    const serverCopy = (comments: ReviewComment[]): { data: ReviewData } => ({
+      data: { file_path: "doc.md", snapshots: [], comments },
+    });
+
+    /** Lets a fire-and-forget command's await chain drain. */
+    const flushCommands = () => new Promise((r) => setTimeout(r, 0));
+
+    let consoleError: MockInstance;
+    beforeEach(() => {
+      consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    });
+    afterEach(() => {
+      consoleError.mockRestore();
+    });
+
+    it("adopts the persisted copy when nothing newer landed meanwhile", async () => {
+      const local = seeded();
+      useReviewStore.setState({ filePath: "doc.md", comments: [local] });
+
+      // The server re-captured the anchored block and stamped the reply.
+      mockedAxios.post.mockResolvedValueOnce(
+        serverCopy([
+          {
+            ...local,
+            captured_block: "line two",
+            reactions: [reviewerFollowup],
+          },
+        ]),
+      );
+
+      useReviewStore.getState().replyToComment("aaaaaaaa-0001", "still wrong");
+      await flushCommands();
+
+      const c = useReviewStore.getState().comments[0];
+      expect(c.captured_block).toBe("line two");
+      expect(c.reactions).toEqual([reviewerFollowup]);
+      expect(consoleError).not.toHaveBeenCalled();
+    });
+
+    it("discards an echo overtaken by a newer write", async () => {
+      const local = seeded();
+      useReviewStore.setState({ filePath: "doc.md", comments: [local] });
+
+      const slow = deferred<{ data: ReviewData }>();
+      mockedAxios.post.mockReturnValueOnce(slow.promise);
+      useReviewStore.getState().replyToComment("aaaaaaaa-0001", "first");
+
+      // A second reply lands before the first echo returns; adopting the
+      // stale echo would swallow it.
+      mockedAxios.post.mockResolvedValueOnce({ data: null });
+      useReviewStore.getState().replyToComment("aaaaaaaa-0001", "second");
+
+      slow.resolve(serverCopy([{ ...local, reactions: [reviewerFollowup] }]));
+      await flushCommands();
+
+      const c = useReviewStore.getState().comments[0];
+      expect(c.reactions?.map((r) => r.summary)).toEqual(["first", "second"]);
+    });
+
+    it("discards an echo for a file the reviewer has already left", async () => {
+      const local = seeded();
+      useReviewStore.setState({ filePath: "doc-a.md", comments: [local] });
+
+      const slow = deferred<{ data: ReviewData }>();
+      mockedAxios.post.mockReturnValueOnce(slow.promise);
+      useReviewStore.getState().replyToComment("aaaaaaaa-0001", "for doc-a");
+
+      mockedAxios.get.mockResolvedValueOnce({
+        data: { file_path: "doc-b.md", comments: [], snapshots: [] },
+      });
+      await useReviewStore.getState().loadReview("doc-b.md");
+
+      slow.resolve(serverCopy([{ ...local, reactions: [reviewerFollowup] }]));
+      await flushCommands();
+
+      const state = useReviewStore.getState();
+      expect(state.filePath).toBe("doc-b.md");
+      // doc-a's thread must not reappear under doc-b.
+      expect(state.comments).toEqual([]);
+    });
+
+    it("discards an echo overtaken by a reload of the same file", async () => {
+      const local = seeded();
+      useReviewStore.setState({ filePath: "doc.md", comments: [local] });
+
+      const slow = deferred<{ data: ReviewData }>();
+      mockedAxios.post.mockReturnValueOnce(slow.promise);
+      useReviewStore.getState().replyToComment("aaaaaaaa-0001", "mine");
+
+      // Same file, reloaded while the command is still out — the reload
+      // carries the server's own newer state.
+      mockedAxios.get.mockResolvedValueOnce({
+        data: {
+          file_path: "doc.md",
+          snapshots: [],
+          comments: [{ ...local, comment: "reloaded from the server" }],
+        },
+      });
+      await useReviewStore.getState().loadReview("doc.md");
+
+      slow.resolve(serverCopy([{ ...local, comment: "stale echo" }]));
+      await flushCommands();
+
+      expect(useReviewStore.getState().comments[0].comment).toBe(
+        "reloaded from the server",
+      );
+    });
+
+    it("resyncs from the server when a command fails", async () => {
+      const local = seeded();
+      useReviewStore.setState({ filePath: "doc.md", comments: [local] });
+
+      mockedAxios.post.mockRejectedValueOnce(new Error("500"));
+      // The resync GET returns server truth: the reply never landed.
+      mockedAxios.get.mockResolvedValueOnce(serverCopy([local]));
+
+      useReviewStore.getState().replyToComment("aaaaaaaa-0001", "lost reply");
+      await flushCommands();
+
+      expect(consoleError).toHaveBeenCalled();
+      expect(mockedAxios.get).toHaveBeenCalledWith("/api/review", {
+        params: { path: "doc.md" },
+      });
+      // The optimistic reply is rolled back to what the server actually has.
+      expect(useReviewStore.getState().comments).toEqual([local]);
     });
   });
 });
