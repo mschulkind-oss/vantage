@@ -724,8 +724,15 @@ function respondingInstructions(
     "- The marker line must be exactly `<!-- changelog -->` (HTML comment, nothing else on the line).",
     "- Each entry is a single bullet: `- [<short-id>] <summary>` — no nested lists, no extra prose between bullets.",
     "- One bullet per comment you addressed. Skip comments you didn't act on.",
-    "- On a follow-up round, write a **new** summary describing what you changed this time — do not repeat your previous summary for that comment verbatim.",
     "- Vantage parses this block on save and records a reaction against the matching comment, including a before/after capture of the affected block.",
+    "",
+    "### Do not write a no-op entry",
+    "",
+    "Vantage tells a new answer from one it has already recorded by looking at how the changelog changed. An entry that changes nothing is indistinguishable from the entry already on file, so it is ignored — and you will have told the reviewer nothing while believing you replied. Three rules keep that from happening:",
+    "",
+    "1. **Always append a NEW block** at the end of the document. Never edit, reword, or delete a `<!-- changelog -->` block that is already there — earlier blocks are the record of previous rounds.",
+    "2. **Never repeat a summary verbatim.** On a follow-up round, say what you changed *this time*. If your new summary would read the same as your last one for that comment, that is a sign you have not actually changed anything yet.",
+    "3. **Only write an entry when you changed the document.** If you decided not to act on a comment, leave it out of the block entirely and say so to the reviewer directly — an entry claiming work you did not do reads to them as an answered comment.",
     "",
   ];
 }
