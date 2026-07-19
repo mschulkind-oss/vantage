@@ -950,6 +950,17 @@ h6:hover > .heading-anchor,
   color: rgb(22 163 74);
   border-color: rgb(34 197 94 / 0.5);
 }
+/* Armed delete: reads as the destructive commit it is. */
+.review-inline-comment-delete--armed {
+  width: auto;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: rgb(255 255 255);
+  background: rgb(220 38 38);
+  opacity: 1;
+}
 .dark .review-inline-comment-copy--done {
   color: rgb(74 222 128);
   border-color: rgb(74 222 128 / 0.5);

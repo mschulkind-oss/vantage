@@ -24,6 +24,9 @@ function renderMarkdownInline(text: string): string {
 const MARK_ATTR = "data-review-comment-id";
 const INLINE_COMMENT_ATTR = "data-review-inline-comment";
 
+/** Minimum gap between arming the delete confirm and it accepting. */
+const CONFIRM_MIN_MS = 350;
+
 /** Max ±source_line distance for the neighbor walk before marking outdated. */
 const NEIGHBOR_RADIUS = 10;
 
@@ -460,7 +463,6 @@ function wireCommentButtons(
   const { onDelete, onResolve, onDismiss, onReopen, onEdit, onCopy } = actions;
 
   const simple: Array<[string, () => void]> = [
-    [".review-inline-comment-delete", () => onDelete(comment.id)],
     [".review-inline-comment-resolve", () => onResolve(comment.id)],
     [".review-inline-comment-dismiss", () => onDismiss(comment.id)],
     [".review-inline-comment-reopen", () => onReopen(comment.id)],
@@ -471,6 +473,40 @@ function wireCommentButtons(
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       run();
+    });
+  }
+
+  // Delete is two-click, matching the sidebar: it discards the agent's replies
+  // along with the comment, and there is no undo.
+  const deleteBtn = wrapper.querySelector(".review-inline-comment-delete");
+  if (deleteBtn) {
+    let armed: ReturnType<typeof setTimeout> | null = null;
+    let armedAt = 0;
+    const disarm = () => {
+      if (armed) clearTimeout(armed);
+      armed = null;
+      deleteBtn.textContent = "×";
+      deleteBtn.classList.remove("review-inline-comment-delete--armed");
+      deleteBtn.setAttribute("title", "Delete comment");
+    };
+    deleteBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (armed) {
+        // A physical double-click delivers two clicks; without the floor it
+        // would arm and fire in one gesture, defeating the guard.
+        if (Date.now() - armedAt < CONFIRM_MIN_MS) return;
+        disarm();
+        onDelete(comment.id);
+        return;
+      }
+      armedAt = Date.now();
+      deleteBtn.textContent = "Delete?";
+      deleteBtn.classList.add("review-inline-comment-delete--armed");
+      deleteBtn.setAttribute(
+        "title",
+        "Click again to delete this comment and its replies",
+      );
+      armed = setTimeout(disarm, 3000);
     });
   }
 

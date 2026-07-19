@@ -160,14 +160,22 @@ describe("useReviewHighlights — outdated comments", () => {
     expect(block.querySelector(".review-inline-comment-delete")).not.toBeNull();
   });
 
-  it("deletes an outdated comment from the document", () => {
+  it("deletes an outdated comment from the document, on the second click", () => {
     renderInline([baseComment({ anchor: orphanAnchor })]);
 
-    fireEvent.click(
-      blockFor("c1")!.querySelector<HTMLElement>(
-        ".review-inline-comment-delete",
-      )!,
-    );
+    const btn = blockFor("c1")!.querySelector<HTMLElement>(
+      ".review-inline-comment-delete",
+    )!;
+    // First click only arms it — delete discards the whole thread, no undo.
+    fireEvent.click(btn);
+    expect(actions.onDelete).not.toHaveBeenCalled();
+    expect(btn.textContent).toBe("Delete?");
+
+    // The confirm ignores a second click inside one gesture (a physical
+    // double-click), so move the clock past that window.
+    const base = Date.now();
+    vi.spyOn(Date, "now").mockImplementation(() => base + 1000);
+    fireEvent.click(btn);
     expect(actions.onDelete).toHaveBeenCalledWith("c1");
   });
 

@@ -690,11 +690,31 @@ describe("useReviewStore", () => {
       expect(isPendingForAgent(c)).toBe(false);
     });
 
-    it("a declined (wont_fix) response leaves the comment pending", () => {
+    it("a declined (wont_fix) response answers the comment", () => {
+      // Declining is a response: the agent has spoken, so the ball is back
+      // with the reviewer. Counting it as pending re-sent the comment on
+      // every Copy forever, with no exit but dismissing it.
       const c = mk([mkReaction("agent", "wont_fix", "out of scope", 1)]);
       expect(hasAgentReaction(c)).toBe(true);
+      expect(isPendingForAgent(c)).toBe(false);
+      expect(isAnsweredByAgent(c)).toBe(true);
+    });
+
+    it("a follow-up after a declined response re-queues the comment", () => {
+      const c = mk([
+        mkReaction("agent", "wont_fix", "out of scope", 1),
+        mkReaction("reviewer", "needs_clarification", "please reconsider", 2),
+      ]);
       expect(isPendingForAgent(c)).toBe(true);
       expect(isAnsweredByAgent(c)).toBe(false);
+    });
+
+    it("an edit after a declined response re-queues the comment", () => {
+      const c = {
+        ...mk([mkReaction("agent", "wont_fix", "out of scope", 10)]),
+        edited_at: 20,
+      };
+      expect(isPendingForAgent(c)).toBe(true);
     });
 
     it("latestAgentReaction returns the agent's most recent turn", () => {

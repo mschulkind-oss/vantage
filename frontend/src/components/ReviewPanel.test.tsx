@@ -4,6 +4,7 @@ import {
   fireEvent,
   waitFor,
   act,
+  within,
 } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ReviewPanel } from "./ReviewPanel";
@@ -534,5 +535,172 @@ describe("ReviewPanel — clipboard write failure", () => {
     });
     expect(rowCopy.textContent).toContain("Copy");
     expect(rowCopy.textContent).not.toContain("failed");
+  });
+});
+
+/**
+ * Deleting a comment throws away the agent's replies with it and there is no
+ * undo, so the sidebar's trash button is two-click like the panel's other
+ * destructive actions: the first click only arms it.
+ */
+describe("ReviewPanel — two-click delete", () => {
+  beforeEach(() => {
+    useReviewStore.setState({
+      comments: [],
+      filePath: null,
+      outdatedCommentIds: new Set<string>(),
+    });
+    vi.clearAllMocks();
+  });
+
+  const FIRST = "the first comment";
+  const SECOND = "the second comment";
+
+  const seedTwo = () =>
+    setComments([
+      baseComment({ id: "c1", comment: FIRST }),
+      baseComment({ id: "c2", comment: SECOND }),
+    ]);
+
+  /**
+   * The trash button inside the row showing `commentText`. Matched by title so
+   * the query survives both states: unarmed it reads "Delete comment", armed it
+   * reads "Click again to delete this comment and its replies".
+   */
+  const deleteButtonFor = (commentText: string): HTMLElement => {
+    const row = screen.getByText(commentText).closest("div.group");
+    expect(row).toBeTruthy();
+    return within(row as HTMLElement).getByTitle(
+      /Delete comment|Click again to delete/,
+    );
+  };
+
+  const commentIds = (): string[] =>
+    useReviewStore.getState().comments.map((c) => c.id);
+
+  it("does not delete on the first click — it arms the button instead", () => {
+    setComments([baseComment({ comment: FIRST })]);
+    render(<ReviewPanel isOpen onClose={() => {}} />);
+
+    const btn = deleteButtonFor(FIRST);
+    expect(btn.textContent).toBe("");
+
+    fireEvent.click(btn);
+
+    // Nothing is gone, and the button now says what a second click will do.
+    expect(commentIds()).toEqual(["c1"]);
+    expect(screen.getByText(FIRST)).toBeTruthy();
+    expect(btn.textContent).toBe("Delete?");
+    expect(btn.getAttribute("title")).toMatch(/Click again to delete/);
+  });
+
+  // The delete confirm ignores a second click that lands within one gesture
+  // (a physical double-click), so tests must let the clock move on.
+  const settleConfirmGesture = () => {
+    const base = Date.now();
+    vi.spyOn(Date, "now").mockImplementation(() => base + 1000);
+  };
+
+  it("deletes exactly the armed comment on the second click", () => {
+    seedTwo();
+    render(<ReviewPanel isOpen onClose={() => {}} />);
+
+    const btn = deleteButtonFor(FIRST);
+    fireEvent.click(btn);
+    settleConfirmGesture();
+    fireEvent.click(btn);
+
+    expect(commentIds()).toEqual(["c2"]);
+    expect(screen.queryByText(FIRST)).toBeNull();
+    expect(screen.getByText(SECOND)).toBeTruthy();
+    // The surviving row's own button was never armed by its neighbour.
+    expect(deleteButtonFor(SECOND).textContent).toBe("");
+  });
+
+  it("moves the arm to another comment's button instead of deleting either", () => {
+    seedTwo();
+    render(<ReviewPanel isOpen onClose={() => {}} />);
+
+    fireEvent.click(deleteButtonFor(FIRST));
+    expect(deleteButtonFor(FIRST).textContent).toBe("Delete?");
+
+    // Only one button may be armed at a time: clicking the other one is a
+    // first click for it, not a confirmation of the first row.
+    settleConfirmGesture();
+    fireEvent.click(deleteButtonFor(SECOND));
+
+    expect(commentIds()).toEqual(["c1", "c2"]);
+    expect(deleteButtonFor(FIRST).textContent).toBe("");
+    expect(deleteButtonFor(SECOND).textContent).toBe("Delete?");
+
+    settleConfirmGesture();
+    // And the moved arm is live: the second row deletes on its next click.
+    fireEvent.click(deleteButtonFor(SECOND));
+    expect(commentIds()).toEqual(["c1"]);
+  });
+
+  it("disarms when the panel is closed, so reopening asks again", () => {
+    setComments([baseComment({ comment: FIRST })]);
+    const { rerender } = render(<ReviewPanel isOpen onClose={() => {}} />);
+
+    fireEvent.click(deleteButtonFor(FIRST));
+    expect(deleteButtonFor(FIRST).textContent).toBe("Delete?");
+
+    rerender(<ReviewPanel isOpen={false} onClose={() => {}} />);
+    rerender(<ReviewPanel isOpen onClose={() => {}} />);
+
+    // Reopening inside the 3s window must not leave a single click destructive.
+    expect(deleteButtonFor(FIRST).textContent).toBe("");
+    fireEvent.click(deleteButtonFor(FIRST));
+    expect(commentIds()).toEqual(["c1"]);
+    expect(deleteButtonFor(FIRST).textContent).toBe("Delete?");
+  });
+});
+
+describe("ReviewPanel — the delete arm expires", () => {
+  beforeEach(() => {
+    useReviewStore.setState({
+      comments: [],
+      filePath: null,
+      outdatedCommentIds: new Set<string>(),
+    });
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const deleteButton = (): HTMLElement =>
+    screen.getByTitle(/Delete comment|Click again to delete/);
+
+  it("disarms after 3s, so a later click only re-arms", () => {
+    setComments([baseComment({ comment: "stale arm" })]);
+    render(<ReviewPanel isOpen onClose={() => {}} />);
+
+    fireEvent.click(deleteButton());
+    expect(deleteButton().textContent).toBe("Delete?");
+
+    act(() => {
+      vi.advanceTimersByTime(3000);
+    });
+
+    // A reviewer who armed it and walked away must not lose the comment to a
+    // stray click minutes later.
+    expect(deleteButton().textContent).toBe("");
+    expect(deleteButton().getAttribute("title")).toBe("Delete comment");
+
+    fireEvent.click(deleteButton());
+    expect(useReviewStore.getState().comments).toHaveLength(1);
+    expect(deleteButton().textContent).toBe("Delete?");
+
+    // ...and the fresh arm gets a full window of its own.
+    act(() => {
+      vi.advanceTimersByTime(2999);
+    });
+    expect(deleteButton().textContent).toBe("Delete?");
+    fireEvent.click(deleteButton());
+    expect(useReviewStore.getState().comments).toHaveLength(0);
   });
 });
