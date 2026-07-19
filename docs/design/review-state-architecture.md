@@ -1,6 +1,17 @@
 # Where Review State Lives — and Why It Keeps Biting Us
 
-> Status: **proposal** · 2026-07-19
+> Status: **implemented** · 2026-07-19 (proposed and shipped the same day)
+>
+> Landed as `59c95eaa` (command endpoints, review_changed push, response
+> inbox), `b417e787` (frontend commands, paste box, inbox payload), `b732ff6a`
+> (changelog protocol retired, machinery deleted, stale-payload warning), and
+> `7e1c0bd6` (two silent-swallow defects found by attacking the result). §10's
+> "do not build it now" recommendation was overtaken by the decision to build
+> it; the reasoning below stands as the record of why.
+>
+> **§1–§5 describe the architecture as it was before that work** — they are the
+> diagnosis, kept in their original present tense. §6 onward is what now
+> exists.
 >
 > Prompted by a one-line bug report — "replying to a comment doesn't relight the
 > Copy button" — that turned into nine commits, three adversarial review passes,
@@ -438,18 +449,35 @@ silent in both directions, which is why the first report arrived as a UI
 mystery ("the button won't light up") rather than as what it actually was: a
 conversation system losing turns.
 
-## 10. Recommendation and decisions
+## 10. Decisions, and what shipping taught us
 
-**Recommendation: adopt the direction, but do not build it now.** The current
-implementation is correct, mutation-tested, and stable; the migration is
-surgery on a healthy patient. The right trigger is the *next* time review
-work touches the dedup or merge paths — at that point, execute §8 instead of
-extending the inference machinery; extending it further is the one outcome
-this doc exists to prevent. Until then, the doc's value is as a tripwire: the
-protocol is explicitly not frozen, so nothing accumulates around it.
+The original recommendation was "adopt the direction, but do not build it
+now." That was overtaken: the rework was built immediately after the
+decisions below were made. What shipped follows §6–§8 with one addition the
+plan missed and two defects worth recording.
 
-The first draft's open questions were answered in review (2026-07-19 —
-conducted, fittingly, through the changelog protocol this doc retires):
+**The addition:** §6.1's push channel turned out to be load-bearing in a way
+the first draft understated. Severing the response-from-document coupling
+also severs the *only* path by which an agent's answer reached the browser,
+because the websocket fired solely on document file changes. Every command
+and delivery now broadcasts `review_changed`.
+
+**The two defects**, both found by attacking the landed implementation, and
+both the same failure this rework exists to eliminate wearing new clothes:
+
+1. The paste box reported success whenever the request did not throw. Bullets
+   naming comments the open document lacks parse fine and apply nothing, so a
+   block pasted into the wrong panel got a green "Applied". The endpoint now
+   returns the applied count. *Lesson: "no error" is not "it worked" — a
+   delivery channel must report what it delivered.*
+2. The stale-protocol warning fired on any document containing a changelog
+   marker, unreviewed and unfenced, so serving this very repository nagged on
+   every save of the design docs that quote the retired format. Now
+   fence-aware and gated on the document being under review. *Lesson: a
+   warning that cries wolf on documentation gets trained away.*
+
+The decisions that shaped the build (2026-07-19 review — conducted, fittingly,
+through the changelog protocol this work retires):
 
 1. **Delivery doors: inbox + paste only.** No agent-facing API or CLI, ever —
    copy/paste and file writes are the transfer mediums. This reaffirms the
