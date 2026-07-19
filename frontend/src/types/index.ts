@@ -109,6 +109,12 @@ export interface ReviewComment {
   id: string;
   comment: string;
   created_at: number;
+  /**
+   * When the reviewer last edited `comment`.  Absent on comments that have
+   * never been edited.  Compared against the agent's last response timestamp
+   * to decide whether the agent has answered the *current* wording.
+   */
+  edited_at?: number;
   resolved?: boolean;
   anchor?: CommentAnchor | null;
   fallback_text?: string;
