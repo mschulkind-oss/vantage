@@ -1,7 +1,20 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  act,
+} from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { BrowserRouter } from "react-router-dom";
+import { useReviewStore } from "../stores/useReviewStore";
+import { useRepoStore } from "../stores/useRepoStore";
+import { blockVisibleText, hashBlockText } from "../lib/reviewAnchor";
+import type { CommentReaction, ReviewComment } from "../types";
+
+// Store writes (resolve, dismiss, reply, …) call saveReview, which PUTs.
+vi.mock("axios");
 
 // Mock MermaidDiagram (imported from vantage-md/react by MarkdownViewer)
 vi.mock("vantage-md/react", async () => {
@@ -169,5 +182,219 @@ This is the body.`;
 
     expect(screen.queryByText("Metadata")).not.toBeInTheDocument();
     expect(screen.getByText("Hello World")).toBeInTheDocument();
+  });
+});
+
+/**
+ * The `reviewActions` memo is the only thing connecting the inline document
+ * surface to the store — the inline hook's own tests inject `vi.fn()`s, so a
+ * swapped or dropped binding here breaks nothing else.  These tests drive the
+ * REAL store through the REAL inline buttons and assert on resulting store
+ * state, so a mis-wire (Dismiss→resolve, Reopen→dismiss, …) shows up as the
+ * wrong comment state rather than as a passing mock.
+ */
+describe("MarkdownViewer — inline review actions wiring", () => {
+  const REVIEW_DOC = "First paragraph about anchors.\n\nSecond paragraph.\n";
+
+  const agentAddressed: CommentReaction = {
+    actor: "agent",
+    kind: "addressed",
+    summary: "I reworded it",
+    before_text: "",
+    after_text: "",
+    timestamp: 10,
+  };
+
+  const baseComment = (overrides: Partial<ReviewComment>): ReviewComment => ({
+    id: "c1",
+    comment: "please change this",
+    fallback_text: "First paragraph about anchors.",
+    created_at: 0,
+    reactions: [],
+    ...overrides,
+  });
+
+  const comment = (): ReviewComment => useReviewStore.getState().comments[0];
+
+  /**
+   * Render the doc in review mode, then attach `c` to its first paragraph
+   * using an anchor hashed from the live DOM (as a real comment would be).
+   */
+  const renderWithComment = (c: ReviewComment) => {
+    renderWithRouter(
+      <MarkdownViewer content={REVIEW_DOC} currentPath="doc.md" isReviewMode />,
+    );
+    const block = document.querySelector<HTMLElement>("p[data-source-line]")!;
+    const anchor = {
+      source_line: Number.parseInt(block.getAttribute("data-source-line")!, 10),
+      block_text_hash: hashBlockText(blockVisibleText(block)),
+      selection_offset: 0,
+      selection_length: 0,
+    };
+    act(() => {
+      useReviewStore.setState({ comments: [{ ...c, anchor }] });
+    });
+  };
+
+  /** A button inside the inline block rendered for comment `id`. */
+  const inlineButton = (id: string, cls: string): HTMLElement => {
+    const block = document.querySelector<HTMLElement>(
+      `[data-review-inline-comment="${id}"]`,
+    );
+    expect(block, `no inline block rendered for ${id}`).not.toBeNull();
+    const btn = block!.querySelector<HTMLElement>(cls);
+    expect(btn, `no ${cls} button in the inline block`).not.toBeNull();
+    return btn!;
+  };
+
+  const renderWithRouter = (ui: React.ReactElement) =>
+    render(<BrowserRouter>{ui}</BrowserRouter>);
+
+  beforeEach(() => {
+    useReviewStore.setState({
+      comments: [],
+      filePath: "doc.md",
+      lastContent: REVIEW_DOC,
+      pendingSelection: null,
+      outdatedCommentIds: new Set(),
+    });
+    useRepoStore.setState({ currentRepo: null, isMultiRepo: false });
+    vi.clearAllMocks();
+  });
+
+  it("wires the inline × to deleteComment", () => {
+    renderWithComment(baseComment({}));
+
+    fireEvent.click(inlineButton("c1", ".review-inline-comment-delete"));
+
+    expect(useReviewStore.getState().comments).toHaveLength(0);
+  });
+
+  it("wires inline Dismiss on an addressed comment to resolveComment (records an acceptance)", () => {
+    renderWithComment(baseComment({ reactions: [agentAddressed] }));
+
+    fireEvent.click(inlineButton("c1", ".review-inline-comment-resolve"));
+
+    // resolveComment, not dismissComment: it resolves AND appends the
+    // reviewer "noted" turn the thread renders as "You accepted".
+    expect(comment().resolved).toBe(true);
+    expect(comment().reactions).toHaveLength(2);
+    expect(comment().reactions![1]).toMatchObject({
+      actor: "reviewer",
+      kind: "noted",
+    });
+  });
+
+  it("wires inline Dismiss on an unanswered comment to dismissComment (no reaction recorded)", () => {
+    renderWithComment(baseComment({}));
+
+    fireEvent.click(inlineButton("c1", ".review-inline-comment-dismiss"));
+
+    // The two Dismiss buttons look identical but are semantically opposite:
+    // this one closes the thread WITHOUT crediting the agent with a fix.
+    expect(comment().resolved).toBe(true);
+    expect(comment().reactions).toEqual([]);
+  });
+
+  it("wires inline Reopen to unresolveComment (reopens without replying)", () => {
+    renderWithComment(
+      baseComment({ resolved: true, reactions: [agentAddressed] }),
+    );
+
+    fireEvent.click(inlineButton("c1", ".review-inline-comment-reopen"));
+
+    expect(comment().resolved).toBe(false);
+    // Plain reopen: no follow-up turn is appended.
+    expect(comment().reactions).toHaveLength(1);
+  });
+
+  it("wires the inline edit box to editComment (new text + edited_at stamp)", () => {
+    renderWithComment(baseComment({}));
+
+    fireEvent.click(inlineButton("c1", ".review-inline-comment-edit"));
+    const textarea = document.querySelector<HTMLTextAreaElement>(
+      ".review-inline-edit-area",
+    )!;
+    fireEvent.input(textarea, { target: { value: "please change this MORE" } });
+    fireEvent.click(
+      document.querySelector<HTMLElement>(".review-inline-edit-save")!,
+    );
+
+    expect(comment().comment).toBe("please change this MORE");
+    // editComment stamps edited_at, which is what re-queues the comment.
+    expect(comment().edited_at).toBeGreaterThan(0);
+  });
+
+  it("wires inline Copy to copyCommentToClipboard (single-comment payload)", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    renderWithComment(baseComment({}));
+
+    fireEvent.click(inlineButton("c1", ".review-inline-comment-copy"));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const payload = writeText.mock.calls[0][0] as string;
+    // The singular heading is copyCommentToClipboard's, not copyAllToClipboard's.
+    expect(payload).toContain("## Review Comment for `doc.md`");
+    expect(payload).toContain("please change this");
+  });
+
+  it("routes inline Reply on an UNRESOLVED comment to replyToComment", () => {
+    const real = useReviewStore.getState();
+    const replyToComment = vi.fn(real.replyToComment);
+    const reopenAndReply = vi.fn(real.reopenAndReply);
+    useReviewStore.setState({ replyToComment, reopenAndReply });
+
+    renderWithComment(baseComment({ reactions: [agentAddressed] }));
+
+    fireEvent.click(inlineButton("c1", ".review-inline-comment-reply"));
+    const textarea = document.querySelector<HTMLTextAreaElement>(
+      ".review-inline-reply-area",
+    )!;
+    fireEvent.input(textarea, { target: { value: "still not right" } });
+    fireEvent.click(
+      document.querySelector<HTMLElement>(".review-inline-edit-save")!,
+    );
+
+    expect(replyToComment).toHaveBeenCalledWith("c1", "still not right");
+    expect(reopenAndReply).not.toHaveBeenCalled();
+    expect(comment().resolved).toBeFalsy();
+    expect(comment().reactions![1]).toMatchObject({
+      actor: "reviewer",
+      kind: "needs_clarification",
+      summary: "still not right",
+    });
+
+    useReviewStore.setState({
+      replyToComment: real.replyToComment,
+      reopenAndReply: real.reopenAndReply,
+    });
+  });
+
+  it("routes inline Reply on a RESOLVED comment to reopenAndReply (reopens it)", () => {
+    renderWithComment(
+      baseComment({ resolved: true, reactions: [agentAddressed] }),
+    );
+
+    fireEvent.click(inlineButton("c1", ".review-inline-comment-reply"));
+    const textarea = document.querySelector<HTMLTextAreaElement>(
+      ".review-inline-reply-area",
+    )!;
+    fireEvent.input(textarea, {
+      target: { value: "actually, one more thing" },
+    });
+    fireEvent.click(
+      document.querySelector<HTMLElement>(".review-inline-edit-save")!,
+    );
+
+    // Without the resolved branch the reply lands but the comment stays
+    // closed, so the agent never sees it again.
+    expect(comment().resolved).toBe(false);
+    expect(comment().reactions![1]).toMatchObject({
+      actor: "reviewer",
+      kind: "needs_clarification",
+      summary: "actually, one more thing",
+    });
   });
 });

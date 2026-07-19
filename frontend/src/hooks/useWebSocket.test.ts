@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { useWebSocket } from "./useWebSocket";
 import { useRepoStore } from "../stores/useRepoStore";
 import { useGitStore } from "../stores/useGitStore";
+import { useReviewStore } from "../stores/useReviewStore";
 
 vi.mock("../stores/useRepoStore");
 vi.mock("../stores/useGitStore");
@@ -21,6 +22,10 @@ describe("useWebSocket", () => {
   const mockViewDirectory = vi.fn();
   const mockFetchRecentFiles = vi.fn();
   const mockMarkPathsChanged = vi.fn();
+  // The review store is NOT module-mocked — we swap the real store's
+  // loadReview action so we observe the real call the hook makes.
+  const mockLoadReview = vi.fn();
+  let realLoadReview: ReturnType<typeof useReviewStore.getState>["loadReview"];
 
   const makeRepoStoreState = (overrides: Record<string, unknown> = {}) => ({
     currentPath: "test.md",
@@ -37,6 +42,9 @@ describe("useWebSocket", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
+
+    realLoadReview = useReviewStore.getState().loadReview;
+    useReviewStore.setState({ loadReview: mockLoadReview });
 
     // Mock Stores - support both destructuring and selector patterns
     const repoState = makeRepoStoreState();
@@ -78,6 +86,7 @@ describe("useWebSocket", () => {
   });
 
   afterEach(() => {
+    useReviewStore.setState({ loadReview: realLoadReview });
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
@@ -195,6 +204,44 @@ describe("useWebSocket", () => {
     // onopen triggers a full refresh
     expect(mockRefreshExpandedTree).toHaveBeenCalled();
     expect(mockFetchRecentFiles).toHaveBeenCalled();
+  });
+
+  it("reloads review data on reconnect for a markdown file", () => {
+    renderHook(() => useWebSocket());
+
+    act(() => {
+      mockWebSocket.onopen?.(new Event("open"));
+    });
+
+    // Agent reactions written during the outage arrived as file-change events
+    // we never received. Re-fetching the review keeps the client from PUTting
+    // a stale comments array back and erasing them.
+    expect(mockLoadReview).toHaveBeenCalledWith("test.md");
+  });
+
+  it("does not reload review data on reconnect for a non-markdown path", () => {
+    const repoState = makeRepoStoreState({ currentPath: "docs" });
+    const mockStore = (selector?: (state: typeof repoState) => unknown) => {
+      if (typeof selector === "function") return selector(repoState);
+      return repoState;
+    };
+    mockStore.getState = () => repoState;
+    (useRepoStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      mockStore,
+    );
+    (useRepoStore as unknown as { getState: () => typeof repoState }).getState =
+      () => repoState;
+
+    renderHook(() => useWebSocket());
+
+    act(() => {
+      mockWebSocket.onopen?.(new Event("open"));
+    });
+
+    // The directory branch ran...
+    expect(mockViewDirectory).toHaveBeenCalledWith("docs");
+    // ...and the review reload belongs only to the markdown branch
+    expect(mockLoadReview).not.toHaveBeenCalled();
   });
 
   it("skips refresh on reconnect when repos not yet loaded", () => {

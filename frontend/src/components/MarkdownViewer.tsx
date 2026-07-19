@@ -20,7 +20,10 @@ import { cn } from "../lib/utils";
 import { shouldHandleInternalNavigation } from "../lib/navigation";
 import { useRepoStore } from "../stores/useRepoStore";
 import { useDeltaFlash } from "../hooks/useDeltaFlash";
-import { useReviewHighlights } from "../hooks/useReviewHighlights";
+import {
+  useReviewHighlights,
+  type InlineReviewActions,
+} from "../hooks/useReviewHighlights";
 import { useReviewStore } from "../stores/useReviewStore";
 import { ReviewCommentPopover } from "./ReviewCommentPopover";
 import {
@@ -259,16 +262,47 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   const resolveComment = useReviewStore((s) => s.resolveComment);
   const dismissComment = useReviewStore((s) => s.dismissComment);
   const replyToComment = useReviewStore((s) => s.replyToComment);
+  const reopenAndReply = useReviewStore((s) => s.reopenAndReply);
+  const unresolveComment = useReviewStore((s) => s.unresolveComment);
+  const copyCommentToClipboard = useReviewStore(
+    (s) => s.copyCommentToClipboard,
+  );
+
+  const reviewActions = useMemo<InlineReviewActions>(
+    () => ({
+      onDelete: deleteComment,
+      onResolve: resolveComment,
+      onDismiss: dismissComment,
+      onReopen: unresolveComment,
+      onEdit: editComment,
+      // Replying to a resolved comment reopens it, matching the sidebar's
+      // "Reopen & Reply" — the inline surface offers the same one action.
+      onReply: (id, text) => {
+        const target = useReviewStore
+          .getState()
+          .comments.find((c) => c.id === id);
+        if (target?.resolved) reopenAndReply(id, text);
+        else replyToComment(id, text);
+      },
+      onCopy: copyCommentToClipboard,
+    }),
+    [
+      deleteComment,
+      resolveComment,
+      dismissComment,
+      unresolveComment,
+      editComment,
+      reopenAndReply,
+      replyToComment,
+      copyCommentToClipboard,
+    ],
+  );
 
   useReviewHighlights(
     containerRef,
     isReviewMode ? comments : [],
     isReviewMode ? body : null,
-    deleteComment,
-    resolveComment,
-    dismissComment,
-    editComment,
-    replyToComment,
+    reviewActions,
   );
 
   // Build a CapturedSelection from the current window selection or a

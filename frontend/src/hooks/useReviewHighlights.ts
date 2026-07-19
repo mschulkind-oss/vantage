@@ -6,7 +6,11 @@ import {
   hashBlockText,
   rangeFromCanonicalOffsets,
 } from "../lib/reviewAnchor";
-import { useReviewStore } from "../stores/useReviewStore";
+import {
+  hasAgentReaction,
+  isPendingForAgent,
+  useReviewStore,
+} from "../stores/useReviewStore";
 
 const mdOptions = { breaks: false, gfm: true };
 
@@ -47,19 +51,41 @@ const NEIGHBOR_RADIUS = 10;
  * word-overlap "best block", and the ✓ addressed heuristic on snapshot
  * diffs) is gone.
  */
+/**
+ * Everything the inline surface can do.  Passed as one object so the inline
+ * and sidebar surfaces stay at parity: adding a capability here surfaces it on
+ * every inline comment block at once, rather than growing another positional
+ * parameter that only some render paths remember to thread through.
+ */
+export interface InlineReviewActions {
+  onDelete: (id: string) => void;
+  /** Accept the agent's fix (records a reviewer "noted" reaction). */
+  onResolve: (id: string) => void;
+  /** Close without recording a reaction. */
+  onDismiss: (id: string) => void;
+  /** Reopen a resolved comment, no reply. */
+  onReopen: (id: string) => void;
+  onEdit: (id: string, newComment: string) => void;
+  onReply: (id: string, replyText: string) => void;
+  /** Copy this one comment's thread; resolves false if the clipboard refused. */
+  onCopy: (id: string) => Promise<boolean>;
+}
+
 export function useReviewHighlights(
   containerRef: RefObject<HTMLDivElement | null>,
   comments: ReviewComment[],
   currentContent: string | null,
-  onDeleteComment: (id: string) => void,
-  onResolveComment: (id: string) => void,
-  onDismissComment: (id: string) => void,
-  onEditComment: (id: string, newComment: string) => void,
-  onReplyComment: (id: string, replyText: string) => void,
+  actions: InlineReviewActions,
 ) {
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+
+    // The whole inline layer is torn down and rebuilt on every store write, so
+    // an open reply/edit box would lose whatever the reviewer had typed —
+    // including when their own keystroke-adjacent action triggers the redraw.
+    // Capture drafts first and restore them after the rebuild.
+    const drafts = captureDrafts(el);
 
     // Clean up previous marks
     el.querySelectorAll(`mark[${MARK_ATTR}]`).forEach((mark) => {
@@ -93,21 +119,19 @@ export function useReviewHighlights(
       return;
     }
 
-    console.log(
-      "[review] useReviewHighlights: %d comments, blocksByLine will be built from %d blocks",
-      comments.length,
-      el.querySelectorAll("[data-source-line]").length,
-    );
-
     const active = comments.filter((c) => !c.resolved);
     const resolved = comments.filter((c) => c.resolved);
 
+    // Resolved comments are rendered (collapsed) rather than reduced to a bare
+    // count: without them the inline surface offers no way to read a finished
+    // thread, reopen it, or delete it, so the sidebar became mandatory.
     if (resolved.length > 0) {
-      insertResolvedIndicator(el, resolved.length);
+      insertResolvedSection(el, resolved, actions);
     }
 
     if (active.length === 0) {
       useReviewStore.getState().setOutdatedCommentIds(new Set());
+      restoreDrafts(el, drafts);
       return;
     }
 
@@ -143,15 +167,7 @@ export function useReviewHighlights(
           comment,
         );
         outdatedIds.add(comment.id);
-        insertOutdatedComment(
-          el,
-          comment,
-          onDeleteComment,
-          onResolveComment,
-          onDismissComment,
-          onEditComment,
-          onReplyComment,
-        );
+        insertOutdatedComment(el, comment, actions);
         continue;
       }
 
@@ -209,11 +225,7 @@ export function useReviewHighlights(
         insertOutdatedComment(
           el,
           comment,
-          onDeleteComment,
-          onResolveComment,
-          onDismissComment,
-          onEditComment,
-          onReplyComment,
+          actions,
           findClosestPriorBlock(blocksByLine, anchor.source_line),
         );
         continue;
@@ -249,29 +261,12 @@ export function useReviewHighlights(
         block.classList.add("review-highlight-block-divergent");
       }
 
-      insertInlineCommentAfter(
-        block,
-        comment,
-        onDeleteComment,
-        onResolveComment,
-        onDismissComment,
-        onEditComment,
-        onReplyComment,
-        divergent,
-      );
+      insertInlineCommentAfter(block, comment, actions, divergent);
     }
 
     useReviewStore.getState().setOutdatedCommentIds(outdatedIds);
-  }, [
-    containerRef,
-    comments,
-    currentContent,
-    onDeleteComment,
-    onResolveComment,
-    onDismissComment,
-    onEditComment,
-    onReplyComment,
-  ]);
+    restoreDrafts(el, drafts);
+  }, [containerRef, comments, currentContent, actions]);
 }
 
 /** Walk neighbors by source line, find one whose hash matches. */
@@ -319,22 +314,10 @@ function findClosestPriorBlock(
 function insertInlineCommentAfter(
   blockEl: HTMLElement,
   comment: ReviewComment,
-  onDelete: (id: string) => void,
-  onResolve: (id: string) => void,
-  onDismiss: (id: string) => void,
-  onEdit: (id: string, newComment: string) => void,
-  onReply: (id: string, replyText: string) => void,
+  actions: InlineReviewActions,
   divergent: boolean,
 ) {
-  const wrapper = createCommentBlock(
-    comment,
-    onDelete,
-    onResolve,
-    onDismiss,
-    onEdit,
-    onReply,
-    divergent,
-  );
+  const wrapper = createCommentBlock(comment, actions, divergent);
   if (blockEl.nextSibling) {
     blockEl.parentNode!.insertBefore(wrapper, blockEl.nextSibling);
   } else {
@@ -345,21 +328,10 @@ function insertInlineCommentAfter(
 function insertOutdatedComment(
   container: HTMLElement,
   comment: ReviewComment,
-  onDelete: (id: string) => void,
-  onResolve: (id: string) => void,
-  onDismiss: (id: string) => void,
-  onEdit: (id: string, newComment: string) => void,
-  onReply: (id: string, replyText: string) => void,
+  actions: InlineReviewActions,
   anchorBlock: HTMLElement | null = null,
 ) {
-  const wrapper = createOutdatedBlock(
-    comment,
-    onDelete,
-    onResolve,
-    onDismiss,
-    onEdit,
-    onReply,
-  );
+  const wrapper = createOutdatedBlock(comment, actions);
   if (anchorBlock?.parentNode) {
     if (anchorBlock.nextSibling) {
       anchorBlock.parentNode.insertBefore(wrapper, anchorBlock.nextSibling);
@@ -375,14 +347,54 @@ function insertOutdatedComment(
   }
 }
 
+/**
+ * The action row shared by every inline comment variant.  Building it in one
+ * place is what keeps the anchored, outdated, and resolved renderings at
+ * parity — they previously drifted, leaving orphaned comments with no way to
+ * be edited or deleted without opening the sidebar.
+ */
+function actionRowHtml(comment: ReviewComment): string {
+  const answered = hasAgentReaction(comment);
+  const buttons: string[] = [];
+
+  if (comment.resolved) {
+    buttons.push(
+      `<button class="review-inline-comment-reopen" title="Reopen this comment">Reopen</button>`,
+      `<button class="review-inline-comment-reply" title="Reopen and reply">Reopen &amp; Reply</button>`,
+    );
+  } else {
+    // Copy is offered for anything still owed to the agent, matching the
+    // sidebar and toolbar Copy counts exactly.
+    if (isPendingForAgent(comment)) {
+      buttons.push(
+        `<button class="review-inline-comment-copy" title="Copy this comment thread to send back to the agent">Copy</button>`,
+      );
+    }
+    if (answered) {
+      buttons.push(
+        `<button class="review-inline-comment-reply" title="Reply">Reply</button>`,
+        `<button class="review-inline-comment-resolve" title="Dismiss — the agent addressed this">Dismiss</button>`,
+      );
+    } else {
+      buttons.push(
+        `<button class="review-inline-comment-dismiss" title="Dismiss comment">Dismiss</button>`,
+      );
+    }
+    buttons.push(
+      `<button class="review-inline-comment-edit" title="Edit comment">&#x270E;</button>`,
+    );
+  }
+
+  buttons.push(
+    `<button class="review-inline-comment-delete" title="Delete comment">&times;</button>`,
+  );
+  return `<div class="review-inline-comment-actions">${buttons.join("")}</div>`;
+}
+
 /** Render an inline comment block.  Resolve/Dismiss is reaction-aware. */
 function createCommentBlock(
   comment: ReviewComment,
-  onDelete: (id: string) => void,
-  onResolve: (id: string) => void,
-  onDismiss: (id: string) => void,
-  onEdit: (id: string, newComment: string) => void,
-  onReply: (id: string, replyText: string) => void,
+  actions: InlineReviewActions,
   divergent: boolean,
 ): HTMLElement {
   const wrapper = document.createElement("div");
@@ -391,33 +403,14 @@ function createCommentBlock(
     ? "review-inline-comment review-inline-comment--divergent"
     : "review-inline-comment";
 
-  const hasAgentReaction = (comment.reactions ?? []).some(
-    (r) => r.actor === "agent",
-  );
-
-  const threadHtml = renderThreadHtml(comment);
-
-  const actionButton = hasAgentReaction
-    ? `<button class="review-inline-comment-resolve" title="Dismiss — the agent addressed this">Dismiss</button>`
-    : `<button class="review-inline-comment-dismiss" title="Dismiss comment">Dismiss</button>`;
-
-  const replyButton = hasAgentReaction
-    ? `<button class="review-inline-comment-reply" title="Reply">Reply</button>`
-    : "";
-
   wrapper.innerHTML = `
     <div class="review-inline-comment-body">
       <span class="review-inline-comment-icon" title="Review comment">&#x1f4ac;</span>
       <div class="review-inline-comment-content">
         <div class="review-inline-comment-text"></div>
-        ${threadHtml}
+        ${renderThreadHtml(comment)}
       </div>
-      <div class="review-inline-comment-actions">
-        ${replyButton}
-        ${actionButton}
-        <button class="review-inline-comment-edit" title="Edit comment">&#x270E;</button>
-        <button class="review-inline-comment-delete" title="Delete comment">&times;</button>
-      </div>
+      ${actionRowHtml(comment)}
     </div>
   `;
 
@@ -425,50 +418,27 @@ function createCommentBlock(
   if (textEl) textEl.innerHTML = renderMarkdownInline(comment.comment);
 
   populateThreadSummaries(wrapper, comment);
-
-  wireCommentButtons(wrapper, comment, onDelete, onResolve, onDismiss, onEdit);
-  wireReplyButton(wrapper, comment, onReply);
+  wireCommentButtons(wrapper, comment, actions);
   return wrapper;
 }
 
 function createOutdatedBlock(
   comment: ReviewComment,
-  onDelete: (id: string) => void,
-  onResolve: (id: string) => void,
-  onDismiss: (id: string) => void,
-  onEdit: (id: string, newComment: string) => void,
-  onReply: (id: string, replyText: string) => void,
+  actions: InlineReviewActions,
 ): HTMLElement {
   const wrapper = document.createElement("div");
   wrapper.setAttribute(INLINE_COMMENT_ATTR, comment.id);
   wrapper.className = "review-inline-comment review-inline-comment--outdated";
 
-  const hasAgentReaction = (comment.reactions ?? []).some(
-    (r) => r.actor === "agent",
-  );
-
-  const threadHtml = renderThreadHtml(comment);
-
-  const actionButton = hasAgentReaction
-    ? `<button class="review-inline-comment-resolve" title="Dismiss — the agent addressed this">Dismiss</button>`
-    : `<button class="review-inline-comment-dismiss" title="Dismiss comment">Dismiss</button>`;
-
-  const replyButton = hasAgentReaction
-    ? `<button class="review-inline-comment-reply" title="Reply">Reply</button>`
-    : "";
-
   wrapper.innerHTML = `
     <div class="review-inline-comment-body review-inline-comment-body--outdated">
       <div class="review-inline-comment-content">
-        <div class="review-outdated-badge">${hasAgentReaction ? "Addressed" : "Outdated"}</div>
+        <div class="review-outdated-badge">${hasAgentReaction(comment) ? "Addressed" : "Outdated"}</div>
         <div class="review-outdated-quote"></div>
         <div class="review-inline-comment-text"></div>
-        ${threadHtml}
+        ${renderThreadHtml(comment)}
       </div>
-      <div class="review-inline-comment-actions">
-        ${replyButton}
-        ${actionButton}
-      </div>
+      ${actionRowHtml(comment)}
     </div>
   `;
   const quoteEl = wrapper.querySelector(".review-outdated-quote");
@@ -478,41 +448,51 @@ function createOutdatedBlock(
   if (textEl) textEl.innerHTML = renderMarkdownInline(comment.comment);
 
   populateThreadSummaries(wrapper, comment);
-
-  wireCommentButtons(wrapper, comment, onDelete, onResolve, onDismiss, onEdit);
-  wireReplyButton(wrapper, comment, onReply);
+  wireCommentButtons(wrapper, comment, actions);
   return wrapper;
 }
 
 function wireCommentButtons(
   wrapper: HTMLElement,
   comment: ReviewComment,
-  onDelete: (id: string) => void,
-  onResolve: (id: string) => void,
-  onDismiss: (id: string) => void,
-  onEdit: (id: string, newComment: string) => void,
+  actions: InlineReviewActions,
 ) {
-  const deleteBtn = wrapper.querySelector(".review-inline-comment-delete");
-  if (deleteBtn) {
-    deleteBtn.addEventListener("click", (e) => {
+  const { onDelete, onResolve, onDismiss, onReopen, onEdit, onCopy } = actions;
+
+  const simple: Array<[string, () => void]> = [
+    [".review-inline-comment-delete", () => onDelete(comment.id)],
+    [".review-inline-comment-resolve", () => onResolve(comment.id)],
+    [".review-inline-comment-dismiss", () => onDismiss(comment.id)],
+    [".review-inline-comment-reopen", () => onReopen(comment.id)],
+  ];
+  for (const [selector, run] of simple) {
+    const btn = wrapper.querySelector(selector);
+    if (!btn) continue;
+    btn.addEventListener("click", (e) => {
       e.stopPropagation();
-      onDelete(comment.id);
+      run();
     });
   }
-  const resolveBtn = wrapper.querySelector(".review-inline-comment-resolve");
-  if (resolveBtn) {
-    resolveBtn.addEventListener("click", (e) => {
+
+  const copyBtn = wrapper.querySelector(".review-inline-comment-copy");
+  if (copyBtn) {
+    copyBtn.addEventListener("click", async (e) => {
       e.stopPropagation();
-      onResolve(comment.id);
+      const ok = await onCopy(comment.id);
+      // The copy leaves the store untouched, so this element survives; report
+      // the outcome on it rather than letting a clipboard refusal look like a
+      // dead button.
+      copyBtn.textContent = ok ? "Copied!" : "Copy failed";
+      copyBtn.classList.add("review-inline-comment-copy--done");
+      setTimeout(() => {
+        copyBtn.textContent = "Copy";
+        copyBtn.classList.remove("review-inline-comment-copy--done");
+      }, 2000);
     });
   }
-  const dismissBtn = wrapper.querySelector(".review-inline-comment-dismiss");
-  if (dismissBtn) {
-    dismissBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      onDismiss(comment.id);
-    });
-  }
+
+  wireReplyButton(wrapper, comment, actions);
+
   const editBtn = wrapper.querySelector(".review-inline-comment-edit");
   const textEl = wrapper.querySelector(".review-inline-comment-text");
   if (editBtn && textEl) {
@@ -586,10 +566,16 @@ function renderThreadHtml(comment: ReviewComment): string {
   let html = '<div class="review-thread">';
   for (let i = 0; i < reactions.length; i++) {
     const r = reactions[i];
-    const badge =
+    // Label by actor AND kind: an "Accepted" marker is auto-generated when the
+    // reviewer dismisses an addressed comment, and labelling it "You" made it
+    // read as a follow-up the agent still owed an answer.
+    const [cls, label] =
       r.actor === "agent"
-        ? '<span class="review-thread-badge review-thread-badge--agent">Agent</span>'
-        : '<span class="review-thread-badge review-thread-badge--reviewer">You</span>';
+        ? ["agent", r.kind === "wont_fix" ? "Agent declined" : "Agent"]
+        : r.kind === "noted"
+          ? ["noted", "You accepted"]
+          : ["reviewer", "You"];
+    const badge = `<span class="review-thread-badge review-thread-badge--${cls}">${label}</span>`;
     html += `<div class="review-thread-entry" data-thread-idx="${i}">${badge}<span class="review-thread-text"></span></div>`;
   }
   html += "</div>";
@@ -611,8 +597,9 @@ function populateThreadSummaries(
 function wireReplyButton(
   wrapper: HTMLElement,
   comment: ReviewComment,
-  onReply: (id: string, replyText: string) => void,
+  actions: InlineReviewActions,
 ): void {
+  const onReply = actions.onReply;
   const replyBtn = wrapper.querySelector(".review-inline-comment-reply");
   if (!replyBtn) return;
 
@@ -632,7 +619,7 @@ function wireReplyButton(
     btnRow.className = "review-inline-edit-buttons";
 
     const sendBtn = document.createElement("button");
-    sendBtn.textContent = "Reply";
+    sendBtn.textContent = comment.resolved ? "Reopen & Reply" : "Reply";
     sendBtn.className = "review-inline-edit-save";
 
     const cancelBtn = document.createElement("button");
@@ -676,22 +663,117 @@ function wireReplyButton(
   });
 }
 
-function insertResolvedIndicator(container: HTMLElement, count: number) {
-  const existing = container.querySelector(".review-resolved-indicator");
-  if (existing) existing.remove();
+/**
+ * Resolved comments, collapsed behind a toggle at the top of the document.
+ * The bar used to be a bare count with no handler, which meant a resolved
+ * thread could not be read, reopened, or deleted from the document at all —
+ * the sidebar was the only way back. The open/closed state is kept in
+ * `resolvedSectionOpen` so it survives the full teardown-and-rebuild that
+ * every store write performs.
+ */
+function insertResolvedSection(
+  container: HTMLElement,
+  resolved: ReviewComment[],
+  actions: InlineReviewActions,
+) {
+  const section = document.createElement("div");
+  section.className = "review-resolved-section";
+  section.setAttribute(INLINE_COMMENT_ATTR, "__resolved__");
 
-  const bar = document.createElement("div");
+  const count = resolved.length;
+  const bar = document.createElement("button");
   bar.className = "review-resolved-indicator";
-  bar.setAttribute(INLINE_COMMENT_ATTR, "__resolved__");
+  bar.type = "button";
   bar.innerHTML = `
     <span class="review-resolved-indicator-icon">✓</span>
     <span class="review-resolved-indicator-text">${count} resolved comment${count !== 1 ? "s" : ""}</span>
+    <span class="review-resolved-indicator-caret">${resolvedSectionOpen ? "▾" : "▸"}</span>
   `;
 
+  const list = document.createElement("div");
+  list.className = "review-resolved-list";
+  if (!resolvedSectionOpen) list.style.display = "none";
+  for (const comment of resolved) {
+    const block = createCommentBlock(comment, actions, false);
+    block.classList.add("review-inline-comment--resolved");
+    list.appendChild(block);
+  }
+
+  bar.addEventListener("click", (e) => {
+    e.stopPropagation();
+    resolvedSectionOpen = !resolvedSectionOpen;
+    list.style.display = resolvedSectionOpen ? "" : "none";
+    const caret = bar.querySelector(".review-resolved-indicator-caret");
+    if (caret) caret.textContent = resolvedSectionOpen ? "▾" : "▸";
+  });
+
+  section.appendChild(bar);
+  section.appendChild(list);
+
   if (container.firstChild) {
-    container.insertBefore(bar, container.firstChild);
+    container.insertBefore(section, container.firstChild);
   } else {
-    container.appendChild(bar);
+    container.appendChild(section);
+  }
+}
+
+/** Whether the resolved-comments section is expanded; survives re-renders. */
+let resolvedSectionOpen = false;
+
+/** An open, unsubmitted reply or edit box captured before a re-render. */
+interface Draft {
+  commentId: string;
+  kind: "reply" | "edit";
+  value: string;
+  selectionStart: number | null;
+}
+
+function captureDrafts(container: HTMLElement): Draft[] {
+  const drafts: Draft[] = [];
+  const areas = container.querySelectorAll<HTMLTextAreaElement>(
+    ".review-inline-reply-area, .review-inline-edit-area",
+  );
+  for (const area of areas) {
+    const wrapper = area.closest(`[${INLINE_COMMENT_ATTR}]`);
+    const commentId = wrapper?.getAttribute(INLINE_COMMENT_ATTR);
+    if (!commentId || commentId === "__resolved__") continue;
+    if (!area.value.trim()) continue;
+    drafts.push({
+      commentId,
+      kind: area.classList.contains("review-inline-reply-area")
+        ? "reply"
+        : "edit",
+      value: area.value,
+      selectionStart: area.selectionStart,
+    });
+  }
+  return drafts;
+}
+
+function restoreDrafts(container: HTMLElement, drafts: Draft[]): void {
+  if (drafts.length === 0) return;
+  for (const draft of drafts) {
+    const wrapper = container.querySelector<HTMLElement>(
+      `[${INLINE_COMMENT_ATTR}="${draft.commentId}"]`,
+    );
+    if (!wrapper) continue; // comment is gone — nothing to restore onto
+    const opener = wrapper.querySelector<HTMLElement>(
+      draft.kind === "reply"
+        ? ".review-inline-comment-reply"
+        : ".review-inline-comment-edit",
+    );
+    if (!opener) continue;
+    opener.click(); // rebuilds the textarea via the normal open path
+    const area = wrapper.querySelector<HTMLTextAreaElement>(
+      draft.kind === "reply"
+        ? ".review-inline-reply-area"
+        : ".review-inline-edit-area",
+    );
+    if (!area) continue;
+    area.value = draft.value;
+    if (draft.selectionStart !== null) {
+      area.setSelectionRange(draft.selectionStart, draft.selectionStart);
+    }
   }
 }
 

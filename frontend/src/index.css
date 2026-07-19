@@ -551,8 +551,26 @@ h6:hover > .heading-anchor,
   font-size: 12px;
   font-weight: 500;
   color: rgb(22 163 74); /* green-600 */
-  cursor: default;
+  cursor: pointer;
   font-style: normal;
+  width: 100%;
+  text-align: left;
+}
+.review-resolved-indicator:hover {
+  background: rgb(34 197 94 / 0.12);
+}
+.review-resolved-indicator-caret {
+  margin-left: auto;
+  font-size: 10px;
+  opacity: 0.7;
+}
+.review-resolved-list {
+  margin: 0 0 8px;
+}
+/* Resolved threads read as archive, not as open work. */
+.review-inline-comment--resolved .review-inline-comment-body {
+  opacity: 0.75;
+  border-left-color: rgb(148 163 184 / 0.5);
 }
 .dark .review-resolved-indicator {
   background: rgb(34 197 94 / 0.08);
@@ -695,6 +713,33 @@ h6:hover > .heading-anchor,
   color: rgb(147 197 253);
   background: rgb(59 130 246 / 0.22);
 }
+/* Per-actor badge tints in the sidebar thread, mirroring the inline ones. */
+.review-reaction-badge--reviewer {
+  color: rgb(22 163 74);
+  background: rgb(34 197 94 / 0.12);
+}
+.dark .review-reaction-badge--reviewer {
+  color: rgb(134 239 172);
+  background: rgb(34 197 94 / 0.22);
+}
+.review-reaction-badge--noted,
+.review-reaction-badge--declined {
+  color: rgb(100 116 139);
+  background: rgb(148 163 184 / 0.16);
+}
+.dark .review-reaction-badge--noted,
+.dark .review-reaction-badge--declined {
+  color: rgb(203 213 225);
+  background: rgb(148 163 184 / 0.22);
+}
+.review-stripe-tooltip-actor {
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  opacity: 0.75;
+  margin-right: 5px;
+}
 .review-reaction-summary {
   flex: 1;
   font-weight: 500;
@@ -808,6 +853,18 @@ h6:hover > .heading-anchor,
   color: rgb(134 239 172);
   background: rgb(34 197 94 / 0.22);
 }
+/* Terminal turns (accepted / declined) are muted — they close a round rather
+   than asking for another one. */
+.review-thread-badge--noted,
+.review-thread-badge--declined {
+  color: rgb(100 116 139);
+  background: rgb(148 163 184 / 0.16);
+}
+.dark .review-thread-badge--noted,
+.dark .review-thread-badge--declined {
+  color: rgb(203 213 225);
+  background: rgb(148 163 184 / 0.22);
+}
 .review-thread-text {
   flex: 1;
   font-weight: 400;
@@ -854,6 +911,62 @@ h6:hover > .heading-anchor,
 .dark .review-inline-comment-reply:hover {
   background: rgb(59 130 246 / 0.15);
   border-color: rgb(96 165 250 / 0.7);
+}
+
+/* Copy and Reopen share the Reply button's outline treatment: they are all
+   "carry this thread forward" actions rather than terminal ones. */
+.review-inline-comment-copy,
+.review-inline-comment-reopen {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgb(37 99 235);
+  background: none;
+  border: 1px solid rgb(59 130 246 / 0.4);
+  border-radius: 4px;
+  padding: 2px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
+}
+.review-inline-comment-copy:hover,
+.review-inline-comment-reopen:hover {
+  background: rgb(59 130 246 / 0.08);
+  border-color: rgb(59 130 246 / 0.6);
+}
+.dark .review-inline-comment-copy,
+.dark .review-inline-comment-reopen {
+  color: rgb(96 165 250);
+  border-color: rgb(96 165 250 / 0.4);
+}
+.dark .review-inline-comment-copy:hover,
+.dark .review-inline-comment-reopen:hover {
+  background: rgb(59 130 246 / 0.15);
+  border-color: rgb(96 165 250 / 0.7);
+}
+.review-inline-comment-copy--done {
+  color: rgb(22 163 74);
+  border-color: rgb(34 197 94 / 0.5);
+}
+.dark .review-inline-comment-copy--done {
+  color: rgb(74 222 128);
+  border-color: rgb(74 222 128 / 0.5);
+}
+
+/* Flash used when jumping to a comment from the sidebar. */
+.review-inline-comment--flash .review-inline-comment-body {
+  animation: review-comment-flash 1.2s ease-out;
+}
+@keyframes review-comment-flash {
+  0%,
+  40% {
+    background: rgb(59 130 246 / 0.18);
+  }
+  100% {
+    background: transparent;
+  }
 }
 
 /* Reply textarea (same style as edit but distinct class) */

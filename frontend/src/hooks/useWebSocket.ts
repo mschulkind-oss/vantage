@@ -144,6 +144,11 @@ export const useWebSocket = () => {
       if (path.toLowerCase().endsWith(".md")) {
         loadFile(path);
         fetchStatus(path);
+        // Reactions the agent wrote during the outage arrived as file-change
+        // events we never received. Without this reload the client keeps a
+        // stale comments array and the reviewer's next action PUTs it back,
+        // erasing every agent response written while we were disconnected.
+        useReviewStore.getState().loadReview(path);
       } else {
         viewDirectory(path);
       }
