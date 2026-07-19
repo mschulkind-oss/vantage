@@ -27,6 +27,16 @@ const INLINE_COMMENT_ATTR = "data-review-inline-comment";
 /** Minimum gap between arming the delete confirm and it accepting. */
 const CONFIRM_MIN_MS = 350;
 
+/** How long an armed delete stays armed. */
+const DELETE_CONFIRM_MS = 3000;
+
+/**
+ * The comment whose inline delete is armed, if any. Module-level so it outlives
+ * the teardown-and-rebuild the hook performs on every store write; the
+ * timestamp expires it, so a stale arm cannot make a later click destructive.
+ */
+let armedDelete: { id: string; at: number } | null = null;
+
 /** Max ±source_line distance for the neighbor walk before marking outdated. */
 const NEIGHBOR_RADIUS = 10;
 
@@ -89,6 +99,13 @@ export function useReviewHighlights(
     // including when their own keystroke-adjacent action triggers the redraw.
     // Capture drafts first and restore them after the rebuild.
     const drafts = captureDrafts(el);
+
+    // An arm belongs to one comment in one document. Drop it as soon as that
+    // comment is gone — deleted, or left behind by a file switch — so it cannot
+    // be restored onto a later render of something else.
+    if (armedDelete && !comments.some((c) => c.id === armedDelete?.id)) {
+      armedDelete = null;
+    }
 
     // Clean up previous marks
     el.querySelectorAll(`mark[${MARK_ATTR}]`).forEach((mark) => {
@@ -480,33 +497,70 @@ function wireCommentButtons(
   // along with the comment, and there is no undo.
   const deleteBtn = wrapper.querySelector(".review-inline-comment-delete");
   if (deleteBtn) {
-    let armed: ReturnType<typeof setTimeout> | null = null;
-    let armedAt = 0;
-    const disarm = () => {
-      if (armed) clearTimeout(armed);
-      armed = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const paintDisarmed = () => {
       deleteBtn.textContent = "×";
       deleteBtn.classList.remove("review-inline-comment-delete--armed");
       deleteBtn.setAttribute("title", "Delete comment");
     };
-    deleteBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      if (armed) {
-        // A physical double-click delivers two clicks; without the floor it
-        // would arm and fire in one gesture, defeating the guard.
-        if (Date.now() - armedAt < CONFIRM_MIN_MS) return;
-        disarm();
-        onDelete(comment.id);
-        return;
-      }
-      armedAt = Date.now();
+
+    // When this button is armed, and since when. The clock is consulted here
+    // rather than trusting the timer to have fired: a starved or throttled
+    // timer would otherwise leave a button that reads "×" but still deletes on
+    // a single click.
+    const armedSince = (): number | null => {
+      if (armedDelete?.id !== comment.id) return null;
+      if (Date.now() - armedDelete.at >= DELETE_CONFIRM_MS) return null;
+      return armedDelete.at;
+    };
+
+    const paintArmed = (at: number) => {
       deleteBtn.textContent = "Delete?";
       deleteBtn.classList.add("review-inline-comment-delete--armed");
       deleteBtn.setAttribute(
         "title",
         "Click again to delete this comment and its replies",
       );
-      armed = setTimeout(disarm, 3000);
+      if (timer) clearTimeout(timer);
+      // The remaining window, not a fresh one — a rebuild must not extend the
+      // confirm indefinitely while the agent writes.
+      timer = setTimeout(
+        () => {
+          // Retire only the arm this timer was scheduled for; a later arm on the
+          // same comment owns itself.
+          if (armedDelete?.id === comment.id && armedDelete.at === at) {
+            armedDelete = null;
+          }
+          paintDisarmed();
+        },
+        Math.max(0, DELETE_CONFIRM_MS - (Date.now() - at)),
+      );
+    };
+
+    // Restore an arm that survived a rebuild. The inline layer is torn down on
+    // every store write — which the agent fires constantly — so without this
+    // the button silently reverts between the reviewer's two clicks and delete
+    // reads as broken.
+    const restored = armedSince();
+    if (restored !== null) paintArmed(restored);
+
+    deleteBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const at = armedSince();
+      if (at !== null) {
+        // A physical double-click delivers two clicks; without the floor it
+        // would arm and fire in one gesture, defeating the guard.
+        if (Date.now() - at < CONFIRM_MIN_MS) return;
+        armedDelete = null;
+        if (timer) clearTimeout(timer);
+        timer = null;
+        paintDisarmed();
+        onDelete(comment.id);
+        return;
+      }
+      armedDelete = { id: comment.id, at: Date.now() };
+      paintArmed(armedDelete.at);
     });
   }
 
