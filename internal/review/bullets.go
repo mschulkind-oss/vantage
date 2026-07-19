@@ -30,7 +30,24 @@ const changelogMarker = "<!-- changelog -->"
 // document-embedded response protocol. The watcher warns and broadcasts when a
 // saved document tests true; nothing is ever parsed out of the block anymore.
 func ContainsChangelogBlock(content string) bool {
+	inFence := false
+	fenceMarker := ""
 	for _, line := range splitLines(content) {
+		stripped := strings.TrimLeft(line, " \t")
+		// Markers inside a fenced block are documentation — this repository's own
+		// design docs quote the retired format — not an agent's delivery attempt.
+		if !inFence && (strings.HasPrefix(stripped, "```") || strings.HasPrefix(stripped, "~~~")) {
+			inFence = true
+			fenceMarker = stripped[:3]
+			continue
+		}
+		if inFence {
+			if strings.HasPrefix(stripped, fenceMarker) {
+				inFence = false
+				fenceMarker = ""
+			}
+			continue
+		}
 		if isChangelogMarker(line) {
 			return true
 		}

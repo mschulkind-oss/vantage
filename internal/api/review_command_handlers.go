@@ -270,6 +270,29 @@ func (h *Handlers) ReviewResponses(w http.ResponseWriter, r *http.Request) {
 	for i := range entries {
 		entries[i].Nonce = nonce
 	}
-	data, _, err := h.deps.Reviews.ApplyResponses(path, svc.Repo, entries, currentDocContent(svc, path))
-	h.writeCommandResult(w, svc.Repo, path, data, err)
+	data, applied, err := h.deps.Reviews.ApplyResponses(path, svc.Repo, entries, currentDocContent(svc, path))
+	if err != nil || data == nil {
+		// Absent review, or a real failure: the shared tail writes null-at-200
+		// or the right error status. Either way nothing was applied, and the
+		// zero count below would be a lie about a review that does not exist.
+		h.writeCommandResult(w, svc.Repo, path, data, err)
+		return
+	}
+	if h.deps.ReviewChanged != nil {
+		h.deps.ReviewChanged(svc.Repo, path)
+	}
+	// The count is what tells the reviewer whether the paste landed. Bullets
+	// naming comments this document does not have — a block pasted into the
+	// wrong panel — parse fine and apply nothing, and reporting that as success
+	// is exactly the silent swallow this protocol replaced.
+	writeJSON(w, http.StatusOK, reviewResponsesResult{ReviewData: data, Applied: applied})
+}
+
+// reviewResponsesResult is a ReviewData with the applied-delivery count folded
+// in, so the paste box can tell "recorded" from "matched nothing" without a
+// second request. The embedded fields marshal inline, keeping the shape the
+// client already adopts.
+type reviewResponsesResult struct {
+	*model.ReviewData
+	Applied int `json:"applied"`
 }

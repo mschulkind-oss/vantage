@@ -719,8 +719,11 @@ describe("ReviewPanel — paste agent response", () => {
   const seeded = (): ReviewComment =>
     baseComment({ id: "abcd1234-0000", reactions: [] });
 
-  const serverCopy = (comments: ReviewComment[]): { data: ReviewData } => ({
-    data: { file_path: "doc.md", comments },
+  const serverCopy = (
+    comments: ReviewComment[],
+    applied = 1,
+  ): { data: ReviewData & { applied: number } } => ({
+    data: { file_path: "doc.md", comments, applied },
   });
 
   /** A promise whose settlement the test controls, for racing two requests. */
@@ -792,7 +795,7 @@ describe("ReviewPanel — paste agent response", () => {
     expect(useReviewStore.getState().comments[0].reactions).toHaveLength(1);
     expect(screen.getByText("Fixed the wording")).toBeTruthy();
     expect(box().value).toBe("");
-    expect(screen.getByText("Applied")).toBeTruthy();
+    expect(screen.getByText(/^Applied 1$/)).toBeTruthy();
   });
 
   it("applies on Cmd/Ctrl+Enter", async () => {
@@ -828,6 +831,26 @@ describe("ReviewPanel — paste agent response", () => {
     consoleError.mockRestore();
   });
 
+  it("reports a paste that matched nothing instead of claiming success", async () => {
+    const local = seeded();
+    setComments([local]);
+    // Well-formed bullets naming comments this document does not have — the
+    // usual cause is pasting into the wrong document's panel. The server
+    // applies nothing and says so.
+    mockedAxios.post.mockResolvedValueOnce(serverCopy([local], 0));
+    render(<ReviewPanel isOpen onClose={() => {}} />);
+
+    openWithText(PASTE);
+    await act(async () => {
+      fireEvent.click(applyButton());
+    });
+
+    expect(screen.getByText(/No matching comments/i)).toBeTruthy();
+    expect(screen.queryByText(/^Applied/)).toBeNull();
+    // The text survives so it can be pasted where it belongs.
+    expect(box().value).toBe(PASTE);
+  });
+
   it("discards an echo overtaken by a newer write, like every command", async () => {
     const local = seeded();
     setComments([local]);
@@ -856,6 +879,6 @@ describe("ReviewPanel — paste agent response", () => {
     const c = useReviewStore.getState().comments[0];
     expect(c.reactions?.map((r) => r.summary)).toEqual(["also this"]);
     // The delivery itself still succeeded, so the box reports it applied.
-    expect(screen.getByText("Applied")).toBeTruthy();
+    expect(screen.getByText(/^Applied 1$/)).toBeTruthy();
   });
 });

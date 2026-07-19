@@ -512,3 +512,30 @@ func TestWatcherConsumesInboxCreatedAfterStartup(t *testing.T) {
 		return err == nil && len(ents) == 0
 	}, 3*time.Second, 10*time.Millisecond)
 }
+
+// A document that merely discusses the retired protocol — this project's own
+// design docs among them — is not a delivery attempt. Without the review gate
+// every save of such a file nagged the reviewer about a response nobody sent.
+func TestWatcherFlushDoesNotWarnForDocumentWithoutAReview(t *testing.T) {
+	root := t.TempDir()
+	store := review.NewStore(t.TempDir())
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o755))
+
+	// Same content that warns when the document is under review — but nobody
+	// has commented on this one.
+	stale := testDoc + "\n<!-- changelog -->\n- [c1a2b3c4] a documented example\n"
+	require.NoError(t, os.WriteFile(
+		filepath.Join(root, "docs", "a.md"), []byte(stale), 0o644))
+
+	m := NewManager(quietLogger())
+	c := m.newTestConn(8)
+	w, err := NewWatcher(root, "repoX", m, store, false, quietLogger())
+	require.NoError(t, err)
+
+	w.flush([]string{"docs/a.md"})
+
+	for _, msg := range drainMessages(t, c) {
+		require.NotEqual(t, "changelog_ignored", msg["type"],
+			"a document with no review must not warn about the retired protocol")
+	}
+}

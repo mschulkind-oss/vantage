@@ -6,9 +6,10 @@
 // goroutine fed from a buffered channel. Broadcast marshals a message once and
 // fans the bytes out to every connection; a connection whose buffer overflows
 // is evicted as a slow client rather than blocking the broadcaster. The Watcher
-// coalesces filesystem events, invalidates the git/fs caches, applies review
-// changelog blocks for changed Markdown files, and broadcasts a sorted
-// files_changed payload.
+// coalesces filesystem events, invalidates the git/fs caches, consumes review
+// inbox deliveries, warns when a reviewed document still carries a
+// retired-protocol changelog block, and broadcasts a sorted files_changed
+// payload.
 package live
 
 import (
