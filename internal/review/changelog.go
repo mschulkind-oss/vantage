@@ -83,7 +83,11 @@ func (s *Store) ApplyChangelog(filePath, newContent, repo string) int {
 	for _, entry := range entries {
 		cid, ok := resolveCommentID(review.Comments, entry.shortID)
 		if !ok {
-			slog.Debug("review: no comment matches changelog short id", "short_id", entry.shortID, "path", filePath)
+			// Warn, not Debug: the agent believes it answered this comment and
+			// the reviewer will keep seeing it as unanswered. A silent drop
+			// leaves nobody able to tell that the response went nowhere.
+			slog.Warn("review: no comment matches changelog short id; response dropped",
+				"short_id", entry.shortID, "path", filePath, "summary", entry.summary)
 			continue
 		}
 		comment := commentByID(review.Comments, cid)
@@ -146,8 +150,23 @@ func commentByID(comments []model.ReviewComment, id string) *model.ReviewComment
 
 // hasAddressedReaction reports whether comment already carries an
 // agent/addressed reaction with the given summary — the idempotency key.
+//
+// The scan is scoped to the CURRENT round: only reactions after the reviewer's
+// most recent one count. Scanning the whole history would treat a legitimate
+// second-round response that happens to reuse its earlier summary as a replay
+// and silently drop it, deadlocking the thread — the reviewer would keep seeing
+// an unanswered follow-up while the agent believed it had answered.
 func hasAddressedReaction(comment *model.ReviewComment, summary string) bool {
-	for _, r := range comment.Reactions {
+	start := 0
+	for i, r := range comment.Reactions {
+		// A reviewer turn opens a new round. So does an edit: the reviewer
+		// reworded the comment, so every response recorded before the edit
+		// answered different text and must not dedup a fresh one.
+		if r.Actor == "reviewer" || (comment.EditedAt > 0 && r.Timestamp <= comment.EditedAt) {
+			start = i + 1
+		}
+	}
+	for _, r := range comment.Reactions[start:] {
 		if r.Actor == "agent" && r.Kind == "addressed" && r.Summary == summary {
 			return true
 		}
