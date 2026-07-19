@@ -8,9 +8,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mschulkind-oss/vantage/internal/config"
@@ -264,6 +266,95 @@ func TestSecurityHeaders(t *testing.T) {
 	require.Equal(t, "nosniff", rec.Header().Get("X-Content-Type-Options"))
 	require.Equal(t, "DENY", rec.Header().Get("X-Frame-Options"))
 	require.Equal(t, "strict-origin-when-cross-origin", rec.Header().Get("Referrer-Policy"))
+}
+
+// doJSON sends a JSON-bodied request through the assembled router.
+func doJSON(t *testing.T, h http.Handler, method, target, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, target, strings.NewReader(body))
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+// isolateReviewDir points $HOME at a temp dir BEFORE NewServer resolves
+// config.ReviewDir, so review-writing tests never touch the real store.
+func isolateReviewDir(t *testing.T) {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+}
+
+func TestReviewCommandRoutesMountedPerRepo(t *testing.T) {
+	isolateReviewDir(t)
+	srv, _ := daemonServer(t)
+	h := srv.Handler()
+
+	// Create a comment in alpha through the multi mounting, exercising the
+	// {id}-less command route end to end (chi resolve middleware included).
+	rec := doJSON(t, h, http.MethodPost, "/api/r/alpha/review/comments?path=a.md",
+		`{"id":"c1","comment":"tighten","anchor":{"source_line":1,"block_text_hash":"x","selection_offset":0,"selection_length":0},"created_at":1717000000}`)
+	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+
+	// The review landed keyed by the alpha repo name…
+	stored, err := srv.reviews.Get("a.md", "alpha")
+	require.NoError(t, err)
+	require.NotNil(t, stored)
+	require.Len(t, stored.Comments, 1)
+	// …and captured the anchored block of alpha's committed a.md.
+	require.Equal(t, "# a", stored.Comments[0].CapturedBlock)
+
+	// beta is untouched: same path, different repo, separate review.
+	other, err := srv.reviews.Get("a.md", "beta")
+	require.NoError(t, err)
+	require.Nil(t, other)
+
+	// An {id} command resolves through the multi mounting too.
+	rec = doJSON(t, h, http.MethodPatch, "/api/r/alpha/review/comments/c1?path=a.md", `{"resolved":true}`)
+	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+	stored, err = srv.reviews.Get("a.md", "alpha")
+	require.NoError(t, err)
+	require.True(t, stored.Comments[0].Resolved)
+
+	// Legacy command routes are disabled in daemon mode, like every repo route.
+	rec = doJSON(t, h, http.MethodPost, "/api/review/comments?path=a.md", `{"id":"c2","comment":"x"}`)
+	require.Equal(t, http.StatusNotFound, rec.Code)
+
+	// Unknown repo 404s before the handler runs.
+	rec = doJSON(t, h, http.MethodPost, "/api/r/ghost/review/comments?path=a.md", `{"id":"c2","comment":"x"}`)
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestReviewChangedBroadcastReachesWebSocket(t *testing.T) {
+	isolateReviewDir(t)
+	srv, _ := singleRepoServer(t)
+
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ws, _, err := websocket.Dial(ctx, "ws"+ts.URL[len("http"):]+"/api/ws", nil)
+	require.NoError(t, err)
+	defer ws.Close(websocket.StatusNormalClosure, "")
+
+	// First frame is the hello.
+	_, data, err := ws.Read(ctx)
+	require.NoError(t, err)
+	var hello map[string]any
+	require.NoError(t, json.Unmarshal(data, &hello))
+	require.Equal(t, "hello", hello["type"])
+
+	// A successful command must push review_changed through the live hub.
+	resp, err := http.Post(ts.URL+"/api/review/comments?path=doc.md", "application/json",
+		strings.NewReader(`{"id":"c1","comment":"tighten","created_at":1717000000}`))
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	_, data, err = ws.Read(ctx)
+	require.NoError(t, err)
+	// Repo is the explicit single-repo sentinel "", not an omitted key.
+	require.JSONEq(t, `{"type":"review_changed","repo":"","path":"doc.md"}`, string(data))
 }
 
 func TestRunAndShutdown(t *testing.T) {

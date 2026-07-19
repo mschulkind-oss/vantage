@@ -49,3 +49,6 @@ Thumbs.db
 
 # YOLO Jail workspace state
 .yolo/
+
+# Vantage's own per-repo state (review delivery inbox)
+.vantage/

@@ -10,7 +10,8 @@
 // Ignored paths are hidden from recent-file search, directory listings, and
 // file-watcher broadcasts. The whole subsystem is disabled by passing
 // enabled=false (mirroring use_ignore_files=false in config): a disabled
-// [Matcher] reports nothing as ignored.
+// [Matcher] reports nothing as ignored except the built-in always-ignored
+// set (see [IsAlwaysIgnored]), which no configuration can surface.
 //
 // Matchers are reloaded lazily: each [Matcher.IsIgnored] call may re-stat the
 // source files, but stat-throttled to at most once per [reloadInterval] so hot
@@ -32,6 +33,20 @@ import (
 
 // workspaceIgnoreName is the per-repo ignore file, resolved against the root.
 const workspaceIgnoreName = ".vantageignore"
+
+// vantageDirName is vantage's own per-repo state directory (<root>/.vantage,
+// holding the review delivery inbox). Its contents are machine-to-machine
+// traffic, never user content, so it is unconditionally hidden.
+const vantageDirName = ".vantage"
+
+// IsAlwaysIgnored reports whether rel (repo-relative, slash-or-OS-separated)
+// falls in the built-in always-ignored set: paths hidden even when ignore
+// files are disabled and that no negation pattern can resurface. Currently
+// that is .vantage and everything under it.
+func IsAlwaysIgnored(rel string) bool {
+	rel = normalizeRel(rel)
+	return rel == vantageDirName || strings.HasPrefix(rel, vantageDirName+"/")
+}
 
 // reloadInterval caps how often a [Matcher] re-stats its source files. The
 // files are re-parsed only when their mtime actually changes, but this bound
@@ -75,8 +90,8 @@ type Matcher struct {
 	lastCheck time.Time
 }
 
-// NewMatcher builds a [Matcher] for root. When enabled is false the matcher is
-// a no-op (IsIgnored always returns false, Explain always returns ""). The
+// NewMatcher builds a [Matcher] for root. When enabled is false the matcher
+// ignores nothing beyond the built-in always-ignored set. The
 // userIgnorePath names the user-level ignore file; pass "" to disable the user
 // layer (e.g. tests) or [DefaultUserIgnorePath] for the standard location.
 //
@@ -100,8 +115,12 @@ func NewMatcher(root string, enabled bool, userIgnorePath string) *Matcher {
 
 // IsIgnored reports whether rel (a repo-relative, slash-or-OS-separated path)
 // is ignored. Set isDir when rel names a directory so directory-only patterns
-// such as ".yolo/" match it. A disabled matcher always returns false.
+// such as ".yolo/" match it. A disabled matcher returns false for everything
+// but the built-in always-ignored set.
 func (m *Matcher) IsIgnored(rel string, isDir bool) bool {
+	if IsAlwaysIgnored(rel) {
+		return true
+	}
 	if !m.enabled {
 		return false
 	}
@@ -128,6 +147,9 @@ func (m *Matcher) ExplainDir(rel string) string {
 }
 
 func (m *Matcher) explain(rel string, isDir bool) string {
+	if IsAlwaysIgnored(rel) {
+		return "builtin:" + vantageDirName
+	}
 	if !m.enabled {
 		return ""
 	}

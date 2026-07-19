@@ -94,6 +94,11 @@ type Deps struct {
 	// Config is the resolved server configuration. Handlers consult MultiRepo to
 	// shape the /repos and /files/all globals.
 	Config *config.Config
+	// ReviewChanged, when non-nil, is called after every successful review
+	// command with the repo name ("" in single-repo mode) and document path.
+	// The server wires it to the live hub so connected browsers reload the
+	// review; a nil value (tests, static builds) silently skips the push.
+	ReviewChanged func(repo, path string)
 }
 
 // Handlers holds the dependency-injected state for every API handler. Construct

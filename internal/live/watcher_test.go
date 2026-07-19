@@ -1,6 +1,7 @@
 package live
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -12,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mschulkind-oss/vantage/internal/ignore"
+	"github.com/mschulkind-oss/vantage/internal/model"
+	"github.com/mschulkind-oss/vantage/internal/review"
 )
 
 func TestClassify(t *testing.T) {
@@ -58,11 +61,33 @@ func TestShouldPruneDir(t *testing.T) {
 		{"git logs pruned", ".git/logs", true},
 		{"normal dir kept", "docs", false},
 		{"nested dir kept", "docs/guide", false},
+		{"vantage top level kept", ".vantage", false},
+		{"vantage inbox kept", ".vantage/inbox", false},
+		{"vantage other pruned", ".vantage/reviews", true},
+		{"vantage inbox subdir pruned", ".vantage/inbox/sub", true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			require.Equal(t, tc.want, shouldPruneDir(tc.rel, matcher))
 		})
+	}
+}
+
+func TestIsInboxPath(t *testing.T) {
+	tests := []struct {
+		rel  string
+		want bool
+	}{
+		{".vantage/inbox", true},
+		{".vantage/inbox/a.jsonl", true},
+		{".vantage/inbox/a.jsonl.consuming", true},
+		{".vantage", false},
+		{".vantage/reviews", false},
+		{".vantage/inboxes", false},
+		{"docs/a.md", false},
+	}
+	for _, tc := range tests {
+		require.Equal(t, tc.want, isInboxPath(tc.rel), "rel=%q", tc.rel)
 	}
 }
 
@@ -235,4 +260,176 @@ func TestWatcherFlushEmptyIsNoop(t *testing.T) {
 	require.NoError(t, err)
 	w.flush(nil)
 	require.Len(t, c.send, 0)
+}
+
+// --- inbox consumption ---
+
+// seedReviewedDoc writes doc content at rel under root and stores a review for
+// it (in repo) with one comment anchored at line 3 of testDoc.
+const testDoc = "# Title\n\nBody paragraph text.\n"
+
+func seedReviewedDoc(t *testing.T, store *review.Store, root, repo, rel, commentID string) {
+	t.Helper()
+	full := filepath.Join(root, filepath.FromSlash(rel))
+	require.NoError(t, os.MkdirAll(filepath.Dir(full), 0o755))
+	require.NoError(t, os.WriteFile(full, []byte(testDoc), 0o644))
+	c := model.NewReviewComment(commentID, "tighten this", 1700000000)
+	c.Anchor = &model.CommentAnchor{SourceLine: 3}
+	_, err := store.AddComment(rel, repo, c, testDoc)
+	require.NoError(t, err)
+}
+
+// startWatcher runs w.Start in a goroutine and returns a stop func that
+// cancels it and waits for exit.
+func startWatcher(t *testing.T, w *Watcher) func() {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = w.Start(ctx)
+	}()
+	return func() {
+		cancel()
+		<-done
+	}
+}
+
+// waitForMessage drains c.send until a message with the wanted type arrives.
+func waitForMessage(t *testing.T, c *conn, wantType string) map[string]any {
+	t.Helper()
+	deadline := time.After(3 * time.Second)
+	for {
+		select {
+		case data := <-c.send:
+			var msg map[string]any
+			require.NoError(t, json.Unmarshal(data, &msg))
+			if msg["type"] == wantType {
+				return msg
+			}
+		case <-deadline:
+			t.Fatalf("no %q message arrived", wantType)
+		}
+	}
+}
+
+func TestWatcherStartConsumesInboxAndBroadcasts(t *testing.T) {
+	root := t.TempDir()
+	store := review.NewStore(t.TempDir())
+	seedReviewedDoc(t, store, root, "repoX", "docs/a.md", "c1a2b3c4deadbeef")
+
+	// A delivery that landed while the server was down.
+	inbox := review.InboxDir(root)
+	require.NoError(t, os.MkdirAll(inbox, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(inbox, "docs__a.md.jsonl"),
+		[]byte(`{"path":"docs/a.md","id":"c1a2b3c4","summary":"done","nonce":"n1"}`+"\n"), 0o644))
+
+	m := NewManager(quietLogger())
+	c := m.newTestConn(8)
+	w, err := NewWatcher(root, "repoX", m, store, false, quietLogger())
+	require.NoError(t, err)
+	stop := startWatcher(t, w)
+	defer stop()
+
+	msg := waitForMessage(t, c, "review_changed")
+	require.Equal(t, "repoX", msg["repo"])
+	require.Equal(t, "docs/a.md", msg["path"])
+
+	data, err := store.Get("docs/a.md", "repoX")
+	require.NoError(t, err)
+	require.Len(t, data.Comments[0].Reactions, 1)
+	require.Equal(t, "done", data.Comments[0].Reactions[0].Summary)
+}
+
+func TestWatcherConsumesInboxFileEvent(t *testing.T) {
+	// The inbox dir already exists at startup (so no dir-create event will
+	// ever fire); a delivery written later must be consumed purely off its own
+	// file event.
+	root := t.TempDir()
+	store := review.NewStore(t.TempDir())
+	seedReviewedDoc(t, store, root, "", "a.md", "c1a2b3c4deadbeef")
+	inbox := review.InboxDir(root)
+	require.NoError(t, os.MkdirAll(inbox, 0o755))
+
+	m := NewManager(quietLogger())
+	c := m.newTestConn(16)
+	w, err := NewWatcher(root, "", m, store, false, quietLogger())
+	require.NoError(t, err)
+	stop := startWatcher(t, w)
+	defer stop()
+
+	// Wait for a probe round-trip first: it proves the event loop is running,
+	// which also means the startup inbox sweep has already come up empty — so
+	// the delivery below can only land via its own file event.
+	probe := filepath.Join(root, "probe.md")
+	require.Eventually(t, func() bool {
+		require.NoError(t, os.WriteFile(probe, []byte(time.Now().String()), 0o644))
+		select {
+		case data := <-c.send:
+			var msg map[string]any
+			require.NoError(t, json.Unmarshal(data, &msg))
+			return msg["type"] == "files_changed"
+		default:
+			return false
+		}
+	}, 5*time.Second, 150*time.Millisecond)
+
+	require.NoError(t, os.WriteFile(filepath.Join(inbox, "a.md.jsonl"),
+		[]byte(`{"path":"a.md","id":"c1a2b3c4","summary":"fixed","nonce":"n1"}`+"\n"), 0o644))
+	msg := waitForMessage(t, c, "review_changed")
+	require.Equal(t, "a.md", msg["path"])
+
+	data, err := store.Get("a.md", "")
+	require.NoError(t, err)
+	require.Len(t, data.Comments[0].Reactions, 1)
+}
+
+func TestWatcherConsumesInboxCreatedAfterStartup(t *testing.T) {
+	root := t.TempDir()
+	store := review.NewStore(t.TempDir())
+	seedReviewedDoc(t, store, root, "", "a.md", "c1a2b3c4deadbeef")
+
+	m := NewManager(quietLogger())
+	c := m.newTestConn(16)
+	w, err := NewWatcher(root, "", m, store, false, quietLogger())
+	require.NoError(t, err)
+	stop := startWatcher(t, w)
+	defer stop()
+
+	// Prove the event loop is live before creating the inbox, otherwise the
+	// mkdir below could race the initial watch registration. The probe itself
+	// races it, so keep touching the file until an event round-trips.
+	probe := filepath.Join(root, "probe.md")
+	require.Eventually(t, func() bool {
+		require.NoError(t, os.WriteFile(probe, []byte(time.Now().String()), 0o644))
+		select {
+		case data := <-c.send:
+			var msg map[string]any
+			require.NoError(t, json.Unmarshal(data, &msg))
+			return msg["type"] == "files_changed"
+		default:
+			return false
+		}
+	}, 5*time.Second, 150*time.Millisecond)
+
+	// The .vantage/inbox dir did not exist at startup; its creation plus a
+	// delivery must still be seen and consumed.
+	inbox := review.InboxDir(root)
+	require.NoError(t, os.MkdirAll(inbox, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(inbox, "a.md.jsonl"),
+		[]byte(`{"path":"a.md","id":"c1a2b3c4","summary":"fixed","nonce":"n1"}`+"\n"), 0o644))
+
+	msg := waitForMessage(t, c, "review_changed")
+	require.Equal(t, "", msg["repo"])
+	require.Equal(t, "a.md", msg["path"])
+
+	data, err := store.Get("a.md", "")
+	require.NoError(t, err)
+	require.Len(t, data.Comments[0].Reactions, 1)
+
+	// The consumed delivery file is gone.
+	require.Eventually(t, func() bool {
+		ents, err := os.ReadDir(inbox)
+		return err == nil && len(ents) == 0
+	}, 3*time.Second, 10*time.Millisecond)
 }

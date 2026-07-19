@@ -65,5 +65,15 @@ func (h *Handlers) Routes() []Route {
 		{http.MethodGet, "/review", h.ReviewGet, ScopeRepo},
 		{http.MethodPut, "/review", h.ReviewPut, ScopeRepo},
 		{http.MethodDelete, "/review", h.ReviewDelete, ScopeRepo},
+
+		// --- Repo-scoped: review commands ---
+		{http.MethodPost, "/review/comments", h.ReviewCommentCreate, ScopeRepo},
+		{http.MethodPatch, "/review/comments/{id}", h.ReviewCommentPatch, ScopeRepo},
+		{http.MethodDelete, "/review/comments/{id}", h.ReviewCommentDelete, ScopeRepo},
+		{http.MethodPost, "/review/comments/{id}/replies", h.ReviewCommentReply, ScopeRepo},
+		{http.MethodPost, "/review/comments/{id}/accept", h.ReviewCommentAccept, ScopeRepo},
+		{http.MethodPost, "/review/comments/{id}/reopen-reply", h.ReviewCommentReopenReply, ScopeRepo},
+		{http.MethodPost, "/review/dismissals", h.ReviewDismissals, ScopeRepo},
+		{http.MethodPost, "/review/responses", h.ReviewResponses, ScopeRepo},
 	}
 }
