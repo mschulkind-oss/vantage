@@ -163,6 +163,9 @@ function newId(): string {
  * `loadSeq` discards a GET whose response lost the race to a newer one;
  * `saveSeq` discards a GET that started before a local write, so a
  * websocket-triggered reload can't revert a reply the reviewer just made.
+ * Together they also gate command-echo adoption in `runCommand`: an echo is
+ * only adopted when nothing newer — write, reload, or file switch — landed
+ * while it was in flight.
  */
 let loadSeq = 0;
 let saveSeq = 0;
@@ -202,6 +205,18 @@ interface ReviewState {
   // Actions
   loadReview: (filePath: string) => Promise<void>;
   saveReview: () => Promise<void>;
+  /**
+   * Shared plumbing for the review command endpoints: fires the request
+   * against the current repo base + file, adopts the comments the server
+   * persisted (captured blocks, server-stamped edits, reactions another
+   * writer added) unless something newer landed while it was in flight, and
+   * resyncs from the server on failure so the optimistic mutation can't
+   * stand as a lie — unlike the old whole-state PUT, no later write
+   * retransmits a lost command.
+   */
+  runCommand: (
+    fn: (base: string, path: string) => Promise<{ data: ReviewData | null }>,
+  ) => Promise<void>;
   setPendingSelection: (sel: PendingSelection) => void;
   clearPendingSelection: () => void;
   addComment: (
@@ -225,7 +240,6 @@ interface ReviewState {
   replyToComment: (id: string, replyText: string) => void;
   /** Reopen a resolved comment and add a follow-up reply. */
   reopenAndReply: (id: string, replyText: string) => void;
-  clearAllComments: () => void;
   addSnapshot: (content: string) => void;
   setLastContent: (content: string) => void;
   copyAllToClipboard: () => Promise<boolean>;
@@ -323,6 +337,9 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     }
   },
 
+  // Unused since the command migration — every action now goes through its
+  // own endpoint via runCommand. Kept until the retirement wave deletes the
+  // PUT path end to end.
   saveReview: async () => {
     const { filePath, comments, snapshots } = get();
     const base = getApiBase();
@@ -355,6 +372,36 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     }
   },
 
+  runCommand: async (fn) => {
+    const base = getApiBase();
+    const filePath = get().filePath;
+    if (!base || !filePath) return;
+
+    const seq = ++saveSeq;
+    const loadSeqAtStart = loadSeq;
+    try {
+      const res = await fn(base, filePath);
+      // Adopt what the server actually persisted. Skipped if anything newer
+      // has landed meanwhile: another write, a file switch, or a reload — a
+      // reload that completed after this command was sent carries the
+      // server's own newer state, which this echo would undo.
+      const saved = res.data;
+      if (
+        saved?.comments &&
+        seq === saveSeq &&
+        loadSeq === loadSeqAtStart &&
+        get().filePath === filePath
+      ) {
+        set({ comments: saved.comments });
+      }
+    } catch (e) {
+      // A failed command is that operation lost. Reload server truth so the
+      // UI doesn't keep showing a mutation that never happened.
+      console.error("Review command failed", e);
+      get().loadReview(filePath);
+    }
+  },
+
   setPendingSelection: (sel: PendingSelection) => {
     set({ pendingSelection: sel });
   },
@@ -384,26 +431,52 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       comments: [...s.comments, newComment],
       pendingSelection: null,
     }));
-    get().saveReview();
+    // The server captures captured_block from the document at the anchor.
+    get().runCommand((base, path) =>
+      axios.post<ReviewData | null>(
+        `${base}/review/comments`,
+        {
+          id: newComment.id,
+          comment: newComment.comment,
+          anchor: newComment.anchor,
+          fallback_text: newComment.fallback_text,
+          created_at: newComment.created_at,
+        },
+        { params: { path } },
+      ),
+    );
   },
 
   deleteComment: (id: string) => {
     set((s) => ({
       comments: s.comments.filter((c) => c.id !== id),
     }));
-    get().saveReview();
+    get().runCommand((base, path) =>
+      axios.delete<ReviewData | null>(
+        `${base}/review/comments/${encodeURIComponent(id)}`,
+        { params: { path } },
+      ),
+    );
   },
 
   editComment: (id: string, newComment: string) => {
     // Stamping edited_at re-queues a comment the agent had already addressed:
     // it answered the old wording, so the new wording still needs a response.
+    // The optimistic stamp keeps the UI honest immediately; the server sets
+    // its own edited_at and the adopted echo replaces this one.
     const now = Date.now() / 1000;
     set((s) => ({
       comments: s.comments.map((c) =>
         c.id === id ? { ...c, comment: newComment, edited_at: now } : c,
       ),
     }));
-    get().saveReview();
+    get().runCommand((base, path) =>
+      axios.patch<ReviewData | null>(
+        `${base}/review/comments/${encodeURIComponent(id)}`,
+        { comment: newComment },
+        { params: { path } },
+      ),
+    );
   },
 
   resolveComment: (id: string) => {
@@ -426,7 +499,13 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
           : c,
       ),
     }));
-    get().saveReview();
+    get().runCommand((base, path) =>
+      axios.post<ReviewData | null>(
+        `${base}/review/comments/${encodeURIComponent(id)}/accept`,
+        {},
+        { params: { path } },
+      ),
+    );
   },
 
   dismissComment: (id: string) => {
@@ -435,7 +514,13 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
         c.id === id ? { ...c, resolved: true } : c,
       ),
     }));
-    get().saveReview();
+    get().runCommand((base, path) =>
+      axios.patch<ReviewData | null>(
+        `${base}/review/comments/${encodeURIComponent(id)}`,
+        { resolved: true },
+        { params: { path } },
+      ),
+    );
   },
 
   dismissAll: () => {
@@ -444,18 +529,35 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
         c.resolved ? c : { ...c, resolved: true },
       ),
     }));
-    get().saveReview();
+    get().runCommand((base, path) =>
+      axios.post<ReviewData | null>(
+        `${base}/review/dismissals`,
+        { scope: "all" },
+        { params: { path } },
+      ),
+    );
   },
 
   dismissOutdated: () => {
     const outdated = get().outdatedCommentIds;
-    if (outdated.size === 0) return;
+    // Capture the target ids before mutating so the command names exactly
+    // the comments this click dismissed.
+    const ids = get()
+      .comments.filter((c) => !c.resolved && outdated.has(c.id))
+      .map((c) => c.id);
+    if (ids.length === 0) return;
     set((s) => ({
       comments: s.comments.map((c) =>
         !c.resolved && outdated.has(c.id) ? { ...c, resolved: true } : c,
       ),
     }));
-    get().saveReview();
+    get().runCommand((base, path) =>
+      axios.post<ReviewData | null>(
+        `${base}/review/dismissals`,
+        { scope: "ids", ids },
+        { params: { path } },
+      ),
+    );
   },
 
   replyToComment: (id: string, replyText: string) => {
@@ -474,7 +576,13 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
           : c,
       ),
     }));
-    get().saveReview();
+    get().runCommand((base, path) =>
+      axios.post<ReviewData | null>(
+        `${base}/review/comments/${encodeURIComponent(id)}/replies`,
+        { text: replyText },
+        { params: { path } },
+      ),
+    );
   },
 
   unresolveComment: (id: string) => {
@@ -483,7 +591,13 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
         c.id === id ? { ...c, resolved: false } : c,
       ),
     }));
-    get().saveReview();
+    get().runCommand((base, path) =>
+      axios.patch<ReviewData | null>(
+        `${base}/review/comments/${encodeURIComponent(id)}`,
+        { resolved: false },
+        { params: { path } },
+      ),
+    );
   },
 
   reopenAndReply: (id: string, replyText: string) => {
@@ -506,12 +620,13 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
           : c,
       ),
     }));
-    get().saveReview();
-  },
-
-  clearAllComments: () => {
-    set({ comments: [] });
-    get().saveReview();
+    get().runCommand((base, path) =>
+      axios.post<ReviewData | null>(
+        `${base}/review/comments/${encodeURIComponent(id)}/reopen-reply`,
+        { text: replyText },
+        { params: { path } },
+      ),
+    );
   },
 
   addSnapshot: (content: string) => {
@@ -540,7 +655,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     for (const c of active) {
       output.push(...commentBlock(c, contentLines, pathPrefix));
     }
-    output.push(...respondingInstructions(active[0], active));
+    output.push(...respondingInstructions(filePath, active[0], active));
 
     try {
       await navigator.clipboard.writeText(output.join("\n"));
@@ -560,7 +675,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
 
     const output = [`## Review Comment for \`${filePath}\``, ""];
     output.push(...commentBlock(c, contentLines, pathPrefix));
-    output.push(...respondingInstructions(c, [c]));
+    output.push(...respondingInstructions(filePath, c, [c]));
 
     try {
       await navigator.clipboard.writeText(output.join("\n"));
@@ -580,8 +695,8 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     } catch {
       // ignore
     }
-    // Invalidate any PUT still in flight: its echo would otherwise be adopted
-    // after this clear and resurrect the review that was just deleted.
+    // Invalidate any write still in flight: its echo would otherwise be
+    // adopted after this clear and resurrect the review that was just deleted.
     saveSeq++;
     set({
       comments: [],
@@ -604,8 +719,8 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       writeReviewModePref(filePath, false);
     }
 
-    // Invalidate any PUT still in flight: its echo would otherwise be adopted
-    // after this clear and resurrect the review that was just deleted.
+    // Invalidate any write still in flight: its echo would otherwise be
+    // adopted after this clear and resurrect the review that was just deleted.
     saveSeq++;
     set({
       isReviewMode: false,
@@ -680,8 +795,9 @@ function commentBlock(
   return out;
 }
 
-/** The "how to respond" instructions appended after the comment(s). */
+/** The agent-facing delivery instructions appended after the comment(s). */
 function respondingInstructions(
+  filePath: string,
   example?: ReviewComment,
   batch: ReviewComment[] = [],
 ): string[] {
@@ -699,40 +815,46 @@ function respondingInstructions(
         "",
       ]
     : [];
+  // Same flattening scheme as the server-side review store: both separators
+  // become "__". The filename is advisory (the consumer never parses it), but
+  // giving the exact name keeps every agent writing to one file per document.
+  const inboxFile = `.vantage/inbox/${filePath.replace(/[/\\]/g, "__")}.jsonl`;
+  const exampleId = example?.id.slice(0, 8) ?? "<short-id>";
   return [
     "## Responding to Comments",
     "",
     ...followUpNote,
-    "After addressing a comment, append a **changelog entry** to the END of this document. The format is parsed by Vantage and must match exactly:",
+    `After addressing a comment: **save the document first**, then deliver your response by appending one line to \`${inboxFile}\` at the root of this document's repository (create the directory and file if needed).`,
     "",
-    "```markdown",
-    "<!-- changelog -->",
-    "- [<short-id>] <one-line summary of what you changed>",
+    "Each line is a single JSON object, newline-terminated:",
+    "",
+    "```",
+    `{"path":"${filePath}","id":"<short-id>","summary":"<one sentence: what you changed>","nonce":"<fresh random string>"}`,
     "```",
     "",
-    `Example (using a real id from this batch): \`- [${example?.id.slice(0, 8)}] Reworded paragraph for clarity\``,
+    `Example (using a real id from this batch): \`{"path":"${filePath}","id":"${exampleId}","summary":"Reworded the paragraph for clarity","nonce":"k7f29qd1x4"}\``,
     "",
-    "### How your response is displayed",
+    "### Delivery rules",
     "",
-    "Your summary text is rendered **inline in the document**, directly below the commented paragraph — the reviewer sees it right next to the original text and the comment. This means:",
+    "- **Save the document before appending your line.** Vantage reads the document from disk at delivery time to record what changed; delivering first records a stale version.",
+    "- **One line per comment you acted on.** Skip the rest — a line claiming work you did not do reads to the reviewer as an answered comment.",
+    "- **Generate a fresh random nonce for every line you write** (never copy the example's), and **never re-append a line you have already written**. The nonce is how Vantage tells a new response from a redelivered one; a line with a reused nonce is silently dropped.",
+    "- **Append only.** Never edit or delete lines already in the file — Vantage consumes and deletes it.",
+    "",
+    "### How your summary is displayed",
+    "",
+    "The summary is rendered **inline in the document**, directly below the commented paragraph — the reviewer sees it right next to the original text and their comment. This means:",
     "- **Do NOT restate context.** The reviewer already sees the paragraph and their comment. Your summary should say *what you did*, not re-explain what the paragraph says.",
     "- **Keep it short.** One sentence is ideal. The summary shares a narrow column with the comment text and a before/after diff.",
     '- **Be specific about your action.** Good: "Split into two paragraphs and added the exception case." Bad: "The substrate is a typed-dataflow graph so I updated the text to reflect..."',
     "",
-    "### Format rules",
+    "### If you cannot write files",
     "",
-    "- The marker line must be exactly `<!-- changelog -->` (HTML comment, nothing else on the line).",
-    "- Each entry is a single bullet: `- [<short-id>] <summary>` — no nested lists, no extra prose between bullets.",
-    "- One bullet per comment you addressed. Skip comments you didn't act on.",
-    "- Vantage parses this block on save and records a reaction against the matching comment, including a before/after capture of the affected block.",
+    "Reply in chat with a fenced code block containing one bullet per comment you addressed; the reviewer will paste it into the Review panel:",
     "",
-    "### Do not write a no-op entry",
-    "",
-    "Vantage tells a new answer from one it has already recorded by looking at how the changelog changed. An entry that changes nothing is indistinguishable from the entry already on file, so it is ignored — and you will have told the reviewer nothing while believing you replied. Three rules keep that from happening:",
-    "",
-    "1. **Always append a NEW block** at the end of the document. Never edit, reword, or delete a `<!-- changelog -->` block that is already there — earlier blocks are the record of previous rounds.",
-    "2. **Never repeat a summary verbatim.** On a follow-up round, say what you changed *this time*. If your new summary would read the same as your last one for that comment, that is a sign you have not actually changed anything yet.",
-    "3. **Only write an entry when you changed the document.** If you decided not to act on a comment, leave it out of the block entirely and say so to the reviewer directly — an entry claiming work you did not do reads to them as an answered comment.",
+    "```",
+    "- [<short-id>] <one sentence: what you changed>",
+    "```",
     "",
   ];
 }

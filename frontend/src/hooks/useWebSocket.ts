@@ -189,6 +189,24 @@ export const useWebSocket = () => {
         return;
       }
 
+      if (message.type === "review_changed" && message.path) {
+        // A review command or an inbox delivery changed this document's
+        // review server-side. Reload it when it's the document on screen;
+        // loadReview's staleness guards discard the response if the reviewer
+        // writes or navigates while it's in flight.
+        const { reposLoaded, isMultiRepo, currentRepo } =
+          useRepoStore.getState();
+        if (!reposLoaded) return;
+        if (isMultiRepo && (!currentRepo || message.repo !== currentRepo)) {
+          return;
+        }
+        if (message.path === currentPathRef.current) {
+          wsLog.log("[ws] review_changed: %s", message.path);
+          useReviewStore.getState().loadReview(message.path);
+        }
+        return;
+      }
+
       if (message.type === "files_changed" && message.paths) {
         wsLog.log(
           "[ws] files_changed: %d paths: %s",

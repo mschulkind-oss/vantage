@@ -278,6 +278,85 @@ describe("useWebSocket", () => {
     expect(global.WebSocket).toHaveBeenCalledTimes(2);
   });
 
+  describe("review_changed", () => {
+    const installRepoState = (overrides: Record<string, unknown> = {}) => {
+      const repoState = makeRepoStoreState(overrides);
+      const mockStore = (selector?: (state: typeof repoState) => unknown) => {
+        if (typeof selector === "function") return selector(repoState);
+        return repoState;
+      };
+      mockStore.getState = () => repoState;
+      (useRepoStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+        mockStore,
+      );
+      (
+        useRepoStore as unknown as { getState: () => typeof repoState }
+      ).getState = () => repoState;
+    };
+
+    const send = (msg: Record<string, unknown>) => {
+      act(() => {
+        mockWebSocket.onmessage!({
+          data: JSON.stringify(msg),
+        } as MessageEvent);
+      });
+    };
+
+    it("reloads the review for the document on screen, without a batch", () => {
+      renderHook(() => useWebSocket());
+
+      send({ type: "review_changed", repo: "", path: "test.md" });
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+
+      // No debounce needed: the server already committed the change, and
+      // loadReview's own staleness guards handle racing local writes.
+      expect(mockLoadReview).toHaveBeenCalledWith("test.md");
+      // The message must not trip the files_changed batch machinery.
+      expect(mockLoadFile).not.toHaveBeenCalled();
+      expect(mockRefreshExpandedTree).not.toHaveBeenCalled();
+    });
+
+    it("ignores a message for a different document", () => {
+      renderHook(() => useWebSocket());
+
+      send({ type: "review_changed", repo: "", path: "other.md" });
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+
+      expect(mockLoadReview).not.toHaveBeenCalled();
+    });
+
+    it("ignores a message from another repo in multi-repo mode", () => {
+      installRepoState({ isMultiRepo: true, currentRepo: "repo-a" });
+      renderHook(() => useWebSocket());
+
+      send({ type: "review_changed", repo: "repo-b", path: "test.md" });
+
+      expect(mockLoadReview).not.toHaveBeenCalled();
+    });
+
+    it("reloads when the repo matches in multi-repo mode", () => {
+      installRepoState({ isMultiRepo: true, currentRepo: "repo-a" });
+      renderHook(() => useWebSocket());
+
+      send({ type: "review_changed", repo: "repo-a", path: "test.md" });
+
+      expect(mockLoadReview).toHaveBeenCalledWith("test.md");
+    });
+
+    it("skips the reload before repos are loaded", () => {
+      installRepoState({ reposLoaded: false });
+      renderHook(() => useWebSocket());
+
+      send({ type: "review_changed", repo: "", path: "test.md" });
+
+      expect(mockLoadReview).not.toHaveBeenCalled();
+    });
+  });
+
   describe("reconnect on visibility change", () => {
     it("force-reconnects after being hidden for more than 30s", () => {
       renderHook(() => useWebSocket());
