@@ -328,12 +328,21 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     const base = getApiBase();
     if (!base || !filePath) return;
 
-    saveSeq++;
+    const seq = ++saveSeq;
     const data: ReviewData = { file_path: filePath, snapshots, comments };
     try {
-      await axios.put(`${base}/review`, data, {
+      const res = await axios.put<ReviewData | null>(`${base}/review`, data, {
         params: { path: filePath },
       });
+      // The server may have restored agent reactions this copy predated. Adopt
+      // what it actually persisted, or the reviewer keeps working against a
+      // thread that is missing the agent's reply until they refresh by hand.
+      // Skipped if another write or a file switch has happened since, whose
+      // state is newer than this response.
+      const saved = res.data;
+      if (saved?.comments && seq === saveSeq && get().filePath === filePath) {
+        set({ comments: saved.comments });
+      }
     } catch (e) {
       console.error("Failed to save review", e);
     }
@@ -564,6 +573,9 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     } catch {
       // ignore
     }
+    // Invalidate any PUT still in flight: its echo would otherwise be adopted
+    // after this clear and resurrect the review that was just deleted.
+    saveSeq++;
     set({
       comments: [],
       snapshots: [],
@@ -585,6 +597,9 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       writeReviewModePref(filePath, false);
     }
 
+    // Invalidate any PUT still in flight: its echo would otherwise be adopted
+    // after this clear and resurrect the review that was just deleted.
+    saveSeq++;
     set({
       isReviewMode: false,
       comments: [],

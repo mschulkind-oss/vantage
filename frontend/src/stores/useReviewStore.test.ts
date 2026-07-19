@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { MockInstance } from "vitest";
 import {
   hasAgentReaction,
   isAnsweredByAgent,
@@ -1015,6 +1016,132 @@ describe("useReviewStore", () => {
       expect(c.reactions).toHaveLength(2);
       expect(c.reactions?.[1].summary).toBe("expand on it");
       expect(isPendingForAgent(c)).toBe(true);
+    });
+  });
+
+  describe("saveReview — adopting what the server persisted", () => {
+    // The watcher can record an agent reaction between this browser's last
+    // load and its next write. The server merges that reaction back into the
+    // saved copy and echoes it; loadReview's staleness guard would discard the
+    // reload that could otherwise teach the client about it, so the write's own
+    // response is the only thing that keeps the two in agreement.
+    const seeded = () => mkThreadComment("aaaaaaaa-0001", "please clarify", []);
+
+    const serverCopy = (comments: ReviewComment[]): { data: ReviewData } => ({
+      data: { file_path: "doc.md", snapshots: [], comments },
+    });
+
+    // saveReview swallows its own failures, so "ignored" and "blew up and was
+    // caught" look identical from the store. The log tells them apart.
+    let consoleError: MockInstance;
+    beforeEach(() => {
+      consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    });
+    afterEach(() => {
+      consoleError.mockRestore();
+    });
+
+    it("adopts an agent reaction the merge restored, so the comment stops being pending", async () => {
+      const local = seeded();
+      useReviewStore.setState({ filePath: "doc.md", comments: [local] });
+      expect(isPendingForAgent(useReviewStore.getState().comments[0])).toBe(
+        true,
+      );
+
+      mockedAxios.put.mockResolvedValueOnce(
+        serverCopy([{ ...local, reactions: [agentAddressed] }]),
+      );
+
+      await useReviewStore.getState().saveReview();
+
+      const c = useReviewStore.getState().comments[0];
+      expect(c.reactions).toEqual([agentAddressed]);
+      expect(isPendingForAgent(c)).toBe(false);
+      expect(isAnsweredByAgent(c)).toBe(true);
+    });
+
+    it("ignores a response overtaken by a write the reviewer made meanwhile", async () => {
+      const local = seeded();
+      useReviewStore.setState({ filePath: "doc.md", comments: [local] });
+
+      const slow = deferred<{ data: ReviewData }>();
+      mockedAxios.put.mockReturnValueOnce(slow.promise);
+      const inFlight = useReviewStore.getState().saveReview();
+
+      // The reviewer replies before that PUT comes back. Their reply is newer
+      // than anything the in-flight response can carry, so adopting the
+      // response would silently swallow it.
+      mockedAxios.put.mockResolvedValueOnce({ data: null });
+      useReviewStore.getState().replyToComment("aaaaaaaa-0001", "expand on it");
+
+      slow.resolve(serverCopy([{ ...local, reactions: [agentAddressed] }]));
+      await inFlight;
+
+      const c = useReviewStore.getState().comments[0];
+      expect(c.reactions).toHaveLength(1);
+      expect(c.reactions?.[0]).toMatchObject({
+        actor: "reviewer",
+        summary: "expand on it",
+      });
+      expect(isPendingForAgent(c)).toBe(true);
+    });
+
+    it("ignores a response for a file the reviewer has already left", async () => {
+      const local = mkThreadComment("aaaaaaaa-0001", "doc-a comment", []);
+      useReviewStore.setState({ filePath: "doc-a.md", comments: [local] });
+
+      const slow = deferred<{ data: ReviewData }>();
+      mockedAxios.put.mockReturnValueOnce(slow.promise);
+      const inFlight = useReviewStore.getState().saveReview();
+
+      // The reviewer opens another document before doc-a's PUT comes back.
+      mockedAxios.get.mockResolvedValueOnce({
+        data: { file_path: "doc-b.md", comments: [], snapshots: [] },
+      });
+      await useReviewStore.getState().loadReview("doc-b.md");
+
+      slow.resolve({
+        data: {
+          file_path: "doc-a.md",
+          snapshots: [],
+          comments: [{ ...local, reactions: [agentAddressed] }],
+        },
+      });
+      await inFlight;
+
+      const state = useReviewStore.getState();
+      expect(state.filePath).toBe("doc-b.md");
+      // doc-a's thread must not reappear under doc-b.
+      expect(state.comments).toEqual([]);
+    });
+
+    it("leaves the local copy alone when the response has no body", async () => {
+      const local = seeded();
+      useReviewStore.setState({ filePath: "doc.md", comments: [local] });
+      mockedAxios.put.mockResolvedValueOnce({ data: null });
+
+      await expect(
+        useReviewStore.getState().saveReview(),
+      ).resolves.toBeUndefined();
+
+      expect(useReviewStore.getState().comments).toEqual([local]);
+      expect(consoleError).not.toHaveBeenCalled();
+    });
+
+    it("leaves the local copy alone when the response carries no comments", async () => {
+      // An older server answers the write with an acknowledgement rather than
+      // the saved review; that must read as "nothing to adopt", not as "the
+      // server has no comments".
+      const local = seeded();
+      useReviewStore.setState({ filePath: "doc.md", comments: [local] });
+      mockedAxios.put.mockResolvedValueOnce({ data: { status: "ok" } });
+
+      await expect(
+        useReviewStore.getState().saveReview(),
+      ).resolves.toBeUndefined();
+
+      expect(useReviewStore.getState().comments).toEqual([local]);
+      expect(consoleError).not.toHaveBeenCalled();
     });
   });
 });

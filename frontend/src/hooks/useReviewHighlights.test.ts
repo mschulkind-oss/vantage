@@ -330,3 +330,105 @@ describe("useReviewHighlights — draft preservation", () => {
     expect(actions.onEdit).not.toHaveBeenCalled();
   });
 });
+
+describe("useReviewHighlights — armed delete across a rebuild", () => {
+  /** Comfortably past the hook's minimum gap between arming and accepting. */
+  const PAST_CONFIRM_FLOOR = 1000;
+  const ARMED_CLASS = "review-inline-comment-delete--armed";
+
+  // The clock is driven by hand: the arm is timestamped, and both the
+  // double-click floor and the arm's expiry are measured against Date.now().
+  let now = 0;
+
+  const deleteBtn = (id: string) =>
+    blockFor(id)!.querySelector<HTMLElement>(".review-inline-comment-delete")!;
+
+  beforeEach(() => {
+    now = 1_700_000_000_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+  });
+
+  afterEach(() => {
+    // The arm is module-level state, so it outlives the test that set it — and
+    // the click handler trusts it without re-checking expiry. Left behind, it
+    // would make the *first* delete click of a later test destructive. Clear it
+    // the only way the module offers: click until the button reports itself
+    // disarmed. One click makes this button the armed one if it wasn't; the
+    // next, past the floor, confirms and clears it.
+    container
+      .querySelectorAll<HTMLElement>(".review-inline-comment-delete--armed")
+      .forEach((btn) => {
+        for (let i = 0; i < 2 && btn.classList.contains(ARMED_CLASS); i++) {
+          now += PAST_CONFIRM_FLOOR;
+          fireEvent.click(btn);
+        }
+        expect(btn.classList.contains(ARMED_CLASS)).toBe(false);
+      });
+    vi.restoreAllMocks();
+  });
+
+  it("stays armed when a store write rebuilds the inline layer", () => {
+    const target = baseComment({ id: "d1", anchor: anchorAt(1) });
+    const { rerender } = renderInline([target]);
+
+    fireEvent.click(deleteBtn("d1"));
+    expect(deleteBtn("d1").textContent).toBe("Delete?");
+
+    // Any store write — an agent reaction landing, a reply saving — hands the
+    // hook a fresh array and tears the whole inline layer down. That happens
+    // constantly, and it used to land between the reviewer's two clicks.
+    rerender({ cs: [target, baseComment({ id: "d2", anchor: anchorAt(5) })] });
+
+    expect(deleteBtn("d1").textContent).toBe("Delete?");
+    expect(actions.onDelete).not.toHaveBeenCalled();
+  });
+
+  it("deletes on the next click after the rebuild, without re-arming first", () => {
+    const target = baseComment({ id: "d1", anchor: anchorAt(1) });
+    const { rerender } = renderInline([target]);
+
+    fireEvent.click(deleteBtn("d1"));
+    rerender({ cs: [{ ...target }] });
+
+    now += PAST_CONFIRM_FLOOR;
+    fireEvent.click(deleteBtn("d1"));
+
+    expect(actions.onDelete).toHaveBeenCalledWith("d1");
+  });
+
+  it("still refuses a physical double-click that straddles the rebuild", () => {
+    const target = baseComment({ id: "d1", anchor: anchorAt(1) });
+    const { rerender } = renderInline([target]);
+
+    fireEvent.click(deleteBtn("d1"));
+    rerender({ cs: [{ ...target }] });
+
+    // Both clicks of one gesture arrive within the floor; the second must not
+    // delete just because the rebuild happened in between.
+    fireEvent.click(deleteBtn("d1"));
+
+    expect(actions.onDelete).not.toHaveBeenCalled();
+    expect(deleteBtn("d1").textContent).toBe("Delete?");
+  });
+
+  it("arms only the comment that was clicked", () => {
+    const armedOne = baseComment({ id: "d1", anchor: anchorAt(1) });
+    const other = baseComment({
+      id: "d2",
+      comment: "a different request",
+      anchor: anchorAt(5),
+    });
+    const { rerender } = renderInline([armedOne, other]);
+
+    fireEvent.click(deleteBtn("d1"));
+    rerender({ cs: [{ ...armedOne }, { ...other }] });
+
+    expect(deleteBtn("d2").textContent).toBe("×");
+    expect(deleteBtn("d2").classList.contains(ARMED_CLASS)).toBe(false);
+
+    // And the neighbour's first click only arms it, even well past the floor.
+    now += PAST_CONFIRM_FLOOR;
+    fireEvent.click(deleteBtn("d2"));
+    expect(actions.onDelete).not.toHaveBeenCalled();
+  });
+});
