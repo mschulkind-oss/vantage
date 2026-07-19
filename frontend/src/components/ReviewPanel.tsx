@@ -9,34 +9,62 @@ import {
   Trash2,
   X,
   CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
-import { isPendingForAgent, useReviewStore } from "../stores/useReviewStore";
-import type { ReviewComment } from "../types";
+import {
+  hasAgentReaction,
+  isAnsweredByAgent,
+  isPendingForAgent,
+  useReviewStore,
+} from "../stores/useReviewStore";
+import type { CommentReaction, ReviewComment } from "../types";
 
 interface ReviewPanelProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-type Filter = "all" | "with_reaction" | "awaiting" | "resolved";
+/**
+ * The filters partition comments by *whose turn it is*, so every state is
+ * reachable through exactly one tab and "Needs agent" selects precisely the
+ * set the Copy button sends.  (The previous "Awaiting reaction" tab keyed off
+ * "has the agent ever replied", which excluded replied-to threads — the very
+ * comments Copy was about to send.)
+ */
+type Filter = "all" | "needs_agent" | "answered" | "resolved";
 
 const FILTER_LABEL: Record<Filter, string> = {
   all: "All",
-  with_reaction: "With reaction",
-  awaiting: "Awaiting reaction",
+  needs_agent: "Needs agent",
+  answered: "Answered",
   resolved: "Resolved",
 };
 
-function hasAgentReaction(c: ReviewComment): boolean {
-  return (c.reactions ?? []).some((r) => r.actor === "agent");
+/**
+ * Scroll the document to a comment's inline block and flash it.  The inline
+ * surface owns that DOM, so this addresses it by the same attribute the
+ * minimap stripe uses rather than reaching through React.
+ */
+function scrollToComment(id: string): void {
+  const el = document.querySelector(`[data-review-inline-comment="${id}"]`);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "center" });
+  el.classList.add("review-inline-comment--flash");
+  setTimeout(() => el.classList.remove("review-inline-comment--flash"), 1200);
+}
+
+function clearCopyTimer(
+  ref: React.MutableRefObject<ReturnType<typeof setTimeout> | null>,
+): void {
+  if (ref.current) clearTimeout(ref.current);
+  ref.current = null;
 }
 
 function commentMatchesFilter(c: ReviewComment, f: Filter): boolean {
   if (f === "all") return true;
   if (f === "resolved") return !!c.resolved;
-  if (c.resolved) return false;
-  if (f === "with_reaction") return hasAgentReaction(c);
-  if (f === "awaiting") return !hasAgentReaction(c);
+  if (f === "needs_agent") return isPendingForAgent(c);
+  if (f === "answered") return isAnsweredByAgent(c);
   return true;
 }
 
@@ -54,6 +82,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   const outdatedCommentIds = useReviewStore((s) => s.outdatedCommentIds);
   const replyToComment = useReviewStore((s) => s.replyToComment);
   const reopenAndReply = useReviewStore((s) => s.reopenAndReply);
+  const unresolveComment = useReviewStore((s) => s.unresolveComment);
   const copyAllToClipboard = useReviewStore((s) => s.copyAllToClipboard);
   const copyCommentToClipboard = useReviewStore(
     (s) => s.copyCommentToClipboard,
@@ -72,18 +101,23 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [confirmDismiss, setConfirmDismiss] = useState(false);
+  // Which button last failed to write the clipboard: a comment id, "all" for
+  // the footer button, or null.  A clipboard write can be rejected (missing
+  // permission, non-secure context) and used to fail completely silently.
+  const [copyFailed, setCopyFailed] = useState<string | null>(null);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Counts (computed from full comment list, regardless of active filter)
-  const counts = useMemo(() => {
-    const total = comments.length;
-    const resolved = comments.filter((c) => c.resolved).length;
-    const active = total - resolved;
-    const withReaction = comments.filter(
-      (c) => !c.resolved && hasAgentReaction(c),
-    ).length;
-    const awaiting = active - withReaction;
-    return { all: total, withReaction, awaiting, resolved };
-  }, [comments]);
+  const counts = useMemo(
+    () => ({
+      all: comments.length,
+      needs_agent: comments.filter(isPendingForAgent).length,
+      answered: comments.filter(isAnsweredByAgent).length,
+      resolved: comments.filter((c) => c.resolved).length,
+    }),
+    [comments],
+  );
 
   const visible = useMemo(
     () => comments.filter((c) => commentMatchesFilter(c, filter)),
@@ -97,6 +131,42 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
     return () => document.removeEventListener("click", close);
   }, [menuOpen]);
 
+  // Closing the panel disarms the destructive confirms. Without this, arming
+  // "Dismiss all" or "End review (delete all data)" and then closing left the
+  // confirm armed, so reopening within the 3s window turned the next single
+  // click destructive. Adjusting state during render (React's documented
+  // "reset state when a prop changes" pattern) rather than in an effect keeps
+  // the panel correct on its own, without depending on the parent to unmount it.
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (wasOpen !== isOpen) {
+    setWasOpen(isOpen);
+    if (!isOpen) {
+      setConfirmDismiss(false);
+      setConfirmEnd(false);
+      setMenuOpen(false);
+    }
+  }
+
+  // An open edit/reply box must not outlive its comment — otherwise the text
+  // gets committed against a comment that was deleted underneath it, and a
+  // comment that later reappears under the same id resurrects the stale draft.
+  // Adjusted during render rather than in an effect, so the inconsistent state
+  // never reaches the DOM.
+  const liveIds = useMemo(() => new Set(comments.map((c) => c.id)), [comments]);
+  if (editingId && !liveIds.has(editingId)) setEditingId(null);
+  if (replyingId && !liveIds.has(replyingId)) {
+    setReplyingId(null);
+    setReplyText("");
+  }
+
+  useEffect(
+    () => () => {
+      clearCopyTimer(copyTimer);
+      clearCopyTimer(confirmTimer);
+    },
+    [],
+  );
+
   if (!isOpen) return null;
 
   const activeCount = counts.all - counts.resolved;
@@ -105,20 +175,37 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   ).length;
   const pendingCount = comments.filter(isPendingForAgent).length;
 
+  // One shared timer for every Copy flash, always cleared before rearming, so
+  // a second click restarts the full 2s instead of inheriting the first
+  // click's remaining time.
+  const flashCopied = (target: string, ok: boolean) => {
+    clearCopyTimer(copyTimer);
+    setCopied(ok && target === "all");
+    setCopiedId(ok && target !== "all" ? target : null);
+    setCopyFailed(ok ? null : target);
+    copyTimer.current = setTimeout(() => {
+      setCopied(false);
+      setCopiedId(null);
+      setCopyFailed(null);
+    }, 2000);
+  };
+
   const handleCopy = async () => {
-    const ok = await copyAllToClipboard();
-    if (ok) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
+    flashCopied("all", await copyAllToClipboard());
   };
 
   const handleCopyComment = async (id: string) => {
-    const ok = await copyCommentToClipboard(id);
-    if (ok) {
-      setCopiedId(id);
-      setTimeout(() => setCopiedId((cur) => (cur === id ? null : cur)), 2000);
-    }
+    flashCopied(id, await copyCommentToClipboard(id));
+  };
+
+  // Confirm windows are held in a ref and cleared before rearming. A bare
+  // setTimeout leaks across close/reopen cycles: an earlier timer would fire
+  // partway through a later confirm window and silently disarm it, so the
+  // reviewer gets less than the 3s the UI implies.
+  const armConfirm = (set: (v: boolean) => void) => {
+    if (confirmTimer.current) clearTimeout(confirmTimer.current);
+    set(true);
+    confirmTimer.current = setTimeout(() => set(false), 3000);
   };
 
   const handleEndReview = () => {
@@ -128,8 +215,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
       setMenuOpen(false);
       onClose();
     } else {
-      setConfirmEnd(true);
-      setTimeout(() => setConfirmEnd(false), 3000);
+      armConfirm(setConfirmEnd);
     }
   };
 
@@ -140,8 +226,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
     } else if (outdatedCount > 0) {
       dismissOutdated();
     } else {
-      setConfirmDismiss(true);
-      setTimeout(() => setConfirmDismiss(false), 3000);
+      armConfirm(setConfirmDismiss);
     }
   };
 
@@ -201,16 +286,9 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
 
         {comments.length > 0 && (
           <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-700/50 flex flex-wrap gap-1.5">
-            {(["all", "with_reaction", "awaiting", "resolved"] as Filter[]).map(
+            {(["all", "needs_agent", "answered", "resolved"] as Filter[]).map(
               (f) => {
-                const count =
-                  f === "all"
-                    ? counts.all
-                    : f === "with_reaction"
-                      ? counts.withReaction
-                      : f === "awaiting"
-                        ? counts.awaiting
-                        : counts.resolved;
+                const count = counts[f];
                 return (
                   <button
                     key={f}
@@ -245,21 +323,20 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
           ) : (
             <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
               {visible.map((c) => {
-                const agentReaction = (c.reactions ?? [])
-                  .slice()
-                  .reverse()
-                  .find((r) => r.actor === "agent");
-                const showResolve = !c.resolved && !!agentReaction;
+                const agentReaction = hasAgentReaction(c);
+                const showResolve = !c.resolved && agentReaction;
                 const showDismiss = !c.resolved && !agentReaction;
                 const fallback = c.fallback_text || c.selected_text || "";
                 return (
                   <div key={c.id} className="px-4 py-3 group">
                     <div className="flex items-start justify-between gap-2">
                       <div
+                        onClick={() => scrollToComment(c.id)}
+                        title="Jump to this comment in the document"
                         className={
                           c.resolved
-                            ? "flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500 flex-1"
-                            : "text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900 rounded px-2 py-1 border-l-2 border-blue-400 line-clamp-2 flex-1"
+                            ? "flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500 flex-1 cursor-pointer"
+                            : "text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900 rounded px-2 py-1 border-l-2 border-blue-400 line-clamp-2 flex-1 cursor-pointer"
                         }
                       >
                         {c.resolved && (
@@ -352,9 +429,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                       </p>
                     )}
 
-                    {agentReaction && (
-                      <ReactionView summary={agentReaction.summary} />
-                    )}
+                    <ThreadView comment={c} />
 
                     {replyingId === c.id && (
                       <div className="mt-1.5">
@@ -418,7 +493,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
 
                     {replyingId !== c.id && (
                       <div className="mt-2 flex justify-end gap-1.5">
-                        {isPendingForAgent(c) && hasAgentReaction(c) && (
+                        {isPendingForAgent(c) && (
                           <button
                             onClick={() => handleCopyComment(c.id)}
                             className="flex items-center gap-1 px-2 py-1 text-[11px] rounded text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30"
@@ -427,6 +502,10 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                             {copiedId === c.id ? (
                               <>
                                 <Check size={11} /> Copied!
+                              </>
+                            ) : copyFailed === c.id ? (
+                              <>
+                                <AlertCircle size={11} /> Copy failed
                               </>
                             ) : (
                               <>
@@ -465,17 +544,30 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                             Dismiss
                           </button>
                         )}
-                        {c.resolved && hasAgentReaction(c) && (
-                          <button
-                            onClick={() => {
-                              setReplyingId(c.id);
-                              setReplyText("");
-                              setTimeout(() => replyRef.current?.focus(), 0);
-                            }}
-                            className="px-2 py-1 text-[11px] rounded text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30"
-                          >
-                            Reopen &amp; Reply
-                          </button>
+                        {/* Reopen is offered for EVERY resolved comment, not
+                            just agent-answered ones: a comment dismissed
+                            before the agent ever saw it was otherwise
+                            unrecoverable on every surface. */}
+                        {c.resolved && (
+                          <>
+                            <button
+                              onClick={() => unresolveComment(c.id)}
+                              className="px-2 py-1 text-[11px] rounded text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700"
+                              title="Reopen this comment without writing a reply"
+                            >
+                              Reopen
+                            </button>
+                            <button
+                              onClick={() => {
+                                setReplyingId(c.id);
+                                setReplyText("");
+                                setTimeout(() => replyRef.current?.focus(), 0);
+                              }}
+                              className="px-2 py-1 text-[11px] rounded text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/30"
+                            >
+                              Reopen &amp; Reply
+                            </button>
+                          </>
                         )}
                       </div>
                     )}
@@ -514,6 +606,10 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                 <>
                   <Check size={12} /> Copied!
                 </>
+              ) : copyFailed === "all" ? (
+                <>
+                  <AlertCircle size={12} /> Copy failed
+                </>
               ) : (
                 <>
                   <ClipboardCopy size={12} /> Copy ({pendingCount})
@@ -528,15 +624,41 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   );
 };
 
-const ReactionView: React.FC<{
-  summary: string;
-}> = ({ summary }) => {
+/** Label and badge styling for one turn in a thread. */
+function turnStyle(r: CommentReaction): { label: string; className: string } {
+  if (r.actor === "agent") {
+    return r.kind === "wont_fix"
+      ? { label: "Agent", className: "review-reaction-badge--declined" }
+      : { label: "Agent", className: "review-reaction-badge--agent" };
+  }
+  return r.kind === "noted"
+    ? { label: "You accepted", className: "review-reaction-badge--noted" }
+    : { label: "You", className: "review-reaction-badge--reviewer" };
+}
+
+/**
+ * The full back-and-forth for one comment, in order.  Rendering only the last
+ * agent reaction (as this panel used to) made the reviewer's own replies vanish
+ * the instant they were submitted, and hid every earlier round of a thread.
+ */
+const ThreadView: React.FC<{ comment: ReviewComment }> = ({ comment }) => {
+  const reactions = comment.reactions ?? [];
+  if (reactions.length === 0) return null;
   return (
-    <div className="review-reaction mt-2">
-      <div className="review-reaction-header">
-        <span className="review-reaction-badge">Agent</span>
-        <span className="review-reaction-summary">{summary}</span>
-      </div>
+    <div className="mt-2 space-y-1.5">
+      {reactions.map((r, i) => {
+        const { label, className } = turnStyle(r);
+        return (
+          <div key={i} className="review-reaction">
+            <div className="review-reaction-header">
+              <span className={`review-reaction-badge ${className}`}>
+                {label}
+              </span>
+              <span className="review-reaction-summary">{r.summary}</span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 };
