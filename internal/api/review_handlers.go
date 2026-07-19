@@ -32,10 +32,11 @@ func (h *Handlers) ReviewGet(w http.ResponseWriter, r *http.Request) {
 }
 
 // ReviewPut handles PUT /review (and /r/{repo}/review). The body is a full
-// [model.ReviewData] that is persisted as-is. This is pure persistence: it does
-// NOT apply the changelog (that would double-record agent reactions). A malformed
-// body is a 400; a persistence failure is a 500. Success returns
-// {"status":"ok"}.
+// [model.ReviewData]. This does NOT apply the changelog (that would
+// double-record agent reactions the client already holds), but it is not a
+// blind overwrite either: agent reactions the client's copy predates are
+// preserved — see [review.Store.SaveFromClient]. A malformed body is a 400; a
+// persistence failure is a 500. Success returns {"status":"ok"}.
 func (h *Handlers) ReviewPut(w http.ResponseWriter, r *http.Request) {
 	svc, ok := h.repoOr400(w, r)
 	if !ok {
@@ -52,7 +53,7 @@ func (h *Handlers) ReviewPut(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "Invalid review body")
 		return
 	}
-	if err := h.deps.Reviews.Save(path, svc.Repo, &data); err != nil {
+	if err := h.deps.Reviews.SaveFromClient(path, svc.Repo, &data); err != nil {
 		slog.Error("api: review save failed", "path", path, "error", err)
 		writeError(w, http.StatusInternalServerError, "Failed to save review")
 		return

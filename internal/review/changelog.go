@@ -1,6 +1,9 @@
 package review
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -61,7 +64,12 @@ type changelogEntry struct {
 func (s *Store) ApplyChangelog(filePath, newContent, repo string) int {
 	key := cacheKey{repo: repo, path: filePath}
 
-	review, err := s.Get(filePath, repo)
+	// Held across the whole read-modify-write. Taking it only around the Save
+	// would leave the read stale: a browser PUT landing in between would be
+	// overwritten by the copy this call read before it.
+	defer s.lock(filePath, repo)()
+
+	review, err := s.getLocked(filePath, repo)
 	if err != nil {
 		slog.Warn("review: failed to read review for changelog", "path", filePath, "error", err)
 	}
@@ -72,6 +80,18 @@ func (s *Store) ApplyChangelog(filePath, newContent, repo string) int {
 
 	entries := parseChangelog(newContent)
 	if len(entries) == 0 {
+		setPrevContent(key, newContent)
+		return 0
+	}
+
+	// The changelog block is part of the document, so it is re-parsed on every
+	// subsequent save. Applying it again would append the agent's old answer
+	// after the reviewer's follow-up and silently mark that follow-up answered.
+	// A fingerprint of the block distinguishes "the agent wrote a new answer"
+	// from "we are seeing the same block a second time"; it is persisted in the
+	// review so a server restart cannot lose it.
+	fingerprint := changelogFingerprint(entries)
+	if review.AppliedChangelog == fingerprint {
 		setPrevContent(key, newContent)
 		return 0
 	}
@@ -127,13 +147,26 @@ func (s *Store) ApplyChangelog(filePath, newContent, repo string) int {
 		slog.Info("review: recorded changelog reaction", "comment", short, "path", filePath, "summary", entry.summary)
 	}
 
-	if written > 0 {
-		if err := s.Save(filePath, repo, review); err != nil {
-			slog.Warn("review: failed to save changelog reactions", "path", filePath, "error", err)
-		}
+	// The fingerprint is recorded even when nothing was written, so a block
+	// whose bullets all resolved to nothing is not re-examined on every save.
+	review.AppliedChangelog = fingerprint
+	if err := s.saveLocked(filePath, repo, review); err != nil {
+		slog.Warn("review: failed to save changelog reactions", "path", filePath, "error", err)
 	}
 	setPrevContent(key, newContent)
 	return written
+}
+
+// changelogFingerprint identifies a parsed changelog block by its bullets, so
+// re-parsing the same block is distinguishable from the agent writing a new
+// one — even when a later block reuses an earlier summary verbatim.
+func changelogFingerprint(entries []changelogEntry) string {
+	h := sha256.New()
+	for _, e := range entries {
+		// Length-prefixed so ("ab","c") and ("a","bc") cannot collide.
+		fmt.Fprintf(h, "%d:%s%d:%s", len(e.shortID), e.shortID, len(e.summary), e.summary)
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 // commentByID returns the comment with the given id, or nil. comments is

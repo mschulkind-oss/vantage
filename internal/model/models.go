@@ -194,9 +194,15 @@ type ReviewComment struct {
 // Comments must marshal as [] rather than null — use NewReviewData or
 // initialize them to non-nil empties.
 type ReviewData struct {
-	FilePath  string           `json:"file_path"`
-	Snapshots []ReviewSnapshot `json:"snapshots"`
-	Comments  []ReviewComment  `json:"comments"`
+	FilePath string `json:"file_path"`
+	// AppliedChangelog fingerprints the last "<!-- changelog -->" block that was
+	// turned into reactions. The block stays in the document, so every later
+	// save re-parses it; without a record of what was already applied it would
+	// be re-applied and would auto-answer the reviewer's follow-up. Empty on
+	// reviews written before this field existed.
+	AppliedChangelog string           `json:"applied_changelog,omitempty"`
+	Snapshots        []ReviewSnapshot `json:"snapshots"`
+	Comments         []ReviewComment  `json:"comments"`
 }
 
 // NewReviewData returns a ReviewData for filePath with its slice fields
