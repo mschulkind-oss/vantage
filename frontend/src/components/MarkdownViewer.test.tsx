@@ -262,11 +262,20 @@ describe("MarkdownViewer — inline review actions wiring", () => {
     vi.clearAllMocks();
   });
 
-  it("wires the inline × to deleteComment", () => {
+  it("wires the inline × to deleteComment, on the second click", () => {
     renderWithComment(baseComment({}));
 
-    fireEvent.click(inlineButton("c1", ".review-inline-comment-delete"));
+    // Delete is two-click: it discards the agent's replies too, with no undo.
+    const btn = inlineButton("c1", ".review-inline-comment-delete");
+    fireEvent.click(btn);
+    expect(useReviewStore.getState().comments).toHaveLength(1);
+    expect(btn.textContent).toBe("Delete?");
 
+    // The confirm ignores a second click inside one gesture (a physical
+    // double-click), so move the clock past that window.
+    const base = Date.now();
+    vi.spyOn(Date, "now").mockImplementation(() => base + 1000);
+    fireEvent.click(btn);
     expect(useReviewStore.getState().comments).toHaveLength(0);
   });
 

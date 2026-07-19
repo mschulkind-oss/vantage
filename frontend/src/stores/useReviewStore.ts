@@ -73,19 +73,30 @@ export function isPendingForAgent(c: ReviewComment): boolean {
   // "your earlier answer did not satisfy the reviewer". A reviewer who wants
   // another round replies, which appends needs_clarification instead.
   let i = reactions.length - 1;
+  // An acceptance also re-dates the answer: accepting at T3 endorses whatever
+  // the comment said at T3, so an edit made before it must not re-queue the
+  // comment when it is later reopened.
+  let acceptedAt = 0;
   while (
     i >= 0 &&
     reactions[i].actor === "reviewer" &&
     reactions[i].kind === "noted"
   ) {
+    acceptedAt = Math.max(acceptedAt, reactions[i].timestamp);
     i--;
   }
   const last = i >= 0 ? reactions[i] : undefined;
+  // Declining is an answer too: the agent has responded, so the ball is back
+  // with the reviewer. Treating only "addressed" as an answer left a declined
+  // comment pending forever — re-sent on every Copy, and stuck under
+  // "Needs agent" with no way out but dismissing it.
   const answered =
-    !!last && last.actor === "agent" && last.kind === "addressed";
+    !!last &&
+    last.actor === "agent" &&
+    (last.kind === "addressed" || last.kind === "wont_fix");
   if (!answered) return true;
   // The agent answered the *previous* wording; a later edit re-queues it.
-  return (c.edited_at ?? 0) > last.timestamp;
+  return (c.edited_at ?? 0) > Math.max(last.timestamp, acceptedAt);
 }
 
 /** Whether the agent has ever responded to this comment. */

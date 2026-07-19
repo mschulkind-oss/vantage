@@ -53,6 +53,9 @@ function scrollToComment(id: string): void {
   setTimeout(() => el.classList.remove("review-inline-comment--flash"), 1200);
 }
 
+/** Minimum gap between arming a confirm and it accepting, to defeat a double-click. */
+const CONFIRM_MIN_MS = 350;
+
 function clearCopyTimer(
   ref: React.MutableRefObject<ReturnType<typeof setTimeout> | null>,
 ): void {
@@ -107,6 +110,13 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   const [copyFailed, setCopyFailed] = useState<string | null>(null);
   const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // One ref per confirm: sharing a single timer let arming either one cancel
+  // the other's disarm, stranding it armed indefinitely.
+  const endTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Which comment's delete button is armed, if any.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const deleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const armedDeleteAt = useRef(0);
 
   // Counts (computed from full comment list, regardless of active filter)
   const counts = useMemo(
@@ -143,7 +153,11 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
     if (!isOpen) {
       setConfirmDismiss(false);
       setConfirmEnd(false);
+      setConfirmDeleteId(null);
       setMenuOpen(false);
+      // The pending timers are left to fire: they only ever disarm, so a late
+      // one is a no-op against the flags already cleared here. Clearing them
+      // would be a side effect in render for no benefit.
     }
   }
 
@@ -158,11 +172,25 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
     setReplyingId(null);
     setReplyText("");
   }
+  if (confirmDeleteId && !liveIds.has(confirmDeleteId))
+    setConfirmDeleteId(null);
+  // Switching tabs can unmount the armed row. Leaving it armed means the
+  // reviewer returns to a button that deletes on the very next click, with no
+  // "Delete?" label ever shown to them.
+  const [armedUnderFilter, setArmedUnderFilter] = useState(filter);
+  if (confirmDeleteId && armedUnderFilter !== filter) {
+    setConfirmDeleteId(null);
+    setArmedUnderFilter(filter);
+  } else if (armedUnderFilter !== filter) {
+    setArmedUnderFilter(filter);
+  }
 
   useEffect(
     () => () => {
       clearCopyTimer(copyTimer);
       clearCopyTimer(confirmTimer);
+      clearCopyTimer(endTimer);
+      clearCopyTimer(deleteTimer);
     },
     [],
   );
@@ -202,10 +230,32 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   // setTimeout leaks across close/reopen cycles: an earlier timer would fire
   // partway through a later confirm window and silently disarm it, so the
   // reviewer gets less than the 3s the UI implies.
-  const armConfirm = (set: (v: boolean) => void) => {
-    if (confirmTimer.current) clearTimeout(confirmTimer.current);
+  const armConfirm = (
+    ref: React.MutableRefObject<ReturnType<typeof setTimeout> | null>,
+    set: (v: boolean) => void,
+  ) => {
+    if (ref.current) clearTimeout(ref.current);
     set(true);
-    confirmTimer.current = setTimeout(() => set(false), 3000);
+    ref.current = setTimeout(() => set(false), 3000);
+  };
+
+  const handleDeleteComment = (id: string) => {
+    // A physical double-click is two clicks, and would otherwise arm and fire
+    // in one gesture — defeating the guard entirely. The confirm only counts
+    // once the reviewer has had time to read the "Delete?" label.
+    if (
+      confirmDeleteId === id &&
+      Date.now() - armedDeleteAt.current >= CONFIRM_MIN_MS
+    ) {
+      setConfirmDeleteId(null);
+      deleteComment(id);
+      return;
+    }
+    if (confirmDeleteId === id) return; // too fast — ignore, stay armed
+    if (deleteTimer.current) clearTimeout(deleteTimer.current);
+    setConfirmDeleteId(id);
+    armedDeleteAt.current = Date.now();
+    deleteTimer.current = setTimeout(() => setConfirmDeleteId(null), 3000);
   };
 
   const handleEndReview = () => {
@@ -215,7 +265,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
       setMenuOpen(false);
       onClose();
     } else {
-      armConfirm(setConfirmEnd);
+      armConfirm(endTimer, setConfirmEnd);
     }
   };
 
@@ -226,7 +276,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
     } else if (outdatedCount > 0) {
       dismissOutdated();
     } else {
-      armConfirm(setConfirmDismiss);
+      armConfirm(confirmTimer, setConfirmDismiss);
     }
   };
 
@@ -367,12 +417,24 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                             <Pencil size={12} />
                           </button>
                         )}
+                        {/* Two-click, like the panel's other destructive
+                            actions: delete throws away the agent's replies
+                            too, and there is no undo. */}
                         <button
-                          onClick={() => deleteComment(c.id)}
-                          className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 transition-opacity"
-                          title="Delete comment"
+                          onClick={() => handleDeleteComment(c.id)}
+                          className={
+                            confirmDeleteId === c.id
+                              ? "flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium bg-red-600 text-white"
+                              : "p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 transition-opacity"
+                          }
+                          title={
+                            confirmDeleteId === c.id
+                              ? "Click again to delete this comment and its replies"
+                              : "Delete comment"
+                          }
                         >
                           <Trash2 size={12} />
+                          {confirmDeleteId === c.id && "Delete?"}
                         </button>
                       </div>
                     </div>
