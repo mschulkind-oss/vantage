@@ -163,4 +163,5 @@ the `web` package compiling during day-to-day backend work.
 
 - [docs/design/technical_spec.md](design/technical_spec.md) — Architecture and design decisions
 - [docs/design/review-mode.md](design/review-mode.md) — Review-mode design and model gaps
+- [docs/design/review-state-architecture.md](design/review-state-architecture.md) — Why review state placement keeps causing bugs, and the proposed command-based rework
 - [docs/design/working-directory-diffs.md](design/working-directory-diffs.md) — Uncommitted change viewing
