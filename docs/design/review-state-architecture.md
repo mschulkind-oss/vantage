@@ -435,9 +435,9 @@ conversation system losing turns.
 implementation is correct, mutation-tested, and stable; the migration is
 surgery on a healthy patient. The right trigger is the *next* time review
 work touches the dedup or merge paths — at that point, execute §8 instead of
-extending the inference machinery, which this doc should make a firing
-offense. Until then, the doc's value is as a tripwire: the protocol is
-explicitly not frozen, so nothing accumulates around it.
+extending the inference machinery; extending it further is the one outcome
+this doc exists to prevent. Until then, the doc's value is as a tripwire: the
+protocol is explicitly not frozen, so nothing accumulates around it.
 
 Open questions, for whenever the trigger fires:
 
