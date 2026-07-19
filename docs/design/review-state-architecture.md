@@ -251,6 +251,17 @@ visible outcome, unlike today's silent erasure of the other client's replies.
 
 ### 6.2 Agent responses become deliveries
 
+This reverses a recorded decision, and should say so. The original design
+([review-mode.md](review-mode.md), open question 4) chose "changelog block
+only — no REST endpoint, ever," on the grounds that the agent's contract is
+editing Markdown and a second channel was out of scope — while presciently
+warning that this made the changelog grammar load-bearing. That was a
+reasonable call made *before the parser existed*, when the dedup tax was
+invisible; §3–§5 of this document are what the single-channel simplicity
+turned out to cost. The reversal is of the channel's *medium*, not its
+spirit: the agent still does one simple thing, it just does it somewhere
+that can be consumed.
+
 The agent stops writing responses into the document. It *delivers* them, once,
 through any of three doors — all events, not regions of a persistent file:
 
