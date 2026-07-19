@@ -105,6 +105,14 @@ func (s *Store) ApplyChangelog(filePath, newContent, repo string) int {
 	// A review with no marker, or one written in an older format, cannot say
 	// what it already consumed — see the dedup note below.
 	legacy := !parsed
+	// A risen block count means the agent APPENDED — everything in the new block
+	// is this round's work, so the dedup window may be scoped to the round and a
+	// summary repeated verbatim still counts. An unchanged count with a changed
+	// digest means it EDITED the live block instead, typically to add a bullet
+	// for another comment; the bullets already applied from that block are not
+	// new answers, so those must be deduped against the whole history or they
+	// replay on top of their reviewers' follow-ups.
+	appended := !legacy && cur.blocks > stored.blocks
 	if !legacy && cur.blocks <= stored.blocks && cur.digest == stored.digest {
 		if review.AppliedChangelog != cur.String() {
 			// Nothing new to apply, but the document moved (an earlier block was
@@ -139,14 +147,13 @@ func (s *Store) ApplyChangelog(filePath, newContent, repo string) int {
 
 		// Idempotency: dedup by (comment_id, summary).
 		//
-		// A review stored before AppliedChangelog existed has no record of what
-		// it already consumed, so the first pass after an upgrade cannot tell a
-		// new answer from one applied months ago. Round-scoping would re-apply
-		// the old answer on top of the reviewer's follow-up and mark it
-		// answered. Legacy reviews therefore fall back to the whole-history scan
-		// — the pre-upgrade behaviour — for that one pass, after which the
-		// fingerprint recorded below makes the scoped window safe.
-		if hasAddressedReaction(comment, entry.summary, !legacy) {
+		// Scoped to this round only when the agent appended a block. Otherwise —
+		// an edited block, or a legacy review that cannot say what it already
+		// consumed — the whole history is scanned, which is the conservative
+		// choice: at worst a genuinely new answer that repeats an old summary
+		// verbatim is skipped, versus replaying a stale answer over a reviewer's
+		// follow-up and marking it answered.
+		if hasAddressedReaction(comment, entry.summary, appended) {
 			continue
 		}
 

@@ -331,6 +331,33 @@ describe("useReviewHighlights — draft preservation", () => {
   });
 });
 
+describe("useReviewHighlights — only one delete is ever armed", () => {
+  const ARMED = "review-inline-comment-delete--armed";
+
+  const deleteBtnFor = (id: string) =>
+    container.querySelector<HTMLElement>(
+      `[data-review-inline-comment="${id}"] .review-inline-comment-delete`,
+    )!;
+
+  it("resets a previously armed button when another one is armed", () => {
+    const a = baseComment({ id: "a1", anchor: anchorAt(1) });
+    const b = baseComment({ id: "b1", anchor: anchorAt(5) });
+    renderInline([a, b]);
+
+    fireEvent.click(deleteBtnFor("a1"));
+    expect(deleteBtnFor("a1").classList.contains(ARMED)).toBe(true);
+
+    fireEvent.click(deleteBtnFor("b1"));
+
+    // Two buttons reading "Delete?" at once would imply both are armed; only
+    // one is, so clicking the stale-looking one merely re-arms it.
+    expect(deleteBtnFor("b1").classList.contains(ARMED)).toBe(true);
+    expect(deleteBtnFor("a1").classList.contains(ARMED)).toBe(false);
+    expect(deleteBtnFor("a1").textContent).toBe("×");
+    expect(actions.onDelete).not.toHaveBeenCalled();
+  });
+});
+
 describe("useReviewHighlights — armed delete across a rebuild", () => {
   /** Comfortably past the hook's minimum gap between arming and accepting. */
   const PAST_CONFIRM_FLOOR = 1000;
