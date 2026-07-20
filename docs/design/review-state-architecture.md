@@ -1,7 +1,7 @@
 # Where Review State Lives — and Why It Keeps Biting Us
 
 > Status: **implemented** · 2026-07-19 (proposed and shipped the same day;
-> amended the same day — see §11)
+> amended the same day — see §11; further amended 2026-07-20 — see §12)
 >
 > Landed as `59c95eaa` (command endpoints, review_changed push, response
 > inbox), `b417e787` (frontend commands, paste box, inbox payload), `b732ff6a`
@@ -579,3 +579,62 @@ two places." This follow-up is its sibling — "two different facts are presente
 in one place." Both produce the same symptom: reasoning that seems to work,
 until the two things drift apart and the UI starts asserting something nobody
 decided.
+
+---
+
+## 12. Follow-up: the inbox was guessing when the writer was done
+
+_Added 2026-07-20._
+
+The inbox fixed the channel — messages are consumed once and gone (§6.2). But
+its *completion signal* was inferred, not stated, and that reopened the same
+class of silent loss the whole rework exists to kill, now on the delivery leg.
+
+The contract was "append one JSON line per comment to a shared per-document
+`.jsonl` file." The consumer decided a file was ready to claim, apply, and
+**delete** by asking `hasCompleteLine` — *does it end in a newline?* That is the
+tell: a trailing newline means a *line* finished, not that the *agent*
+finished. So any consume that interleaved with an in-progress write lost data,
+two ways:
+
+1. **Unlinked-inode loss.** The agent holds the file open `O_APPEND`. It writes
+   line 1 (`…\n`); the watcher fires, claims, applies, and deletes; the agent
+   writes line 2 into the now-unlinked inode. Gone — the reported symptom,
+   "appending to a file already deleted by the time they get to it."
+2. **Orphaned-tail loss.** A buffered multi-line flush leaves the consumer a
+   complete `line1\n` plus a `line2…` tail. The tail was parked as `*.partial`
+   — and, as that code's own comment admitted, "will likely never be completed"
+   because the writer's descriptor points at the file that was already consumed.
+   Parked meant silently dropped.
+
+Every scrap of machinery around it — `hasCompleteLine`, the tail split in
+`readCompleteLines`, `*.partial`, `preservePartialLine` — was compensation for
+one thing: **the consumer was reconstructing "is the writer done?" from byte
+structure.** That is §9's first smell exactly, one leg further out: a fact
+(*this delivery is complete*) inferred after the fact from an artifact that was
+never a record of it, instead of stated by the party who knows it.
+
+**The fix is the same shape as every other one in this document — let the party
+to whom the fact is true state it, once.** The agent writes its whole delivery
+to a `*.writing` scratch file the consumer ignores, then **renames** it to the
+committed `*.jsonl` name. A same-directory rename is atomic, so a committed file
+is complete and immutable by construction: never mid-write, never appended to
+again. The delivery unit became one file rather than a shared append log, with a
+per-delivery unique token so two turns for one document cannot collide on the
+name.
+
+That deleted the entire is-the-writer-done layer — `hasCompleteLine`, the tail
+split, `*.partial`, `preservePartialLine` — while `.consuming` claim/apply/
+delete crash-safety, nonce dedup, and oversize quarantine were untouched. The
+clipboard payload now teaches write-then-rename; the `*.partial` leftover is
+gone from the user guide, replaced by `*.writing`.
+
+Cleaned up in the same pass: the "If you cannot write files — reply in chat"
+fallback in the clipboard payload pointed at the paste box, which §11 had
+already removed. It was instructing agents to use a door that no longer existed.
+
+**The lesson worth carrying:** a delivery channel needs a completion signal, and
+that signal is a fact the *sender* owns. Infer it from the payload's shape — a
+newline, a closing brace, a size — and you are back to reconstructing after the
+fact, which is where every silent loss in this saga has lived. A rename is the
+sender saying "done"; nothing else in the protocol has to guess.

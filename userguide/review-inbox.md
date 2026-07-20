@@ -33,13 +33,20 @@ nothing has to be inferred from content.
 ## What the agent writes
 
 When you copy comments to an agent, the clipboard payload tells it to save the
-document first, then append **one JSON line per comment it acted on** to a file
-named after the document, with path separators flattened to `__`:
+document first, then deliver **one file per response**, carrying one JSON line
+per comment it acted on. Each file is named after the document (path separators
+flattened to `__`) plus a unique token, and is delivered in two steps so
+Vantage never reads it half-written:
 
-| Document | Inbox file |
-|---|---|
-| `spec.md` | `.vantage/inbox/spec.md.jsonl` |
-| `docs/design/api.md` | `.vantage/inbox/docs__design__api.md.jsonl` |
+1. The agent writes the whole delivery to a scratch file whose name ends in
+   `.writing` — Vantage ignores those.
+2. The agent renames it to drop the `.writing` suffix. That rename is the
+   signal that the delivery is complete; only then does Vantage consume it.
+
+| Document | Scratch file (ignored) | Committed file (consumed) |
+|---|---|---|
+| `spec.md` | `.vantage/inbox/spec.md.<unique>.jsonl.writing` | `.vantage/inbox/spec.md.<unique>.jsonl` |
+| `docs/design/api.md` | `.vantage/inbox/docs__design__api.md.<unique>.jsonl.writing` | `.vantage/inbox/docs__design__api.md.<unique>.jsonl` |
 
 Each line is one JSON object, newline-terminated:
 
@@ -47,8 +54,15 @@ Each line is one JSON object, newline-terminated:
 {"path":"docs/design/api.md","id":"abcd1234","round":2,"summary":"Rewrote the intro in plain language.","nonce":"k7f29qd1x4"}
 ```
 
-The payload hands the agent the exact filename and a filled-in example line, so
+The payload hands the agent the exact filenames and a filled-in example line, so
 it does not have to derive any of this.
+
+**Why the rename?** An agent that appended to a shared per-document file gave
+Vantage no reliable way to know the agent had finished: a trailing newline means
+a line ended, not that the agent is done, and an open append handle can keep
+writing into a file Vantage has already consumed and deleted — so responses were
+silently lost. A file that arrives complete, by rename, closes that race by
+construction.
 
 | Field | Meaning |
 |---|---|
@@ -65,13 +79,15 @@ carry lines for several documents and still be applied correctly.
 ## What Vantage does with it
 
 The file watcher drains the inbox at startup and whenever anything under
-`.vantage/inbox` changes. Draining one file is:
+`.vantage/inbox` changes. Only committed files are drained — a `*.writing`
+file the agent is still assembling is skipped until it is renamed. Draining one
+file is:
 
-1. **Claim** — rename it to `<name>.consuming`, so a concurrent write cannot
-   race the read.
-2. **Parse** — read whole, newline-terminated lines. A line that is not valid
-   JSON, has no `id`, or names a path outside the repo is logged and skipped;
-   the rest of the file still applies.
+1. **Claim** — rename it to `<name>.consuming`, so a redelivery or a second
+   watcher pass cannot race the read.
+2. **Parse** — read every line. A line that is not valid JSON, has no `id`, or
+   names a path outside the repo is logged and skipped; the rest of the file
+   still applies.
 3. **Apply** — record each response as an agent reply on the matching comment,
    capturing the document's before/after text for the diff shown in the panel.
    "Record" means one JSON file per reviewed document, rewritten atomically —
@@ -118,9 +134,9 @@ leftovers you might find:
 
 | Name | Meaning | What to do |
 |---|---|---|
-| `<doc>.jsonl` | A delivery waiting to be consumed. | Nothing — it drains on the next pass, or at next startup. |
+| `*.jsonl` | A committed delivery waiting to be consumed. | Nothing — it drains on the next pass, or at next startup. |
+| `*.writing` | A delivery an agent is still assembling; it becomes a committed `*.jsonl` when the agent renames it. | Nothing while an agent is working. A stray one left by a crashed agent is a never-delivered response — safe to delete. |
 | `*.consuming` | A delivery that was claimed but whose apply failed (e.g. the review file was unwritable). | Nothing — it is retried on the next pass. Redelivery is safe; the `nonce` prevents double-recording. |
-| `*.partial` | The tail of a file that ended mid-line, preserved so a half-written delivery is never dropped. | Nothing. Vantage never re-reads these; they are kept as evidence. Safe to delete. |
 | `*.oversize` | A delivery file larger than 8 MB, quarantined unparsed. | Investigate — a delivery file should be a few hundred bytes. Safe to delete once you have looked. |
 
 Any of these is safe to delete by hand; the worst case is losing an
