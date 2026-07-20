@@ -3,7 +3,6 @@ package review
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -110,82 +109,65 @@ func TestConsumeInboxConsumingLeftoverStillApplies(t *testing.T) {
 	require.Empty(t, inboxEntries(t, root))
 }
 
-func TestConsumeInboxPreservesPartialFinalLine(t *testing.T) {
+func TestConsumeInboxSkipsWritingFile(t *testing.T) {
+	// A *.writing file is the agent mid-delivery. Consuming it would read a
+	// half-written file and, worse, delete the inode out from under the writer's
+	// descriptor — the exact loss the rename-to-commit protocol exists to
+	// prevent. It must be left untouched until the agent renames it.
 	root := t.TempDir()
 	s := NewStore(t.TempDir())
 	seedDocWithComment(t, s, root, "a.md", "c1a2b3c4deadbeef", cmdDoc, 3)
 
-	partial := `{"path":"a.md","id":"c1a2b3c4","summary":"unfini`
-	writeInboxFile(t, root, "a.jsonl",
-		`{"path":"a.md","id":"c1a2b3c4","summary":"finished","nonce":"n-1"}`+"\n"+partial)
+	scratch := "a.jsonl" + writingSuffix
+	writeInboxFile(t, root, scratch,
+		`{"path":"a.md","id":"c1a2b3c4","summary":"still writing","nonce":"n-1"}`+"\n")
 
-	require.Equal(t, []string{"a.md"}, s.ConsumeInbox(root, ""))
+	require.Empty(t, s.ConsumeInbox(root, ""), "a *.writing file is not consumed")
+	require.Equal(t, []string{scratch}, inboxEntries(t, root), "and it is left in place")
 
-	// The complete line applied; the tail was written to a fresh file.
-	names := inboxEntries(t, root)
-	require.Len(t, names, 1)
-	require.NotEqual(t, "a.jsonl", names[0])
-	got, err := os.ReadFile(filepath.Join(InboxDir(root), names[0]))
+	data, err := s.Get("a.md", "")
 	require.NoError(t, err)
-	require.Equal(t, partial, string(got))
-
-	require.True(t, strings.HasSuffix(names[0], partialSuffix),
-		"the preserved tail is parked under a name ConsumeInbox skips")
-
-	// A later pass leaves the still-partial file alone instead of shuttling it
-	// through rename-and-rewrite forever.
-	require.Empty(t, s.ConsumeInbox(root, ""))
-	require.Equal(t, names, inboxEntries(t, root))
+	require.Empty(t, data.Comments[0].Reactions)
 }
 
-// breakStore makes every load and save under dir fail the way a durable I/O
-// fault would (a root-owned reviews directory, a read-only or full $HOME): dir
-// becomes a regular file, so every path beneath it is ENOTDIR. It returns a
-// repair func that restores the store's contents.
-func breakStore(t *testing.T, dir string) (repair func()) {
-	t.Helper()
-	stashed := dir + ".stashed"
-	require.NoError(t, os.Rename(dir, stashed))
-	require.NoError(t, os.WriteFile(dir, []byte("not a directory"), 0o644))
-	return func() {
-		t.Helper()
-		require.NoError(t, os.Remove(dir))
-		require.NoError(t, os.Rename(stashed, dir))
-	}
-}
-
-func TestConsumeInboxDoesNotRePreserveTailWhileApplyFails(t *testing.T) {
+func TestConsumeInboxCommittedAfterRename(t *testing.T) {
+	// The agent commits by renaming *.writing to its final name. Only then does
+	// the delivery land.
 	root := t.TempDir()
-	storeDir := filepath.Join(t.TempDir(), "reviews")
-	s := NewStore(storeDir)
+	s := NewStore(t.TempDir())
 	seedDocWithComment(t, s, root, "a.md", "c1a2b3c4deadbeef", cmdDoc, 3)
 
-	partial := `{"path":"a.md","id":"c1a2b3c4","summary":"unfini`
-	writeInboxFile(t, root, "a.jsonl",
-		`{"path":"a.md","id":"c1a2b3c4","summary":"finished","nonce":"n-1"}`+"\n"+partial)
+	scratch := writeInboxFile(t, root, "a.jsonl"+writingSuffix,
+		`{"path":"a.md","id":"c1a2b3c4","summary":"done","nonce":"n-1"}`+"\n")
+	require.Empty(t, s.ConsumeInbox(root, ""))
 
-	repair := breakStore(t, storeDir)
-
-	// Every pass fails to apply and therefore keeps the claimed file. Preserving
-	// the tail here too would mint a fresh file per pass — and since each new
-	// inbox file is an event the watcher consumes synchronously, that is a loop
-	// that fills the disk on its own.
-	for range 5 {
-		require.Empty(t, s.ConsumeInbox(root, ""))
-	}
-	require.Equal(t, []string{"a.jsonl" + consumingSuffix}, inboxEntries(t, root),
-		"a failed apply keeps the claimed file, which still holds the tail verbatim, and preserves nothing")
-
-	// Once the fault clears, the tail is preserved exactly once.
-	repair()
+	require.NoError(t, os.Rename(scratch, filepath.Join(InboxDir(root), "a.jsonl")))
 	require.Equal(t, []string{"a.md"}, s.ConsumeInbox(root, ""))
 
-	names := inboxEntries(t, root)
-	require.Len(t, names, 1)
-	require.True(t, strings.HasSuffix(names[0], partialSuffix))
-	got, err := os.ReadFile(filepath.Join(InboxDir(root), names[0]))
+	data, err := s.Get("a.md", "")
 	require.NoError(t, err)
-	require.Equal(t, partial, string(got))
+	require.Len(t, data.Comments[0].Reactions, 1)
+	require.Empty(t, inboxEntries(t, root))
+}
+
+func TestConsumeInboxConsumesUnterminatedFinalLine(t *testing.T) {
+	// A committed file is complete and immutable, so its final line is a whole
+	// line even without a trailing newline — there is no mid-append tail to fear
+	// once the agent has renamed the file into place.
+	root := t.TempDir()
+	s := NewStore(t.TempDir())
+	seedDocWithComment(t, s, root, "a.md", "c1a2b3c4deadbeef", cmdDoc, 3)
+
+	writeInboxFile(t, root, "a.jsonl",
+		`{"path":"a.md","id":"c1a2b3c4","summary":"no trailing newline","nonce":"n-1"}`)
+
+	require.Equal(t, []string{"a.md"}, s.ConsumeInbox(root, ""))
+
+	data, err := s.Get("a.md", "")
+	require.NoError(t, err)
+	require.Len(t, data.Comments[0].Reactions, 1)
+	require.Equal(t, "no trailing newline", data.Comments[0].Reactions[0].Summary)
+	require.Empty(t, inboxEntries(t, root))
 }
 
 func TestConsumeInboxDedupsNonceLessLineAcrossConsumingLeftover(t *testing.T) {
@@ -251,27 +233,7 @@ func TestConsumeInboxQuarantinesOversizeFile(t *testing.T) {
 	require.Empty(t, data.Comments[0].Reactions)
 }
 
-func TestHasCompleteLineDoesNotReadWholeFile(t *testing.T) {
-	// The claim probe answers one boolean — "is anything consumable yet" — and
-	// the bytes are read again anyway once the file is claimed. Reading the file
-	// to answer it (os.ReadFile plus a string conversion) cost two more copies
-	// of every delivery, on every watcher event, forever for a file that never
-	// becomes consumable.
-	const size = 8 << 20
-	p := filepath.Join(t.TempDir(), "big.jsonl")
-	require.NoError(t, os.WriteFile(p, []byte("{}\n"+strings.Repeat("x", size)), 0o644))
-
-	var before, after runtime.MemStats
-	runtime.GC()
-	runtime.ReadMemStats(&before)
-	require.True(t, hasCompleteLine(p))
-	runtime.ReadMemStats(&after)
-
-	require.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(size/8),
-		"probing for a newline must not pull the delivery into memory")
-}
-
-func TestReadCompleteLinesSeparatesUnterminatedTail(t *testing.T) {
+func TestReadLines(t *testing.T) {
 	dir := t.TempDir()
 	write := func(name, content string) string {
 		t.Helper()
@@ -280,34 +242,30 @@ func TestReadCompleteLinesSeparatesUnterminatedTail(t *testing.T) {
 		return p
 	}
 
-	// The distinction a bufio.Scanner cannot make: it yields the unterminated
-	// tail as an ordinary token, which would have the consumer eat deliveries
-	// the agent is still in the middle of appending.
-	lines, partial, err := readCompleteLines(write("tail.jsonl", "a\nb"))
-	require.NoError(t, err)
-	require.Equal(t, []string{"a"}, lines)
-	require.Equal(t, "b", partial)
-
-	lines, partial, err = readCompleteLines(write("clean.jsonl", "a\nb\n"))
+	// A committed file is complete, so its final line counts whether or not it
+	// ends in a newline.
+	lines, err := readLines(write("tail.jsonl", "a\nb"))
 	require.NoError(t, err)
 	require.Equal(t, []string{"a", "b"}, lines)
-	require.Empty(t, partial)
 
-	lines, partial, err = readCompleteLines(write("empty.jsonl", ""))
+	lines, err = readLines(write("clean.jsonl", "a\nb\n"))
+	require.NoError(t, err)
+	require.Equal(t, []string{"a", "b"}, lines)
+
+	lines, err = readLines(write("empty.jsonl", ""))
 	require.NoError(t, err)
 	require.Empty(t, lines)
-	require.Empty(t, partial)
 }
 
-func TestConsumeInboxLeavesUnfinishedFiles(t *testing.T) {
+func TestConsumeInboxHandlesEmptyCommittedFile(t *testing.T) {
+	// An empty committed file has no lines to apply; it is claimed and deleted
+	// like any other, never left to be re-examined forever.
 	root := t.TempDir()
 	s := NewStore(t.TempDir())
 	writeInboxFile(t, root, "empty.jsonl", "")
-	writeInboxFile(t, root, "partial.jsonl", `{"path":"a.md","id":"c1a2`)
 
 	require.Empty(t, s.ConsumeInbox(root, ""))
-	require.ElementsMatch(t, []string{"empty.jsonl", "partial.jsonl"}, inboxEntries(t, root),
-		"files with no complete line wait for a later pass")
+	require.Empty(t, inboxEntries(t, root), "an empty committed file is consumed, not parked")
 }
 
 func TestConsumeInboxGroupsByDoc(t *testing.T) {
