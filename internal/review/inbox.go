@@ -1,22 +1,26 @@
 package review
 
 // Inbox consumption: the file-drop half of agent response delivery. An agent
-// answers review comments by appending JSON lines to files under
-// <root>/.vantage/inbox/; the file watcher calls ConsumeInbox at startup and
-// on every event beneath the inbox. Consumption is at-least-once — rename to
-// *.consuming, apply, then delete — so a crash at any point re-consumes
-// rather than loses, and a per-line nonce makes the replay a no-op. A line
-// that arrives without one still gets a nonce (see deliveryNonce): the replay
-// guarantee must not depend on the agent remembering an optional field.
+// answers review comments by writing one delivery to a *.writing scratch file
+// and then renaming it to a committed *.jsonl name; the file watcher calls
+// ConsumeInbox at startup and on every event beneath the inbox. Because the
+// commit is a same-directory rename — atomic on every supported filesystem — a
+// committed file is, by construction, complete and never appended to again.
+// That is what lets consumption stay simple: there is no "is the writer done?"
+// to infer, because the writer states it by renaming.
+//
+// Consumption is still at-least-once — claim by renaming to *.consuming, apply,
+// then delete — so a crash at any point re-consumes rather than loses, and a
+// per-line nonce makes the replay a no-op. A line that arrives without one
+// still gets a nonce (see deliveryNonce): the replay guarantee must not depend
+// on the agent remembering an optional field.
 
 import (
 	"bufio"
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -33,13 +37,14 @@ const InboxRel = ".vantage/inbox"
 // and delete leaves the suffix behind; the next pass re-consumes the file.
 const consumingSuffix = ".consuming"
 
-// partialSuffix marks a preserved unterminated tail. Nothing will ever append
-// to such a file — the writer's descriptor points at the file that was
-// consumed — so it can never become consumable, and ConsumeInbox skips it by
-// name instead of re-probing it on every watcher event. A suffix rather than a
-// prefix keeps it clear of the "<flattened-doc-path>.jsonl" names the clipboard
-// payload tells agents to write.
-const partialSuffix = ".partial"
+// writingSuffix marks a delivery the agent is still writing. The agent writes
+// its whole delivery to a *.writing file and then renames it to its committed
+// *.jsonl name; only that rename makes it consumable. ConsumeInbox skips these
+// by name so a half-written file is never read and never deleted out from under
+// the writer's descriptor — the race that a shared append-only file could not
+// avoid, because "ends in a newline" says a line finished, not that the agent
+// did.
+const writingSuffix = ".writing"
 
 // oversizeSuffix quarantines a delivery file larger than maxInboxFileBytes.
 // Renaming beats skipping in place: the watcher re-runs ConsumeInbox on every
@@ -97,9 +102,10 @@ func (s *Store) ConsumeInbox(root, repo string) []string {
 			continue
 		}
 		name := ent.Name()
-		// Both kinds of parked file are inert by construction; re-examining them
-		// on every inbox event buys nothing and costs a read apiece.
-		if strings.HasSuffix(name, partialSuffix) || strings.HasSuffix(name, oversizeSuffix) {
+		// A *.writing file is still being written; an *.oversize file is inert by
+		// construction. Both are skipped by name: reading either buys nothing and
+		// costs a probe on every inbox event.
+		if strings.HasSuffix(name, writingSuffix) || strings.HasSuffix(name, oversizeSuffix) {
 			continue
 		}
 		for _, p := range s.consumeInboxFile(root, repo, name) {
@@ -117,14 +123,12 @@ func (s *Store) ConsumeInbox(root, repo string) []string {
 	return out
 }
 
-// consumeInboxFile processes one inbox file and returns the document paths it
-// changed. Protocol: claim by renaming to *.consuming (crash leftovers arrive
-// already suffixed and skip the rename), read, group lines by document, apply,
-// delete. An unterminated final line — an agent caught mid-append — is written
-// to a fresh *.partial file just before the delete so it cannot be dropped; a
-// file that is nothing but such a tail is left in place entirely, which waits
-// for the append to finish rather than cycling one line through
-// rename-and-rewrite forever.
+// consumeInboxFile processes one committed inbox file and returns the document
+// paths it changed. Protocol: claim by renaming to *.consuming (crash leftovers
+// arrive already suffixed and skip the rename), read, group lines by document,
+// apply, delete. The file is complete by the time it carries a committed name —
+// the agent's rename is the completion signal — so every line can be read and
+// parsed with no mid-append tail to preserve.
 func (s *Store) consumeInboxFile(root, repo, name string) []string {
 	dir := InboxDir(root)
 	path := filepath.Join(dir, name)
@@ -139,10 +143,6 @@ func (s *Store) consumeInboxFile(root, repo, name string) []string {
 	}
 
 	if !strings.HasSuffix(name, consumingSuffix) {
-		if !hasCompleteLine(path) {
-			// Missing, empty, or one unfinished line: nothing consumable yet.
-			return nil
-		}
 		claimed := path + consumingSuffix
 		if err := os.Rename(path, claimed); err != nil {
 			slog.Warn("review: failed to claim inbox file", "file", path, "error", err)
@@ -151,7 +151,7 @@ func (s *Store) consumeInboxFile(root, repo, name string) []string {
 		path = claimed
 	}
 
-	lines, partial, err := readCompleteLines(path)
+	lines, err := readLines(path)
 	if err != nil {
 		slog.Warn("review: failed to read inbox file", "file", path, "error", err)
 		return nil
@@ -215,15 +215,6 @@ func (s *Store) consumeInboxFile(root, repo, name string) []string {
 	}
 
 	if applied {
-		// Preserve the tail only as a hand-off to the delete, and strictly
-		// before it so a crash in between cannot drop it. On a failed apply the
-		// .consuming file is retained and still holds these bytes verbatim, so
-		// preserving there would mint a fresh file on every retry — and because
-		// each new file is itself an inbox event the watcher consumes
-		// synchronously, that turns a stuck delivery into a self-feeding loop.
-		if partial != "" {
-			preservePartialLine(dir, partial)
-		}
 		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			slog.Warn("review: failed to delete consumed inbox file", "file", path, "error", err)
 		}
@@ -249,77 +240,28 @@ func deliveryNonce(nonce, path, shortID, summary string) string {
 	return "auto-" + hex.EncodeToString(sum[:])
 }
 
-// hasCompleteLine reports whether path holds at least one newline — the "is
-// anything consumable yet" probe run before a file is claimed. It streams a
-// fixed buffer rather than reading the file, so probing costs constant memory
-// and, in the normal case, one block: the whole point is to answer a boolean
-// without paying for the delivery twice.
-func hasCompleteLine(path string) bool {
+// readLines streams path into its lines, dropping the trailing newline from
+// each. A committed inbox file is complete and immutable — the agent renamed it
+// into place — so a final line without a trailing newline is a whole line too,
+// not a mid-append tail, and a [bufio.Scanner] yielding it as an ordinary token
+// is exactly what we want here.
+func readLines(path string) ([]string, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		if !errors.Is(err, fs.ErrNotExist) {
-			slog.Warn("review: failed to read inbox file", "file", path, "error", err)
-		}
-		return false
+		return nil, err
 	}
 	defer func() { _ = f.Close() }()
 
-	buf := make([]byte, 32<<10)
-	for {
-		n, rerr := f.Read(buf)
-		if bytes.IndexByte(buf[:n], '\n') >= 0 {
-			return true
-		}
-		if rerr != nil {
-			if !errors.Is(rerr, io.EOF) {
-				slog.Warn("review: failed to read inbox file", "file", path, "error", rerr)
-			}
-			return false
-		}
+	var lines []string
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64<<10), maxInboxFileBytes)
+	for sc.Scan() {
+		lines = append(lines, sc.Text())
 	}
-}
-
-// readCompleteLines streams path into its newline-terminated lines plus the
-// unterminated tail ("" when the file ends in \n). Only complete lines are safe
-// to parse: the tail may still be mid-append, which is why this cannot be a
-// [bufio.Scanner] — a Scanner yields that tail as an ordinary token and the
-// consumer would eat half-written deliveries.
-func readCompleteLines(path string) (complete []string, partial string, err error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, "", err
+	if err := sc.Err(); err != nil {
+		return nil, err
 	}
-	defer func() { _ = f.Close() }()
-
-	r := bufio.NewReader(f)
-	for {
-		line, rerr := r.ReadString('\n')
-		switch {
-		case rerr == nil:
-			complete = append(complete, strings.TrimSuffix(line, "\n"))
-		case errors.Is(rerr, io.EOF):
-			return complete, line, nil
-		default:
-			return nil, "", rerr
-		}
-	}
-}
-
-// preservePartialLine writes an unterminated tail to a fresh *.partial file —
-// never the one about to be deleted. The writer's descriptor points at the
-// consumed file, so the line will likely never be completed, but preserving
-// the bytes for inspection beats silently dropping a delivery.
-func preservePartialLine(dir, partial string) {
-	f, err := os.CreateTemp(dir, "*"+partialSuffix)
-	if err != nil {
-		slog.Warn("review: failed to preserve partial inbox line", "dir", dir, "error", err)
-		return
-	}
-	_, werr := f.WriteString(partial)
-	cerr := f.Close()
-	if werr != nil || cerr != nil {
-		slog.Warn("review: failed to preserve partial inbox line", "file", f.Name(), "error", errors.Join(werr, cerr))
-	}
+	return lines, nil
 }
 
 // readDocForCapture returns the document's current content for after-text
