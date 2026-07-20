@@ -5,7 +5,6 @@ import {
   type InlineReviewActions,
 } from "./useReviewHighlights";
 import { blockVisibleText, hashBlockText } from "../lib/reviewAnchor";
-import { useReviewStore } from "../stores/useReviewStore";
 import type { CommentAnchor, CommentReaction, ReviewComment } from "../types";
 
 const agentAddressed: CommentReaction = {
@@ -85,11 +84,8 @@ beforeEach(() => {
   container.innerHTML = DOC_HTML;
   document.body.appendChild(container);
 
-  useReviewStore.setState({ outdatedCommentIds: new Set() });
-
   actions = {
     onDelete: vi.fn(),
-    onResolve: vi.fn(),
     onDismiss: vi.fn(),
     onReopen: vi.fn(),
     onEdit: vi.fn(),
@@ -142,6 +138,61 @@ describe("useReviewHighlights — inline Copy", () => {
     expect(block!.querySelector(".review-inline-comment-copy")).toBeNull();
     expect(block!.querySelector(".review-inline-comment-reply")).not.toBeNull();
   });
+
+  it("badges an answered comment whose anchor still resolves", () => {
+    // The regression this pins: the status badge lived only inside the orphan
+    // renderer, so an answered comment still anchored to its block showed no
+    // status at all — two comments in the same state, one badged and one not,
+    // for a reason ("is your anchor still findable") nobody is thinking about.
+    renderInline([
+      baseComment({ anchor: anchorAt(1), reactions: [agentAddressed] }),
+    ]);
+
+    const badge = blockFor("c1")!.querySelector(".review-status-badge");
+    expect(badge).not.toBeNull();
+    expect(badge!.textContent).toBe("Addressed");
+  });
+
+  it("badges a declined comment as Declined, not Addressed", () => {
+    renderInline([
+      baseComment({
+        anchor: anchorAt(1),
+        reactions: [{ ...agentAddressed, kind: "wont_fix" }],
+      }),
+    ]);
+
+    const badge = blockFor("c1")!.querySelector(".review-status-badge");
+    expect(badge!.textContent).toBe("Declined");
+  });
+
+  it("shows no badge while a comment is still waiting on the agent", () => {
+    renderInline([baseComment({ anchor: anchorAt(1) })]);
+
+    expect(blockFor("c1")!.querySelector(".review-status-badge")).toBeNull();
+  });
+
+  it("drops the badge back off when the reviewer replies again", () => {
+    // Answered-then-replied is pending, not answered: badging it "Addressed"
+    // would claim the agent had the last word when the reviewer just spoke.
+    renderInline([
+      baseComment({
+        anchor: anchorAt(1),
+        reactions: [
+          agentAddressed,
+          {
+            actor: "reviewer",
+            kind: "needs_clarification",
+            summary: "still wrong",
+            before_text: "",
+            after_text: "",
+            timestamp: 30,
+          },
+        ],
+      }),
+    ]);
+
+    expect(blockFor("c1")!.querySelector(".review-status-badge")).toBeNull();
+  });
 });
 
 describe("useReviewHighlights — outdated comments", () => {
@@ -153,11 +204,51 @@ describe("useReviewHighlights — outdated comments", () => {
     expect(block.classList.contains("review-inline-comment--outdated")).toBe(
       true,
     );
-    expect(useReviewStore.getState().outdatedCommentIds.has("c1")).toBe(true);
-
     // Without these the orphan can only be cleaned up from the sidebar.
     expect(block.querySelector(".review-inline-comment-edit")).not.toBeNull();
     expect(block.querySelector(".review-inline-comment-delete")).not.toBeNull();
+  });
+
+  it("says where a detached comment used to live", () => {
+    // Placement is the nearest surviving block above, which is a neighborhood
+    // and not a position — so it is stated rather than left to be inferred
+    // from whatever block the comment happens to follow.
+    renderInline([baseComment({ anchor: orphanAnchor })]);
+
+    const locator = blockFor("c1")!.querySelector(".review-detached-locator");
+    expect(locator).not.toBeNull();
+    expect(locator!.textContent).toContain("999");
+    expect(locator!.textContent).toContain("no longer found");
+  });
+
+  it("quotes the selected text without striking it through", () => {
+    // fallback_text is the record of what the reviewer chose to comment on.
+    // Struck through it read as retracted, when the text is usually still in
+    // the document — just past where the anchor could follow it.
+    renderInline([baseComment({ anchor: orphanAnchor })]);
+
+    const quote = blockFor("c1")!.querySelector(".review-outdated-quote")!;
+    expect(quote.textContent).toBe("First paragraph");
+    expect(quote.className).not.toContain("line-through");
+  });
+
+  it("shows no turn-state badge on a detached comment awaiting the agent", () => {
+    // "Outdated" used to occupy the badge slot, which is what taught an
+    // anchor fact to read as a conversation state.
+    renderInline([baseComment({ anchor: orphanAnchor })]);
+
+    const block = blockFor("c1")!;
+    expect(block.querySelector(".review-status-badge")).toBeNull();
+    expect(block.textContent).not.toContain("Outdated");
+  });
+
+  it("badges a detached comment the agent answered as Addressed", () => {
+    renderInline([
+      baseComment({ anchor: orphanAnchor, reactions: [agentAddressed] }),
+    ]);
+
+    const badge = blockFor("c1")!.querySelector(".review-status-badge");
+    expect(badge!.textContent).toBe("Addressed");
   });
 
   it("deletes an outdated comment from the document, on the second click", () => {
@@ -215,7 +306,7 @@ describe("useReviewHighlights — resolved comments", () => {
     seedResolved();
 
     const bar = container.querySelector(".review-resolved-indicator")!;
-    expect(bar.textContent).toContain("1 resolved comment");
+    expect(bar.textContent).toContain("1 dismissed comment");
 
     const block = blockFor("r1");
     expect(block).not.toBeNull();
@@ -253,19 +344,23 @@ describe("useReviewHighlights — resolved comments", () => {
     expect(list.style.display).toBe(before);
   });
 
-  it("labels a reviewer 'noted' turn as accepted rather than a follow-up", () => {
+  it("omits a legacy 'noted' turn and keeps the remaining summaries paired", () => {
+    // The fixture's thread is [agent addressed, reviewer noted]. Only the agent
+    // turn renders — and it must still carry its OWN summary. The entries are
+    // keyed by data-thread-idx precisely so skipping a turn cannot slide every
+    // later summary up under the wrong speaker's badge.
     seedResolved();
 
-    const badges = blockFor("r1")!.querySelectorAll(".review-thread-badge");
-    expect(badges).toHaveLength(2);
+    const block = blockFor("r1")!;
+    const badges = block.querySelectorAll(".review-thread-badge");
+    expect(badges).toHaveLength(1);
     expect(badges[0].textContent).toBe("Agent");
-    // "You" here would read as a follow-up the agent still owes an answer to.
-    expect(badges[1].textContent).toBe("You accepted");
-    expect(badges[1].classList.contains("review-thread-badge--noted")).toBe(
-      true,
-    );
-    expect(badges[1].classList.contains("review-thread-badge--reviewer")).toBe(
-      false,
+    expect(block.textContent).not.toContain("You accepted");
+
+    const entry = block.querySelector(".review-thread-entry")!;
+    expect(entry.getAttribute("data-thread-idx")).toBe("0");
+    expect(entry.querySelector(".review-thread-text")!.textContent).toBe(
+      agentAddressed.summary,
     );
   });
 });

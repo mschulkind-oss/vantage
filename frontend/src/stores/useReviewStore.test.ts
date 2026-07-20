@@ -28,7 +28,6 @@ const resetStores = () => {
     lastContent: null,
     comments: [],
     pendingSelection: null,
-    outdatedCommentIds: new Set<string>(),
     staleProtocolWarning: null,
     commandError: null,
     isLoading: false,
@@ -111,6 +110,9 @@ const mkThreadComment = (
  * reviewer follow-ups, and a reviewer "accepted" in the middle (the reviewer
  * accepted, then reopened with one more request).
  */
+// Carries a legacy "noted" turn on purpose: review files written before
+// dismissal stopped being a conversation turn still contain them, and they must
+// not reach the agent as something the reviewer said.
 const multiRoundThread: CommentReaction[] = [
   mkReaction("agent", "addressed", "Split the paragraph", 1),
   mkReaction("reviewer", "needs_clarification", "Still ambiguous", 2),
@@ -123,7 +125,6 @@ const multiRoundTurns = [
   "**Agent response:** Split the paragraph",
   "**Follow-up:** Still ambiguous",
   "**Agent response:** Rewrote the second half",
-  "**Reviewer accepted:** Accepted",
   "**Follow-up:** One more thing",
 ];
 
@@ -379,11 +380,6 @@ describe("useReviewStore", () => {
       expect(isAnsweredByAgent(edited)).toBe(false);
       // The agent's answer stays in the thread — it answered the old wording.
       expect(edited.reactions).toEqual([agentAddressed]);
-    });
-
-    it("resolveComment marks the comment as resolved", () => {
-      useReviewStore.getState().resolveComment("c1");
-      expect(useReviewStore.getState().comments[0].resolved).toBe(true);
     });
 
     it("deleteComment removes the comment", () => {
@@ -898,6 +894,19 @@ describe("useReviewStore", () => {
       expect(payload).not.toContain("already handled");
     });
 
+    it("does not send a legacy 'noted' turn to the agent", async () => {
+      // multiRoundThread carries one. It recorded a dismissal, not something
+      // the reviewer said — relabelling it "Follow-up" would put a question in
+      // their mouth that the agent would then try to answer.
+      seedBatch();
+
+      await useReviewStore.getState().copyAllToClipboard();
+
+      const payload = writeText.mock.calls[0][0] as string;
+      expect(payload).not.toContain("Accepted");
+      expect(payload).not.toContain("Reviewer accepted");
+    });
+
     it("reports how many of the batch are follow-up rounds", async () => {
       seedBatch();
 
@@ -1141,22 +1150,32 @@ describe("useReviewStore", () => {
       );
     });
 
-    it("resolveComment accepts through the accept endpoint", () => {
-      useReviewStore.getState().resolveComment("c1");
+    it("dismissing an answered comment records no turn", () => {
+      // Regression: dismissing used to post to /accept and append a reviewer
+      // "noted" turn, which reopening did not retract — so dismiss/reopen/
+      // dismiss stacked up "Accepted" rows the reviewer never wrote.
+      const answered = {
+        ...baseComment,
+        reactions: [
+          {
+            actor: "agent" as const,
+            kind: "addressed" as const,
+            summary: "Fixed it.",
+            before_text: "",
+            after_text: "",
+            timestamp: 100,
+          },
+        ],
+      };
+      useReviewStore.setState({ comments: [answered] });
 
-      // Optimistic: resolved plus a reviewer "noted" turn, mirroring what
-      // the server records.
+      useReviewStore.getState().dismissComment("c1");
+
       const c = useReviewStore.getState().comments[0];
       expect(c.resolved).toBe(true);
-      expect(c.reactions?.at(-1)).toMatchObject({
-        actor: "reviewer",
-        kind: "noted",
-      });
-      expect(mockedAxios.post).toHaveBeenCalledWith(
-        "/api/review/comments/c1/accept",
-        {},
-        { params: { path: "doc.md" } },
-      );
+      expect(c.reactions).toHaveLength(1);
+      expect(c.reactions?.[0].actor).toBe("agent");
+      expect(mockedAxios.post).not.toHaveBeenCalled();
     });
 
     it("dismissComment PATCHes resolved:true", () => {
@@ -1224,17 +1243,28 @@ describe("useReviewStore", () => {
       );
     });
 
-    it("dismissOutdated POSTs only the unresolved outdated ids", () => {
+    it("dismissAnswered POSTs only the ids the agent has answered", () => {
+      // The bulk action targets *answered* comments, not orphaned ones. It used
+      // to dismiss by anchor state, which grouped comments by "the text this
+      // was written against is gone" — a fact nobody is thinking about when
+      // they reach for a bulk dismiss.
+      const agentTurn = {
+        actor: "agent" as const,
+        kind: "addressed" as const,
+        summary: "Fixed it.",
+        before_text: "",
+        after_text: "",
+        timestamp: 100,
+      };
       useReviewStore.setState({
         comments: [
-          baseComment, // outdated + unresolved → dismissed
-          { ...baseComment, id: "c2", resolved: true }, // already resolved → skipped
-          { ...baseComment, id: "c3" }, // not outdated → untouched
+          { ...baseComment, reactions: [agentTurn] }, // answered → dismissed
+          { ...baseComment, id: "c2", resolved: true, reactions: [agentTurn] }, // already dismissed → skipped
+          { ...baseComment, id: "c3" }, // never answered → untouched
         ],
-        outdatedCommentIds: new Set(["c1", "c2"]),
       });
 
-      useReviewStore.getState().dismissOutdated();
+      useReviewStore.getState().dismissAnswered();
 
       const [c1, , c3] = useReviewStore.getState().comments;
       expect(c1.resolved).toBe(true);
@@ -1246,13 +1276,45 @@ describe("useReviewStore", () => {
       );
     });
 
-    it("dismissOutdated sends nothing when no outdated comment is unresolved", () => {
+    it("dismissAnswered skips a comment re-queued by a follow-up", () => {
+      // Answered *then replied to* is pending again, so a bulk dismiss must
+      // not sweep away a question the agent has not come back to.
       useReviewStore.setState({
-        comments: [{ ...baseComment, resolved: true }],
-        outdatedCommentIds: new Set(["c1"]),
+        comments: [
+          {
+            ...baseComment,
+            reactions: [
+              {
+                actor: "agent" as const,
+                kind: "addressed" as const,
+                summary: "Fixed it.",
+                before_text: "",
+                after_text: "",
+                timestamp: 100,
+              },
+              {
+                actor: "reviewer" as const,
+                kind: "needs_clarification" as const,
+                summary: "Not quite — what about X?",
+                before_text: "",
+                after_text: "",
+                timestamp: 200,
+              },
+            ],
+          },
+        ],
       });
 
-      useReviewStore.getState().dismissOutdated();
+      useReviewStore.getState().dismissAnswered();
+
+      expect(useReviewStore.getState().comments[0].resolved).toBeFalsy();
+      expect(mockedAxios.post).not.toHaveBeenCalled();
+    });
+
+    it("dismissAnswered sends nothing when nothing is answered", () => {
+      useReviewStore.setState({ comments: [{ ...baseComment }] });
+
+      useReviewStore.getState().dismissAnswered();
 
       expect(mockedAxios.post).not.toHaveBeenCalled();
     });
@@ -1470,8 +1532,8 @@ describe("loadReview null-at-200 clears local comments", () => {
     });
     mockedAxios.get.mockResolvedValueOnce({ data: null });
 
-    await useReviewStore.getState().resolveComment("abcdef12-0000");
-    // resolveComment fires runCommand without awaiting the resync it queues.
+    useReviewStore.getState().dismissAll();
+    // dismissAll fires runCommand without awaiting the resync it queues.
     await new Promise((r) => setTimeout(r, 0));
 
     const state = useReviewStore.getState();

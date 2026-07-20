@@ -220,22 +220,6 @@ func TestReviewCommentReplyEmptyText400(t *testing.T) {
 	}
 }
 
-func TestReviewCommentAccept(t *testing.T) {
-	e := newCmdEnv(t)
-	e.createComment(t, "c1", 3)
-
-	w := e.doID(e.h.ReviewCommentAccept, http.MethodPost, "/review/comments/c1/accept?path=a.md", `{}`, "c1")
-	require.Equal(t, http.StatusOK, w.Code)
-	var data model.ReviewData
-	decode(t, w, &data)
-	c := data.Comments[0]
-	require.True(t, c.Resolved)
-	require.Len(t, c.Reactions, 1)
-	require.Equal(t, "reviewer", c.Reactions[0].Actor)
-	require.Equal(t, "noted", c.Reactions[0].Kind)
-	require.Equal(t, "Accepted", c.Reactions[0].Summary)
-}
-
 func TestReviewCommentReopenReply(t *testing.T) {
 	e := newCmdEnv(t)
 	writeFile(t, e.dir, "a.md", cmdDoc)
@@ -323,70 +307,6 @@ func TestReviewDismissalsNoReview404(t *testing.T) {
 	require.Equal(t, "No review found", env["error"])
 }
 
-func TestReviewResponsesAppliesAndDedupsRepaste(t *testing.T) {
-	e := newCmdEnv(t)
-	writeFile(t, e.dir, "a.md", cmdDoc)
-	e.createComment(t, "aaaa1111", 3)
-	e.createComment(t, "bbbb2222", 5)
-
-	// One paste, two bullets: both must land even though they share the
-	// content-derived nonce.
-	paste := `{"text":"- [aaaa1111] Fixed the first\n- [bbbb2222] Fixed the second"}`
-	w := e.do(e.h.ReviewResponses, http.MethodPost, "/review/responses?path=a.md", paste, true)
-	require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
-	var data model.ReviewData
-	decode(t, w, &data)
-	require.Len(t, data.Comments[0].Reactions, 1)
-	require.Len(t, data.Comments[1].Reactions, 1)
-	require.Equal(t, "agent", data.Comments[0].Reactions[0].Actor)
-	require.Equal(t, "addressed", data.Comments[0].Reactions[0].Kind)
-	require.Equal(t, "Fixed the first", data.Comments[0].Reactions[0].Summary)
-	require.Equal(t, "first paragraph text.", data.Comments[0].Reactions[0].BeforeText)
-	require.Len(t, data.Nonces, 1)
-
-	// Pasting the same block again is a no-op: no duplicate reactions.
-	w = e.do(e.h.ReviewResponses, http.MethodPost, "/review/responses?path=a.md", paste, true)
-	require.Equal(t, http.StatusOK, w.Code)
-	decode(t, w, &data)
-	require.Len(t, data.Comments[0].Reactions, 1)
-	require.Len(t, data.Comments[1].Reactions, 1)
-
-	// A different paste (fresh content ⇒ fresh nonce) still lands.
-	w = e.do(e.h.ReviewResponses, http.MethodPost, "/review/responses?path=a.md",
-		`{"text":"- [aaaa1111] Second round answer"}`, true)
-	require.Equal(t, http.StatusOK, w.Code)
-	decode(t, w, &data)
-	require.Len(t, data.Comments[0].Reactions, 2)
-}
-
-func TestReviewResponsesNoBullets400(t *testing.T) {
-	e := newCmdEnv(t)
-	e.createComment(t, "c1", 3)
-	before := len(e.changed)
-
-	for name, body := range map[string]string{
-		"prose":          `{"text":"I fixed everything, promise."}`,
-		"empty":          `{"text":""}`,
-		"malformed json": "{not json",
-	} {
-		t.Run(name, func(t *testing.T) {
-			w := e.do(e.h.ReviewResponses, http.MethodPost, "/review/responses?path=a.md", body, true)
-			require.Equal(t, http.StatusBadRequest, w.Code)
-		})
-	}
-	require.Len(t, e.changed, before)
-}
-
-func TestReviewResponsesNoReviewReturnsNull(t *testing.T) {
-	e := newCmdEnv(t)
-	w := e.do(e.h.ReviewResponses, http.MethodPost, "/review/responses?path=a.md",
-		`{"text":"- [abcd1234] Into the void"}`, true)
-	require.Equal(t, http.StatusOK, w.Code)
-	// No review to deliver into ⇒ the literal null, matching ReviewGet's
-	// absent shape.
-	require.Equal(t, "null", w.Body.String())
-}
-
 func TestReviewCommandsRequireRepoServices(t *testing.T) {
 	e := newCmdEnv(t)
 	for name, tc := range map[string]struct {
@@ -397,11 +317,9 @@ func TestReviewCommandsRequireRepoServices(t *testing.T) {
 		"create":     {e.h.ReviewCommentCreate, http.MethodPost, "/review/comments?path=a.md"},
 		"patch":      {e.h.ReviewCommentPatch, http.MethodPatch, "/review/comments/c1?path=a.md"},
 		"reply":      {e.h.ReviewCommentReply, http.MethodPost, "/review/comments/c1/replies?path=a.md"},
-		"accept":     {e.h.ReviewCommentAccept, http.MethodPost, "/review/comments/c1/accept?path=a.md"},
 		"reopen":     {e.h.ReviewCommentReopenReply, http.MethodPost, "/review/comments/c1/reopen-reply?path=a.md"},
 		"dismissals": {e.h.ReviewDismissals, http.MethodPost, "/review/dismissals?path=a.md"},
 		"delete":     {e.h.ReviewCommentDelete, http.MethodDelete, "/review/comments/c1?path=a.md"},
-		"responses":  {e.h.ReviewResponses, http.MethodPost, "/review/responses?path=a.md"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			w := e.do(tc.handler, tc.method, tc.target, "{}", false)
@@ -417,7 +335,7 @@ func TestReviewCommandsRequirePath(t *testing.T) {
 	e := newCmdEnv(t)
 	w := e.do(e.h.ReviewCommentCreate, http.MethodPost, "/review/comments", `{"id":"c1","comment":"x"}`, true)
 	require.Equal(t, http.StatusBadRequest, w.Code)
-	w = e.do(e.h.ReviewResponses, http.MethodPost, "/review/responses", `{"text":"- [abcd] x"}`, true)
+	w = e.do(e.h.ReviewDismissals, http.MethodPost, "/review/dismissals", `{"scope":"all"}`, true)
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
@@ -441,49 +359,22 @@ func TestRoutesTableIncludesReviewCommands(t *testing.T) {
 		{http.MethodPatch, "/review/comments/{id}"},
 		{http.MethodDelete, "/review/comments/{id}"},
 		{http.MethodPost, "/review/comments/{id}/replies"},
-		{http.MethodPost, "/review/comments/{id}/accept"},
 		{http.MethodPost, "/review/comments/{id}/reopen-reply"},
 		{http.MethodPost, "/review/dismissals"},
-		{http.MethodPost, "/review/responses"},
 	} {
 		scope, ok := got[want]
 		require.Truef(t, ok, "route %s %s missing from table", want.method, want.pattern)
 		require.Equal(t, ScopeRepo, scope, "%s %s must be repo-scoped", want.method, want.pattern)
 	}
-}
 
-// The count is the only thing distinguishing "recorded" from "matched
-// nothing": bullets naming comments this document does not have — a block
-// pasted into the wrong panel — parse fine and apply nothing, and reporting
-// that as success is the silent swallow this protocol replaced.
-func TestReviewResponsesReportsAppliedCount(t *testing.T) {
-	e := newCmdEnv(t)
-	writeFile(t, e.dir, "a.md", cmdDoc)
-	e.createComment(t, "aaaa1111", 3)
-
-	applied := func(body string) (int, int) {
-		t.Helper()
-		w := e.do(e.h.ReviewResponses, http.MethodPost, "/review/responses?path=a.md", body, true)
-		require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
-		var got struct {
-			model.ReviewData
-			Applied int `json:"applied"`
-		}
-		decode(t, w, &got)
-		return got.Applied, len(got.Comments[0].Reactions)
+	// The retired doors must not come back. Acceptance is a flag, not a
+	// conversation turn, and agent responses arrive only via .vantage/inbox.
+	for _, gone := range []key{
+		{http.MethodPost, "/review/comments/{id}/accept"},
+		{http.MethodPost, "/review/responses"},
+	} {
+		_, ok := got[gone]
+		require.Falsef(t, ok, "route %s %s is retired and must stay out of the table",
+			gone.method, gone.pattern)
 	}
-
-	n, reactions := applied(`{"text":"- [aaaa1111] Fixed it"}`)
-	require.Equal(t, 1, n)
-	require.Equal(t, 1, reactions)
-
-	// Same block again: deduped by the content nonce, so nothing lands.
-	n, reactions = applied(`{"text":"- [aaaa1111] Fixed it"}`)
-	require.Equal(t, 0, n, "a re-paste applies nothing and must say so")
-	require.Equal(t, 1, reactions)
-
-	// A well-formed bullet for a comment on some other document.
-	n, reactions = applied(`{"text":"- [99999999] Fixed something elsewhere"}`)
-	require.Equal(t, 0, n, "bullets matching no comment here apply nothing")
-	require.Equal(t, 1, reactions)
 }

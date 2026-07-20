@@ -162,9 +162,14 @@ type CommentAnchor struct {
 }
 
 // CommentReaction records an action taken in response to a comment, by either
-// the agent (an inbox delivery or a pasted response) or the reviewer. Actor is
-// "agent" or "reviewer"; Kind is one of "addressed", "wont_fix",
-// "needs_clarification", "noted". Timestamp is epoch seconds (float64).
+// the agent (an inbox delivery) or the reviewer. Actor is "agent" or
+// "reviewer"; Kind is one of "addressed", "wont_fix", "needs_clarification",
+// "noted". Timestamp is epoch seconds (float64).
+//
+// "noted" is legacy and is no longer written: it recorded the retired reviewer
+// "accept" turn, and dismissing a comment is now a flag (Resolved) rather than
+// a turn. It stays in the allowed set because review files already on disk
+// carry noted reactions and must keep deserializing.
 //
 // AnswersRound is set only on agent reactions whose delivery named the thread
 // round it was written against (the comment's reaction count as of the payload

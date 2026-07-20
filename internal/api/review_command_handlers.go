@@ -1,13 +1,10 @@
 package api
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
-	"strings"
 
 	"github.com/mschulkind-oss/vantage/internal/model"
 	"github.com/mschulkind-oss/vantage/internal/review"
@@ -188,17 +185,6 @@ func (h *Handlers) replyCommand(w http.ResponseWriter, r *http.Request, reopen b
 	h.writeCommandResult(w, svc.Repo, path, data, err)
 }
 
-// ReviewCommentAccept handles POST /review/comments/{id}/accept: the reviewer
-// accepts the agent's response. The body carries nothing and is ignored.
-func (h *Handlers) ReviewCommentAccept(w http.ResponseWriter, r *http.Request) {
-	svc, path, ok := h.reviewCommandTarget(w, r)
-	if !ok {
-		return
-	}
-	data, err := h.deps.Reviews.Accept(path, svc.Repo, r.PathValue("id"))
-	h.writeCommandResult(w, svc.Repo, path, data, err)
-}
-
 // ReviewCommentDelete handles DELETE /review/comments/{id}.
 func (h *Handlers) ReviewCommentDelete(w http.ResponseWriter, r *http.Request) {
 	svc, path, ok := h.reviewCommandTarget(w, r)
@@ -243,59 +229,4 @@ func (h *Handlers) ReviewDismissals(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.writeCommandResult(w, svc.Repo, path, data, err)
-}
-
-// ReviewResponses handles POST /review/responses — the paste-box door for
-// agent responses. The text is parsed with the existing bullet grammar
-// ("- [<short_id>] <summary>" lines); a text with no parseable bullet is a
-// 400. The dedup nonce is derived server-side from the trimmed text, so a
-// double-paste of the same block is a no-op; the entries of one paste share
-// that nonce, which [review.Store.ApplyResponses] is built to tolerate.
-func (h *Handlers) ReviewResponses(w http.ResponseWriter, r *http.Request) {
-	svc, path, ok := h.reviewCommandTarget(w, r)
-	if !ok {
-		return
-	}
-	var req struct {
-		Text string `json:"text"`
-	}
-	if !decodeBody(w, r, &req) {
-		return
-	}
-	entries := review.ParseResponses(req.Text)
-	if len(entries) == 0 {
-		writeError(w, http.StatusBadRequest, "No response bullets found")
-		return
-	}
-	sum := sha256.Sum256([]byte(strings.TrimSpace(req.Text)))
-	nonce := hex.EncodeToString(sum[:])
-	for i := range entries {
-		entries[i].Nonce = nonce
-	}
-	// Bullets carry no round; ParseResponses already marks them RoundUnknown.
-	data, applied, err := h.deps.Reviews.ApplyResponses(path, svc.Repo, entries, currentDocContent(svc, path))
-	if err != nil || data == nil {
-		// Absent review, or a real failure: the shared tail writes null-at-200
-		// or the right error status. Either way nothing was applied, and the
-		// zero count below would be a lie about a review that does not exist.
-		h.writeCommandResult(w, svc.Repo, path, data, err)
-		return
-	}
-	if h.deps.ReviewChanged != nil {
-		h.deps.ReviewChanged(svc.Repo, path)
-	}
-	// The count is what tells the reviewer whether the paste landed. Bullets
-	// naming comments this document does not have — a block pasted into the
-	// wrong panel — parse fine and apply nothing, and reporting that as success
-	// is exactly the silent swallow this protocol replaced.
-	writeJSON(w, http.StatusOK, reviewResponsesResult{ReviewData: data, Applied: applied})
-}
-
-// reviewResponsesResult is a ReviewData with the applied-delivery count folded
-// in, so the paste box can tell "recorded" from "matched nothing" without a
-// second request. The embedded fields marshal inline, keeping the shape the
-// client already adopts.
-type reviewResponsesResult struct {
-	*model.ReviewData
-	Applied int `json:"applied"`
 }

@@ -44,7 +44,11 @@ import {
 } from "../components/KeyboardShortcuts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { RecentsModal } from "../components/RecentsModal";
-import { isPendingForAgent, useReviewStore } from "../stores/useReviewStore";
+import {
+  isAnsweredByAgent,
+  isPendingForAgent,
+  useReviewStore,
+} from "../stores/useReviewStore";
 import { ReviewPanel } from "../components/ReviewPanel";
 import { MessageSquarePlus, ClipboardCopy } from "lucide-react";
 import { useLineAnchor } from "../hooks/useLineAnchor";
@@ -220,11 +224,12 @@ export const ViewerPage: React.FC = () => {
   const activeReviewCount = reviewComments.filter((c) => !c.resolved).length;
   const copyAllReviewComments = useReviewStore((s) => s.copyAllToClipboard);
   const dismissAllReview = useReviewStore((s) => s.dismissAll);
-  const dismissOutdatedReview = useReviewStore((s) => s.dismissOutdated);
-  const outdatedCommentIds = useReviewStore((s) => s.outdatedCommentIds);
-  const outdatedReviewCount = reviewComments.filter(
-    (c) => !c.resolved && outdatedCommentIds.has(c.id),
-  ).length;
+  const dismissAnsweredReview = useReviewStore((s) => s.dismissAnswered);
+  // Answered, not outdated. "Outdated" is an anchor fact — the text this was
+  // written against is gone — and bulk-dismissing by it grouped comments for a
+  // reason nobody is thinking about. The useful sweep is "the agent replied and
+  // I am happy", which is what this counts.
+  const answeredReviewCount = reviewComments.filter(isAnsweredByAgent).length;
   const endReview = useReviewStore((s) => s.endReview);
   const hasReviewData = useReviewStore((s) => s.hasReviewData);
   const staleProtocolWarning = useReviewStore((s) => s.staleProtocolWarning);
@@ -260,17 +265,17 @@ export const ViewerPage: React.FC = () => {
     if (reviewDismissConfirm) {
       dismissAllReview();
       setReviewDismissConfirm(false);
-    } else if (outdatedReviewCount > 0) {
-      dismissOutdatedReview();
+    } else if (answeredReviewCount > 0) {
+      dismissAnsweredReview();
     } else {
       setReviewDismissConfirm(true);
       setTimeout(() => setReviewDismissConfirm(false), 3000);
     }
   }, [
     reviewDismissConfirm,
-    outdatedReviewCount,
+    answeredReviewCount,
     dismissAllReview,
-    dismissOutdatedReview,
+    dismissAnsweredReview,
   ]);
 
   // Load review data when file changes
@@ -1170,8 +1175,8 @@ export const ViewerPage: React.FC = () => {
                               title={
                                 reviewDismissConfirm
                                   ? "Click again to dismiss all"
-                                  : outdatedReviewCount > 0
-                                    ? "Dismiss outdated comments"
+                                  : answeredReviewCount > 0
+                                    ? "Dismiss comments the agent has answered"
                                     : "Dismiss all comments"
                               }
                             >
@@ -1179,8 +1184,8 @@ export const ViewerPage: React.FC = () => {
                               <span className="hidden sm:inline">
                                 {reviewDismissConfirm
                                   ? "Confirm?"
-                                  : outdatedReviewCount > 0
-                                    ? `Dismiss ${outdatedReviewCount} outdated`
+                                  : answeredReviewCount > 0
+                                    ? `Dismiss ${answeredReviewCount} answered`
                                     : `Dismiss ${activeReviewCount}`}
                               </span>
                             </button>
@@ -1331,8 +1336,8 @@ export const ViewerPage: React.FC = () => {
                             title={
                               reviewDismissConfirm
                                 ? "Click again to dismiss all"
-                                : outdatedReviewCount > 0
-                                  ? "Dismiss outdated comments"
+                                : answeredReviewCount > 0
+                                  ? "Dismiss comments the agent has answered"
                                   : "Dismiss all comments"
                             }
                           >
@@ -1340,8 +1345,8 @@ export const ViewerPage: React.FC = () => {
                             <span className="hidden sm:inline">
                               {reviewDismissConfirm
                                 ? "Confirm?"
-                                : outdatedReviewCount > 0
-                                  ? `Dismiss ${outdatedReviewCount} outdated`
+                                : answeredReviewCount > 0
+                                  ? `Dismiss ${answeredReviewCount} answered`
                                   : `Dismiss ${activeReviewCount}`}
                             </span>
                           </button>

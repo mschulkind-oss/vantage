@@ -248,7 +248,6 @@ Vantage exposes a REST API for programmatic access under `/api`.
 | `GET /api/review`                           | Read review comments                 |
 | `DELETE /api/review`                        | Remove review data                   |
 | `POST /api/review/comments` (+ subroutes)   | Review commands (create, reply, …)   |
-| `POST /api/review/responses`                | Record a pasted agent response       |
 
 ### Multi-Repo Endpoints
 

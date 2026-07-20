@@ -256,7 +256,6 @@ describe("MarkdownViewer — inline review actions wiring", () => {
       filePath: "doc.md",
       lastContent: REVIEW_DOC,
       pendingSelection: null,
-      outdatedCommentIds: new Set(),
     });
     useRepoStore.setState({ currentRepo: null, isMultiRepo: false });
     vi.clearAllMocks();
@@ -279,19 +278,20 @@ describe("MarkdownViewer — inline review actions wiring", () => {
     expect(useReviewStore.getState().comments).toHaveLength(0);
   });
 
-  it("wires inline Dismiss on an addressed comment to resolveComment (records an acceptance)", () => {
+  it("wires inline Dismiss on an addressed comment to dismissComment (no turn recorded)", () => {
     renderWithComment(baseComment({ reactions: [agentAddressed] }));
 
-    fireEvent.click(inlineButton("c1", ".review-inline-comment-resolve"));
+    // One Dismiss button, one action. There used to be two, both labelled
+    // "Dismiss": the answered branch quietly meant *accept* and appended a
+    // reviewer turn, which reopening never retracted.
+    const block = document.querySelector('[data-review-inline-comment="c1"]')!;
+    expect(block.querySelector(".review-inline-comment-resolve")).toBeNull();
 
-    // resolveComment, not dismissComment: it resolves AND appends the
-    // reviewer "noted" turn the thread renders as "You accepted".
+    fireEvent.click(inlineButton("c1", ".review-inline-comment-dismiss"));
+
     expect(comment().resolved).toBe(true);
-    expect(comment().reactions).toHaveLength(2);
-    expect(comment().reactions![1]).toMatchObject({
-      actor: "reviewer",
-      kind: "noted",
-    });
+    expect(comment().reactions).toHaveLength(1);
+    expect(comment().reactions![0].actor).toBe("agent");
   });
 
   it("wires inline Dismiss on an unanswered comment to dismissComment (no reaction recorded)", () => {

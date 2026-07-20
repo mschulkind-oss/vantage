@@ -1,10 +1,13 @@
 package review
 
-// Bullet parsing and block capture: the text-shaped half of agent response
-// handling. The "- [<short_id>] <summary>" bullet grammar survives as the
-// paste-box input format ([ParseResponses] in commands.go); the block helpers
-// (splitBlocks/blockTextAt) locate the Markdown block at a comment's anchor
-// line for before/after capture.
+// Block capture and comment-id resolution: the text-shaped half of agent
+// response handling. The block helpers (splitBlocks/blockTextAt) locate the
+// Markdown block at a comment's anchor line for before/after capture;
+// resolveCommentID maps a delivery's short id onto a comment.
+//
+// The "- [<short_id>] <summary>" bullet grammar that used to live here is
+// gone with the paste-box door: agent responses arrive only as .vantage/inbox
+// JSONL now, which carries its ids and summaries as fields.
 //
 // The changelog marker below is NOT a protocol anymore. Agents used to deliver
 // responses by writing "<!-- changelog -->" blocks into the reviewed document;
@@ -55,12 +58,6 @@ func ContainsChangelogBlock(content string) bool {
 	return false
 }
 
-// changelogEntry is one parsed bullet: a comment short id and its summary.
-type changelogEntry struct {
-	shortID string
-	summary string
-}
-
 // commentByID returns the comment with the given id, or nil. comments is
 // addressed by value but its elements carry slices/maps, so the returned
 // pointer mutates the slice element in place.
@@ -73,98 +70,10 @@ func commentByID(comments []model.ReviewComment, id string) *model.ReviewComment
 	return nil
 }
 
-// parseChangelog finds the last "<!-- changelog -->" marker and returns the
-// bullets that follow it.
-//
-// The marker-scoped parse survives the protocol retirement because pasted
-// responses may still carry a marker line ([ParseResponses] skips it as a
-// non-bullet); this function itself is now exercised only by tests. Multiple
-// blocks: the last one is authoritative. Within the block, lines that are not
-// well-formed bullets are skipped rather than ending the block, so a leading
-// prose line or blank line does not silently drop every bullet after it.
-func parseChangelog(content string) []changelogEntry {
-	lines := splitLines(content)
-
-	lastMarker := -1
-	for i, raw := range lines {
-		if isChangelogMarker(raw) {
-			lastMarker = i
-		}
-	}
-	if lastMarker < 0 {
-		return nil
-	}
-
-	var out []changelogEntry
-	for j := lastMarker + 1; j < len(lines); j++ {
-		line := lines[j]
-		if isChangelogMarker(line) {
-			break
-		}
-		shortID, summary, ok := parseBullet(line)
-		if !ok {
-			continue
-		}
-		out = append(out, changelogEntry{shortID: shortID, summary: summary})
-	}
-	return out
-}
-
 // isChangelogMarker reports whether line is the changelog marker, ignoring
 // leading and trailing ASCII whitespace.
 func isChangelogMarker(line string) bool {
 	return strings.TrimSpace(line) == changelogMarker
-}
-
-// parseBullet parses a "- [<short_id>] <summary>" line. Any of the three
-// standard Markdown unordered-list markers opens the bullet: the payload
-// documents "-", but a model rendering a list is free to normalize to "*" or
-// "+", and rejecting those turns a delivery into a 400 the reviewer has to
-// diagnose. The short id is a run of hex digits and hyphens carrying at least
-// four hex digits — hyphens so a full UUID parses the same way the inbox door
-// accepts one — and is lowercased; the summary is trimmed and must be
-// non-empty. ok is false for any line that does not match.
-func parseBullet(line string) (shortID, summary string, ok bool) {
-	rest := strings.TrimLeft(line, " \t")
-	if rest == "" || (rest[0] != '-' && rest[0] != '*' && rest[0] != '+') {
-		return "", "", false
-	}
-	rest = strings.TrimLeft(rest[1:], " \t")
-	if !strings.HasPrefix(rest, "[") {
-		return "", "", false
-	}
-	close := strings.IndexByte(rest, ']')
-	if close < 0 {
-		return "", "", false
-	}
-	id := rest[1:close]
-	if !isHexID(id) {
-		return "", "", false
-	}
-	summary = strings.TrimSpace(rest[close+1:])
-	if summary == "" {
-		return "", "", false
-	}
-	return strings.ToLower(id), summary, true
-}
-
-// isHexID reports whether s is a comment short id: ASCII hex digits and
-// hyphens, with at least four hex digits. The hex-count floor (rather than a
-// length floor) is what keeps the Markdown task-list forms "- [x]" and "- [ ]"
-// and a bare rule like "- [----]" from parsing as deliveries.
-func isHexID(s string) bool {
-	hexCount := 0
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch {
-		case c >= '0' && c <= '9', c >= 'a' && c <= 'f', c >= 'A' && c <= 'F':
-			hexCount++
-		case c == '-':
-		default:
-			return false
-		}
-	}
-	return hexCount >= 4
 }
 
 // resolveCommentID returns the single comment id that has shortID as a prefix.

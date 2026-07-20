@@ -259,7 +259,6 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   const addComment = useReviewStore((s) => s.addComment);
   const deleteComment = useReviewStore((s) => s.deleteComment);
   const editComment = useReviewStore((s) => s.editComment);
-  const resolveComment = useReviewStore((s) => s.resolveComment);
   const dismissComment = useReviewStore((s) => s.dismissComment);
   const replyToComment = useReviewStore((s) => s.replyToComment);
   const reopenAndReply = useReviewStore((s) => s.reopenAndReply);
@@ -271,7 +270,6 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   const reviewActions = useMemo<InlineReviewActions>(
     () => ({
       onDelete: deleteComment,
-      onResolve: resolveComment,
       onDismiss: dismissComment,
       onReopen: unresolveComment,
       onEdit: editComment,
@@ -288,7 +286,6 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     }),
     [
       deleteComment,
-      resolveComment,
       dismissComment,
       unresolveComment,
       editComment,

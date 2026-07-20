@@ -217,8 +217,8 @@ func TestConsumeInboxResolvesUppercaseID(t *testing.T) {
 	seedDocWithComment(t, s, root, "a.md", "c1a2b3c4deadbeef", cmdDoc, 3)
 
 	// Comment ids are generated lowercase and resolveCommentID prefix-matches
-	// case-sensitively; the paste door lowercases what it parses, so an inbox
-	// line must too or the same id works pasted and vanishes when delivered.
+	// case-sensitively, so an inbox line must lowercase its id or an agent that
+	// upper-cased the one it copied delivers into nothing, silently.
 	writeInboxFile(t, root, "a.jsonl",
 		`{"path":"a.md","id":"C1A2B3C4","summary":"done","nonce":"n-up"}`+"\n")
 	require.Equal(t, []string{"a.md"}, s.ConsumeInbox(root, ""))

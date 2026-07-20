@@ -1,10 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import axios from "axios";
 import {
   Check,
-  ChevronDown,
-  ChevronRight,
   ClipboardCopy,
   MessageSquare,
   MoreHorizontal,
@@ -15,13 +12,12 @@ import {
   AlertCircle,
 } from "lucide-react";
 import {
-  commandErrorMessage,
   hasAgentReaction,
   isAnsweredByAgent,
   isPendingForAgent,
   useReviewStore,
 } from "../stores/useReviewStore";
-import type { CommentReaction, ReviewComment, ReviewData } from "../types";
+import type { CommentReaction, ReviewComment } from "../types";
 
 interface ReviewPanelProps {
   isOpen: boolean;
@@ -82,11 +78,9 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   const comments = useReviewStore((s) => s.comments);
   const deleteComment = useReviewStore((s) => s.deleteComment);
   const editComment = useReviewStore((s) => s.editComment);
-  const resolveComment = useReviewStore((s) => s.resolveComment);
   const dismissComment = useReviewStore((s) => s.dismissComment);
   const dismissAll = useReviewStore((s) => s.dismissAll);
-  const dismissOutdated = useReviewStore((s) => s.dismissOutdated);
-  const outdatedCommentIds = useReviewStore((s) => s.outdatedCommentIds);
+  const dismissAnswered = useReviewStore((s) => s.dismissAnswered);
   const replyToComment = useReviewStore((s) => s.replyToComment);
   const reopenAndReply = useReviewStore((s) => s.reopenAndReply);
   const commandError = useReviewStore((s) => s.commandError);
@@ -97,7 +91,6 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
     (s) => s.copyCommentToClipboard,
   );
   const endReview = useReviewStore((s) => s.endReview);
-  const runCommand = useReviewStore((s) => s.runCommand);
 
   const [filter, setFilter] = useState<Filter>("all");
   const [copied, setCopied] = useState(false);
@@ -124,15 +117,6 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const deleteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const armedDeleteAt = useRef(0);
-  // Paste box — the delivery door for tool-less chat agents: the reviewer
-  // pastes the model's "- [id] summary" block and the server records it.
-  const [pasteOpen, setPasteOpen] = useState(false);
-  const [pasteText, setPasteText] = useState("");
-  const [pasteBusy, setPasteBusy] = useState(false);
-  const [pasteStatus, setPasteStatus] = useState<
-    { ok: true; applied: number } | { ok: false; message: string } | null
-  >(null);
-  const pasteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Counts (computed from full comment list, regardless of active filter)
   const counts = useMemo(
@@ -207,7 +191,6 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
       clearCopyTimer(confirmTimer);
       clearCopyTimer(endTimer);
       clearCopyTimer(deleteTimer);
-      clearCopyTimer(pasteTimer);
     },
     [],
   );
@@ -215,9 +198,8 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   if (!isOpen) return null;
 
   const activeCount = counts.all - counts.resolved;
-  const outdatedCount = comments.filter(
-    (c) => !c.resolved && outdatedCommentIds.has(c.id),
-  ).length;
+  // Answered, not outdated — the same split the inline toolbar makes.
+  const answeredCount = comments.filter(isAnsweredByAgent).length;
   const pendingCount = comments.filter(isPendingForAgent).length;
 
   // One shared timer for every Copy flash, always cleared before rearming, so
@@ -290,8 +272,8 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
     if (confirmDismiss) {
       dismissAll();
       setConfirmDismiss(false);
-    } else if (outdatedCount > 0) {
-      dismissOutdated();
+    } else if (answeredCount > 0) {
+      dismissAnswered();
     } else {
       armConfirm(confirmTimer, setConfirmDismiss);
     }
@@ -316,58 +298,6 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
     if (useReviewStore.getState().commandError) return;
     setReplyingId(null);
     setReplyText("");
-  };
-
-  const handleApplyPaste = async () => {
-    const text = pasteText.trim();
-    if (!text || pasteBusy) return;
-    setPasteBusy(true);
-    clearCopyTimer(pasteTimer);
-    setPasteStatus(null);
-    // runCommand supplies the echo-adoption guard, the on-error resync, and the
-    // global failure banner; the locals drive this box's own inline feedback,
-    // which is finer-grained (it also reports a paste that applied nothing).
-    // The text goes along as the draft because this box is mounted only while
-    // the document has comments — if the resync finds the review gone, the box
-    // unmounts and the banner becomes the only place the paste still exists.
-    let invoked = false;
-    let failure: unknown;
-    let applied: number | undefined;
-    await runCommand(async (base, path) => {
-      invoked = true;
-      try {
-        const res = await axios.post<
-          (ReviewData & { applied?: number }) | null
-        >(`${base}/review/responses`, { text }, { params: { path } });
-        applied = res.data?.applied;
-        return res;
-      } catch (e) {
-        failure = e;
-        throw e;
-      }
-    }, text);
-    setPasteBusy(false);
-    if (!invoked) {
-      // No file or repo selected — runCommand bailed before sending.
-      setPasteStatus({ ok: false, message: "No document loaded" });
-    } else if (failure !== undefined) {
-      setPasteStatus({
-        ok: false,
-        message: commandErrorMessage(failure, "Apply failed"),
-      });
-    } else if (!applied) {
-      // Well-formed bullets that matched no comment on THIS document — the
-      // usual cause is pasting into the wrong document's panel. Keep the text
-      // so it can be pasted where it belongs.
-      setPasteStatus({
-        ok: false,
-        message: "No matching comments on this document",
-      });
-    } else {
-      setPasteText("");
-      setPasteStatus({ ok: true, applied });
-      pasteTimer.current = setTimeout(() => setPasteStatus(null), 2000);
-    }
   };
 
   return createPortal(
@@ -488,8 +418,12 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
             <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
               {visible.map((c) => {
                 const agentReaction = hasAgentReaction(c);
-                const showResolve = !c.resolved && agentReaction;
-                const showDismiss = !c.resolved && !agentReaction;
+                // Reply is offered once the agent has answered; Dismiss is
+                // offered on every open comment. They used to be exclusive,
+                // with the answered branch rendering a "Dismiss" that actually
+                // recorded an acceptance turn.
+                const showReply = !c.resolved && agentReaction;
+                const showDismiss = !c.resolved;
                 const fallback = c.fallback_text || c.selected_text || "";
                 return (
                   <div key={c.id} className="px-4 py-3 group">
@@ -670,32 +604,23 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                             )}
                           </button>
                         )}
-                        {showResolve && (
-                          <>
-                            <button
-                              onClick={() => {
-                                setReplyingId(c.id);
-                                setReplyText("");
-                                setTimeout(() => replyRef.current?.focus(), 0);
-                              }}
-                              className="px-2 py-1 text-[11px] rounded text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700"
-                            >
-                              Reply
-                            </button>
-                            <button
-                              onClick={() => resolveComment(c.id)}
-                              className="px-2 py-1 text-[11px] rounded text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700"
-                              title="Dismiss — the agent already addressed this"
-                            >
-                              Dismiss
-                            </button>
-                          </>
+                        {showReply && (
+                          <button
+                            onClick={() => {
+                              setReplyingId(c.id);
+                              setReplyText("");
+                              setTimeout(() => replyRef.current?.focus(), 0);
+                            }}
+                            className="px-2 py-1 text-[11px] rounded text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700"
+                          >
+                            Reply
+                          </button>
                         )}
                         {showDismiss && (
                           <button
                             onClick={() => dismissComment(c.id)}
                             className="px-2 py-1 text-[11px] rounded text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700"
-                            title="Dismiss without recording an agent reaction"
+                            title="Dismiss this comment"
                           >
                             Dismiss
                           </button>
@@ -735,62 +660,6 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
         </div>
 
         {comments.length > 0 && (
-          <div className="border-t border-slate-200 dark:border-slate-700 shrink-0">
-            <button
-              onClick={() => setPasteOpen((v) => !v)}
-              className="w-full flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/50"
-              title="Paste an agent's response block to record it"
-            >
-              {pasteOpen ? (
-                <ChevronDown size={12} />
-              ) : (
-                <ChevronRight size={12} />
-              )}
-              Paste agent response
-            </button>
-            {pasteOpen && (
-              <div className="px-4 pb-3">
-                <textarea
-                  value={pasteText}
-                  onChange={(e) => {
-                    setPasteText(e.target.value);
-                    setPasteStatus(null);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-                      e.preventDefault();
-                      handleApplyPaste();
-                    }
-                  }}
-                  rows={3}
-                  placeholder="- [ab12cd34] What the agent changed"
-                  className="w-full text-sm rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 px-2 py-1.5 resize-y min-h-[48px] focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-                <div className="flex items-center justify-end gap-2 mt-1">
-                  {pasteStatus &&
-                    (pasteStatus.ok ? (
-                      <span className="flex items-center gap-1 text-[11px] text-green-600 dark:text-green-400">
-                        <Check size={11} /> Applied {pasteStatus.applied}
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-[11px] text-red-600 dark:text-red-400">
-                        <AlertCircle size={11} /> {pasteStatus.message}
-                      </span>
-                    ))}
-                  <button
-                    onClick={handleApplyPaste}
-                    disabled={pasteBusy || !pasteText.trim()}
-                    className="px-2 py-1 text-[11px] rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Apply
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {comments.length > 0 && (
           <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-700 flex items-center gap-2 shrink-0">
             {activeCount > 0 && (
               <button
@@ -804,8 +673,8 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                 <Check size={12} />
                 {confirmDismiss
                   ? "Confirm dismiss all?"
-                  : outdatedCount > 0
-                    ? `Dismiss Outdated (${outdatedCount})`
+                  : answeredCount > 0
+                    ? `Dismiss Answered (${answeredCount})`
                     : `Dismiss All (${activeCount})`}
               </button>
             )}
@@ -843,9 +712,7 @@ function turnStyle(r: CommentReaction): { label: string; className: string } {
       ? { label: "Agent", className: "review-reaction-badge--declined" }
       : { label: "Agent", className: "review-reaction-badge--agent" };
   }
-  return r.kind === "noted"
-    ? { label: "You accepted", className: "review-reaction-badge--noted" }
-    : { label: "You", className: "review-reaction-badge--reviewer" };
+  return { label: "You", className: "review-reaction-badge--reviewer" };
 }
 
 /**
@@ -854,7 +721,11 @@ function turnStyle(r: CommentReaction): { label: string; className: string } {
  * the instant they were submitted, and hid every earlier round of a thread.
  */
 const ThreadView: React.FC<{ comment: ReviewComment }> = ({ comment }) => {
-  const reactions = comment.reactions ?? [];
+  // Legacy "noted" turns are dropped, not relabelled: they recorded a dismissal
+  // through a since-removed accept action, and dismissing is a flag on the
+  // comment rather than something either party said. Rendering them stacked up
+  // "You accepted" rows that no reviewer ever typed.
+  const reactions = (comment.reactions ?? []).filter((r) => r.kind !== "noted");
   if (reactions.length === 0) return null;
   return (
     <div className="mt-2 space-y-1.5">
