@@ -161,22 +161,16 @@ gitignore step above is still yours to do.
 
 ## Known behavior worth knowing
 
-**A redelivered *line* is ignored; a re-run *agent* is not.** The `nonce`
-means the same line consumed twice records one reply. But an agent that runs
-its delivery step a second time writes *new* lines with *fresh* nonces — as the
-instructions tell it to — and each one is recorded. The visible result is the
-same answer appearing two or more times under a comment, and if the agent
-re-ran its whole delivery step, under *every* comment at once.
+**A redelivery is ignored two ways.** The `nonce` catches the same *line*
+consumed twice. But an agent that re-runs its delivery step writes *new* lines
+with *fresh* nonces — as the instructions tell it to — which the nonce alone
+cannot recognize. So a delivery is also treated as a redelivery when the
+comment already carries an agent reply with **the same round and the same
+summary**.
 
-Nothing is lost when this happens and no turn is misattributed; the duplicate
-is cosmetic. Dismissing the comment, or deleting and re-adding it, clears it.
-
-This is a known rough edge rather than a designed behavior. It is fixable now
-that deliveries carry `round`: two answers naming the same comment, the same
-round, and the same summary are a redelivery by construction, whereas the same
-summary against a *later* round is a genuine second answer. That distinction
-was impossible under the old in-document protocol, which is why duplicates were
-originally accepted as the price of never silently dropping an answer.
+The round is what makes that safe: the same summary against a *later* round is
+a genuine second answer and still applies. Two identical summaries in the same
+round cannot be anything but the same answer arriving twice.
 
 **An answer that arrives after you replied does not silence your reply.** If
 the agent was still working when you posted a follow-up, its delivery lands
