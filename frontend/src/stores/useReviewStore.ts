@@ -67,24 +67,13 @@ export function isPendingForAgent(c: ReviewComment): boolean {
   if (c.resolved) return false;
   const reactions = c.reactions ?? [];
   if (answeredAnOlderRound(reactions)) return true;
-  // A trailing reviewer "noted" is an acceptance — a turn that CLOSES a round,
-  // which is how every surface renders it. Skip it when deciding whose turn it
-  // is, so reopening an accepted comment doesn't re-send it to the agent under
-  // "your earlier answer did not satisfy the reviewer". A reviewer who wants
-  // another round replies, which appends needs_clarification instead.
+  // "noted" is legacy: it was written by an accept action that no longer
+  // exists, because dismissing is a flag on the comment and not a turn in the
+  // conversation. Nothing produces it now, but review files written before that
+  // change still carry it, so it is skipped rather than counted as the
+  // reviewer having spoken last.
   let i = reactions.length - 1;
-  // An acceptance also re-dates the answer: accepting at T3 endorses whatever
-  // the comment said at T3, so an edit made before it must not re-queue the
-  // comment when it is later reopened.
-  let acceptedAt = 0;
-  while (
-    i >= 0 &&
-    reactions[i].actor === "reviewer" &&
-    reactions[i].kind === "noted"
-  ) {
-    acceptedAt = Math.max(acceptedAt, reactions[i].timestamp);
-    i--;
-  }
+  while (i >= 0 && reactions[i].kind === "noted") i--;
   const last = i >= 0 ? reactions[i] : undefined;
   // Declining is an answer too: the agent has responded, so the ball is back
   // with the reviewer. Treating only "addressed" as an answer left a declined
@@ -96,7 +85,7 @@ export function isPendingForAgent(c: ReviewComment): boolean {
     (last.kind === "addressed" || last.kind === "wont_fix");
   if (!answered) return true;
   // The agent answered the *previous* wording; a later edit re-queues it.
-  return (c.edited_at ?? 0) > Math.max(last.timestamp, acceptedAt);
+  return (c.edited_at ?? 0) > last.timestamp;
 }
 
 /**
@@ -112,8 +101,8 @@ export function isPendingForAgent(c: ReviewComment): boolean {
  * it carries `answers_round` (the thread length as of the payload it read) and
  * this compares that against where the reviewer's follow-ups actually sit.
  *
- * A delivery that names no round — the paste door, and any payload predating
- * the field — yields false, which is exactly the old behavior.
+ * A delivery that names no round — any payload predating the field — yields
+ * false, which is exactly the old behavior.
  */
 function answeredAnOlderRound(reactions: CommentReaction[]): boolean {
   const last = reactions[reactions.length - 1];
@@ -150,7 +139,7 @@ export function isAwaitingFirstResponse(c: ReviewComment): boolean {
 
 /**
  * Unresolved, answered by the agent, and not re-queued since — the state where
- * the ball is in the reviewer's court (accept it, or reply for another round).
+ * the ball is in the reviewer's court (dismiss it, or reply for another round).
  */
 export function isAnsweredByAgent(c: ReviewComment): boolean {
   return !c.resolved && hasAgentReaction(c) && !isPendingForAgent(c);
@@ -221,8 +210,6 @@ interface ReviewState {
   pendingSelection: PendingSelection | null;
 
   // Outdated tracking (set by useReviewHighlights)
-  outdatedCommentIds: Set<string>;
-  setOutdatedCommentIds: (ids: Set<string>) => void;
 
   /**
    * Set when the server reports a saved document still carrying a
@@ -271,16 +258,14 @@ interface ReviewState {
   ) => Promise<void>;
   deleteComment: (id: string) => void;
   editComment: (id: string, newComment: string) => Promise<void>;
-  /** Resolve with a "noted" reviewer reaction (means "I accept the agent's fix"). */
-  resolveComment: (id: string) => void;
-  /** Dismiss without writing a reaction (means "I'm done with this comment"). */
+  /** Dismiss: mark the comment done. Not a turn — no reaction is written. */
   dismissComment: (id: string) => void;
-  /** Reopen a resolved comment without writing a follow-up reply. */
+  /** Reopen a dismissed comment without writing a follow-up reply. */
   unresolveComment: (id: string) => void;
-  /** Dismiss all unresolved comments at once. */
+  /** Dismiss all open comments at once. */
   dismissAll: () => void;
-  /** Dismiss only outdated (orphaned) comments. */
-  dismissOutdated: () => void;
+  /** Dismiss every comment the agent has answered. */
+  dismissAnswered: () => void;
   /**
    * Reply to an agent-addressed comment (keeps it unresolved for another
    * round). Resolves once the command has landed or failed; callers that clear
@@ -306,7 +291,6 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   lastContent: null,
   comments: [],
   pendingSelection: null,
-  outdatedCommentIds: new Set<string>(),
   staleProtocolWarning: null,
   commandError: null,
   isLoading: false,
@@ -451,10 +435,6 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     set({ pendingSelection: null });
   },
 
-  setOutdatedCommentIds: (ids: Set<string>) => {
-    set({ outdatedCommentIds: ids });
-  },
-
   warnStaleProtocol: (path: string) => {
     set({ staleProtocolWarning: { path } });
   },
@@ -532,35 +512,6 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     );
   },
 
-  resolveComment: (id: string) => {
-    const reaction: CommentReaction = {
-      actor: "reviewer",
-      kind: "noted",
-      summary: "Accepted",
-      before_text: "",
-      after_text: "",
-      timestamp: Date.now() / 1000,
-    };
-    set((s) => ({
-      comments: s.comments.map((c) =>
-        c.id === id
-          ? {
-              ...c,
-              resolved: true,
-              reactions: [...(c.reactions ?? []), reaction],
-            }
-          : c,
-      ),
-    }));
-    get().runCommand((base, path) =>
-      axios.post<ReviewData | null>(
-        `${base}/review/comments/${encodeURIComponent(id)}/accept`,
-        {},
-        { params: { path } },
-      ),
-    );
-  },
-
   dismissComment: (id: string) => {
     set((s) => ({
       comments: s.comments.map((c) =>
@@ -591,17 +542,19 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     );
   },
 
-  dismissOutdated: () => {
-    const outdated = get().outdatedCommentIds;
-    // Capture the target ids before mutating so the command names exactly
-    // the comments this click dismissed.
+  dismissAnswered: () => {
+    // Answered — not outdated. These are two different facts: "the agent has
+    // replied and the ball is back with you" versus "the text this was
+    // anchored to is gone". Bulk-dismissing the former is the useful action;
+    // the two were conflated when this button dismissed by anchor state.
     const ids = get()
-      .comments.filter((c) => !c.resolved && outdated.has(c.id))
+      .comments.filter(isAnsweredByAgent)
       .map((c) => c.id);
     if (ids.length === 0) return;
+    const target = new Set(ids);
     set((s) => ({
       comments: s.comments.map((c) =>
-        !c.resolved && outdated.has(c.id) ? { ...c, resolved: true } : c,
+        target.has(c.id) ? { ...c, resolved: true } : c,
       ),
     }));
     get().runCommand((base, path) =>
@@ -811,7 +764,6 @@ function turnLabel(r: CommentReaction): string {
   if (r.actor === "agent") {
     return r.kind === "wont_fix" ? "Agent declined" : "Agent response";
   }
-  if (r.kind === "noted") return "Reviewer accepted";
   return "Follow-up";
 }
 
@@ -850,9 +802,13 @@ function commentBlock(
   if (c.edited_at) out.push("_(the reviewer edited this comment)_");
   out.push("");
   // Interleave every turn in chronological order so a back-and-forth thread
-  // reads correctly.  No reaction kind is skipped: dropping one silently
-  // removes a turn from the transcript the agent reads.
+  // reads correctly.  Only legacy "noted" is skipped: it recorded a dismissal
+  // by a since-removed accept action, and dismissing is not something the
+  // agent needs to read — labelling it as a turn would put words in the
+  // reviewer's mouth.  `round` above stays the raw count so it keeps agreeing
+  // with the positional comparison in [answeredAnOlderRound].
   for (const r of c.reactions ?? []) {
+    if (r.kind === "noted") continue;
     out.push(`**${turnLabel(r)}:** ${r.summary}`);
     out.push("");
   }
@@ -863,7 +819,7 @@ function commentBlock(
 
 /**
  * Whether the thread carries a reviewer turn the agent has not answered — a
- * reaction that is not an acceptance, sitting after the agent's last one. This
+ * reaction sitting after the agent's last one, ignoring legacy "noted". This
  * is exactly what [turnLabel] renders as "Follow-up", so a note referring the
  * agent to that label is only accurate when this holds.
  */

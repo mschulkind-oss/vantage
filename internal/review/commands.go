@@ -3,6 +3,7 @@ package review
 import (
 	"errors"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/mschulkind-oss/vantage/internal/model"
@@ -24,11 +25,11 @@ const maxNonces = 200
 // to record, the delivery's dedup nonce, and the thread round it answers.
 //
 // Round is the comment's reaction count as of the payload the agent read, or
-// [RoundUnknown] when the delivery did not name one (the paste door, and any
-// inbox line written without the field). It is a plain int rather than a
-// pointer because [Store.ApplyResponses] uses ResponseEntry as a map key to
-// collapse byte-identical entries within a batch — two pointers to equal ints
-// are not equal, so a pointer here would silently defeat that.
+// [RoundUnknown] when the delivery did not name one (any inbox line written
+// without the field). It is a plain int rather than a pointer because
+// [Store.ApplyResponses] uses ResponseEntry as a map key to collapse
+// byte-identical entries within a batch — two pointers to equal ints are not
+// equal, so a pointer here would silently defeat that.
 type ResponseEntry struct {
 	ShortID string
 	Summary string
@@ -41,23 +42,6 @@ type ResponseEntry struct {
 // falls back to treating the newest agent reaction as answering the newest
 // reviewer turn.
 const RoundUnknown = -1
-
-// ParseResponses parses agent response text — the paste-box door — into
-// entries. Every line that parses as a "- [<short_id>] <summary>" bullet
-// counts, in order; anything else (prose, blank lines, a stray retired-protocol
-// changelog marker) is skipped. There is no marker to scope to: the whole text
-// is scanned. Nonce is left empty for the caller to assign.
-func ParseResponses(text string) []ResponseEntry {
-	var out []ResponseEntry
-	for _, line := range splitLines(text) {
-		shortID, summary, ok := parseBullet(line)
-		if !ok {
-			continue
-		}
-		out = append(out, ResponseEntry{ShortID: shortID, Summary: summary, Round: RoundUnknown})
-	}
-	return out
-}
 
 // AddComment appends c to the review for filePath in repo, creating the review
 // if absent. The anchored block's current text is captured from docContent so a
@@ -135,20 +119,6 @@ func (s *Store) reply(filePath, repo, id, text, docContent string, reopen bool) 
 	})
 }
 
-// Accept records the reviewer's acceptance of the agent's response: a
-// reviewer/noted "Accepted" reaction plus resolved=true.
-func (s *Store) Accept(filePath, repo, id string) (*model.ReviewData, error) {
-	return s.mutateComment(filePath, repo, id, func(c *model.ReviewComment, now float64) {
-		c.Reactions = append(c.Reactions, model.CommentReaction{
-			Actor:     "reviewer",
-			Kind:      "noted",
-			Summary:   "Accepted",
-			Timestamp: now,
-		})
-		c.Resolved = true
-	})
-}
-
 // DismissMany resolves comments in bulk without recording reactions. A nil ids
 // slice means every unresolved comment; otherwise exactly the listed full ids
 // (unknown ids are ignored — bulk dismissal is not an id lookup).
@@ -210,16 +180,28 @@ func (s *Store) DeleteComment(filePath, repo, id string) (*model.ReviewData, err
 	return data, nil
 }
 
-// ApplyResponses records a batch of agent responses (one inbox file, or one
-// paste) as agent/addressed reactions, deduped by nonce. It returns the
+// ApplyResponses records a batch of agent responses (one inbox file) as
+// agent/addressed reactions, deduped by nonce and by content. It returns the
 // persisted review and how many entries were applied. A document with no
 // review returns (nil, 0, nil): there is nothing to deliver into.
 //
 // Nonce dedup is measured against the set as of batch start, not the evolving
-// list: a multi-bullet paste shares one content-derived nonce across all its
-// entries, and checking as-we-go would apply only the first bullet. Within a
-// batch, only byte-identical entries dedup against each other (an agent
-// re-appending the same inbox line); distinct entries sharing a nonce all land.
+// list: a batch may share one nonce across all its entries, and checking
+// as-we-go would apply only the first. Within a batch, only byte-identical
+// entries dedup against each other (an agent re-appending the same inbox
+// line); distinct entries sharing a nonce all land.
+//
+// Content dedup catches what the nonce cannot: an agent that re-runs its
+// delivery step writes fresh nonces for answers it already delivered, and
+// every one of them would otherwise land again under the same comment. An
+// entry is a redelivery when the comment already carries an agent reaction
+// with the same round AND the same (whitespace-trimmed) summary. Round is part
+// of the key because the same summary against a later reviewer turn is a
+// genuine second answer — the agent restating "Fixed it" after being told it
+// is still broken — while the same summary at the same round is the same
+// answer arriving twice. Entries carrying no round ([RoundUnknown]) match each
+// other on summary alone, which is the best available signal for a delivery
+// that would not say which turn it answers.
 //
 // The reaction's before_text is the comment's CapturedBlock — the text the
 // reviewer was looking at when they wrote or last followed up on the comment —
@@ -274,6 +256,12 @@ func (s *Store) ApplyResponses(filePath, repo string, entries []ResponseEntry, d
 			round := e.Round
 			answersRound = &round
 		}
+		// Checked against the live reaction list, not a snapshot: two entries in
+		// one batch that carry fresh nonces but repeat the same answer are the
+		// same redelivery, and the first one's reaction must dedup the second.
+		if hasAgentAnswer(comment, answersRound, e.Summary) {
+			continue
+		}
 		comment.Reactions = append(comment.Reactions, model.CommentReaction{
 			Actor:        "agent",
 			Kind:         "addressed",
@@ -309,6 +297,37 @@ func (s *Store) ApplyResponses(filePath, repo string, entries []ResponseEntry, d
 		return nil, 0, err
 	}
 	return data, applied, nil
+}
+
+// hasAgentAnswer reports whether the comment already carries an agent reaction
+// answering round with summary — the content dedup key documented on
+// [Store.ApplyResponses]. round is nil for a delivery that named none and
+// matches only other round-less reactions; reviewer reactions never match,
+// since a reviewer echoing the agent's wording is a different turn, not a
+// redelivery. Summaries compare whitespace-trimmed, so a re-emitted line that
+// differs only in padding is still recognized as the same answer.
+func hasAgentAnswer(c *model.ReviewComment, round *int, summary string) bool {
+	want := strings.TrimSpace(summary)
+	for i := range c.Reactions {
+		r := &c.Reactions[i]
+		if r.Actor != "agent" || !sameRound(r.AnswersRound, round) {
+			continue
+		}
+		if strings.TrimSpace(r.Summary) == want {
+			return true
+		}
+	}
+	return false
+}
+
+// sameRound compares two optional rounds. Both absent matches — two deliveries
+// that each declined to name a round are treated as the same round, which is
+// what makes unknown-round redeliveries dedup at all.
+func sameRound(a, b *int) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 // mutateComment is the shared command skeleton: lock, load, locate the comment,

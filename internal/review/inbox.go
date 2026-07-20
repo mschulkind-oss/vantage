@@ -181,10 +181,9 @@ func (s *Store) consumeInboxFile(root, repo, name string) []string {
 		if _, ok := byDoc[l.Path]; !ok {
 			docs = append(docs, l.Path)
 		}
-		// Lowercased to match the paste door, which lowercases the id it parses
-		// out of a bullet. resolveCommentID prefix-matches case-sensitively
-		// against ids that are generated lowercase, so an uppercase id would
-		// otherwise resolve to nothing here while working when pasted.
+		// Lowercased because resolveCommentID prefix-matches case-sensitively
+		// against ids that are generated lowercase: an agent that upper-cased the
+		// id it copied would otherwise deliver into nothing, silently.
 		shortID := strings.ToLower(l.ID)
 		round := RoundUnknown
 		if l.Round != nil {
@@ -238,10 +237,10 @@ func (s *Store) consumeInboxFile(root, repo, name string) []string {
 // after a sibling document's apply failed. The synthesized key is derived from
 // the delivery's own identity, never from document content: content-as-identity
 // is what the retired changelog protocol's dedup got wrong, whereas hashing the
-// message itself is exactly what the paste door already does with the pasted
-// text. Two byte-identical keyless deliveries therefore collapse into one; they
-// already do within a single batch, and only lines that ignored the documented
-// nonce rule are affected at all.
+// message itself keys on the thing actually being delivered. Two byte-identical
+// keyless deliveries therefore collapse into one; they already do within a
+// single batch, and only lines that ignored the documented nonce rule are
+// affected at all.
 func deliveryNonce(nonce, path, shortID, summary string) string {
 	if nonce != "" {
 		return nonce

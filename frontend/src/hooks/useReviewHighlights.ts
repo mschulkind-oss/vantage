@@ -9,7 +9,7 @@ import {
 import {
   hasAgentReaction,
   isPendingForAgent,
-  useReviewStore,
+  latestAgentReaction,
 } from "../stores/useReviewStore";
 
 const mdOptions = { breaks: false, gfm: true };
@@ -57,8 +57,10 @@ const NEIGHBOR_RADIUS = 10;
  *    original wording (PR2).
  * 4. If not found → walk ±NEIGHBOR_RADIUS source lines looking for a
  *    block whose hash matches the anchor.  If found, re-anchor.
- * 5. Otherwise → render the comment as Outdated near the closest
- *    still-present source line ≤ anchor.source_line.
+ * 5. Otherwise → the anchor is lost. Render the comment detached, after the
+ *    closest still-present source line ≤ anchor.source_line, with a locator
+ *    saying where it used to be — a neighborhood, stated as one, so it does
+ *    not read as a comment on the block it happens to follow.
  *
  * The pre-PR2 fallback ladder (text-search, normalized text-search,
  * word-overlap "best block", and the ✓ addressed heuristic on snapshot
@@ -72,8 +74,6 @@ const NEIGHBOR_RADIUS = 10;
  */
 export interface InlineReviewActions {
   onDelete: (id: string) => void;
-  /** Accept the agent's fix (records a reviewer "noted" reaction). */
-  onResolve: (id: string) => void;
   /** Close without recording a reaction. */
   onDismiss: (id: string) => void;
   /** Reopen a resolved comment, no reply. */
@@ -134,10 +134,7 @@ export function useReviewHighlights(
       );
     });
 
-    if (comments.length === 0) {
-      useReviewStore.getState().setOutdatedCommentIds(new Set());
-      return;
-    }
+    if (comments.length === 0) return;
 
     const active = comments.filter((c) => !c.resolved);
     const resolved = comments.filter((c) => c.resolved);
@@ -150,12 +147,9 @@ export function useReviewHighlights(
     }
 
     if (active.length === 0) {
-      useReviewStore.getState().setOutdatedCommentIds(new Set());
       restoreDrafts(el, drafts);
       return;
     }
-
-    const outdatedIds = new Set<string>();
 
     // Tag every block once with data-block-hash so the neighbor walk
     // can do synchronous lookups.  Skips containers we never anchor on.
@@ -186,7 +180,6 @@ export function useReviewHighlights(
           comment.id.slice(0, 8),
           comment,
         );
-        outdatedIds.add(comment.id);
         insertOutdatedComment(el, comment, actions);
         continue;
       }
@@ -241,7 +234,6 @@ export function useReviewHighlights(
           anchor.source_line,
           anchor.block_text_hash,
         );
-        outdatedIds.add(comment.id);
         insertOutdatedComment(
           el,
           comment,
@@ -284,7 +276,6 @@ export function useReviewHighlights(
       insertInlineCommentAfter(block, comment, actions, divergent);
     }
 
-    useReviewStore.getState().setOutdatedCommentIds(outdatedIds);
     restoreDrafts(el, drafts);
   }, [containerRef, comments, currentContent, actions]);
 }
@@ -390,16 +381,19 @@ function actionRowHtml(comment: ReviewComment): string {
         `<button class="review-inline-comment-copy" title="Copy this comment thread to send back to the agent">Copy</button>`,
       );
     }
+    // One Dismiss button, one action. There used to be two, both labelled
+    // "Dismiss": on an answered comment it silently meant *accept* and wrote a
+    // reviewer turn into the thread, which reopening did not retract — so
+    // dismiss/reopen/dismiss stacked up "Accepted" rows nobody asked for.
+    // Dismissing is a flag on the comment, never a turn in the conversation.
     if (answered) {
       buttons.push(
         `<button class="review-inline-comment-reply" title="Reply">Reply</button>`,
-        `<button class="review-inline-comment-resolve" title="Dismiss — the agent addressed this">Dismiss</button>`,
-      );
-    } else {
-      buttons.push(
-        `<button class="review-inline-comment-dismiss" title="Dismiss comment">Dismiss</button>`,
       );
     }
+    buttons.push(
+      `<button class="review-inline-comment-dismiss" title="Dismiss comment">Dismiss</button>`,
+    );
     buttons.push(
       `<button class="review-inline-comment-edit" title="Edit comment">&#x270E;</button>`,
     );
@@ -409,6 +403,34 @@ function actionRowHtml(comment: ReviewComment): string {
     `<button class="review-inline-comment-delete" title="Delete comment">&times;</button>`,
   );
   return `<div class="review-inline-comment-actions">${buttons.join("")}</div>`;
+}
+
+/**
+ * The status badge shared by every inline comment renderer.
+ *
+ * This reports **turn state only** — who the thread is waiting on. It says
+ * nothing about whether the anchor still resolves, which is a separate fact
+ * expressed by placement and the detached header. The two used to be welded
+ * together: the badge lived solely inside the orphan renderer, so an answered
+ * comment whose anchor still resolved showed no status at all, while "the
+ * anchor is gone" and "the agent addressed this" appeared in the same slot.
+ *
+ * A comment still waiting on the agent gets no badge — that is the default
+ * state, and the Copy button already marks it.
+ */
+function statusBadgeHtml(comment: ReviewComment): string {
+  let label = "";
+  if (comment.resolved) {
+    label = "Dismissed";
+  } else if (hasAgentReaction(comment) && !isPendingForAgent(comment)) {
+    label =
+      latestAgentReaction(comment)?.kind === "wont_fix"
+        ? "Declined"
+        : "Addressed";
+  }
+  if (!label) return "";
+  const mod = label.toLowerCase();
+  return `<div class="review-status-badge review-status-badge--${mod}">${label}</div>`;
 }
 
 /** Render an inline comment block.  Resolve/Dismiss is reaction-aware. */
@@ -427,6 +449,7 @@ function createCommentBlock(
     <div class="review-inline-comment-body">
       <span class="review-inline-comment-icon" title="Review comment">&#x1f4ac;</span>
       <div class="review-inline-comment-content">
+        ${statusBadgeHtml(comment)}
         <div class="review-inline-comment-text"></div>
         ${renderThreadHtml(comment)}
       </div>
@@ -442,6 +465,19 @@ function createCommentBlock(
   return wrapper;
 }
 
+/**
+ * Render a comment whose anchor no longer resolves.
+ *
+ * It is placed after the nearest surviving block above where it was written,
+ * which is a neighborhood and not a position — so the block states that
+ * outright ("was near line N · original text no longer found") rather than
+ * sitting silently where it would read as a comment on the block above it.
+ *
+ * The quoted selection is NOT struck through. It is `fallback_text`: the text
+ * the reviewer chose to comment on, and the record of what they meant. Striking
+ * it read as retracted, when in practice the text is usually still in the
+ * document, merely reworded or moved past the point the anchor could follow.
+ */
 function createOutdatedBlock(
   comment: ReviewComment,
   actions: InlineReviewActions,
@@ -450,10 +486,17 @@ function createOutdatedBlock(
   wrapper.setAttribute(INLINE_COMMENT_ATTR, comment.id);
   wrapper.className = "review-inline-comment review-inline-comment--outdated";
 
+  const line = comment.anchor?.source_line;
+  const locator =
+    line != null
+      ? `was near line ${line} &middot; original text no longer found`
+      : `original text no longer found`;
+
   wrapper.innerHTML = `
     <div class="review-inline-comment-body review-inline-comment-body--outdated">
       <div class="review-inline-comment-content">
-        <div class="review-outdated-badge">${hasAgentReaction(comment) ? "Addressed" : "Outdated"}</div>
+        ${statusBadgeHtml(comment)}
+        <div class="review-detached-locator">${locator}</div>
         <div class="review-outdated-quote"></div>
         <div class="review-inline-comment-text"></div>
         ${renderThreadHtml(comment)}
@@ -477,10 +520,9 @@ function wireCommentButtons(
   comment: ReviewComment,
   actions: InlineReviewActions,
 ) {
-  const { onDelete, onResolve, onDismiss, onReopen, onEdit, onCopy } = actions;
+  const { onDelete, onDismiss, onReopen, onEdit, onCopy } = actions;
 
   const simple: Array<[string, () => void]> = [
-    [".review-inline-comment-resolve", () => onResolve(comment.id)],
     [".review-inline-comment-dismiss", () => onDismiss(comment.id)],
     [".review-inline-comment-reopen", () => onReopen(comment.id)],
   ];
@@ -669,15 +711,16 @@ function renderThreadHtml(comment: ReviewComment): string {
   let html = '<div class="review-thread">';
   for (let i = 0; i < reactions.length; i++) {
     const r = reactions[i];
-    // Label by actor AND kind: an "Accepted" marker is auto-generated when the
-    // reviewer dismisses an addressed comment, and labelling it "You" made it
-    // read as a follow-up the agent still owed an answer.
+    // Legacy "noted" turns are skipped: they recorded a dismissal made through
+    // a since-removed accept action, and dismissing is a flag on the comment,
+    // not something the reviewer said. `data-thread-idx` keeps the raw index so
+    // [populateThreadSummaries] still pairs each badge with its own summary
+    // across the gap.
+    if (r.kind === "noted") continue;
     const [cls, label] =
       r.actor === "agent"
         ? ["agent", r.kind === "wont_fix" ? "Agent declined" : "Agent"]
-        : r.kind === "noted"
-          ? ["noted", "You accepted"]
-          : ["reviewer", "You"];
+        : ["reviewer", "You"];
     const badge = `<span class="review-thread-badge review-thread-badge--${cls}">${label}</span>`;
     html += `<div class="review-thread-entry" data-thread-idx="${i}">${badge}<span class="review-thread-text"></span></div>`;
   }
@@ -691,9 +734,19 @@ function populateThreadSummaries(
 ): void {
   const reactions = comment.reactions ?? [];
   const entries = wrapper.querySelectorAll(".review-thread-entry");
-  for (let i = 0; i < entries.length && i < reactions.length; i++) {
-    const textEl = entries[i].querySelector(".review-thread-text");
-    if (textEl) textEl.innerHTML = renderMarkdownInline(reactions[i].summary);
+  // Keyed by data-thread-idx, not by position: [renderThreadHtml] skips legacy
+  // "noted" turns, so the Nth rendered entry is not necessarily the Nth
+  // reaction. Pairing positionally would put each summary under the wrong
+  // speaker's badge.
+  for (const entry of entries) {
+    const idx = Number.parseInt(
+      entry.getAttribute("data-thread-idx") ?? "",
+      10,
+    );
+    const r = Number.isFinite(idx) ? reactions[idx] : undefined;
+    if (!r) continue;
+    const textEl = entry.querySelector(".review-thread-text");
+    if (textEl) textEl.innerHTML = renderMarkdownInline(r.summary);
   }
 }
 
@@ -789,7 +842,7 @@ function insertResolvedSection(
   bar.type = "button";
   bar.innerHTML = `
     <span class="review-resolved-indicator-icon">✓</span>
-    <span class="review-resolved-indicator-text">${count} resolved comment${count !== 1 ? "s" : ""}</span>
+    <span class="review-resolved-indicator-text">${count} dismissed comment${count !== 1 ? "s" : ""}</span>
     <span class="review-resolved-indicator-caret">${resolvedSectionOpen ? "▾" : "▸"}</span>
   `;
 

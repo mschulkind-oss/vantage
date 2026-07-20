@@ -96,8 +96,6 @@ func TestCommandsOnAbsentReviewReturnNotFound(t *testing.T) {
 	require.ErrorIs(t, err, ErrCommentNotFound)
 	_, err = s.Reply("ghost.md", "", "c1", "hi", cmdDoc)
 	require.ErrorIs(t, err, ErrCommentNotFound)
-	_, err = s.Accept("ghost.md", "", "c1")
-	require.ErrorIs(t, err, ErrCommentNotFound)
 	_, err = s.DeleteComment("ghost.md", "", "c1")
 	require.ErrorIs(t, err, ErrCommentNotFound)
 	_, err = s.DismissMany("ghost.md", "", nil)
@@ -153,21 +151,6 @@ func TestReopenReplyClearsResolved(t *testing.T) {
 	require.False(t, data.Comments[0].Resolved)
 	require.Len(t, data.Comments[0].Reactions, 1)
 	require.Equal(t, "needs_clarification", data.Comments[0].Reactions[0].Kind)
-}
-
-func TestAcceptAppendsAcceptedAndResolves(t *testing.T) {
-	s := NewStore(t.TempDir())
-	_, err := s.AddComment("a.md", "", anchoredComment("c1", "x", 3), cmdDoc)
-	require.NoError(t, err)
-
-	data, err := s.Accept("a.md", "", "c1")
-	require.NoError(t, err)
-	c := data.Comments[0]
-	require.True(t, c.Resolved)
-	require.Len(t, c.Reactions, 1)
-	require.Equal(t, "reviewer", c.Reactions[0].Actor)
-	require.Equal(t, "noted", c.Reactions[0].Kind)
-	require.Equal(t, "Accepted", c.Reactions[0].Summary)
 }
 
 func TestDismissManyAllResolvesEveryComment(t *testing.T) {
@@ -281,20 +264,20 @@ func TestApplyResponsesSharedNonceWithinBatchAppliesAll(t *testing.T) {
 	_, err := s.AddComment("a.md", "", c2, cmdDoc)
 	require.NoError(t, err)
 
-	// One paste = one content-derived nonce shared by every bullet. Both
-	// entries must land; the nonce is recorded once.
+	// One batch may share a single nonce across its entries (answers to two
+	// comments delivered together). Both must land; the nonce is recorded once.
 	entries := []ResponseEntry{
-		{ShortID: "abcd", Summary: "Fixed one", Nonce: "paste-nonce"},
-		{ShortID: "ef56", Summary: "Fixed two", Nonce: "paste-nonce"},
+		{ShortID: "abcd", Summary: "Fixed one", Nonce: "batch-nonce"},
+		{ShortID: "ef56", Summary: "Fixed two", Nonce: "batch-nonce"},
 	}
 	data, applied, err := s.ApplyResponses("a.md", "", entries, cmdDoc)
 	require.NoError(t, err)
 	require.Equal(t, 2, applied)
 	require.Len(t, data.Comments[0].Reactions, 1)
 	require.Len(t, data.Comments[1].Reactions, 1)
-	require.Equal(t, []string{"paste-nonce"}, data.Nonces)
+	require.Equal(t, []string{"batch-nonce"}, data.Nonces)
 
-	// The double-paste is then fully deduped.
+	// A replay of that same batch is then fully deduped.
 	_, applied, err = s.ApplyResponses("a.md", "", entries, cmdDoc)
 	require.NoError(t, err)
 	require.Equal(t, 0, applied)
@@ -392,26 +375,148 @@ func TestApplyResponsesNoReviewIsNoop(t *testing.T) {
 	require.Nil(t, stored)
 }
 
-func TestParseResponses(t *testing.T) {
+// TestApplyResponsesContentDedup covers the (id, round, summary) dedup that
+// backstops the nonce: an agent re-running its delivery step writes fresh
+// nonces, so nonce dedup alone lets the same answer land under the same
+// comment again and again.
+func TestApplyResponsesContentDedup(t *testing.T) {
 	cases := []struct {
-		name string
-		text string
-		want []ResponseEntry
+		name    string
+		batches [][]ResponseEntry
+		applied []int // entries applied, per batch
 	}{
-		{"empty", "", nil},
-		{"prose only", "I fixed everything.\nThanks!", nil},
-		{"single bullet", "- [abcd1234] Fixed the thing",
-			[]ResponseEntry{{ShortID: "abcd1234", Summary: "Fixed the thing", Round: RoundUnknown}}},
-		{"bullets with junk and marker", "<!-- changelog -->\n- [abcd] One\nnot a bullet\n  - [EF56] Two\n- [xy] too short",
-			[]ResponseEntry{{ShortID: "abcd", Summary: "One", Round: RoundUnknown}, {ShortID: "ef56", Summary: "Two", Round: RoundUnknown}}},
-		{"fenced paste", "```\n- [abcd] Fixed\n```",
-			[]ResponseEntry{{ShortID: "abcd", Summary: "Fixed", Round: RoundUnknown}}},
+		{
+			// The redelivery: identical answer, identical round, fresh nonce.
+			name: "same round and summary is skipped",
+			batches: [][]ResponseEntry{
+				{{ShortID: "abcd", Summary: "Fixed it", Nonce: "n1", Round: 1}},
+				{{ShortID: "abcd", Summary: "Fixed it", Nonce: "n2", Round: 1}},
+			},
+			applied: []int{1, 0},
+		},
+		{
+			// Not a redelivery: the reviewer pushed back and the agent stands by
+			// its answer. Same words, different turn, both must be recorded.
+			name: "same summary at a later round applies",
+			batches: [][]ResponseEntry{
+				{{ShortID: "abcd", Summary: "Fixed it", Nonce: "n1", Round: 1}},
+				{{ShortID: "abcd", Summary: "Fixed it", Nonce: "n2", Round: 2}},
+			},
+			applied: []int{1, 1},
+		},
+		{
+			name: "unknown-round duplicates are skipped",
+			batches: [][]ResponseEntry{
+				{{ShortID: "abcd", Summary: "Fixed it", Nonce: "n1", Round: RoundUnknown}},
+				{{ShortID: "abcd", Summary: "Fixed it", Nonce: "n2", Round: RoundUnknown}},
+			},
+			applied: []int{1, 0},
+		},
+		{
+			// An absent round is "not stated", not round 0: a delivery that names
+			// its round is not the same turn as one that declined to.
+			name: "unknown round does not match a stated round",
+			batches: [][]ResponseEntry{
+				{{ShortID: "abcd", Summary: "Fixed it", Nonce: "n1", Round: RoundUnknown}},
+				{{ShortID: "abcd", Summary: "Fixed it", Nonce: "n2", Round: 0}},
+			},
+			applied: []int{1, 1},
+		},
+		{
+			name: "nonce dedup still catches a replay with a different summary",
+			batches: [][]ResponseEntry{
+				{{ShortID: "abcd", Summary: "Fixed it", Nonce: "n1", Round: 1}},
+				{{ShortID: "abcd", Summary: "Something else entirely", Nonce: "n1", Round: 2}},
+			},
+			applied: []int{1, 0},
+		},
+		{
+			name: "a different summary at the same round is a separate answer",
+			batches: [][]ResponseEntry{
+				{{ShortID: "abcd", Summary: "Fixed it", Nonce: "n1", Round: 1}},
+				{{ShortID: "abcd", Summary: "Also tightened the wording", Nonce: "n2", Round: 1}},
+			},
+			applied: []int{1, 1},
+		},
+		{
+			// Summaries compare trimmed: a re-emitted line differing only in
+			// padding is the same answer.
+			name: "summaries compare whitespace-trimmed",
+			batches: [][]ResponseEntry{
+				{{ShortID: "abcd", Summary: "Fixed it", Nonce: "n1", Round: 1}},
+				{{ShortID: "abcd", Summary: "  Fixed it\t", Nonce: "n2", Round: 1}},
+			},
+			applied: []int{1, 0},
+		},
+		{
+			// Within one batch, distinct nonces defeat the byte-identical map key,
+			// so the content check is what collapses these.
+			name: "redelivery inside one batch is collapsed",
+			batches: [][]ResponseEntry{{
+				{ShortID: "abcd", Summary: "Fixed it", Nonce: "n1", Round: 1},
+				{ShortID: "abcd", Summary: "Fixed it", Nonce: "n2", Round: 1},
+			}},
+			applied: []int{1},
+		},
 	}
+
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, ParseResponses(tc.text))
+			s := NewStore(t.TempDir())
+			seedForResponses(t, s)
+
+			total := 0
+			for i, batch := range tc.batches {
+				data, applied, err := s.ApplyResponses("a.md", "", batch, cmdDoc)
+				require.NoError(t, err)
+				require.Equalf(t, tc.applied[i], applied, "batch %d applied count", i)
+				total += tc.applied[i]
+				require.Lenf(t, data.Comments[0].Reactions, total, "batch %d reaction count", i)
+			}
+
+			// Persisted, not merely returned: a redelivery that reappears after a
+			// restart must still be recognized.
+			stored, err := s.Get("a.md", "")
+			require.NoError(t, err)
+			require.Len(t, stored.Comments[0].Reactions, total)
 		})
 	}
+}
+
+// A reviewer reaction is a different turn, not a redelivery, even when it
+// quotes the agent's wording back — only agent reactions can dedup a delivery.
+func TestApplyResponsesContentDedupIgnoresReviewerReactions(t *testing.T) {
+	s := NewStore(t.TempDir())
+	seedForResponses(t, s)
+
+	_, err := s.Reply("a.md", "", "abcd1234", "Fixed it", cmdDoc)
+	require.NoError(t, err)
+
+	data, applied, err := s.ApplyResponses("a.md", "",
+		[]ResponseEntry{{ShortID: "abcd", Summary: "Fixed it", Nonce: "n1", Round: RoundUnknown}}, cmdDoc)
+	require.NoError(t, err)
+	require.Equal(t, 1, applied)
+	require.Len(t, data.Comments[0].Reactions, 2)
+	require.Equal(t, "agent", data.Comments[0].Reactions[1].Actor)
+}
+
+// A dropped duplicate must not burn its nonce: the nonce list is a record of
+// deliveries that landed, and recording one for an entry that applied nothing
+// would silently swallow a later, genuinely different delivery sharing it.
+func TestApplyResponsesContentDuplicateDoesNotRecordNonce(t *testing.T) {
+	s := NewStore(t.TempDir())
+	seedForResponses(t, s)
+
+	_, applied, err := s.ApplyResponses("a.md", "",
+		[]ResponseEntry{{ShortID: "abcd", Summary: "Fixed it", Nonce: "n1", Round: 1}}, cmdDoc)
+	require.NoError(t, err)
+	require.Equal(t, 1, applied)
+
+	data, applied, err := s.ApplyResponses("a.md", "",
+		[]ResponseEntry{{ShortID: "abcd", Summary: "Fixed it", Nonce: "n2", Round: 1}}, cmdDoc)
+	require.NoError(t, err)
+	require.Zero(t, applied)
+	require.Equal(t, []string{"n1"}, data.Nonces)
 }
 
 func TestEditCommentTextRecapturesBlock(t *testing.T) {
@@ -475,8 +580,8 @@ func TestApplyResponsesRecordsTheRoundItAnswers(t *testing.T) {
 	require.Equal(t, 0, *data.Comments[0].Reactions[0].AnswersRound,
 		"round 0 is a real round, not an absent one")
 
-	// A delivery that names no round records none — the paste door and any
-	// clipboard payload predating the field keep behaving exactly as before.
+	// A delivery that names no round records none — an inbox line written
+	// without the field keeps behaving exactly as it did before rounds existed.
 	data, _, err = s.ApplyResponses("a.md", "",
 		[]ResponseEntry{{ShortID: "abcd", Summary: "no round", Nonce: "n2", Round: RoundUnknown}}, cmdDoc)
 	require.NoError(t, err)

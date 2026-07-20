@@ -134,7 +134,7 @@ func TestRoutesTableShapes(t *testing.T) {
 	require.Equal(t, ScopeRepo, scopeOf("/tree", http.MethodGet))
 	require.Equal(t, ScopeRepo, scopeOf("/review", http.MethodGet))
 	require.Equal(t, ScopeRepo, scopeOf("/review", http.MethodDelete))
-	require.Equal(t, ScopeRepo, scopeOf("/review/responses", http.MethodPost))
+	require.Equal(t, ScopeRepo, scopeOf("/review/dismissals", http.MethodPost))
 
 	// The retired whole-state PUT must not come back.
 	for _, rt := range routes {

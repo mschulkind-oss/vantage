@@ -1,7 +1,7 @@
 // Package review persists review-mode data (threaded comments) and applies
-// agent responses delivered through the .vantage/inbox files or the panel's
-// paste box, turning "- [<short_id>] <summary>" bullets into reviewer-visible
-// reactions.
+// agent responses delivered through the .vantage/inbox files, turning their
+// JSONL lines into reviewer-visible reactions. The inbox is the only agent
+// response door: the panel's paste box and its bullet grammar are retired.
 //
 // On-disk layout: one JSON file per reviewed document under a base directory
 // (default ~/.local/share/vantage/reviews). The filename flattens the
