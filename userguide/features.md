@@ -170,6 +170,9 @@ Vantage includes a built-in review mode for annotating documents:
 
 Reviews are stored on disk and persist across server restarts.
 
+Agent responses arrive through a small `.vantage/inbox/` directory at the repo
+root — see [Review Inbox](review-inbox.md), which also covers gitignoring it.
+
 ## Dark Mode
 
 Press **Shift+D** to toggle between light and dark themes. The setting is persisted across sessions.
