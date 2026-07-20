@@ -1,6 +1,7 @@
 # Where Review State Lives — and Why It Keeps Biting Us
 
-> Status: **implemented** · 2026-07-19 (proposed and shipped the same day)
+> Status: **implemented** · 2026-07-19 (proposed and shipped the same day;
+> amended the same day — see §11)
 >
 > Landed as `59c95eaa` (command endpoints, review_changed push, response
 > inbox), `b417e787` (frontend commands, paste box, inbox payload), `b732ff6a`
@@ -495,3 +496,86 @@ stale premise, since the port completed long ago. Question withdrawn.)
 - [0a1e8813] Phase 4 now retires the changelog protocol in one change, no compatibility release; only the stale-payload warning stays.
 - [249ed210] Recorded machine-local history as the decision and removed the export-command contingency.
 - [8febbe4a] Removed the Go-port priority question — stale premise, the port is long complete.
+
+---
+
+## 11. Follow-up: two facts that were still sharing one slot
+
+_Added 2026-07-19, after the above shipped._
+
+The rework moved reviewer writes to commands and agent writes to the inbox, and
+the defects it was built to kill stayed dead. But three user-visible bugs
+surfaced afterwards, and they turned out to be one bug wearing three hats — the
+same failure mode as §1, one level up.
+
+The architecture separated **who writes what**. It did not separate **what is a
+turn from what is a flag**, or **turn state from anchor state**:
+
+1. **Dismissing wrote a conversation turn.** The inline and sidebar "Dismiss"
+   buttons on an *answered* comment called `resolveComment`, which POSTed to
+   `/accept` and appended a reviewer `noted` reaction rendered as "You
+   accepted". Reopening did not retract it, so dismiss → reopen → dismiss left
+   two acceptances in a thread the reviewer had never spoken in. Two different
+   buttons carried the same label, "Dismiss", and only one of them meant it.
+2. **The status badge lived in the wrong renderer.** `Addressed` was emitted
+   only by `createOutdatedBlock`, so a comment the agent had answered showed a
+   status **only if its anchor had also been lost**. Two comments in identical
+   conversation states rendered differently based on a fact about text
+   matching.
+3. **The bulk dismiss grouped by anchor state.** "Dismiss N outdated" swept
+   comments whose anchor no longer resolved. Because an agent answers by
+   rewriting the paragraph you commented on — movement *and* edit, which breaks
+   the hash — answered comments become orphaned comments in the normal case.
+   The button therefore *looked* like "dismiss the answered ones" while being
+   documented as something else entirely.
+
+Each was individually small. Together they taught a wrong model: that
+"outdated" means "handled". A reviewer who learned that from the badge then
+read the button through it, and was right about the effect for the wrong
+reason.
+
+**The fix is the same shape as the original one — put each fact in one place:**
+
+- **Dismissal is a flag, not a turn.** The `accept` command, its endpoint, and
+  `resolveComment` are gone; one `Dismiss` button, one action, no reaction
+  written. Legacy `noted` reactions still on disk are skipped everywhere they
+  are read (predicates, both thread renderers, the agent payload) rather than
+  migrated — they must not reach the agent labelled "Follow-up", which would
+  put a question in the reviewer's mouth.
+- **`isPendingForAgent` shed its acceptance handling.** The `acceptedAt`
+  re-dating is gone entirely; the trailing-turn skip survives only as legacy
+  data handling. One behavior change falls out: reopening an answered comment
+  that was edited *after* the answer now re-queues it, where the acceptance
+  used to suppress that. That is correct — the agent has not seen the current
+  wording.
+- **Turn state and anchor state are rendered separately.** A shared
+  `statusBadgeHtml` reports turn state (`Addressed` / `Declined` / `Dismissed`,
+  nothing while pending) on *every* inline renderer. Anchor state is expressed
+  by placement plus a locator line — "was near line N · original text no longer
+  found" — and never by a status word.
+- **The bulk action groups by turn state**: `Dismiss Answered (N)`, built on
+  the existing `isAnsweredByAgent` predicate.
+- **The detached quote is no longer struck through.** `fallback_text` is the
+  record of what the reviewer chose to comment on, not deleted content — and in
+  the common case that text is still in the document, just past where the
+  anchor could follow it. Striking it read as retracted.
+
+Two smaller things were fixed alongside, in the same pass:
+
+- **Duplicate deliveries.** `ApplyResponses` deduped by nonce only, so an agent
+  that re-ran its delivery step wrote fresh nonces and recorded the same answer
+  again. It now also treats an entry as a redelivery when the comment already
+  carries an agent reaction with the same round *and* summary — a distinction
+  that was impossible under the in-document protocol and is available only
+  because deliveries now carry `round` explicitly (§7).
+- **The paste box is gone.** `POST /review/responses`, the bullet grammar, and
+  the panel UI are deleted; the inbox is the only delivery door. The decision
+  above ("inbox + paste only") kept paste as the door for tool-less chat
+  models; in practice every agent writes files, and a second door meant a
+  second dedup story (content-hashed nonces) for no realized benefit.
+
+**The lesson worth carrying:** §1's diagnosis was "the same fact is derived in
+two places." This follow-up is its sibling — "two different facts are presented
+in one place." Both produce the same symptom: reasoning that seems to work,
+until the two things drift apart and the UI starts asserting something nobody
+decided.
