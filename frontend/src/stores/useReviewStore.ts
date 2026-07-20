@@ -879,18 +879,27 @@ function respondingInstructions(
       ]
     : [];
   // Same flattening scheme as the server-side review store: both separators
-  // become "__". The filename is advisory (the consumer never parses it), but
-  // giving the exact name keeps every agent writing to one file per document.
-  const inboxFile = `.vantage/inbox/${filePath.replace(/[/\\]/g, "__")}.jsonl`;
+  // become "__". The filename is advisory (the consumer reads meaning only from
+  // each line's own `path`), so a per-delivery suffix keeps two turns for the
+  // same document from ever colliding on the committed name.
+  const inboxDir = ".vantage/inbox";
+  const fileStem = filePath.replace(/[/\\]/g, "__");
+  const scratchFile = `${inboxDir}/${fileStem}.<unique>.jsonl.writing`;
+  const committedFile = `${inboxDir}/${fileStem}.<unique>.jsonl`;
   const exampleId = example?.id.slice(0, 8) ?? "<short-id>";
   const exampleRound = example ? (example.reactions ?? []).length : 0;
   return [
     "## Responding to Comments",
     "",
     ...followUpNote,
-    `After addressing a comment: **save the document first**, then deliver your response by appending one line to \`${inboxFile}\` at the root of this document's repository (create the directory and file if needed).`,
+    `After addressing your comments: **save the document first**, then deliver your response as a single file under \`${inboxDir}\` at the root of this document's repository (create the directory if needed).`,
     "",
-    "Each line is a single JSON object, newline-terminated:",
+    "Write the whole delivery in two steps, so Vantage never reads a half-written file:",
+    "",
+    `1. Write all your lines to a scratch file whose name ends in \`.writing\` — e.g. \`${scratchFile}\` (pick any unique \`<unique>\` token). Vantage ignores \`*.writing\` files.`,
+    `2. Rename it to drop the \`.writing\` suffix (\`${committedFile}\`). The rename is what tells Vantage the delivery is complete; it consumes the file and deletes it.`,
+    "",
+    "Each line in the file is a single JSON object, newline-terminated:",
     "",
     "```",
     `{"path":"${filePath}","id":"<short-id>","round":<round>,"summary":"<one sentence: what you changed>","nonce":"<fresh random string>"}`,
@@ -900,11 +909,12 @@ function respondingInstructions(
     "",
     "### Delivery rules",
     "",
-    "- **Save the document before appending your line.** Vantage reads the document from disk at delivery time to record what changed; delivering first records a stale version.",
+    "- **Save the document before writing your delivery.** Vantage reads the document from disk at delivery time to record what changed; delivering first records a stale version.",
+    "- **Write to `.writing`, then rename.** Never write directly to the `.jsonl` name — Vantage may consume it mid-write and lose the rest.",
     "- **One line per comment you acted on.** Skip the rest — a line claiming work you did not do reads to the reviewer as an answered comment.",
     "- **Copy `id` and `round` from the heading of the comment you are answering** (they are shown there as `` `[id]` `` and `` `round:N` ``). The round says which turn you answered, so a follow-up the reviewer writes while you work is not mistaken for something your answer already covered.",
-    "- **Generate a fresh random nonce for every line you write** (never copy the example's), and **never re-append a line you have already written**. The nonce is how Vantage tells a new response from a redelivered one; a line with a reused nonce is silently dropped.",
-    "- **Append only.** Never edit or delete lines already in the file — Vantage consumes and deletes it.",
+    "- **Generate a fresh random nonce for every line**, and **do not re-deliver a line you have already delivered**. The nonce is how Vantage tells a new response from a redelivered one; a line with a reused nonce is silently dropped.",
+    "- **One delivery per file.** Each committed file is consumed and deleted whole; use a fresh `<unique>` token for each new delivery so it never overwrites one still waiting to be consumed.",
     "",
     "### How your summary is displayed",
     "",
@@ -912,14 +922,6 @@ function respondingInstructions(
     "- **Do NOT restate context.** The reviewer already sees the paragraph and their comment. Your summary should say *what you did*, not re-explain what the paragraph says.",
     "- **Keep it short.** One sentence is ideal. The summary shares a narrow column with the comment text and a before/after diff.",
     '- **Be specific about your action.** Good: "Split into two paragraphs and added the exception case." Bad: "The substrate is a typed-dataflow graph so I updated the text to reflect..."',
-    "",
-    "### If you cannot write files",
-    "",
-    "Reply in chat with a fenced code block containing one bullet per comment you addressed; the reviewer will paste it into the Review panel. Any of `-`, `*` or `+` opens a bullet:",
-    "",
-    "```",
-    "- [<short-id>] <one sentence: what you changed>",
-    "```",
     "",
   ];
 }

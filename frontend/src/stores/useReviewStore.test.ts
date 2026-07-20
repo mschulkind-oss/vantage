@@ -975,13 +975,27 @@ describe("useReviewStore", () => {
       return writeText.mock.calls[0][0] as string;
     };
 
-    it("names this document's exact inbox file, separators flattened to __", async () => {
+    it("names this document's flattened inbox file with a unique-token slot", async () => {
       seedNested();
       const payload = await copiedPayload();
       expect(payload).toContain(
-        "`.vantage/inbox/docs__design__guide.md.jsonl`",
+        "`.vantage/inbox/docs__design__guide.md.<unique>.jsonl.writing`",
+      );
+      expect(payload).toContain(
+        "`.vantage/inbox/docs__design__guide.md.<unique>.jsonl`",
       );
       expect(payload).toContain("at the root of this document's repository");
+    });
+
+    it("teaches the write-scratch-then-rename commit protocol", async () => {
+      seedNested();
+      const payload = await copiedPayload();
+      expect(payload).toContain("`.writing`");
+      expect(payload).toContain("Vantage ignores `*.writing` files");
+      expect(payload).toContain(
+        "The rename is what tells Vantage the delivery is complete",
+      );
+      expect(payload).toContain("Write to `.writing`, then rename.");
     });
 
     it("spells out the JSON line format with this document's path embedded", async () => {
@@ -1002,15 +1016,17 @@ describe("useReviewStore", () => {
       seedNested();
       const payload = await copiedPayload();
       expect(payload).toContain("**save the document first**");
-      expect(payload).toContain("Save the document before appending");
+      expect(payload).toContain(
+        "Save the document before writing your delivery",
+      );
     });
 
-    it("requires a fresh nonce per line and forbids re-appending", async () => {
+    it("requires a fresh nonce per line and forbids re-delivery", async () => {
       seedNested();
       const payload = await copiedPayload();
       expect(payload).toContain("fresh random nonce for every line");
       expect(payload).toContain(
-        "never re-append a line you have already written",
+        "do not re-deliver a line you have already delivered",
       );
     });
 
@@ -1020,15 +1036,12 @@ describe("useReviewStore", () => {
       expect(payload).toContain("One line per comment you acted on");
     });
 
-    it("offers the fenced bullet fallback for agents that cannot write files", async () => {
+    it("no longer offers the chat-reply fallback", async () => {
       seedNested();
       const payload = await copiedPayload();
-      expect(payload).toContain("### If you cannot write files");
-      // The fallback block itself, fenced so the reviewer can paste it whole.
-      expect(payload).toContain(
-        "```\n- [<short-id>] <one sentence: what you changed>\n```",
-      );
-      expect(payload).toContain("paste it into the Review panel");
+      expect(payload).not.toContain("If you cannot write files");
+      expect(payload).not.toContain("paste it into the Review panel");
+      expect(payload).not.toContain("Reply in chat");
     });
 
     it("no longer teaches the changelog protocol", async () => {
@@ -1048,7 +1061,7 @@ describe("useReviewStore", () => {
       expect(ok).toBe(true);
       const payload = writeText.mock.calls[0][0] as string;
       expect(payload).toContain(
-        "`.vantage/inbox/docs__design__guide.md.jsonl`",
+        "`.vantage/inbox/docs__design__guide.md.<unique>.jsonl`",
       );
       expect(payload).toContain('"id":"abcdef12"');
       expect(payload.toLowerCase()).not.toContain("changelog");
