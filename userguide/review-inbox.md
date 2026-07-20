@@ -62,10 +62,6 @@ The **filename is advisory only** — Vantage never reads meaning from it. Every
 line's own `path` field decides which document it applies to, so one file may
 carry lines for several documents and still be applied correctly.
 
-Agents that cannot write files fall back to replying in chat with a
-`- [abcd1234] summary` block, which you paste into the Review panel's **Paste
-agent response** box. That path never touches `.vantage/` at all.
-
 ## What Vantage does with it
 
 The file watcher drains the inbox at startup and whenever anything under
@@ -78,11 +74,41 @@ The file watcher drains the inbox at startup and whenever anything under
    the rest of the file still applies.
 3. **Apply** — record each response as an agent reply on the matching comment,
    capturing the document's before/after text for the diff shown in the panel.
+   "Record" means one JSON file per reviewed document, rewritten atomically —
+   see [Where review state is kept](#where-review-state-is-kept).
 4. **Delete** — remove the consumed file, then push a `review_changed` message
    so any open browser updates without a reload.
 
 If Vantage is not running when the agent delivers, nothing is lost: the file
 sits there and is drained the next time the server starts.
+
+## Where review state is kept
+
+There is no database. Your comments and the agent's replies live in **one JSON
+file per reviewed document**, outside the repository:
+
+```
+~/.local/share/vantage/reviews/<flattened-document-path>.json
+```
+
+Same flattening as the inbox filenames — `docs/design/api.md` becomes
+`docs__design__api.md.json`. The path is deliberately not XDG-resolved: it is an
+on-disk upgrade contract and stays byte-stable across releases.
+
+Each file holds the document path, its comments, and every turn of each
+thread. Writes are atomic (written to a temp file, then renamed) and serialized
+per document, so a delivery landing while you are typing a reply cannot
+interleave with it.
+
+Two consequences worth knowing:
+
+- **Review state does not travel with the repository.** It is machine-local by
+  design — clone the repo elsewhere and the comments do not follow. That keeps
+  review chatter out of your git history.
+- **In single-repo mode the file is keyed by document path alone.** Two
+  different repositories both serving `docs/spec.md` share one review file.
+  Worth knowing if you run several single-repo servers over similarly-laid-out
+  projects; multi-repo mode namespaces by repo and is unaffected.
 
 ## Files you may see
 
@@ -160,8 +186,6 @@ so the comment stays in the agent's queue instead of reading as answered.
 **Deliveries for another document are ignored, loudly.** If a line names a
 comment id that does not exist on the document it targets, the delivery is
 skipped and logged as dropped, rather than being applied to the wrong thread.
-Pasting a response block into the wrong document's panel reports **"No matching
-comments on this document"** rather than a false success.
 
 ## Related
 
