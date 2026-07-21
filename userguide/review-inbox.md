@@ -34,38 +34,29 @@ nothing has to be inferred from content.
 
 When you copy comments to an agent, the clipboard payload tells it to save the
 document first, then deliver **one file per response**, carrying one JSON line
-per comment it acted on. Each file is named after the document (path separators
-flattened to `__`) plus a unique token, and is delivered in two steps so
-Vantage never reads it half-written:
+per comment it acted on. The payload hands over a ready-to-run command that
+writes the whole delivery in a single shot to a `.jsonl` file named after the
+document (path separators flattened to `__`) with a random suffix:
 
-1. The agent writes the whole delivery to a scratch file whose name does **not**
-   end in `.jsonl` — the payload suggests a `.writing` suffix. Vantage consumes
-   only committed `.jsonl` files, so a scratch file is left alone.
-2. The agent renames it to end in `.jsonl`. That rename is the signal that the
-   delivery is complete; only then does Vantage consume it. (An agent whose
-   editor already writes atomically can skip the scratch step and write the
-   `.jsonl` name directly — Vantage never races a rename it did not start.)
-
-| Document | Scratch file (ignored) | Committed file (consumed) |
-|---|---|---|
-| `spec.md` | `.vantage/inbox/spec.md.<unique>.jsonl.writing` | `.vantage/inbox/spec.md.<unique>.jsonl` |
-| `docs/design/api.md` | `.vantage/inbox/docs__design__api.md.<unique>.jsonl.writing` | `.vantage/inbox/docs__design__api.md.<unique>.jsonl` |
-
-Each line is one JSON object, newline-terminated:
-
-```json
+```bash
+mkdir -p .vantage/inbox && cat > .vantage/inbox/docs__design__api.md.$RANDOM.jsonl <<'EOF'
 {"path":"docs/design/api.md","id":"abcd1234","round":2,"summary":"Rewrote the intro in plain language.","nonce":"k7f29qd1x4"}
+EOF
 ```
 
-The payload hands the agent the exact filenames and a filled-in example line, so
-it does not have to derive any of this.
+Each line is one JSON object, newline-terminated. The random suffix keeps two
+deliveries for the same document from colliding, and writing the file in one
+shot means Vantage never sees it half-written.
 
-**Why the rename?** An agent that appended to a shared per-document file gave
-Vantage no reliable way to know the agent had finished: a trailing newline means
-a line ended, not that the agent is done, and an open append handle can keep
-writing into a file Vantage has already consumed and deleted — so responses were
-silently lost. A file that arrives complete, by rename, closes that race by
-construction.
+**Why one shot, and why the random name?** An agent that appended line-by-line
+to a shared per-document file gave Vantage no reliable way to know the agent had
+finished: a trailing newline means a line ended, not that the agent is done, and
+an open append handle can keep writing into a file Vantage has already consumed
+and deleted — so responses were silently lost. Vantage sidesteps this by
+consuming **only** completed `.jsonl` files: a delivery written in one command
+(or written under any other name and then renamed to `.jsonl`) is complete the
+instant Vantage can see it. Any name that is not `.jsonl` — a `.writing` or
+`.tmp` scratch file, say — is ignored until it is renamed into place.
 
 | Field | Meaning |
 |---|---|

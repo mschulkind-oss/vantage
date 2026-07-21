@@ -884,37 +884,35 @@ function respondingInstructions(
   // same document from ever colliding on the committed name.
   const inboxDir = ".vantage/inbox";
   const fileStem = filePath.replace(/[/\\]/g, "__");
-  const scratchFile = `${inboxDir}/${fileStem}.<unique>.jsonl.writing`;
-  const committedFile = `${inboxDir}/${fileStem}.<unique>.jsonl`;
   const exampleId = example?.id.slice(0, 8) ?? "<short-id>";
   const exampleRound = example ? (example.reactions ?? []).length : 0;
   return [
     "## Responding to Comments",
     "",
     ...followUpNote,
-    `After addressing your comments: **save the document first**, then deliver your response as a single file under \`${inboxDir}\` at the root of this document's repository (create the directory if needed).`,
+    "After addressing your comments: **save the document first**, then deliver your responses with a single command from the root of this document's repository:",
     "",
-    "Write the whole delivery in two steps, so Vantage never reads a half-written file:",
+    "```bash",
+    `mkdir -p ${inboxDir} && cat > ${inboxDir}/${fileStem}.$RANDOM.jsonl <<'EOF'`,
+    `{"path":"${filePath}","id":"${exampleId}","round":${exampleRound},"summary":"Reworded the paragraph for clarity","nonce":"k7f29qd1x4"}`,
+    "EOF",
+    "```",
     "",
-    `1. Write all your lines to a scratch file whose name ends in \`.writing\` — e.g. \`${scratchFile}\` (pick any unique \`<unique>\` token). Vantage ignores \`*.writing\` files.`,
-    `2. Rename it to drop the \`.writing\` suffix (\`${committedFile}\`). The rename is what tells Vantage the delivery is complete; it consumes the file and deletes it.`,
-    "",
-    "Each line in the file is a single JSON object, newline-terminated:",
+    "One JSON object per line, one line per comment you acted on. The fields:",
     "",
     "```",
     `{"path":"${filePath}","id":"<short-id>","round":<round>,"summary":"<one sentence: what you changed>","nonce":"<fresh random string>"}`,
     "```",
     "",
-    `Example (using a real id from this batch): \`{"path":"${filePath}","id":"${exampleId}","round":${exampleRound},"summary":"Reworded the paragraph for clarity","nonce":"k7f29qd1x4"}\``,
+    "The command writes the whole delivery at once to a `.jsonl` file with a random suffix; Vantage consumes it and deletes it. (Do not append line-by-line to a shared file — Vantage may read it mid-write. Write once, as above. If your shell has no `$RANDOM`, substitute any unique token, or write to a `.tmp` name and `mv` it onto the `.jsonl` name.)",
     "",
     "### Delivery rules",
     "",
-    "- **Save the document before writing your delivery.** Vantage reads the document from disk at delivery time to record what changed; delivering first records a stale version.",
-    "- **Write to `.writing`, then rename.** Never write directly to the `.jsonl` name — Vantage may consume it mid-write and lose the rest.",
+    "- **Save the document before delivering.** Vantage reads the document from disk at delivery time to record what changed; delivering first records a stale version.",
     "- **One line per comment you acted on.** Skip the rest — a line claiming work you did not do reads to the reviewer as an answered comment.",
     "- **Copy `id` and `round` from the heading of the comment you are answering** (they are shown there as `` `[id]` `` and `` `round:N` ``). The round says which turn you answered, so a follow-up the reviewer writes while you work is not mistaken for something your answer already covered.",
     "- **Generate a fresh random nonce for every line**, and **do not re-deliver a line you have already delivered**. The nonce is how Vantage tells a new response from a redelivered one; a line with a reused nonce is silently dropped.",
-    "- **One delivery per file.** Each committed file is consumed and deleted whole; use a fresh `<unique>` token for each new delivery so it never overwrites one still waiting to be consumed.",
+    "- **A fresh `.jsonl` file per delivery.** The `$RANDOM` suffix ensures this; each file is consumed and deleted whole, so a new delivery never overwrites one still waiting.",
     "",
     "### How your summary is displayed",
     "",

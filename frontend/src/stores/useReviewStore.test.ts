@@ -975,27 +975,22 @@ describe("useReviewStore", () => {
       return writeText.mock.calls[0][0] as string;
     };
 
-    it("names this document's flattened inbox file with a unique-token slot", async () => {
+    it("hands over a ready-to-run one-shot delivery command", async () => {
       seedNested();
       const payload = await copiedPayload();
+      // A single heredoc write to a random-suffixed .jsonl under the flattened
+      // inbox name — the whole delivery in one atomic write, no shared file.
       expect(payload).toContain(
-        "`.vantage/inbox/docs__design__guide.md.<unique>.jsonl.writing`",
+        "mkdir -p .vantage/inbox && cat > .vantage/inbox/docs__design__guide.md.$RANDOM.jsonl <<'EOF'",
       );
-      expect(payload).toContain(
-        "`.vantage/inbox/docs__design__guide.md.<unique>.jsonl`",
-      );
-      expect(payload).toContain("at the root of this document's repository");
+      expect(payload).toContain("from the root of this document's repository");
     });
 
-    it("teaches the write-scratch-then-rename commit protocol", async () => {
+    it("warns against line-by-line appends and offers a mv fallback", async () => {
       seedNested();
       const payload = await copiedPayload();
-      expect(payload).toContain("`.writing`");
-      expect(payload).toContain("Vantage ignores `*.writing` files");
-      expect(payload).toContain(
-        "The rename is what tells Vantage the delivery is complete",
-      );
-      expect(payload).toContain("Write to `.writing`, then rename.");
+      expect(payload).toContain("Do not append line-by-line to a shared file");
+      expect(payload).toContain("`mv` it onto the `.jsonl` name");
     });
 
     it("spells out the JSON line format with this document's path embedded", async () => {
@@ -1016,9 +1011,7 @@ describe("useReviewStore", () => {
       seedNested();
       const payload = await copiedPayload();
       expect(payload).toContain("**save the document first**");
-      expect(payload).toContain(
-        "Save the document before writing your delivery",
-      );
+      expect(payload).toContain("Save the document before delivering");
     });
 
     it("requires a fresh nonce per line and forbids re-delivery", async () => {
@@ -1061,7 +1054,7 @@ describe("useReviewStore", () => {
       expect(ok).toBe(true);
       const payload = writeText.mock.calls[0][0] as string;
       expect(payload).toContain(
-        "`.vantage/inbox/docs__design__guide.md.<unique>.jsonl`",
+        ".vantage/inbox/docs__design__guide.md.$RANDOM.jsonl",
       );
       expect(payload).toContain('"id":"abcdef12"');
       expect(payload.toLowerCase()).not.toContain("changelog");
