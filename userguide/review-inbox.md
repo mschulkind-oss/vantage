@@ -38,10 +38,13 @@ per comment it acted on. Each file is named after the document (path separators
 flattened to `__`) plus a unique token, and is delivered in two steps so
 Vantage never reads it half-written:
 
-1. The agent writes the whole delivery to a scratch file whose name ends in
-   `.writing` — Vantage ignores those.
-2. The agent renames it to drop the `.writing` suffix. That rename is the
-   signal that the delivery is complete; only then does Vantage consume it.
+1. The agent writes the whole delivery to a scratch file whose name does **not**
+   end in `.jsonl` — the payload suggests a `.writing` suffix. Vantage consumes
+   only committed `.jsonl` files, so a scratch file is left alone.
+2. The agent renames it to end in `.jsonl`. That rename is the signal that the
+   delivery is complete; only then does Vantage consume it. (An agent whose
+   editor already writes atomically can skip the scratch step and write the
+   `.jsonl` name directly — Vantage never races a rename it did not start.)
 
 | Document | Scratch file (ignored) | Committed file (consumed) |
 |---|---|---|
@@ -79,9 +82,10 @@ carry lines for several documents and still be applied correctly.
 ## What Vantage does with it
 
 The file watcher drains the inbox at startup and whenever anything under
-`.vantage/inbox` changes. Only committed files are drained — a `*.writing`
-file the agent is still assembling is skipped until it is renamed. Draining one
-file is:
+`.vantage/inbox` changes. It touches **only** committed `*.jsonl` files (and its
+own `*.consuming` leftovers) — any other name, including a scratch file an agent
+is still assembling and any temp file another tool drops in the directory, is
+left strictly alone. Draining one committed file is:
 
 1. **Claim** — rename it to `<name>.consuming`, so a redelivery or a second
    watcher pass cannot race the read.
@@ -135,7 +139,7 @@ leftovers you might find:
 | Name | Meaning | What to do |
 |---|---|---|
 | `*.jsonl` | A committed delivery waiting to be consumed. | Nothing — it drains on the next pass, or at next startup. |
-| `*.writing` | A delivery an agent is still assembling; it becomes a committed `*.jsonl` when the agent renames it. | Nothing while an agent is working. A stray one left by a crashed agent is a never-delivered response — safe to delete. |
+| `*.writing` (or any non-`.jsonl` name) | A delivery an agent is still assembling; it becomes a committed `*.jsonl` when the agent renames it. Vantage never touches these. | Nothing while an agent is working. A stray one left by a crashed agent is a never-delivered response — safe to delete. |
 | `*.consuming` | A delivery that was claimed but whose apply failed (e.g. the review file was unwritable). | Nothing — it is retried on the next pass. Redelivery is safe; the `nonce` prevents double-recording. |
 | `*.oversize` | A delivery file larger than 8 MB, quarantined unparsed. | Investigate — a delivery file should be a few hundred bytes. Safe to delete once you have looked. |
 

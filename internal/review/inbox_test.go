@@ -109,21 +109,29 @@ func TestConsumeInboxConsumingLeftoverStillApplies(t *testing.T) {
 	require.Empty(t, inboxEntries(t, root))
 }
 
-func TestConsumeInboxSkipsWritingFile(t *testing.T) {
-	// A *.writing file is the agent mid-delivery. Consuming it would read a
-	// half-written file and, worse, delete the inode out from under the writer's
-	// descriptor — the exact loss the rename-to-commit protocol exists to
-	// prevent. It must be left untouched until the agent renames it.
+func TestConsumeInboxIgnoresUncommittedNames(t *testing.T) {
+	// The consumer allowlists committed deliveries (*.jsonl) and its own
+	// mid-consumption leftovers (*.consuming). Everything else in this live
+	// directory is left strictly alone: a scratch file the agent is still
+	// writing, and — the regression that motivated the allowlist — another
+	// tool's atomic-save temp, whose name we cannot predict. Claiming and
+	// deleting such a temp pulls it out from under its writer.
 	root := t.TempDir()
 	s := NewStore(t.TempDir())
 	seedDocWithComment(t, s, root, "a.md", "c1a2b3c4deadbeef", cmdDoc, 3)
 
-	scratch := "a.jsonl" + writingSuffix
-	writeInboxFile(t, root, scratch,
-		`{"path":"a.md","id":"c1a2b3c4","summary":"still writing","nonce":"n-1"}`+"\n")
+	line := `{"path":"a.md","id":"c1a2b3c4","summary":"not yet","nonce":"n-1"}` + "\n"
+	untouched := []string{
+		"a.jsonl.writing",              // agent's recommended scratch name
+		"a.jsonl.tmp.2.00b78cf5e200",   // an editor's atomic-save temp
+		"a.jsonl.writing.tmp.deadbeef", // a temp for the scratch file itself
+	}
+	for _, name := range untouched {
+		writeInboxFile(t, root, name, line)
+	}
 
-	require.Empty(t, s.ConsumeInbox(root, ""), "a *.writing file is not consumed")
-	require.Equal(t, []string{scratch}, inboxEntries(t, root), "and it is left in place")
+	require.Empty(t, s.ConsumeInbox(root, ""), "no uncommitted name is consumed")
+	require.ElementsMatch(t, untouched, inboxEntries(t, root), "and all are left in place")
 
 	data, err := s.Get("a.md", "")
 	require.NoError(t, err)
@@ -131,13 +139,13 @@ func TestConsumeInboxSkipsWritingFile(t *testing.T) {
 }
 
 func TestConsumeInboxCommittedAfterRename(t *testing.T) {
-	// The agent commits by renaming *.writing to its final name. Only then does
-	// the delivery land.
+	// The agent commits by renaming its scratch file to a *.jsonl name. Only
+	// then does the delivery land.
 	root := t.TempDir()
 	s := NewStore(t.TempDir())
 	seedDocWithComment(t, s, root, "a.md", "c1a2b3c4deadbeef", cmdDoc, 3)
 
-	scratch := writeInboxFile(t, root, "a.jsonl"+writingSuffix,
+	scratch := writeInboxFile(t, root, "a.jsonl.writing",
 		`{"path":"a.md","id":"c1a2b3c4","summary":"done","nonce":"n-1"}`+"\n")
 	require.Empty(t, s.ConsumeInbox(root, ""))
 
