@@ -33,23 +33,28 @@ import (
 // compares event paths against it; InboxDir resolves it against a root.
 const InboxRel = ".vantage/inbox"
 
-// consumingSuffix marks an inbox file mid-consumption. A crash between rename
-// and delete leaves the suffix behind; the next pass re-consumes the file.
-const consumingSuffix = ".consuming"
+// committedSuffix is the extension a delivery carries once the agent has
+// committed it. The agent writes its whole delivery to some scratch name and
+// then renames it to end in ".jsonl"; only a file bearing this suffix is
+// consumable. ConsumeInbox allowlists this suffix (and consumingSuffix) rather
+// than denylisting known scratch names, because the inbox is a live directory
+// other tools also write into — an editor's atomic-save temp
+// ("<name>.jsonl.tmp.XXXX"), for instance — and their temp names are not ours
+// to predict. Grabbing anything we do not recognize is what deleted a writer's
+// temp file out from under it; consuming only what we minted avoids that whole
+// class.
+const committedSuffix = ".jsonl"
 
-// writingSuffix marks a delivery the agent is still writing. The agent writes
-// its whole delivery to a *.writing file and then renames it to its committed
-// *.jsonl name; only that rename makes it consumable. ConsumeInbox skips these
-// by name so a half-written file is never read and never deleted out from under
-// the writer's descriptor — the race that a shared append-only file could not
-// avoid, because "ends in a newline" says a line finished, not that the agent
-// did.
-const writingSuffix = ".writing"
+// consumingSuffix marks an inbox file mid-consumption. A crash between rename
+// and delete leaves the suffix behind; the next pass re-consumes the file. It
+// is appended to a committed name, so a claimed file ends in ".jsonl.consuming".
+const consumingSuffix = ".consuming"
 
 // oversizeSuffix quarantines a delivery file larger than maxInboxFileBytes.
 // Renaming beats skipping in place: the watcher re-runs ConsumeInbox on every
 // inbox event, so a file left under its original name would be re-examined
 // forever. Renaming also beats deleting, which would discard real deliveries.
+// The result no longer ends in committedSuffix, so the allowlist skips it.
 const oversizeSuffix = ".oversize"
 
 // maxInboxFileBytes bounds how much of one delivery file is parsed. The inbox
@@ -102,10 +107,13 @@ func (s *Store) ConsumeInbox(root, repo string) []string {
 			continue
 		}
 		name := ent.Name()
-		// A *.writing file is still being written; an *.oversize file is inert by
-		// construction. Both are skipped by name: reading either buys nothing and
-		// costs a probe on every inbox event.
-		if strings.HasSuffix(name, writingSuffix) || strings.HasSuffix(name, oversizeSuffix) {
+		// Allowlist, not denylist: consume only a committed delivery or our own
+		// mid-consumption leftover. Anything else — a scratch file the agent is
+		// still writing, an *.oversize quarantine, or some other tool's atomic-save
+		// temp — is left strictly alone. Denylisting known scratch suffixes instead
+		// would claim (and delete) any name we failed to anticipate, which is how a
+		// writer's temp file got pulled out from under it.
+		if !strings.HasSuffix(name, committedSuffix) && !strings.HasSuffix(name, consumingSuffix) {
 			continue
 		}
 		for _, p := range s.consumeInboxFile(root, repo, name) {

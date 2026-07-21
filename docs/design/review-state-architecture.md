@@ -633,8 +633,33 @@ Cleaned up in the same pass: the "If you cannot write files — reply in chat"
 fallback in the clipboard payload pointed at the paste box, which §11 had
 already removed. It was instructing agents to use a door that no longer existed.
 
+### 12.1 The first cut denylisted; it had to allowlist
+
+The rename protocol was right, but the first implementation of the *skip* was
+backwards, and it broke on the very first real delivery. The consumer said
+"consume everything **except** names ending in `.writing` or `.oversize`." That
+is a denylist over a **live directory other tools write into**. An agent whose
+file-writer commits atomically — write `foo.jsonl.tmp.XXXX`, rename onto
+`foo.jsonl` — creates a temp whose name we never anticipated. The denylist did
+not recognize it, so it claimed and deleted the temp; the writer's rename then
+failed `ENOENT`, source gone. The agent read this as "the inbox forbids
+renames" — it does not; the consumer had eaten the writer's temp, the same
+unlinked-target loss as before, now inflicted *by* the consumer instead of
+suffered by it.
+
+The fix is to **allowlist**: consume only `*.jsonl` (a committed delivery) and
+`*.consuming` (our own leftover). Every other name — `.writing`, `.oversize`,
+and any temp a writer we do not control minted — is ignored by construction, so
+no name we failed to predict is ever grabbed. A pleasant consequence: an agent
+whose editor already writes atomically can target the `.jsonl` name directly
+and skip the `.writing` step, because the allowlist never races a rename it did
+not initiate.
+
 **The lesson worth carrying:** a delivery channel needs a completion signal, and
 that signal is a fact the *sender* owns. Infer it from the payload's shape — a
 newline, a closing brace, a size — and you are back to reconstructing after the
 fact, which is where every silent loss in this saga has lived. A rename is the
-sender saying "done"; nothing else in the protocol has to guess.
+sender saying "done"; nothing else in the protocol has to guess. And when you
+share a directory with writers you do not control, name what you *own* and
+ignore the rest — a denylist over someone else's temp files is a race you
+cannot enumerate your way out of.
