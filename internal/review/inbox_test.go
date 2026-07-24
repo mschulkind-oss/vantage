@@ -1,6 +1,8 @@
 package review
 
 import (
+	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,6 +10,43 @@ import (
 
 	"github.com/stretchr/testify/require"
 )
+
+// captureRecords is a minimal slog.Handler that records every emitted record,
+// used to assert that an otherwise-silent code path logs. It captures all
+// levels so a test can look for a specific message and level.
+type captureRecords struct {
+	records []slog.Record
+}
+
+func (h *captureRecords) Enabled(context.Context, slog.Level) bool { return true }
+func (h *captureRecords) Handle(_ context.Context, r slog.Record) error {
+	h.records = append(h.records, r)
+	return nil
+}
+func (h *captureRecords) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *captureRecords) WithGroup(string) slog.Handler      { return h }
+
+// hasRecord reports whether any captured record has the given level and a
+// message containing substr.
+func (h *captureRecords) hasRecord(level slog.Level, substr string) bool {
+	for _, r := range h.records {
+		if r.Level == level && strings.Contains(r.Message, substr) {
+			return true
+		}
+	}
+	return false
+}
+
+// captureSlog redirects the default slog logger to a capturing handler for the
+// duration of the test, restoring the previous default on cleanup.
+func captureSlog(t *testing.T) *captureRecords {
+	t.Helper()
+	h := &captureRecords{}
+	prev := slog.Default()
+	slog.SetDefault(slog.New(h))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+	return h
+}
 
 // writeInboxFile writes content under root's inbox (creating it) and returns
 // the file's path.
@@ -347,6 +386,36 @@ func TestConsumeInboxNoReviewIsNoop(t *testing.T) {
 
 	require.Empty(t, s.ConsumeInbox(root, ""))
 	require.Empty(t, inboxEntries(t, root), "delivery into nothing is consumed and dropped")
+}
+
+func TestConsumeInboxNoReviewWarnsNotSilent(t *testing.T) {
+	// A delivery whose path has no review used to vanish silently: dropped,
+	// file deleted, nothing logged. That is the failure this warning exists to
+	// make visible, so assert it is actually emitted.
+	rec := captureSlog(t)
+	root := t.TempDir()
+	s := NewStore(t.TempDir())
+	writeInboxFile(t, root, "x.jsonl",
+		`{"path":"ghost.md","id":"c1a2b3c4","summary":"s","nonce":"n"}`+"\n")
+
+	require.Empty(t, s.ConsumeInbox(root, ""))
+	require.True(t, rec.hasRecord(slog.LevelWarn, "no review"),
+		"a delivery into a document with no review must warn, not drop silently")
+}
+
+func TestConsumeInboxLogsOutcome(t *testing.T) {
+	// Every consumed file logs its outcome so a consumed-but-applied-nothing
+	// file is visible rather than silent once it is deleted.
+	rec := captureSlog(t)
+	root := t.TempDir()
+	s := NewStore(t.TempDir())
+	seedDocWithComment(t, s, root, "a.md", "c1a2b3c4deadbeef", cmdDoc, 3)
+	writeInboxFile(t, root, "a.jsonl",
+		`{"path":"a.md","id":"c1a2b3c4","summary":"done","nonce":"n-1"}`+"\n")
+
+	require.Equal(t, []string{"a.md"}, s.ConsumeInbox(root, ""))
+	require.True(t, rec.hasRecord(slog.LevelInfo, "consumed inbox file"),
+		"consuming a file must log its outcome")
 }
 
 func TestConsumeInboxMissingInboxDir(t *testing.T) {
