@@ -27,6 +27,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 // InboxRel is the repo-relative inbox directory, slash-separated. The watcher
@@ -61,6 +62,14 @@ const oversizeSuffix = ".oversize"
 // is written by the local agent, so this is a runaway guard (a summary carrying
 // a whole diff), not a trust boundary.
 const maxInboxFileBytes = 8 << 20
+
+// emptyGrace is how long a zero-byte committed file is presumed to be a
+// delivery still mid-write and skipped rather than consumed. It trades a
+// bounded delay reaping a genuinely-empty file for closing the window in which
+// `cat > x.jsonl` is consumed between the shell's create and its write. It is
+// generously wider than any single write yet short enough that a truly-empty
+// file drains on the next inbox event after it elapses.
+const emptyGrace = 2 * time.Second
 
 // InboxDir returns the delivery inbox directory for the repo rooted at root.
 func InboxDir(root string) string {
@@ -148,6 +157,29 @@ func (s *Store) consumeInboxFile(root, repo, name string) []string {
 			slog.Warn("review: failed to quarantine oversize inbox file", "file", path, "error", rerr)
 		}
 		return nil
+	}
+
+	// A zero-byte committed file that was just touched is almost always a
+	// delivery caught mid-write: `cat > x.jsonl` creates the file empty
+	// (open+truncate) and the fsnotify CREATE fires before the write, so an
+	// eager consume would claim, read nothing, and delete it — dropping the
+	// response the write then lands in an unlinked inode. Skip such a file
+	// untouched; the write/close event re-triggers consumption and the next
+	// pass sees the content. An agent that safely write-then-renames never hits
+	// this (the file only ever appears already complete).
+	//
+	// The skip is bounded by emptyGrace so a genuinely-empty file (an agent
+	// that delivered nothing, or crashed after creating the name) is not parked
+	// to be re-examined forever: once it is older than the grace window it is
+	// consumed like any other empty file — a no-op that deletes it. The guard
+	// is scoped to un-claimed names; an empty *.consuming leftover is a
+	// completed no-op that must always drain.
+	if !strings.HasSuffix(name, consumingSuffix) {
+		if info, err := os.Stat(path); err == nil && info.Size() == 0 &&
+			time.Since(info.ModTime()) < emptyGrace {
+			slog.Debug("review: inbox file is empty and fresh; skipping (likely mid-write)", "file", name)
+			return nil
+		}
 	}
 
 	if !strings.HasSuffix(name, consumingSuffix) {
