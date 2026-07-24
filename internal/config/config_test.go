@@ -32,6 +32,7 @@ func TestApplyEnvResolvesConfig(t *testing.T) {
 	repo := t.TempDir()
 	t.Setenv("TARGET_REPO", repo)
 	t.Setenv("HOST", "127.0.0.1, 0.0.0.0 ,localhost")
+	t.Setenv("ALLOWED_ORIGINS", "nichis-mac-studio, example.test ")
 	t.Setenv("PORT", "9100")
 	t.Setenv("SHOW_HIDDEN", "false")
 	t.Setenv("WALK_MAX_DEPTH", "7")
@@ -47,6 +48,7 @@ func TestApplyEnvResolvesConfig(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, wantRepo, c.TargetRepo)
 	require.Equal(t, []string{"127.0.0.1", "0.0.0.0", "localhost"}, c.Host)
+	require.Equal(t, []string{"nichis-mac-studio", "example.test"}, c.AllowedOrigins)
 	require.Equal(t, 9100, c.Port)
 	require.False(t, c.ShowHidden)
 	require.NotNil(t, c.WalkMaxDepth)
@@ -118,6 +120,7 @@ func TestLoadDaemonFileResolvesConfig(t *testing.T) {
 
 	body := `
 host = ["127.0.0.1", "0.0.0.0"]
+allowed_origins = ["nichis-mac-studio", "example.test"]
 port = 8080
 show_hidden = false
 walk_max_depth = 5
@@ -139,6 +142,7 @@ path = "` + repoB + `"
 
 	require.True(t, c.MultiRepo)
 	require.Equal(t, []string{"127.0.0.1", "0.0.0.0"}, c.Host)
+	require.Equal(t, []string{"nichis-mac-studio", "example.test"}, c.AllowedOrigins)
 	require.Equal(t, 8080, c.Port)
 	require.False(t, c.ShowHidden)
 	require.NotNil(t, c.WalkMaxDepth)
@@ -161,6 +165,7 @@ func TestLoadDaemonFileHostScalar(t *testing.T) {
 	repo := t.TempDir()
 	body := `
 host = "0.0.0.0"
+allowed_origins = "nichis-mac-studio"
 [[repos]]
 name = "a"
 path = "` + repo + `"
@@ -168,6 +173,7 @@ path = "` + repo + `"
 	c, err := LoadDaemonFile(writeTOML(t, body))
 	require.NoError(t, err)
 	require.Equal(t, []string{"0.0.0.0"}, c.Host)
+	require.Equal(t, []string{"nichis-mac-studio"}, c.AllowedOrigins)
 }
 
 func TestLoadDaemonFileDefaultsWhenKeysAbsent(t *testing.T) {
@@ -181,6 +187,7 @@ path = "` + repo + `"
 	require.NoError(t, err)
 	// Absent keys fall through to defaults.
 	require.Equal(t, []string{"127.0.0.1"}, c.Host)
+	require.Empty(t, c.AllowedOrigins)
 	require.Equal(t, 8000, c.Port)
 	require.True(t, c.ShowHidden)
 	require.True(t, c.UseIgnoreFiles)

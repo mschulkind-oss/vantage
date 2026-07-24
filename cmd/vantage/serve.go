@@ -35,14 +35,15 @@ const shutdownTimeout = 10 * time.Second
 // serveByDefault before cobra parses argv.
 func newServeCmd() *cobra.Command {
 	var (
-		host        string
-		port        int
-		showHidden  bool
-		excludeDirs []string
-		useIgnore   bool
-		walkDepth   int
-		walkTimeout float64
-		noOpen      bool
+		host           string
+		allowedOrigins []string
+		port           int
+		showHidden     bool
+		excludeDirs    []string
+		useIgnore      bool
+		walkDepth      int
+		walkTimeout    float64
+		noOpen         bool
 	)
 
 	cmd := &cobra.Command{
@@ -64,6 +65,9 @@ func newServeCmd() *cobra.Command {
 			flags := cmd.Flags()
 			if flags.Changed("host") {
 				cfg.Host = []string{host}
+			}
+			if flags.Changed("allowed-origins") {
+				cfg.AllowedOrigins = allowedOrigins
 			}
 			if flags.Changed("port") {
 				cfg.Port = port
@@ -105,6 +109,7 @@ func newServeCmd() *cobra.Command {
 
 	f := cmd.Flags()
 	f.StringVar(&host, "host", "", "Server host (default 127.0.0.1)")
+	f.StringSliceVar(&allowedOrigins, "allowed-origins", nil, "Extra hostnames allowed to open the live-reload WebSocket (loopback is always allowed)")
 	f.IntVar(&port, "port", 0, "Server port (default 8000)")
 	f.BoolVar(&showHidden, "show-hidden", true, "Show hidden files/directories")
 	f.StringSliceVar(&excludeDirs, "exclude-dirs", nil, "Directory names to exclude from listings (replaces defaults)")

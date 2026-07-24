@@ -47,10 +47,11 @@ var clientLevels = map[string]slog.Level{
 	"error":   slog.LevelError,
 }
 
-// allowedOriginHosts are the hostnames permitted to open a WebSocket. An empty
-// Origin header (non-browser clients, same-origin navigations) is always
-// allowed.
-var allowedOriginHosts = map[string]struct{}{
+// loopbackOriginHosts are the hostnames always permitted to open a WebSocket,
+// regardless of configuration. An empty Origin header (non-browser clients,
+// same-origin navigations) is always allowed too. Any other hostname must be
+// declared via the Manager's extra allowed origins (see [Config.AllowedOrigins]).
+var loopbackOriginHosts = map[string]struct{}{
 	"localhost": {},
 	"127.0.0.1": {},
 	"::1":       {},
@@ -67,7 +68,7 @@ type WarmFunc func(ctx context.Context)
 // mounted directly (chi/net.http run it on the request goroutine).
 func (m *Manager) Handler(warm WarmFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if origin := r.Header.Get("Origin"); origin != "" && !originAllowed(origin) {
+		if origin := r.Header.Get("Origin"); origin != "" && !m.originAllowed(origin) {
 			m.logger.Warn("websocket rejected: origin not allowed", "origin", origin)
 			http.Error(w, "origin not allowed", http.StatusForbidden)
 			return
@@ -152,12 +153,18 @@ func routeClientFrame(clientLog *slog.Logger, data []byte) {
 	}
 }
 
-// originAllowed reports whether origin's hostname is in the localhost set.
-func originAllowed(origin string) bool {
+// originAllowed reports whether origin's hostname may open a WebSocket: the
+// always-allowed loopback names plus any hostname the Manager was configured to
+// permit via [NewManager]'s extra origins.
+func (m *Manager) originAllowed(origin string) bool {
 	u, err := url.Parse(origin)
 	if err != nil {
 		return false
 	}
-	_, ok := allowedOriginHosts[u.Hostname()]
+	host := u.Hostname()
+	if _, ok := loopbackOriginHosts[host]; ok {
+		return true
+	}
+	_, ok := m.allowedOrigins[host]
 	return ok
 }

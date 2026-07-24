@@ -52,17 +52,27 @@ type Manager struct {
 	count atomic.Int64
 
 	logger *slog.Logger
+
+	// allowedOrigins are extra WebSocket-origin hostnames permitted beyond the
+	// always-allowed loopback names. Read-only after construction.
+	allowedOrigins map[string]struct{}
 }
 
 // NewManager returns an empty Manager. If logger is nil the default slog logger
-// is used.
-func NewManager(logger *slog.Logger) *Manager {
+// is used. allowedOrigins lists extra hostnames (beyond loopback) permitted to
+// open a WebSocket; loopback names are always allowed regardless.
+func NewManager(logger *slog.Logger, allowedOrigins []string) *Manager {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	origins := make(map[string]struct{}, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		origins[o] = struct{}{}
+	}
 	return &Manager{
-		conns:  make(map[*conn]struct{}),
-		logger: logger,
+		conns:          make(map[*conn]struct{}),
+		logger:         logger,
+		allowedOrigins: origins,
 	}
 }
 
