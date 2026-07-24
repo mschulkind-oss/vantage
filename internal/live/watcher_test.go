@@ -3,6 +3,7 @@ package live
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -16,6 +17,30 @@ import (
 	"github.com/mschulkind-oss/vantage/internal/model"
 	"github.com/mschulkind-oss/vantage/internal/review"
 )
+
+// recordAttr returns the value of the named attribute on rec, or nil if the
+// record does not carry it.
+func recordAttr(rec slog.Record, key string) any {
+	var out any
+	rec.Attrs(func(a slog.Attr) bool {
+		if a.Key == key {
+			out = a.Value.Any()
+			return false
+		}
+		return true
+	})
+	return out
+}
+
+// findRecord returns the first captured record whose message equals msg.
+func findRecord(recs []slog.Record, msg string) (slog.Record, bool) {
+	for _, r := range recs {
+		if r.Message == msg {
+			return r, true
+		}
+	}
+	return slog.Record{}, false
+}
 
 func TestClassify(t *testing.T) {
 	tests := []struct {
@@ -390,6 +415,47 @@ func waitForMessage(t *testing.T, c *conn, wantType string) map[string]any {
 			t.Fatalf("no %q message arrived", wantType)
 		}
 	}
+}
+
+func TestWatcherStartupLogsInboxState(t *testing.T) {
+	// The startup line must spell out the inbox situation so "which inbox is
+	// actually being watched" is answerable from the journal — the blind spot
+	// that made a delivery into an unwatched directory impossible to diagnose.
+	// logStartup is exercised directly (not via Start's goroutine) so the log
+	// records are read without racing the event loop.
+	t.Run("inbox enabled and present", func(t *testing.T) {
+		root := t.TempDir()
+		require.NoError(t, os.MkdirAll(review.InboxDir(root), 0o755))
+		store := review.NewStore(t.TempDir())
+		var rec levelRecorder
+		m := NewManager(quietLogger(), nil)
+		w, err := NewWatcher(root, "repoX", m, store, false, slog.New(&rec))
+		require.NoError(t, err)
+
+		w.logStartup(7)
+
+		r, ok := findRecord(rec.records, "watcher started")
+		require.True(t, ok, "startup line must be emitted")
+		require.Equal(t, true, recordAttr(r, "inbox_enabled"))
+		require.Equal(t, true, recordAttr(r, "inbox_exists"))
+		require.Equal(t, review.InboxDir(root), recordAttr(r, "inbox_dir"))
+		require.EqualValues(t, 7, recordAttr(r, "watched_dirs"))
+	})
+
+	t.Run("inbox disabled and absent", func(t *testing.T) {
+		root := t.TempDir()
+		var rec levelRecorder
+		m := NewManager(quietLogger(), nil)
+		w, err := NewWatcher(root, "", m, nil, false, slog.New(&rec))
+		require.NoError(t, err)
+
+		w.logStartup(0)
+
+		r, ok := findRecord(rec.records, "watcher started")
+		require.True(t, ok, "startup line must be emitted")
+		require.Equal(t, false, recordAttr(r, "inbox_enabled"))
+		require.Equal(t, false, recordAttr(r, "inbox_exists"))
+	})
 }
 
 func TestWatcherStartConsumesInboxAndBroadcasts(t *testing.T) {

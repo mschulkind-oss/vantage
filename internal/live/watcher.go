@@ -160,7 +160,7 @@ func (w *Watcher) Start(ctx context.Context) error {
 	w.fsw = fsw
 
 	added := w.addRecursive(w.root)
-	w.logger.Info("watcher started", "root", w.root, "watched_dirs", added)
+	w.logStartup(added)
 
 	// Deliveries that landed while the server was down are consumed before the
 	// first event can arrive.
@@ -406,6 +406,29 @@ type changelogIgnoredMessage struct {
 	Type string `json:"type"`
 	Repo string `json:"repo"`
 	Path string `json:"path"`
+}
+
+// logStartup emits the watcher's startup line, spelling out the inbox
+// situation so "which inbox is actually being watched" is answerable from the
+// journal alone. This is the log whose absence made a review delivery that
+// landed in an unwatched directory impossible to diagnose: without it, a repo
+// that consumes no inbox and a repo whose inbox is watched-but-empty look
+// identical. inbox_enabled is whether consumption runs at all (a nil store
+// disables it); inbox_dir is the absolute path an agent must write into for
+// this repo; inbox_exists is whether that directory is present right now.
+func (w *Watcher) logStartup(watchedDirs int) {
+	inboxDir := review.InboxDir(w.root)
+	inboxExists := false
+	if _, err := os.Stat(inboxDir); err == nil {
+		inboxExists = true
+	}
+	w.logger.Info("watcher started",
+		"root", w.root,
+		"watched_dirs", watchedDirs,
+		"inbox_enabled", w.store != nil,
+		"inbox_dir", inboxDir,
+		"inbox_exists", inboxExists,
+	)
 }
 
 // consumeInbox drains the repo's review inbox and pushes review_changed for
