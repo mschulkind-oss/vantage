@@ -35,28 +35,32 @@ nothing has to be inferred from content.
 When you copy comments to an agent, the clipboard payload tells it to save the
 document first, then deliver **one file per response**, carrying one JSON line
 per comment it acted on. The payload hands over a ready-to-run command that
-writes the whole delivery in a single shot to a `.jsonl` file named after the
-document (path separators flattened to `__`) with a random suffix:
+writes the delivery to a `.writing` scratch name and then renames it onto a
+`.jsonl` file named after the document (path separators flattened to `__`) with
+a random suffix:
 
 ```bash
-mkdir -p .vantage/inbox && cat > .vantage/inbox/docs__design__api.md.$RANDOM.jsonl <<'EOF'
+mkdir -p .vantage/inbox && f=.vantage/inbox/docs__design__api.md.$RANDOM.jsonl && cat > "$f.writing" <<'EOF'
 {"path":"docs/design/api.md","id":"abcd1234","round":2,"summary":"Rewrote the intro in plain language.","nonce":"k7f29qd1x4"}
 EOF
+mv "$f.writing" "$f"
 ```
 
 Each line is one JSON object, newline-terminated. The random suffix keeps two
-deliveries for the same document from colliding, and writing the file in one
-shot means Vantage never sees it half-written.
+deliveries for the same document from colliding, and the rename onto `.jsonl` is
+what tells Vantage the delivery is complete.
 
-**Why one shot, and why the random name?** An agent that appended line-by-line
-to a shared per-document file gave Vantage no reliable way to know the agent had
-finished: a trailing newline means a line ended, not that the agent is done, and
-an open append handle can keep writing into a file Vantage has already consumed
-and deleted — so responses were silently lost. Vantage sidesteps this by
-consuming **only** completed `.jsonl` files: a delivery written in one command
-(or written under any other name and then renamed to `.jsonl`) is complete the
-instant Vantage can see it. Any name that is not `.jsonl` — a `.writing` or
-`.tmp` scratch file, say — is ignored until it is renamed into place.
+**Why the rename, and why the random name?** Vantage consumes **only** completed
+`.jsonl` files, and treats the rename into that name as the "I am done" signal.
+Any other name — a `.writing` or `.tmp` scratch file — is ignored until it is
+renamed into place, so Vantage never reads a delivery mid-write. Writing
+*directly* to the `.jsonl` name breaks this: the shell creates the file empty
+(open + truncate) before the write lands, and the watcher fires on that creation
+— so Vantage can consume the empty file and delete it, dropping the response the
+write then writes into an unlinked file. Renaming sidesteps the race entirely,
+because the file only ever appears under the `.jsonl` name once it is whole.
+Appending line-by-line to a shared file has the same hazard and worse: a
+trailing newline means a line ended, not that the agent is done.
 
 | Field | Meaning |
 |---|---|

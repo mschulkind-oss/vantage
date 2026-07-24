@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -197,6 +198,32 @@ func TestConsumeInboxCommittedAfterRename(t *testing.T) {
 	require.Empty(t, inboxEntries(t, root))
 }
 
+func TestConsumeInboxSkipsEmptyCommittedFile(t *testing.T) {
+	// A zero-byte *.jsonl is a delivery caught mid-write: `cat > x.jsonl`
+	// creates the file empty before the write lands, and the watcher fires on
+	// that creation. Consuming it would claim, read nothing, and delete it —
+	// dropping the response the write then writes into an unlinked inode. The
+	// guard leaves the empty file untouched so the write/close event re-fires
+	// and the second pass sees the content.
+	root := t.TempDir()
+	s := NewStore(t.TempDir())
+	seedDocWithComment(t, s, root, "a.md", "c1a2b3c4deadbeef", cmdDoc, 3)
+
+	writeInboxFile(t, root, "a.jsonl", "") // empty: mid-write
+	require.Empty(t, s.ConsumeInbox(root, ""), "an empty committed file must not be consumed")
+	require.Equal(t, []string{"a.jsonl"}, inboxEntries(t, root), "and must be left in place, not deleted")
+
+	// The write lands; the next pass consumes it normally.
+	writeInboxFile(t, root, "a.jsonl",
+		`{"path":"a.md","id":"c1a2b3c4","summary":"done","nonce":"n-1"}`+"\n")
+	require.Equal(t, []string{"a.md"}, s.ConsumeInbox(root, ""))
+
+	data, err := s.Get("a.md", "")
+	require.NoError(t, err)
+	require.Len(t, data.Comments[0].Reactions, 1)
+	require.Empty(t, inboxEntries(t, root))
+}
+
 func TestConsumeInboxConsumesUnterminatedFinalLine(t *testing.T) {
 	// A committed file is complete and immutable, so its final line is a whole
 	// line even without a trailing newline — there is no mid-append tail to fear
@@ -305,14 +332,18 @@ func TestReadLines(t *testing.T) {
 }
 
 func TestConsumeInboxHandlesEmptyCommittedFile(t *testing.T) {
-	// An empty committed file has no lines to apply; it is claimed and deleted
+	// An empty committed file older than the mid-write grace window has no
+	// lines to apply and is not a delivery in flight; it is claimed and deleted
 	// like any other, never left to be re-examined forever.
 	root := t.TempDir()
 	s := NewStore(t.TempDir())
-	writeInboxFile(t, root, "empty.jsonl", "")
+	p := writeInboxFile(t, root, "empty.jsonl", "")
+	// Backdate past the grace window so it reads as a stale empty, not mid-write.
+	old := time.Now().Add(-2 * emptyGrace)
+	require.NoError(t, os.Chtimes(p, old, old))
 
 	require.Empty(t, s.ConsumeInbox(root, ""))
-	require.Empty(t, inboxEntries(t, root), "an empty committed file is consumed, not parked")
+	require.Empty(t, inboxEntries(t, root), "a stale empty committed file is consumed, not parked")
 }
 
 func TestConsumeInboxGroupsByDoc(t *testing.T) {

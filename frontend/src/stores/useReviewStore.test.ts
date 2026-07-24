@@ -975,22 +975,25 @@ describe("useReviewStore", () => {
       return writeText.mock.calls[0][0] as string;
     };
 
-    it("hands over a ready-to-run one-shot delivery command", async () => {
+    it("hands over a ready-to-run write-then-rename delivery command", async () => {
       seedNested();
       const payload = await copiedPayload();
-      // A single heredoc write to a random-suffixed .jsonl under the flattened
-      // inbox name — the whole delivery in one atomic write, no shared file.
+      // Write to a .writing scratch name, then mv onto the .jsonl name. The
+      // rename is the atomic completion signal the consumer relies on; writing
+      // directly to .jsonl races the watcher, which can consume the empty file
+      // the shell creates before the write lands.
       expect(payload).toContain(
-        "mkdir -p .vantage/inbox && cat > .vantage/inbox/docs__design__guide.md.$RANDOM.jsonl <<'EOF'",
+        "mkdir -p .vantage/inbox && f=.vantage/inbox/docs__design__guide.md.$RANDOM.jsonl && cat > \"$f.writing\" <<'EOF'",
       );
+      expect(payload).toContain('mv "$f.writing" "$f"');
       expect(payload).toContain("from the root of this document's repository");
     });
 
-    it("warns against line-by-line appends and offers a mv fallback", async () => {
+    it("warns against writing directly to the .jsonl name", async () => {
       seedNested();
       const payload = await copiedPayload();
-      expect(payload).toContain("Do not append line-by-line to a shared file");
-      expect(payload).toContain("`mv` it onto the `.jsonl` name");
+      expect(payload).toContain("Do not write directly to the `.jsonl` name");
+      expect(payload).toContain("Never append line-by-line");
     });
 
     it("spells out the JSON line format with this document's path embedded", async () => {
