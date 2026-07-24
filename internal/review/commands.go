@@ -213,6 +213,15 @@ func (s *Store) ApplyResponses(filePath, repo string, entries []ResponseEntry, d
 		return nil, 0, err
 	}
 	if data == nil {
+		// A delivery whose path/repo has no review file lands here and, before
+		// this warning, vanished without a trace: every entry dropped, the inbox
+		// file deleted, no review_changed pushed. The agent believes it answered
+		// the comments. Warn loudly — a mismatched path or repo prefix is the
+		// likeliest cause, and the agent should see its answers went nowhere.
+		if len(entries) > 0 {
+			slog.Warn("review: delivery targets a document with no review; all entries dropped",
+				"path", filePath, "repo", repo, "entries", len(entries))
+		}
 		return nil, 0, nil
 	}
 

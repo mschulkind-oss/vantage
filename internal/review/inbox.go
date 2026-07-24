@@ -207,6 +207,7 @@ func (s *Store) consumeInboxFile(root, repo, name string) []string {
 
 	var changed []string
 	applied := true
+	total := 0
 	for _, doc := range docs {
 		content := readDocForCapture(root, doc)
 		_, n, err := s.ApplyResponses(doc, repo, byDoc[doc], content)
@@ -217,10 +218,18 @@ func (s *Store) consumeInboxFile(root, repo, name string) []string {
 			applied = false
 			continue
 		}
+		total += n
 		if n > 0 {
 			changed = append(changed, doc)
 		}
 	}
+
+	// Log the outcome unconditionally so a consumed-but-applied-nothing file is
+	// visible rather than silent: a delivery that matched no comment, or landed
+	// on a document with no review, otherwise leaves no trace once the file is
+	// deleted below. This is the log that would have caught a mismatched path.
+	slog.Info("review: consumed inbox file",
+		"file", name, "docs", len(docs), "applied", total, "deleting", applied)
 
 	if applied {
 		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
