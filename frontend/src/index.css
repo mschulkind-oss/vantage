@@ -527,6 +527,33 @@ h6:hover > .heading-anchor,
   }
 }
 
+/* Centered, wrapping toast for messages too long for the anchored hint —
+   e.g. the clipboard-unavailable warning on plain-HTTP non-localhost. */
+.copy-error-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  max-width: min(90vw, 480px);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: rgb(180 83 9); /* amber-700 */
+  background: rgb(254 243 199); /* amber-100 */
+  border: 1px solid rgb(245 158 11 / 0.4);
+  padding: 10px 16px;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.15);
+  pointer-events: none;
+  animation: toast-fade 6s ease-out forwards;
+}
+.dark .copy-error-toast {
+  color: rgb(251 191 36); /* amber-400 */
+  background: rgb(120 53 15 / 0.9); /* amber-900 */
+  border-color: rgb(245 158 11 / 0.3);
+}
+
 /* Hover-to-comment: highlight the whole block whose vertical span the
    cursor is over, regardless of horizontal position.  Clicking anywhere
    on a highlighted block opens the comment popover.  Text selection still

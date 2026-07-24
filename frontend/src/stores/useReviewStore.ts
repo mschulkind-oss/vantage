@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import axios from "axios";
 import { useRepoStore } from "./useRepoStore";
+import { copyTextOrWarn } from "../lib/clipboard";
 import type {
   CommentAnchor,
   CommentReaction,
@@ -657,12 +658,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     }
     output.push(...respondingInstructions(filePath, active[0], active));
 
-    try {
-      await navigator.clipboard.writeText(output.join("\n"));
-      return true;
-    } catch {
-      return false;
-    }
+    return copyTextOrWarn(output.join("\n"));
   },
 
   copyCommentToClipboard: async (id: string) => {
@@ -677,12 +673,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     output.push(...commentBlock(c, contentLines, pathPrefix));
     output.push(...respondingInstructions(filePath, c, [c]));
 
-    try {
-      await navigator.clipboard.writeText(output.join("\n"));
-      return true;
-    } catch {
-      return false;
-    }
+    return copyTextOrWarn(output.join("\n"));
   },
 
   deleteReview: async () => {

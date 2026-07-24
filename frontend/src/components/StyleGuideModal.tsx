@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Modal } from "./Modal";
 import { Check, Copy } from "lucide-react";
+import { copyTextOrWarn } from "../lib/clipboard";
 
 interface StyleGuideModalProps {
   isOpen: boolean;
@@ -40,12 +41,9 @@ export const StyleGuideModal: React.FC<StyleGuideModalProps> = ({
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(STYLE_GUIDE_SNIPPET.trim());
+    if (await copyTextOrWarn(STYLE_GUIDE_SNIPPET.trim())) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // fallback
     }
   };
 
