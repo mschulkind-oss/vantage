@@ -97,6 +97,13 @@ type Config struct {
 	// Port is the TCP listen port.
 	Port int
 
+	// AllowedOrigins are extra hostnames permitted to open the live-reload
+	// WebSocket, beyond the always-allowed loopback names. Required when the
+	// browser reaches Vantage under a non-localhost name (e.g. a machine's DNS
+	// name over a tunnel); the browser's Origin hostname must appear here or the
+	// handshake is rejected. Bare hostnames — no scheme or port.
+	AllowedOrigins []string
+
 	// ExcludeDirs are directory names hidden from listings and recents.
 	ExcludeDirs []string
 	// ExcludeDirsSet records whether a source explicitly provided ExcludeDirs.
@@ -145,6 +152,7 @@ func Defaults() *Config {
 type envInputs struct {
 	TargetRepo     *string `env:"TARGET_REPO"`
 	Host           *string `env:"HOST"`
+	AllowedOrigins *string `env:"ALLOWED_ORIGINS"`
 	Port           *int    `env:"PORT"`
 	ShowHidden     *bool   `env:"SHOW_HIDDEN"`
 	WalkMaxDepth   *int    `env:"WALK_MAX_DEPTH"`
@@ -167,6 +175,9 @@ func (c *Config) ApplyEnv() error {
 	}
 	if in.Host != nil {
 		c.Host = normalizeHosts(*in.Host)
+	}
+	if in.AllowedOrigins != nil {
+		c.AllowedOrigins = normalizeHosts(*in.AllowedOrigins)
 	}
 	if in.Port != nil {
 		c.Port = *in.Port
@@ -214,20 +225,22 @@ func (c *Config) SetExcludeDirs(dirs []string) {
 // distinguish an absent key from a zero value, which the exclude_dirs and
 // walk-tuning semantics depend on.
 type daemonFile struct {
-	Repos        []RepoConfig `toml:"repos"`
-	SourceDirs   []string     `toml:"source_dirs"`
-	Host         hostField    `toml:"host"`
-	Port         *int         `toml:"port"`
-	ExcludeDirs  *[]string    `toml:"exclude_dirs"`
-	ShowHidden   *bool        `toml:"show_hidden"`
-	WalkMaxDepth *int         `toml:"walk_max_depth"`
-	WalkTimeout  *float64     `toml:"walk_timeout"`
-	UseIgnore    *bool        `toml:"use_ignore_files"`
-	LogLevel     *string      `toml:"log_level"`
+	Repos          []RepoConfig `toml:"repos"`
+	SourceDirs     []string     `toml:"source_dirs"`
+	Host           hostField    `toml:"host"`
+	AllowedOrigins hostField    `toml:"allowed_origins"`
+	Port           *int         `toml:"port"`
+	ExcludeDirs    *[]string    `toml:"exclude_dirs"`
+	ShowHidden     *bool        `toml:"show_hidden"`
+	WalkMaxDepth   *int         `toml:"walk_max_depth"`
+	WalkTimeout    *float64     `toml:"walk_timeout"`
+	UseIgnore      *bool        `toml:"use_ignore_files"`
+	LogLevel       *string      `toml:"log_level"`
 }
 
-// hostField accepts either a single string or an array of strings for the TOML
-// `host` key, always yielding a normalized slice.
+// hostField accepts either a single string or an array of strings for a TOML
+// host-list key (`host`, `allowed_origins`), always yielding a normalized
+// slice.
 type hostField struct {
 	hosts []string
 	set   bool
@@ -284,6 +297,9 @@ func LoadDaemonFile(path string) (*Config, error) {
 
 	if df.Host.set {
 		c.Host = df.Host.hosts
+	}
+	if df.AllowedOrigins.set {
+		c.AllowedOrigins = df.AllowedOrigins.hosts
 	}
 	if df.Port != nil {
 		c.Port = *df.Port

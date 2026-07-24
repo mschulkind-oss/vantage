@@ -37,7 +37,7 @@ func (m *Manager) newTestConn(depth int) *conn {
 }
 
 func TestBroadcastFansOutToAllClients(t *testing.T) {
-	m := NewManager(quietLogger())
+	m := NewManager(quietLogger(), nil)
 	a := m.newTestConn(4)
 	b := m.newTestConn(4)
 
@@ -57,7 +57,7 @@ func TestBroadcastFansOutToAllClients(t *testing.T) {
 }
 
 func TestBroadcastMarshalsOnce(t *testing.T) {
-	m := NewManager(quietLogger())
+	m := NewManager(quietLogger(), nil)
 	a := m.newTestConn(1)
 	b := m.newTestConn(1)
 
@@ -70,7 +70,7 @@ func TestBroadcastMarshalsOnce(t *testing.T) {
 }
 
 func TestBroadcastEvictsSlowClient(t *testing.T) {
-	m := NewManager(quietLogger())
+	m := NewManager(quietLogger(), nil)
 	// depth 1: first broadcast fills the buffer, second overflows -> eviction.
 	slow := m.newTestConn(1)
 	fast := m.newTestConn(8)
@@ -91,7 +91,7 @@ func TestBroadcastEvictsSlowClient(t *testing.T) {
 }
 
 func TestBroadcastNoConnectionsIsNoop(t *testing.T) {
-	m := NewManager(quietLogger())
+	m := NewManager(quietLogger(), nil)
 	require.NotPanics(t, func() {
 		m.Broadcast(map[string]any{"type": "files_changed"})
 	})
@@ -99,7 +99,7 @@ func TestBroadcastNoConnectionsIsNoop(t *testing.T) {
 }
 
 func TestBroadcastMarshalErrorDropsMessage(t *testing.T) {
-	m := NewManager(quietLogger())
+	m := NewManager(quietLogger(), nil)
 	c := m.newTestConn(1)
 	// channels are not JSON-marshalable.
 	m.Broadcast(map[string]any{"bad": make(chan int)})
@@ -125,7 +125,7 @@ func dialTestServer(t *testing.T, m *Manager, warm WarmFunc, origin string) (*we
 }
 
 func TestHandlerSendsHelloAndWarmsOnFirstConnect(t *testing.T) {
-	m := NewManager(quietLogger())
+	m := NewManager(quietLogger(), nil)
 	var warmed atomic.Int32
 	warm := func(ctx context.Context) { warmed.Add(1) }
 
@@ -148,7 +148,7 @@ func TestHandlerSendsHelloAndWarmsOnFirstConnect(t *testing.T) {
 }
 
 func TestHandlerRejectsForeignOrigin(t *testing.T) {
-	m := NewManager(quietLogger())
+	m := NewManager(quietLogger(), nil)
 	srv := httptest.NewServer(m.Handler(nil))
 	defer srv.Close()
 	wsURL := "ws" + srv.URL[len("http"):]
@@ -162,7 +162,7 @@ func TestHandlerRejectsForeignOrigin(t *testing.T) {
 }
 
 func TestHandlerCountTracksConnectAndDisconnect(t *testing.T) {
-	m := NewManager(quietLogger())
+	m := NewManager(quietLogger(), nil)
 	c, srv := dialTestServer(t, m, nil, "http://127.0.0.1:5173")
 	defer srv.Close()
 
@@ -223,6 +223,8 @@ func TestRouteClientFrameBatch(t *testing.T) {
 }
 
 func TestOriginAllowed(t *testing.T) {
+	// nichis-mac-studio is a configured extra origin; 192.168.1.10 is not.
+	m := NewManager(quietLogger(), []string{"nichis-mac-studio"})
 	tests := []struct {
 		origin string
 		want   bool
@@ -231,15 +233,36 @@ func TestOriginAllowed(t *testing.T) {
 		{"http://127.0.0.1:8000", true},
 		{"http://[::1]:5173", true},
 		{"https://localhost", true},
+		{"http://nichis-mac-studio:8000", true},
 		{"http://evil.example.com", false},
 		{"http://192.168.1.10:5173", false},
 		{"garbage", false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.origin, func(t *testing.T) {
-			require.Equal(t, tc.want, originAllowed(tc.origin))
+			require.Equal(t, tc.want, m.originAllowed(tc.origin))
 		})
 	}
+}
+
+// TestHandlerAcceptsConfiguredOrigin verifies a non-loopback origin declared in
+// the Manager's allowlist completes the handshake — the fix for non-localhost
+// live-reload.
+func TestHandlerAcceptsConfiguredOrigin(t *testing.T) {
+	m := NewManager(quietLogger(), []string{"nichis-mac-studio"})
+	c, srv := dialTestServer(t, m, nil, "http://nichis-mac-studio:8000")
+	defer srv.Close()
+	defer c.Close(websocket.StatusNormalClosure, "")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	typ, data, err := c.Read(ctx) // hello
+	require.NoError(t, err)
+	require.Equal(t, websocket.MessageText, typ)
+
+	var hello map[string]any
+	require.NoError(t, json.Unmarshal(data, &hello))
+	require.Equal(t, "hello", hello["type"])
 }
 
 // levelRecorder is a minimal slog.Handler capturing the level and message of

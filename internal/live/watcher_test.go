@@ -223,7 +223,7 @@ func TestCoalescerStopDropsPending(t *testing.T) {
 
 func TestNewWatcherSetsRoot(t *testing.T) {
 	root := t.TempDir()
-	m := NewManager(quietLogger())
+	m := NewManager(quietLogger(), nil)
 	w, err := NewWatcher(root, "myrepo", m, nil, false, quietLogger())
 	require.NoError(t, err)
 	require.Equal(t, filepath.Clean(root), w.root)
@@ -232,7 +232,7 @@ func TestNewWatcherSetsRoot(t *testing.T) {
 
 func TestWatcherFlushBroadcastsSortedPaths(t *testing.T) {
 	root := t.TempDir()
-	m := NewManager(quietLogger())
+	m := NewManager(quietLogger(), nil)
 	c := m.newTestConn(4)
 
 	w, err := NewWatcher(root, "repoX", m, nil, false, quietLogger())
@@ -254,7 +254,7 @@ func TestWatcherFlushBroadcastsSortedPaths(t *testing.T) {
 
 func TestWatcherFlushEmptyIsNoop(t *testing.T) {
 	root := t.TempDir()
-	m := NewManager(quietLogger())
+	m := NewManager(quietLogger(), nil)
 	c := m.newTestConn(1)
 	w, err := NewWatcher(root, "", m, nil, false, quietLogger())
 	require.NoError(t, err)
@@ -296,7 +296,7 @@ func TestWatcherFlushWarnsOnChangelogBlockAndDoesNotMutateReview(t *testing.T) {
 	require.NoError(t, os.WriteFile(
 		filepath.Join(root, "docs", "a.md"), []byte(stale), 0o644))
 
-	m := NewManager(quietLogger())
+	m := NewManager(quietLogger(), nil)
 	c := m.newTestConn(8)
 	w, err := NewWatcher(root, "repoX", m, store, false, quietLogger())
 	require.NoError(t, err)
@@ -329,7 +329,7 @@ func TestWatcherFlushNoWarningWithoutChangelogBlock(t *testing.T) {
 	store := review.NewStore(t.TempDir())
 	seedReviewedDoc(t, store, root, "", "a.md", "c1a2b3c4deadbeef")
 
-	m := NewManager(quietLogger())
+	m := NewManager(quietLogger(), nil)
 	c := m.newTestConn(8)
 	w, err := NewWatcher(root, "", m, store, false, quietLogger())
 	require.NoError(t, err)
@@ -403,7 +403,7 @@ func TestWatcherStartConsumesInboxAndBroadcasts(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(inbox, "docs__a.md.jsonl"),
 		[]byte(`{"path":"docs/a.md","id":"c1a2b3c4","summary":"done","nonce":"n1"}`+"\n"), 0o644))
 
-	m := NewManager(quietLogger())
+	m := NewManager(quietLogger(), nil)
 	c := m.newTestConn(8)
 	w, err := NewWatcher(root, "repoX", m, store, false, quietLogger())
 	require.NoError(t, err)
@@ -430,7 +430,7 @@ func TestWatcherConsumesInboxFileEvent(t *testing.T) {
 	inbox := review.InboxDir(root)
 	require.NoError(t, os.MkdirAll(inbox, 0o755))
 
-	m := NewManager(quietLogger())
+	m := NewManager(quietLogger(), nil)
 	c := m.newTestConn(16)
 	w, err := NewWatcher(root, "", m, store, false, quietLogger())
 	require.NoError(t, err)
@@ -468,7 +468,7 @@ func TestWatcherConsumesInboxCreatedAfterStartup(t *testing.T) {
 	store := review.NewStore(t.TempDir())
 	seedReviewedDoc(t, store, root, "", "a.md", "c1a2b3c4deadbeef")
 
-	m := NewManager(quietLogger())
+	m := NewManager(quietLogger(), nil)
 	c := m.newTestConn(16)
 	w, err := NewWatcher(root, "", m, store, false, quietLogger())
 	require.NoError(t, err)
@@ -527,7 +527,7 @@ func TestWatcherFlushDoesNotWarnForDocumentWithoutAReview(t *testing.T) {
 	require.NoError(t, os.WriteFile(
 		filepath.Join(root, "docs", "a.md"), []byte(stale), 0o644))
 
-	m := NewManager(quietLogger())
+	m := NewManager(quietLogger(), nil)
 	c := m.newTestConn(8)
 	w, err := NewWatcher(root, "repoX", m, store, false, quietLogger())
 	require.NoError(t, err)

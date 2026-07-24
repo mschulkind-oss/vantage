@@ -118,7 +118,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	s := &Server{
 		cfg:      cfg,
 		logger:   logger,
-		manager:  live.NewManager(logger),
+		manager:  live.NewManager(logger, cfg.AllowedOrigins),
 		reviews:  review.NewStore(reviewDir),
 		perf:     perf.Default,
 		repos:    map[string]*repoServices{},

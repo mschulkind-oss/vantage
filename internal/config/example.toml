@@ -7,6 +7,13 @@
 host = "127.0.0.1"
 port = 8000
 
+# Extra hostnames allowed to open the live-reload WebSocket. Loopback names
+# (localhost, 127.0.0.1, ::1) are always allowed. Set this when reaching Vantage
+# under a non-localhost name — e.g. a machine's DNS name over a tunnel — so the
+# browser's Origin is accepted instead of rejected with 403. Bare hostnames, no
+# scheme or port. Accepts a string or an array.
+# allowed_origins = ["my-machine", "my-machine.local"]
+
 # Log level for vantage logging.  One of: DEBUG, INFO, WARNING, ERROR.
 # Can be overridden at runtime with the VANTAGE_LOG_LEVEL env var.
 # log_level = "INFO"
