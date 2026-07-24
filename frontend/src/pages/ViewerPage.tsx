@@ -35,6 +35,7 @@ import { RelativeTime } from "../components/RelativeTime";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { isStaticMode } from "../lib/staticMode";
+import { copyTextOrWarn } from "../lib/clipboard";
 import axios from "axios";
 import { SettingsDropdown } from "../components/SettingsDropdown";
 import { RecentFilePopover } from "../components/RecentFilePopover";
@@ -623,7 +624,8 @@ export const ViewerPage: React.FC = () => {
   const handleCopyPath = useCallback(() => {
     if (!repoRootPath || !currentPath) return;
     const absolutePath = `${repoRootPath}/${currentPath}`;
-    navigator.clipboard.writeText(absolutePath).then(() => {
+    copyTextOrWarn(absolutePath).then((ok) => {
+      if (!ok) return;
       setPathCopied(true);
       setTimeout(() => setPathCopied(false), 2000);
     });
@@ -1473,11 +1475,11 @@ export const ViewerPage: React.FC = () => {
                         <div className="relative">
                           <button
                             onClick={() => {
-                              navigator.clipboard.writeText(
-                                fileContent.content,
-                              );
-                              setCopied(true);
-                              setTimeout(() => setCopied(false), 2000);
+                              copyTextOrWarn(fileContent.content).then((ok) => {
+                                if (!ok) return;
+                                setCopied(true);
+                                setTimeout(() => setCopied(false), 2000);
+                              });
                             }}
                             className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-md transition-colors z-10"
                             title="Copy to clipboard"
