@@ -59,35 +59,6 @@ func TestResolveCommentID(t *testing.T) {
 	require.False(t, ok)
 }
 
-func TestContainsChangelogBlock(t *testing.T) {
-	cases := []struct {
-		name string
-		in   string
-		want bool
-	}{
-		{"empty", "", false},
-		{"plain prose", "# Title\n\nA paragraph.\n", false},
-		{"marker alone", "<!-- changelog -->", true},
-		{"marker mid-document", "intro\n\n<!-- changelog -->\n- [abcd1234] did it\n", true},
-		{"marker with surrounding whitespace", "  \t<!-- changelog -->  \n", true},
-		{"marker with CRLF endings", "line one\r\n<!-- changelog -->\r\n", true},
-		// Prose merely mentioning the marker inline is not a marker line.
-		{"inline mention is not a marker", "the `<!-- changelog -->` marker is retired\n", false},
-		{"similar comment is not the marker", "<!-- changelog: notes -->\n", false},
-		// Documentation quoting the retired format — this project's own design
-		// docs do exactly this — must not read as a delivery attempt.
-		{"marker inside a fenced example", "See:\n\n```markdown\n<!-- changelog -->\n- [abcd1234] did it\n```\n", false},
-		{"marker inside a tilde fence", "~~~\n<!-- changelog -->\n~~~\n", false},
-		{"real marker after a fenced example", "```\n<!-- changelog -->\n```\n\n<!-- changelog -->\n- [abcd1234] did it\n", true},
-		{"unterminated fence swallows the rest", "```\n<!-- changelog -->\n", false},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, ContainsChangelogBlock(tc.in))
-		})
-	}
-}
-
 func TestSplitBlocksFenceHandling(t *testing.T) {
 	content := strings.Join([]string{
 		"para one",

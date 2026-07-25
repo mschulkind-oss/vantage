@@ -357,25 +357,11 @@ describe("useWebSocket", () => {
     });
   });
 
-  describe("changelog_ignored", () => {
-    // Reuse review_changed's helpers: the message is the stale-payload
-    // warning — an agent wrote a retired-protocol changelog block into a
-    // saved document, so its response was ignored server-side.
-    const installRepoState = (overrides: Record<string, unknown> = {}) => {
-      const repoState = makeRepoStoreState(overrides);
-      const mockStore = (selector?: (state: typeof repoState) => unknown) => {
-        if (typeof selector === "function") return selector(repoState);
-        return repoState;
-      };
-      mockStore.getState = () => repoState;
-      (useRepoStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-        mockStore,
-      );
-      (
-        useRepoStore as unknown as { getState: () => typeof repoState }
-      ).getState = () => repoState;
-    };
-
+  describe("agent activity", () => {
+    // The indicator is derived, not pushed: a reviewed document changing on disk
+    // while a comment still awaits a response means an agent is working in it.
+    // (This replaced a changelog_ignored push whose claim — "the response was
+    // lost" — the server had no way to establish.)
     const send = (msg: Record<string, unknown>) => {
       act(() => {
         mockWebSocket.onmessage!({
@@ -384,41 +370,72 @@ describe("useWebSocket", () => {
       });
     };
 
+    const pendingComment = {
+      id: "c1a2b3c4deadbeef",
+      anchor: { source_line: 1 },
+      comment: "tighten this",
+      reactions: [],
+    };
+
     beforeEach(() => {
-      useReviewStore.setState({ staleProtocolWarning: null });
+      useReviewStore.setState({ agentActivity: null, comments: [] });
     });
 
-    it("sets the stale-protocol flag for the flagged document", () => {
+    it("notes activity when the open document changes with comments pending", () => {
+      useReviewStore.setState({ comments: [pendingComment] as never });
       renderHook(() => useWebSocket());
 
-      send({ type: "changelog_ignored", repo: "", path: "test.md" });
+      send({ type: "files_changed", paths: ["test.md"] });
 
-      expect(useReviewStore.getState().staleProtocolWarning).toEqual({
+      expect(useReviewStore.getState().agentActivity).toEqual({
         path: "test.md",
       });
-      // The warning is a flag, not a reload: nothing else may fire.
-      expect(mockLoadReview).not.toHaveBeenCalled();
-      expect(mockLoadFile).not.toHaveBeenCalled();
     });
 
-    it("ignores a message from another repo in multi-repo mode", () => {
-      installRepoState({ isMultiRepo: true, currentRepo: "repo-a" });
-      renderHook(() => useWebSocket());
-
-      send({ type: "changelog_ignored", repo: "repo-b", path: "test.md" });
-
-      expect(useReviewStore.getState().staleProtocolWarning).toBeNull();
-    });
-
-    it("sets the flag when the repo matches in multi-repo mode", () => {
-      installRepoState({ isMultiRepo: true, currentRepo: "repo-a" });
-      renderHook(() => useWebSocket());
-
-      send({ type: "changelog_ignored", repo: "repo-a", path: "test.md" });
-
-      expect(useReviewStore.getState().staleProtocolWarning).toEqual({
-        path: "test.md",
+    it("stays quiet when nothing is awaiting a response", () => {
+      // An answered comment is not pending, so a save is just a save — the
+      // reviewer's own edit must not read as an agent working.
+      useReviewStore.setState({
+        comments: [
+          {
+            ...pendingComment,
+            reactions: [
+              {
+                actor: "agent",
+                kind: "addressed",
+                summary: "done",
+                timestamp: 1,
+              },
+            ],
+          },
+        ] as never,
       });
+      renderHook(() => useWebSocket());
+
+      send({ type: "files_changed", paths: ["test.md"] });
+
+      expect(useReviewStore.getState().agentActivity).toBeNull();
+    });
+
+    it("ignores changes to documents other than the open one", () => {
+      useReviewStore.setState({ comments: [pendingComment] as never });
+      renderHook(() => useWebSocket());
+
+      send({ type: "files_changed", paths: ["elsewhere.md"] });
+
+      expect(useReviewStore.getState().agentActivity).toBeNull();
+    });
+
+    it("clears on review_changed — the delivery ends the agent's turn", () => {
+      useReviewStore.setState({
+        comments: [pendingComment] as never,
+        agentActivity: { path: "test.md" },
+      });
+      renderHook(() => useWebSocket());
+
+      send({ type: "review_changed", repo: "", path: "test.md" });
+
+      expect(useReviewStore.getState().agentActivity).toBeNull();
     });
   });
 

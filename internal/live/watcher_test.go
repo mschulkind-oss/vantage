@@ -287,7 +287,7 @@ func TestWatcherFlushEmptyIsNoop(t *testing.T) {
 	require.Len(t, c.send, 0)
 }
 
-// --- stale-payload warning (retired changelog protocol) ---
+// --- retired changelog protocol is inert ---
 
 // drainMessages empties the test connection's buffered sends and returns the
 // decoded messages.
@@ -306,11 +306,13 @@ func drainMessages(t *testing.T, c *conn) []map[string]any {
 	}
 }
 
-// A saved document that still carries a "<!-- changelog -->" block means an
-// agent followed a stale clipboard payload: its response went nowhere. The
-// watcher must warn — one changelog_ignored broadcast for the document — and
-// must NOT touch the review (the retired protocol is never applied).
-func TestWatcherFlushWarnsOnChangelogBlockAndDoesNotMutateReview(t *testing.T) {
+// A saved document carrying a "<!-- changelog -->" block is ordinary prose: the
+// retired protocol is neither applied nor warned about. The warning that used to
+// fire here was removed because a marker's presence could not distinguish a lost
+// turn from one delivered through the inbox seconds later — it fired on every
+// save of the document either way, including saves after a successful delivery.
+// Only the normal files_changed goes out, and the review is untouched.
+func TestWatcherFlushIgnoresChangelogBlock(t *testing.T) {
 	root := t.TempDir()
 	store := review.NewStore(t.TempDir())
 	seedReviewedDoc(t, store, root, "repoX", "docs/a.md", "c1a2b3c4deadbeef")
@@ -329,15 +331,8 @@ func TestWatcherFlushWarnsOnChangelogBlockAndDoesNotMutateReview(t *testing.T) {
 	w.flush([]string{"docs/a.md"})
 
 	msgs := drainMessages(t, c)
-	var ignored []map[string]any
-	for _, msg := range msgs {
-		if msg["type"] == "changelog_ignored" {
-			ignored = append(ignored, msg)
-		}
-	}
-	require.Len(t, ignored, 1, "exactly one changelog_ignored per save")
-	require.Equal(t, "repoX", ignored[0]["repo"])
-	require.Equal(t, "docs/a.md", ignored[0]["path"])
+	require.Len(t, msgs, 1, "a changelog block adds no broadcast of its own")
+	require.Equal(t, "files_changed", msgs[0]["type"])
 
 	// The bullet was NOT applied: the review is untouched.
 	data, err := store.Get("docs/a.md", "repoX")
@@ -345,25 +340,6 @@ func TestWatcherFlushWarnsOnChangelogBlockAndDoesNotMutateReview(t *testing.T) {
 	require.Len(t, data.Comments, 1)
 	require.Empty(t, data.Comments[0].Reactions,
 		"the retired protocol must never record a reaction")
-}
-
-// The common case stays quiet: a document without a marker triggers no
-// changelog_ignored broadcast.
-func TestWatcherFlushNoWarningWithoutChangelogBlock(t *testing.T) {
-	root := t.TempDir()
-	store := review.NewStore(t.TempDir())
-	seedReviewedDoc(t, store, root, "", "a.md", "c1a2b3c4deadbeef")
-
-	m := NewManager(quietLogger(), nil)
-	c := m.newTestConn(8)
-	w, err := NewWatcher(root, "", m, store, false, quietLogger())
-	require.NoError(t, err)
-
-	w.flush([]string{"a.md"})
-
-	for _, msg := range drainMessages(t, c) {
-		require.NotEqual(t, "changelog_ignored", msg["type"])
-	}
 }
 
 // --- inbox consumption ---
@@ -580,28 +556,6 @@ func TestWatcherConsumesInboxCreatedAfterStartup(t *testing.T) {
 }
 
 // A document that merely discusses the retired protocol — this project's own
-// design docs among them — is not a delivery attempt. Without the review gate
-// every save of such a file nagged the reviewer about a response nobody sent.
-func TestWatcherFlushDoesNotWarnForDocumentWithoutAReview(t *testing.T) {
-	root := t.TempDir()
-	store := review.NewStore(t.TempDir())
-	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o755))
-
-	// Same content that warns when the document is under review — but nobody
-	// has commented on this one.
-	stale := testDoc + "\n<!-- changelog -->\n- [c1a2b3c4] a documented example\n"
-	require.NoError(t, os.WriteFile(
-		filepath.Join(root, "docs", "a.md"), []byte(stale), 0o644))
-
-	m := NewManager(quietLogger(), nil)
-	c := m.newTestConn(8)
-	w, err := NewWatcher(root, "repoX", m, store, false, quietLogger())
-	require.NoError(t, err)
-
-	w.flush([]string{"docs/a.md"})
-
-	for _, msg := range drainMessages(t, c) {
-		require.NotEqual(t, "changelog_ignored", msg["type"],
-			"a document with no review must not warn about the retired protocol")
-	}
-}
+// design docs among them — is ordinary prose, whether or not it is under review.
+// TestWatcherFlushIgnoresChangelogBlock covers the reviewed case; nothing about
+// the marker is inspected anymore, so there is no gate left to test here.

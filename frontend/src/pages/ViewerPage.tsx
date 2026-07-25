@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 // History icon retained for the file-history link in the breadcrumb area.
 import { RelativeTime } from "../components/RelativeTime";
+import { AgentWorkingIndicator } from "../components/AgentWorkingIndicator";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { isStaticMode } from "../lib/staticMode";
@@ -233,10 +234,12 @@ export const ViewerPage: React.FC = () => {
   const answeredReviewCount = reviewComments.filter(isAnsweredByAgent).length;
   const endReview = useReviewStore((s) => s.endReview);
   const hasReviewData = useReviewStore((s) => s.hasReviewData);
-  const staleProtocolWarning = useReviewStore((s) => s.staleProtocolWarning);
-  const dismissStaleProtocolWarning = useReviewStore(
-    (s) => s.dismissStaleProtocolWarning,
-  );
+  const agentActivity = useReviewStore((s) => s.agentActivity);
+  // An agent is mid-turn in the document on screen: it changed on disk while
+  // comments were still waiting. Only meaningful while something is still
+  // pending — a response that landed leaves nothing to be working on.
+  const agentWorking =
+    agentActivity?.path === currentPath && pendingReviewCount > 0;
   const [reviewPanelOpen, setReviewPanelOpen] = useState(false);
   const [reviewCopied, setReviewCopied] = useState(false);
   const [reviewExitConfirm, setReviewExitConfirm] = useState(false);
@@ -1192,6 +1195,7 @@ export const ViewerPage: React.FC = () => {
                               </span>
                             </button>
                           )}
+                          {agentWorking && <AgentWorkingIndicator />}
                           {pendingReviewCount > 0 && (
                             <button
                               onClick={async () => {
@@ -1353,6 +1357,7 @@ export const ViewerPage: React.FC = () => {
                             </span>
                           </button>
                         )}
+                        {agentWorking && <AgentWorkingIndicator />}
                         {pendingReviewCount > 0 && (
                           <button
                             onClick={async () => {
@@ -1396,29 +1401,6 @@ export const ViewerPage: React.FC = () => {
           {isReviewMode && (
             <div className="h-1 bg-gradient-to-r from-purple-500 via-purple-400 to-purple-500 shrink-0" />
           )}
-
-          {/* Stale-protocol warning: the agent wrote a retired-protocol
-              changelog block into this document, so its response went
-              nowhere. Dismissible; only shown for the document on screen. */}
-          {staleProtocolWarning &&
-            staleProtocolWarning.path === currentPath && (
-              <div className="bg-amber-50 dark:bg-amber-900/30 border-b border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 px-4 py-2 flex items-center gap-3 text-sm shrink-0">
-                <AlertCircle size={16} className="shrink-0 text-amber-500" />
-                <span className="flex-1">
-                  The agent responded using the retired changelog protocol —
-                  nothing was recorded. Copy the comments again to hand it the
-                  current instructions.
-                </span>
-                <button
-                  onClick={dismissStaleProtocolWarning}
-                  className="p-1 rounded-md hover:bg-amber-100 dark:hover:bg-amber-900/50 text-amber-600 dark:text-amber-300 transition-colors shrink-0"
-                  aria-label="Dismiss stale protocol warning"
-                  title="Dismiss"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            )}
 
           {/* Viewer */}
           <div className="flex-1 flex min-h-0 relative">

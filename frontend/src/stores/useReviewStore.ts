@@ -213,14 +213,21 @@ interface ReviewState {
   // Outdated tracking (set by useReviewHighlights)
 
   /**
-   * Set when the server reports a saved document still carrying a
-   * retired-protocol changelog block: the agent followed a stale clipboard
-   * payload and its response was NOT recorded. Rendered as a dismissible
-   * notice when the path matches the document on screen.
+   * The document an agent appears to be working in right now: it changed on
+   * disk while comments were still waiting on a response. Purely informational
+   * — rendered as a quiet "agent working" indicator when the path matches the
+   * document on screen.
+   *
+   * This replaced a warning that fired whenever a saved document contained a
+   * retired-protocol changelog marker. That warning claimed the response had
+   * been lost, which it could not know: the marker's mere presence read the same
+   * whether the turn vanished or arrived through the inbox seconds later, so it
+   * fired on every save either way. An edit-in-progress is something the
+   * available signals genuinely support, so that is what is reported.
    */
-  staleProtocolWarning: { path: string } | null;
-  warnStaleProtocol: (path: string) => void;
-  dismissStaleProtocolWarning: () => void;
+  agentActivity: { path: string } | null;
+  noteAgentActivity: (path: string) => void;
+  clearAgentActivity: () => void;
 
   /**
    * The last review command that failed, so the failure is visible instead of
@@ -292,7 +299,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   lastContent: null,
   comments: [],
   pendingSelection: null,
-  staleProtocolWarning: null,
+  agentActivity: null,
   commandError: null,
   isLoading: false,
 
@@ -325,6 +332,9 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
         // path resyncs through here, and clearing there would erase the
         // failure a moment after setting it.
         commandError: null,
+        // Same reasoning, and the render already filters on path — but an
+        // observation this transient should not outlive the visit that made it.
+        agentActivity: null,
       });
     }
 
@@ -436,12 +446,12 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     set({ pendingSelection: null });
   },
 
-  warnStaleProtocol: (path: string) => {
-    set({ staleProtocolWarning: { path } });
+  noteAgentActivity: (path: string) => {
+    set({ agentActivity: { path } });
   },
 
-  dismissStaleProtocolWarning: () => {
-    set({ staleProtocolWarning: null });
+  clearAgentActivity: () => {
+    set({ agentActivity: null });
   },
 
   addComment: (
