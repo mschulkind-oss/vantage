@@ -43,7 +43,8 @@ export function useRelativeTime(
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    setText(format()); // eslint-disable-line react-hooks/set-state-in-effect -- syncs derived state on dep change; no cascade risk since format() is pure
+    // Syncs derived state on dep change; no cascade risk since format() is pure.
+    setText(format());
 
     const parsed = date
       ? typeof date === "string"

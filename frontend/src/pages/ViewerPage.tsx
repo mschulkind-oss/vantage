@@ -326,7 +326,7 @@ export const ViewerPage: React.FC = () => {
 
   // Clear cached file list when repo changes
   useEffect(() => {
-    setAllFiles([]); // eslint-disable-line react-hooks/set-state-in-effect
+    setAllFiles([]);
   }, [currentRepo]);
 
   // Load initial tree structure (after repos are loaded, only for single-repo mode)
@@ -714,7 +714,7 @@ export const ViewerPage: React.FC = () => {
 
   // Close sidebar on mobile when navigating to a new path
   useEffect(() => {
-    setSidebarOpen(false); // eslint-disable-line react-hooks/set-state-in-effect
+    setSidebarOpen(false);
   }, [pathParam]);
 
   const breadcrumbs =
