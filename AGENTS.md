@@ -35,6 +35,7 @@ command runner (`just --list`).
 - `just dev [path]` — backend on :8200 + Vite on :8201 via overmind. **Develop
   against http://localhost:8201** (hot reload). `path` = repo to view (default `.`).
 - `just format` — gofmt + prettier.
+- `just done` — end-of-task gate: clean tree + `check-ci`. Run it last.
 - `just build` — bundle frontend into `web/dist`, then build the `vantage` binary.
 - `just deploy` — build, install to `$GOBIN`, restart the `vantage` user service.
 - `just release-md [bump]` — publish `packages/vantage-md` to npm.
@@ -49,6 +50,14 @@ The pre-commit hook (`scripts/hooks/`, wired via `core.hooksPath`) runs
 
 - Go: `gofmt -l` check · `go vet` · `staticcheck` · `go test ./...`
 - Frontend: `npm run format:check` · `lint` · `tsc --noEmit` · `test`
+
+Lint fails on warnings (`--max-warnings 0`), so a stale `eslint-disable` is an
+error, not a note in the output.
+
+Finish with **`just done`**: it refuses a dirty tree, then runs `check-ci` again.
+The pre-commit hook cannot see either of those things — whether work was left
+uncommitted, or whether the *committed* state (rather than the mid-task working
+tree) is green.
 
 ## Dependencies & clean tree
 
