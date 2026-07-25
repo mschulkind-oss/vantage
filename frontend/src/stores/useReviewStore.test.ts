@@ -28,7 +28,7 @@ const resetStores = () => {
     lastContent: null,
     comments: [],
     pendingSelection: null,
-    staleProtocolWarning: null,
+    agentActivity: null,
     commandError: null,
     isLoading: false,
   });
@@ -519,17 +519,17 @@ describe("useReviewStore", () => {
     });
   });
 
-  describe("staleProtocolWarning", () => {
-    it("warnStaleProtocol sets the flag and dismiss clears it", () => {
-      expect(useReviewStore.getState().staleProtocolWarning).toBeNull();
+  describe("agentActivity", () => {
+    it("noteAgentActivity sets the path and clear resets it", () => {
+      expect(useReviewStore.getState().agentActivity).toBeNull();
 
-      useReviewStore.getState().warnStaleProtocol("docs/a.md");
-      expect(useReviewStore.getState().staleProtocolWarning).toEqual({
+      useReviewStore.getState().noteAgentActivity("docs/a.md");
+      expect(useReviewStore.getState().agentActivity).toEqual({
         path: "docs/a.md",
       });
 
-      useReviewStore.getState().dismissStaleProtocolWarning();
-      expect(useReviewStore.getState().staleProtocolWarning).toBeNull();
+      useReviewStore.getState().clearAgentActivity();
+      expect(useReviewStore.getState().agentActivity).toBeNull();
     });
   });
 

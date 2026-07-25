@@ -35,13 +35,9 @@ export interface FileContent {
 }
 
 export interface WebSocketMessage {
-  type: "files_changed" | "review_changed" | "changelog_ignored" | "hello";
+  type: "files_changed" | "review_changed" | "hello";
   paths?: string[];
-  /**
-   * review_changed: the document whose review state changed server-side.
-   * changelog_ignored: the document that was saved still carrying a
-   * retired-protocol changelog block (the agent's response went nowhere).
-   */
+  /** review_changed: the document whose review state changed server-side. */
   path?: string;
   repo?: string;
   version?: string;

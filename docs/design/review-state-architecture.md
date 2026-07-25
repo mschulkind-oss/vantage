@@ -473,9 +473,46 @@ both the same failure this rework exists to eliminate wearing new clothes:
    delivery channel must report what it delivered.*
 2. The stale-protocol warning fired on any document containing a changelog
    marker, unreviewed and unfenced, so serving this very repository nagged on
-   every save of the design docs that quote the retired format. Now
-   fence-aware and gated on the document being under review. *Lesson: a
-   warning that cries wolf on documentation gets trained away.*
+   every save of the design docs that quote the retired format. It was made
+   fence-aware and gated on the document being under review — and then, later,
+   deleted outright. See §10.1. *Lesson: a warning that cries wolf on
+   documentation gets trained away.*
+
+### 10.1 The stale-protocol warning, removed
+
+The compensations above narrowed *when* the warning fired without fixing what it
+claimed, and the claim was the defect. "The agent responded using the retired
+changelog protocol — nothing was recorded" asserts a lost turn, but the evidence
+was only that a saved document contained a marker — a fact that reads identically
+whether the response vanished or arrived through the inbox moments later. Field
+evidence: a reviewed document was saved eleven times over six minutes while an
+agent worked in it, producing eleven identical warnings, and thirty seconds after
+the last one the agent delivered normally (`applied=2`, inbox file consumed).
+Every warning was wrong, and the banner stayed up through the successful delivery
+because only a manual dismiss cleared it.
+
+A transition-based variant — warn only when the marker set *grows* — was
+considered and rejected: it would have been a quieter version of the same
+unfalsifiable claim, since a marker appearing still does not mean a response was
+lost. The detection is gone instead: no marker scan, no `changelog_ignored` push,
+nothing server-side that looks at document text for protocol residue. A document
+carrying a changelog block is ordinary prose.
+
+What replaced it inverts the polarity, from accusation to observation: **the
+reviewer is shown that an agent is working, not that it failed.** The frontend
+derives that from two facts already on the wire — the open document appeared in
+`files_changed`, and a comment is still unanswered — and renders a quiet
+"agent working" marker in the review header, which clears when `review_changed`
+reports a delivery. Nothing is dismissible because nothing is being alleged. The
+failure mode this leaves is honest and self-describing: an agent that edits and
+never delivers leaves the indicator up, which is exactly the true statement.
+
+*Lesson, and the one worth carrying past this feature: a signal must be able to
+distinguish the case it names from its opposite. When it cannot, report the
+observation you actually have and let the reviewer conclude — an indicator that
+says "something is happening" beats a warning that guesses why.* This is §9's
+"prefer failure modes that are visible" with a corollary: visible, and not
+lying about which failure it is.
 
 The decisions that shaped the build (2026-07-19 review — conducted, fittingly,
 through the changelog protocol this work retires):
@@ -485,6 +522,8 @@ through the changelog protocol this work retires):
    original design's constraint on medium (§6.2) rather than reversing it.
 2. **Fast retirement.** No transition release: the changelog protocol and its
    dedup apparatus go in one change, leaving only the stale-payload warning.
+   (That warning has since been removed too — §10.1 — so retirement is total:
+   nothing in the codebase reads the marker.)
 3. **History is machine-local, by preference.** No export command; reviewed
    documents stay free of review litter in git.
 

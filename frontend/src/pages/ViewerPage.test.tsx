@@ -64,7 +64,7 @@ describe("ViewerPage", () => {
       isReviewMode: false,
       filePath: null,
       comments: [],
-      staleProtocolWarning: null,
+      agentActivity: null,
     });
 
     (useRepoStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
@@ -335,43 +335,73 @@ describe("ViewerPage", () => {
     });
   });
 
-  describe("stale-protocol warning banner", () => {
-    const WARNING_TEXT = /retired changelog protocol/i;
+  describe("agent-working indicator", () => {
+    const indicators = () =>
+      screen.queryAllByLabelText("An agent is working on this document");
 
-    it("renders the notice when the flag matches the document on screen", () => {
+    // A pending comment plus activity on the open document: the two facts the
+    // indicator is derived from.
+    const seedWorking = (path: string) => {
       useReviewStore.setState({
-        staleProtocolWarning: { path: "path/to/file.md" },
+        isReviewMode: true,
+        filePath: "path/to/file.md",
+        comments: [
+          {
+            id: "11111111-2222-3333-4444-555555555555",
+            anchor: { source_line: 1 },
+            comment: "please fix",
+            reactions: [],
+            created_at: 0,
+          },
+        ] as never,
+        agentActivity: { path },
+      });
+    };
+
+    it("renders when the open document has activity and pending comments", () => {
+      seedWorking("path/to/file.md");
+      renderPage();
+
+      expect(indicators().length).toBeGreaterThan(0);
+    });
+
+    it("stays hidden when the activity names a different document", () => {
+      seedWorking("other/doc.md");
+      renderPage();
+
+      expect(indicators()).toHaveLength(0);
+    });
+
+    it("stays hidden with no activity recorded", () => {
+      renderPage();
+      expect(indicators()).toHaveLength(0);
+    });
+
+    it("stays hidden once nothing is pending — the response landed", () => {
+      // Activity is still recorded, but the agent answered: there is nothing
+      // left for it to be working on, so the indicator must not linger.
+      seedWorking("path/to/file.md");
+      useReviewStore.setState({
+        comments: [
+          {
+            id: "11111111-2222-3333-4444-555555555555",
+            anchor: { source_line: 1 },
+            comment: "please fix",
+            reactions: [
+              {
+                actor: "agent",
+                kind: "addressed",
+                summary: "done",
+                timestamp: 5,
+              },
+            ],
+            created_at: 0,
+          },
+        ] as never,
       });
       renderPage();
 
-      expect(screen.getByText(WARNING_TEXT)).toBeInTheDocument();
-      expect(screen.getByText(/Copy the comments again/i)).toBeInTheDocument();
-    });
-
-    it("stays hidden when the flag names a different document", () => {
-      useReviewStore.setState({
-        staleProtocolWarning: { path: "other/doc.md" },
-      });
-      renderPage();
-
-      expect(screen.queryByText(WARNING_TEXT)).not.toBeInTheDocument();
-    });
-
-    it("stays hidden with no flag set", () => {
-      renderPage();
-      expect(screen.queryByText(WARNING_TEXT)).not.toBeInTheDocument();
-    });
-
-    it("dismiss clears the flag and removes the notice", () => {
-      useReviewStore.setState({
-        staleProtocolWarning: { path: "path/to/file.md" },
-      });
-      renderPage();
-
-      fireEvent.click(screen.getByLabelText("Dismiss stale protocol warning"));
-
-      expect(useReviewStore.getState().staleProtocolWarning).toBeNull();
-      expect(screen.queryByText(WARNING_TEXT)).not.toBeInTheDocument();
+      expect(indicators()).toHaveLength(0);
     });
   });
 

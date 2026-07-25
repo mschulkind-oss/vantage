@@ -128,8 +128,8 @@ type watcherStats struct {
 
 // NewWatcher constructs a Watcher rooted at the repository at root. repoName is
 // echoed in broadcast payloads (empty for single-repo mode). store consumes
-// review inbox deliveries and backs the stale-changelog warning; it may be nil
-// to disable both. useIgnoreFiles toggles .vantageignore/user-ignore pruning.
+// review inbox deliveries; it may be nil to disable that. useIgnoreFiles
+// toggles .vantageignore/user-ignore pruning.
 // If logger is nil the default slog logger is used.
 func NewWatcher(root, repoName string, mgr *Manager, store *review.Store, useIgnoreFiles bool, logger *slog.Logger) (*Watcher, error) {
 	if logger == nil {
@@ -313,8 +313,7 @@ func (w *Watcher) handleEvent(ev fsnotify.Event, co *coalescer) {
 	co.add(rel)
 }
 
-// flush processes a coalesced change set: invalidate caches, warn about saved
-// documents still carrying retired-protocol changelog blocks, and broadcast
+// flush processes a coalesced change set: invalidate caches and broadcast
 // files_changed.
 func (w *Watcher) flush(paths []string) {
 	if len(paths) == 0 {
@@ -339,37 +338,6 @@ func (w *Watcher) flush(paths []string) {
 	if hasGitState {
 		gitsvc.ClearRecentFilesCache()
 		w.logger.Debug("cleared recent-files cache due to git state change")
-	}
-
-	if w.store != nil {
-		for _, rel := range paths {
-			if !strings.HasSuffix(strings.ToLower(rel), ".md") {
-				continue
-			}
-			content, err := os.ReadFile(filepath.Join(w.root, filepath.FromSlash(rel)))
-			if err != nil {
-				continue
-			}
-			if !review.ContainsChangelogBlock(string(content)) {
-				continue
-			}
-			// Only a document under review can be receiving a delivery. Without
-			// this gate every document that merely *discusses* the retired
-			// format — this project's own design docs among them — nags on
-			// every save.
-			data, err := w.store.Get(rel, w.repoName)
-			if err != nil || data == nil || len(data.Comments) == 0 {
-				continue
-			}
-			// The changelog protocol is retired: a marker in a reviewed document
-			// means an agent is following a stale clipboard payload, and its
-			// response was NOT recorded. Warn loudly (log + UI notice) instead of
-			// silently reproducing the old lost-turn failure. Once per save.
-			w.logger.Warn("review: document contains a retired-protocol changelog block; "+
-				"the agent's response was NOT recorded — copy the comments again to hand it "+
-				"the current instructions", "path", rel)
-			w.manager.Broadcast(changelogIgnoredMessage{Type: "changelog_ignored", Repo: w.repoName, Path: rel})
-		}
 	}
 
 	sorted := append([]string(nil), paths...)
@@ -399,14 +367,14 @@ type reviewChangedMessage struct {
 	Path string `json:"path"`
 }
 
-// changelogIgnoredMessage is the stale-payload warning push: a saved document
-// still carries a retired-protocol changelog block, so whatever the agent
-// wrote there was ignored. Same repo semantics as reviewChangedMessage.
-type changelogIgnoredMessage struct {
-	Type string `json:"type"`
-	Repo string `json:"repo"`
-	Path string `json:"path"`
-}
+// (A changelog_ignored push used to live here: the watcher scanned every saved
+// .md for a retired-protocol changelog marker and warned that the agent's
+// response was lost. It was removed because presence of a marker is not
+// evidence of a lost turn — the same warning fired whether the response was
+// dropped or delivered perfectly through the inbox seconds later, so it could
+// never answer the question it asked. The frontend now derives "an agent is
+// working on this document" from files_changed + unanswered comments instead,
+// which is a claim the available signals actually support.)
 
 // logStartup emits the watcher's startup line, spelling out the inbox
 // situation so "which inbox is actually being watched" is answerable from the

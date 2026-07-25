@@ -9,11 +9,12 @@ package review
 // gone with the paste-box door: agent responses arrive only as .vantage/inbox
 // JSONL now, which carries its ids and summaries as fields.
 //
-// The changelog marker below is NOT a protocol anymore. Agents used to deliver
-// responses by writing "<!-- changelog -->" blocks into the reviewed document;
-// that protocol is retired (docs/design/review-state-architecture.md §8 phase
-// 4). [ContainsChangelogBlock] exists solely so the watcher can warn when a
-// stale clipboard payload drives an agent to write one anyway.
+// A ContainsChangelogBlock helper also used to live here, detecting the
+// "<!-- changelog -->" marker of the retired document-embedded protocol so the
+// watcher could warn that an agent's response had been lost. Nothing detects
+// the marker now: its presence never distinguished a lost turn from a delivered
+// one, so the warning it fed was unfalsifiable. A document that still carries a
+// changelog block is simply ignored, the same as any other prose.
 
 import (
 	"log/slog"
@@ -22,41 +23,6 @@ import (
 	"github.com/mschulkind-oss/vantage/internal/model"
 	"github.com/mschulkind-oss/vantage/internal/reviewanchor"
 )
-
-// changelogMarker is the exact comment that opened a changelog block under the
-// retired protocol. The line must equal this token modulo surrounding
-// whitespace. Kept only for the stale-payload warning.
-const changelogMarker = "<!-- changelog -->"
-
-// ContainsChangelogBlock reports whether content carries a changelog marker
-// line — evidence that an agent is still following the retired
-// document-embedded response protocol. The watcher warns and broadcasts when a
-// saved document tests true; nothing is ever parsed out of the block anymore.
-func ContainsChangelogBlock(content string) bool {
-	inFence := false
-	fenceMarker := ""
-	for _, line := range splitLines(content) {
-		stripped := strings.TrimLeft(line, " \t")
-		// Markers inside a fenced block are documentation — this repository's own
-		// design docs quote the retired format — not an agent's delivery attempt.
-		if !inFence && (strings.HasPrefix(stripped, "```") || strings.HasPrefix(stripped, "~~~")) {
-			inFence = true
-			fenceMarker = stripped[:3]
-			continue
-		}
-		if inFence {
-			if strings.HasPrefix(stripped, fenceMarker) {
-				inFence = false
-				fenceMarker = ""
-			}
-			continue
-		}
-		if isChangelogMarker(line) {
-			return true
-		}
-	}
-	return false
-}
 
 // commentByID returns the comment with the given id, or nil. comments is
 // addressed by value but its elements carry slices/maps, so the returned
@@ -68,12 +34,6 @@ func commentByID(comments []model.ReviewComment, id string) *model.ReviewComment
 		}
 	}
 	return nil
-}
-
-// isChangelogMarker reports whether line is the changelog marker, ignoring
-// leading and trailing ASCII whitespace.
-func isChangelogMarker(line string) bool {
-	return strings.TrimSpace(line) == changelogMarker
 }
 
 // resolveCommentID returns the single comment id that has shortID as a prefix.
