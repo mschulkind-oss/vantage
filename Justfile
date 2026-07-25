@@ -55,6 +55,25 @@ check-ci:
     go test ./...
     cd frontend && npm run format:check && npm run lint && npx tsc --noEmit && npm run test
 
+# End-of-task gate: assert the tree is clean, then re-run the full CI gate.
+#
+# check-ci already runs on every commit via the pre-commit hook, so this adds the
+# two things a hook cannot see: that nothing was left uncommitted, and that the
+# committed state — not the working tree that happened to be on disk mid-task —
+# passes. Run it as the last thing you do.
+done:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dirty="$(git status --porcelain)"
+    if [ -n "$dirty" ]; then
+        echo "working tree is dirty — commit or discard before finishing:"
+        echo "$dirty"
+        exit 1
+    fi
+    just check-ci
+    echo
+    echo "✓ tree clean, gate green — $(git log -1 --format='%h %s')"
+
 # npm runs prepublishOnly (tsup) automatically, so dist/ is built fresh at
 # publish time — it is never committed and never needed for app development.
 #
