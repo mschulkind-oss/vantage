@@ -478,7 +478,7 @@ both the same failure this rework exists to eliminate wearing new clothes:
    deleted outright. See §10.1. *Lesson: a warning that cries wolf on
    documentation gets trained away.*
 
-### 10.1 The stale-protocol warning, removed
+### 10.1 Two unfalsifiable signals, and the one that replaced them
 
 The compensations above narrowed *when* the warning fired without fixing what it
 claimed, and the claim was the defect. "The agent responded using the retired
@@ -498,21 +498,49 @@ lost. The detection is gone instead: no marker scan, no `changelog_ignored` push
 nothing server-side that looks at document text for protocol residue. A document
 carrying a changelog block is ordinary prose.
 
-What replaced it inverts the polarity, from accusation to observation: **the
-reviewer is shown that an agent is working, not that it failed.** The frontend
-derives that from two facts already on the wire — the open document appeared in
-`files_changed`, and a comment is still unanswered — and renders a quiet
-"agent working" marker in the review header, which clears when `review_changed`
-reports a delivery. Nothing is dismissible because nothing is being alleged. The
-failure mode this leaves is honest and self-describing: an agent that edits and
-never delivers leaves the indicator up, which is exactly the true statement.
+The first replacement inverted the polarity — from accusation to observation, "an
+agent is working here" rather than "it failed" — deriving that from two facts on
+the wire: the open document appeared in `files_changed`, and a comment was still
+unanswered. It survived one review and was cut, because it repeated the original
+mistake pointed the other way. `files_changed` reports that a path changed and
+never why, so an agent answering, an agent doing unrelated work in a reviewed
+document, a formatter, a `git checkout`, and the reviewer's own editor all arrive
+identically. Gating on a prior clipboard handoff and expiring the claim after
+five minutes were both drafted; both only narrowed the window and shortened the
+lie. "An agent is working" is a claim about an intention, and no signal available
+to the browser carries one.
+
+What ships instead answers a different question — one the stored data can settle:
+**has the document changed under a comment still awaiting a response?** Every
+comment's anchor carries `block_text_hash`, the hash of the block as the reviewer
+saw it when commenting, and `useReviewHighlights` already resolves that against
+the rendered document on every content change to decide how to draw each comment.
+Three outcomes fall out of work already being done: the text matches (at the
+recorded line, or a few lines away via the neighbor walk — a block that only
+*moved* still says what the comment is about), the block was rewritten in place,
+or the block is gone. The latter two are drift, and if any of them lands under a
+comment that is still pending, the review header shows one bit: *document
+changed*.
+
+That bit is falsifiable in both directions. Byte-identical blocks mean a definite
+*no* — edits that miss every commented block correctly say nothing, because the
+comments' context is genuinely still valid. It needs no timers, no TTL, and no
+handoff tracking: it is a function of content, so it clears itself when the text
+is restored, when a reply re-captures the block (§4), or when the agent answers
+and the comment stops being pending. And it is deliberately one bit, not a count.
+The reviewer's response to it is "re-read the document before handing these over",
+which is a whole-document action; knowing it was two of five comments would not
+change it. The per-comment truth already lives where it *does* change something —
+the drifted block renders faint, and an orphaned comment renders detached, quoting
+the text it was written against.
 
 *Lesson, and the one worth carrying past this feature: a signal must be able to
-distinguish the case it names from its opposite. When it cannot, report the
-observation you actually have and let the reviewer conclude — an indicator that
-says "something is happening" beats a warning that guesses why.* This is §9's
-"prefer failure modes that are visible" with a corollary: visible, and not
-lying about which failure it is.
+distinguish the case it names from its opposite.* Both failed versions named
+something unobservable — a lost turn, then an intention — and each fired on
+evidence equally consistent with the opposite. The fix was not a better heuristic
+but a better question: ask something the stored data can answer, and let the
+reviewer draw the conclusion. This is §9's "prefer failure modes that are
+visible" with a corollary: visible, and not lying about which failure it is.
 
 The decisions that shaped the build (2026-07-19 review — conducted, fittingly,
 through the changelog protocol this work retires):

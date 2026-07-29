@@ -357,87 +357,14 @@ describe("useWebSocket", () => {
     });
   });
 
-  describe("agent activity", () => {
-    // The indicator is derived, not pushed: a reviewed document changing on disk
-    // while a comment still awaits a response means an agent is working in it.
-    // (This replaced a changelog_ignored push whose claim — "the response was
-    // lost" — the server had no way to establish.)
-    const send = (msg: Record<string, unknown>) => {
-      act(() => {
-        mockWebSocket.onmessage!({
-          data: JSON.stringify(msg),
-        } as MessageEvent);
-      });
-    };
-
-    const pendingComment = {
-      id: "c1a2b3c4deadbeef",
-      anchor: { source_line: 1 },
-      comment: "tighten this",
-      reactions: [],
-    };
-
-    beforeEach(() => {
-      useReviewStore.setState({ agentActivity: null, comments: [] });
-    });
-
-    it("notes activity when the open document changes with comments pending", () => {
-      useReviewStore.setState({ comments: [pendingComment] as never });
-      renderHook(() => useWebSocket());
-
-      send({ type: "files_changed", paths: ["test.md"] });
-
-      expect(useReviewStore.getState().agentActivity).toEqual({
-        path: "test.md",
-      });
-    });
-
-    it("stays quiet when nothing is awaiting a response", () => {
-      // An answered comment is not pending, so a save is just a save — the
-      // reviewer's own edit must not read as an agent working.
-      useReviewStore.setState({
-        comments: [
-          {
-            ...pendingComment,
-            reactions: [
-              {
-                actor: "agent",
-                kind: "addressed",
-                summary: "done",
-                timestamp: 1,
-              },
-            ],
-          },
-        ] as never,
-      });
-      renderHook(() => useWebSocket());
-
-      send({ type: "files_changed", paths: ["test.md"] });
-
-      expect(useReviewStore.getState().agentActivity).toBeNull();
-    });
-
-    it("ignores changes to documents other than the open one", () => {
-      useReviewStore.setState({ comments: [pendingComment] as never });
-      renderHook(() => useWebSocket());
-
-      send({ type: "files_changed", paths: ["elsewhere.md"] });
-
-      expect(useReviewStore.getState().agentActivity).toBeNull();
-    });
-
-    it("clears on review_changed — the delivery ends the agent's turn", () => {
-      useReviewStore.setState({
-        comments: [pendingComment] as never,
-        agentActivity: { path: "test.md" },
-      });
-      renderHook(() => useWebSocket());
-
-      send({ type: "review_changed", repo: "", path: "test.md" });
-
-      expect(useReviewStore.getState().agentActivity).toBeNull();
-    });
-  });
+  // A files_changed push used to arm an "agent working" indicator here, and
+  // before that a changelog_ignored push claimed the agent's response had been
+  // lost. Both are gone, and nothing replaces them in this hook: a push says a
+  // path changed and never says why, so an agent answering, an agent doing
+  // unrelated work, and the reviewer's own editor are indistinguishable from
+  // here. Whether the document moved out from under the review is now decided by
+  // comparing each comment's anchored text against the reloaded content, which
+  // is useReviewHighlights' job and is tested there.
 
   describe("reconnect on visibility change", () => {
     it("force-reconnects after being hidden for more than 30s", () => {

@@ -210,24 +210,31 @@ interface ReviewState {
   comments: ReviewComment[];
   pendingSelection: PendingSelection | null;
 
-  // Outdated tracking (set by useReviewHighlights)
-
   /**
-   * The document an agent appears to be working in right now: it changed on
-   * disk while comments were still waiting on a response. Purely informational
-   * — rendered as a quiet "agent working" indicator when the path matches the
-   * document on screen.
+   * Whether the document has changed under any comment still waiting on the
+   * agent — i.e. some pending comment's anchored block no longer holds the text
+   * the reviewer commented on. Published by useReviewHighlights, which already
+   * resolves every anchor against the rendered document; recomputing it from the
+   * source here would be a second implementation of the same hash comparison,
+   * free to drift from the one that draws the highlights.
    *
-   * This replaced a warning that fired whenever a saved document contained a
-   * retired-protocol changelog marker. That warning claimed the response had
-   * been lost, which it could not know: the marker's mere presence read the same
-   * whether the turn vanished or arrived through the inbox seconds later, so it
-   * fired on every save either way. An edit-in-progress is something the
-   * available signals genuinely support, so that is what is reported.
+   * This is deliberately a claim about *text*, not about time or authorship. It
+   * asks "is this comment still about what's on screen?", which is answerable by
+   * comparing the anchor's block hash against the block's current hash — false
+   * when they match, true when they don't, checkable either way.
+   *
+   * Two earlier attempts made a claim the available signals could not support. A
+   * warning fired whenever a saved document contained a retired-protocol
+   * changelog marker, asserting the agent's response had been lost — the marker
+   * read identically whether the turn vanished or arrived through the inbox
+   * seconds later. Its replacement said "an agent is working here" on the
+   * strength of a `files_changed` push, which reports that a document changed and
+   * never why: the reviewer's own editor, a formatter, or an agent editing an
+   * untouched section all read the same. Drift avoids the whole class by
+   * comparing content to content.
    */
-  agentActivity: { path: string } | null;
-  noteAgentActivity: (path: string) => void;
-  clearAgentActivity: () => void;
+  commentsDrifted: boolean;
+  setCommentsDrifted: (drifted: boolean) => void;
 
   /**
    * The last review command that failed, so the failure is visible instead of
@@ -299,7 +306,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   lastContent: null,
   comments: [],
   pendingSelection: null,
-  agentActivity: null,
+  commentsDrifted: false,
   commandError: null,
   isLoading: false,
 
@@ -332,9 +339,10 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
         // path resyncs through here, and clearing there would erase the
         // failure a moment after setting it.
         commandError: null,
-        // Same reasoning, and the render already filters on path — but an
-        // observation this transient should not outlive the visit that made it.
-        agentActivity: null,
+        // Belongs to the document being left: the new file's anchors have not
+        // been resolved yet, and until they are, "unchanged" is the honest
+        // default. useReviewHighlights republishes on its first render.
+        commentsDrifted: false,
       });
     }
 
@@ -446,12 +454,10 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     set({ pendingSelection: null });
   },
 
-  noteAgentActivity: (path: string) => {
-    set({ agentActivity: { path } });
-  },
-
-  clearAgentActivity: () => {
-    set({ agentActivity: null });
+  setCommentsDrifted: (drifted: boolean) => {
+    // Guarded so the highlighter can publish unconditionally on every render
+    // without a no-op write waking every subscriber to this slice.
+    if (get().commentsDrifted !== drifted) set({ commentsDrifted: drifted });
   },
 
   addComment: (

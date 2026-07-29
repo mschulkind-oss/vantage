@@ -28,7 +28,7 @@ const resetStores = () => {
     lastContent: null,
     comments: [],
     pendingSelection: null,
-    agentActivity: null,
+    commentsDrifted: false,
     commandError: null,
     isLoading: false,
   });
@@ -519,17 +519,26 @@ describe("useReviewStore", () => {
     });
   });
 
-  describe("agentActivity", () => {
-    it("noteAgentActivity sets the path and clear resets it", () => {
-      expect(useReviewStore.getState().agentActivity).toBeNull();
+  describe("commentsDrifted", () => {
+    // Published by useReviewHighlights, which owns the anchor comparison that
+    // decides it; the store's only job is to hold it and not wake subscribers
+    // for a write that changes nothing.
+    it("setCommentsDrifted round-trips", () => {
+      expect(useReviewStore.getState().commentsDrifted).toBe(false);
 
-      useReviewStore.getState().noteAgentActivity("docs/a.md");
-      expect(useReviewStore.getState().agentActivity).toEqual({
-        path: "docs/a.md",
-      });
+      useReviewStore.getState().setCommentsDrifted(true);
+      expect(useReviewStore.getState().commentsDrifted).toBe(true);
 
-      useReviewStore.getState().clearAgentActivity();
-      expect(useReviewStore.getState().agentActivity).toBeNull();
+      useReviewStore.getState().setCommentsDrifted(false);
+      expect(useReviewStore.getState().commentsDrifted).toBe(false);
+    });
+
+    it("does not notify subscribers when the value is unchanged", () => {
+      const seen = vi.fn();
+      const unsub = useReviewStore.subscribe(seen);
+      useReviewStore.getState().setCommentsDrifted(false);
+      unsub();
+      expect(seen).not.toHaveBeenCalled();
     });
   });
 

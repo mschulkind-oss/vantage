@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback } from "react";
 import { useRepoStore } from "../stores/useRepoStore";
 import { useGitStore } from "../stores/useGitStore";
 import { useConnectionStore } from "../stores/useConnectionStore";
-import { useReviewStore, isPendingForAgent } from "../stores/useReviewStore";
+import { useReviewStore } from "../stores/useReviewStore";
 import { WebSocketMessage } from "../types";
 import { isStaticMode } from "../lib/staticMode";
 import { wsLog, bindLoggerSocket } from "../lib/wsLogger";
@@ -201,11 +201,6 @@ export const useWebSocket = () => {
         if (message.path === currentPathRef.current) {
           wsLog.log("[ws] review_changed: %s", message.path);
           useReviewStore.getState().loadReview(message.path);
-          // A delivery landing is the end of the agent's turn: whatever it was
-          // doing in the document, the answer is here now. Clearing on the push
-          // rather than on the reloaded comments keeps the indicator honest even
-          // when the delivery answered a comment that is no longer pending.
-          useReviewStore.getState().clearAgentActivity();
         }
         return;
       }
@@ -216,20 +211,13 @@ export const useWebSocket = () => {
           message.paths.length,
           message.paths.join(", "),
         );
-        // A reviewed document changing on disk while comments still await a
-        // response means an agent is working in it. This is the whole basis for
-        // the "agent working" indicator: no server-side detection, just the two
-        // facts already on the wire. If the agent never delivers, the indicator
-        // stays up — which is the true statement, and the one the removed
-        // changelog-marker warning was guessing at.
-        const open = currentPathRef.current;
-        if (open && message.paths.includes(open)) {
-          const review = useReviewStore.getState();
-          if (review.comments.some(isPendingForAgent)) {
-            wsLog.log("[ws] agent activity: %s", open);
-            review.noteAgentActivity(open);
-          }
-        }
+        // Note this handler draws no conclusion from the change itself. Whether
+        // the document moved out from under the review is decided by comparing
+        // each comment's anchored text against the reloaded content (see
+        // useReviewHighlights), which the loadFile below triggers. A push says a
+        // path changed and never says why — an agent answering, an agent doing
+        // unrelated work, the reviewer's own editor, and a git checkout are
+        // indistinguishable here, so nothing is inferred from arrival alone.
         for (const p of message.paths) {
           pendingPathsRef.current.add(p);
         }

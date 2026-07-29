@@ -6,6 +6,7 @@ import {
 } from "./useReviewHighlights";
 import { blockVisibleText, hashBlockText } from "../lib/reviewAnchor";
 import type { CommentAnchor, CommentReaction, ReviewComment } from "../types";
+import { useReviewStore } from "../stores/useReviewStore";
 
 const agentAddressed: CommentReaction = {
   actor: "agent",
@@ -286,6 +287,95 @@ describe("useReviewHighlights — outdated comments", () => {
     );
 
     expect(actions.onEdit).toHaveBeenCalledWith("c1", "reworded request");
+  });
+});
+
+describe("useReviewHighlights — commentsDrifted", () => {
+  // The one signal the header shows about a document changing under a review.
+  // Every case here is a content comparison with a definite answer both ways —
+  // which is the whole point of deriving it from anchor hashes rather than from a
+  // files_changed push, whose arrival cannot distinguish an agent answering from
+  // the reviewer's own editor saving.
+  const drifted = () => useReviewStore.getState().commentsDrifted;
+
+  beforeEach(() => {
+    useReviewStore.setState({ commentsDrifted: false });
+  });
+
+  it("is false when every comment's block still holds its original text", () => {
+    renderInline([baseComment({ anchor: anchorAt(1) })]);
+    expect(drifted()).toBe(false);
+  });
+
+  it("is true when the commented block was rewritten in place", () => {
+    const comment = baseComment({ anchor: anchorAt(1) });
+    container.querySelector('[data-source-line="1"]')!.textContent =
+      "First paragraph, rewritten by an agent.";
+    renderInline([comment]);
+    expect(drifted()).toBe(true);
+  });
+
+  it("is true when the commented block is gone entirely", () => {
+    renderInline([baseComment({ anchor: orphanAnchor })]);
+    expect(drifted()).toBe(true);
+  });
+
+  it("is false when the block only moved — the text is intact", () => {
+    // The neighbor walk re-anchors identical text a few lines away. The comment
+    // is still about what it was about, so this must not read as drift.
+    const comment = baseComment({ anchor: anchorAt(5) });
+    const block = container.querySelector('[data-source-line="5"]')!;
+    block.setAttribute("data-source-line", "7");
+    renderInline([comment]);
+    expect(drifted()).toBe(false);
+  });
+
+  it("ignores drift under a comment the agent already answered", () => {
+    // Nothing is waiting on the agent, so stale context is not the reviewer's
+    // problem — flagging it would make the signal fire on documents that have
+    // simply moved on since a finished thread.
+    const comment = baseComment({
+      anchor: anchorAt(1),
+      reactions: [agentAddressed],
+    });
+    container.querySelector('[data-source-line="1"]')!.textContent =
+      "rewritten";
+    renderInline([comment]);
+    expect(drifted()).toBe(false);
+  });
+
+  it("ignores drift under a resolved comment", () => {
+    const comment = baseComment({ anchor: orphanAnchor, resolved: true });
+    renderInline([comment]);
+    expect(drifted()).toBe(false);
+  });
+
+  it("does not claim drift for a legacy comment that has no anchor", () => {
+    // With no recorded hash there is nothing to compare: the document may be
+    // untouched. Saying "changed" here would be a guess.
+    renderInline([baseComment({ anchor: undefined })]);
+    expect(drifted()).toBe(false);
+  });
+
+  it("clears once the document is edited back to the commented text", () => {
+    const comment = baseComment({ anchor: anchorAt(1) });
+    const block = container.querySelector('[data-source-line="1"]')!;
+    const original = block.textContent!;
+    block.textContent = "First paragraph, rewritten by an agent.";
+
+    const { rerender } = renderInline([comment]);
+    expect(drifted()).toBe(true);
+
+    // Falsifiable in both directions: restoring the text retracts the claim.
+    block.textContent = original;
+    rerender({ cs: [comment] });
+    expect(drifted()).toBe(false);
+  });
+
+  it("is false when there are no comments at all", () => {
+    useReviewStore.setState({ commentsDrifted: true });
+    renderInline([]);
+    expect(drifted()).toBe(false);
   });
 });
 
