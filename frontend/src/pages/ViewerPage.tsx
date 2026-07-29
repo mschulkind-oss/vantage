@@ -32,7 +32,7 @@ import {
 } from "lucide-react";
 // History icon retained for the file-history link in the breadcrumb area.
 import { RelativeTime } from "../components/RelativeTime";
-import { AgentWorkingIndicator } from "../components/AgentWorkingIndicator";
+import { CommentsDriftedIndicator } from "../components/CommentsDriftedIndicator";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { isStaticMode } from "../lib/staticMode";
@@ -234,12 +234,10 @@ export const ViewerPage: React.FC = () => {
   const answeredReviewCount = reviewComments.filter(isAnsweredByAgent).length;
   const endReview = useReviewStore((s) => s.endReview);
   const hasReviewData = useReviewStore((s) => s.hasReviewData);
-  const agentActivity = useReviewStore((s) => s.agentActivity);
-  // An agent is mid-turn in the document on screen: it changed on disk while
-  // comments were still waiting. Only meaningful while something is still
-  // pending — a response that landed leaves nothing to be working on.
-  const agentWorking =
-    agentActivity?.path === currentPath && pendingReviewCount > 0;
+  // The document changed under a comment still awaiting a response, so the
+  // context those comments were written against is no longer what's on screen.
+  // Published by useReviewHighlights from the anchor hashes it already resolves.
+  const commentsDrifted = useReviewStore((s) => s.commentsDrifted);
   const [reviewPanelOpen, setReviewPanelOpen] = useState(false);
   const [reviewCopied, setReviewCopied] = useState(false);
   const [reviewExitConfirm, setReviewExitConfirm] = useState(false);
@@ -1195,7 +1193,7 @@ export const ViewerPage: React.FC = () => {
                               </span>
                             </button>
                           )}
-                          {agentWorking && <AgentWorkingIndicator />}
+                          {commentsDrifted && <CommentsDriftedIndicator />}
                           {pendingReviewCount > 0 && (
                             <button
                               onClick={async () => {
@@ -1357,7 +1355,7 @@ export const ViewerPage: React.FC = () => {
                             </span>
                           </button>
                         )}
-                        {agentWorking && <AgentWorkingIndicator />}
+                        {commentsDrifted && <CommentsDriftedIndicator />}
                         {pendingReviewCount > 0 && (
                           <button
                             onClick={async () => {

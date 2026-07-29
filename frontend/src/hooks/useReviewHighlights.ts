@@ -10,6 +10,7 @@ import {
   hasAgentReaction,
   isPendingForAgent,
   latestAgentReaction,
+  useReviewStore,
 } from "../stores/useReviewStore";
 
 const mdOptions = { breaks: false, gfm: true };
@@ -134,7 +135,25 @@ export function useReviewHighlights(
       );
     });
 
-    if (comments.length === 0) return;
+    // Anchor resolution below decides, per comment, whether the block it points
+    // at still holds the text the reviewer commented on. That answer is the only
+    // trustworthy basis for "the document changed under the comments", so it is
+    // published from here rather than recomputed elsewhere. Only comments still
+    // waiting on the agent count: drift under an answered or dismissed comment is
+    // nothing for the reviewer to act on.
+    const drifted = new Set<string>();
+    const publishDrift = () => {
+      useReviewStore
+        .getState()
+        .setCommentsDrifted(
+          comments.some((c) => drifted.has(c.id) && isPendingForAgent(c)),
+        );
+    };
+
+    if (comments.length === 0) {
+      publishDrift();
+      return;
+    }
 
     const active = comments.filter((c) => !c.resolved);
     const resolved = comments.filter((c) => c.resolved);
@@ -147,6 +166,7 @@ export function useReviewHighlights(
     }
 
     if (active.length === 0) {
+      publishDrift();
       restoreDrafts(el, drafts);
       return;
     }
@@ -174,7 +194,10 @@ export function useReviewHighlights(
     for (const comment of active) {
       const anchor = comment.anchor;
       if (!anchor) {
-        // Legacy comment with no anchor — render as outdated at top.
+        // Legacy comment with no anchor — render as outdated at top. Not counted
+        // as drift: with no recorded hash there is nothing to compare, so the
+        // document may be untouched since the comment was written. Saying
+        // "changed" here would be the guess this signal exists to avoid.
         console.warn(
           "[review] comment %s has no anchor — rendering as outdated. comment:",
           comment.id.slice(0, 8),
@@ -227,7 +250,9 @@ export function useReviewHighlights(
       }
 
       if (!block) {
-        // No block at line, no hash neighbor — outdated.
+        // No block at line, no hash neighbor — outdated. The commented text is
+        // not merely different, it is gone: drift in its strongest form.
+        drifted.add(comment.id);
         console.warn(
           "[review] comment %s: OUTDATED — no block at line %d, no hash neighbor for %s",
           comment.id.slice(0, 8),
@@ -269,13 +294,20 @@ export function useReviewHighlights(
         // Whole-block anchor (no substring).
         block.classList.add("review-highlight-block");
       } else if (divergent) {
-        // Same line, different content (Q8: faint, no substring re-find).
+        // Same line, different content (Q8: faint, no substring re-find). The
+        // text the reviewer commented on has been rewritten in place — drift.
+        //
+        // Note the neighbor walk above clears `divergent` when it finds the
+        // original text a few lines away: a block that only *moved* still says
+        // what the comment is about, so that is not drift.
+        drifted.add(comment.id);
         block.classList.add("review-highlight-block-divergent");
       }
 
       insertInlineCommentAfter(block, comment, actions, divergent);
     }
 
+    publishDrift();
     restoreDrafts(el, drafts);
   }, [containerRef, comments, currentContent, actions]);
 }

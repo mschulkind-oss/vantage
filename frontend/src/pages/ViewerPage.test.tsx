@@ -64,7 +64,7 @@ describe("ViewerPage", () => {
       isReviewMode: false,
       filePath: null,
       comments: [],
-      agentActivity: null,
+      commentsDrifted: false,
     });
 
     (useRepoStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
@@ -335,13 +335,17 @@ describe("ViewerPage", () => {
     });
   });
 
-  describe("agent-working indicator", () => {
+  describe("document-changed indicator", () => {
     const indicators = () =>
-      screen.queryAllByLabelText("An agent is working on this document");
+      screen.queryAllByLabelText(
+        "The document changed under comments awaiting a response",
+      );
 
-    // A pending comment plus activity on the open document: the two facts the
-    // indicator is derived from.
-    const seedWorking = (path: string) => {
+    // The page only renders the bit; whether the document moved out from under
+    // the comments is decided by useReviewHighlights against the anchor hashes,
+    // and is tested there. Seeding it directly is what keeps this a test of the
+    // header and not a second copy of that comparison.
+    const seed = (drifted: boolean) => {
       useReviewStore.setState({
         isReviewMode: true,
         filePath: "path/to/file.md",
@@ -354,53 +358,26 @@ describe("ViewerPage", () => {
             created_at: 0,
           },
         ] as never,
-        agentActivity: { path },
+        commentsDrifted: drifted,
       });
     };
 
-    it("renders when the open document has activity and pending comments", () => {
-      seedWorking("path/to/file.md");
+    it("renders when the comments' text has drifted", () => {
+      seed(true);
       renderPage();
 
       expect(indicators().length).toBeGreaterThan(0);
     });
 
-    it("stays hidden when the activity names a different document", () => {
-      seedWorking("other/doc.md");
+    it("stays hidden while the comments' text still matches", () => {
+      seed(false);
       renderPage();
 
       expect(indicators()).toHaveLength(0);
     });
 
-    it("stays hidden with no activity recorded", () => {
+    it("stays hidden by default", () => {
       renderPage();
-      expect(indicators()).toHaveLength(0);
-    });
-
-    it("stays hidden once nothing is pending — the response landed", () => {
-      // Activity is still recorded, but the agent answered: there is nothing
-      // left for it to be working on, so the indicator must not linger.
-      seedWorking("path/to/file.md");
-      useReviewStore.setState({
-        comments: [
-          {
-            id: "11111111-2222-3333-4444-555555555555",
-            anchor: { source_line: 1 },
-            comment: "please fix",
-            reactions: [
-              {
-                actor: "agent",
-                kind: "addressed",
-                summary: "done",
-                timestamp: 5,
-              },
-            ],
-            created_at: 0,
-          },
-        ] as never,
-      });
-      renderPage();
-
       expect(indicators()).toHaveLength(0);
     });
   });
