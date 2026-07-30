@@ -39,13 +39,19 @@ export function useRelativeTime(
     return addSuffix ? `${text} ago` : text;
   };
 
-  const [text, setText] = useState(format);
+  // The text is derived from `date`, `addSuffix`, and the current clock, so it
+  // is computed during render rather than stored. Keeping it in state meant
+  // every input change needed an effect to resync it — a render published with
+  // the previous input's text, then corrected by a cascading second render.
+  //
+  // Only the clock is outside React, so only the clock needs the effect below:
+  // it forces a re-render on each tick and this line re-derives the text.
+  const text = format();
+
+  const [, forceTick] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    // Syncs derived state on dep change; no cascade risk since format() is pure.
-    setText(format());
-
     const parsed = date
       ? typeof date === "string"
         ? new Date(date)
@@ -53,7 +59,7 @@ export function useRelativeTime(
       : null;
 
     const tick = () => {
-      setText(format());
+      forceTick((n) => n + 1);
       timerRef.current = setTimeout(tick, getDelay(parsed));
     };
     timerRef.current = setTimeout(tick, getDelay(parsed));
@@ -61,8 +67,8 @@ export function useRelativeTime(
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-    // Re-subscribe when the date input changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Re-subscribe when the date input changes; `addSuffix` only affects the
+    // derived text above, not the schedule, but is kept for a stable dep list.
   }, [date, addSuffix]);
 
   return text;
