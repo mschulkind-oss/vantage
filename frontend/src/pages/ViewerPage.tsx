@@ -322,10 +322,22 @@ export const ViewerPage: React.FC = () => {
     loadRepos();
   }, [loadRepos]);
 
-  // Clear cached file list when repo changes
-  useEffect(() => {
+  // Clear the cached file list when the repo changes, and close the mobile
+  // sidebar when the path does. Both adjust state during render (React's
+  // documented pattern) rather than from an effect: an effect published one
+  // render carrying the previous repo's file list — which the file picker could
+  // open against — and then re-rendered to correct itself.
+  const [prevRepo, setPrevRepo] = useState(currentRepo);
+  if (prevRepo !== currentRepo) {
+    setPrevRepo(currentRepo);
     setAllFiles([]);
-  }, [currentRepo]);
+  }
+
+  const [prevPathParam, setPrevPathParam] = useState(pathParam);
+  if (prevPathParam !== pathParam) {
+    setPrevPathParam(pathParam);
+    setSidebarOpen(false);
+  }
 
   // Load initial tree structure (after repos are loaded, only for single-repo mode)
   useEffect(() => {
@@ -709,11 +721,6 @@ export const ViewerPage: React.FC = () => {
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [allFiles, globalFiles, getApiBase, keyboardShortcutsEnabled]);
-
-  // Close sidebar on mobile when navigating to a new path
-  useEffect(() => {
-    setSidebarOpen(false);
-  }, [pathParam]);
 
   const breadcrumbs =
     currentPath && currentPath !== "." ? currentPath.split("/") : [];

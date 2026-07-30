@@ -98,7 +98,7 @@ function legacyCopy(text: string): boolean {
   selection?.removeAllRanges();
   selection?.addRange(range);
 
-  let ok = false;
+  let ok: boolean;
   try {
     ok = document.execCommand("copy");
   } catch {
