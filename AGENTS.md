@@ -54,6 +54,13 @@ The pre-commit hook (`scripts/hooks/`, wired via `core.hooksPath`) runs
 Lint fails on warnings (`--max-warnings 0`), so a stale `eslint-disable` is an
 error, not a note in the output.
 
+`check-ci` first asserts that `node_modules` matches the manifests in **both**
+npm packages, because CI installs with `npm ci` and therefore lints and tests
+against the lockfile. A stale local install answers a different question and can
+report green on code CI rejects — a stale eslint plugin once made three live
+suppressions look dead, so removing them broke CI. If the check fails, run
+`npm ci` in the package it names.
+
 Finish with **`just done`**: it refuses a dirty tree, then runs `check-ci` again.
 The pre-commit hook cannot see either of those things — whether work was left
 uncommitted, or whether the *committed* state (rather than the mid-task working

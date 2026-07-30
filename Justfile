@@ -46,7 +46,7 @@ check: format
     cd frontend && npm run lint && npx tsc --noEmit && npm run test
 
 # Read-only gate (errors on issues, never rewrites) — used by the pre-commit hook and CI.
-check-ci:
+check-ci: _deps-match
     #!/usr/bin/env bash
     set -euo pipefail
     test -z "$(gofmt -l cmd internal web)" || { echo "unformatted Go (run: just format):"; gofmt -l cmd internal web; exit 1; }
@@ -54,6 +54,25 @@ check-ci:
     staticcheck ./...
     go test ./...
     cd frontend && npm run format:check && npm run lint && npx tsc --noEmit && npm run test
+
+# Assert node_modules matches the manifests, in both npm packages.
+#
+# CI installs with `npm ci`, so it lints and tests against the lockfile. Locally
+# the gate uses whatever is already in node_modules, which silently answers a
+# different question: a stale eslint plugin let three genuinely-live suppressions
+# be deleted as dead (caba056, fixed in 5226587) because the older version simply
+# did not report them. A local green that CI cannot reproduce is worse than a red.
+[private]
+_deps-match:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for pkg in frontend packages/vantage-md; do
+        if ! out="$(cd "$pkg" && npm ls --depth=0 2>&1)"; then
+            echo "$pkg/node_modules does not match its manifest (run: cd $pkg && npm ci):"
+            echo "$out" | grep -E 'invalid|missing|npm error' | head -20 || echo "$out" | head -20
+            exit 1
+        fi
+    done
 
 # End-of-task gate: assert the tree is clean, then re-run the full CI gate.
 #
