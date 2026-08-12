@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { MessageSquarePlus, X } from "lucide-react";
+import { popoverPosition } from "../lib/popoverPosition";
 
 interface ReviewCommentPopoverProps {
   selectedText: string;
@@ -66,16 +67,10 @@ export const ReviewCommentPopover: React.FC<ReviewCommentPopoverProps> = ({
       ? selectedText.slice(0, 200) + "..."
       : selectedText;
 
-  // Position: try below the selection, but if it would go off-screen, put it above
-  const viewportH = window.innerHeight;
-  const popoverHeight = 360; // approximate
-  const top =
-    rect.bottom + popoverHeight + 16 > viewportH
-      ? Math.max(8, rect.top - popoverHeight - 8)
-      : rect.bottom + 8;
-  const left = Math.min(
-    Math.max(16, rect.left + rect.width / 2 - 220),
-    window.innerWidth - 460,
+  const { top, left } = popoverPosition(
+    rect,
+    window.innerWidth,
+    window.innerHeight,
   );
 
   return createPortal(

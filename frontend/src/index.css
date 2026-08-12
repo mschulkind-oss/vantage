@@ -261,8 +261,20 @@ h6:hover > .heading-anchor,
   font-style: normal;
   font-weight: normal;
 }
+/*
+ * The action row is a fixed-width thing (five nowrap buttons, ~185px) sitting
+ * next to text that has to fit whatever is left. On a phone that left nothing:
+ * the comment collapsed to a ~50px column wrapping one word — sometimes half a
+ * word — per line, and the status badge overflowed into the buttons.
+ *
+ * So the row wraps rather than crushing its text: the content keeps a readable
+ * flex-basis, and when it and the buttons can no longer share a line the
+ * buttons take their own line beneath. A width query would have fixed the phone
+ * only — this fixes every narrow container, including a docked sidebar.
+ */
 .review-inline-comment-body {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-start;
   gap: 8px;
   padding: 10px 14px;
@@ -387,7 +399,9 @@ h6:hover > .heading-anchor,
   border-left-color: rgb(245 158 11 / 0.5) !important;
 }
 .review-inline-comment-content {
-  flex: 1;
+  /* The basis is the readable-width floor that decides when the action row
+     wraps; min-width keeps a long unbroken token from widening the block. */
+  flex: 1 1 12rem;
   min-width: 0;
 }
 /*
@@ -461,9 +475,14 @@ h6:hover > .heading-anchor,
 }
 .review-inline-comment-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+  /* Holds the buttons to the right edge whether they share the content's line
+     or have wrapped onto their own. */
+  margin-left: auto;
 }
 
 /* Whole-block highlight: shown when a comment anchors to a whole block
@@ -1101,6 +1120,24 @@ h6:hover > .heading-anchor,
 .dark .review-stripe {
   background: rgb(30 20 50);
   border-right-color: rgb(88 28 135);
+}
+
+/*
+ * On a phone the stripe was spending 72px — nearly a fifth of the screen — on
+ * a navigation aid, and it came out of the document's column. It narrows to a
+ * width that still clears a 44px touch target for the prev/next buttons.
+ */
+@media (max-width: 640px) {
+  .review-stripe {
+    width: 48px;
+  }
+  .review-stripe-track {
+    margin: 0 6px;
+  }
+  .review-stripe-count {
+    font-size: 11px;
+    padding: 0 4px;
+  }
 }
 .review-stripe--empty {
   opacity: 0.5;

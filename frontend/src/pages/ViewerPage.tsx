@@ -1174,10 +1174,16 @@ export const ViewerPage: React.FC = () => {
                       )}
                       {isReviewMode && (
                         <>
+                          {/* The min-width reserves room for the longest label
+                              so arming the confirm doesn't resize the button
+                              under the reviewer's finger. It is sm:-only
+                              because the label is: below that it reserved
+                              100px of blank pill beside a 14px icon, on the
+                              screen with the least room to spare. */}
                           {activeReviewCount > 0 && (
                             <button
                               onClick={handleReviewDismiss}
-                              className={`flex items-center space-x-1.5 text-xs rounded-lg min-w-[100px] px-2 py-1.5 transition-colors cursor-pointer ${
+                              className={`flex items-center space-x-1.5 text-xs rounded-lg sm:min-w-[100px] px-2 py-1.5 transition-colors cursor-pointer ${
                                 reviewDismissConfirm
                                   ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50"
                                   : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600/50"
@@ -1339,7 +1345,7 @@ export const ViewerPage: React.FC = () => {
                         {activeReviewCount > 0 && (
                           <button
                             onClick={handleReviewDismiss}
-                            className={`flex items-center space-x-1.5 text-xs rounded-lg min-w-[100px] px-2 py-1.5 transition-colors cursor-pointer ${
+                            className={`flex items-center space-x-1.5 text-xs rounded-lg sm:min-w-[100px] px-2 py-1.5 transition-colors cursor-pointer ${
                               reviewDismissConfirm
                                 ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50"
                                 : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600/50"
