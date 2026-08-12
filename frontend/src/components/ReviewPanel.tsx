@@ -459,7 +459,12 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                               setEditText(c.comment);
                               setTimeout(() => editRef.current?.focus(), 0);
                             }}
-                            className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-slate-400 hover:text-blue-500 transition-opacity"
+                            // Reveal-on-hover, but only where hovering exists.
+                            // Tailwind already gates group-hover: behind
+                            // (hover: hover) — the bare opacity-0 was not, so
+                            // on a touch screen Edit and Delete sat at zero
+                            // opacity with no gesture that could reveal them.
+                            className="p-1 rounded [@media(hover:hover)]:opacity-0 group-hover:opacity-100 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-slate-400 hover:text-blue-500 transition-opacity"
                             title="Edit comment"
                           >
                             <Pencil size={12} />
@@ -473,7 +478,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                           className={
                             confirmDeleteId === c.id
                               ? "flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium bg-red-600 text-white"
-                              : "p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 transition-opacity"
+                              : "p-1 rounded [@media(hover:hover)]:opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 transition-opacity"
                           }
                           title={
                             confirmDeleteId === c.id
