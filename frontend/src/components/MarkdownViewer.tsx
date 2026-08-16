@@ -141,7 +141,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   }, [isMultiRepo, currentRepo]);
 
   // Parse frontmatter from content
-  const { frontmatter, body } = useMemo(() => {
+  const { frontmatter, body, bodyLineOffset } = useMemo(() => {
     return parseFrontmatter(content);
   }, [content]);
 
@@ -701,7 +701,10 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
         ]}
         rehypePlugins={[
           rehypeRaw,
-          rehypeSourceLines,
+          // Offset by the frontmatter so `data-source-line` counts file lines —
+          // both `#L42` links and review comment anchors are read against the
+          // whole file, not the frontmatter-stripped body rendered here.
+          [rehypeSourceLines, { offset: bodyLineOffset }],
           [rehypeSanitize, sanitizeSchema],
           rehypeSlug,
           rehypeHighlight,
