@@ -77,7 +77,12 @@ export async function renderMarkdown(
   if (parseFm) {
     parsed = parseFrontmatter(content);
   } else {
-    parsed = { frontmatter: {}, body: content, format: "none" };
+    parsed = {
+      frontmatter: {},
+      body: content,
+      format: "none",
+      bodyLineOffset: 0,
+    };
   }
 
   // Build the unified pipeline using a single chain.
@@ -92,7 +97,11 @@ export async function renderMarkdown(
   if (math) remarkPlugins.push([remarkMath, { singleDollarTextMath: false }]);
 
   rehypePlugins.push([rehypeRaw]);
-  if (sourceLines) rehypePlugins.push([rehypeSourceLines]);
+  if (sourceLines)
+    rehypePlugins.push([
+      rehypeSourceLines,
+      { offset: parsed.bodyLineOffset },
+    ]);
   if (sanitize) rehypePlugins.push([rehypeSanitize, sanitizeSchema]);
   rehypePlugins.push([rehypeSlug]);
   if (highlight) rehypePlugins.push([rehypeHighlight]);

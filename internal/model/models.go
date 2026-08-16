@@ -151,9 +151,13 @@ type ReviewSnapshot struct {
 }
 
 // CommentAnchor binds a review comment to a Markdown block. The block is
-// identified by SourceLine (its data-source-line in the rendered DOM) and
-// verified by BlockTextHash. SelectionOffset/SelectionLength describe a
-// substring within the block; a zero length means the whole block.
+// identified by SourceLine and verified by BlockTextHash.
+// SelectionOffset/SelectionLength describe a substring within the block; a
+// zero length means the whole block.
+//
+// SourceLine is a 1-based line in the *file*, frontmatter included — the same
+// basis blockTextAt uses to re-capture the block from disk, and the basis the
+// rendered DOM's data-source-line reports.
 type CommentAnchor struct {
 	SourceLine      int    `json:"source_line"`
 	BlockTextHash   string `json:"block_text_hash"`

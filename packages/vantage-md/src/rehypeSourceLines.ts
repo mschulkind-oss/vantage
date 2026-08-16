@@ -28,23 +28,37 @@ const BLOCK_TAGS = new Set([
   "div",
 ]);
 
-function visit(node: Root | Element) {
+export interface RehypeSourceLinesOptions {
+  /**
+   * Lines stripped off the front of the file before parsing — frontmatter,
+   * essentially. Added to every emitted line number so `data-source-line`
+   * names a line in the *file* rather than in the parsed body, which is what
+   * a `#L42` link written against the file means. Defaults to 0.
+   */
+  offset?: number;
+}
+
+function visit(node: Root | Element, offset: number) {
   if ("children" in node) {
     for (const child of node.children) {
       if (child.type === "element") {
         if (BLOCK_TAGS.has(child.tagName) && child.position?.start?.line) {
           child.properties = child.properties || {};
-          child.properties["dataSourceLine"] = child.position.start.line;
+          child.properties["dataSourceLine"] =
+            child.position.start.line + offset;
         }
-        visit(child);
+        visit(child, offset);
       }
     }
   }
 }
 
-const rehypeSourceLines: Plugin<[], Root> = () => {
+const rehypeSourceLines: Plugin<[RehypeSourceLinesOptions?], Root> = (
+  options,
+) => {
+  const offset = options?.offset ?? 0;
   return (tree: Root) => {
-    visit(tree);
+    visit(tree, offset);
   };
 };
 

@@ -56,7 +56,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   useLineAnchor(containerRef, hash);
 
   // Parse frontmatter from content
-  const { frontmatter, body } = useMemo(() => {
+  const { frontmatter, body, bodyLineOffset } = useMemo(() => {
     return parseFrontmatter(content);
   }, [content]);
 
@@ -223,7 +223,8 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
         ]}
         rehypePlugins={[
           rehypeRaw,
-          rehypeSourceLines,
+          // Offset by the frontmatter so `data-source-line` counts file lines.
+          [rehypeSourceLines, { offset: bodyLineOffset }],
           [rehypeSanitize, sanitizeSchema],
           rehypeSlug,
           rehypeHighlight,
