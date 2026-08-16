@@ -21,11 +21,16 @@ Vantage supports the full [GitHub Flavored Markdown](https://github.github.com/g
 
 ### Math with KaTeX
 
-Vantage renders LaTeX math using [KaTeX](https://katex.org/):
+Vantage renders LaTeX math using [KaTeX](https://katex.org/). Both inline and
+block math use `$$...$$` delimiters.
 
-Inline math: `$E = mc^2$` renders as $E = mc^2$
+Single dollars are deliberately *not* math delimiters, so shell variables and
+amounts in prose — `$HOME`, `$100` — stay literal instead of turning into a
+broken math span.
 
-Block math:
+Inline math: `$$E = mc^2$$` renders as $$E = mc^2$$
+
+Block math — put `$$` alone on its own lines:
 
 ```
 $$

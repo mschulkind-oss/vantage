@@ -70,6 +70,31 @@ describe("MarkdownViewer", () => {
     );
   });
 
+  // remark-math runs with singleDollarTextMath: false. These two tests pin the
+  // delimiter contract the style guide and user guide describe, so flipping the
+  // option can't silently make that documentation wrong again.
+  it("renders double-dollar math inline and as a display block", () => {
+    const content = "Mass-energy $$E = mc^2$$ inline.\n\n$$\n\\int_0^1 x\n$$";
+    const { container } = renderWithRouter(
+      <MarkdownViewer content={content} currentPath="test.md" />,
+    );
+
+    expect(container.querySelectorAll(".katex").length).toBe(2);
+    expect(container.querySelector(".katex-display")).not.toBeNull();
+  });
+
+  it("leaves single-dollar spans literal so shell vars and prices survive", () => {
+    const content = "Set $HOME, pay $100, and note $E = mc^2$ stays text.";
+    const { container } = renderWithRouter(
+      <MarkdownViewer content={content} currentPath="test.md" />,
+    );
+
+    expect(container.querySelector(".katex")).toBeNull();
+    expect(container.textContent).toContain("$HOME");
+    expect(container.textContent).toContain("$100");
+    expect(container.textContent).toContain("$E = mc^2$");
+  });
+
   it("handles relative links", () => {
     const content = "[Relative Link](other.md)";
     renderWithRouter(

@@ -111,7 +111,7 @@ const processor = unified()
 
 - **Line anchors** — `data-source-line` attributes on every block element, with scroll/highlight utilities
 - **GFM** — tables, strikethrough, task lists, autolinks
-- **KaTeX** — `$$...$$` math blocks
+- **KaTeX** — `$$...$$` math, inline and block (single `$` is not a delimiter, so `$HOME` and `$100` stay literal)
 - **Mermaid** — diagram rendering (client-side, lazy-loaded)
 - **Syntax highlighting** — via highlight.js
 - **Frontmatter** — YAML (`---`) and TOML (`+++`) parsing

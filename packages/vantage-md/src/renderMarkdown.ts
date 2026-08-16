@@ -48,7 +48,7 @@ export interface RenderResult {
  *
  * Features (all enabled by default):
  * - GitHub Flavored Markdown (tables, strikethrough, task lists)
- * - KaTeX math rendering ($$...$$ blocks)
+ * - KaTeX math rendering, inline and block ($$...$$ only; single $ is not a delimiter)
  * - Syntax highlighting via highlight.js
  * - `data-source-line` attributes for line anchors
  * - XSS sanitization
