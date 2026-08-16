@@ -35,6 +35,19 @@ describe("StyleGuideModal", () => {
     expect(STYLE_GUIDE_SNIPPET).toContain("Callouts and alerts");
   });
 
+  // The pipeline runs remark-math with singleDollarTextMath: false so that
+  // shell variables and currency in prose ($XDG_RUNTIME_DIR, $100) are never
+  // eaten as math delimiters. Agents copy this snippet verbatim, so promising
+  // them `$...$` teaches them to write math that silently stays literal.
+  it("documents double-dollar math only, matching singleDollarTextMath: false", () => {
+    const mathLine = STYLE_GUIDE_SNIPPET.split("\n").find((line) =>
+      line.includes("LaTeX Math"),
+    );
+    expect(mathLine).toBeDefined();
+    expect(mathLine).toContain("$$...$$");
+    expect(mathLine).not.toContain("`$...$`");
+  });
+
   it("copies snippet on copy button click", async () => {
     const copySpy = vi
       .spyOn(clipboard, "copyTextOrWarn")

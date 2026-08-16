@@ -92,7 +92,8 @@ flowchart TD
 ### Tables, task lists, and math
 - **Tables**: Use standard markdown tables for structured comparisons and schemas.
 - **Task lists**: Use \`- [ ]\` and \`- [x]\` for actionable checklists and status tracking.
-- **LaTeX Math**: Use \`$$...$$\` blocks for equations or \`$...$\` for inline math rendered via KaTeX.
+- **LaTeX Math**: Use \`$$...$$\` for *all* KaTeX math — display blocks (\`$$\` alone on its own lines) and inline alike (\`$$E = mc^2$$\` mid-sentence).
+  - Single dollars are **not** math delimiters: \`$HOME\` and \`$100\` stay literal, so prose and shell snippets are safe to write as-is.
 `;
 
 export const StyleGuideModal: React.FC<StyleGuideModalProps> = ({
