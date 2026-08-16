@@ -1,5 +1,5 @@
 import { useEffect, useCallback, type RefObject } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 const HIGHLIGHT_CLASS = "line-anchor-highlight";
 
@@ -35,6 +35,7 @@ export function useLineAnchor(
   // The markdown content lives inside the scroll container
   const containerRef = scrollContainerRef;
   const location = useLocation();
+  const navigate = useNavigate();
 
   const clearHighlights = useCallback(() => {
     const el = containerRef.current;
@@ -43,6 +44,29 @@ export function useLineAnchor(
       (node as HTMLElement).classList.remove(HIGHLIGHT_CLASS);
     });
   }, [containerRef]);
+
+  /**
+   * Drop the highlights *and* the anchor that produced them.
+   *
+   * The anchor has to leave through the router rather than a raw
+   * `history.replaceState`: react-router never observes a bare replaceState, so
+   * its `location.hash` would keep the anchor we just dismissed and re-apply it
+   * on the next render that reaches `applyAnchor`.
+   */
+  const dismiss = useCallback(() => {
+    clearHighlights();
+    // Only line anchors are ours to strip — a heading anchor (#some-heading)
+    // belongs to whoever navigated here.
+    if (parseLineAnchor(location.hash)) {
+      navigate(location.pathname + location.search, { replace: true });
+    }
+  }, [
+    clearHighlights,
+    navigate,
+    location.hash,
+    location.pathname,
+    location.search,
+  ]);
 
   const applyAnchor = useCallback(() => {
     const el = containerRef.current;
@@ -122,7 +146,13 @@ export function useLineAnchor(
   // Observes document.body so it works even when the scroll container hasn't
   // mounted yet (e.g. behind a loading gate).
   useEffect(() => {
-    if (!location.hash || !parseLineAnchor(location.hash)) return;
+    // Clear before the guard, every time.  Nothing else removes these classes
+    // when the anchor leaves the URL, and react-markdown reuses the rendered
+    // DOM nodes across updates — so a bail-out here used to leave the previous
+    // anchor's boxes painted over whatever the reader looked at next.
+    clearHighlights();
+
+    if (!parseLineAnchor(location.hash)) return;
 
     if (applyAnchor()) return;
 
@@ -133,22 +163,18 @@ export function useLineAnchor(
     });
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
-  }, [location.hash, applyAnchor]);
+    // `location.pathname` is a dependency because switching documents has to
+    // re-run this even when the hash string is unchanged.
+  }, [location.hash, location.pathname, applyAnchor, clearHighlights]);
 
   // Dismiss on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        clearHighlights();
-        // Remove the hash from the URL without navigation
-        if (window.location.hash) {
-          history.replaceState(null, "", window.location.pathname);
-        }
-      }
+      if (e.key === "Escape") dismiss();
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [clearHighlights]);
+  }, [dismiss]);
 
   // Dismiss on click anywhere in the highlighted area
   useEffect(() => {
@@ -157,16 +183,11 @@ export function useLineAnchor(
 
     const handler = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
-      if (target.closest(`.${HIGHLIGHT_CLASS}`)) {
-        clearHighlights();
-        if (window.location.hash) {
-          history.replaceState(null, "", window.location.pathname);
-        }
-      }
+      if (target.closest(`.${HIGHLIGHT_CLASS}`)) dismiss();
     };
     el.addEventListener("click", handler);
     return () => el.removeEventListener("click", handler);
-  }, [containerRef, clearHighlights]);
+  }, [containerRef, dismiss]);
 
   return { clearHighlights };
 }
