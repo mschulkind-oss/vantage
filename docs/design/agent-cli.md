@@ -1,31 +1,33 @@
 ---
 title: "An agent-facing CLI for Vantage"
-status: in-review # draft | in-review | accepted | deprecated
+status: accepted # draft | in-review | accepted | deprecated
 date: 2026-08-24
 tags: [cli, agents, tooling, markdown, lint]
-summary: "Vantage and the agent writing its documents share nothing but a filesystem. A small, zero-install CLI is how Vantage's knowledge — the conventions and the correctness checks — reaches the agent without a human copy-pasting it."
+summary: "Vantage and the agent writing its documents share nothing but a filesystem. A standalone compiled CLI is how Vantage's knowledge — the conventions and the correctness checks — reaches the agent without a human copy-pasting it."
 ---
 
 # An agent-facing CLI — closing the loop Vantage cannot close itself
 
-**Status:** DESIGN SKETCH, 2026-08-24. Reviewed and revised 2026-08-24 — see the
-[Decision Ledger](#decision-ledger). Nothing built. Every claim about existing
-code was verified against the tree on 2026-08-24.
+**Status:** DECIDED, 2026-08-24. Reviewed twice and revised the same day; every
+open question is settled — see the [Decision Ledger](#decision-ledger). Nothing
+built. Every claim about existing code was verified against the tree on
+2026-08-24.
 
 **The short version.** Vantage knows two things the writing agent needs: how to
 format a document, and whether a given document is actually correct. Today the
 first reaches the agent only when a human copies it out of a browser modal, and
 the second doesn't reach it at all, because nothing checks the result. I propose
-a small CLI shipped from the already-published `vantage-md` npm package, with
-two commands: `style-guide` (emit the canonical conventions) and `check` (verify
-a document really renders, by **running the real validators** — `mermaid`,
-`katex`, `remark` — rather than reimplementing them). The only rules we write
-ourselves are the ones nobody else can check: whether a link resolves against
-this repo on disk.
+a small CLI — compiled to a **standalone single-file binary**, distributed by
+`uvx` and `curl` so it needs no runtime at all — with two commands:
+`style-guide` (emit the canonical conventions) and `check` (verify a document
+really renders, by **running the real validators** rather than reimplementing
+them). The only rules we write ourselves are the ones nobody else can answer:
+whether a link resolves against this repo on disk.
 
-**The most important section is [§5](#5-check-delegate-everything-we-can)** —
-the design turns on the CLI being an orchestrator of real validators, not a
-bespoke rule engine.
+**The most important section is [§5](#5-check--delegate-everything-we-can)** —
+the design turns on the CLI being an orchestrator of real validators, and on
+[§5.2](#52-a-delegates-failure-is-not-automatically-a-finding), which is the
+trap that makes orchestration harder than it looks.
 
 **Reads with:** [`review-state-architecture.md`](review-state-architecture.md)
 (why the inbox protocol looks the way it does), and the user-facing
@@ -36,7 +38,8 @@ protocol as agents are told it today).
 
 ## 1. Verdict up front
 
-Build it, in the npm package, `npx`-first, with `style-guide` and `check`.
+Build it as a compiled binary, `uvx`-and-`curl`-distributed, with `style-guide`
+and `check`.
 
 Three principles do the load-bearing work:
 
@@ -44,11 +47,12 @@ Three principles do the load-bearing work:
   the agent cannot call Vantage. Anything the CLI does must work with **no
   server running**, no port, no socket. A command that needs a live Vantage is a
   command an agent cannot rely on.
-- **P2. Delegate every check that a real tool already performs.** We do not
-  reimplement Markdown parsing, Mermaid parsing, or KaTeX validation. We run
-  those projects' own parsers and report what they say. We write rules only for
-  the questions no existing tool can answer — the ones that need this repo on
-  disk and Vantage's own resolution semantics.
+- **P2. Delegate every check a real tool already performs — and classify its
+  failures.** We do not reimplement Markdown, Mermaid, or KaTeX parsing; we run
+  those projects' own parsers. But a delegate can fail because *our environment
+  is wrong* rather than because *the document is wrong*, and reporting the first
+  kind as a finding is the fastest way to destroy trust in the tool. See §5.2 —
+  this is not hypothetical, it is measured.
 - **P3. Discovery rides a channel we already control.** The agent's environment
   is not guaranteed to contain anything Vantage-related, and we are **not**
   editing anyone's `AGENTS.md` to fix that. The review-comment payload is copied
@@ -106,47 +110,54 @@ path runs through a human's clipboard. A CLI closes both, because a CLI is the
 one thing an agent can invoke that lives in the same filesystem world Vantage
 does.
 
-## 4. Distribution: one artifact, several front doors
+## 4. Distribution: one compiled artifact, no runtime
 
 Two questions get conflated here, and separating them settles the argument.
 
-**What language is it written in?** TypeScript, and this is not really a choice.
-The value of `check` is that it answers *"will this render in Vantage"* rather
-than *"is this idiomatic Markdown"*, and answering the first question means
-running the actual pipeline —
-[`renderMarkdown.ts`](../../packages/vantage-md/src/renderMarkdown.ts) (131
-lines), [`resolveLinks.ts`](../../packages/vantage-md/src/resolveLinks.ts) (92
-lines), [`frontmatter.ts`](../../packages/vantage-md/src/frontmatter.ts) (94
-lines) — plus the same `mermaid` and `katex` the viewer loads. Those are
-TypeScript, already published as `vantage-md` v0.1.7, with a release pipeline
-that exists (`just release-md`, OIDC trusted publishing). A Go reimplementation
+**What is it written in?** TypeScript, and this is not really a choice. The
+value of `check` is that it answers *"will this render in Vantage"* rather than
+*"is this idiomatic Markdown"*, and answering the first means running the actual
+pipeline — [`renderMarkdown.ts`](../../packages/vantage-md/src/renderMarkdown.ts)
+(131 lines),
+[`resolveLinks.ts`](../../packages/vantage-md/src/resolveLinks.ts) (92 lines),
+[`frontmatter.ts`](../../packages/vantage-md/src/frontmatter.ts) (94 lines) —
+plus the same `mermaid` and `katex` the viewer loads. A Go reimplementation
 would be a second implementation of link resolution that drifts from the viewer
-*invisibly* — it would pass documents the viewer breaks on.
+*invisibly*: it would pass documents the viewer breaks on.
 
-**How does an agent get it?** This is the open half, and `npx` is the start
-rather than the whole answer.
+**How does an agent get it?** Compiled to a **single-file binary**, so the answer
+is "it downloads one file and runs it." No Node, no npm, no `npx`, no runtime of
+any kind on the target machine.
 
-| Channel | Reach | Cost | Verdict |
-| :--- | :--- | :--- | :--- |
-| `npx vantage-md check docs/` | Any env with Node | A `bin` entry on a package that already ships `dist/` — near free | **v1.** |
-| `npm i -g` | Same, but fast and offline after once | Free, it is the same artifact | **Documented as the fast path.** |
-| `uvx` / PyPI wheel | Envs with `uv` but no Node — common in Python-first agent sandboxes | Needs a compiled single-file binary (`bun build --compile` or Node SEA) wrapped in a wheel | **Genuinely open — [OQ-1](#open-questions).** |
-| Standalone binary via GitHub releases | Anything with `curl` | Same compile step as the wheel; falls out of it | Ships with the wheel if we do it. |
-| A script Vantage writes into `.vantage/` | Good — appears next to the docs | Cannot run the pipeline | **Rejected.** Reinvents distribution badly. |
+| Channel | Reach |
+| :--- | :--- |
+| `uvx` / PyPI wheel carrying the binary | Python-first agent sandboxes, which are common |
+| `curl` from GitHub releases | Anything with a shell |
+| Distro/`brew` packaging, later | Humans who want it on `PATH` |
 
-The important structural point: **the compile-to-binary step, if we take it,
-unlocks `uvx` and `curl` together**, and it does not change the implementation
-language. So "npx or uvx" is not a fork in the road — it is a question of
-whether Node-less agent environments are common enough to pay for a build step.
+Going halfway — shipping an `npx` entrypoint *and* a binary — would mean
+maintaining two dependency stories and two failure modes for one tool, and the
+`npx` one is strictly the weaker: slower cold, useless without Node, and it puts
+a lint-time dependency tree into a package whose library half should never carry
+it. Dropping npm entirely also dissolves that packaging question rather than
+answering it: **`vantage-md` on npm stays a pure library**, and the CLI is a
+sibling workspace package that imports its source and is never published to npm
+at all.
+
+**The build cost is one-time setup, then per-release CI.** A cross-compile
+matrix (linux x64/arm64, darwin x64/arm64, windows x64) wired once into the
+existing release workflow; no per-user cost, and nothing an agent ever waits on.
+The toolchain is already Node 22 (`mise.toml`), so Node's SEA is available;
+`bun build --compile` is the other candidate and is not currently installed
+here. Either is an implementation detail, not a design commitment.
 
 > [!NOTE]
-> **There is no real name collision.** The Go binary is built as `-o vantage`
+> **There is no name collision.** The Go binary is built as `-o vantage`
 > ([`Justfile:22`](../../Justfile#L22)), so the executable on disk is `vantage`.
 > The `Use: "vantage-md"` string at
 > [`main.go:17`](../../cmd/vantage/main.go#L17) is a cosmetic mislabel — help
-> output names a binary nobody installs. So the npm package can take a
-> `vantage-md` bin with zero disruption, and the Go `Use` string is a separate
-> one-line fix to an existing bug, not a rename.
+> output names a binary nobody installs. That is a separate one-line fix to an
+> existing bug, not a rename, and not a blocker for anything here.
 
 ## 5. `check` — delegate everything we can
 
@@ -155,34 +166,66 @@ people's validators and collate the results. We should be embarrassed to
 hand-write a rule that a real parser already enforces.
 
 ```console
-$ npx vantage-md check docs/
-$ npx vantage-md check docs/design/api.md --format json
+$ vantage-check docs/
+$ vantage-check docs/design/api.md --format json
 ```
 
 ### 5.1 What we delegate
 
 | Concern | Delegated to | Already a dependency? |
 | :--- | :--- | :--- |
-| Mermaid diagrams parse | `mermaid`'s own parser (`mermaid.parse()`) | Yes — `optionalDependencies` |
+| Mermaid diagrams parse | `mermaid`'s own parser — with the caveat in §5.2 | Yes — `optionalDependencies` |
 | Math expressions compile | `katex` in `throwOnError` mode | Yes — direct dependency |
-| Markdown is well-formed | `remark` / `remark-gfm` (already the viewer's parser) | Yes — direct dependency |
-| General Markdown hygiene | `remark-lint` presets, opt-in | New dev-side dep |
+| Markdown is well-formed | `remark` / `remark-gfm` (the viewer's own parser) | Yes — direct dependency |
+| General Markdown hygiene | `remark-lint` presets, opt-in | New |
 | Frontmatter is valid | `yaml` / `smol-toml` (the viewer's own parsers) | Yes — both direct deps |
 
 Four of the five are dependencies `vantage-md` **already has**, because the
-viewer needs them to render. That is the whole argument in one line: the
-validators are sitting in the package already, and nobody is asking them
-whether the document is correct before it ships.
+viewer needs them to render. That is the argument in one line: the validators
+are sitting in the package already, and nobody is asking them whether the
+document is correct before it ships. A Mermaid diagram that fails `check` then
+fails for exactly the reason the viewer would fail on it, in Mermaid's own
+words — not our approximation of them.
 
-This also means a Mermaid diagram that fails `check` fails for exactly the
-reason the viewer would fail on it, in Mermaid's own words — not our
-approximation of them.
+### 5.2 A delegate's failure is not automatically a finding
 
-### 5.2 What we write ourselves
+This is the part that makes delegation harder than it looks, and it is measured
+rather than theorized. Running mermaid 11.12.2 headless under Node 22 on
+2026-08-24:
+
+- A **valid** flowchart — `flowchart TD` with a properly quoted
+  `a["Client (React SPA)"]` — throws
+  `TypeError: DOMPurify.addHook is not a function`.
+- An **invalid** one — the same label unquoted — is correctly rejected with a
+  real grammar error: `Parse error on line 2 … Expecting 'SQE'`.
+
+So mermaid's grammar layer works fine without a DOM; its post-parse
+sanitization step does not. A naive `try { mermaid.parse(src) } catch` would
+report **every valid flowchart in the repo as broken** — precisely the
+false-positive class that makes an agent stop running the tool.
+
+> [!CAUTION]
+> **Do not "fix" this by treating any `mermaid.parse` throw as a finding, and do
+> not assume `@mermaid-js/parser` is the drop-in escape hatch.** That package is
+> genuinely DOM-free, but as of 11.12.2 it covers only the newer Langium
+> grammars — architecture, gitGraph, info, packet, pie, radar, treemap — and
+> answers `Unknown diagram type: flowchart`. Flowchart and sequence are the
+> diagram types this project actually uses, including the style guide's own
+> example.
+
+The rule this generalizes to, and the reason it is written into **P2**: every
+delegated validator must have its failures **classified** into *the document is
+wrong* (report it) versus *our environment is wrong* (never report it; fail the
+run loudly instead, because a checker that cannot check must not report green).
+For mermaid specifically that means matching on grammar errors and, if a DOM
+shim proves necessary for full coverage, weighing it against binary size — a
+question §4's compile decision makes real, since jsdom is not small.
+
+### 5.3 What we write ourselves
 
 Only the questions that need *this repo on disk* and Vantage's routing
-semantics. No general-purpose tool can answer these, which is precisely why
-they are ours:
+semantics. No general-purpose tool can answer these, which is precisely why they
+are ours:
 
 | Rule | What it catches |
 | :--- | :--- |
@@ -203,19 +246,31 @@ earn that rate by being filesystem-verified rather than heuristic.
 > checker must walk the parsed AST, not the raw text — inline code, fenced
 > blocks, and autolinks are not links. That one is on the record because it is
 > the obvious way to get `link/*` wrong.
+>
+> And while writing §5.2's cross-reference I hand-derived its slug and got it
+> wrong: an em dash inside a heading leaves **two** hyphens, not one
+> (`5-check--delegate-…`). Section slugs are not reasonable to guess — the
+> checker must run the same slugger the renderer runs. That is the entire case
+> for `link/dead-section-anchor` in one mistake.
 
-### 5.3 Configuration
+### 5.4 Configuration
 
-A repo-level config file, in v1 rather than deferred. Rule severities, rule
-disablement, and exit-code policy live there; flags override it; **absent config
-means working defaults**, so the zero-install one-command path stays intact.
+A repo-level **`.vantage.toml` at the repository root**, shipping in v1 rather
+than deferred. It carries rule severities, rule disablement, and exit-code
+policy; flags override it; **absent config means working defaults**, so the
+zero-setup one-command path stays intact. Discovery walks up from the target
+file.
 
-The open part is where it lives and what it is called: Vantage's existing config
-is *user*-level at `<UserConfigDir>/vantage/config.toml`
-([`config.go:485`](../../internal/config/config.go#L485)), and this is the first
-*repo*-level config the project would have. See [OQ-3](#open-questions).
+TOML matches what Vantage already speaks — the existing user-level config is
+`<UserConfigDir>/vantage/config.toml`
+([`config.go:485`](../../internal/config/config.go#L485)). It deliberately does
+**not** live in `.vantage/`, which is transient state users are told to
+gitignore; committed config inside a gitignored directory is a trap.
 
-### 5.4 `--fix`
+Exit codes: non-zero on errors, `--strict` to include warnings, and both
+overridable in config.
+
+### 5.5 `--fix`
 
 Narrow if it exists at all: mechanical, unambiguous rewrites only (stripping a
 leading slash, tagging a fence whose language is inferable). It never touches
@@ -239,7 +294,7 @@ and copied to the clipboard on every single review turn. It is a channel we
 already own, already write, and that already reaches the agent verbatim. A short
 note is enough:
 
-> Before delivering, run `npx vantage-md check <file>` and fix what it reports.
+> Before delivering, run `uvx vantage-check <file>` and fix what it reports.
 
 Three properties make this the right hook. It requires **zero setup** from the
 user. It is **self-refreshing** — the agent fetches current conventions rather
@@ -259,6 +314,8 @@ command remains available for anyone who wants to wire it in earlier.
 - **Not a network protocol.** No daemon, no RPC, no port, no "is the server
   running" check. Per **P1**, every command works offline against a bare
   checkout. Hard boundary, not a v1 simplification.
+- **Not an npm CLI.** `vantage-md` on npm stays a pure library; the CLI is never
+  published there.
 - **Not editing anyone's agent config.** No `AGENTS.md` writes, no `CLAUDE.md`
   writes, no `.gitignore` writes.
 - **Not a writing assistant.** No prose restructuring, no generated frontmatter
@@ -272,17 +329,17 @@ command remains available for anyone who wants to wire it in earlier.
 
 | Risk | Mitigation |
 | :--- | :--- |
-| **R1. Two-implementation drift** if the Go binary also grows checks | Don't. Per **P2**, TypeScript owns it. If the Go binary ever needs to check, it shells out or does nothing. |
-| **R2. False positives erode trust** — one bogus error and the agent stops running it | Delegated checks inherit the real parser's verdict; our own rules are filesystem-verified, not heuristic. Ship `link/*` first because it is checkable rather than inferable. |
-| **R3. Dependency weight** — lint deps landing on library consumers of `vantage-md` | Keep the CLI in its own entrypoint so `import "vantage-md"` never pays for it. This is a real packaging constraint — [OQ-2](#open-questions). |
-| **R4. `npx` latency, and Node-less environments** | `npm i -g` as the fast path; [OQ-1](#open-questions) decides whether `uvx` is worth a compile step. |
-| **R5. Version skew** — agent runs `@latest` against an older server | Checks describe the *format*, which is stable, not server behavior. |
-| **R6. Scope gravity** — "the CLI could also…" is how this becomes a second product | §7 is the defense. Every proposed command justifies itself against **P1**. |
+| **R1. Delegate environment failures reported as document defects** — measured, not hypothetical (§5.2) | Classify every delegate's failures into document-wrong vs environment-wrong. Environment-wrong fails the run loudly; it never becomes a finding, and a checker that cannot check never reports green. |
+| **R2. False positives erode trust** — one bogus error and the agent stops running it | Our own rules are filesystem-verified, not heuristic. Ship `link/*` first because it is checkable rather than inferable. R1 is the other half of this. |
+| **R3. Two-implementation drift** if the Go binary also grows checks | Don't. Per **P2**, TypeScript owns it. If the Go binary ever needs to check, it shells out or does nothing. |
+| **R4. Release-matrix maintenance** — five platform binaries per release | One-time CI wiring into a release pipeline that already exists; no per-user cost. Accepted deliberately over shipping two runtimes. |
+| **R5. Binary size** if full Mermaid coverage needs a DOM shim | Weigh jsdom against dropping to grammar-error matching (§5.2). Decide with a measurement, not a guess. |
+| **R6. Version skew** — agent runs a newer binary against an older server | Checks describe the *format*, which is stable, not server behavior. |
+| **R7. Scope gravity** — "the CLI could also…" is how this becomes a second product | §7 is the defense. Every proposed command justifies itself against **P1**. |
 
-**What it costs us.** A `bin` entry, a CLI dependency tree the library half of
-the package does not want, a published command surface that becomes a
-compatibility promise, and the release discipline of a tool agents invoke
-unattended.
+**What it costs us.** A cross-compile release matrix, a published command
+surface that becomes a compatibility promise, and the release discipline of a
+tool agents invoke unattended.
 
 **What it deletes.** The reason for out-of-tree copies of the style guide. The
 "paste this into your agent and hope" step. And the class of broken-link bugs
@@ -293,18 +350,21 @@ that currently reach a human before they reach a check.
 1. **Move the style guide into the package** as the single source; rewire
    `StyleGuideModal` to import it. No CLI yet — pure de-duplication, stands
    alone.
-2. **`style-guide` command.** Smallest possible `bin`; proves the packaging.
-3. **`check`, our own `link/*` rules only** (§5.2). The minimum viable useful
+2. **The CLI skeleton and compile pipeline**, with `style-guide` as its only
+   command. Proves the cross-compile and the release matrix on a command whose
+   logic cannot fail.
+3. **`check`, our own `link/*` rules only** (§5.3). The minimum viable useful
    checker and the highest-value slice.
 4. **Payload pointer** (§6), so the thing is actually reachable. Immediately
    after step 3 — a checker nobody runs scores zero.
-5. **Delegated validators** (§5.1) — Mermaid, KaTeX, frontmatter, then opt-in
-   `remark-lint`. Config (§5.3) lands with these, since severities are what it
+5. **Delegated validators** (§5.1), each landing with its failure classification
+   (§5.2) — KaTeX and frontmatter first because they are clean, Mermaid last
+   because it is not. Config (§5.4) lands here, since severities are what it
    configures.
 6. **Document all of it** in `userguide/` — including, finally, the style guide
    feature that has been shipping undocumented.
 
-`--fix` (§5.4) comes after all of it, if at all.
+`--fix` (§5.5) comes after all of it, if at all.
 
 ## 10. Icebox
 
@@ -319,23 +379,30 @@ unlinked file — and a CLI makes that race structurally unreachable. Those are
 prompt tokens on every review turn.
 
 The case against is that **the protocol works well today**, and the heredoc's
-virtue is needing nothing but a shell. Trading that for a hard `npx` dependency
-in the one flow that currently has no dependencies would be a downgrade. Not
-built for now; revisit if the race ever actually bites someone.
+virtue is needing nothing but a shell. Trading that for a hard dependency on the
+binary being present, in the one flow that currently has no dependencies, would
+be a downgrade. Not built for now; revisit if the race ever actually bites
+someone.
 
 ## 11. Alternatives considered
 
 - **Do nothing; keep copy-paste.** Rejected. It leaves the verify path missing
   entirely, which is the actual gap.
+- **Ship an `npx` entrypoint, with or without a binary.** Rejected. Useless
+  without Node, slower cold, and it drags a lint-time dependency tree into a
+  library package. Shipping it *alongside* a binary is worse than either alone:
+  two dependency stories and two failure modes for one tool.
 - **Put the checker in the Go binary.** Rejected on **P2** and §4: guaranteed
-  invisible drift from the real renderer, and no zero-install story comparable
-  to `npx`.
+  invisible drift from the real renderer.
 - **Write our own rules for Mermaid, math, and Markdown validity.** Rejected —
-  this was the original draft's plan and it was wrong. Those parsers exist, four
-  of the five are already dependencies of this package, and our approximation of
-  them would be worse and would drift. This is now **P2**.
+  this was the first draft's plan and it was wrong. Those parsers exist, four of
+  five are already dependencies, and our approximation would be worse and would
+  drift. This is now **P2**.
+- **Use `@mermaid-js/parser` instead of dealing with mermaid's DOM dependency.**
+  Rejected as a general solution — verified 2026-08-24 to cover only the newer
+  Langium grammars, not flowchart or sequence. See the §5.2 caution.
 - **A `remark-lint` preset as the user-facing surface.** Rejected as the
-  surface — it needs a config file and a `remark` install, which fails the
+  surface — it needs a config file and a `remark` install, failing the
   one-command bootstrap. **Adopted as an internal engine** for general Markdown
   hygiene (§5.1).
 - **Ship it as an agent skill / prompt file instead of a tool.** Rejected as a
@@ -351,63 +418,28 @@ built for now; revisit if the race ever actually bites someone.
 | ID | Ruling / Decision | Date | Settled in |
 | :--- | :--- | :--- | :--- |
 | OQ-1 | Both `style-guide` and `check`; the anchor question was a false choice | 2026-08-24 | §1, §9 |
-| OQ-2 | No rename. npm package takes a `vantage-md` bin; the Go `Use` string is a separate cosmetic fix | 2026-08-24 | §4 note |
-| OQ-3 | Repo-level config ships in v1, not deferred | 2026-08-24 | §5.3 |
+| OQ-2 | No rename. The `vantage-md` collision is illusory; the Go `Use` string is a separate cosmetic fix | 2026-08-24 | §4 note |
+| OQ-3 | Repo-level config ships in v1, not deferred | 2026-08-24 | §5.4 |
 | OQ-4 | `reply` iceboxed — protocol works; revisit if the race bites | 2026-08-24 | §10 |
-| OQ-5 | `--fix` narrow, and only if it happens at all | 2026-08-24 | §5.4 |
-| OQ-6 | Non-zero on errors, `--strict` for warnings, policy configurable | 2026-08-24 | §5.3 |
-| OQ-7 | Dropped — the out-of-tree skill is referenced nowhere in this repo and is out of scope | 2026-08-24 | §2 |
+| OQ-5 | `--fix` narrow, and only if it happens at all | 2026-08-24 | §5.5 |
+| OQ-6 | Non-zero on errors, `--strict` for warnings, policy configurable | 2026-08-24 | §5.4 |
+| OQ-7 | Dropped — the out-of-tree skill is referenced nowhere in this repo | 2026-08-24 | §2 |
+| OQ-A1 | Compile to a standalone binary; `uvx` + `curl`, no `npx`. One-time CI matrix cost | 2026-08-24 | §4 |
+| OQ-A2 | Moot once npm is dropped — `vantage-md` stays a pure library, CLI is an unpublished sibling | 2026-08-24 | §4 |
+| OQ-A3 | `.vantage.toml` at the repository root | 2026-08-24 | §5.4 |
 
 > [!IMPORTANT]
-> **The original OQ-2 objection was investigated and is false.** There is no
-> `vantage-md` name collision on disk: the Go binary installs as `vantage`
-> ([`Justfile:22`](../../Justfile#L22)) and only its help text says otherwise.
-> Do not re-derive this as a blocker for giving the npm package a `vantage-md`
-> bin.
+> **Two objections were investigated and are settled — do not re-derive them.**
+> (1) There is no `vantage-md` name collision on disk: the Go binary installs as
+> `vantage` ([`Justfile:22`](../../Justfile#L22)) and only its help text says
+> otherwise. (2) `@mermaid-js/parser` is *not* a drop-in replacement for
+> mermaid's DOM-dependent parse path; it does not know what a flowchart is
+> (§5.2, verified against 11.12.2 on 2026-08-24).
 
 ## Open Questions
 
-1. 💬 **OQ-A1: Is `uvx` worth a compile step?** `npx` covers Node environments;
-   Python-first agent sandboxes with `uv` and no Node are common enough to ask
-   about. Reaching them means compiling the TS CLI to a single-file binary
-   (`bun build --compile` or Node SEA) and wrapping it in a wheel — which also
-   yields a `curl`-able release binary for free. This decides whether v1 has one
-   delivery channel or three, and it is a build-pipeline commitment, not a
-   code-level one.
-
-   _Leaning:_ `npx` for v1, structured so the compile step can be added without
-   rework. I do not have data on how many agent environments lack Node, and
-   that number is the whole decision — if you have a read on it, it settles this.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
-
-2. 💬 **OQ-A2: Same package or a sibling?** `check` pulls in validator
-   dependencies that library consumers of `vantage-md` should never pay for.
-   Options: a separate `./cli` entrypoint in the same package (one version, one
-   release, deps still in the tree); a sibling package depending on
-   `vantage-md` (clean deps, two releases to keep in step).
-
-   _Leaning:_ Same package, separate entrypoint. Version skew between a checker
-   and the pipeline it checks against is a worse problem than an unused
-   dependency, and `mermaid` is already `optionalDependencies` — the pattern for
-   "heavy, not everyone needs it" is established here.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
-
-3. 💬 **OQ-A3: Where does repo-level config live, and what is it called?** This
-   is the project's first repo-level config; the existing one is user-level at
-   `<UserConfigDir>/vantage/config.toml`
-   ([`config.go:485`](../../internal/config/config.go#L485)). Options:
-   `.vantage.toml` at the repo root (matches the existing TOML convention,
-   discovered by walking up); a `vantage` key in `package.json` (idiomatic for
-   an npm CLI, invisible to the Go side); or `.vantage/config.toml`, reusing the
-   directory the inbox already lives in.
-
-   _Leaning:_ `.vantage.toml` at the root. TOML matches what Vantage already
-   speaks, and `.vantage/` is currently *transient state that users are told to
-   gitignore* — putting committed config inside a gitignored directory is a trap.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
+None. Every question raised in review is recorded in the
+[Decision Ledger](#decision-ledger) above. New questions get appended here as
+implementation surfaces them; the first likely candidate is R5 — whether full
+Mermaid coverage is worth a DOM shim in the binary — which should be settled
+with a size measurement rather than a discussion.
