@@ -23,6 +23,8 @@ export { sanitizeSchema } from "./sanitize.js";
 export { renderMermaidBlocks } from "./renderMermaidBlocks.js";
 export type { RenderMermaidOptions } from "./renderMermaidBlocks.js";
 
+export { parseToMdast, headingIds } from "./analyze.js";
+
 export { resolveLinks } from "./resolveLinks.js";
 export type { ResolveLinkOptions } from "./resolveLinks.js";
 
