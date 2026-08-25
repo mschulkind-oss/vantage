@@ -16,7 +16,12 @@ export {
 } from "./scrollToLineAnchor.js";
 
 export { parseFrontmatter } from "./frontmatter.js";
-export type { ParsedFrontmatter, FrontmatterFormat } from "./frontmatter.js";
+export type {
+  ParsedFrontmatter,
+  FrontmatterFormat,
+  StrictFrontmatter,
+} from "./frontmatter.js";
+export { parseFrontmatterStrict } from "./frontmatter.js";
 
 export { sanitizeSchema } from "./sanitize.js";
 
