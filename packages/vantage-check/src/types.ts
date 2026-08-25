@@ -23,4 +23,15 @@ export interface Report {
   /** How many documents were checked. */
   files: number;
   findings: Finding[];
+  /**
+   * Validator ids that could not run (environment failures). Non-empty means
+   * the run was inconclusive and forces exit code 2.
+   */
+  unchecked: string[];
+  /** Human message for the first environment failure, if any. */
+  environmentError: string | null;
+  /** Set when a present config file was invalid; forces exit code 2. */
+  configError: string | null;
+  /** Effective strict flag (CLI flag OR any applied config's strict). */
+  strict: boolean;
 }

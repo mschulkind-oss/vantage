@@ -11,6 +11,8 @@ export interface ParsedDoc {
   abs: string;
   /** Path used in reports (relative to the working directory). */
   rel: string;
+  /** The raw file content, frontmatter included. */
+  content: string;
   /** Content with frontmatter stripped — what the viewer renders. */
   body: string;
   /**
@@ -53,6 +55,7 @@ export function docFromContent(
   return {
     abs,
     rel,
+    content,
     body,
     lineCount: countLines(content),
     bodyLineOffset,
