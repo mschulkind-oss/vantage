@@ -13,7 +13,8 @@
     "format:check": "prettier --check 'src/**/*.ts' 'scripts/**/*.ts'"
   },
   "dependencies": {
-    "commander": "^13.1.0"
+    "commander": "^13.1.0",
+    "unist-util-visit": "^5.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
