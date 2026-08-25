@@ -12,7 +12,8 @@
     "types": ["node"],
     "baseUrl": ".",
     "paths": {
-      "vantage-md": ["../vantage-md/src/index.ts"]
+      "vantage-md": ["../vantage-md/src/index.ts"],
+      "dompurify": ["./src/shims/dompurify.ts"]
     },
     "ignoreDeprecations": "6.0"
   },
