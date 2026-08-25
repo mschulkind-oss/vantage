@@ -7,16 +7,29 @@
  *
  * Run:  bun scripts/spike-mermaid.ts
  *
- * FINDINGS (mermaid 11.16.0, bun, no DOM):
+ * FINDINGS (mermaid 11.16.0, bun and node, no DOM):
  *   - `mermaid.parse(text)` resolves for valid diagrams (returns {diagramType}).
  *   - A grammar error THROWS `Error` whose message matches /Parse error on line \d+/.
  *   - An unrecognized/empty diagram THROWS `UnknownDiagramError`
  *     ("No diagram type detected...").
- *   - No `document`/`window` access is required — it runs bare in Node/bun.
+ *   - No `document`/`window` access is required for *unlabeled* diagrams.
+ *   - TRAP (found by dogfooding the CLI on this repo's own userguide): a
+ *     flowchart with labeled nodes or edges (`A[Start]`, `B -->|Yes| C`)
+ *     pushes `mermaid.parse` through its bundled DOMPurify — hook setup then
+ *     `sanitize` of each label. DOMPurify's factory given no DOM returns a
+ *     method-less stub, so the hook setup throws
+ *     `TypeError: DOMPurify.addHook is not a function` — on node *and* bun,
+ *     i.e. systematically, not a broken environment. Left unaddressed, this
+ *     made every labeled-flowchart repo a permanently exit-2 run.
  *
- * DECISION: no DOM shim. The mermaid/parse validator calls `mermaid.parse`
- * and classifies: Parse-error and UnknownDiagramError => document-wrong
- * finding; any other throw => EnvironmentFailure (unchecked, exit 2).
+ * DECISION: no jsdom (the design rejected a DOM shim; it is heavy and parse
+ * never renders). Instead the CLI bundles a headless stand-in for dompurify
+ * (src/shims/dompurify.ts, aliased in tsconfig paths + vitest): an identity
+ * sanitize, since `mermaid.parse` only validates grammar and never emits
+ * HTML — sanitization is a render-time concern the browser's real DOMPurify
+ * handles. The jison grammar check then runs exactly as in the browser, and
+ * the classifier is unchanged: Parse-error and UnknownDiagramError =>
+ * document-wrong finding; any other throw => EnvironmentFailure (exit 2).
  */
 
 export {};

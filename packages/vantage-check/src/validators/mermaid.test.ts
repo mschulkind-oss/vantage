@@ -49,4 +49,29 @@ describe("validateMermaid", () => {
     const content = "```js\nconst a = 1;\n```\n";
     expect(await validateMermaid.run(doc(content))).toEqual([]);
   });
+
+  it("validates labeled flowcharts (the headless DOMPurify trap)", async () => {
+    // Labeled nodes/edges push mermaid.parse through its bundled DOMPurify,
+    // which is a method-less stub without a DOM. The shim keeps this on the
+    // grammar path instead of an environment failure.
+    const content =
+      "```mermaid\n" +
+      "flowchart TD\n" +
+      "    A[Start] --> B{Is it working?}\n" +
+      "    B -->|Yes| C[Great!]\n" +
+      "    B -->|No| D[Debug]\n" +
+      "    D --> B\n" +
+      "    C --> E[End]\n" +
+      "```\n";
+    expect(await validateMermaid.run(doc(content))).toEqual([]);
+  });
+
+  it("still finds grammar errors in labeled flowcharts", async () => {
+    const content =
+      "```mermaid\n" + "flowchart TD\n" + "    A[Start] -->|Yes|\n" + "```\n";
+    const findings = await validateMermaid.run(doc(content));
+    expect(findings).toHaveLength(1);
+    expect(findings[0].rule).toBe("mermaid/parse");
+    expect(findings[0].line).toBe(1);
+  });
 });
