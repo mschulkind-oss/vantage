@@ -1,0 +1,28 @@
+{
+  "name": "vantage-check",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Agent-facing checker for Vantage documents. Compiled to a standalone single-file binary; never published to npm.",
+  "type": "module",
+  "scripts": {
+    "build": "bun ./scripts/build.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write 'src/**/*.ts' 'scripts/**/*.ts'",
+    "format:check": "prettier --check 'src/**/*.ts' 'scripts/**/*.ts'"
+  },
+  "dependencies": {
+    "commander": "^13.1.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.10.1",
+    "eslint": "^10.7.0",
+    "globals": "^16.5.0",
+    "prettier": "^3.8.1",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.63.0",
+    "vitest": "^4.1.10"
+  }
+}
