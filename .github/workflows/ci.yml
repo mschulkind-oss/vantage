@@ -38,6 +38,9 @@ jobs:
       - name: Build vantage-md package
         run: cd packages/vantage-md && npm ci && npx tsup
 
+      - name: Install vantage-check dependencies
+        run: cd packages/vantage-check && npm ci
+
       - name: Install frontend dependencies
         run: cd frontend && npm ci
 

@@ -1,0 +1,118 @@
+name: Publish vantage-check
+
+# The vantage-check CLI is an independently versioned, compiled single-file
+# binary. Pushing a `vantage-check@<version>` tag cross-compiles it for every
+# supported platform and publishes the results:
+#   - `build` → binaries on the GitHub release (install with curl)
+#   - `pypi`  → platform-tagged wheels on PyPI (install with uvx)
+#
+# Modeled on publish.yml (matrix) and publish-npm.yml (tag trigger). Unlike the
+# Go binary, vantage-check is TypeScript cross-compiled with `bun build
+# --compile`. bun fetches each target's runtime on first build, so these jobs
+# need network access (fine in CI; unavailable in the sandbox).
+#
+# The `pypi` job additionally requires the `vantage-check` project to exist on
+# PyPI with GitHub OIDC trusted publishing configured for this repo — an owner
+# action outside the repo. Until that is done it fails, but `build` has already
+# published the binaries, so the curl install keeps working either way.
+on:
+  push:
+    tags:
+      - "vantage-check@*"
+
+permissions:
+  contents: write # create the GitHub release + upload binaries
+  id-token: write # PyPI trusted publishing (OIDC)
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: bun-linux-x64, os: linux, arch: x64, ext: tar.gz }
+          - { target: bun-linux-arm64, os: linux, arch: arm64, ext: tar.gz }
+          - { target: bun-darwin-x64, os: darwin, arch: x64, ext: tar.gz }
+          - { target: bun-darwin-arm64, os: darwin, arch: arm64, ext: tar.gz }
+          - { target: bun-windows-x64, os: windows, arch: x64, ext: zip }
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install mise (bun + node)
+        uses: jdx/mise-action@v4
+
+      - name: Install dependencies
+        run: |
+          cd packages/vantage-md && npm ci
+          cd ../vantage-check && npm ci
+
+      - name: Cross-compile
+        run: cd packages/vantage-check && bun run build --target ${{ matrix.target }}
+
+      - name: Compute version
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#vantage-check@}" >> "$GITHUB_OUTPUT"
+
+      - name: Archive
+        run: |
+          set -euo pipefail
+          version="${{ steps.ver.outputs.version }}"
+          os="${{ matrix.os }}"
+          arch="${{ matrix.arch }}"
+          name="vantage-check_${version}_${os}_${arch}"
+          staging="$(mktemp -d)"
+          cp LICENSE README.md "$staging/"
+          if [ "$os" = "windows" ]; then
+            cp packages/vantage-check/dist/vantage-check "$staging/vantage-check.exe"
+            ( cd "$staging" && zip -q "../${name}.zip" vantage-check.exe LICENSE README.md )
+          else
+            cp packages/vantage-check/dist/vantage-check "$staging/vantage-check"
+            ( cd "$staging" && tar -czf "../${name}.tar.gz" vantage-check LICENSE README.md )
+          fi
+
+      - name: Upload to the GitHub release
+        uses: softprops/action-gh-release@v4
+        with:
+          files: |
+            vantage-check_${{ steps.ver.outputs.version }}_${{ matrix.os }}_${{ matrix.arch }}.${{ matrix.ext }}
+
+  pypi:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: bun-linux-x64, pyplat: linux_x86_64 }
+          - { target: bun-linux-arm64, pyplat: linux_aarch64 }
+          - { target: bun-darwin-x64, pyplat: macosx_10_9_x86_64 }
+          - { target: bun-darwin-arm64, pyplat: macosx_11_0_arm64 }
+          - { target: bun-windows-x64, pyplat: win_amd64 }
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install mise (bun + node)
+        uses: jdx/mise-action@v4
+
+      - name: Install dependencies
+        run: |
+          cd packages/vantage-md && npm ci
+          cd ../vantage-check && npm ci
+
+      - name: Cross-compile
+        run: cd packages/vantage-check && bun run build --target ${{ matrix.target }}
+
+      - name: Build wheel
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#vantage-check@}"
+          python3 -m pip install --quiet wheel
+          cd packages/vantage-check
+          python3 py/build_wheel.py dist/vantage-check "$version" "${{ matrix.pyplat }}"
+
+      - name: Publish to PyPI
+        # Trusted publishing (OIDC) — no token. Requires the `vantage-check`
+        # project on PyPI to be configured for this repo's GitHub identity.
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/vantage-check/dist/
