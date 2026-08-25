@@ -25,3 +25,5 @@ export type { RenderMermaidOptions } from "./renderMermaidBlocks.js";
 
 export { resolveLinks } from "./resolveLinks.js";
 export type { ResolveLinkOptions } from "./resolveLinks.js";
+
+export { STYLE_GUIDE_SNIPPET } from "./styleGuide.js";
