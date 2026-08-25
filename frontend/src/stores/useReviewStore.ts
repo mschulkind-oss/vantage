@@ -917,6 +917,7 @@ function respondingInstructions(
     "### Delivery rules",
     "",
     "- **Save the document before delivering.** Vantage reads the document from disk at delivery time to record what changed; delivering first records a stale version.",
+    `- **Check the document before delivering.** From the root of this document's repo, run \`uvx vantage-check ${filePath}\` and fix what it reports — it verifies the document actually renders in Vantage. If \`uvx\` is unavailable, proceed: it is a quality gate, not a delivery dependency.`,
     "- **One line per comment you acted on.** Skip the rest — a line claiming work you did not do reads to the reviewer as an answered comment.",
     "- **Copy `id` and `round` from the heading of the comment you are answering** (they are shown there as `` `[id]` `` and `` `round:N` ``). The round says which turn you answered, so a follow-up the reviewer writes while you work is not mistaken for something your answer already covered.",
     "- **Generate a fresh random nonce for every line**, and **do not re-deliver a line you have already delivered**. The nonce is how Vantage tells a new response from a redelivered one; a line with a reused nonce is silently dropped.",

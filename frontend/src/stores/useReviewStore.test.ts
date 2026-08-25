@@ -1026,6 +1026,14 @@ describe("useReviewStore", () => {
       expect(payload).toContain("Save the document before delivering");
     });
 
+    it("instructs checking the document with vantage-check before delivering", async () => {
+      seedNested();
+      const payload = await copiedPayload();
+      expect(payload).toContain("Check the document before delivering");
+      expect(payload).toContain("uvx vantage-check docs/design/guide.md");
+      expect(payload).toContain("quality gate, not a delivery dependency");
+    });
+
     it("requires a fresh nonce per line and forbids re-delivery", async () => {
       seedNested();
       const payload = await copiedPayload();
