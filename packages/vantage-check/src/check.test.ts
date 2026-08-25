@@ -41,8 +41,8 @@ describe("collectMarkdownFiles", () => {
 });
 
 describe("runCheck (end to end)", () => {
-  it("finds exactly the seeded findings", () => {
-    const report = runCheck(FIX);
+  it("finds exactly the seeded findings", async () => {
+    const report = await runCheck(FIX, { strict: false, configPath: null });
     expect(report.files).toBe(3);
     const got = report.findings.map(sig).sort();
     const expected = [
@@ -55,14 +55,17 @@ describe("runCheck (end to end)", () => {
     expect(got).toEqual(expected);
   });
 
-  it("reports no findings for a clean document", () => {
-    const report = runCheck(path.join(FIX, "README.md"));
+  it("reports no findings for a clean document", async () => {
+    const report = await runCheck(path.join(FIX, "README.md"), {
+      strict: false,
+      configPath: null,
+    });
     expect(report.files).toBe(1);
     expect(report.findings).toEqual([]);
   });
 
-  it("skips hidden directories and node_modules", () => {
-    const report = runCheck(FIX);
+  it("skips hidden directories and node_modules", async () => {
+    const report = await runCheck(FIX, { strict: false, configPath: null });
     expect(report.findings.every((f) => !f.file.includes("node_modules"))).toBe(
       true,
     );
@@ -70,13 +73,16 @@ describe("runCheck (end to end)", () => {
 });
 
 describe("exitCode", () => {
-  it("is 1 when the tree has error findings", () => {
-    const report = runCheck(FIX);
-    expect(exitCode(report, false)).toBe(1);
+  it("is 1 when the tree has error findings", async () => {
+    const report = await runCheck(FIX, { strict: false, configPath: null });
+    expect(exitCode(report)).toBe(1);
   });
 
-  it("is 0 for a clean document", () => {
-    const report = runCheck(path.join(FIX, "README.md"));
-    expect(exitCode(report, false)).toBe(0);
+  it("is 0 for a clean document", async () => {
+    const report = await runCheck(path.join(FIX, "README.md"), {
+      strict: false,
+      configPath: null,
+    });
+    expect(exitCode(report)).toBe(0);
   });
 });

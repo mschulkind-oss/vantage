@@ -14,6 +14,14 @@
   },
   "dependencies": {
     "commander": "^13.1.0",
+    "katex": "0.18.0",
+    "mermaid": "11.16.0",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "remark-preset-lint-recommended": "^7.0.1",
+    "smol-toml": "^1.7.0",
+    "unified": "^11.0.0",
+    "vfile": "^6.0.3",
     "unist-util-visit": "^5.1.0"
   },
   "devDependencies": {
