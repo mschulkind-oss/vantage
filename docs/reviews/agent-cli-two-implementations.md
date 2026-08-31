@@ -80,6 +80,51 @@ The friction is catalogued in the
 [Run A review](agent-cli-implementation-review.md#23-what-it-got-stuck-on):
 nine traps, several of them self-inflicted gate breakage.
 
+### Where the gap actually comes from
+
+Both runs made **exactly 47** verification calls — test suites, typechecks,
+`just check-ci`, builds. The gap is not debugging cycles. It is in everything
+around them:
+
+| Tool calls | Run A | Run B |
+| :--- | ---: | ---: |
+| Orientation (`Read` + exploratory Bash) | 176 | **42** |
+| Mutation (`Edit`/`Write`) | 137 across 60 files | **47 across 44 files** |
+| Verification | 47 | 47 |
+| Planning apparatus (subagents, task tracker, plan mode) | 24 | 0 |
+| git, shell, everything else | 71 | 49 |
+| **Total** | **455** | **185** |
+
+Three behaviours account for nearly all of the 270 extra calls:
+
+- **Revising versus writing once.** Run A averaged 2.3 mutations per file and
+  went back to `Justfile`, `rules/links.ts`, and `src/main.ts` eight, eight, and
+  seven times. Run B averaged 1.07 — it wrote each file whole, in one call, and
+  moved on. Run B used the `Edit` tool zero times.
+- **Re-reading instead of remembering.** 94 `Read` calls against Run B's **one**
+  (Run B inspected files through `sed`/`rg` in Bash when it needed to at all).
+  This is not the compactions: Run A was re-reading its own files in its first
+  context window too.
+- **Planning as conversation versus planning as a file.** Run A's four
+  subagents, task tracker, and plan-mode round trip cost 24 tool calls, 39
+  subagent responses, and 78,938 output tokens. Run B's plan was one `Write`.
+
+Since responses track tool calls almost one to one in both runs (1.22 and 1.03
+calls per response), the extra calls *are* the extra responses, and the extra
+responses are the extra tokens.
+
+What is **not** different is the share of output spent thinking. Run A's
+recorded reasoning is 955 k characters, about two thirds of its output; backing
+Run B's tool payloads and prose out of its token total leaves a comparable two
+thirds. Run B's reasoning is not stored as plaintext in the transcript, so this
+is an estimate rather than a measurement — but neither model is unusually
+deliberative per response. Run A simply needed twice as many responses, and each
+one carried less: 0.88 characters of tool payload per output token against Run
+B's 1.32, while delivering a *smaller* package (2,539 lines against 3,569).
+
+One smaller line item: Run A wrote 123 k characters of prose to the user across
+the run; Run B wrote 2.7 k. That is roughly 8% of Run A's output spent narrating.
+
 ### How much of Run A's cost was the compactions?
 
 Very little. Splitting Run A at its two compaction boundaries:
