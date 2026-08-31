@@ -1,6 +1,6 @@
 import { useEffect, type RefObject } from "react";
 import type { ReviewComment } from "../types";
-import { marked } from "marked";
+import { renderCommentMarkdown } from "../lib/commentMarkdown";
 import {
   blockVisibleText,
   hashBlockText,
@@ -12,15 +12,6 @@ import {
   latestAgentReaction,
   useReviewStore,
 } from "../stores/useReviewStore";
-
-const mdOptions = { breaks: false, gfm: true };
-
-function renderMarkdownInline(text: string): string {
-  const html = (marked.parse(text, mdOptions) as string).trim();
-  const singlePara = /^<p>([\s\S]*)<\/p>$/.exec(html);
-  if (singlePara) return singlePara[1];
-  return html;
-}
 
 const MARK_ATTR = "data-review-comment-id";
 const INLINE_COMMENT_ATTR = "data-review-inline-comment";
@@ -490,7 +481,7 @@ function createCommentBlock(
   `;
 
   const textEl = wrapper.querySelector(".review-inline-comment-text");
-  if (textEl) textEl.innerHTML = renderMarkdownInline(comment.comment);
+  if (textEl) textEl.innerHTML = renderCommentMarkdown(comment.comment);
 
   populateThreadSummaries(wrapper, comment);
   wireCommentButtons(wrapper, comment, actions);
@@ -540,7 +531,7 @@ function createOutdatedBlock(
   if (quoteEl)
     quoteEl.textContent = comment.fallback_text || comment.selected_text || "";
   const textEl = wrapper.querySelector(".review-inline-comment-text");
-  if (textEl) textEl.innerHTML = renderMarkdownInline(comment.comment);
+  if (textEl) textEl.innerHTML = renderCommentMarkdown(comment.comment);
 
   populateThreadSummaries(wrapper, comment);
   wireCommentButtons(wrapper, comment, actions);
@@ -778,7 +769,7 @@ function populateThreadSummaries(
     const r = Number.isFinite(idx) ? reactions[idx] : undefined;
     if (!r) continue;
     const textEl = entry.querySelector(".review-thread-text");
-    if (textEl) textEl.innerHTML = renderMarkdownInline(r.summary);
+    if (textEl) textEl.innerHTML = renderCommentMarkdown(r.summary);
   }
 }
 

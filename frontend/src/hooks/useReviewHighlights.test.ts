@@ -290,6 +290,76 @@ describe("useReviewHighlights — outdated comments", () => {
   });
 });
 
+describe("useReviewHighlights — comment bodies are sanitised", () => {
+  // Comment text reaches the document through `innerHTML`. A comment is written
+  // by whoever can write the review file — and, once the `oq` button ships, by
+  // whatever a served document says — so it is untrusted input at this sink.
+  const PAYLOAD = [
+    "<img src=x onerror=alert(1)>",
+    '<a href="javascript:alert(1)">click</a>',
+    "<script>alert(1)</script>",
+    '<iframe src="https://e.test"></iframe>',
+    "<svg onload=alert(1)></svg>",
+    "[link](javascript:alert(1))",
+  ].join("\n\n");
+
+  /** Everything that must not survive into the live DOM, from any renderer. */
+  const expectInert = (el: HTMLElement) => {
+    expect(el.innerHTML).not.toMatch(/\son[a-z]+\s*=/i);
+    expect(el.innerHTML.toLowerCase()).not.toContain("javascript:");
+    expect(el.querySelector("script")).toBeNull();
+    expect(el.querySelector("iframe")).toBeNull();
+    expect(el.querySelector("svg")).toBeNull();
+    expect(el.querySelector("img")).toBeNull();
+  };
+
+  it("renders an anchored comment body inert", () => {
+    renderInline([baseComment({ comment: PAYLOAD, anchor: anchorAt(1) })]);
+    expectInert(blockFor("c1")!);
+  });
+
+  it("renders an outdated comment body inert", () => {
+    renderInline([baseComment({ comment: PAYLOAD, anchor: orphanAnchor })]);
+    expectInert(blockFor("c1")!);
+  });
+
+  it("renders a resolved comment body inert", () => {
+    renderInline([
+      baseComment({ comment: PAYLOAD, anchor: anchorAt(1), resolved: true }),
+    ]);
+    expectInert(blockFor("c1")!);
+  });
+
+  it("renders a thread reply summary inert", () => {
+    renderInline([
+      baseComment({
+        anchor: anchorAt(1),
+        reactions: [{ ...agentAddressed, summary: PAYLOAD }],
+      }),
+    ]);
+    const thread = blockFor("c1")!.querySelector<HTMLElement>(".review-thread");
+    expect(thread).not.toBeNull();
+    expectInert(thread!);
+  });
+
+  it("still renders the markdown a reviewer actually writes", () => {
+    renderInline([
+      baseComment({
+        comment: "**fix** the `parse()` call, see [docs](docs/design/x.md)",
+        anchor: anchorAt(1),
+      }),
+    ]);
+    const text = blockFor("c1")!.querySelector<HTMLElement>(
+      ".review-inline-comment-text",
+    )!;
+    expect(text.querySelector("strong")!.textContent).toBe("fix");
+    expect(text.querySelector("code")!.textContent).toBe("parse()");
+    expect(text.querySelector("a")!.getAttribute("href")).toBe(
+      "docs/design/x.md",
+    );
+  });
+});
+
 describe("useReviewHighlights — commentsDrifted", () => {
   // The one signal the header shows about a document changing under a review.
   // Every case here is a content comparison with a definite answer both ways —
