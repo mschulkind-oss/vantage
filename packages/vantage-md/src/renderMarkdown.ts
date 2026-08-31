@@ -5,17 +5,9 @@
 
 import { unified } from "unified";
 import remarkParse from "remark-parse";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
 import remarkRehype from "remark-rehype";
-import rehypeRaw from "rehype-raw";
-import rehypeSanitize from "rehype-sanitize";
-import rehypeHighlight from "rehype-highlight";
-import rehypeKatex from "rehype-katex";
-import rehypeSlug from "rehype-slug";
 import rehypeStringify from "rehype-stringify";
-import rehypeSourceLines from "./rehypeSourceLines.js";
-import { sanitizeSchema } from "./sanitize.js";
+import { buildPipeline } from "./pipeline.js";
 import { parseFrontmatter } from "./frontmatter.js";
 import type { ParsedFrontmatter } from "./frontmatter.js";
 
@@ -85,41 +77,24 @@ export async function renderMarkdown(
     };
   }
 
-  // Build the unified pipeline using a single chain.
-  // We use `any` for the processor to avoid unified's strict generic
-  // type constraints that make conditional plugin registration painful.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const remarkPlugins: [any, ...any[]][] = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rehypePlugins: [any, ...any[]][] = [];
+  // One chain, defined in ./pipeline.ts and shared with both React viewers —
+  // the checker must not render through a different pipeline than the app.
+  const { remarkPlugins, rehypePlugins } = buildPipeline({
+    gfm,
+    math,
+    highlight,
+    sourceLines,
+    sanitize,
+    bodyLineOffset: parsed.bodyLineOffset,
+  });
 
-  if (gfm) remarkPlugins.push([remarkGfm, { singleTilde: false }]);
-  if (math) remarkPlugins.push([remarkMath, { singleDollarTextMath: false }]);
-
-  rehypePlugins.push([rehypeRaw]);
-  if (sourceLines)
-    rehypePlugins.push([
-      rehypeSourceLines,
-      { offset: parsed.bodyLineOffset },
-    ]);
-  if (sanitize) rehypePlugins.push([rehypeSanitize, sanitizeSchema]);
-  rehypePlugins.push([rehypeSlug]);
-  if (highlight) rehypePlugins.push([rehypeHighlight]);
-  if (math) rehypePlugins.push([rehypeKatex]);
-
-  // Build the processor. We type as `any` because unified's generic
-  // Processor type changes shape with every .use() call, making
-  // conditional plugin registration impractical with strict types.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let processor: any = unified().use(remarkParse);
-  for (const [plugin, ...args] of remarkPlugins) {
-    processor = processor.use(plugin, ...args);
-  }
-  processor = processor.use(remarkRehype, { allowDangerousHtml: true });
-  for (const [plugin, ...args] of rehypePlugins) {
-    processor = processor.use(plugin, ...args);
-  }
-  processor = processor.use(rehypeStringify);
+  // `allowDangerousHtml` is why raw HTML reaches `rehypeRaw` at all.
+  const processor = unified()
+    .use(remarkParse)
+    .use(remarkPlugins)
+    .use(remarkRehype, { allowDangerousHtml: true })
+    .use(rehypePlugins)
+    .use(rehypeStringify);
 
   const result = await processor.process(parsed.body);
 

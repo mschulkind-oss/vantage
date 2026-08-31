@@ -73,17 +73,32 @@ function Docs({ content, path }) {
 
 The React component includes mermaid diagram rendering (lazy-loaded), frontmatter display, and syntax highlighting out of the box.
 
-### Rehype plugin (bring your own pipeline)
+### Your own processor, Vantage's chain
+
+`buildPipeline` returns the exact remark and rehype lists `renderMarkdown` and
+the React viewer use, in the exact order — including the sanitiser schema, and
+`rehypeSlug` after it, which is what keeps generated heading ids free of
+`rehype-sanitize`'s `user-content-` prefix. Use it rather than assembling the
+chain yourself; that is how a document ends up rendering differently in two
+places.
 
 ```typescript
-import { rehypeSourceLines } from "vantage-md";
+import { buildPipeline } from "vantage-md";
+
+const { remarkPlugins, rehypePlugins } = buildPipeline({ bodyLineOffset: 0 });
 
 const processor = unified()
   .use(remarkParse)
-  .use(remarkRehype)
-  .use(rehypeSourceLines)  // adds data-source-line to block elements
+  .use(remarkPlugins)
+  .use(remarkRehype, { allowDangerousHtml: true })
+  .use(rehypePlugins)
   .use(rehypeStringify);
 ```
+
+Every plugin is toggleable (`gfm`, `math`, `highlight`, `sourceLines`,
+`sanitize`), and `buildRemarkPlugins` returns the mdast half alone for tools
+that parse without rendering. `rehypeSourceLines` is still exported on its own
+if all you want is `data-source-line`.
 
 ### Svelte / Vue / plain HTML
 
@@ -103,7 +118,7 @@ const processor = unified()
 
 | Entry point | Description |
 |-------------|-------------|
-| `vantage-md` | `renderMarkdown`, `rehypeSourceLines`, `scrollToLineAnchor`, `parseLineAnchor`, `parseFrontmatter`, `sanitizeSchema` |
+| `vantage-md` | `renderMarkdown`, `buildPipeline`, `buildRemarkPlugins`, `rehypeSourceLines`, `scrollToLineAnchor`, `parseLineAnchor`, `parseFrontmatter`, `sanitizeSchema` |
 | `vantage-md/react` | `MarkdownViewer`, `useLineAnchor`, `MermaidDiagram`, `FrontmatterDisplay` + all core exports |
 | `vantage-md/styles` | Line-anchor highlight CSS (light + dark mode) |
 

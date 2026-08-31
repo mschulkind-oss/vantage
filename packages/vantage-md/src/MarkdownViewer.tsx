@@ -10,15 +10,7 @@
 
 import React, { memo, useCallback, useMemo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeRaw from "rehype-raw";
-import rehypeSanitize from "rehype-sanitize";
-import rehypeHighlight from "rehype-highlight";
-import rehypeKatex from "rehype-katex";
-import rehypeSlug from "rehype-slug";
-import rehypeSourceLines from "./rehypeSourceLines.js";
-import { sanitizeSchema } from "./sanitize.js";
+import { buildPipeline } from "./pipeline.js";
 import { parseFrontmatter } from "./frontmatter.js";
 import { MermaidDiagram } from "./MermaidDiagram.js";
 import { FrontmatterDisplay } from "./FrontmatterDisplay.js";
@@ -59,6 +51,15 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   const { frontmatter, body, bodyLineOffset } = useMemo(() => {
     return parseFrontmatter(content);
   }, [content]);
+
+  // The chain lives in ./pipeline.ts so this viewer, the app's viewer, and the
+  // CLI checker cannot drift apart. `bodyLineOffset` makes `data-source-line`
+  // count file lines — a `#L42` link is read against the whole file, not the
+  // frontmatter-stripped body rendered here.
+  const { remarkPlugins, rehypePlugins } = useMemo(
+    () => buildPipeline({ bodyLineOffset }),
+    [bodyLineOffset],
+  );
 
   const handleLinkClick = useCallback(
     (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
@@ -217,19 +218,8 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     >
       <FrontmatterDisplay frontmatter={frontmatter} />
       <ReactMarkdown
-        remarkPlugins={[
-          [remarkGfm, { singleTilde: false }],
-          [remarkMath, { singleDollarTextMath: false }],
-        ]}
-        rehypePlugins={[
-          rehypeRaw,
-          // Offset by the frontmatter so `data-source-line` counts file lines.
-          [rehypeSourceLines, { offset: bodyLineOffset }],
-          [rehypeSanitize, sanitizeSchema],
-          rehypeSlug,
-          rehypeHighlight,
-          rehypeKatex,
-        ]}
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
         urlTransform={transformImageUri}
         components={markdownComponents}
       >

@@ -9,6 +9,9 @@ export type { RenderOptions, RenderResult } from "./renderMarkdown.js";
 
 export { default as rehypeSourceLines } from "./rehypeSourceLines.js";
 
+export { buildPipeline, buildRemarkPlugins } from "./pipeline.js";
+export type { Pipeline, PipelineOptions } from "./pipeline.js";
+
 export {
   scrollToLineAnchor,
   clearLineAnchorHighlights,

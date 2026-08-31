@@ -16,6 +16,8 @@ export { FrontmatterDisplay } from "./FrontmatterDisplay.js";
 export {
   renderMarkdown,
   rehypeSourceLines,
+  buildPipeline,
+  buildRemarkPlugins,
   scrollToLineAnchor,
   clearLineAnchorHighlights,
   parseLineAnchor,
@@ -28,6 +30,8 @@ export {
 export type {
   RenderOptions,
   RenderResult,
+  Pipeline,
+  PipelineOptions,
   ParsedFrontmatter,
   FrontmatterFormat,
   RenderMermaidOptions,

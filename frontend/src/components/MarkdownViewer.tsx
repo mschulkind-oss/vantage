@@ -1,17 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeRaw from "rehype-raw";
-import rehypeSanitize from "rehype-sanitize";
-import rehypeHighlight from "rehype-highlight";
-import rehypeKatex from "rehype-katex";
-import rehypeSlug from "rehype-slug";
-import {
-  rehypeSourceLines,
-  parseFrontmatter,
-  sanitizeSchema,
-} from "vantage-md";
+import { buildPipeline, parseFrontmatter } from "vantage-md";
 import { MermaidDiagram, FrontmatterDisplay } from "vantage-md/react";
 import "highlight.js/styles/github.css";
 import "katex/dist/katex.min.css";
@@ -144,6 +133,15 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   const { frontmatter, body, bodyLineOffset } = useMemo(() => {
     return parseFrontmatter(content);
   }, [content]);
+
+  // The chain lives in vantage-md so the app, the package's exported viewer,
+  // and the CLI checker cannot drift apart. `bodyLineOffset` makes
+  // `data-source-line` count file lines — both `#L42` links and review comment
+  // anchors are read against the whole file, not the body rendered here.
+  const { remarkPlugins, rehypePlugins } = useMemo(
+    () => buildPipeline({ bodyLineOffset }),
+    [bodyLineOffset],
+  );
 
   const handleLinkClick = useCallback(
     (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
@@ -695,21 +693,8 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     >
       <FrontmatterDisplay frontmatter={frontmatter} />
       <ReactMarkdown
-        remarkPlugins={[
-          [remarkGfm, { singleTilde: false }],
-          [remarkMath, { singleDollarTextMath: false }],
-        ]}
-        rehypePlugins={[
-          rehypeRaw,
-          // Offset by the frontmatter so `data-source-line` counts file lines —
-          // both `#L42` links and review comment anchors are read against the
-          // whole file, not the frontmatter-stripped body rendered here.
-          [rehypeSourceLines, { offset: bodyLineOffset }],
-          [rehypeSanitize, sanitizeSchema],
-          rehypeSlug,
-          rehypeHighlight,
-          rehypeKatex,
-        ]}
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
         urlTransform={transformImageUri}
         components={markdownComponents}
       >

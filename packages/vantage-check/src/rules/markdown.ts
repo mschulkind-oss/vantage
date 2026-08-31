@@ -21,6 +21,16 @@ const ALERT_LABELS = ["!NOTE", "!TIP", "!IMPORTANT", "!WARNING", "!CAUTION"];
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let processor: Processor<any, any, any, any, any> | undefined;
 
+/**
+ * Deliberately *not* `vantage-md`'s `buildRemarkPlugins()`, unlike
+ * `core/document.ts`. This processor is lint-only and omits `remark-math` on
+ * purpose, and the omission is load-bearing: measured on a fixture of two
+ * `$$…$$` blocks containing `\left[ a, b \right]` and `a[0] = b[1]`,
+ * `no-undefined-references` reports three findings without `remark-math` and
+ * zero with it. Sharing the viewer's list here would silently change which
+ * hygiene findings this family reports, so the one duplicated option below
+ * stays duplicated.
+ */
 function lintProcessor() {
   processor ??= unified()
     .use(remarkParse)
