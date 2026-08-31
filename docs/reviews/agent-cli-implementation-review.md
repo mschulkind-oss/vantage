@@ -21,6 +21,19 @@ users are told the tool does), and
 same design implemented independently by a second agent, compared head to
 head.
 
+> [!IMPORTANT]
+> **The implementation reviewed here has been superseded.** The comparison in
+> [`agent-cli-two-implementations.md`](agent-cli-two-implementations.md)
+> motivated a consolidation: `packages/vantage-check/` was replaced wholesale
+> by a port of the second implementation, so the code every finding below was
+> found in now lives only in git history. The findings stand as written — they
+> are a record of what was true at `554da8e`, not a description of the current
+> tree.
+>
+> Citations into that tree therefore name the path, the line range, and the
+> commit that still holds them — `path:lines at 554da8e` — rather than linking
+> to a file that is no longer there or to lines that now hold something else.
+
 ---
 
 ## Verdict
@@ -216,12 +229,12 @@ drop the third-party action for the repo's existing `gh release upload` idiom.
 #### F2. The shim's binary-side wiring is untested
 
 The headless `dompurify` stand-in
-([`src/shims/dompurify.ts`](../../packages/vantage-check/src/shims/dompurify.ts#L21-L38))
-reaches the compiled binary through one line of
-[`tsconfig.json`](../../packages/vantage-check/tsconfig.json#L14-L17), and the
-tests through a *separate* alias in
-[`vitest.config.ts`](../../packages/vantage-check/vitest.config.ts#L14-L28).
-Only the second is exercised.
+(`packages/vantage-check/src/shims/dompurify.ts:21-38 at 554da8e`) reaches the
+compiled binary through one line of
+`packages/vantage-check/tsconfig.json:14-17 at 554da8e`, and the tests through a
+*separate* alias in
+`packages/vantage-check/vitest.config.ts:14-28 at 554da8e`. Only the second is
+exercised.
 
 Deleting the tsconfig entry and rebuilding:
 
@@ -255,9 +268,9 @@ in `598b388`). Two defects stand between that string and a working install:
    which holds the **92 MB compiled binary** next to the wheel — confirmed on
    disk after a local build. twine is handed a file that is not a distribution.
 2. The Windows wheel bundles the binary as `vantage_check/vantage-check`
-   ([`build_wheel.py:34`](../../packages/vantage-check/py/build_wheel.py#L34))
-   while the console script execs `vantage-check.exe`
-   ([`__main__.py:15`](../../packages/vantage-check/py/vantage_check/__main__.py#L15)).
+   (`packages/vantage-check/py/build_wheel.py:34 at 554da8e`) while the console
+   script execs `vantage-check.exe`
+   (`packages/vantage-check/py/vantage_check/__main__.py:15 at 554da8e`).
    Windows can never resolve it.
 
 Related and unverified: the archive step assumes bun wrote `dist/vantage-check`
@@ -274,18 +287,17 @@ platform; verify the Windows artifact name in CI before the first tag.
 
 #### F4. `link/missing-target` flags directory links, which Vantage supports
 
-[`links.ts:239-250`](../../packages/vantage-check/src/rules/links.ts#L239-L250)
-reports `"points at a directory, not a document"`. But
+`packages/vantage-check/src/rules/links.ts:239-250 at 554da8e` reports
+`"points at a directory, not a document"`. But
 [`ViewerPage.tsx:421`](../../frontend/src/pages/ViewerPage.tsx#L421) routes any
 non-`.md` path to `viewDirectory()`, which loads `/api/tree` and renders a
 directory listing. So `[the design docs](../design/)` is a working link that
 the checker calls an error — the false-positive class the design names as R2,
-and [`../../userguide/vantage-check.md`](../../userguide/vantage-check.md)
-codifies it in the rule table.
+and `userguide/vantage-check.md at 554da8e` codifies it in the rule table.
 
 #### F5. `ALLOWED_SCHEMES` contradicts the sanitizer it mirrors
 
-[`links.ts:27`](../../packages/vantage-check/src/rules/links.ts#L27) hand-writes
+`packages/vantage-check/src/rules/links.ts:27 at 554da8e` hand-writes
 `http, https, mailto, data`. The pipeline's actual authority is
 `defaultSchema.protocols.href` (kept by
 [`sanitize.ts:11`](../../packages/vantage-md/src/sanitize.ts#L11)):
@@ -304,9 +316,9 @@ by the package.
 
 #### F6. Config discovery silently misses `.vantage.toml` for relative paths
 
-[`check.ts:68-82`](../../packages/vantage-check/src/check.ts#L68-L82) hands the
-un-resolved path to the resolver, and
-[`findConfigFile`](../../packages/vantage-check/src/config.ts#L95-L106) walks
+`packages/vantage-check/src/check.ts:68-82 at 554da8e` hands the un-resolved
+path to the resolver, and `findConfigFile`
+(`packages/vantage-check/src/config.ts:95-106 at 554da8e`) walks
 `path.dirname("a.md")` → `"."` → `path.dirname(".")` → `"."` and stops. From a
 subdirectory, a repo-root config is silently ignored:
 
@@ -329,7 +341,7 @@ root, which is why the primary flow works.
 | N4 | A non-Markdown file argument and an empty directory both print `✓ 0 files checked, no findings`, exit 0 | `src/check.ts` |
 | N5 | `--strict` ORs with config `strict`, so a config `strict = true` cannot be overridden; the userguide claims flags win | `src/check.ts` |
 | N6 | No regression test for the design's headline `link/*` trap (links inside inline code and fences) — behavior is correct, but untested; raw-HTML `<a href>` is not checked at all | `src/rules/links.test.ts` |
-| N7 | Inverted-range detection was dropped (correctly — [`parseLineAnchor`](../../packages/vantage-md/src/scrollToLineAnchor.ts#L14-L25) normalizes with min/max, and there is a test asserting it), but §5.3 and the Decision Ledger still promise it | `../design/agent-cli.md` |
+| N7 | Inverted-range detection was dropped (correctly — [`parseLineAnchor`](../../packages/vantage-md/src/lineAnchor.ts#L15-L26) normalizes with min/max, and there is a test asserting it), but §5.3 and the Decision Ledger still promise it | `../design/agent-cli.md` |
 | N8 | The design doc's own `#L13-L97` anchor went stale when `7cafe4b` moved the style guide — it is the single finding the checker reports on this repo, so the tree fails its own checker | [`../design/agent-cli.md:68`](../design/agent-cli.md#L68) |
 | N9 | R5 deserves its measurement on the record: 92 MB binary, 36 MB wheel, per platform, per release | — |
 
@@ -342,7 +354,7 @@ root, which is why the primary flow works.
   jsdom, and the reasoning is sound: parse validates grammar and never emits
   HTML. Classification is narrow and explicit — grammar errors and
   `UnknownDiagramError` are document defects, everything else is an environment
-  failure ([`validators/mermaid.ts:1-9`](../../packages/vantage-check/src/validators/mermaid.ts#L1-L9)).
+  failure (`packages/vantage-check/src/validators/mermaid.ts:1-9 at 554da8e`).
 - **The environment-failure contract is load-bearing, not decorative.** It was
   observed doing its job while [F2](#f2-the-shims-binary-side-wiring-is-untested)
   was being reproduced.

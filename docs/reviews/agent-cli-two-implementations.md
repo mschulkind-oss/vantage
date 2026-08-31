@@ -21,6 +21,14 @@ base commit (`3e7d8e4`) and left to it. This compares what came back.
 (the detailed defect review of Run A) and
 [`../design/agent-cli.md`](../design/agent-cli.md) (the shared contract).
 
+> [!IMPORTANT]
+> **This comparison has been acted on.** Run A's implementation — the one this
+> repository shipped at `554da8e`, and the subject of
+> [`agent-cli-implementation-review.md`](agent-cli-implementation-review.md) —
+> was replaced wholesale by a port of Run B. Everything below is a record of
+> the two trees as they stood when they were compared; where it describes what
+> `packages/vantage-check/` does, read Run B's column.
+
 > [!NOTE]
 > Where the two disagree about a document, "who is right" is settled against
 > the actual Vantage renderer and viewer — not against taste. Every such call
