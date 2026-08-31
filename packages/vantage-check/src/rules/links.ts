@@ -145,16 +145,21 @@ function checkFragment(
     const lineCount = workspace.lineCount(targetPath);
     if (lineCount === null) return;
 
-    // parseLineAnchor normalises `#L50-L20` to 20–50, so the viewer tolerates
-    // an inverted range. It is still not what anybody meant to write.
-    const inverted = invertedRange(fragment);
-    if (inverted) {
+    // A warning, and a rule of its own, because severity is per rule id and
+    // this one must not fail a run: `parseLineAnchor` normalises `#L50-L20`
+    // with Math.min/Math.max, so the viewer really does highlight lines 20–50.
+    // The link works. Reporting a working link as an error is the
+    // false-positive class this package exists to avoid — but an inverted
+    // range is still almost certainly a typo, which is what the warning says.
+    //
+    // Deliberately not an early return: a range can be inverted *and* run off
+    // the end of the file, and the second of those is a genuine error.
+    if (invertedRange(fragment)) {
       collector.report(
-        "link/line-anchor-range",
+        "link/inverted-range",
         at,
         `\`#${fragment}\` is inverted — it ends before it starts.`,
       );
-      return;
     }
 
     if (range.end > lineCount) {

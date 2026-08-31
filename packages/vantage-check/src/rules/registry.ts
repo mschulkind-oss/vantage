@@ -39,6 +39,12 @@ export const RULES: readonly RuleMeta[] = [
     default: "error",
   },
   {
+    id: "link/inverted-range",
+    summary:
+      "A `#L50-L10` anchor that ends before it starts — it resolves, so a warning",
+    default: "warning",
+  },
+  {
     id: "link/dead-section-anchor",
     summary: "A `#section` anchor matching no heading in the target document",
     default: "error",
