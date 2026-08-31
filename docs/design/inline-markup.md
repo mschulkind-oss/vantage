@@ -340,9 +340,9 @@ Every delivery carries a nonce.
 A one-click Open Question answer (§5.2):
 
 ```markdown
-<!-- vantage: oq id=OQ-4 accept="Back of the queue" -->
+<!-- vantage: oq id=OQ-9 accept="Back of the queue" -->
 
-4. 💬 **OQ-4: Queue position on re-entry.** …
+9. 💬 **OQ-9: Queue position on re-entry.** …
 
    _Leaning:_ Back of the queue.
 ```
@@ -400,7 +400,7 @@ Degradation: **D1** (invisible elsewhere), **D2** (unknown token → no styling)
 almost entirely built already.
 
 ```markdown
-<!-- vantage: oq id=OQ-4 accept="Back of the queue — the fix might interact with things that merged while it was out." -->
+<!-- vantage: oq id=OQ-9 accept="Back of the queue — the fix might interact with things that merged while it was out." -->
 ```
 
 In review mode, Vantage renders an **Accept leaning** button beside the
@@ -423,7 +423,7 @@ which is the strongest form the feature could take.
 
 ```mermaid
 flowchart TD
-    dir["Directive in doc: oq id=OQ-4"] --> plug["rehypeVantageDirectives"]
+    dir["Directive in doc: oq id=OQ-9"] --> plug["rehypeVantageDirectives"]
     plug --> attr["data-vantage-oq on block"]
     attr --> hook["Post-render pass (review mode only)"]
     hook --> btn["Accept leaning button"]
