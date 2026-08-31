@@ -89,12 +89,12 @@ jobs:
           staging="$(mktemp -d)"
           cd packages/vantage-check
 
-          # target | os | arch | PyPI platform tag.
+          # Each row of the table below is: bun target | os | arch | PyPI
+          # platform tag. The Linux wheels are tagged manylinux rather than
+          # linux_*, because PyPI rejects a bare `linux_x86_64` upload outright.
           #
-          # The Linux wheels are tagged manylinux rather than linux_*: PyPI
-          # rejects a bare `linux_x86_64` upload outright.
-          # The loop reads its table on fd 3, so `bun`, `zip` and `python3`
-          # inside the body keep the real stdin and cannot swallow a row.
+          # The loop reads that table on fd 3, so `bun`, `zip` and `python3` in
+          # the body keep the real stdin and cannot swallow a row.
           while read -r target os arch pytag <&3; do
             [ -n "$target" ] || continue
             echo "::group::${target}"
