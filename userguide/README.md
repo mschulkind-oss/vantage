@@ -28,7 +28,7 @@ See [Getting Started](getting-started.md) for full installation instructions.
 | [Configuration](configuration.md) | Config file, environment variables, and CLI options |
 | [Daemon Mode](daemon-mode.md) | Running Vantage as a background service with multi-repo support |
 | [CLI Reference](cli-reference.md) | Complete command-line interface documentation |
-| [vantage-check](vantage-check.md) | The standalone checker: does a document really render in Vantage? |
+| [vantage-check](vantage-check.md) | The agent CLI: the Markdown style guide, and a check that a document really renders |
 | [Style Guide for Agents](style-guide.md) | The canonical Markdown conventions, and how to get them |
 | [Review Inbox](review-inbox.md) | The `.vantage/` directory: how agent responses are delivered, and gitignoring it |
 | [Keyboard Shortcuts](keyboard-shortcuts.md) | Navigation and UI shortcuts |

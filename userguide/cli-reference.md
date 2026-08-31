@@ -128,3 +128,19 @@ vantage perf-report --url http://192.168.1.50:9000
 # Collect and reset counters
 vantage perf-report --json --reset > perf.json
 ```
+
+---
+
+## `vantage-check`
+
+A separate, standalone binary for the agents writing your documents: it prints
+Vantage's Markdown conventions and checks that a document really renders. It is
+not part of the `vantage` server binary and needs nothing running.
+
+```bash
+vantage-check <path>...      # or: uvx vantage-check <path>...
+vantage-check style-guide
+```
+
+See [vantage-check](vantage-check.md) for installation, rules, configuration and
+exit codes.
