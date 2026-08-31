@@ -744,9 +744,12 @@ inspection:**
   attributes across ten distinct properties: `border-bottom-width`, `height`,
   `margin-left`, `margin-right`, `min-width`, `padding-left`, `position`, `top`,
   `vertical-align`, `width`.
-- **The filter admits 156 of those 168 and rejects all six attack payloads**
+- **The filter admits every one of them and rejects all six attack payloads**
   tested (`position:fixed` viewport takeover, `background:url(…)` beacon,
-  `expression(…)`, `position:sticky`, a `data:` URL, and `calc()`).
+  `expression(…)`, `position:sticky`, a `data:` URL, and `calc()`). Widening the
+  battery to twelve families and 258 attributes still rejects none — that is the
+  assertion the sanitisation test makes, so a KaTeX release that starts using a
+  new property fails the build instead of silently losing the attribute.
 
 > [!CAUTION]
 > **`position` cannot be banned outright without breaking KaTeX.** Measured:
@@ -756,13 +759,17 @@ inspection:**
 > integrals visibly wrong, which is why the rule enumerates values rather than
 > dropping the property.
 
-> [!NOTE]
-> **KaTeX emits literal `style="true"` and `style="false"`** on matrix and
-> `aligned` environments, where a boolean lands in the style slot. Those are the
-> 12 of 168 the filter rejects, and rejecting them is correct: they are invalid
-> CSS that browsers ignore, so dropping the attribute changes nothing visually.
-> They are called out because they are exactly the input that makes a naive
-> declaration parser throw — the regex drops them silently instead (**P3**).
+> [!WARNING]
+> **KaTeX does not emit `style="true"`, and a first pass at this measurement
+> said it did.** The claim came from matching `style="([^"]*)"` against KaTeX's
+> output, which also matches the tail of MathML's `displaystyle="true"` on
+> `<mstyle>`. Measuring with a word boundary — `\sstyle="` — the count is 258
+> attributes and **zero** rejections.
+>
+> It is recorded rather than quietly deleted because the mistake is a trap
+> anyone auditing this filter will hit: any measurement of "what does KaTeX put
+> in `style`" that greps for `style="` is counting MathML booleans as CSS, and
+> will conclude the filter is dropping real declarations when it is not.
 
 **The honest residual.** A property allowlist does **not** fully close the
 overlay class. `position: absolute` is permitted, so an element can still
@@ -847,7 +854,7 @@ already handles, and the plugin is one linear pass over an unambiguous grammar.
 | **R6. The one-click answer makes shallow answers easy** | Real, and partly the point — the cost being removed is typing, not thinking. §5.2's tip (restate the leaning) keeps the *comment* substantive even when the click is fast. |
 | **R7. A live-looking button in a static export that silently does nothing** (§2.5) | The `isStaticMode()` gate in §5.2, enforced by **D4**. Worth noting the same hole exists for typed answers today — the gate is a fix to review mode generally, which this feature merely forces. |
 | **R8. No sanitisation test exists** (§8.1), so a regression is invisible | Step 1 of §11 ships the repo's first sanitisation tests, covering the property allowlist, the `url(`/`expression(` rejection, and the `position` rule. |
-| **R9. The style filter breaks KaTeX** — measured, not hypothetical: KaTeX emits ten properties including `position:relative`, and literal `style="true"` (§8.2) | Enumerate `position` values rather than dropping the property; match all-or-nothing so garbage drops silently instead of throwing. Pinned by a KaTeX battery in the sanitisation test, which fails if a KaTeX release starts emitting something new. |
+| **R9. The style filter breaks KaTeX** — measured, not hypothetical: KaTeX emits ten properties including `position:relative` (§8.2) | Enumerate `position` values rather than dropping the property; match all-or-nothing so garbage drops silently instead of throwing. Pinned by a KaTeX battery in the sanitisation test, which fails if a KaTeX release starts emitting something new. |
 
 **What it costs.** A vocabulary that becomes a compatibility promise, a
 stylesheet that grows with it, and one more thing the checker must know about.
@@ -951,8 +958,9 @@ Icebox in §5.4. Nothing there should ship without a new argument.
 > (2) GFM tables need no inline CSS — alignment is an `align=` attribute — but
 > **KaTeX emits ten style properties including `position:relative`**, so a
 > blanket `position` ban breaks integral rendering (§8.2).
-> (3) KaTeX also emits literal `style="true"` / `style="false"`, so the
-> declaration filter must drop garbage rather than throw (§8.2).
+> (3) Any measurement of KaTeX's `style` output must match on a word boundary:
+> a bare `style="` grep also catches MathML's `displaystyle="true"` and will
+> report declarations the filter is not actually dropping (§8.2).
 > (4) Vantage does **not** render GFM alerts — `> [!WARNING]` becomes a plain
 > blockquote with the bracket text visible. Do not justify anything on an alert
 > theme that exists; it does not (§4.3).
