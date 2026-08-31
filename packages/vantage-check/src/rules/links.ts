@@ -129,8 +129,10 @@ export function checkLinks(collector: Collector): void {
  *
  * Two different questions hide behind one syntax: `#L42` names lines in any
  * file, while `#some-heading` names a slug that only a Markdown document has.
- * Anything else — a fragment on a source file that is not a line anchor — is
- * left alone, because there is nothing on disk that would settle it.
+ * A fragment that is neither is left alone — there is nothing on disk that
+ * would settle it — with one exception: a fragment shaped like a line anchor
+ * the viewer cannot parse (`#L4x`) is settled, because the syntax it is
+ * reaching for is one we own. See `malformedLineAnchor`.
  */
 function checkFragment(
   collector: Collector,
@@ -173,15 +175,39 @@ function checkFragment(
     return;
   }
 
-  if (!isMarkdown(targetPath)) return;
-
+  // Not a line anchor. It can still be two other things, and both are checked
+  // before anything is reported: a heading slug, or an id somebody wrote by
+  // hand in raw HTML. `documentAnchors` holds both, and is null when the
+  // target is not Markdown or could not be read — either way, nothing we know
+  // settles the question.
   const anchors = workspace.documentAnchors(targetPath);
-  if (anchors === null) return;
-  if (anchors.has(fragment)) return;
+  if (anchors?.has(fragment)) return;
   // Ids the renderer generates for GFM footnotes are not headings and are not
   // worth modelling; a link to one is vanishingly rare and a false positive is
   // not.
   if (fragment.startsWith("user-content-")) return;
+
+  // Now that every id the target really exposes has been ruled out, a fragment
+  // shaped like a botched line anchor can only be a botched line anchor.
+  //
+  // Two things are still not ruled out, and both stay silent: a Markdown file
+  // we could not read, whose ids are unknown, and a directory, which has no
+  // lines for an anchor to name in the first place.
+  const idsUnknown = anchors === null && isMarkdown(targetPath);
+  if (
+    !idsUnknown &&
+    malformedLineAnchor(fragment) &&
+    workspace.kind(targetPath) === "file"
+  ) {
+    collector.report(
+      "link/line-anchor-format",
+      at,
+      `\`#${fragment}\` is shaped like a line anchor but Vantage cannot parse it, so the link scrolls nowhere. Vantage accepts \`#L42\`, \`#L42-L50\` and \`#L42-50\`.`,
+    );
+    return;
+  }
+
+  if (anchors === null) return;
 
   const suggestion = nearestAnchor(fragment, anchors);
   const name = collectorRelative(collector, targetPath);
@@ -223,6 +249,47 @@ function cleanPath(path: string): string {
   } catch {
     return withoutQuery;
   }
+}
+
+/**
+ * A fragment that is unmistakably an attempt at a line anchor, and that the
+ * viewer cannot parse as one: `#L`, `#L4x`, `#L42-`, `#L42-L`, `#L42-L4x`.
+ *
+ * The test is deliberately narrow — an uppercase `L` followed immediately by a
+ * digit (plus the bare `L`) — because that shape cannot be anything else once
+ * the target's real ids have been ruled out. `rehypeSlug` runs the same
+ * `github-slugger` we do and emits *lowercase* slugs, so no heading can ever
+ * produce an id starting `L4`; the caller has already checked the hand-written
+ * ids as well.
+ *
+ * Forms evaluated against the real viewer and deliberately NOT reported here.
+ * Each was verified by running the shape through `parseLineAnchor` and
+ * `renderMarkdown` rather than by reasoning about it:
+ *
+ * - `#L50-L10` — inverted, but `parseLineAnchor` normalises it with
+ *   Math.min/Math.max and the viewer highlights 10–50. The link *works*, so it
+ *   is `link/inverted-range`'s warning, not an error here.
+ * - `#l42` — a lowercase `l` is not a line anchor, but it is a perfectly good
+ *   heading slug: a heading `## L42` renders as `id="l42"`, so this resolves.
+ *   When it does not, `link/dead-section-anchor` already says so, in the right
+ *   words. Reporting a format error would be wrong for the resolving case.
+ * - `#Introduction`, and uppercase fragments generally — `rehype-sanitize`
+ *   rewrites a hand-written `<span id="Introduction">` to
+ *   `id="user-content-Introduction"`, and the viewer resolves a fragment as
+ *   `getElementById(id) || getElementById("user-content-" + id)`. So an
+ *   uppercase fragment does resolve when the author wrote the id by hand,
+ *   which is why `core/slugs.ts` collects those ids and why this is left to
+ *   `link/dead-section-anchor`.
+ * - `#Section Name` — a space in a link destination is not a link at all:
+ *   CommonMark leaves `[a](#Section Name)` as literal text, so there is no
+ *   link node to report. Written as `[a](<#Section Name>)` it is a dead
+ *   section anchor, which is already covered.
+ * - `#L0` — parses (0–0), so it is a *range* question rather than a format
+ *   one, and it belongs to `link/line-anchor-range` if anybody ever writes it.
+ */
+function malformedLineAnchor(fragment: string): boolean {
+  if (parseLineAnchor(fragment)) return false;
+  return fragment === "L" || /^L\d/.test(fragment);
 }
 
 /** True when a range anchor names its end before its start, e.g. `L50-L20`. */
