@@ -10,7 +10,7 @@ $ vantage-check style-guide                 # print the conventions
 ```
 
 Design: [`../../docs/design/agent-cli.md`](../../docs/design/agent-cli.md).
-User documentation: [`../../userguide/agent-cli.md`](../../userguide/agent-cli.md).
+User documentation: [`../../userguide/vantage-check.md`](../../userguide/vantage-check.md).
 
 ## Why this package is shaped the way it is
 
@@ -33,18 +33,21 @@ User documentation: [`../../userguide/agent-cli.md`](../../userguide/agent-cli.m
 | `src/core/` | Config, file discovery, document parsing, heading slugs |
 | `src/rules/` | One file per rule family; each owns its failure classification |
 | `src/report/` | Text and JSON output |
-| `scripts/` | The bundle, the single-file binary, and the Python wheel |
+| `scripts/` | The single-file binary and the Python wheel |
 
 ## Building the binary
 
 ```console
-$ npm run bundle    # dist/vantage-check.cjs — one CommonJS file
-$ npm run build     # dist/vantage-check — that file plus a Node runtime, ~120 MB
+$ npm run build                      # dist/vantage-check for this host, ~90 MB
+$ bun ./scripts/build.ts --target bun-darwin-arm64   # or any other platform
 ```
 
-`npm run build` is Node's SEA: bundle, cook a blob, inject it into a copy of the
-`node` executable. The size is the runtime; it is the price of a tool that runs
-in a sandbox with nothing installed. Startup is around 20 ms.
+`npm run build` is `bun build --compile`: the whole program and a bun runtime in
+one file, with the version and commit inlined at compile time. The size is the
+runtime; it is the price of a tool that runs in a sandbox with nothing
+installed.
 
-Release CI runs the same script on a runner per platform, then wraps each binary
-in a platform wheel (`scripts/build-wheel.py`) so `uvx vantage-check` works.
+bun cross-compiles, so **one host builds every platform** — that is why the
+release job is a single runner rather than one per OS. Release CI wraps each
+binary in a platform wheel (`scripts/build-wheel.py`) so `uvx vantage-check`
+works, and attaches the archives to a GitHub release for the `curl` path.
