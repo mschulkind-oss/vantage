@@ -33,6 +33,7 @@ const DEFAULT_REMARK = ["remarkGfm", "remarkMath"];
 const DEFAULT_REHYPE = [
   "rehypeRaw",
   "rehypeSourceLines",
+  "rehypeVantageDirectives",
   "rehypeSanitize",
   "rehypeSlug",
   "rehypeHighlight",
@@ -58,17 +59,40 @@ describe("buildPipeline order", () => {
     );
   });
 
-  it("leaves a slot for a comment-reading plugin", () => {
+  it("keeps the comment-reading plugin in the one slot where comments exist", () => {
     // Anything that reads HTML comments has to sit between `rehypeRaw` (which
     // creates the comment nodes) and `rehypeSanitize` (which deletes them).
-    // `rehypeVantageDirectives` goes in that gap; whoever adds it edits this
-    // test on purpose, which is the point of asserting the gap exists.
+    // `rehypeVantageDirectives` is what occupies that gap: move it either way
+    // and every directive in every document silently stops compiling.
     const order = names(buildPipeline().rehypePlugins);
 
     expect(order[0]).toBe("rehypeRaw");
-    expect(order.indexOf("rehypeSanitize")).toBeGreaterThan(
+    expect(order.indexOf("rehypeVantageDirectives")).toBeGreaterThan(
       order.indexOf("rehypeRaw"),
     );
+    expect(order.indexOf("rehypeSanitize")).toBeGreaterThan(
+      order.indexOf("rehypeVantageDirectives"),
+    );
+  });
+
+  it("registers the directive plugin unconditionally, with no options", () => {
+    // No toggle: every renderer has to agree about what a document means, and a
+    // flag is a way for them to disagree (D5). It is registered even with the
+    // sanitiser off, so `renderMarkdown({ sanitize: false })` still compiles
+    // directives.
+    for (const options of [
+      {},
+      { sanitize: false },
+      { sourceLines: false },
+      { math: false, highlight: false },
+    ]) {
+      const entry = buildPipeline(options).rehypePlugins.find(
+        (candidate) => nameOf(candidate) === "rehypeVantageDirectives",
+      );
+
+      expect(entry).toBeDefined();
+      expect(optionsOf(entry!)).toBeUndefined();
+    }
   });
 });
 
@@ -117,6 +141,7 @@ describe("buildPipeline toggles", () => {
     expect(names(rehypePlugins)).toEqual([
       "rehypeRaw",
       "rehypeSourceLines",
+      "rehypeVantageDirectives",
       "rehypeSanitize",
       "rehypeSlug",
       "rehypeHighlight",
@@ -139,6 +164,7 @@ describe("buildPipeline toggles", () => {
     expect(names(rehypePlugins)).toEqual([
       "rehypeRaw",
       "rehypeSourceLines",
+      "rehypeVantageDirectives",
       "rehypeSanitize",
       "rehypeSlug",
       "rehypeKatex",
@@ -150,6 +176,7 @@ describe("buildPipeline toggles", () => {
 
     expect(names(rehypePlugins)).toEqual([
       "rehypeRaw",
+      "rehypeVantageDirectives",
       "rehypeSanitize",
       "rehypeSlug",
       "rehypeHighlight",
@@ -163,6 +190,7 @@ describe("buildPipeline toggles", () => {
     expect(names(rehypePlugins)).toEqual([
       "rehypeRaw",
       "rehypeSourceLines",
+      "rehypeVantageDirectives",
       "rehypeSlug",
       "rehypeHighlight",
       "rehypeKatex",

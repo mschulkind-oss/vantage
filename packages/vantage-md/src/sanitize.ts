@@ -5,6 +5,13 @@
  */
 
 import { defaultSchema } from "rehype-sanitize";
+import {
+  VANTAGE_BADGES,
+  VANTAGE_COLLAPSED,
+  VANTAGE_EMPHASIS,
+  VANTAGE_RUNS,
+  VANTAGE_TONES,
+} from "./vantageDirectives.js";
 
 type Schema = typeof defaultSchema;
 
@@ -153,6 +160,28 @@ export const sanitizeSchema: Schema = {
       "className",
       ["style", SAFE_STYLE],
       "dataSourceLine",
+      // What `rehypeVantageDirectives` compiles a `<!-- vantage: … -->` comment
+      // into, named individually — never by a `data-vantage-*` wildcard, which
+      // would readmit whatever a future bug emits and whatever a document
+      // hand-writes as raw HTML.
+      //
+      // The value lists are the belt to the plugin's braces: the vocabulary is
+      // closed in the plugin *and* here, imported from the one module that
+      // defines it, so even if a refactor let an unvalidated value reach the
+      // tree the sanitiser still refuses it.
+      ["dataVantageTone", ...VANTAGE_TONES],
+      ["dataVantageEmphasis", ...VANTAGE_EMPHASIS],
+      ["dataVantageBadge", ...VANTAGE_BADGES],
+      ["dataVantageCollapsed", ...VANTAGE_COLLAPSED],
+      ["dataVantageRun", ...VANTAGE_RUNS],
+      ["dataVantageOq", "true"],
+      // The design's one genuinely free-text value: the body of a review
+      // comment, so it cannot be value-allowlisted and this entry is name-only.
+      // Two defences remain rather than three — `hast` escapes the value on
+      // serialisation and React sets it through the DOM property path, so it
+      // cannot break out of the attribute — and the honest record of that is in
+      // the design doc rather than a third layer implied here.
+      "dataVantageLeaning",
     ],
     code: [...(defaultSchema.attributes?.code || []), "className"],
     span: [
