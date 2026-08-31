@@ -3,9 +3,12 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach } from "vitest";
 import { checkFiles } from "../src/commands/check.js";
+import { Collector } from "../src/core/collector.js";
 import { discover } from "../src/core/discover.js";
+import { loadDocument } from "../src/core/document.js";
 import { Settings } from "../src/core/settings.js";
 import type { RunReport } from "../src/core/types.js";
+import { Workspace } from "../src/core/workspace.js";
 
 const trees: string[] = [];
 
@@ -44,6 +47,26 @@ export async function checkTree(
   const { files, errors } = discover(paths, root);
   if (errors.length > 0) throw new Error(errors.join("; "));
   return checkFiles(files, root, settings);
+}
+
+/**
+ * A Collector over one file in a tree.
+ *
+ * For rules that take a delegate: `checkTree` can only run the real one, and
+ * the interesting half of a delegated rule is what it does when the delegate
+ * misbehaves.
+ */
+export function collectorFor(
+  root: string,
+  file: string,
+  settings: Settings = Settings.defaults(),
+): Collector {
+  return new Collector(
+    loadDocument(file, root),
+    settings,
+    new Workspace(),
+    root,
+  );
 }
 
 /** The rule ids a run produced, in report order. */
