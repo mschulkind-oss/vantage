@@ -9,6 +9,34 @@ export type { RenderOptions, RenderResult } from "./renderMarkdown.js";
 
 export { default as rehypeSourceLines } from "./rehypeSourceLines.js";
 
+export { default as rehypeVantageDirectives } from "./rehypeVantageDirectives.js";
+
+// The directive grammar and vocabulary, with no renderer attached. The CLI
+// checker imports the module by relative path (it must not depend on this
+// package's build), so these re-exports are for the frontend and for anyone
+// validating directives without a hast tree.
+export {
+  DIRECTIVE_NAMES,
+  DIRECTIVE_VOCABULARY,
+  VANTAGE_BADGES,
+  VANTAGE_COLLAPSED,
+  VANTAGE_EMPHASIS,
+  VANTAGE_RUNS,
+  VANTAGE_SENTINEL,
+  VANTAGE_TONES,
+  hasVantageSentinel,
+  parseVantageDirective,
+} from "./vantageDirectives.js";
+export type {
+  DirectiveParse,
+  DirectivePair,
+  DirectiveVocabulary,
+  KeyTable,
+  KeyVocabulary,
+  MalformedDirective,
+  ParsedDirective,
+} from "./vantageDirectives.js";
+
 export { buildPipeline, buildRemarkPlugins } from "./pipeline.js";
 export type { Pipeline, PipelineOptions } from "./pipeline.js";
 

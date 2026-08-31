@@ -105,3 +105,55 @@ describe("inline style filtering", () => {
     expect(html).toContain(`<th align="right">`);
   });
 });
+
+describe("the data-vantage-* allowlist", () => {
+  it("admits the vocabulary and refuses everything else", async () => {
+    // Directive attributes are named individually in the schema, with the token
+    // sets imported from the module that defines them, so this is the second
+    // gate on a value the plugin should never have emitted in the first place.
+    expect(await styled(`<p data-vantage-tone="warning">x</p>`)).toContain(
+      `data-vantage-tone="warning"`,
+    );
+    for (const attribute of [
+      `data-vantage-tone="url(https://attacker.example/x)"`,
+      `data-vantage-emphasis="LOUD"`,
+      `data-vantage-badge="secret"`,
+      `data-vantage-collapsed="maybe"`,
+      `data-vantage-run="everywhere"`,
+      `data-vantage-oq="OQ-9"`,
+      // Nothing readmits an attribute by prefix, so a name we never allowlisted
+      // is stripped whatever its value.
+      `data-vantage-anythingelse="warning"`,
+    ]) {
+      expect(await styled(`<p ${attribute}>x</p>`)).not.toContain(
+        "data-vantage",
+      );
+    }
+  });
+
+  it("keeps the free-text leaning, escaped rather than filtered", async () => {
+    // `leaning` is the one value with no closed set — it is the body of a review
+    // comment — so it is allowlisted by name only. What makes that safe is the
+    // serialiser: `hast` escapes the value, and no protocol check applies to a
+    // non-URL attribute, so there is nothing to break out of.
+    const leaning = `<img src=x onerror=alert(1)> & say "no" to 'it'`;
+    const html = await styled(
+      `<p data-vantage-leaning="&lt;img src=x onerror=alert(1)&gt; &amp; say &quot;no&quot; to 'it'">x</p>`,
+    );
+
+    // Measured, not assumed: the serialiser escapes `"` and `&` — which is what
+    // keeps a value inside its own quotes — and leaves `<` alone, which is
+    // harmless inside a quoted attribute. So the value below survives verbatim
+    // and still cannot become an element.
+    expect(html).toContain("data-vantage-leaning=");
+    expect(html).toContain("&#x22;no&#x22;");
+    expect(html).toContain("&#x26; say");
+
+    const host = document.createElement("div");
+    host.innerHTML = html;
+    expect(host.querySelector("p")!.getAttribute("data-vantage-leaning")).toBe(
+      leaning,
+    );
+    expect(host.querySelectorAll("img")).toHaveLength(0);
+  });
+});

@@ -24,7 +24,9 @@
  *
  * Anything that reads HTML comments must sit between `rehypeRaw` and
  * `rehypeSanitize`: before `rehypeRaw` there are no comment nodes, and
- * `rehypeSanitize` deletes them.
+ * `rehypeSanitize` deletes them. `rehypeVantageDirectives` is what occupies
+ * that slot, and it is registered unconditionally — a renderer that skipped it
+ * would disagree with the others about what a document means.
  */
 
 import type { PluggableList } from "unified";
@@ -36,6 +38,7 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import rehypeSlug from "rehype-slug";
 import rehypeSourceLines from "./rehypeSourceLines.js";
+import rehypeVantageDirectives from "./rehypeVantageDirectives.js";
 import { sanitizeSchema } from "./sanitize.js";
 
 export interface PipelineOptions {
@@ -98,10 +101,12 @@ function buildRehypePlugins(options: PipelineOptions = {}): PluggableList {
     plugins.push([rehypeSourceLines, { offset: bodyLineOffset }]);
   }
   // ── The comment slot ──────────────────────────────────────────────────
-  // A plugin that reads HTML comments goes here, between `rehypeRaw` and
-  // `rehypeSanitize` (see the header). It gets no option of its own: every
-  // renderer has to agree about what a document means, and a flag is a way
-  // for them to disagree.
+  // `rehypeVantageDirectives` compiles `<!-- vantage: … -->` comments into
+  // `data-vantage-*` attributes, and it can only do that here: before
+  // `rehypeRaw` there are no comment nodes, and `rehypeSanitize` deletes them.
+  // It gets no option of its own: every renderer has to agree about what a
+  // document means, and a flag is a way for them to disagree.
+  plugins.push(rehypeVantageDirectives);
   if (sanitize) plugins.push([rehypeSanitize, sanitizeSchema]);
   plugins.push(rehypeSlug);
   if (highlight) plugins.push(rehypeHighlight);

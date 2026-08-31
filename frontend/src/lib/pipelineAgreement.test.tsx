@@ -56,12 +56,26 @@ const FIXTURE = [
   "", // 19
 ].join("\n");
 
+/** A directive-carrying fixture, kept separate so the line numbers above stay put. */
+const DIRECTIVE_FIXTURE = [
+  "<!-- vantage: section tone=warning -->", // 1
+  "", // 2
+  "## Stamped section", // 3
+  "", // 4
+  '<!-- vantage: oq leaning="Back of the queue" -->', // 5
+  "", // 6
+  "_Leaning:_ back of the queue.", // 7
+  "", // 8
+].join("\n");
+
 interface Rendered {
   sourceLines: string[];
   headingId: string | null;
   hasKatex: boolean;
   text: string;
   styleAttributesOnDiv: (string | null)[];
+  /** Every `data-vantage-*` attribute, as `tag name="value"`, in tree order. */
+  directives: string[];
 }
 
 function describeTree(root: HTMLElement): Rendered {
@@ -77,8 +91,20 @@ function describeTree(root: HTMLElement): Rendered {
     proseText.push(el.textContent ?? "");
   }
 
+  const directives: string[] = [];
+  for (const el of Array.from(root.querySelectorAll("*"))) {
+    for (const attribute of Array.from(el.attributes)) {
+      if (attribute.name.startsWith("data-vantage-")) {
+        directives.push(
+          `${el.tagName.toLowerCase()} ${attribute.name}="${attribute.value}"`,
+        );
+      }
+    }
+  }
+
   return {
     sourceLines,
+    directives,
     headingId: heading?.getAttribute("id") ?? null,
     hasKatex: root.querySelector(".katex") !== null,
     text: proseText.join(" "),
@@ -90,22 +116,22 @@ function describeTree(root: HTMLElement): Rendered {
 
 afterEach(cleanup);
 
-async function throughRenderMarkdown(): Promise<Rendered> {
-  const { html } = await renderMarkdown(FIXTURE);
+async function throughRenderMarkdown(content = FIXTURE): Promise<Rendered> {
+  const { html } = await renderMarkdown(content);
   const host = document.createElement("div");
   host.innerHTML = html;
   return describeTree(host);
 }
 
-function throughPackageViewer(): Rendered {
-  const { container } = render(<PackageMarkdownViewer content={FIXTURE} />);
+function throughPackageViewer(content = FIXTURE): Rendered {
+  const { container } = render(<PackageMarkdownViewer content={content} />);
   return describeTree(container);
 }
 
-function throughAppViewer(): Rendered {
+function throughAppViewer(content = FIXTURE): Rendered {
   const { container } = render(
     <BrowserRouter>
-      <AppMarkdownViewer content={FIXTURE} currentPath="t.md" />
+      <AppMarkdownViewer content={content} currentPath="t.md" />
     </BrowserRouter>,
   );
   return describeTree(container);
@@ -158,6 +184,32 @@ describe("every renderer runs the same chain", () => {
         expect(style ?? "").not.toContain("position");
       }
     }
+  });
+
+  it("agrees on every data-vantage-* attribute a directive compiles to", async () => {
+    // The test that catches a boolean: `dataVantageOq: true` serialises as a
+    // bare `data-vantage-oq` through `rehype-stringify` and as
+    // `data-vantage-oq="true"` through react-markdown, so a directive would
+    // mean one thing in the app and another in the CLI checker with nothing
+    // failing anywhere. It also pins that the app's heading override still
+    // spreads its props: stop spreading and section stamping silently vanishes
+    // in the app while still working in the checker.
+    const expected = [
+      'h2 data-vantage-tone="warning"',
+      'h2 data-vantage-run="start"',
+      'p data-vantage-tone="warning"',
+      'p data-vantage-run="end"',
+      'p data-vantage-oq="true"',
+      'p data-vantage-leaning="Back of the queue"',
+    ];
+
+    expect((await throughRenderMarkdown(DIRECTIVE_FIXTURE)).directives).toEqual(
+      expected,
+    );
+    expect(throughPackageViewer(DIRECTIVE_FIXTURE).directives).toEqual(
+      expected,
+    );
+    expect(throughAppViewer(DIRECTIVE_FIXTURE).directives).toEqual(expected);
   });
 
   it("agrees on the rendered prose text", async () => {
