@@ -3,10 +3,10 @@ import { relative, resolve } from "node:path";
 import type { Root } from "mdast";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-// The viewer's own frontmatter parser, imported from source. Re-implementing
-// it here would let the checker accept documents the viewer mangles.
+// The viewer's own remark half and its own frontmatter parser, imported from
+// source. Re-implementing either here would let the checker accept documents
+// the viewer mangles.
+import { buildRemarkPlugins } from "../../../vantage-md/src/pipeline.js";
 import {
   parseFrontmatter,
   type ParsedFrontmatter,
@@ -35,13 +35,12 @@ export interface Document {
 }
 
 /**
- * The same processor the viewer parses with: GFM on, and `$` disabled as a math
- * delimiter so `$HOME` in prose is text rather than a broken formula.
+ * The same processor the viewer parses with — literally, now: the remark half
+ * comes from `vantage-md`'s `buildPipeline`, so GFM stays on and `$` stays
+ * disabled as a math delimiter (`$HOME` in prose is text, not a broken formula)
+ * because the viewers say so, not because this file agreed to say so too.
  */
-const parser = unified()
-  .use(remarkParse)
-  .use(remarkGfm, { singleTilde: false })
-  .use(remarkMath, { singleDollarTextMath: false });
+const parser = unified().use(remarkParse).use(buildRemarkPlugins());
 
 export function parseMarkdown(body: string): Root {
   return parser.parse(body) as Root;

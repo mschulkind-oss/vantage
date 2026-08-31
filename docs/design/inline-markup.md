@@ -88,31 +88,41 @@ Five principles carry the design. Later sections cite them by number.
 
 ## 2. What exists today, precisely
 
-### 2.1 There are three copies of the pipeline
+### 2.1 There is one copy of the pipeline
 
-The remark/rehype chain is written out **three times**, in the same order each
-time, and any new plugin has to land in all three:
+The remark/rehype chain is defined once, in
+[`pipeline.ts`](../../packages/vantage-md/src/pipeline.ts), and three call sites
+consume it:
 
 | Where | What it is |
 | :--- | :--- |
-| [`renderMarkdown.ts:96-108`](../../packages/vantage-md/src/renderMarkdown.ts#L96-L108) | String-in, HTML-out. Feeds the CLI checker, `resolveLinks`, and `renderMermaidBlocks`. |
-| [`MarkdownViewer.tsx:702-711`](../../frontend/src/components/MarkdownViewer.tsx#L702-L711) | The app's `<ReactMarkdown>`. Imports `rehypeSourceLines` and `sanitizeSchema` from `vantage-md`, then re-declares the plugin *order* inline. |
-| [`vantage-md/src/MarkdownViewer.tsx:224-232`](../../packages/vantage-md/src/MarkdownViewer.tsx#L224-L232) | The package's own exported React viewer. A third hand-written copy of the same array. |
+| [`pipeline.ts:96-108`](../../packages/vantage-md/src/pipeline.ts#L96-L108) | `buildPipeline(options)` — the only place the plugin list and its order exist. |
+| [`renderMarkdown.ts:82-97`](../../packages/vantage-md/src/renderMarkdown.ts#L82-L97) | String-in, HTML-out. Feeds the CLI checker, `resolveLinks`, and `renderMermaidBlocks`. |
+| [`MarkdownViewer.tsx:696-697`](../../frontend/src/components/MarkdownViewer.tsx#L696-L697) | The app's `<ReactMarkdown>`, handed both lists as props. |
+| [`vantage-md/src/MarkdownViewer.tsx:221-222`](../../packages/vantage-md/src/MarkdownViewer.tsx#L221-L222) | The package's own exported React viewer, likewise. |
 
-The order is identical in all three: `rehypeRaw` → `rehypeSourceLines` →
-`rehypeSanitize` → `rehypeSlug` → `rehypeHighlight` → `rehypeKatex`, with
+The order is `rehypeRaw` → `rehypeSourceLines` → `rehypeSanitize` →
+`rehypeSlug` → `rehypeHighlight` → `rehypeKatex`, with
 `allowDangerousHtml: true` passed to `remark-rehype`
-([`renderMarkdown.ts:118`](../../packages/vantage-md/src/renderMarkdown.ts#L118)),
-which is why raw HTML reaches `rehype-raw` at all.
+([`renderMarkdown.ts:95`](../../packages/vantage-md/src/renderMarkdown.ts#L95)),
+which is why raw HTML reaches `rehype-raw` at all. `rehypeSlug`'s position after
+the sanitiser is load-bearing, not incidental: `rehype-sanitize`'s default schema
+clobbers `id` with the prefix `user-content-`, so slugging first turns every
+`#heading` link in every document into a dead anchor.
 
 > [!WARNING]
-> **The duplication is a live drift hazard for this feature.** None of the three
-> arrays is derived from another; they are three copies kept in sync by hand. A
-> directive plugin added to one produces a document that styles in the app and
-> renders bare through the package's own viewer, or through the checker, with no
-> error anywhere — and a checker that does not see directives is a checker that
-> cannot validate them (§5.3). §6.4 makes de-duplicating the chain a
-> prerequisite rather than a nicety.
+> **The duplication this feature had to remove first.** Until step 2 of §11 the
+> chain was written out three times, in the same order each time, and none of
+> the three arrays was derived from another — they were copies kept in sync by
+> hand. A directive plugin added to one would have produced a document that
+> styles in the app and renders bare through the package's own viewer, or
+> through the checker, with no error anywhere; and a checker that does not see
+> directives is a checker that cannot validate them (§5.3). That is why §6.4 was
+> a prerequisite rather than a nicety, and it is the reason `pipeline.ts` exists.
+> The mdast half was in fact copied a **fourth** time, in the checker's own
+> [`core/document.ts`](../../packages/vantage-check/src/core/document.ts), under
+> a comment claiming it was "the same processor the viewer parses with"; it now
+> calls `buildRemarkPlugins()` and the claim is true.
 
 ### 2.2 What actually happens to a comment (measured)
 
@@ -132,9 +142,11 @@ Two consequences:
 1. **There is exactly one slot for the plugin**: after `rehypeRaw`, before
    `rehypeSanitize`. Downstream of the sanitiser the information no longer
    exists. This is the same slot `rehypeSourceLines` already occupies
-   ([`renderMarkdown.ts:101-104`](../../packages/vantage-md/src/renderMarkdown.ts#L101-L104)),
-   which is convenient: the precedent is set and the ordering constraint is
-   already understood in this codebase.
+   ([`pipeline.ts:98`](../../packages/vantage-md/src/pipeline.ts#L98)), which is
+   convenient: the precedent is set and the ordering constraint is already
+   understood in this codebase. Since step 2 the slot is marked in the code —
+   [`pipeline.ts:100-104`](../../packages/vantage-md/src/pipeline.ts#L100-L104) —
+   so wiring the plugin in is one `push` in one file.
 2. **The sanitiser deleting comments is a feature.** The plugin consumes the
    comment and emits attributes; the sanitiser removes the original. Nothing
    Vantage-specific reaches the DOM except attributes we deliberately
@@ -163,7 +175,7 @@ immediately reachable by exactly the machinery that reads anchors today.
 ### 2.4 How an Open Question gets answered today
 
 Four actions. Hover a block in review mode, click it
-([`MarkdownViewer.tsx:509-547`](../../frontend/src/components/MarkdownViewer.tsx#L509-L547)),
+([`MarkdownViewer.tsx:507-545`](../../frontend/src/components/MarkdownViewer.tsx#L507-L545)),
 type into `ReviewCommentPopover`, press Ctrl/Cmd-Enter
 ([`ReviewCommentPopover.tsx:104`](../../frontend/src/components/ReviewCommentPopover.tsx#L104)).
 That calls `addComment(anchor, comment, fallbackText)`
@@ -447,7 +459,7 @@ the section rather than wrapping them in a `<section>`.
 > anchors, and hover-to-comment block resolution all walk a **flat sibling
 > structure** — `MarkdownViewer` resolves an anchor by climbing to the closest
 > `[data-source-line]` whose tag is in `ANCHOR_TAGS`
-> ([`MarkdownViewer.tsx:106`](../../frontend/src/components/MarkdownViewer.tsx#L106))
+> ([`MarkdownViewer.tsx:95`](../../frontend/src/components/MarkdownViewer.tsx#L95))
 > — and inserting a container between the prose root and the blocks is exactly
 > the change that breaks one of those subtly rather than loudly. Extra
 > attributes are cheap; a restructured tree is not.
@@ -589,7 +601,7 @@ Between `rehypeRaw` and `rehypeSanitize` (§2.2 — the only slot). Per pass:
 
 Ordering note: it must run **before** `rehypeSourceLines` or after it, but never
 depend on `rehypeSlug`, which runs post-sanitise
-([`renderMarkdown.ts:106`](../../packages/vantage-md/src/renderMarkdown.ts#L106))
+([`pipeline.ts:106`](../../packages/vantage-md/src/pipeline.ts#L106))
 and so cannot supply heading ids to the plugin. If a directive ever needs a
 slug, it computes its own.
 
@@ -622,14 +634,36 @@ layers, not either.
 Note that `style` stays on the `*` list. It is not this change that makes it
 safe — the declaration filter of §8.2 does, and that lands first (§11).
 
-### 6.4 Prerequisite: one chain, not three
+### 6.4 Prerequisite: one chain, not three — done
 
-§2.1's duplication has to go first. `vantage-md` should export the plugin
-*list* — something like `buildRehypePlugins({ bodyLineOffset })` — and all three
-call sites should consume it rather than re-declaring the order. The package
-becomes the single place the chain is defined. This is worth doing on its own
-merits, is strictly smaller than the feature it unblocks, and is the only reason
-R1 is a mitigated risk rather than a certainty.
+§2.1's duplication went first, as step 2 of §11. `vantage-md` exports
+**`buildPipeline(options)`**, which returns `{ remarkPlugins, rehypePlugins }`,
+and all three render sites consume it rather than re-declaring the order. The
+package is the single place the chain is defined, which is the only reason R1 is
+a mitigated risk rather than a certainty.
+
+Two things the sketch above got wrong, and how they landed:
+
+- **Both halves, not just rehype.** A `buildRehypePlugins({ bodyLineOffset })`
+  would let a caller desync the `math` toggle, which spans both halves —
+  `remark-math` parses the delimiters and `rehype-katex` renders the result. One
+  options object covers both. The rehype-only builder stays module-private; the
+  remark half is also exported on its own as `buildRemarkPlugins`, because the
+  checker's mdast parser
+  ([`core/document.ts`](../../packages/vantage-check/src/core/document.ts)) is a
+  real single-half consumer and was itself a fourth copy.
+- **The five toggles survive.** `renderMarkdown` gates `gfm`, `math`,
+  `highlight`, `sourceLines` and `sanitize` on options while the two React
+  viewers register everything; a fixed array would have silently changed what
+  the CLI checker renders. `PipelineOptions` carries all five plus
+  `bodyLineOffset`.
+
+The checker's *lint-only* processor
+([`rules/markdown.ts`](../../packages/vantage-check/src/rules/markdown.ts))
+deliberately does **not** share the list. It omits `remark-math` on purpose, and
+the omission changes findings: measured on two `$$…$$` blocks containing
+`\left[ a, b \right]` and `a[0] = b[1]`, `no-undefined-references` reports three
+findings without `remark-math` and none with it.
 
 ### 6.5 Frontend consumption
 
@@ -846,7 +880,7 @@ already handles, and the plugin is one linear pass over an unambiguous grammar.
 
 | Risk | Mitigation |
 | :--- | :--- |
-| **R1. Chain drift** — the plugin lands in one of the **three** hand-copied chains (§2.1) | §6.4 is a prerequisite, not a follow-up. One chain, defined once in the package, imported everywhere. |
+| **R1. Chain drift** — the plugin lands in one of the **three** hand-copied chains (§2.1) | **Closed in code.** §6.4 shipped as step 2: `buildPipeline` in `packages/vantage-md/src/pipeline.ts` is the one definition, all three render sites consume it, and a test asserts every renderer produces the same `data-source-line` numbers, the same unprefixed heading ids, and the same sanitiser result for one fixture. |
 | **R2. Vocabulary creep** — every request adds a token until it is CSS by accretion | §9 is the defence, and §8.3 is the reason. Each new token is a code change; a request to name colours is a request to give up theme independence (§4.3). |
 | **R3. Markup rot** — directives outlive the sections they describe, and `badge=stale` is itself stale | Checker rule (§5.3): a directive whose target no longer exists is a finding. Cheap because the checker is already being built. |
 | **R4. Agents overuse it** — every document arrives rainbow-coloured | A style-guide rule, not a code rule. The `style-guide` command in [`agent-cli.md`](agent-cli.md) is where "use sparingly" belongs. |
@@ -872,8 +906,12 @@ concrete complaint behind it.
    assertion should not be written against a component that passes arbitrary
    CSS. It stands entirely alone and is worth doing if nothing else here ever
    ships.
-2. **De-duplicate the render chain** (§6.4). Fixes a real drift hazard and
-   unblocks everything after it. No user-visible change.
+2. **De-duplicate the render chain** (§6.4) — **done.** `buildPipeline` in
+   `packages/vantage-md/src/pipeline.ts`, consumed by all three render sites and
+   by the checker's mdast parser; the dead duplicate of `rehypeSourceLines` under
+   `frontend/src/lib/` is gone. Fixed a real drift hazard and unblocks
+   everything after it. No user-visible change: `renderMarkdown`'s output is
+   byte-identical across two fixtures × eight option sets.
 3. **The plugin and the `oq` directive only** (§5.2). Highest value, and it
    exercises the whole path — carrier, parse, attribute, sanitiser, post-render
    pass — on one directive with a concrete complaint behind it.

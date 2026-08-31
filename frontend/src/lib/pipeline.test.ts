@@ -1,0 +1,193 @@
+/**
+ * The render chain, defined once.
+ *
+ * `buildPipeline` lives in `packages/vantage-md`, which has no test runner of
+ * its own; the frontend resolves `vantage-md` to that package's TypeScript
+ * source (see `vite.config.ts`), so these run against the real thing.
+ *
+ * Plugins are identified by function *name*, not by identity: `frontend/` and
+ * `packages/vantage-md/` have separate `node_modules`, so importing
+ * `rehype-raw` here would yield a different module instance than the one
+ * `pipeline.ts` imported and every `toBe` would fail for the wrong reason.
+ * `sanitizeSchema` is the exception — it comes from the same source module
+ * through the vitest alias, so its identity *is* comparable, and that is the
+ * assertion that catches someone handing the sanitiser a fresh object.
+ */
+import { describe, it, expect } from "vitest";
+import type { Pluggable, PluggableList } from "unified";
+import { buildPipeline, buildRemarkPlugins, sanitizeSchema } from "vantage-md";
+
+/** The plugin function's name, whether the entry is bare or a tuple. */
+const nameOf = (entry: Pluggable): string => {
+  const plugin = Array.isArray(entry) ? entry[0] : entry;
+  return typeof plugin === "function" ? plugin.name : String(plugin);
+};
+
+const names = (list: PluggableList): string[] => list.map(nameOf);
+
+/** The options object a tuple entry carries, or `undefined` for a bare entry. */
+const optionsOf = (entry: Pluggable): unknown =>
+  Array.isArray(entry) ? entry[1] : undefined;
+
+const DEFAULT_REMARK = ["remarkGfm", "remarkMath"];
+const DEFAULT_REHYPE = [
+  "rehypeRaw",
+  "rehypeSourceLines",
+  "rehypeSanitize",
+  "rehypeSlug",
+  "rehypeHighlight",
+  "rehypeKatex",
+];
+
+describe("buildPipeline order", () => {
+  it("produces the one canonical plugin order", () => {
+    const { remarkPlugins, rehypePlugins } = buildPipeline();
+
+    expect(names(remarkPlugins)).toEqual(DEFAULT_REMARK);
+    expect(names(rehypePlugins)).toEqual(DEFAULT_REHYPE);
+  });
+
+  it("keeps rehypeSlug after rehypeSanitize", () => {
+    // Not a preference. rehype-sanitize's default schema clobbers `id` with
+    // the prefix `user-content-`, so slugging first turns every `#heading`
+    // link in every document into a dead anchor.
+    const order = names(buildPipeline().rehypePlugins);
+
+    expect(order.indexOf("rehypeSlug")).toBeGreaterThan(
+      order.indexOf("rehypeSanitize"),
+    );
+  });
+
+  it("leaves a slot for a comment-reading plugin", () => {
+    // Anything that reads HTML comments has to sit between `rehypeRaw` (which
+    // creates the comment nodes) and `rehypeSanitize` (which deletes them).
+    // `rehypeVantageDirectives` goes in that gap; whoever adds it edits this
+    // test on purpose, which is the point of asserting the gap exists.
+    const order = names(buildPipeline().rehypePlugins);
+
+    expect(order[0]).toBe("rehypeRaw");
+    expect(order.indexOf("rehypeSanitize")).toBeGreaterThan(
+      order.indexOf("rehypeRaw"),
+    );
+  });
+});
+
+describe("buildPipeline plugin options", () => {
+  it("disables single-tilde strikethrough and single-dollar math", () => {
+    // Both are contracts the style guide and the user guide state: `~x~` is a
+    // literal tilde and `$HOME` is literal text, not a broken formula.
+    const { remarkPlugins } = buildPipeline();
+
+    expect(optionsOf(remarkPlugins[0])).toEqual({ singleTilde: false });
+    expect(optionsOf(remarkPlugins[1])).toEqual({
+      singleDollarTextMath: false,
+    });
+  });
+
+  it("hands the sanitiser Vantage's own schema, not a copy", () => {
+    const { rehypePlugins } = buildPipeline();
+    const sanitizeEntry = rehypePlugins.find(
+      (entry) => nameOf(entry) === "rehypeSanitize",
+    )!;
+
+    expect(optionsOf(sanitizeEntry)).toBe(sanitizeSchema);
+  });
+
+  it("plumbs bodyLineOffset through to rehypeSourceLines", () => {
+    const offsetOf = (options?: { bodyLineOffset?: number }) => {
+      const { rehypePlugins } = buildPipeline(options);
+      const entry = rehypePlugins.find(
+        (e) => nameOf(e) === "rehypeSourceLines",
+      )!;
+      return optionsOf(entry);
+    };
+
+    expect(offsetOf()).toEqual({ offset: 0 });
+    expect(offsetOf({ bodyLineOffset: 8 })).toEqual({ offset: 8 });
+  });
+});
+
+describe("buildPipeline toggles", () => {
+  it("drops both halves of math from one flag", () => {
+    // The reason the builder returns both lists from one options object: a
+    // rehype-only builder lets a caller parse `$$…$$` and never render it.
+    const { remarkPlugins, rehypePlugins } = buildPipeline({ math: false });
+
+    expect(names(remarkPlugins)).toEqual(["remarkGfm"]);
+    expect(names(rehypePlugins)).toEqual([
+      "rehypeRaw",
+      "rehypeSourceLines",
+      "rehypeSanitize",
+      "rehypeSlug",
+      "rehypeHighlight",
+    ]);
+  });
+
+  it("drops only remarkGfm for gfm: false", () => {
+    const { remarkPlugins, rehypePlugins } = buildPipeline({ gfm: false });
+
+    expect(names(remarkPlugins)).toEqual(["remarkMath"]);
+    expect(names(rehypePlugins)).toEqual(DEFAULT_REHYPE);
+  });
+
+  it("drops only rehypeHighlight for highlight: false", () => {
+    const { remarkPlugins, rehypePlugins } = buildPipeline({
+      highlight: false,
+    });
+
+    expect(names(remarkPlugins)).toEqual(DEFAULT_REMARK);
+    expect(names(rehypePlugins)).toEqual([
+      "rehypeRaw",
+      "rehypeSourceLines",
+      "rehypeSanitize",
+      "rehypeSlug",
+      "rehypeKatex",
+    ]);
+  });
+
+  it("drops only rehypeSourceLines for sourceLines: false", () => {
+    const { rehypePlugins } = buildPipeline({ sourceLines: false });
+
+    expect(names(rehypePlugins)).toEqual([
+      "rehypeRaw",
+      "rehypeSanitize",
+      "rehypeSlug",
+      "rehypeHighlight",
+      "rehypeKatex",
+    ]);
+  });
+
+  it("drops only rehypeSanitize for sanitize: false", () => {
+    const { rehypePlugins } = buildPipeline({ sanitize: false });
+
+    expect(names(rehypePlugins)).toEqual([
+      "rehypeRaw",
+      "rehypeSourceLines",
+      "rehypeSlug",
+      "rehypeHighlight",
+      "rehypeKatex",
+    ]);
+  });
+
+  it("returns fresh arrays per call, and reads no shared state", () => {
+    const first = buildPipeline();
+    const second = buildPipeline();
+
+    expect(first.rehypePlugins).not.toBe(second.rehypePlugins);
+    expect(names(first.rehypePlugins)).toEqual(names(second.rehypePlugins));
+  });
+});
+
+describe("buildRemarkPlugins", () => {
+  it("is exactly the remark half buildPipeline returns", () => {
+    // The CLI checker parses mdast without ever running rehype. It calls this,
+    // so its parser cannot drift from the viewers'.
+    for (const options of [{}, { gfm: false }, { math: false }]) {
+      const half = buildRemarkPlugins(options);
+      const whole = buildPipeline(options).remarkPlugins;
+
+      expect(names(half)).toEqual(names(whole));
+      expect(half.map(optionsOf)).toEqual(whole.map(optionsOf));
+    }
+  });
+});

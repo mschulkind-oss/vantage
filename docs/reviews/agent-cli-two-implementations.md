@@ -218,7 +218,7 @@ Two of Run A's three findings are false positives.
 | Link to a directory | error | quiet | **B.** [`ViewerPage.tsx:421`](../../frontend/src/pages/ViewerPage.tsx#L421) routes any non-`.md` path to `viewDirectory()`, which renders a directory listing |
 | `xmpp:` / `irc:` link | error | quiet | **B.** `defaultSchema.protocols.href` allows `http, https, irc, ircs, mailto, xmpp`, kept by [`sanitize.ts:11`](../../packages/vantage-md/src/sanitize.ts#L11) |
 | `data:` link | quiet | quiet | **Neither.** The sanitizer strips the href — verified: the pipeline emits a bare `<a>data</a>` |
-| `<a id="notes">` then `[x](#notes)` | dead-section-anchor | quiet | **B.** The sanitizer renames it to `user-content-notes`, and [`MarkdownViewer.tsx:155-156`](../../frontend/src/components/MarkdownViewer.tsx#L155-L156) falls back to exactly that id |
+| `<a id="notes">` then `[x](#notes)` | dead-section-anchor | quiet | **B.** The sanitizer renames it to `user-content-notes`, and [`MarkdownViewer.tsx:153-154`](../../frontend/src/components/MarkdownViewer.tsx#L153-L154) falls back to exactly that id |
 | Mermaid syntax error | line of the opening fence | line *inside* the diagram | **B.** The error is on diagram line 2 = file line 5; A reports line 3 |
 | Section-anchor typo | names the bad anchor | names it and suggests the nearest real one | **B**, and its suggestion is byte-correct against `rehype-slug` (verified: `já--em-dash--section`) |
 | Link in inline code or a fence | quiet | quiet | **Both.** Both walk the AST, as the design's §5.3 tip demands |
