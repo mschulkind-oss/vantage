@@ -21,7 +21,27 @@ jobs:
   # Build the vantage binary for each platform with the frontend embedded and
   # attach the archives to the GitHub release.
   build:
-    if: github.event_name == 'release'
+    # Only the *app's* own `v<semver>` releases.
+    #
+    # `release: [published]` takes no tag filter, so this workflow also fires for
+    # the releases publish-check.yml creates for `vantage-check@<version>` tags
+    # (and would for any future `<package>@<version>` release). On such a tag the
+    # `version="${GITHUB_REF_NAME#v}"` below strips the `v` of *v*antage-check and
+    # yields `antage-check@0.1.0`; the job then attaches nonsense archives to the
+    # wrong release and the `brew` job regenerates Formula/vantage.rb from URLs
+    # that do not exist and pushes it to the public tap, breaking
+    # `brew install vantage` for everyone until someone reverts the tap.
+    #
+    # Guard on `github.ref_name` specifically, because that is the value that
+    # goes wrong. `startsWith(…, 'v')` alone is not enough — `vantage-check@…`
+    # and `vantage-md@…` both start with `v`, which is the whole trap — so the
+    # `@` test is what actually separates a package tag from `v0.4.0`.
+    #
+    # The `brew` job needs no guard of its own: with `build` skipped,
+    # `needs.build.result` is 'skipped', and on a release event
+    # `github.event_name` is not 'workflow_dispatch', so its condition is false.
+    # The manual `workflow_dispatch` path is untouched and still runs `brew`.
+    if: github.event_name == 'release' && startsWith(github.ref_name, 'v') && !contains(github.ref_name, '@')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
