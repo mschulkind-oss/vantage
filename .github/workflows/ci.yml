@@ -38,6 +38,12 @@ jobs:
       - name: Build vantage-md package
         run: cd packages/vantage-md && npm ci && npx tsup
 
+      # `just check-ci` compiles this package into a standalone binary with bun
+      # (which mise installs from mise.toml) and runs it over the repo's own
+      # documentation, so the gate covers the artifact we ship and not just the
+      # source it is built from. The install has to come first: vantage-check
+      # imports vantage-md's TypeScript source, so both packages' dependencies
+      # must resolve at bundle time.
       - name: Install vantage-check dependencies
         run: cd packages/vantage-check && npm ci
 
@@ -52,5 +58,5 @@ jobs:
       - name: Build
         run: just build
 
-      - name: Check (lint, type-check, test)
+      - name: Check (lint, type-check, test, self-check the docs)
         run: just check-ci
