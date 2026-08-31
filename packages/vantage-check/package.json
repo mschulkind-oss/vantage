@@ -2,36 +2,48 @@
   "name": "vantage-check",
   "version": "0.1.0",
   "private": true,
-  "description": "Agent-facing checker for Vantage documents. Compiled to a standalone single-file binary; never published to npm.",
+  "description": "Agent-facing CLI for Vantage: emit the Markdown style guide, and check that a document really renders",
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mschulkind-oss/vantage",
+    "directory": "packages/vantage-check"
+  },
   "scripts": {
     "build": "bun ./scripts/build.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
-    "format": "prettier --write 'src/**/*.ts' 'scripts/**/*.ts'",
-    "format:check": "prettier --check 'src/**/*.ts' 'scripts/**/*.ts'"
+    "format": "prettier --write 'src/**/*.ts' 'test/**/*.ts' 'scripts/**/*.ts'",
+    "format:check": "prettier --check 'src/**/*.ts' 'test/**/*.ts' 'scripts/**/*.ts'"
   },
   "dependencies": {
-    "commander": "^13.1.0",
+    "dompurify": "^3.3.1",
+    "github-slugger": "^2.0.0",
     "katex": "0.18.0",
+    "mdast-util-to-string": "^4.0.0",
     "mermaid": "11.16.0",
     "remark-gfm": "^4.0.1",
+    "remark-lint-no-undefined-references": "^5.0.2",
+    "remark-math": "^6.0.0",
     "remark-parse": "^11.0.0",
     "remark-preset-lint-recommended": "^7.0.1",
     "smol-toml": "^1.7.0",
-    "unified": "^11.0.0",
+    "unified": "^11.0.5",
+    "unist-util-visit": "^5.1.0",
     "vfile": "^6.0.3",
-    "unist-util-visit": "^5.1.0"
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
+    "@types/mdast": "^4.0.4",
     "@types/node": "^24.10.1",
+    "prettier": "^3.8.1",
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.10",
+    "@eslint/js": "^10.0.1",
     "eslint": "^10.7.0",
     "globals": "^16.5.0",
-    "prettier": "^3.8.1",
-    "typescript": "~6.0.3",
-    "typescript-eslint": "^8.63.0",
-    "vitest": "^4.1.10"
+    "typescript-eslint": "^8.63.0"
   }
 }

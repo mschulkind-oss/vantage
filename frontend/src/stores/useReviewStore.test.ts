@@ -1019,19 +1019,23 @@ describe("useReviewStore", () => {
       expect(payload).toContain('"id":"abcdef12"');
     });
 
+    // The CLI is only useful if agents hear about it, and this payload is the
+    // one channel that reaches them on every turn without anyone installing
+    // anything.
+    it("points the agent at vantage-check before it delivers", async () => {
+      seedNested();
+      const payload = await copiedPayload();
+      expect(payload).toContain("uvx vantage-check docs/design/guide.md");
+      // The checker must never be able to block a delivery.
+      expect(payload).toContain("not a delivery dependency");
+      expect(payload).toContain("**Before delivering, check the document.**");
+    });
+
     it("instructs saving the document before delivering", async () => {
       seedNested();
       const payload = await copiedPayload();
       expect(payload).toContain("**save the document first**");
       expect(payload).toContain("Save the document before delivering");
-    });
-
-    it("instructs checking the document with vantage-check before delivering", async () => {
-      seedNested();
-      const payload = await copiedPayload();
-      expect(payload).toContain("Check the document before delivering");
-      expect(payload).toContain("uvx vantage-check docs/design/guide.md");
-      expect(payload).toContain("quality gate, not a delivery dependency");
     });
 
     it("requires a fresh nonce per line and forbids re-delivery", async () => {
@@ -1077,6 +1081,7 @@ describe("useReviewStore", () => {
         ".vantage/inbox/docs__design__guide.md.$RANDOM.jsonl",
       );
       expect(payload).toContain('"id":"abcdef12"');
+      expect(payload).toContain("uvx vantage-check docs/design/guide.md");
       expect(payload.toLowerCase()).not.toContain("changelog");
     });
   });

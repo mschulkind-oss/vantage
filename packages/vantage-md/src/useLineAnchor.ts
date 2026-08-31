@@ -1,8 +1,6 @@
 import { useEffect, useCallback, type RefObject } from "react";
-import {
-  parseLineAnchor,
-  clearLineAnchorHighlights,
-} from "./scrollToLineAnchor.js";
+import { clearLineAnchorHighlights } from "./scrollToLineAnchor.js";
+import { parseLineAnchor } from "./lineAnchor.js";
 
 const HIGHLIGHT_CLASS = "line-anchor-highlight";
 

@@ -1,283 +1,278 @@
-/**
- * The link/* rules — the CLI's own, near-zero-false-positive checks.
- *
- * Every href is classified once:
- *   1. shape checks (leading-slash, uri-scheme) — at most one, and only when
- *      the shape is a usable relative path do we look at the target at all;
- *   2. target checks (missing-target, line-anchor-range, dead-section-anchor).
- *
- * Inline code, fences, and raw text are never seen as links: we walk the
- * remark AST (via vantage-md's `parseToMdast`), so only real `link`/`image`
- * nodes — and reference links resolved through `definition` nodes — are
- * considered. Autolinks the viewer produces are plain `link` nodes too.
- */
-
-import { readFileSync, statSync } from "node:fs";
-import path from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
+import type { Node } from "unist";
 import { visit } from "unist-util-visit";
-import {
-  headingIds as computeHeadingIds,
-  parseFrontmatter,
-  parseLineAnchor,
-} from "vantage-md";
-import { countLines, type ParsedDoc } from "../parse.js";
-import type { Finding } from "../types.js";
-
-/** Schemes the viewer can actually navigate to. */
-const ALLOWED_SCHEMES = new Set(["http", "https", "mailto", "data"]);
+import { parseLineAnchor } from "../../../vantage-md/src/lineAnchor.js";
+import type { Collector } from "../core/collector.js";
+import { displayPath } from "../core/document.js";
+import { nearestAnchor } from "../core/slugs.js";
+import { isMarkdown } from "../core/workspace.js";
 
 /**
- * Per-run cache so a target file is read and slugified at most once even when
- * many documents link to it.
+ * The rules nobody else can run for us.
+ *
+ * Everything here needs *this repo on disk* and Vantage's routing semantics:
+ * whether a path resolves, whether a file is long enough for the line a link
+ * names, whether a heading with that slug exists in the document being pointed
+ * at. A general-purpose Markdown linter cannot answer any of them, which is
+ * exactly why these are ours to write — and why they have to be right, because
+ * an agent that sees one bogus error stops running the tool.
+ *
+ * The safety property throughout: only report when the filesystem has already
+ * settled the question. Anything ambiguous is left alone.
  */
-export interface Ctx {
-  lineCountOf(abs: string): number;
-  headingIdsOf(abs: string): string[];
+
+/** A link as written, split into the parts the rules care about. */
+export interface LinkReference {
+  node: Node;
+  /** The href exactly as it appears in the document. */
+  url: string;
 }
 
-/** Build a fresh per-run Ctx backed by on-disk reads with a small cache. */
-export function makeCtx(): Ctx {
-  const lineCounts = new Map<string, number>();
-  const slugs = new Map<string, string[]>();
-  return {
-    lineCountOf(abs) {
-      let n = lineCounts.get(abs);
-      if (n === undefined) {
-        n = countLines(readFileSync(abs, "utf8"));
-        lineCounts.set(abs, n);
-      }
-      return n;
-    },
-    headingIdsOf(abs) {
-      let ids = slugs.get(abs);
-      if (ids === undefined) {
-        const { body } = parseFrontmatter(readFileSync(abs, "utf8"));
-        ids = computeHeadingIds(body);
-        slugs.set(abs, ids);
-      }
-      return ids;
-    },
+/**
+ * Every link in the document, from the parsed tree.
+ *
+ * From the *tree*, not the text: a crude search for `](` reports
+ * `` `[Doc](/docs/guide.md)` `` inside inline code as a broken link, and being
+ * wrong once is enough to lose the reader. Inline code, fenced blocks and plain
+ * prose are simply not link nodes, so walking the AST settles it structurally.
+ *
+ * Raw HTML anchors (`<a href="...">`) are deliberately not collected: they are
+ * a single `html` node with no parsed href, and guessing at one with a regex
+ * puts us back in the business the previous paragraph is about.
+ */
+export function collectLinks(tree: Node): LinkReference[] {
+  const references: LinkReference[] = [];
+
+  const push = (node: Node, url: unknown) => {
+    if (typeof url === "string" && url.length > 0) {
+      references.push({ node, url });
+    }
   };
-}
 
-interface LinkRef {
-  href: string;
-  line: number; // 1-based line within the body
-  isImage: boolean;
-}
-
-interface Target {
-  kind: "missing" | "dir" | "file";
-  /** Resolved absolute path; null for a same-document target. */
-  abs: string | null;
-  lineCount: number;
-  headingIds: string[] | null;
-}
-
-/**
- * The scheme of an href, lowercased, or null when there is none. A single
- * letter followed by a colon counts (that is how `C:\...` drive paths look),
- * which is exactly what lets us reject them.
- */
-export function schemeOf(href: string): string | null {
-  const m = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(href);
-  return m ? m[1].toLowerCase() : null;
-}
-
-/** Split an href into its path and fragment at the first `#`. */
-export function splitFragment(href: string): {
-  path: string;
-  frag: string | null;
-} {
-  const i = href.indexOf("#");
-  if (i === -1) return { path: href, frag: null };
-  return { path: href.slice(0, i), frag: href.slice(i) };
-}
-
-function isMarkdownFile(abs: string): boolean {
-  return abs.toLowerCase().endsWith(".md");
-}
-
-function mk(
-  file: string,
-  rule: string,
-  line: number,
-  message: string,
-): Finding {
-  return { file, rule, severity: "error", line, message };
-}
-
-// Show a resolved target the way the report shows the file: relative to the
-// working directory, so a report reads consistently.
-function disp(abs: string | null): string {
-  if (abs === null) return "this file";
-  return path.relative(process.cwd(), abs) || abs;
-}
-
-function collectDefinitions(doc: ParsedDoc): Map<string, string> {
-  const defs = new Map<string, string>();
-  visit(doc.mdast, "definition", (node) => {
-    defs.set(node.identifier, node.url);
-  });
-  return defs;
-}
-
-function collectLinks(doc: ParsedDoc): LinkRef[] {
-  const defs = collectDefinitions(doc);
-  const out: LinkRef[] = [];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  visit(doc.mdast, (node: any) => {
-    const line = node.position?.start?.line ?? 0;
+  visit(tree, (node) => {
     switch (node.type) {
       case "link":
-        out.push({ href: node.url, line, isImage: false });
-        break;
       case "image":
-        out.push({ href: node.url, line, isImage: true });
+      case "definition":
+        push(node, (node as { url?: unknown }).url);
         break;
-      case "linkReference": {
-        const href = defs.get(node.identifier);
-        if (href !== undefined) out.push({ href, line, isImage: false });
+      default:
         break;
-      }
-      case "imageReference": {
-        const href = defs.get(node.identifier);
-        if (href !== undefined) out.push({ href, line, isImage: true });
-        break;
-      }
     }
   });
-  return out;
+
+  return references;
 }
 
-function resolveTarget(rawPath: string, doc: ParsedDoc, ctx: Ctx): Target {
-  // Same document: the href is just a fragment (or empty).
-  if (rawPath === "") {
-    return {
-      kind: "file",
-      abs: null,
-      lineCount: doc.lineCount,
-      headingIds: doc.headingIds,
-    };
-  }
+export function checkLinks(collector: Collector): void {
+  const { doc, workspace } = collector;
+  const documentDir = dirname(doc.path);
 
-  let decoded = rawPath;
-  try {
-    decoded = decodeURIComponent(rawPath);
-  } catch {
-    // Malformed percent-encoding: keep the raw path so it resolves (and is
-    // reported) rather than throwing.
-  }
-  const abs = path.resolve(path.dirname(doc.abs), decoded);
+  for (const { node, url } of collectLinks(doc.mdast)) {
+    const at = collector.at(node);
+    const { path, fragment } = splitFragment(url);
 
-  let st;
-  try {
-    st = statSync(abs);
-  } catch {
-    return { kind: "missing", abs, lineCount: 0, headingIds: null };
+    // A fragment with no path is a link into this same document.
+    if (path === "") {
+      if (fragment) checkFragment(collector, at, fragment, doc.path);
+      continue;
+    }
+
+    if (DRIVE_LETTER.test(path) || path.startsWith("\\\\")) {
+      collector.report(
+        "link/uri-scheme",
+        at,
+        `\`${url}\` is an absolute filesystem path. Vantage serves files by repo-relative path, so write it relative to this file instead.`,
+      );
+      continue;
+    }
+
+    const scheme = schemeOf(path);
+    if (scheme === "file") {
+      collector.report(
+        "link/uri-scheme",
+        at,
+        `\`${url}\` uses the \`file://\` scheme, which Vantage cannot route. Write the target relative to this file instead.`,
+      );
+      continue;
+    }
+    // Any other scheme — http, mailto, tel, a custom one — is somebody else's
+    // to resolve, and resolving it would mean touching the network.
+    if (scheme !== undefined || path.startsWith("//")) continue;
+
+    if (path.startsWith("/")) {
+      collector.report(
+        "link/leading-slash",
+        at,
+        `\`${url}\` starts with a slash. Vantage resolves links relative to the current file, so a leading slash breaks web routing and multi-repo scoping.${suggestRelative(doc.path, path)}`,
+      );
+      continue;
+    }
+
+    const target = resolve(documentDir, cleanPath(path));
+    if (!workspace.exists(target)) {
+      collector.report(
+        "link/missing-target",
+        at,
+        `\`${url}\` does not exist (looked for \`${collectorRelative(collector, target)}\`).`,
+      );
+      continue;
+    }
+
+    if (fragment) checkFragment(collector, at, fragment, target);
   }
-  if (st.isDirectory()) {
-    return { kind: "dir", abs, lineCount: 0, headingIds: null };
-  }
-  return {
-    kind: "file",
-    abs,
-    lineCount: ctx.lineCountOf(abs),
-    headingIds: isMarkdownFile(abs) ? ctx.headingIdsOf(abs) : null,
-  };
 }
 
 /**
- * Run all five link rules over a parsed document. Returns findings with
- * file-relative paths and 1-based file line numbers.
+ * Check the `#...` half of a link, once the file half is known to resolve.
+ *
+ * Two different questions hide behind one syntax: `#L42` names lines in any
+ * file, while `#some-heading` names a slug that only a Markdown document has.
+ * Anything else — a fragment on a source file that is not a line anchor — is
+ * left alone, because there is nothing on disk that would settle it.
  */
-export function checkDoc(doc: ParsedDoc, ctx: Ctx): Finding[] {
-  const findings: Finding[] = [];
-  for (const { href, line, isImage } of collectLinks(doc)) {
-    const file = doc.rel;
-    // Line numbers reported are file lines, not body lines.
-    const at = line + doc.bodyLineOffset;
+function checkFragment(
+  collector: Collector,
+  at: { line: number; column: number },
+  fragment: string,
+  targetPath: string,
+): void {
+  const { workspace } = collector;
+  const range = parseLineAnchor(fragment);
 
-    const scheme = schemeOf(href);
+  if (range) {
+    const lineCount = workspace.lineCount(targetPath);
+    if (lineCount === null) return;
 
-    // A URL. Flag schemes the viewer cannot open; either way there is no local
-    // file target to check.
-    if (scheme !== null) {
-      if (!ALLOWED_SCHEMES.has(scheme)) {
-        findings.push(
-          mk(
-            file,
-            "link/uri-scheme",
-            at,
-            `scheme "${scheme}:" is not openable in the viewer — use http, https, mailto, or a repo-relative path`,
-          ),
-        );
-      }
-      continue;
-    }
-
-    // Protocol-relative web URL (//host/path): absolute, no local target.
-    if (href.startsWith("//")) continue;
-
-    // Absolute filesystem path.
-    if (href.startsWith("/")) {
-      findings.push(
-        mk(
-          file,
-          "link/leading-slash",
-          at,
-          `absolute path "${href}" — use a repo-relative path so it resolves against this file`,
-        ),
+    // parseLineAnchor normalises `#L50-L20` to 20–50, so the viewer tolerates
+    // an inverted range. It is still not what anybody meant to write.
+    const inverted = invertedRange(fragment);
+    if (inverted) {
+      collector.report(
+        "link/line-anchor-range",
+        at,
+        `\`#${fragment}\` is inverted — it ends before it starts.`,
       );
-      continue;
+      return;
     }
 
-    // Relative path (possibly with a fragment).
-    const { path: rawPath, frag } = splitFragment(href);
-    const target = resolveTarget(rawPath, doc, ctx);
-
-    if (target.kind !== "file") {
-      findings.push(
-        mk(
-          file,
-          "link/missing-target",
-          at,
-          target.kind === "dir"
-            ? `"${href}" points at a directory (${disp(target.abs)}), not a document`
-            : `"${href}" does not resolve to a file (${disp(target.abs)})`,
-        ),
+    if (range.end > lineCount) {
+      const name = collectorRelative(collector, targetPath);
+      collector.report(
+        "link/line-anchor-range",
+        at,
+        `\`#${fragment}\` points past the end of \`${name}\`, which has ${lineCount} line${lineCount === 1 ? "" : "s"}.`,
       );
-      continue;
     }
-
-    // Anchor checks: links only (not images), and only when there is a frag.
-    if (frag && !isImage) {
-      const range = parseLineAnchor(frag);
-      if (range) {
-        if (range.end > target.lineCount) {
-          findings.push(
-            mk(
-              file,
-              "link/line-anchor-range",
-              at,
-              `line anchor ${frag} is beyond the ${target.lineCount} lines of ${disp(target.abs)}`,
-            ),
-          );
-        }
-      } else if (target.headingIds) {
-        const slug = frag.slice(1);
-        if (!target.headingIds.includes(slug)) {
-          findings.push(
-            mk(
-              file,
-              "link/dead-section-anchor",
-              at,
-              `no heading with anchor "${slug}" in ${disp(target.abs)}`,
-            ),
-          );
-        }
-      }
-    }
+    return;
   }
-  return findings;
+
+  if (!isMarkdown(targetPath)) return;
+
+  const anchors = workspace.documentAnchors(targetPath);
+  if (anchors === null) return;
+  if (anchors.has(fragment)) return;
+  // Ids the renderer generates for GFM footnotes are not headings and are not
+  // worth modelling; a link to one is vanishingly rare and a false positive is
+  // not.
+  if (fragment.startsWith("user-content-")) return;
+
+  const suggestion = nearestAnchor(fragment, anchors);
+  const name = collectorRelative(collector, targetPath);
+  const where =
+    targetPath === collector.doc.path ? "this document" : `\`${name}\``;
+  collector.report(
+    "link/dead-section-anchor",
+    at,
+    `\`#${fragment}\` matches no heading in ${where}.${
+      suggestion ? ` Did you mean \`#${suggestion}\`?` : ""
+    }`,
+  );
+}
+
+const DRIVE_LETTER = /^[a-zA-Z]:[\\/]/;
+const SCHEME = /^([a-zA-Z][a-zA-Z0-9+.-]*):/;
+
+function schemeOf(url: string): string | undefined {
+  const match = SCHEME.exec(url);
+  return match?.[1]?.toLowerCase();
+}
+
+/** Split `path#fragment`, keeping everything after the first `#` verbatim. */
+export function splitFragment(url: string): { path: string; fragment: string } {
+  const hash = url.indexOf("#");
+  if (hash === -1) return { path: url, fragment: "" };
+  return { path: url.slice(0, hash), fragment: url.slice(hash + 1) };
+}
+
+/**
+ * The on-disk name a link's path part refers to: query string dropped, percent
+ * escapes decoded.
+ */
+function cleanPath(path: string): string {
+  const query = path.indexOf("?");
+  const withoutQuery = query === -1 ? path : path.slice(0, query);
+  try {
+    return decodeURIComponent(withoutQuery);
+  } catch {
+    return withoutQuery;
+  }
+}
+
+/** True when a range anchor names its end before its start, e.g. `L50-L20`. */
+function invertedRange(fragment: string): boolean {
+  const match = /^L(\d+)-L?(\d+)$/.exec(fragment);
+  if (!match) return false;
+  return Number(match[1]) > Number(match[2]);
+}
+
+/**
+ * Name a file the way the reader would: relative to the document when the
+ * target is nearby, relative to where the run started when it is not, and only
+ * absolute when neither of those is shorter.
+ */
+function collectorRelative(collector: Collector, target: string): string {
+  const fromDocument = relative(dirname(collector.doc.path), target);
+  if (fromDocument !== "" && !fromDocument.startsWith("..")) {
+    return fromDocument;
+  }
+  return displayPath(target, collector.cwd);
+}
+
+/**
+ * Turn `/docs/guide.md` into the relative path that would have worked, when
+ * the repository root can be found and the file is really there.
+ *
+ * Only ever appended to a message. If any of it is uncertain the suggestion is
+ * simply omitted — a wrong suggestion in an otherwise correct finding is the
+ * same trust problem as a wrong finding.
+ */
+function suggestRelative(documentPath: string, linkPath: string): string {
+  const root = repositoryRoot(dirname(documentPath));
+  if (!root) return "";
+
+  const target = join(root, cleanPath(linkPath));
+  if (!existsSync(target)) return "";
+
+  let suggestion = relative(dirname(documentPath), target).split(sep).join("/");
+  if (!suggestion.startsWith(".")) suggestion = `./${suggestion}`;
+  return ` Write \`${suggestion}\`.`;
+}
+
+/**
+ * The nearest ancestor that looks like a repository root.
+ *
+ * `.git` is checked as a plain directory entry rather than by asking git, so
+ * this still works in a bare checkout with no git on PATH (P1).
+ */
+function repositoryRoot(from: string): string | undefined {
+  let current = from;
+  for (;;) {
+    if (existsSync(join(current, ".git"))) return current;
+    if (existsSync(join(current, ".vantage.toml"))) return current;
+    const parent = dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
 }

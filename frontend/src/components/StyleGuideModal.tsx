@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Modal } from "./Modal";
 import { Check, Copy } from "lucide-react";
 import { copyTextOrWarn } from "../lib/clipboard";
-import { STYLE_GUIDE_SNIPPET } from "vantage-md";
+import { STYLE_GUIDE } from "vantage-md";
 
 interface StyleGuideModalProps {
   isOpen: boolean;
@@ -11,11 +11,6 @@ interface StyleGuideModalProps {
   baseUrl?: string;
 }
 
-// The style guide text lives in the vantage-md package (single source of
-// truth shared with the vantage-check CLI). Re-exported here so the existing
-// import path — and StyleGuideModal.test.tsx — keep working unchanged.
-export { STYLE_GUIDE_SNIPPET };
-
 export const StyleGuideModal: React.FC<StyleGuideModalProps> = ({
   isOpen,
   onClose,
@@ -23,7 +18,7 @@ export const StyleGuideModal: React.FC<StyleGuideModalProps> = ({
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
-    if (await copyTextOrWarn(STYLE_GUIDE_SNIPPET.trim())) {
+    if (await copyTextOrWarn(STYLE_GUIDE.trim())) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
@@ -55,7 +50,7 @@ export const StyleGuideModal: React.FC<StyleGuideModalProps> = ({
             )}
           </button>
           <pre className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-4 pr-28 text-xs text-slate-700 dark:text-slate-300 overflow-auto max-h-[50vh] whitespace-pre-wrap font-mono leading-relaxed">
-            {STYLE_GUIDE_SNIPPET.trim()}
+            {STYLE_GUIDE.trim()}
           </pre>
         </div>
 
