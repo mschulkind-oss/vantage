@@ -168,7 +168,7 @@ _self-check: cli
     bin=./packages/vantage-check/dist/vantage-check
     "$bin" version
     test -n "$("$bin" style-guide)" || { echo "style-guide printed nothing"; exit 1; }
-    "$bin" check docs userguide README.md AGENTS.md packages/vantage-check/README.md packages/vantage-md/README.md \
+    "$bin" check docs userguide README.md AGENTS.md \
         packages/vantage-check/README.md packages/vantage-md/README.md
 
 # Build the frontend and copy it into the Go embed dir (preserving .gitkeep so
