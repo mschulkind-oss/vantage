@@ -7,9 +7,10 @@ default:
 setup: _hooks
     mise install
     go mod download
-    # Install the package's own deps so the app can resolve it from source.
-    # No tsup build needed — the frontend imports vantage-md's TS source
-    # directly (see frontend/vite.config.ts). dist/ is built only at release.
+    # Install each package's own deps so the app and the agent CLI can resolve
+    # them from source. No tsup build needed — the frontend imports vantage-md's
+    # TS source directly (see frontend/vite.config.ts), and so does
+    # packages/vantage-check. dist/ is built only at release.
     cd packages/vantage-md && npm ci
     cd packages/vantage-check && npm ci
     cd frontend && npm ci
@@ -22,11 +23,14 @@ dev path=".":
 build: _bundle
     go build -ldflags "-X github.com/mschulkind-oss/vantage/internal/buildinfo.commit=$(git rev-parse --short HEAD)" -o vantage ./cmd/vantage
 
-# Build the vantage-check CLI for the current host and smoke-test it.
+# bun compiles the TypeScript into one self-contained executable in about a
+# second, which is why the gate can afford to rebuild it on every run. The
+# output lands in packages/vantage-check/dist, which is gitignored, so this
+# never dirties a tracked file.
+#
+# Build the vantage-check CLI for the current host.
 cli:
     cd packages/vantage-check && bun run build
-    ./packages/vantage-check/dist/vantage-check --version
-    @test -n "$$(./packages/vantage-check/dist/vantage-check style-guide)" && echo "style-guide emits output"
 
 # Build, install onto PATH, and restart the systemd user service.
 deploy: build
@@ -40,7 +44,7 @@ deploy: build
     echo "Installed $bindir/vantage"
     systemctl --user restart vantage
 
-# Format the code (Go + frontend). No tests — run this before committing.
+# Format the code (Go + frontend + the agent CLI). No tests — run before committing.
 format:
     gofmt -w cmd internal web
     cd packages/vantage-check && npm run format
@@ -51,7 +55,9 @@ check: format
     go vet ./cmd/... ./internal/... ./web/...
     staticcheck ./cmd/... ./internal/... ./web/...
     go test ./cmd/... ./internal/... ./web/...
+    cd packages/vantage-check && npm run lint && npm run typecheck && npm run test
     cd frontend && npm run lint && npx tsc --noEmit && npm run test
+    just _self-check
 
 # Read-only gate (errors on issues, never rewrites) — used by the pre-commit hook and CI.
 check-ci: _deps-match
@@ -63,8 +69,12 @@ check-ci: _deps-match
     go vet ./cmd/... ./internal/... ./web/...
     staticcheck ./cmd/... ./internal/... ./web/...
     go test ./cmd/... ./internal/... ./web/...
-    ( cd packages/vantage-check && npm run format:check && npm run lint && npx tsc --noEmit && npm run test )
+    # check-ci is one bash script, so a bare `cd` would leak into the next line
+    # — each package gets its own subshell.
+    ( cd packages/vantage-check && npm run format:check && npm run lint && npm run typecheck && npm run test )
     ( cd frontend && npm run format:check && npm run lint && npx tsc --noEmit && npm run test )
+    # Then the artifact, not just the source it was built from.
+    just _self-check
 
 # Assert node_modules matches the manifests, in both npm packages.
 #
@@ -140,6 +150,25 @@ release-check bump="":
     echo "Push the tag to build and publish:  git tag vantage-check@${version} && git push origin vantage-check@${version}"
 
 # ── helpers ─────────────────────────────────────────────────────────
+
+# Build the vantage-check CLI and run it over this repository's own docs.
+#
+# Dogfooding, and the only thing keeping the docs' links and anchors honest: the
+# checker we hand to other people's agents has to pass the tree it ships from.
+# It runs the compiled binary rather than the TypeScript sources, so anything
+# that type-checks but cannot be bundled — or cannot run with no Node and no
+# node_modules in the picture — fails here instead of at release.
+#
+# The paths are named explicitly rather than swept from the repo root, so an
+# untracked scratch file in someone's working tree cannot fail the gate.
+[private]
+_self-check: cli
+    #!/usr/bin/env bash
+    set -euo pipefail
+    bin=./packages/vantage-check/dist/vantage-check
+    "$bin" version
+    test -n "$("$bin" style-guide)" || { echo "style-guide printed nothing"; exit 1; }
+    "$bin" check docs userguide README.md AGENTS.md
 
 # Build the frontend and copy it into the Go embed dir (preserving .gitkeep so
 # the build never dirties a tracked file).

@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+// The viewer's own parser, so a test that claims "the viewer resolves this"
+// is asking the viewer rather than restating what we believe about it.
+import { parseLineAnchor } from "../../vantage-md/src/lineAnchor.js";
+import { exitCodeFor } from "../src/commands/check.js";
+import { EXIT_OK } from "../src/exit.js";
 import { checkTree, makeTree, ruleIds } from "./helpers.js";
 
 describe("link/leading-slash", () => {
@@ -159,15 +164,6 @@ describe("link/line-anchor-range", () => {
     expect(report.findings[0]?.message).toContain("5 lines");
   });
 
-  it("fires on an inverted range", async () => {
-    const root = makeTree({
-      "index.md": "[Code](./code.go#L4-L2)\n",
-      "code.go": source,
-    });
-
-    expect(ruleIds(await checkTree(root))).toEqual(["link/line-anchor-range"]);
-  });
-
   it("does not count a trailing newline as one more line", async () => {
     const root = makeTree({
       "index.md": "[Code](./code.go#L5)\n",
@@ -181,6 +177,47 @@ describe("link/line-anchor-range", () => {
     const root = makeTree({ "index.md": "[Up](#L1)\n[Off](#L900)\n" });
 
     expect(ruleIds(await checkTree(root))).toEqual(["link/line-anchor-range"]);
+  });
+});
+
+/**
+ * An inverted range is a warning on purpose, and this is the pin.
+ *
+ * `parseLineAnchor` normalises with Math.min/Math.max, so `#L4-L2` highlights
+ * lines 2–4 in the viewer: the link *works*. A working link must never fail a
+ * run — but it is still almost certainly a typo, so it is not silence either.
+ */
+describe("link/inverted-range", () => {
+  const source = ["one", "two", "three", "four", "five"].join("\n");
+
+  it("is what the viewer does with an inverted range", () => {
+    expect(parseLineAnchor("#L4-L2")).toEqual({ start: 2, end: 4 });
+  });
+
+  it("warns rather than erroring, so the run still passes", async () => {
+    const root = makeTree({
+      "index.md": "[Code](./code.go#L4-L2)\n",
+      "code.go": source,
+    });
+
+    const report = await checkTree(root);
+
+    expect(ruleIds(report)).toEqual(["link/inverted-range"]);
+    expect(report.findings[0]?.severity).toBe("warning");
+    expect(report.findings[0]?.message).toContain("is inverted");
+    expect(exitCodeFor(report)).toBe(EXIT_OK);
+  });
+
+  it("still reports the range error when the range also runs off the end", async () => {
+    const root = makeTree({
+      "index.md": "[Code](./code.go#L900-L2)\n",
+      "code.go": source,
+    });
+
+    expect(ruleIds(await checkTree(root))).toEqual([
+      "link/inverted-range",
+      "link/line-anchor-range",
+    ]);
   });
 });
 
