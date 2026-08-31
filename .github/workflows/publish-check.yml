@@ -1,118 +1,170 @@
 name: Publish vantage-check
 
 # The vantage-check CLI is an independently versioned, compiled single-file
-# binary. Pushing a `vantage-check@<version>` tag cross-compiles it for every
-# supported platform and publishes the results:
-#   - `build` → binaries on the GitHub release (install with curl)
-#   - `pypi`  → platform-tagged wheels on PyPI (install with uvx)
+# binary. Pushing a `vantage-check@<version>` tag builds it for every supported
+# platform and publishes the results:
+#   - binaries on the GitHub release (install with curl)
+#   - platform-tagged wheels on PyPI (install with uvx)
 #
-# Modeled on publish.yml (matrix) and publish-npm.yml (tag trigger). Unlike the
-# Go binary, vantage-check is TypeScript cross-compiled with `bun build
-# --compile`. bun fetches each target's runtime on first build, so these jobs
-# need network access (fine in CI; unavailable in the sandbox).
+# One runner does all of it. vantage-check is TypeScript compiled with `bun
+# build --compile`, and bun cross-compiles every target from a single host — so
+# unlike the Go binary in publish.yml, and unlike this workflow's own Node SEA
+# ancestor, there is no reason to pay for a runner per platform. bun downloads
+# each target's runtime the first time it compiles for it, so this job needs
+# network access (fine on a GitHub runner; it fails in an offline sandbox).
 #
-# The `pypi` job additionally requires the `vantage-check` project to exist on
+# The trade of collapsing the matrix: only the host target can be executed here.
+# See the smoke-test step.
+#
+# The PyPI step additionally requires the `vantage-check` project to exist on
 # PyPI with GitHub OIDC trusted publishing configured for this repo — an owner
-# action outside the repo. Until that is done it fails, but `build` has already
-# published the binaries, so the curl install keeps working either way.
+# action outside this repo. Until that is done the step fails, but the release
+# and its binaries are already published by then, so the curl install keeps
+# working either way.
 on:
   push:
     tags:
       - "vantage-check@*"
 
 permissions:
-  contents: write # create the GitHub release + upload binaries
+  contents: write # create the GitHub release + upload the archives
   id-token: write # PyPI trusted publishing (OIDC)
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { target: bun-linux-x64, os: linux, arch: x64, ext: tar.gz }
-          - { target: bun-linux-arm64, os: linux, arch: arm64, ext: tar.gz }
-          - { target: bun-darwin-x64, os: darwin, arch: x64, ext: tar.gz }
-          - { target: bun-darwin-arm64, os: darwin, arch: arm64, ext: tar.gz }
-          - { target: bun-windows-x64, os: windows, arch: x64, ext: zip }
     steps:
       - uses: actions/checkout@v7
 
       - name: Install mise (bun + node)
         uses: jdx/mise-action@v4
 
-      - name: Install dependencies
-        run: |
-          cd packages/vantage-md && npm ci
-          cd ../vantage-check && npm ci
-
-      - name: Cross-compile
-        run: cd packages/vantage-check && bun run build --target ${{ matrix.target }}
-
-      - name: Compute version
+      # A tag that disagrees with the manifest would ship a binary that reports
+      # a version nobody can install, since build.ts stamps package.json's
+      # version into the executable and the wheel filename comes from the tag.
+      - name: Check the tag against the manifest
         id: ver
-        run: echo "version=${GITHUB_REF_NAME#vantage-check@}" >> "$GITHUB_OUTPUT"
-
-      - name: Archive
-        run: |
-          set -euo pipefail
-          version="${{ steps.ver.outputs.version }}"
-          os="${{ matrix.os }}"
-          arch="${{ matrix.arch }}"
-          name="vantage-check_${version}_${os}_${arch}"
-          staging="$(mktemp -d)"
-          cp LICENSE README.md "$staging/"
-          if [ "$os" = "windows" ]; then
-            cp packages/vantage-check/dist/vantage-check "$staging/vantage-check.exe"
-            ( cd "$staging" && zip -q "../${name}.zip" vantage-check.exe LICENSE README.md )
-          else
-            cp packages/vantage-check/dist/vantage-check "$staging/vantage-check"
-            ( cd "$staging" && tar -czf "../${name}.tar.gz" vantage-check LICENSE README.md )
-          fi
-
-      - name: Upload to the GitHub release
-        uses: softprops/action-gh-release@v4
-        with:
-          files: |
-            vantage-check_${{ steps.ver.outputs.version }}_${{ matrix.os }}_${{ matrix.arch }}.${{ matrix.ext }}
-
-  pypi:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { target: bun-linux-x64, pyplat: linux_x86_64 }
-          - { target: bun-linux-arm64, pyplat: linux_aarch64 }
-          - { target: bun-darwin-x64, pyplat: macosx_10_9_x86_64 }
-          - { target: bun-darwin-arm64, pyplat: macosx_11_0_arm64 }
-          - { target: bun-windows-x64, pyplat: win_amd64 }
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Install mise (bun + node)
-        uses: jdx/mise-action@v4
-
-      - name: Install dependencies
-        run: |
-          cd packages/vantage-md && npm ci
-          cd ../vantage-check && npm ci
-
-      - name: Cross-compile
-        run: cd packages/vantage-check && bun run build --target ${{ matrix.target }}
-
-      - name: Build wheel
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#vantage-check@}"
-          python3 -m pip install --quiet wheel
-          cd packages/vantage-check
-          python3 py/build_wheel.py dist/vantage-check "$version" "${{ matrix.pyplat }}"
+          manifest="$(node -p "require('./packages/vantage-check/package.json').version")"
+          if [ "$version" != "$manifest" ]; then
+            echo "tag ${GITHUB_REF_NAME} disagrees with packages/vantage-check/package.json (${manifest})"
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Releasing vantage-check ${version}"
 
-      - name: Publish to PyPI
-        # Trusted publishing (OIDC) — no token. Requires the `vantage-check`
-        # project on PyPI to be configured for this repo's GitHub identity.
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          # vantage-check imports vantage-md's TypeScript source, so that
+          # package's own dependencies must resolve at bundle time.
+          ( cd packages/vantage-md && npm ci )
+          ( cd packages/vantage-check && npm ci )
+
+      # The only target this runner can actually execute. Everything else is
+      # cross-compiled below and shipped unexecuted — that is the real cost of
+      # collapsing the per-platform matrix, and it is why this step exists: it
+      # proves the bundle runs standalone (no Node, no node_modules) on at least
+      # one platform before any of the artifacts are published.
+      - name: Build for this host and smoke-test it
+        run: |
+          set -euo pipefail
+          cd packages/vantage-check
+          bun run build
+          bin="dist/vantage-check"
+          "$bin" version
+          test -n "$("$bin" style-guide)" || { echo "style-guide printed nothing"; exit 1; }
+          # Dogfooding: the checker we hand to other people's agents has to pass
+          # the tree it ships from.
+          "$bin" check ../../userguide ../../docs
+
+      - name: Cross-compile every target, archive, and build wheels
+        run: |
+          set -euo pipefail
+          version="${{ steps.ver.outputs.version }}"
+          root="$GITHUB_WORKSPACE"
+          mkdir -p "$root/archives" "$root/wheels"
+          staging="$(mktemp -d)"
+          cd packages/vantage-check
+
+          # target | os | arch | PyPI platform tag.
+          #
+          # The Linux wheels are tagged manylinux rather than linux_*: PyPI
+          # rejects a bare `linux_x86_64` upload outright.
+          # The loop reads its table on fd 3, so `bun`, `zip` and `python3`
+          # inside the body keep the real stdin and cannot swallow a row.
+          while read -r target os arch pytag <&3; do
+            [ -n "$target" ] || continue
+            echo "::group::${target}"
+            rm -rf dist
+            bun run build --target "$target"
+
+            # bun appends .exe itself for windows targets; build.ts deliberately
+            # does not spell the extension. Assert the file we expect is there,
+            # so a change in that behaviour fails loudly here instead of
+            # shipping an empty archive and an unusable wheel.
+            if [ "$os" = windows ]; then
+              exe="vantage-check.exe"
+            else
+              exe="vantage-check"
+            fi
+            binary="dist/${exe}"
+            test -f "$binary" || { echo "expected ${binary} after building ${target}, got:"; ls -l dist; exit 1; }
+
+            rm -rf "$staging"
+            mkdir -p "$staging"
+            cp "$binary" "$staging/${exe}"
+            cp "$root/LICENSE" "$root/README.md" "$staging/"
+
+            name="vantage-check_${version}_${os}_${arch}"
+            if [ "$os" = windows ]; then
+              ( cd "$staging" && zip -q "$root/archives/${name}.zip" "$exe" LICENSE README.md )
+            else
+              tar -czf "$root/archives/${name}.tar.gz" -C "$staging" "$exe" LICENSE README.md
+            fi
+
+            # Wheels land in their own directory. The publish step must be
+            # handed *.whl only — packages-dir on dist/ would try to upload the
+            # bare ~90 MB binary sitting next to them.
+            python3 scripts/build-wheel.py \
+              --binary "$binary" \
+              --platform-tag "$pytag" \
+              --version "$version" \
+              --out-dir "$root/wheels"
+            echo "::endgroup::"
+          done 3<<'TARGETS'
+          bun-linux-x64     linux    x64    manylinux_2_28_x86_64
+          bun-linux-arm64   linux    arm64  manylinux_2_28_aarch64
+          bun-darwin-x64    darwin   x64    macosx_11_0_x86_64
+          bun-darwin-arm64  darwin   arm64  macosx_11_0_arm64
+          bun-windows-x64   windows  x64    win_amd64
+          TARGETS
+
+          ls -l "$root/archives" "$root/wheels"
+
+      # `gh release create` rather than a third-party action, matching
+      # publish.yml. Creating the release fires `release: published`, which
+      # publish.yml also listens for — its build job is guarded against package
+      # tags precisely because of this. Do not remove that guard.
+      - name: Create the GitHub release and attach the archives
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="${{ steps.ver.outputs.version }}"
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" \
+              --title "vantage-check ${version}" \
+              --notes "Standalone \`vantage-check\` binaries. Install with \`uvx vantage-check\`, or download the archive for your platform."
+          fi
+          gh release upload "$GITHUB_REF_NAME" archives/* --clobber
+
+      - name: Publish the wheels to PyPI
+        # Trusted publishing (OIDC) — no token, matching the npm publish. The
+        # `vantage-check` PyPI project must name this repo and workflow as a
+        # trusted publisher.
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: packages/vantage-check/dist/
+          packages-dir: wheels/
