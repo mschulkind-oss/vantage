@@ -11,10 +11,10 @@ It has a single source of truth in the `vantage-md` package
 whichever is closest, and never maintain a private copy:
 
 | Where | How |
-| --- | --- |
+| :--- | :--- |
 | The app | Settings (⚙) → **Agent Style Guide** — a modal with a copy button |
 | The CLI | `uvx vantage-check style-guide` (or the compiled `vantage-check`) |
-| The package | `import { STYLE_GUIDE_SNIPPET } from "vantage-md"` |
+| The package | `import { STYLE_GUIDE } from "vantage-md"` |
 
 ## How to use it
 
@@ -36,6 +36,11 @@ uvx vantage-check docs/design/api.md
 The style guide tells the agent **how to write**; `check` verifies the
 result **against the real pipeline** — the two are the write side and the
 verify side of the same contract. See [vantage-check](vantage-check.md).
+
+> [!NOTE]
+> The guide is advice; the checker is the enforcement. Not every convention in
+> the guide is a rule the checker can decide — it reports what *breaks*
+> rendering, and leaves matters of taste to you.
 
 ## Related
 

@@ -178,6 +178,26 @@ Reviews are stored on disk and persist across server restarts.
 Agent responses arrive through a small `.vantage/inbox/` directory at the repo
 root — see [Review Inbox](review-inbox.md), which also covers gitignoring it.
 
+The copied prompt also tells the agent to run
+[`vantage-check`](vantage-check.md) over the document before delivering, so
+broken links and unparseable diagrams are caught before they reach you.
+
+## Writing for Vantage
+
+Two things help an agent — or a person — write documents that render the way
+they meant:
+
+- **The style guide.** Settings (⚙) → **Agent Style Guide** shows the
+  conventions Vantage's renderer expects, with a copy button for pasting into an
+  agent's context. The same text comes out of `vantage-check style-guide`. See
+  [Style Guide for Agents](style-guide.md).
+- **The checker.** `vantage-check <path>` verifies a document against the
+  repository on disk: relative links that resolve, `#L42` anchors that are
+  inside their file, `#section` anchors that match a real heading, frontmatter
+  that parses, and diagrams and formulas that Mermaid and KaTeX accept. It is a
+  standalone binary that needs nothing installed and no server running. See
+  [vantage-check](vantage-check.md).
+
 ## Dark Mode
 
 Press **Shift+D** to toggle between light and dark themes. The setting is persisted across sessions.
