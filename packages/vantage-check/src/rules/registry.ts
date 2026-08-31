@@ -45,6 +45,11 @@ export const RULES: readonly RuleMeta[] = [
     default: "warning",
   },
   {
+    id: "link/line-anchor-format",
+    summary: "A `#L4x` anchor Vantage cannot parse, so it scrolls nowhere",
+    default: "error",
+  },
+  {
     id: "link/dead-section-anchor",
     summary: "A `#section` anchor matching no heading in the target document",
     default: "error",

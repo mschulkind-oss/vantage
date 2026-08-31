@@ -221,6 +221,124 @@ describe("link/inverted-range", () => {
   });
 });
 
+/**
+ * The format half of "the anchor is correct, the line exists, the doc exists".
+ *
+ * Every near miss in here was checked against the viewer's own code before it
+ * was left out — see the comment on `malformedLineAnchor` for the list. The
+ * tests below pin the two that are easiest to "fix" into false positives: a
+ * lowercase `#l42`, which is a real heading slug, and an uppercase fragment
+ * that a hand-written HTML id makes resolve.
+ */
+describe("link/line-anchor-format", () => {
+  const source = ["one", "two", "three", "four", "five"].join("\n");
+
+  it("fires on line anchors the viewer cannot parse", async () => {
+    const root = makeTree({
+      "index.md": [
+        "[Bare](./code.go#L)",
+        "[Typo](./code.go#L4x)",
+        "[Half](./code.go#L2-)",
+        "[HalfL](./code.go#L2-L)",
+        "[Both](./code.go#L2-L4x)",
+      ].join("\n\n"),
+      "code.go": source,
+    });
+
+    const report = await checkTree(root);
+
+    expect(ruleIds(report)).toEqual([
+      "link/line-anchor-format",
+      "link/line-anchor-format",
+      "link/line-anchor-format",
+      "link/line-anchor-format",
+      "link/line-anchor-format",
+    ]);
+    expect(report.findings[1]?.message).toContain("#L4x");
+    expect(report.findings[1]?.message).toContain("`#L42-L50`");
+  });
+
+  it("says nothing about the spellings the viewer does parse", async () => {
+    const root = makeTree({
+      "index.md": [
+        "[One](./code.go#L2)",
+        "[Range](./code.go#L2-L4)",
+        "[Short](./code.go#L2-4)",
+        "[Padded](./code.go#L002)",
+      ].join("\n\n"),
+      "code.go": source,
+    });
+
+    expect(ruleIds(await checkTree(root))).toEqual([]);
+  });
+
+  // The judgement call, pinned to the viewer: `#l42` is not a line anchor
+  // (parseLineAnchor wants an uppercase L), but it *is* the slug of a heading
+  // called "L42", so the link resolves and must not be a format finding.
+  it("leaves a lowercase #l42 alone, because a heading can own that slug", async () => {
+    expect(parseLineAnchor("#l42")).toBeNull();
+
+    const root = makeTree({
+      "index.md": "[Line](./target.md#l42)\n",
+      "target.md": "# Target\n\n## L42\n",
+    });
+
+    expect(ruleIds(await checkTree(root))).toEqual([]);
+  });
+
+  // ...and when no heading owns it, the existing rule speaks, in words that
+  // suit a slug rather than a line anchor.
+  it("leaves a dead lowercase #l42 to the dead-anchor rule", async () => {
+    const root = makeTree({
+      "index.md": "[Line](./target.md#l42)\n",
+      "target.md": "# Target\n",
+    });
+
+    expect(ruleIds(await checkTree(root))).toEqual([
+      "link/dead-section-anchor",
+    ]);
+  });
+
+  // rehype-sanitize rewrites a hand-written id to `user-content-<id>` and the
+  // viewer looks up both spellings, so this link works even though nothing
+  // could ever slug to it.
+  it("accepts an anchor a hand-written HTML id makes resolve", async () => {
+    const root = makeTree({
+      "index.md": "[Marked](./target.md#L42-cache)\n",
+      "target.md": '# Target\n\n<a id="L42-cache"></a>\n',
+    });
+
+    expect(ruleIds(await checkTree(root))).toEqual([]);
+  });
+
+  it("does not mistake ordinary slugs starting with L for line anchors", async () => {
+    const root = makeTree({
+      "index.md": "[Load](./target.md#load-balancing) [Miss](./api.go#Lorem)\n",
+      "target.md": "# Target\n\n## Load balancing\n",
+      "api.go": "package main\n",
+    });
+
+    expect(ruleIds(await checkTree(root))).toEqual([]);
+  });
+
+  // A directory has no lines for an anchor to name, so the anchor's shape is
+  // not the interesting thing about that link.
+  it("says nothing about a fragment on a directory", async () => {
+    const root = makeTree({
+      "index.md": "[Sub](./sub#L4x)\n",
+      "sub/deep.md": "# Deep\n",
+    });
+
+    expect(ruleIds(await checkTree(root))).toEqual([]);
+  });
+
+  it("checks same-document fragments too", async () => {
+    const root = makeTree({ "index.md": "# Title\n\n[Here](#L1x)\n" });
+
+    expect(ruleIds(await checkTree(root))).toEqual(["link/line-anchor-format"]);
+  });
+});
+
 describe("link/dead-section-anchor", () => {
   const target = [
     "# Overview",
