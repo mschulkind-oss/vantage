@@ -23,7 +23,7 @@ export type {
   FrontmatterProblem,
 } from "./frontmatter.js";
 
-export { sanitizeSchema } from "./sanitize.js";
+export { sanitizeSchema, SAFE_STYLE } from "./sanitize.js";
 
 export { renderMermaidBlocks } from "./renderMermaidBlocks.js";
 export type { RenderMermaidOptions } from "./renderMermaidBlocks.js";
