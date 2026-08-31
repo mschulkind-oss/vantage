@@ -78,7 +78,21 @@ def main() -> int:
     tag = f"py3-none-{args.platform_tag}"
     dist_info = f"{PACKAGE}-{version}.dist-info"
     data_scripts = f"{PACKAGE}-{version}.data/scripts"
-    script_name = "vantage-check.exe" if "win" in args.platform_tag else "vantage-check"
+    # The script name has to be the name the installed executable is invoked by:
+    # there is no console-script shim in this wheel, the binary *is* the script,
+    # so `uvx vantage-check` resolves `vantage-check` on POSIX and
+    # `vantage-check.exe` in Scripts\ on Windows.
+    is_windows = "win" in args.platform_tag
+    script_name = "vantage-check.exe" if is_windows else "vantage-check"
+
+    # bun names only its Windows output with a .exe suffix. If the tag and the
+    # binary disagree, the wheel would ship (say) a Linux ELF under win_amd64:
+    # it installs cleanly and only fails once a user runs it. Fail here instead.
+    if is_windows != (binary.suffix == ".exe"):
+        parser.error(
+            f"--platform-tag {args.platform_tag} and --binary {binary.name} "
+            "disagree about the platform"
+        )
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     wheel_path = args.out_dir / f"{PACKAGE}-{version}-{tag}.whl"
