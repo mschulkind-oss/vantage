@@ -34,12 +34,12 @@ base commit (`3e7d8e4`) and left to it. This compares what came back.
 | :--- | ---: | ---: |
 | Wall clock, first to last event | 12 h 14 m | **49 m** |
 | Minus gaps > 5 min | ~4 h 54 m | **~44 m** |
-| Assistant turns | 1,019 | **288** |
-| Output tokens | 1,110,760 | **353,984** |
-| Cache-read tokens | 123.9 M | **58.6 M** |
+| Model responses | 373 | **179** |
+| Output tokens | 379,964 | **187,930** |
+| Cache-read tokens | 47.0 M | **38.1 M** |
 | Subagents | 4 (3 × `Explore`, 1 × `Plan`) | 0 |
 | Context compactions | 2 | 0 |
-| Tool calls (main session) | 367 | 185 |
+| Tool calls | 452 | 185 |
 | Commits | 9 | 12 |
 | Insertions | 8,527 | 9,783 |
 | CLI package LOC | 2,539 | 3,569 |
@@ -47,11 +47,17 @@ base commit (`3e7d8e4`) and left to it. This compares what came back.
 | Shipped binary | 92 MB (bun) | 124 MB (Node SEA) |
 | `check docs userguide` | 1,180 ms | **445 ms** |
 
-Run A's token figures include its four subagents. The two models are not on the
-same price sheet, so token counts are not a cost comparison — but a 3.1×
-difference in output tokens and a 2.1× difference in cache reads for the same
-deliverable is a real efficiency gap, and the wall-clock difference is larger
-still.
+Run A's figures include its four subagents (39 responses, 78,938 output tokens,
+85 tool calls). The two models are not on the same price sheet, so token counts
+are not a cost comparison — but **2.0× the output tokens and 2.1× the responses**
+for the same deliverable is a real efficiency gap, and the wall-clock difference
+is far larger than either.
+
+> [!NOTE]
+> Counted per distinct assistant message. A single response is stored as several
+> transcript records — one per content block — and Run A averages 2.9 records per
+> response against Run B's 1.6, so summing records inflates Run A's totals by
+> more than Run B's. See the [appendix](#appendix--method).
 
 ---
 
@@ -73,6 +79,41 @@ half-written phase-5 sources on disk, untypechecked and untested).
 The friction is catalogued in the
 [Run A review](agent-cli-implementation-review.md#23-what-it-got-stuck-on):
 nine traps, several of them self-inflicted gate breakage.
+
+### How much of Run A's cost was the compactions?
+
+Very little. Splitting Run A at its two compaction boundaries:
+
+| Window | Responses | Output tokens | Landed | Tokens per commit |
+| :--- | ---: | ---: | :--- | ---: |
+| S1 — before any compaction | 86 (+39 subagent) | 186,667 | phase 1; planning; phase-2 scaffold uncommitted | 186,667 |
+| S2 — after compaction 1 | 135 | 124,497 | phases 2, 3, 4 | 31,124 |
+| S3 — after compaction 2 | 113 | 68,800 | phases 5, 6 | 17,200 |
+| *Run B, for scale* | *179* | *187,930* | *all six phases* | *15,661* |
+
+Efficiency **improved** after each compaction rather than degrading. The most
+expensive window by a wide margin is S1 — the one with full, uncompacted
+context — which spent as many output tokens as Run B's entire run to land one
+file move, a plan, and an uncommitted scaffold. By S3 the run was within 10% of
+Run B's cost per commit.
+
+The measurable overhead of the compactions themselves is small:
+
+- **Re-reading its own work:** 20 `Read` calls in a later window for files the
+  session had authored earlier, spread across 14 messages totalling **8,868
+  output tokens** — and that counts each whole message, most of which were doing
+  other work too.
+- **Re-orientation:** none worth the name. The first tool call after *both*
+  resumes was a productive `Edit` on exactly the file the summary named.
+- **Repeated exploration:** zero. No Bash command was re-run across a boundary.
+- **The summaries:** roughly 4.0 k and 5.4 k tokens to generate. These do not
+  appear in the totals above, because the transcript does not record summary
+  generation as an assistant message.
+
+Against Run A's ~192 k output-token excess over Run B, that is **under 5%** —
+about 9% if you also charge it for the two summaries the transcript never
+counted. The remaining ~90% is a constant factor: Run A needed roughly twice as
+many responses for the same work in every window, compacted or not.
 
 ### Run B — plan as a commit, then straight through
 
@@ -277,10 +318,14 @@ the task they were given.
 Everything above was measured, not read off the diffs.
 
 - **Session figures** come from the Claude Code transcripts:
-  `.yolo/home/claude/projects/-workspace/*.jsonl` in each tree. Turns, tokens,
-  tool counts, and timestamps were summed from the `assistant` records
-  (including Run A's four subagent transcripts under `…/subagents/`). "Gaps"
-  are intervals over five minutes between consecutive transcript events.
+  `.yolo/home/claude/projects/-workspace/*.jsonl` in each tree, including Run
+  A's four subagent transcripts under `…/subagents/`. Responses and tokens are
+  **deduplicated by assistant message id** — one response is written to the
+  transcript once per content block, and the two runs differ in how many blocks
+  they average, so summing raw records overstates Run A specifically. Tool calls
+  are counted per `tool_use` block. "Gaps" are intervals over five minutes
+  between consecutive transcript events. Compaction boundaries are the
+  timestamps of the two "continued from a previous conversation" messages.
 - **Run B was made runnable** by extracting `git archive HEAD` into a scratch
   directory and running `npm install` in `packages/vantage-md` and
   `packages/vantage-check`; its suite is 94 passing tests and a clean `tsc`.
