@@ -64,9 +64,10 @@ Vantage already has an agent-facing story. It is entirely made of text a human
 moves by hand.
 
 **The style guide** lives as a TypeScript string constant,
-`STYLE_GUIDE_SNIPPET`, at
-[`StyleGuideModal.tsx:13-97`](../../frontend/src/components/StyleGuideModal.tsx#L13-L97)
-— roughly 85 lines covering structure, relative-link rules, frontmatter, Mermaid
+`STYLE_GUIDE_SNIPPET`, at `frontend/src/components/StyleGuideModal.tsx:13-97`
+(as of `3e7d8e4`; §9 step 1 has since moved it to
+[`../../packages/vantage-md/src/styleGuide.ts`](../../packages/vantage-md/src/styleGuide.ts)
+and renamed it `STYLE_GUIDE`) — roughly 85 lines covering structure, relative-link rules, frontmatter, Mermaid
 label quoting, code and diff fences, callouts, tables, and the `$$...$$` math
 rule. It is surfaced through a modal opened from the settings dropdown
 ([`SettingsDropdown.tsx:221`](../../frontend/src/components/SettingsDropdown.tsx#L221),
