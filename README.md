@@ -86,6 +86,7 @@ vantage daemon
 - **Source Directory Auto-Discovery** — Point at parent directories to automatically find and add all git repos
 - **File Tree Navigation** — Lazy-loaded sidebar with directory expansion
 - **Frontmatter Support** — Displays YAML and TOML frontmatter as a clean metadata table
+- **Agent CLI** — `vantage-check`: a standalone binary that prints Vantage's Markdown conventions and verifies that a document really renders
 - **Static Site Export** — Build a standalone static site from a directory of Markdown
 - **Dark Mode** — Toggle with Shift+D, persisted across sessions
 - **Keyboard Shortcuts** — Quick file picker with `t`, fuzzy search, keyboard navigation

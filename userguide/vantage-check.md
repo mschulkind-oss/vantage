@@ -160,6 +160,8 @@ here — and why they are filesystem-verified rather than guessed at.
 | `link/uri-scheme` | A `file://` link, a Windows drive letter, or a UNC path | error |
 | `link/missing-target` | A relative link whose target does not exist on disk | error |
 | `link/line-anchor-range` | A `#L42` anchor that points past the end of its target file | error |
+| `link/inverted-range` | A `#L50-L10` anchor that ends before it starts — it resolves, so a warning | warning |
+| `link/line-anchor-format` | A `#L4x` anchor Vantage cannot parse, so it scrolls nowhere | error |
 | `link/dead-section-anchor` | A `#section` anchor matching no heading in the target document | error |
 
 Section anchors are checked with the *renderer's own slugger*, not a
@@ -180,7 +182,13 @@ words.
 | `frontmatter/not-a-mapping` | Frontmatter that parses to a value rather than a table of fields | warning |
 | `mermaid/parse` | A diagram Mermaid's own parser rejects, rendered as an error box | error |
 | `katex/parse` | A `$$...$$` formula KaTeX rejects, rendered as red error text | error |
+| `render/pipeline` | A document the viewer's own render pipeline throws on, end to end | error |
 | `markdown/hygiene` | General Markdown hygiene via `remark-lint` | **off** |
+
+`render/pipeline` is the backstop: the whole document through `renderMarkdown`,
+the viewer's own function with the same plugins in the same order. Whatever the
+specific rules do not cover, a throw there still catches — it is the only
+end-to-end check in the tool, and it costs one render per document.
 
 `markdown/hygiene` is off because its rules are opinions about Markdown in
 general rather than statements about whether Vantage can render the document,
