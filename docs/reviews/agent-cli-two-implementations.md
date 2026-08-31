@@ -330,7 +330,61 @@ design's OQ-6 that Run A left unimplemented.
 
 ---
 
-## 6. Reading of it
+## 6. What this does and does not establish
+
+Both runs had the **same standing instructions**: identical `AGENTS.md` at the
+base commit, and both sessions ran in `bypassPermissions`, which tells the agent
+to work through Bash rather than the dedicated file tools. Run B followed that
+(one `Read`, no `Edit`); Run A did not (52 `Read`s, 81 `Edit`s). The tool-use gap
+in §2 is adherence to the same instruction, not a different one.
+
+What the comparison cannot carry:
+
+- **One run each.** No variance estimate. A second run of either model could
+  land somewhere else.
+- **This is not "Claude versus Qwen".** It is a 27-billion-parameter open model
+  against a frontier model. The parameter gap alone predicts much of the
+  distance, and nothing here isolates *which* difference did the work.
+- **Different context budgets.** 250 k against 1 M — Run A's compactions were
+  forced, not chosen. (They cost it under 5% of the gap, but the confound is
+  real.)
+- **Review order.** Run A was reviewed in depth first, so Run B was probed with
+  a defect list already in hand. The probes were then run identically against
+  both and adjudicated against the renderer, and Run B-only defects did surface
+  — but the asymmetry existed.
+
+## 7. What is worth learning from it
+
+- **The design doc did most of the work — for both.** Two very different models
+  produced the same architecture: the same five link rules, the same delegate-
+  don't-reimplement stance, `.vantage.toml` at the root, the payload hook.
+  Neither re-litigated a settled question. A 27 B model shipping a coherent,
+  tested tool is mostly a fact about the specification it was handed.
+- **They diverged exactly where the design was silent.** It never mentions the
+  sanitizer's protocol list, that the viewer navigates directories, or the
+  `user-content-` prefix. Every one of Run A's false positives sits in that
+  gap — and in each case Run B had gone and read the code that decides, while
+  Run A wrote down something plausible. The failure mode is not ignorance; it is
+  guessing where the answer was checkable.
+- **Same verification discipline, different definition of done.** 47 gate calls
+  each. What differed is what the gate *covered*: Run B put the bundle in CI, a
+  binary smoke test in the release job, and the checker over the repo's own docs
+  in `check-ci`. Run A verified the source and shipped an unexercised artifact.
+- **Prefer a runtime self-check to build-time wiring you have to remember to
+  test.** Run B's Mermaid canary is the single most transferable idea in either
+  tree.
+- **Both were blind at the task boundary.** Neither looked at what else in the
+  repository listens for the event its new workflow emits, and both would push a
+  broken Homebrew formula. That is a process gap, not a model gap.
+- **The expensive habits are promptable.** Write whole files instead of editing
+  them, do not re-read what you just wrote, put the plan in a committed file.
+  Those are instructions. If a cheaper model is going to do the work, they
+  belong in `AGENTS.md`.
+- **Run B also left the repo tidier.** It updated `AGENTS.md`, the CLI reference,
+  and the features page so the next agent finds the tool. This repository's
+  `AGENTS.md` still does not mention that `vantage-check` exists.
+
+## 8. Reading of it
 
 Run B produced a better tool in a sixteenth of the wall clock and a third of the
 output tokens. The gap is not in *scope* — both implemented all six phases, and
