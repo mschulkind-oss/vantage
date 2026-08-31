@@ -12,25 +12,23 @@ export { default as rehypeSourceLines } from "./rehypeSourceLines.js";
 export {
   scrollToLineAnchor,
   clearLineAnchorHighlights,
-  parseLineAnchor,
 } from "./scrollToLineAnchor.js";
+
+export { parseLineAnchor } from "./lineAnchor.js";
 
 export { parseFrontmatter } from "./frontmatter.js";
 export type {
   ParsedFrontmatter,
   FrontmatterFormat,
-  StrictFrontmatter,
+  FrontmatterProblem,
 } from "./frontmatter.js";
-export { parseFrontmatterStrict } from "./frontmatter.js";
 
 export { sanitizeSchema } from "./sanitize.js";
 
 export { renderMermaidBlocks } from "./renderMermaidBlocks.js";
 export type { RenderMermaidOptions } from "./renderMermaidBlocks.js";
 
-export { parseToMdast, headingIds } from "./analyze.js";
-
 export { resolveLinks } from "./resolveLinks.js";
 export type { ResolveLinkOptions } from "./resolveLinks.js";
 
-export { STYLE_GUIDE_SNIPPET } from "./styleGuide.js";
+export { STYLE_GUIDE } from "./styleGuide.js";

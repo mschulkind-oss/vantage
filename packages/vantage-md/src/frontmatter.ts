@@ -8,6 +8,30 @@ import { parse as parseTOML } from "smol-toml";
 
 export type FrontmatterFormat = "yaml" | "toml" | "none";
 
+/**
+ * Why a document that *looks* like it has frontmatter ended up without any.
+ *
+ * The parser deliberately never throws: a document whose frontmatter is broken
+ * still renders, with the block treated as body text. That is the right
+ * behaviour for a viewer and the wrong one for an author, who gets no signal
+ * at all — so the reason is recorded here for anything that wants to report it
+ * (`vantage-check` does; see its frontmatter rules).
+ *
+ * - `unterminated` — an opening delimiter with no closing one.
+ * - `invalid` — the block did not parse; `message` is the parser's own words,
+ *   and `line`/`column` are 1-based *within the block* when it said.
+ * - `not-a-mapping` — it parsed, but to a string or a list rather than a table
+ *   of fields, which is not something a metadata card can render.
+ */
+export interface FrontmatterProblem {
+  kind: "unterminated" | "invalid" | "not-a-mapping";
+  /** The delimiter the document opened with. */
+  delimiter: string;
+  message?: string;
+  line?: number;
+  column?: number;
+}
+
 export interface ParsedFrontmatter {
   frontmatter: Record<string, unknown>;
   body: string;
@@ -22,6 +46,12 @@ export interface ParsedFrontmatter {
    * `bodyLineOffset` lines short of the text it names.
    */
   bodyLineOffset: number;
+  /**
+   * Set when the document opens with a frontmatter delimiter that did not
+   * yield a metadata table. Everything else in this result is unchanged —
+   * this records *why*, it does not change what rendering does.
+   */
+  problem?: FrontmatterProblem;
 }
 
 /**
@@ -67,6 +97,7 @@ function parseFrontmatterWithDelimiter(
       frontmatter: {},
       body: content,
       format: "none",
+      problem: { kind: "unterminated", delimiter },
     });
   }
 
@@ -75,127 +106,66 @@ function parseFrontmatterWithDelimiter(
   const body = content.slice(bodyStart).replace(/^\n/, "");
 
   try {
-    const frontmatter =
-      format === "toml"
-        ? (parseTOML(raw) as Record<string, unknown>)
-        : (YAML.parse(raw) as Record<string, unknown>);
+    const parsed: unknown = format === "toml" ? parseTOML(raw) : YAML.parse(raw);
     return withOffset(content, {
-      frontmatter: frontmatter || {},
+      frontmatter: (parsed as Record<string, unknown>) || {},
       body,
       format,
+      ...(isMapping(parsed)
+        ? {}
+        : { problem: { kind: "not-a-mapping" as const, delimiter } }),
     });
-  } catch {
+  } catch (error) {
     return withOffset(content, {
       frontmatter: {},
       body: content,
       format: "none",
+      problem: { kind: "invalid", delimiter, ...errorPosition(error) },
     });
   }
 }
 
-/**
- * A frontmatter block as `parseFrontmatterStrict` reports it: the usual
- * fields, plus whether the block is broken and how.
- */
-export interface StrictFrontmatter extends ParsedFrontmatter {
-  /**
-   * True when a delimiter was opened but never closed, so the "frontmatter"
-   * would render as visible body text. Only set when the block actually looks
-   * like frontmatter (not a `---` used as a horizontal rule).
-   */
-  unclosed: boolean;
-  /** The parser's own message when the block is present but invalid; else null. */
-  error: string | null;
-}
-
-/**
- * Heuristic that keeps the strict parser from misreading a `---` used as a
- * horizontal rule (or a setext underline) as frontmatter: the first meaningful
- * line must look like a `key:` / `key =` pair or a TOML `[section]`.
- */
-function looksLikeFrontmatter(text: string): boolean {
-  for (const line of text.split("\n")) {
-    const t = line.trim();
-    if (t === "" || t.startsWith("#") || t.startsWith("//")) continue;
-    if (/^[A-Za-z_][A-Za-z0-9_.-]*\s*[:=]/.test(t)) return true;
-    if (/^\[[A-Za-z_]/.test(t)) return true;
-    return false;
-  }
-  return false;
-}
-
-/**
- * Like `parseFrontmatter`, but instead of silently swallowing a broken block it
- * reports it: `unclosed` when a delimiter was never closed, `error` (the
- * parser's message) when the block is present but not valid YAML/TOML. A block
- * that does not look like frontmatter (a `---` horizontal rule) is left
- * unflagged. The returned `body`/`frontmatter`/`format` are identical to
- * `parseFrontmatter`'s, so this is safe to use alongside it.
- */
-export function parseFrontmatterStrict(content: string): StrictFrontmatter {
-  if (content.startsWith("+++")) {
-    return strictWithDelimiter(content, "+++", "toml");
-  }
-  if (content.startsWith("---")) {
-    return strictWithDelimiter(content, "---", "yaml");
-  }
-  return withStrict(
-    content,
-    { frontmatter: {}, body: content, format: "none" },
-    false,
-    null,
+/** Empty frontmatter is fine; a scalar or a list where a table belongs is not. */
+function isMapping(value: unknown): boolean {
+  return (
+    value === null ||
+    value === undefined ||
+    (typeof value === "object" && !Array.isArray(value))
   );
 }
 
-function strictWithDelimiter(
-  content: string,
-  delimiter: string,
-  format: "yaml" | "toml",
-): StrictFrontmatter {
-  const searchStart = delimiter.length;
-  const endIndex = content.indexOf(`\n${delimiter}`, searchStart);
+/**
+ * Pull the parser's message and, where it gave one, the position inside the
+ * frontmatter block. `yaml` reports `linePos`; `smol-toml` reports `line` and
+ * `column`. Both are optional and both are read defensively — a missing
+ * position costs a less precise report, a wrong assumption costs a crash.
+ */
+function errorPosition(error: unknown): {
+  message: string;
+  line?: number;
+  column?: number;
+} {
+  const message = error instanceof Error ? error.message : String(error);
+  const source = error as {
+    linePos?: Array<{ line?: number; col?: number }>;
+    line?: number;
+    column?: number;
+  };
 
-  if (endIndex === -1) {
-    // Delimiter opened but never closed. Only a finding if it actually looks
-    // like frontmatter — otherwise it is a `---` horizontal rule.
-    const unclosed = looksLikeFrontmatter(content.slice(searchStart + 1));
-    return withStrict(
-      content,
-      { frontmatter: {}, body: content, format: "none" },
-      unclosed,
-      null,
-    );
+  const yamlPosition = source?.linePos?.[0];
+  if (typeof yamlPosition?.line === "number") {
+    return {
+      message,
+      line: yamlPosition.line,
+      ...(typeof yamlPosition.col === "number" ? { column: yamlPosition.col } : {}),
+    };
   }
-
-  const raw = content.slice(searchStart + 1, endIndex).trim();
-  const bodyStart = endIndex + 1 + delimiter.length;
-  const body = content.slice(bodyStart).replace(/^\n/, "");
-
-  try {
-    const frontmatter =
-      format === "toml"
-        ? (parseTOML(raw) as Record<string, unknown>)
-        : (YAML.parse(raw) as Record<string, unknown>);
-    return withStrict(content, { frontmatter: frontmatter || {}, body, format }, false, null);
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    // A parse failure is only a finding if the block looks like frontmatter;
-    // a top `---` hr followed by a mid-file `---` is not.
-    const error = looksLikeFrontmatter(raw) ? message : null;
-    return withStrict(
-      content,
-      { frontmatter: {}, body: content, format: "none" },
-      false,
-      error,
-    );
+  if (typeof source?.line === "number") {
+    return {
+      message,
+      line: source.line,
+      ...(typeof source.column === "number" ? { column: source.column } : {}),
+    };
   }
-}
-
-function withStrict(
-  content: string,
-  parsed: Omit<StrictFrontmatter, "bodyLineOffset" | "unclosed" | "error">,
-  unclosed: boolean,
-  error: string | null,
-): StrictFrontmatter {
-  return { ...withOffset(content, parsed), unclosed, error };
+  return { message };
 }

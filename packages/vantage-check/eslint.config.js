@@ -8,9 +8,6 @@ export default defineConfig([
   {
     files: ["**/*.{ts,js}"],
     extends: [js.configs.recommended, tseslint.configs.recommended],
-    languageOptions: {
-      ecmaVersion: 2022,
-      globals: globals.node,
-    },
+    languageOptions: { ecmaVersion: 2022, globals: globals.node },
   },
 ]);

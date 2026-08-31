@@ -2,38 +2,36 @@
 /**
  * Build vantage-check into a standalone single-file executable.
  *
- * Usage:
- *   bun ./scripts/build.ts                # current host
- *   bun ./scripts/build.ts --target T     # cross-compile to a bun target
- *                                         # (bun-linux-x64, bun-darwin-arm64, …)
+ *   bun ./scripts/build.ts                # this host
+ *   bun ./scripts/build.ts --target T     # cross-compile (bun-linux-x64, …)
  *
- * The version and commit are stamped in at compile time via `--define`, so the
- * binary reports its own version with no runtime environment. `bun build
- * --compile` cross-compiles: one host produces every target.
+ * `bun build --compile` cross-compiles every target from one host, which is
+ * why this replaced the Node SEA build: SEA can only produce a binary for the
+ * platform it runs on, so it needed a runner per platform. The version and
+ * commit are inlined at compile time via `--define`, so the binary reports its
+ * own identity with nothing to read at run time.
  */
-import { readFileSync, mkdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const here = path.dirname(fileURLToPath(import.meta.url));
-const root = path.resolve(here, "..");
-
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pkg = JSON.parse(
   readFileSync(path.join(root, "package.json"), "utf8"),
 ) as { version: string };
-const version = pkg.version;
+
 const commit = spawnSync("git", ["rev-parse", "--short", "HEAD"], {
   cwd: root,
   encoding: "utf8",
 }).stdout.trim();
 
 const args = process.argv.slice(2);
-let target: string | undefined;
-for (let i = 0; i < args.length; i++) {
-  if (args[i] === "--target" && args[i + 1]) target = args[i + 1];
-}
+const targetIndex = args.indexOf("--target");
+const target = targetIndex === -1 ? undefined : args[targetIndex + 1];
 
+// bun appends .exe itself for windows targets; the release workflow relies on
+// that, so do not try to spell the extension here.
 const outfile = path.join(root, "dist", "vantage-check");
 mkdirSync(path.dirname(outfile), { recursive: true });
 
@@ -42,15 +40,14 @@ const buildArgs = [
   "--compile",
   path.join(root, "src", "main.ts"),
   `--outfile=${outfile}`,
-  // `--define` and the expression are separate argv elements (bun's form);
-  // the value is a JSON string literal inlined at compile time.
+  // The flag and its expression are separate argv elements — bun ignores a
+  // single combined string and the binary silently reports 0.0.0-dev.
   "--define",
-  `process.env.VANTAGE_CHECK_VERSION=${JSON.stringify(version)}`,
+  `__VANTAGE_CHECK_VERSION__=${JSON.stringify(pkg.version)}`,
   "--define",
-  `process.env.VANTAGE_CHECK_COMMIT=${JSON.stringify(commit)}`,
+  `__VANTAGE_CHECK_COMMIT__=${JSON.stringify(commit || "unknown")}`,
 ];
 if (target) buildArgs.push(`--target=${target}`);
 
-console.log(`[vantage-check] bun ${buildArgs.join(" ")}`);
 const res = spawnSync("bun", buildArgs, { cwd: root, stdio: "inherit" });
 process.exit(res.status ?? 1);

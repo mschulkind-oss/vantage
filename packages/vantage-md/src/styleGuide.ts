@@ -1,13 +1,19 @@
 /**
- * The canonical Markdown style guide for documents viewed in Vantage.
+ * The canonical Vantage Markdown style guide.
  *
- * This is the single source of truth for the conventions agents are told when
- * writing Vantage documents. It is shared by three consumers: the frontend
- * modal (`StyleGuideModal`), the published `vantage-md` package, and the
- * `vantage-check` CLI's `style-guide` command. Editing it here updates all of
- * them — do not fork a copy anywhere.
+ * This string is the single source of truth for the conventions Vantage's
+ * renderer expects. Two consumers read it:
+ *
+ * - the in-app "Style Guide for Agents" modal, which shows it with a copy
+ *   button, and
+ * - the `vantage-check style-guide` command, which prints it so an agent can
+ *   fetch it without a human in the loop.
+ *
+ * Every rule stated here should be one a checker can enforce or a renderer
+ * actually cares about — if a line is neither, it does not belong.
  */
-export const STYLE_GUIDE_SNIPPET = `## Markdown style guide (for Vantage viewer)
+
+export const STYLE_GUIDE = `## Markdown style guide (for Vantage viewer)
 
 When writing or updating markdown documents that will be viewed in Vantage, follow these conventions:
 

@@ -1,10 +1,18 @@
 /**
- * Compile-time-stamped version and commit.
+ * The version string, stamped in at compile time by scripts/build.ts.
  *
- * `scripts/build.ts` passes these to `bun build --define`, which inlines the
- * string literals at compile time — the binary carries its version with no
- * runtime environment. When running unbuilt (`bun src/main.ts` in dev), the
- * `process.env.*` expressions are live lookups and fall back to dev values.
+ * Running from source (tests, `bun src/main.ts`) leaves the defines unset,
+ * which is why the `typeof` guards are here rather than bare references.
  */
-export const VERSION: string = process.env.VANTAGE_CHECK_VERSION ?? "0.0.0-dev";
-export const COMMIT: string = process.env.VANTAGE_CHECK_COMMIT ?? "dev";
+declare const __VANTAGE_CHECK_VERSION__: string;
+declare const __VANTAGE_CHECK_COMMIT__: string;
+
+export const VERSION =
+  typeof __VANTAGE_CHECK_VERSION__ === "string"
+    ? __VANTAGE_CHECK_VERSION__
+    : "0.0.0-dev";
+
+export const COMMIT =
+  typeof __VANTAGE_CHECK_COMMIT__ === "string"
+    ? __VANTAGE_CHECK_COMMIT__
+    : "dev";

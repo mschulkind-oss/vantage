@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { StyleGuideModal, STYLE_GUIDE_SNIPPET } from "./StyleGuideModal";
+import { StyleGuideModal } from "./StyleGuideModal";
+import { STYLE_GUIDE } from "vantage-md";
 import * as clipboard from "../lib/clipboard";
 
 describe("StyleGuideModal", () => {
@@ -23,16 +24,14 @@ describe("StyleGuideModal", () => {
   });
 
   it("includes rules for links, frontmatter, mermaid, callouts, and code blocks", () => {
-    expect(STYLE_GUIDE_SNIPPET).toContain("Relative paths only");
-    expect(STYLE_GUIDE_SNIPPET).toContain("Never use leading slashes");
-    expect(STYLE_GUIDE_SNIPPET).toContain(
-      "Never use absolute filesystem paths",
-    );
-    expect(STYLE_GUIDE_SNIPPET).toContain("Line anchors and ranges");
-    expect(STYLE_GUIDE_SNIPPET).toContain("Frontmatter (Metadata)");
-    expect(STYLE_GUIDE_SNIPPET).toContain("Mermaid diagrams");
-    expect(STYLE_GUIDE_SNIPPET).toContain("Code blocks and diffs");
-    expect(STYLE_GUIDE_SNIPPET).toContain("Callouts and alerts");
+    expect(STYLE_GUIDE).toContain("Relative paths only");
+    expect(STYLE_GUIDE).toContain("Never use leading slashes");
+    expect(STYLE_GUIDE).toContain("Never use absolute filesystem paths");
+    expect(STYLE_GUIDE).toContain("Line anchors and ranges");
+    expect(STYLE_GUIDE).toContain("Frontmatter (Metadata)");
+    expect(STYLE_GUIDE).toContain("Mermaid diagrams");
+    expect(STYLE_GUIDE).toContain("Code blocks and diffs");
+    expect(STYLE_GUIDE).toContain("Callouts and alerts");
   });
 
   // The pipeline runs remark-math with singleDollarTextMath: false so that
@@ -40,7 +39,7 @@ describe("StyleGuideModal", () => {
   // eaten as math delimiters. Agents copy this snippet verbatim, so promising
   // them `$...$` teaches them to write math that silently stays literal.
   it("documents double-dollar math only, matching singleDollarTextMath: false", () => {
-    const mathLine = STYLE_GUIDE_SNIPPET.split("\n").find((line) =>
+    const mathLine = STYLE_GUIDE.split("\n").find((line) =>
       line.includes("LaTeX Math"),
     );
     expect(mathLine).toBeDefined();
@@ -58,7 +57,7 @@ describe("StyleGuideModal", () => {
     const copyBtn = screen.getByRole("button", { name: /Copy snippet/i });
     fireEvent.click(copyBtn);
 
-    expect(copySpy).toHaveBeenCalledWith(STYLE_GUIDE_SNIPPET.trim());
+    expect(copySpy).toHaveBeenCalledWith(STYLE_GUIDE.trim());
     await waitFor(() => {
       expect(screen.getByText("Copied!")).toBeInTheDocument();
     });

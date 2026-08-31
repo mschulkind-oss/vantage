@@ -1,28 +1,13 @@
 /**
  * Framework-agnostic line anchor utilities.
- * Parse GitHub-style line anchors (#L42, #L42-L50) and scroll/highlight
- * matching elements in a container.
+ * Scroll to and highlight the elements a GitHub-style line anchor
+ * (#L42, #L42-L50) names. The parsing half lives in lineAnchor.ts, which has
+ * no DOM dependency.
  */
+
+import { parseLineAnchor } from "./lineAnchor.js";
 
 const HIGHLIGHT_CLASS = "line-anchor-highlight";
-
-/**
- * Parse a GitHub-style line anchor hash.
- * Supports: #L42, #L42-L50, #L42-50
- * Returns null if the hash is not a line anchor.
- */
-export function parseLineAnchor(
-  hash: string,
-): { start: number; end: number } | null {
-  if (!hash) return null;
-  const frag = hash.startsWith("#") ? hash.slice(1) : hash;
-  const match = frag.match(/^L(\d+)(?:-L?(\d+))?$/);
-  if (!match) return null;
-
-  const start = parseInt(match[1], 10);
-  const end = match[2] ? parseInt(match[2], 10) : start;
-  return { start: Math.min(start, end), end: Math.max(start, end) };
-}
 
 /**
  * Clear all line anchor highlights from a container.
