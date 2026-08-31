@@ -60,9 +60,9 @@ The pre-commit hook (`scripts/hooks/`, wired via `core.hooksPath`) runs
 - `packages/vantage-check`: `npm run format:check` · `lint` · `typecheck` ·
   `test` — including the drift guard that pins its katex and mermaid to
   `vantage-md`'s.
-- The built CLI over this repo's own docs: `vantage-check check docs userguide
-  README.md AGENTS.md`. A broken link or a dead anchor in the documentation
-  fails the gate, and the binary is rebuilt to run it.
+- The built CLI over this repo's own Markdown — `docs/`, `userguide/`, and the
+  top-level and package READMEs. A broken link or a dead anchor in the
+  documentation fails the gate, and the binary is rebuilt to run it.
 
 Lint fails on warnings (`--max-warnings 0`), so a stale `eslint-disable` is an
 error, not a note in the output.
