@@ -20,6 +20,7 @@ import { checkLinks } from "../rules/links.js";
 import { checkMath } from "../rules/math.js";
 import { checkMarkdownHygiene } from "../rules/markdown.js";
 import { checkMermaid } from "../rules/mermaid.js";
+import { checkPipeline } from "../rules/render.js";
 
 export interface CheckOptions {
   /** Files and directories to check. Empty means the working directory. */
@@ -119,6 +120,9 @@ export async function checkFiles(
     checkMath(collector);
     await checkMermaid(collector);
     await checkMarkdownHygiene(collector);
+    // Last: the specific rules have had their say, and this catches whatever
+    // they do not cover.
+    await checkPipeline(collector);
 
     findings.push(...collector.findings);
     failures.push(...collector.failures);

@@ -81,6 +81,12 @@ export const RULES: readonly RuleMeta[] = [
     default: "error",
   },
   {
+    id: "render/pipeline",
+    summary:
+      "A document the viewer's own render pipeline throws on, end to end",
+    default: "error",
+  },
+  {
     id: "markdown/hygiene",
     summary:
       "General Markdown hygiene via remark-lint (off by default; enable the family)",
