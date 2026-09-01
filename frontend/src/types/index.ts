@@ -97,10 +97,7 @@ export interface CommentAnchor {
 
 export type ReactionActor = "agent" | "reviewer";
 export type ReactionKind =
-  | "addressed"
-  | "wont_fix"
-  | "needs_clarification"
-  | "noted";
+  "addressed" | "wont_fix" | "needs_clarification" | "noted";
 
 export interface CommentReaction {
   actor: ReactionActor;

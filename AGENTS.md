@@ -21,6 +21,13 @@ all discoverable, so they are deliberately not here.
   (`frontend/vite.config.ts`), and `packages/vantage-check` imports it by
   relative path. `dist/` (tsup) is produced only at `npm publish`. So never
   copy pipeline code into `frontend/src` — one implementation, three consumers.
+- The three packages are **one npm workspace** with a single root
+  `package-lock.json`. `npm ci` at the root installs all of them; there is no
+  per-package lockfile and no per-package install. This is what makes `katex`
+  and `mermaid` resolve to one hoisted copy shared by the viewer and the CLI —
+  the checker's whole claim is that it validates with the engines the viewer
+  renders with, and `packages/vantage-check/test/deps.test.ts` asserts they are
+  literally the same file, not merely the same version string.
 - `packages/vantage-check` ships as one compiled binary (~92 MB per platform)
   and is never published to npm. Design: `docs/design/agent-cli.md`.
 
@@ -42,9 +49,9 @@ Never kill it; run test instances on other ports.
   setup` is the whole answer, and the recipes now say so instead of failing with
   `prettier: not found`.
 - **A green local gate can still be a CI red.** `check-ci` starts by asserting
-  `node_modules` matches the manifests in all three npm packages, because CI
-  installs with `npm ci` and therefore answers a different question than a stale
-  local install. A stale eslint plugin once hid three live suppressions, so
+  the workspace `node_modules` matches the manifests, because CI installs with
+  `npm ci` and therefore answers a different question than a stale local
+  install. A stale eslint plugin once hid three live suppressions, so
   deleting them as dead broke CI (`caba056`, fixed in `5226587`). Lint runs at
   `--max-warnings 0`, so a stale suppression is an error, not a note.
 - **`tsc --noEmit` in `frontend/` checks nothing.** `frontend/tsconfig.json` is
@@ -55,7 +62,12 @@ Never kill it; run test instances on other ports.
 - **`packages/vantage-md` is type-checked twice, under two TypeScript
   versions** — standalone at its own pin (`~6.0.3`) and again through
   `frontend/`'s project reference (`~5.9.3`). Both are deliberate; a change that
-  passes one and not the other is a real finding, not a flake. It has no tests
+  passes one and not the other is a real finding, not a flake. The workspace
+  keeps this working by **declaring `typescript` at the root**: `tsup`'s dts
+  build hoists there and resolves TypeScript from its own location, not the
+  package's, so a root without the 6.x pin gave it 5.9.3 and
+  `"ignoreDeprecations": "6.0"` failed with `TS5103`. Root holds 6.x; `frontend`
+  and `vantage-check` nest their own 5.9.3. It has no tests
   of its own: its behaviour is covered by `frontend/`'s tests through the source
   alias.
 - **Editing Markdown can fail the gate.** It rebuilds the CLI and runs it over

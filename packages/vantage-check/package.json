@@ -23,7 +23,7 @@
     "github-slugger": "^2.0.0",
     "katex": "^0.18.4",
     "mdast-util-to-string": "^4.0.0",
-    "mermaid": "11.16.0",
+    "mermaid": "^11.17.2",
     "remark-gfm": "^4.0.1",
     "remark-lint-no-undefined-references": "^5.0.2",
     "remark-math": "^6.0.0",

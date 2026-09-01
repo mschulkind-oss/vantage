@@ -117,9 +117,7 @@ jobs:
           set -euo pipefail
           # vantage-check bundles vantage-md's TypeScript source, so that
           # package's own dependencies must resolve at bundle time.
-          ( cd packages/vantage-md && npm ci )
-          ( cd packages/vantage-check && npm ci )
-          ( cd frontend && npm ci )
+          npm ci
 
       # The tag is the only source of truth for the version. build.ts stamps
       # package.json's version into the CLI binary, so this is what makes
@@ -129,16 +127,16 @@ jobs:
           set -euo pipefail
           version="${{ steps.ver.outputs.version }}"
           for pkg in packages/vantage-md packages/vantage-check; do
-            ( cd "$pkg" && npm version "$version" --no-git-tag-version --allow-same-version )
+            npm version "$version" --no-git-tag-version --allow-same-version --workspace "$pkg"
           done
 
       - name: Build the vantage-md library
-        run: cd packages/vantage-md && npx tsup
+        run: npm exec --workspace vantage-md -- tsup
 
       - name: Build and bundle the frontend
         run: |
           set -euo pipefail
-          ( cd frontend && npm run build )
+          npm run build --workspace frontend
           rm -rf web/dist && cp -r frontend/dist web/dist
           test -f web/dist/index.html # an empty embed ships a placeholder page
 
@@ -292,13 +290,12 @@ jobs:
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
-          cd packages/vantage-md
           npm ci
-          npm version "$version" --no-git-tag-version --allow-same-version
-          npx tsup
+          npm version "$version" --no-git-tag-version --allow-same-version --workspace vantage-md
+          npm exec --workspace vantage-md -- tsup
 
       - name: Publish to npm
-        run: cd packages/vantage-md && npm publish --provenance --access public
+        run: npm publish --provenance --access public --workspace vantage-md
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 

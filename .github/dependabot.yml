@@ -5,8 +5,17 @@ updates:
     schedule:
       interval: "weekly"
 
+  # One entry for the whole npm workspace. There is a single root lockfile, so
+  # there is nothing per-directory left to update — and nothing left to drift:
+  # katex and mermaid hoist to one copy shared by the viewer and the CLI, which
+  # is what packages/vantage-check/test/deps.test.ts now asserts.
+  #
+  # It was three entries against three lockfiles, and the shared engines could
+  # only agree by coincidence of when each was last regenerated. They did not:
+  # katex diverged (fixed by hand in 4ec164ce) and mermaid diverged again as
+  # #73, which no rebase could fix because vantage-check had no entry at all.
   - package-ecosystem: "npm"
-    directory: "/frontend"
+    directory: "/"
     schedule:
       interval: "weekly"
     ignore:
@@ -14,29 +23,6 @@ updates:
       # Revisit together with a Vite 7->8 upgrade.
       - dependency-name: "@vitejs/plugin-react"
         versions: ["6.x"]
-
-  # vantage-md and vantage-check together, not one each. They keep independent
-  # node_modules trees but must resolve the SAME katex and mermaid: the CLI's
-  # whole claim is that it validates with the engines the viewer renders with,
-  # and packages/vantage-check/test/deps.test.ts fails when they disagree.
-  #
-  # Updated separately, neither PR can pass. A bump to one side alone is exactly
-  # the drift the test exists to catch, and dependabot cannot open the other
-  # half — that is what happened to katex (fixed by hand in 4ec164ce) and then
-  # to mermaid in #73. The `directories` list plus the group is what lets one PR
-  # carry both manifests.
-  - package-ecosystem: "npm"
-    directories:
-      - "/packages/vantage-md"
-      - "/packages/vantage-check"
-    schedule:
-      interval: "weekly"
-    groups:
-      render-engines:
-        patterns:
-          - "katex"
-          - "mermaid"
-    ignore:
       # TS 7 breaks tsup's bundled rollup-plugin-dts (pinned to typescript 5.7.3).
       # tsc --noEmit passes; the DTS build crashes. Revisit when tsup supports TS 7.
       - dependency-name: "typescript"

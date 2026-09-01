@@ -12,17 +12,14 @@
 #
 set -e
 
-echo "--- Building the vantage-md library (frontend depends on it) ---"
-cd packages/vantage-md
+echo "--- Installing the workspace ---"
 npm ci
-npx tsup
-cd ../..
+
+echo "--- Building the vantage-md library (frontend depends on it) ---"
+npm exec --workspace vantage-md -- tsup
 
 echo "--- Building frontend ---"
-cd frontend
-npm ci
-npm run build
-cd ..
+npm run build --workspace frontend
 
 # Mirrors the `web-sync` recipe in the Justfile, which is the one place allowed
 # to rewrite the tracked web/dist export. Keep the two in step: this script ran
