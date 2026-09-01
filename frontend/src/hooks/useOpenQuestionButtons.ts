@@ -16,6 +16,7 @@
  */
 
 import { useEffect, type RefObject } from "react";
+import { VANTAGE_OQ_HOST_TARGETS } from "vantage-md";
 import { anchorBlockWithin, buildWholeBlockAnchor } from "../lib/reviewAnchor";
 import { isStaticMode } from "../lib/staticMode";
 import type { CommentAnchor, ReviewComment } from "../types";
@@ -48,18 +49,16 @@ export const OQ_TAKEN_LABEL = "Leaning taken";
  * `<button>` child of `<table>` is not even valid HTML — the parser hoists it
  * out of the table. A directive on one of those yields no button at all, which
  * is D6 (degrade to plain, never to broken), not an optimisation.
+ *
+ * Derived from `VANTAGE_OQ_HOST_TARGETS`, not re-typed: this list and the
+ * checker's `oq` branch of `vantage/orphan` are the same question asked twice,
+ * and while they were two hand-written copies they disagreed — the checker
+ * called an `oq` above a fence fine, this hook rendered nothing, and neither
+ * said a word (D5).
  */
-const OQ_HOST_TAGS = new Set([
-  "P",
-  "H1",
-  "H2",
-  "H3",
-  "H4",
-  "H5",
-  "H6",
-  "LI",
-  "BLOCKQUOTE",
-]);
+const OQ_HOST_TAGS = new Set(
+  VANTAGE_OQ_HOST_TARGETS.map((tag) => tag.toUpperCase()),
+);
 
 export type TakeLeaning = (
   anchor: CommentAnchor,

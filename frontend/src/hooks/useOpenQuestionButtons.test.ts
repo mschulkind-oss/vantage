@@ -34,6 +34,9 @@ const LEANING =
  * - an ordinary paragraph, which must stay untouched;
  * - a stamped `<pre>` — the plugin does stamp those, and a button inside a code
  *   fence renders as part of the code, so it must yield none;
+ * - a stamped `<table>`, for the same reason one step further: a `<button>` child
+ *   of `<table>` is not valid HTML, so the parser would hoist it out. Both are
+ *   anchorable, so `vantage/orphan` is what tells the author instead;
  * - a stamped multi-paragraph `<blockquote>`, whose `data-source-line` its first
  *   paragraph shares: the case where anchoring on the stamped element itself
  *   would hash the wrong text.
@@ -49,6 +52,7 @@ const DOC_HTML = `
 <p data-source-line="15">An ordinary paragraph.</p>
 <pre data-source-line="19" data-vantage-oq="true"><code>x := 1</code></pre>
 <blockquote data-source-line="23" data-vantage-oq="true" data-vantage-leaning="Quote it"><p data-source-line="23">Quoted question?</p><p data-source-line="25">And a second paragraph.</p></blockquote>
+<table data-source-line="29" data-vantage-oq="true" data-vantage-leaning="Tabulate it"><tbody><tr data-source-line="29"><td>a</td><td>b</td></tr></tbody></table>
 `;
 
 let container: HTMLDivElement;
@@ -188,6 +192,18 @@ describe("useOpenQuestionButtons — what renders", () => {
     const pre = container.querySelector("pre")!;
     expect(pre.querySelector("[data-vantage-oq-button]")).toBeNull();
     expect(pre.textContent).toBe("x := 1");
+  });
+
+  it("never renders inside a table", () => {
+    // `pre` and `table` are the two anchorable tags that cannot host the
+    // affordance, and they are the reason `OQ_HOST_TAGS` is a *narrowing* of
+    // `VANTAGE_ANCHOR_TARGETS`. The checker reports `vantage/orphan` on both from
+    // the same shared list, so this refusal is never silent.
+    renderOq();
+
+    const table = container.querySelector("table")!;
+    expect(table.querySelector("[data-vantage-oq-button]")).toBeNull();
+    expect(table.textContent).toBe("ab");
   });
 
   it("leaves a block with no directive alone", () => {

@@ -451,12 +451,49 @@ describe("vantage/orphan", () => {
     ]);
   });
 
-  it("says nothing about an `oq` above a quote, a code block or a heading", async () => {
-    for (const target of ["> quoted", "```ts\nconst x = 1;\n```", "## H"]) {
+  it("says nothing about an `oq` above a quote or a heading", async () => {
+    for (const target of ["> quoted", "## H"]) {
       const markdown = `<!-- vantage: oq -->\n\n${target}\n`;
       expect(await check(markdown)).toEqual([]);
       expect(await render(markdown)).toContain('data-vantage-oq="true"');
     }
+  });
+
+  // D5: the checker's answer has to be the app's answer. `pre` and `table` are
+  // anchor-capable — a comment can be anchored on either — but neither can host
+  // the button (`OQ_HOST_TAGS` in `useOpenQuestionButtons`), so the directive
+  // stamps and no affordance ever appears. That is exactly the silence this
+  // family exists to break.
+  it("warns about an `oq` above a code block, which cannot host a button", async () => {
+    const markdown = "<!-- vantage: oq -->\n\n```ts\nconst x = 1;\n```\n";
+    const report = await one(markdown);
+
+    expect(ruleIds(report)).toEqual(["vantage/orphan"]);
+    expect(report.findings[0]?.message).toContain("code block");
+    expect(report.findings[0]?.message).toContain(
+      "put the directive above the paragraph",
+    );
+    // Measured: the stamp lands, which is why nothing else says a word.
+    expect(await render(markdown)).toContain('data-vantage-oq="true"');
+  });
+
+  it("warns about an `oq` above a table, which cannot host a button", async () => {
+    const markdown =
+      "<!-- vantage: oq -->\n\n| a | b |\n| - | - |\n| 1 | 2 |\n";
+    const report = await one(markdown);
+
+    expect(ruleIds(report)).toEqual(["vantage/orphan"]);
+    expect(report.findings[0]?.message).toContain("table");
+    expect(await render(markdown)).toContain('data-vantage-oq="true"');
+  });
+
+  it("does not offer `code block` or `table` as legal `oq` hosts", async () => {
+    // The message enumerated both while the button refused both, so a reader of
+    // the finding was told the shape that does not work is the fix.
+    const report = await one("<!-- vantage: oq -->\n\n- item\n");
+
+    expect(report.findings[0]?.message).not.toContain("code block");
+    expect(report.findings[0]?.message).not.toContain("table");
   });
 
   it("warns about a style directive above a `$$` math block", async () => {
