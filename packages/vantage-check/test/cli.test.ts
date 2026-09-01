@@ -70,6 +70,19 @@ describe("run", () => {
     expect(io.stdout).toContain("Line anchors and ranges");
     expect(io.stdout).toContain("Frontmatter (Metadata)");
     expect(io.stdout).toContain("Mermaid diagrams");
+    expect(io.stdout).toContain("Vantage directives");
+  });
+
+  it("carries the two directive rules that are guidance, not code", async () => {
+    const io = bufferIo();
+    await run(["style-guide"], io);
+
+    // Neither can be a lint: "too many directives" is a judgement, and whether a
+    // `leaning` restates the leaning is a judgement about a sentence. They live
+    // here because the guide is the only place they can live — and nothing in
+    // the tool counts or caps directives per document.
+    expect(io.stdout).toContain("Use them sparingly");
+    expect(io.stdout).toContain('restates the leaning; it is never "yes"');
   });
 
   it("prints usage to stderr and exits 2 on a bad option", async () => {

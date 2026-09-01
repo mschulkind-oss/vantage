@@ -87,6 +87,63 @@ export const VANTAGE_COLLAPSED = ["true", "false"] as const;
  */
 export const VANTAGE_RUNS = ["start", "middle", "end", "only"] as const;
 
+/**
+ * The tags a `section`/`block` directive may stamp.
+ *
+ * Deliberately `rehypeSourceLines`'s `BLOCK_TAGS`: a stamped block should also
+ * be a block with a `data-source-line`, so the styling surface and the anchor
+ * surface coincide. It also keeps an inline directive from stamping the `<em>`
+ * that happens to follow it inside a paragraph.
+ *
+ * It lives here rather than in the plugin because the CLI checker has to answer
+ * "will this directive stamp anything?" from an mdast tree with no hast in
+ * sight. A checker with its own copy of this list is a checker that calls a
+ * working directive an orphan, or stays silent about a dead one (D5).
+ */
+export const VANTAGE_STYLE_TARGETS = [
+  "p",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "li",
+  "blockquote",
+  "pre",
+  "table",
+  "tr",
+  "ul",
+  "ol",
+  "hr",
+  "div",
+] as const;
+
+/**
+ * The tags an `oq` directive may stamp — strictly the tags the review system
+ * can resolve an anchor on (`ANCHOR_TAGS` in the app's `MarkdownViewer`, and the
+ * block map in `useReviewHighlights`). `ul`, `ol`, `tr`, `hr` and `div` are in
+ * neither, so a button on one of them would build an anchor no review pass can
+ * find — the "mis-wired button" D6 forbids.
+ *
+ * The gap between this list and `VANTAGE_STYLE_TARGETS` is why an `oq`
+ * directive at column 0 above a list silently does nothing: the target is the
+ * `<ul>`, not the `<li>`. The checker says so.
+ */
+export const VANTAGE_ANCHOR_TARGETS = [
+  "p",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "li",
+  "blockquote",
+  "pre",
+  "table",
+] as const;
+
 /** `null` for a key the grammar accepts but no closed set covers. */
 export type KeyVocabulary = readonly string[] | null;
 

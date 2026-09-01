@@ -15,6 +15,7 @@ import {
 import type { Io } from "../io.js";
 import { renderJson } from "../report/json.js";
 import { renderFailures, renderFindings } from "../report/text.js";
+import { checkDirectives } from "../rules/directives.js";
 import { checkFrontmatter } from "../rules/frontmatter.js";
 import { checkLinks } from "../rules/links.js";
 import { checkMath } from "../rules/math.js";
@@ -117,6 +118,7 @@ export async function checkFiles(
     filesChecked++;
     checkLinks(collector);
     checkFrontmatter(collector);
+    checkDirectives(collector);
     checkMath(collector);
     await checkMermaid(collector);
     await checkMarkdownHygiene(collector);

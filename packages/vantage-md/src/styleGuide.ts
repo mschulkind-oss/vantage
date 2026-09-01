@@ -92,6 +92,34 @@ flowchart TD
 > [!CAUTION]
 > High-risk actions that could cause data loss or security issues.
 
+### Vantage directives (optional, and Vantage-only)
+
+Vantage reads a few styling hints from ordinary HTML comments. Every other renderer — GitHub included — drops them, so a document has to read exactly the same without them: directives decorate, they never carry meaning. One goes on a line of its own, with a blank line after it, and applies to the block that follows:
+
+\`\`\`markdown
+<!-- vantage: section tone=warning badge=stale -->
+
+## Migration path
+
+The steps below predate the rewrite.
+\`\`\`
+
+- **Three names**: \`section\` (the heading and everything under it), \`block\` (the one block after it), \`oq\` (one answerable Open Question).
+- **The keys and values are a closed set**: \`tone\` = \`note | tip | important | warning | caution | muted\`; \`emphasis\` = \`strong | normal | quiet\`; \`badge\` = \`draft | stale | blocked | done | wip\`; \`collapsed\` = \`true | false\`. Name a *tone*, never a colour — the theme decides what a warning looks like, in light mode, in dark mode, and in print.
+- **Use them sparingly.** One or two per document, on the sections that genuinely differ. A document where everything is toned says nothing, and a rainbow one is harder to read than a plain one.
+- **Anything outside those sets is silently ignored** — nothing breaks, and nothing styles either. Run \`vantage-check\` on the document: the \`vantage/*\` rules are the only thing that will ever tell you a directive did nothing.
+- **Always close the comment with \`-->\`.** Never \`--!>\`, and never leave it open: Markdown reads every line below an unclosed \`<!--\` as part of the comment, and the whole rest of the document vanishes from the page. For the same reason \`-->\` cannot appear *inside* a value — it ends the comment early and spills the remainder into the page as literal text.
+- **In a list, indent the directive inside the item**, with blank lines around it (below). At the start of a line between two items it ends the list and starts a second one, which changes the numbering and the spacing in every renderer — the one thing a directive must never do.
+- **A \`leaning\` restates the leaning; it is never "yes".** The one-click button in review mode files that text as a review comment, and the comment is all the agent reading it has — nobody remembers which button was clicked. \`leaning="Yes"\` beside a two-branch question is a support ticket.
+
+\`\`\`markdown
+1. **OQ-9: Queue position on re-entry.**
+
+   <!-- vantage: oq id=OQ-9 leaning="Back of the queue — the fix might interact with what merged while it was out." -->
+
+   _Leaning:_ Back of the queue.
+\`\`\`
+
 ### Tables, task lists, and math
 - **Tables**: Use standard markdown tables for structured comparisons and schemas.
 - **Task lists**: Use \`- [ ]\` and \`- [x]\` for actionable checklists and status tracking.
