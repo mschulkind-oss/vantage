@@ -74,6 +74,12 @@ export const RULES: readonly RuleMeta[] = [
     default: "warning",
   },
   {
+    id: "frontmatter/not-at-top",
+    summary:
+      "A frontmatter block with a comment or a blank line above it, so it is body text and every field is lost",
+    default: "error",
+  },
+  {
     id: "mermaid/parse",
     summary: "A diagram Mermaid's own parser rejects, rendered as an error box",
     default: "error",
