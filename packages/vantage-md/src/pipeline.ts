@@ -39,6 +39,10 @@ import rehypeKatex from "rehype-katex";
 import rehypeSlug from "rehype-slug";
 import rehypeSourceLines from "./rehypeSourceLines.js";
 import rehypeVantageDirectives from "./rehypeVantageDirectives.js";
+import {
+  rehypeCaptureMathStamps,
+  rehypeRestoreMathStamps,
+} from "./rehypeVantageMathStamps.js";
 import { sanitizeSchema } from "./sanitize.js";
 
 export interface PipelineOptions {
@@ -110,7 +114,19 @@ function buildRehypePlugins(options: PipelineOptions = {}): PluggableList {
   if (sanitize) plugins.push([rehypeSanitize, sanitizeSchema]);
   plugins.push(rehypeSlug);
   if (highlight) plugins.push(rehypeHighlight);
-  if (math) plugins.push(rehypeKatex);
+  // ── The KaTeX bracket ─────────────────────────────────────────────────
+  // `rehype-katex` does not decorate a display-math block, it *replaces* it:
+  // `$$…$$` arrives as a `<pre>`, which `rehypeVantageDirectives` has already
+  // stamped as a member of its section's run and `rehypeSourceLines` has already
+  // given a `data-source-line`, and the splice throws all of that away. The two
+  // plugins around it snapshot those attributes and put them back on the
+  // `<span class="katex-display">` that took the block's place — which is what
+  // keeps a toned section's rule continuous across a formula, a `#L` anchor
+  // pointing at one resolvable, and `collapsed=true` able to hide it. They are a
+  // pair and they must bracket `rehypeKatex`; see `rehypeVantageMathStamps.ts`.
+  if (math) {
+    plugins.push(rehypeCaptureMathStamps, rehypeKatex, rehypeRestoreMathStamps);
+  }
   return plugins;
 }
 

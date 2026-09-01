@@ -345,7 +345,21 @@ const PHRASING_PARENTS = new Set([
   "linkReference",
 ]);
 
-const STYLE_TARGETS = new Set<string>(VANTAGE_STYLE_TARGETS);
+/**
+ * `VANTAGE_STYLE_TARGETS` plus `span`, which is display math and nothing else —
+ * `targetTag` maps only `math` onto it.
+ *
+ * A `$$…$$` block is a `<pre>` when the plugin runs, so it is a real style
+ * target and is stamped; `rehype-katex` then replaces that `<pre>` with a
+ * `<span class="katex-display">`, and `rehypeVantageMathStamps` copies the stamp
+ * onto the span that took its place. Measured through the real chain: the
+ * rendered span carries `data-vantage-tone` and `data-vantage-run`, so a style
+ * directive above a formula styles something and must not be reported.
+ *
+ * Deliberately *not* added to `OQ_HOST_TARGETS`: a `<button>` inside a KaTeX span
+ * is still no affordance, so an `oq` above a formula is still a finding.
+ */
+const STYLE_TARGETS = new Set<string>([...VANTAGE_STYLE_TARGETS, "span"]);
 /**
  * Not `VANTAGE_ANCHOR_TARGETS`: the question this rule answers is "does a button
  * appear?", and `pre`/`table` are anchorable but cannot host one. Read from the
@@ -596,8 +610,10 @@ function isCommentOnly(raw: string): boolean {
  *
  * `math` is the interesting one: with math enabled — which is what both viewers
  * and this checker's own parser do — a `$$…$$` block renders as
- * `<span class="katex-display">`, so it is a block in Markdown and no kind of
- * stampable target in hast. Measured, not assumed.
+ * `<span class="katex-display">`. That span *is* stamped (see `STYLE_TARGETS`),
+ * so predicting it is not about reporting an orphan any more; it is about naming
+ * the shape in the `oq` message, where a formula is still no host for a button.
+ * Measured, not assumed.
  */
 function targetTag(node: RootContent): string | undefined {
   switch (node.type) {

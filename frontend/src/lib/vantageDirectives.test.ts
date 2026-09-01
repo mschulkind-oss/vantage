@@ -742,6 +742,198 @@ describe("merging", () => {
   });
 });
 
+describe("display math stays a member of the run it sits in", () => {
+  /**
+   * `$$…$$` reaches rehype as a `<pre>`, which is a style target, so the plugin
+   * stamps it and counts it. `rehype-katex` then *replaces* that `<pre>` with a
+   * `<span class="katex-display">` — `parent.children.splice(index, 1, …result)`
+   * — and every attribute went with it. The section's rule is drawn per member
+   * and bled upward a fixed 40px, so a lost member is a hole about the formula's
+   * own height (measured in Chrome: 58px for a one-line fraction), and the
+   * section reads as two. `rehypeVantageMathStamps` is the pair that brackets
+   * `rehype-katex` to carry the attributes across; these are its guard.
+   *
+   * The DOM assertions here are the whole test. The gap itself is a pixel fact
+   * that jsdom cannot see — `getComputedStyle(el, "::before")` throws — so the
+   * geometry is in `frontend/e2e/directive_tone_rule.spec.ts` instead, which
+   * documents rather than guards because the `Justfile` never runs playwright.
+   */
+  const SECTION = [
+    "<!-- vantage: section tone=note -->",
+    "",
+    "## Toned",
+    "",
+    "Above.",
+    "",
+    "$$",
+    "E = mc^2",
+    "$$",
+    "",
+    "Below.",
+  ].join("\n");
+
+  it("carries the stamp onto the element KaTeX puts in the block's place", async () => {
+    const host = await render(SECTION);
+    const math = host.querySelector(".katex-display");
+
+    expect(math).not.toBeNull();
+    // No `<pre>` survives: this is a replacement, not a wrapping, which is why
+    // the attributes have to be copied rather than inherited.
+    expect(host.querySelector("pre")).toBeNull();
+    expect(stamped(math)).toEqual({
+      "data-vantage-tone": "note",
+      "data-vantage-run": "middle",
+    });
+  });
+
+  it("leaves the run markers an unbroken start→end chain", async () => {
+    const host = await render(SECTION);
+
+    expect(runs(host, "[data-vantage-tone]")).toEqual([
+      "start",
+      "middle",
+      "middle",
+      "end",
+    ]);
+  });
+
+  it("carries `data-source-line`, so a `#L` anchor still finds the formula", async () => {
+    const host = await render(SECTION);
+
+    expect(
+      host.querySelector(".katex-display")!.getAttribute("data-source-line"),
+    ).toBe("7");
+  });
+
+  it("treats a ```math fence the same as `$$`", async () => {
+    const host = await render(
+      [
+        "<!-- vantage: section tone=tip -->",
+        "",
+        "## Toned",
+        "",
+        "```math",
+        "\\sum_i x_i",
+        "```",
+        "",
+        "Below.",
+      ].join("\n"),
+    );
+
+    expect(stamped(host.querySelector(".katex-display"))).toEqual({
+      "data-vantage-tone": "tip",
+      "data-vantage-run": "middle",
+    });
+  });
+
+  it("gives a lone formula the wash marker, not a run slice", async () => {
+    const host = await render(
+      "<!-- vantage: block tone=note -->\n\n$$\nx\n$$\n",
+    );
+
+    expect(stamped(host.querySelector(".katex-display"))).toEqual({
+      "data-vantage-tone": "note",
+      "data-vantage-run": "only",
+    });
+  });
+
+  it("carries the stamp onto a formula that failed to parse", async () => {
+    // KaTeX's fallback emits `katex-error` rather than `katex-display`. A
+    // formula the author got wrong is still a member of the section around it.
+    const host = await render(
+      "<!-- vantage: block tone=note -->\n\n$$\n\\frac{\n$$\n",
+    );
+
+    expect(stamped(host.querySelector(".katex-error"))).toEqual({
+      "data-vantage-tone": "note",
+      "data-vantage-run": "only",
+    });
+  });
+
+  it("keeps three adjacent formulae in one chain", async () => {
+    // The carry finds the replacement by the sibling before it, so consecutive
+    // formulae are the case that would break if that sibling were itself a
+    // replaced block. mdast-to-hast separates them with newline text nodes.
+    const host = await render(
+      [
+        "<!-- vantage: section tone=note -->",
+        "",
+        "## Toned",
+        "",
+        "$$",
+        "a",
+        "$$",
+        "$$",
+        "b",
+        "$$",
+        "$$",
+        "c",
+        "$$",
+        "",
+        "End.",
+      ].join("\n"),
+    );
+
+    expect(host.querySelectorAll(".katex-display")).toHaveLength(3);
+    expect(runs(host, "[data-vantage-tone]")).toEqual([
+      "start",
+      "middle",
+      "middle",
+      "middle",
+      "end",
+    ]);
+  });
+
+  it("carries the stamp inside a list item and a blockquote", async () => {
+    const inList = await render(
+      "- item\n\n  <!-- vantage: block tone=tip -->\n\n  $$\n  x\n  $$\n",
+    );
+    const inQuote = await render(
+      "> <!-- vantage: block tone=tip -->\n>\n> $$\n> x\n> $$\n",
+    );
+
+    for (const host of [inList, inQuote]) {
+      expect(stamped(host.querySelector(".katex-display"))).toEqual({
+        "data-vantage-tone": "tip",
+        "data-vantage-run": "only",
+      });
+    }
+  });
+
+  it("makes `collapsed=true` reach a formula in the body", async () => {
+    // Before the carry this was content on screen under a closed heading: the
+    // paragraph hid and the formula did not, because the attribute the toggle
+    // JS looks for died with the `<pre>`.
+    const host = await render(
+      [
+        "<!-- vantage: section collapsed=true -->",
+        "",
+        "## Toned",
+        "",
+        "Above.",
+        "",
+        "$$",
+        "E = mc^2",
+        "$$",
+      ].join("\n"),
+    );
+
+    expect(stamped(host.querySelector(".katex-display"))).toEqual({
+      "data-vantage-collapsed": "true",
+      "data-vantage-collapse-group": "1",
+    });
+    expect(
+      host.querySelectorAll('[data-vantage-collapse-group="1"]'),
+    ).toHaveLength(2);
+  });
+
+  it("stamps nothing extra on a formula outside any directive", async () => {
+    const host = await render("Plain.\n\n$$\nx\n$$\n");
+
+    expect(stamped(host.querySelector(".katex-display"))).toEqual({});
+  });
+});
+
 describe("unknown is inert (P3/D2)", () => {
   it("drops one bad key and keeps its siblings", async () => {
     const host = await render(
