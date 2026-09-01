@@ -17,7 +17,7 @@ no `node_modules`, nothing to install on the machine that runs it. And it never
 talks to a server — every command works offline against files on disk, because
 an agent's sandbox is not guaranteed to have a Vantage running in it.
 
-Design background: [`../docs/design/agent-cli.md`](../docs/design/agent-cli.md).
+Design background: [`../docs/design/agent-cli.md`](../../docs/design/agent-cli.md).
 
 ---
 
@@ -46,7 +46,7 @@ Archives are published on the app's own release, `v<version>`, and each one
 carries **both** binaries — `vantage` and `vantage-check` — as
 `vantage_<version>_<os>_<arch>.tar.gz`, where `<os>` is `linux` or `darwin` and
 `<arch>` is `amd64` or `arm64`. There is no Windows build
-([`../docs/design/pypi-distribution.md`](../docs/design/pypi-distribution.md)
+([`../docs/design/pypi-distribution.md`](../../docs/design/pypi-distribution.md)
 §4.4), and no separate `vantage-check@*` release: everything in this repo ships
 on one tag at one version.
 
@@ -350,7 +350,7 @@ uvx vantage-check style-guide >> AGENTS.md      # or pipe it anywhere you like
 The same text is available in the browser: **Settings (⚙) → Agent Style Guide**
 opens a modal with a copy button, for pasting into an agent's context by hand.
 Both read one string in the `vantage-md` package, so the modal and the command
-can never disagree. See [Style Guide for Agents](style-guide.md).
+can never disagree. See [Style Guide for Agents](../reference/style-guide.md).
 
 Nothing writes to your `AGENTS.md`, `CLAUDE.md` or `.gitignore` on your behalf.
 If you want the guide in an agent's system prompt, put it there yourself.
@@ -412,6 +412,6 @@ would drift invisibly and pass documents the viewer breaks on.
 
 ## Related
 
-- [Style Guide for Agents](style-guide.md) — the conventions the checker verifies
+- [Style Guide for Agents](../reference/style-guide.md) — the conventions the checker verifies
 - [Review Inbox](review-inbox.md) — the review flow that tells agents to run it
-- [CLI Reference](cli-reference.md) — the `vantage` server binary's own commands
+- [CLI Reference](../reference/cli-reference.md) — the `vantage` server binary's own commands

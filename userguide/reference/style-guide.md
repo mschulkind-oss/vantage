@@ -35,7 +35,7 @@ uvx vantage-check docs/design/api.md
 
 The style guide tells the agent **how to write**; `check` verifies the
 result **against the real pipeline** — the two are the write side and the
-verify side of the same contract. See [vantage-check](vantage-check.md).
+verify side of the same contract. See [vantage-check](../guides/vantage-check.md).
 
 > [!NOTE]
 > The guide is advice; the checker is the enforcement. Not every convention in
@@ -44,6 +44,6 @@ verify side of the same contract. See [vantage-check](vantage-check.md).
 
 ## Related
 
-- [vantage-check](vantage-check.md) — the checker, its rules, and config
-- [Review Inbox](review-inbox.md) — the review flow that tells agents to run
+- [vantage-check](../guides/vantage-check.md) — the checker, its rules, and config
+- [Review Inbox](../guides/review-inbox.md) — the review flow that tells agents to run
   both

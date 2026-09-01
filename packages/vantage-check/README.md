@@ -10,7 +10,7 @@ $ vantage-check style-guide                 # print the conventions
 ```
 
 Design: [`../../docs/design/agent-cli.md`](../../docs/design/agent-cli.md).
-User documentation: [`../../userguide/vantage-check.md`](../../userguide/vantage-check.md).
+User documentation: [`../../userguide/vantage-check.md`](../../userguide/guides/vantage-check.md).
 
 ## Why this package is shaped the way it is
 

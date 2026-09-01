@@ -175,7 +175,7 @@ Press **?** to see all keyboard shortcuts, including sidebar toggle (**b**), vim
 
 ## Multi-Repo Mode
 
-When running in daemon mode with multiple directories, Vantage shows a full-page project list where you can select a repo. Projects can be sorted alphabetically or by recent activity (with relative timestamps like "2 hours ago"). Switch between directories without restarting the server. See [Daemon Mode](daemon-mode.md) for details.
+When running in daemon mode with multiple directories, Vantage shows a full-page project list where you can select a repo. Projects can be sorted alphabetically or by recent activity (with relative timestamps like "2 hours ago"). Switch between directories without restarting the server. See [Daemon Mode](guides/daemon-mode.md) for details.
 
 ### Source Directory Auto-Discovery
 
@@ -185,7 +185,7 @@ Instead of manually listing every repository, you can point Vantage at parent di
 source_dirs = ["~/code", "~/projects"]
 ```
 
-Manually listed `[[repos]]` take precedence — duplicates are skipped. See [Configuration](configuration.md#source-directory-auto-discovery) for details.
+Manually listed `[[repos]]` take precedence — duplicates are skipped. See [Configuration](reference/configuration.md#source-directory-auto-discovery) for details.
 
 ## Review Mode
 
@@ -199,10 +199,10 @@ Vantage includes a built-in review mode for annotating documents:
 Reviews are stored on disk and persist across server restarts.
 
 Agent responses arrive through a small `.vantage/inbox/` directory at the repo
-root — see [Review Inbox](review-inbox.md), which also covers gitignoring it.
+root — see [Review Inbox](guides/review-inbox.md), which also covers gitignoring it.
 
 The copied prompt also tells the agent to run
-[`vantage-check`](vantage-check.md) over the document before delivering, so
+[`vantage-check`](guides/vantage-check.md) over the document before delivering, so
 broken links and unparseable diagrams are caught before they reach you.
 
 ## Writing for Vantage
@@ -213,13 +213,13 @@ they meant:
 - **The style guide.** Settings (⚙) → **Agent Style Guide** shows the
   conventions Vantage's renderer expects, with a copy button for pasting into an
   agent's context. The same text comes out of `vantage-check style-guide`. See
-  [Style Guide for Agents](style-guide.md).
+  [Style Guide for Agents](reference/style-guide.md).
 - **The checker.** `vantage-check <path>` verifies a document against the
   repository on disk: relative links that resolve, `#L42` anchors that are
   inside their file, `#section` anchors that match a real heading, frontmatter
   that parses, and diagrams and formulas that Mermaid and KaTeX accept. It is a
   standalone binary that needs nothing installed and no server running. See
-  [vantage-check](vantage-check.md).
+  [vantage-check](guides/vantage-check.md).
 
 ## Dark Mode
 
@@ -227,4 +227,4 @@ Press **Shift+D** to toggle between light and dark themes. The setting is persis
 
 ## Performance Diagnostics
 
-Vantage includes built-in performance instrumentation. Run `vantage perf-report` against a running instance to see anonymized timing data for all API endpoints. See the [CLI Reference](cli-reference.md#vantage-perf-report) for details.
+Vantage includes built-in performance instrumentation. Run `vantage perf-report` against a running instance to see anonymized timing data for all API endpoints. See the [CLI Reference](reference/cli-reference.md#vantage-perf-report) for details.

@@ -42,8 +42,8 @@ distribution question this doc used to carry),
 [`agent-cli.md`](agent-cli.md) (the CLI this extends, and the
 principles it fixed), [`review-state-architecture.md`](review-state-architecture.md)
 (why the payload exists at all), and the user-facing
-[`../../userguide/vantage-check.md`](../../userguide/vantage-check.md) and
-[`../../userguide/style-guide.md`](../../userguide/style-guide.md) (what agents
+[`../../userguide/vantage-check.md`](../../userguide/guides/vantage-check.md) and
+[`../../userguide/style-guide.md`](../../userguide/reference/style-guide.md) (what agents
 and humans are told today).
 
 ---
@@ -141,7 +141,7 @@ anyone's `AGENTS.md`, `CLAUDE.md`, or `.gitignore` on their behalf.
 That line is narrower than it first reads, and the userguide already phrases it
 precisely: *"Nothing writes to your `AGENTS.md`, `CLAUDE.md` or `.gitignore`
 **on your behalf**"*
-([`../../userguide/vantage-check.md`](../../userguide/vantage-check.md)). A
+([`../../userguide/vantage-check.md`](../../userguide/guides/vantage-check.md)). A
 generator someone explicitly invokes is not acting on their behalf — it is them
 acting. What stays forbidden is the implicit write and the setup precondition.
 
@@ -242,7 +242,7 @@ not available, carry on.
 > **Do not "improve" the generated artifact by inlining the style guide to save
 > the agent a command.** That trade buys one tool call and sells the single
 > source of truth that
-> [`../../userguide/style-guide.md`](../../userguide/style-guide.md) exists to
+> [`../../userguide/style-guide.md`](../../userguide/reference/style-guide.md) exists to
 > promise. The out-of-tree copy this project already has is the evidence, not a
 > hypothetical — re-verified 2026-08-31 as still referenced nowhere in this
 > tree.

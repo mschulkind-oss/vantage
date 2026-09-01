@@ -31,7 +31,7 @@ trap that makes orchestration harder than it looks.
 
 **Reads with:** [`review-state-architecture.md`](review-state-architecture.md)
 (why the inbox protocol looks the way it does), and the user-facing
-[`../../userguide/review-inbox.md`](../../userguide/review-inbox.md) (the
+[`../../userguide/review-inbox.md`](../../userguide/guides/review-inbox.md) (the
 protocol as agents are told it today).
 
 ---

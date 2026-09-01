@@ -45,7 +45,7 @@ vantage daemon [--config PATH] [--host HOST] [--port PORT]
 | `--host`         | From config                     | Override the host from the config |
 | `--port`         | From config                     | Override the port from the config |
 
-See [Daemon Mode](daemon-mode.md) for details on the config file format.
+See [Daemon Mode](../guides/daemon-mode.md) for details on the config file format.
 
 ---
 
@@ -79,7 +79,7 @@ vantage build [PATH] --output DIR [--name NAME] [--frontend-dist DIR]
 | `--name`, `-n`    | Directory name     | Display name shown in the UI                            |
 | `--frontend-dist` | _(embedded)_       | Override the embedded frontend bundle (currently ignored) |
 
-See [Static Sites](static-sites.md) for a full guide on this workflow.
+See [Static Sites](../guides/static-sites.md) for a full guide on this workflow.
 
 ---
 
@@ -91,7 +91,7 @@ Install Vantage as a systemd user service that starts on login.
 vantage install-service
 ```
 
-This creates `~/.config/systemd/user/vantage.service`. See [Daemon Mode](daemon-mode.md#running-as-a-systemd-service) for the full setup steps.
+This creates `~/.config/systemd/user/vantage.service`. See [Daemon Mode](../guides/daemon-mode.md#running-as-a-systemd-service) for the full setup steps.
 
 ---
 
@@ -142,5 +142,5 @@ vantage-check <path>...      # or: uvx vantage-check <path>...
 vantage-check style-guide
 ```
 
-See [vantage-check](vantage-check.md) for installation, rules, configuration and
+See [vantage-check](../guides/vantage-check.md) for installation, rules, configuration and
 exit codes.

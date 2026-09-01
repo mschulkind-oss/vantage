@@ -54,7 +54,7 @@ name = "notes"
 path = "~/Documents/notes"
 ```
 
-Any subdirectory of `source_dirs` that contains a `.git` folder is added automatically, using the directory name. Repos already listed in `[[repos]]` are not duplicated. See [Configuration](configuration.md#source-directory-auto-discovery) for details.
+Any subdirectory of `source_dirs` that contains a `.git` folder is added automatically, using the directory name. Repos already listed in `[[repos]]` are not duplicated. See [Configuration](../reference/configuration.md#source-directory-auto-discovery) for details.
 
 ### 3. Start the daemon
 
