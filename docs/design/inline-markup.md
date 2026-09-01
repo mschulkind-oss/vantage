@@ -723,6 +723,18 @@ there. That is the whole point of the carrier.
 > is the single strongest reason the plugin walks the whole tree rather than the
 > root (§6.2), and it is why `vantage/list-split` is an **error** in the checker
 > rather than a warning.
+>
+> **A list is not special here — it is only what we measured first.** A comment at
+> the start of a line ends whatever multi-line construct it lands in: a GFM table
+> drops its remaining rows onto the page as literal `| … |` text, one paragraph
+> becomes two, one block quote becomes two, a setext heading's `===` stops being
+> an underline and lands on the page, and an indented code block splits in half
+> even with blank lines on both sides. So the checker does not enumerate them:
+> `vantage/block-split` runs **P1's own test** — delete the comment lines,
+> re-parse, compare the block structure — over a slice around the directive, and
+> reports any construct the deletion changes. `vantage/list-split` stays as the
+> list-shaped instance because its fix ("indent it inside the item") is worth
+> spelling out, and it reports first when both apply.
 
 ### 4.5 Frontmatter for file scope
 
@@ -933,10 +945,11 @@ answered.
   now the largest single piece of the feature. Directives are a structured,
   greppable, position-carrying annotation layer, so the checker in
   [`agent-cli.md`](agent-cli.md) validates them with no rendering at all:
-  twelve rules under `vantage/*`
-  ([`registry.ts:86-167`](../../packages/vantage-check/src/rules/registry.ts#L86-L167)),
+  thirteen rules under `vantage/*`
+  ([`registry.ts:86-173`](../../packages/vantage-check/src/rules/registry.ts#L86-L173)),
   covering unterminated comments, malformed grammar, unknown names, keys and
-  values, list splits, duplicate keys, orphans, and the four frontmatter cases.
+  values, list splits, the general restructuring case, duplicate keys, orphans,
+  and the four frontmatter cases.
   **The checker is not a nicety here — it is the only thing that ever reports a
   directive that did nothing**, because the viewer is silent by design (**P3**).
 
@@ -1622,7 +1635,7 @@ is ever renumbered or re-spelled.
 | A3 | `collapsed` emits **no `<details>` and no wrapper**: a flat stamp, heading and body taking different attributes, and hiding gated on two JS-set markers — the container's readiness *and* the block's own armed marker, so a group with no toggle is not hidden either | 2026-08-31 | §4.3, §5.1 |
 | A4 | The plugin walks the **whole tree**, resolving within each parent's own children. A root-only walk finds zero `oq` directives | 2026-08-31 | §6.2, §2.2 |
 | A5 | `directives.css` lives in `vantage-md`, re-exported from its `styles/index.css` **and** imported by the frontend. Neither half alone works | 2026-08-31 | §4.3 |
-| A6 | The legal `oq` authoring form is **indented inside the list item**. Column 0 between two items splits the list and fails D1 | 2026-08-31 | §4.4 |
+| A6 | The legal `oq` authoring form is **indented inside the list item**. Column 0 between two items splits the list and fails D1 — and the general case, not just the list, is checked by deleting the comment and re-parsing (`vantage/block-split`) | 2026-08-31 | §4.4 |
 | A7 | **Sanitise the comment-body `innerHTML` path before the button ships.** The design's claim that escaping already existed was false | 2026-08-31 | §8.3, §11 |
 | A8 | Attribute values are **always strings** — `"true"`, never boolean `true`, which serialises differently in two renderers | 2026-08-31 | §6.3 |
 | A9 | **No `--` restriction** in quoted values; HTML5 closes a comment on `-->` or `--!>` only, and a hand-written scanner must handle both | 2026-08-31 | §4.1 |

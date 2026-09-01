@@ -591,6 +591,140 @@ describe("vantage/list-split", () => {
   });
 });
 
+/**
+ * The general form of the same defect: D1 says the document renders as if the
+ * markup were not there, and the way to check that is to *take it away*. Each
+ * case below asserts the finding and the measured HTML difference together, so
+ * the rule cannot drift from the thing it claims about the page.
+ */
+describe("vantage/block-split", () => {
+  /** The rendered HTML with the directive line, and with it deleted. */
+  const bothWays = async (markdown: string, directive: string) => [
+    await render(markdown),
+    await render(markdown.replace(`${directive}\n`, "")),
+  ];
+
+  it("reports a directive between two rows of a table", async () => {
+    const directive = "<!-- vantage: block tone=note -->";
+    const markdown = `| a | b |\n| - | - |\n| 1 | 2 |\n${directive}\n| 3 | 4 |\n`;
+    const report = await one(markdown);
+
+    expect(ruleIds(report)).toEqual(["vantage/block-split"]);
+    expect(report.findings[0]?.severity).toBe("error");
+    expect(report.findings[0]?.line).toBe(4);
+    expect(report.findings[0]?.message).toContain("table");
+    expect(report.findings[0]?.message).toContain("put the directive above");
+
+    // Measured: the table ends after row 1 and the rest is literal prose — text
+    // the plain document does not contain anywhere (D8).
+    const [withIt, withoutIt] = await bothWays(markdown, directive);
+    expect(withIt).toContain("| 3 | 4 |");
+    expect(withoutIt).not.toContain("| 3 | 4 |");
+    expect(withoutIt).toContain("<td>3</td>");
+  });
+
+  it("reports a directive that cuts one paragraph in two", async () => {
+    const directive = "<!-- vantage: block tone=note -->";
+    const markdown = `some prose\n${directive}\nmore prose\n`;
+    const report = await one(markdown);
+
+    expect(ruleIds(report)).toEqual(["vantage/block-split"]);
+    expect(report.findings[0]?.message).toContain("paragraph");
+
+    const [withIt, withoutIt] = await bothWays(markdown, directive);
+    expect(withIt.match(/<p\b/g)).toHaveLength(2);
+    expect(withoutIt.match(/<p\b/g)).toHaveLength(1);
+  });
+
+  it("reports a directive that cuts one block quote in two", async () => {
+    const directive = "<!-- vantage: block tone=note -->";
+    const markdown = `> quoted one\n${directive}\n> quoted two\n`;
+    const report = await one(markdown);
+
+    expect(ruleIds(report)).toEqual(["vantage/block-split"]);
+    expect(report.findings[0]?.message).toContain("block quote");
+
+    const [withIt, withoutIt] = await bothWays(markdown, directive);
+    expect(withIt.match(/<blockquote\b/g)).toHaveLength(2);
+    expect(withoutIt.match(/<blockquote\b/g)).toHaveLength(1);
+  });
+
+  it("reports a directive that stops a setext heading being a heading", async () => {
+    const directive = "<!-- vantage: section tone=note -->";
+    const markdown = `Title\n${directive}\n=====\n`;
+    const report = await one(markdown);
+
+    expect(ruleIds(report)).toEqual(["vantage/block-split"]);
+    expect(report.findings[0]?.message).toContain("underline");
+
+    // Measured: the `=====` lands on the page as text, and the heading is gone.
+    const [withIt, withoutIt] = await bothWays(markdown, directive);
+    expect(withIt).toContain("=====");
+    expect(withIt).not.toContain("<h1");
+    expect(withoutIt).toContain("<h1");
+    expect(withoutIt).not.toContain("=====");
+  });
+
+  it("reports a directive that cuts one indented code block in two", async () => {
+    // Blank lines on both sides and *still* a split, because a blank line inside
+    // an indented code block belongs to the block. This is why the rule deletes
+    // the directive and re-parses rather than looking at the neighbouring lines.
+    const directive = "<!-- vantage: block tone=note -->";
+    const markdown = `    code a\n\n${directive}\n\n    code b\n`;
+    const report = await one(markdown);
+
+    expect(ruleIds(report)).toEqual(["vantage/block-split"]);
+    expect(report.findings[0]?.message).toContain("code block");
+
+    const [withIt, withoutIt] = await bothWays(markdown, directive);
+    expect(withIt.match(/<pre\b/g)).toHaveLength(2);
+    expect(withoutIt.match(/<pre\b/g)).toHaveLength(1);
+  });
+
+  it("leaves the list shape to `vantage/list-split`, which says more", async () => {
+    // The general rule sees the list split too. The specific one names the fix
+    // ("indent it inside the item") and the measured cost (item spacing, `start`),
+    // so it reports and the general one stands down. One mistake, one finding.
+    expect(
+      await check("- one\n\n<!-- vantage: block tone=note -->\n\n- two\n"),
+    ).toEqual(["vantage/list-split"]);
+  });
+
+  it("prefers the orphan finding when the directive also attaches to nothing", async () => {
+    // A tight list item: `- one` / directive / `two` restructures the item *and*
+    // leaves nothing stampable. `vantage/orphan` explains both, so it wins.
+    expect(
+      await check("- one\n  <!-- vantage: block tone=note -->\n  two\n"),
+    ).toEqual(["vantage/orphan"]);
+  });
+
+  it("says nothing about the placements that change nothing", async () => {
+    // The delete-and-compare test in the negative, over every legal shape this
+    // suite and the style guide use. A rule that fired on any of these would be
+    // worse than the silence it replaces.
+    for (const markdown of [
+      // Between a paragraph and the heading its section starts.
+      "intro para\n\n<!-- vantage: section tone=note -->\n\n## Head\n\nbody\n",
+      // Between two paragraphs, which stay two paragraphs.
+      "one\n\n<!-- vantage: block tone=note -->\n\ntwo\n",
+      // A6's authoring form: indented inside a loose list item.
+      "1. **OQ-B1: x**\n\n   <!-- vantage: oq id=OQ-B1 -->\n\n   _Leaning:_ y\n",
+      "- one\n\n  <!-- vantage: block tone=note -->\n\n  two\n",
+      // Inside a block quote, above its own paragraph.
+      "> <!-- vantage: block tone=note -->\n>\n> quoted para\n",
+      // After a whole list, and above a fenced block.
+      "- one\n- two\n\n<!-- vantage: block tone=note -->\n\npara\n",
+      "para\n\n<!-- vantage: block tone=note -->\n\n```ts\nconst x = 1;\n```\n",
+      // Two lists CommonMark would have separated anyway.
+      "- one\n\n<!-- vantage: block tone=note -->\n\n* two\n",
+      // A directive above a table, which is where the table case's fix puts it.
+      "para\n\n<!-- vantage: block tone=note -->\n\n| a | b |\n| - | - |\n| 1 | 2 |\n",
+    ]) {
+      expect(await check(markdown)).toEqual([]);
+    }
+  });
+});
+
 describe("vantage/* settings", () => {
   const settingsFor = (toml: string) => parseConfig(toml).settings;
   const bad = [
