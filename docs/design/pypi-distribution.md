@@ -146,9 +146,13 @@ rather than adding a channel of its own. As built:
   `id-token: write`, no token). Separate on purpose — the archives and the
   Homebrew formula are already published by the time it runs, so a PyPI failure
   costs the release nothing but its wheels.
-- **The guard is `build`'s, verbatim**: `release: [published]` takes no tag
-  filter, and `vantage-check@…` and `vantage-md@…` both start with `v`, so the
-  `@` test is what separates a package tag from `v0.5.4`.
+- **The trigger is the app's own tag.** `publish.yml` was moved from
+  `release: [published]` to `push: tags: ['v[0-9]*']` in the same round, so it
+  matches `publish-check.yml` and `publish-npm.yml`: one gesture per artifact,
+  and a `create-release` job creates what the matrix legs attach to. That filter
+  also replaces a runtime guard — a release trigger takes no tag filter, so every
+  release `publish-check.yml` created woke this workflow too, and `[0-9]` cannot
+  match the `a` of `vantage`.
 
 The wheel metadata is `vantage-md`, Apache-2.0, with `vantage` as the installed
 command ([§4.3](#43-the-command-is-vantage-the-one-shot-pays-for-it)).
@@ -384,11 +388,12 @@ server wheel becomes ~98 MB, per platform, per app release.
 
 **Cadence is the structural half.** The app is tagged `v*`; the CLI is tagged
 `vantage-check@*`, and [`publish.yml`](../../.github/workflows/publish.yml)
-carries a guard whose comment explains exactly why the two namespaces must not
-be confused — on a `vantage-check@0.1.0` tag, `${GITHUB_REF_NAME#v}` yields
-`antage-check@0.1.0` and the job would attach nonsense to the wrong release and
-push a broken formula to the public tap. One project means the checker can only
-ship when the app ships, and every app release re-uploads the checker.
+documented at length why the two namespaces must not be confused — on a
+`vantage-check@0.1.0` tag, `${GITHUB_REF_NAME#v}` yields `antage-check@0.1.0`,
+and the job would attach nonsense to the wrong release and push a broken formula
+to the public tap. (That guard is now a tag filter instead, **R4**.) One project
+means the checker can only ship when the app ships, and every app release
+re-uploads the checker.
 
 **Audience is the last half.** The CLI's consumer is an agent linting one file,
 often in a sandbox with a cold cache; it must not fetch a server. The server's
@@ -452,7 +457,7 @@ payload's `uvx vantage-check <file>` string, and
 | **R2. A build with no frontend in it** — the embed tolerates an empty `web/dist`, so any build path that skipped the frontend steps shipped a placeholder page instead of the app, warning only to the server's own stderr ([§4.1](#41-the-frontend-has-to-be-there-at-build-time-and-today-it-often-isnt)) | **Closed** by tracking the export (`08579a0`): there is no longer a build path without a frontend. The residual risk is a *stale* export rather than a missing one, which `just build` refreshes and a reviewer can see in the diff |
 | **R8. `go install` shipped the placeholder** — [`README.md:21-25`](../../README.md#L21-L25) documents `go install …/cmd/vantage@latest`, and the module zip carried only `web/dist/.gitkeep`. Verified 2026-09-01 against a pristine `git archive HEAD` build | **Closed** by the same commit, and re-verified the same way. Note the module proxy caches by version, so the fix reaches `@latest` only once a release tag includes the tracked export |
 | **R3. The wheel job fails after the release is public** | Keep it a separate job with no `needs:` on `build`, so archives and the tap land regardless — the same tolerance `publish-check.yml` already documents for its own PyPI step |
-| **R4. Firing on the wrong tag** — a `vantage-check@*` release also fires `release: [published]`, and an unguarded job would publish an app wheel versioned `antage-check@0.1.0` | Copy `build`'s guard verbatim. This is a documented near-miss in `publish.yml`, not a hypothetical |
+| **R4. Firing on the wrong tag** — a `vantage-check@*` release used to fire the app's `release: [published]` trigger, and an unguarded job would have published an app wheel versioned `antage-check@0.1.0`. A documented near-miss, not a hypothetical | **Closed** by triggering on `push: tags: ['v[0-9]*']` instead: the class is unreachable rather than guarded, since `[0-9]` cannot match the `a` of `vantage` |
 | **R5. Two projects drifting about one style guide** | They share source, not copies: `packages/vantage-check` imports `vantage-md`'s TypeScript by relative path, and `check-ci` pins its katex and mermaid to `vantage-md`'s |
 | **R6. `uvx` running a long-lived server is unusual** — `uvx` is built for one-shot tools; here it starts a process that serves until killed | It is what `0.4.x` did and documented. Keep it a convenience path, never the recommendation ([§5](#5-the-install-matrix-after-the-fix)) |
 | **R7. License metadata disagrees across artifacts** — the repo `LICENSE` is Apache-2.0 and the tap formula says so, while `packages/vantage-md` and `packages/vantage-check` declare MIT and the CLI wheel stamps `License: MIT` | Settle before the first publish under these names; a wheel's metadata is the copy people quote. [OQ-P5](#open-questions) |

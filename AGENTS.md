@@ -66,15 +66,15 @@ Never kill it; run test instances on other ports.
 ## Releases
 
 Three tag namespaces, all starting with `v`: `v*` (the app), `vantage-md@*` (the
-npm library), `vantage-check@*` (the CLI). The workflows guard on the **`@`**,
-because `release: [published]` takes no tag filter and a `v`-prefix test alone
-lets one package's tag drive another's release — which would attach the wrong
-archives and push a broken formula to the public Homebrew tap.
+npm library), `vantage-check@*` (the CLI). **Each publishes by pushing its own
+tag** — the workflow creates whatever GitHub release it needs.
 
-**The two package tags publish on push; the app's `v*` tag does not.**
-`publish.yml` fires on `release: [published]`, so the app ships only once a
-GitHub Release exists — `gh release create v0.5.4 --generate-notes`. A pushed
-`v*` tag on its own does nothing.
+The app's filter is `v[0-9]*`, not `v*`, and that is load-bearing: `vantage-md@…`
+and `vantage-check@…` also start with `v`, so a looser filter would let one
+artifact's tag drive another's release — attaching the wrong archives and pushing
+a broken formula to the public Homebrew tap. `[0-9]` cannot match the `a` of
+`vantage`. This replaced a runtime guard that existed only because the app used
+to trigger on `release: [published]`, which takes no tag filter at all.
 
 Publishing is by trusted publishing (OIDC): there is no `NPM_TOKEN`, and adding
 one is the wrong fix for a failed publish.
