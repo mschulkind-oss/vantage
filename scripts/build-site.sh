@@ -16,7 +16,7 @@ echo "--- Installing the workspace ---"
 npm ci
 
 echo "--- Building the vantage-md library (frontend depends on it) ---"
-npm exec --workspace vantage-md -- tsup
+npm exec --workspace vantage-md -- tsdown
 
 echo "--- Building frontend ---"
 npm run build --workspace frontend

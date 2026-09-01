@@ -182,7 +182,7 @@ the module from the proxy, whose zip is the git contents, so it embeds the
 `.gitkeep` and nothing else. Anyone following that line today installs the
 placeholder. A wheel job would inherit the same defect, and
 [`publish.yml`](../../.github/workflows/publish.yml)'s `build` job is the only
-path that gets it right (tsup → `npm run build` → `cp -r frontend/dist web/dist`
+path that gets it right (tsdown → `npm run build` → `cp -r frontend/dist web/dist`
 → `go build`).
 
 There are two shapes of answer, and `mschulkind-oss/polyclav` already runs the

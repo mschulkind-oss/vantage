@@ -19,7 +19,7 @@ all discoverable, so they are deliberately not here.
 - `packages/vantage-md` is consumed **from TypeScript source, never from
   `dist/`**: the frontend resolves it through a Vite alias
   (`frontend/vite.config.ts`), and `packages/vantage-check` imports it by
-  relative path. `dist/` (tsup) is produced only at `npm publish`. So never
+  relative path. `dist/` (tsdown) is produced only at `npm publish`. So never
   copy pipeline code into `frontend/src` — one implementation, three consumers.
 - The three packages are **one npm workspace** with a single root
   `package-lock.json`. `npm ci` at the root installs all of them; there is no
@@ -63,11 +63,11 @@ Never kill it; run test instances on other ports.
   versions** — standalone at its own pin (`~6.0.3`) and again through
   `frontend/`'s project reference (`~5.9.3`). Both are deliberate; a change that
   passes one and not the other is a real finding, not a flake. The workspace
-  keeps this working by **declaring `typescript` at the root**: `tsup`'s dts
-  build hoists there and resolves TypeScript from its own location, not the
-  package's, so a root without the 6.x pin gave it 5.9.3 and
-  `"ignoreDeprecations": "6.0"` failed with `TS5103`. Root holds 6.x; `frontend`
-  and `vantage-check` nest their own 5.9.3. It has no tests
+  keeps this working by **declaring `typescript` at the root**: the dts build
+  hoists there and resolves TypeScript from its own location, not the package's,
+  so without the 6.x pin it would generate `vantage-md`'s declarations under a
+  different compiler than the one that type-checks it. Root holds 6.x;
+  `frontend` and `vantage-check` nest their own 5.9.3. It has no tests
   of its own: its behaviour is covered by `frontend/`'s tests through the source
   alias.
 - **Editing Markdown can fail the gate.** It rebuilds the CLI and runs it over
