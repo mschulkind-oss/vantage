@@ -149,6 +149,18 @@ export const SAFE_STYLE = new RegExp(
  */
 const COLLAPSE_GROUP_ID = /^[0-9]+$/;
 
+/**
+ * Never set `allowComments` here.
+ *
+ * `hast-util-sanitize` drops comment nodes because that boolean defaults to
+ * `false` — comments are not elements, so `tagNames` has nothing to do with it.
+ * `rehypeVantageDirectives` relies on that deletion: it consumes a
+ * `<!-- vantage: … -->` comment into attributes and deliberately leaves the node
+ * for the sanitiser. Turning the switch on readmits every directive comment —
+ * valid and malformed alike — into the rendered HTML, which breaks the carrier's
+ * whole premise. `vantageDirectives.test.ts` ("leaves no comment in the rendered
+ * markup") is the guard.
+ */
 export const sanitizeSchema: Schema = {
   ...defaultSchema,
   tagNames: [

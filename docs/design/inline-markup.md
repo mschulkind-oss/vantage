@@ -159,9 +159,17 @@ This is the fact the implementation turns on, so I ran it. Feeding
   `{type: "comment", value: " vantage: section tone=warning "}` — sitting as a
   sibling of the surrounding blocks, and it **carries full position data**
   (`start.line`, `end.line`), exactly like an element does.
-- **After `rehype-sanitize`:** the node is **gone**. `rehype-sanitize` drops
-  comment nodes outright; they are not in its `tagNames` allowlist and there is
-  no schema key that readmits them. The rendered HTML contains no trace.
+- **After `rehype-sanitize`:** the node is **gone**, and the mechanism is worth
+  naming precisely. Comments are not elements, so `tagNames` never applied to
+  them; `hast-util-sanitize` (5.0.2 here) gates them on a single boolean,
+  `allowComments`, which defaults to `false` and which `sanitizeSchema`
+  deliberately never sets. There *is* therefore a switch that readmits them —
+  measured, flipping it puts `<!-- vantage: section tone=warning -->` and a
+  malformed `<!-- vantage: bogus -->` alike straight into the rendered HTML — so
+  what holds the guarantee is the schema plus a test, not the absence of an API:
+  [`vantageDirectives.test.ts:1290`](../../frontend/src/lib/vantageDirectives.test.ts#L1290)
+  asserts the rendered markup contains no `<!--` and no `vantage:`, and fails the
+  moment anyone turns it on.
 
 Two consequences:
 
@@ -1160,7 +1168,7 @@ computes its own.
 ### 6.3 The sanitiser change
 
 Small and closed. In the `*` attribute list at
-[`sanitize.ts:182-219`](../../packages/vantage-md/src/sanitize.ts#L182-L219),
+[`sanitize.ts:196-231`](../../packages/vantage-md/src/sanitize.ts#L196-L231),
 **nine** `data-vantage-*` properties are named **individually** — never by a
 `data-vantage-*` wildcard, which would readmit whatever a future bug emits and
 whatever a document hand-writes as raw HTML:
