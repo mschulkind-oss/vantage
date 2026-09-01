@@ -1012,8 +1012,15 @@ Between `rehypeRaw` and `rehypeSanitize` (§2.2 — the only slot). Per pass:
    node always sits between a block-level comment and its target, with or without
    a blank line in the source, so it cannot be treated as a blocker. Every
    directive consumed on the way merges onto the same target, last-key-wins.
-5. Stamp `data-vantage-*` properties on the target, and for `section` scope on
-   every following sibling in the range (§4.2), plus the `run` marker across it.
+5. Stamp `data-vantage-*` properties on the target, and for `section` scope stamp
+   the **run treatments** — `tone` and `emphasis` — on every following sibling in
+   the range (§4.2), plus the `run` marker across it. `badge` is a **point
+   marker**, not a run treatment: it stays on the target, because the chip is
+   drawn as `[data-vantage-badge]::after` and a range-wide stamp paints the word
+   once per paragraph, list, table and fence in the section instead of once
+   beside the heading (§4.3). A section whose only key is `badge` therefore
+   stamps no `run` marker either — there is no rule to join its blocks up with,
+   which is the same reason a collapse-only section stamps none.
    Values are **always strings** (§6.3).
 6. Leave the comment node in place. The sanitiser removes it.
 
