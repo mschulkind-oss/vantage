@@ -310,7 +310,7 @@ is a branch in `parseArgs`
 The wheel builder carries **no console-script shim** — the compiled binary *is*
 the installed script, dropped into `<pkg>-<ver>.data/scripts/`, which is what
 lets `uvx` exec a real executable with no interpreter in the path
-([`build-wheel.py`](../../packages/vantage-check/scripts/build-wheel.py)). That
+([`build-wheel.py`](../../scripts/build-wheel.py)). That
 design choice is deliberate and stated in the same file: the builder is
 *"deliberately zero-dependency — no setuptools, no hatchling, no build
 backend,"* because adding a Python build toolchain to a TypeScript project would
