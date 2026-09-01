@@ -900,16 +900,25 @@ describe("vantage/block-split", () => {
    * free. A directive *nested* inside a list item re-parses the whole enclosing
    * top-level block — and A6 makes that nesting the only legal `oq` placement,
    * so an Open Questions document pays the enclosing list twice per question.
-   * Measured on the 40-question fixture below: 328 ms with the rule on and
-   * 0.3 ms with it off, once the experiment is gated on the rule being enabled.
    * Before the gate, `off` paid every parse and there was no way out.
    *
-   * Compared as a ratio rather than against a wall-clock budget, because a
-   * budget in milliseconds encodes how fast the machine is. The old form
-   * asserted `elapsed < 100` for a 0.3 ms measurement and still failed CI at
-   * 101 ms and 113 ms — cold module-load and JIT costs landing inside the one
-   * timed call, on a runner slower than the one the budget was written on. The
-   * ratio cancels both: whatever the machine costs, it costs both runs.
+   * Compared as a ratio, not against a wall-clock budget: a budget in
+   * milliseconds encodes how fast the machine is, and this one stopped holding
+   * on CI while passing locally. The ratio cancels that out — whatever the
+   * machine costs, it costs both runs.
+   *
+   * The numbers, remeasured 2026-09-01 over five warm rounds, because the
+   * figures this comment used to quote (328 ms on, 0.3 ms off) were wrong by
+   * more than two orders of magnitude on the `off` side and made every
+   * threshold derived from them look safe:
+   *
+   *     off  33-54 ms      on  409-520 ms      ratio  1/8 to 1/13
+   *
+   * `off` is not free. It still discovers the tree, loads the document and runs
+   * every other rule; what the gate buys back is the 40 re-parses on top. So
+   * the honest headroom is one order of magnitude, not three, and the threshold
+   * has to sit clear of both ends: ungated, `off` rises to ~612 ms against a
+   * ~545 ms `on` — a ratio of about 1/1, since both then do the same work.
    */
   it("runs no experiment when the rule is switched off", async () => {
     const questions = 40;
@@ -936,13 +945,18 @@ describe("vantage/block-split", () => {
       return { elapsed: performance.now() - started, report };
     };
 
-    // One untimed pass first. Whichever configuration runs first in a process
-    // pays to load the parser and warm the JIT, and those milliseconds belong
-    // to neither of them — charged to `off`, they are the whole reason the old
-    // absolute threshold was flaky.
-    await timed(setting("off"));
-
-    const off = await timed(setting("off"));
+    // The first check in a process pays to load the parser and warm the JIT —
+    // 192 ms against a 35 ms steady state, all of it landing on whichever
+    // configuration goes first. Run `off` three times and keep the fastest:
+    // scheduler noise can only ever inflate a sample, so the minimum is the
+    // closest thing to the real cost, and the warm-up falls out for free.
+    // `on` is ~450 ms and varies by ~12%, so one sample is enough there and a
+    // second would cost more than it settles.
+    let off = await timed(setting("off"));
+    for (let i = 0; i < 2; i++) {
+      const again = await timed(setting("off"));
+      if (again.elapsed < off.elapsed) off = again;
+    }
     const on = await timed(setting("error"));
 
     // The legal placement, so nothing to report either way. Without this the
@@ -950,10 +964,11 @@ describe("vantage/block-split", () => {
     expect(ruleIds(off.report)).toEqual([]);
     expect(ruleIds(on.report)).toEqual([]);
 
-    // Two orders of magnitude of headroom: gated, `off` is about a thousandth
-    // of `on`; ungated, the two land within noise of each other. Anything
-    // under a tenth means the experiment did not run.
-    expect(off.elapsed).toBeLessThan(on.elapsed / 10);
+    // A quarter, which is the widest band that both ends stay clear of: gated,
+    // the worst warm sample seen was 1/7.6; ungated, the two configurations do
+    // the same work and land at about 1/1. Tightening this to 1/10 to match the
+    // typical 1/12 put the threshold inside the noise and failed three PRs.
+    expect(off.elapsed).toBeLessThan(on.elapsed / 4);
   });
 });
 
