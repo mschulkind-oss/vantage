@@ -356,6 +356,103 @@ describe("vantage/duplicate-key", () => {
     expect(ruleIds(report)).toEqual(["vantage/duplicate-key"]);
     expect(report.findings[0]?.severity).toBe("warning");
     expect(report.findings[0]?.column).toBe(33);
+    expect(report.findings[0]?.message).toContain("in this directive");
+  });
+
+  /**
+   * The scope is the *run*, because that is what merges. `stampRun` folds every
+   * directive up to the target into one key map with last-key-wins, whether the
+   * two keys were written in one comment or in two — so the byte-identical
+   * intent has to get the byte-identical finding. This is the case an author is
+   * most likely to write by accident and least likely to spot: the value that
+   * loses is in a different comment from the value that wins.
+   */
+  it("warns across a run, where the merge is the same last-key-wins", async () => {
+    for (const [markdown, line] of [
+      // Two nodes on consecutive lines.
+      [
+        "<!-- vantage: section tone=note -->\n<!-- vantage: section tone=warning -->\n\n## H\n\nbody\n",
+        2,
+      ],
+      // A blank line between them, which the merge does not care about.
+      [
+        "<!-- vantage: section tone=note -->\n\n<!-- vantage: section tone=warning -->\n\n## H\n\nbody\n",
+        3,
+      ],
+      // `section` then `block`: both feed the one style map, so `tone` collides.
+      [
+        "<!-- vantage: section tone=note -->\n<!-- vantage: block tone=warning -->\n\n## H\n\nbody\n",
+        2,
+      ],
+    ] as const) {
+      const report = await one(markdown);
+
+      expect(ruleIds(report)).toEqual(["vantage/duplicate-key"]);
+      expect(report.findings[0]?.severity).toBe("warning");
+      expect(report.findings[0]?.line).toBe(line);
+      // The later key: the one that wins, and the one the author has to move.
+      const source = markdown.split("\n")[line - 1] as string;
+      expect(report.findings[0]?.column).toBe(source.indexOf("tone=") + 1);
+      expect(report.findings[0]?.message).toContain(
+        "in this run of directives",
+      );
+    }
+
+    // And the value that wins is the later one, exactly as the finding says.
+    const html = await render(
+      "<!-- vantage: section tone=note -->\n<!-- vantage: section tone=warning -->\n\n## H\n\nbody\n",
+    );
+    expect(html).toContain('data-vantage-tone="warning"');
+    expect(html).not.toContain('data-vantage-tone="note"');
+  });
+
+  it("warns on two directives inside one comment node", async () => {
+    // One line, so hast sees one html node and the rule already has both
+    // segments in hand: nothing about two positions to work around here.
+    const markdown =
+      "<!-- vantage: section tone=note --><!-- vantage: section tone=warning -->\n\n## H\n\nbody\n";
+    const report = await one(markdown);
+
+    expect(ruleIds(report)).toEqual(["vantage/duplicate-key"]);
+    expect(report.findings[0]?.line).toBe(1);
+    expect(report.findings[0]?.column).toBe(
+      markdown.indexOf("tone=warning") + 1,
+    );
+  });
+
+  it("warns on an `oq` key a later `oq` in the run overrides", async () => {
+    const report = await one(
+      [
+        "1. **OQ-1: x**",
+        "",
+        '   <!-- vantage: oq id=OQ-1 leaning="first" -->',
+        '   <!-- vantage: oq leaning="second" -->',
+        "",
+        "   _Leaning:_ y",
+        "",
+      ].join("\n"),
+    );
+
+    expect(ruleIds(report)).toEqual(["vantage/duplicate-key"]);
+    expect(report.findings[0]?.line).toBe(4);
+  });
+
+  it("keeps the two merge families apart", async () => {
+    // `oq` has its own map in `stampRun`, so an `oq` key never collides with a
+    // `section` key — and `leaning` is not a key `section` has at all.
+    expect(
+      await check(
+        [
+          "1. **OQ-1: x**",
+          "",
+          "   <!-- vantage: section tone=note -->",
+          '   <!-- vantage: oq id=OQ-1 leaning="x" -->',
+          "",
+          "   _Leaning:_ y",
+          "",
+        ].join("\n"),
+      ),
+    ).toEqual([]);
   });
 });
 

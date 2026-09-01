@@ -139,7 +139,7 @@ export const RULES: readonly RuleMeta[] = [
   {
     id: "vantage/duplicate-key",
     summary:
-      "The same key twice in one directive — the last one wins, so a warning",
+      "The same key twice in one directive, or in one run of them — the last one wins, so a warning",
     default: "warning",
   },
   {
