@@ -2,6 +2,7 @@ import { useEffect, type RefObject } from "react";
 import type { ReviewComment } from "../types";
 import { renderCommentMarkdown } from "../lib/commentMarkdown";
 import {
+  ANCHORABLE_BLOCK_SELECTOR,
   blockVisibleText,
   hashBlockText,
   rangeFromCanonicalOffsets,
@@ -165,7 +166,7 @@ export function useReviewHighlights(
     // Tag every block once with data-block-hash so the neighbor walk
     // can do synchronous lookups.  Skips containers we never anchor on.
     const allBlocks = el.querySelectorAll<HTMLElement>(
-      "p[data-source-line], h1[data-source-line], h2[data-source-line], h3[data-source-line], h4[data-source-line], h5[data-source-line], h6[data-source-line], li[data-source-line], blockquote[data-source-line], pre[data-source-line], table[data-source-line]",
+      ANCHORABLE_BLOCK_SELECTOR,
     );
     const blocksByLine = new Map<number, HTMLElement>();
     const blocksByHash = new Map<string, HTMLElement[]>();

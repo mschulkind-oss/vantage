@@ -16,6 +16,36 @@
  * purpose (uniqueness within a single document, ~hundreds of blocks).
  */
 
+import type { CommentAnchor } from "../types";
+
+/**
+ * Review UI injected into the prose container, as one selector.
+ *
+ * Every text-reading helper here excludes it: a block's hash must describe the
+ * *document*, not the affordances review mode hangs off it. jsdom has no
+ * `innerText`, so `blockVisibleText` falls back to `textContent` and an
+ * unstripped injected node changes the hash of its block — which reads
+ * downstream as "the document changed under this comment". Add a new kind of
+ * injected element without adding it here and every anchor on its block
+ * silently drifts.
+ */
+export const REVIEW_UI_SELECTOR =
+  "[data-review-inline-comment], .review-revision-badge, .review-addressed-badge, [data-vantage-oq-button]";
+
+/**
+ * Tags a comment may anchor to, as a selector that also requires
+ * `data-source-line`. The container-only tags `rehypeSourceLines` stamps
+ * (`ul`, `ol`, `tr`, `div`, `hr`) are deliberately absent: "an item in a list"
+ * anchors on the `<li>`, not on the `<ul>` holding it. `useReviewHighlights`
+ * indexes blocks with this selector, so anything resolving an anchor must use
+ * the same one or it will name a block the highlighter never looks at.
+ */
+export const ANCHORABLE_BLOCK_SELECTOR =
+  "p[data-source-line], h1[data-source-line], h2[data-source-line], h3[data-source-line], h4[data-source-line], h5[data-source-line], h6[data-source-line], li[data-source-line], blockquote[data-source-line], pre[data-source-line], table[data-source-line]";
+
+const lineOf = (el: Element): number =>
+  Number.parseInt(el.getAttribute("data-source-line") ?? "", 10);
+
 export function stripBlockText(input: string): string {
   return input.replace(/\s+/gu, " ").trim().toLowerCase();
 }
@@ -50,12 +80,59 @@ export function hashBlockText(input: string): string {
 export function blockVisibleText(block: HTMLElement): string {
   // Clone so we can strip review UI without mutating the live DOM.
   const clone = block.cloneNode(true) as HTMLElement;
-  for (const el of clone.querySelectorAll(
-    "[data-review-inline-comment], .review-revision-badge, .review-addressed-badge",
-  )) {
+  for (const el of clone.querySelectorAll(REVIEW_UI_SELECTOR)) {
     el.remove();
   }
   return clone.innerText || clone.textContent || "";
+}
+
+/**
+ * The block a review comment would anchor to for `scope` — `scope` itself when
+ * it is anchorable, otherwise the anchorable block inside it.
+ *
+ * The tie-break is load-bearing, not cosmetic. `useReviewHighlights` indexes
+ * blocks by source line into a Map with last-write-wins in document order, and
+ * a block that contains another (a `blockquote` and its first `<p>`, an `<li>`
+ * and its first `<p>`) gives both the SAME `data-source-line` — so the block it
+ * resolves for that line is the LAST candidate in document order, the inner
+ * one. Anchoring on any other candidate stores a hash of different text than
+ * the highlighter will compute, and the comment renders divergent (and trips
+ * `commentsDrifted`) the instant it is created.
+ */
+export function anchorBlockWithin(scope: HTMLElement): HTMLElement | null {
+  const candidates: HTMLElement[] = [];
+  if (scope.matches(ANCHORABLE_BLOCK_SELECTOR)) candidates.push(scope);
+  candidates.push(
+    ...scope.querySelectorAll<HTMLElement>(ANCHORABLE_BLOCK_SELECTOR),
+  );
+  const withLine = candidates.filter((el) => Number.isFinite(lineOf(el)));
+  if (withLine.length === 0) return null;
+  const firstLine = Math.min(...withLine.map(lineOf));
+  const atFirstLine = withLine.filter((el) => lineOf(el) === firstLine);
+  return atFirstLine[atFirstLine.length - 1];
+}
+
+/**
+ * The whole-block anchor for `block`, identical in shape to what a click on it
+ * in review mode produces — `MarkdownViewer`'s `buildCapturedSelection` with no
+ * selection: offset 0, length 0, and the canonicalized block text as the
+ * comment's `fallback_text`.
+ */
+export function buildWholeBlockAnchor(
+  block: HTMLElement,
+): { anchor: CommentAnchor; fallbackText: string } | null {
+  const line = lineOf(block);
+  if (!Number.isFinite(line)) return null;
+  const text = blockVisibleText(block);
+  return {
+    anchor: {
+      source_line: line,
+      block_text_hash: hashBlockText(text),
+      selection_offset: 0,
+      selection_length: 0,
+    },
+    fallbackText: stripBlockText(text),
+  };
 }
 
 /**
@@ -82,11 +159,7 @@ export function rangeFromCanonicalOffsets(
   const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       const parent = (node as Text).parentElement;
-      if (
-        parent?.closest(
-          "[data-review-inline-comment], .review-revision-badge, .review-addressed-badge",
-        )
-      ) {
+      if (parent?.closest(REVIEW_UI_SELECTOR)) {
         return NodeFilter.FILTER_REJECT;
       }
       return NodeFilter.FILTER_ACCEPT;
@@ -141,11 +214,7 @@ export function canonicalOffsetsFromRange(
   const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, {
     acceptNode(node) {
       const parent = (node as Text).parentElement;
-      if (
-        parent?.closest(
-          "[data-review-inline-comment], .review-revision-badge, .review-addressed-badge",
-        )
-      ) {
+      if (parent?.closest(REVIEW_UI_SELECTOR)) {
         return NodeFilter.FILTER_REJECT;
       }
       return NodeFilter.FILTER_ACCEPT;

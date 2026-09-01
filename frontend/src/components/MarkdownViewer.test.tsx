@@ -6,6 +6,7 @@ import {
   act,
 } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
+import axios from "axios";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { BrowserRouter } from "react-router-dom";
 import { useReviewStore } from "../stores/useReviewStore";
@@ -430,5 +431,213 @@ describe("MarkdownViewer — inline review actions wiring", () => {
       kind: "needs_clarification",
       summary: "actually, one more thing",
     });
+  });
+});
+
+describe("MarkdownViewer — the one-click Open Question answer", () => {
+  // The design's §5.2 form, at column 0 before an ordinary paragraph.
+  const OQ_DOC =
+    '<!-- vantage: oq id=OQ-9 leaning="Back of the queue." -->\n\nWhere does the ticket go on re-entry?\n\nAn ordinary paragraph.\n';
+
+  // The documented placement for a real Open Questions list: indented inside
+  // the item, so the directive attaches to the `_Leaning:_` paragraph and the
+  // list is neither split nor renumbered.
+  const OQ_LIST_DOC =
+    '1. **OQ-9: Queue position.** Where?\n\n   <!-- vantage: oq id=OQ-9 leaning="Back of the queue." -->\n\n   _Leaning:_ back of the queue.\n';
+
+  const renderWithRouter = (ui: React.ReactElement) =>
+    render(<BrowserRouter>{ui}</BrowserRouter>);
+
+  const renderDoc = (content: string, isReviewMode = true) =>
+    renderWithRouter(
+      <MarkdownViewer
+        content={content}
+        currentPath="doc.md"
+        isReviewMode={isReviewMode}
+      />,
+    );
+
+  const takeButton = () =>
+    screen.queryByRole("button", { name: "Take this leaning" });
+
+  beforeEach(() => {
+    useReviewStore.setState({
+      comments: [],
+      filePath: "doc.md",
+      lastContent: OQ_DOC,
+      pendingSelection: null,
+      commentsDrifted: false,
+    });
+    useRepoStore.setState({ currentRepo: null, isMultiRepo: false });
+    vi.clearAllMocks();
+  });
+
+  it("renders one button for a parsed directive, on the block it attached to", () => {
+    const { container } = renderDoc(OQ_DOC);
+
+    expect(takeButton()).not.toBeNull();
+    expect(container.querySelectorAll(".review-oq-take")).toHaveLength(1);
+    expect(
+      container
+        .querySelector('p[data-source-line="3"]')!
+        .querySelector(".review-oq-take"),
+    ).not.toBeNull();
+  });
+
+  it("lands on the _Leaning:_ paragraph for a directive indented inside a list item", () => {
+    const { container } = renderDoc(OQ_LIST_DOC);
+
+    // The whole reason the plugin recurses: at column 0 between items the
+    // directive would split the list instead.
+    expect(container.querySelectorAll("ol")).toHaveLength(1);
+    expect(
+      container
+        .querySelector('p[data-source-line="5"]')!
+        .querySelector(".review-oq-take"),
+    ).not.toBeNull();
+  });
+
+  it("posts exactly one comment carrying the leaning, and renders it anchored", () => {
+    const { container } = renderDoc(OQ_DOC);
+
+    act(() => {
+      fireEvent.click(takeButton()!);
+    });
+
+    const comments = useReviewStore.getState().comments;
+    expect(comments).toHaveLength(1);
+    expect(comments[0].comment).toBe("Back of the queue.");
+    // Byte-identical to what the typed path stores for this block (asserted
+    // against the same literal below): `fallback_text` is quoted back to the
+    // reviewer and to the agent, so the two paths must not disagree.
+    expect(comments[0].fallback_text).toBe(
+      "where does the ticket go on re-entry?",
+    );
+    expect(comments[0].anchor).toMatchObject({
+      source_line: 3,
+      selection_offset: 0,
+      selection_length: 0,
+    });
+    expect(vi.mocked(axios.post)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(axios.post).mock.calls[0][0]).toContain(
+      "/review/comments",
+    );
+
+    // The comment the reviewer just created must not read as drift: the button
+    // sits inside the block it anchors, so its text has to be excluded from the
+    // block hash on both sides.
+    const block = container.querySelector('p[data-source-line="3"]')!;
+    expect(block.classList.contains("review-highlight-block")).toBe(true);
+    expect(block.classList.contains("review-highlight-block-divergent")).toBe(
+      false,
+    );
+    expect(useReviewStore.getState().commentsDrifted).toBe(false);
+
+    // Taken: the button retires rather than offering a second identical comment.
+    expect(takeButton()).toBeNull();
+    expect(container.querySelector(".review-oq-taken")!.textContent).toBe(
+      "Leaning taken",
+    );
+  });
+
+  it("routes a hostile leaning through the comment sanitiser, not into the article", () => {
+    // The button is what makes this sink reachable from document content, so the
+    // seam is worth pinning here and not only in commentMarkdown's own tests.
+    const hostile =
+      '<!-- vantage: oq leaning="<img src=x onerror=alert(1)> and more" -->\n\nWhere does it go?\n';
+    const { container } = renderDoc(hostile);
+
+    act(() => {
+      fireEvent.click(takeButton()!);
+    });
+
+    expect(useReviewStore.getState().comments[0].comment).toBe(
+      "<img src=x onerror=alert(1)> and more",
+    );
+    // The payload reaches the DOM exactly once, as an inert escaped attribute
+    // value — never as an element, and never as a handler.
+    expect(
+      container
+        .querySelector('p[data-source-line="3"]')!
+        .getAttribute("data-vantage-leaning"),
+    ).toBe("<img src=x onerror=alert(1)> and more");
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("[onerror]")).toBeNull();
+    expect(
+      container.querySelector(".review-inline-comment-body")!.innerHTML,
+    ).not.toContain("<img");
+  });
+
+  it("renders no button with review mode off", () => {
+    const { container } = renderDoc(OQ_DOC, false);
+
+    expect(takeButton()).toBeNull();
+    expect(container.querySelector("[data-vantage-oq-button]")).toBeNull();
+  });
+
+  it("renders no button in a static export", () => {
+    window.__VANTAGE_STATIC__ = true;
+    try {
+      const { container } = renderDoc(OQ_DOC);
+      expect(container.querySelector("[data-vantage-oq-button]")).toBeNull();
+    } finally {
+      delete window.__VANTAGE_STATIC__;
+    }
+  });
+
+  it("renders no button for a malformed directive, and the prose is untouched", () => {
+    const malformed = [
+      '<!-- vantage: oq leaning="Back of the queue -->', // unterminated quote
+      "<!-- vantage: oq ID=OQ-9 -->", // uppercase key
+      "<!-- vantage: -->", // no name
+      "<!-- vantage: callout tone=warning -->", // unknown name
+    ];
+    for (const directive of malformed) {
+      const { container, unmount } = renderDoc(
+        `${directive}\n\nWhere does the ticket go?\n`,
+      );
+      expect(
+        container.querySelector("[data-vantage-oq-button]"),
+        directive,
+      ).toBeNull();
+      expect(screen.getByText("Where does the ticket go?")).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it("still lets the reviewer type an answer on the very block that carries a button", () => {
+    // D4(b): the button adds a path and removes none. This is also the case that
+    // pins the hash strip — the popover hashes the block with the button already
+    // in the DOM, so an unstripped button would make the typed comment drift.
+    const { container } = renderDoc(OQ_DOC);
+    const block = container.querySelector<HTMLElement>(
+      'p[data-source-line="3"]',
+    )!;
+    const scroller = container.querySelector<HTMLElement>(".prose")!;
+
+    fireEvent.mouseMove(scroller, { clientY: 0 });
+    fireEvent.click(block);
+
+    const textarea = document.querySelector<HTMLTextAreaElement>(
+      'textarea[placeholder="Your comment..."]',
+    )!;
+    expect(textarea).not.toBeNull();
+    fireEvent.change(textarea, { target: { value: "front of the queue" } });
+    act(() => {
+      fireEvent.click(screen.getByText("Save"));
+    });
+
+    const comments = useReviewStore.getState().comments;
+    expect(comments).toHaveLength(1);
+    expect(comments[0].comment).toBe("front of the queue");
+    expect(comments[0].fallback_text).toBe(
+      "where does the ticket go on re-entry?",
+    );
+    expect(block.classList.contains("review-highlight-block-divergent")).toBe(
+      false,
+    );
+    expect(useReviewStore.getState().commentsDrifted).toBe(false);
+    // And the button is still there: a typed answer is not this leaning.
+    expect(takeButton()).not.toBeNull();
   });
 });
