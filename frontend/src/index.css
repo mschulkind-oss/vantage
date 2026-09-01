@@ -1452,6 +1452,14 @@ h6:hover > .heading-anchor,
   pointer-events: none;
 }
 
+/* Flipped to the left of the stripe when there is no room on its right — the
+   stripe sits at the pane's right edge, so the default side runs off screen on
+   a narrow window. */
+.review-stripe-tooltip--left {
+  left: auto;
+  right: calc(100% + 8px);
+}
+
 .dark .review-stripe-tooltip {
   background: rgb(30 41 59);
   border-color: rgb(51 65 85);

@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { anchoredMenuPosition, popoverPosition } from "./popoverPosition";
+import {
+  anchoredMenuPosition,
+  popoverPosition,
+  fitsToTheRight,
+  sideAnchoredPosition,
+} from "./popoverPosition";
 
 /** A selection rect, carrying only the fields the positioner reads. */
 function sel(left: number, top: number, width = 120, height = 20) {
@@ -156,5 +161,65 @@ describe("anchoredMenuPosition", () => {
     );
     expect(maxHeight).toBeGreaterThan(0);
     expect(top + maxHeight).toBeLessThanOrEqual(DESKTOP_H - 16);
+  });
+});
+
+describe("sideAnchoredPosition", () => {
+  const CARD_W = 320;
+  const CARD_H = 180;
+  const side = (
+    a: { left: number; right: number; top: number },
+    vw = DESKTOP_W,
+  ) => sideAnchoredPosition(a, CARD_W, CARD_H, vw, DESKTOP_H);
+
+  it("sits to the right of the anchor when there is room", () => {
+    const { left, flipped } = side({ left: 100, right: 260, top: 200 });
+    expect(flipped).toBe(false);
+    expect(left).toBe(268);
+  });
+
+  it("flips to the left when the right would overflow", () => {
+    const { left, flipped } = side({
+      left: DESKTOP_W - 200,
+      right: DESKTOP_W - 40,
+      top: 200,
+    });
+    expect(flipped).toBe(true);
+    expect(left + CARD_W).toBeLessThanOrEqual(DESKTOP_W - 8);
+  });
+
+  it("clamps the flip instead of pushing the card off the left edge", () => {
+    // The bug: an anchor near the left edge on a narrow viewport flipped to
+    // left - 320 - 8, which is negative, so the fix for one edge broke the other.
+    const { left } = side({ left: 200, right: 360, top: 200 }, 380);
+    expect(left).toBeGreaterThanOrEqual(8);
+  });
+
+  it("keeps a tall card inside the bottom of the viewport", () => {
+    const { top } = side({ left: 100, right: 260, top: DESKTOP_H - 20 });
+    expect(top + CARD_H).toBeLessThanOrEqual(DESKTOP_H - 8);
+  });
+
+  it("never returns a negative top for an anchor above the viewport", () => {
+    const { top } = side({ left: 100, right: 260, top: -50 });
+    expect(top).toBeGreaterThanOrEqual(8);
+  });
+});
+
+describe("fitsToTheRight", () => {
+  it("is true with room to spare", () => {
+    expect(fitsToTheRight(1000, 220, DESKTOP_W)).toBe(true);
+  });
+
+  it("is false when the card would cross the right gutter", () => {
+    // The review stripe's case: the track sits at the pane's right edge, so
+    // its tooltip's default side is the one that runs off screen.
+    expect(fitsToTheRight(DESKTOP_W - 100, 220, DESKTOP_W)).toBe(false);
+  });
+
+  it("counts the gutter, not just the viewport edge", () => {
+    // Exactly flush with the edge still fails: the 8px margin is the point.
+    expect(fitsToTheRight(DESKTOP_W - 228, 220, DESKTOP_W)).toBe(false);
+    expect(fitsToTheRight(DESKTOP_W - 236, 220, DESKTOP_W)).toBe(true);
   });
 });

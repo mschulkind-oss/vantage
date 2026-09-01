@@ -6,6 +6,7 @@ import {
   type RefObject,
 } from "react";
 import { ChevronUp, ChevronDown } from "lucide-react";
+import { fitsToTheRight } from "../lib/popoverPosition";
 import type { ReviewComment } from "../types";
 import { isPendingForAgent } from "../stores/useReviewStore";
 
@@ -21,6 +22,10 @@ interface MarkerInfo {
   addressed: boolean;
 }
 
+/** Mirrors .review-stripe-tooltip in index.css. */
+const TOOLTIP_WIDTH = 220;
+const TOOLTIP_GAP = 8;
+
 export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
   const trackRef = useRef<HTMLDivElement>(null);
   const [viewportPct, setViewportPct] = useState({ top: 0, height: 100 });
@@ -29,7 +34,10 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
   const [markers, setMarkers] = useState<MarkerInfo[]>([]);
   const [dragging, setDragging] = useState(false);
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
-  const [tooltipPos, setTooltipPos] = useState<{ top: number } | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{
+    top: number;
+    flipped: boolean;
+  } | null>(null);
 
   const active = comments.filter((c) => !c.resolved);
   // "Addressed" on the minimap must mean "the agent has answered the current
@@ -259,8 +267,17 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
     const trackRect = trackEl.getBoundingClientRect();
     const markerRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const top = markerRect.top - trackRect.top + markerRect.height / 2;
+    // The stripe sits at the right edge of the content pane, so the tooltip's
+    // default side — 8px to its right — is the one most likely to be off
+    // screen. Flip it to the left when it will not fit.
+    const flipped = !fitsToTheRight(
+      trackRect.right,
+      TOOLTIP_WIDTH,
+      window.innerWidth,
+      TOOLTIP_GAP,
+    );
     setHoveredIdx(idx);
-    setTooltipPos({ top });
+    setTooltipPos({ top, flipped });
   }, []);
 
   if (active.length === 0) {
@@ -346,7 +363,11 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
         {/* Tooltip */}
         {hoveredComment && tooltipPos && (
           <div
-            className="review-stripe-tooltip"
+            className={
+              tooltipPos.flipped
+                ? "review-stripe-tooltip review-stripe-tooltip--left"
+                : "review-stripe-tooltip"
+            }
             style={{ top: tooltipPos.top }}
           >
             <div className="review-stripe-tooltip-comment">
