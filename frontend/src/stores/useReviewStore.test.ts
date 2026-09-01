@@ -1733,3 +1733,138 @@ describe("the follow-up note matches the turns actually in the payload", () => {
     expect(payload).toContain("2 of these are follow-up rounds.");
   });
 });
+
+// A static export (`vantage build`) ships the same SPA with no backend:
+// internal/static/scheme.go emits no `review` path at all, and
+// lib/staticMode.ts rewrites every /api/* URL and forces the method to GET.
+// So review mode there offers a full set of controls whose writes cannot
+// land — the comment appears optimistically and is gone on reload, and the
+// reviewer believes they answered. Review mode must be unreachable, by every
+// route into it, and the write path must refuse rather than trust the gate.
+// (Design docs/design/inline-markup.md D4 + R7.)
+describe("static export — review mode is unreachable", () => {
+  beforeEach(() => {
+    resetStores();
+    localStorage.clear();
+    vi.clearAllMocks();
+    window.__VANTAGE_STATIC__ = true;
+  });
+
+  afterEach(() => {
+    localStorage.clear();
+    delete window.__VANTAGE_STATIC__;
+  });
+
+  describe("toggleReviewMode", () => {
+    it("refuses to enter review mode", () => {
+      useReviewStore.setState({ filePath: "doc.md" });
+
+      useReviewStore.getState().toggleReviewMode();
+
+      expect(useReviewStore.getState().isReviewMode).toBe(false);
+    });
+
+    it("writes no persisted preference when it refuses", () => {
+      // Otherwise the refusal is only skin deep: the preference outlives the
+      // export and re-enters review mode on the next live server on this origin.
+      useReviewStore.setState({ filePath: "doc.md" });
+
+      useReviewStore.getState().toggleReviewMode();
+
+      expect(localStorage.getItem("vantage.reviewMode:doc.md")).toBeNull();
+    });
+
+    it("still lets a session that is somehow in review mode leave it", () => {
+      // Refusing both directions would trap a reviewer with no way out.
+      useReviewStore.setState({ filePath: "doc.md", isReviewMode: true });
+
+      useReviewStore.getState().toggleReviewMode();
+
+      expect(useReviewStore.getState().isReviewMode).toBe(false);
+    });
+  });
+
+  describe("loadReview", () => {
+    it("ignores a persisted preference when the server answers empty", async () => {
+      // localStorage is per-origin, not per-server: a live vantage on
+      // localhost:8000 that persisted "on" for this path hands the toggle to
+      // any static export later served from the same origin.
+      localStorage.setItem("vantage.reviewMode:doc.md", "on");
+      mockedAxios.get.mockResolvedValueOnce({
+        data: { file_path: "doc.md", comments: [] } satisfies ReviewData,
+      });
+
+      await useReviewStore.getState().loadReview("doc.md");
+
+      expect(useReviewStore.getState().isReviewMode).toBe(false);
+    });
+
+    it("ignores a persisted preference when the request 404s", async () => {
+      // The likely shape in a real export: ./api/review.json was never written.
+      localStorage.setItem("vantage.reviewMode:doc.md", "on");
+      mockedAxios.get.mockRejectedValueOnce(new Error("404"));
+
+      await useReviewStore.getState().loadReview("doc.md");
+
+      expect(useReviewStore.getState().isReviewMode).toBe(false);
+    });
+
+    it("ignores a persisted preference when the response is null at 200", async () => {
+      localStorage.setItem("vantage.reviewMode:doc.md", "on");
+      mockedAxios.get.mockResolvedValueOnce({ data: null });
+
+      await useReviewStore.getState().loadReview("doc.md");
+
+      expect(useReviewStore.getState().isReviewMode).toBe(false);
+    });
+
+    it("ignores a persisted preference behind an SPA fallback", async () => {
+      // The shape an export actually deployed to Cloudflare Pages produces:
+      // builder.go writes `_redirects` as `/*  /index.html  200`, so the
+      // missing ./api/review.json comes back as the page itself, at 200. This
+      // is the quietest variant of the hole — no status code says anything is
+      // wrong — which is exactly why the gate cannot be a response check.
+      localStorage.setItem("vantage.reviewMode:doc.md", "on");
+      mockedAxios.get.mockResolvedValueOnce({
+        data: "<!doctype html><title>Vantage</title>",
+      });
+
+      await useReviewStore.getState().loadReview("doc.md");
+
+      expect(useReviewStore.getState().isReviewMode).toBe(false);
+    });
+
+    it("does not enter review mode even if review data is somehow served", async () => {
+      // Hand-placed api/review.json, or a future exporter that emits one:
+      // the comments may be shown, but the mode that offers to write must not
+      // switch on.
+      mockedAxios.get.mockResolvedValueOnce({
+        data: {
+          file_path: "doc.md",
+          comments: [{ id: "c1", comment: "note", created_at: 0 }],
+        } satisfies ReviewData,
+      });
+
+      await useReviewStore.getState().loadReview("doc.md");
+
+      expect(useReviewStore.getState().isReviewMode).toBe(false);
+    });
+  });
+
+  describe("runCommand", () => {
+    it("sends nothing, and says the write did not happen", async () => {
+      // Defence in depth: the UI gate and the store gate both have to fail for
+      // this to be reached, and if they do, silent loss is the worst outcome.
+      useReviewStore.setState({ filePath: "doc.md", isReviewMode: true });
+
+      await useReviewStore
+        .getState()
+        .addComment({ source_line: 1 }, "my answer", "the block");
+
+      expect(mockedAxios.post).not.toHaveBeenCalled();
+      const err = useReviewStore.getState().commandError;
+      expect(err?.message).toMatch(/static export/i);
+      expect(err?.draft).toBe("my answer");
+    });
+  });
+});

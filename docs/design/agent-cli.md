@@ -72,7 +72,7 @@ label quoting, code and diff fences, callouts, tables, and the `$$...$$` math
 rule. It is surfaced through a modal opened from the settings dropdown
 ([`SettingsDropdown.tsx:221`](../../frontend/src/components/SettingsDropdown.tsx#L221),
 wired at
-[`ViewerPage.tsx:813`](../../frontend/src/pages/ViewerPage.tsx#L813)) with a copy
+[`ViewerPage.tsx:821`](../../frontend/src/pages/ViewerPage.tsx#L821)) with a copy
 button, and the modal tells you to paste it into your agent's context.
 
 > [!WARNING]
@@ -290,7 +290,7 @@ in it, not making setup a precondition for the tool to be reachable.
 
 Instead the pointer rides the **review-comment payload** — the block assembled
 at
-[`useReviewStore.ts:896-932`](../../frontend/src/stores/useReviewStore.ts#L896-L932)
+[`useReviewStore.ts:938-974`](../../frontend/src/stores/useReviewStore.ts#L938-L974)
 and copied to the clipboard on every single review turn. It is a channel we
 already own, already write, and that already reaches the agent verbatim. A short
 note is enough:

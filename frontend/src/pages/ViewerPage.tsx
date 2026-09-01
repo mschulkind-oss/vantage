@@ -243,6 +243,14 @@ export const ViewerPage: React.FC = () => {
   const [reviewExitConfirm, setReviewExitConfirm] = useState(false);
   const [reviewDismissConfirm, setReviewDismissConfirm] = useState(false);
 
+  // Raw view can't host the inline highlights review mode is made of; a static
+  // export can't save a comment at all — `vantage build` emits no review
+  // endpoint and staticMode.ts coerces every write to a GET, so an offered
+  // Review toggle there loses the reviewer's answer on reload while looking
+  // like it worked. A control that cannot work must not render (design D4/R7),
+  // the same way the Untracked-file button below is gated.
+  const reviewToggleVisible = !showRaw && !isStaticMode();
+
   const handleReviewToggle = useCallback(() => {
     if (isReviewMode && hasReviewData()) {
       if (reviewExitConfirm) {
@@ -1147,7 +1155,7 @@ export const ViewerPage: React.FC = () => {
                       dismiss, or open the panel without switching back. */}
                   {currentPath && currentPath.toLowerCase().endsWith(".md") && (
                     <>
-                      {!showRaw && (
+                      {reviewToggleVisible && (
                         <button
                           onClick={handleReviewToggle}
                           className={cn(
@@ -1315,7 +1323,7 @@ export const ViewerPage: React.FC = () => {
                   </button>
                   {/* Same as the wide toolbar: review controls survive raw view. */}
                   <>
-                    {!showRaw && (
+                    {reviewToggleVisible && (
                       <button
                         onClick={handleReviewToggle}
                         className={cn(

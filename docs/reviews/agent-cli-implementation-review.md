@@ -289,7 +289,7 @@ platform; verify the Windows artifact name in CI before the first tag.
 
 `packages/vantage-check/src/rules/links.ts:239-250 at 554da8e` reports
 `"points at a directory, not a document"`. But
-[`ViewerPage.tsx:421`](../../frontend/src/pages/ViewerPage.tsx#L421) routes any
+[`ViewerPage.tsx:429`](../../frontend/src/pages/ViewerPage.tsx#L429) routes any
 non-`.md` path to `viewDirectory()`, which loads `/api/tree` and renders a
 directory listing. So `[the design docs](../design/)` is a working link that
 the checker calls an error — the false-positive class the design names as R2,
@@ -439,7 +439,7 @@ Each finding was reproduced, not inferred. The load-bearing checks:
 | Baseline | `just check-ci` → exit 0; `npm run test` → 88 passed; `bun run build` → 92 MB binary; binary run against `docs/` and `userguide/` |
 | F2 | Removed the `dompurify` path from `tsconfig.json`, rebuilt, ran the binary on a labeled flowchart; re-ran the suite to confirm it stayed green; restored the file |
 | F3 | Listed `dist/` after a local wheel build (binary and wheel in the same directory); read the Windows branch of both the workflow and `__main__.py` |
-| F4 | Traced `ViewerPage.tsx:421` → `viewDirectory` → `/api/tree` |
+| F4 | Traced `ViewerPage.tsx:429` → `viewDirectory` → `/api/tree` |
 | F5 | Rendered `data:` and `xmpp:` links through `renderMarkdown` and compared to the checker's verdict |
 | F6 | Built a throwaway repo with a `.vantage.toml` and ran the checker from the root and from a subdirectory, with relative and absolute paths |
 | N1 | `sh -c 'test -n "$$(./definitely-not-a-binary style-guide)" && echo …'` |

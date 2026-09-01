@@ -382,6 +382,56 @@ describe("ViewerPage", () => {
     });
   });
 
+  // A static export ships the same SPA with no backend, and staticMode.ts
+  // coerces every /api/* write to a GET of a file `vantage build` never
+  // emitted. A Review toggle there is a control that cannot work: the reviewer
+  // types an answer, sees it appear, and loses it on reload. D4 says such a
+  // control must not render — the precedent is the working-diff button, which
+  // is already wrapped in `{!isStaticMode() && …}`. (R7.)
+  describe("review toggle in a static export", () => {
+    const toggles = () => screen.queryAllByTitle(/^(Enter|Exit) review mode$/);
+
+    afterEach(() => {
+      delete window.__VANTAGE_STATIC__;
+    });
+
+    // The header has two toolbar variants — one for a file with git history and
+    // one for an untracked file — and each carries its own copy of the toggle.
+    // Asserting only the tracked case leaves the other half of the hole open.
+    //
+    // Read through the local alias, not through `useGitStore` itself: the mock
+    // is an ordinary function, but calling it under that name inside a named
+    // helper trips react-hooks/rules-of-hooks.
+    const gitStoreMock = useGitStore as unknown as ReturnType<typeof vi.fn>;
+    const asUntracked = () => {
+      gitStoreMock.mockReturnValue({ ...gitStoreMock(), latestCommit: null });
+    };
+
+    it("renders the toggle when a backend is present", () => {
+      renderPage();
+      expect(toggles().length).toBeGreaterThan(0);
+    });
+
+    it("renders the toggle for an untracked file when a backend is present", () => {
+      asUntracked();
+      renderPage();
+      expect(toggles().length).toBeGreaterThan(0);
+    });
+
+    it("hides the toggle in a static export", () => {
+      window.__VANTAGE_STATIC__ = true;
+      renderPage();
+      expect(toggles()).toHaveLength(0);
+    });
+
+    it("hides the toggle for an untracked file in a static export", () => {
+      window.__VANTAGE_STATIC__ = true;
+      asUntracked();
+      renderPage();
+      expect(toggles()).toHaveLength(0);
+    });
+  });
+
   it("shows loading state before repos are loaded (prevents flash of wrong UI)", () => {
     (useRepoStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
       fileTree: [],

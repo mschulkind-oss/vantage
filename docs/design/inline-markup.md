@@ -179,10 +179,10 @@ Four actions. Hover a block in review mode, click it
 type into `ReviewCommentPopover`, press Ctrl/Cmd-Enter
 ([`ReviewCommentPopover.tsx:104`](../../frontend/src/components/ReviewCommentPopover.tsx#L104)).
 That calls `addComment(anchor, comment, fallbackText)`
-([`useReviewStore.ts:463-495`](../../frontend/src/stores/useReviewStore.ts#L463-L495)),
+([`useReviewStore.ts:505-537`](../../frontend/src/stores/useReviewStore.ts#L505-L537)),
 which optimistically appends to local state and then `POST`s to
 `/review/comments` through `runCommand`
-([`useReviewStore.ts:414-444`](../../frontend/src/stores/useReviewStore.ts#L414-L444)).
+([`useReviewStore.ts:440-486`](../../frontend/src/stores/useReviewStore.ts#L440-L486)).
 
 The agent picks the comment up when the reviewer copies the thread to the
 clipboard, and answers via the inbox
@@ -214,7 +214,7 @@ for anything decorative.
 > [!WARNING]
 > **Review mode is not disabled in static builds, and that is a trap for §5.2.**
 > The Review toggle is gated only on `!showRaw` and a `.md` extension
-> ([`ViewerPage.tsx:1148-1174`](../../frontend/src/pages/ViewerPage.tsx#L1148-L1174))
+> ([`ViewerPage.tsx:1156-1182`](../../frontend/src/pages/ViewerPage.tsx#L1156-L1182))
 > — there is no `isStaticMode()` check. Meanwhile `internal/static/scheme.go`
 > emits no `review` paths, and the interceptor coerces every write to a GET of a
 > file that does not exist. So review mode in an exported site *renders*, and
@@ -223,7 +223,7 @@ for anything decorative.
 > (§5.2), which is a gate the existing typed-answer path arguably needs too.
 
 There is also a **raw view** — a `<pre>` of the source text
-([`ViewerPage.tsx:1467-1491`](../../frontend/src/pages/ViewerPage.tsx#L1467-L1491)).
+([`ViewerPage.tsx:1475-1499`](../../frontend/src/pages/ViewerPage.tsx#L1475-L1499)).
 Directives are visible there, as literal comment text. That is correct: raw view
 shows the file, and the file contains the comment.
 
@@ -478,7 +478,7 @@ almost entirely built already.
 
 In review mode, Vantage renders a single button beside the question, labelled
 **"Take this leaning"**. Clicking it calls `addComment(anchor, text, fallbackText)`
-— [the same function the popover calls](../../frontend/src/stores/useReviewStore.ts#L463-L495)
+— [the same function the popover calls](../../frontend/src/stores/useReviewStore.ts#L505-L537)
 — with:
 
 - **anchor**: derived from the block the directive is attached to, using the

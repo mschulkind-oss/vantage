@@ -2,6 +2,7 @@ import { create } from "zustand";
 import axios from "axios";
 import { useRepoStore } from "./useRepoStore";
 import { copyTextOrWarn } from "../lib/clipboard";
+import { isStaticMode } from "../lib/staticMode";
 import type {
   CommentAnchor,
   CommentReaction,
@@ -49,6 +50,24 @@ const writeReviewModePref = (filePath: string, on: boolean): void => {
     // storage quota / privacy mode — persistence is best-effort
   }
 };
+
+/**
+ * Whether review mode can be entered at all.
+ *
+ * A static export (`vantage build`) ships this same SPA with no backend behind
+ * it: `internal/static/scheme.go` emits no `review` path, and
+ * `lib/staticMode.ts` rewrites every `/api/*` URL and forces the method to
+ * `get`. So every review write there resolves to a GET of a file that was
+ * never written — the comment appears optimistically and is gone on reload,
+ * and the reviewer believes they answered.
+ *
+ * The toolbar toggle is hidden for the same reason (ViewerPage), but hiding a
+ * button is not a gate while `loadReview` can restore `isReviewMode: true`
+ * from `localStorage` — which is keyed by origin, not by server, so a live
+ * vantage on a port hands its persisted toggle to any export later served from
+ * the same one. Both halves are needed.
+ */
+const canEnterReviewMode = (): boolean => !isStaticMode();
 
 /**
  * The canonical comment-state predicates.  Every surface (inline document,
@@ -311,6 +330,9 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   isLoading: false,
 
   toggleReviewMode: () => {
+    // Turning it ON is refused where its writes cannot land; turning it OFF
+    // never is, so a session that somehow got in is not trapped there.
+    if (!get().isReviewMode && !canEnterReviewMode()) return;
     set((s) => {
       const next = !s.isReviewMode;
       if (s.filePath) writeReviewModePref(s.filePath, next);
@@ -364,7 +386,11 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
         params: { path: filePath },
       });
       if (isStale()) return;
-      const persistedOn = readReviewModePref(filePath);
+      // Both auto-enable routes below are refused where review mode cannot
+      // work: a persisted preference is per-origin rather than per-server, and
+      // review data could only reach a static export by being hand-placed.
+      const canReview = canEnterReviewMode();
+      const persistedOn = canReview && readReviewModePref(filePath);
       if (data) {
         const hasData = data.comments.length > 0;
         set({
@@ -375,7 +401,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
           // localStorage).  Without the persistence, refreshing a fresh
           // file where review mode was turned on but no comments exist
           // would silently revert to off.
-          isReviewMode: hasData || persistedOn,
+          isReviewMode: canReview && (hasData || persistedOn),
         });
       } else {
         // Null at 200 means specifically "no review file" — deleting every
@@ -399,7 +425,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       }
     } catch {
       // No review data yet — still honor the persisted toggle if present.
-      if (!isStale() && readReviewModePref(filePath)) {
+      if (!isStale() && canEnterReviewMode() && readReviewModePref(filePath)) {
         set({ isReviewMode: true });
       }
     } finally {
@@ -415,6 +441,22 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     const base = getApiBase();
     const filePath = get().filePath;
     if (!base || !filePath) return;
+
+    // Defence in depth behind the two gates above: reaching here in a static
+    // export means one of them failed, and the failure mode is the worst one
+    // available — staticMode.ts would turn this POST into a GET, which either
+    // 404s or, on a host with an SPA fallback, 200s with index.html, and the
+    // optimistic mutation would stand as a lie until the next reload. Refuse
+    // and say so; a "Not saved" banner is recoverable, silence is not.
+    if (isStaticMode()) {
+      set({
+        commandError: {
+          message: "this is a static export, with no server to save to",
+          draft,
+        },
+      });
+      return;
+    }
 
     const seq = ++saveSeq;
     const loadSeqAtStart = loadSeq;
