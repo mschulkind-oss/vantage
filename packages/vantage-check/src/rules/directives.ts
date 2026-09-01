@@ -8,7 +8,7 @@ import {
   DIRECTIVE_VOCABULARY,
   hasVantageSentinel,
   parseVantageDirective,
-  VANTAGE_ANCHOR_TARGETS,
+  VANTAGE_OQ_HOST_TARGETS,
   VANTAGE_SENTINEL,
   VANTAGE_STYLE_TARGETS,
 } from "../../../vantage-md/src/vantageDirectives.js";
@@ -336,7 +336,12 @@ const PHRASING_PARENTS = new Set([
 ]);
 
 const STYLE_TARGETS = new Set<string>(VANTAGE_STYLE_TARGETS);
-const ANCHOR_TARGETS = new Set<string>(VANTAGE_ANCHOR_TARGETS);
+/**
+ * Not `VANTAGE_ANCHOR_TARGETS`: the question this rule answers is "does a button
+ * appear?", and `pre`/`table` are anchorable but cannot host one. Read from the
+ * shared module so the app's `OQ_HOST_TAGS` and this cannot drift (D5).
+ */
+const OQ_HOST_TARGETS = new Set<string>(VANTAGE_OQ_HOST_TARGETS);
 
 /** How to name a target in a message. `undefined` means "do not guess". */
 const TARGET_NAMES: Record<string, string> = {
@@ -356,6 +361,27 @@ const TARGET_NAMES: Record<string, string> = {
   hr: "horizontal rule",
   span: "`$$` math block",
 };
+
+/**
+ * "a paragraph, heading, list item or block quote" — read off the host list
+ * itself rather than typed out, because the enumeration in this message was
+ * wrong in the most misleading possible way: it offered `code block, table` as
+ * legal hosts while the button refused both, so the finding told the author to
+ * move the directive onto a shape that does not work either.
+ */
+const OQ_HOST_NAMES = prose(
+  [...OQ_HOST_TARGETS].reduce<string[]>((names, tag) => {
+    const name = TARGET_NAMES[tag] ?? tag;
+    if (!names.includes(name)) names.push(name);
+    return names;
+  }, []),
+);
+
+/** `a, b or c`, unquoted — `orList` for prose that already reads as English. */
+function prose(values: string[]): string {
+  if (values.length <= 1) return values.join("");
+  return `${values.slice(0, -1).join(", ")} or ${values[values.length - 1]}`;
+}
 
 /**
  * Why this directive stamps nothing, or `undefined` if it stamps something.
@@ -417,14 +443,21 @@ function orphanReason(
   const name = TARGET_NAMES[tag] ?? tag;
 
   // (e) The target is a block, but not one this name can stamp. The two lists
-  // differ: `oq` needs a tag the review system can anchor a comment on, so an
-  // `oq` above a list attaches to the `<ul>` and no button ever appears.
-  if (names.includes("oq") && !ANCHOR_TARGETS.has(tag)) {
-    const fix =
-      tag === "ul" || tag === "ol"
-        ? " Indent it inside the list item instead, on its own line, directly before the paragraph that holds the leaning."
-        : "";
-    return `An Open Question button can only be attached to a paragraph, heading, block quote, code block, table or list item, and the block after this directive is a ${name}, so no button is rendered.${fix}`;
+  // differ: `oq` needs a tag that can *host the button*, so an `oq` above a
+  // list attaches to the `<ul>` and no button ever appears — and an `oq` above a
+  // fence or a table does stamp, which makes the silence worse rather than
+  // better: the author has an attribute and no affordance.
+  if (names.includes("oq") && !OQ_HOST_TARGETS.has(tag)) {
+    let fix = "";
+    if (tag === "ul" || tag === "ol") {
+      fix =
+        " Indent it inside the list item instead, on its own line, directly before the paragraph that holds the leaning.";
+    } else if (tag === "pre" || tag === "table") {
+      // Both are anchorable, so the directive stamps; what fails is the button.
+      fix =
+        " A button cannot live inside a code block or a table — inside a `<pre>` it would render as part of the code, and a `<button>` child of `<table>` is not valid HTML — so put the directive above the paragraph that introduces it.";
+    }
+    return `An Open Question button can only be attached to a ${OQ_HOST_NAMES}, and the block after this directive is a ${name}, so no button is rendered.${fix}`;
   }
   if (names.some((n) => n !== "oq") && !STYLE_TARGETS.has(tag)) {
     return `The block after this directive is a ${name}, which Vantage does not stamp, so this directive styles nothing.`;

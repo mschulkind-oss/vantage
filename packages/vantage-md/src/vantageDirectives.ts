@@ -150,6 +150,27 @@ export const VANTAGE_ANCHOR_TARGETS = [
   "table",
 ] as const;
 
+/**
+ * The tags a `<!-- vantage: oq … -->` directive actually yields a *button* on —
+ * `VANTAGE_ANCHOR_TARGETS` minus `pre` and `table`, written as an explicit
+ * subtraction so the narrowing stays visible.
+ *
+ * Anchorable and button-hosting are different questions, and this is the second
+ * one. A comment *can* be anchored on a `<pre>` or a `<table>` — both are in
+ * `ANCHOR_TAGS` — but neither can hold the affordance: inside a `<pre>` the
+ * button renders as part of the code, and a `<button>` child of `<table>` is not
+ * valid HTML at all, so the parser hoists it out.
+ *
+ * Both consumers read it from here: `OQ_HOST_TAGS` in the app's
+ * `useOpenQuestionButtons`, and the `oq` branch of the checker's
+ * `vantage/orphan`. They were two hand-written lists that disagreed — the
+ * checker called an `oq` above a fence fine while the app rendered no button
+ * and said nothing, which is the D5 break this module exists to prevent.
+ */
+export const VANTAGE_OQ_HOST_TARGETS = VANTAGE_ANCHOR_TARGETS.filter(
+  (tag) => tag !== "pre" && tag !== "table",
+);
+
 /** `null` for a key the grammar accepts but no closed set covers. */
 export type KeyVocabulary = readonly string[] | null;
 

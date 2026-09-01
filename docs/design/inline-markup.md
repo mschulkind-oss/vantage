@@ -1746,11 +1746,21 @@ this work touched code in three packages at once.
    to one gives the plugin a target the review pass never indexes, which renders as
    a button that builds an anchor nothing can resolve.
 
-   _Leaning:_ Derive all three from `VANTAGE_ANCHOR_TARGETS`, which already lives
-   in the zero-import module both the app and the checker read, and keep
-   `OQ_HOST_TAGS` as an explicit subtraction from it so the narrowing stays
-   visible. Cheap; the only reason it did not happen here is that it touches the
-   review system, which was not this feature's to refactor.
+   The fourth copy is closed: `OQ_HOST_TAGS` is now
+   [`VANTAGE_OQ_HOST_TARGETS`](../../packages/vantage-md/src/vantageDirectives.ts#L153-L172),
+   an explicit `pre`/`table` subtraction in the shared module, read by both the
+   hook and the checker's `oq` branch. While they were two hand-written lists they
+   *disagreed*: the checker's `vantage/orphan` used the wider anchor list, so an
+   `oq` above a fence or a table stamped an attribute, rendered no button and was
+   reported by nobody — while the finding's own message offered "code block, table"
+   as legal hosts. That was a **D5** break, and it is the reason the enumeration in
+   that message is now derived from the list rather than typed out. The three
+   review-side copies remain.
+
+   _Leaning:_ Derive the remaining three from `VANTAGE_ANCHOR_TARGETS`, which
+   already lives in the zero-import module both the app and the checker read.
+   Cheap; the only reason it did not happen here is that it touches the review
+   system, which was not this feature's to refactor.
 
    **Answer:**
    > _(empty — fill in when decided)_
