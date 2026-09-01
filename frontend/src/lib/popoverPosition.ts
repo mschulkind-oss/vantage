@@ -112,3 +112,66 @@ export function anchoredMenuPosition(
     maxHeight: Math.max(0, roomAbove),
   };
 }
+
+/**
+ * Whether a card of `width` fits to the right of an anchor ending at
+ * `anchorRight`, with `gap` beside the anchor and `margin` at the edge.
+ *
+ * Shared so the two "prefer the right side" callers agree. ReviewStripe's
+ * tooltip only needs the answer — it is absolutely positioned inside the
+ * stripe, so it flips with a CSS class rather than a computed coordinate.
+ */
+export function fitsToTheRight(
+  anchorRight: number,
+  width: number,
+  viewportWidth: number,
+  gap = 8,
+  margin = 8,
+): boolean {
+  return anchorRight + gap + width <= viewportWidth - margin;
+}
+
+/**
+ * Place a card beside its anchor — to the right when there is room, flipped to
+ * the left when there is not, and clamped either way.
+ *
+ * The clamp is the part that was missing. RecentFilePopover flipped to the left
+ * of its anchor without checking the result, so a 320px card beside an anchor
+ * 200px from the left edge landed at -128px: the flip that was meant to rescue
+ * it from the right edge pushed it off the left one instead. Same for the
+ * review stripe's tooltip, which never flipped at all and always hung off the
+ * right of a track already sitting at the pane's right edge.
+ *
+ * `gap` is the breathing room between anchor and card; `margin` is the gutter
+ * kept at the viewport edge.
+ */
+export function sideAnchoredPosition(
+  anchor: { left: number; right: number; top: number },
+  cardWidth: number,
+  cardHeight: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  gap = 8,
+  margin = 8,
+): { top: number; left: number; flipped: boolean } {
+  const width = Math.min(cardWidth, viewportWidth - margin * 2);
+  const rightLimit = Math.max(margin, viewportWidth - width - margin);
+
+  // Right of the anchor unless the card would not fit there.
+  const flipped = !fitsToTheRight(
+    anchor.right,
+    width,
+    viewportWidth,
+    gap,
+    margin,
+  );
+  let left = flipped ? anchor.left - width - gap : anchor.right + gap;
+  // Clamp whichever side we ended on — a flip can overshoot the left edge just
+  // as easily as the original placement overshot the right.
+  left = Math.min(Math.max(margin, left), rightLimit);
+
+  const bottomLimit = Math.max(margin, viewportHeight - cardHeight - margin);
+  const top = Math.min(Math.max(margin, anchor.top), bottomLimit);
+
+  return { top, left, flipped };
+}

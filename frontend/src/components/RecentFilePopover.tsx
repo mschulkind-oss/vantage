@@ -9,6 +9,7 @@ import {
   FileText,
 } from "lucide-react";
 import type { RecentFile } from "../types";
+import { sideAnchoredPosition } from "../lib/popoverPosition";
 import { cn } from "../lib/utils";
 
 interface RecentFilePopoverProps {
@@ -120,19 +121,13 @@ const PopoverCard: React.FC<PopoverCardProps> = ({
     (node: HTMLDivElement | null) => {
       if (!node || !anchorRef.current) return;
       const rect = anchorRef.current.getBoundingClientRect();
-      const popoverWidth = 320;
-      const popoverHeight = 180;
-
-      let top = rect.top;
-      let left = rect.right + 8;
-
-      if (top + popoverHeight > window.innerHeight) {
-        top = window.innerHeight - popoverHeight - 8;
-      }
-      if (top < 8) top = 8;
-      if (left + popoverWidth > window.innerWidth) {
-        left = rect.left - popoverWidth - 8;
-      }
+      const { top, left } = sideAnchoredPosition(
+        { left: rect.left, right: rect.right, top: rect.top },
+        320, // w-80
+        180,
+        window.innerWidth,
+        window.innerHeight,
+      );
 
       node.style.top = `${top}px`;
       node.style.left = `${left}px`;
