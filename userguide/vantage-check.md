@@ -228,14 +228,29 @@ is a code sample, not a finding.
 `vantage/block-split` is the one rule that does not read the document so much as
 *experiment* on it. A directive is invisible, so the one thing it must never do is
 change the document — and the way to be sure is to take it away: the rule deletes
-the directive's own lines, re-parses the few lines around them, and compares the
-block structure. Only the directive's lines: a `<!-- -->` beside it is the
+the directive's own lines, re-parses the block that contains them, and compares
+the block structure. Only the directive's lines: a `<!-- -->` beside it is the
 author's markup — CommonMark's own separator between two lists — and deleting
 that would answer a question about it and blame the directive for the answer.
 That catches any construct a comment at the start of a line can end,
 not a list of the ones somebody thought of. `vantage/list-split` stays because the
 list case has a fix of its own worth spelling out ("indent it inside the item"),
 and it reports first when both apply.
+
+"The block that contains them" is two neighbouring blocks for a directive at the
+top level, and the **whole enclosing top-level block** for one indented inside a
+list item, a block quote or a footnote definition — so the cost is one re-parse
+of that block per directive. That is normally nothing, and it is not nothing for
+the document `oq` exists for: an Open Questions list is one long top-level list
+with a directive in every item, and a 40-question list measures 171 ms where the
+same document with the rule off measures 0.3 ms. It grows as the square of the
+question count. If you ever have a document where that matters, switching the
+rule off really does buy the time back:
+
+```toml
+[check.rules]
+"vantage/block-split" = "off"
+```
 
 The last four are the same family one scope up: the reserved `vantage:`
 frontmatter key, which carries chrome that belongs to the *file* rather than to a

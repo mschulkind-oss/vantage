@@ -49,6 +49,16 @@ export function checkDirectives(collector: Collector): void {
     }
     return listOwners.get(item);
   };
+  /**
+   * The *with-the-directive* shape of a slice, per slice.
+   *
+   * Every run inside one enclosing top-level block re-parses the identical
+   * slice to the identical shape, so N nested directives in one list paid 2N
+   * parses of that list where N + 1 will do. The other side of each comparison
+   * genuinely differs — each run cuts different lines — so only this half is
+   * shared.
+   */
+  const shapes = new Map<string, string>();
 
   visit(root, "html", (node, index, parent) => {
     // The cheap gate, before any scanning: it is what keeps this rule off
@@ -204,9 +214,15 @@ export function checkDirectives(collector: Collector): void {
     // deleting this comment change the document?" for *any* construct, so a
     // directive that also split a list or attached to nothing would be reported
     // twice. Those two say more about the same mistake, so they go first.
-    const restructured = blockSplit(collector, root, parent, index);
-    if (restructured !== undefined) {
-      collector.report("vantage/block-split", at(firstOffset), restructured);
+    //
+    // Gated on the rule, unlike every other check here: this is the only one
+    // that costs real time, so switching it off has to actually buy the time
+    // back rather than run the experiment and drop the answer.
+    if (collector.enabled("vantage/block-split")) {
+      const restructured = blockSplit(collector, root, parent, index, shapes);
+      if (restructured !== undefined) {
+        collector.report("vantage/block-split", at(firstOffset), restructured);
+      }
     }
   });
 }
@@ -792,16 +808,24 @@ function neighbourList(
  * this asks the question directly instead: parse the source with the directive,
  * parse it without, and compare the block structure.
  *
- * Cost is bounded by *slicing*, which is what makes the general test cheaper
- * than the enumeration it replaces. The comparison never re-parses the document:
- * it re-parses only the span the deletion can affect — the two neighbouring
- * siblings when the directive sits at the top level, or the enclosing top-level
- * block when it sits inside a list item or a quote. Both slices start at a
- * top-level block boundary, so they parse the same way in isolation as in place.
- * Measured: a whole-document re-parse of this repo's largest doc is 70 ms, a
- * top-level slice is unmeasurable against run-to-run noise, and the worst shape —
- * 40 directives inside one 200-line top-level list, so 40 re-parses of that list
- * — costs 0.8 ms each. Validated for false positives over 1056 documents built by
+ * Cost is bounded by *slicing*: the comparison re-parses only the span the
+ * deletion can affect — the two neighbouring siblings when the directive sits at
+ * the top level, or the enclosing top-level block when it sits inside a list
+ * item, a quote or a footnote definition. Both slices start at a top-level block
+ * boundary, so they parse the same way in isolation as in place.
+ *
+ * **The cost model is O(directives × enclosing top-level block), and for the
+ * nested placement that is not "a few lines".** A6 makes nesting the only legal
+ * `oq` form, so an Open Questions document is one long list in which every
+ * question re-parses the whole list. Measured on a 40-question list (283 lines,
+ * one `oq` per item, the shape A6 mandates): 171 ms, down from 328 ms before the
+ * `shapes` cache below, against 0.3 ms for the same document with the rule off.
+ * It grows as the square of the question count — 80 questions is 710 ms and 160
+ * is 3.0 s — which is why `checkDirectives` gates the call on the rule being
+ * enabled: a pathological document has to have a way out. The `without`
+ * side cannot be shared, because each run cuts different lines, so the cache is
+ * a factor of two rather than a change of model. Validated for false positives
+ * over 1056 documents built by
  * embedding every legal placement this suite and the style guide use in eight
  * preceding contexts, four trailing ones and three nestings: zero findings. And
  * for false negatives over the same matrix of the six defect shapes: all six
@@ -815,6 +839,7 @@ function blockSplit(
   root: Root,
   parent: Parents,
   index: number,
+  shapes: Map<string, string>,
 ): string | undefined {
   if (!BLOCK_PARENTS.has(parent.type)) return undefined;
 
@@ -872,7 +897,14 @@ function blockSplit(
     if (!cut.has(line)) without.push(text);
   }
 
-  const withIt = blockShape(parseMarkdown(lines.join("\n")));
+  // The with-it side depends on the slice alone, so every run inside one
+  // top-level block computes it once.
+  const key = `${span.start}:${span.end}`;
+  let withIt = shapes.get(key);
+  if (withIt === undefined) {
+    withIt = blockShape(parseMarkdown(lines.join("\n")));
+    shapes.set(key, withIt);
+  }
   const withoutIt = blockShape(parseMarkdown(without.join("\n")));
   if (withIt === withoutIt) return undefined;
 
