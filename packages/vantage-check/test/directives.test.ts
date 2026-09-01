@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { renderMarkdown } from "../../vantage-md/src/renderMarkdown.js";
@@ -107,6 +108,34 @@ describe("vantage/* on documents that are right", () => {
     const examples = [...STYLE_GUIDE.matchAll(/```markdown\n([\s\S]*?)```/g)]
       .map((match) => match[1] ?? "")
       .filter((body) => body.includes("vantage:"));
+
+    expect(examples.length).toBeGreaterThanOrEqual(2);
+    for (const example of examples) {
+      expect(await check(example)).toEqual([]);
+    }
+  });
+
+  it("is silent on the frontmatter examples the doc and the guide tell agents to copy", async () => {
+    // The `markdown` fences above are only half of what an agent copies. A
+    // ```yaml fence carrying `vantage:` is a whole document — frontmatter is the
+    // first bytes of the file — and the design doc's own example once shipped
+    // `status-chip: true` with no `status:` key to inherit, which is a
+    // `vantage/status-chip-stale` warning on every document that copied it. The
+    // doc gate cannot see it: a fenced example is code to the checker.
+    const repo = resolve(
+      dirname(new URL(import.meta.url).pathname),
+      "../../..",
+    );
+    const design = await readFile(
+      resolve(repo, "docs/design/inline-markup.md"),
+      "utf8",
+    );
+
+    const examples = [design, STYLE_GUIDE].flatMap((source) =>
+      [...source.matchAll(/```yaml\n([\s\S]*?)```/g)]
+        .map((match) => match[1] ?? "")
+        .filter((body) => body.includes("vantage:")),
+    );
 
     expect(examples.length).toBeGreaterThanOrEqual(2);
     for (const example of examples) {

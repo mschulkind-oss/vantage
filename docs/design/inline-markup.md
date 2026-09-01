@@ -699,10 +699,22 @@ Document-level chrome, in frontmatter (§4.5):
 ```yaml
 ---
 title: "Adaptive levelling"
+status: in-review # draft | in-review | accepted | deprecated
 vantage:
   status-chip: true
 ---
 ```
+
+The `status:` key is not decoration in that example: `status-chip: true`
+*inherits* it, so the same block without it renders **no chip at all** and is a
+`vantage/status-chip-stale` warning ("this document has no `status:` key, so no
+chip is rendered") in any document that copies it — which is what the first draft
+of this section shipped. A `yaml` fence is a whole document — frontmatter is the
+first bytes of a file — and the doc gate cannot catch it, because a fenced example
+is code to the checker. A test in
+[`directives.test.ts`](../../packages/vantage-check/test/directives.test.ts)
+therefore runs every `vantage:`-carrying yaml example here and in the style guide
+through the checker as a standalone document.
 
 **On GitHub, every one of these renders as the plain Markdown with the comment
 line absent.** No box, no marker, no gap beyond the blank line that was already
@@ -751,8 +763,10 @@ forced by the tree rather than chosen:
 
 - **The vocabulary is `status:`'s own** — `draft | in-review | accepted |
   deprecated`, the set `styleGuide.ts` already tells every agent to write — and
-  **not** `badge`'s. Under the badge set `status-chip: in-review`, the design's
-  own only example, would be illegal. The chip borrows the badge *colours*
+  **not** `badge`'s. `in-review` is not a badge word at all, so under the badge
+  set the literal form this section's example originally used —
+  `status-chip: in-review` — would have been illegal, and the value the example
+  now inherits still is not a badge word. The chip borrows the badge *colours*
   through `.vantage-chip--<tone>`, so a `draft` chip and a `badge=draft` chip are
   one visual object sharing one rule; the badge can only be a pseudo-element and
   the chip is a real element, so they share the rule and not the mechanism.
