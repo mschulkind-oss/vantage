@@ -67,6 +67,64 @@ describe("inline style filtering", () => {
     expect(html).not.toContain("style=");
   });
 
+  it("requires a semicolon between declarations", () => {
+    // The grammar is `;`-delimited on purpose: a value may contain spaces
+    // (`margin: 0 auto`), so if whitespace could *also* end a declaration the
+    // two constructs would compete for the same characters and the match would
+    // fork at every declaration. Keeping `;` the only separator is what makes
+    // the regex unambiguous — see the flat-time test below.
+    expect(SAFE_STYLE.test("margin: 0 auto")).toBe(true);
+    expect(SAFE_STYLE.test("color:red;font-size:2px")).toBe(true);
+    expect(SAFE_STYLE.test("color:red ; font-size:2px")).toBe(true);
+    expect(SAFE_STYLE.test("color:red;")).toBe(true);
+    expect(SAFE_STYLE.test("  color:red  ")).toBe(true);
+    expect(SAFE_STYLE.test("")).toBe(true);
+    // Two declarations run together, with a space or with nothing at all.
+    expect(SAFE_STYLE.test("color:red font-size:2px")).toBe(false);
+    expect(SAFE_STYLE.test("color:redcolor:red")).toBe(false);
+    // An empty declaration is still not a declaration.
+    expect(SAFE_STYLE.test(";")).toBe(false);
+    expect(SAFE_STYLE.test("color:red;;font-size:2px")).toBe(false);
+  });
+
+  it("rejects a hostile style value in flat time, not exponential", () => {
+    // A `style` value is document-controlled, and `renderMarkdown` runs
+    // synchronously — in the viewer's render, in `vantage build`, and in the
+    // `vantage-check` binary the pre-commit hook and CI run over every Markdown
+    // file in the repo. So a value that takes super-linear time to *reject* is
+    // not a slow render; it is a denial of service on the gate. An earlier form
+    // of this regex was one: 121 chars of the first payload below took 12 ms,
+    // 161 chars took 950 ms, 201 chars took 94 s. §8.4 of
+    // docs/design/inline-markup.md has the measurements and the cause.
+    //
+    // Both payloads end in a character the value class excludes, so the match
+    // must fail — the expensive path is always the rejection.
+    //
+    // The budget is generous by three orders of magnitude: against the current
+    // grammar the worst of these resolves in under a millisecond at 200 kB,
+    // which is a thousand times the longest rung here. The ladder climbs in
+    // small steps and asserts as it goes, so a
+    // reintroduced ambiguity fails on an early rung in about a second instead of
+    // wedging the suite on a later one — which is the same failure this test
+    // exists to prevent.
+    const budget = 250;
+    for (const n of [8, 16, 24, 32, 40, 48, 64, 80, 96]) {
+      for (const payload of [
+        "color:red ".repeat(n) + "(",
+        "color: red; ".repeat(n) + "background:url(x)",
+      ]) {
+        const started = performance.now();
+        const kept = SAFE_STYLE.test(payload);
+        const elapsed = performance.now() - started;
+        expect(kept).toBe(false);
+        expect(
+          elapsed,
+          `${payload.length} chars took ${elapsed}ms`,
+        ).toBeLessThan(budget);
+      }
+    }
+  });
+
   it("accepts every style KaTeX emits", () => {
     const formulas = [
       String.raw`\begin{pmatrix} a & b \\ c & d \end{pmatrix}`,

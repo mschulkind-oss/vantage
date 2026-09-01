@@ -111,15 +111,31 @@ const SAFE_STYLE_PROPERTIES = [
  * is the safe direction to fail, and it degrades to plain text rather than to a
  * broken page.
  *
+ * **The grammar must stay unambiguous, and `;` is what keeps it so.** The value
+ * class is "anything but the delimiters", which includes whitespace — a value
+ * legitimately contains it (`margin: 0 auto`). So if whitespace could *also*
+ * end a declaration, both constructs would compete for the same characters and
+ * the match would fork at every declaration; on a value that ultimately fails,
+ * the engine explores every fork. An earlier form of this regex separated
+ * declarations with `\s*;?\s*`, and 200 document-controlled characters took the
+ * renderer — and the CLI checker, and therefore CI — 94 seconds. Requiring `;`
+ * pins each declaration's extent to the delimiter positions, so there is exactly
+ * one way to parse any input and rejection is linear. `VALUE` absorbs the
+ * padding on both sides for the same reason: a separate `\\s*` next to it would
+ * put the ambiguity straight back. Pinned by the flat-time test in
+ * `frontend/src/lib/sanitize.test.ts` — do not loosen the separator.
+ *
  * Residual, stated plainly: an absolutely-positioned element can still overlap
  * its neighbours inside the article. Closing that needs containment in the
  * stylesheet, not in the sanitiser.
  */
-const DECLARATION = `(?:${SAFE_STYLE_PROPERTIES.join("|")})\\s*:\\s*[^;:()"'\\\\]*`;
-const POSITION = `position\\s*:\\s*(?:static|relative|absolute)`;
+const VALUE = `[^;:()"'\\\\]*`;
+const DECLARATION = `(?:${SAFE_STYLE_PROPERTIES.join("|")})\\s*:${VALUE}`;
+const POSITION = `position\\s*:\\s*(?:static|relative|absolute)\\s*`;
+const ANY_DECLARATION = `(?:${DECLARATION}|${POSITION})`;
 
 export const SAFE_STYLE = new RegExp(
-  `^\\s*(?:(?:${DECLARATION}|${POSITION})\\s*;?\\s*)*$`,
+  `^\\s*(?:${ANY_DECLARATION};\\s*)*${ANY_DECLARATION}?$`,
   "i",
 );
 
