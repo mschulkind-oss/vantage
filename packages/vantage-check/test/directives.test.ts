@@ -891,6 +891,47 @@ describe("vantage/block-split", () => {
       expect(blocks(withIt)).toBe(blocks(withoutIt));
     }
   });
+
+  /**
+   * The one rule with a cost worth escaping.
+   *
+   * A directive at the top level re-parses its two neighbouring blocks, which is
+   * free. A directive *nested* inside a list item re-parses the whole enclosing
+   * top-level block — and A6 makes that nesting the only legal `oq` placement,
+   * so an Open Questions document pays the enclosing list twice per question.
+   * Measured on the 40-question fixture below: 328 ms with the rule on and
+   * 0.3 ms with it off, once the experiment is gated on the rule being enabled.
+   * Before the gate, `off` paid every parse and there was no way out.
+   */
+  it("runs no experiment when the rule is switched off", async () => {
+    const questions = 40;
+    const lines = ["# Open Questions", "", "Intro prose.", ""];
+    for (let i = 1; i <= questions; i++) {
+      const pad = " ".repeat(`${i}. `.length);
+      lines.push(
+        `${i}. **OQ-${i}: Question ${i}.**`,
+        "",
+        `${pad}<!-- vantage: oq id=OQ-${i} leaning="Probably yes." -->`,
+        "",
+        `${pad}_Leaning:_ the leaning for question ${i}, at some length.`,
+        "",
+      );
+    }
+    const root = makeTree({ "oq.md": lines.join("\n") });
+    const off = parseConfig(
+      '[check.rules]\n"vantage/block-split" = "off"\n',
+    ).settings;
+
+    const started = performance.now();
+    const report = await checkTree(root, ["."], off);
+    const elapsed = performance.now() - started;
+
+    // The legal placement, so nothing to report either way.
+    expect(ruleIds(report)).toEqual([]);
+    // Two orders of magnitude of headroom over the 0.3 ms this measures, and
+    // two under the 328 ms the ungated experiment costs on the same document.
+    expect(elapsed).toBeLessThan(100);
+  });
 });
 
 describe("vantage/* settings", () => {
