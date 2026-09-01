@@ -9,8 +9,9 @@ summary: "PyPI `vantage-md` is meant to be the executable server's distribution 
 # The PyPI half of Vantage ships software that no longer exists
 
 **Status:** DESIGN, 2026-09-01, reviewed the same day — **OQ-P1 through OQ-P5
-are settled** (see the [Decision Ledger](#decision-ledger)); one question,
-[OQ-P6](#open-questions), was opened by the review and is the only thing still
+are settled** (see the [Decision Ledger](#decision-ledger)); the review opened
+two, [OQ-P6](#open-questions) (is the built frontend tracked?) and
+[OQ-P7](#open-questions) (whose wheel builder?), which are the only things still
 open. Nothing built. Every claim about the tree, pypi.org, and the GitHub
 releases was verified on 2026-09-01, and the checks are named inline so they can
 be repeated.
@@ -134,7 +135,10 @@ someone a different program.
 One new job in [`publish.yml`](../../.github/workflows/publish.yml), on the
 trigger that already exists (`release: [published]`), guarded exactly as the
 `build` job is, and building the frontend before it builds the binary. Sketched
-at the level of the surface, not the diff:
+with `go-to-wheel` below because that is the shape swarf proves; which builder
+actually runs is [OQ-P7](#open-questions), and [§4.5](#45-which-builder--and-the-dual-entry-question-it-settles)
+argues for the one we already own. The job's *shape* — trigger, guard, frontend
+first, OIDC publish — is the same either way:
 
 ```yaml
 wheels:
@@ -258,29 +262,72 @@ tax: `uv tool install vantage-md` and `pipx install vantage-md` put `vantage` on
 > **The two-script wheel was not a mistake.** It bought `uvx vantage-md <path>`
 > with no `--from`, at the price of a second command name — a sound trade with
 > setuptools, which lets a project declare as many console scripts as it likes.
-> What changed is the builder, not the judgement: `go-to-wheel` expresses one
-> entry point, so the trade is no longer available. If the one-shot line matters
-> enough later, the honest route is an upstream `--entry-point`-repeatable patch
-> to `go-to-wheel`, not a hand-rolled wheel builder for the server.
+> What changed is only what *`go-to-wheel`* can express: one entry point. That
+> is a constraint of a candidate builder, not of wheels — a wheel's
+> `.data/scripts/` directory holds as many files as you put in it, and **we
+> already own a builder that writes that zip by hand**
+> ([§4.5](#45-which-builder--and-the-dual-entry-question-it-settles)). So the
+> route to the alias, if it is ever wanted, is ours, not an upstream patch.
 
 ### 4.4 Which platforms the server wheel covers
 
 **Ruling (2026-09-01): the four archive targets — Linux and macOS on x86-64 and
-arm64 — plus musl Linux if `go-to-wheel` gives it for free. No Windows.** Pass
-`--platforms` explicitly rather than trusting the tool's default set, and check
-what actually lands on the first run: `go-to-wheel`'s README advertises Windows
-in its defaults while swarf's published output has none.
+arm64 — plus musl Linux if it comes free. No Windows.** Name the set explicitly
+rather than inheriting a tool's default, and check what actually lands on the
+first run: `go-to-wheel`'s README advertises Windows in its defaults while
+swarf's published output has none. A static Go binary (`CGO_ENABLED=0`, which
+`publish.yml` already sets) runs under glibc and musl alike, so musl is a second
+*tag* on the same bytes rather than a second build — free if the builder lets us
+say so ([§4.5](#45-which-builder--and-the-dual-entry-question-it-settles)).
 
 Note the interaction with [§4.2](#42-version-continuity-and-why-the-yank-is-not-cosmetic):
 every platform outside the set is one that falls through to the old release, so
 a deliberately narrow set makes the yank matter more, not less.
 
 > [!NOTE]
-> **The CLI still builds a Windows wheel** — `win_amd64` is one of its five
-> targets ([`publish-check.yml:138-142`](../../.github/workflows/publish-check.yml#L138-L142)).
-> Dropping Windows from the server does not decide that; the CLI's Windows
-> target is a separate call, and it is the one place in this repo where Windows
-> support is currently claimed.
+> **The CLI's Windows target went too**, on the same day and by the same ruling
+> (`5485a0b`). It was the only place this repo claimed Windows support, and the
+> only defect that ever shipped in the CLI's wheel path was Windows-specific —
+> §F3's `vantage-check` bundled against a `vantage-check.exe` console script.
+> Its removal took the `.exe` naming and the zip-archive branch with it, and
+> `build-wheel.py` now rejects a `win_*` platform tag outright rather than
+> keeping a code path nothing exercises.
+
+### 4.5 Which builder — and the dual-entry question it settles
+
+`go-to-wheel` is the obvious choice right up to the moment you notice **we
+already own a wheel builder, and it does not care what language produced the
+binary.** [`build-wheel.py`](../../packages/vantage-check/scripts/build-wheel.py)
+takes `--binary`, `--platform-tag`, `--version` and writes the zip: the binary
+goes in `<pkg>-<ver>.data/scripts/` as the console script itself, with no Python
+shim anywhere. Nothing in those ~160 lines knows bun from Go. What is hardcoded
+is only the distribution name, the script name, the summary/description, and
+`Requires-Python` — roughly thirty lines of argparse away from serving both
+artifacts.
+
+| | **`go-to-wheel`** | **`build-wheel.py`, parameterized** |
+| :--- | :--- | :--- |
+| Go compile at release | **A second one**, inside the tool — so the wheel's binary is a different artifact from the one attached to the release | None: it wraps the binary `publish.yml` already cross-compiled, so wheel and archive are the same bytes |
+| Platform set | The tool's, and it can change under us | Ours, per invocation — and since `CGO_ENABLED=0` makes the binary static, the same bytes can carry a `manylinux` **and** a `musllinux` tag with no second build |
+| Entry points | Exactly one | As many as we write into `.data/scripts/` — the alias costs one generated two-line shim (`exec "$(dirname "$0")/vantage" "$@"`), not a duplicated binary and not a build backend |
+| Version stamping | `--set-version-var` / `--ldflags` | Already done upstream by `publish.yml`'s own `go build` ldflags |
+| Maintenance | Upstream's, free | Ours — but already ours, already exercised, and the wheel spec's surface here is frozen |
+| Release chain | One more tool fetched at release time | Nothing new |
+
+The second row is the one that changes my mind. Two builders means two Go
+compiles per release and two binaries that *should* be identical; one builder
+means the thing on PyPI is provably the thing on the release.
+
+> [!NOTE]
+> **The shim is POSIX-only, and that is now fine.** A `sh` shim in
+> `.data/scripts/` works on Linux and macOS and would need a `.exe` on Windows —
+> which is exactly the disagreement that produced §F3's defect. With Windows
+> dropped from both artifacts ([§4.4](#44-which-platforms-the-server-wheel-covers)),
+> the trap that made a second script name expensive is gone.
+
+This is [OQ-P7](#open-questions), and it is the one place where "we already
+built this" is an argument *for* doing more with our own code rather than an
+argument for reaching outside.
 
 ## 5. The install matrix after the fix
 
@@ -368,9 +415,8 @@ payload's `uvx vantage-check <file>` string, and
 - **Not moving the checker into the Go binary.** Rejected in
   [`agent-cli.md`](agent-cli.md) as **R3** — a second renderer implementation
   that drifts invisibly — and nothing here changes it.
-- **Not Windows.** The server wheel covers Linux and macOS only (§4.4). The
-  CLI's existing `win_amd64` wheel is a separate question this doc does not
-  settle.
+- **Not Windows, for either artifact.** The server wheel covers Linux and macOS
+  only, and the CLI's `win_amd64` target was removed the same day (§4.4).
 - **Not the website's install copy.** Out of this tree, and unverifiable from
   here.
 
@@ -394,9 +440,10 @@ payload's `uvx vantage-check <file>` string, and
 2. **Settle [OQ-P6](#open-questions)** — committed export or per-job frontend
    build. Everything about the wheel job's shape follows from it, and so does
    whether `go install` (**R8**) is fixed or documented as broken.
-3. **Add the wheel job** to `publish.yml`: `build`'s guard verbatim,
-   `--entry-point vantage`, `--platforms` for the four archive targets,
-   `--license Apache-2.0`, and an `index.html` assertion before the build.
+3. **Settle [OQ-P7](#open-questions)** — our builder or `go-to-wheel` — then
+   **add the wheel job** to `publish.yml`: `build`'s guard verbatim, a `vantage`
+   entry point, the four archive targets (plus musl tags if the builder allows),
+   Apache-2.0 metadata, and an `index.html` assertion before the build.
 4. **Cut the next app release** (102 commits are waiting) and verify the wheel
    end to end: install it on a clean machine, confirm the server serves the real
    frontend rather than the placeholder, and that it reports the right version
@@ -416,11 +463,11 @@ wheel metadata all declare it as of 2026-09-01.
 ## 10. Alternatives considered
 
 - **Parameterize `build-wheel.py` for the server too**, instead of adding
-  `go-to-wheel`. Genuinely viable — it is ~160 lines and the only thing pinning
-  it to the CLI is `DISTRIBUTION` and the script name. Rejected for the server
-  because `go-to-wheel` is maintained, already cross-compiles a Go module to
-  every tag, and has a working precedent in this org; keep `build-wheel.py` for
-  the CLI, whose bun output is not a Go module.
+  `go-to-wheel`. Not rejected — on a second look this is the *leading* option,
+  and it is [OQ-P7](#open-questions). The first draft of this doc dismissed it in
+  favour of a maintained upstream tool, before noticing that `publish.yml`
+  already cross-compiles the binaries a wheel needs, which makes the upstream
+  tool's own compile a duplicate ([§4.5](#45-which-builder--and-the-dual-entry-question-it-settles)).
 - **`goreleaser` for the whole release**, as swarf does. Rejected as scope: the
   archive path works, and replacing it buys nothing this doc needs.
 - **One project, two entry points.** Rejected —
@@ -469,6 +516,24 @@ wheel metadata all declare it as of 2026-09-01.
    tracked file is a carve-out worth writing down rather than a rule worth
    keeping intact. I would want the sync step to warn-and-continue like
    polyclav's, so a checkout without pnpm/npm still builds.
+
+   **Answer:**
+
+   > _(empty — fill in when decided)_
+
+2. 💬 **OQ-P7: Which wheel builder — ours, or `go-to-wheel`?** We already own
+   `build-wheel.py`, and it is binary-agnostic; `publish.yml` already
+   cross-compiles the binaries a wheel would carry. Full comparison in
+   [§4.5](#45-which-builder--and-the-dual-entry-question-it-settles). It decides §9 step 3, and it decides whether a second
+   entry point is ever available: `go-to-wheel` expresses one, a builder we own
+   expresses as many as we write.
+
+   _Leaning:_ ours, parameterized. The deciding fact is not the ~30 lines either
+   way — it is that `go-to-wheel` would compile the Go binary a *second* time, so
+   the wheel on PyPI and the archive on the release would be different artifacts
+   that ought to be identical. One builder also means the wheel-spec bugs get
+   fixed once, and it hands us the `manylinux` + `musllinux` double-tag on one
+   static binary for free.
 
    **Answer:**
 
