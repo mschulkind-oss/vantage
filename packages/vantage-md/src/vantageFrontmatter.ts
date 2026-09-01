@@ -149,7 +149,8 @@ export function readVantageFrontmatter(
  *
  * `true` **inherits** the document's own top-level `status:`, so the chip cannot
  * disagree with it — which is the entire point of §5.3 ("makes `status: draft`
- * visible rather than buried in a metadata card"). A literal token is kept
+ * visible rather than only buried in a metadata card"; the row stays, the chip
+ * promotes the value rather than moving it). A literal token is kept
  * because the design doc's first draft of that example used one, and the
  * disagreement it makes possible is turned into a checker finding rather than
  * banned.

@@ -757,9 +757,9 @@ already parses and displays frontmatter, so this costs no new parsing — only a
 decision to special-case one key, read by
 [`vantageFrontmatter.ts`](../../packages/vantage-md/src/vantageFrontmatter.ts).
 
-One key today: **`status-chip`**, which lifts the document's lifecycle status out
-of the metadata card and into a chip above it (§5.3). Four things about it were
-forced by the tree rather than chosen:
+One key today: **`status-chip`**, which *promotes* the document's lifecycle status
+to a chip above the metadata card (§5.3) — promotes, not moves. Five things about
+it were forced by the tree rather than chosen:
 
 - **The vocabulary is `status:`'s own** — `draft | in-review | accepted |
   deprecated`, the set `styleGuide.ts` already tells every agent to write — and
@@ -779,6 +779,16 @@ forced by the tree rather than chosen:
   `FrontmatterDisplay`'s `isPlainObject` branch prints it as a monospace
   `{"status-chip": "draft"}` row — shipping the chip *and* the burial the chip
   exists to remove.
+- **The `status:` row is not.** `flattenEntries` filters the reserved `vantage`
+  key and nothing else, so a document with `status: in-review` and a chip renders
+  "in-review" **twice**. That is the settled outcome, not a leak: the card is a
+  faithful view of the frontmatter, and a chip that consumed its own source key
+  would make the card lie about the file. The chip surfaces the value where a
+  reader lands; it does not own it. Pinned end to end in
+  [`MarkdownViewer.test.tsx:213-256`](../../frontend/src/components/MarkdownViewer.test.tsx#L213-L256),
+  which locates the chip by title rather than by text precisely because the
+  string is on the page twice. Anyone adding a second file-scoped chip should
+  copy that, not assume the key is consumed.
 - **No `isStaticMode()` gate.** D4's gate is for controls that *write*; the chip
   is a non-interactive `<span>` that cannot fail, and gating it would delete it
   from every exported site — the one place §2.5 says D5 costs nothing.
@@ -970,7 +980,8 @@ answered.
 - **Stale markers** (`badge=stale`) — same. The value is that a reader sees
   staleness *in the section*, not in a changelog nobody reads.
 - **Document status chip** (frontmatter `status-chip`) — it makes `status: draft`
-  visible rather than buried in a metadata card. It is **not** "a chip near the
+  visible rather than only buried in a metadata card (the row stays; §4.5). It is
+  **not** "a chip near the
   title", which is how this line originally read and is unimplementable: **there
   is no document title anywhere in the UI.** The header bar shows a path
   breadcrumb, `document.title` is `Vantage: <repoName>`, frontmatter `title`
@@ -1693,7 +1704,7 @@ is ever renumbered or re-spelled.
 | A9 | **No `--` restriction** in quoted values; HTML5 closes a comment on `-->` or `--!>` only, and a hand-written scanner must handle both | 2026-08-31 | §4.1 |
 | A10 | The button disables on click and degrades to a chip when an identical comment exists; `fallbackText` must be byte-identical to the popover's `displayText` | 2026-08-31 | §5.2 |
 | A11 | The button is a **sibling pass** with its own review-mode gate — the highlighter returns early on the documents that need it most | 2026-08-31 | §5.2, §6.5 |
-| A12 | **There is no document title in the UI.** The status chip is the first element of the content column; the reserved key is filtered from the card; the vocabulary is `status:`'s own; no static gate | 2026-08-31 | §4.5, §5.3 |
+| A12 | **There is no document title in the UI.** The status chip is the first element of the content column; the reserved key is filtered from the card, but the `status:` row is not — the chip **promotes** the value, it does not move it; the vocabulary is `status:`'s own; no static gate | 2026-08-31 | §4.5, §5.3 |
 | A13 | Export **`buildPipeline`**, not a rehype-only builder — `math` spans both halves. Preserve all five toggles. The checker's lint-only processor stays separate, measurably | 2026-08-31 | §6.4, §2.1 |
 | A14 | `directives.css` must stay **UNLAYERED**; cascade layers, not specificity, are what beat the typography utilities | 2026-08-31 | §4.3 |
 | A15 | `data-vantage-run` is an attribute the design did not have (`start\|middle\|end\|only`), selected **positively**, never negated, because review mode inserts a sibling inside the run | 2026-08-31 | §4.3 |

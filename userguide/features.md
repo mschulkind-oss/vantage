@@ -58,7 +58,9 @@ status: draft
 One key is Vantage's own: `vantage:`. It holds chrome that belongs to the file
 rather than to a section, it never appears as a row in the metadata card, and
 every other renderer ignores it. Today it has one key — `status-chip` — which
-lifts the document's lifecycle status out of the card and into a chip above it:
+shows the document's lifecycle status as a chip above the card, **in addition to**
+the `status:` row it reads — the chip surfaces the value, it does not move it, so
+the card stays a faithful view of the frontmatter:
 
 ```yaml
 ---

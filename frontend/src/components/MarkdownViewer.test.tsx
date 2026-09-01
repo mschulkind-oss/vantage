@@ -238,6 +238,13 @@ This is the body.`;
     expect(chip).toHaveTextContent("in-review");
     expect(chip.closest(".vantage-chrome")).not.toBeNull();
 
+    // And the row is still there: the chip promotes the value, it does not
+    // consume the key, so "in-review" is on the page exactly twice. Asserted
+    // rather than implied — §4.5 records the duplication as the settled outcome,
+    // and a future `status`-filtering "cleanup" has to fail here.
+    expect(screen.getByText("status")).toBeInTheDocument();
+    expect(screen.getAllByText("in-review")).toHaveLength(2);
+
     // The card is untouched apart from the reserved key, which never appears.
     expect(screen.getByText("Metadata")).toBeInTheDocument();
     expect(screen.getByText("title")).toBeInTheDocument();
