@@ -71,7 +71,7 @@ vantage
 
 ## Next Steps
 
-- [Configuration](configuration.md) — Customize the server settings and excluded directories
-- [Daemon Mode](daemon-mode.md) — Serve multiple directories at once
+- [Configuration](reference/configuration.md) — Customize the server settings and excluded directories
+- [Daemon Mode](guides/daemon-mode.md) — Serve multiple directories at once
 - [Features](features.md) — Everything Vantage can render and do
-- [Keyboard Shortcuts](keyboard-shortcuts.md) — Navigate quickly
+- [Keyboard Shortcuts](reference/keyboard-shortcuts.md) — Navigate quickly

@@ -53,7 +53,7 @@ says what a section means and each theme decides how it looks.
 that validates this markup),
 [`../design/review-state-architecture.md`](../design/review-state-architecture.md)
 (why the one-click control rides an existing command instead of inventing a
-channel), and [`../../userguide/review-inbox.md`](../../userguide/review-inbox.md).
+channel), and [`../../userguide/review-inbox.md`](../../userguide/guides/review-inbox.md).
 
 ---
 

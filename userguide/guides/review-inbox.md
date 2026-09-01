@@ -24,7 +24,7 @@ block — which meant the block stayed in your document forever and got re-read
 on every save, and Vantage had to guess whether each re-read was a new answer
 or one it had already recorded. Guessing wrong silently dropped answers or
 silently marked your follow-ups as answered. (The full history is in
-[docs/design/review-state-architecture.md](../docs/design/review-state-architecture.md).)
+[docs/design/review-state-architecture.md](../../docs/design/review-state-architecture.md).)
 
 The inbox replaces that with an ordinary mailbox: a response is **delivered
 once, consumed, and deleted**. Nothing accumulates in your documents, and
@@ -202,6 +202,6 @@ skipped and logged as dropped, rather than being applied to the wrong thread.
 
 ## Related
 
-- [Review Mode](features.md#review-mode) — the reviewer-facing workflow.
-- [docs/design/review-state-architecture.md](../docs/design/review-state-architecture.md)
+- [Review Mode](../features.md#review-mode) — the reviewer-facing workflow.
+- [docs/design/review-state-architecture.md](../../docs/design/review-state-architecture.md)
   — why the inbox replaced the in-document protocol.

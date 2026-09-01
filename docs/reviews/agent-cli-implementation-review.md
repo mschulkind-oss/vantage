@@ -15,7 +15,7 @@ running the code, not by reading it — the commands are in
 [Appendix B](#appendix-b--verification-log).
 
 **Reads with:** the design doc above (the contract being implemented),
-[`../../userguide/vantage-check.md`](../../userguide/vantage-check.md) (what
+[`../../userguide/vantage-check.md`](../../userguide/guides/vantage-check.md) (what
 users are told the tool does), and
 [`agent-cli-two-implementations.md`](agent-cli-two-implementations.md) — the
 same design implemented independently by a second agent, compared head to

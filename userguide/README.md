@@ -21,18 +21,34 @@ See [Getting Started](getting-started.md) for full installation instructions.
 
 ## What's in This Guide
 
+Start here:
+
 | Page | Description |
 |------|-------------|
 | [Getting Started](getting-started.md) | Installation, prerequisites, and first run |
 | [Features](features.md) | GitHub Flavored Markdown, Mermaid diagrams, live reload, Git integration |
-| [Configuration](configuration.md) | Config file, environment variables, and CLI options |
-| [Daemon Mode](daemon-mode.md) | Running Vantage as a background service with multi-repo support |
-| [CLI Reference](cli-reference.md) | Complete command-line interface documentation |
-| [vantage-check](vantage-check.md) | The agent CLI: the Markdown style guide, and a check that a document really renders |
-| [Style Guide for Agents](style-guide.md) | The canonical Markdown conventions, and how to get them |
-| [Review Inbox](review-inbox.md) | The `.vantage/` directory: how agent responses are delivered, and gitignoring it |
-| [Keyboard Shortcuts](keyboard-shortcuts.md) | Navigation and UI shortcuts |
-| [Static Sites](static-sites.md) | Building static exports for deployment |
+
+### Guides
+
+Task-shaped: pick the one matching what you are trying to do.
+
+| Page | Description |
+|------|-------------|
+| [Daemon Mode](guides/daemon-mode.md) | Running Vantage as a background service with multi-repo support |
+| [Review Inbox](guides/review-inbox.md) | The `.vantage/` directory: how agent responses are delivered, and gitignoring it |
+| [Static Sites](guides/static-sites.md) | Building static exports for deployment |
+| [vantage-check](guides/vantage-check.md) | The agent CLI: the Markdown style guide, and a check that a document really renders |
+
+### Reference
+
+Look-it-up material: complete lists rather than walkthroughs.
+
+| Page | Description |
+|------|-------------|
+| [CLI Reference](reference/cli-reference.md) | Complete command-line interface documentation |
+| [Configuration](reference/configuration.md) | Config file, environment variables, and CLI options |
+| [Keyboard Shortcuts](reference/keyboard-shortcuts.md) | Navigation and UI shortcuts |
+| [Style Guide for Agents](reference/style-guide.md) | The canonical Markdown conventions, and how to get them |
 
 ---
 

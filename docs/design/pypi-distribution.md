@@ -423,7 +423,7 @@ assumes end to end:
 [`publish.yml`](../../.github/workflows/publish.yml)'s two `uv publish`
 invocations, `build-wheel.py`'s `--distribution` flag, the review
 payload's `uvx vantage-check <file>` string, and
-[`../../userguide/vantage-check.md`](../../userguide/vantage-check.md).
+[`../../userguide/vantage-check.md`](../../userguide/guides/vantage-check.md).
 
 > [!IMPORTANT]
 > **The CLI's wheel path is fixed but has never run.**
