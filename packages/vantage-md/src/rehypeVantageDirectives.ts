@@ -48,18 +48,40 @@ const HEADING_DEPTHS = new Map([
 ]);
 
 /**
- * Key → hast property. A camelCase hast property serialises to the kebab-case
- * attribute, so `dataVantageTone` is `data-vantage-tone` in every renderer.
+ * Key → hast property, for the keys that treat a whole run.
+ *
+ * A camelCase hast property serialises to the kebab-case attribute, so
+ * `dataVantageTone` is `data-vantage-tone` in every renderer.
+ *
+ * `tone` and `emphasis` describe what a section *is* and how loud it is, so
+ * every block in the range wears them: the tone rule is a slice of one
+ * continuous line down the section, and the weight applies to all of its prose.
  *
  * `collapsed` is not here because it is not one property on one block: it puts a
  * toggle on the heading and a collapsed flag plus a group id on every block the
  * heading hides, which `stampStyle` does with the three properties below.
  */
-const STYLE_PROPERTIES = new Map([
+const RANGE_PROPERTIES = new Map([
   ["tone", "dataVantageTone"],
   ["emphasis", "dataVantageEmphasis"],
-  ["badge", "dataVantageBadge"],
 ]);
+
+/**
+ * Key → hast property, for the keys that mark one block: the directive's target.
+ *
+ * `badge` is the asymmetry in the vocabulary and the reason this second map
+ * exists. It is not a treatment of a run but a single chip — "a small chip after
+ * the heading text" (§4.3), drawn as `[data-vantage-badge]::after` — so a
+ * section-wide stamp paints the word once per paragraph, list, table and fence
+ * under the heading instead of once beside it.
+ *
+ * The chip is fixed here rather than in the stylesheet, because narrowing the
+ * CSS to `:is(h1, …, h6)` would silently draw nothing for the two placements
+ * that legitimately badge a non-heading — `block badge=…` on a paragraph, and a
+ * `section` that degraded onto one (A1) — and would leave an attribute stamped
+ * on every block that says something untrue about it.
+ */
+const POINT_PROPERTIES = new Map([["badge", "dataVantageBadge"]]);
 
 const RUN_PROPERTY = "dataVantageRun";
 const OQ_PROPERTY = "dataVantageOq";
@@ -218,18 +240,26 @@ function stampStyle(
   const target = children[targetIndex] as Element;
   if (!STYLE_TARGET_TAGS.has(target.tagName)) return;
 
-  // Resolve before stamping: a directive whose every key was dropped stamps
-  // nothing at all, not even a run marker, so `<!-- vantage: section -->` and
-  // `<!-- vantage: section tone=chartreuse -->` are both plain documents.
-  const resolved: [string, string][] = [];
+  // Resolve before stamping, and resolve the two reaches apart: a directive
+  // whose every key was dropped stamps nothing at all, not even a run marker, so
+  // `<!-- vantage: section -->` and `<!-- vantage: section tone=chartreuse -->`
+  // are both plain documents.
+  const rangeStamps: [string, string][] = [];
+  const targetStamps: [string, string][] = [];
   for (const [key, value] of pairs) {
-    const property = STYLE_PROPERTIES.get(key);
-    if (property === undefined) continue;
     if (!accepts(name, key, value)) continue;
-    resolved.push([property, value]);
+    const rangeProperty = RANGE_PROPERTIES.get(key);
+    if (rangeProperty !== undefined) {
+      rangeStamps.push([rangeProperty, value]);
+      continue;
+    }
+    const pointProperty = POINT_PROPERTIES.get(key);
+    if (pointProperty !== undefined) targetStamps.push([pointProperty, value]);
   }
   const collapses = collapsesSection(name, pairs, target);
-  if (resolved.length === 0 && !collapses) return;
+  if (rangeStamps.length === 0 && targetStamps.length === 0 && !collapses) {
+    return;
+  }
 
   const range = styleRange(children, targetIndex, name);
   // A heading with no body blocks gets no toggle: a caret that hides nothing is
@@ -240,12 +270,21 @@ function stampStyle(
 
   for (let i = 0; i < range.length; i++) {
     const element = children[range[i]] as Element;
-    for (const [property, value] of resolved) {
+    for (const [property, value] of rangeStamps) {
       setProperty(element, property, value);
     }
-    // Only where something was stamped to join up: `run` describes the extent of
-    // a tone's rule, and a collapse-only section has no rule to draw.
-    if (resolved.length > 0) {
+    // `range[0]` is the target, always: `styleRange` starts there and only ever
+    // walks forward. A point marker stops here, and it is stamped before the run
+    // marker so the attribute order of a badged heading is the order written.
+    if (i === 0) {
+      for (const [property, value] of targetStamps) {
+        setProperty(element, property, value);
+      }
+    }
+    // Only where a run treatment was stamped to join up: `run` describes the
+    // extent of a tone's rule, and a collapse-only or badge-only section has no
+    // rule to draw.
+    if (rangeStamps.length > 0) {
       setProperty(element, RUN_PROPERTY, runValue(i, range.length));
     }
     if (group === undefined) continue;

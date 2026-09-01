@@ -416,7 +416,9 @@ describe("extent: position picks the target, the name picks how far", () => {
   it("stops an `h1` section at the next `h1`, stamping through the `h2`", async () => {
     const host = await render(
       [
-        "<!-- vantage: section badge=stale -->",
+        // A run treatment, because the probe is what the stamp *reaches*: a
+        // `badge` marks the target alone and would say nothing about the `h2`.
+        "<!-- vantage: section tone=warning -->",
         "",
         "# Part one",
         "",
@@ -430,8 +432,8 @@ describe("extent: position picks the target, the name picks how far", () => {
       ].join("\n"),
     );
 
-    expect(host.querySelector("h2")!.getAttribute("data-vantage-badge")).toBe(
-      "stale",
+    expect(host.querySelector("h2")!.getAttribute("data-vantage-tone")).toBe(
+      "warning",
     );
     expect(stamped(host.querySelectorAll("h1")[1])).toEqual({});
     expect(stamped(host.querySelectorAll("p")[1])).toEqual({});
@@ -514,6 +516,111 @@ describe("extent: position picks the target, the name picks how far", () => {
   });
 });
 
+describe("`badge` marks the target, not the run", () => {
+  /** Every element carrying a badge, as `tag=value`. */
+  const badges = (host: HTMLElement) =>
+    Array.from(host.querySelectorAll("[data-vantage-badge]")).map(
+      (el) =>
+        `${el.tagName.toLowerCase()}=${el.getAttribute("data-vantage-badge")}`,
+    );
+
+  it("draws one chip beside the heading, not one per block in the section", async () => {
+    // `tone` and `emphasis` are treatments of a run — a rule slice and a weight
+    // on every member. `badge` is a single chip on one block ("a small chip
+    // after the heading text", §4.3), and the CSS draws it as
+    // `[data-vantage-badge]::after`, so stamping the run painted the word once
+    // per paragraph, list, fence and table under the heading.
+    const host = await render(
+      [
+        "<!-- vantage: section tone=warning emphasis=strong badge=stale -->",
+        "",
+        "## Migration path",
+        "",
+        "The steps below predate the rewrite.",
+        "",
+        "- One",
+        "- Two",
+        "",
+        "```sh",
+        "make",
+        "```",
+      ].join("\n"),
+    );
+
+    expect(badges(host)).toEqual(["h2=stale"]);
+    // The run treatments still reach every member, which is the asymmetry.
+    expect(runs(host, "[data-vantage-tone]")).toEqual([
+      "start",
+      "middle",
+      "middle",
+      "end",
+    ]);
+    expect(
+      host.querySelectorAll("[data-vantage-emphasis='strong']"),
+    ).toHaveLength(4);
+  });
+
+  it("stamps the one block a `section` degraded onto", async () => {
+    // `section` before a non-heading is one block (A1), and that block is the
+    // target — so the chip is drawn, once, rather than dropped.
+    const host = await render(
+      "<!-- vantage: section badge=stale -->\n\nFirst.\n\nSecond.\n",
+    );
+
+    expect(badges(host)).toEqual(["p=stale"]);
+  });
+
+  it("stamps a `block` heading, and only that heading", async () => {
+    const host = await render(
+      "<!-- vantage: block badge=draft -->\n\n## H\n\nBody.\n",
+    );
+
+    expect(badges(host)).toEqual(["h2=draft"]);
+  });
+
+  it("stamps a `block` paragraph — the chip is not heading-only", async () => {
+    // Why the fix is in the plugin and not a `:is(h1,…,h6)[data-vantage-badge]`
+    // selector: `badge` is in the keys `section` and `block` share, so a
+    // heading-only chip would silently draw nothing for this document.
+    const host = await render(
+      "<!-- vantage: block badge=draft -->\n\nPara.\n\nNext.\n",
+    );
+
+    expect(badges(host)).toEqual(["p=draft"]);
+  });
+
+  it("stamps no run for a badge-only section", async () => {
+    // Same reason a collapse-only section stamps none: `run` describes where a
+    // tone's rule starts and stops, and a lone chip has no rule to join up. The
+    // body blocks of this section carry nothing at all.
+    const host = await render(
+      "<!-- vantage: section badge=stale -->\n\n## H\n\nOne.\n\nTwo.\n",
+    );
+
+    expect(stamped(host.querySelector("h2"))).toEqual({
+      "data-vantage-badge": "stale",
+    });
+    expect(stamped(host.querySelectorAll("p")[0])).toEqual({});
+    expect(stamped(host.querySelectorAll("p")[1])).toEqual({});
+  });
+
+  it("still stamps the run when a range treatment rides along", async () => {
+    const host = await render(
+      "<!-- vantage: section emphasis=quiet badge=stale -->\n\n## H\n\nOne.\n",
+    );
+
+    expect(stamped(host.querySelector("h2"))).toEqual({
+      "data-vantage-emphasis": "quiet",
+      "data-vantage-badge": "stale",
+      "data-vantage-run": "start",
+    });
+    expect(stamped(host.querySelector("p"))).toEqual({
+      "data-vantage-emphasis": "quiet",
+      "data-vantage-run": "end",
+    });
+  });
+});
+
 describe("merging", () => {
   const MERGED = [
     "<!-- vantage: section tone=note badge=draft -->",
@@ -591,9 +698,10 @@ describe("unknown is inert (P3/D2)", () => {
       "<!-- vantage: section tone=chartreuse badge=stale -->\n\n## H\n\nBody.\n",
     );
 
+    // No run marker: dropping `tone` left a chip on the heading and nothing to
+    // join the section's blocks up with.
     expect(stamped(host.querySelector("h2"))).toEqual({
       "data-vantage-badge": "stale",
-      "data-vantage-run": "start",
     });
   });
 
