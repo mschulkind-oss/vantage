@@ -269,9 +269,11 @@ pypi.org on 2026-09-01, which is where the original of this section was wrong.
   2026-04-23 — shipped by `4e4d744` (*"feat: ship vantage-md on PyPI + Homebrew
   with zero-config first-run"*) and orphaned five weeks later by `e4e3120`,
   which deleted `pyproject.toml`, `src/vantage/`, and the PyPI job along with
-  the rest of the Python backend. The Go app has indeed never been on PyPI; it
-  ships as GitHub release archives plus a Homebrew tap
-  ([`publish.yml`](../../.github/workflows/publish.yml)).
+  the rest of the Python backend. **Nothing replaced that job**: `publish.yml`
+  cross-compiles four `GOOS/GOARCH` targets, tars them onto the release, and
+  regenerates the Homebrew formula — no wheel, no upload — so PyPI has been
+  frozen at the Python app since. The Go server has never shipped a wheel;
+  neither `go-to-wheel` nor `goreleaser` appears anywhere in this tree.
 
 > [!WARNING]
 > **One name, two artifacts, two registries — and one of them is dead.**
@@ -281,13 +283,21 @@ pypi.org on 2026-09-01, which is where the original of this section was wrong.
 > is the in-house example of **R5**: the name was permanent from its first
 > publish, and it outlived the thing it named.
 
-Two consequences, and they pull in opposite directions. Against reviving that
-project: the app has no Python packaging left to revive — `e4e3120` deleted it,
-and the Go binary has never been wheeled. In favour: the *release* mechanics are
-a known quantity, because trusted publishing was configured for `vantage-md`
-once and the deleted job shows the exact shape (`id-token: write`,
-`environment: pypi`, `uv publish` with no token). Which of those wins is
-[OQ-B7](#open-questions).
+Both halves of that are cheaper to fix than they look, which is what makes
+[OQ-B7](#open-questions) a real question rather than a formality. Trusted
+publishing was configured for `vantage-md` once, and the deleted job shows the
+exact shape (`id-token: write`, `environment: pypi`, `uv publish` with no
+token). And wheeling a Go binary is a solved, third-party problem with a
+precedent inside this org: `mschulkind-oss/swarf` publishes on release with
+
+```yaml
+uvx go-to-wheel . --name swarf --set-version-var <pkg>/internal/version.Version
+```
+
+then `uv publish` under OIDC — and `swarf` on PyPI carries platform wheels for
+macOS x86-64/arm64 and manylinux x86-64/aarch64 at 0.4.0 (verified 2026-09-01).
+Vantage has no equivalent job. What it would need beyond swarf's is the frontend
+bundle first, which is the trap below.
 
 What no shape changes is that **the payload already tells every agent to run
 `uvx vantage-check`, and that promise resolves to nothing today.** That is
@@ -373,7 +383,7 @@ depends on, which is [§8](#8-what-i-would-build-in-order) step 2.
 | **R4. A persisted pointer outlives the tool's reach** — a skill that says "run `uvx …`" in a sandbox without `uvx` is a dead end on every future document, not just once | The generated text carries the same fallback the fixative line does: if it is not available, carry on |
 | **R5. Name lock-in** — the distribution name is unclaimed today and permanent after first publish, while the tool is growing commands that are not checks | Settle it before step 2, not after. [OQ-B4](#open-questions) |
 | **R6. Two-mode confusion** — an agent runs the generator instead of the check, or treats the check as setup | Distinct verbs, one sentence each, and the fixative line keeps its current position and wording |
-| **R7. A dead distribution still answers to a name we use** — `uvx vantage-md` installs the retired Python app (§5.1). An agent guessing the name, or a human following an old README, gets working-but-abandoned software, which is worse than the 404 `vantage-check` gives | Owner action, independent of everything else here: yank 0.4.1/0.4.2 on PyPI, or accept it deliberately. Not a blocker for either shape in [OQ-B7](#open-questions) |
+| **R7. A dead distribution still answers to a name we use** — `uvx vantage-md` installs the retired Python app (§5.1). An agent guessing the name, or a human following an old README, gets working-but-abandoned software, which is worse than the 404 `vantage-check` gives | Yank 0.4.1/0.4.2, or supersede them with a current server wheel (§5.1's `go-to-wheel` shape). Either is owner-side and independent of this design; not a blocker for either shape in [OQ-B7](#open-questions) |
 
 **What this deletes.** The premise that a document's quality depends on a review
 round having already happened to it. And the last remaining reason for an
@@ -510,27 +520,50 @@ Settled questions move to the [Decision Ledger](#decision-ledger) above.
    carries it. Numbered after B5/B6 because it was raised later; it gates
    [OQ-B4](#open-questions) and [§8](#8-what-i-would-build-in-order) step 2.
 
-   - **One project** — revive `vantage-md` on PyPI as the app, and add the CLI
-     alongside it. Its appeal is a live project with trusted publishing already
-     configured. Its costs: the Go release has produced no wheel ever and
-     `e4e3120` deleted the machinery, so wheeling the server is new work; two
-     executables in one wheel is §5.3's problem made worse (two binaries from
-     two toolchains — ~92 MB of compiled CLI plus the Go server, per platform,
-     per release — or the console-script shim `build-wheel.py` refuses); and it
-     welds two deliberately independent release cadences (`v*` versus
-     `vantage-check@*`) to one version number.
-   - **Two projects** — `vantage-check` as its own distribution, which is what
+   - **One project, two entry points** — the app's PyPI distribution carries
+     both binaries. Its appeal is one registration and one release. Its cost is
+     [§5.3](#53-why-a-second-entrypoint-is-expensive-and-a-subcommand-is-free)'s
+     problem in its worst form: two binaries from two toolchains in one wheel
+     (~92 MB of compiled CLI dwarfing a ~15 MB Go server, per platform, per
+     release), or the console-script shim `build-wheel.py` deliberately refuses.
+     It also welds two deliberately independent cadences (`v*` versus
+     `vantage-check@*`) to one version, and it makes the server's own wheel
+     path — which does not exist yet — a prerequisite for shipping the checker.
+   - **Two projects, one binary each** — the server wheeled by `go-to-wheel`
+     (§5.1), the CLI by its own `build-wheel.py`. This is what
      [`publish-check.yml`](../../.github/workflows/publish-check.yml), the
-     payload, the userguide, and `build-wheel.py`'s hardcoded `DISTRIBUTION`
-     already assume. Cost: one owner registration, and a second name.
+     payload, the userguide, and that builder's hardcoded `DISTRIBUTION` all
+     already assume. Cost: two registrations, two release triggers — which the
+     repo already has, since the two are tagged separately today.
 
-   _Leaning:_ two. The cost difference is real but secondary; what decides it is
-   that the two executables have different audiences and different cadences. A
-   `uvx vantage-check` on one document should not fetch a server, and the
-   server's users install by brew or curl, not by `uvx`. Note the reuse variant
-   is the worst of both: `vantage-md` on PyPI meaning the app while `vantage-md`
-   on npm means the Markdown library, with the CLI a third meaning under the
-   same string.
+   _Leaning:_ two, one binary each. The wheel arithmetic favours it, but what
+   decides it is that the two executables have different audiences and
+   different cadences: `uvx vantage-check` on one document should not fetch a
+   server, and the server's users install by brew or curl. It also lets the
+   server wheel — the fix for **R7** — proceed on its own schedule instead of
+   blocking the checker's first release.
+
+   Two things to settle alongside it, neither of which changes the shape:
+
+   - **The app's PyPI name.** `vantage-md` there would mean the app while
+     `vantage-md` on npm means the Markdown library. `vantage` is taken
+     (IKNL, 2020); `vantage-viewer` is free as of 2026-09-01 and is arguably the
+     honest name. Against a change: `uvx vantage-md` is already in the wild, and
+     PyPI has no rename — a new name means registering it and yanking the old.
+   - **Whether the server goes to PyPI at all.** Nothing in this design needs it;
+     it is **R7** hygiene and a nicety for `uvx` users, so it is out of scope for
+     [§8](#8-what-i-would-build-in-order)'s sequence under the two-project shape,
+     and a prerequisite under the one-project shape.
+
+   > [!WARNING]
+   > **A vantage wheel is not swarf's wheel: the frontend must be bundled
+   > first.** `web/dist` holds only `.gitkeep` in git, and `web/embed.go` embeds
+   > it with `//go:embed all:dist`, so a `go build` on a clean checkout compiles
+   > happily and ships a server whose embedded site is empty — no error, just a
+   > blank viewer. `publish.yml` gets this right today (tsup, then
+   > `npm run build`, then `cp -r frontend/dist web/dist`, then `go build`); any
+   > `go-to-wheel` job has to do the same three steps before it runs. swarf is
+   > pure Go and needs none of this.
 
    **Answer:**
 
