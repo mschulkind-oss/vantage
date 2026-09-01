@@ -467,7 +467,9 @@ vocabulary is *closed by something other than our taste*: it is GitHub's set, so
 > `packages/vantage-md/src/styles/`. Worth knowing twice over, because
 > [`styleGuide.ts`](../../packages/vantage-md/src/styleGuide.ts) instructs
 > authors to write callouts that Vantage then renders as literal bracket text —
-> a live gap, independent of this design.
+> a live gap, independent of this design, and the only user-visible one this work
+> left behind. It is tracked as [OQ-10](#open-questions), with the counts:
+> twenty-one alerts in this file alone.
 >
 > This makes the reuse argument *stronger*, not weaker. The `tone` palette that
 > shipped **is** the six-colour light/dark treatment that rendering real GFM
@@ -1818,11 +1820,14 @@ document say `bg=amber`; §4.3 is substantially rewritten as a result, and the
 rejected version is preserved in §12), and **OQ-5** pulled the sanitiser
 hardening inside this feature (§11 step 1).
 
-Implementation left four questions genuinely open. All four are about the
-**tooling around** this feature rather than the feature itself — which is why the
-frontmatter still reads `status: accepted`: the design is settled and shipped, and
-none of these four is a ruling it is waiting on. All four were found *because*
-this work touched code in three packages at once.
+Implementation left **five** questions genuinely open, and none of them is a
+ruling this design is waiting on — which is why the frontmatter still reads
+`status: accepted`: the design is settled and shipped. Four are about the **tooling
+around** the feature rather than the feature itself, and were found *because* this
+work touched code in three packages at once. The fifth, **OQ-10**, is different in
+kind: it is about the **product**, it is the only one a reader can see, and it is
+here because §4.3 measured the gap and then handed a successor an instruction with
+nowhere to live.
 
 1. 💬 **OQ-6: `packages/vantage-md` is outside the quality gate, and the
    frontend's type-check is a no-op.** The package this feature's core lives in
@@ -1923,7 +1928,37 @@ this work touched code in three packages at once.
    **Answer:**
    > _(empty — fill in when decided)_
 
-Beyond those four, the residual in §8.2 is still open in principle — whether an
+5. 💬 **OQ-10: Vantage renders no GFM alerts, and the style guide tells every
+   agent to write them.** The product gap §4.3 measures. `remark-gfm` does not
+   implement alerts, so `> [!WARNING]` renders as a plain blockquote with the
+   literal `[!WARNING]` on the page; nothing downstream removes it (no component
+   override in either viewer, no alert CSS anywhere), while
+   [`styleGuide.ts`](../../packages/vantage-md/src/styleGuide.ts) instructs authors
+   to write all five forms and
+   [`rules/markdown.ts`](../../packages/vantage-check/src/rules/markdown.ts) allows
+   the labels past `no-undefined-references` for exactly that reason. Measured
+   2026-08-31: **this document alone opens twenty-one of them** — 8 WARNING,
+   5 CAUTION, 4 IMPORTANT, 3 NOTE, 1 TIP, including every load-bearing security and
+   CSS box — and `docs/` plus `userguide/` hold forty-one. So the canonical
+   document for this feature is also the worst-affected file in the repository.
+   Recorded as work rather than only as a fact (finding (6) above) because §4.3
+   hands a successor an instruction — "whoever ships alert rendering should consume
+   these tokens" — and an instruction with no work item is a comment.
+
+   _Leaning:_ Ship it on this feature's palette rather than a second one, which is
+   what makes it cheap: `tone`'s six custom properties in `directives.css` already
+   *are* the light/dark/print treatment an alert needs, and the five alert labels
+   are the five `tone` tokens by construction (§4.3), so the work is a pass that
+   turns the label into `data-vantage-tone` plus a title row on the blockquote —
+   no new colours and no new vocabulary. Deliberately not done here: it changes how
+   **ordinary Markdown** renders, which is a different blast radius from a
+   directive nobody else can see, and it would have been the one part of this
+   feature that could regress a document carrying no directives at all.
+
+   **Answer:**
+   > _(empty — fill in when decided)_
+
+Beyond those five, the residual in §8.2 is still open in principle — whether an
 in-container overlay built from `position: absolute` and large margins is worth
 closing further — and it should be settled by trying the attack rather than by
 discussion.

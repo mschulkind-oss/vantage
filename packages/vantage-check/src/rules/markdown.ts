@@ -12,9 +12,15 @@ export const HYGIENE_RULE = "markdown/hygiene";
 
 /**
  * GitHub's alert syntax — `> [!NOTE]` — is not part of GFM, so remark parses
- * the label as a shortcut reference to a definition that does not exist. Vantage
- * renders these as callouts and the style guide tells authors to write them, so
- * flagging them would be the checker arguing with its own guide.
+ * the label as a shortcut reference to a definition that does not exist. The
+ * style guide tells authors to write them, so flagging them would be the checker
+ * arguing with its own guide.
+ *
+ * Vantage does **not** render them as callouts, measured: `remark-gfm` has no
+ * alert support, so `> [!WARNING]` is a plain blockquote with the bracket text
+ * visible on the page. This allowance is not evidence that rendering exists —
+ * it is deference to the guide. The gap is `docs/design/inline-markup.md` §4.3
+ * and OQ-10.
  */
 const ALERT_LABELS = ["!NOTE", "!TIP", "!IMPORTANT", "!WARNING", "!CAUTION"];
 
