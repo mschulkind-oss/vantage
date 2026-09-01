@@ -58,7 +58,7 @@ const FIXTURE = [
 
 /** A directive-carrying fixture, kept separate so the line numbers above stay put. */
 const DIRECTIVE_FIXTURE = [
-  "<!-- vantage: section tone=warning -->", // 1
+  "<!-- vantage: section tone=warning collapsed=true -->", // 1
   "", // 2
   "## Stamped section", // 3
   "", // 4
@@ -67,6 +67,12 @@ const DIRECTIVE_FIXTURE = [
   "_Leaning:_ back of the queue.", // 7
   "", // 8
 ].join("\n");
+
+/** Markers a post-render pass sets at runtime, which no renderer's HTML carries. */
+const JS_SET_MARKERS = new Set([
+  "data-vantage-collapse-ready",
+  "data-vantage-collapse-id",
+]);
 
 interface Rendered {
   sourceLines: string[];
@@ -93,7 +99,14 @@ function describeTree(root: HTMLElement): Rendered {
 
   const directives: string[] = [];
   for (const el of Array.from(root.querySelectorAll("*"))) {
+    // The app viewer additionally runs the collapse pass, which injects a caret,
+    // marks the container `data-vantage-collapse-ready` and mints an `id` for
+    // `aria-controls` where a block had none. That difference is the design: the
+    // marker is what the hiding CSS is gated on, so the renderers *must* differ
+    // there — and must agree on everything the plugin stamped.
+    if (el.hasAttribute("data-vantage-collapse-caret")) continue;
     for (const attribute of Array.from(el.attributes)) {
+      if (JS_SET_MARKERS.has(attribute.name)) continue;
       if (attribute.name.startsWith("data-vantage-")) {
         directives.push(
           `${el.tagName.toLowerCase()} ${attribute.name}="${attribute.value}"`,
@@ -197,8 +210,11 @@ describe("every renderer runs the same chain", () => {
     const expected = [
       'h2 data-vantage-tone="warning"',
       'h2 data-vantage-run="start"',
+      'h2 data-vantage-collapse-toggle="1"',
       'p data-vantage-tone="warning"',
       'p data-vantage-run="end"',
+      'p data-vantage-collapsed="true"',
+      'p data-vantage-collapse-group="1"',
       'p data-vantage-oq="true"',
       'p data-vantage-leaning="Back of the queue"',
     ];

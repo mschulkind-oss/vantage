@@ -241,6 +241,55 @@ describe("the mechanisms the treatment rests on", () => {
     );
   });
 
+  it("double-gates the collapse hiding rule, and never writes it bare", () => {
+    // Both gates, and neither is decoration.
+    //
+    // `[data-vantage-collapse-ready]` is set by the toggle JS after it attaches,
+    // so a renderer without that JS — the CLI checker's HTML, an external
+    // consumer of this stylesheet — hides nothing. A bare
+    // `[data-vantage-collapsed="true"] { display: none }` is content loss with no
+    // way to reveal it (P1/D8).
+    //
+    // `@media not print` is the second: a collapsed section must print open, and
+    // `not print` means this declaration does not *exist* in the print
+    // stylesheet, so — unlike a `display: revert` counter-rule — no third rule
+    // can defeat it (D7). Measured with a media-swapped build: `display: none`
+    // on screen, `display: block` in print simulation, no `!important` anywhere.
+    const hide = css.match(
+      /@media not print \{\s*\[data-vantage-collapse-ready\] \[data-vantage-collapsed="true"\] \{\s*display: none;\s*\}\s*\}/,
+    );
+    expect(
+      hide,
+      "the double-gated hiding rule is not in directives.css",
+    ).not.toBeNull();
+
+    // Every `display: none` on a collapsed block is inside that one rule.
+    for (const match of css.matchAll(
+      /([^{}]*)\{[^{}]*display: none[^{}]*\}/g,
+    )) {
+      const selector = match[1].trim();
+      if (!selector.includes("data-vantage-collapsed")) continue;
+      expect(selector).toContain("[data-vantage-collapse-ready]");
+    }
+  });
+
+  it("keeps the caret out of print, where every section is open", () => {
+    const print = css.slice(css.lastIndexOf("@media print"));
+    expect(print).toMatch(/\.vantage-collapse-caret \{\s*display: none;\s*\}/);
+  });
+
+  it("rotates a real caret element, not a third pseudo on the heading", () => {
+    // `::before` is the tone rule and `::after` is the badge, and one heading can
+    // carry a tone, a badge and a toggle at once — so the caret has to be its own
+    // element. `aria-expanded` sits on that element because it is a `<button>`;
+    // a heading is not allowed to carry the attribute.
+    expect(css).toContain(".vantage-collapse-caret {");
+    expect(css).toContain(
+      '[data-vantage-collapse-toggle] .vantage-collapse-caret[aria-expanded="false"]',
+    );
+    expect(css).not.toMatch(/\[data-vantage-collapse-toggle\]::(before|after)/);
+  });
+
   it("sets no `color` on prose, which print would discard anyway", () => {
     // The host stylesheet's print block forces `.prose, .prose *` to #1a1a1a
     // with `!important`. A tone that expressed itself as text colour would

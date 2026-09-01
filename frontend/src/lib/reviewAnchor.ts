@@ -28,9 +28,14 @@ import type { CommentAnchor } from "../types";
  * downstream as "the document changed under this comment". Add a new kind of
  * injected element without adding it here and every anchor on its block
  * silently drifts.
+ *
+ * The collapse caret is listed even though it carries no text of its own — its
+ * glyph is drawn by CSS `content`, precisely so a heading's hash cannot depend on
+ * whether the toggle JS ran — because "injected UI is not document" is the rule,
+ * and a caret that later gained a visible label should not have to rediscover it.
  */
 export const REVIEW_UI_SELECTOR =
-  "[data-review-inline-comment], .review-revision-badge, .review-addressed-badge, [data-vantage-oq-button]";
+  "[data-review-inline-comment], .review-revision-badge, .review-addressed-badge, [data-vantage-oq-button], [data-vantage-collapse-caret]";
 
 /**
  * Tags a comment may anchor to, as a selector that also requires

@@ -743,6 +743,271 @@ describe("the `oq` directive", () => {
   });
 });
 
+describe("the `collapsed` token", () => {
+  const SECTION = [
+    "<!-- vantage: section collapsed=true -->",
+    "",
+    "## Details",
+    "",
+    "Body one.",
+    "",
+    "Body two.",
+    "",
+    "## Next",
+    "",
+    "Outside.",
+  ].join("\n");
+
+  it("stamps a toggle on the heading and a group on each body block", async () => {
+    const host = await render(SECTION);
+
+    // The heading takes a *different* attribute from the blocks it hides, and
+    // that asymmetry is the design: sharing one would make a nested heading —
+    // both a hidden member and a toggle — unreachable by either control.
+    expect(stamped(host.querySelector("h2"))).toEqual({
+      "data-vantage-collapse-toggle": "1",
+    });
+    for (const paragraph of Array.from(host.querySelectorAll("p")).slice(
+      0,
+      2,
+    )) {
+      expect(stamped(paragraph)).toEqual({
+        "data-vantage-collapsed": "true",
+        "data-vantage-collapse-group": "1",
+      });
+    }
+    // The section ends where the tone's would: at the next same-depth heading.
+    expect(stamped(host.querySelectorAll("h2")[1])).toEqual({});
+    expect(stamped(host.querySelectorAll("p")[2])).toEqual({});
+  });
+
+  it("wraps nothing — no `details`, no `summary`, no added element", async () => {
+    // Four measured breakages, not taste: comment cards would land inside the
+    // `<summary>`, a summary click would also open the comment popover, the
+    // typography plugin's `h2 + *` margin resets would stop matching, and it is
+    // the restructuring the design's own Open Question settled against.
+    const markup = await html(SECTION);
+
+    expect(markup).not.toContain("<details");
+    expect(markup).not.toContain("<summary");
+    expect(prose(markup)).toBe(
+      prose(await html(SECTION.replace(/^<!-- vantage:.*-->$/m, ""))),
+    );
+  });
+
+  it("shows every block, and no readiness marker, with no JS", async () => {
+    // The gate the whole feature rests on. `renderMarkdown`'s HTML is what the
+    // CLI checker reads and what an external consumer of the package's viewer
+    // renders; the hiding CSS is gated on a marker only the toggle pass sets, so
+    // this HTML must carry every block AND must not carry the marker. Hidden
+    // content with no way to reveal it is content loss (P1/D8), not a style.
+    const markup = await html(SECTION);
+
+    expect(markup).not.toContain("data-vantage-collapse-ready");
+    expect(prose(markup)).toContain("Body one.");
+    expect(prose(markup)).toContain("Body two.");
+  });
+
+  it("numbers groups in document order, densely and repeatably", async () => {
+    const host = await render(
+      [
+        "<!-- vantage: section collapsed=true -->",
+        "",
+        "## First",
+        "",
+        "A.",
+        "",
+        "<!-- vantage: section collapsed=true -->",
+        "",
+        "## Second",
+        "",
+        "B.",
+        "",
+        "<!-- vantage: section collapsed=true -->",
+        "",
+        "## Third",
+        "",
+        "C.",
+      ].join("\n"),
+    );
+
+    expect(
+      Array.from(host.querySelectorAll("[data-vantage-collapse-toggle]")).map(
+        (el) => el.getAttribute("data-vantage-collapse-toggle"),
+      ),
+    ).toEqual(["1", "2", "3"]);
+    expect(
+      Array.from(host.querySelectorAll("[data-vantage-collapse-group]")).map(
+        (el) => el.getAttribute("data-vantage-collapse-group"),
+      ),
+    ).toEqual(["1", "2", "3"]);
+  });
+
+  it("counts per document, so one render cannot renumber the next", async () => {
+    // The counter lives in the transformer's closure. At module scope it would
+    // renumber a document because another one rendered first, and `renderMarkdown`
+    // running twice in one process has to produce byte-identical HTML.
+    const once = await html(SECTION);
+    await html(SECTION);
+
+    expect(await html(SECTION)).toBe(once);
+  });
+
+  it("makes a nested heading both a hidden member and its own toggle", async () => {
+    const host = await render(
+      [
+        "<!-- vantage: section collapsed=true -->",
+        "",
+        "## Outer",
+        "",
+        "Para A.",
+        "",
+        "<!-- vantage: section collapsed=true -->",
+        "",
+        "### Inner",
+        "",
+        "Para B.",
+      ].join("\n"),
+    );
+
+    expect(stamped(host.querySelector("h3"))).toEqual({
+      "data-vantage-collapsed": "true",
+      "data-vantage-collapse-group": "1",
+      "data-vantage-collapse-toggle": "2",
+    });
+    // The inner section's body belongs to the inner group: opening the outer one
+    // reveals the `###` with its own caret still closed.
+    expect(stamped(host.querySelectorAll("p")[1])).toEqual({
+      "data-vantage-collapsed": "true",
+      "data-vantage-collapse-group": "2",
+    });
+  });
+
+  it("composes with tone without borrowing its run marker", async () => {
+    const host = await render(
+      [
+        "<!-- vantage: section tone=note collapsed=true -->",
+        "",
+        "## Toned and closed",
+        "",
+        "Body.",
+      ].join("\n"),
+    );
+
+    expect(stamped(host.querySelector("h2"))).toEqual({
+      "data-vantage-tone": "note",
+      "data-vantage-run": "start",
+      "data-vantage-collapse-toggle": "1",
+    });
+    expect(stamped(host.querySelector("p"))).toEqual({
+      "data-vantage-tone": "note",
+      "data-vantage-run": "end",
+      "data-vantage-collapsed": "true",
+      "data-vantage-collapse-group": "1",
+    });
+  });
+
+  it("stamps no run for a collapse-only section", async () => {
+    // `run` describes where a tone's rule starts and stops. A section with no
+    // tone has no rule to draw, so the attribute would be noise the CSS reads.
+    const markup = await html(SECTION);
+
+    expect(markup).not.toContain("data-vantage-run");
+  });
+
+  it("stamps nothing for `collapsed=false`", async () => {
+    // A no-op, not a second state: the token exists so an inner section can
+    // cancel an enclosing one, and "not collapsed" is not a thing an attribute
+    // can say.
+    const host = await render(
+      "<!-- vantage: section collapsed=false -->\n\n## Open\n\nBody.\n",
+    );
+
+    expect(stamped(host.querySelector("h2"))).toEqual({});
+    expect(stamped(host.querySelector("p"))).toEqual({});
+  });
+
+  it("drops `collapsed` on a `block` scope", async () => {
+    // A hidden lone block with no summary is content that is simply gone: there
+    // is nothing left on screen to reveal it. Only a heading can be a summary.
+    const host = await render(
+      "<!-- vantage: block collapsed=true -->\n\nLone paragraph.\n",
+    );
+
+    expect(stamped(host.querySelector("p"))).toEqual({});
+  });
+
+  it("drops `collapsed` on a `section` that degraded onto a non-heading", async () => {
+    const host = await render(
+      "<!-- vantage: section collapsed=true -->\n\nLone paragraph.\n",
+    );
+
+    expect(stamped(host.querySelector("p"))).toEqual({});
+  });
+
+  it("drops the toggle on a heading with no body blocks", async () => {
+    // A caret that hides nothing is an affordance that lies, and the group id it
+    // would have burned stays available for the next section.
+    const host = await render(
+      [
+        "<!-- vantage: section collapsed=true -->",
+        "",
+        "## Empty",
+        "",
+        "<!-- vantage: section collapsed=true -->",
+        "",
+        "## Real",
+        "",
+        "Body.",
+      ].join("\n"),
+    );
+
+    expect(stamped(host.querySelectorAll("h2")[0])).toEqual({});
+    expect(stamped(host.querySelectorAll("h2")[1])).toEqual({
+      "data-vantage-collapse-toggle": "1",
+    });
+  });
+
+  it("keeps a value the vocabulary does not contain out of the DOM", async () => {
+    const host = await render(
+      "<!-- vantage: section collapsed=maybe -->\n\n## H\n\nBody.\n",
+    );
+
+    expect(stamped(host.querySelector("h2"))).toEqual({});
+    expect(stamped(host.querySelector("p"))).toEqual({});
+  });
+
+  it("survives the sanitiser, group ids included", async () => {
+    // The two new attributes are value-allowlisted by pattern rather than by
+    // token list, so this is the assertion that catches a missing entry — and a
+    // pattern that rejects the plugin's own output.
+    const host = await render(SECTION);
+
+    expect(
+      host.querySelector("h2")!.getAttribute("data-vantage-collapse-toggle"),
+    ).toBe("1");
+    expect(
+      host.querySelector("p")!.getAttribute("data-vantage-collapse-group"),
+    ).toBe("1");
+  });
+
+  it("refuses a hand-written group that is not a number", async () => {
+    // The toggle JS interpolates the value into a selector, so the sanitiser
+    // pins it to digits: raw HTML is the only way a different shape could appear.
+    const markup = await html(
+      [
+        '<h2 data-vantage-collapse-toggle="1) or true">a</h2>',
+        '<p data-vantage-collapse-group="*">b</p>',
+        '<p data-vantage-collapsed="true" data-vantage-collapse-group="2">c</p>',
+      ].join("\n\n"),
+    );
+
+    expect(markup).not.toContain("or true");
+    expect(markup).not.toContain('data-vantage-collapse-group="*"');
+    expect(markup).toContain('data-vantage-collapse-group="2"');
+  });
+});
+
 describe("the document is the artifact (P1/D8/D1)", () => {
   const FIXTURE = [
     "# Title", // 1

@@ -1,5 +1,6 @@
 import { useEffect, useCallback, type RefObject } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { revealCollapsedBlock } from "../lib/collapseSections";
 
 const HIGHLIGHT_CLASS = "line-anchor-highlight";
 
@@ -125,6 +126,14 @@ export function useLineAnchor(
         closest.classList.add(HIGHLIGHT_CLASS);
         firstMatch = closest;
       }
+    }
+
+    // A `#L42` that lands inside a collapsed section has to open it, or the
+    // scroll below targets a zero-height box and the reader is shown nothing —
+    // with the highlight painted on something they cannot see. Done for every
+    // highlighted node, which covers all three match paths above in one place.
+    for (const node of el.querySelectorAll(`.${HIGHLIGHT_CLASS}`)) {
+      revealCollapsedBlock(node);
     }
 
     if (firstMatch) {

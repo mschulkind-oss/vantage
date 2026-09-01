@@ -114,6 +114,9 @@ describe("the data-vantage-* allowlist", () => {
     expect(await styled(`<p data-vantage-tone="warning">x</p>`)).toContain(
       `data-vantage-tone="warning"`,
     );
+    expect(await styled(`<p data-vantage-collapse-group="12">x</p>`)).toContain(
+      `data-vantage-collapse-group="12"`,
+    );
     for (const attribute of [
       `data-vantage-tone="url(https://attacker.example/x)"`,
       `data-vantage-emphasis="LOUD"`,
@@ -121,6 +124,12 @@ describe("the data-vantage-* allowlist", () => {
       `data-vantage-collapsed="maybe"`,
       `data-vantage-run="everywhere"`,
       `data-vantage-oq="OQ-9"`,
+      // The two collapse ids are pinned to digits by pattern rather than by
+      // token list, because the toggle JS interpolates the value into a
+      // selector.
+      `data-vantage-collapse-group="one"`,
+      `data-vantage-collapse-group="1'], p"`,
+      `data-vantage-collapse-toggle="-1"`,
       // Nothing readmits an attribute by prefix, so a name we never allowlisted
       // is stripped whatever its value.
       `data-vantage-anythingelse="warning"`,
