@@ -78,9 +78,8 @@ export function checkFrontmatter(collector: Collector): void {
  *
  * The test is the parser itself: strip the leading whitespace and complete
  * comments, hand what is left to `parseFrontmatter`, and report only if that
- * yields a real table of fields. Anything less — a document that opens with a
- * comment and a genuine `---` horizontal rule — parses to a string or to
- * nothing, and says nothing.
+ * yields a real table of fields *and* the block is shaped like frontmatter
+ * rather than like a pair of horizontal rules (see `abutsDelimiters`).
  */
 function checkNotAtTop(collector: Collector): void {
   const { text, frontmatter } = collector.doc;
@@ -95,6 +94,7 @@ function checkNotAtTop(collector: Collector): void {
   const shifted = parseFrontmatter(text.slice(offset));
   if (shifted.format === "none" || shifted.problem !== undefined) return;
   if (Object.keys(shifted.frontmatter).length === 0) return;
+  if (!abutsDelimiters(text.slice(offset), shifted.format)) return;
 
   const skipped = text.slice(0, offset);
   const delimiterLine = skipped.split("\n").length;
@@ -102,7 +102,9 @@ function checkNotAtTop(collector: Collector): void {
     ? "a `<!-- vantage: … -->` directive"
     : skipped.includes("<!--")
       ? "an HTML comment"
-      : "a blank line";
+      : skipped.includes(BOM)
+        ? "a byte-order mark"
+        : "a blank line";
   // The directive case is worse than the others: the block it broke becomes a
   // horizontal rule, `hr` is a stampable target, so the directive attaches to it
   // and the author gets a styled rule as evidence that the markup "worked".
@@ -116,6 +118,43 @@ function checkNotAtTop(collector: Collector): void {
     `Frontmatter has to be the first bytes of the file, and this document's \`${shifted.format === "toml" ? "+++" : "---"}\` is on line ${delimiterLine}, under ${intruder}. So the block is body text: it renders as a horizontal rule followed by a heading made of the raw keys, and every field in it is gone — no metadata card, no \`status:\` chip, no \`vantage:\` settings. Move whatever is above the opening delimiter below the closing one.${stamped}`,
   );
 }
+
+/**
+ * Is this block shaped like frontmatter, or like two horizontal rules?
+ *
+ * `parseFrontmatter` cannot answer that and does not have to: at offset 0 a
+ * `---` *is* the frontmatter delimiter, so it trims the region and hands it to
+ * YAML. Below offset 0 the same bytes are ordinary Markdown, and YAML reads any
+ * single line with a colon in it as a mapping — so `Note: this is a draft`
+ * between two thematic breaks parses to `{Note: "this is a draft"}` and would
+ * otherwise be reported as misplaced frontmatter with fields that were never
+ * lost. That report is worse than noise: its remedy ("move whatever is above
+ * the opening delimiter below the closing one") turns the prose into real
+ * frontmatter and deletes the paragraph from the page.
+ *
+ * What actually differs is adjacency. Frontmatter abuts its delimiters, and
+ * that is what makes the consequence this rule describes: the closing `---`
+ * underlines the last key, so the block renders as a rule plus a setext heading
+ * of the raw keys. A blank line beside either delimiter breaks that — the two
+ * delimiters are thematic breaks, the prose is a paragraph between them, and
+ * the document renders exactly as written with nothing missing. Measured both
+ * ways through `renderMarkdown` (see delegates.test.ts). An internal blank line
+ * is left alone: it changes nothing about either delimiter.
+ */
+function abutsDelimiters(text: string, format: "yaml" | "toml"): boolean {
+  const delimiter = format === "toml" ? "+++" : "---";
+  // Both bounds are read the way `parseFrontmatter` reads them: the end of the
+  // opening delimiter's *line* (which may carry trailing spaces) and the
+  // newline before the closing delimiter.
+  const opened = text.indexOf("\n");
+  const end = text.indexOf(`\n${delimiter}`, delimiter.length);
+  if (opened === -1 || end === -1) return false;
+  const inner = text.slice(opened + 1, end).split("\n");
+  return inner[0]?.trim() !== "" && inner.at(-1)?.trim() !== "";
+}
+
+/** The one byte `\s` matches that no editor shows. */
+const BOM = "\uFEFF";
 
 /**
  * How many bytes of leading whitespace and complete HTML comments the document
