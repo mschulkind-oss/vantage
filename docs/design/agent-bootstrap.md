@@ -377,13 +377,14 @@ happen automatically next time."*
 
 ## 8. What I would build, in order
 
-1. **Point this repo's own `AGENTS.md` at the guide and the checker.** Two
-   lines. `AGENTS.md` mentions `vantage-check` five times, and every one is
-   about building or testing the package — verified 2026-08-31. Nothing tells an
-   agent to run it before writing a document, so in the repo that *owns* the
-   tool an agent currently discovers the checker by having the pre-commit hook
-   reject its commit. Costs nothing, conflicts with nothing, and dogfoods the
-   artifact step 3 generates.
+1. **Point this repo's own `AGENTS.md` at the guide and the checker** — **done
+   2026-09-01 in `879650b`.** Before it, every mention of `vantage-check` in
+   that file was about building or testing the package, so in the repo that
+   *owns* the tool an agent discovered the checker by having the pre-commit hook
+   reject a commit. It now names `vantage-check <file>` and `vantage-check
+   style-guide` and says to run them before writing. That bullet is the
+   hand-written form of what step 3 generates, which makes it the dogfood — and
+   the reason step 3's output must stay a pointer (**P5**) rather than a copy.
 2. **Make `uvx vantage-check` resolve.** Clears **R1**, and it is the one step
    this design cannot do for itself: it is
    [`pypi-distribution.md`](pypi-distribution.md) step 4, gated by that doc's
