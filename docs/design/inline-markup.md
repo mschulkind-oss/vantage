@@ -498,13 +498,16 @@ imported by relative source path from
 [`frontend/src/index.css:23`](../../frontend/src/index.css#L23) so the app is.
 Either half alone is a **D5** break: package-only CSS reaches nobody in this
 repo, and frontend-only CSS leaves the exported viewer bare while the app looks
-perfect.
+perfect. The app half is not only that `@import`: it also *feeds the package a
+number*, `--vantage-tone-heading-gutter: 1.5em` at
+[`index.css:198-208`](../../frontend/src/index.css#L198-L208), which is fact 6
+below.
 
-Five mechanisms in that file are fragile in ways that are invisible until they
+Six mechanisms in this wiring are fragile in ways that are invisible until they
 break, so they are written down rather than left to be rediscovered.
 
 > [!CAUTION]
-> **The five load-bearing CSS facts, all measured in real Chrome against the
+> **The six load-bearing CSS facts, all measured in real Chrome against the
 > real Tailwind v4 build.**
 >
 > 1. **`directives.css` must stay UNLAYERED. Never wrap it in `@layer`.** The
@@ -549,10 +552,27 @@ break, so they are written down rather than left to be rediscovered.
 >    `prose-headings:font-semibold` and **de-bolds** a toned heading from 600 to
 >    500. The exclusion is at
 >    [`directives.css:196`](../../packages/vantage-md/src/styles/directives.css#L196).
+> 6. **The toned-heading gutter must stay numerically equal to the ¶-anchor
+>    `padding-left`.** This one lives in the app, not in `directives.css`.
+>    `.prose :is(h1..h6)` is pulled left by `padding-left: 1.5em; margin-left:
+>    -1.5em` to open the heading-anchor gutter
+>    ([`index.css:193-197`](../../frontend/src/index.css#L193-L197)), and an
+>    absolutely positioned `::before` lays out against the *padding* box — so a
+>    toned heading would draw its slice of the section rule 1.5em to the left of a
+>    paragraph's, and `em` resolves per level: measured h2 −36px, h3 −30px, p 0px
+>    inside one section. `index.css:206-208` sets
+>    `--vantage-tone-heading-gutter: 1.5em` on toned prose headings only and
+>    [`directives.css:158-160`](../../packages/vantage-md/src/styles/directives.css#L158-L160)
+>    adds it back inside the `left: calc(…)`. The package defaults the variable to
+>    `0em`, which is what makes the app rule look like dead CSS from either side —
+>    it is not, and the two numbers have to move together.
 >
 > [`directiveTheme.test.ts`](../../frontend/src/lib/directiveTheme.test.ts) and
 > [`directiveCssWiring.test.ts`](../../frontend/src/lib/directiveCssWiring.test.ts)
-> guard all five as text-level assertions over the stylesheet. They have to be
+> guard all six as text-level assertions over the stylesheet — fact 6 by comparing
+> the two declarations to each other
+> ([`:89-114`](../../frontend/src/lib/directiveCssWiring.test.ts#L89-L114)), which
+> catches both the retuned-gutter and the deleted-rule mutations. They have to be
 > text-level: jsdom cannot test the geometry — `getComputedStyle(el, "::before")`
 > throws, `var()` indirection is not resolved, and media queries are not
 > evaluated (A22).
@@ -1623,13 +1643,14 @@ rejected. KaTeX always emits `;`, and the battery of §8.2 confirms it still —
 | **R7. A live-looking button in a static export that silently does nothing** (§2.5) | **Closed, `1312c5c`, and wider than the button.** The gate turned out to be needed at three levels — the toggle, the persisted `localStorage` preference, and `runCommand` itself — because the toggle was not the only route into review mode. The button carries its own `isStaticMode()` check as well. |
 | **R8. No sanitisation test exists** (§8.1), so a regression is invisible | **Discharged, `fd7411c`.** `sanitize.test.ts` is the repo's first sanitisation test: the property allowlist, the `url(`/`expression(` rejection, the `position` rule, and the KaTeX battery. |
 | **R9. The style filter breaks KaTeX** — measured, not hypothetical (§8.2) | **Mitigated.** `position` values are enumerated rather than the property dropped; matching is all-or-nothing so garbage drops silently instead of throwing; pinned by the KaTeX battery, which fails if a release starts emitting something new. |
-| **R10. The stylesheet's mechanisms are invisible until they break** — an `@layer` added "to be tidy", the import moved, a `var()` fallback added for "safety" | **Mitigated, `e5e7ac5`.** Each of the five facts in §4.3 has a text-level assertion in `directiveTheme.test.ts` / `directiveCssWiring.test.ts`, including the attribute-name cross-check against the sanitiser allowlist — the test that would have caught `data-vantage-run` being missing from it. Geometry is not covered: jsdom cannot evaluate it (A22), and no e2e spec was written. |
+| **R10. The stylesheet's mechanisms are invisible until they break** — an `@layer` added "to be tidy", the import moved, a `var()` fallback added for "safety", the toned-heading gutter retuned on one side only | **Mitigated, `e5e7ac5`.** Each of the six facts in §4.3 has a text-level assertion in `directiveTheme.test.ts` / `directiveCssWiring.test.ts`, including the attribute-name cross-check against the sanitiser allowlist — the test that would have caught `data-vantage-run` being missing from it — and the heading-gutter equality, which is the one piece of *geometry* with a guard, because two declarations that must be numerically equal can be compared as text. Rendered pixel positions are still uncovered: jsdom cannot evaluate them (A22), and no e2e spec was written. |
 | **R11. The style filter is itself a denial-of-service surface** — the value it inspects is document-controlled, and the thread it runs on is the renderer's, the static export's and the CI checker's | **Was live and unnoticed; now closed.** The regex as shipped in `fd7411c` was exponentially ambiguous and a 200-character `style` attribute stalled the gate for 94 seconds — §8.4 has the measurements. Closed by making `;` a mandatory separator, so the grammar has exactly one parse; pinned by a flat-time test that fails on an early rung rather than hanging. The general lesson is the one §8.4 now records: "adds no DoS" is a claim to *measure*, not to assert, and a regex over document-controlled text is where to look first. |
 
 **What it costs.** A vocabulary that becomes a compatibility promise, a
-stylesheet whose five mechanisms have to be guarded by text assertions because
-jsdom cannot see geometry, twelve rules the checker must keep in step with the
-plugin, and a second sanitisation policy in the tree.
+stylesheet whose six mechanisms — one of them a number the app and the package
+have to agree on — have to be guarded by text assertions because jsdom cannot see
+geometry, thirteen rules the checker must keep in step with the plugin, and a
+second sanitisation policy in the tree.
 
 **What it deletes.** Two dead duplicates — `frontend/src/lib/rehypeSourceLines.ts`
 and `frontend/src/lib/frontmatter.ts`, each a stale copy imported by nothing but
@@ -1779,7 +1800,7 @@ is ever renumbered or re-spelled.
 | A19 | Import the stylesheet by **relative source path**; the resolvable package subpath points at a gitignored `dist/` | 2026-08-31 | §4.3 |
 | A20 | Import **position** and the `:where()` on the lone-block wash are load-bearing; both are pinned by text assertions | 2026-08-31 | §4.3 |
 | A21 | **`frontend/tailwind.config.js` is inert** — Tailwind v4 reads a JS config only via `@config`. Cite `index.css` instead | 2026-08-31 | §4.3 |
-| A22 | jsdom cannot test the geometry, so assert **plugin output plus text-level drift guards** over the CSS; geometry documents rather than guards | 2026-08-31 | §4.3, R10 |
+| A22 | jsdom cannot test the geometry, so assert **plugin output plus text-level drift guards** over the CSS; geometry documents rather than guards — except the toned-heading-gutter equality, which is two declarations that must match numerically and is therefore text-guarded | 2026-08-31 | §4.3, R10 |
 
 > [!IMPORTANT]
 > **Ten findings were measured and must not be re-derived from assumption.**
