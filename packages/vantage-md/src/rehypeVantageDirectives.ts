@@ -23,56 +23,20 @@ import type { Plugin } from "unified";
 import {
   DIRECTIVE_VOCABULARY,
   parseVantageDirective,
+  VANTAGE_ANCHOR_TARGETS,
+  VANTAGE_STYLE_TARGETS,
 } from "./vantageDirectives.js";
 import type { KeyVocabulary, ParsedDirective } from "./vantageDirectives.js";
 
 /**
- * What a `section`/`block` directive may stamp.
+ * What a `section`/`block` and an `oq` directive may stamp.
  *
- * Deliberately `rehypeSourceLines`'s `BLOCK_TAGS`: a stamped block should also
- * be a block with a `data-source-line`, so the styling surface and the anchor
- * surface coincide. It also keeps an inline directive from stamping the `<em>`
- * that happens to follow it inside a paragraph.
+ * Both lists live in `vantageDirectives.ts`, with the reasoning for each tag,
+ * because the CLI checker resolves the same question over mdast and must reach
+ * the same answer (D5).
  */
-const STYLE_TARGET_TAGS = new Set([
-  "p",
-  "h1",
-  "h2",
-  "h3",
-  "h4",
-  "h5",
-  "h6",
-  "li",
-  "blockquote",
-  "pre",
-  "table",
-  "tr",
-  "ul",
-  "ol",
-  "hr",
-  "div",
-]);
-
-/**
- * What an `oq` directive may stamp — strictly the tags the review system can
- * resolve an anchor on (`ANCHOR_TAGS` in the app's `MarkdownViewer`, and the
- * block map in `useReviewHighlights`). `ul`, `ol`, `tr`, `hr` and `div` are in
- * neither, so a button on one of them would build an anchor no review pass can
- * find — the "mis-wired button" D6 forbids.
- */
-const ANCHOR_TARGET_TAGS = new Set([
-  "p",
-  "h1",
-  "h2",
-  "h3",
-  "h4",
-  "h5",
-  "h6",
-  "li",
-  "blockquote",
-  "pre",
-  "table",
-]);
+const STYLE_TARGET_TAGS = new Set<string>(VANTAGE_STYLE_TARGETS);
+const ANCHOR_TARGET_TAGS = new Set<string>(VANTAGE_ANCHOR_TARGETS);
 
 const HEADING_DEPTHS = new Map([
   ["h1", 1],

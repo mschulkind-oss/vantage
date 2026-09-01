@@ -148,7 +148,7 @@ one list.
 
 ## What it checks
 
-Two families, and the difference between them is the whole idea.
+Three groups, and the difference between them is the whole idea.
 
 **Our rules** need *this repository on disk* and Vantage's routing semantics. No
 general-purpose Markdown linter can answer them, which is why they are written
@@ -184,6 +184,36 @@ words.
 | `katex/parse` | A `$$...$$` formula KaTeX rejects, rendered as red error text | error |
 | `render/pipeline` | A document the viewer's own render pipeline throws on, end to end | error |
 | `markdown/hygiene` | General Markdown hygiene via `remark-lint` | **off** |
+
+**Vantage's own markup** is the third group: the `<!-- vantage: … -->` directives
+that Vantage compiles into styling attributes and every other renderer drops. No
+third party owns these questions, and there is no error to surface — a directive
+that Vantage does not understand is *silently* inert by design, so a typo renders
+a bare document with no message anywhere. These rules are the only thing that
+will ever tell you.
+
+| Rule | Catches | Default |
+| :--- | :--- | :--- |
+| `vantage/unterminated` | A `<!-- vantage:` comment with no `-->`, which deletes the rest of the document from the render | error |
+| `vantage/malformed` | A `<!-- vantage: … -->` comment that does not parse, so it is ignored | error |
+| `vantage/unknown-name` | A name outside `section`, `block` and `oq` — the whole directive is dropped | error |
+| `vantage/unknown-key` | A key the closed vocabulary does not contain | error |
+| `vantage/unknown-value` | A value outside the closed token set for its key | error |
+| `vantage/list-split` | A directive between two list items, which ends the list and starts a second one | error |
+| `vantage/duplicate-key` | The same key twice — the last one wins, so a warning | warning |
+| `vantage/orphan` | A directive with no block it can attach to, so it styles nothing | warning |
+
+The grammar, the vocabulary and the list of blocks a directive can attach to are
+all imported from the viewer's own module, so the checker cannot disagree with
+the renderer about what a directive means. And like links, directives come from
+the parsed document — a `<!-- vantage: … -->` inside a fenced block or backticks
+is a code sample, not a finding.
+
+`vantage/unterminated` is an error rather than a warning because of what it
+costs: Markdown reads every line below an unclosed `<!--` as part of the comment,
+so a single missing `-->` deletes every heading and paragraph beneath it from the
+rendered page. Nothing else in this tool notices — the document still parses,
+still renders, and still passes every other rule.
 
 `render/pipeline` is the backstop: the whole document through `renderMarkdown`,
 the viewer's own function with the same plugins in the same order. Whatever the

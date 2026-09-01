@@ -11,10 +11,13 @@ export interface RuleMeta {
 /**
  * Every rule the checker knows, and what it does out of the box.
  *
- * Two families, and the split is the design's P2. `link/*` is ours because no
- * general-purpose tool can answer "does this path exist in *this* repo"; the
- * rest delegate to the parser that actually owns the question, so a diagram
- * fails for the reason the viewer would fail on it, in that parser's own words.
+ * Three kinds, and the split is the design's P2. `link/*` is ours because no
+ * general-purpose tool can answer "does this path exist in *this* repo".
+ * `frontmatter/*`, `mermaid/*`, `katex/*` and `render/*` delegate to the parser
+ * that actually owns the question, so a diagram fails for the reason the viewer
+ * would fail on it, in that parser's own words. And `vantage/*` is about
+ * Vantage's own markup, where there is no third party to ask and no error to
+ * surface — the renderer is silent on purpose, so the checker has to speak.
  */
 export const RULES: readonly RuleMeta[] = [
   {
@@ -79,6 +82,59 @@ export const RULES: readonly RuleMeta[] = [
     id: "katex/parse",
     summary: "A `$$...$$` formula KaTeX rejects, rendered as red error text",
     default: "error",
+  },
+  // `vantage/*` — the one family whose subject is Vantage's own markup, and the
+  // one family whose findings nothing else in the tool can produce. Every
+  // directive failure is silent by design (D2: unknown is inert, never fatal),
+  // so a typo renders a bare document with no error anywhere; these rules are
+  // the only thing that says so. Severities follow the house rule: a question
+  // the parsed tree has *settled* is an error, and something that works but is
+  // almost certainly not what the author meant is a warning (`link/*`).
+  {
+    id: "vantage/unterminated",
+    summary:
+      "A `<!-- vantage:` comment with no `-->`, which deletes the rest of the document from the render",
+    default: "error",
+  },
+  {
+    id: "vantage/malformed",
+    summary:
+      "A `<!-- vantage: … -->` comment that does not parse, so it is ignored",
+    default: "error",
+  },
+  {
+    id: "vantage/unknown-name",
+    summary:
+      "A directive name outside `section`, `block` and `oq` — the whole directive is dropped",
+    default: "error",
+  },
+  {
+    id: "vantage/unknown-key",
+    summary: "A directive key the closed vocabulary does not contain",
+    default: "error",
+  },
+  {
+    id: "vantage/unknown-value",
+    summary: "A directive value outside the closed token set for its key",
+    default: "error",
+  },
+  {
+    id: "vantage/list-split",
+    summary:
+      "A directive between two list items, which ends the list and starts a second one",
+    default: "error",
+  },
+  {
+    id: "vantage/duplicate-key",
+    summary:
+      "The same key twice in one directive — the last one wins, so a warning",
+    default: "warning",
+  },
+  {
+    id: "vantage/orphan",
+    summary:
+      "A directive with no block it can attach to, so it styles nothing — it resolves, so a warning",
+    default: "warning",
   },
   {
     id: "render/pipeline",
