@@ -106,7 +106,7 @@ consumes it:
 | :--- | :--- |
 | [`pipeline.ts:129-134`](../../packages/vantage-md/src/pipeline.ts#L129-L134) | `buildPipeline(options)` — the only place the plugin list and its order exist. |
 | [`renderMarkdown.ts:82-97`](../../packages/vantage-md/src/renderMarkdown.ts#L82-L97) | String-in, HTML-out. Feeds the CLI checker, `resolveLinks`, and `renderMermaidBlocks`. |
-| [`MarkdownViewer.tsx:725-726`](../../frontend/src/components/MarkdownViewer.tsx#L725-L726) | The app's `<ReactMarkdown>`, handed both lists as props. |
+| [`MarkdownViewer.tsx:694-696`](../../frontend/src/components/MarkdownViewer.tsx#L694-L696) | The app's `<ReactMarkdown>`, handed both lists as props. |
 | [`vantage-md/src/MarkdownViewer.tsx:221-222`](../../packages/vantage-md/src/MarkdownViewer.tsx#L221-L222) | The package's own exported React viewer, likewise. |
 | [`core/document.ts:37-43`](../../packages/vantage-check/src/core/document.ts#L37-L43) | The checker's mdast-only parser, via `buildRemarkPlugins()`. |
 
@@ -221,7 +221,7 @@ line — see §4.3 (`data-vantage-run`) and §5.1 (no wrapper element).
 ### 2.4 How an Open Question gets answered today
 
 Four actions. Hover a block in review mode, click it
-([`MarkdownViewer.tsx:531-574`](../../frontend/src/components/MarkdownViewer.tsx#L531-L574)),
+([`MarkdownViewer.tsx:521-558`](../../frontend/src/components/MarkdownViewer.tsx#L521-L558)),
 type into `ReviewCommentPopover`, press Ctrl/Cmd-Enter
 ([`ReviewCommentPopover.tsx:104`](../../frontend/src/components/ReviewCommentPopover.tsx#L104)).
 That calls `addComment(anchor, comment, fallbackText)`
@@ -286,7 +286,7 @@ for anything decorative, and that is why the frontmatter chip is deliberately
 > no server, and every control has to be asked whether it can work there.**
 
 There is also a **raw view** — a `<pre>` of the source text
-([`ViewerPage.tsx:1475-1499`](../../frontend/src/pages/ViewerPage.tsx#L1475-L1499)).
+([`ViewerPage.tsx:1471-1490`](../../frontend/src/pages/ViewerPage.tsx#L1471-L1490)).
 Directives are visible there, as literal comment text. That is correct: raw view
 shows the file, and the file contains the comment.
 
@@ -363,7 +363,7 @@ sanitiser removes it as it removes every comment today, and nothing is logged
 > `<!-- vantage: section tone="a--b" -->` reaches the tree with `tone="a--b"`
 > intact, and `leaning="a--b"` reaches the DOM: HTML5 comment tokenisation closes
 > on `-->` or `--!>` and on **nothing else**
-> ([`vantageDirectives.ts:221-230`](../../packages/vantage-md/src/vantageDirectives.ts#L221-L230)).
+> ([`vantageDirectives.ts:248-257`](../../packages/vantage-md/src/vantageDirectives.ts#L248-L257)).
 > A hand-written scanner — the checker's, which reads source text rather than a
 > parsed tree — therefore has to handle `--!>` as a terminator too.
 >
@@ -934,7 +934,7 @@ the section rather than wrapping them in a `<section>`.
 >    inside the summary.
 > 2. **The summary click also opens the comment popover.** The container click
 >    handler bails only on links, `button`, and the review UI's own markers
->    ([`MarkdownViewer.tsx:539-548`](../../frontend/src/components/MarkdownViewer.tsx#L539-L548))
+>    ([`MarkdownViewer.tsx:524-532`](../../frontend/src/components/MarkdownViewer.tsx#L524-L532))
 >    — a `<summary>` is none of those. This is also why the caret is a real
 >    `<button>` rather than a click handler on the heading.
 > 3. **`@tailwindcss/typography`'s margin resets stop matching.** `h2 + *` and
@@ -1900,11 +1900,11 @@ nowhere to live.
 3. 💬 **OQ-8: three copies of the anchorable-tag list, none tied to the
    others.** The same eleven tags are written out in three places, in three
    different shapes: `ANCHOR_TAGS` as a selector string
-   ([`MarkdownViewer.tsx:38`](../../frontend/src/components/MarkdownViewer.tsx#L38)),
+   ([`MarkdownViewer.tsx:39`](../../frontend/src/components/MarkdownViewer.tsx#L39)),
    `ANCHORABLE_BLOCK_SELECTOR` as a longer selector string
    ([`reviewAnchor.ts:48-49`](../../frontend/src/lib/reviewAnchor.ts#L48-L49)),
    and `VANTAGE_ANCHOR_TARGETS` as an array
-   ([`vantageDirectives.ts:133`](../../packages/vantage-md/src/vantageDirectives.ts#L133)).
+   ([`vantageDirectives.ts:139`](../../packages/vantage-md/src/vantageDirectives.ts#L139)).
    A fourth, `OQ_HOST_TAGS`, is deliberately *narrower* — it drops `pre` and
    `table`, which the plugin will stamp but which cannot host a button — so it is
    a real distinction, not a duplicate. `useReviewHighlights` at least imports
@@ -1969,7 +1969,7 @@ nowhere to live.
    _Leaning:_ Ship it on this feature's palette rather than a second one, which is
    what makes it cheap: `tone`'s six custom properties in `directives.css` already
    *are* the light/dark/print treatment an alert needs, and the five alert labels
-   are the five `tone` tokens by construction (§4.3), so the work is a pass that
+   are five of `tone`'s six tokens by construction (§4.3), so the work is a pass that
    turns the label into `data-vantage-tone` plus a title row on the blockquote —
    no new colours and no new vocabulary. Deliberately not done here: it changes how
    **ordinary Markdown** renders, which is a different blast radius from a
