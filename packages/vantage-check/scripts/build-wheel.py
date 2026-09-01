@@ -115,7 +115,7 @@ def main() -> int:
                 f"Name: {DISTRIBUTION}\n"
                 f"Version: {version}\n"
                 f"Summary: {SUMMARY}\n"
-                "License: MIT\n"
+                "License: Apache-2.0\n"
                 "Project-URL: Homepage, https://github.com/mschulkind-oss/vantage\n"
                 "Requires-Python: >=3.8\n"
                 "Description-Content-Type: text/markdown\n"
