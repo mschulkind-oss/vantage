@@ -127,41 +127,6 @@ done:
     echo
     echo "✓ tree clean, gate green — $(git log -1 --format='%h %s')"
 
-# npm runs prepublishOnly (tsup) automatically, so dist/ is built fresh at
-# publish time — it is never committed and never needed for app development.
-#
-# Publish the vantage-md npm package (optional bump: patch/minor/major/X.Y.Z).
-release-md bump="":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    test -z "$(git status --porcelain)" || { echo "working tree dirty — commit or stash first"; exit 1; }
-    just check-ci
-    cd packages/vantage-md
-    if [ -n "{{bump}}" ]; then
-        npm version "{{bump}}"
-    fi
-    version="$(node -p "require('./package.json').version")"
-    npm publish --access public
-    echo "Published vantage-md@${version}"
-    echo "Remember to commit the version bump and tag if you ran a bump."
-
-# Bump the vantage-check version. The build + publish (cross-compiled binaries
-# and PyPI wheels) is driven by the vantage-check@* tag in
-# .github/workflows/publish-check.yml — this recipe only bumps and reminds you
-# to push the tag. (vantage-check is never published to npm.)
-release-check bump="":
-    #!/usr/bin/env bash
-    set -euo pipefail
-    test -z "$(git status --porcelain)" || { echo "working tree dirty — commit or stash first"; exit 1; }
-    just check-ci
-    cd packages/vantage-check
-    if [ -n "{{bump}}" ]; then
-        npm version "{{bump}}"
-    fi
-    version="$(node -p "require('./package.json').version")"
-    echo "Bumped vantage-check to ${version}."
-    echo "Push the tag to build and publish:  git tag vantage-check@${version} && git push origin vantage-check@${version}"
-
 # ── helpers ─────────────────────────────────────────────────────────
 
 # Build the vantage-check CLI and run it over this repository's own docs.

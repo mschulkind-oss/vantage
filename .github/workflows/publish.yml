@@ -1,22 +1,25 @@
 name: Publish
 
-# Pushing a `v<semver>` tag creates the GitHub release, attaches the binaries and
-# the PyPI wheels, and updates the Homebrew tap. One gesture, matching
-# publish-check.yml and publish-npm.yml — every artifact in this repo ships by
-# pushing its own tag.
+# One version, one tag, one run. Pushing `v<semver>` releases everything this
+# repo ships: the `vantage` server and the `vantage-check` CLI as one archive per
+# platform, both as PyPI wheels, the `vantage-md` library to npm, and a Homebrew
+# formula that installs both binaries.
 #
-# It used to trigger on `release: [published]` instead, which meant a pushed tag
-# did nothing until someone created a release by hand, and — because a release
-# trigger takes no tag filter — that every release publish-check.yml created for
-# a `vantage-check@…` tag also woke this workflow up. `${GITHUB_REF_NAME#v}` then
-# yielded `antage-check@0.1.0`, and the jobs below would have attached nonsense
-# archives to the wrong release and pushed a Homebrew formula built from URLs
-# that do not exist. A runtime `!contains(ref_name, '@')` guard held that off.
-# The tag filter below makes the whole class unreachable: `[0-9]` cannot match
-# the `a` of `vantage`, so a package tag never reaches this workflow at all.
+# It was three workflows and three tag namespaces until 2026-09-01 (`v*`,
+# `vantage-md@*`, `vantage-check@*`), which meant three release gestures and
+# three versions to reconcile. The version now comes from the tag alone —
+# nothing reads a manifest to decide what to publish, so nothing can disagree
+# with it.
 #
-# A manual dispatch still re-runs only the tap update (the binaries must already
-# be on the release), to backfill or recover a formula without cutting a release.
+# The tag filter is `v[0-9]*` rather than `v*` and that is load-bearing: under
+# the old `release: [published]` trigger, which takes no tag filter, any release
+# created for a `vantage-…@…` tag also woke this workflow, and
+# `${GITHUB_REF_NAME#v}` yielded `antage-check@0.1.0`. A runtime guard held that
+# off; the filter makes it unreachable, since `[0-9]` cannot match the `a` of
+# `vantage`.
+#
+# A manual dispatch re-runs only the tap update (the binaries must already be on
+# the release), to backfill or recover a formula without cutting a release.
 on:
   push:
     tags:
@@ -54,12 +57,11 @@ jobs:
               --title "vantage ${version}" \
               --generate-notes
 
-  # Build the vantage binary for each platform with the frontend embedded and
-  # attach the archives to the release.
+  # Build both binaries for one platform, ship them as one archive, and wrap each
+  # in its own PyPI wheel.
   build:
-    # No tag guard needed: the `v[0-9]*` filter on the trigger is the guard, and
-    # it cannot match a package tag. `workflow_dispatch` skips this job so the
-    # `brew` job can run standalone.
+    # No tag guard needed: the `v[0-9]*` filter on the trigger is the guard.
+    # `workflow_dispatch` skips this job so `brew` can run standalone.
     if: github.event_name == 'push'
     needs: [create-release]
     runs-on: ubuntu-latest
@@ -67,65 +69,120 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # `pytags` is the set of PyPI platform tags this leg's binary is valid
-          # for, space-separated. CGO_ENABLED=0 makes it static, so one Linux
-          # binary satisfies glibc and musl both — a second tag, not a second
-          # build. manylinux_2_17 rather than _2_28 for the same reason: nothing
-          # is linked, so the floor is as low as PyPI will accept.
-          # macOS claims 11_0 on both arches because that is Go's own floor;
-          # claiming 10_9 would install on machines the binary cannot run on.
-          - { goos: linux, goarch: amd64, pytags: "manylinux_2_17_x86_64 musllinux_1_2_x86_64" }
-          - { goos: linux, goarch: arm64, pytags: "manylinux_2_17_aarch64 musllinux_1_2_aarch64" }
-          - { goos: darwin, goarch: amd64, pytags: "macosx_11_0_x86_64" }
-          - { goos: darwin, goarch: arm64, pytags: "macosx_11_0_arm64" }
+          # `server_pytags` is the set of PyPI platform tags the Go binary is
+          # valid for, space-separated: CGO_ENABLED=0 makes it static, so one
+          # Linux binary satisfies glibc and musl both — a second tag, not a
+          # second build — and the manylinux floor is as low as PyPI accepts
+          # because nothing is linked. `cli_pytag` is higher (2_28) because bun's
+          # runtime does link glibc. macOS claims 11_0 on both arches, which is
+          # Go's own floor; 10_9 would install on machines it cannot run on.
+          - goos: linux
+            goarch: amd64
+            bun_target: bun-linux-x64
+            server_pytags: "manylinux_2_17_x86_64 musllinux_1_2_x86_64"
+            cli_pytag: manylinux_2_28_x86_64
+          - goos: linux
+            goarch: arm64
+            bun_target: bun-linux-arm64
+            server_pytags: "manylinux_2_17_aarch64 musllinux_1_2_aarch64"
+            cli_pytag: manylinux_2_28_aarch64
+          - goos: darwin
+            goarch: amd64
+            bun_target: bun-darwin-x64
+            server_pytags: "macosx_11_0_x86_64"
+            cli_pytag: macosx_11_0_x86_64
+          - goos: darwin
+            goarch: arm64
+            bun_target: bun-darwin-arm64
+            server_pytags: "macosx_11_0_arm64"
+            cli_pytag: macosx_11_0_arm64
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Install mise
+      - name: Install mise (go, node, bun)
         uses: jdx/mise-action@v4
 
+      - name: Read the version from the tag
+        id: ver
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "Releasing everything as ${version}"
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          # vantage-check bundles vantage-md's TypeScript source, so that
+          # package's own dependencies must resolve at bundle time.
+          ( cd packages/vantage-md && npm ci )
+          ( cd packages/vantage-check && npm ci )
+          ( cd frontend && npm ci )
+
+      # The tag is the only source of truth for the version. build.ts stamps
+      # package.json's version into the CLI binary, so this is what makes
+      # `vantage-check --version` agree with the release it shipped in.
+      - name: Stamp the version into both manifests
+        run: |
+          set -euo pipefail
+          version="${{ steps.ver.outputs.version }}"
+          for pkg in packages/vantage-md packages/vantage-check; do
+            ( cd "$pkg" && npm version "$version" --no-git-tag-version --allow-same-version )
+          done
+
       - name: Build the vantage-md library
-        run: cd packages/vantage-md && npm ci && npx tsup
+        run: cd packages/vantage-md && npx tsup
 
       - name: Build and bundle the frontend
         run: |
-          cd frontend && npm ci && npm run build && cd ..
+          set -euo pipefail
+          ( cd frontend && npm run build )
           rm -rf web/dist && cp -r frontend/dist web/dist
+          test -f web/dist/index.html # an empty embed ships a placeholder page
 
-      - name: Cross-compile and archive
+      - name: Cross-compile the server
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: "0"
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
+          version="${{ steps.ver.outputs.version }}"
           go build -trimpath \
             -ldflags "-s -w \
               -X github.com/mschulkind-oss/vantage/internal/buildinfo.version=${version} \
               -X github.com/mschulkind-oss/vantage/internal/buildinfo.commit=${GITHUB_SHA::7}" \
             -o vantage ./cmd/vantage
-          tar -czf "vantage_${version}_${GOOS}_${GOARCH}.tar.gz" vantage LICENSE README.md
 
-      - name: Upload archive to the release
+      - name: Cross-compile the CLI
+        run: |
+          set -euo pipefail
+          ( cd packages/vantage-check && bun run build --target "${{ matrix.bun_target }}" )
+          cp packages/vantage-check/dist/vantage-check vantage-check
+
+      # One archive per platform carrying both binaries, so the Homebrew formula
+      # installs both from a single url and sha — polyclav's shape.
+      - name: Archive both binaries and attach them to the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${GITHUB_REF_NAME}" vantage_*.tar.gz --clobber
+        run: |
+          set -euo pipefail
+          version="${{ steps.ver.outputs.version }}"
+          name="vantage_${version}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
+          tar -czf "$name" vantage vantage-check LICENSE README.md
+          gh release upload "${GITHUB_REF_NAME}" "$name" --clobber
 
-      # PyPI is the server's fourth channel, beside the archive, the tap and
-      # `go install` (docs/design/pypi-distribution.md). The wheel wraps the
-      # binary built above rather than compiling its own, so what PyPI serves is
-      # byte-identical to what the release serves — which is the whole reason
-      # this uses scripts/build-wheel.py instead of a tool that builds for
-      # itself (§4.5 there).
+      # Each wheel wraps the binary that was just archived, rather than a second
+      # build of it, so PyPI and the release carry the same bytes
+      # (docs/design/pypi-distribution.md §4.5).
       - name: Build the wheels
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
+          version="${{ steps.ver.outputs.version }}"
           mkdir -p wheels
-          for pytag in ${{ matrix.pytags }}; do
+          for pytag in ${{ matrix.server_pytags }}; do
             python3 scripts/build-wheel.py \
               --binary vantage \
               --distribution vantage-md \
@@ -137,24 +194,36 @@ jobs:
               --version "$version" \
               --out-dir wheels
           done
+          python3 scripts/build-wheel.py \
+            --binary vantage-check \
+            --distribution vantage-check \
+            --script vantage-check \
+            --summary "Vantage's Markdown conventions, and a check that a document really renders" \
+            --readme packages/vantage-check/README.md \
+            --platform-tag "${{ matrix.cli_pytag }}" \
+            --version "$version" \
+            --out-dir wheels
           ls -l wheels
 
-      # Only this leg's binary can run on the runner, so only this leg can prove
-      # the wheel is installable and both of its commands work. `uvx vantage-md`
-      # resolving without --from is the whole point of the alias, and the alias
-      # is a generated console script — exactly the class of thing that looks
-      # right in a zip and fails on first use.
-      - name: Smoke-test the host wheel
+      # Only this leg's binaries can run on the runner, so only this leg can
+      # prove any of it works. `uvx vantage-md` resolving without --from is the
+      # whole point of the alias, and the alias is a generated console script —
+      # exactly the class of thing that looks right in a zip and fails on first
+      # use. The CLI also checks this repo's own docs: the checker we hand to
+      # other people's agents has to pass the tree it ships from.
+      - name: Smoke-test the host wheels
         if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
         run: |
           set -euo pipefail
-          version="${GITHUB_REF_NAME#v}"
+          version="${{ steps.ver.outputs.version }}"
           python3 -m venv /tmp/wheelcheck
           /tmp/wheelcheck/bin/pip install --quiet \
-            "wheels/vantage_md-${version}-py3-none-manylinux_2_17_x86_64.whl"
-          /tmp/wheelcheck/bin/vantage --version
-          /tmp/wheelcheck/bin/vantage-md --version   # the alias execs the binary
+            "wheels/vantage_md-${version}-py3-none-manylinux_2_17_x86_64.whl" \
+            "wheels/vantage_check-${version}-py3-none-manylinux_2_28_x86_64.whl"
           /tmp/wheelcheck/bin/vantage --version | grep -F "${version}"
+          /tmp/wheelcheck/bin/vantage-md --version   # the alias execs the binary
+          /tmp/wheelcheck/bin/vantage-check --version | grep -F "${version}"
+          /tmp/wheelcheck/bin/vantage-check check userguide docs
 
       - name: Upload the wheels for the publish job
         uses: actions/upload-artifact@v7
@@ -163,13 +232,15 @@ jobs:
           path: wheels/*.whl
           if-no-files-found: error
 
-  # Publish the wheels built above to PyPI under `vantage-md` — the same name the
-  # npm library uses, because the registry says which form you get (that doc's
-  # P1). Trusted publishing (OIDC), no token; it needs the `vantage-md` project
-  # on PyPI to have a trusted publisher configured for this workflow, which is an
-  # owner action outside this repo.
+  # Publish both projects to PyPI — `vantage-md` (the server) and `vantage-check`
+  # (the CLI). Separate distributions on purpose: one name identifies one
+  # artifact, and an agent linting a file should not fetch a server
+  # (docs/design/pypi-distribution.md §6). They share this one version.
   #
-  # A separate job on purpose: the archives are attached before this runs and the
+  # Trusted publishing (OIDC), no token. Both projects must name THIS workflow
+  # file (`publish.yml`) and the `pypi` environment as a trusted publisher.
+  #
+  # A separate job on purpose: the archives are attached before it runs and the
   # tap job is a sibling rather than a dependent, so a PyPI failure costs the
   # release nothing but its wheels.
   pypi:
@@ -189,8 +260,47 @@ jobs:
 
       - uses: astral-sh/setup-uv@v7
 
-      - name: Publish to PyPI
-        run: uv publish wheels/*.whl --check-url https://pypi.org/simple/
+      # One invocation per project: a minted token is scoped to the project it
+      # was minted for, so mixing both projects' wheels into one upload cannot
+      # work.
+      - name: Publish vantage-md
+        run: uv publish wheels/vantage_md-*.whl --check-url https://pypi.org/simple/
+
+      - name: Publish vantage-check
+        run: uv publish wheels/vantage_check-*.whl --check-url https://pypi.org/simple/
+
+  # Publish the Markdown pipeline to npm at the same version. This is the library
+  # form of `vantage-md`; the PyPI project of that name is the executable server,
+  # and the registry is what says which one you get.
+  npm:
+    if: github.event_name == 'push'
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm provenance (OIDC)
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Node with the npm registry
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+
+      - name: Build vantage-md at the tag's version
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          cd packages/vantage-md
+          npm ci
+          npm version "$version" --no-git-tag-version --allow-same-version
+          npx tsup
+
+      - name: Publish to npm
+        run: cd packages/vantage-md && npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   # Regenerate the Homebrew formula from the released archives and push it to the
   # tap. Runs after a successful build on a tag push, or standalone on a manual

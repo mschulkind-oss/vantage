@@ -8,12 +8,13 @@ summary: "PyPI `vantage-md` is the executable server's distribution — the twin
 
 # The PyPI half of Vantage ships software that no longer exists
 
-**Status:** DECIDED, 2026-09-01, over two review rounds the same day. Every
+**Status:** DECIDED, 2026-09-01, over three review rounds the same day. Every
 question is settled — see the [Decision Ledger](#decision-ledger). **The repo
 side is built:** the frontend export is tracked (`08579a0`), the wheel builder is
-shared and parameterized, and `publish.yml` builds and publishes wheels. What
-remains is owner action on pypi.org — the yank, and registering `vantage-check` —
-plus cutting the release that exercises it ([§9](#9-what-i-would-do-in-order)).
+shared and parameterized, and one workflow now publishes everything this repo
+ships from a single `v*` tag at a single version. What remains is registering
+`vantage-check` on pypi.org and cutting that release
+([§9](#9-what-i-would-do-in-order)).
 Every claim about the tree, pypi.org, and the GitHub releases was verified on
 2026-09-01, and the checks are named inline so they can be repeated.
 
@@ -82,7 +83,7 @@ Verified 2026-09-01, against pypi.org, the GitHub releases API, and this tree:
 
 | Channel | Carries | At | Last published |
 | :--- | :--- | :--- | :--- |
-| **npm `vantage-md`** | the Markdown-pipeline library (`packages/vantage-md`) | current | on `vantage-md@*` tags ([`publish-npm.yml`](../../.github/workflows/publish-npm.yml)) |
+| **npm `vantage-md`** | the Markdown-pipeline library (`packages/vantage-md`) | current | on the app's `v*` tag, from [`publish.yml`](../../.github/workflows/publish.yml) since 2026-09-01 |
 | **PyPI `vantage-md`** | the retired Python FastAPI server — **`0.4.1` and `0.4.2` were yanked on 2026-09-01**, so they answer only an exact pin and no longer resolve for anyone | `0.4.2`, yanked | 2026-04-23 |
 | **PyPI `vantage-check`** | nothing — the project does not exist (404) | — | never |
 | **GitHub releases** | Go binaries, four archives (`linux`/`darwin` × `amd64`/`arm64`) | `v0.5.3` | 2026-07-20 |
@@ -146,13 +147,15 @@ rather than adding a channel of its own. As built:
   `id-token: write`, no token). Separate on purpose — the archives and the
   Homebrew formula are already published by the time it runs, so a PyPI failure
   costs the release nothing but its wheels.
-- **The trigger is the app's own tag.** `publish.yml` was moved from
-  `release: [published]` to `push: tags: ['v[0-9]*']` in the same round, so it
-  matches `publish-check.yml` and `publish-npm.yml`: one gesture per artifact,
-  and a `create-release` job creates what the matrix legs attach to. That filter
-  also replaces a runtime guard — a release trigger takes no tag filter, so every
-  release `publish-check.yml` created woke this workflow too, and `[0-9]` cannot
-  match the `a` of `vantage`.
+- **One tag publishes everything.** The three release workflows collapsed into
+  [`publish.yml`](../../.github/workflows/publish.yml) on 2026-09-01, triggered by
+  `push: tags: ['v[0-9]*']`: a `create-release` job, a four-leg matrix that builds
+  both binaries and every wheel, then `pypi`, `npm` and `brew`. The per-package
+  tag namespaces are gone, and **the version comes from the tag alone** — CI
+  stamps it into both `package.json`s, so no manifest can disagree with what
+  shipped. That filter also replaced a runtime guard: a release trigger takes no
+  tag filter, so every release the CLI's old workflow created woke this one too,
+  and `[0-9]` cannot match the `a` of `vantage`.
 
 The wheel metadata is `vantage-md`, Apache-2.0, with `vantage` as the installed
 command ([§4.3](#43-the-command-is-vantage-the-one-shot-pays-for-it)).
@@ -361,11 +364,11 @@ is repeatable, and `publish.yml` passes `--alias vantage-md`
 
 | Audience | Channel | Command |
 | :--- | :--- | :--- |
-| Human, macOS/Linux | Homebrew | `brew install mschulkind-oss/tap/vantage` |
+| Human, macOS/Linux | Homebrew | `brew install mschulkind-oss/tap/vantage` — installs **both** binaries, since one archive carries both |
 | Human, Go toolchain | `go install` | `go install …/cmd/vantage@latest` |
 | Human, Python-first machine | **PyPI wheel** | `uvx vantage-md <path>` for a one-shot, or `uv tool install vantage-md` for `vantage` on `PATH` (§4.3) |
 | Human, neither | release archive | download and untar |
-| **Agent** | **PyPI wheel** | `uvx vantage-check <file>` |
+| **Agent** | **PyPI wheel** | `uvx vantage-check <file>` — its own project, at the repo's shared version |
 | Frontend / library consumer | npm | `npm i vantage-md` |
 
 The server's PyPI presence is a convenience for the Python-first case, never the
@@ -386,14 +389,20 @@ post-processing its output. And then every consumer of either program downloads
 both: the CLI binary measured **92,325,064 bytes** on 2026-09-01, so a ~6 MB
 server wheel becomes ~98 MB, per platform, per app release.
 
-**Cadence is the structural half.** The app is tagged `v*`; the CLI is tagged
-`vantage-check@*`, and [`publish.yml`](../../.github/workflows/publish.yml)
-documented at length why the two namespaces must not be confused — on a
-`vantage-check@0.1.0` tag, `${GITHUB_REF_NAME#v}` yields `antage-check@0.1.0`,
-and the job would attach nonsense to the wrong release and push a broken formula
-to the public tap. (That guard is now a tag filter instead, **R4**.) One project
-means the checker can only ship when the app ships, and every app release
-re-uploads the checker.
+**Cadence was the structural half, and it is the argument that did not survive.**
+It ran: the app is tagged `v*`, the CLI `vantage-check@*`, so one project would
+mean the checker can only ship when the app ships. On 2026-09-01 the owner ruled
+for exactly that — **one version, one tag, one run**, matching the sibling
+projects — so the premise is gone.
+
+> [!IMPORTANT]
+> **Shared version, separate names.** Folding the release *gesture* together did
+> not fold the *distributions* together, and the difference is the whole of this
+> section. `vantage-md` and `vantage-check` remain two PyPI projects publishing
+> the same version from one workflow run. The three arguments that decided that —
+> a Go-module wheel builder cannot carry a bun binary, ~92 MB in every server
+> wheel, and an agent linting one file should not fetch a server — are untouched
+> by a shared version number, and so is **P1**: one name, one artifact.
 
 **Audience is the last half.** The CLI's consumer is an agent linting one file,
 often in a sandbox with a cold cache; it must not fetch a server. The server's
@@ -411,8 +420,8 @@ form of the viewer — so it takes a third name. The same reasoning that makes n
 
 **Ruling (2026-09-01): its own project** — which is also what the tree already
 assumes end to end:
-[`publish-check.yml`](../../.github/workflows/publish-check.yml),
-`build-wheel.py`'s hardcoded `DISTRIBUTION = "vantage-check"`, the review
+[`publish.yml`](../../.github/workflows/publish.yml)'s two `uv publish`
+invocations, `build-wheel.py`'s `--distribution` flag, the review
 payload's `uvx vantage-check <file>` string, and
 [`../../userguide/vantage-check.md`](../../userguide/vantage-check.md).
 
@@ -424,10 +433,11 @@ payload's `uvx vantage-check <file>` string, and
 > with the script it execed. Both are addressed in the current workflow: wheels
 > land in their own directory and only `*.whl` is uploaded, and the `.exe`
 > name is asserted per target before packaging
-> ([`publish-check.yml:100-145`](../../.github/workflows/publish-check.yml#L100-L145)).
-> But no `vantage-check@*` tag has ever been pushed and the project does not
-> exist, so the first tag is also the first execution of that path. Expect to
-> watch it, and expect the first run to be where a remaining defect appears.
+> (now the wheel step in [`publish.yml`](../../.github/workflows/publish.yml)).
+> But nothing has ever published `vantage-check`, so the next release is the
+> first execution of that path. Expect to watch it, and expect the first run to
+> be where a remaining defect appears — which is why that job installs its host
+> wheels and runs their commands before anything is uploaded.
 
 ## 7. Non-goals
 
@@ -456,7 +466,7 @@ payload's `uvx vantage-check <file>` string, and
 | **R1. Silent fallback to the dead app** — `py3-none-any` `0.4.x` was compatible with every platform, so any machine outside the wheel set resolved to it and ran the Python viewer with no warning ([§4.2](#42-version-continuity-and-why-the-yank-is-not-cosmetic)) | **Closed 2026-09-01: both releases yanked.** A machine outside the wheel set now gets a clean resolution failure instead of a different program |
 | **R2. A build with no frontend in it** — the embed tolerates an empty `web/dist`, so any build path that skipped the frontend steps shipped a placeholder page instead of the app, warning only to the server's own stderr ([§4.1](#41-the-frontend-has-to-be-there-at-build-time-and-today-it-often-isnt)) | **Closed** by tracking the export (`08579a0`): there is no longer a build path without a frontend. The residual risk is a *stale* export rather than a missing one, which `just build` refreshes and a reviewer can see in the diff |
 | **R8. `go install` shipped the placeholder** — [`README.md:21-25`](../../README.md#L21-L25) documents `go install …/cmd/vantage@latest`, and the module zip carried only `web/dist/.gitkeep`. Verified 2026-09-01 against a pristine `git archive HEAD` build | **Closed** by the same commit, and re-verified the same way. Note the module proxy caches by version, so the fix reaches `@latest` only once a release tag includes the tracked export |
-| **R3. The wheel job fails after the release is public** | Keep it a separate job with no `needs:` on `build`, so archives and the tap land regardless — the same tolerance `publish-check.yml` already documents for its own PyPI step |
+| **R3. The wheel job fails after the release is public** | Keep `pypi` a separate job: the archives are attached during `build`, and `brew` is a sibling rather than a dependent, so a PyPI failure costs the release nothing but its wheels |
 | **R4. Firing on the wrong tag** — a `vantage-check@*` release used to fire the app's `release: [published]` trigger, and an unguarded job would have published an app wheel versioned `antage-check@0.1.0`. A documented near-miss, not a hypothetical | **Closed** by triggering on `push: tags: ['v[0-9]*']` instead: the class is unreachable rather than guarded, since `[0-9]` cannot match the `a` of `vantage` |
 | **R5. Two projects drifting about one style guide** | They share source, not copies: `packages/vantage-check` imports `vantage-md`'s TypeScript by relative path, and `check-ci` pins its katex and mermaid to `vantage-md`'s |
 | **R6. `uvx` running a long-lived server is unusual** — `uvx` is built for one-shot tools; here it starts a process that serves until killed | It is what `0.4.x` did and documented. Keep it a convenience path, never the recommendation ([§5](#5-the-install-matrix-after-the-fix)) |
@@ -492,12 +502,12 @@ closed), and `vantage-md`'s trusted publisher confirmed against this repo's
    | PyPI Project Name | `vantage-check` | |
    | Owner | `mschulkind-oss` | |
    | Repository name | `vantage` | The **bare** name — `mschulkind-oss/vantage` here is what "Invalid repository name" means, since the owner is already its own field |
-   | Workflow name | `publish-check.yml` | Not `publish.yml`, which publishes `vantage-md` |
-   | Environment name | `pypi` | Matches the `pypi` job this workflow now has |
+   | Workflow name | `publish.yml` | **Not `publish-check.yml`** — that workflow no longer exists; one workflow publishes both projects |
+   | Environment name | `pypi` | The `pypi` job's environment |
 
    Nothing about this conflicts with `vantage-md`'s publisher: PyPI scopes a
-   trusted publisher to a *project*, and one repository may be named by as many
-   of them as it likes.
+   trusted publisher to a *project*, so both projects name this same repository,
+   workflow and environment, and each mints its own token at upload time.
 3. **Then** [`agent-bootstrap.md`](agent-bootstrap.md) step 2 is unblocked and
    its **R1** clears — the payload's `uvx vantage-check` resolves for the first
    time.
@@ -545,6 +555,7 @@ design.
 | OQ-P2 | The agent CLI gets **its own PyPI project**, `vantage-check`; not a second executable in the server's wheel. Supersedes `agent-bootstrap.md`'s `OQ-B7` | 2026-09-01 | §6 |
 | OQ-P3 | **Both commands**: `vantage` is the binary, `vantage-md` an alias, so `uvx vantage-md` needs no `--from` — the two-script wheel's original point, restored as a console-script entry point once the builder became ours (**OQ-P7**) | 2026-09-01 | §4.3 |
 | OQ-P4 | The four archive targets (Linux + macOS × x86-64 + arm64), musl if free, **no Windows**. Pass `--platforms` explicitly rather than trusting defaults | 2026-09-01 | §4.4, §7 |
+| OQ-P8 | **One version, one tag, one run.** The three release workflows and their tag namespaces collapse into `publish.yml` on `v[0-9]*`; CI stamps the tag into both manifests; one archive per platform carries both binaries and the Homebrew formula installs both. Owner ruling, for consistency with the sibling projects — it voids **OQ-P2**'s cadence argument while leaving the separate-projects ruling intact | 2026-09-01 | §4, §6 |
 | OQ-P6 | The built frontend is a **tracked artifact**, polyclav's shape: `web-sync` refreshes it and is the only recipe allowed to dirty a tracked file, `build-bin` embeds it as-is. It is the only fix that reaches `go install`; 5.5 MB and the churn are the price | 2026-09-01 | §4.1, `08579a0` |
 | OQ-P7 | **Our own builder**, moved to `scripts/build-wheel.py` and parameterized, for both artifacts. `go-to-wheel` would compile the Go binary a second time, so PyPI and the release would carry different bytes | 2026-09-01 | §4.5 |
 | OQ-P5 | Apache-2.0 everywhere. Applied the same day to `packages/vantage-md`, `packages/vantage-check`, and `build-wheel.py`'s wheel metadata, which all declared MIT | 2026-09-01 | §8 **R7**, §9 |

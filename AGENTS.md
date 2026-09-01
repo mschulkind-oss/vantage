@@ -65,21 +65,24 @@ Never kill it; run test instances on other ports.
 
 ## Releases
 
-Three tag namespaces, all starting with `v`: `v*` (the app), `vantage-md@*` (the
-npm library), `vantage-check@*` (the CLI). **Each publishes by pushing its own
-tag** — the workflow creates whatever GitHub release it needs.
+**One version, one tag, one run.** Pushing `v<semver>` publishes everything:
+per-platform archives carrying *both* binaries, a PyPI wheel for each of
+`vantage-md` (the server) and `vantage-check` (the CLI), the `vantage-md`
+library to npm, and a Homebrew formula that installs both binaries. There are no
+per-package tags any more, and **no manifest decides a version** — CI stamps the
+tag into both `package.json`s before building, so nothing can disagree with it.
 
-The app's filter is `v[0-9]*`, not `v*`, and that is load-bearing: `vantage-md@…`
-and `vantage-check@…` also start with `v`, so a looser filter would let one
-artifact's tag drive another's release — attaching the wrong archives and pushing
-a broken formula to the public Homebrew tap. `[0-9]` cannot match the `a` of
-`vantage`. This replaced a runtime guard that existed only because the app used
-to trigger on `release: [published]`, which takes no tag filter at all.
+The tag filter is `v[0-9]*`, not `v*`, and that is load-bearing: it is what makes
+a stray `vantage-…` tag unable to reach the workflow at all. Until 2026-09-01 the
+app triggered on `release: [published]` — which takes no tag filter — so a
+release created for a `vantage-check@…` tag woke it, `${GITHUB_REF_NAME#v}`
+yielded `antage-check@0.1.0`, and only a runtime guard stopped it attaching the
+wrong archives and pushing a broken formula to the public tap.
 
-Publishing is by trusted publishing (OIDC): there is no `NPM_TOKEN`, and adding
-one is the wrong fix for a failed publish.
+PyPI publishes by trusted publishing (OIDC, no token), and **both projects must
+name `publish.yml`** as their trusted publisher. npm is the exception: it
+publishes with `NPM_TOKEN` plus OIDC provenance.
 
-PyPI is currently wrong in a way worth knowing before you tell anyone to install
-from it: `vantage-md` there still serves the retired Python app, and
-`vantage-check` is not registered at all. See
-`docs/design/pypi-distribution.md`.
+PyPI's state is worth knowing before you tell anyone to install from it —
+`vantage-md` there still serves the retired Python app and `vantage-check` is
+unregistered until the next release. See `docs/design/pypi-distribution.md`.
