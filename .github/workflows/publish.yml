@@ -1,12 +1,26 @@
 name: Publish
 
-# Mirrors the release flow: publishing a GitHub Release builds the binaries,
-# attaches them to the release, and updates the Homebrew tap. A manual dispatch
-# re-runs only the tap update (the binaries must already be on the release) to
-# recover or backfill a formula without cutting a new release.
+# Pushing a `v<semver>` tag creates the GitHub release, attaches the binaries and
+# the PyPI wheels, and updates the Homebrew tap. One gesture, matching
+# publish-check.yml and publish-npm.yml — every artifact in this repo ships by
+# pushing its own tag.
+#
+# It used to trigger on `release: [published]` instead, which meant a pushed tag
+# did nothing until someone created a release by hand, and — because a release
+# trigger takes no tag filter — that every release publish-check.yml created for
+# a `vantage-check@…` tag also woke this workflow up. `${GITHUB_REF_NAME#v}` then
+# yielded `antage-check@0.1.0`, and the jobs below would have attached nonsense
+# archives to the wrong release and pushed a Homebrew formula built from URLs
+# that do not exist. A runtime `!contains(ref_name, '@')` guard held that off.
+# The tag filter below makes the whole class unreachable: `[0-9]` cannot match
+# the `a` of `vantage`, so a package tag never reaches this workflow at all.
+#
+# A manual dispatch still re-runs only the tap update (the binaries must already
+# be on the release), to backfill or recover a formula without cutting a release.
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - "v[0-9]*"
   workflow_dispatch:
     inputs:
       version:
@@ -18,30 +32,36 @@ permissions:
   contents: write # upload release assets
 
 jobs:
+  # Create the release the other jobs attach to. Its own job because `build` is a
+  # four-leg matrix, and four legs racing to create one release is three losers.
+  # `gh release view ||` keeps a re-run idempotent.
+  create-release:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Create the release if it does not exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
+            gh release create "$GITHUB_REF_NAME" \
+              --title "vantage ${version}" \
+              --generate-notes
+
   # Build the vantage binary for each platform with the frontend embedded and
-  # attach the archives to the GitHub release.
+  # attach the archives to the release.
   build:
-    # Only the *app's* own `v<semver>` releases.
-    #
-    # `release: [published]` takes no tag filter, so this workflow also fires for
-    # the releases publish-check.yml creates for `vantage-check@<version>` tags
-    # (and would for any future `<package>@<version>` release). On such a tag the
-    # `version="${GITHUB_REF_NAME#v}"` below strips the `v` of *v*antage-check and
-    # yields `antage-check@0.1.0`; the job then attaches nonsense archives to the
-    # wrong release and the `brew` job regenerates Formula/vantage.rb from URLs
-    # that do not exist and pushes it to the public tap, breaking
-    # `brew install vantage` for everyone until someone reverts the tap.
-    #
-    # Guard on `github.ref_name` specifically, because that is the value that
-    # goes wrong. `startsWith(…, 'v')` alone is not enough — `vantage-check@…`
-    # and `vantage-md@…` both start with `v`, which is the whole trap — so the
-    # `@` test is what actually separates a package tag from `v0.4.0`.
-    #
-    # The `brew` job needs no guard of its own: with `build` skipped,
-    # `needs.build.result` is 'skipped', and on a release event
-    # `github.event_name` is not 'workflow_dispatch', so its condition is false.
-    # The manual `workflow_dispatch` path is untouched and still runs `brew`.
-    if: github.event_name == 'release' && startsWith(github.ref_name, 'v') && !contains(github.ref_name, '@')
+    # No tag guard needed: the `v[0-9]*` filter on the trigger is the guard, and
+    # it cannot match a package tag. `workflow_dispatch` skips this job so the
+    # `brew` job can run standalone.
+    if: github.event_name == 'push'
+    needs: [create-release]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -149,11 +169,11 @@ jobs:
   # on PyPI to have a trusted publisher configured for this workflow, which is an
   # owner action outside this repo.
   #
-  # A separate job on purpose: the archives and the tap are already published by
-  # the time this runs, so a PyPI failure costs the release nothing but its
-  # wheels.
+  # A separate job on purpose: the archives are attached before this runs and the
+  # tap job is a sibling rather than a dependent, so a PyPI failure costs the
+  # release nothing but its wheels.
   pypi:
-    if: github.event_name == 'release' && startsWith(github.ref_name, 'v') && !contains(github.ref_name, '@')
+    if: github.event_name == 'push'
     needs: [build]
     runs-on: ubuntu-latest
     environment: pypi
@@ -173,8 +193,8 @@ jobs:
         run: uv publish wheels/*.whl --check-url https://pypi.org/simple/
 
   # Regenerate the Homebrew formula from the released archives and push it to the
-  # tap. Runs after a successful build on release events, or standalone on a
-  # manual dispatch (always() lets it run when build is skipped).
+  # tap. Runs after a successful build on a tag push, or standalone on a manual
+  # dispatch (always() lets it run when build is skipped).
   brew:
     if: always() && (github.event_name == 'workflow_dispatch' || needs.build.result == 'success')
     needs: [build]
@@ -184,7 +204,7 @@ jobs:
         id: version
         run: |
           set -euo pipefail
-          if [ "$GITHUB_EVENT_NAME" = "release" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
             version="${GITHUB_REF_NAME#v}"
           else
             version="${{ github.event.inputs.version }}"

@@ -157,9 +157,11 @@ jobs:
           /tmp/wheelcheck/bin/vantage-check style-guide | head -5
 
       # `gh release create` rather than a third-party action, matching
-      # publish.yml. Creating the release fires `release: published`, which
-      # publish.yml also listens for — its build job is guarded against package
-      # tags precisely because of this. Do not remove that guard.
+      # publish.yml. Creating a release used to wake publish.yml, which listened
+      # on `release: published` — a trigger that takes no tag filter — so it had
+      # to carry a runtime guard against package tags. publish.yml now triggers
+      # on its own `v[0-9]*` tags instead, so nothing here reaches it and no
+      # guard is needed on either side.
       - name: Create the GitHub release and attach the archives
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
