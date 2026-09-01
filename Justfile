@@ -38,20 +38,27 @@ build-bin:
 cli:
     cd packages/vantage-check && bun run build
 
-# Build, install onto PATH, and restart the systemd user service.
-deploy: build
+# Installs both binaries, matching what a release ships: one archive and one
+# Homebrew formula carry `vantage` and `vantage-check` together.
+
+# Build, install both binaries onto PATH, and restart the systemd user service.
+deploy: build cli
     #!/usr/bin/env bash
     set -euo pipefail
     bindir="$(go env GOBIN)"
     [ -n "$bindir" ] || bindir="$(go env GOPATH)/bin"
     mkdir -p "$bindir"
-    rm -f "$bindir/vantage"   # replace any stale binary/symlink from a previous install
+    for bin in vantage vantage-check; do
+        # Replace any stale binary/symlink from a previous install.
+        rm -f "$bindir/$bin"
+    done
     install -m 0755 ./vantage "$bindir/vantage"
-    echo "Installed $bindir/vantage"
+    install -m 0755 ./packages/vantage-check/dist/vantage-check "$bindir/vantage-check"
+    echo "Installed $bindir/vantage and $bindir/vantage-check"
     systemctl --user restart vantage
 
 # Format the code (Go + all three npm packages). No tests — run before committing.
-format:
+format: _deps-match
     gofmt -w cmd internal web
     cd packages/vantage-md && npm run format
     cd packages/vantage-check && npm run format
@@ -101,6 +108,11 @@ _deps-match:
     #!/usr/bin/env bash
     set -euo pipefail
     for pkg in frontend packages/vantage-md packages/vantage-check; do
+        if [ ! -d "$pkg/node_modules" ]; then
+            echo "$pkg/node_modules is missing — this is a fresh clone."
+            echo "Run: just setup   (mise install alone provisions the toolchain, not the packages)"
+            exit 1
+        fi
         if ! out="$(cd "$pkg" && npm ls --depth=0 2>&1)"; then
             echo "$pkg/node_modules does not match its manifest (run: cd $pkg && npm ci):"
             echo "$out" | grep -E 'invalid|missing|npm error' | head -20 || echo "$out" | head -20
