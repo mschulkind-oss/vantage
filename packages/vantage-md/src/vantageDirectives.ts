@@ -5,7 +5,7 @@
  * sentinel: `<!-- vantage: section tone=warning -->`. GitHub drops it, every
  * other Markdown renderer drops it, and Vantage compiles it into
  * `data-vantage-*` attributes on the block that follows
- * (`rehypeVantageDirectives`). See `docs/design/inline-markup.md` §4.1.
+ * (`rehypeVantageDirectives`). See `docs/reference/inline-markup.md`, "The carrier and the grammar".
  *
  * This module is deliberately **zero-dependency — not even a type import**, and
  * it knows nothing about hast. Two callers need it and only one of them has a

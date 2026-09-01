@@ -134,7 +134,7 @@ describe("inline style filtering", () => {
     // not a slow render; it is a denial of service on the gate. An earlier form
     // of this regex was one: 121 chars of the first payload below took 12 ms,
     // 161 chars took 950 ms, 201 chars took 94 s. §8.4 of
-    // docs/design/inline-markup.md has the measurements and the cause.
+    // docs/reference/inline-markup.md has the measurements and the cause.
     //
     // Both payloads end in a character the value class excludes, so the match
     // must fail — the expensive path is always the rejection.

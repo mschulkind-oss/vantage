@@ -19,7 +19,7 @@ export const HYGIENE_RULE = "markdown/hygiene";
  * Vantage does **not** render them as callouts, measured: `remark-gfm` has no
  * alert support, so `> [!WARNING]` is a plain blockquote with the bracket text
  * visible on the page. This allowance is not evidence that rendering exists —
- * it is deference to the guide. The gap is `docs/design/inline-markup.md` §4.3
+ * it is deference to the guide. The gap is `docs/reference/inline-markup.md`, "Known gaps"
  * and OQ-10.
  */
 const ALERT_LABELS = ["!NOTE", "!TIP", "!IMPORTANT", "!WARNING", "!CAUTION"];

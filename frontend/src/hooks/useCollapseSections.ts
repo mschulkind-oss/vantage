@@ -1,6 +1,6 @@
 /**
  * The disclosure control for `<!-- vantage: section collapsed=true -->` —
- * `docs/design/inline-markup.md` §4.3.
+ * `docs/reference/inline-markup.md`, "Collapse without a wrapper".
  *
  * A post-render pass in the same idiom as `useOpenQuestionButtons`: find what
  * the plugin stamped, hang one injected node off it, and sweep that node before

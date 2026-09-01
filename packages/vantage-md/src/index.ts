@@ -3,6 +3,9 @@
 // Usage:
 //   import { renderMarkdown, rehypeSourceLines, scrollToLineAnchor } from "vantage-md";
 //   import "vantage-md/styles";
+//
+// Directives (`<!-- vantage: … -->`), the render chain and the sanitiser —
+// architecture and invariants: docs/reference/inline-markup.md
 
 export { renderMarkdown } from "./renderMarkdown.js";
 export type { RenderOptions, RenderResult } from "./renderMarkdown.js";

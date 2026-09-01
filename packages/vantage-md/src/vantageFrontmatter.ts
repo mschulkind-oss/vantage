@@ -1,5 +1,5 @@
 /**
- * The `vantage:` frontmatter key — file-scoped chrome (`inline-markup.md` §4.5).
+ * The `vantage:` frontmatter key — file-scoped chrome (`docs/reference/inline-markup.md`, "File-scoped chrome").
  *
  * One reserved key at the top level of a document's frontmatter, holding the
  * chrome that belongs to the *file* rather than to a section. Today that is one

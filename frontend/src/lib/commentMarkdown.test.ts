@@ -142,7 +142,7 @@ describe("renderCommentMarkdown — legitimate comment markdown", () => {
   it.each([
     ["https://example.com/x", "absolute https"],
     ["http://example.com/x", "absolute http"],
-    ["docs/design/inline-markup.md", "repo-relative"],
+    ["docs/reference/inline-markup.md", "repo-relative"],
     ["./sibling.md", "dot-relative"],
     ["/absolute/path", "root-relative"],
     ["#a-heading", "fragment"],

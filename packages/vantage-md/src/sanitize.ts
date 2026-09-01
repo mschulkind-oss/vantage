@@ -40,8 +40,9 @@ type Schema = typeof defaultSchema;
  * integral) but the inference was not, because the sanitiser has finished before
  * the first KaTeX span exists. Rebuilding the shipped rehype order with a filter
  * that rejects *every* value leaves all ten of the integral's style attributes
- * untouched. §8.2 of `docs/design/inline-markup.md` records the correction; the
- * test that would catch a reordering is in `frontend/src/lib/sanitize.test.ts`.
+ * untouched. The "Security" section of `docs/reference/inline-markup.md`
+ * records the correction; the test that would catch a reordering is in
+ * `frontend/src/lib/sanitize.test.ts`.
  */
 const SAFE_STYLE_PROPERTIES = [
   // Box metrics. `top`/`right`/`bottom`/`left` are inert now that `position` is

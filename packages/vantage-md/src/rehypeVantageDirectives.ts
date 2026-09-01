@@ -4,7 +4,7 @@
  *
  * It has to run between `rehype-raw` — which turns the comment into a hast node
  * — and `rehype-sanitize`, which deletes every comment node. That is the only
- * window in which the information exists (`docs/design/inline-markup.md` §2.2),
+ * window in which the information exists (`docs/reference/inline-markup.md`, "Where the plugin runs"),
  * and `pipeline.ts` is where the slot is spelled out.
  *
  * The grammar and the vocabulary live in `./vantageDirectives.js`, which the
@@ -100,7 +100,7 @@ const LEANING_PROPERTY = "dataVantageLeaning";
  *
  * Hiding is CSS, and that CSS is gated on two markers the toggle JS sets — the
  * prose container's readiness, and an armed marker on each block whose group it
- * gave a caret (`docs/design/inline-markup.md` §4.3). A renderer without the JS
+ * gave a caret (`docs/reference/inline-markup.md`, "Collapse without a wrapper"). A renderer without the JS
  * — the CLI checker's HTML, an external consumer of this package — shows every
  * block, and so does any block that ended up with no control.
  */
