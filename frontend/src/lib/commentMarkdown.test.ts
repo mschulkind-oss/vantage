@@ -175,18 +175,37 @@ describe("renderCommentMarkdown — legitimate comment markdown", () => {
   });
 });
 
-describe("renderCommentMarkdown — no DOM", () => {
+describe("renderCommentMarkdown — DOMPurify unusable", () => {
+  const sanitize = DOMPurify.sanitize;
+
   afterEach(() => {
     DOMPurify.isSupported = true;
+    DOMPurify.sanitize = sanitize;
   });
 
   it("falls back to escaped plain text rather than emitting raw HTML", () => {
-    // DOMPurify.sanitize() *returns its input unchanged* when it has no DOM to
-    // parse with, so a naive call fails open. Pin the closed behaviour: every
-    // markup-significant character escaped, so nothing becomes an element.
+    // The fail-open branch, measured: with a DOM present but `isSupported`
+    // false, `sanitize()` returns its input *unchanged* (purify's own
+    // "Return dirty HTML if DOMPurify cannot run"), so a naive call passes the
+    // payload through. Pin the closed behaviour: every markup-significant
+    // character escaped, so nothing becomes an element.
     DOMPurify.isSupported = false;
     expect(renderCommentMarkdown('<img src="x" onerror=alert(1)>')).toBe(
       "&lt;img src=&quot;x&quot; onerror=alert(1)&gt;",
+    );
+  });
+
+  it("never reaches `sanitize` — the guard is ahead of the call, not around it", () => {
+    // The other branch, which jsdom cannot produce: with no DOM at all purify
+    // returns from `createDOMPurify` before assigning `sanitize`, so the call
+    // throws `TypeError: DOMPurify.sanitize is not a function` instead of
+    // failing open. Simulate that shape — `isSupported` false *and* no
+    // `sanitize` — so moving the guard below the call fails here rather than in
+    // a DOM-less consumer of this module.
+    DOMPurify.isSupported = false;
+    DOMPurify.sanitize = undefined as unknown as typeof DOMPurify.sanitize;
+    expect(renderCommentMarkdown("<b>x</b> & y")).toBe(
+      "&lt;b&gt;x&lt;/b&gt; &amp; y",
     );
   });
 });
