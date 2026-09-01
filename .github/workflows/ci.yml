@@ -58,5 +58,24 @@ jobs:
       - name: Build
         run: just build
 
+      # `just build` ran web-sync, so anything changed under web/dist means the
+      # committed export does not match the sources — a frontend change landed
+      # without `just web-sync`. That matters because the committed export is
+      # what `go install …@latest` and the PyPI wheels embed, and a stale one
+      # fails silently: the app renders, just an older version of it.
+      #
+      # The build is byte-reproducible at these pinned toolchain versions
+      # (verified 2026-09-01: a rebuild over the committed export changed
+      # nothing). If that ever stops holding on some platform, relax this to a
+      # warning rather than deleting it.
+      - name: Assert web/dist matches its sources
+        run: |
+          set -euo pipefail
+          if [ -n "$(git status --porcelain -- web/dist)" ]; then
+            echo "web/dist is stale — run 'just web-sync' and commit the result:"
+            git status --porcelain -- web/dist
+            exit 1
+          fi
+
       - name: Check (lint, type-check, test, self-check the docs)
         run: just check-ci
