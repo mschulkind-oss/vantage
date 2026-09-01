@@ -94,7 +94,7 @@ pointer arrives too late." It is:
 - **Every document after #1 is reachable** — *if* first contact is spent well.
 
 Today first contact is spent entirely on document #1. The payload's one pointer
-([`useReviewStore.ts:905`](../../frontend/src/stores/useReviewStore.ts#L905))
+([`useReviewStore.ts:947`](../../frontend/src/stores/useReviewStore.ts#L947))
 says: run `uvx vantage-check <this file>` and fix what it reports. That is a
 good instruction about the document already written, and it says nothing about
 the next one. The knowledge arrives, gets used once, and evaporates with the
@@ -113,7 +113,7 @@ what each one is allowed to cost.
 | | **Fixative** | **Proactive** |
 | :--- | :--- | :--- |
 | Acts on | The document in hand | Every document the agent writes next |
-| Exists today | Yes — [`useReviewStore.ts:905`](../../frontend/src/stores/useReviewStore.ts#L905) | No |
+| Exists today | Yes — [`useReviewStore.ts:947`](../../frontend/src/stores/useReviewStore.ts#L947) | No |
 | Command | `uvx vantage-check <file>` | A generator subcommand ([§5](#5-packaging-one-binary-one-distribution-more-subcommands)) |
 | Lifetime | This turn | Until the agent's configuration changes |
 | Needs | Nothing but the binary | Somewhere the agent will read later |

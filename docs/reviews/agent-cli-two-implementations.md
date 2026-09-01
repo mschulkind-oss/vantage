@@ -215,7 +215,7 @@ Two of Run A's three findings are false positives.
 
 | Case | Run A | Run B | Who is right, and why |
 | :--- | :--- | :--- | :--- |
-| Link to a directory | error | quiet | **B.** [`ViewerPage.tsx:421`](../../frontend/src/pages/ViewerPage.tsx#L421) routes any non-`.md` path to `viewDirectory()`, which renders a directory listing |
+| Link to a directory | error | quiet | **B.** [`ViewerPage.tsx:429`](../../frontend/src/pages/ViewerPage.tsx#L429) routes any non-`.md` path to `viewDirectory()`, which renders a directory listing |
 | `xmpp:` / `irc:` link | error | quiet | **B.** `defaultSchema.protocols.href` allows `http, https, irc, ircs, mailto, xmpp`, kept by [`sanitize.ts:11`](../../packages/vantage-md/src/sanitize.ts#L11) |
 | `data:` link | quiet | quiet | **Neither.** The sanitizer strips the href — verified: the pipeline emits a bare `<a>data</a>` |
 | `<a id="notes">` then `[x](#notes)` | dead-section-anchor | quiet | **B.** The sanitizer renames it to `user-content-notes`, and [`MarkdownViewer.tsx:154-155`](../../frontend/src/components/MarkdownViewer.tsx#L154-L155) falls back to exactly that id |
