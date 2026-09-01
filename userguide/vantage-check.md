@@ -36,16 +36,19 @@ works in a sandbox that has nothing but Python tooling.
 ### `curl` — download the binary
 
 ```bash
-# asset names: vantage-check_<version>_<os>_<arch>.{tar.gz|zip}
-curl -fsSL "https://github.com/mschulkind-oss/vantage/releases/download/vantage-check%400.1.0/vantage-check_0.1.0_linux_x64.tar.gz" \
-  | tar -xz
+# asset names: vantage_<version>_<os>_<arch>.tar.gz — both binaries inside
+curl -fsSL "https://github.com/mschulkind-oss/vantage/releases/download/v0.5.4/vantage_0.5.4_linux_amd64.tar.gz" \
+  | tar -xz vantage-check
 ./vantage-check docs/design/api.md
 ```
 
-Archives are published on the release named `vantage-check@<version>`: `<os>` is
-`linux` or `darwin` and `<arch>` is `x64` or `arm64`. There is no Windows build
+Archives are published on the app's own release, `v<version>`, and each one
+carries **both** binaries — `vantage` and `vantage-check` — as
+`vantage_<version>_<os>_<arch>.tar.gz`, where `<os>` is `linux` or `darwin` and
+`<arch>` is `amd64` or `arm64`. There is no Windows build
 ([`../docs/design/pypi-distribution.md`](../docs/design/pypi-distribution.md)
-§4.4).
+§4.4), and no separate `vantage-check@*` release: everything in this repo ships
+on one tag at one version.
 
 ### From source
 

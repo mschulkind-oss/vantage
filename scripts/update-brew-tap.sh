@@ -8,6 +8,10 @@
 #
 # The four release archives must already be attached to the GitHub release for
 # tag v<version>; this script downloads them to compute their sha256 sums.
+#
+# Each archive carries BOTH binaries — the `vantage` server and the
+# `vantage-check` CLI — so one formula, one url and one sha install both. That is
+# polyclav's shape, and it is why there is no second `resource` block here.
 set -euo pipefail
 
 VERSION="${1:?usage: update-brew-tap.sh <version> <tap-dir>}"
@@ -32,6 +36,7 @@ mkdir -p "${TAP_DIR}/Formula"
 cat > "${TAP_DIR}/Formula/vantage.rb" <<RUBY
 class Vantage < Formula
   desc "Beautiful local Markdown viewer with live reload and Git awareness"
+  # Installs two binaries: the `vantage` server and the `vantage-check` CLI.
   homepage "https://github.com/mschulkind-oss/vantage"
   version "${VERSION}"
   license "Apache-2.0"
@@ -60,10 +65,12 @@ class Vantage < Formula
 
   def install
     bin.install "vantage"
+    bin.install "vantage-check"
   end
 
   test do
     assert_match "vantage-md, version", shell_output("#{bin}/vantage --version")
+    assert_match "vantage-check ${VERSION}", shell_output("#{bin}/vantage-check --version")
   end
 end
 RUBY

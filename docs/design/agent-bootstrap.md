@@ -264,11 +264,11 @@ what follows is only what this design depends on.
 - **No `vantage-check` release exists.** `git tag` lists only the app's `v*`
   tags (`v0.0.1` … `v0.5.3`); no `vantage-check@*` tag has ever been pushed.
 - **`vantage-check` is not on PyPI** — `pypi.org/pypi/vantage-check/json`
-  returns 404. The release workflow says the same thing prospectively:
-  publishing requires *"the `vantage-check` project to exist on PyPI with GitHub
-  OIDC trusted publishing configured for this repo — an owner action outside
-  this repo"*
-  ([`publish-check.yml:19-23`](../../.github/workflows/publish-check.yml#L19-L23)).
+  returns 404. Publishing it needs the project to exist there with a trusted
+  publisher naming this repo's
+  [`publish.yml`](../../.github/workflows/publish.yml), which is an owner action
+  outside this repo; the exact fields are in
+  [`pypi-distribution.md`](pypi-distribution.md) §9.
 - **A `vantage-md` PyPI project does exist, and it is the *server's* half of the
   name.** npm `vantage-md` carries the library, PyPI `vantage-md` carries the
   executable server: one product name, one registry each, by design. What is

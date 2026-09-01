@@ -201,7 +201,7 @@ promise, not about how hard they are to fix — all six are small changes.
 
 #### F1. A `vantage-check@*` tag will push a broken formula to the public Homebrew tap
 
-[`publish-check.yml:75`](../../.github/workflows/publish-check.yml#L75) uses
+`publish-check.yml:75` uses
 `softprops/action-gh-release`, which **creates a GitHub Release** for the tag.
 [`publish.yml:8-9`](../../.github/workflows/publish.yml#L8-L9) triggers on
 `release: [published]` with no tag filter:
@@ -259,12 +259,19 @@ before upload) and run it against a labeled flowchart.
 
 #### F3. The `uvx` channel has never worked
 
+> [!NOTE]
+> **`publish-check.yml` no longer exists.** It was merged into `publish.yml` on
+> 2026-09-01, when every artifact moved to one version and one tag
+> ([`../design/pypi-distribution.md`](../design/pypi-distribution.md) §4). Line
+> references below are to the file as it stood at review time and are kept as
+> plain text rather than links.
+
 `uvx vantage-check <path>` is the command the review payload now hands every
 agent ([`useReviewStore.ts`](../../frontend/src/stores/useReviewStore.ts), added
 in `598b388`). Two defects stand between that string and a working install:
 
 1. The PyPI job publishes the whole `dist/` directory
-   ([`publish-check.yml:118`](../../.github/workflows/publish-check.yml#L118)),
+   (`publish-check.yml:118`),
    which holds the **92 MB compiled binary** next to the wheel — confirmed on
    disk after a local build. twine is handed a file that is not a distribution.
 2. The Windows wheel bundles the binary as `vantage_check/vantage-check`
@@ -275,7 +282,7 @@ in `598b388`). Two defects stand between that string and a working install:
 
 Related and unverified: the archive step assumes bun wrote `dist/vantage-check`
 for a Windows target
-([`publish-check.yml:67`](../../.github/workflows/publish-check.yml#L67)); bun
+(`publish-check.yml:67`); bun
 appends `.exe`. This could not be tested here — the cross-target runtime
 download is blocked in the sandbox, which is the same wall the build session
 hit.
