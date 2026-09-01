@@ -62,6 +62,12 @@ Never kill it; run test instances on other ports.
   `packages/vantage-check/dist/vantage-check <file>` is the same check locally,
   and `… style-guide` prints the conventions it enforces — cheaper before
   writing than at commit time.
+- **The `Workers Builds: vantage` check on every PR is Cloudflare's, and its
+  build command lives in their dashboard, not here.** It ran `bash
+  build-docs.sh` from 2026-05-30 — when that file was deleted — until
+  2026-09-01, so every PR carried a red check nothing in the tree could explain
+  or fix. `scripts/build-site.sh` is the real entry point, and its header says
+  so. A rename here is invisible to CI; update the dashboard in the same breath.
 - **Every `just` recipe must leave tracked files unchanged, with exactly one
   exception**: `just web-sync` rewrites the tracked `web/dist` export, and
   `just build`/`just deploy` run it. Commit what it changes, or use `just
@@ -85,10 +91,22 @@ release created for a `vantage-check@…` tag woke it, `${GITHUB_REF_NAME#v}`
 yielded `antage-check@0.1.0`, and only a runtime guard stopped it attaching the
 wrong archives and pushing a broken formula to the public tap.
 
-PyPI publishes by trusted publishing (OIDC, no token), and **both projects must
-name `publish.yml`** as their trusted publisher. npm is the exception: it
-publishes with `NPM_TOKEN` plus OIDC provenance.
+**All three registries publish by trusted publishing (OIDC), and every one of
+them must name `publish.yml`** — both PyPI projects and npm alike. A trusted
+publisher binds to the workflow *filename*, so renaming this file breaks every
+publish until each registry's config is updated to match. That is not
+hypothetical: `release.yml` became `publish-npm.yml` became `publish.yml`, and
+npm's binding still named `release.yml` when the consolidated workflow first ran
+on 2026-09-01.
 
-PyPI's state is worth knowing before you tell anyone to install from it —
-`vantage-md` there still serves the retired Python app and `vantage-check` is
-unregistered until the next release. See `docs/design/pypi-distribution.md`.
+`NPM_TOKEN` is a dead fallback, and it makes that failure hard to read. When the
+OIDC exchange fails, `npm publish` falls back to `NODE_AUTH_TOKEN` and reports
+`ENEEDAUTH` — "you need to authorize this machine", which describes a missing
+token rather than the mismatched filename that actually caused it. Fix the
+trusted publisher; do not go minting tokens.
+
+Since v0.5.4 (2026-09-01) all three registries carry that version: PyPI has
+`vantage-md` and `vantage-check`, the first release to register the CLI at all,
+and npm has `vantage-md`. npm sat at `0.1.7` from April until then — not from
+repeated failures but because `36a75506` moved it onto a `vantage-md@*` tag that
+was never pushed. See `docs/design/pypi-distribution.md`.
