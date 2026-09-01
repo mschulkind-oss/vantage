@@ -141,7 +141,11 @@
    siblings and review mode inserts comment <div>s between them.
    `--vantage-tone-heading-gutter` is set by the host app on toned headings
    only; 1.5em resolves per heading level, which is the only way h2, h3 and p
-   share one x. Measured: all eight block types land on the same pixel.
+   share one x. Measured: the pseudo's computed `left` puts all eight block
+   types on the same pixel — which is a statement about where the slice would
+   go, NOT about whether it paints. Two of the eight clip it away entirely; the
+   escape below is what makes them paint, and a pixel scan is the only thing
+   that can tell the two apart.
    `background-color` is the longhand, and the accent `var()` has no fallback,
    on purpose: an unrecognised tone leaves the variable unset, the value is
    invalid at computed-value time, and the rule computes to `transparent` — D2
@@ -171,6 +175,59 @@
     [data-vantage-run="end"]
   )::before {
   top: calc(-1 * var(--vantage-tone-run-bleed));
+}
+/* Six of the eight stampable tags compute `overflow: visible`. `pre` and `hr`
+   do not, and both clip the rule to NOTHING: `@tailwindcss/typography` gives
+   `pre` `overflow-x: auto` so wide code scrolls, the UA sheet gives `hr`
+   `overflow: hidden`, and CSS forces a computed `overflow` of `visible` to
+   `auto` on the other axis when its partner is not `visible`. So each of those
+   two is simultaneously the containing block for its own `::before` (the
+   `position: relative` above) and a clip box that discards it at the padding
+   edge on BOTH axes — the member paints neither its own slice nor its own
+   upward bleed. Measured in Chrome over the real Tailwind build of a nine-block
+   run: a three-line fence left one contiguous 100px void where the rule should
+   be, scaling linearly with the fence (168px for a 133px fence), which the
+   fixed 40px bleed can never repair because the void is fence height + 40px.
+   That is exactly the "gap taller than the bleed" `data-vantage-run` exists to
+   prevent, and the section reads as two sections.
+
+   So un-clip the box and re-home the scroller on the `code` child. Wide code
+   still scrolls horizontally — measured in a 600px viewport,
+   `pre.scrollWidth == pre.clientWidth == 518` while `code.scrollWidth` 752 >
+   `code.clientWidth` 486 and `code.scrollLeft` reaches 266 — the scrollbar sits
+   inside the fence's padding instead of on its border edge. The app already
+   sets `display: block` on `.prose pre code`; it is repeated here so the
+   package's own stylesheet and an external consumer get a scrollable box too.
+   Do NOT "tidy this away" as dead CSS: `left` computes identically with and
+   without it, so nothing but a pixel read can see the difference. */
+[data-vantage-tone]:is(pre, hr) {
+  overflow: visible;
+}
+pre[data-vantage-tone] > code {
+  display: block;
+  overflow-x: auto;
+}
+/* An `hr` is 1-2px of box between two 3em margins — 48px, more than the 40px a
+   neighbour can bleed across — so a thematic break inside a section is the one
+   member whose rule also bleeds DOWNWARD, and by its own margin rather than by
+   the shared bleed. 3.5em, not 3em: every other member's 40px bleed overlaps its
+   predecessor's border edge by at least 8px, and an exact fit leaves a 1px
+   hairline to subpixel rounding — measured, before this was 3.5em.
+   Both selectors stay positive for the same D3 reason as the rule above: with
+   `data-vantage-run` absent nothing bleeds, and the `start` member never bleeds
+   up nor the `end` member down, so the run still terminates exactly at its
+   first and last member. */
+hr[data-vantage-tone]:is(
+    [data-vantage-run="middle"],
+    [data-vantage-run="end"]
+  )::before {
+  top: -3.5em;
+}
+hr[data-vantage-tone]:is(
+    [data-vantage-run="start"],
+    [data-vantage-run="middle"]
+  )::before {
+  bottom: -3.5em;
 }
 /* A lone block has no run to stripe, so it gets the wash — this is the
    `<!-- vantage: block tone=important -->` callout. `:where()` holds the

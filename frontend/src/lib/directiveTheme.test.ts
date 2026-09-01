@@ -21,17 +21,25 @@
  * attribute the sanitiser strips renders nothing, in every renderer, with no
  * error anywhere.
  *
- * The geometry was measured once, in Chrome, over the real Tailwind build of
- * this file (all 87 prose classes from `MarkdownViewer`, a 9-block stamped run):
- * every member's rule lands on the same x to a tenth of a pixel — h2, h3, p,
- * ul, pre, blockquote and table, whose boxes start at three different x — the
- * largest internal gap is 28px against a 40px bleed, an unrecognised tone
- * computes `rgba(0, 0, 0, 0)` for both rule and wash, `emphasis=strong` leaves
- * an h2 at 600 while taking a p to 500, and a lone toned block that is also
- * line-anchor-highlighted keeps the line-anchor background. None of that is
- * re-checked by any suite: `Justfile` never invokes playwright, so an e2e spec
- * would document rather than guard, and it cannot even be run in the dev
- * container (no browsers installed). Re-measure by hand if the geometry moves.
+ * The geometry was measured in Chrome, over the real Tailwind build of this file
+ * (all 87 prose classes from `MarkdownViewer`, a stamped run of every member
+ * type): every member's rule lands on the same x to a tenth of a pixel — h2, h3,
+ * p, ul, pre, blockquote and table, whose boxes start at three different x — an
+ * unrecognised tone computes `rgba(0, 0, 0, 0)` for both rule and wash,
+ * `emphasis=strong` leaves an h2 at 600 while taking a p to 500, and a lone
+ * toned block that is also line-anchor-highlighted keeps the line-anchor
+ * background.
+ *
+ * A caution this file's own header used to get wrong, so it is written down: the
+ * x measurement above is of the pseudo-element's computed `left`, which says
+ * where the slice *would* go and nothing about whether it *paints*. `pre` and
+ * `hr` matched it exactly while painting nothing at all, clipped by their own
+ * non-`visible` overflow, and every computed-style probe agreed they were fine.
+ * Only a pixel read can tell those two apart, which is what
+ * `frontend/e2e/directive_tone_rule.spec.ts` does — and only there, because the
+ * `Justfile` never invokes playwright, so that spec documents rather than
+ * guards. What can be held here is the *presence* of the escapes those pixels
+ * forced; see "the mechanisms the treatment rests on" below.
  */
 
 import { readFileSync } from "node:fs";
@@ -222,6 +230,41 @@ describe("the mechanisms the treatment rests on", () => {
     expect(css).toContain('[data-vantage-run="middle"]');
     expect(css).toContain('[data-vantage-run="end"]');
     expect(css).not.toMatch(/:not\(\s*\[data-vantage-run/);
+  });
+
+  it("un-clips the two members that would otherwise paint no rule at all", () => {
+    // `pre` and `hr` are the only stampable tags whose computed overflow is not
+    // `visible` — typography gives `pre` `overflow-x: auto` and the UA sheet
+    // gives `hr` `overflow: hidden`, and CSS forces the other axis to match. Each
+    // is therefore both the containing block for its own `::before` and a clip
+    // box that discards it, so the member paints neither its slice nor its bleed:
+    // measured in Chrome, a three-line fence left one contiguous 100px void
+    // against a 40px bleed. This escape is what makes them paint, and it is
+    // *invisible to every computed-style check* — the pseudo's `left` is
+    // identical with and without it. Deleting it as dead CSS is the regression
+    // this test exists to catch.
+    expect(css).toContain("[data-vantage-tone]:is(pre, hr)");
+    expect(blockOf("[data-vantage-tone]:is(pre, hr)")).toContain(
+      "overflow: visible",
+    );
+    // Wide code still has to scroll, so the scroller moves to the `code` child,
+    // which no rule is positioned against.
+    expect(blockOf("pre[data-vantage-tone] > code")).toContain(
+      "overflow-x: auto",
+    );
+  });
+
+  it("bleeds a thematic break's rule both ways, since 3em > the shared bleed", () => {
+    // An `hr` is 1-2px of box between two 3em margins — 48px, more than the 40px
+    // a neighbour can bleed up — so it is the one member that also bleeds down,
+    // and by its own margin. Both selectors stay positive for the same D3 reason
+    // as the shared bleed, so the run still ends exactly at its last member.
+    expect(css).toMatch(
+      /hr\[data-vantage-tone\]:is\(\s*\[data-vantage-run="middle"\],\s*\[data-vantage-run="end"\]\s*\)::before \{\s*top: -3\.5em;/,
+    );
+    expect(css).toMatch(
+      /hr\[data-vantage-tone\]:is\(\s*\[data-vantage-run="start"\],\s*\[data-vantage-run="middle"\]\s*\)::before \{\s*bottom: -3\.5em;/,
+    );
   });
 
   it("holds the lone-block wash at one-class specificity", () => {
