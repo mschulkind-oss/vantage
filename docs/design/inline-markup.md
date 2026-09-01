@@ -1425,11 +1425,26 @@ characters, because a review-comment body is not prose.
 > MathML surface) and different sink (a synchronous string→string clean at
 > `innerHTML`, not a hast tree inside an async unified run).
 >
-> **And one trap that would have made the whole thing a no-op: `DOMPurify.sanitize()`
-> returns its input UNCHANGED when it has no DOM to parse with.** It fails
-> **open**. Any DOM-less renderer would therefore have passed the payload
-> through untouched, so the module tests `DOMPurify.isSupported` first and
-> degrades to plain escaped text — no markup, but nothing executable either.
+> **And one trap that would have made the whole thing a no-op: DOMPurify breaks
+> two different ways without a usable DOM, and the guard is what covers both.**
+> Measured 2026-08-31 against every copy installed in this tree (3.3.1 under
+> `frontend`, 3.3.3 under `vantage-md`, 3.4.14 under `vantage-check`), because the
+> first draft of this paragraph named only one branch:
+>
+> - **A DOM, but `isSupported` false** — a degenerate `document.implementation`.
+>   `sanitize()` **returns its input unchanged**: `purify.es.mjs` carries
+>   `/* Return dirty HTML if DOMPurify cannot run */ if (!DOMPurify.isSupported)
+>   return dirty;`. It fails **open**, silently. This is the branch the guard's
+>   own test simulates, since a test always has jsdom.
+> - **No DOM at all.** `createDOMPurify` returns before it ever assigns
+>   `sanitize`, so `isSupported` is false *and* `DOMPurify.sanitize` is
+>   `undefined`: the call throws `TypeError: DOMPurify.sanitize is not a
+>   function`, taking the render pass with it. Loud, and not a pass-through.
+>
+> So testing `DOMPurify.isSupported` **before** the call — not around it — is what
+> makes both branches degrade to plain escaped text: no markup, but nothing
+> executable either. Moving the guard below the call would trade a fail-open for a
+> crash, which is why a test pins the ordering rather than only the escaping.
 
 > [!WARNING]
 > **Do not "simplify" the vocabulary into a colour passthrough.** It looks like a
@@ -1700,8 +1715,10 @@ is ever renumbered or re-spelled.
 > which is why `data-vantage-run` exists (§4.3).
 > (9) `@import "vantage-md/styles"` resolves — to a **gitignored `dist/`**, so it
 > is green off a stale local build and red in CI (§4.3).
-> (10) **`DOMPurify.sanitize()` fails OPEN with no DOM**: it returns its input
-> unchanged, so any DOM-less caller must check `isSupported` first (§8.3).
+> (10) **DOMPurify breaks two ways without a usable DOM**, and neither is a safe
+> default: with a DOM but `isSupported` false it returns its input **unchanged**
+> (fails open), and with no DOM at all `sanitize` is never assigned, so the call
+> **throws**. Check `isSupported` before calling, never after (§8.3).
 
 ## Open Questions
 

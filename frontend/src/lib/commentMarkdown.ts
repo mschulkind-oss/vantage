@@ -58,9 +58,13 @@ import { marked } from "marked";
  *   render a comment card as a document. The heading's text survives.
  */
 export function renderCommentMarkdown(text: string): string {
-  // DOMPurify.sanitize() returns its input *unchanged* when it has no DOM to
-  // parse with, so calling it in a DOM-less renderer would fail open. Degrade
-  // to plain escaped text instead: no markup, but nothing executable either.
+  // Two measured failure modes, one guard, and it has to come *before* the call.
+  // With a DOM but `isSupported` false (a degenerate `document.implementation`)
+  // `sanitize()` returns its input *unchanged* — purify's own
+  // `/* Return dirty HTML if DOMPurify cannot run */` — so it fails open. With no
+  // DOM at all the module never assigns `sanitize`, so calling it throws a
+  // TypeError and takes the render pass with it. Degrade to plain escaped text
+  // instead: no markup, but nothing executable either.
   if (!DOMPurify.isSupported) return escapeHtml(text);
 
   const rendered = (marked.parse(text, MD_OPTIONS) as string).trim();
