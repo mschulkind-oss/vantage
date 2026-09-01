@@ -19,10 +19,6 @@ updates:
     schedule:
       interval: "weekly"
     ignore:
-      # @vitejs/plugin-react 6 requires peer vite@^8; we're on vite@^7.
-      # Revisit together with a Vite 7->8 upgrade.
-      - dependency-name: "@vitejs/plugin-react"
-        versions: ["6.x"]
       # TS 7 breaks tsup's bundled rollup-plugin-dts (pinned to typescript 5.7.3).
       # tsc --noEmit passes; the DTS build crashes. Revisit when tsup supports TS 7.
       - dependency-name: "typescript"
