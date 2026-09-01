@@ -87,8 +87,12 @@ func TestBuildEmitsExpectedFileSet(t *testing.T) {
 	require.FileExists(t, filepath.Join(out, "404.html"))
 
 	// SPA host config.
-	require.FileExists(t, filepath.Join(out, "_redirects"))
 	require.FileExists(t, filepath.Join(out, "_headers"))
+	// No _redirects: the SPA catch-all it used to hold is a Pages idiom that
+	// Cloudflare Workers rejects as an infinite loop, failing the deploy after
+	// a successful build and upload. SPA routing belongs in `not_found_handling`
+	// there, and in 404.html everywhere else.
+	require.NoFileExists(t, filepath.Join(out, "_redirects"))
 
 	// Query-less endpoints + recents (always present).
 	for _, rel := range []string{

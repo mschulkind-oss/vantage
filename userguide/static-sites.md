@@ -121,9 +121,10 @@ output/
       diff/
         file.md/
           abc123.json     # Diff for each commit
-  _redirects              # SPA fallback routing
   _headers                # Cache and security headers
 ```
+
+SPA fallback comes from `404.html`, which mirrors `index.html`. On Cloudflare Workers, set `not_found_handling = "single-page-application"` in your Wrangler config to serve unmatched routes as the app with a 200 instead. No `_redirects` file is emitted: the catch-all rule it would hold is a Pages idiom, and Workers rejects it as an infinite loop because its asset server strips `.html` and `/index` before matching, so the rewrite target re-enters the same rule.
 
 ## Options Reference
 

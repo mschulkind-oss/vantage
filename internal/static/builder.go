@@ -73,7 +73,7 @@ type Config struct {
 // Build generates the static site described by cfg. It copies the embedded
 // frontend, pre-renders every API JSON file via the shared api.Build* builders,
 // patches index.html into static mode, and writes the SPA host config
-// (_redirects, _headers, 404.html). Per-file git/content failures are logged
+// (_headers, 404.html). Per-file git/content failures are logged
 // and skipped rather than aborting the build; a failure to copy the frontend or
 // write a top-level file is returned.
 func Build(cfg Config) error {
@@ -380,10 +380,6 @@ func injectStaticMode(out string, logger *slog.Logger) error {
 	return os.WriteFile(filepath.Join(out, "404.html"), []byte(html), 0o644)
 }
 
-// redirectsBody is the Cloudflare Pages SPA fallback. Static files (including
-// api/*.json) are served first; only unmatched paths fall through to the SPA.
-const redirectsBody = "/*  /index.html  200\n"
-
 // headersBody sets security headers site-wide and cache policy for api/ and
 // assets/, matching the reference builder.
 const headersBody = `/*
@@ -398,13 +394,22 @@ const headersBody = `/*
   Cache-Control: public, max-age=31536000, immutable
 `
 
-// writeSPAConfig writes the _redirects and _headers files that configure SPA
-// routing, caching, and security headers on Cloudflare Pages (and are inert
-// elsewhere).
+// writeSPAConfig writes the _headers file that sets caching and security
+// headers on Cloudflare (and is inert elsewhere).
+//
+// It used to write a `_redirects` holding the Pages-era SPA catch-all,
+// `/*  /index.html  200`. Workers rejects that rule outright — its asset
+// server strips `.html` and `/index` before matching, so the rewrite target
+// re-enters the same rule and the API refuses the upload:
+//
+//	Invalid _redirects configuration:
+//	Line 1: Infinite loop detected in this rule. [code: 100324]
+//
+// There is no non-looping way to write a catch-all there, because Workers
+// expects SPA routing to come from `not_found_handling` in the Wrangler
+// config, not from a redirect. Hosts that have no such setting are served by
+// the 404.html that mirrors index.html, which is why that file exists.
 func writeSPAConfig(out string) error {
-	if err := os.WriteFile(filepath.Join(out, "_redirects"), []byte(redirectsBody), 0o644); err != nil {
-		return err
-	}
 	return os.WriteFile(filepath.Join(out, "_headers"), []byte(headersBody), 0o644)
 }
 

@@ -6,4 +6,4 @@ preview_urls = false
 
 [assets]
 directory = "dist/docs"
-not_found_handling = "404-page"
+not_found_handling = "single-page-application"
