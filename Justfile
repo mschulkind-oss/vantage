@@ -56,7 +56,7 @@ check: format
     staticcheck ./cmd/... ./internal/... ./web/...
     go test ./cmd/... ./internal/... ./web/...
     cd packages/vantage-check && npm run lint && npm run typecheck && npm run test
-    cd frontend && npm run lint && npx tsc --noEmit && npm run test
+    cd frontend && npm run lint && npx tsc --build && npm run test
     just _self-check
 
 # Read-only gate (errors on issues, never rewrites) — used by the pre-commit hook and CI.
@@ -72,7 +72,7 @@ check-ci: _deps-match
     # check-ci is one bash script, so a bare `cd` would leak into the next line
     # — each package gets its own subshell.
     ( cd packages/vantage-check && npm run format:check && npm run lint && npm run typecheck && npm run test )
-    ( cd frontend && npm run format:check && npm run lint && npx tsc --noEmit && npm run test )
+    ( cd frontend && npm run format:check && npm run lint && npx tsc --build && npm run test )
     # Then the artifact, not just the source it was built from.
     just _self-check
 
