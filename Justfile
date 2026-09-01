@@ -19,8 +19,14 @@ setup: _hooks
 dev path=".":
     TARGET_REPO={{path}} overmind start
 
-# Build the vantage binary with the frontend embedded.
-build: _bundle
+# Refreshes the tracked export first, so this is the one recipe that may modify
+# tracked files — see web-sync.
+
+# Build the vantage binary with a freshly built frontend embedded.
+build: web-sync build-bin
+
+# Build the binary from the export committed in web/dist, changing nothing else.
+build-bin:
     go build -ldflags "-X github.com/mschulkind-oss/vantage/internal/buildinfo.commit=$(git rev-parse --short HEAD)" -o vantage ./cmd/vantage
 
 # bun compiles the TypeScript into one self-contained executable in about a
@@ -178,15 +184,31 @@ _self-check: cli
     "$bin" check docs userguide README.md AGENTS.md \
         packages/vantage-check/README.md packages/vantage-md/README.md
 
-# Build the frontend and copy it into the Go embed dir (preserving .gitkeep so
-# the build never dirties a tracked file).
-[private]
-_bundle:
-    cd frontend && npm run build
+# Refresh web/dist — the tracked frontend export — from frontend/ sources.
+#
+# web/dist is committed (see .gitignore), because //go:embed accepts an empty
+# directory and every build path that skips this step would otherwise ship a
+# placeholder page — including `go install …@latest`, which gets whatever git
+# holds. The cost of that choice lands here: this recipe MAY MODIFY TRACKED
+# FILES, and it is the only one that may. Commit what it changes.
+#
+# Without npm it warns and leaves the committed export in place, so a checkout
+# with only a Go toolchain still builds a working binary — the same trade
+# polyclav makes for the same reason.
+
+# Rebuild web/dist (the tracked frontend export) from frontend/ sources.
+web-sync:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if ! command -v npm >/dev/null 2>&1; then
+        echo "warning: npm not found — embedding the committed web/dist export (may be stale)"
+        exit 0
+    fi
+    ( cd frontend && npm run build )
     rm -rf web/dist
     mkdir -p web/dist
     cp -R frontend/dist/. web/dist/
-    @touch web/dist/.gitkeep
+    touch web/dist/.gitkeep
 
 # Point git at the tracked hooks dir. Idempotent.
 [private]
