@@ -375,14 +375,38 @@ The name set is closed and is exactly **three** names
 
 | Name | Target | Extent |
 | :--- | :--- | :--- |
-| `section` before a **heading** | the next sibling element | the heading **and its section** — every following sibling until the first heading of same-or-shallower depth |
-| `section` before a **non-heading** | the next sibling element | degrades to that one block |
-| `block` | the next sibling element | that one block only, even in front of a heading |
+| `section` before a **heading** | the next sibling element, **stampable tags only** | the heading **and** every following *stampable* sibling until the first heading of same-or-shallower depth |
+| `section` before a **non-heading** | the next sibling element, **stampable tags only** | degrades to that one block |
+| `block` | the next sibling element, **stampable tags only** | that one block only, even in front of a heading |
 | `oq` | the next sibling element, **anchor-capable tags only** | that one block only |
 
 An **unknown name drops the whole directive** — there is no target semantics
 without a name. An unknown *key* or *value* drops only that pair; **D2** is
 per-key, not per-directive.
+
+**"Stampable" is a closed list of sixteen tags**, not "any element":
+[`VANTAGE_STYLE_TARGETS`](../../packages/vantage-md/src/vantageDirectives.ts#L109-L126)
+— `p`, `h1`–`h6`, `li`, `blockquote`, `pre`, `table`, `tr`, `ul`, `ol`, `hr`,
+`div` — deliberately `rehypeSourceLines`'s own block list, so the styling surface
+and the anchor surface coincide and a stamped block is always a block a review
+anchor can name. The list bites in two different ways, and the asymmetry is
+measured:
+
+- **As the target it is fatal.** A directive whose next sibling element is not on
+  the list stamps *nothing at all* and does not look further: `block tone=note`
+  above a raw-HTML `<figure>`, or `section tone=tip` above a `<section>`, is inert.
+- **In the range it is a hole.** A non-stampable sibling *inside* a section's span
+  is **skipped, not treated as a terminator** — the section continues past it. So
+  `<figure>`, `<dl>`, `<details>`, `<aside>` written as raw HTML inside a toned
+  section get no stamp while the paragraphs on both sides do, §4.3's "one
+  continuous vertical rule" visibly breaks there, and because the `run` markers are
+  computed over stamped members only the upward bleed **jumps the gap** rather than
+  stopping at it (measured: `start`, `middle`, `middle`, `end` across a range
+  holding two unstamped elements).
+
+Nothing reports either case. `vantage/orphan` inspects the target and the plugin
+did stamp *something* in the range case, so this is the one failure mode in the
+feature that is visible only to the author looking at the page.
 
 There is still no `scope=` key, and position is still what identifies the target,
 so the original reason for refusing one stands: a key that can disagree with
@@ -1098,9 +1122,11 @@ Between `rehypeRaw` and `rehypeSanitize` (§2.2 — the only slot). Per pass:
    node always sits between a block-level comment and its target, with or without
    a blank line in the source, so it cannot be treated as a blocker. Every
    directive consumed on the way merges onto the same target, last-key-wins.
-5. Stamp `data-vantage-*` properties on the target, and for `section` scope stamp
-   the **run treatments** — `tone` and `emphasis` — on every following sibling in
-   the range (§4.2), plus the `run` marker across it. `badge` is a **point
+5. Stamp `data-vantage-*` properties on the target — nothing at all if the target's
+   tag is not stampable (§4.2) — and for `section` scope stamp the **run
+   treatments**, `tone` and `emphasis`, on every following *stampable* sibling in
+   the range (§4.2), plus the `run` marker across those. A sibling that is not
+   stampable is skipped, and the range continues past it. `badge` is a **point
    marker**, not a run treatment: it stays on the target, because the chip is
    drawn as `[data-vantage-badge]::after` and a range-wide stamp paints the word
    once per paragraph, list, table and fence in the section instead of once
@@ -1722,7 +1748,7 @@ is ever renumbered or re-spelled.
 | OQ-3 | **The vocabulary is semantic, never chromatic.** Reuse the GFM alert words; the theme owns the token → custom-property mapping | 2026-08-31 | §4.3 |
 | OQ-4 | One button, affirmative only, labelled **"Take this leaning"**; the directive key is `leaning=` to match | 2026-08-31 | §5.2 |
 | OQ-5 | **Bundle the `style` hardening into this work** as step 1, ahead of any directive work | 2026-08-31 | §8.2, §11 |
-| A1 | The name set is exactly `{section, block, oq}`. Position picks the target, the **name picks the extent**. Unknown name drops the whole directive; unknown key or value drops that pair | 2026-08-31 | §4.2 |
+| A1 | The name set is exactly `{section, block, oq}`. Position picks the target, the **name picks the extent** — within the closed stampable-tag list: a non-stampable target is inert, a non-stampable sibling in the range is skipped rather than terminating it. Unknown name drops the whole directive; unknown key or value drops that pair | 2026-08-31 | §4.2 |
 | A2 | `leaning` gets a **name-only** sanitiser entry — free text cannot be value-allowlisted, so it has **two** defences, not three | 2026-08-31 | §6.3, §8.3 |
 | A3 | `collapsed` emits **no `<details>` and no wrapper**: a flat stamp, heading and body taking different attributes, and hiding gated on two JS-set markers — the container's readiness *and* the block's own armed marker, so a group with no toggle is not hidden either | 2026-08-31 | §4.3, §5.1 |
 | A4 | The plugin walks the **whole tree**, resolving within each parent's own children. A root-only walk finds zero `oq` directives | 2026-08-31 | §6.2, §2.2 |

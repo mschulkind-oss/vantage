@@ -439,6 +439,68 @@ describe("extent: position picks the target, the name picks how far", () => {
     expect(stamped(host.querySelectorAll("p")[1])).toEqual({});
   });
 
+  it("skips a sibling whose tag is not stampable, and does not stop there", async () => {
+    // The extent is "every following sibling" *within the stampable-tag list*
+    // (`VANTAGE_STYLE_TARGETS`). A raw-HTML `<figure>` or `<dl>` in the range is
+    // skipped, not treated as a terminator — so the run jumps the hole, which is
+    // where §4.3's "one continuous vertical rule" visibly breaks. Documented in
+    // §4.2 rather than fixed: the stampable list is deliberately
+    // `rehypeSourceLines`'s block list, so the styling surface and the anchor
+    // surface coincide.
+    const host = await render(
+      [
+        "<!-- vantage: section tone=warning -->",
+        "",
+        "## Section",
+        "",
+        "Para one.",
+        "",
+        "<figure><figcaption>Cap</figcaption></figure>",
+        "",
+        "Para two.",
+        "",
+        "<dl><dt>a</dt><dd>b</dd></dl>",
+        "",
+        "Para three.",
+      ].join("\n"),
+    );
+
+    expect(stamped(host.querySelector("figure"))).toEqual({});
+    expect(stamped(host.querySelector("dl"))).toEqual({});
+    // Three paragraphs, all stamped: the section continued past both holes.
+    expect(
+      Array.from(host.querySelectorAll("p")).map((p) =>
+        p.getAttribute("data-vantage-tone"),
+      ),
+    ).toEqual(["warning", "warning", "warning"]);
+    expect(runs(host, "[data-vantage-tone]")).toEqual([
+      "start",
+      "middle",
+      "middle",
+      "end",
+    ]);
+  });
+
+  it("is inert when the target itself is not a stampable tag", async () => {
+    // The other half of the same list, and it behaves differently: a
+    // non-stampable *target* drops the directive entirely — the walk does not
+    // look past it for a candidate, so the section never starts.
+    const host = await render(
+      [
+        "<!-- vantage: section tone=tip -->",
+        "",
+        "<section><p>Inner.</p></section>",
+        "",
+        "After.",
+      ].join("\n"),
+    );
+
+    expect(stamped(host.querySelector("section"))).toEqual({});
+    for (const paragraph of Array.from(host.querySelectorAll("p"))) {
+      expect(stamped(paragraph)).toEqual({});
+    }
+  });
+
   it("gives a lone block the run value `only`", async () => {
     const host = await render(
       "<!-- vantage: block tone=important -->\n\nOne.\n",
