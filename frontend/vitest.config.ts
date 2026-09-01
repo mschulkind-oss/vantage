@@ -12,14 +12,14 @@ export default defineConfig({
       {
         find: /^vantage-md\/react$/,
         replacement: path.resolve(
-          __dirname,
+          import.meta.dirname,
           "../packages/vantage-md/src/react.ts",
         ),
       },
       {
         find: /^vantage-md$/,
         replacement: path.resolve(
-          __dirname,
+          import.meta.dirname,
           "../packages/vantage-md/src/index.ts",
         ),
       },
