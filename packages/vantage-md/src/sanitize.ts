@@ -18,20 +18,37 @@ type Schema = typeof defaultSchema;
 /**
  * CSS properties an inline `style` may set.
  *
- * `style` has to be allowed at all because KaTeX positions every glyph with it
- * — strip the attribute and rendered math falls apart. But an unfiltered
- * `style` is a real hole: a document can cover the viewport with
- * `position:fixed;inset:0`, or call home on render with
- * `background:url(https://…)`, and both used to pass through verbatim. Scripts
- * were never the risk here; layout and network were.
+ * **The only `style` this list ever filters is one a document wrote by hand.**
+ * Nothing the pipeline generates reaches it: `rehypeKatex` and `rehypeHighlight`
+ * both run *after* `rehypeSanitize` (`pipeline.ts`), so their output is trusted
+ * rather than filtered, and `remark-gfm` emits table alignment as an `align`
+ * attribute rather than as CSS. So this is a filter on untrusted author HTML and
+ * nothing else — which is exactly the hole that made it necessary: `<div
+ * style="position:fixed;inset:0">` covered the viewport and
+ * `style="background:url(https://…)"` called home on render, both verbatim,
+ * because `rehype-sanitize` does not parse CSS. Scripts were never the risk
+ * here; layout and network were.
  *
- * The list is deliberately typographic. Everything KaTeX emits is here —
- * measured against a battery of formulas in the frontend's sanitize test, which
- * fails if a KaTeX release starts using something new. GFM tables need nothing
- * from it: they carry `align` attributes, not CSS.
+ * The list is therefore deliberately typographic: the styling a prose document
+ * has any business asking for. It is *not* sized to KaTeX, and a KaTeX release
+ * that starts using a new property is a non-event here — `\pmb` already emits
+ * `text-shadow`, which is not on this list and renders anyway.
+ *
+ * **The design doc used to argue the opposite — that `style` had to be allowed
+ * and `position` enumerated because KaTeX needs them — and it was wrong.** The
+ * measurement behind it was real (KaTeX does emit `position:relative` on every
+ * integral) but the inference was not, because the sanitiser has finished before
+ * the first KaTeX span exists. Rebuilding the shipped rehype order with a filter
+ * that rejects *every* value leaves all ten of the integral's style attributes
+ * untouched. §8.2 of `docs/design/inline-markup.md` records the correction; the
+ * test that would catch a reordering is in `frontend/src/lib/sanitize.test.ts`.
  */
 const SAFE_STYLE_PROPERTIES = [
-  // Box metrics — KaTeX sizes and offsets nearly every span with these.
+  // Box metrics. `top`/`right`/`bottom`/`left` are inert now that `position` is
+  // banned, and they stay only because dropping them would fail the whole
+  // attribute for a document that writes one — the all-or-nothing rule below
+  // makes every removal a behaviour change. They buy an attacker nothing that
+  // negative `margin` does not already buy.
   "height",
   "min-height",
   "max-height",
@@ -52,7 +69,7 @@ const SAFE_STYLE_PROPERTIES = [
   "padding-right",
   "padding-bottom",
   "padding-left",
-  // Rules and boxes — KaTeX draws fraction bars and radicals with borders.
+  // Rules and boxes.
   "border",
   "border-style",
   "border-color",
@@ -99,12 +116,23 @@ const SAFE_STYLE_PROPERTIES = [
 /**
  * A `style` value we will keep, as a whole.
  *
- * Two rules do the work. **No parentheses anywhere**, which is what closes
- * `url(…)` and `expression(…)` — the network and legacy-script vectors — and
- * costs nothing, because KaTeX never emits a parenthesis. And **`position` may
- * only be `static`, `relative` or `absolute`**: KaTeX needs the first three for
- * struts and rules, while `fixed` and `sticky` are what let a document escape
- * its container and cover the page.
+ * One rule beyond the property list does the work: **no parentheses anywhere**,
+ * which closes `url(…)` and `expression(…)` in one stroke — the network and
+ * legacy-script vectors. Its cost is borne entirely by authors, who lose
+ * `calc()`, `rgb()` and `var()` along with them; that is the trade, and it is
+ * worth it for a filter this small.
+ *
+ * **`position` is not on the property list at all**, so every value of it is
+ * refused — `static` and `relative` along with `fixed` and `sticky`. It used to
+ * be enumerated, on the belief that KaTeX needed `relative`; KaTeX renders after
+ * the sanitiser and never meets this regex, so the enumeration was buying
+ * nothing but the residual it conceded. Banning the property closes that
+ * residual, and it is bigger than "overlaps its neighbours" made it sound:
+ * measured in Chrome against the viewer's real ancestor chain, an author's
+ * `position:absolute;top:0;left:0;width:100%;height:100%` is sized to the whole
+ * content pane (the nearest positioned ancestor is outside the scroll
+ * container), is not clipped by the scroller, and survives scrolling to the end
+ * of the document. It was `position:fixed` in all but the keyword.
  *
  * Matching is all-or-nothing: one unrecognised declaration drops the whole
  * attribute, and the element renders unstyled rather than partly styled. That
@@ -125,17 +153,22 @@ const SAFE_STYLE_PROPERTIES = [
  * put the ambiguity straight back. Pinned by the flat-time test in
  * `frontend/src/lib/sanitize.test.ts` — do not loosen the separator.
  *
- * Residual, stated plainly: an absolutely-positioned element can still overlap
- * its neighbours inside the article. Closing that needs containment in the
- * stylesheet, not in the sanitiser.
+ * Residual, stated plainly and now genuinely small: negative `margin` still lets
+ * an element overlap its neighbours *inside the flow*. That one scrolls with the
+ * content and is clipped by the scroll container, and closing it means giving up
+ * margins, which prose actually uses. Containment in the stylesheet, not another
+ * rule here, is what would close it.
  */
 const VALUE = `[^;:()"'\\\\]*`;
-const DECLARATION = `(?:${SAFE_STYLE_PROPERTIES.join("|")})\\s*:${VALUE}`;
-const POSITION = `position\\s*:\\s*(?:static|relative|absolute)\\s*`;
-const ANY_DECLARATION = `(?:${DECLARATION}|${POSITION})`;
+// Wrapped in its own group, and the trailing `?` below applies to that group.
+// Interpolating the declaration bare would attach the `?` to `VALUE`'s `*`,
+// making the last declaration's value *lazy* instead of the whole declaration
+// optional — which rejects a trailing `;` (`color:red;`). The semicolon test in
+// `frontend/src/lib/sanitize.test.ts` is what catches that.
+const DECLARATION = `(?:(?:${SAFE_STYLE_PROPERTIES.join("|")})\\s*:${VALUE})`;
 
 export const SAFE_STYLE = new RegExp(
-  `^\\s*(?:${ANY_DECLARATION};\\s*)*${ANY_DECLARATION}?$`,
+  `^\\s*(?:${DECLARATION};\\s*)*${DECLARATION}?$`,
   "i",
 );
 
