@@ -769,6 +769,29 @@ forced by the tree rather than chosen:
   is a non-interactive `<span>` that cannot fail, and gating it would delete it
   from every exported site — the one place §2.5 says D5 costs nothing.
 
+> [!CAUTION]
+> **The two carriers have one collision, and it destroys the frontmatter: a
+> directive on line 1, above the opening `---`.** `parseFrontmatter` is
+> start-anchored — it reads frontmatter only when the document's *first bytes* are
+> `---` or `+++`
+> ([`frontmatter.ts:59-67`](../../packages/vantage-md/src/frontmatter.ts#L59-L67))
+> — so a comment on line 1 pushes the delimiter to line 2 and the whole block
+> becomes body text: an `<hr>` plus a setext `<h2>` reading `title: X status:
+> draft`. Every field is gone with it — the metadata card, the `status:` chip, and
+> every `vantage:` setting — and because `hr` is a stampable target the directive
+> then stamps the rule it created, so the markup looks like it worked. A single
+> stray blank line does the same thing.
+>
+> **The parser is deliberately not taught to skip leading comments.** Measured:
+> `marked` and bare CommonMark render that document exactly as Vantage does, and
+> GitHub, Hugo and `gray-matter` are all start-anchored too. Tolerating it in
+> Vantage alone would make the viewer the odd one out — D1 in reverse — while every
+> other reader still lost the metadata, and `parseFrontmatter` is exported from the
+> published package, so its contract is not this feature's to move. It is a
+> checker finding instead: `frontmatter/not-at-top`, an error, which strips the
+> leading comments, re-parses, and reports when the block would have parsed one
+> line higher.
+
 ## 5. Capabilities
 
 Ranked by value over effort. §5.1 and §5.2 are the ask; §5.3 is what else earns
@@ -946,7 +969,7 @@ answered.
   greppable, position-carrying annotation layer, so the checker in
   [`agent-cli.md`](agent-cli.md) validates them with no rendering at all:
   thirteen rules under `vantage/*`
-  ([`registry.ts:86-173`](../../packages/vantage-check/src/rules/registry.ts#L86-L173)),
+  ([`registry.ts:92-179`](../../packages/vantage-check/src/rules/registry.ts#L92-L179)),
   covering unterminated comments, malformed grammar, unknown names, keys and
   values, list splits, the general restructuring case, duplicate keys, orphans,
   and the four frontmatter cases.

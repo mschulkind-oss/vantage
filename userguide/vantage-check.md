@@ -173,13 +173,20 @@ finding: Vantage routes those to a directory listing.
 
 **Delegated rules** hand the question to the parser that owns it, so a diagram
 fails for exactly the reason the viewer would fail on it, in that parser's own
-words.
+words. `frontmatter/not-at-top` is the one that cannot be delegated: frontmatter is
+recognised only at the very first byte of the file, so a comment, a directive or
+one stray blank line above the opening `---` leaves the parser seeing no
+frontmatter at all and nothing to report. The block renders as a horizontal rule
+followed by a heading of the raw keys, and every field is gone — so this rule
+strips the leading comments itself, re-parses, and says so when the block would
+have parsed one line higher.
 
 | Rule | Catches | Default |
 | :--- | :--- | :--- |
 | `frontmatter/parse` | Frontmatter that `yaml` or `smol-toml` — the viewer's own parsers — reject, so it renders as text | error |
 | `frontmatter/unterminated` | An opening `---` or `+++` with no closing delimiter | warning |
 | `frontmatter/not-a-mapping` | Frontmatter that parses to a value rather than a table of fields | warning |
+| `frontmatter/not-at-top` | A frontmatter block with a comment or a blank line above it, so it is body text and every field is lost | error |
 | `mermaid/parse` | A diagram Mermaid's own parser rejects, rendered as an error box | error |
 | `katex/parse` | A `$$...$$` formula KaTeX rejects, rendered as red error text | error |
 | `render/pipeline` | A document the viewer's own render pipeline throws on, end to end | error |
