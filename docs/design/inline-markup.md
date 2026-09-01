@@ -9,36 +9,41 @@ summary: "A carrier for Vantage-only directives inside ordinary Markdown — HTM
 
 # Inline markup GitHub cannot see
 
-**Status:** DECIDED, 2026-08-31. Reviewed and revised the same day; all five
-open questions are settled — see the [Decision Ledger](#decision-ledger). The
-sanitiser hardening in [§8](#8-security-the-injection-surface-and-how-it-closes)
-is being built now; the directive work is not started. Every claim about
-existing code was verified against the tree on 2026-08-31, and the pipeline and
-CSS-output behaviour in §2.2 and §8 was **measured** by running the real chain,
-not read off the plugin docs.
+**Status:** IMPLEMENTED, 2026-08-31. Designed, reviewed, revised and built the
+same day, in ten commits: `fd7411c` (the sanitiser), `d47e3c3` (one chain),
+`561c69a` (comment bodies), `70217d3` (the plugin), `7585681` (the button),
+`e5e7ac5` (the theme layer), `fcc4f3d` (`collapsed`), `25fe999` (the checker
+rules), `2c6657a` (frontmatter chrome), `1312c5c` (the static gate). §11 is the
+build order as it actually ran, including the two steps the design did not have.
+
+Everything below is present tense about a shipped feature. Where the design was
+wrong, the correction is in the body rather than beside it, and the
+[Decision Ledger](#decision-ledger) carries all twenty-two implementation
+rulings (A1–A22) with the section each is settled in. Every claim about existing
+code was re-verified against the tree on 2026-08-31, after the last commit.
 
 **The short version.** Carry Vantage-only markup in **HTML comments with a
-`vantage:` sentinel** — `<!-- vantage: callout tone=warning -->`. GitHub drops
+`vantage:` sentinel** — `<!-- vantage: section tone=warning -->`. GitHub drops
 them, every other Markdown renderer drops them, and a text editor shows one dim
-line. A new remark/rehype plugin, `rehypeVantageDirectives`, sits in the **one
-slot where comments still exist** — after `rehype-raw`, before `rehype-sanitize`
-— and compiles each comment into `data-vantage-*` attributes on the block that
-follows it. Directive values are never CSS and never colours: they are
-**semantic tokens** — `note`, `warning`, `caution` — that the *theme* maps to
-colour, so a document says what a section means and light, dark, and every
-future theme decide how it looks. The one-click Open Question button is not a
-new protocol at all — it is a pre-filled call to the reviewer command that the
+line. A rehype plugin, `rehypeVantageDirectives`, sits in the **one slot where
+comments still exist** — after `rehype-raw`, before `rehype-sanitize` — and
+compiles each comment into `data-vantage-*` attributes on the block that follows
+it. Directive values are never CSS and never colours: they are **semantic
+tokens** — `note`, `warning`, `caution` — that the *theme* maps to colour, so a
+document says what a section means and light, dark, print, and every future
+theme decide how it looks. The one-click Open Question button is not a new
+protocol at all — it is a pre-filled call to the reviewer command that the
 comment popover already calls.
 
-**The most important sections are [§7](#7-the-degradation-rules) and
-[§8](#8-security-the-injection-surface-and-how-it-closes)** — the degradation
-rules are the contract the rest of the doc is held to, and §8 is where this
-feature pays a debt it did not create: the sanitiser lets arbitrary inline CSS
-through today, and closing that is **step 1 of the build order**, ahead of any
-directive work.
+**The most important section is [§7](#7-the-degradation-rules)** — the eight
+degradation rules are the contract everything else is held to, and every ruling
+in the Ledger that overturned a design decision was decided by one of them.
+[§8](#8-security-the-injection-surface-and-how-it-closes) is where this feature
+paid a debt it did not create: the sanitiser let arbitrary inline CSS through,
+and closing that was step 1, ahead of any directive work.
 
-**Reads with:** [`agent-cli.md`](agent-cli.md) (the checker that would validate
-this markup, and the house style this doc follows),
+**Reads with:** [`agent-cli.md`](agent-cli.md) (the checker that validates this
+markup, and the house style this doc follows),
 [`review-state-architecture.md`](review-state-architecture.md) (why §5.2 rides
 an existing command instead of inventing a channel), and the user-facing
 [`../../userguide/review-inbox.md`](../../userguide/review-inbox.md) (the
@@ -56,23 +61,26 @@ Five principles carry the design. Later sections cite them by number.
 - **P1. The document is the artifact; markup annotates it.** A directive may
   change how a block *looks* or what affordances hang off it, never what the
   document *says*. Delete every directive and the prose is unchanged — that is
-  the test.
+  the test, and it is a test in
+  [`vantageDirectives.test.ts`](../../frontend/src/lib/vantageDirectives.test.ts).
 - **P2. Values are semantic tokens — never styles, never colours.** A directive
   names what a section *is* (`tone=warning`), never what it should *look like*.
   The theme owns the mapping from token to colour, so one document renders
-  correctly in light, in dark, and in themes that do not exist yet. No directive
-  ever contributes a byte to a `style` attribute. Hard boundary, not a v1
-  simplification.
+  correctly in light, in dark, in print, and in themes that do not exist yet. No
+  directive ever contributes a byte to a `style` attribute. Hard boundary, not a
+  v1 simplification.
 - **P3. Unknown is inert, never fatal.** An unrecognised name, key, or value is
   dropped silently where it fails to resolve — no error state, no red box, no
   console spew a reader can trigger with a typo. This is what makes an older
-  Vantage safe against a newer document.
+  Vantage safe against a newer document. The *only* thing that ever reports a
+  dropped directive is the CLI checker (§5.3).
 - **P4. Ride existing channels.** Review affordances go through the reviewer
   commands that already exist (§5.2). We do not open a second path from document
   to server; [`review-state-architecture.md`](review-state-architecture.md) is
   what happens when a document *becomes* a channel.
 - **P5. Markup is a hint.** Every capability answers "what if it isn't there?"
-  with today's behaviour, unchanged.
+  with today's behaviour, unchanged. Every capability also answers "what if the
+  JavaScript isn't there?" — which is what forced the collapse gate in §4.3.
 
 > [!IMPORTANT]
 > **This is not the `<!-- changelog -->` protocol coming back.** That design
@@ -91,38 +99,56 @@ Five principles carry the design. Later sections cite them by number.
 ### 2.1 There is one copy of the pipeline
 
 The remark/rehype chain is defined once, in
-[`pipeline.ts`](../../packages/vantage-md/src/pipeline.ts), and three call sites
-consume it:
+[`pipeline.ts`](../../packages/vantage-md/src/pipeline.ts), and every renderer
+consumes it:
 
 | Where | What it is |
 | :--- | :--- |
-| [`pipeline.ts:96-108`](../../packages/vantage-md/src/pipeline.ts#L96-L108) | `buildPipeline(options)` — the only place the plugin list and its order exist. |
+| [`pipeline.ts:129-134`](../../packages/vantage-md/src/pipeline.ts#L129-L134) | `buildPipeline(options)` — the only place the plugin list and its order exist. |
 | [`renderMarkdown.ts:82-97`](../../packages/vantage-md/src/renderMarkdown.ts#L82-L97) | String-in, HTML-out. Feeds the CLI checker, `resolveLinks`, and `renderMermaidBlocks`. |
 | [`MarkdownViewer.tsx:725-726`](../../frontend/src/components/MarkdownViewer.tsx#L725-L726) | The app's `<ReactMarkdown>`, handed both lists as props. |
 | [`vantage-md/src/MarkdownViewer.tsx:221-222`](../../packages/vantage-md/src/MarkdownViewer.tsx#L221-L222) | The package's own exported React viewer, likewise. |
+| [`core/document.ts:37-43`](../../packages/vantage-check/src/core/document.ts#L37-L43) | The checker's mdast-only parser, via `buildRemarkPlugins()`. |
 
-The order is `rehypeRaw` → `rehypeSourceLines` → `rehypeSanitize` →
-`rehypeSlug` → `rehypeHighlight` → `rehypeKatex`, with
+The order is `rehypeRaw` → `rehypeSourceLines` → **`rehypeVantageDirectives`** →
+`rehypeSanitize` → `rehypeSlug` → `rehypeHighlight` → `rehypeKatex`, with
 `allowDangerousHtml: true` passed to `remark-rehype`
 ([`renderMarkdown.ts:95`](../../packages/vantage-md/src/renderMarkdown.ts#L95)),
 which is why raw HTML reaches `rehype-raw` at all. `rehypeSlug`'s position after
 the sanitiser is load-bearing, not incidental: `rehype-sanitize`'s default schema
 clobbers `id` with the prefix `user-content-`, so slugging first turns every
-`#heading` link in every document into a dead anchor.
+`#heading` link in every document into a dead anchor. Measured — a hand-written
+`<a id="raw">` becomes `id="user-content-raw"` while rehype-slug's post-sanitise
+ids are untouched.
 
-> [!WARNING]
-> **The duplication this feature had to remove first.** Until step 2 of §11 the
-> chain was written out three times, in the same order each time, and none of
-> the three arrays was derived from another — they were copies kept in sync by
-> hand. A directive plugin added to one would have produced a document that
-> styles in the app and renders bare through the package's own viewer, or
-> through the checker, with no error anywhere; and a checker that does not see
-> directives is a checker that cannot validate them (§5.3). That is why §6.4 was
-> a prerequisite rather than a nicety, and it is the reason `pipeline.ts` exists.
-> The mdast half was in fact copied a **fourth** time, in the checker's own
-> [`core/document.ts`](../../packages/vantage-check/src/core/document.ts), under
-> a comment claiming it was "the same processor the viewer parses with"; it now
-> calls `buildRemarkPlugins()` and the claim is true.
+The directive plugin takes **no option of its own**
+([`pipeline.ts:103-109`](../../packages/vantage-md/src/pipeline.ts#L103-L109)).
+A flag would be a way for two renderers to disagree about what a document means,
+which is exactly **D5**.
+
+> [!NOTE]
+> **The duplication this feature had to remove first — history, kept because the
+> shape of the hazard recurs.** Until step 2 the chain existed in **four** copies,
+> none derived from another: three full ones (the two React viewers and
+> `renderMarkdown`) and a fourth mdast half inside the checker's own
+> `core/document.ts`, under a comment claiming it was "the same processor the
+> viewer parses with". Beside them sat a dead, stale duplicate of the
+> `rehypeSourceLines` *plugin* at `frontend/src/lib/rehypeSourceLines.ts` — typed
+> `Plugin<[], Root>`, no `offset` support, imported by nothing: a decoy for
+> anyone grepping. A directive plugin added to one copy would style in the app and
+> render bare through the package's viewer or the checker, with no error anywhere,
+> and a checker that cannot see directives cannot validate them (§5.3). The four
+> are now one call; the decoy is deleted.
+>
+> A **fifth, partial copy deliberately stays**: the checker's lint-only processor
+> ([`rules/markdown.ts:24-42`](../../packages/vantage-check/src/rules/markdown.ts#L24-L42)).
+> It omits `remark-math` on purpose and the omission changes findings — measured,
+> on two `$$…$$` blocks containing `\left[ a, b \right]` and `a[0] = b[1]`,
+> `no-undefined-references` reports three findings without `remark-math` and
+> **none** with it. Sharing the viewer's list there would silently change which
+> hygiene findings the tool reports, so one duplicated option stays duplicated,
+> with the measurement written next to it. Whether that should become an explicit
+> option on the shared builder instead is [OQ-9](#open-questions).
 
 ### 2.2 What actually happens to a comment (measured)
 
@@ -130,9 +156,9 @@ This is the fact the implementation turns on, so I ran it. Feeding
 `<!-- vantage: section tone=warning -->` through the real chain:
 
 - **After `rehype-raw`:** the comment is a first-class hast node —
-  `{type: "comment", value: " vantage: section tone=warning "}` — sitting at root
-  level as a sibling of the surrounding blocks, and it **carries full position
-  data** (`start.line`, `end.line`), exactly like an element does.
+  `{type: "comment", value: " vantage: section tone=warning "}` — sitting as a
+  sibling of the surrounding blocks, and it **carries full position data**
+  (`start.line`, `end.line`), exactly like an element does.
 - **After `rehype-sanitize`:** the node is **gone**. `rehype-sanitize` drops
   comment nodes outright; they are not in its `tagNames` allowlist and there is
   no schema key that readmits them. The rendered HTML contains no trace.
@@ -142,40 +168,52 @@ Two consequences:
 1. **There is exactly one slot for the plugin**: after `rehypeRaw`, before
    `rehypeSanitize`. Downstream of the sanitiser the information no longer
    exists. This is the same slot `rehypeSourceLines` already occupies
-   ([`pipeline.ts:98`](../../packages/vantage-md/src/pipeline.ts#L98)), which is
-   convenient: the precedent is set and the ordering constraint is already
-   understood in this codebase. Since step 2 the slot is marked in the code —
-   [`pipeline.ts:100-104`](../../packages/vantage-md/src/pipeline.ts#L100-L104) —
-   so wiring the plugin in is one `push` in one file.
+   ([`pipeline.ts:100-102`](../../packages/vantage-md/src/pipeline.ts#L100-L102)),
+   and the slot is spelled out in the code
+   ([`pipeline.ts:103-109`](../../packages/vantage-md/src/pipeline.ts#L103-L109))
+   so nobody has to re-derive it.
 2. **The sanitiser deleting comments is a feature.** The plugin consumes the
    comment and emits attributes; the sanitiser removes the original. Nothing
    Vantage-specific reaches the DOM except attributes we deliberately
    allowlisted, and an unrecognised directive leaves *nothing* — **P3** for free.
 
-Also measured, because it bears on scoping: a comment immediately before a
-heading parses as that heading's preceding sibling whether or not a blank line
-separates them. "Attach to the next block" is positionally well-defined.
+Also measured, because both bear on scoping:
+
+- A comment immediately before a heading parses as that heading's preceding
+  sibling **whether or not** a blank line separates them. "Attach to the next
+  block" is positionally well-defined, and a rule that told the two spacings
+  apart would have to re-read line numbers to do it.
+- Comment nodes are **not confined to the root**. `rehype-raw` leaves them
+  inside `blockquote`, inside `li`, inside `td`, and inline inside `p`. That one
+  fact is why the plugin walks the whole tree (§6.2) — the real Open Questions
+  layout puts the `oq` directive inside a list item, so a root-only walk finds
+  zero of them.
 
 ### 2.3 How review affordances attach today
 
 Not through React. [`useReviewHighlights`](../../frontend/src/hooks/useReviewHighlights.ts)
 is an imperative post-render pass over the container: it finds blocks by
 `[data-source-line="N"]`, wraps matched text in `<mark>`
-([`useReviewHighlights.ts:280`](../../frontend/src/hooks/useReviewHighlights.ts#L280)),
-and injects comment cards, reply textareas, and buttons as raw DOM nodes
-([`useReviewHighlights.ts:470-562`](../../frontend/src/hooks/useReviewHighlights.ts#L470-L562),
-[`786-861`](../../frontend/src/hooks/useReviewHighlights.ts#L786-L861)).
+([`useReviewHighlights.ts:272`](../../frontend/src/hooks/useReviewHighlights.ts#L272)),
+and injects comment cards and reply textareas as raw DOM nodes
+([`498-577`](../../frontend/src/hooks/useReviewHighlights.ts#L498-L577),
+[`814-881`](../../frontend/src/hooks/useReviewHighlights.ts#L814-L881)).
 
-That matters twice. It is the **precedent** for how §5.2's button gets on the
-page — an existing pattern, not a new one. And it is the reason `data-*`
-attributes are the right compilation target: the hook already navigates the
-rendered DOM by attribute, so a directive that lands as an attribute is
-immediately reachable by exactly the machinery that reads anchors today.
+That matters three times. It is the **precedent** for how §5.2's button and
+§4.3's caret get on the page — an existing pattern, not a new one. It is the
+reason `data-*` attributes are the right compilation target: the hook already
+navigates the rendered DOM by attribute, so a directive that lands as an
+attribute is immediately reachable by exactly the machinery that reads anchors
+today. And the *way* it injects is a constraint on everything here: a comment
+card lands as a **sibling of the block it belongs to**
+([`useReviewHighlights.ts:384-397`](../../frontend/src/hooks/useReviewHighlights.ts#L384-L397)),
+inserted into the block's parent. Two design decisions fall out of that single
+line — see §4.3 (`data-vantage-run`) and §5.1 (no wrapper element).
 
 ### 2.4 How an Open Question gets answered today
 
 Four actions. Hover a block in review mode, click it
-([`MarkdownViewer.tsx:530-570`](../../frontend/src/components/MarkdownViewer.tsx#L530-L570)),
+([`MarkdownViewer.tsx:531-574`](../../frontend/src/components/MarkdownViewer.tsx#L531-L574)),
 type into `ReviewCommentPopover`, press Ctrl/Cmd-Enter
 ([`ReviewCommentPopover.tsx:104`](../../frontend/src/components/ReviewCommentPopover.tsx#L104)).
 That calls `addComment(anchor, comment, fallbackText)`
@@ -205,22 +243,39 @@ content is written out **verbatim as Markdown**
 ([`builder.go:284-291`](../../internal/static/builder.go#L284-L291)), and
 `index.html` gets a `window.__VANTAGE_STATIC__=true` sentinel
 ([`builder.go:346`](../../internal/static/builder.go#L346)) that an axios
-interceptor uses to rewrite API calls into fetches of those JSON files
+interceptor uses to rewrite API calls into fetches of those JSON files — forcing
+every method to `get` on the way
 ([`staticMode.ts:121-131`](../../frontend/src/lib/staticMode.ts#L121-L131)).
 There is no Go Markdown library in the tree at all. **The exported site runs the
 same React viewer**, so it gets directive styling for free — D5 costs nothing
-for anything decorative.
+for anything decorative, and that is why the frontmatter chip is deliberately
+*not* gated on static mode (§4.5).
 
 > [!WARNING]
-> **Review mode is not disabled in static builds, and that is a trap for §5.2.**
-> The Review toggle is gated only on `!showRaw` and a `.md` extension
-> ([`ViewerPage.tsx:1156-1182`](../../frontend/src/pages/ViewerPage.tsx#L1156-L1182))
-> — there is no `isStaticMode()` check. Meanwhile `internal/static/scheme.go`
-> emits no `review` paths, and the interceptor coerces every write to a GET of a
-> file that does not exist. So review mode in an exported site *renders*, and
-> every write silently fails. A one-click button inherits that: it would look
-> live and do nothing. **D4 therefore requires an explicit static-mode gate**
-> (§5.2), which is a gate the existing typed-answer path arguably needs too.
+> **Review mode used to render in a static export with every write silently
+> failing — fixed in `1312c5c`, and the fix is wider than a button gate.** The
+> Review toggle was gated only on `!showRaw` and a `.md` extension, while
+> `internal/static/scheme.go` emits no `review` paths and the interceptor coerces
+> every write to a GET of a file that does not exist. A reviewer could enter
+> review mode, type an answer, press Ctrl-Enter, watch the comment appear
+> (`addComment` appends optimistically) and lose it on reload. The reviewer
+> believed they answered — which is the failure mode **D4** exists to forbid.
+>
+> Closing it took three gates, because the toggle was not the only route in:
+> the toggle is hidden in static mode in both toolbar variants
+> ([`ViewerPage.tsx:246-252`](../../frontend/src/pages/ViewerPage.tsx#L246-L252));
+> `loadReview` no longer restores `isReviewMode: true` there, because the
+> per-file preference lives in `localStorage`, which is keyed by *origin* rather
+> than by server, so a live Vantage on a port hands its persisted toggle to any
+> export later served from the same one; and `runCommand` refuses to send at all,
+> reporting "Not saved" and keeping the draft on screen. That last gate matters
+> because on a host with an SPA fallback the coerced GET returns `index.html` at
+> **200** — nothing throws, nothing is logged, and silence is what made this
+> expensive. Verified against a real `vantage build` served over HTTP, not only
+> in jsdom.
+>
+> The lesson generalises past this feature: **an exported site is a renderer with
+> no server, and every control has to be asked whether it can work there.**
 
 There is also a **raw view** — a `<pre>` of the source text
 ([`ViewerPage.tsx:1475-1499`](../../frontend/src/pages/ViewerPage.tsx#L1475-L1499)).
@@ -263,12 +318,21 @@ pair        := key "=" value
 key         := [a-z][a-z0-9-]*
 value       := [A-Za-z0-9_.:#-]+ | quoted
 quoted      := '"' [^"]* '"'
+ws          := [ \t\r\n]
 ```
 
-One directive per comment. The `vantage:` sentinel is mandatory — it is what
-keeps ordinary editorial comments (`<!-- TODO: rewrite this -->`) from being
-parsed as markup, and it makes the parse a cheap prefix test on every comment
-node rather than a grammar attempt.
+One directive per comment. `ws` includes `\n` because a directive may legally
+wrap: a multi-line comment is **one** node whose value contains the newlines.
+The parser is
+[`parseVantageDirective`](../../packages/vantage-md/src/vantageDirectives.ts) in
+a zero-import module — not even a type import — because two callers need it and
+only one of them has a tree (§6.1).
+
+The `vantage:` sentinel is mandatory. It is what keeps ordinary editorial
+comments (`<!-- TODO: rewrite this -->`) from being parsed as markup, and it
+makes the common case a cheap prefix test on every comment node rather than a
+grammar attempt. It must be the **first** thing in the comment: `<!--- vantage: x
+-->` is not a directive, because the inner text begins with the extra `-`.
 
 **Why the full word rather than a terser `v:`.** Two reasons, and neither is
 readability — the authors and readers of these directives are **agents**, not
@@ -284,17 +348,49 @@ Anything that does not match is **not a directive**. It is left alone, the
 sanitiser removes it as it removes every comment today, and nothing is logged
 (**P3**).
 
-### 4.2 Scoping
+> [!WARNING]
+> **`quoted` means what it says: there is no `--` restriction, and inventing one
+> is the trap.** An early reading of this grammar concluded that `--` was
+> unrepresentable inside a comment. It is not. Measured through the real chain,
+> `<!-- vantage: section tone="a--b" -->` reaches the tree with `tone="a--b"`
+> intact, and `leaning="a--b"` reaches the DOM: HTML5 comment tokenisation closes
+> on `-->` or `--!>` and on **nothing else**
+> ([`vantageDirectives.ts:221-230`](../../packages/vantage-md/src/vantageDirectives.ts#L221-L230)).
+> A hand-written scanner — the checker's, which reads source text rather than a
+> parsed tree — therefore has to handle `--!>` as a terminator too.
+>
+> What a value genuinely cannot hold is a **terminator**. A `-->` inside a quoted
+> value ends the comment early and spills the tail into the document as literal
+> text, and an unclosed `<!--` swallows the whole rest of the file. Neither is
+> expressible as a parser rule, because by the time the parser runs the damage is
+> already in the tree — so both are checker findings (`vantage/unterminated`).
 
-Three scopes, distinguished by where the directive sits — not by a `scope=` key,
-because position is already unambiguous and a key that can disagree with
-position is a bug generator.
+### 4.2 Names, position, and extent
 
-| Placement | Scope | Meaning |
+Two different jobs, and keeping them apart is what makes the scoping rule and
+the examples agree. **Position picks the target; the name picks the extent.**
+
+The name set is closed and is exactly **three** names
+([`vantageDirectives.ts:43`](../../packages/vantage-md/src/vantageDirectives.ts#L43)):
+
+| Name | Target | Extent |
 | :--- | :--- | :--- |
-| Immediately before a **heading** | That heading **and its section** — everything until the next heading of the same or shallower depth | Section styling |
-| Immediately before a **non-heading block** | That one block | Block styling, badges |
-| Inside **frontmatter** (`vantage:` key) | The whole file | Document-level chrome (§4.5) |
+| `section` before a **heading** | the next sibling element | the heading **and its section** — every following sibling until the first heading of same-or-shallower depth |
+| `section` before a **non-heading** | the next sibling element | degrades to that one block |
+| `block` | the next sibling element | that one block only, even in front of a heading |
+| `oq` | the next sibling element, **anchor-capable tags only** | that one block only |
+
+An **unknown name drops the whole directive** — there is no target semantics
+without a name. An unknown *key* or *value* drops only that pair; **D2** is
+per-key, not per-directive.
+
+There is still no `scope=` key, and position is still what identifies the target,
+so the original reason for refusing one stands: a key that can disagree with
+position is a bug generator. The *name* cannot disagree with position — it only
+says how far the stamp reaches.
+
+The third scope is out-of-band: a `vantage:` key **inside frontmatter** scopes to
+the whole file (§4.5).
 
 There is deliberately **no range syntax** — no `<!-- vantage: end -->`, no
 paired open/close. A paired form has an unmatched-close failure mode, and
@@ -303,8 +399,10 @@ If a real need for arbitrary ranges appears, it can be added later without
 breaking any of this; adding it now buys a failure mode for a use case nobody
 has stated.
 
-Two directives before the same target **merge**, last-key-wins on conflict. A
-directive with nothing after it (end of document) is inert.
+Two directives before the same target **merge**, last-key-wins on conflict —
+defined on the tree, not on the source, so blank lines between them change
+nothing. A directive with nothing after it (end of document, or a run of text
+rather than a block) is inert.
 
 ### 4.3 The token vocabulary is semantic, never chromatic
 
@@ -312,15 +410,15 @@ directive with nothing after it (end of document) is inert.
 decides what that looks like. This is **P2**, and it is the difference between
 markup that works in one theme and markup that works in all of them.
 
-The vocabulary is the **GFM alert set Vantage already renders** — `note`, `tip`,
-`important`, `warning`, `caution` — plus `muted` for de-emphasis:
+The `tone` vocabulary is the **GFM alert set** — `note`, `tip`, `important`,
+`warning`, `caution` — plus `muted` for de-emphasis:
 
 | Key | Tokens | Means |
 | :--- | :--- | :--- |
 | `tone` | `note` `tip` `important` `warning` `caution` `muted` | The section's role — same five meanings as a `> [!WARNING]` callout, plus de-emphasis |
 | `emphasis` | `strong` `normal` `quiet` | How much the section should pull the eye |
-| `collapsed` | `true` `false` | Section renders inside `<details>`, closed |
-| `badge` | `draft` `stale` `blocked` `done` `wip` | A small chip beside the heading |
+| `collapsed` | `true` `false` | The section's body blocks start hidden behind a caret on the heading — a flat stamp, no wrapper |
+| `badge` | `draft` `stale` `blocked` `done` `wip` | A small chip after the heading text |
 
 **Why reuse the alert vocabulary rather than invent an importance scale.** An
 author who knows `> [!WARNING]` already knows this — no second concept to learn,
@@ -329,48 +427,197 @@ vocabulary is *closed by something other than our taste*: it is GitHub's set, so
 "can we add one more?" has a principled answer instead of a debate.
 
 > [!WARNING]
-> **Vantage does not render GFM alerts today — verified 2026-08-31.** I nearly
+> **Vantage does not render GFM alerts — verified 2026-08-31.** I nearly
 > justified this choice on "the theme mapping already exists," and it does not.
 > `remark-gfm` does not implement alerts; `> [!WARNING]` renders as a plain
-> blockquote with the literal text `[!WARNING]` visible, and there is no alert
-> CSS anywhere in `frontend/src` or `packages/vantage-md/src/styles/`. Worth
-> knowing twice over, because
+> blockquote with the literal text `[!WARNING]` visible, and before this work
+> there was no alert CSS anywhere in `frontend/src` or
+> `packages/vantage-md/src/styles/`. Worth knowing twice over, because
 > [`styleGuide.ts`](../../packages/vantage-md/src/styleGuide.ts) instructs
 > authors to write callouts that Vantage then renders as literal bracket text —
 > a live gap, independent of this design.
 >
-> This makes the reuse argument *stronger*, not weaker. Building the `tone`
-> palette produces exactly the six-colour light/dark treatment that rendering
-> real GFM alerts needs, so the two features share one palette instead of
-> arriving with two. Whoever ships alert rendering should consume these tokens.
+> This makes the reuse argument *stronger*, not weaker. The `tone` palette that
+> shipped **is** the six-colour light/dark treatment that rendering real GFM
+> alerts needs. Whoever ships alert rendering should consume these tokens rather
+> than build a second palette.
 
 `emphasis` is separate from `tone` on purpose: "this is a warning" and "shout
 about it" are different claims, and collapsing them forces an author to
 overstate severity to get visual weight.
 
-**The mapping mechanism.** A token resolves to a **CSS custom property owned by
-the theme**, never to a literal colour anywhere near the document:
+#### The mapping mechanism
 
-| Token | Resolves to | Light | Dark |
-| :--- | :--- | :--- | :--- |
-| `tone=warning` | `var(--vantage-tone-warning)` | amber-toned | amber-toned, dark-adjusted |
-| `tone=caution` | `var(--vantage-tone-caution)` | red-toned | red-toned, dark-adjusted |
-| `tone=note` | `var(--vantage-tone-note)` | blue-toned | blue-toned, dark-adjusted |
+A token resolves to a **CSS custom property owned by the theme**, never to a
+literal colour anywhere near the document. The document carries
+`data-vantage-tone="warning"`; a stylesheet selects on that attribute and reads
+the property; the property is defined once per theme. **Adding a theme later
+touches one custom-property block and zero documents** — that is the entire
+payoff of refusing colour names.
 
-The document carries `data-vantage-tone="warning"`. A stylesheet selects on that
-attribute and reads the custom property; the property is defined once per theme.
-**Adding a theme later touches one custom-property block and zero documents** —
-that is the entire payoff of refusing colour names, and why it is worth the
-small loss of expressive power. Light and dark are what exist today; the
-mechanism does not care how many there eventually are.
+The stylesheet is
+[`packages/vantage-md/src/styles/directives.css`](../../packages/vantage-md/src/styles/directives.css),
+and **both halves of its wiring are load-bearing**: it is re-exported from that
+directory's [`index.css:16`](../../packages/vantage-md/src/styles/index.css#L16)
+so the published package and the package's own viewer are styled, **and**
+imported by relative source path from
+[`frontend/src/index.css:23`](../../frontend/src/index.css#L23) so the app is.
+Either half alone is a **D5** break: package-only CSS reaches nobody in this
+repo, and frontend-only CSS leaves the exported viewer bare while the app looks
+perfect.
+
+Five mechanisms in that file are fragile in ways that are invisible until they
+break, so they are written down rather than left to be rediscovered.
+
+> [!CAUTION]
+> **The five load-bearing CSS facts, all measured in real Chrome against the
+> real Tailwind v4 build.**
+>
+> 1. **`directives.css` must stay UNLAYERED. Never wrap it in `@layer`.** The
+>    specificity fight is won by **cascade layers, not specificity**: every
+>    `@tailwindcss/typography` variant utility flattens to exactly one class —
+>    `:where()` and `:not(:where(…))` both contribute zero — and all of them sit
+>    inside `@layer utilities`. Unlayered normal declarations outrank every layer
+>    regardless of specificity, which is the only reason plain attribute
+>    selectors win at all. Wrapping the file in `@layer components` "to be tidy"
+>    makes it instantly lose to every prose utility.
+> 2. **The import position is part of the mechanism.** It sits at
+>    [`index.css:23`](../../frontend/src/index.css#L23), *before*
+>    [`@plugin`/`@custom-variant`](../../frontend/src/index.css#L24) and before
+>    the app's own rules. CSS requires every `@import` to precede other at-rules
+>    and Tailwind's importer obeys that literally: from below them the file is
+>    **silently discarded** — measured, `vantage-chip` went from 24 occurrences
+>    in `dist/assets/*.css` to zero, with no warning from vite and every test
+>    green. It must also precede the app's own rules, because the lone-block tone
+>    wash and the transient-state backgrounds (`.line-anchor-highlight`,
+>    `.review-highlight-block`, `.review-block-hovered`) are all one-class
+>    specificity, so source order is the entire tie-break — and a transient state
+>    has to beat a document's standing tone. That is also why the wash selector
+>    is written `[data-vantage-tone]:where([data-vantage-run="only"])`: dropping
+>    the `:where()` takes it to two classes and silently swallows the review
+>    highlight on exactly those blocks.
+> 3. **Import by relative source path, never by package subpath.**
+>    `@import "vantage-md/styles/directives.css"` does not resolve — no such
+>    subpath in the `exports` map. `@import "vantage-md/styles"` *does* resolve —
+>    to `dist/styles.css`, which is **gitignored and publish-only**, so it works
+>    off a stale local build and fails in CI or a fresh clone.
+> 4. **The accent `var()` has no fallback, and the absence *is* the D2
+>    mechanism.** `background-color: var(--vantage-tone-accent)` with nothing
+>    behind it means an unrecognised token leaves the variable unset, the value is
+>    invalid at computed-value time, and the rule computes to `transparent`.
+>    Measured: `tone=chartreuse` → fully transparent, `tone=warning` →
+>    `rgb(180,83,9)`. A well-meaning "safety" fallback would paint every typo'd
+>    token grey, which violates **D2**. Use the `background-color` longhand and
+>    never the `background` shorthand — an invalid-at-computed-value failure on
+>    the shorthand resets `background-image` too.
+> 5. **`emphasis=strong` must exclude headings, `pre` and `table`.** Because the
+>    file is unlayered, a bare `font-weight: 500` beats the layered
+>    `prose-headings:font-semibold` and **de-bolds** a toned heading from 600 to
+>    500. The exclusion is at
+>    [`directives.css:196`](../../packages/vantage-md/src/styles/directives.css#L196).
+>
+> [`directiveTheme.test.ts`](../../frontend/src/lib/directiveTheme.test.ts) and
+> [`directiveCssWiring.test.ts`](../../frontend/src/lib/directiveCssWiring.test.ts)
+> guard all five as text-level assertions over the stylesheet. They have to be
+> text-level: jsdom cannot test the geometry — `getComputedStyle(el, "::before")`
+> throws, `var()` indirection is not resolved, and media queries are not
+> evaluated (A22).
 
 There is no interpolation anywhere in the path, which is what makes §8.3 short.
-It also sidesteps a build problem: this is Tailwind v4 with an empty `extend`
-([`tailwind.config.js:7-8`](../../frontend/tailwind.config.js#L7-L8)) and a
-`@source` scan over the package
+It also sidesteps a build problem: this is Tailwind v4, whose live configuration
+is `@plugin "@tailwindcss/typography"` and `@custom-variant dark` in
+[`index.css:24-25`](../../frontend/src/index.css#L24-L25) plus a `@source` scan
+over the package
 ([`index.css:30`](../../frontend/src/index.css#L30)), so a *computed* Tailwind
 class name would never be emitted. Attribute selectors and custom properties in
 a plain stylesheet have no such dependency.
+
+> [!WARNING]
+> **`frontend/tailwind.config.js` is inert — do not cite it, and do not "fix"
+> anything by editing it.** Tailwind v4 loads a JS config only via `@config`, and
+> `index.css` has none. The `darkMode: "class"` and `plugins: [typography]` in
+> that file do nothing at all. An earlier draft of this section cited
+> `tailwind.config.js:7-8` as evidence for the claim above; the conclusion was
+> right and the citation pointed at a dead file.
+
+#### `data-vantage-run`: an attribute the design did not have
+
+A section's tone is stamped on **every** block, so a per-element
+border-plus-background renders one section as N stacked boxes. Instead each
+member draws a slice of one continuous vertical rule, bled upward to meet its
+predecessor — and "am I the first member?" has to be an **attribute**, not an
+adjacent-sibling selector.
+
+`[data-vantage-run]` takes `start | middle | end | only`. It is not cosmetic and
+not hypothetical: review mode inserts a comment `<div>` as a sibling **inside**
+the stamped run (§2.3), so `[tone] + [tone]` severs at every commented paragraph
+and bleeds across the boundary between two adjacent runs of different tone. The
+run selector must be **positive** —
+`:is([data-vantage-run="middle"], [data-vantage-run="end"])` — never
+`:not([data-vantage-run="start"])`, which with the attribute missing entirely
+(older plugin, newer CSS) hangs the rule above the heading: exactly the
+old-meets-new case **D3** is about.
+
+The other half of the same problem is solved on the review side rather than here:
+`joinToneRun`
+([`useReviewHighlights.ts:376-382`](../../frontend/src/hooks/useReviewHighlights.ts#L376-L382))
+copies the host block's tone and `run="middle"` onto the inserted comment
+wrapper, so a comment inside a toned section does not punch a gap taller than
+the bleed. Only a card that really is *between* two members joins — after an
+`end`, or beside a lone `only`, a stamped card would hang the rule below the
+section it belongs to.
+
+#### `collapsed`: a flat stamp, double-gated
+
+`collapsed=true` emits **no `<details>` and no wrapper**. On the flat sibling run
+it stamps `data-vantage-collapse-toggle="N"` on the heading, and
+`data-vantage-collapsed="true"` plus `data-vantage-collapse-group="N"` on each
+body block. The heading takes a *different* attribute from the blocks it hides,
+and that asymmetry is the whole design: a nested `###` inside a collapsed `##`
+must be both a hidden member of group 1 and the toggle for group 2, and sharing
+one attribute would make it permanently invisible and unreachable by either
+toggle.
+
+The hiding is CSS and it is **double-gated**:
+
+```css
+@media not print {
+  [data-vantage-collapse-ready] [data-vantage-collapsed="true"] {
+    display: none;
+  }
+}
+```
+
+Both gates are the point. `[data-vantage-collapse-ready]` is set on the prose
+container by
+[`useCollapseSections`](../../frontend/src/hooks/useCollapseSections.ts) *after*
+it attaches its handlers, so any renderer without that pass — the CLI checker's
+`renderMarkdown` HTML, a static export read with JS off, an external consumer of
+the package's viewer — hides nothing and shows the whole document. **A bare
+`[data-vantage-collapsed="true"] { display: none }` is content loss**, and hidden
+content with no way to reveal it violates **P1** and **D8**. And `@media not
+print` is not the same thing as a `display: revert` counter-rule: `not print`
+means the declaration **does not exist** in the print stylesheet, so no third
+rule can defeat it — where a counter-rule can be defeated by a fourth. A section
+that printed closed is the same content loss on paper (**D7**), so the print rule
+shipped in the same commit.
+
+Three refusals fall out of the same principle, and all three are in the plugin: a
+`block` scope drops `collapsed`, a `section` that degraded onto a non-heading
+drops it, and a heading with no body blocks gets no toggle. In the first two,
+hiding a lone paragraph leaves nothing on screen to bring it back; in the third,
+a caret that hides nothing is an affordance that lies. `collapsed=false` stamps
+nothing at all — the token exists so an inner section can cancel an enclosing
+one, and "not collapsed" is not a thing an attribute can usefully say.
+
+The caret is a **real `<button>`** the pass injects, not a third pseudo-element:
+`::before` is already the tone rule and `::after` is the badge, and one heading
+can carry all three. Being a button is also what keeps a toggle click from
+opening the comment popover (the review click handler bails on `button`), and it
+is where `aria-expanded` is allowed to live — a heading is not. The glyph is
+drawn in CSS so the document's *text content* stays byte-identical to what every
+other renderer produces: no block hash, clipboard payload or anchor shifts
+because the JS ran.
 
 ### 4.4 What each capability looks like
 
@@ -384,12 +631,15 @@ Section styling — a warning-toned section, played loud, flagged stale:
 The steps below predate the 2026-07 rewrite.
 ```
 
-A collapsed appendix:
+A collapsed appendix — the heading keeps a caret, and the body blocks are hidden
+only once the toggle JS says it is safe to hide them:
 
 ```markdown
 <!-- vantage: section collapsed=true -->
 
 ## Appendix B — raw measurement dumps
+
+Three hundred lines of numbers.
 ```
 
 A single block framed as a callout without blockquote syntax:
@@ -400,12 +650,13 @@ A single block framed as a callout without blockquote syntax:
 Every delivery carries a nonce.
 ```
 
-A one-click Open Question answer (§5.2):
+A one-click Open Question answer (§5.2). **Note the indentation** — the
+directive lives *inside* the list item, never at column 0 between two items:
 
 ```markdown
-<!-- vantage: oq id=OQ-9 leaning="Back of the queue" -->
+1. **OQ-17: Queue position on re-entry.**
 
-9. 💬 **OQ-9: Queue position on re-entry.** …
+   <!-- vantage: oq id=OQ-17 leaning="Back of the queue" -->
 
    _Leaning:_ Back of the queue.
 ```
@@ -416,8 +667,7 @@ Document-level chrome, in frontmatter (§4.5):
 ---
 title: "Adaptive levelling"
 vantage:
-  status-chip: in-review
-  toc: section
+  status-chip: true
 ---
 ```
 
@@ -425,13 +675,54 @@ vantage:
 line absent.** No box, no marker, no gap beyond the blank line that was already
 there. That is the whole point of the carrier.
 
+> [!CAUTION]
+> **A directive at column 0 between two list items is not a legal placement, and
+> the first draft of this section used one.** Measured: `9. Question nine` /
+> blank / `<!-- vantage: oq -->` / blank / `10. Question ten` renders as **two**
+> `<ol>`s — `<ol start="9">` followed by `<ol start="10">` — where deleting the
+> comment renders **one loose** `<ol>`. Tight versus loose is 16px of
+> `prose-p:my-[16px]` per item, so the directive *visibly changes the document*,
+> on GitHub too. That fails **D1** outright and fails **P1**'s
+> delete-and-compare test structurally: the one thing a directive must never do.
+>
+> The indented form above renders one `<ol>` with numbering and every
+> `data-source-line` intact, and its target is the `_Leaning:_` paragraph. This
+> is the single strongest reason the plugin walks the whole tree rather than the
+> root (§6.2), and it is why `vantage/list-split` is an **error** in the checker
+> rather than a warning.
+
 ### 4.5 Frontmatter for file scope
 
 Frontmatter is rejected as *the* carrier (§3) because it cannot point at a
 section. It is the right home for genuinely file-scoped chrome, under a single
-`vantage:` key so it stays out of the way of a user's own keys. Vantage already
-parses and displays frontmatter, so this costs no new parsing — only a decision
-to special-case one key.
+reserved `vantage:` key so it stays out of the way of a user's own keys. Vantage
+already parses and displays frontmatter, so this costs no new parsing — only a
+decision to special-case one key, read by
+[`vantageFrontmatter.ts`](../../packages/vantage-md/src/vantageFrontmatter.ts).
+
+One key today: **`status-chip`**, which lifts the document's lifecycle status out
+of the metadata card and into a chip above it (§5.3). Four things about it were
+forced by the tree rather than chosen:
+
+- **The vocabulary is `status:`'s own** — `draft | in-review | accepted |
+  deprecated`, the set `styleGuide.ts` already tells every agent to write — and
+  **not** `badge`'s. Under the badge set `status-chip: in-review`, the design's
+  own only example, would be illegal. The chip borrows the badge *colours*
+  through `.vantage-chip--<tone>`, so a `draft` chip and a `badge=draft` chip are
+  one visual object sharing one rule; the badge can only be a pseudo-element and
+  the chip is a real element, so they share the rule and not the mechanism.
+- **`status-chip: true` inherits `status:`** and is the recommended form. A
+  second independent value can disagree with `status:`, which recreates exactly
+  the drift the feature exists to remove. The literal form is still accepted and
+  the disagreement is a checker finding (`vantage/status-chip-stale`), not a
+  render decision.
+- **The reserved key is filtered out of the metadata card.** Left in,
+  `FrontmatterDisplay`'s `isPlainObject` branch prints it as a monospace
+  `{"status-chip": "draft"}` row — shipping the chip *and* the burial the chip
+  exists to remove.
+- **No `isStaticMode()` gate.** D4's gate is for controls that *write*; the chip
+  is a non-interactive `<span>` that cannot fail, and gating it would delete it
+  from every exported site — the one place §2.5 says D5 costs nothing.
 
 ## 5. Capabilities
 
@@ -455,25 +746,50 @@ the section rather than wrapping them in a `<section>`.
 
 > [!WARNING]
 > **Do not "clean this up" by introducing a wrapper element.** It is the tidier
-> CSS and it is the wrong trade. The review anchor system, the `#L42` line
-> anchors, and hover-to-comment block resolution all walk a **flat sibling
-> structure** — `MarkdownViewer` resolves an anchor by climbing to the closest
-> `[data-source-line]` whose tag is in `ANCHOR_TAGS`
-> ([`MarkdownViewer.tsx:97`](../../frontend/src/components/MarkdownViewer.tsx#L97))
-> — and inserting a container between the prose root and the blocks is exactly
-> the change that breaks one of those subtly rather than loudly. Extra
-> attributes are cheap; a restructured tree is not.
+> CSS and it is the wrong trade — and the reason is *not* that the review system
+> walks a flat sibling structure. It does not: `resolveAnchorBlock` climbs
+> ancestors from the clicked node
+> ([`MarkdownViewer.tsx:95-101`](../../frontend/src/components/MarkdownViewer.tsx#L95-L101))
+> and the block index is a `querySelectorAll`
+> ([`useReviewHighlights.ts:169-171`](../../frontend/src/hooks/useReviewHighlights.ts#L169-L171)),
+> so both would survive an extra container. That justification was wrong; the
+> ruling is right, on four things that were **measured** when `<details>` was
+> tried as the wrapper for `collapsed`:
+>
+> 1. **Comment cards land inside `<summary>`.** They are inserted into the host
+>    block's `parentNode`
+>    ([`useReviewHighlights.ts:384-397`](../../frontend/src/hooks/useReviewHighlights.ts#L384-L397)),
+>    so a comment on a heading that had become a `<summary>`'s child would render
+>    inside the summary.
+> 2. **The summary click also opens the comment popover.** The container click
+>    handler bails only on links, `button`, and the review UI's own markers
+>    ([`MarkdownViewer.tsx:539-548`](../../frontend/src/components/MarkdownViewer.tsx#L539-L548))
+>    — a `<summary>` is none of those. This is also why the caret is a real
+>    `<button>` rather than a click handler on the heading.
+> 3. **`@tailwindcss/typography`'s margin resets stop matching.** `h2 + *` and
+>    `> :first-child` no longer apply across a wrapper boundary, so *every*
+>    collapsed section gains a visible spacing regression.
+> 4. **It is the restructuring OQ-2 settled against**, for the general reason
+>    that extra attributes are cheap and a restructured tree is not.
+>
+> Each one costs minutes to check and weeks to find in production, which is why
+> they are here rather than in a commit message.
 
 Degradation: **D1** (invisible elsewhere), **D2** (unknown token → no styling),
-**D5** (static export gets the same attributes, since it shares the plugin).
+**D5** (static export gets the same attributes, since it shares the plugin),
+**D7** (print keeps the information and drops the colour).
 
 ### 5.2 One-click Open Question answers
 
-**Value: high. Effort: low.** This is the best thing in the doc, and it is
+**Value: high. Effort: low.** This is the best thing in the doc, and it was
 almost entirely built already.
 
 ```markdown
-<!-- vantage: oq id=OQ-9 leaning="Back of the queue — the fix might interact with things that merged while it was out." -->
+1. **OQ-17: Queue position on re-entry.**
+
+   <!-- vantage: oq id=OQ-17 leaning="Back of the queue — the fix might interact with things that merged while it was out." -->
+
+   _Leaning:_ Back of the queue.
 ```
 
 In review mode, Vantage renders a single button beside the question, labelled
@@ -486,6 +802,11 @@ In review mode, Vantage renders a single button beside the question, labelled
   click-and-type would have produced.
 - **text**: the `leaning` value, or a default of `"Take the stated leaning."`
   when `leaning` is absent.
+- **fallbackText**: `stripBlockText(blockVisibleText(block))`, **byte-identical**
+  to the popover's own `displayText`. Not free, and not optional: that value is
+  rendered back to the reviewer in `.review-outdated-quote` and handed to the
+  agent as the clipboard payload's `**Selected text:**`. It is lowercased, which
+  is existing behaviour rather than a bug to fix here.
 
 The key is `leaning=` and the label is "Take this leaning" — deliberately the
 same word, so the directive an agent writes and the button a reviewer clicks
@@ -505,18 +826,18 @@ which is the strongest form the feature could take.
 
 ```mermaid
 flowchart TD
-    dir["Directive in doc: oq id=OQ-9"] --> plug["rehypeVantageDirectives"]
+    dir["Directive in doc: oq id=OQ-17"] --> plug["rehypeVantageDirectives"]
     plug --> attr["data-vantage-oq on block"]
-    attr --> hook["Post-render pass (review mode only)"]
+    attr --> hook["useOpenQuestionButtons (review mode, not static)"]
     hook --> btn["Take this leaning (button)"]
-    btn -->|"one click"| add["addComment(anchor, text)"]
+    btn -->|"one click"| add["addComment(anchor, text, fallbackText)"]
     add --> cmd["POST /api/review/comments"]
     cmd --> panel["Review panel (unchanged)"]
     panel --> clip["Clipboard payload (unchanged)"]
     clip --> inbox["Agent delivers via inbox (unchanged)"]
 ```
 
-Everything from `addComment` rightward already exists. The new code is the
+Everything from `addComment` rightward already existed. The new code is the
 plugin, the attribute, and a button.
 
 Degradation: **D1**, **D4**, **D6** (a malformed `oq` directive yields no
@@ -525,9 +846,35 @@ button never removes a path, only adds one.
 
 D4 has teeth here. The button renders only when **all** of these hold: review
 mode is on, the directive parsed, and `isStaticMode()` is false. That last
-condition is the §2.5 trap — without it, an exported document shows a live-looking
-button whose click is swallowed by the static interceptor. A button that fails
-silently is worse than no button, because the reviewer believes they answered.
+condition is the §2.5 trap — without it, an exported document shows a
+live-looking button whose click is swallowed by the static interceptor. A button
+that fails silently is worse than no button, because the reviewer believes they
+answered.
+
+> [!WARNING]
+> **The button is a sibling pass, not an addition inside the highlighter — and
+> "an addition to the existing post-render pass" would have shipped a button
+> nobody ever saw.** `useReviewHighlights`'s effect returns early when there are
+> no comments
+> ([`:146-149`](../../frontend/src/hooks/useReviewHighlights.ts#L146-L149)) and
+> again when none are unresolved
+> ([`:161-165`](../../frontend/src/hooks/useReviewHighlights.ts#L161-L165)) —
+> which is the state of **every fresh review**, exactly when a one-click answer
+> matters most. So
+> [`useOpenQuestionButtons`](../../frontend/src/hooks/useOpenQuestionButtons.ts)
+> is its own pass over the same container, with its own explicit review-mode
+> gate: the hook is called unconditionally from `MarkdownViewer` and review mode
+> is expressed by passing an empty comments array, so the gate is not inherited
+> and had to be written.
+>
+> Two more things the sketch did not have. `addComment` mints a fresh id and
+> appends with **no dedupe**, so two clicks are two identical comments the agent
+> has to chase: the button disables on click, and on the next pass it is replaced
+> by a non-interactive **"Leaning taken"** chip whenever a comment with the same
+> anchor and the same text already exists, resolved or not. And every node the
+> pass injects carries a marker attribute that `REVIEW_UI_SELECTOR` excludes from
+> block hashes — without which the button would change the hash of the block it
+> sits in and make every comment anchored there read as drifted.
 
 > [!TIP]
 > The `leaning` string should restate the leaning rather than say `"yes"`. The
@@ -537,18 +884,28 @@ silently is worse than no button, because the reviewer believes they answered.
 ### 5.3 What else earns a place
 
 - **Per-section review status** (`badge=blocked`) — reuses the badge machinery
-  from §5.1 for free. Ships with it.
+  from §5.1 for free. Shipped with it.
 - **Stale markers** (`badge=stale`) — same. The value is that a reader sees
   staleness *in the section*, not in a changelog nobody reads.
-- **Document status chip** (frontmatter `status-chip`) — a small chip near the
-  title. Cheap, and it makes `status: draft` in frontmatter visible rather than
-  buried in a metadata card.
-- **Machine-readable metadata for tooling** — this is the sleeper. Directives
-  are already a structured, greppable, position-carrying annotation layer. The
-  checker described in [`agent-cli.md`](agent-cli.md) can validate directive
-  names and tokens with no rendering at all, which means typos get caught before
-  a human sees a section that mysteriously did not style. Costs one rule in a
-  tool that is being built anyway.
+- **Document status chip** (frontmatter `status-chip`) — it makes `status: draft`
+  visible rather than buried in a metadata card. It is **not** "a chip near the
+  title", which is how this line originally read and is unimplementable: **there
+  is no document title anywhere in the UI.** The header bar shows a path
+  breadcrumb, `document.title` is `Vantage: <repoName>`, frontmatter `title`
+  appears only as a `<td>` inside the metadata card, and the `#` H1 is ordinary
+  prose. The chip is therefore **the first element of the content column, above
+  the metadata card** — rendered as `FrontmatterDisplay`'s first child, which is
+  where both viewers get it with no call-site edit and no way to drift.
+- **Machine-readable metadata for tooling** — this was the sleeper, and it is
+  now the largest single piece of the feature. Directives are a structured,
+  greppable, position-carrying annotation layer, so the checker in
+  [`agent-cli.md`](agent-cli.md) validates them with no rendering at all:
+  twelve rules under `vantage/*`
+  ([`registry.ts:86-167`](../../packages/vantage-check/src/rules/registry.ts#L86-L167)),
+  covering unterminated comments, malformed grammar, unknown names, keys and
+  values, list splits, duplicate keys, orphans, and the four frontmatter cases.
+  **The checker is not a nicety here — it is the only thing that ever reports a
+  directive that did nothing**, because the viewer is silent by design (**P3**).
 
 ### 5.4 Explicitly iced
 
@@ -559,6 +916,8 @@ silently is worse than no button, because the reviewer believes they answered.
   on GitHub too.
 - **A TOC directive.** The outline is already computed from headings and
   navigable. A second one is maintenance for a feature the sidebar provides.
+  (An early example in §4.4 showed `toc: section` in frontmatter; it is an
+  unknown key, and therefore inert.)
 - **Author-chosen colours of any kind** — hex values, palette names, `bg=`.
   This was the original shape of "set a background colour", and the answer is
   no on two counts: it breaks the moment a second theme exists (§4.3), and a
@@ -569,80 +928,144 @@ silently is worse than no button, because the reviewer believes they answered.
 
 ### 6.1 Where it lives
 
-`packages/vantage-md/src/rehypeVantageDirectives.ts`, exported from
+Two modules in `packages/vantage-md/src/`, exported from
 [`index.ts`](../../packages/vantage-md/src/index.ts) alongside
-`rehypeSourceLines`. The package is the shared floor under both viewers and the
-checker; anything less shared reintroduces §2.1's drift.
+`rehypeSourceLines`:
+
+- [`vantageDirectives.ts`](../../packages/vantage-md/src/vantageDirectives.ts) —
+  the grammar and the whole closed vocabulary, **zero-import, not even a type
+  import**. Two callers need it and only one of them has a tree: the rehype
+  plugin stamps attributes, and the CLI checker validates directives with no
+  rendering at all, importing this file **by relative path**. A checker with its
+  own copy of the grammar is a checker that disagrees with the renderer, which
+  is precisely the failure **D5** names.
+- [`rehypeVantageDirectives.ts`](../../packages/vantage-md/src/rehypeVantageDirectives.ts)
+  — the plugin (§6.2). It knows hast; it knows no vocabulary.
+
+The package is the shared floor under both viewers and the checker; anything less
+shared reintroduces §2.1's drift.
 
 > [!NOTE]
-> **`vantage-md` has no test runner of its own** — no test files, no vitest
-> dependency, and `package.json` exposes only `build`, `dev`, `typecheck`,
-> `prepublishOnly`. Its pipeline is tested from the *frontend* suite, which
-> resolves `vantage-md` to the package's TypeScript source through a vitest
-> alias, exactly as
+> **`vantage-md` has no test runner, linter or formatter of its own** — no test
+> files, no vitest dependency, and `package.json` exposes only `build`, `dev`,
+> `typecheck`, `prepublishOnly`. Its pipeline is tested from the *frontend*
+> suite, which resolves `vantage-md` to the package's TypeScript source through
+> a vitest alias, exactly as
 > [`sourceLines.test.ts`](../../frontend/src/lib/sourceLines.test.ts) does for
-> `rehypeSourceLines`. That is the pattern for this plugin's tests too: they
-> live in `frontend/src/` and run under `npm run test` there.
+> `rehypeSourceLines`. That is the pattern every test for this work follows:
+> they live in `frontend/src/` and run under `npm run test` there.
+>
+> This is convenient for tests and a genuine hole for everything else — see
+> [OQ-6](#open-questions).
 
 ### 6.2 The plugin
 
 Between `rehypeRaw` and `rehypeSanitize` (§2.2 — the only slot). Per pass:
 
-1. Walk the root's children. For each `comment` node, prefix-test for
-   `vantage:`. Non-matches are skipped and left for the sanitiser.
+1. **Walk the whole tree**, resolving each directive **within its own parent's
+   `children` array** — never outside it, so a directive inside a `blockquote` or
+   an `li` cannot stamp past it
+   ([`rehypeVantageDirectives.ts:333-370`](../../packages/vantage-md/src/rehypeVantageDirectives.ts#L333-L370)).
+   For each `comment` node, prefix-test for `vantage:`; non-matches are skipped
+   and left for the sanitiser.
 2. Parse the grammar (§4.1). A parse failure drops the directive (**P3**).
-3. Resolve `name` and each `key=value` against the **closed vocabulary**. An
-   unknown name, key, or value is dropped — individually, so one bad key does
-   not void a directive's good keys.
-4. Determine the target from position (§4.2): the next sibling element.
-5. Stamp `data-vantage-*` properties on the target (and, for section scope, on
-   every following sibling until the next heading of same-or-shallower depth).
+3. Resolve `name` and each `key=value` against the **closed vocabulary** (§4.2).
+   An unknown name drops the whole directive; an unknown key or value drops only
+   that pair.
+4. **Determine the target from position.** Walk forward, skipping
+   whitespace-only `text` nodes, **all** `comment` nodes (directive or not), and
+   `doctype`. Stop on the first `element` — that is the target — or on any
+   non-whitespace `text`, in which case the directive is inert. A whitespace text
+   node always sits between a block-level comment and its target, with or without
+   a blank line in the source, so it cannot be treated as a blocker. Every
+   directive consumed on the way merges onto the same target, last-key-wins.
+5. Stamp `data-vantage-*` properties on the target, and for `section` scope on
+   every following sibling in the range (§4.2), plus the `run` marker across it.
+   Values are **always strings** (§6.3).
 6. Leave the comment node in place. The sanitiser removes it.
 
-Ordering note: it must run **before** `rehypeSourceLines` or after it, but never
-depend on `rehypeSlug`, which runs post-sanitise
-([`pipeline.ts:106`](../../packages/vantage-md/src/pipeline.ts#L106))
-and so cannot supply heading ids to the plugin. If a directive ever needs a
-slug, it computes its own.
+> [!IMPORTANT]
+> **Walk the whole tree, not just the root — a root-only walk finds zero `oq`
+> directives in a real Open Questions list.** The first sketch of this section
+> said "walk the root's children", and one of two independent recon passes
+> assumed the same for the checker. Both were wrong for the same measured reason:
+> `rehype-raw` leaves comment nodes inside `blockquote`, inside `li`, inside `td`
+> and inline inside `p` (§2.2), and the legal `oq` authoring form is indented
+> **inside** the list item (§4.4). The plugin and the checker must walk
+> identically, or **D5** breaks in the one place nothing would report it.
+
+Recursion order is also what resolves a nested section with no extra machinery:
+an inner heading's directive necessarily sits at a higher child index than the
+outer directive that ranged over it, so each property is simply last-write-wins,
+and the inner section restarts the run so its rule terminates.
+
+Ordering note: the plugin may run before or after `rehypeSourceLines`, but it
+must never depend on `rehypeSlug`, which runs post-sanitise
+([`pipeline.ts:111`](../../packages/vantage-md/src/pipeline.ts#L111))
+and so cannot supply heading ids to it. If a directive ever needs a slug, it
+computes its own.
 
 ### 6.3 The sanitiser change
 
-Small and closed. In
-[`sanitize.ts:43-48`](../../packages/vantage-md/src/sanitize.ts#L43-L48), add
-the specific `data-vantage-*` properties to the `*` attribute list — **named
-individually**, not by wildcard:
+Small and closed. In the `*` attribute list at
+[`sanitize.ts:166-203`](../../packages/vantage-md/src/sanitize.ts#L166-L203),
+**nine** `data-vantage-*` properties are named **individually** — never by a
+`data-vantage-*` wildcard, which would readmit whatever a future bug emits and
+whatever a document hand-writes as raw HTML:
 
 ```diff
    "*": [
      ...(defaultSchema.attributes?.["*"] || []),
      "className",
-     "style",
+     ["style", SAFE_STYLE],
      "dataSourceLine",
-+    "dataVantageTone",
-+    "dataVantageEmphasis",
-+    "dataVantageBadge",
-+    "dataVantageCollapsed",
-+    "dataVantageOq",
++    ["dataVantageTone", ...VANTAGE_TONES],
++    ["dataVantageEmphasis", ...VANTAGE_EMPHASIS],
++    ["dataVantageBadge", ...VANTAGE_BADGES],
++    ["dataVantageCollapsed", ...VANTAGE_COLLAPSED],
++    ["dataVantageCollapseGroup", COLLAPSE_GROUP_ID],
++    ["dataVantageCollapseToggle", COLLAPSE_GROUP_ID],
++    ["dataVantageRun", ...VANTAGE_RUNS],
++    ["dataVantageOq", "true"],
++    "dataVantageLeaning",
    ],
 ```
 
-`rehype-sanitize` also supports value-level allowlisting (`["attr", …values]`)
-— the belt to §6.2's braces. Even if a future refactor lets an unvalidated value
-reach the tree, the sanitiser refuses anything outside the vocabulary. Both
-layers, not either.
+Three things in that diff are not decoration.
+
+- **`["style", SAFE_STYLE]`, not a bare `"style"`.** The value filter of §8.2
+  landed first, and a diff written against the earlier tree would silently revert
+  it. Anything touching this list has to carry the filter forward.
+- **The value lists are imported from the one module that defines the
+  vocabulary**, so the closed set is closed in the plugin *and* here from a
+  single source. That is the belt to §6.2's braces: even if a refactor let an
+  unvalidated value reach the tree, the sanitiser still refuses it.
+- **The two collapse counters take a `RegExp`, not a value list.** They are
+  plugin-minted integers with no vocabulary to allowlist, and the toggle JS
+  interpolates the value into a `[data-vantage-collapse-group="…"]` selector, so
+  `COLLAPSE_GROUP_ID` is `/^[0-9]+$/` and a hand-written non-numeric group is
+  stripped.
+
+> [!IMPORTANT]
+> **Attribute values are always strings — emit `"true"`, never the boolean
+> `true`.** Measured: `dataVantageOq: true` serialises as a **bare**
+> `data-vantage-oq` through `rehype-stringify` but as `data-vantage-oq="true"`
+> through `react-markdown`. Different markup from the checker and the app is a
+> **D5** violation with no error anywhere, and `data-vantage-oq` is exactly the
+> attribute a presence selector would have hidden the difference behind.
 
 Note that `style` stays on the `*` list. It is not this change that makes it
-safe — the declaration filter of §8.2 does, and that lands first (§11).
+safe — the declaration filter of §8.2 does, and it landed first (§11).
 
-### 6.4 Prerequisite: one chain, not three — done
+### 6.4 Prerequisite: one chain, not four — done
 
 §2.1's duplication went first, as step 2 of §11. `vantage-md` exports
 **`buildPipeline(options)`**, which returns `{ remarkPlugins, rehypePlugins }`,
-and all three render sites consume it rather than re-declaring the order. The
+and every render site consumes it rather than re-declaring the order. The
 package is the single place the chain is defined, which is the only reason R1 is
-a mitigated risk rather than a certainty.
+a discharged risk rather than a certainty.
 
-Two things the sketch above got wrong, and how they landed:
+Two things the sketch got wrong, and how they landed:
 
 - **Both halves, not just rehype.** A `buildRehypePlugins({ bodyLineOffset })`
   would let a caller desync the `math` toggle, which spans both halves —
@@ -650,108 +1073,135 @@ Two things the sketch above got wrong, and how they landed:
   options object covers both. The rehype-only builder stays module-private; the
   remark half is also exported on its own as `buildRemarkPlugins`, because the
   checker's mdast parser
-  ([`core/document.ts`](../../packages/vantage-check/src/core/document.ts)) is a
-  real single-half consumer and was itself a fourth copy.
+  ([`core/document.ts:37-43`](../../packages/vantage-check/src/core/document.ts#L37-L43))
+  is a real single-half consumer and was itself a fourth copy.
 - **The five toggles survive.** `renderMarkdown` gates `gfm`, `math`,
   `highlight`, `sourceLines` and `sanitize` on options while the two React
   viewers register everything; a fixed array would have silently changed what
   the CLI checker renders. `PipelineOptions` carries all five plus
-  `bodyLineOffset`.
+  `bodyLineOffset`. The directive plugin is deliberately **not** a sixth toggle.
 
-The checker's *lint-only* processor
-([`rules/markdown.ts`](../../packages/vantage-check/src/rules/markdown.ts))
-deliberately does **not** share the list. It omits `remark-math` on purpose, and
-the omission changes findings: measured on two `$$…$$` blocks containing
-`\left[ a, b \right]` and `a[0] = b[1]`, `no-undefined-references` reports three
-findings without `remark-math` and none with it.
+The checker's *lint-only* processor deliberately does **not** share the list, for
+a reason that was measured rather than assumed — see the note in §2.1.
 
 ### 6.5 Frontend consumption
 
-- **Styling**: pure CSS on attribute selectors. No JavaScript, so it works
-  identically in the SPA and in static export.
-- **The button** (§5.2): an addition to the existing post-render pass (§2.3),
-  gated on `isReviewMode`, finding `[data-vantage-oq]` the same way the
-  highlighter finds `[data-source-line]`.
+- **Styling**: pure CSS on attribute selectors (§4.3). No JavaScript, so it
+  works identically in the SPA and in static export.
+- **The Open Question button** (§5.2):
+  [`useOpenQuestionButtons`](../../frontend/src/hooks/useOpenQuestionButtons.ts)
+  — a sibling post-render pass, gated on review mode **and** `!isStaticMode()`,
+  finding `[data-vantage-oq]` the same way the highlighter finds
+  `[data-source-line]`.
+- **The collapse toggle** (§4.3):
+  [`useCollapseSections`](../../frontend/src/hooks/useCollapseSections.ts) in the
+  same idiom, over
+  [`collapseSections.ts`](../../frontend/src/lib/collapseSections.ts). The DOM
+  helpers are split out of the hook because **three** unrelated callers must be
+  able to force a section open — the hook, the `#L42` line anchor, and the review
+  highlighter — and only one of them is a React hook. A reader arriving at a line
+  anchor or an unresolved comment inside a collapsed section would otherwise be
+  scrolled to something invisible; both walk up **by group**, not by DOM
+  ancestry, because a nested `###` is both a hidden member of the outer group and
+  the toggle for its own.
+
+Both passes sweep the nodes they injected at the top of every run, so a re-render
+replaces a control rather than stacking a second one, and both mark their nodes
+so `REVIEW_UI_SELECTOR` keeps them out of block hashes.
 
 ## 7. The degradation rules
 
 The user asked for graceful degradation and left the definition to me. Here it
-is, as eight rules the rest of the doc is held to.
+is, as eight rules the rest of the doc is held to. Every ruling in the Ledger
+that overturned a design decision was decided by one of these.
 
 1. **D1 — Invisible elsewhere.** On GitHub, in any other Markdown renderer, and
    in a plain text editor, a document carrying this markup renders as if the
    markup were not there. Not "renders acceptably" — renders *identically*, with
    no visible artifact. This is what eliminates fenced blocks and `:::` syntax
-   (§3).
+   (§3), and what makes a column-0 directive between list items illegal (§4.4).
 2. **D2 — Unknown is inert.** An unrecognised directive name, key, or value
    produces *no styling* and no error. Per-key, not per-directive: one bad key
-   does not discard its siblings.
+   does not discard its siblings. In the stylesheet this is enforced by the
+   cascade — an unset custom property with no fallback (§4.3) — rather than by
+   enumerating tokens in every selector.
 3. **D3 — Forward compatible.** An older Vantage meeting a newer directive hits
    D2 and renders the plain document. There is no version negotiation and no
-   minimum-version key, because D2 makes both unnecessary.
+   minimum-version key, because D2 makes both unnecessary. The mirror case
+   matters too — newer CSS meeting an older plugin's output — which is why the
+   run selector is positive rather than negated (§4.3).
 4. **D4 — Review affordances are additive, and never lie.** Anything
    review-related appears only in review mode, and never removes an existing
    path: with review mode off there is no button and no trace of one; with it
    on, typing an answer works exactly as it does today. **And a control that
    cannot work must not render** — per §2.5 that means an explicit
-   `isStaticMode()` gate, because an exported site runs review mode with every
-   write silently failing.
+   `isStaticMode()` gate for anything that writes. A non-interactive chip is not
+   a control and is deliberately not gated (§4.5).
 5. **D5 — Every renderer agrees.** The live viewer, the package's exported
-   viewer, and the CLI checker share one plugin and one vocabulary. Static
-   export is free here — it ships the same SPA (§2.5) — but the three
-   hand-copied chains (§2.1) are not, which is why §6.4 is a prerequisite. A
-   directive must not mean one thing in the app and another through the
-   checker.
+   viewer, the exported static site and the CLI checker share one plugin, one
+   parser and one vocabulary. Static export is free here — it ships the same SPA
+   (§2.5) — but the hand-copied chains (§2.1) were not, which is why §6.4 was a
+   prerequisite. A directive must not mean one thing in the app and another
+   through the checker, and it must not *serialise* differently either (§6.3).
 6. **D6 — Malformed degrades to plain, never to broken.** A hostile or
    malformed directive yields an unstyled document. It never yields a broken
-   render, a thrown exception, an injected style, or a mis-wired button.
+   render, a thrown exception, an injected style, or a mis-wired button. This is
+   why `oq` refuses tags no review anchor can resolve, and why the button refuses
+   `pre` and `table` even though the plugin will stamp them.
 7. **D7 — Print and plain views are unaffected.** Styling is decorative;
    removing it loses nothing but decoration. `collapsed=true` in particular must
-   **expand for print** — a collapsed section that prints as a closed
-   `<details>` is content loss, which violates **P1**.
+   **expand for print** — a collapsed section that printed closed is content
+   loss, which violates **P1**. That is `@media not print` rather than a
+   counter-rule, and it shipped in the same commit as the hiding rule (§4.3).
 8. **D8 — The prose is authoritative.** Per **P1**, directives never change what
-   the document says. A reader on GitHub gets the complete document. This is the
-   rule that ices §5.4's content-changing ideas.
+   the document says. A reader on GitHub gets the complete document, and so does
+   a reader whose JavaScript never ran — which is the whole reason the collapse
+   rule is gated on a readiness marker (§4.3). This is the rule that ices §5.4's
+   content-changing ideas.
 
 ## 8. Security: the injection surface, and how it closes
 
-### 8.1 The hole this feature closes
+### 8.1 The hole this feature closed
 
-While verifying the sanitiser I measured something that is **not** caused by
+While verifying the sanitiser I measured something that was **not** caused by
 this design and that this design must not make worse.
 
-> [!CAUTION]
-> **`style` is allowlisted on every element today, with no value filtering.**
-> [`sanitize.ts:43-48`](../../packages/vantage-md/src/sanitize.ts#L43-L48) puts
-> `"style"` on the `*` list, and `rehype-sanitize` does not parse CSS. Verified
-> by running the real chain on 2026-08-31: a document containing
+> [!NOTE]
+> **History, kept for the auditor: `style` was allowlisted on every element with
+> no value filtering — closed in `fd7411c`, step 1.** `"style"` sat bare on the
+> `*` list and `rehype-sanitize` does not parse CSS. Verified by running the real
+> chain: a document containing
 > `<div style="position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:9999">`
-> renders that div verbatim, full-viewport overlay and all. So does
-> `style="background:url(https://evil.example/x.png)"`, which fires an
-> outbound request when the block renders.
+> rendered that div verbatim, full-viewport overlay and all. So did
+> `style="background:url(https://evil.example/x.png)"`, which fired an outbound
+> request when the block rendered.
 >
-> This is not script execution — `expression()` is long dead and browsers block
-> `javascript:` in CSS URLs — but it is a real full-page-overlay and
+> Not script execution — `expression()` is long dead and browsers block
+> `javascript:` in CSS URLs — but a real full-page-overlay and
 > render-time-beacon surface, reachable by anyone who can put a file in a served
-> repository.
+> repository. **That is the threat model this whole section adopts**, and §8.2 is
+> what replaced it.
 
-There is also **no sanitisation test anywhere in the repo** — grepping all 33
-test files outside `packages/vantage-check/` for `sanitiz`, `xss`, `<script>`,
-or `javascript:` returns nothing, so `sanitizeSchema` has zero coverage today.
+There was also **no sanitisation test anywhere in the repo** — grepping all 33
+test files outside `packages/vantage-check/` for `sanitiz`, `xss`, `<script>`
+or `javascript:` returned nothing, so `sanitizeSchema` had zero coverage. It now
+has [`sanitize.test.ts`](../../frontend/src/lib/sanitize.test.ts), which is where
+the KaTeX battery below lives.
 
-**This feature fixes it rather than routing around it.** The hardening is step 1
+**This feature fixed it rather than routing around it.** The hardening was step 1
 of the build order (§11), ahead of any directive work, because §8.3 asserts a
 security story against this sanitiser and that assertion should not rest on a
-component known to pass arbitrary CSS. §8.2 is what was built; the paragraph
-above describes the behaviour it replaced.
+component known to pass arbitrary CSS.
 
 ### 8.2 The hardening
 
-Built as part of this work, in `packages/vantage-md/src/sanitize.ts`. It is
-**not** a new pipeline stage — it uses `rehype-sanitize`'s own value-allowlist
-form, `["style", SAFE_STYLE]`, so the filter runs inside the sanitiser that was
+In [`sanitize.ts`](../../packages/vantage-md/src/sanitize.ts). It is **not** a
+new pipeline stage — it uses `rehype-sanitize`'s own value-allowlist form,
+`["style", SAFE_STYLE]`, so the filter runs inside the sanitiser that was
 already there. Two constants carry it: `SAFE_STYLE_PROPERTIES`, a typographic
-property allowlist, and `SAFE_STYLE`, the regex a whole `style` value must match.
+property allowlist, and
+[`SAFE_STYLE`](../../packages/vantage-md/src/sanitize.ts#L121-L124), the regex a
+whole `style` value must match.
 
 Three rules do the work:
 
@@ -825,8 +1275,8 @@ reaching a `style` attribute. Three independent things stop it, each sufficient
 alone:
 
 1. **The vocabulary is closed (P2).** `tone` accepts six token names. Anything
-   else is not a value; it is dropped at step 3 of §6.2. There is no free-text
-   value in the grammar that reaches rendering.
+   else is not a value; it is dropped at step 3 of §6.2. No free-text value in
+   the *styling* grammar reaches rendering.
 2. **The compilation target is not `style`.** Tokens become `data-vantage-*`
    attributes; the styling is a stylesheet selecting on them and reading a
    theme-owned custom property (§4.3, §6.5). No code path concatenates a
@@ -837,10 +1287,61 @@ alone:
    attribute carrying an unexpected value is stripped even if the plugin somehow
    emitted it.
 
-The `oq` directive's `leaning` string is the one genuinely free-text value. It is
-not a style and never becomes markup: it is the *body of a review comment*, and
-it lands in the same store, through the same endpoint, as text a reviewer typed.
-It inherits whatever escaping that path already applies and adds no new surface.
+#### `leaning` is the exception, and it has two defences, not three
+
+`oq`'s `leaning` string is the one genuinely free-text value, and saying it has
+three defences would imply a layer it does not have. **The value allowlist cannot
+apply to it**, because there is no closed set for a sentence: its sanitiser entry
+is name-only (§6.3). So it keeps defence 2 in full, keeps defence 3 only as a
+*name* check — the attribute is allowlisted, its value is not — and does not have
+defence 1 at all.
+
+It is also not true that it "never becomes markup". It **does** become markup —
+an attribute value on the rendered block. What survives is that it never becomes
+**executable or styling** markup, and that is measured rather than assumed:
+`hast` escapes the value on serialisation (`"` → `&#x22;`, `&` → `&#x26;`), so no
+breakout is possible; `hast-util-sanitize` applies no protocol check to a non-URL
+key and needs none; React sets it through the DOM property path, which never
+concatenates strings. The plugin also collapses whitespace and caps it at 500
+characters, because a review-comment body is not prose.
+
+> [!CAUTION]
+> **The design claimed `leaning` "inherits whatever escaping that path already
+> applies and adds no new surface." That was FALSE when it was written. There was
+> no escaping on that path at all, and this work had to add it (`561c69a`) before
+> the button could ship.**
+>
+> Comment bodies were rendered with `marked.parse()` and assigned straight to
+> `innerHTML`. `marked` does not sanitise. Measured:
+>
+> ```text
+> in : <img src=x onerror=alert(1)>     out: <img src=x onerror=alert(1)>
+> in : [click](javascript:alert(1))     out: <a href="javascript:alert(1)">click</a>
+> ```
+>
+> Before the button, that sink was reachable only by a reviewer typing locally or
+> an agent writing the review file. **The button makes it reachable from document
+> content** — the untrusted input §8.1 already adopted. So
+> `leaning="<img src=x onerror=alert(1)>"` → one click → stored comment →
+> `innerHTML` → fires.
+>
+> The fix follows this doc's own precedent (OQ-5 pulled the `style` hardening
+> inside the feature rather than routing around it):
+> [`commentMarkdown.ts`](../../frontend/src/lib/commentMarkdown.ts) renders
+> comment bodies through `marked` and then DOMPurify with a **tight allowlist
+> appropriate to a comment card** — no `img`, no `svg`/MathML, no `iframe`, no
+> `input` (and so no GFM task-list checkbox, which is UI-spoofing surface inside
+> the app's own chrome), no `class` or `style`, no headings. It is deliberately a
+> *second* sanitisation policy rather than a reuse of `sanitizeSchema`: different
+> medium (a comment card is not a document and has no business holding KaTeX's
+> MathML surface) and different sink (a synchronous string→string clean at
+> `innerHTML`, not a hast tree inside an async unified run).
+>
+> **And one trap that would have made the whole thing a no-op: `DOMPurify.sanitize()`
+> returns its input UNCHANGED when it has no DOM to parse with.** It fails
+> **open**. Any DOM-less renderer would therefore have passed the payload
+> through untouched, so the module tests `DOMPurify.isSupported` first and
+> degrades to plain escaped text — no markup, but nothing executable either.
 
 > [!WARNING]
 > **Do not "simplify" the vocabulary into a colour passthrough.** It looks like a
@@ -852,7 +1353,8 @@ It inherits whatever escaping that path already applies and adds no new surface.
 ### 8.4 Denial of service
 
 None added. Ten thousand directives is ten thousand comments, which the parser
-already handles, and the plugin is one linear pass over an unambiguous grammar.
+already handles, and the plugin is one linear pass per parent over an unambiguous
+grammar, consuming each run exactly once.
 
 ## 9. Non-goals — what this does not license
 
@@ -869,6 +1371,10 @@ already handles, and the plugin is one linear pass over an unambiguous grammar.
   removed at cost. §5.2's button writes because a *human clicked it*, which is
   categorically different.
 - **Not a layout engine.** No columns, no floats, no positioning, no widths.
+- **Not a way to hide content.** `collapsed` hides nothing that the reader cannot
+  reveal, nothing in print, and nothing at all where the toggle JS did not run
+  (§4.3). A directive that could make text unreachable would be a **D8**
+  violation wearing a decoration's clothes.
 - **Not frontmatter's replacement.** File-scoped chrome lives in frontmatter
   under one key (§4.5); the comment carrier exists for things frontmatter cannot
   point at.
@@ -878,54 +1384,80 @@ already handles, and the plugin is one linear pass over an unambiguous grammar.
 
 ## 10. Risks
 
-| Risk | Mitigation |
+| Risk | Status and mitigation |
 | :--- | :--- |
-| **R1. Chain drift** — the plugin lands in one of the **three** hand-copied chains (§2.1) | **Closed in code.** §6.4 shipped as step 2: `buildPipeline` in `packages/vantage-md/src/pipeline.ts` is the one definition, all three render sites consume it, and a test asserts every renderer produces the same `data-source-line` numbers, the same unprefixed heading ids, and the same sanitiser result for one fixture. |
-| **R2. Vocabulary creep** — every request adds a token until it is CSS by accretion | §9 is the defence, and §8.3 is the reason. Each new token is a code change; a request to name colours is a request to give up theme independence (§4.3). |
-| **R3. Markup rot** — directives outlive the sections they describe, and `badge=stale` is itself stale | Checker rule (§5.3): a directive whose target no longer exists is a finding. Cheap because the checker is already being built. |
-| **R4. Agents overuse it** — every document arrives rainbow-coloured | A style-guide rule, not a code rule. The `style-guide` command in [`agent-cli.md`](agent-cli.md) is where "use sparingly" belongs. |
-| **R5. Section stamping is wrong for nested structure** — a directive on `##` stamping through a `###` that wanted its own treatment | Last-directive-wins within a section, resolved at stamp time. Stamping is settled (§5.1); this is the one detail of it to verify against a real nested document before shipping. |
-| **R6. The one-click answer makes shallow answers easy** | Real, and partly the point — the cost being removed is typing, not thinking. §5.2's tip (restate the leaning) keeps the *comment* substantive even when the click is fast. |
-| **R7. A live-looking button in a static export that silently does nothing** (§2.5) | The `isStaticMode()` gate in §5.2, enforced by **D4**. Worth noting the same hole exists for typed answers today — the gate is a fix to review mode generally, which this feature merely forces. |
-| **R8. No sanitisation test exists** (§8.1), so a regression is invisible | Step 1 of §11 ships the repo's first sanitisation tests, covering the property allowlist, the `url(`/`expression(` rejection, and the `position` rule. |
-| **R9. The style filter breaks KaTeX** — measured, not hypothetical: KaTeX emits ten properties including `position:relative` (§8.2) | Enumerate `position` values rather than dropping the property; match all-or-nothing so garbage drops silently instead of throwing. Pinned by a KaTeX battery in the sanitisation test, which fails if a KaTeX release starts emitting something new. |
+| **R1. Chain drift** — the plugin lands in one of the hand-copied chains (§2.1) | **Discharged, `d47e3c3`.** `buildPipeline` in `pipeline.ts` is the one definition, every render site consumes it, the dead duplicate is deleted, and [`pipelineAgreement.test.tsx`](../../frontend/src/lib/pipelineAgreement.test.tsx) asserts every renderer produces the same `data-source-line` numbers, the same unprefixed heading ids, and the same sanitiser result for one fixture. |
+| **R2. Vocabulary creep** — every request adds a token until it is CSS by accretion | **Live, by design.** §9 is the defence and §8.3 is the reason. Each new token is a code change in one module, and a request to name colours is a request to give up theme independence (§4.3). |
+| **R3. Markup rot** — directives outlive the sections they describe, and `badge=stale` is itself stale | **Mitigated, `25fe999`.** `vantage/orphan` reports a directive with no block it can attach to; `vantage/status-chip-stale` reports a chip that disagrees with `status:`. Cheap, because the checker was being built anyway. |
+| **R4. Agents overuse it** — every document arrives rainbow-coloured | **Mitigated, `25fe999`, and not by code.** The style guide says one or two per document, and says why: "a document where everything is toned says nothing." A `vantage-check` rule counting them would be a taste rule pretending to be a correctness rule. |
+| **R5. Section stamping is wrong for nested structure** — a directive on `##` stamping through a `###` that wanted its own treatment | **Discharged by construction and by test.** Pass order makes each property last-write-wins, so an inner section overrides one key and inherits the rest, and it restarts the run so its rule terminates instead of bleeding (§6.2). Both are cases in `vantageDirectives.test.ts`. |
+| **R6. The one-click answer makes shallow answers easy** | **Live, and partly the point** — the cost being removed is typing, not thinking. §5.2's tip keeps the *comment* substantive even when the click is fast, and the style guide repeats it. |
+| **R7. A live-looking button in a static export that silently does nothing** (§2.5) | **Closed, `1312c5c`, and wider than the button.** The gate turned out to be needed at three levels — the toggle, the persisted `localStorage` preference, and `runCommand` itself — because the toggle was not the only route into review mode. The button carries its own `isStaticMode()` check as well. |
+| **R8. No sanitisation test exists** (§8.1), so a regression is invisible | **Discharged, `fd7411c`.** `sanitize.test.ts` is the repo's first sanitisation test: the property allowlist, the `url(`/`expression(` rejection, the `position` rule, and the KaTeX battery. |
+| **R9. The style filter breaks KaTeX** — measured, not hypothetical (§8.2) | **Mitigated.** `position` values are enumerated rather than the property dropped; matching is all-or-nothing so garbage drops silently instead of throwing; pinned by the KaTeX battery, which fails if a release starts emitting something new. |
+| **R10. The stylesheet's mechanisms are invisible until they break** — an `@layer` added "to be tidy", the import moved, a `var()` fallback added for "safety" | **Mitigated, `e5e7ac5`.** Each of the five facts in §4.3 has a text-level assertion in `directiveTheme.test.ts` / `directiveCssWiring.test.ts`, including the attribute-name cross-check against the sanitiser allowlist — the test that would have caught `data-vantage-run` being missing from it. Geometry is not covered: jsdom cannot evaluate it (A22), and no e2e spec was written. |
 
 **What it costs.** A vocabulary that becomes a compatibility promise, a
-stylesheet that grows with it, and one more thing the checker must know about.
+stylesheet whose five mechanisms have to be guarded by text assertions because
+jsdom cannot see geometry, twelve rules the checker must keep in step with the
+plugin, and a second sanitisation policy in the tree.
 
-**What it deletes.** Nothing. This is purely additive — which is itself a mild
-argument against it, and the reason §11 starts with the capability that has a
-concrete complaint behind it.
+**What it deletes.** Two dead duplicates — `frontend/src/lib/rehypeSourceLines.ts`
+and `frontend/src/lib/frontmatter.ts`, each a stale copy imported by nothing but
+its own test — and one unfiltered `style` attribute. The feature itself is
+additive, which is why §11 started with the capability that had a concrete
+complaint behind it.
 
-## 11. What I would build, in order
+## 11. What was built, in order
 
-1. **Harden the sanitiser** (§8.2) — the `style` value filter, with the repo's
-   first sanitisation tests. **First, and before any directive work.**
+Ten commits, all 2026-08-31. **Two steps were added that the design did not
+have**, and both were forced by the same thing: a security claim in §8.3 that
+turned out to be false, and a degradation claim in §2.5 that turned out to be
+untested. Both are marked **added** below.
+
+1. **Harden the sanitiser** (§8.2) — `fd7411c`. The `style` value filter, with
+   the repo's first sanitisation tests. First, and before any directive work.
    Not because the directive path depends on it — it deliberately does not — but
    because §8.3 asserts a security story *about this sanitiser*, and that
    assertion should not be written against a component that passes arbitrary
-   CSS. It stands entirely alone and is worth doing if nothing else here ever
-   ships.
-2. **De-duplicate the render chain** (§6.4) — **done.** `buildPipeline` in
-   `packages/vantage-md/src/pipeline.ts`, consumed by all three render sites and
-   by the checker's mdast parser; the dead duplicate of `rehypeSourceLines` under
-   `frontend/src/lib/` is gone. Fixed a real drift hazard and unblocks
-   everything after it. No user-visible change: `renderMarkdown`'s output is
-   byte-identical across two fixtures × eight option sets.
-3. **The plugin and the `oq` directive only** (§5.2). Highest value, and it
-   exercises the whole path — carrier, parse, attribute, sanitiser, post-render
-   pass — on one directive with a concrete complaint behind it.
-4. **The semantic vocabulary** (§5.1) — `tone`, `emphasis`, `badge`, with the
-   theme's custom-property block. Attribute-selector CSS only, stamped not
-   wrapped.
-5. **`collapsed`**, with the print rule (**D7**) in the same commit. Separate
-   because it is the one token that restructures rather than decorates.
-6. **Checker rules** (§5.3) — directive name and token validation, plus R3's
-   orphan check. Lands in the CLI, not here.
-7. **Frontmatter chrome** (§4.5) — the status chip. Last because it is the
-   smallest win.
+   CSS. It stands entirely alone.
+2. **De-duplicate the render chain** (§6.4) — `d47e3c3`. `buildPipeline`,
+   consumed by every render site and by the checker's mdast parser; the dead
+   duplicate of `rehypeSourceLines` deleted. No user-visible change:
+   `renderMarkdown`'s output is byte-identical across two fixtures × eight
+   option sets.
+3. **Sanitise the comment-body render path** (§8.3) — `561c69a`. **Added.** The
+   `leaning` value's safety rested on escaping that did not exist, and the
+   button would have made an existing `innerHTML` sink reachable from document
+   content. Ships with its own tests, ahead of the button.
+4. **The plugin and the `oq` directive** (§6.2, §6.3) — `70217d3`. Highest
+   value, and it exercises the whole path — carrier, parse, attribute,
+   sanitiser — on one directive with a concrete complaint behind it.
+5. **The `oq` button** (§5.2) — `7585681`. A sibling post-render pass, not an
+   addition inside the highlighter.
+6. **The semantic vocabulary** (§5.1, §4.3) — `e5e7ac5`. `tone`, `emphasis`,
+   `badge`, with the theme's custom-property block, in
+   `packages/vantage-md/src/styles/directives.css` and wired at both ends.
+   Attribute-selector CSS only, stamped not wrapped.
+7. **`collapsed`**, with the print rule (**D7**) in the same commit — `fcc4f3d`.
+   It is *not* "the one token that restructures rather than decorates", which is
+   how the design described it: there is no `<details>` and no wrapper, so it is
+   the same shape as step 6 plus a toggle pass (§4.3).
+8. **Checker rules** (§5.3) — `25fe999`. Twelve rules under `vantage/*`, plus
+   the directive section of the agent style guide, so the guide and the rules
+   are one contract: a test asserts every fenced example the guide tells an
+   agent to copy passes the rules that agent's document is judged by.
+9. **Frontmatter chrome** (§4.5) — `2c6657a`. The status chip. Last of the
+   capabilities because it is the smallest win — and it is where the dropped
+   `directives.css` import was found (§4.3).
+10. **The static-mode gate** (§2.5, D4/R7) — `1312c5c`. **Added.** R7 was
+    written as a condition on the new button; measuring it showed the existing
+    typed-answer path had the same hole, at three levels, with the worst
+    possible failure mode (a 200 from an SPA fallback, so nothing throws and
+    nothing logs).
 
-Icebox in §5.4. Nothing there should ship without a new argument.
+Then this step: reconcile the doc with what shipped. Icebox in §5.4 — nothing
+there should ship without a new argument.
 
 ## 12. Alternatives considered
 
@@ -940,6 +1472,10 @@ Icebox in §5.4. Nothing there should ship without a new argument.
   before rehype, so a directive cannot say which section it means.
 - **Frontmatter as the only carrier.** Rejected as *the* carrier: cannot address
   a section. Adopted for file scope (§4.5).
+- **`<details>` for `collapsed`.** Rejected on four measurements, not on taste
+  (§5.1). It is the obvious implementation, and the first reason it fails is that
+  this app injects review UI as a *sibling* of the block the comment belongs to,
+  which inside a `<details>` means inside the `<summary>`.
 - **A sidecar file** (`doc.md.vantage.json`). Rejected. Perfect degradation —
   GitHub never sees it — and it fails on everything else: it desynchronises the
   moment anyone edits the Markdown, doubles the files an agent must write, and
@@ -947,20 +1483,20 @@ Icebox in §5.4. Nothing there should ship without a new argument.
   anchor.
 - **Free-form CSS in directives.** Rejected on §8. This is the version a naive
   reading of "set a background colour" produces, and it is an injection vector
-  with the current sanitiser.
+  with the sanitiser as it was.
 - **A chromatic vocabulary** — `accent=amber`, `bg=blue`, palette names rather
   than hex. Rejected, and this was my original proposal. It reads as safe
   because the values are a closed set, and the safety is not the problem: a
   document that names a colour has **decided how it looks in every theme**,
-  including themes that do not exist yet. Vantage already has light and dark, so
-  the breakage is not hypothetical — an amber wash chosen against a light
-  background is a different decision on a dark one. Semantic tokens move that
-  decision to the only place that can make it correctly, which is the theme.
+  including themes that do not exist yet. Vantage already has light, dark and a
+  print stylesheet, so the breakage is not hypothetical — an amber wash chosen
+  against a light background is a different decision on a dark one, and in print
+  it is discarded outright (`.prose, .prose * { color: #1a1a1a !important }`).
+  Semantic tokens move that decision to the only place that can make it
+  correctly, which is the theme.
 - **A bespoke importance scale** (`level=1..4`) instead of the GFM alert words.
   Rejected. It needs a legend nobody will read, whereas `warning` and `caution`
-  already mean something to anyone who has written a callout — and the alert
-  vocabulary already has light and dark treatments in the codebase, so the
-  mapping exists rather than needing invention.
+  already mean something to anyone who has written a callout.
 - **Extending the GFM callout syntax** (`> [!WARNING]`) with extra tokens —
   i.e. using the callout itself as the carrier. Rejected: GitHub renders an
   unknown callout type as a plain blockquote with the literal `[!FOO]` visible,
@@ -974,6 +1510,11 @@ Icebox in §5.4. Nothing there should ship without a new argument.
 
 ## Decision Ledger
 
+Design decisions and review rulings first, then the twenty-two implementation
+rulings. Both id sets are cited outside this file — `A3` and `A4` appear in
+commit messages, in `rehypeVantageDirectives.ts` and in a test name — so neither
+is ever renumbered or re-spelled.
+
 | ID | Ruling / Decision | Date | Settled in |
 | :--- | :--- | :--- | :--- |
 | — | HTML comment with `vantage:` sentinel is the carrier | 2026-08-31 | §1, §3 |
@@ -984,42 +1525,166 @@ Icebox in §5.4. Nothing there should ship without a new argument.
 | — | Render-chain de-duplication is a prerequisite, not a follow-up | 2026-08-31 | §6.4, R1 |
 | — | Diagram theming and TOC directives are iced | 2026-08-31 | §5.4 |
 | OQ-1 | Keep the `vantage:` spelling — but on greppability and collision-resistance, **not** human readability; agents are the readership | 2026-08-31 | §4.1 |
-| OQ-2 | **Stamp, do not wrap.** A wrapper element would restructure the flat sibling tree that review anchors, line anchors, and hover-to-comment all walk | 2026-08-31 | §5.1 |
-| OQ-3 | **The vocabulary is semantic, never chromatic.** Reuse the GFM alert words; the theme owns the token → custom-property mapping, so a document never names a colour | 2026-08-31 | §4.3 |
+| OQ-2 | **Stamp, do not wrap.** Re-justified on four measured `<details>` breakages, not on the flat-sibling claim, which was false | 2026-08-31 | §5.1, A3 |
+| OQ-3 | **The vocabulary is semantic, never chromatic.** Reuse the GFM alert words; the theme owns the token → custom-property mapping | 2026-08-31 | §4.3 |
 | OQ-4 | One button, affirmative only, labelled **"Take this leaning"**; the directive key is `leaning=` to match | 2026-08-31 | §5.2 |
 | OQ-5 | **Bundle the `style` hardening into this work** as step 1, ahead of any directive work | 2026-08-31 | §8.2, §11 |
+| A1 | The name set is exactly `{section, block, oq}`. Position picks the target, the **name picks the extent**. Unknown name drops the whole directive; unknown key or value drops that pair | 2026-08-31 | §4.2 |
+| A2 | `leaning` gets a **name-only** sanitiser entry — free text cannot be value-allowlisted, so it has **two** defences, not three | 2026-08-31 | §6.3, §8.3 |
+| A3 | `collapsed` emits **no `<details>` and no wrapper**: a flat stamp, heading and body taking different attributes, and hiding gated on a JS-set readiness marker | 2026-08-31 | §4.3, §5.1 |
+| A4 | The plugin walks the **whole tree**, resolving within each parent's own children. A root-only walk finds zero `oq` directives | 2026-08-31 | §6.2, §2.2 |
+| A5 | `directives.css` lives in `vantage-md`, re-exported from its `styles/index.css` **and** imported by the frontend. Neither half alone works | 2026-08-31 | §4.3 |
+| A6 | The legal `oq` authoring form is **indented inside the list item**. Column 0 between two items splits the list and fails D1 | 2026-08-31 | §4.4 |
+| A7 | **Sanitise the comment-body `innerHTML` path before the button ships.** The design's claim that escaping already existed was false | 2026-08-31 | §8.3, §11 |
+| A8 | Attribute values are **always strings** — `"true"`, never boolean `true`, which serialises differently in two renderers | 2026-08-31 | §6.3 |
+| A9 | **No `--` restriction** in quoted values; HTML5 closes a comment on `-->` or `--!>` only, and a hand-written scanner must handle both | 2026-08-31 | §4.1 |
+| A10 | The button disables on click and degrades to a chip when an identical comment exists; `fallbackText` must be byte-identical to the popover's `displayText` | 2026-08-31 | §5.2 |
+| A11 | The button is a **sibling pass** with its own review-mode gate — the highlighter returns early on the documents that need it most | 2026-08-31 | §5.2, §6.5 |
+| A12 | **There is no document title in the UI.** The status chip is the first element of the content column; the reserved key is filtered from the card; the vocabulary is `status:`'s own; no static gate | 2026-08-31 | §4.5, §5.3 |
+| A13 | Export **`buildPipeline`**, not a rehype-only builder — `math` spans both halves. Preserve all five toggles. The checker's lint-only processor stays separate, measurably | 2026-08-31 | §6.4, §2.1 |
+| A14 | `directives.css` must stay **UNLAYERED**; cascade layers, not specificity, are what beat the typography utilities | 2026-08-31 | §4.3 |
+| A15 | `data-vantage-run` is an attribute the design did not have (`start\|middle\|end\|only`), selected **positively**, never negated, because review mode inserts a sibling inside the run | 2026-08-31 | §4.3 |
+| A16 | **No `var()` fallback on the accent** — the absence is the D2 mechanism. `background-color` longhand, never the shorthand | 2026-08-31 | §4.3 |
+| A17 | `@media not print`, not `display: revert !important`: a declaration that does not exist cannot be defeated by a third rule | 2026-08-31 | §4.3 |
+| A18 | `emphasis=strong` must exclude headings, `pre` and `table`, or an unlayered `font-weight: 500` de-bolds a toned heading | 2026-08-31 | §4.3 |
+| A19 | Import the stylesheet by **relative source path**; the resolvable package subpath points at a gitignored `dist/` | 2026-08-31 | §4.3 |
+| A20 | Import **position** and the `:where()` on the lone-block wash are load-bearing; both are pinned by text assertions | 2026-08-31 | §4.3 |
+| A21 | **`frontend/tailwind.config.js` is inert** — Tailwind v4 reads a JS config only via `@config`. Cite `index.css` instead | 2026-08-31 | §4.3 |
+| A22 | jsdom cannot test the geometry, so assert **plugin output plus text-level drift guards** over the CSS; geometry documents rather than guards | 2026-08-31 | §4.3, R10 |
 
 > [!IMPORTANT]
-> **Three findings were measured and must not be re-derived from assumption.**
+> **Ten findings were measured and must not be re-derived from assumption.**
 > (1) HTML comments survive `rehype-raw` with position data and are deleted by
 > `rehype-sanitize`, which is why the plugin has exactly one slot (§2.2).
-> (2) GFM tables need no inline CSS — alignment is an `align=` attribute — but
+> (2) Comment nodes appear inside `li`, `blockquote`, `td` and inline inside
+> `p` — **not only at root** — which is why the walk recurses (§6.2).
+> (3) `dataVantageOq: true` serialises as a bare attribute through
+> `rehype-stringify` and as `="true"` through `react-markdown`, so every value
+> must be a **string** (§6.3).
+> (4) GFM tables need no inline CSS — alignment is an `align=` attribute — but
 > **KaTeX emits ten style properties including `position:relative`**, so a
 > blanket `position` ban breaks integral rendering (§8.2).
-> (3) Any measurement of KaTeX's `style` output must match on a word boundary:
-> a bare `style="` grep also catches MathML's `displaystyle="true"` and will
-> report declarations the filter is not actually dropping (§8.2).
-> (4) Vantage does **not** render GFM alerts — `> [!WARNING]` becomes a plain
+> (5) Any measurement of KaTeX's `style` output must match on a word boundary:
+> a bare `style="` grep also catches MathML's `displaystyle="true"` (§8.2).
+> (6) Vantage does **not** render GFM alerts — `> [!WARNING]` becomes a plain
 > blockquote with the bracket text visible. Do not justify anything on an alert
 > theme that exists; it does not (§4.3).
+> (7) **Cascade layers, not specificity, decide the tone rules**, so
+> `directives.css` must stay unlayered (§4.3).
+> (8) **Adjacent-sibling run logic is broken in this app**, not hypothetically:
+> the review highlighter inserts a `<div>` as a sibling inside a stamped run,
+> which is why `data-vantage-run` exists (§4.3).
+> (9) `@import "vantage-md/styles"` resolves — to a **gitignored `dist/`**, so it
+> is green off a stale local build and red in CI (§4.3).
+> (10) **`DOMPurify.sanitize()` fails OPEN with no DOM**: it returns its input
+> unchanged, so any DOM-less caller must check `isSupported` first (§8.3).
 
 ## Open Questions
 
-**None.** All five questions raised in review were answered on 2026-08-31 and
-are recorded in the [Decision Ledger](#decision-ledger) above.
+The five design questions raised in review were all answered on 2026-08-31 and
+are compacted into the [Decision Ledger](#decision-ledger). Two of those answers
+changed the design rather than confirming it, and are worth knowing cold: **OQ-3**
+replaced a colour vocabulary with a semantic one (the original draft let a
+document say `bg=amber`; §4.3 is substantially rewritten as a result, and the
+rejected version is preserved in §12), and **OQ-5** pulled the sanitiser
+hardening inside this feature (§11 step 1).
 
-Two of those answers changed the design rather than merely confirming it, and
-are worth knowing about if you are reading this cold:
+Implementation left four questions genuinely open. All four are about the
+**tooling around** this feature rather than the feature itself — which is why the
+frontmatter still reads `status: accepted`: the design is settled and shipped, and
+none of these four is a ruling it is waiting on. All four were found *because*
+this work touched code in three packages at once.
 
-- **OQ-3 replaced a colour vocabulary with a semantic one.** The original draft
-  let a document say `bg=amber`. It cannot; it says `tone=warning` and the theme
-  decides the colour. §4.3 is substantially rewritten as a result, and the
-  rejected chromatic version is preserved in §12 with the reasoning.
-- **OQ-5 pulled the sanitiser hardening inside this feature.** It was written as
-  an adjacent, pre-existing problem for someone else's doc; it is now step 1 of
-  the build order (§11).
+1. 💬 **OQ-6: `packages/vantage-md` is outside the quality gate, and the
+   frontend's type-check is a no-op.** The package this feature's core lives in
+   is never prettier-checked and never eslint-checked: `just format` covers
+   `frontend` and `packages/vantage-check` only, and `check-ci`
+   ([`Justfile:74-75`](../../Justfile#L74-L75)) runs `format:check` and `lint` in
+   those two packages, neither of which `packages/vantage-md/package.json`
+   defines — four files there fail prettier today. Worse, the frontend's
+   `npx tsc --noEmit` resolves
+   [`frontend/tsconfig.json`](../../frontend/tsconfig.json), which is a solution
+   file (`"files": []` plus project references) — measured with `--listFiles`, it
+   type-checks **zero files**. The package's own `npm run typecheck` is never
+   invoked by the gate either.
 
-New questions get appended here as implementation surfaces them. The most likely
-first candidate is the residual in §8.2 — whether an in-container overlay built
-from `position: relative` and large margins is worth closing further, which
-should be settled by trying the attack rather than by discussion.
+   _Leaning:_ Fix both, in one change: give `vantage-md` `format`/`format:check`/`lint`
+   scripts and add it to the three loops it is missing from, and point the
+   frontend's gate at `tsconfig.app.json` (or use `tsc --build`). The risk is
+   that turning either on lights up pre-existing findings, which is a reason to
+   schedule it, not to leave a whole package unguarded.
+
+   **Answer:**
+   > _(empty — fill in when decided)_
+
+2. 💬 **OQ-7: the katex/mermaid drift guard pins two copies neither renderer
+   uses.** [`deps.test.ts`](../../packages/vantage-check/test/deps.test.ts)
+   asserts that the CLI's `katex` matches `vantage-md`'s, on the stated claim
+   that "the tool validates with the engines the *viewer* renders with". Measured
+   2026-08-31, the versions installed are: `packages/vantage-check` **0.18.0**,
+   `packages/vantage-md` **0.18.0** — so the test is green — while
+   `frontend/node_modules/katex` is **0.16.33** and the copy `vantage-md`'s own
+   `rehype-katex` resolves is a nested **0.16.47**. So three KaTeX versions are in
+   play, measured with Node's own resolver from each importing file: 0.16.33 in
+   the browser bundle, 0.16.47 behind `renderMarkdown`'s `rehype-katex` (which is
+   what the `render/pipeline` rule runs), and 0.18.0 as each package's top-level
+   copy (which is what the `katex/parse` rule imports directly). The guard
+   compares only the third against itself. `mermaid` is the same shape: 11.12.2 in
+   the frontend, 11.16.0 in both packages.
+
+   _Leaning:_ The guard should compare what is *resolved from each entry point*
+   rather than what is installed at each tree's top level, and the frontend
+   belongs in the comparison because the browser is the viewer the claim is
+   about. Whether the answer is "make all three agree" or "state which one is
+   normative" is the real question; today the test asserts an agreement that
+   does not hold where it matters.
+
+   **Answer:**
+   > _(empty — fill in when decided)_
+
+3. 💬 **OQ-8: three copies of the anchorable-tag list, none tied to the
+   others.** The same eleven tags are written out in three places, in three
+   different shapes: `ANCHOR_TAGS` as a selector string
+   ([`MarkdownViewer.tsx:38`](../../frontend/src/components/MarkdownViewer.tsx#L38)),
+   `ANCHORABLE_BLOCK_SELECTOR` as a longer selector string
+   ([`reviewAnchor.ts:48-49`](../../frontend/src/lib/reviewAnchor.ts#L48-L49)),
+   and `VANTAGE_ANCHOR_TARGETS` as an array
+   ([`vantageDirectives.ts:133`](../../packages/vantage-md/src/vantageDirectives.ts#L133)).
+   A fourth, `OQ_HOST_TAGS`, is deliberately *narrower* — it drops `pre` and
+   `table`, which the plugin will stamp but which cannot host a button — so it is
+   a real distinction, not a duplicate. `useReviewHighlights` at least imports
+   `ANCHORABLE_BLOCK_SELECTOR` rather than re-typing it, but no assertion anywhere
+   relates any two of the three constants. The failure mode is quiet: adding a tag
+   to one gives the plugin a target the review pass never indexes, which renders as
+   a button that builds an anchor nothing can resolve.
+
+   _Leaning:_ Derive all three from `VANTAGE_ANCHOR_TARGETS`, which already lives
+   in the zero-import module both the app and the checker read, and keep
+   `OQ_HOST_TAGS` as an explicit subtraction from it so the narrowing stays
+   visible. Cheap; the only reason it did not happen here is that it touches the
+   review system, which was not this feature's to refactor.
+
+   **Answer:**
+   > _(empty — fill in when decided)_
+
+4. 💬 🤷 **OQ-9: should the checker's lint-only processor ever share the remark
+   builder?** [`rules/markdown.ts`](../../packages/vantage-check/src/rules/markdown.ts)
+   is the one surviving partial copy of the chain, and the reason it stays a copy
+   is measured and good: omitting `remark-math` changes `no-undefined-references`
+   from three findings to zero on a `$$…$$` fixture (§2.1). But "deliberately
+   different" and "accidentally drifted" look identical in a diff, and the only
+   thing distinguishing them today is a comment.
+
+   _Leaning:_ Leave it duplicated, but make the divergence executable — have it
+   call `buildRemarkPlugins({ math: false })` if that turns out to produce the
+   same list, so the difference is one named option instead of a re-typed array.
+   I have not checked whether the remaining options line up, which is why this is
+   a question and not a task.
+
+   **Answer:**
+   > _(empty — fill in when decided)_
+
+Beyond those four, the residual in §8.2 is still open in principle — whether an
+in-container overlay built from `position: absolute` and large margins is worth
+closing further — and it should be settled by trying the attack rather than by
+discussion.
