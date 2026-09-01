@@ -45,7 +45,7 @@ jobs:
         run: npm ci
 
       - name: Build vantage-md package
-        run: npm exec --workspace vantage-md -- tsup
+        run: npm exec --workspace vantage-md -- tsdown
 
       - name: Download Go modules
         run: go mod download

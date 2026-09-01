@@ -131,7 +131,7 @@ jobs:
           done
 
       - name: Build the vantage-md library
-        run: npm exec --workspace vantage-md -- tsup
+        run: npm exec --workspace vantage-md -- tsdown
 
       - name: Build and bundle the frontend
         run: |
@@ -292,7 +292,7 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           npm ci
           npm version "$version" --no-git-tag-version --allow-same-version --workspace vantage-md
-          npm exec --workspace vantage-md -- tsup
+          npm exec --workspace vantage-md -- tsdown
 
       - name: Publish to npm
         run: npm publish --provenance --access public --workspace vantage-md

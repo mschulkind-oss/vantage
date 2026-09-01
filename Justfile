@@ -7,7 +7,7 @@ default:
 setup: _hooks
     mise install
     go mod download
-    # One npm workspace, one lockfile, one install. No tsup build needed — the
+    # One npm workspace, one lockfile, one install. No dist build needed — the
     # frontend imports vantage-md's TS source directly (see
     # frontend/vite.config.ts), and so does packages/vantage-check. dist/ is
     # built only at release.
