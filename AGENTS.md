@@ -45,9 +45,12 @@ Never kill it; run test instances on other ports.
   files** until the gate moved to `tsc --build`, which walks the references and
   covers `frontend/src` and `packages/vantage-md/src` both. Keep it `--build`;
   reverting to `--noEmit` looks identical and silently checks nothing.
-- **`packages/vantage-md` is still not linted or format-checked**, and has no
-  tests of its own — its source is type-checked through `frontend/`'s project
-  reference and exercised through `frontend/`'s tests.
+- **`packages/vantage-md` is type-checked twice, under two TypeScript
+  versions** — standalone at its own pin (`~6.0.3`) and again through
+  `frontend/`'s project reference (`~5.9.3`). Both are deliberate; a change that
+  passes one and not the other is a real finding, not a flake. It has no tests
+  of its own: its behaviour is covered by `frontend/`'s tests through the source
+  alias.
 - **Editing Markdown can fail the gate.** It rebuilds the CLI and runs it over
   `docs/`, `userguide/` and the READMEs, so a broken relative link or a dead
   anchor is a failure. `just cli` then

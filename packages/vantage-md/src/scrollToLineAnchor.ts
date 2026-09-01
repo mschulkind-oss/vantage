@@ -38,10 +38,7 @@ export function scrollToLineAnchor(
   let firstMatch: HTMLElement | null = null;
 
   for (const block of blocks) {
-    const line = parseInt(
-      (block as HTMLElement).dataset.sourceLine || "0",
-      10,
-    );
+    const line = parseInt((block as HTMLElement).dataset.sourceLine || "0", 10);
     if (line >= range.start && line <= range.end) {
       (block as HTMLElement).classList.add(HIGHLIGHT_CLASS);
       if (!firstMatch) firstMatch = block as HTMLElement;
