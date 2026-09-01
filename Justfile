@@ -215,12 +215,17 @@ release version:
         exit 1
     fi
     just web-sync
-    branch=$(git rev-parse --abbrev-ref HEAD)
-    git checkout --quiet --detach
-    git add --force web/dist
-    git commit --quiet -m "release v{{version}}"
-    git tag "v{{version}}"
-    git checkout --quiet "$branch"
+    # Built with plumbing, against a scratch index, so the working tree and HEAD
+    # are never touched. Checking out a commit that tracks web/dist and then
+    # leaving it would delete the bundle from disk on the way back — and the
+    # next `just build-bin` would quietly embed nothing.
+    idx=$(mktemp)
+    GIT_INDEX_FILE="$idx" git read-tree HEAD
+    GIT_INDEX_FILE="$idx" git add --force web/dist
+    tree=$(GIT_INDEX_FILE="$idx" git write-tree)
+    rm -f "$idx"
+    commit=$(git commit-tree "$tree" -p HEAD -m "release v{{version}}")
+    git tag "v{{version}}" "$commit"
     git push origin "v{{version}}"
     echo "pushed v{{version}} — publish.yml takes it from here"
 
