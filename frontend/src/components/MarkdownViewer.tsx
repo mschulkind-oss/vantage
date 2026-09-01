@@ -13,6 +13,7 @@ import {
   useReviewHighlights,
   type InlineReviewActions,
 } from "../hooks/useReviewHighlights";
+import { useOpenQuestionButtons } from "../hooks/useOpenQuestionButtons";
 import { useReviewStore } from "../stores/useReviewStore";
 import { ReviewCommentPopover } from "./ReviewCommentPopover";
 import {
@@ -300,6 +301,18 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     reviewActions,
   );
 
+  // The one-click Open Question answer (design §5.2). A sibling pass rather than
+  // an addition to useReviewHighlights, whose effect returns early when there
+  // are no comments — the normal state of a fresh review, and exactly when this
+  // button matters. `addComment` is a zustand action, so it is a stable ref.
+  useOpenQuestionButtons(
+    containerRef,
+    comments,
+    isReviewMode,
+    isReviewMode ? body : null,
+    addComment,
+  );
+
   // Build a CapturedSelection from the current window selection or a
   // hovered block (whole-block click).  Returns null if nothing is
   // capture-worthy at this moment.
@@ -514,8 +527,15 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
       if (!target) return;
-      // Don't intercept clicks on links, buttons, or existing review UI.
-      if (target.closest("a, button, [data-review-inline-comment]")) return;
+      // Don't intercept clicks on links, buttons, or existing review UI. The
+      // "Leaning taken" chip is a <span>, so it needs naming here; the OQ
+      // button itself is already covered by `button`.
+      if (
+        target.closest(
+          "a, button, [data-review-inline-comment], [data-vantage-oq-button]",
+        )
+      )
+        return;
       // Defer to a non-empty text selection.
       const sel = window.getSelection();
       if (sel && !sel.isCollapsed && sel.toString().trim().length > 0) return;
