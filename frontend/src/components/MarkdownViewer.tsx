@@ -6,6 +6,7 @@ import "highlight.js/styles/github.css";
 import "katex/dist/katex.min.css";
 import { useNavigate } from "react-router-dom";
 import { cn } from "../lib/utils";
+import { scrollToAnchor } from "../lib/anchorScroll";
 import { shouldHandleInternalNavigation } from "../lib/navigation";
 import { useRepoStore } from "../stores/useRepoStore";
 import { useDeltaFlash } from "../hooks/useDeltaFlash";
@@ -147,28 +148,12 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
 
   const handleLinkClick = useCallback(
     (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
-      // Anchor links within the same doc: scroll inside the content container
+      // Anchor links within the same doc: scroll inside the content container.
+      // `scrollToAnchor` opens any collapsed section around the target first —
+      // measuring a `display: none` box scrolls the reader nowhere useful.
       if (href.startsWith("#")) {
         e.preventDefault();
-        const id = href.slice(1);
-        const el =
-          document.getElementById(id) ||
-          document.getElementById(`user-content-${id}`);
-        if (el) {
-          // Find the scrollable content container (has overflow-y-auto)
-          const scrollContainer =
-            el.closest("[data-content-scroll]") ||
-            el.closest(".overflow-y-auto");
-          if (scrollContainer) {
-            const offset =
-              el.getBoundingClientRect().top -
-              scrollContainer.getBoundingClientRect().top +
-              scrollContainer.scrollTop;
-            scrollContainer.scrollTo({ top: offset - 16 });
-          } else {
-            el.scrollIntoView();
-          }
-        }
+        scrollToAnchor(href.slice(1));
         return;
       }
 
@@ -594,24 +579,9 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
                 e.preventDefault();
                 // Update URL hash without scrolling
                 window.history.replaceState(null, "", `#${id}`);
-                // Scroll to the heading
-                const el =
-                  document.getElementById(id) ||
-                  document.getElementById(`user-content-${id}`);
-                if (el) {
-                  const scrollContainer =
-                    el.closest("[data-content-scroll]") ||
-                    el.closest(".overflow-y-auto");
-                  if (scrollContainer) {
-                    const offset =
-                      el.getBoundingClientRect().top -
-                      scrollContainer.getBoundingClientRect().top +
-                      scrollContainer.scrollTop;
-                    scrollContainer.scrollTo({ top: offset - 16 });
-                  } else {
-                    el.scrollIntoView();
-                  }
-                }
+                // Scroll to the heading, opening the section it sits in if a
+                // `collapsed=true` ancestor is hiding it.
+                scrollToAnchor(id);
               }}
             >
               #

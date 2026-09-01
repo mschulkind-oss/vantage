@@ -35,6 +35,7 @@ import { RelativeTime } from "../components/RelativeTime";
 import { CommentsDriftedIndicator } from "../components/CommentsDriftedIndicator";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { cn } from "../lib/utils";
+import { scrollToAnchor } from "../lib/anchorScroll";
 import { isStaticMode } from "../lib/staticMode";
 import { copyTextOrWarn } from "../lib/clipboard";
 import axios from "axios";
@@ -500,17 +501,12 @@ export const ViewerPage: React.FC = () => {
     // window.location.hash includes the route path in HashRouter, which is always truthy.
     const anchor = location.hash ? location.hash.slice(1) : "";
     if (anchor) {
+      // One frame, so the markdown for the new file has rendered. Then
+      // `scrollToAnchor` — an `other.md#slug` arrival lands on a section the
+      // author collapsed just as often as an in-document link does, and it has
+      // to open before anything measures the target's box.
       requestAnimationFrame(() => {
-        const el =
-          document.getElementById(anchor) ||
-          document.getElementById(`user-content-${anchor}`);
-        if (el && contentRef.current?.scrollTo) {
-          const offset =
-            el.getBoundingClientRect().top -
-            contentRef.current.getBoundingClientRect().top +
-            contentRef.current.scrollTop;
-          contentRef.current.scrollTo({ top: offset - 16 });
-        }
+        scrollToAnchor(anchor, contentRef.current);
       });
     } else if (contentRef.current.scrollTo) {
       contentRef.current.scrollTo(0, 0);

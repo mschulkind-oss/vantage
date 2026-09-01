@@ -250,6 +250,85 @@ This is the body.`;
 });
 
 /**
+ * A `#slug` that lands inside a `collapsed=true` section has to open it before
+ * anything measures the target, or the scroll reads a zero-height
+ * `display: none` box and puts the reader somewhere unrelated with the target
+ * still hidden and no cue that the link did anything (P1/D8).
+ *
+ * `collapseSections.ts` names all three callers that must force a section open —
+ * "a `#L42` link, a heading anchor or a review comment". These two cases are the
+ * heading-anchor one, in both of the shapes `MarkdownViewer` owns: an
+ * in-document link in the prose, and a heading's own `#` anchor. jsdom cannot
+ * measure the geometry, so what is asserted is the attribute flip that makes the
+ * geometry right.
+ */
+describe("MarkdownViewer — a `#slug` link into a collapsed section", () => {
+  const COLLAPSED_DOC = [
+    "See [the appendix](#appendix-b1).",
+    "",
+    "<!-- vantage: section collapsed=true -->",
+    "",
+    "## Appendix B",
+    "",
+    "### Appendix B.1",
+    "",
+    "Hidden prose.",
+    "",
+  ].join("\n");
+
+  /**
+   * Rendered inside a `[data-content-scroll]` ancestor, because that is what the
+   * scroll math resolves against — and with a `scrollTo` stub, which jsdom does
+   * not implement on elements at all.
+   */
+  function renderInScroller(content: string) {
+    const scroller = document.createElement("div");
+    scroller.setAttribute("data-content-scroll", "");
+    const scrollTo = vi.fn();
+    scroller.scrollTo = scrollTo as unknown as HTMLElement["scrollTo"];
+    document.body.append(scroller);
+    const result = render(
+      <BrowserRouter>
+        <MarkdownViewer content={content} currentPath="test.md" />
+      </BrowserRouter>,
+      { container: scroller },
+    );
+    return { ...result, scrollTo };
+  }
+
+  it("opens the section before measuring, for a link in the prose", () => {
+    const { container, scrollTo } = renderInScroller(COLLAPSED_DOC);
+
+    const target = container.querySelector<HTMLElement>("#appendix-b1")!;
+    expect(target.getAttribute("data-vantage-collapsed")).toBe("true");
+    // The gate the hiding CSS rests on: without it nothing was hidden and the
+    // test would prove nothing.
+    expect(target.closest("[data-vantage-collapse-ready]")).not.toBeNull();
+
+    const link = Array.from(container.querySelectorAll("a")).find(
+      (a) =>
+        a.getAttribute("href") === "#appendix-b1" &&
+        !a.classList.contains("heading-anchor"),
+    )!;
+    fireEvent.click(link);
+
+    expect(target.getAttribute("data-vantage-collapsed")).toBe("false");
+    expect(scrollTo).toHaveBeenCalled();
+  });
+
+  it("opens the section before measuring, for a heading's own `#` anchor", () => {
+    const { container, scrollTo } = renderInScroller(COLLAPSED_DOC);
+
+    const target = container.querySelector<HTMLElement>("#appendix-b1")!;
+    const anchor = target.querySelector<HTMLElement>("a.heading-anchor")!;
+    fireEvent.click(anchor);
+
+    expect(target.getAttribute("data-vantage-collapsed")).toBe("false");
+    expect(scrollTo).toHaveBeenCalled();
+  });
+});
+
+/**
  * The `reviewActions` memo is the only thing connecting the inline document
  * surface to the store — the inline hook's own tests inject `vi.fn()`s, so a
  * swapped or dropped binding here breaks nothing else.  These tests drive the
