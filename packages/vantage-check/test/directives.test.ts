@@ -86,7 +86,7 @@ describe("vantage/* on documents that are right", () => {
     expect(await check(markdown)).toEqual([]);
   });
 
-  it("is silent on the design doc it was written from", async () => {
+  it("is silent on the reference doc it was written from", async () => {
     // Coupled on purpose: `just _self-check` runs the built binary over `docs/`,
     // so a rule that fires on a fenced example turns the gate red. This catches
     // that in `npm test` instead of in the slow binary build.
@@ -94,7 +94,7 @@ describe("vantage/* on documents that are right", () => {
       dirname(new URL(import.meta.url).pathname),
       "../../..",
     );
-    const report = await checkTree(repo, ["docs/design/inline-markup.md"]);
+    const report = await checkTree(repo, ["docs/reference/inline-markup.md"]);
 
     expect(report.filesChecked).toBe(1);
     expect(
@@ -118,7 +118,7 @@ describe("vantage/* on documents that are right", () => {
   it("is silent on the frontmatter examples the doc and the guide tell agents to copy", async () => {
     // The `markdown` fences above are only half of what an agent copies. A
     // ```yaml fence carrying `vantage:` is a whole document — frontmatter is the
-    // first bytes of the file — and the design doc's own example once shipped
+    // first bytes of the file — and the reference doc's own example once shipped
     // `status-chip: true` with no `status:` key to inherit, which is a
     // `vantage/status-chip-stale` warning on every document that copied it. The
     // doc gate cannot see it: a fenced example is code to the checker.
@@ -127,7 +127,7 @@ describe("vantage/* on documents that are right", () => {
       "../../..",
     );
     const design = await readFile(
-      resolve(repo, "docs/design/inline-markup.md"),
+      resolve(repo, "docs/reference/inline-markup.md"),
       "utf8",
     );
 

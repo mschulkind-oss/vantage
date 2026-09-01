@@ -1,5 +1,6 @@
 /**
- * The DOM half of `collapsed` — `docs/design/inline-markup.md` §4.3.
+ * The DOM half of `collapsed` — `docs/reference/inline-markup.md`,
+ * "Collapse without a wrapper".
  *
  * `rehypeVantageDirectives` compiles `<!-- vantage: section collapsed=true -->`
  * into a flat stamp over siblings: `data-vantage-collapse-toggle="N"` on the

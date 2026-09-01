@@ -1741,7 +1741,7 @@ describe("the follow-up note matches the turns actually in the payload", () => {
 // land — the comment appears optimistically and is gone on reload, and the
 // reviewer believes they answered. Review mode must be unreachable, by every
 // route into it, and the write path must refuse rather than trust the gate.
-// (Design docs/design/inline-markup.md D4 + R7.)
+// (Design docs/reference/inline-markup.md D4 + R7.)
 describe("static export — review mode is unreachable", () => {
   beforeEach(() => {
     resetStores();

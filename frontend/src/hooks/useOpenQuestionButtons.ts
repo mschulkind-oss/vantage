@@ -1,5 +1,6 @@
 /**
- * The one-click Open Question answer — `docs/design/inline-markup.md` §5.2.
+ * The one-click Open Question answer — `docs/reference/inline-markup.md`,
+ * "The one-click Open Question answer".
  *
  * `rehypeVantageDirectives` compiles `<!-- vantage: oq leaning="…" -->` into
  * `data-vantage-oq` / `data-vantage-leaning` on the block that follows it. This
