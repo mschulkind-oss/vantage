@@ -3,13 +3,22 @@
 *.test
 *.out
 
-# web/dist — the built frontend — is TRACKED on purpose, the way polyclav
-# tracks its web export. //go:embed tolerates an empty directory, so an
-# untracked export meant every build path that skipped `just web-sync` shipped a
-# placeholder page: `go build` on a fresh clone, and `go install …@latest`, whose
-# module zip is whatever git holds. Tracking it is what makes those work.
-# See docs/design/pypi-distribution.md §4.1. Refresh it with `just web-sync`
-# (or `just build`) and commit the result; `just build-bin` embeds it as-is.
+# web/dist — the built frontend — is NOT tracked. It was until 2026-09-01, so
+# that `go install …@latest` (which builds from whatever git holds, with no npm)
+# got a real frontend rather than the "Frontend bundle not found." placeholder
+# //go:embed happily produces from an empty directory.
+#
+# The cost of tracking a derived artifact is that it can disagree with its
+# sources, and only a CI assertion noticed — after the drift was committed, and
+# with no way for dependabot to fix a bundle its bumps had changed. Nothing
+# derived is tracked now, so nothing can drift.
+#
+# `go install` still works at a tag, because `just release` builds the bundle
+# into a commit that exists only on the tag. On main there is no bundle: run
+# `just web-sync` (or `just build`) to make one locally. It stays ignored.
+# See docs/design/pypi-distribution.md §4.1.
+web/dist/*
+!web/dist/.gitkeep
 
 # Node
 node_modules/

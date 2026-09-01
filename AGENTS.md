@@ -9,11 +9,13 @@ all discoverable, so they are deliberately not here.
 - One Go binary serves an embedded React SPA, and the backend **shells out to
   the `git` CLI**. There is no in-process git library; introducing one is a
   design change, not an implementation detail.
-- `web/dist` is that embedded frontend, and it is **tracked on purpose** — the
-  one build product in the tree. `//go:embed all:dist` accepts an empty
-  directory, so while it was ignored, any build that skipped the bundle step
-  served `Frontend bundle not found.` behind one `slog.Warn`, `go install
-  …@latest` included. Rationale: `docs/design/pypi-distribution.md` §4.1.
+- `web/dist` is that embedded frontend, and it is **not tracked**. `//go:embed
+  all:dist` accepts an empty directory, so a build that skips the bundle step
+  serves `Frontend bundle not found.` behind one `slog.Warn` — which is what a
+  fresh clone gets until `just web-sync` runs. It was tracked until 2026-09-01
+  to spare `go install …@latest` that fate; **`just release` now carries the
+  bundle in a commit reachable only from the tag**, which is where `go install`
+  reads it from. Rationale: `docs/design/pypi-distribution.md` §4.1.
 - `packages/vantage-md` is consumed **from TypeScript source, never from
   `dist/`**: the frontend resolves it through a Vite alias
   (`frontend/vite.config.ts`), and `packages/vantage-check` imports it by
@@ -68,12 +70,17 @@ Never kill it; run test instances on other ports.
   2026-09-01, so every PR carried a red check nothing in the tree could explain
   or fix. `scripts/build-site.sh` is the real entry point, and its header says
   so. A rename here is invisible to CI; update the dashboard in the same breath.
-- **Every `just` recipe must leave tracked files unchanged, with exactly one
-  exception**: `just web-sync` rewrites the tracked `web/dist` export, and
-  `just build`/`just deploy` run it. Commit what it changes, or use `just
-  build-bin` to get a binary without touching it. Otherwise the rule holds —
-  `npm ci` in CI and deploy, `npm install` only in dev, and a `package.json`
-  change lands in the same commit as its `package-lock.json`.
+- **Every `just` recipe leaves tracked files unchanged — no exceptions.**
+  `web-sync` used to be one, rewriting the tracked `web/dist`; untracking it on
+  2026-09-01 removed the carve-out. The rest still holds: `npm ci` in CI and
+  deploy, `npm install` only in dev, and a `package.json` change lands in the
+  same commit as its `package-lock.json`.
+- **Releases are cut with `just release <semver>`, not by tagging by hand.** The
+  tag has to be born carrying `web/dist`, because Go's checksum database records
+  a tag's tree hash on first fetch and re-pointing it breaks every later fetch.
+  A workflow triggered *by* the tag push is already too late to add anything, so
+  no CI job can do this — which is also why the old "assert web/dist matches its
+  sources" check existed, and why it is gone.
 
 ## Releases
 
