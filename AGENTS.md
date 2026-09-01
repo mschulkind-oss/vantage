@@ -71,6 +71,11 @@ because `release: [published]` takes no tag filter and a `v`-prefix test alone
 lets one package's tag drive another's release — which would attach the wrong
 archives and push a broken formula to the public Homebrew tap.
 
+**The two package tags publish on push; the app's `v*` tag does not.**
+`publish.yml` fires on `release: [published]`, so the app ships only once a
+GitHub Release exists — `gh release create v0.5.4 --generate-notes`. A pushed
+`v*` tag on its own does nothing.
+
 Publishing is by trusted publishing (OIDC): there is no `NPM_TOKEN`, and adding
 one is the wrong fix for a failed publish.
 
