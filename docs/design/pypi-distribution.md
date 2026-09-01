@@ -8,9 +8,12 @@ summary: "PyPI `vantage-md` is meant to be the executable server's distribution 
 
 # The PyPI half of Vantage ships software that no longer exists
 
-**Status:** DESIGN, 2026-09-01. Nothing built. Every claim about the tree,
-pypi.org, and the GitHub releases was verified on 2026-09-01, and the checks are
-named inline so they can be repeated.
+**Status:** DESIGN, 2026-09-01, reviewed the same day — **OQ-P1 through OQ-P5
+are settled** (see the [Decision Ledger](#decision-ledger)); one question,
+[OQ-P6](#open-questions), was opened by the review and is the only thing still
+open. Nothing built. Every claim about the tree, pypi.org, and the GitHub
+releases was verified on 2026-09-01, and the checks are named inline so they can
+be repeated.
 
 **The short version.** One product name, one registry each: npm `vantage-md`
 carries the library form, PyPI `vantage-md` carries the executable server. The
@@ -21,13 +24,15 @@ nothing took their place. So `uvx vantage-md` today installs and runs a viewer
 whose source is not in this tree. The fix is three things: publish the Go binary
 as platform wheels on every `v*` release (`go-to-wheel`, as
 `mschulkind-oss/swarf` already does), **yank** the two Python releases so no
-platform silently resolves to them, and answer the question this doc exists for
-— whether the agent CLI gets its own PyPI project or rides the server's.
+platform silently resolves to them, and give the agent CLI **its own PyPI
+project** rather than a seat in the server's wheel.
 
-**The most important section is [§6](#6-the-agent-cli-its-own-project-or-a-passenger),**
-which is that question. [§4.2](#42-version-continuity-and-why-the-yank-is-not-cosmetic)
-is the one with a trap in it that costs nothing to avoid now and is invisible
-later.
+**The most important section is now [§4.1](#41-the-frontend-has-to-be-there-at-build-time-and-today-it-often-isnt),** which the review
+turned from a wheel-job footnote into a live defect: a pristine `go build` — and
+therefore `go install …@latest`, which the README documents — produces a server
+that serves *"Frontend bundle not found."* [§6](#6-the-agent-cli-its-own-project-or-a-passenger)
+is the reasoning behind the CLI's own project, kept because the alternative will
+be proposed again.
 
 **Reads with:** [`agent-bootstrap.md`](agent-bootstrap.md) (**depends on this
 doc** — its **R1** and its step 2 are blocked until `vantage-check` is
@@ -41,8 +46,11 @@ has seen it work).
 
 ## 1. Verdict and principles
 
-**Fix the server's wheel path, and give the CLI its own project.** Three
-principles, cited by number below and citable from sibling docs:
+**Fix the server's wheel path, and give the CLI its own project.** As settled on
+2026-09-01: yank `0.4.1`/`0.4.2`, publish `--entry-point vantage` for the four
+archive targets with no Windows, declare Apache-2.0 everywhere, and register
+`vantage-check` separately. Three principles, cited by number below and citable
+from sibling docs:
 
 - **P1. One name per product surface; one registry each.** `vantage-md` names
   *Vantage* in each registry, and the registry says which form you get: npm the
@@ -161,25 +169,52 @@ one `-X` ldflag, and `--ldflags` for any others. The precedent is in this org:
 musl Linux on x86-64 and aarch64, macOS on x86-64 and arm64 (verified
 2026-09-01).
 
-Vantage needs one thing swarf does not, and it is the trap below.
+Vantage needs one thing swarf does not, and it is the trap below — which turns
+out to be bigger than the wheel.
 
-### 4.1 The frontend must be bundled first, or the wheel ships a blank viewer
+### 4.1 The frontend has to be there at build time, and today it often isn't
 
 > [!WARNING]
-> **`go build` on a clean checkout succeeds and produces a server with an empty
-> site.** `web/dist` holds only `.gitkeep` in git, and
-> [`web/embed.go:13`](../../web/embed.go#L13) embeds it with
-> `//go:embed all:dist` — a pattern that tolerates an otherwise-empty directory.
-> There is no compile error and no runtime error; the server starts and serves
-> nothing. `publish.yml`'s `build` job gets this right (tsup → `npm run build` →
-> `cp -r frontend/dist web/dist` → `go build`), and any wheel job must repeat
-> those steps *before* invoking `go-to-wheel`. swarf is pure Go and needs none
-> of it, so the precedent does not carry this over.
->
-> The cheap guard is an assertion rather than a comment: `test -f
-> web/dist/index.html` immediately before the build. Cross-target binaries
-> cannot be executed on the runner, so this is the only check available at
-> publish time.
+> **`go build` on a pristine checkout produces a server that serves
+> `Frontend bundle not found.`** — verified 2026-09-01 by building `git archive
+> HEAD` in a temp directory and curling it. `web/dist` carries only `.gitkeep`
+> in git (`.gitignore:10-11` ignores the rest deliberately), and
+> [`web/embed.go:13`](../../web/embed.go#L13) embeds it with `//go:embed
+> all:dist`, a pattern that tolerates an otherwise-empty directory. It is not
+> silent: `indexHTML` logs `slog.Warn("server: embedded index.html missing;
+> serving placeholder")` and serves a one-line placeholder page
+> ([`internal/server/spa.go:94-101`](../../internal/server/spa.go#L94-L101)).
+> But the warning goes to the server's own stderr, and what the user sees is a
+> page that looks like a broken app.
+
+**This is not a wheel problem, it is a build-input problem, and one documented
+install path already has it.** `go install github.com/mschulkind-oss/vantage/cmd/vantage@latest`
+— [`README.md:21-25`](../../README.md#L21-L25), no caveat attached — resolves
+the module from the proxy, whose zip is the git contents, so it embeds the
+`.gitkeep` and nothing else. Anyone following that line today installs the
+placeholder. A wheel job would inherit the same defect, and
+[`publish.yml`](../../.github/workflows/publish.yml)'s `build` job is the only
+path that gets it right (tsup → `npm run build` → `cp -r frontend/dist web/dist`
+→ `go build`).
+
+There are two shapes of answer, and `mschulkind-oss/polyclav` already runs the
+better one.
+
+| | **Commit the export** (polyclav) | **Build it in every job** (today, plus a guard) |
+| :--- | :--- | :--- |
+| How | The built web export is a tracked artifact (`internal/web/static/app`); `just web-sync` refreshes it from `web/` sources, and `just build` runs `web-sync` first. Without pnpm it warns — *"using the committed web export (may be stale)"* — instead of failing | `web/dist` stays a `.gitkeep`; the wheel job repeats the three frontend steps, with `test -f web/dist/index.html` immediately before the build |
+| Fixes `go install` | **Yes** — every checkout has a real frontend to embed | No |
+| Fixes a bare `go build` | Yes | No |
+| Wheel job | `uvx go-to-wheel .` alone | three npm steps plus an assertion, per job |
+| Costs | A tracked build product: Vite's hashed filenames churn on every frontend change, and it can go stale silently — so `just build` must refresh it, which **reverses `.gitignore:10-11` and needs an explicit carve-out from the "no `just` recipe dirties tracked files" invariant** | Nothing tracked changes; the trap simply stays live everywhere except the release job |
+
+Cross-target binaries cannot be executed on the runner, so an assertion on
+`index.html` is the only publish-time check either way; the difference is
+whether there is anything left to assert.
+
+Which shape vantage takes is [OQ-P6](#open-questions) — the one question this
+review round opened rather than closed, because committing a build product is a
+repo-wide decision, not a packaging detail.
 
 ### 4.2 Version continuity, and why the yank is not cosmetic
 
@@ -200,42 +235,52 @@ retired Python app — successfully, with no warning, forever.
 > Yanking makes those versions ineligible for new resolution while leaving
 > `pip install vantage-md==0.4.2` working for anyone who pinned, so the
 > unsupported-platform case fails loudly instead of installing a different
-> program. This is [OQ-P1](#open-questions), and it is the one item here with a
-> wrong default.
+> program.
+>
+> **Ruling (2026-09-01): yank both.** [OQ-P1](#open-questions) — the cost is
+> close to zero, and the failure it removes is the silent one.
 
-### 4.3 The wheel installs one command, and the old one installed two
+### 4.3 The command is `vantage`; the one-shot pays for it
 
 `go-to-wheel` takes a single `--entry-point`. The `v0.4.2` wheel declared two
 console scripts, `vantage-md` and `vantage`, and its README said so: *"Both
 `vantage-md` and the shorter alias `vantage` are installed and do the same
-thing."* Every other channel today installs `vantage` — the archives, the tap
-formula, `go install`, `just deploy`.
+thing."* Every other channel installs `vantage` — the archives, the tap formula,
+`go install`, `just deploy`.
 
-The choice therefore is:
+**Ruling (2026-09-01): `--entry-point vantage`.** The installed command matches
+every other channel, and the ephemeral one-shot becomes
+`uvx --from vantage-md vantage <path>`. Note that `--from` is only the *one-shot*
+tax: `uv tool install vantage-md` and `pipx install vantage-md` put `vantage` on
+`PATH` with no `--from` anywhere.
 
-| `--entry-point` | `uvx` one-shot | Installed command |
-| :--- | :--- | :--- |
-| `vantage-md` | `uvx vantage-md ~/notes` — the historical line, works | `vantage-md`, diverging from brew and `go install` |
-| `vantage` | `uvx --from vantage-md vantage ~/notes` | `vantage`, consistent everywhere |
-
-[OQ-P3](#open-questions), and note from [§2](#2-what-is-actually-published-today)
-that no in-tree document currently advertises either — this decides what we
-advertise next rather than what we break.
+> [!NOTE]
+> **The two-script wheel was not a mistake.** It bought `uvx vantage-md <path>`
+> with no `--from`, at the price of a second command name — a sound trade with
+> setuptools, which lets a project declare as many console scripts as it likes.
+> What changed is the builder, not the judgement: `go-to-wheel` expresses one
+> entry point, so the trade is no longer available. If the one-shot line matters
+> enough later, the honest route is an upstream `--entry-point`-repeatable patch
+> to `go-to-wheel`, not a hand-rolled wheel builder for the server.
 
 ### 4.4 Which platforms the server wheel covers
 
-The archives cover four targets. `go-to-wheel`'s README claims a default set
-spanning glibc and musl Linux, both macOS architectures, and Windows on amd64
-and arm64 — but swarf's published output is six wheels with **no Windows**, so
-the default set is something to verify on the first run rather than assume. For
-contrast, the CLI's own wheels cover five tags *including* `win_amd64`
-([`publish-check.yml:138-142`](../../.github/workflows/publish-check.yml#L138-L142)).
+**Ruling (2026-09-01): the four archive targets — Linux and macOS on x86-64 and
+arm64 — plus musl Linux if `go-to-wheel` gives it for free. No Windows.** Pass
+`--platforms` explicitly rather than trusting the tool's default set, and check
+what actually lands on the first run: `go-to-wheel`'s README advertises Windows
+in its defaults while swarf's published output has none.
 
-The server has never shipped a Windows build and nothing tests it there, so
-[OQ-P4](#open-questions) leans toward passing `--platforms` explicitly to match
-the archive set. Note the interaction with [§4.2](#42-version-continuity-and-why-the-yank-is-not-cosmetic):
-the narrower the set, the more machines fall through to the fallback, and the
-more the yank matters.
+Note the interaction with [§4.2](#42-version-continuity-and-why-the-yank-is-not-cosmetic):
+every platform outside the set is one that falls through to the old release, so
+a deliberately narrow set makes the yank matter more, not less.
+
+> [!NOTE]
+> **The CLI still builds a Windows wheel** — `win_amd64` is one of its five
+> targets ([`publish-check.yml:138-142`](../../.github/workflows/publish-check.yml#L138-L142)).
+> Dropping Windows from the server does not decide that; the CLI's Windows
+> target is a separate call, and it is the one place in this repo where Windows
+> support is currently claimed.
 
 ## 5. The install matrix after the fix
 
@@ -243,7 +288,7 @@ more the yank matters.
 | :--- | :--- | :--- |
 | Human, macOS/Linux | Homebrew | `brew install mschulkind-oss/tap/vantage` |
 | Human, Go toolchain | `go install` | `go install …/cmd/vantage@latest` |
-| Human, Python-first machine | **PyPI wheel** | `uvx vantage-md <path>` (subject to [OQ-P3](#open-questions)) |
+| Human, Python-first machine | **PyPI wheel** | `uv tool install vantage-md` then `vantage <path>`; one-shot is `uvx --from vantage-md vantage <path>` (§4.3) |
 | Human, neither | release archive | download and untar |
 | **Agent** | **PyPI wheel** | `uvx vantage-check <file>` |
 | Frontend / library consumer | npm | `npm i vantage-md` |
@@ -288,8 +333,8 @@ distribution carries. The CLI is a third surface — agent-facing tooling, not a
 form of the viewer — so it takes a third name. The same reasoning that makes npm
 `vantage-md` and PyPI `vantage-md` *correct* makes `vantage-check` correct.
 
-**Leaning: its own project** ([OQ-P2](#open-questions)) — which is also what the
-tree already assumes end to end:
+**Ruling (2026-09-01): its own project** — which is also what the tree already
+assumes end to end:
 [`publish-check.yml`](../../.github/workflows/publish-check.yml),
 `build-wheel.py`'s hardcoded `DISTRIBUTION = "vantage-check"`, the review
 payload's `uvx vantage-check <file>` string, and
@@ -323,6 +368,9 @@ payload's `uvx vantage-check <file>` string, and
 - **Not moving the checker into the Go binary.** Rejected in
   [`agent-cli.md`](agent-cli.md) as **R3** — a second renderer implementation
   that drifts invisibly — and nothing here changes it.
+- **Not Windows.** The server wheel covers Linux and macOS only (§4.4). The
+  CLI's existing `win_amd64` wheel is a separate question this doc does not
+  settle.
 - **Not the website's install copy.** Out of this tree, and unverifiable from
   here.
 
@@ -330,8 +378,9 @@ payload's `uvx vantage-check <file>` string, and
 
 | Risk | Mitigation |
 | :--- | :--- |
-| **R1. Silent fallback to the dead app** — `py3-none-any` `0.4.x` stays compatible with every platform, so any machine outside the wheel set resolves to it and runs the Python viewer with no warning ([§4.2](#42-version-continuity-and-why-the-yank-is-not-cosmetic)) | Yank `0.4.1` and `0.4.2`. [OQ-P1](#open-questions) |
-| **R2. A wheel that serves nothing** — the embed tolerates an empty `web/dist`, so a wheel built without the frontend steps starts and serves a blank page ([§4.1](#41-the-frontend-must-be-bundled-first-or-the-wheel-ships-a-blank-viewer)) | `test -f web/dist/index.html` immediately before the build; cross-target binaries cannot be smoke-tested on the runner |
+| **R1. Silent fallback to the dead app** — `py3-none-any` `0.4.x` stays compatible with every platform, so any machine outside the wheel set resolves to it and runs the Python viewer with no warning ([§4.2](#42-version-continuity-and-why-the-yank-is-not-cosmetic)) | Yank `0.4.1` and `0.4.2` — settled, and step 1 of [§9](#9-what-i-would-do-in-order) |
+| **R2. A build with no frontend in it** — the embed tolerates an empty `web/dist`, so any build path that skips the three frontend steps ships a placeholder page instead of the app, warning only to the server's own stderr ([§4.1](#41-the-frontend-has-to-be-there-at-build-time-and-today-it-often-isnt)) | Depends on [OQ-P6](#open-questions): a committed export removes the failure mode, a per-job assertion catches it one job at a time. Either way, assert `web/dist/index.html` before the build — cross-target binaries cannot be smoke-tested on the runner |
+| **R8. `go install` already ships the placeholder** — [`README.md:21-25`](../../README.md#L21-L25) documents `go install …/cmd/vantage@latest` with no caveat, and the module zip carries only `web/dist/.gitkeep`. Verified 2026-09-01 against a pristine `git archive HEAD` build | The same [OQ-P6](#open-questions) decision, and it is the reason that question is repo-wide rather than packaging-local. Until it is settled, the README line needs a caveat or the path needs removing |
 | **R3. The wheel job fails after the release is public** | Keep it a separate job with no `needs:` on `build`, so archives and the tap land regardless — the same tolerance `publish-check.yml` already documents for its own PyPI step |
 | **R4. Firing on the wrong tag** — a `vantage-check@*` release also fires `release: [published]`, and an unguarded job would publish an app wheel versioned `antage-check@0.1.0` | Copy `build`'s guard verbatim. This is a documented near-miss in `publish.yml`, not a hypothetical |
 | **R5. Two projects drifting about one style guide** | They share source, not copies: `packages/vantage-check` imports `vantage-md`'s TypeScript by relative path, and `check-ci` pins its katex and mermaid to `vantage-md`'s |
@@ -340,26 +389,29 @@ payload's `uvx vantage-check <file>` string, and
 
 ## 9. What I would do, in order
 
-1. **Decide the yank** ([OQ-P1](#open-questions)) and do it. Owner action, one
-   minute, and it is the only step that makes today's state *less* wrong on its
-   own.
-2. **Add the wheel job** to `publish.yml` with the guard, the frontend steps, and
-   the `index.html` assertion. Settle [OQ-P3](#open-questions),
-   [OQ-P4](#open-questions), [OQ-P5](#open-questions) first — all three are
-   arguments to the same command.
-3. **Cut the next app release** (there are 102 commits waiting) and verify the
-   wheel end to end: install it on a clean machine, confirm the server serves the
-   built frontend and reports the right version from
-   `internal/buildinfo.version`.
-4. **Register `vantage-check` on PyPI**, configure trusted publishing for this
+1. **Yank `0.4.1` and `0.4.2`.** Owner action, one minute, settled. The only
+   step that makes today's state *less* wrong entirely on its own.
+2. **Settle [OQ-P6](#open-questions)** — committed export or per-job frontend
+   build. Everything about the wheel job's shape follows from it, and so does
+   whether `go install` (**R8**) is fixed or documented as broken.
+3. **Add the wheel job** to `publish.yml`: `build`'s guard verbatim,
+   `--entry-point vantage`, `--platforms` for the four archive targets,
+   `--license Apache-2.0`, and an `index.html` assertion before the build.
+4. **Cut the next app release** (102 commits are waiting) and verify the wheel
+   end to end: install it on a clean machine, confirm the server serves the real
+   frontend rather than the placeholder, and that it reports the right version
+   from `internal/buildinfo.version`.
+5. **Register `vantage-check` on PyPI**, configure trusted publishing for this
    repo, push `vantage-check@0.1.0`, and watch that first run
    ([§6](#6-the-agent-cli-its-own-project-or-a-passenger)'s IMPORTANT).
-5. **Then** [`agent-bootstrap.md`](agent-bootstrap.md) step 2 is unblocked and
+6. **Then** [`agent-bootstrap.md`](agent-bootstrap.md) step 2 is unblocked and
    its **R1** clears — the payload's `uvx vantage-check` resolves for the first
    time.
 
-Steps 1–3 and step 4 are independent; either order works, and only step 4 gates
-the bootstrap design.
+Step 5 is independent of steps 1–4 and is the only one that gates the bootstrap
+design. The Apache-2.0 alignment is not in this list because it is already
+done — `packages/vantage-md`, `packages/vantage-check`, and `build-wheel.py`'s
+wheel metadata all declare it as of 2026-09-01.
 
 ## 10. Alternatives considered
 
@@ -381,80 +433,42 @@ the bootstrap design.
 - **Leave PyPI alone and drop it from the story.** Rejected: the channel is live
   and serving a deleted program (**P2**), and leaving it costs more the longer
   the two programs diverge.
+- **`--entry-point vantage-md`**, keeping the historical `uvx vantage-md <path>`
+  line. Rejected 2026-09-01: the installed command should match every other
+  channel. The `--from` tax lands only on the ephemeral one-shot (§4.3).
+- **A hand-rolled two-entry-point wheel** to get `vantage` and `vantage-md`
+  both, as the `0.4.2` setuptools wheel did. Rejected as the wrong lever — if
+  the alias matters later, patch `go-to-wheel` upstream rather than owning a
+  second wheel builder for the server.
+
+## Decision Ledger
+
+| ID | Ruling / Decision | Date | Settled in |
+| :--- | :--- | :--- | :--- |
+| OQ-P1 | Yank `vantage-md` `0.4.1` and `0.4.2` — the `py3-none-any` fallback is the silent failure | 2026-09-01 | §4.2, §9 step 1 |
+| OQ-P2 | The agent CLI gets **its own PyPI project**, `vantage-check`; not a second executable in the server's wheel. Supersedes `agent-bootstrap.md`'s `OQ-B7` | 2026-09-01 | §6 |
+| OQ-P3 | `--entry-point vantage`, matching every other channel; the one-shot is `uvx --from vantage-md vantage`. The `0.4.2` two-script wheel was a sound trade that `go-to-wheel` cannot express | 2026-09-01 | §4.3 |
+| OQ-P4 | The four archive targets (Linux + macOS × x86-64 + arm64), musl if free, **no Windows**. Pass `--platforms` explicitly rather than trusting defaults | 2026-09-01 | §4.4, §7 |
+| OQ-P5 | Apache-2.0 everywhere. Applied the same day to `packages/vantage-md`, `packages/vantage-check`, and `build-wheel.py`'s wheel metadata, which all declared MIT | 2026-09-01 | §8 **R7**, §9 |
 
 ## Open Questions
 
-1. 💬 **OQ-P1: Yank `vantage-md` `0.4.1` and `0.4.2`?** They are `py3-none-any`,
-   so they answer for every platform and become the silent fallback for any
-   machine the new wheels miss ([§4.2](#42-version-continuity-and-why-the-yank-is-not-cosmetic)).
-   This is the only item that improves things without any other work, and it
-   gates nothing else.
+1. 💬 **OQ-P6: Is the built frontend a tracked artifact?** `mschulkind-oss/polyclav`
+   commits its web export and refreshes it in `just build`; vantage keeps
+   `web/dist` empty in git and builds it per job. Only the first shape fixes
+   `go install …@latest`, which ships the placeholder page today (**R8**) — but
+   it reverses a deliberate `.gitignore` decision, adds Vite's hashed-filename
+   churn to every frontend commit, and needs an explicit carve-out from the
+   invariant that no `just` recipe dirties tracked files. Full comparison in
+   [§4.1](#41-the-frontend-has-to-be-there-at-build-time-and-today-it-often-isnt); this gates §9 step 3 and decides whether **R8** is
+   fixed or merely documented.
 
-   _Leaning:_ yank both, before or with the first platform wheel. Yanking keeps
-   existing pins working, so the cost is close to zero and the failure it
-   removes is the silent one.
-
-   **Answer:**
-
-   > _(empty — fill in when decided)_
-
-2. 💬 **OQ-P2: Does the agent CLI get its own PyPI project, or ride
-   `vantage-md`?** The headline question
-   ([§6](#6-the-agent-cli-its-own-project-or-a-passenger)). It decides whether
-   `agent-bootstrap.md`'s step 2 is one owner action or a change to the app's
-   release, and it supersedes that doc's `OQ-B7`.
-
-   _Leaning:_ its own project. Mechanics (a Go-module wheel builder cannot carry
-   a bun binary without abandoning it), weight (~92 MB in every server wheel),
-   cadence (`v*` versus `vantage-check@*`, whose confusion `publish.yml` already
-   guards against), and audience all point the same way — and so does **P1**,
-   since the CLI is a third product surface rather than another form of the
-   viewer. The counterweight is one avoided owner action.
-
-   **Answer:**
-
-   > _(empty — fill in when decided)_
-
-3. 💬 **OQ-P3: What is the server wheel's entry point — `vantage-md` or
-   `vantage`?** `go-to-wheel` installs exactly one command; the `0.4.2` wheel
-   installed both ([§4.3](#43-the-wheel-installs-one-command-and-the-old-one-installed-two)).
-   It decides whether the documented one-shot is `uvx vantage-md <path>` or
-   `uvx --from vantage-md vantage <path>`.
-
-   _Leaning:_ `vantage-md`. On PyPI the one-shot *is* the point of being there,
-   and `--from` is a papercut on the most-used path; the command-name divergence
-   is what `0.4.x` already shipped and documented. If it grates, the honest fix
-   is upstream support for two entry points, not a hand-rolled wheel.
-
-   **Answer:**
-
-   > _(empty — fill in when decided)_
-
-4. 💬 **OQ-P4: Which platforms does the server wheel cover?** Match the four
-   archive targets, take `go-to-wheel`'s default set (which swarf's output
-   suggests is glibc + musl Linux and both macOS architectures, no Windows), or
-   name something else ([§4.4](#44-which-platforms-the-server-wheel-covers)).
-   Interacts with **R1**: every uncovered platform is one that falls through.
-
-   _Leaning:_ pass `--platforms` explicitly for the four archive targets, add
-   musl if it comes free, and leave Windows out until someone asks — the server
-   has never shipped a Windows build and nothing tests it there. Verify what the
-   default set actually produces on the first run rather than trusting the
-   README.
-
-   **Answer:**
-
-   > _(empty — fill in when decided)_
-
-5. 💬 **OQ-P5: Which license do the published artifacts declare?** The repo
-   `LICENSE` is Apache-2.0 and the tap formula says Apache-2.0, while
-   `packages/vantage-md` and `packages/vantage-check` declare MIT and the CLI
-   wheel stamps `License: MIT` (**R7**). A wheel's metadata is what people
-   quote, so this wants settling before the first publish under these names.
-
-   _Leaning:_ align the published metadata to the repo `LICENSE` unless the two
-   packages were deliberately licensed differently — which is a fact about
-   intent that only you have.
+   _Leaning:_ commit the export. `go install` is a documented install path that
+   is broken right now, and no per-job assertion can reach it — the module proxy
+   serves what git holds. The churn is the price, and `just build` refreshing a
+   tracked file is a carve-out worth writing down rather than a rule worth
+   keeping intact. I would want the sync step to warn-and-continue like
+   polyclav's, so a checkout without pnpm/npm still builds.
 
    **Answer:**
 

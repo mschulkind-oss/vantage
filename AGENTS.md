@@ -10,9 +10,11 @@ all discoverable, so they are deliberately not here.
   the `git` CLI**. There is no in-process git library; introducing one is a
   design change, not an implementation detail.
 - `web/dist` is that embedded frontend, filled by `just build`. In git it holds
-  only `.gitkeep`, and `//go:embed all:dist` accepts that silently — so a
-  `go build` on a clean checkout yields a server that starts and serves nothing.
-  No error, blank page.
+  only `.gitkeep`, and `//go:embed all:dist` accepts that — so a `go build` on a
+  pristine checkout yields a server that logs one `slog.Warn` and serves
+  `Frontend bundle not found.` instead of the app. That includes the
+  `go install …@latest` line in the README, whose module zip is the git
+  contents. Verified 2026-09-01; see `docs/design/pypi-distribution.md` §4.1.
 - `packages/vantage-md` is consumed **from TypeScript source, never from
   `dist/`**: the frontend resolves it through a Vite alias
   (`frontend/vite.config.ts`), and `packages/vantage-check` imports it by
