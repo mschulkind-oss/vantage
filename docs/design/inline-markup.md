@@ -1008,7 +1008,7 @@ computes its own.
 ### 6.3 The sanitiser change
 
 Small and closed. In the `*` attribute list at
-[`sanitize.ts:166-203`](../../packages/vantage-md/src/sanitize.ts#L166-L203),
+[`sanitize.ts:182-219`](../../packages/vantage-md/src/sanitize.ts#L182-L219),
 **nine** `data-vantage-*` properties are named **individually** — never by a
 `data-vantage-*` wildcard, which would readmit whatever a future bug emits and
 whatever a document hand-writes as raw HTML:
@@ -1200,7 +1200,7 @@ new pipeline stage — it uses `rehype-sanitize`'s own value-allowlist form,
 `["style", SAFE_STYLE]`, so the filter runs inside the sanitiser that was
 already there. Two constants carry it: `SAFE_STYLE_PROPERTIES`, a typographic
 property allowlist, and
-[`SAFE_STYLE`](../../packages/vantage-md/src/sanitize.ts#L121-L124), the regex a
+[`SAFE_STYLE`](../../packages/vantage-md/src/sanitize.ts#L132-L140), the regex a
 whole `style` value must match.
 
 Three rules do the work:
@@ -1217,6 +1217,16 @@ Three rules do the work:
 Matching is **all-or-nothing**: one unrecognised declaration drops the entire
 attribute, and the element renders unstyled rather than half-styled. That is the
 safe direction to fail, and it satisfies **D6** — plain, never broken.
+
+**A fourth property the grammar must have, alongside the three rules: it must be
+unambiguous.** `;` is the only separator between declarations, and the value
+class absorbs the padding on both sides of one. That is not cosmetic. A value may
+legitimately contain whitespace (`margin: 0 auto`), so the value class contains
+whitespace too — and if whitespace could *also* end a declaration, the two
+constructs would compete for the same characters and the match would fork at
+every declaration. See §8.4: the first form of this regex did exactly that, and
+it turned a 200-character `style` attribute into a 94-second stall on whichever
+thread called the renderer.
 
 **Measured 2026-08-31, by rendering through the real chain rather than by
 inspection:**
@@ -1352,9 +1362,44 @@ characters, because a review-comment body is not prose.
 
 ### 8.4 Denial of service
 
-None added. Ten thousand directives is ten thousand comments, which the parser
-already handles, and the plugin is one linear pass per parent over an unambiguous
-grammar, consuming each run exactly once.
+**None added by the directive layer, and it was measured rather than asserted.**
+Ten thousand directives is ten thousand comments, which the parser already
+handles, and the plugin is one linear pass per parent over an unambiguous
+grammar, consuming each run exactly once. Measured through the real chain:
+`renderMarkdown` over a document of 10,000 `block` directives costs a flat 111 µs
+per directive from 1,000 up to 10,000; one `section` directive stamping a
+10,000-block run is linear in the run; and the tokenizer is flat on every
+pathological single comment tried (a megabyte of attribute pairs, an unterminated
+quoted value, a 200 kB unquoted one).
+
+**The style filter, though, did add one, and it is the reason §8.2 now insists
+the grammar be unambiguous.** In its first form (`fd7411c`) declarations were
+separated by `\s*;?\s*` while the value class also matched whitespace, so each
+whitespace-separated declaration doubled the number of ways to split the input
+and a value that ultimately *failed* made the engine explore all of them.
+Measured on the shipped regex: `"color:red "` × 12 plus a `(` took 12 ms, × 16
+took 950 ms, × 20 — 201 characters — took **94 seconds**; and the shape needs no
+contrivance, since ordinary-looking `"color: red; "` × 28 (353 characters) took
+**20 seconds**. That is document-controlled input under the
+threat model of §8.1, and it was not just a slow tab: `renderMarkdown` is what
+`vantage-check` runs over every Markdown file in the repository, so one such file
+in `docs/` would have wedged the pre-commit hook and CI itself, and `vantage
+build` with it.
+
+The fix is the grammar, not a length cap or a timeout: `;` is mandatory between
+declarations, which pins each declaration's extent to the delimiter positions, so
+there is exactly one way to parse any input. The same payloads now resolve in
+under a millisecond at 200 kB. It is pinned by a flat-time test in
+[`sanitize.test.ts`](../../frontend/src/lib/sanitize.test.ts) that climbs the
+payload length in small steps and asserts a budget on each rung — so a
+reintroduced ambiguity fails on an early rung in about a second, rather than
+wedging the suite the way the bug wedged the gate.
+
+One behaviour changed with it, in the safe direction: declarations run together
+without a `;` (`color:red font-size:2px`, and even `color:redcolor:red`) were
+accepted by the old regex as a side effect of the same ambiguity, and are now
+rejected. KaTeX always emits `;`, and the battery of §8.2 confirms it still —
+258 style attributes across twelve formula families, zero rejections.
 
 ## 9. Non-goals — what this does not license
 
@@ -1396,6 +1441,7 @@ grammar, consuming each run exactly once.
 | **R8. No sanitisation test exists** (§8.1), so a regression is invisible | **Discharged, `fd7411c`.** `sanitize.test.ts` is the repo's first sanitisation test: the property allowlist, the `url(`/`expression(` rejection, the `position` rule, and the KaTeX battery. |
 | **R9. The style filter breaks KaTeX** — measured, not hypothetical (§8.2) | **Mitigated.** `position` values are enumerated rather than the property dropped; matching is all-or-nothing so garbage drops silently instead of throwing; pinned by the KaTeX battery, which fails if a release starts emitting something new. |
 | **R10. The stylesheet's mechanisms are invisible until they break** — an `@layer` added "to be tidy", the import moved, a `var()` fallback added for "safety" | **Mitigated, `e5e7ac5`.** Each of the five facts in §4.3 has a text-level assertion in `directiveTheme.test.ts` / `directiveCssWiring.test.ts`, including the attribute-name cross-check against the sanitiser allowlist — the test that would have caught `data-vantage-run` being missing from it. Geometry is not covered: jsdom cannot evaluate it (A22), and no e2e spec was written. |
+| **R11. The style filter is itself a denial-of-service surface** — the value it inspects is document-controlled, and the thread it runs on is the renderer's, the static export's and the CI checker's | **Was live and unnoticed; now closed.** The regex as shipped in `fd7411c` was exponentially ambiguous and a 200-character `style` attribute stalled the gate for 94 seconds — §8.4 has the measurements. Closed by making `;` a mandatory separator, so the grammar has exactly one parse; pinned by a flat-time test that fails on an early rung rather than hanging. The general lesson is the one §8.4 now records: "adds no DoS" is a claim to *measure*, not to assert, and a regex over document-controlled text is where to look first. |
 
 **What it costs.** A vocabulary that becomes a compatibility promise, a
 stylesheet whose five mechanisms have to be guarded by text assertions because
