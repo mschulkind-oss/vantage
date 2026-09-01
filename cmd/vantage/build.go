@@ -29,7 +29,7 @@ func newBuildCmd() *cobra.Command {
 			"server can host. The frontend detects static mode automatically and\n" +
 			"reads from these files instead of a live API.",
 		Args: cobra.MaximumNArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			source := "."
 			if len(args) == 1 {
 				source = args[0]
@@ -56,13 +56,22 @@ func newBuildCmd() *cobra.Command {
 				return err
 			}
 
-			fmt.Println("\nStatic site built successfully!")
-			fmt.Printf("Output: %s\n", out)
-			fmt.Println("\nTo deploy to S3:")
-			fmt.Printf("  aws s3 sync %s s3://your-bucket/path/\n", out)
-			fmt.Println("  Note: navigate to .../index.html (S3 does not auto-serve index.html for subdirs)")
-			fmt.Println("\nTo deploy to Cloudflare Pages:")
-			fmt.Printf("  npx wrangler pages deploy %s\n", out)
+			// Through the command's own writer, not straight to stdout, so the
+			// hints can be asserted — they name deploy commands that go stale
+			// when a vendor moves on, which is exactly what happened to the
+			// Cloudflare one below.
+			w := cmd.OutOrStdout()
+			fmt.Fprintln(w, "\nStatic site built successfully!")
+			fmt.Fprintf(w, "Output: %s\n", out)
+			fmt.Fprintln(w, "\nTo deploy to S3:")
+			fmt.Fprintf(w, "  aws s3 sync %s s3://your-bucket/path/\n", out)
+			fmt.Fprintln(w, "  Note: navigate to .../index.html (S3 does not auto-serve index.html for subdirs)")
+			// Workers with static assets, not `wrangler pages deploy`: Pages is
+			// the older product, and `--assets` is what replaced Workers Sites.
+			// This repo's own doc site deploys the same way, through the
+			// `[assets]` block in docs-wrangler.toml.
+			fmt.Fprintln(w, "\nTo deploy to Cloudflare Workers:")
+			fmt.Fprintf(w, "  npx wrangler deploy --assets %s\n", out)
 			return nil
 		},
 	}

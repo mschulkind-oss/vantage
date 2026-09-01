@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -49,6 +51,30 @@ func TestServeByDefault(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// The `build` summary names third-party deploy commands, which is the one kind
+// of output that rots without anything failing: `npx wrangler pages deploy`
+// shipped here long after Pages stopped being the way Cloudflare wants static
+// assets served. Asserting the hints is what makes that a test failure rather
+// than advice nobody rechecks.
+func TestBuildPrintsDeployHints(t *testing.T) {
+	src := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(src, "index.md"), []byte("# Demo\n"), 0o644))
+	out := filepath.Join(t.TempDir(), "site")
+
+	root := newRootCmd()
+	var buf bytes.Buffer
+	root.SetOut(&buf)
+	root.SetArgs([]string{"build", src, "-o", out, "-n", "Demo"})
+	require.NoError(t, root.Execute())
+
+	printed := buf.String()
+	require.Contains(t, printed, "Static site built successfully!")
+	require.Contains(t, printed, "aws s3 sync "+out)
+	require.Contains(t, printed, "npx wrangler deploy --assets "+out)
+	// The superseded form, which this test exists to keep from coming back.
+	require.NotContains(t, printed, "wrangler pages deploy")
 }
 
 func TestVersionTemplate(t *testing.T) {
