@@ -37,7 +37,9 @@ const DEFAULT_REHYPE = [
   "rehypeSanitize",
   "rehypeSlug",
   "rehypeHighlight",
+  "rehypeCaptureMathStamps",
   "rehypeKatex",
+  "rehypeRestoreMathStamps",
 ];
 
 describe("buildPipeline order", () => {
@@ -73,6 +75,33 @@ describe("buildPipeline order", () => {
     expect(order.indexOf("rehypeSanitize")).toBeGreaterThan(
       order.indexOf("rehypeVantageDirectives"),
     );
+  });
+
+  it("brackets rehypeKatex with the display-math stamp carry", () => {
+    // `rehype-katex` *replaces* a display-math `<pre>` with a
+    // `<span class="katex-display">`, and the `<pre>` is the element
+    // `rehypeVantageDirectives` stamped and `rehypeSourceLines` numbered. The
+    // pair around it copies those attributes onto the replacement; either half
+    // on the wrong side of `rehypeKatex` is silently inert, and the symptom is a
+    // hole in a toned section's vertical rule that no unit test can see.
+    const order = names(buildPipeline().rehypePlugins);
+    const capture = order.indexOf("rehypeCaptureMathStamps");
+    const katex = order.indexOf("rehypeKatex");
+    const restore = order.indexOf("rehypeRestoreMathStamps");
+
+    expect(capture).toBeGreaterThan(-1);
+    expect(katex).toBe(capture + 1);
+    expect(restore).toBe(katex + 1);
+    // And the capture has to see the tree the sanitiser rebuilt, not the one it
+    // replaced: node identities taken earlier would all be stale.
+    expect(capture).toBeGreaterThan(order.indexOf("rehypeSanitize"));
+  });
+
+  it("drops the stamp carry with math, since nothing replaces the block", () => {
+    const order = names(buildPipeline({ math: false }).rehypePlugins);
+
+    expect(order).not.toContain("rehypeCaptureMathStamps");
+    expect(order).not.toContain("rehypeRestoreMathStamps");
   });
 
   it("registers the directive plugin unconditionally, with no options", () => {
@@ -167,7 +196,9 @@ describe("buildPipeline toggles", () => {
       "rehypeVantageDirectives",
       "rehypeSanitize",
       "rehypeSlug",
+      "rehypeCaptureMathStamps",
       "rehypeKatex",
+      "rehypeRestoreMathStamps",
     ]);
   });
 
@@ -180,7 +211,9 @@ describe("buildPipeline toggles", () => {
       "rehypeSanitize",
       "rehypeSlug",
       "rehypeHighlight",
+      "rehypeCaptureMathStamps",
       "rehypeKatex",
+      "rehypeRestoreMathStamps",
     ]);
   });
 
@@ -193,7 +226,9 @@ describe("buildPipeline toggles", () => {
       "rehypeVantageDirectives",
       "rehypeSlug",
       "rehypeHighlight",
+      "rehypeCaptureMathStamps",
       "rehypeKatex",
+      "rehypeRestoreMathStamps",
     ]);
   });
 

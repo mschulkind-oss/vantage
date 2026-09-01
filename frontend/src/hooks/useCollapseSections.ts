@@ -118,7 +118,12 @@ export function useCollapseSections(
       if (group === null) continue;
       const members = groupMembers(el, group);
       // A toggle whose group has no members would be a caret that hides
-      // nothing. The plugin does not emit one; a hand-edited DOM could.
+      // nothing. The plugin does not emit one; a hand-edited DOM could. It did
+      // once, and not hypothetically: a heading whose only body block was a
+      // `$$…$$` formula opened a group of one, and `rehype-katex` then replaced
+      // the stamped `<pre>`, leaving the caret with nothing to hide.
+      // `rehypeVantageMathStamps` carries the stamp across that replacement now,
+      // so this guard is back to being defence rather than the fix.
       if (members.length === 0) continue;
 
       const caret = document.createElement("button");

@@ -525,14 +525,27 @@ describe("vantage/orphan", () => {
     expect(report.findings[0]?.message).not.toContain("table");
   });
 
-  it("warns about a style directive above a `$$` math block", async () => {
-    // With math on — which is what the viewers and this checker do — a display
-    // formula renders as a `<span class="katex-display">`, which is no kind of
-    // stampable block.
+  it("says nothing about a style directive above a `$$` math block", async () => {
+    // This used to be a finding, and the finding used to be right: a display
+    // formula is a `<pre>` when the plugin runs, gets stamped, and was then
+    // *replaced* by `rehype-katex` with a `<span class="katex-display">` that
+    // carried nothing. `rehypeVantageMathStamps` copies the stamp across the
+    // replacement now, so the directive styles what it says it styles — and the
+    // render assertion is what ties this rule to that fact rather than to a
+    // belief about it.
     const markdown = "<!-- vantage: block tone=note -->\n\n$$\nE = mc^2\n$$\n";
 
-    expect(await check(markdown)).toEqual(["vantage/orphan"]);
-    expect(await render(markdown)).not.toContain("data-vantage");
+    expect(await check(markdown)).toEqual([]);
+    expect(await render(markdown)).toContain('data-vantage-tone="note"');
+  });
+
+  it("still warns about an `oq` above a `$$` math block, which hosts no button", async () => {
+    // The formula is stamped; what it cannot do is hold the button. The two
+    // target lists differ for exactly this kind of case.
+    const report = await one("<!-- vantage: oq -->\n\n$$\nE = mc^2\n$$\n");
+
+    expect(ruleIds(report)).toEqual(["vantage/orphan"]);
+    expect(report.findings[0]?.message).toContain("`$$` math block");
   });
 
   it("warns about a directive in a tight list item", async () => {
