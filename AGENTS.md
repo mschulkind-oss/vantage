@@ -40,12 +40,14 @@ Never kill it; run test instances on other ports.
   local install. A stale eslint plugin once hid three live suppressions, so
   deleting them as dead broke CI (`caba056`, fixed in `5226587`). Lint runs at
   `--max-warnings 0`, so a stale suppression is an error, not a note.
-- **Nothing type-checks the app.** `frontend/tsconfig.json` is solution-style
-  (`files: []` plus project references), so the gate's `tsc --noEmit` checks
-  **zero files** — measured with `--listFiles`, 2026-09-01. `packages/vantage-md`
-  is never linted, format-checked or type-checked either, and has no tests of
-  its own; its source is exercised only through `frontend/`'s tests. Type errors
-  in either place reach main.
+- **`tsc --noEmit` in `frontend/` checks nothing.** `frontend/tsconfig.json` is
+  solution-style (`files: []` plus project references), so it checked **zero
+  files** until the gate moved to `tsc --build`, which walks the references and
+  covers `frontend/src` and `packages/vantage-md/src` both. Keep it `--build`;
+  reverting to `--noEmit` looks identical and silently checks nothing.
+- **`packages/vantage-md` is still not linted or format-checked**, and has no
+  tests of its own — its source is type-checked through `frontend/`'s project
+  reference and exercised through `frontend/`'s tests.
 - **Editing Markdown can fail the gate.** It rebuilds the CLI and runs it over
   `docs/`, `userguide/` and the READMEs, so a broken relative link or a dead
   anchor is a failure. `just cli` then
