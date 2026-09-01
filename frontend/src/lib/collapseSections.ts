@@ -10,9 +10,10 @@
  * review comment force a section open without restructuring anything.
  *
  * Nothing here hides anything by itself. The CSS that does is gated on
- * `data-vantage-collapse-ready`, which `useCollapseSections` sets on the prose
- * container only after it has attached its handlers: a renderer with no JS shows
- * the whole document rather than hiding blocks nobody can reveal (P1/D8).
+ * `data-vantage-collapse-ready` on the prose container *and* on
+ * `data-vantage-collapse-armed` on the block, both written by
+ * `useCollapseSections` after it attaches: a renderer with no JS shows the whole
+ * document, and so does any block whose group ended up with no control (P1/D8).
  *
  * Split out of the hook because three unrelated callers need to force a section
  * open — the hook, the `#L42` line anchor, and the review highlighter — and only
@@ -23,6 +24,28 @@ export const COLLAPSE_READY_ATTR = "data-vantage-collapse-ready";
 export const COLLAPSE_TOGGLE_ATTR = "data-vantage-collapse-toggle";
 export const COLLAPSE_GROUP_ATTR = "data-vantage-collapse-group";
 export const COLLAPSED_ATTR = "data-vantage-collapsed";
+
+/**
+ * Set by `useCollapseSections` on every block whose group actually got a caret,
+ * and the second half of the hiding rule's precondition.
+ *
+ * The readiness marker on the container says "some control exists somewhere",
+ * which is not the same question as "can this block be reopened". A block whose
+ * group has no toggle, or which carries no group id at all, is addressable by
+ * nothing: no caret controls it, and `revealCollapsedBlock` cannot walk up from
+ * it. Hidden with nothing able to reveal it is content loss, not a style
+ * (P1/D8) — so the CSS hides only what was armed here, one block at a time.
+ *
+ * Positive rather than a scrub of the plugin's own attributes: the document
+ * still says what it said, so a renderer with this JS torn down and one that
+ * never had it agree exactly. And a document cannot forge it — it is not on the
+ * sanitiser's allowlist, which is what makes it a real gate rather than a
+ * second copy of the value it is guarding.
+ *
+ * Neither shape can come out of the plugin: it stamps the toggle and its members
+ * in one loop over one range. Raw HTML in a document can write either.
+ */
+export const COLLAPSE_ARMED_ATTR = "data-vantage-collapse-armed";
 
 /**
  * Marks the caret the hook injects. Two jobs, the same two as the Open Question
