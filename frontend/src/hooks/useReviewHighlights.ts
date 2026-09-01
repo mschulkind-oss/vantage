@@ -7,6 +7,7 @@ import {
   hashBlockText,
   rangeFromCanonicalOffsets,
 } from "../lib/reviewAnchor";
+import { revealCollapsedBlock } from "../lib/collapseSections";
 import {
   hasAgentReaction,
   isPendingForAgent,
@@ -296,6 +297,18 @@ export function useReviewHighlights(
         block.classList.add("review-highlight-block-divergent");
       }
 
+      // An unresolved comment inside a collapsed section opens it. The card is
+      // inserted as a sibling of the block and carries no collapsed attribute of
+      // its own, so leaving the section shut would strand a comment about text
+      // that is not rendered — and every jump to it, from the panel or the
+      // stripe, would land on a zero-height box.
+      //
+      // Done here rather than at each jump because there are four of them (the
+      // panel, the stripe, a `#L42`, a hash link) and this pass is what every one
+      // of them lands in. The cost is that closing such a section by hand does
+      // not survive the next store write, which re-runs this pass: an open
+      // section is the recoverable state, an invisible comment is not.
+      revealCollapsedBlock(block);
       insertInlineCommentAfter(block, comment, actions, divergent);
     }
 

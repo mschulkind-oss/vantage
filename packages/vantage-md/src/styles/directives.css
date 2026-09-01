@@ -259,6 +259,58 @@
   --vantage-chip-wash: var(--vantage-tone-important-chip);
 }
 
+/* ── Collapse ───────────────────────────────────────────────────────────── */
+/* The hiding rule is DOUBLE-GATED, and both gates are load-bearing.
+
+   `[data-vantage-collapse-ready]` is set on the prose container by the toggle
+   JS, *after* it has attached its handlers. A renderer without that JS — the CLI
+   checker's `renderMarkdown` HTML, an external consumer of this stylesheet —
+   never sets it, so nothing is hidden and the whole document reads. Hidden
+   content with no way to reveal it is content loss, not a style (P1/D8).
+
+   `@media not print` is the second gate, and it is not the same thing as a
+   `display: revert` counter-rule: `not print` means this declaration does not
+   exist in the print stylesheet, so no third rule can defeat it. A collapsed
+   section that printed closed would be content loss on paper (D7). */
+@media not print {
+  [data-vantage-collapse-ready] [data-vantage-collapsed="true"] {
+    display: none;
+  }
+}
+/* The caret is a REAL element the toggle JS injects, not a third pseudo:
+   `::before` is already the tone rule and `::after` the badge, and one heading
+   can carry all three. It is a `<button>` so that it is keyboard-operable, so
+   that `aria-expanded` sits on an element allowed to carry it, and — measured —
+   because the app's review-mode click handler bails on `button`, which is what
+   keeps a toggle click from also opening the comment popover.
+
+   The glyph is drawn here rather than written into the element's text: the
+   document's text content then stays byte-identical to what every other renderer
+   produces, so no block hash, no clipboard payload and no anchor shifts because
+   the JS ran (D5). Note the heading itself deliberately gets no `cursor:
+   pointer` — it is not the control, and in review mode a click on it belongs to
+   the comment popover. */
+.vantage-collapse-caret {
+  display: inline-block;
+  width: 1em;
+  margin: 0 0.15em 0 0;
+  padding: 0;
+  border: 0;
+  background-color: transparent;
+  color: var(--vantage-tone-muted-accent);
+  font-size: 0.7em;
+  line-height: 1;
+  vertical-align: 0.15em;
+  cursor: pointer;
+  transition: transform 0.15s;
+}
+.vantage-collapse-caret::before {
+  content: "\25be";
+}
+[data-vantage-collapse-toggle] .vantage-collapse-caret[aria-expanded="false"] {
+  transform: rotate(-90deg);
+}
+
 /* ── Print (D7) ─────────────────────────────────────────────────────────── */
 /* Decoration goes to ink-cheap monochrome; nothing informational is dropped.
    `quiet` is restored to full opacity — a faded print is a legibility loss,
@@ -282,5 +334,10 @@
     border: 1px solid #57606a;
     background-color: transparent;
     color: #1a1a1a;
+  }
+  /* Every collapsed block prints (the rule above simply does not exist here), so
+     the caret would print as a control that cannot be operated on paper. */
+  .vantage-collapse-caret {
+    display: none;
   }
 }

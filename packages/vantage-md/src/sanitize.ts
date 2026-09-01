@@ -123,6 +123,16 @@ export const SAFE_STYLE = new RegExp(
   "i",
 );
 
+/**
+ * A collapse group id: one or more digits, anchored.
+ *
+ * The plugin mints these as a per-document counter, so there is no vocabulary to
+ * list. Keeping the shape narrow matters anyway — the toggle JS builds a
+ * `[data-vantage-collapse-group="…"]` selector out of the value, and a document
+ * that hand-wrote raw HTML is the only way a non-numeric one could ever appear.
+ */
+const COLLAPSE_GROUP_ID = /^[0-9]+$/;
+
 export const sanitizeSchema: Schema = {
   ...defaultSchema,
   tagNames: [
@@ -173,6 +183,14 @@ export const sanitizeSchema: Schema = {
       ["dataVantageEmphasis", ...VANTAGE_EMPHASIS],
       ["dataVantageBadge", ...VANTAGE_BADGES],
       ["dataVantageCollapsed", ...VANTAGE_COLLAPSED],
+      // The other half of `collapsed`: which group a hidden block belongs to,
+      // and which group a heading toggles. Both are plugin-minted counters with
+      // no vocabulary to allowlist, so they take a pattern instead —
+      // `hast-util-sanitize` accepts a `RegExp` in place of a literal value.
+      // A pattern rather than a bare name because the JS interpolates the value
+      // into a selector: anything but digits has no business reaching it.
+      ["dataVantageCollapseGroup", COLLAPSE_GROUP_ID],
+      ["dataVantageCollapseToggle", COLLAPSE_GROUP_ID],
       ["dataVantageRun", ...VANTAGE_RUNS],
       ["dataVantageOq", "true"],
       // The design's one genuinely free-text value: the body of a review

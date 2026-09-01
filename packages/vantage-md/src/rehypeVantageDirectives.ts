@@ -87,10 +87,9 @@ const HEADING_DEPTHS = new Map([
  * Key → hast property. A camelCase hast property serialises to the kebab-case
  * attribute, so `dataVantageTone` is `data-vantage-tone` in every renderer.
  *
- * `collapsed` is absent on purpose: it needs the toggle and group ids and the
- * click handler that ship with it, and an attribute that hides content with no
- * way to reveal it is content loss (P1/D8). Its vocabulary entry exists, so the
- * checker already validates `collapsed=true`; only the stamping is later work.
+ * `collapsed` is not here because it is not one property on one block: it puts a
+ * toggle on the heading and a collapsed flag plus a group id on every block the
+ * heading hides, which `stampStyle` does with the three properties below.
  */
 const STYLE_PROPERTIES = new Map([
   ["tone", "dataVantageTone"],
@@ -102,8 +101,41 @@ const RUN_PROPERTY = "dataVantageRun";
 const OQ_PROPERTY = "dataVantageOq";
 const LEANING_PROPERTY = "dataVantageLeaning";
 
+/**
+ * The three properties `collapsed=true` stamps across a section.
+ *
+ * The heading takes a *different* attribute from the blocks it hides, and that
+ * asymmetry is the whole design (A3): a nested `###` inside a collapsed `##` is
+ * both a hidden member of the outer group and the toggle for its own, so one
+ * shared attribute would make it permanently invisible and unreachable by
+ * either toggle. There is no `<details>` and no wrapper — the run stays a flat
+ * list of siblings, which is what keeps review comment cards, the typography
+ * plugin's `h2 + *` margin resets and the anchor surface working.
+ *
+ * Hiding is CSS, and that CSS is gated on a readiness marker the toggle JS sets
+ * (`docs/design/inline-markup.md` §4.3): a renderer without the JS — the CLI
+ * checker's HTML, an external consumer of this package — shows every block.
+ */
+const COLLAPSED_PROPERTY = "dataVantageCollapsed";
+const COLLAPSE_GROUP_PROPERTY = "dataVantageCollapseGroup";
+const COLLAPSE_TOGGLE_PROPERTY = "dataVantageCollapseToggle";
+
 /** A review-comment body, not prose. Bounds the attribute; 500 is generous. */
 const MAX_LEANING = 500;
+
+/**
+ * Per-tree state. Group ids are `1`, `2`, `3`… in the document order of the
+ * headings that own them, so the same document always numbers the same way and
+ * an inner section always draws a higher number than the section enclosing it.
+ *
+ * It lives in the transformer's closure rather than at module scope: a counter
+ * shared between trees would renumber a document because another one rendered
+ * first, and `renderMarkdown` running twice in one process has to produce
+ * byte-identical HTML.
+ */
+interface CollapseState {
+  nextGroup: number;
+}
 
 /**
  * Nodes that may sit between a directive and its target.
@@ -184,11 +216,32 @@ function styleRange(
   return range;
 }
 
+/**
+ * Whether this directive collapses its section — three ways to say no.
+ *
+ * `collapsed=false` is a no-op: the token exists so an inner section can cancel
+ * an enclosing one, and stamping "not collapsed" is not a thing an attribute can
+ * say. A `block` scope is **dropped**, and so is a `section` that degraded onto
+ * a non-heading, because both would hide a lone paragraph with nothing left
+ * behind to reveal it — content that is simply gone, which is the P1/D8 failure
+ * the readiness gate exists to prevent. Only a heading can be a summary.
+ */
+function collapsesSection(
+  name: string,
+  pairs: Map<string, string>,
+  target: RootContent,
+): boolean {
+  if (name !== "section") return false;
+  if (pairs.get("collapsed") !== "true") return false;
+  return headingDepth(target) !== undefined;
+}
+
 function stampStyle(
   children: RootContent[],
   targetIndex: number,
   name: string,
   pairs: Map<string, string>,
+  state: CollapseState,
 ) {
   const target = children[targetIndex] as Element;
   if (!STYLE_TARGET_TAGS.has(target.tagName)) return;
@@ -203,15 +256,33 @@ function stampStyle(
     if (!accepts(name, key, value)) continue;
     resolved.push([property, value]);
   }
-  if (resolved.length === 0) return;
+  const collapses = collapsesSection(name, pairs, target);
+  if (resolved.length === 0 && !collapses) return;
 
   const range = styleRange(children, targetIndex, name);
+  // A heading with no body blocks gets no toggle: a caret that hides nothing is
+  // an affordance that lies. The counter only advances for a group that exists,
+  // so the ids stay dense.
+  const group =
+    collapses && range.length > 1 ? String(state.nextGroup++) : undefined;
+
   for (let i = 0; i < range.length; i++) {
     const element = children[range[i]] as Element;
     for (const [property, value] of resolved) {
       setProperty(element, property, value);
     }
-    setProperty(element, RUN_PROPERTY, runValue(i, range.length));
+    // Only where something was stamped to join up: `run` describes the extent of
+    // a tone's rule, and a collapse-only section has no rule to draw.
+    if (resolved.length > 0) {
+      setProperty(element, RUN_PROPERTY, runValue(i, range.length));
+    }
+    if (group === undefined) continue;
+    if (i === 0) {
+      setProperty(element, COLLAPSE_TOGGLE_PROPERTY, group);
+    } else {
+      setProperty(element, COLLAPSED_PROPERTY, "true");
+      setProperty(element, COLLAPSE_GROUP_PROPERTY, group);
+    }
   }
 }
 
@@ -246,6 +317,7 @@ function stampRun(
   children: RootContent[],
   targetIndex: number,
   run: ParsedDirective[],
+  state: CollapseState,
 ) {
   const target = children[targetIndex] as Element;
   const style = new Map<string, string>();
@@ -268,7 +340,7 @@ function stampRun(
   }
 
   if (styleName !== undefined) {
-    stampStyle(children, targetIndex, styleName, style);
+    stampStyle(children, targetIndex, styleName, style, state);
   }
   if (hasOq && ANCHOR_TARGET_TAGS.has(target.tagName)) {
     stampOq(target, oq);
@@ -294,13 +366,13 @@ function directiveOf(node: RootContent): ParsedDirective | undefined {
  * directive necessarily sits at a higher child index than the outer directive
  * that ranged over it, so each property is simply last-write-wins.
  */
-function processChildren(parent: Parents) {
+function processChildren(parent: Parents, state: CollapseState) {
   const children = parent.children;
   let i = 0;
   while (i < children.length) {
     const node = children[i];
     if (node.type === "element") {
-      processChildren(node);
+      processChildren(node, state);
       i++;
       continue;
     }
@@ -328,14 +400,14 @@ function processChildren(parent: Parents) {
       if (directive !== undefined) run.push(directive);
     }
 
-    if (targetIndex >= 0) stampRun(children, targetIndex, run);
+    if (targetIndex >= 0) stampRun(children, targetIndex, run, state);
     i = j; // resume at the target, or at the blocker — never inside the run
   }
 }
 
 const rehypeVantageDirectives: Plugin<[], Root> = () => {
   return (tree: Root) => {
-    processChildren(tree);
+    processChildren(tree, { nextGroup: 1 });
   };
 };
 

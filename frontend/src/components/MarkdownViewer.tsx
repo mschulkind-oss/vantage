@@ -14,6 +14,7 @@ import {
   type InlineReviewActions,
 } from "../hooks/useReviewHighlights";
 import { useOpenQuestionButtons } from "../hooks/useOpenQuestionButtons";
+import { useCollapseSections } from "../hooks/useCollapseSections";
 import { useReviewStore } from "../stores/useReviewStore";
 import { ReviewCommentPopover } from "./ReviewCommentPopover";
 import {
@@ -293,6 +294,14 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       copyCommentToClipboard,
     ],
   );
+
+  // Collapsed sections (design §4.3). BEFORE the highlighter on purpose: this is
+  // the pass that sets `data-vantage-collapse-ready`, and the highlighter forces
+  // a section open when a comment lands inside one — which it can only do once
+  // the marker is there. Effects run in call order, so the order here is the
+  // ordering constraint. Unlike the two review passes it is ungated: a collapsed
+  // section is how the document reads, not a review affordance.
+  useCollapseSections(containerRef, body);
 
   useReviewHighlights(
     containerRef,

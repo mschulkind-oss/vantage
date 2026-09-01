@@ -98,7 +98,7 @@ consume it:
 | :--- | :--- |
 | [`pipeline.ts:96-108`](../../packages/vantage-md/src/pipeline.ts#L96-L108) | `buildPipeline(options)` — the only place the plugin list and its order exist. |
 | [`renderMarkdown.ts:82-97`](../../packages/vantage-md/src/renderMarkdown.ts#L82-L97) | String-in, HTML-out. Feeds the CLI checker, `resolveLinks`, and `renderMermaidBlocks`. |
-| [`MarkdownViewer.tsx:696-697`](../../frontend/src/components/MarkdownViewer.tsx#L696-L697) | The app's `<ReactMarkdown>`, handed both lists as props. |
+| [`MarkdownViewer.tsx:725-726`](../../frontend/src/components/MarkdownViewer.tsx#L725-L726) | The app's `<ReactMarkdown>`, handed both lists as props. |
 | [`vantage-md/src/MarkdownViewer.tsx:221-222`](../../packages/vantage-md/src/MarkdownViewer.tsx#L221-L222) | The package's own exported React viewer, likewise. |
 
 The order is `rehypeRaw` → `rehypeSourceLines` → `rehypeSanitize` →
@@ -161,10 +161,10 @@ separates them. "Attach to the next block" is positionally well-defined.
 Not through React. [`useReviewHighlights`](../../frontend/src/hooks/useReviewHighlights.ts)
 is an imperative post-render pass over the container: it finds blocks by
 `[data-source-line="N"]`, wraps matched text in `<mark>`
-([`useReviewHighlights.ts:279`](../../frontend/src/hooks/useReviewHighlights.ts#L279)),
+([`useReviewHighlights.ts:280`](../../frontend/src/hooks/useReviewHighlights.ts#L280)),
 and injects comment cards, reply textareas, and buttons as raw DOM nodes
-([`useReviewHighlights.ts:469-561`](../../frontend/src/hooks/useReviewHighlights.ts#L469-L561),
-[`785-860`](../../frontend/src/hooks/useReviewHighlights.ts#L785-L860)).
+([`useReviewHighlights.ts:470-562`](../../frontend/src/hooks/useReviewHighlights.ts#L470-L562),
+[`786-861`](../../frontend/src/hooks/useReviewHighlights.ts#L786-L861)).
 
 That matters twice. It is the **precedent** for how §5.2's button gets on the
 page — an existing pattern, not a new one. And it is the reason `data-*`
@@ -175,7 +175,7 @@ immediately reachable by exactly the machinery that reads anchors today.
 ### 2.4 How an Open Question gets answered today
 
 Four actions. Hover a block in review mode, click it
-([`MarkdownViewer.tsx:507-545`](../../frontend/src/components/MarkdownViewer.tsx#L507-L545)),
+([`MarkdownViewer.tsx:530-570`](../../frontend/src/components/MarkdownViewer.tsx#L530-L570)),
 type into `ReviewCommentPopover`, press Ctrl/Cmd-Enter
 ([`ReviewCommentPopover.tsx:104`](../../frontend/src/components/ReviewCommentPopover.tsx#L104)).
 That calls `addComment(anchor, comment, fallbackText)`
@@ -459,7 +459,7 @@ the section rather than wrapping them in a `<section>`.
 > anchors, and hover-to-comment block resolution all walk a **flat sibling
 > structure** — `MarkdownViewer` resolves an anchor by climbing to the closest
 > `[data-source-line]` whose tag is in `ANCHOR_TAGS`
-> ([`MarkdownViewer.tsx:95`](../../frontend/src/components/MarkdownViewer.tsx#L95))
+> ([`MarkdownViewer.tsx:97`](../../frontend/src/components/MarkdownViewer.tsx#L97))
 > — and inserting a container between the prose root and the blocks is exactly
 > the change that breaks one of those subtly rather than loudly. Extra
 > attributes are cheap; a restructured tree is not.
