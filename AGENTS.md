@@ -1,99 +1,71 @@
 # AGENTS.md
 
-## What Vantage is
+Only what you cannot get from `just --list`, `ls`, or a config file already in
+front of you. Toolchain versions, the recipe list, and the gate's step order are
+all discoverable, so they are deliberately not here.
 
-A single Go binary that serves a React SPA for viewing LLM-generated Markdown
-with GitHub-style rendering, Mermaid, KaTeX, and git history/diff integration.
-The frontend is bundled into the binary at build time; the backend shells out to
-the `git` CLI (no in-process git library).
+## Shape
 
-## Stack & layout
+- One Go binary serves an embedded React SPA, and the backend **shells out to
+  the `git` CLI**. There is no in-process git library; introducing one is a
+  design change, not an implementation detail.
+- `web/dist` is that embedded frontend, filled by `just build`. In git it holds
+  only `.gitkeep`, and `//go:embed all:dist` accepts that silently — so a
+  `go build` on a clean checkout yields a server that starts and serves nothing.
+  No error, blank page.
+- `packages/vantage-md` is consumed **from TypeScript source, never from
+  `dist/`**: the frontend resolves it through a Vite alias
+  (`frontend/vite.config.ts`), and `packages/vantage-check` imports it by
+  relative path. `dist/` (tsup) is produced only at `npm publish`. So never
+  copy pipeline code into `frontend/src` — one implementation, three consumers.
+- `packages/vantage-check` ships as one compiled binary (~92 MB per platform)
+  and is never published to npm. Design: `docs/design/agent-cli.md`.
 
-- **Backend — Go 1.26** (chi router, coder/websocket, cobra CLI).
-  - `cmd/vantage/` — CLI entrypoint and subcommands (`serve`, `daemon`,
-    `build`, `init-config`, `install-service`, `perf-report`).
-  - `internal/` — `server`/`api` (HTTP), `git` (git shell-out), `fs`,
-    `live` (websocket), `static` (static-site export), `config`, `model`,
-    `perf`, `review`, `gitenv`, …
-  - `web/` — Go `embed` dir; `just build` bundles the frontend into `web/dist`.
-- **Frontend — React + Vite + TypeScript** in `frontend/` (Tailwind, Zustand,
-  Vitest). Tests are co-located as `*.test.tsx`.
-- **`packages/vantage-md/`** — the standalone npm Markdown-pipeline package. The
-  frontend imports its **TypeScript source directly** (see
-  `frontend/vite.config.ts`), so no build is needed in dev; `dist/` (tsup) is
-  produced only at release.
-- **`packages/vantage-check/`** — the agent-facing CLI (`check`, `style-guide`).
-  Private, never published to npm; it ships as a single compiled binary
-  (`bun build --compile`, ~90 MB, every platform cross-compiled from one host).
-  It imports `vantage-md`'s source by relative path, so the checker runs the
-  code the viewer runs. Design: `docs/design/agent-cli.md`.
+## Ports
 
-There is no Python backend — the former FastAPI/`uv`/`pytest` app under `src/`
-was fully replaced by the Go port.
+**Develop against :8201**, the Vite port `just dev` opens. :8200 is the Go
+backend it proxies to, and on its own it serves whatever `web/dist` was last
+built with — not your edits.
 
-## Tools & commands
+:8000 is the production default and may be a live `systemctl --user` service.
+Never kill it; run test instances on other ports.
 
-`mise` provisions Go, Node, `just`, `overmind`, and `staticcheck`. `just` is the
-command runner (`just --list`).
+## What the gate does not tell you
 
-- `just setup` — one-time: toolchain, Go modules, npm deps (all three packages), hooks.
-- `just dev [path]` — backend on :8200 + Vite on :8201 via overmind. **Develop
-  against http://localhost:8201** (hot reload). `path` = repo to view (default `.`).
-- `just format` — gofmt + prettier.
-- `just done` — end-of-task gate: clean tree + `check-ci`. Run it last.
-- `just build` — bundle frontend into `web/dist`, then build the `vantage` binary.
-- `just cli` — build the `vantage-check` binary for this host and smoke-test it.
-- `just deploy` — build, install to `$GOBIN`, restart the `vantage` user service.
-- `just release-md [bump]` — publish `packages/vantage-md` to npm.
-- `just release-check [bump]` — bump `packages/vantage-check`; the tag publishes.
-
-The production server (`vantage serve`) defaults to :8000 and may be owned by a
-`systemctl --user` service — never kill it; run test instances on other ports.
-
-## Quality gate
-
-The pre-commit hook (`scripts/hooks/`, wired via `core.hooksPath`) runs
-`just check-ci`, identical to CI:
-
-- Go: `gofmt -l` check · `go vet` · `staticcheck` · `go test ./...`
-- Frontend: `npm run format:check` · `lint` · `tsc --noEmit` · `test`
-- `packages/vantage-check`: `npm run format:check` · `lint` · `typecheck` ·
-  `test` — including the drift guard that pins its katex and mermaid to
-  `vantage-md`'s.
-- The built CLI over this repo's own Markdown — `docs/`, `userguide/`, and the
-  top-level and package READMEs. A broken link or a dead anchor in the
-  documentation fails the gate, and the binary is rebuilt to run it.
-
-Lint fails on warnings (`--max-warnings 0`), so a stale `eslint-disable` is an
-error, not a note in the output.
-
-`check-ci` first asserts that `node_modules` matches the manifests in **every**
-npm package, because CI installs with `npm ci` and therefore lints and tests
-against the lockfile. A stale local install answers a different question and can
-report green on code CI rejects — a stale eslint plugin once made three live
-suppressions look dead, so removing them broke CI. If the check fails, run
-`npm ci` in the package it names.
-
-Finish with **`just done`**: it refuses a dirty tree, then runs `check-ci` again.
-The pre-commit hook cannot see either of those things — whether work was left
-uncommitted, or whether the *committed* state (rather than the mid-task working
-tree) is green.
-
-## Dependencies & clean tree
-
-- Any `just` command must leave every tracked file unchanged — setup/build must
-  never dirty lockfiles or manifests (`npm ci` in CI/deploy, `npm install` only
-  in dev).
-- Commit `package-lock.json` alongside any `package.json` change, in
-  `frontend/`, `packages/vantage-md/`, and `packages/vantage-check/`.
-
-## Testing
-
-`go test ./...` and Vitest, both enforced by the gate.
+- **A green local gate can still be a CI red.** `check-ci` starts by asserting
+  `node_modules` matches the manifests in all three npm packages, because CI
+  installs with `npm ci` and therefore answers a different question than a stale
+  local install. A stale eslint plugin once hid three live suppressions, so
+  deleting them as dead broke CI (`caba056`, fixed in `5226587`). Lint runs at
+  `--max-warnings 0`, so a stale suppression is an error, not a note.
+- **Nothing type-checks the app.** `frontend/tsconfig.json` is solution-style
+  (`files: []` plus project references), so the gate's `tsc --noEmit` checks
+  **zero files** — measured with `--listFiles`, 2026-09-01. `packages/vantage-md`
+  is never linted, format-checked or type-checked either, and has no tests of
+  its own; its source is exercised only through `frontend/`'s tests. Type errors
+  in either place reach main.
+- **Editing Markdown can fail the gate.** It rebuilds the CLI and runs it over
+  `docs/`, `userguide/` and the READMEs, so a broken relative link or a dead
+  anchor is a failure. `just cli` then
+  `packages/vantage-check/dist/vantage-check <file>` is the same check locally,
+  and `… style-guide` prints the conventions it enforces — cheaper before
+  writing than at commit time.
+- **Every `just` recipe must leave tracked files unchanged** — `npm ci` in CI
+  and deploy, `npm install` only in dev, and a `package.json` change lands in
+  the same commit as its `package-lock.json`.
 
 ## Releases
 
-Pushing a git tag triggers CI publishing: `vantage-md@*` → npm publish of the
-package; `vantage-check@*` → cross-compiled binaries on a GitHub release plus
-PyPI wheels for `uvx`; `v*` → full app release. npm and PyPI both use trusted
-publishing (OIDC) — no `NPM_TOKEN`; do not add one.
+Three tag namespaces, all starting with `v`: `v*` (the app), `vantage-md@*` (the
+npm library), `vantage-check@*` (the CLI). The workflows guard on the **`@`**,
+because `release: [published]` takes no tag filter and a `v`-prefix test alone
+lets one package's tag drive another's release — which would attach the wrong
+archives and push a broken formula to the public Homebrew tap.
+
+Publishing is by trusted publishing (OIDC): there is no `NPM_TOKEN`, and adding
+one is the wrong fix for a failed publish.
+
+PyPI is currently wrong in a way worth knowing before you tell anyone to install
+from it: `vantage-md` there still serves the retired Python app, and
+`vantage-check` is not registered at all. See
+`docs/design/pypi-distribution.md`.
