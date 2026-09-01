@@ -18,8 +18,8 @@ build order as it actually ran, including the two steps the design did not have.
 
 Everything below is present tense about a shipped feature. Where the design was
 wrong, the correction is in the body rather than beside it, and the
-[Decision Ledger](#decision-ledger) carries all twenty-two implementation
-rulings (A1–A22) with the section each is settled in. Every claim about existing
+[Decision Ledger](#decision-ledger) carries all twenty-three implementation
+rulings (A1–A23) with the section each is settled in. Every claim about existing
 code was re-verified against the tree on 2026-08-31, after the last commit.
 
 **The short version.** Carry Vantage-only markup in **HTML comments with a
@@ -1275,7 +1275,7 @@ computes its own.
 ### 6.3 The sanitiser change
 
 Small and closed. In the `*` attribute list at
-[`sanitize.ts:196-231`](../../packages/vantage-md/src/sanitize.ts#L196-L231),
+[`sanitize.ts:229-264`](../../packages/vantage-md/src/sanitize.ts#L229-L264),
 **nine** `data-vantage-*` properties are named **individually** — never by a
 `data-vantage-*` wildcard, which would readmit whatever a future bug emits and
 whatever a document hand-writes as raw HTML:
@@ -1473,25 +1473,36 @@ new pipeline stage — it uses `rehype-sanitize`'s own value-allowlist form,
 `["style", SAFE_STYLE]`, so the filter runs inside the sanitiser that was
 already there. Two constants carry it: `SAFE_STYLE_PROPERTIES`, a typographic
 property allowlist, and
-[`SAFE_STYLE`](../../packages/vantage-md/src/sanitize.ts#L132-L140), the regex a
+[`SAFE_STYLE`](../../packages/vantage-md/src/sanitize.ts#L162-L173), the regex a
 whole `style` value must match.
 
-Three rules do the work:
+**What the filter actually sees is document-authored raw HTML, and nothing else.**
+That is worth stating first, because the rest of this section used to be argued
+from KaTeX and the argument was wrong — see the CAUTION below. Nothing the
+pipeline generates reaches the filter: `rehypeKatex` and `rehypeHighlight` both
+run *after* `rehypeSanitize` (§2.1), so their output is trusted rather than
+filtered, and `remark-gfm` emits table alignment as an `align` attribute rather
+than as CSS. A `<div style="…">` typed into a Markdown file is the whole of the
+input, and per §8.1 it is untrusted input.
+
+Two rules do the work:
 
 1. **Property allowlist.** A declaration whose property is not in
-   `SAFE_STYLE_PROPERTIES` fails the match.
+   `SAFE_STYLE_PROPERTIES` fails the match. `position` is deliberately absent, so
+   the property is refused at *every* value — see the CAUTION below for why it
+   used to be enumerated instead.
 2. **No parentheses, anywhere.** This is what closes `url(…)` and
-   `expression(…)` in one stroke — the network-beacon and legacy-script vectors
-   — and it costs nothing, because KaTeX never emits a parenthesis.
-3. **`position` may only be `static`, `relative`, or `absolute`.** `fixed` and
-   `sticky` are the two that let an element escape its container and cover the
-   page, and they are the two that are dropped.
+   `expression(…)` in one stroke — the network-beacon and legacy-script vectors.
+   Its cost is real but falls entirely on authors, who lose `calc()`, `rgb()` and
+   `var()` with it. (An earlier draft said the rule "costs nothing, because KaTeX
+   never emits a parenthesis." KaTeX is not on this path at all; the cost is the
+   author's, and it is worth paying for a filter this small.)
 
 Matching is **all-or-nothing**: one unrecognised declaration drops the entire
 attribute, and the element renders unstyled rather than half-styled. That is the
 safe direction to fail, and it satisfies **D6** — plain, never broken.
 
-**A fourth property the grammar must have, alongside the three rules: it must be
+**A third property the grammar must have, alongside the two rules: it must be
 unambiguous.** `;` is the only separator between declarations, and the value
 class absorbs the padding on both sides of one. That is not cosmetic. A value may
 legitimately contain whitespace (`margin: 0 auto`), so the value class contains
@@ -1507,44 +1518,109 @@ inspection:**
 - **GFM tables need no inline CSS.** `remark-gfm` emits alignment as
   `align="left"` attributes on `th`/`td`. The `td`/`th` `style` entries in the
   schema were serving nothing the pipeline generates.
-- **KaTeX needs a great deal.** A spread of twelve formulas emits **168** style
-  attributes across ten distinct properties: `border-bottom-width`, `height`,
-  `margin-left`, `margin-right`, `min-width`, `padding-left`, `position`, `top`,
-  `vertical-align`, `width`.
-- **The filter admits every one of them and rejects all six attack payloads**
-  tested (`position:fixed` viewport takeover, `background:url(…)` beacon,
-  `expression(…)`, `position:sticky`, a `data:` URL, and `calc()`). Widening the
-  battery to twelve families and 258 attributes still rejects none — that is the
-  assertion the sanitisation test makes, so a KaTeX release that starts using a
-  new property fails the build instead of silently losing the attribute.
+- **KaTeX styles a great deal — and none of it is filtered.** A spread of twelve
+  formulas emits **258** style attributes across twenty properties, `position`
+  among them. Re-measured 2026-09-01 through the real chain: all 258 reach the
+  page, including the four the filter rejects (two `position:relative`, and
+  `text-shadow` from `\pmb`, which has never been on the allowlist). `rehypeKatex`
+  runs after `rehypeSanitize`, so math is trusted by construction. **This is the
+  fact the rest of this section was originally argued *backwards* from.**
+- **The filter rejects all six attack payloads** tested (`position:fixed`
+  viewport takeover, `background:url(…)` beacon, `expression(…)`,
+  `position:sticky`, a `data:` URL, and `calc()`) plus, since 2026-09-01,
+  `position` at every value. What it admits is ordinary typography: `color`,
+  `text-align`, `font-weight`, `margin`.
+- **The sanitisation test asserts the pipeline, not the pair of components.** Its
+  KaTeX battery once asserted that `SAFE_STYLE` accepts everything KaTeX emits —
+  a property of `katex` + a regex that the pipeline never composes, and one that
+  would have false-alarmed the moment the battery grew a `\pmb`. It now renders
+  the formulas through the real chain and requires that values the filter
+  *rejects* are present on the page. That inverts the guard: it fails if anyone
+  moves `rehypeKatex` ahead of the sanitiser, and it is silent about which
+  properties a KaTeX release chooses, because nothing depends on that.
 
 > [!CAUTION]
-> **`position` cannot be banned outright without breaking KaTeX.** Measured:
-> `$$\int_0^\infty f(x)dx$$` emits
-> `margin-right:0.1945em;position:relative;top:-0.0006em;` — KaTeX uses
-> `position:relative` to place integral limits. A blanket `position` ban renders
-> integrals visibly wrong, which is why the rule enumerates values rather than
-> dropping the property.
+> **This section used to say "`position` cannot be banned outright without
+> breaking KaTeX." The measurement was right and the inference was wrong.**
+> KaTeX does emit `position:relative` — `$$\int_0^\infty f(x)dx$$` emits
+> `margin-right:0.1945em;position:relative;top:-0.0006em;`, and that is how it
+> places integral limits. What does not follow is that the filter has to permit
+> it, because **the filter never sees it**: `buildRehypePlugins` pushes
+> `rehypeSanitize` and only then `rehypeKatex` (§2.1), so every KaTeX `style`
+> attribute is injected after the sanitiser has finished.
+>
+> Measured two ways on 2026-09-01, both through the shipped plugin order:
+> rebuilding it with the `style` entries replaced by a filter that rejects
+> **every** value leaves all ten of that integral's style attributes untouched,
+> `position:relative` included; and `$$\pmb{x}$$` ships
+> `text-shadow:0.02em 0.01em 0.04px`, which `SAFE_STYLE` has always rejected,
+> straight to the page. A blanket `position` ban does not render integrals
+> wrong. It renders them identically.
+>
+> **So `position` is now banned outright** (`b6993ec`), and the value enumeration
+> is gone. It is recorded rather than deleted because the trap is subtle and
+> re-derivable: the measurement that KaTeX needs `position:relative` is true, sits
+> right next to the filter in the same file, and reads like a constraint on it.
+> Three commits re-asserted the inference without re-checking the order. **The
+> question to ask of any claim about this filter is not "does KaTeX emit it?" but
+> "does it reach `SAFE_STYLE`?" — and for anything a plugin generates, the answer
+> is no.**
+>
+> The breaking edge, stated plainly: a document that hand-writes
+> `<span style="position:relative;top:-2px">` in raw HTML now loses the whole
+> attribute, per the all-or-nothing rule. This repo's own corpus — `docs/`,
+> `userguide/`, every README — contains **no** `style` attribute at all, and no
+> user-facing document has ever promised inline positioning (§9 says the opposite).
 
 > [!WARNING]
 > **KaTeX does not emit `style="true"`, and a first pass at this measurement
 > said it did.** The claim came from matching `style="([^"]*)"` against KaTeX's
 > output, which also matches the tail of MathML's `displaystyle="true"` on
 > `<mstyle>`. Measuring with a word boundary — `\sstyle="` — the count is 258
-> attributes and **zero** rejections.
+> real CSS attributes across the twelve formulas.
 >
 > It is recorded rather than quietly deleted because the mistake is a trap
 > anyone auditing this filter will hit: any measurement of "what does KaTeX put
-> in `style`" that greps for `style="` is counting MathML booleans as CSS, and
-> will conclude the filter is dropping real declarations when it is not.
+> in `style`" that greps for `style="` is counting MathML booleans as CSS.
+> (The original entry added "and **zero** rejections". Against today's filter
+> four of the 258 are rejections, and they render anyway — which is the CAUTION
+> above.)
 
-**The honest residual.** A property allowlist does **not** fully close the
-overlay class. `position: absolute` is permitted, so an element can still
-overlap its neighbours *inside* the article container — smaller than a viewport
-takeover, but not nothing. Closing it completely means containment in the
-stylesheet rather than rules in the sanitiser, and it is not worth breaking
-KaTeX's layout for a threat model where the attacker can already put files in
-the repository.
+**Why the answer is not "sanitise math too."** Reading "math is unfiltered" as a
+hole and moving `rehypeKatex` before `rehypeSanitize` is the obvious next
+thought, and it is a bad trade. KaTeX emits a large structured subtree — the
+whole MathML vocabulary plus its own class names — which the schema would have to
+allowlist in full, and the value filter would then have to admit KaTeX's
+typographic properties, `position` among them, reopening exactly the residual
+this section just closed. It would also cost the reason the order exists:
+`rehypeSlug` must stay after the sanitiser or every `#heading` link in every
+document dies (§2.1), and KaTeX sits in the same block. What the pipeline gains
+from the current order is a *smaller* trusted surface, not a larger one: a plugin
+this repo pins and ships is trusted, and a document is not. The order is
+deliberate, and the guard against changing it by accident is the sanitisation
+test.
+
+**The honest residual — and the one that turned out not to be honest enough.**
+The original text read: "`position: absolute` is permitted, so an element can
+still overlap its neighbours *inside* the article container — smaller than a
+viewport takeover, but not nothing." Measured in real Chrome on 2026-09-01
+against the viewer's actual ancestor chain, that understated it by a lot.
+`ViewerPage.tsx`'s `flex-1 flex min-h-0 relative` is the nearest positioned
+ancestor of the prose container, and it sits **outside** the scroll container. So
+an author's `position:absolute;top:0;left:0;width:100%;height:100%` is sized to
+the whole content pane (980×712 in a 1200×800 window), is **not** clipped by the
+scroller, and does **not** scroll away — hit-testing the pane's centre after
+scrolling to the bottom of the document still lands on the overlay. That is the
+§8.1 viewport takeover with one keyword changed, accepted for a constraint that
+did not exist. It is closed: `position` is off the property list.
+
+What is left is genuinely small. Negative `margin` still lets an element overlap
+its neighbours **in the flow** — which is what the sentence above claimed
+`absolute` did. That one scrolls with the content and is clipped by the scroll
+container, and closing it means giving up margins, which prose actually uses.
+Containment in the stylesheet rather than another rule in the sanitiser is what
+would close it, and for a threat model where the attacker can already put files
+in the repository it is not worth the typography.
 
 That residual is a second, independent reason the directive vocabulary is
 **closed tokens rather than CSS** (**P2**): the directive path adds no CSS at
@@ -1686,8 +1762,21 @@ wedging the suite the way the bug wedged the gate.
 One behaviour changed with it, in the safe direction: declarations run together
 without a `;` (`color:red font-size:2px`, and even `color:redcolor:red`) were
 accepted by the old regex as a side effect of the same ambiguity, and are now
-rejected. KaTeX always emits `;`, and the battery of §8.2 confirms it still —
-258 style attributes across twelve formula families, zero rejections.
+rejected. **The safety argument for that break is about authors, not about
+KaTeX** — an earlier version of this paragraph said "KaTeX always emits `;`, and
+the battery of §8.2 confirms it still", which is true and irrelevant, since KaTeX
+never meets the regex (§8.2). What the break actually costs is an author who
+writes two declarations with no separator, which no CSS specification has ever
+accepted and no browser has ever applied; and document-authored values are
+precisely where the 94-second input comes from, so this is the input class the
+grammar is hardened against in the first place.
+
+One consequence of the same shape, found on 2026-09-01 while banning `position`
+and worth a sentence because it is invisible on inspection: the trailing `?` that
+makes the last declaration optional must apply to a **group**. Interpolating the
+declaration bare leaves the `?` attached to the value class's `*`, making that
+value *lazy* rather than the declaration optional — which quietly rejects
+`color:red;`. The semicolon case in the sanitisation test is what caught it.
 
 ## 9. Non-goals — what this does not license
 
@@ -1726,8 +1815,8 @@ rejected. KaTeX always emits `;`, and the battery of §8.2 confirms it still —
 | **R5. Section stamping is wrong for nested structure** — a directive on `##` stamping through a `###` that wanted its own treatment | **Discharged by construction and by test.** Pass order makes each property last-write-wins, so an inner section overrides one key and inherits the rest, and it restarts the run so its rule terminates instead of bleeding (§6.2). Both are cases in `vantageDirectives.test.ts`. |
 | **R6. The one-click answer makes shallow answers easy** | **Live, and partly the point** — the cost being removed is typing, not thinking. §5.2's tip keeps the *comment* substantive even when the click is fast, and the style guide repeats it. |
 | **R7. A live-looking button in a static export that silently does nothing** (§2.5) | **Closed, `1312c5c`, and wider than the button.** The gate turned out to be needed at three levels — the toggle, the persisted `localStorage` preference, and `runCommand` itself — because the toggle was not the only route into review mode. The button carries its own `isStaticMode()` check as well. |
-| **R8. No sanitisation test exists** (§8.1), so a regression is invisible | **Discharged, `fd7411c`.** `sanitize.test.ts` is the repo's first sanitisation test: the property allowlist, the `url(`/`expression(` rejection, the `position` rule, and the KaTeX battery. |
-| **R9. The style filter breaks KaTeX** — measured, not hypothetical (§8.2) | **Mitigated.** `position` values are enumerated rather than the property dropped; matching is all-or-nothing so garbage drops silently instead of throwing; pinned by the KaTeX battery, which fails if a release starts emitting something new. |
+| **R8. No sanitisation test exists** (§8.1), so a regression is invisible | **Discharged, `fd7411c`.** `sanitize.test.ts` is the repo's first sanitisation test: the property allowlist, the `url(`/`expression(` rejection, the `position` ban, the flat-time ladder, and the KaTeX battery — reframed in `b6993ec` to guard the pipeline order rather than a pairing the pipeline never makes. |
+| **R9. The style filter breaks KaTeX** — **retired 2026-09-01: it was never a risk** (§8.2) | **Not applicable.** `rehypeKatex` runs after `rehypeSanitize`, so no KaTeX `style` value is ever tested against the filter; a filter that rejects *every* value leaves rendered math pixel-identical (measured). The risk this line should have carried is the opposite one — that a *future reorder* would put math under the filter — and the sanitisation test now fails if that happens. |
 | **R10. The stylesheet's mechanisms are invisible until they break** — an `@layer` added "to be tidy", the import moved, a `var()` fallback added for "safety", the toned-heading gutter retuned on one side only | **Mitigated, `e5e7ac5`.** Each of the six facts in §4.3 has a text-level assertion in `directiveTheme.test.ts` / `directiveCssWiring.test.ts`, including the attribute-name cross-check against the sanitiser allowlist — the test that would have caught `data-vantage-run` being missing from it — and the heading-gutter equality, which is the one piece of *geometry* with a guard, because two declarations that must be numerically equal can be compared as text. Rendered pixel positions are still uncovered: jsdom cannot evaluate them (A22), and no e2e spec was written. |
 | **R11. The style filter is itself a denial-of-service surface** — the value it inspects is document-controlled, and the thread it runs on is the renderer's, the static export's and the CI checker's | **Was live and unnoticed; now closed.** The regex as shipped in `fd7411c` was exponentially ambiguous and a 200-character `style` attribute stalled the gate for 94 seconds — §8.4 has the measurements. Closed by making `;` a mandatory separator, so the grammar has exactly one parse; pinned by a flat-time test that fails on an early rung rather than hanging. The general lesson is the one §8.4 now records: "adds no DoS" is a claim to *measure*, not to assert, and a regex over document-controlled text is where to look first. |
 
@@ -1845,7 +1934,7 @@ there should ship without a new argument.
 
 ## Decision Ledger
 
-Design decisions and review rulings first, then the twenty-two implementation
+Design decisions and review rulings first, then the twenty-three implementation
 rulings. Both id sets are cited outside this file — `A3` and `A4` appear in
 commit messages, in `rehypeVantageDirectives.ts` and in a test name — so neither
 is ever renumbered or re-spelled.
@@ -1886,6 +1975,7 @@ is ever renumbered or re-spelled.
 | A20 | Import **position** and the `:where()` on the lone-block wash are load-bearing; both are pinned by text assertions | 2026-08-31 | §4.3 |
 | A21 | **`frontend/tailwind.config.js` is inert** — Tailwind v4 reads a JS config only via `@config`. Cite `index.css` instead | 2026-08-31 | §4.3 |
 | A22 | jsdom cannot test the geometry, so assert **plugin output plus text-level drift guards** over the CSS; geometry documents rather than guards — except the toned-heading-gutter equality, which is two declarations that must match numerically and is therefore text-guarded | 2026-08-31 | §4.3, R10 |
+| A23 | **`position` is banned outright, at every value.** The filter only ever sees document-authored raw HTML — `rehypeKatex` runs after `rehypeSanitize`, so math is trusted by construction — and the value enumeration was buying nothing but an overlay residual that measured far larger than the doc admitted. R9 is retired as a non-risk; the guard is inverted to catch a *reorder* instead | 2026-09-01 | §8.2, R9 |
 
 > [!IMPORTANT]
 > **Ten findings were measured and must not be re-derived from assumption.**
@@ -1896,9 +1986,15 @@ is ever renumbered or re-spelled.
 > (3) `dataVantageOq: true` serialises as a bare attribute through
 > `rehype-stringify` and as `="true"` through `react-markdown`, so every value
 > must be a **string** (§6.3).
-> (4) GFM tables need no inline CSS — alignment is an `align=` attribute — but
-> **KaTeX emits ten style properties including `position:relative`**, so a
-> blanket `position` ban breaks integral rendering (§8.2).
+> (4) GFM tables need no inline CSS — alignment is an `align=` attribute — and
+> **KaTeX's `style` output never reaches the sanitiser at all**, because
+> `rehypeKatex` runs after `rehypeSanitize`. KaTeX does emit `position:relative`
+> on every integral; that is measured and true. The inference drawn from it — that
+> a blanket `position` ban would break integral rendering — was **false**, and is
+> the one thing on this list that had to be corrected rather than confirmed: a
+> filter that rejects every value leaves rendered math untouched, so `position` is
+> banned outright. Ask "does it reach `SAFE_STYLE`?", never "does KaTeX emit it?"
+> (§8.2).
 > (5) Any measurement of KaTeX's `style` output must match on a word boundary:
 > a bare `style="` grep also catches MathML's `displaystyle="true"` (§8.2).
 > (6) Vantage does **not** render GFM alerts — `> [!WARNING]` becomes a plain
