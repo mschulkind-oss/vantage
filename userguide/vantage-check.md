@@ -179,7 +179,11 @@ one stray blank line above the opening `---` leaves the parser seeing no
 frontmatter at all and nothing to report. The block renders as a horizontal rule
 followed by a heading of the raw keys, and every field is gone — so this rule
 strips the leading comments itself, re-parses, and says so when the block would
-have parsed one line higher.
+have parsed one line higher. Two `---` rules with a paragraph between them are
+not that: the fields of real frontmatter sit *against* its delimiters, which is
+what turns them into a heading, so a blank line beside either `---` means these
+are horizontal rules and the rule stays quiet — even when the prose between them
+happens to be something YAML would read as a key.
 
 | Rule | Catches | Default |
 | :--- | :--- | :--- |

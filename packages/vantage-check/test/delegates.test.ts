@@ -185,6 +185,91 @@ describe("frontmatter", () => {
 
     expect(ruleIds(await checkTree(root))).toEqual([]);
   });
+
+  /**
+   * The discriminator, stated as a test: a pair of horizontal rules with prose
+   * between them is not frontmatter, however that prose happens to parse. YAML
+   * reads a single line with a colon in it as a mapping, so `Note: this is a
+   * draft` between two rules parses to `{Note: "this is a draft"}` — and the
+   * region above the closing delimiter is the *only* thing that tells the two
+   * shapes apart: real frontmatter abuts its delimiters, which is what makes
+   * the keys a setext heading. Following the finding's advice on one of these
+   * would be destructive: moving the prose below the closing `---` turns it
+   * into frontmatter for real and deletes the paragraph from the page.
+   */
+  it("says nothing about two horizontal rules whose prose parses as YAML", async () => {
+    const root = makeTree({
+      "colon.md": [
+        "<!-- markdownlint-disable -->",
+        "",
+        "---",
+        "",
+        "Note: this is a draft",
+        "",
+        "---",
+        "",
+        "More prose.",
+      ].join("\n"),
+      // The same shape under nothing but a stray blank line.
+      "blank.md": ["", "---", "", "Author: Matt", "", "---", "", "prose"].join(
+        "\n",
+      ),
+      // Several lines, each of which YAML reads as a key.
+      "pair.md": [
+        "<!-- x -->",
+        "",
+        "---",
+        "",
+        "Author: Matt",
+        "Date: today",
+        "",
+        "---",
+      ].join("\n"),
+    });
+
+    expect(ruleIds(await checkTree(root))).toEqual([]);
+
+    // Measured: nothing is lost. Both delimiters are thematic breaks and the
+    // prose is on the page, so there is no missing metadata to report.
+    const rendered = await renderMarkdown(
+      "<!-- markdownlint-disable -->\n\n---\n\nNote: this is a draft\n\n---\n\nMore prose.\n",
+    );
+    expect(rendered.frontmatter).toEqual({});
+    expect(rendered.html.match(/<hr\b/g)).toHaveLength(2);
+    expect(rendered.html).toContain("Note: this is a draft");
+  });
+
+  it("still reports misplaced frontmatter that has a blank line inside it", async () => {
+    // The delimiters are abutted, so the keys really are a setext heading and
+    // the fields really are gone — an internal blank line does not change that.
+    const root = makeTree({
+      "index.md": [
+        "<!-- prettier-ignore -->",
+        "---",
+        'title: "Doc"',
+        "",
+        "tags: [a]",
+        "---",
+        "",
+        "# Title",
+      ].join("\n"),
+    });
+
+    expect(ruleIds(await checkTree(root))).toEqual(["frontmatter/not-at-top"]);
+  });
+
+  it("names a byte-order mark as the thing above the frontmatter", async () => {
+    // A BOM is whitespace to `\s` and invisible in every editor, so blaming "a
+    // blank line" sends the author looking for a line that is not there.
+    const root = makeTree({
+      "index.md": '\uFEFF---\ntitle: "Doc"\n---\n\n# Title\n',
+    });
+
+    const report = await checkTree(root);
+
+    expect(ruleIds(report)).toEqual(["frontmatter/not-at-top"]);
+    expect(report.findings[0]?.message).toContain("byte-order mark");
+  });
 });
 
 describe("katex", () => {
