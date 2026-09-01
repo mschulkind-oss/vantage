@@ -1,0 +1,286 @@
+/* vantage-md/styles/directives.css
+ *
+ * Theme layer for the `data-vantage-*` directive attributes emitted by
+ * rehypeVantageDirectives. Plain CSS on attribute selectors only: no Tailwind
+ * utilities, no class names computed in JS, no colour that a document can name.
+ *
+ * This file must stay UNLAYERED. Every `@tailwindcss/typography` variant
+ * utility flattens to exactly one class of specificity — `:where()` and
+ * `:not(:where(…))` both contribute zero — and all of them sit inside
+ * `@layer utilities`. Unlayered normal declarations outrank every layer
+ * regardless of specificity, which is the only reason these plain attribute
+ * selectors win at all. Wrapping this file in `@layer components` "to be tidy"
+ * makes it lose to every prose utility instead; a test guards that.
+ */
+
+/* ── Tone palette (light) ───────────────────────────────────────────────── */
+:root {
+  --vantage-tone-note-accent: #2563eb;
+  --vantage-tone-note-wash: rgb(37 99 235 / 0.06);
+  --vantage-tone-note-chip: rgb(37 99 235 / 0.12);
+  --vantage-tone-note-ink: #1d4ed8;
+
+  --vantage-tone-tip-accent: #15803d;
+  --vantage-tone-tip-wash: rgb(22 163 74 / 0.06);
+  --vantage-tone-tip-chip: rgb(22 163 74 / 0.12);
+  --vantage-tone-tip-ink: #15803d;
+
+  --vantage-tone-important-accent: #7c3aed;
+  --vantage-tone-important-wash: rgb(124 58 237 / 0.06);
+  --vantage-tone-important-chip: rgb(124 58 237 / 0.12);
+  --vantage-tone-important-ink: #6d28d9;
+
+  --vantage-tone-warning-accent: #b45309;
+  --vantage-tone-warning-wash: rgb(245 158 11 / 0.07);
+  --vantage-tone-warning-chip: rgb(245 158 11 / 0.14);
+  --vantage-tone-warning-ink: #b45309;
+
+  --vantage-tone-caution-accent: #dc2626;
+  --vantage-tone-caution-wash: rgb(220 38 38 / 0.06);
+  --vantage-tone-caution-chip: rgb(220 38 38 / 0.12);
+  --vantage-tone-caution-ink: #b91c1c;
+
+  --vantage-tone-muted-accent: #94a3b8;
+  --vantage-tone-muted-wash: rgb(100 116 139 / 0.06);
+  --vantage-tone-muted-chip: rgb(100 116 139 / 0.12);
+  --vantage-tone-muted-ink: #475569;
+
+  --vantage-tone-rule-width: 3px;
+  --vantage-tone-rule-offset: 0.75rem;
+  --vantage-tone-run-bleed: 2.5rem;
+}
+
+/* ── Tone palette (dark) ────────────────────────────────────────────────── */
+/* `.dark` is the app's dark selector (`@custom-variant dark` in the host
+   stylesheet), so a package consumer gets dark tones by toggling that class —
+   the same switch the rest of the app already uses. */
+.dark {
+  --vantage-tone-note-accent: #60a5fa;
+  --vantage-tone-note-wash: rgb(96 165 250 / 0.1);
+  --vantage-tone-note-chip: rgb(59 130 246 / 0.22);
+  --vantage-tone-note-ink: #93c5fd;
+
+  --vantage-tone-tip-accent: #4ade80;
+  --vantage-tone-tip-wash: rgb(74 222 128 / 0.1);
+  --vantage-tone-tip-chip: rgb(34 197 94 / 0.22);
+  --vantage-tone-tip-ink: #86efac;
+
+  --vantage-tone-important-accent: #a78bfa;
+  --vantage-tone-important-wash: rgb(167 139 250 / 0.1);
+  --vantage-tone-important-chip: rgb(139 92 246 / 0.22);
+  --vantage-tone-important-ink: #c4b5fd;
+
+  --vantage-tone-warning-accent: #fbbf24;
+  --vantage-tone-warning-wash: rgb(245 158 11 / 0.1);
+  --vantage-tone-warning-chip: rgb(245 158 11 / 0.18);
+  --vantage-tone-warning-ink: #fcd34d;
+
+  --vantage-tone-caution-accent: #f87171;
+  --vantage-tone-caution-wash: rgb(248 113 113 / 0.1);
+  --vantage-tone-caution-chip: rgb(239 68 68 / 0.2);
+  --vantage-tone-caution-ink: #fca5a5;
+
+  --vantage-tone-muted-accent: #64748b;
+  --vantage-tone-muted-wash: rgb(148 163 184 / 0.08);
+  --vantage-tone-muted-chip: rgb(148 163 184 / 0.22);
+  --vantage-tone-muted-ink: #cbd5e1;
+}
+
+/* ── Token → property resolution ────────────────────────────────────────── */
+/* Six rules so every rule below is tone-agnostic. An unrecognised token sets
+   nothing, which is what makes the treatment inert rather than grey (D2). */
+[data-vantage-tone="note"] {
+  --vantage-tone-accent: var(--vantage-tone-note-accent);
+  --vantage-tone-wash: var(--vantage-tone-note-wash);
+  --vantage-tone-chip: var(--vantage-tone-note-chip);
+  --vantage-tone-ink: var(--vantage-tone-note-ink);
+}
+[data-vantage-tone="tip"] {
+  --vantage-tone-accent: var(--vantage-tone-tip-accent);
+  --vantage-tone-wash: var(--vantage-tone-tip-wash);
+  --vantage-tone-chip: var(--vantage-tone-tip-chip);
+  --vantage-tone-ink: var(--vantage-tone-tip-ink);
+}
+[data-vantage-tone="important"] {
+  --vantage-tone-accent: var(--vantage-tone-important-accent);
+  --vantage-tone-wash: var(--vantage-tone-important-wash);
+  --vantage-tone-chip: var(--vantage-tone-important-chip);
+  --vantage-tone-ink: var(--vantage-tone-important-ink);
+}
+[data-vantage-tone="warning"] {
+  --vantage-tone-accent: var(--vantage-tone-warning-accent);
+  --vantage-tone-wash: var(--vantage-tone-warning-wash);
+  --vantage-tone-chip: var(--vantage-tone-warning-chip);
+  --vantage-tone-ink: var(--vantage-tone-warning-ink);
+}
+[data-vantage-tone="caution"] {
+  --vantage-tone-accent: var(--vantage-tone-caution-accent);
+  --vantage-tone-wash: var(--vantage-tone-caution-wash);
+  --vantage-tone-chip: var(--vantage-tone-caution-chip);
+  --vantage-tone-ink: var(--vantage-tone-caution-ink);
+}
+[data-vantage-tone="muted"] {
+  --vantage-tone-accent: var(--vantage-tone-muted-accent);
+  --vantage-tone-wash: var(--vantage-tone-muted-wash);
+  --vantage-tone-chip: var(--vantage-tone-muted-chip);
+  --vantage-tone-ink: var(--vantage-tone-muted-ink);
+}
+
+/* ── The section rule ───────────────────────────────────────────────────── */
+/* Every block in a section is stamped, so a per-element border+background
+   renders one section as N stacked boxes. Instead each member draws a slice of
+   one continuous vertical rule, positioned OUT of its own box (the 3px left
+   gutter is already spoken for by line anchors, review highlights and
+   blockquotes) and bled UPWARD to meet its predecessor. Bleeding only upward is
+   what makes the run terminate exactly at its first and last member without a
+   :last-of-run selector — which is unexpressible here, since members are
+   siblings and review mode inserts comment <div>s between them.
+   `--vantage-tone-heading-gutter` is set by the host app on toned headings
+   only; 1.5em resolves per heading level, which is the only way h2, h3 and p
+   share one x. Measured: all eight block types land on the same pixel.
+   `background-color` is the longhand, and the accent `var()` has no fallback,
+   on purpose: an unrecognised tone leaves the variable unset, the value is
+   invalid at computed-value time, and the rule computes to `transparent` — D2
+   inertness enforced by the cascade rather than by enumerating six tokens in
+   every selector. A "safety" fallback would paint every typo grey instead. */
+[data-vantage-tone] {
+  position: relative;
+}
+[data-vantage-tone]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(
+    var(--vantage-tone-heading-gutter, 0em) - var(--vantage-tone-rule-offset)
+  );
+  width: var(--vantage-tone-rule-width);
+  border-radius: var(--vantage-tone-rule-width);
+  background-color: var(--vantage-tone-accent);
+  pointer-events: none;
+}
+/* Positive, not `:not([data-vantage-run="start"])`: with the attribute missing
+   entirely (older plugin, newer CSS) this bleeds nothing and the run reads as
+   separate marks — degraded, never a rule hanging above the heading (D3). */
+[data-vantage-tone]:is(
+    [data-vantage-run="middle"],
+    [data-vantage-run="end"]
+  )::before {
+  top: calc(-1 * var(--vantage-tone-run-bleed));
+}
+/* A lone block has no run to stripe, so it gets the wash — this is the
+   `<!-- vantage: block tone=important -->` callout. `:where()` holds the
+   selector at one-class specificity on purpose: the review and line-anchor
+   backgrounds are also one class and are declared later in the host
+   stylesheet, so a transient state wins the tie. Writing this as
+   [data-vantage-tone][data-vantage-run="only"] silently eats them. */
+[data-vantage-tone]:where([data-vantage-run="only"]) {
+  background-color: var(--vantage-tone-wash);
+  border-radius: 4px;
+}
+
+/* ── Emphasis ───────────────────────────────────────────────────────────── */
+/* `normal` is the absence of a rule — no declaration needed, and none written.
+   Emphasis modulates the tone rule rather than drawing one of its own, so
+   "what it is" and "how loud" stay separable and the geometry stays in one
+   place. Headings, pre and table are excluded from the weight bump because
+   this stylesheet is unlayered and would otherwise beat
+   `prose-headings:font-semibold` and de-bold a toned heading to 500. */
+[data-vantage-emphasis="strong"] {
+  --vantage-tone-rule-width: 4px;
+}
+[data-vantage-emphasis="strong"]:not(:is(h1, h2, h3, h4, h5, h6, pre, table)) {
+  font-weight: 500;
+}
+[data-vantage-emphasis="quiet"] {
+  --vantage-tone-rule-width: 2px;
+  opacity: 0.72;
+}
+
+/* ── The chip ───────────────────────────────────────────────────────────── */
+/* One rule, two subjects: the `badge=` chip can only be a pseudo-element
+   (stamp, don't wrap), and the frontmatter status chip is a real element. A
+   pseudo cannot take a class, so the geometry is shared by selector list.
+   Numbers lifted from the app's `.review-status-badge` so the two chips in the
+   product are the same object. */
+.vantage-chip,
+[data-vantage-badge]::after {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: var(--vantage-chip-size, 11px);
+  font-weight: 600;
+  line-height: 1.6;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  vertical-align: 0.12em;
+  color: var(--vantage-chip-ink, var(--vantage-tone-muted-ink));
+  background-color: var(--vantage-chip-wash, var(--vantage-tone-muted-chip));
+}
+/* The badge scales with its heading; the standalone chip stays 11px. */
+[data-vantage-badge]::after {
+  content: attr(data-vantage-badge);
+  margin-left: 0.5em;
+  font-weight: 600;
+  --vantage-chip-size: clamp(10px, 0.5em, 12px);
+}
+[data-vantage-badge="wip"]::after,
+.vantage-chip--note {
+  --vantage-chip-ink: var(--vantage-tone-note-ink);
+  --vantage-chip-wash: var(--vantage-tone-note-chip);
+}
+[data-vantage-badge="done"]::after,
+.vantage-chip--tip {
+  --vantage-chip-ink: var(--vantage-tone-tip-ink);
+  --vantage-chip-wash: var(--vantage-tone-tip-chip);
+}
+[data-vantage-badge="stale"]::after,
+.vantage-chip--warning {
+  --vantage-chip-ink: var(--vantage-tone-warning-ink);
+  --vantage-chip-wash: var(--vantage-tone-warning-chip);
+}
+[data-vantage-badge="blocked"]::after,
+.vantage-chip--caution {
+  --vantage-chip-ink: var(--vantage-tone-caution-ink);
+  --vantage-chip-wash: var(--vantage-tone-caution-chip);
+}
+[data-vantage-badge="draft"]::after,
+.vantage-chip--muted {
+  --vantage-chip-ink: var(--vantage-tone-muted-ink);
+  --vantage-chip-wash: var(--vantage-tone-muted-chip);
+}
+/* No badge word maps onto `important` — the badge vocabulary is five words and
+   the tone vocabulary is six — but a chip consumer names a tone, not a badge,
+   so the modifier exists for all six. One per tone, guarded by a test. */
+.vantage-chip--important {
+  --vantage-chip-ink: var(--vantage-tone-important-ink);
+  --vantage-chip-wash: var(--vantage-tone-important-chip);
+}
+
+/* ── Print (D7) ─────────────────────────────────────────────────────────── */
+/* Decoration goes to ink-cheap monochrome; nothing informational is dropped.
+   `quiet` is restored to full opacity — a faded print is a legibility loss,
+   which is nearer content loss than decoration. #57606a is the grey the host
+   app's own print block already uses. Tone never sets `color`: the host's
+   print block forces `.prose, .prose *` to #1a1a1a with `!important`, so a
+   tone colour would vanish in one of the three renderings D5 covers. */
+@media print {
+  [data-vantage-tone]::before {
+    background-color: #57606a;
+  }
+  [data-vantage-tone]:where([data-vantage-run="only"]) {
+    background-color: transparent;
+  }
+  [data-vantage-emphasis="quiet"] {
+    opacity: 1;
+  }
+  .vantage-chip,
+  [data-vantage-badge]::after {
+    padding: 0 6px;
+    border: 1px solid #57606a;
+    background-color: transparent;
+    color: #1a1a1a;
+  }
+}

@@ -346,6 +346,28 @@ function findClosestPriorBlock(
   return best;
 }
 
+/**
+ * A comment card inserted *inside* a toned section joins that section's run.
+ *
+ * The card lands as a sibling between two stamped blocks, and the section's
+ * vertical rule is drawn per member and bled upward by a fixed 2.5rem
+ * (`packages/vantage-md/src/styles/directives.css`). A comment card is much
+ * taller than that, so without this the rule breaks for the height of every
+ * card — the tone reads as two sections instead of one.
+ *
+ * Only a card that really is between two members joins. `start` and `middle`
+ * both have a member below them; after an `end` — or a lone `only` block, which
+ * has no run at all — a stamped card would hang the rule *below* the section it
+ * belongs to, which is worse than the gap it would close.
+ */
+function joinToneRun(blockEl: HTMLElement, wrapper: HTMLElement) {
+  const tone = blockEl.getAttribute("data-vantage-tone");
+  const run = blockEl.getAttribute("data-vantage-run");
+  if (tone === null || (run !== "start" && run !== "middle")) return;
+  wrapper.setAttribute("data-vantage-tone", tone);
+  wrapper.setAttribute("data-vantage-run", "middle");
+}
+
 function insertInlineCommentAfter(
   blockEl: HTMLElement,
   comment: ReviewComment,
@@ -353,6 +375,7 @@ function insertInlineCommentAfter(
   divergent: boolean,
 ) {
   const wrapper = createCommentBlock(comment, actions, divergent);
+  joinToneRun(blockEl, wrapper);
   if (blockEl.nextSibling) {
     blockEl.parentNode!.insertBefore(wrapper, blockEl.nextSibling);
   } else {
@@ -368,6 +391,7 @@ function insertOutdatedComment(
 ) {
   const wrapper = createOutdatedBlock(comment, actions);
   if (anchorBlock?.parentNode) {
+    joinToneRun(anchorBlock, wrapper);
     if (anchorBlock.nextSibling) {
       anchorBlock.parentNode.insertBefore(wrapper, anchorBlock.nextSibling);
     } else {

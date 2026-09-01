@@ -120,7 +120,7 @@ if all you want is `data-source-line`.
 |-------------|-------------|
 | `vantage-md` | `renderMarkdown`, `buildPipeline`, `buildRemarkPlugins`, `rehypeSourceLines`, `scrollToLineAnchor`, `parseLineAnchor`, `parseFrontmatter`, `sanitizeSchema` |
 | `vantage-md/react` | `MarkdownViewer`, `useLineAnchor`, `MermaidDiagram`, `FrontmatterDisplay` + all core exports |
-| `vantage-md/styles` | Line-anchor highlight CSS (light + dark mode) |
+| `vantage-md/styles` | Line-anchor highlight CSS, plus the theme layer for the `data-vantage-*` directive attributes (light + dark mode) |
 
 ## Features
 

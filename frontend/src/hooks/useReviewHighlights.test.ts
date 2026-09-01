@@ -714,3 +714,71 @@ describe("useReviewHighlights — armed delete across a rebuild", () => {
     expect(actions.onDelete).not.toHaveBeenCalled();
   });
 });
+
+describe("useReviewHighlights — a comment card inside a toned section", () => {
+  // The card is inserted as a *sibling* between two stamped blocks, and the
+  // section's vertical rule is drawn per member with a fixed 2.5rem upward
+  // bleed. A card is far taller than that, so a card that does not carry the
+  // tone breaks the rule for its own height and the section reads as two.
+  // Geometry is unobservable here (jsdom cannot compute a `::before`); what is
+  // asserted is the stamping the CSS keys off.
+  const TONED_DOC = `
+    <h2 data-source-line="1" data-vantage-tone="warning" data-vantage-run="start">Migration path</h2>
+    <p data-source-line="3" data-vantage-tone="warning" data-vantage-run="middle">Body of the section.</p>
+    <p data-source-line="5" data-vantage-tone="warning" data-vantage-run="end">The last block.</p>
+    <p data-source-line="7">An untoned paragraph.</p>
+  `;
+
+  beforeEach(() => {
+    container.innerHTML = TONED_DOC;
+  });
+
+  it("carries the host block's tone onto the card, as a run member", () => {
+    renderInline([baseComment({ anchor: anchorAt(3) })]);
+
+    const card = blockFor("c1")!;
+    expect(card.getAttribute("data-vantage-tone")).toBe("warning");
+    // Always `middle`: a card inserted into a run is never its first or last
+    // member, and `middle` is what makes the rule bleed up to meet the block
+    // above it.
+    expect(card.getAttribute("data-vantage-run")).toBe("middle");
+  });
+
+  it("leaves a card after the last member unstamped", () => {
+    // Stamping here would hang the section's rule *below* the section — a
+    // visible defect, where the gap it would close is only a discontinuity.
+    renderInline([baseComment({ anchor: anchorAt(5) })]);
+
+    const card = blockFor("c1")!;
+    expect(card.hasAttribute("data-vantage-tone")).toBe(false);
+    expect(card.hasAttribute("data-vantage-run")).toBe(false);
+  });
+
+  it("leaves a card on an untoned block alone", () => {
+    renderInline([baseComment({ anchor: anchorAt(7) })]);
+
+    expect(blockFor("c1")!.hasAttribute("data-vantage-tone")).toBe(false);
+  });
+
+  it("carries the tone onto a detached card too, where it has a block", () => {
+    // An outdated comment is placed after the nearest surviving block above,
+    // which puts it inside the run just the same.
+    renderInline([
+      baseComment({
+        anchor: {
+          source_line: 4,
+          block_text_hash: "deadbeef",
+          selection_offset: 0,
+          selection_length: 0,
+        },
+      }),
+    ]);
+
+    const card = blockFor("c1")!;
+    expect(card.classList.contains("review-inline-comment--outdated")).toBe(
+      true,
+    );
+    expect(card.getAttribute("data-vantage-tone")).toBe("warning");
+    expect(card.getAttribute("data-vantage-run")).toBe("middle");
+  });
+});
