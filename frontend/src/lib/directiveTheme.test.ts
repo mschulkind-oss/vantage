@@ -70,11 +70,14 @@ const TONE_CHANNELS = ["accent", "wash", "chip", "ink"] as const;
 
 /**
  * Attributes the CSS may select on that never pass through the sanitiser
- * because no document can write them: the toggle JS sets them on the prose
- * container at runtime. Anything else in the stylesheet has to be allowlisted
+ * because no document can write them: the toggle JS sets them at runtime — one
+ * on the prose container, one on each block whose group it armed. Being
+ * unforgeable is the point of both; they are what turns an attribute a document
+ * *can* write (`data-vantage-collapsed`) into one that only hides a block the
+ * reader can bring back. Anything else in the stylesheet has to be allowlisted
  * or the rule is dead markup.
  */
-const JS_SET_MARKERS = new Set(["collapse-ready"]);
+const JS_SET_MARKERS = new Set(["collapse-ready", "collapse-armed"]);
 
 /** The body of the first `<selector> { … }` rule, without the braces. */
 function blockOf(selector: string): string {
@@ -241,8 +244,8 @@ describe("the mechanisms the treatment rests on", () => {
     );
   });
 
-  it("double-gates the collapse hiding rule, and never writes it bare", () => {
-    // Both gates, and neither is decoration.
+  it("triple-gates the collapse hiding rule, and never writes it bare", () => {
+    // All three gates, and none of them is decoration.
     //
     // `[data-vantage-collapse-ready]` is set by the toggle JS after it attaches,
     // so a renderer without that JS — the CLI checker's HTML, an external
@@ -250,17 +253,23 @@ describe("the mechanisms the treatment rests on", () => {
     // `[data-vantage-collapsed="true"] { display: none }` is content loss with no
     // way to reveal it (P1/D8).
     //
-    // `@media not print` is the second: a collapsed section must print open, and
+    // `[data-vantage-collapse-armed]` is that same invariant per block, and the
+    // container marker does not imply it: the JS arms only the blocks of a group
+    // it gave a caret, so a group with no toggle — or a `collapsed="true"` written
+    // in raw HTML with no group at all, which the sanitiser allows — is not hidden
+    // by a document that happens to contain one real collapsed section elsewhere.
+    //
+    // `@media not print` is the third: a collapsed section must print open, and
     // `not print` means this declaration does not *exist* in the print
     // stylesheet, so — unlike a `display: revert` counter-rule — no third rule
     // can defeat it (D7). Measured with a media-swapped build: `display: none`
     // on screen, `display: block` in print simulation, no `!important` anywhere.
     const hide = css.match(
-      /@media not print \{\s*\[data-vantage-collapse-ready\] \[data-vantage-collapsed="true"\] \{\s*display: none;\s*\}\s*\}/,
+      /@media not print \{\s*\[data-vantage-collapse-ready\]\s+\[data-vantage-collapsed="true"\]\[data-vantage-collapse-armed\] \{\s*display: none;\s*\}\s*\}/,
     );
     expect(
       hide,
-      "the double-gated hiding rule is not in directives.css",
+      "the triple-gated hiding rule is not in directives.css",
     ).not.toBeNull();
 
     // Every `display: none` on a collapsed block is inside that one rule.
@@ -270,6 +279,7 @@ describe("the mechanisms the treatment rests on", () => {
       const selector = match[1].trim();
       if (!selector.includes("data-vantage-collapsed")) continue;
       expect(selector).toContain("[data-vantage-collapse-ready]");
+      expect(selector).toContain("[data-vantage-collapse-armed]");
     }
   });
 

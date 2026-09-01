@@ -76,9 +76,11 @@ const LEANING_PROPERTY = "dataVantageLeaning";
  * list of siblings, which is what keeps review comment cards, the typography
  * plugin's `h2 + *` margin resets and the anchor surface working.
  *
- * Hiding is CSS, and that CSS is gated on a readiness marker the toggle JS sets
- * (`docs/design/inline-markup.md` §4.3): a renderer without the JS — the CLI
- * checker's HTML, an external consumer of this package — shows every block.
+ * Hiding is CSS, and that CSS is gated on two markers the toggle JS sets — the
+ * prose container's readiness, and an armed marker on each block whose group it
+ * gave a caret (`docs/design/inline-markup.md` §4.3). A renderer without the JS
+ * — the CLI checker's HTML, an external consumer of this package — shows every
+ * block, and so does any block that ended up with no control.
  */
 const COLLAPSED_PROPERTY = "dataVantageCollapsed";
 const COLLAPSE_GROUP_PROPERTY = "dataVantageCollapseGroup";

@@ -279,7 +279,7 @@
 }
 
 /* ── Collapse ───────────────────────────────────────────────────────────── */
-/* The hiding rule is DOUBLE-GATED, and both gates are load-bearing.
+/* The hiding rule is TRIPLE-GATED, and all three gates are load-bearing.
 
    `[data-vantage-collapse-ready]` is set on the prose container by the toggle
    JS, *after* it has attached its handlers. A renderer without that JS — the CLI
@@ -287,12 +287,28 @@
    never sets it, so nothing is hidden and the whole document reads. Hidden
    content with no way to reveal it is content loss, not a style (P1/D8).
 
-   `@media not print` is the second gate, and it is not the same thing as a
+   `[data-vantage-collapse-armed]` is the same invariant one block at a time, and
+   the container marker is not a substitute for it: "a control exists somewhere in
+   this document" is not "this block can be reopened". The toggle JS arms only the
+   blocks of a group it actually gave a caret, so a group whose toggle is missing
+   or unusable — and a bare `data-vantage-collapsed="true"` written in raw HTML
+   with no group at all, which the sanitiser allows by name and value — stays on
+   the page instead of becoming text nothing can reveal. It is deliberately an
+   attribute no document can write.
+
+   `@media not print` is the third gate, and it is not the same thing as a
    `display: revert` counter-rule: `not print` means this declaration does not
    exist in the print stylesheet, so no third rule can defeat it. A collapsed
-   section that printed closed would be content loss on paper (D7). */
+   section that printed closed would be content loss on paper (D7).
+
+   Residual, recorded honestly: `display` is in the sanitiser's
+   `SAFE_STYLE_PROPERTIES`, so a document can still hide its own block with
+   `style="display: none"`. That allowance, not this rule, is the boundary — what
+   these gates guarantee is that nothing *this pipeline* stamps is hidden without
+   a control that opens it. */
 @media not print {
-  [data-vantage-collapse-ready] [data-vantage-collapsed="true"] {
+  [data-vantage-collapse-ready]
+    [data-vantage-collapsed="true"][data-vantage-collapse-armed] {
     display: none;
   }
 }

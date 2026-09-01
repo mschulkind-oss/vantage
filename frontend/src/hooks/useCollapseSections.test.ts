@@ -3,12 +3,15 @@
  *
  * jsdom cannot see whether anything is hidden — `@media` is never evaluated and
  * the stylesheet is not loaded — so what is asserted here is the *contract the
- * CSS reads*: the readiness marker, the collapsed attribute per group, and the
- * ARIA a `<summary>` would have given us for free. The geometry, the rotation
- * and the print reveal were measured in Chrome and are guarded as text in
- * `../lib/directiveTheme.test.ts`.
+ * CSS reads*: the readiness marker, the per-block armed marker, the collapsed
+ * attribute per group, and the ARIA a `<summary>` would have given us for free.
+ * For "is this block on the page?" the real hiding selector is lifted out of the
+ * shipped stylesheet below and matched by hand, which is as close as a unit test
+ * gets. The geometry, the rotation and the print reveal were measured in Chrome
+ * and are guarded as text in `../lib/directiveTheme.test.ts`.
  */
 
+import { readFileSync } from "node:fs";
 import { renderHook, fireEvent } from "@testing-library/react";
 import { describe, it, expect, beforeEach } from "vitest";
 import { COLLAPSE_LABEL, useCollapseSections } from "./useCollapseSections";
@@ -43,7 +46,37 @@ const DOC_HTML = `
 <p data-source-line="18">Always visible.</p>
 `;
 
+/**
+ * The one selector in the repo that hides a collapsed block, lifted out of the
+ * real stylesheet.
+ *
+ * jsdom evaluates neither the `@media` nor the stylesheet, but it does match
+ * selectors — so applying the shipped rule by hand is the closest a unit test
+ * gets to "is this block on the page?", and it cannot drift from the CSS the way
+ * a transcribed selector would.
+ */
+const HIDING_SELECTOR = (() => {
+  // The path goes through a variable: Vite rewrites a *literal*
+  // `new URL("./x", import.meta.url)` into an asset URL `fs` cannot open.
+  const path = "../../../packages/vantage-md/src/styles/directives.css";
+  const css = readFileSync(new URL(path, import.meta.url), "utf8");
+  const match = /@media not print \{\s*([^{}]+?)\s*\{\s*display: none;/.exec(
+    css,
+  );
+  expect(
+    match,
+    "no `display: none` rule under `@media not print`",
+  ).not.toBeNull();
+  return match![1].replace(/\s+/g, " ");
+})();
+
 let container: HTMLDivElement;
+
+/** Every block the shipped hiding rule takes off the page. */
+const hiddenBlocks = () =>
+  Array.from(container.querySelectorAll<HTMLElement>(HIDING_SELECTOR));
+
+const isHidden = (line: number) => hiddenBlocks().includes(blockAt(line));
 
 const caretFor = (group: string) =>
   container.querySelector<HTMLButtonElement>(
@@ -119,6 +152,85 @@ describe("useCollapseSections — the readiness gate (A3)", () => {
       container.querySelector('[data-vantage-collapsed="true"]'),
     ).toBeNull();
     expect(container.getAttribute("data-vantage-collapse-ready")).toBe("true");
+  });
+});
+
+describe("useCollapseSections — never hide what no control can open (P1/D8)", () => {
+  /**
+   * A real closed section plus two blocks the collapse machinery cannot address:
+   * one in a group with no toggle, one with no group at all. Neither shape can
+   * come out of the plugin — it stamps the toggle and its members in the same
+   * loop — so both arrive as raw HTML in a document, which the sanitiser
+   * allowlists by name and value.
+   */
+  const withOrphans = () => {
+    container.innerHTML = `${DOC_HTML}
+<p data-source-line="20" data-vantage-collapsed="true" data-vantage-collapse-group="9">Orphaned group.</p>
+<p data-source-line="22" data-vantage-collapsed="true">Orphaned, no group at all.</p>
+`;
+  };
+
+  it("hides the members of a group that has a caret", () => {
+    // The control case: without this the assertions below would pass vacuously.
+    renderPass();
+
+    expect(isHidden(5)).toBe(true);
+    expect(isHidden(7)).toBe(true);
+    expect(isHidden(14)).toBe(true);
+    expect(isHidden(18)).toBe(false);
+  });
+
+  it("leaves a collapsed block visible when nothing toggles its group", () => {
+    withOrphans();
+    renderPass();
+
+    // The readiness marker is set — a real section armed it — which is exactly
+    // the state in which the old, group-blind rule hid these two forever.
+    expect(container.getAttribute("data-vantage-collapse-ready")).toBe("true");
+    expect(isHidden(5)).toBe(true);
+    expect(isHidden(20)).toBe(false);
+    expect(isHidden(22)).toBe(false);
+  });
+
+  it("does not rewrite the plugin's attributes to do it", () => {
+    // The reveal has to be expressed in something the plugin never writes, or a
+    // renderer with the JS torn down disagrees with one that never had it.
+    withOrphans();
+    const view = renderPass();
+
+    expect(collapsedAt(20)).toBe("true");
+    expect(blockAt(20).getAttribute("data-vantage-collapse-group")).toBe("9");
+
+    view.unmount();
+    expect(blockAt(20).outerHTML).toBe(
+      '<p data-source-line="20" data-vantage-collapsed="true" data-vantage-collapse-group="9">Orphaned group.</p>',
+    );
+    expect(blockAt(5).getAttribute("data-vantage-collapsed")).toBe("true");
+  });
+
+  it("hides nothing at all when the only toggle is unusable", () => {
+    // A forged, non-numeric group id: the pass refuses the toggle, so its body
+    // has no control and must stay on the page.
+    container.innerHTML = `
+      <h2 data-vantage-collapse-toggle='1"], p'>Forged</h2>
+      <p data-source-line="2" data-vantage-collapsed="true" data-vantage-collapse-group="1">Body.</p>`;
+    renderPass();
+
+    expect(hiddenBlocks()).toHaveLength(0);
+  });
+
+  it("keeps hiding the group it armed across a close, an open and a re-run", () => {
+    withOrphans();
+    const view = renderPass();
+
+    fireEvent.click(caretFor("1")!);
+    expect(isHidden(5)).toBe(false);
+    fireEvent.click(caretFor("1")!);
+    expect(isHidden(5)).toBe(true);
+
+    view.rerender({ c: "second render" });
+    expect(isHidden(5)).toBe(true);
+    expect(isHidden(20)).toBe(false);
   });
 });
 

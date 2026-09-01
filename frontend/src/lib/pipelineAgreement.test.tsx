@@ -68,9 +68,17 @@ const DIRECTIVE_FIXTURE = [
   "", // 8
 ].join("\n");
 
-/** Markers a post-render pass sets at runtime, which no renderer's HTML carries. */
+/**
+ * Markers a post-render pass sets at runtime, which no renderer's HTML carries.
+ *
+ * `collapse-armed` belongs here for the same reason `collapse-ready` does: it
+ * says a control exists for this block, which is true only where the toggle JS
+ * ran. The renderers must differ on it and must agree on everything the plugin
+ * stamped.
+ */
 const JS_SET_MARKERS = new Set([
   "data-vantage-collapse-ready",
+  "data-vantage-collapse-armed",
   "data-vantage-collapse-id",
 ]);
 

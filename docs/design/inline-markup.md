@@ -567,7 +567,7 @@ the bleed. Only a card that really is *between* two members joins — after an
 `end`, or beside a lone `only`, a stamped card would hang the rule below the
 section it belongs to.
 
-#### `collapsed`: a flat stamp, double-gated
+#### `collapsed`: a flat stamp, triple-gated
 
 `collapsed=true` emits **no `<details>` and no wrapper**. On the flat sibling run
 it stamps `data-vantage-collapse-toggle="N"` on the heading, and
@@ -578,29 +578,48 @@ must be both a hidden member of group 1 and the toggle for group 2, and sharing
 one attribute would make it permanently invisible and unreachable by either
 toggle.
 
-The hiding is CSS and it is **double-gated**:
+The hiding is CSS and it is **triple-gated**:
 
 ```css
 @media not print {
-  [data-vantage-collapse-ready] [data-vantage-collapsed="true"] {
+  [data-vantage-collapse-ready]
+    [data-vantage-collapsed="true"][data-vantage-collapse-armed] {
     display: none;
   }
 }
 ```
 
-Both gates are the point. `[data-vantage-collapse-ready]` is set on the prose
-container by
+All three gates are the point.
+
+`[data-vantage-collapse-ready]` is set on the prose container by
 [`useCollapseSections`](../../frontend/src/hooks/useCollapseSections.ts) *after*
 it attaches its handlers, so any renderer without that pass — the CLI checker's
 `renderMarkdown` HTML, a static export read with JS off, an external consumer of
 the package's viewer — hides nothing and shows the whole document. **A bare
 `[data-vantage-collapsed="true"] { display: none }` is content loss**, and hidden
-content with no way to reveal it violates **P1** and **D8**. And `@media not
-print` is not the same thing as a `display: revert` counter-rule: `not print`
-means the declaration **does not exist** in the print stylesheet, so no third
-rule can defeat it — where a counter-rule can be defeated by a fourth. A section
-that printed closed is the same content loss on paper (**D7**), so the print rule
-shipped in the same commit.
+content with no way to reveal it violates **P1** and **D8**.
+
+`[data-vantage-collapse-armed]` is that same invariant *per block*, because the
+container marker does not imply it: "a control exists somewhere in this document"
+is not "this block can be reopened". The pass arms only the blocks of a group it
+actually gave a caret, so a collapsed block whose group has no toggle — or one
+written in raw HTML with no group at all, a shape the sanitiser allows by name and
+value — stays on the page rather than becoming text no caret and no
+`revealCollapsedBlock` walk can reach. It is deliberately an attribute no document
+can write: not on the sanitiser's allowlist, so it cannot be forged into the very
+value it guards.
+
+And `@media not print` is not the same thing as a `display: revert` counter-rule:
+`not print` means the declaration **does not exist** in the print stylesheet, so
+no third rule can defeat it — where a counter-rule can be defeated by a fourth. A
+section that printed closed is the same content loss on paper (**D7**), so the
+print rule shipped in the same commit.
+
+The residual, stated plainly: `display` is in the sanitiser's
+`SAFE_STYLE_PROPERTIES`, so a document can always hide its own block with
+`style="display: none"`. *That* allowance is the boundary, not these gates. What
+the gates guarantee is narrower and is the guarantee that matters here — nothing
+this pipeline stamps is ever hidden without a control that opens it.
 
 Three refusals fall out of the same principle, and all three are in the plugin: a
 `block` scope drops `collapsed`, a `section` that degraded onto a non-heading
@@ -1156,7 +1175,9 @@ that overturned a design decision was decided by one of these.
 8. **D8 — The prose is authoritative.** Per **P1**, directives never change what
    the document says. A reader on GitHub gets the complete document, and so does
    a reader whose JavaScript never ran — which is the whole reason the collapse
-   rule is gated on a readiness marker (§4.3). This is the rule that ices §5.4's
+   rule is gated on a readiness marker *and* on a per-block armed marker (§4.3):
+   no JS means everything visible, and so does a collapsed block whose group
+   ended up with no control. This is the rule that ices §5.4's
    content-changing ideas.
 
 ## 8. Security: the injection surface, and how it closes
@@ -1577,7 +1598,7 @@ is ever renumbered or re-spelled.
 | OQ-5 | **Bundle the `style` hardening into this work** as step 1, ahead of any directive work | 2026-08-31 | §8.2, §11 |
 | A1 | The name set is exactly `{section, block, oq}`. Position picks the target, the **name picks the extent**. Unknown name drops the whole directive; unknown key or value drops that pair | 2026-08-31 | §4.2 |
 | A2 | `leaning` gets a **name-only** sanitiser entry — free text cannot be value-allowlisted, so it has **two** defences, not three | 2026-08-31 | §6.3, §8.3 |
-| A3 | `collapsed` emits **no `<details>` and no wrapper**: a flat stamp, heading and body taking different attributes, and hiding gated on a JS-set readiness marker | 2026-08-31 | §4.3, §5.1 |
+| A3 | `collapsed` emits **no `<details>` and no wrapper**: a flat stamp, heading and body taking different attributes, and hiding gated on two JS-set markers — the container's readiness *and* the block's own armed marker, so a group with no toggle is not hidden either | 2026-08-31 | §4.3, §5.1 |
 | A4 | The plugin walks the **whole tree**, resolving within each parent's own children. A root-only walk finds zero `oq` directives | 2026-08-31 | §6.2, §2.2 |
 | A5 | `directives.css` lives in `vantage-md`, re-exported from its `styles/index.css` **and** imported by the frontend. Neither half alone works | 2026-08-31 | §4.3 |
 | A6 | The legal `oq` authoring form is **indented inside the list item**. Column 0 between two items splits the list and fails D1 | 2026-08-31 | §4.4 |

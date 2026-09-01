@@ -8,11 +8,13 @@
  *
  * Two things it does that no `<details>` would have to:
  *
- * - It sets `data-vantage-collapse-ready` on the prose container **after**
- *   attaching, and that marker is what the hiding CSS is gated on. Anything that
- *   renders the same HTML without this pass — the CLI checker, a static export
- *   read with JS off, an external consumer of the package's viewer — shows every
- *   block instead of hiding content nothing can reveal (P1/D8).
+ * - It writes both of the markers the hiding CSS is gated on, and writes them
+ *   **after** attaching: `data-vantage-collapse-ready` on the prose container,
+ *   and `data-vantage-collapse-armed` on each block of a group it actually gave a
+ *   caret. Anything that renders the same HTML without this pass — the CLI
+ *   checker, a static export read with JS off, an external consumer of the
+ *   package's viewer — shows every block, and so does any block this pass could
+ *   not give a control, rather than hiding content nothing can reveal (P1/D8).
  * - It writes `aria-expanded` and `aria-controls` by hand. A `<summary>` would
  *   have inherited them; a heading plus a flat run of siblings has to say so.
  *
@@ -26,6 +28,7 @@
 
 import { useEffect, type RefObject } from "react";
 import {
+  COLLAPSE_ARMED_ATTR,
   COLLAPSE_CARET_ATTR,
   COLLAPSE_READY_ATTR,
   COLLAPSE_TOGGLE_ATTR,
@@ -51,9 +54,14 @@ export const COLLAPSE_LABEL = "Toggle section";
  * The collapsed attributes themselves are the plugin's output, not ours, so they
  * are left exactly as they are: sweeping them would mean a document rendered
  * with the JS torn down disagreed with the same document rendered without it.
+ * The armed markers are ours and do go — with no control left in the DOM, a block
+ * that stayed armed would be hidden by a stylesheet nothing could answer.
  */
 function sweep(el: HTMLElement): void {
   el.removeAttribute(COLLAPSE_READY_ATTR);
+  el.querySelectorAll(`[${COLLAPSE_ARMED_ATTR}]`).forEach((n) =>
+    n.removeAttribute(COLLAPSE_ARMED_ATTR),
+  );
   el.querySelectorAll(`[${COLLAPSE_CARET_ATTR}]`).forEach((n) => n.remove());
   el.querySelectorAll(`[${MINTED_ID_ATTR}]`).forEach((n) => {
     n.removeAttribute("id");
@@ -139,11 +147,20 @@ export function useCollapseSections(
       // First child, ahead of the heading's `#` anchor: the anchor is absolutely
       // positioned in the gutter, so DOM order is not visual order there.
       toggle.insertBefore(caret, toggle.firstChild);
+      // Arm this group's blocks — the per-block half of the hiding rule's
+      // precondition, and deliberately AFTER the caret that opens them is in the
+      // DOM. A block nothing arms stays on the page however collapsed it claims
+      // to be, which is what keeps a group with no toggle, or a `collapsed=true`
+      // written in raw HTML with no group at all, from becoming content nobody
+      // can reach (P1/D8).
+      for (const member of members) {
+        member.setAttribute(COLLAPSE_ARMED_ATTR, "true");
+      }
       attached = true;
     }
 
-    // AFTER attaching, and only if a working control exists. This is the gate
-    // the hiding CSS rests on, so setting it earlier would open a window —
+    // AFTER attaching, and only if a working control exists. This is the other
+    // gate the hiding CSS rests on, so setting it earlier would open a window —
     // however short — in which blocks are hidden and nothing can bring them
     // back. It is keyed on having attached rather than on finding a
     // currently-collapsed block, because the reader may have opened every
