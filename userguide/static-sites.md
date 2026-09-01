@@ -4,7 +4,7 @@ Vantage can generate a fully self-contained static site from any directory of Ma
 
 This is ideal for:
 
-- **Publishing documentation** to Cloudflare Pages, GitHub Pages, Netlify, or Vercel
+- **Publishing documentation** to Cloudflare Workers, GitHub Pages, Netlify, or Vercel
 - **Sharing rendered Markdown** without requiring readers to install anything
 - **Archiving** a snapshot of your docs with full Git history and diffs
 
@@ -32,23 +32,27 @@ The result is a completely static site. No backend, no server process, no WebSoc
 
 ## Deployment Examples
 
-### Cloudflare Pages
+### Cloudflare Workers
+
+Workers with static assets, which replaced Workers Sites. `wrangler pages deploy` still works if you already have a Pages project, but Workers is the current path for a new one.
 
 ```bash
 # Build
 vantage build ./docs -o ./site -n "My Project Docs"
 
 # Deploy
-npx wrangler pages deploy ./site
+npx wrangler deploy --assets ./site
 ```
 
-Or configure automatic deployments by adding a build step to your Cloudflare Pages project:
+Or configure automatic deployments by pointing your Worker's build command at Vantage:
 
 ```bash
 # In your build command:
 go install github.com/mschulkind-oss/vantage/cmd/vantage@latest
 vantage build docs/ -o site/docs -n "My Docs"
 ```
+
+Note that the build and deploy commands live in the Cloudflare dashboard rather than in your repository, so renaming a build script is invisible to CI and breaks the deploy silently.
 
 ### GitHub Pages
 
