@@ -65,7 +65,11 @@ export function parseFrontmatter(content: string): ParsedFrontmatter {
   if (content.startsWith("---")) {
     return parseFrontmatterWithDelimiter(content, "---", "yaml");
   }
-  return withOffset(content, { frontmatter: {}, body: content, format: "none" });
+  return withOffset(content, {
+    frontmatter: {},
+    body: content,
+    format: "none",
+  });
 }
 
 /**
@@ -106,7 +110,8 @@ function parseFrontmatterWithDelimiter(
   const body = content.slice(bodyStart).replace(/^\n/, "");
 
   try {
-    const parsed: unknown = format === "toml" ? parseTOML(raw) : YAML.parse(raw);
+    const parsed: unknown =
+      format === "toml" ? parseTOML(raw) : YAML.parse(raw);
     return withOffset(content, {
       frontmatter: (parsed as Record<string, unknown>) || {},
       body,
@@ -157,7 +162,9 @@ function errorPosition(error: unknown): {
     return {
       message,
       line: yamlPosition.line,
-      ...(typeof yamlPosition.col === "number" ? { column: yamlPosition.col } : {}),
+      ...(typeof yamlPosition.col === "number"
+        ? { column: yamlPosition.col }
+        : {}),
     };
   }
   if (typeof source?.line === "number") {

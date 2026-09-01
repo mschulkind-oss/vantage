@@ -37,7 +37,10 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write 'src/**/*.{ts,tsx}' '*.{ts,js,json}'",
+    "format:check": "prettier --check 'src/**/*.{ts,tsx}' '*.{ts,js,json}'"
   },
   "keywords": [
     "markdown",
@@ -93,13 +96,19 @@
     "mermaid": "^11.16.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/hast": "^3.0.5",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
+    "eslint": "^10.7.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^16.5.0",
+    "prettier": "^3.8.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",
     "tsup": "^8.0.0",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.63.0"
   }
 }

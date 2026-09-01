@@ -44,9 +44,10 @@ deploy: build
     echo "Installed $bindir/vantage"
     systemctl --user restart vantage
 
-# Format the code (Go + frontend + the agent CLI). No tests — run before committing.
+# Format the code (Go + all three npm packages). No tests — run before committing.
 format:
     gofmt -w cmd internal web
+    cd packages/vantage-md && npm run format
     cd packages/vantage-check && npm run format
     cd frontend && npm run format
 
@@ -55,6 +56,7 @@ check: format
     go vet ./cmd/... ./internal/... ./web/...
     staticcheck ./cmd/... ./internal/... ./web/...
     go test ./cmd/... ./internal/... ./web/...
+    cd packages/vantage-md && npm run lint && npm run typecheck
     cd packages/vantage-check && npm run lint && npm run typecheck && npm run test
     cd frontend && npm run lint && npx tsc --build && npm run test
     just _self-check
@@ -71,6 +73,11 @@ check-ci: _deps-match
     go test ./cmd/... ./internal/... ./web/...
     # check-ci is one bash script, so a bare `cd` would leak into the next line
     # — each package gets its own subshell.
+    # vantage-md has no tests of its own: its behaviour is covered by frontend/
+    # tests through the source alias. Its own typecheck still earns its place —
+    # it runs the package standalone under its own TypeScript (~6.0.3), where
+    # frontend/'s --build reads the same files under ~5.9.3.
+    ( cd packages/vantage-md && npm run format:check && npm run lint && npm run typecheck )
     ( cd packages/vantage-check && npm run format:check && npm run lint && npm run typecheck && npm run test )
     ( cd frontend && npm run format:check && npm run lint && npx tsc --build && npm run test )
     # Then the artifact, not just the source it was built from.
