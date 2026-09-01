@@ -125,6 +125,12 @@ export const RULES: readonly RuleMeta[] = [
     default: "error",
   },
   {
+    id: "vantage/block-split",
+    summary:
+      "A directive that restructures the document around it — the general form of `vantage/list-split`, measured by deleting the comment and re-parsing",
+    default: "error",
+  },
+  {
     id: "vantage/duplicate-key",
     summary:
       "The same key twice in one directive — the last one wins, so a warning",

@@ -200,6 +200,7 @@ will ever tell you.
 | `vantage/unknown-key` | A key the closed vocabulary does not contain | error |
 | `vantage/unknown-value` | A value outside the closed token set for its key | error |
 | `vantage/list-split` | A directive between two list items, which ends the list and starts a second one | error |
+| `vantage/block-split` | A directive that restructures the document around it — a table losing its remaining rows, a paragraph cut in two, a setext heading losing its underline | error |
 | `vantage/duplicate-key` | The same key twice — the last one wins, so a warning | warning |
 | `vantage/orphan` | A directive with no block it can attach to, so it styles nothing | warning |
 | `vantage/frontmatter-shape` | A `vantage:` frontmatter key that is not a table of keys, so it configures nothing | warning |
@@ -212,6 +213,15 @@ all imported from the viewer's own module, so the checker cannot disagree with
 the renderer about what a directive means. And like links, directives come from
 the parsed document — a `<!-- vantage: … -->` inside a fenced block or backticks
 is a code sample, not a finding.
+
+`vantage/block-split` is the one rule that does not read the document so much as
+*experiment* on it. A directive is invisible, so the one thing it must never do is
+change the document — and the way to be sure is to take it away: the rule deletes
+the comment lines, re-parses the few lines around them, and compares the block
+structure. That catches any construct a comment at the start of a line can end,
+not a list of the ones somebody thought of. `vantage/list-split` stays because the
+list case has a fix of its own worth spelling out ("indent it inside the item"),
+and it reports first when both apply.
 
 The last four are the same family one scope up: the reserved `vantage:`
 frontmatter key, which carries chrome that belongs to the *file* rather than to a
