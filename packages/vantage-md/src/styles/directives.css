@@ -1,8 +1,12 @@
 /* vantage-md/styles/directives.css
  *
  * Theme layer for the `data-vantage-*` directive attributes emitted by
- * rehypeVantageDirectives. Plain CSS on attribute selectors only: no Tailwind
- * utilities, no class names computed in JS, no colour that a document can name.
+ * rehypeVantageDirectives, and for the file-scope chrome the `vantage:`
+ * frontmatter key asks for (`.vantage-chip`, `.vantage-chrome`) — one file
+ * because the badge and the status chip are the same visual object and share
+ * the same rule. Plain CSS on attribute selectors and hand-written classes only:
+ * no Tailwind utilities, no class names computed in JS, no colour a document
+ * can name.
  *
  * This file must stay UNLAYERED. Every `@tailwindcss/typography` variant
  * utility flattens to exactly one class of specificity — `:where()` and
@@ -257,6 +261,21 @@
 .vantage-chip--important {
   --vantage-chip-ink: var(--vantage-tone-important-ink);
   --vantage-chip-wash: var(--vantage-tone-important-chip);
+}
+
+/* ── File-scope chrome ──────────────────────────────────────────────────── */
+/* The strip the document status chip sits in — the first element of the content
+   column, above the metadata card (`vantage:` frontmatter, §4.5). A row rather
+   than a bare chip because this is where any later file-scoped chrome joins it,
+   and because the flow needs the gap to the card whether or not a card follows.
+   `text-transform` on `.vantage-chip` above is what makes the chip read as a
+   label while the element's text content stays the lowercase token every other
+   renderer would see (D5). */
+.vantage-chrome {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
 }
 
 /* ── Collapse ───────────────────────────────────────────────────────────── */

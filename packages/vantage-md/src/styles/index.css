@@ -1,7 +1,8 @@
 /* vantage-md styles
  *
- * Import this file to get the line-anchor highlight styles and the theme layer
- * for the `data-vantage-*` directive attributes.
+ * Import this file to get the line-anchor highlight styles, the theme layer for
+ * the `data-vantage-*` directive attributes, and the chrome chips
+ * (`FrontmatterDisplay`'s document status chip).
  * Usage: import "vantage-md/styles";
  *
  * Both halves of the directive wiring are load-bearing. Without this re-export

@@ -51,9 +51,29 @@ YAML frontmatter at the top of a file is parsed and displayed as a clean metadat
 title: My Document
 author: Jane Smith
 date: 2026-01-15
-status: Draft
+status: draft
 ---
 ```
+
+One key is Vantage's own: `vantage:`. It holds chrome that belongs to the file
+rather than to a section, it never appears as a row in the metadata card, and
+every other renderer ignores it. Today it has one key — `status-chip` — which
+lifts the document's lifecycle status out of the card and into a chip above it:
+
+```yaml
+---
+title: My Document
+status: in-review # draft | in-review | accepted | deprecated
+vantage:
+  status-chip: true
+---
+```
+
+`status-chip: true` shows the document's own `status:`, so the chip cannot
+disagree with it. A literal `status-chip: accepted` works too, but it is a second
+value that can drift; `vantage-check` reports the disagreement either way. The
+vocabulary is `status`'s own — `draft`, `in-review`, `accepted`, `deprecated`,
+lowercase — and anything else renders no chip at all.
 
 ## Mermaid Diagrams
 

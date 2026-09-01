@@ -368,7 +368,7 @@ There is no interpolation anywhere in the path, which is what makes §8.3 short.
 It also sidesteps a build problem: this is Tailwind v4 with an empty `extend`
 ([`tailwind.config.js:7-8`](../../frontend/tailwind.config.js#L7-L8)) and a
 `@source` scan over the package
-([`index.css:8`](../../frontend/src/index.css#L8)), so a *computed* Tailwind
+([`index.css:30`](../../frontend/src/index.css#L30)), so a *computed* Tailwind
 class name would never be emitted. Attribute selectors and custom properties in
 a plain stylesheet have no such dependency.
 

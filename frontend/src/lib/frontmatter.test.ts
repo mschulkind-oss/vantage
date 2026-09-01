@@ -1,5 +1,15 @@
+/**
+ * The frontmatter parser — the one in `packages/vantage-md`, which is the parser
+ * both viewers, `renderMarkdown` and the CLI checker actually use.
+ *
+ * These cases were written against a second copy of the parser that used to live
+ * beside this file, imported by nothing but this test. The copy is gone; the
+ * cases are not, so they now assert against the real thing. Anything that
+ * special-cases a frontmatter key has to land in the package, or the suite goes
+ * green while the viewer renders the old behaviour.
+ */
 import { describe, it, expect } from "vitest";
-import { parseFrontmatter } from "./frontmatter";
+import { parseFrontmatter } from "vantage-md";
 
 describe("parseFrontmatter", () => {
   describe("YAML frontmatter (---)", () => {

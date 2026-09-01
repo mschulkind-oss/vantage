@@ -687,8 +687,13 @@ function positionOf(
   };
 }
 
-/** `` `a`, `b` or `c` `` — for naming a closed set in a message. */
-function orList(values: readonly string[]): string {
+/**
+ * `` `a`, `b` or `c` `` — for naming a closed set in a message.
+ *
+ * Exported for the `vantage:` frontmatter rules, which name closed sets for the
+ * same reason and should phrase them identically.
+ */
+export function orList(values: readonly string[]): string {
   const quoted = values.map((value) => `\`${value}\``);
   if (quoted.length <= 1) return quoted.join("");
   return `${quoted.slice(0, -1).join(", ")} or ${quoted[quoted.length - 1]}`;

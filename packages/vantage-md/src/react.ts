@@ -11,6 +11,7 @@ export { useLineAnchor } from "./useLineAnchor.js";
 
 export { MermaidDiagram } from "./MermaidDiagram.js";
 export { FrontmatterDisplay } from "./FrontmatterDisplay.js";
+export { DocumentStatusChip } from "./DocumentStatusChip.js";
 
 // Re-export core utilities so React consumers don't need a second import
 export {
@@ -22,6 +23,11 @@ export {
   clearLineAnchorHighlights,
   parseLineAnchor,
   parseFrontmatter,
+  readVantageFrontmatter,
+  isDocStatus,
+  DOC_STATUSES,
+  DOC_STATUS_TONES,
+  VANTAGE_FRONTMATTER_KEYS,
   sanitizeSchema,
   renderMermaidBlocks,
   resolveLinks,
@@ -34,6 +40,9 @@ export type {
   PipelineOptions,
   ParsedFrontmatter,
   FrontmatterFormat,
+  DocStatus,
+  VantageFrontmatter,
+  VantageFrontmatterIssue,
   RenderMermaidOptions,
   ResolveLinkOptions,
 } from "./index.js";

@@ -136,6 +136,35 @@ export const RULES: readonly RuleMeta[] = [
       "A directive with no block it can attach to, so it styles nothing — it resolves, so a warning",
     default: "warning",
   },
+  // The same family, one scope up: the reserved `vantage:` frontmatter key. It
+  // belongs here rather than under `frontmatter/*` because those rules delegate
+  // to `yaml` and `smol-toml` — parsers that own the syntax and have no opinion
+  // about our vocabulary. Once the block has parsed, everything under `vantage:`
+  // is ours, and just as silent.
+  {
+    id: "vantage/frontmatter-shape",
+    summary:
+      "A `vantage:` frontmatter key that is not a table of keys, so it configures nothing",
+    default: "warning",
+  },
+  {
+    id: "vantage/frontmatter-key",
+    summary:
+      "A key under `vantage:` this build does not know — a warning, so a newer document does not fail an older checker",
+    default: "warning",
+  },
+  {
+    id: "vantage/frontmatter-value",
+    summary:
+      "A `vantage:` value outside its closed set, so the chrome silently vanishes",
+    default: "error",
+  },
+  {
+    id: "vantage/status-chip-stale",
+    summary:
+      "A status chip with no `status:` to show, or one that disagrees with it",
+    default: "warning",
+  },
   {
     id: "render/pipeline",
     summary:

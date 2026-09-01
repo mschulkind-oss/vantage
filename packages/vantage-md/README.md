@@ -118,9 +118,9 @@ if all you want is `data-source-line`.
 
 | Entry point | Description |
 |-------------|-------------|
-| `vantage-md` | `renderMarkdown`, `buildPipeline`, `buildRemarkPlugins`, `rehypeSourceLines`, `scrollToLineAnchor`, `parseLineAnchor`, `parseFrontmatter`, `sanitizeSchema` |
-| `vantage-md/react` | `MarkdownViewer`, `useLineAnchor`, `MermaidDiagram`, `FrontmatterDisplay` + all core exports |
-| `vantage-md/styles` | Line-anchor highlight CSS, plus the theme layer for the `data-vantage-*` directive attributes (light + dark mode) |
+| `vantage-md` | `renderMarkdown`, `buildPipeline`, `buildRemarkPlugins`, `rehypeSourceLines`, `scrollToLineAnchor`, `parseLineAnchor`, `parseFrontmatter`, `readVantageFrontmatter`, `sanitizeSchema` |
+| `vantage-md/react` | `MarkdownViewer`, `useLineAnchor`, `MermaidDiagram`, `FrontmatterDisplay`, `DocumentStatusChip` + all core exports |
+| `vantage-md/styles` | Line-anchor highlight CSS, plus the theme layer for the `data-vantage-*` directive attributes and the chrome chips (light + dark mode) |
 
 ## Features
 
@@ -129,7 +129,7 @@ if all you want is `data-source-line`.
 - **KaTeX** — `$$...$$` math, inline and block (single `$` is not a delimiter, so `$HOME` and `$100` stay literal)
 - **Mermaid** — diagram rendering (client-side, lazy-loaded)
 - **Syntax highlighting** — via highlight.js
-- **Frontmatter** — YAML (`---`) and TOML (`+++`) parsing
+- **Frontmatter** — YAML (`---`) and TOML (`+++`) parsing. A reserved `vantage:` key carries file-scoped chrome: `status-chip: true` makes `FrontmatterDisplay` render the document's `status:` as a chip above the metadata card, and the reserved key itself is never shown as a metadata row
 - **Sanitization** — XSS-safe with allowlisted KaTeX/MathML elements
 - **Dark mode** — all styles support `.dark` class
 

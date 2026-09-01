@@ -22,6 +22,7 @@ import { checkMath } from "../rules/math.js";
 import { checkMarkdownHygiene } from "../rules/markdown.js";
 import { checkMermaid } from "../rules/mermaid.js";
 import { checkPipeline } from "../rules/render.js";
+import { checkVantageFrontmatter } from "../rules/vantageFrontmatter.js";
 
 export interface CheckOptions {
   /** Files and directories to check. Empty means the working directory. */
@@ -118,6 +119,9 @@ export async function checkFiles(
     filesChecked++;
     checkLinks(collector);
     checkFrontmatter(collector);
+    // After `checkFrontmatter`, not before: the block has to have been judged
+    // as frontmatter before anything reads what is inside it.
+    checkVantageFrontmatter(collector);
     checkDirectives(collector);
     checkMath(collector);
     await checkMermaid(collector);

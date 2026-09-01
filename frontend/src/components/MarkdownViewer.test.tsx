@@ -209,6 +209,44 @@ This is the body.`;
     expect(screen.queryByText("Metadata")).not.toBeInTheDocument();
     expect(screen.getByText("Hello World")).toBeInTheDocument();
   });
+
+  it("promotes `status:` to a chip above the card when asked, and hides the key", () => {
+    // End to end through the viewer: the real `parseFrontmatter`, the real
+    // reader, the real shared card. `status-chip: true` inherits — the form that
+    // cannot disagree with `status:` — and the vocabulary comment on the line is
+    // the case a source-line scrape would get wrong.
+    const content = `---
+title: My Article
+status: in-review # draft | in-review | accepted | deprecated
+vantage:
+  status-chip: true
+---
+
+# Content
+
+This is the body.`;
+
+    renderWithRouter(
+      <MarkdownViewer content={content} currentPath="test.md" />,
+    );
+
+    // By title, not by text: `status:` is still a row in the card, so
+    // "in-review" appears twice — which is the honest outcome. The chip promotes
+    // the value, it does not move it.
+    const chip = screen.getByTitle("Document status: in-review");
+    expect(chip).toHaveAttribute("data-vantage-status", "in-review");
+    expect(chip).toHaveTextContent("in-review");
+    expect(chip.closest(".vantage-chrome")).not.toBeNull();
+
+    // The card is untouched apart from the reserved key, which never appears.
+    expect(screen.getByText("Metadata")).toBeInTheDocument();
+    expect(screen.getByText("title")).toBeInTheDocument();
+    expect(screen.getByText("My Article")).toBeInTheDocument();
+    expect(screen.queryByText("vantage")).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("status-chip");
+
+    expect(screen.getByText("This is the body.")).toBeInTheDocument();
+  });
 });
 
 /**
