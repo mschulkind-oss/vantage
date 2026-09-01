@@ -228,8 +228,11 @@ is a code sample, not a finding.
 `vantage/block-split` is the one rule that does not read the document so much as
 *experiment* on it. A directive is invisible, so the one thing it must never do is
 change the document — and the way to be sure is to take it away: the rule deletes
-the comment lines, re-parses the few lines around them, and compares the block
-structure. That catches any construct a comment at the start of a line can end,
+the directive's own lines, re-parses the few lines around them, and compares the
+block structure. Only the directive's lines: a `<!-- -->` beside it is the
+author's markup — CommonMark's own separator between two lists — and deleting
+that would answer a question about it and blame the directive for the answer.
+That catches any construct a comment at the start of a line can end,
 not a list of the ones somebody thought of. `vantage/list-split` stays because the
 list case has a fix of its own worth spelling out ("indent it inside the item"),
 and it reports first when both apply.

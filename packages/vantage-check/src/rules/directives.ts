@@ -694,7 +694,14 @@ function splitList(
   return `This directive sits between two items of a ${ordered ? "numbered" : "bulleted"} list, at the start of the line, so Markdown ends the list here and starts a second one. The halves render as two lists — different item spacing${renumbered} — which means this invisible comment changes the document, in Vantage and on GitHub alike. Indent it inside the list item instead, on its own line, directly before the block it describes.`;
 }
 
-/** The list immediately before or after `index`, comment nodes skipped. */
+/**
+ * The list immediately before or after `index`, other directives skipped.
+ *
+ * Only *directive* comments are transparent here. A foreign comment-only node
+ * is the author's own markup — and `<!-- -->` is CommonMark's documented
+ * separator between two lists, so it is the one comment that is *load-bearing*
+ * between them. Skipping it would report a split this directive did not cause.
+ */
 function neighbourList(
   children: RootContent[],
   index: number,
@@ -703,7 +710,12 @@ function neighbourList(
   for (let i = index + step; i >= 0 && i < children.length; i += step) {
     const sibling = children[i];
     if (sibling === undefined) return undefined;
-    if (sibling.type === "html" && isCommentOnly(sibling.value)) continue;
+    if (
+      sibling.type === "html" &&
+      isCommentOnly(sibling.value) &&
+      directiveNames(sibling.value).length > 0
+    )
+      continue;
     return sibling.type === "list" ? sibling : undefined;
   }
   return undefined;
@@ -774,13 +786,23 @@ function blockSplit(
       : topLevelSpan(root, node);
   if (span?.start === undefined || span.end === undefined) return undefined;
 
-  // Every comment-only directive line between the two neighbours goes, not just
-  // this node's: consecutive directives are one run, and P1 asks what the
-  // document looks like with the whole run absent.
+  // Every *directive* line between the two neighbours goes, not just this
+  // node's: consecutive directives are one run, they merge onto one target, and
+  // P1 asks what the document looks like with the whole run absent. Cutting only
+  // the head of a run would leave the rest of it splitting the block and report
+  // nothing.
+  //
+  // A foreign comment-only node — `<!-- -->`, `<!-- prettier-ignore -->` — is
+  // *not* cut. It is the author's own markup, and `<!-- -->` is CommonMark's
+  // documented separator between two lists and between two indented code
+  // blocks, so deleting it would answer a question about *it* and hand this
+  // directive the blame for the answer.
   const cut = new Set<number>();
   for (let i = before.index + 1; i < after.index; i++) {
     const sibling = parent.children[i];
     if (sibling?.type !== "html" || !isCommentOnly(sibling.value)) continue;
+    if (sibling !== node && directiveNames(sibling.value).length === 0)
+      continue;
     const from = sibling.position?.start.line;
     const to = sibling.position?.end.line;
     if (from === undefined || to === undefined) return undefined;
@@ -924,7 +946,8 @@ function splitMessage(
 
   const name = SPLIT_NAMES[before.type] ?? "block";
   const consequence = SPLIT_CONSEQUENCES[before.type] ?? "it renders as two";
-  return `This directive sits at the start of a line in the middle of a ${name}, so Markdown ends the ${name} there and ${consequence}. Deleting the comment renders a different document, which means this invisible comment changes the page — in Vantage and on GitHub alike. A directive cannot go inside a block: put the directive above the whole ${name}, where the thing after it is already a block of its own.`;
+  const article = /^[aeiou]/.test(name) ? "an" : "a";
+  return `This directive sits at the start of a line in the middle of ${article} ${name}, so Markdown ends the ${name} there and ${consequence}. Deleting the comment renders a different document, which means this invisible comment changes the page — in Vantage and on GitHub alike. A directive cannot go inside a block: put the directive above the whole ${name}, where the thing after it is already a block of its own.`;
 }
 
 const SPLIT_NAMES: Record<string, string> = {
