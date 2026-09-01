@@ -104,7 +104,7 @@ consumes it:
 
 | Where | What it is |
 | :--- | :--- |
-| [`pipeline.ts:129-134`](../../packages/vantage-md/src/pipeline.ts#L129-L134) | `buildPipeline(options)` — the only place the plugin list and its order exist. |
+| [`pipeline.ts:145-150`](../../packages/vantage-md/src/pipeline.ts#L145-L150) | `buildPipeline(options)` — the only place the plugin list and its order exist. |
 | [`renderMarkdown.ts:82-97`](../../packages/vantage-md/src/renderMarkdown.ts#L82-L97) | String-in, HTML-out. Feeds the CLI checker, `resolveLinks`, and `renderMermaidBlocks`. |
 | [`MarkdownViewer.tsx:694-696`](../../frontend/src/components/MarkdownViewer.tsx#L694-L696) | The app's `<ReactMarkdown>`, handed both lists as props. |
 | [`vantage-md/src/MarkdownViewer.tsx:221-222`](../../packages/vantage-md/src/MarkdownViewer.tsx#L221-L222) | The package's own exported React viewer, likewise. |
@@ -122,7 +122,7 @@ clobbers `id` with the prefix `user-content-`, so slugging first turns every
 ids are untouched.
 
 The directive plugin takes **no option of its own**
-([`pipeline.ts:103-109`](../../packages/vantage-md/src/pipeline.ts#L103-L109)).
+([`pipeline.ts:107-113`](../../packages/vantage-md/src/pipeline.ts#L107-L113)).
 A flag would be a way for two renderers to disagree about what a document means,
 which is exactly **D5**.
 
@@ -167,7 +167,7 @@ This is the fact the implementation turns on, so I ran it. Feeding
   measured, flipping it puts `<!-- vantage: section tone=warning -->` and a
   malformed `<!-- vantage: bogus -->` alike straight into the rendered HTML — so
   what holds the guarantee is the schema plus a test, not the absence of an API:
-  [`vantageDirectives.test.ts:1290`](../../frontend/src/lib/vantageDirectives.test.ts#L1290)
+  [`vantageDirectives.test.ts:1482`](../../frontend/src/lib/vantageDirectives.test.ts#L1482)
   asserts the rendered markup contains no `<!--` and no `vantage:`, and fails the
   moment anyone turns it on.
 
@@ -176,9 +176,9 @@ Two consequences:
 1. **There is exactly one slot for the plugin**: after `rehypeRaw`, before
    `rehypeSanitize`. Downstream of the sanitiser the information no longer
    exists. This is the same slot `rehypeSourceLines` already occupies
-   ([`pipeline.ts:100-102`](../../packages/vantage-md/src/pipeline.ts#L100-L102)),
+   ([`pipeline.ts:104-106`](../../packages/vantage-md/src/pipeline.ts#L104-L106)),
    and the slot is spelled out in the code
-   ([`pipeline.ts:103-109`](../../packages/vantage-md/src/pipeline.ts#L103-L109))
+   ([`pipeline.ts:107-113`](../../packages/vantage-md/src/pipeline.ts#L107-L113))
    so nobody has to re-derive it.
 2. **The sanitiser deleting comments is a feature.** The plugin consumes the
    comment and emits attributes; the sanitiser removes the original. Nothing
@@ -416,6 +416,38 @@ Nothing reports either case. `vantage/orphan` inspects the target and the plugin
 did stamp *something* in the range case, so this is the one failure mode in the
 feature that is visible only to the author looking at the page.
 
+> [!IMPORTANT]
+> **Display math was a third case, and a different one: the sibling *is*
+> stampable when the plugin runs, and the stamp is destroyed downstream.** `$$…$$`
+> and a ` ```math ` fence both reach rehype as `<pre><code
+> class="language-math">`, and `pre` is on the list, so the plugin stamps the
+> block and counts it as a run member. `rehype-katex` then **replaces** that
+> element — for a `code.language-math` inside a `pre` it takes the `pre` as its
+> scope and splices a fresh `<span class="katex-display">` in its place — so
+> `data-vantage-*` and `data-source-line` both died with it. Measured in Chrome
+> over the real Tailwind build: a 58px unpainted stretch of the section rule for a
+> one-line fraction, more for a matrix; no `#L` anchor on the formula; and
+> `collapsed=true` hiding the prose while leaving the formula on screen under the
+> closed heading. Since `$$` alone on its own lines is the form the style guide
+> *mandates* for all display math, this was the likeliest of the three to be hit.
+>
+> The repair is not to stop counting the block — that only makes the markers
+> honest and leaves the hole. It is
+> [`rehypeVantageMathStamps.ts`](../../packages/vantage-md/src/rehypeVantageMathStamps.ts),
+> a pair of plugins that **bracket `rehypeKatex`** in `buildRehypePlugins`:
+> snapshot each stamped display-math block's `data-vantage-*` and
+> `data-source-line` before, re-apply them to the `katex-display` (or
+> `katex-error`) span that took its place after. The replacement is found again by
+> the sibling before it, whose identity survives the splice. Both halves run after
+> `rehypeSanitize`, which matters twice: the sanitiser rebuilds the tree, so
+> identities taken earlier would be stale, and every attribute carried is one the
+> schema already passed on the node it came from.
+>
+> The parenthetical above — "the `run` markers are computed over stamped members
+> only" — stayed true of the raw-HTML shapes and was **false** of math, which was
+> counted and then lost. It is true again now, because the member that was counted
+> is the member that paints.
+
 There is still no `scope=` key, and position is still what identifies the target,
 so the original reason for refusing one stands: a key that can disagree with
 position is a bug generator. The *name* cannot disagree with position — it only
@@ -551,7 +583,7 @@ break, so they are written down rather than left to be rediscovered.
 >    file is unlayered, a bare `font-weight: 500` beats the layered
 >    `prose-headings:font-semibold` and **de-bolds** a toned heading from 600 to
 >    500. The exclusion is at
->    [`directives.css:196`](../../packages/vantage-md/src/styles/directives.css#L196).
+>    [`directives.css:253`](../../packages/vantage-md/src/styles/directives.css#L253).
 > 6. **The toned-heading gutter must stay numerically equal to the ¶-anchor
 >    `padding-left`.** This one lives in the app, not in `directives.css`.
 >    `.prose :is(h1..h6)` is pulled left by `padding-left: 1.5em; margin-left:
@@ -562,7 +594,7 @@ break, so they are written down rather than left to be rediscovered.
 >    paragraph's, and `em` resolves per level: measured h2 −36px, h3 −30px, p 0px
 >    inside one section. `index.css:206-208` sets
 >    `--vantage-tone-heading-gutter: 1.5em` on toned prose headings only and
->    [`directives.css:158-160`](../../packages/vantage-md/src/styles/directives.css#L158-L160)
+>    [`directives.css:162-164`](../../packages/vantage-md/src/styles/directives.css#L162-L164)
 >    adds it back inside the `left: calc(…)`. The package defaults the variable to
 >    `0em`, which is what makes the app rule look like dead CSS from either side —
 >    it is not, and the two numbers have to move together.
@@ -620,6 +652,59 @@ wrapper, so a comment inside a toned section does not punch a gap taller than
 the bleed. Only a card that really is *between* two members joins — after an
 `end`, or beside a lone `only`, a stamped card would hang the rule below the
 section it belongs to.
+
+##### Two members that were on the right pixel and painting nothing
+
+`[data-vantage-tone] { position: relative }` makes each member the containing
+block for its own `::before`, and the slice is deliberately positioned **out** of
+that box. Six of the stampable tags compute `overflow: visible` and paint it.
+Two do not, and both clipped it away entirely:
+
+- `@tailwindcss/typography` gives `pre` `overflow-x: auto` so wide code scrolls;
+- the UA sheet gives `hr` `overflow: hidden`.
+
+Per CSS, a computed `overflow` of `visible` becomes `auto` when its partner axis
+is not `visible`, so each of those two is simultaneously the containing block for
+its own pseudo and a clip box that discards it at the padding edge **on both
+axes** — the member paints neither its own slice nor its own upward bleed.
+Measured in Chrome over the real Tailwind build of a ten-member run: one
+contiguous **100px** unpainted stretch for a three-line fence, scaling linearly
+with the fence (168px for a 133px one), and **57px** across an `hr`. The fixed
+40px bleed can never repair it, because the void is the member's height plus its
+own bleed. The section reads as two sections — the exact failure `data-vantage-run`
+and `joinToneRun` were both added to prevent.
+
+The escape is to un-clip the box and re-home the scroller on the `code` child,
+which nothing is positioned against
+([`directives.css:203-209`](../../packages/vantage-md/src/styles/directives.css#L203-L209)).
+Wide code still scrolls (measured in a 600px viewport: `pre.scrollWidth ==
+pre.clientWidth == 518` while `code.scrollWidth` 752 > `code.clientWidth` 486 and
+`code.scrollLeft` reaches 266); the scrollbar simply sits inside the fence's
+padding instead of on its border edge. Setting `overflow: visible` on the `pre`
+*without* moving the scroller would cost horizontal scrolling of long code lines,
+which is a real feature — that is why the second rule is not optional.
+
+An `hr` needs one thing more: it is 1-2px of box between two 3em margins, and
+48px is more than the 40px a neighbour can bleed across. So a thematic break is
+the one member whose rule also bleeds **downward**, by 3.5em rather than by the
+shared bleed — 3.5 and not 3 because every other member overlaps its
+predecessor's border edge by at least 8px, and an exact fit leaves a 1px hairline
+to subpixel rounding. Both selectors stay positive, so the run still terminates
+exactly at its first and last member.
+
+> [!CAUTION]
+> **This is the one part of the theme that no computed-style check can see.** The
+> pseudo's computed `left` is byte-identical whether the slice paints or is
+> clipped to nothing, which is how a comment in `directives.css` and the header of
+> `directiveTheme.test.ts` both came to vouch that "all eight block types land on
+> the same pixel" while two of them painted nothing at all. Both statements were
+> true and both were irrelevant. Only a pixel read distinguishes them:
+> [`frontend/e2e/directive_tone_rule.spec.ts`](../../frontend/e2e/directive_tone_rule.spec.ts)
+> scans the rule column of a real render and asserts every row of every member is
+> painted. The `Justfile` never invokes playwright, so it documents rather than
+> guards — run it by hand after touching this geometry. What the vitest suite
+> *can* hold is the **presence** of the escapes, which is what stops them being
+> tidied away as dead CSS.
 
 #### `collapsed`: a flat stamp, triple-gated
 
@@ -1183,7 +1268,7 @@ and the inner section restarts the run so its rule terminates.
 
 Ordering note: the plugin may run before or after `rehypeSourceLines`, but it
 must never depend on `rehypeSlug`, which runs post-sanitise
-([`pipeline.ts:111`](../../packages/vantage-md/src/pipeline.ts#L111))
+([`pipeline.ts:115`](../../packages/vantage-md/src/pipeline.ts#L115))
 and so cannot supply heading ids to it. If a directive ever needs a slug, it
 computes its own.
 
