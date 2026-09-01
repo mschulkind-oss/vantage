@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import {
   Settings,
   Sun,
@@ -10,6 +10,7 @@ import {
   BookOpen,
 } from "lucide-react";
 import { cn } from "../lib/utils";
+import { AnchoredMenu } from "./AnchoredMenu";
 
 type Theme = "light" | "dark";
 
@@ -63,29 +64,8 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
 }) => {
   const [open, setOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(getStoredTheme);
-  const ref = useRef<HTMLDivElement>(null);
-
-  // Close on click outside
-  useEffect(() => {
-    if (!open) return;
-    const handleClick = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open]);
-
-  // Close on Escape
-  useEffect(() => {
-    if (!open) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
-  }, [open]);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const close = useCallback(() => setOpen(false), []);
 
   const handleThemeChange = (newTheme: Theme) => {
     setTheme(newTheme);
@@ -93,8 +73,9 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
   };
 
   return (
-    <div ref={ref} className="relative">
+    <div className="relative">
       <button
+        ref={triggerRef}
         onClick={() => setOpen(!open)}
         className={cn(
           "p-1.5 rounded-md transition-colors",
@@ -108,8 +89,14 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
         <Settings size={16} />
       </button>
 
-      {open && (
-        <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 py-1 z-50">
+      <AnchoredMenu
+        open={open}
+        onClose={close}
+        anchorRef={triggerRef}
+        width={224}
+        aria-label="Settings"
+      >
+        <>
           {/* Theme section */}
           <div className="px-3 py-2">
             <div className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-2">
@@ -231,8 +218,8 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
               </button>
             )}
           </div>
-        </div>
-      )}
+        </>
+      </AnchoredMenu>
     </div>
   );
 };
