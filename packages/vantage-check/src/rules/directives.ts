@@ -4,6 +4,7 @@ import { visit } from "unist-util-visit";
 // source. A checker with its own copy of any of the four disagrees with the
 // renderer sooner or later, and the disagreement is invisible: both sides stay
 // silent by design (D5).
+import type { ParsedDirective } from "../../../vantage-md/src/vantageDirectives.js";
 import {
   DIRECTIVE_VOCABULARY,
   hasVantageSentinel,
@@ -58,6 +59,21 @@ export function checkDirectives(collector: Collector): void {
     const at = (offset: number): FilePosition =>
       positionOf(collector, node, offset);
 
+    /**
+     * The keys this run has set already, per merge family.
+     *
+     * Duplicate detection is scoped to the *run*, because the run is what
+     * merges: `stampRun` folds every directive up to the target into one key map
+     * with last-key-wins, whether the keys were written in one comment or in
+     * several. `section` and `block` share that map; `oq` has its own. Scoping
+     * per comment reported `tone=note tone=warning` and stayed silent on the
+     * same two values one line apart — the same lost value, harder to see.
+     */
+    const seenStyle = new Set<string>();
+    const seenOq = new Set<string>();
+    if (parent !== undefined && index !== undefined)
+      seedRunKeys(parent.children, index, seenStyle, seenOq);
+
     /** Names that survived the grammar and the vocabulary, in written order. */
     const names: string[] = [];
     /** The segment index of the last directive, where its run continues from. */
@@ -106,7 +122,9 @@ export function checkDirectives(collector: Collector): void {
         continue;
       }
 
-      const seen = new Set<string>();
+      const seen = parsed.name === "oq" ? seenOq : seenStyle;
+      /** Keys set by *this* directive, which is all the message differs on. */
+      const here = new Set<string>();
       for (const pair of parsed.pairs) {
         const keyAt = innerAt(pair.keyOffset);
 
@@ -114,10 +132,13 @@ export function checkDirectives(collector: Collector): void {
           collector.report(
             "vantage/duplicate-key",
             keyAt,
-            `\`${pair.key}\` is set twice in this directive. The last one wins silently, so one of the two values is doing nothing.`,
+            here.has(pair.key)
+              ? `\`${pair.key}\` is set twice in this directive. The last one wins silently, so one of the two values is doing nothing.`
+              : `\`${pair.key}\` is set twice in this run of directives. Consecutive directives merge onto one block and the last one wins silently — a blank line between them changes nothing — so one of the two values is doing nothing.`,
           );
         }
         seen.add(pair.key);
+        here.add(pair.key);
 
         const values = keys[pair.key];
         if (values === undefined) {
@@ -577,17 +598,49 @@ function namesAfter(children: RootContent[], index: number): string[] {
   return names;
 }
 
+/**
+ * The keys the directives *earlier* in this run have already set, per family.
+ *
+ * The walk is `startsRun`'s in reverse, and it deliberately does not stop at a
+ * foreign comment: `stampRun` skips comments and whitespace alike on its way to
+ * the target, so `<!-- TODO -->` between two directives does not break the merge
+ * and must not break the check of it either.
+ */
+function seedRunKeys(
+  children: RootContent[],
+  index: number,
+  style: Set<string>,
+  oq: Set<string>,
+): void {
+  for (let i = index - 1; i >= 0; i--) {
+    const sibling = children[i];
+    if (sibling === undefined) return;
+    if (sibling.type === "definition") continue;
+    if (sibling.type === "footnoteDefinition") continue;
+    if (sibling.type !== "html" || !isCommentOnly(sibling.value)) return;
+    for (const directive of directivesIn(sibling.value)) {
+      const seen = directive.name === "oq" ? oq : style;
+      for (const pair of directive.pairs) seen.add(pair.key);
+    }
+  }
+}
+
 /** The directive names one raw html node carries, unknown ones dropped. */
 function directiveNames(raw: string): string[] {
-  const names: string[] = [];
+  return directivesIn(raw).map((directive) => directive.name);
+}
+
+/** The directives one raw html node carries, unknown names dropped. */
+function directivesIn(raw: string): ParsedDirective[] {
+  const directives: ParsedDirective[] = [];
   for (const segment of scanComments(raw)) {
     if (segment.kind !== "comment" || segment.terminator !== "-->") continue;
     const parsed = parseVantageDirective(segment.value);
     if (parsed === null || parsed.kind !== "directive") continue;
     if (DIRECTIVE_VOCABULARY[parsed.name] === undefined) continue;
-    names.push(parsed.name);
+    directives.push(parsed);
   }
-  return names;
+  return directives;
 }
 
 /** Nothing but comments and whitespace, so hast sees no element here. */
