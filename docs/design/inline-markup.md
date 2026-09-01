@@ -716,9 +716,12 @@ is code to the checker. A test in
 therefore runs every `vantage:`-carrying yaml example here and in the style guide
 through the checker as a standalone document.
 
-**On GitHub, every one of these renders as the plain Markdown with the comment
-line absent.** No box, no marker, no gap beyond the blank line that was already
-there. That is the whole point of the carrier.
+**On GitHub, every one of the four _comment_ forms above renders as the plain
+Markdown with the comment line absent.** No box, no marker, no gap beyond the
+blank line that was already there. That is the whole point of the carrier — and it
+is a property of that carrier alone. The frontmatter block is the one example here
+a GitHub reader can see, which §4.5 records as the deliberate **D1** exception it
+is.
 
 > [!CAUTION]
 > **A directive at column 0 between two list items is not a legal placement, and
@@ -792,6 +795,28 @@ it were forced by the tree rather than chosen:
 - **No `isStaticMode()` gate.** D4's gate is for controls that *write*; the chip
   is a non-interactive `<span>` that cannot fail, and gating it would delete it
   from every exported site — the one place §2.5 says D5 costs nothing.
+
+**This carrier is the one place D1 does not hold, and the exception is deliberate.**
+**D1** is written about the comment carrier, which GitHub deletes; a frontmatter
+key it does not. Measured 2026-08-31 against a real GitHub blob payload
+(`github/docs`'s own `content/index.md`): GitHub renders a `.md` file's frontmatter
+as a visible table of `<th>key</th><td>value</td>` rows, and a **nested mapping**
+as a row whose cell is a sub-table — so `vantage:` / `status-chip: true` adds a
+visible `vantage` row to that table for every non-Vantage reader. No GitHub path
+hides it: `POST api.github.com/markdown`, which has no frontmatter handling at all,
+renders the whole block as a literal setext `<h2>` reading `title: … status: …
+vantage: status-chip: true`. So the honest statement of the frontmatter carrier's
+degradation is **inert everywhere else, not invisible** — no other renderer *acts*
+on the key, and one of them prints it.
+
+Accepted on three counts, not shrugged off: the table is already visible for
+`title:` and `status:`, so one more row is chrome beside chrome rather than an
+artifact in the prose; a file scope has no invisible carrier at all (§3 — the whole
+reason the comment carrier exists is that frontmatter cannot point at a section);
+and the alternative was a sidecar file, rejected in §12 for worse reasons. It is
+recorded here rather than left for a reader to infer from D1, because the §3 table's
+"Rendered as a metadata card" row is about *choosing* the carrier and is easy to
+read as history.
 
 > [!CAUTION]
 > **The two carriers have one collision, and it destroys the frontmatter: a
@@ -1221,6 +1246,10 @@ that overturned a design decision was decided by one of these.
    markup were not there. Not "renders acceptably" — renders *identically*, with
    no visible artifact. This is what eliminates fenced blocks and `:::` syntax
    (§3), and what makes a column-0 directive between list items illegal (§4.4).
+   It is a rule about the **comment carrier**. The `vantage:` frontmatter key of
+   §4.5 is the deliberate exception and has a weaker story — inert in every other
+   renderer, but *visible* on GitHub, which prints frontmatter as a table and
+   therefore prints one `vantage` row (measured; §4.5).
 2. **D2 — Unknown is inert.** An unrecognised directive name, key, or value
    produces *no styling* and no error. Per-key, not per-directive: one bad key
    does not discard its siblings. In the stylesheet this is enforced by the
@@ -1704,7 +1733,7 @@ is ever renumbered or re-spelled.
 | A9 | **No `--` restriction** in quoted values; HTML5 closes a comment on `-->` or `--!>` only, and a hand-written scanner must handle both | 2026-08-31 | §4.1 |
 | A10 | The button disables on click and degrades to a chip when an identical comment exists; `fallbackText` must be byte-identical to the popover's `displayText` | 2026-08-31 | §5.2 |
 | A11 | The button is a **sibling pass** with its own review-mode gate — the highlighter returns early on the documents that need it most | 2026-08-31 | §5.2, §6.5 |
-| A12 | **There is no document title in the UI.** The status chip is the first element of the content column; the reserved key is filtered from the card, but the `status:` row is not — the chip **promotes** the value, it does not move it; the vocabulary is `status:`'s own; no static gate | 2026-08-31 | §4.5, §5.3 |
+| A12 | **There is no document title in the UI.** The status chip is the first element of the content column; the reserved key is filtered from the card, but the `status:` row is not — the chip **promotes** the value, it does not move it; the vocabulary is `status:`'s own; no static gate. The key is **visible on GitHub** as a row in its frontmatter table — the one accepted **D1** exception, since a file scope has no invisible carrier | 2026-08-31 | §4.5, §5.3, D1 |
 | A13 | Export **`buildPipeline`**, not a rehype-only builder — `math` spans both halves. Preserve all five toggles. The checker's lint-only processor stays separate, measurably | 2026-08-31 | §6.4, §2.1 |
 | A14 | `directives.css` must stay **UNLAYERED**; cascade layers, not specificity, are what beat the typography utilities | 2026-08-31 | §4.3 |
 | A15 | `data-vantage-run` is an attribute the design did not have (`start\|middle\|end\|only`), selected **positively**, never negated, because review mode inserts a sibling inside the run | 2026-08-31 | §4.3 |

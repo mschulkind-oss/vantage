@@ -56,11 +56,12 @@ status: draft
 ```
 
 One key is Vantage's own: `vantage:`. It holds chrome that belongs to the file
-rather than to a section, it never appears as a row in the metadata card, and
-every other renderer ignores it. Today it has one key — `status-chip` — which
-shows the document's lifecycle status as a chip above the card, **in addition to**
-the `status:` row it reads — the chip surfaces the value, it does not move it, so
-the card stays a faithful view of the frontmatter:
+rather than to a section, and it never appears as a row in Vantage's own metadata
+card. No other renderer acts on it — GitHub shows it as one row in the frontmatter
+table it draws for `title:` and `status:`, and nothing more. Today it has one
+key — `status-chip` — which shows the document's lifecycle status as a chip above
+the card, **in addition to** the `status:` row it reads. The chip surfaces the
+value, it does not move it, so the card stays a faithful view of the frontmatter:
 
 ```yaml
 ---
