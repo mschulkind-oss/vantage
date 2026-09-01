@@ -15,10 +15,27 @@ updates:
       - dependency-name: "@vitejs/plugin-react"
         versions: ["6.x"]
 
+  # vantage-md and vantage-check together, not one each. They keep independent
+  # node_modules trees but must resolve the SAME katex and mermaid: the CLI's
+  # whole claim is that it validates with the engines the viewer renders with,
+  # and packages/vantage-check/test/deps.test.ts fails when they disagree.
+  #
+  # Updated separately, neither PR can pass. A bump to one side alone is exactly
+  # the drift the test exists to catch, and dependabot cannot open the other
+  # half — that is what happened to katex (fixed by hand in 4ec164ce) and then
+  # to mermaid in #73. The `directories` list plus the group is what lets one PR
+  # carry both manifests.
   - package-ecosystem: "npm"
-    directory: "/packages/vantage-md"
+    directories:
+      - "/packages/vantage-md"
+      - "/packages/vantage-check"
     schedule:
       interval: "weekly"
+    groups:
+      render-engines:
+        patterns:
+          - "katex"
+          - "mermaid"
     ignore:
       # TS 7 breaks tsup's bundled rollup-plugin-dts (pinned to typescript 5.7.3).
       # tsc --noEmit passes; the DTS build crashes. Revisit when tsup supports TS 7.
