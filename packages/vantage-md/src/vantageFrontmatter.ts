@@ -29,8 +29,8 @@ import { VANTAGE_TONES } from "./vantageDirectives.js";
  * deprecated`, and every document under `docs/` follows it. It is deliberately
  * *not* the `badge` set (`draft stale blocked done wip`): `badge` is
  * section-scoped workflow state, `status` is document lifecycle state, and
- * `in-review` — the design doc's own only example of a chip — is not a badge
- * word at all. Only `draft` is a member of both, and a token set is per key.
+ * `in-review` — the value the design doc's own only example renders — is not a
+ * badge word at all. Only `draft` is a member of both, and a token set is per key.
  */
 export const DOC_STATUSES = [
   "draft",
@@ -150,8 +150,9 @@ export function readVantageFrontmatter(
  * `true` **inherits** the document's own top-level `status:`, so the chip cannot
  * disagree with it — which is the entire point of §5.3 ("makes `status: draft`
  * visible rather than buried in a metadata card"). A literal token is kept
- * because the design doc's only example uses one, and the disagreement it makes
- * possible is turned into a checker finding rather than banned.
+ * because the design doc's first draft of that example used one, and the
+ * disagreement it makes possible is turned into a checker finding rather than
+ * banned.
  *
  * Discrimination is on `typeof`, never truthiness: `true` is a YAML boolean and
  * `2026-08-31` is a `Date`, and both would sail through a truthy test.
