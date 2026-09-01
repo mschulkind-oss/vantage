@@ -1,0 +1,17 @@
+{
+  "name": "vantage-workspace",
+  "private": true,
+  "description": "npm workspace root. Not published \u2014 see packages/vantage-md for the published library.",
+  "license": "Apache-2.0",
+  "workspaces": [
+    "frontend",
+    "packages/vantage-md",
+    "packages/vantage-check"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "typescript": "~6.0.3"
+  }
+}

@@ -7,13 +7,11 @@ default:
 setup: _hooks
     mise install
     go mod download
-    # Install each package's own deps so the app and the agent CLI can resolve
-    # them from source. No tsup build needed — the frontend imports vantage-md's
-    # TS source directly (see frontend/vite.config.ts), and so does
-    # packages/vantage-check. dist/ is built only at release.
-    cd packages/vantage-md && npm ci
-    cd packages/vantage-check && npm ci
-    cd frontend && npm ci
+    # One npm workspace, one lockfile, one install. No tsup build needed — the
+    # frontend imports vantage-md's TS source directly (see
+    # frontend/vite.config.ts), and so does packages/vantage-check. dist/ is
+    # built only at release.
+    npm ci
 
 # Run the backend + frontend dev servers (Ctrl-C to stop).
 dev path=".":
@@ -75,18 +73,16 @@ deploy: build cli
 # Format the code (Go + all three npm packages). No tests — run before committing.
 format: _deps-match
     gofmt -w cmd internal web
-    cd packages/vantage-md && npm run format
-    cd packages/vantage-check && npm run format
-    cd frontend && npm run format
+    npm run format --workspaces
 
 # Format, then lint, type-check, and test. The full local gate.
 check: format
     go vet ./cmd/... ./internal/... ./web/...
     staticcheck ./cmd/... ./internal/... ./web/...
     go test ./cmd/... ./internal/... ./web/...
-    cd packages/vantage-md && npm run lint && npm run typecheck
-    cd packages/vantage-check && npm run lint && npm run typecheck && npm run test
-    cd frontend && npm run lint && npx tsc --build && npm run test
+    npm run lint -w vantage-md && npm run typecheck -w vantage-md
+    npm run lint -w vantage-check && npm run typecheck -w vantage-check && npm run test -w vantage-check
+    npm run lint -w frontend && npx tsc --build frontend && npm run test -w frontend
     just _self-check
 
 # Read-only gate (errors on issues, never rewrites) — used by the pre-commit hook and CI.
@@ -105,9 +101,9 @@ check-ci: _deps-match
     # tests through the source alias. Its own typecheck still earns its place —
     # it runs the package standalone under its own TypeScript (~6.0.3), where
     # frontend/'s --build reads the same files under ~5.9.3.
-    ( cd packages/vantage-md && npm run format:check && npm run lint && npm run typecheck )
-    ( cd packages/vantage-check && npm run format:check && npm run lint && npm run typecheck && npm run test )
-    ( cd frontend && npm run format:check && npm run lint && npx tsc --build && npm run test )
+    ( npm run format:check -w vantage-md && npm run lint -w vantage-md && npm run typecheck -w vantage-md )
+    ( npm run format:check -w vantage-check && npm run lint -w vantage-check && npm run typecheck -w vantage-check && npm run test -w vantage-check )
+    ( npm run format:check -w frontend && npm run lint -w frontend && npx tsc --build frontend && npm run test -w frontend )
     # Then the artifact, not just the source it was built from.
     just _self-check
 
@@ -122,18 +118,19 @@ check-ci: _deps-match
 _deps-match:
     #!/usr/bin/env bash
     set -euo pipefail
-    for pkg in frontend packages/vantage-md packages/vantage-check; do
-        if [ ! -d "$pkg/node_modules" ]; then
-            echo "$pkg/node_modules is missing — this is a fresh clone."
-            echo "Run: just setup   (mise install alone provisions the toolchain, not the packages)"
-            exit 1
-        fi
-        if ! out="$(cd "$pkg" && npm ls --depth=0 2>&1)"; then
-            echo "$pkg/node_modules does not match its manifest (run: cd $pkg && npm ci):"
-            echo "$out" | grep -E 'invalid|missing|npm error' | head -20 || echo "$out" | head -20
-            exit 1
-        fi
-    done
+    if [ ! -d node_modules ]; then
+        echo "node_modules is missing — this is a fresh clone."
+        echo "Run: just setup   (mise install alone provisions the toolchain, not the packages)"
+        exit 1
+    fi
+    # One tree for all three workspaces, so one question: does it match the
+    # manifests? CI installs with `npm ci`, which answers that differently from
+    # a stale local install.
+    if ! out="$(npm ls --depth=0 --workspaces 2>&1)"; then
+        echo "node_modules does not match the manifests (run: npm ci):"
+        echo "$out" | grep -E 'invalid|missing|npm error' | head -20 || echo "$out" | head -20
+        exit 1
+    fi
 
 # End-of-task gate: assert the tree is clean, then re-run the full CI gate.
 #
@@ -197,7 +194,7 @@ web-sync:
         echo "warning: npm not found — embedding the committed web/dist export (may be stale)"
         exit 0
     fi
-    ( cd frontend && npm run build )
+    npm run build --workspace frontend
     rm -rf web/dist
     mkdir -p web/dist
     cp -R frontend/dist/. web/dist/

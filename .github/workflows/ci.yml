@@ -35,20 +35,17 @@ jobs:
       - name: Install mise
         uses: jdx/mise-action@v4
 
+      # One workspace, one lockfile, one install — this covers all three
+      # packages. `just check-ci` then compiles vantage-check into a standalone
+      # binary with bun (which mise installs from mise.toml) and runs it over
+      # the repo's own documentation, so the gate covers the artifact we ship
+      # and not just the source it is built from. That needs vantage-md's
+      # dependencies resolvable too, since vantage-check bundles its source.
+      - name: Install the npm workspace
+        run: npm ci
+
       - name: Build vantage-md package
-        run: cd packages/vantage-md && npm ci && npx tsup
-
-      # `just check-ci` compiles this package into a standalone binary with bun
-      # (which mise installs from mise.toml) and runs it over the repo's own
-      # documentation, so the gate covers the artifact we ship and not just the
-      # source it is built from. The install has to come first: vantage-check
-      # imports vantage-md's TypeScript source, so both packages' dependencies
-      # must resolve at bundle time.
-      - name: Install vantage-check dependencies
-        run: cd packages/vantage-check && npm ci
-
-      - name: Install frontend dependencies
-        run: cd frontend && npm ci
+        run: npm exec --workspace vantage-md -- tsup
 
       - name: Download Go modules
         run: go mod download
