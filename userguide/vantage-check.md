@@ -43,8 +43,9 @@ curl -fsSL "https://github.com/mschulkind-oss/vantage/releases/download/vantage-
 ```
 
 Archives are published on the release named `vantage-check@<version>`: `<os>` is
-`linux`, `darwin`, or `windows`; `<arch>` is `x64` or `arm64` (Windows is `x64`
-only).
+`linux` or `darwin` and `<arch>` is `x64` or `arm64`. There is no Windows build
+([`../docs/design/pypi-distribution.md`](../docs/design/pypi-distribution.md)
+§4.4).
 
 ### From source
 

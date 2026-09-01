@@ -93,23 +93,24 @@ jobs:
           # platform tag. The Linux wheels are tagged manylinux rather than
           # linux_*, because PyPI rejects a bare `linux_x86_64` upload outright.
           #
-          # The loop reads that table on fd 3, so `bun`, `zip` and `python3` in
-          # the body keep the real stdin and cannot swallow a row.
+          # Windows is deliberately not a target (docs/design/pypi-distribution.md
+          # §4.4): nothing tests the CLI there, and its absence is what lets this
+          # loop assume one binary name and one archive format. Re-adding a
+          # `win_*` row means restoring the `.exe` naming and the zip branch, and
+          # build-wheel.py will reject the tag until someone does.
+          #
+          # The loop reads that table on fd 3, so `bun` and `python3` in the body
+          # keep the real stdin and cannot swallow a row.
           while read -r target os arch pytag <&3; do
             [ -n "$target" ] || continue
             echo "::group::${target}"
             rm -rf dist
             bun run build --target "$target"
 
-            # bun appends .exe itself for windows targets; build.ts deliberately
-            # does not spell the extension. Assert the file we expect is there,
-            # so a change in that behaviour fails loudly here instead of
-            # shipping an empty archive and an unusable wheel.
-            if [ "$os" = windows ]; then
-              exe="vantage-check.exe"
-            else
-              exe="vantage-check"
-            fi
+            # Assert the file we expect is there, so a change in bun's output
+            # naming fails loudly here instead of shipping an empty archive and
+            # an unusable wheel.
+            exe="vantage-check"
             binary="dist/${exe}"
             test -f "$binary" || { echo "expected ${binary} after building ${target}, got:"; ls -l dist; exit 1; }
 
@@ -119,11 +120,7 @@ jobs:
             cp "$root/LICENSE" "$root/README.md" "$staging/"
 
             name="vantage-check_${version}_${os}_${arch}"
-            if [ "$os" = windows ]; then
-              ( cd "$staging" && zip -q "$root/archives/${name}.zip" "$exe" LICENSE README.md )
-            else
-              tar -czf "$root/archives/${name}.tar.gz" -C "$staging" "$exe" LICENSE README.md
-            fi
+            tar -czf "$root/archives/${name}.tar.gz" -C "$staging" "$exe" LICENSE README.md
 
             # Wheels land in their own directory. The publish step must be
             # handed *.whl only — packages-dir on dist/ would try to upload the
@@ -139,7 +136,6 @@ jobs:
           bun-linux-arm64   linux    arm64  manylinux_2_28_aarch64
           bun-darwin-x64    darwin   x64    macosx_11_0_x86_64
           bun-darwin-arm64  darwin   arm64  macosx_11_0_arm64
-          bun-windows-x64   windows  x64    win_amd64
           TARGETS
 
           ls -l "$root/archives" "$root/wheels"

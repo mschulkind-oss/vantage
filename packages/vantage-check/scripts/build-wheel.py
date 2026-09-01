@@ -64,7 +64,7 @@ def main() -> int:
     parser.add_argument(
         "--platform-tag",
         required=True,
-        help="wheel platform tag, e.g. manylinux_2_28_x86_64 or win_amd64",
+        help="wheel platform tag, e.g. manylinux_2_28_x86_64 or macosx_11_0_arm64",
     )
     parser.add_argument("--version", required=True)
     parser.add_argument("--out-dir", default=Path("dist"), type=Path)
@@ -80,18 +80,19 @@ def main() -> int:
     data_scripts = f"{PACKAGE}-{version}.data/scripts"
     # The script name has to be the name the installed executable is invoked by:
     # there is no console-script shim in this wheel, the binary *is* the script,
-    # so `uvx vantage-check` resolves `vantage-check` on POSIX and
-    # `vantage-check.exe` in Scripts\ on Windows.
-    is_windows = "win" in args.platform_tag
-    script_name = "vantage-check.exe" if is_windows else "vantage-check"
+    # so `uvx vantage-check` resolves `vantage-check` directly.
+    script_name = "vantage-check"
 
-    # bun names only its Windows output with a .exe suffix. If the tag and the
-    # binary disagree, the wheel would ship (say) a Linux ELF under win_amd64:
-    # it installs cleanly and only fails once a user runs it. Fail here instead.
-    if is_windows != (binary.suffix == ".exe"):
+    # Windows is not a target (docs/design/pypi-distribution.md §4.4). It used
+    # to be, and it carried the whole reason this check exists: bun suffixes
+    # only its Windows output with .exe, so a tag and a binary that disagreed
+    # produced a wheel that installed cleanly and failed on first run. Rather
+    # than keep that branch alive with nothing exercising it, refuse the tag.
+    if "win" in args.platform_tag:
         parser.error(
-            f"--platform-tag {args.platform_tag} and --binary {binary.name} "
-            "disagree about the platform"
+            f"--platform-tag {args.platform_tag}: Windows is not a supported "
+            "target. Re-adding one means restoring the .exe script naming here "
+            "and in the release workflow."
         )
 
     args.out_dir.mkdir(parents=True, exist_ok=True)

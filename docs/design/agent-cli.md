@@ -146,7 +146,8 @@ sibling workspace package that imports its source and is never published to npm
 at all.
 
 **The build cost is one-time setup, then per-release CI.** A cross-compile
-matrix (linux x64/arm64, darwin x64/arm64, windows x64) wired once into the
+matrix (linux x64/arm64, darwin x64/arm64 — Windows was dropped on 2026-09-01,
+see [`pypi-distribution.md`](pypi-distribution.md) §4.4) wired once into the
 existing release workflow; no per-user cost, and nothing an agent ever waits on.
 The toolchain is already Node 22 (`mise.toml`), so Node's SEA is available;
 `bun build --compile` is the other candidate and is not currently installed
