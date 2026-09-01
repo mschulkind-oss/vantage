@@ -83,7 +83,7 @@ Verified 2026-09-01, against pypi.org, the GitHub releases API, and this tree:
 | Channel | Carries | At | Last published |
 | :--- | :--- | :--- | :--- |
 | **npm `vantage-md`** | the Markdown-pipeline library (`packages/vantage-md`) | current | on `vantage-md@*` tags ([`publish-npm.yml`](../../.github/workflows/publish-npm.yml)) |
-| **PyPI `vantage-md`** | **the retired Python FastAPI server** — `vantage_md-0.4.2-py3-none-any.whl` + sdist, `requires-python >=3.13` | `0.4.2` | 2026-04-23 |
+| **PyPI `vantage-md`** | the retired Python FastAPI server — **`0.4.1` and `0.4.2` were yanked on 2026-09-01**, so they answer only an exact pin and no longer resolve for anyone | `0.4.2`, yanked | 2026-04-23 |
 | **PyPI `vantage-check`** | nothing — the project does not exist (404) | — | never |
 | **GitHub releases** | Go binaries, four archives (`linux`/`darwin` × `amd64`/`arm64`) | `v0.5.3` | 2026-07-20 |
 | **Homebrew tap** | `Formula/vantage.rb`, generated from those archives ([`update-brew-tap.sh`](../../scripts/update-brew-tap.sh)) | `v0.5.3` | 2026-07-20 |
@@ -247,11 +247,32 @@ console scripts, `vantage-md` and `vantage`, and its README said so: *"Both
 thing."* Every other channel installs `vantage` — the archives, the tap formula,
 `go install`, `just deploy`.
 
-**Ruling (2026-09-01): `--entry-point vantage`.** The installed command matches
-every other channel, and the ephemeral one-shot becomes
-`uvx --from vantage-md vantage <path>`. Note that `--from` is only the *one-shot*
-tax: `uv tool install vantage-md` and `pipx install vantage-md` put `vantage` on
-`PATH` with no `--from` anywhere.
+**Ruling (2026-09-01): both, with `vantage` as the real command.** The wheel
+installs `vantage` — the binary itself, no indirection — plus `vantage-md` as an
+alias, so `uvx vantage-md <path>` keeps working with no `--from` and the installed
+command still matches every other channel. Avoiding `--from` was the point of the
+two-script wheel in the first place, and nothing about `go-to-wheel`'s limits
+needed to be inherited once the builder was ours ([§4.5](#45-which-builder--and-the-dual-entry-question-it-settles)).
+
+The alias is a **console-script entry point** — `entry_points.txt` naming a
+generated `_alias.py` that `os.execv`s the sibling binary — not a copied binary
+and not a hand-written shell shim.
+
+> [!WARNING]
+> **A `$0`-relative shell shim is the obvious implementation and it is broken.**
+> `exec "$(dirname "$0")/vantage" "$@"` assumes `$0` is a path, but a shell
+> resolving a bare command through `PATH` passes the *name*, so `dirname` yields
+> `.` and the exec fails from any other directory. A console script sidesteps it
+> twice over: the installer writes the launcher with the right shebang for the
+> environment, and the launcher finds the binary through
+> `sysconfig.get_path("scripts")` — the scripts directory of the very environment
+> it was installed into. The interpreter cost lands only on the alias; `vantage`
+> is the raw binary.
+>
+> Verified 2026-09-01 across all three install shapes: `pip install` into a venv,
+> `uvx --from <wheel> vantage-md`, and `uv tool install`, which symlinks both
+> commands out to `~/.local/bin`. Each runs the alias and passes arguments
+> through.
 
 > [!NOTE]
 > **The two-script wheel was not a mistake.** It bought `uvx vantage-md <path>`
@@ -304,7 +325,7 @@ artifacts.
 | :--- | :--- | :--- |
 | Go compile at release | **A second one**, inside the tool — so the wheel's binary is a different artifact from the one attached to the release | None: it wraps the binary `publish.yml` already cross-compiled, so wheel and archive are the same bytes |
 | Platform set | The tool's, and it can change under us | Ours, per invocation — and since `CGO_ENABLED=0` makes the binary static, the same bytes can carry a `manylinux` **and** a `musllinux` tag with no second build |
-| Entry points | Exactly one | As many as we write into `.data/scripts/` — the alias costs one generated two-line shim (`exec "$(dirname "$0")/vantage" "$@"`), not a duplicated binary and not a build backend |
+| Entry points | Exactly one | As many as we declare — the binary as the real script, plus any alias as a console-script entry point. No duplicated binary, no build backend |
 | Version stamping | `--set-version-var` / `--ldflags` | Already done upstream by `publish.yml`'s own `go build` ldflags |
 | Maintenance | Upstream's, free | Ours — but already ours, already exercised, and the wheel spec's surface here is frozen |
 | Release chain | One more tool fetched at release time | Nothing new |
@@ -314,11 +335,10 @@ compiles per release and two binaries that *should* be identical; one builder
 means the thing on PyPI is provably the thing on the release.
 
 > [!NOTE]
-> **The shim is POSIX-only, and that is now fine.** A `sh` shim in
-> `.data/scripts/` works on Linux and macOS and would need a `.exe` on Windows —
-> which is exactly the disagreement that produced §F3's defect. With Windows
-> dropped from both artifacts ([§4.4](#44-which-platforms-the-server-wheel-covers)),
-> the trap that made a second script name expensive is gone.
+> **An entry point is portable in a way a shim is not**, which is a happy
+> accident rather than a requirement here: the installer generates the launcher
+> per environment, so the same wheel metadata would work on Windows too if
+> Windows ever came back ([§4.4](#44-which-platforms-the-server-wheel-covers)).
 
 **Ruling (2026-09-01): ours.** It moved to
 [`scripts/build-wheel.py`](../../scripts/build-wheel.py) — a shared tool has no
@@ -329,8 +349,9 @@ locally on both binaries: a 37 MB `vantage_check` wheel from the bun binary and 
 10 MB `vantage_md` wheel from the Go one, the latter installed into a venv where
 `vantage --version` answers and the server serves its embedded assets.
 
-No upstream patch is needed for anything here, now or later: the alias is a file
-we would write into `.data/scripts/`, not a feature we would have to request.
+No upstream patch was needed, and the alias is not hypothetical: `--alias NAME`
+is repeatable, and `publish.yml` passes `--alias vantage-md`
+([§4.3](#43-the-command-is-vantage-the-one-shot-pays-for-it)).
 
 ## 5. The install matrix after the fix
 
@@ -338,7 +359,7 @@ we would write into `.data/scripts/`, not a feature we would have to request.
 | :--- | :--- | :--- |
 | Human, macOS/Linux | Homebrew | `brew install mschulkind-oss/tap/vantage` |
 | Human, Go toolchain | `go install` | `go install …/cmd/vantage@latest` |
-| Human, Python-first machine | **PyPI wheel** | `uv tool install vantage-md` then `vantage <path>`; one-shot is `uvx --from vantage-md vantage <path>` (§4.3) |
+| Human, Python-first machine | **PyPI wheel** | `uvx vantage-md <path>` for a one-shot, or `uv tool install vantage-md` for `vantage` on `PATH` (§4.3) |
 | Human, neither | release archive | download and untar |
 | **Agent** | **PyPI wheel** | `uvx vantage-check <file>` |
 | Frontend / library consumer | npm | `npm i vantage-md` |
@@ -427,7 +448,7 @@ payload's `uvx vantage-check <file>` string, and
 
 | Risk | Mitigation |
 | :--- | :--- |
-| **R1. Silent fallback to the dead app** — `py3-none-any` `0.4.x` stays compatible with every platform, so any machine outside the wheel set resolves to it and runs the Python viewer with no warning ([§4.2](#42-version-continuity-and-why-the-yank-is-not-cosmetic)) | Yank `0.4.1` and `0.4.2` — settled, and step 1 of [§9](#9-what-i-would-do-in-order) |
+| **R1. Silent fallback to the dead app** — `py3-none-any` `0.4.x` was compatible with every platform, so any machine outside the wheel set resolved to it and ran the Python viewer with no warning ([§4.2](#42-version-continuity-and-why-the-yank-is-not-cosmetic)) | **Closed 2026-09-01: both releases yanked.** A machine outside the wheel set now gets a clean resolution failure instead of a different program |
 | **R2. A build with no frontend in it** — the embed tolerates an empty `web/dist`, so any build path that skipped the frontend steps shipped a placeholder page instead of the app, warning only to the server's own stderr ([§4.1](#41-the-frontend-has-to-be-there-at-build-time-and-today-it-often-isnt)) | **Closed** by tracking the export (`08579a0`): there is no longer a build path without a frontend. The residual risk is a *stale* export rather than a missing one, which `just build` refreshes and a reviewer can see in the diff |
 | **R8. `go install` shipped the placeholder** — [`README.md:21-25`](../../README.md#L21-L25) documents `go install …/cmd/vantage@latest`, and the module zip carried only `web/dist/.gitkeep`. Verified 2026-09-01 against a pristine `git archive HEAD` build | **Closed** by the same commit, and re-verified the same way. Note the module proxy caches by version, so the fix reaches `@latest` only once a release tag includes the tracked export |
 | **R3. The wheel job fails after the release is public** | Keep it a separate job with no `needs:` on `build`, so archives and the tap land regardless — the same tolerance `publish-check.yml` already documents for its own PyPI step |
@@ -443,28 +464,40 @@ wheel metadata; the tracked export and the `web-sync`/`build-bin` split
 (`08579a0`); the shared `scripts/build-wheel.py`; and `publish.yml`'s wheel build
 plus its `pypi` job.
 
-**What is left, in order:**
+**Also done, owner side, 2026-09-01:** `0.4.1` and `0.4.2` yanked (**R1**
+closed), and `vantage-md`'s trusted publisher confirmed against this repo's
+`publish.yml`.
 
-1. **Yank `0.4.1` and `0.4.2`.** Owner action on pypi.org, one minute. The only
-   step that makes today's state *less* wrong entirely on its own, and the fix
-   for **R1**.
-2. **Confirm `vantage-md`'s trusted publisher** on pypi.org names this repo and
-   the `publish.yml` workflow. The 2026-04 configuration pointed at the job
-   `e4e3120` deleted, so this is a check, not an assumption — a wrong publisher
-   fails the `pypi` job and nothing else.
-3. **Cut the next app release** (102 commits are waiting) and watch the `pypi`
-   job. Then install from PyPI on a clean machine and confirm the server serves
-   the real frontend and reports the tag's version from
-   `internal/buildinfo.version` — the local check used a locally built binary,
-   whose version came from `debug.ReadBuildInfo` rather than the release ldflags.
-4. **Register `vantage-check` on PyPI**, configure its trusted publisher, push
-   `vantage-check@0.1.0`, and watch that first run
-   ([§6](#6-the-agent-cli-its-own-project-or-a-passenger)'s IMPORTANT).
-5. **Then** [`agent-bootstrap.md`](agent-bootstrap.md) step 2 is unblocked and
+**What is left:**
+
+1. **Cut the next app release** (102 commits are waiting) and watch the `pypi`
+   job. Then install from PyPI on a clean machine and confirm the version
+   reported comes from the tag: every local check ran against a locally built
+   binary, whose version came from `debug.ReadBuildInfo` rather than the release
+   ldflags. The workflow's own smoke test greps for it, so a mismatch fails the
+   release rather than shipping quietly.
+2. **Register `vantage-check` on PyPI** as a pending publisher, then push
+   `vantage-check@0.1.0`. That tag is the first execution of a path nobody has
+   watched ([§6](#6-the-agent-cli-its-own-project-or-a-passenger)'s IMPORTANT),
+   which is why that workflow now smoke-tests its host wheel before uploading
+   anything. The form's four fields, in order:
+
+   | Field | Value | Note |
+   | :--- | :--- | :--- |
+   | PyPI Project Name | `vantage-check` | |
+   | Owner | `mschulkind-oss` | |
+   | Repository name | `vantage` | The **bare** name — `mschulkind-oss/vantage` here is what "Invalid repository name" means, since the owner is already its own field |
+   | Workflow name | `publish-check.yml` | Not `publish.yml`, which publishes `vantage-md` |
+   | Environment name | `pypi` | Matches the `pypi` job this workflow now has |
+
+   Nothing about this conflicts with `vantage-md`'s publisher: PyPI scopes a
+   trusted publisher to a *project*, and one repository may be named by as many
+   of them as it likes.
+3. **Then** [`agent-bootstrap.md`](agent-bootstrap.md) step 2 is unblocked and
    its **R1** clears — the payload's `uvx vantage-check` resolves for the first
    time.
 
-Step 4 is independent of steps 1–3 and is the only one that gates the bootstrap
+Step 2 is independent of step 1 and is the only one that gates the bootstrap
 design.
 
 ## 10. Alternatives considered
@@ -505,7 +538,7 @@ design.
 | :--- | :--- | :--- | :--- |
 | OQ-P1 | Yank `vantage-md` `0.4.1` and `0.4.2` — the `py3-none-any` fallback is the silent failure | 2026-09-01 | §4.2, §9 step 1 |
 | OQ-P2 | The agent CLI gets **its own PyPI project**, `vantage-check`; not a second executable in the server's wheel. Supersedes `agent-bootstrap.md`'s `OQ-B7` | 2026-09-01 | §6 |
-| OQ-P3 | `--entry-point vantage`, matching every other channel; the one-shot is `uvx --from vantage-md vantage`. The `0.4.2` two-script wheel was a sound trade that `go-to-wheel` cannot express | 2026-09-01 | §4.3 |
+| OQ-P3 | **Both commands**: `vantage` is the binary, `vantage-md` an alias, so `uvx vantage-md` needs no `--from` — the two-script wheel's original point, restored as a console-script entry point once the builder became ours (**OQ-P7**) | 2026-09-01 | §4.3 |
 | OQ-P4 | The four archive targets (Linux + macOS × x86-64 + arm64), musl if free, **no Windows**. Pass `--platforms` explicitly rather than trusting defaults | 2026-09-01 | §4.4, §7 |
 | OQ-P6 | The built frontend is a **tracked artifact**, polyclav's shape: `web-sync` refreshes it and is the only recipe allowed to dirty a tracked file, `build-bin` embeds it as-is. It is the only fix that reaches `go install`; 5.5 MB and the churn are the price | 2026-09-01 | §4.1, `08579a0` |
 | OQ-P7 | **Our own builder**, moved to `scripts/build-wheel.py` and parameterized, for both artifacts. `go-to-wheel` would compile the Go binary a second time, so PyPI and the release would carry different bytes | 2026-09-01 | §4.5 |
@@ -518,4 +551,6 @@ and what remains is owner action on pypi.org rather than a decision
 ([§9](#9-what-i-would-do-in-order)). New questions get appended here as the first
 release exercises the path — the likeliest candidate is what the `pypi` job does
 on a wheel whose version already exists, which `--check-url` is there to make
-survivable.
+survivable. Both release workflows now install their host wheel and run its
+commands before uploading, so a first-run defect of §F3's kind fails the job
+rather than reaching PyPI.

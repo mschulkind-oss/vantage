@@ -110,6 +110,7 @@ jobs:
               --binary vantage \
               --distribution vantage-md \
               --script vantage \
+              --alias vantage-md \
               --summary "A beautiful local Markdown viewer with live reload and Git awareness" \
               --readme README.md \
               --platform-tag "$pytag" \
@@ -117,6 +118,23 @@ jobs:
               --out-dir wheels
           done
           ls -l wheels
+
+      # Only this leg's binary can run on the runner, so only this leg can prove
+      # the wheel is installable and both of its commands work. `uvx vantage-md`
+      # resolving without --from is the whole point of the alias, and the alias
+      # is a generated console script — exactly the class of thing that looks
+      # right in a zip and fails on first use.
+      - name: Smoke-test the host wheel
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          python3 -m venv /tmp/wheelcheck
+          /tmp/wheelcheck/bin/pip install --quiet \
+            "wheels/vantage_md-${version}-py3-none-manylinux_2_17_x86_64.whl"
+          /tmp/wheelcheck/bin/vantage --version
+          /tmp/wheelcheck/bin/vantage-md --version   # the alias execs the binary
+          /tmp/wheelcheck/bin/vantage --version | grep -F "${version}"
 
       - name: Upload the wheels for the publish job
         uses: actions/upload-artifact@v7

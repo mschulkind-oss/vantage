@@ -27,6 +27,13 @@ Usage:
         --platform-tag manylinux_2_28_x86_64 \\
         --version 0.1.0 \\
         --out-dir wheels
+
+An --alias adds a second installed command for the same binary, which is how
+`uvx vantage-md` keeps working while `vantage` stays the real command. It is a
+console-script entry point rather than a copied binary or a hand-written shell
+shim: the installer generates the launcher with the right shebang for the
+environment it is installing into, and a `$0`-relative shell shim would break the
+moment a caller passes a bare argv[0].
 """
 
 from __future__ import annotations
@@ -65,6 +72,13 @@ def main() -> int:
     parser.add_argument(
         "--script",
         help="installed command name (default: the distribution name)",
+    )
+    parser.add_argument(
+        "--alias",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="extra command name that execs --script (repeatable)",
     )
     parser.add_argument("--summary", required=True, help="one-line description")
     parser.add_argument(
@@ -116,6 +130,42 @@ def main() -> int:
     args.out_dir.mkdir(parents=True, exist_ok=True)
     wheel_path = args.out_dir / f"{package}-{version}-{tag}.whl"
 
+    # An alias is a console script the *installer* generates, pointing at the
+    # launcher module below. Writing a shell shim here instead would mean
+    # guessing a shebang and locating the binary from $0 — which is the command
+    # name, not a path, whenever the caller does not pass a full one.
+    alias_files: list[tuple[str, bytes, bool]] = []
+    if args.alias:
+        alias_files.append(
+            (
+                f"{package}/_alias.py",
+                (
+                    f'"""Exec the {script_name} binary installed beside this '
+                    'package."""\n\n'
+                    "import os\n"
+                    "import sys\n"
+                    "import sysconfig\n\n\n"
+                    "def main() -> None:\n"
+                    f'    name = "{script_name}"\n'
+                    "    # The scripts dir of the environment this launcher was\n"
+                    "    # installed into; under a venv or a uv/pipx tool install\n"
+                    "    # that is where the real binary landed too.\n"
+                    '    target = os.path.join(sysconfig.get_path("scripts"), name)\n'
+                    "    if not os.path.exists(target):\n"
+                    "        here = os.path.dirname(os.path.realpath(sys.argv[0]))\n"
+                    "        target = os.path.join(here, name)\n"
+                    "    os.execv(target, [target, *sys.argv[1:]])\n"
+                ).encode(),
+                False,
+            )
+        )
+        entry_points = "[console_scripts]\n" + "".join(
+            f"{alias} = {package}._alias:main\n" for alias in args.alias
+        )
+        alias_files.append(
+            (f"{dist_info}/entry_points.txt", entry_points.encode(), False)
+        )
+
     files: list[tuple[str, bytes, bool]] = [
         (
             f"{package}/__init__.py",
@@ -156,6 +206,8 @@ def main() -> int:
         ),
     ]
 
+    files.extend(alias_files)
+
     records = [record_line(name, data) for name, data, _ in files]
     records.append(f"{dist_info}/RECORD,,")
 
@@ -174,7 +226,8 @@ def main() -> int:
         wheel.writestr(record_info, "\n".join(records) + "\n")
 
     size_mb = wheel_path.stat().st_size / 1024 / 1024
-    print(f"wheel: {wheel_path} ({size_mb:.0f} MB)")
+    commands = ", ".join([script_name, *args.alias])
+    print(f"wheel: {wheel_path} ({size_mb:.0f} MB) — installs: {commands}")
     return 0
 
 
