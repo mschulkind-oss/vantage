@@ -1,7 +1,15 @@
 /* vantage-md styles
  *
- * Import this file to get line-anchor highlight styles.
+ * Import this file to get the line-anchor highlight styles and the theme layer
+ * for the `data-vantage-*` directive attributes.
  * Usage: import "vantage-md/styles";
+ *
+ * Both halves of the directive wiring are load-bearing. Without this re-export
+ * the published package and the package's own <MarkdownViewer> ship no
+ * directive CSS, while the app — which imports the same file by relative
+ * source path — looks perfect: a D5 break with no symptom where anyone would
+ * see it.
  */
 
 @import "./line-anchor.css";
+@import "./directives.css";

@@ -7,6 +7,24 @@
    that source to keep classes used only inside the package from being purged. */
 @source "../../packages/vantage-md/src";
 
+/* The theme layer for the `data-vantage-*` directive attributes. It lives in
+   packages/vantage-md so the app, the package's own viewer and the CLI checker
+   read one palette (D5). Imported *here*, and by relative source path, for two
+   measured reasons:
+     - it must land BEFORE the app's own rules. The lone-block tone wash and the
+       transient state backgrounds below (`.line-anchor-highlight`,
+       `.review-highlight-block`, `.review-block-hovered`) are all one-class
+       specificity, so source order is the entire tie-break — and a transient
+       state has to beat a document's standing tone.
+     - `@import "vantage-md/styles/directives.css"` does not resolve (no such
+       subpath in the package's `exports`), and the one that does resolve,
+       `vantage-md/styles`, points at the gitignored publish-only
+       `dist/styles.css` — green here off a stale build, broken in CI.
+   Do not wrap it in an `@layer` either: landing unlayered is what lets plain
+   attribute selectors outrank the typography plugin's utilities.
+   `frontend/src/lib/directiveCssWiring.test.ts` pins the path and the order. */
+@import "../../packages/vantage-md/src/styles/directives.css";
+
 body {
   margin: 0;
   font-family:
@@ -172,6 +190,17 @@ code {
   position: relative;
   padding-left: 1.5em;
   margin-left: -1.5em;
+}
+/* App half of the directive wiring. Prose headings are pulled 1.5em left to open
+   the ¶-anchor gutter (just above), so a *toned* heading has to tell the
+   package's rule how far to shift back, or one section's vertical rule lands in
+   three different places — measured: h2 box left −36px, h3 −30px, p 0px, because
+   1.5em is em-relative and every heading level has a different font-size. The
+   same `1.5em` on the pseudo-element resolves per level and cancels it exactly,
+   which is why this value must stay equal to the `padding-left` above
+   (`frontend/src/lib/directiveCssWiring.test.ts` compares them). */
+.prose :is(h1, h2, h3, h4, h5, h6)[data-vantage-tone] {
+  --vantage-tone-heading-gutter: 1.5em;
 }
 .heading-anchor {
   position: absolute;
