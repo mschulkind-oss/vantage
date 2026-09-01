@@ -8,8 +8,9 @@ summary: "Vantage cannot initiate contact with an agent. The review payload is n
 
 # The first thing we ever say to an agent, and how to make it stick
 
-**Status:** DESIGN SKETCH, 2026-08-31, amended 2026-09-01 with §3.1 and **P6**.
-Nothing built. Extends
+**Status:** DESIGN SKETCH, 2026-08-31, amended 2026-09-01 with §3.1 and **P6**,
+and again the same day to correct §5.1 — this project *does* have a PyPI
+project. Nothing built. Extends
 [`agent-cli.md`](agent-cli.md), which is DECIDED and whose **P1**–**P3** hold
 unchanged here. Every claim about existing code was verified against the tree on
 2026-08-31.
@@ -250,25 +251,49 @@ repo builds its wheel.
 
 ### 5.1 Where the packaging actually stands
 
-Verified 2026-08-31:
+Verified against the tree 2026-08-31; the PyPI facts re-checked against
+pypi.org on 2026-09-01, which is where the original of this section was wrong.
 
 - **No `vantage-check` release exists.** `git tag` lists only the app's `v*`
   tags (`v0.0.1` … `v0.5.3`); no `vantage-check@*` tag has ever been pushed.
-- **The PyPI project does not exist either.** The release workflow says so
-  itself: publishing requires *"the `vantage-check` project to exist on PyPI
-  with GitHub OIDC trusted publishing configured for this repo — an owner action
-  outside this repo"*
+- **`vantage-check` is not on PyPI** — `pypi.org/pypi/vantage-check/json`
+  returns 404. The release workflow says the same thing prospectively:
+  publishing requires *"the `vantage-check` project to exist on PyPI with GitHub
+  OIDC trusted publishing configured for this repo — an owner action outside
+  this repo"*
   ([`publish-check.yml:19-23`](../../.github/workflows/publish-check.yml#L19-L23)).
-- **The Go app is not on PyPI at all.** `vantage` ships as GitHub release
-  archives plus a Homebrew tap
-  ([`publish.yml`](../../.github/workflows/publish.yml)); nothing there touches
-  Python packaging.
+- **But this project does have a PyPI project, and it is `vantage-md`.** Not
+  `vantage`, which on PyPI is an unrelated 2020 distributed-learning package
+  from IKNL. `vantage-md` on PyPI is *the retired Python viewer app* —
+  `vantage_md-0.4.2-py3-none-any.whl`, `requires-python >=3.13`, uploaded
+  2026-04-23 — shipped by `4e4d744` (*"feat: ship vantage-md on PyPI + Homebrew
+  with zero-config first-run"*) and orphaned five weeks later by `e4e3120`,
+  which deleted `pyproject.toml`, `src/vantage/`, and the PyPI job along with
+  the rest of the Python backend. The Go app has indeed never been on PyPI; it
+  ships as GitHub release archives plus a Homebrew tap
+  ([`publish.yml`](../../.github/workflows/publish.yml)).
 
-So the question is not *"do we register a second PyPI package."* It is that the
-**first** one is still unregistered, while the payload already tells every agent
-to run `uvx vantage-check` — a promise that resolves to nothing today. That is
+> [!WARNING]
+> **One name, two artifacts, two registries — and one of them is dead.**
+> `vantage-md` means the Markdown-pipeline library on npm and the retired
+> FastAPI app on PyPI, where `uvx vantage-md` still installs and runs a viewer
+> four months behind `v0.5.3` and no longer built from this tree (**R7**). That
+> is the in-house example of **R5**: the name was permanent from its first
+> publish, and it outlived the thing it named.
+
+Two consequences, and they pull in opposite directions. Against reviving that
+project: the app has no Python packaging left to revive — `e4e3120` deleted it,
+and the Go binary has never been wheeled. In favour: the *release* mechanics are
+a known quantity, because trusted publishing was configured for `vantage-md`
+once and the deleted job shows the exact shape (`id-token: write`,
+`environment: pypi`, `uv publish` with no token). Which of those wins is
+[OQ-B7](#open-questions).
+
+What no shape changes is that **the payload already tells every agent to run
+`uvx vantage-check`, and that promise resolves to nothing today.** That is
 [R1](#7-risks), it is live right now, and it is independent of everything else
-here.
+here. *How* it resolves is [OQ-B7](#open-questions); that it must resolve is not
+open.
 
 ### 5.2 How `uvx` actually selects what to run
 
@@ -348,6 +373,7 @@ depends on, which is [§8](#8-what-i-would-build-in-order) step 2.
 | **R4. A persisted pointer outlives the tool's reach** — a skill that says "run `uvx …`" in a sandbox without `uvx` is a dead end on every future document, not just once | The generated text carries the same fallback the fixative line does: if it is not available, carry on |
 | **R5. Name lock-in** — the distribution name is unclaimed today and permanent after first publish, while the tool is growing commands that are not checks | Settle it before step 2, not after. [OQ-B4](#open-questions) |
 | **R6. Two-mode confusion** — an agent runs the generator instead of the check, or treats the check as setup | Distinct verbs, one sentence each, and the fixative line keeps its current position and wording |
+| **R7. A dead distribution still answers to a name we use** — `uvx vantage-md` installs the retired Python app (§5.1). An agent guessing the name, or a human following an old README, gets working-but-abandoned software, which is worse than the 404 `vantage-check` gives | Owner action, independent of everything else here: yank 0.4.1/0.4.2 on PyPI, or accept it deliberately. Not a blocker for either shape in [OQ-B7](#open-questions) |
 
 **What this deletes.** The premise that a document's quality depends on a review
 round having already happened to it. And the last remaining reason for an
@@ -391,9 +417,8 @@ happen automatically next time."*
 - **Embed the style guide in the generated artifact.** Rejected on **P5**. This
   is the copy that already drifted once.
 - **A schema version or handshake token the agent stamps into the document**, so
-  the proactive half is sent only when it is new. Rejected —
-  [§3.1](#31-why-the-payload-never-asks-whether-the-agent-already-knows): it probes a state
-  Vantage cannot observe, and it rebuilds the document-as-message-channel
+  the proactive half is sent only when it is new. Rejected in §3.1: it probes a
+  state Vantage cannot observe, and it rebuilds the document-as-message-channel
   protocol the directive contract retired.
 - **Have Vantage detect and write agent config directly** — scan for `.claude/`
   or `AGENTS.md` on server start. Rejected: [`agent-cli.md`](agent-cli.md) §7,
@@ -452,14 +477,16 @@ Settled questions move to the [Decision Ledger](#decision-ledger) above.
    > _(empty — fill in when decided)_
 
 4. 💬 **OQ-B4: Register `vantage-check` on PyPI now, under that name?** The name
-   is unclaimed and the window closes at first publish (**R5**). The tool is
-   already growing commands that are not checks, so the name is arguably
-   slightly narrow — but it is the name the payload, the userguide, and the
-   wheel builder all hardcode.
+   is unclaimed (404 as of 2026-09-01) and the window closes at first publish
+   (**R5**). The tool is already growing commands that are not checks, so the
+   name is arguably slightly narrow — but it is the name the payload, the
+   userguide, and the wheel builder all hardcode.
 
    _Leaning:_ register as-is. `check` is the load-bearing command; a marginally
    narrow name costs less than a rename across three surfaces plus a squatted
-   PyPI project.
+   PyPI project. The owner action is a repeat, not a first: §5.1 shows it was
+   done once for `vantage-md`. Downstream of [OQ-B7](#open-questions), which
+   decides whether a second name is needed at all.
 
    **Answer:**
 
@@ -471,6 +498,39 @@ Settled questions move to the [Decision Ledger](#decision-ledger) above.
 
    _Leaning:_ one sentence. The fixative paragraph is already the longest
    non-protocol block in the payload, and **R2** compounds every turn.
+
+   **Answer:**
+
+   > _(empty — fill in when decided)_
+
+6. 💬 **OQ-B7: One PyPI distribution for both entry points, or two?** The
+   product has exactly two executables — the server and the agent-facing CLI —
+   and [§5](#5-packaging-one-binary-one-distribution-more-subcommands) settles
+   only that the generator is a *subcommand of the CLI*, not which distribution
+   carries it. Numbered after B5/B6 because it was raised later; it gates
+   [OQ-B4](#open-questions) and [§8](#8-what-i-would-build-in-order) step 2.
+
+   - **One project** — revive `vantage-md` on PyPI as the app, and add the CLI
+     alongside it. Its appeal is a live project with trusted publishing already
+     configured. Its costs: the Go release has produced no wheel ever and
+     `e4e3120` deleted the machinery, so wheeling the server is new work; two
+     executables in one wheel is §5.3's problem made worse (two binaries from
+     two toolchains — ~92 MB of compiled CLI plus the Go server, per platform,
+     per release — or the console-script shim `build-wheel.py` refuses); and it
+     welds two deliberately independent release cadences (`v*` versus
+     `vantage-check@*`) to one version number.
+   - **Two projects** — `vantage-check` as its own distribution, which is what
+     [`publish-check.yml`](../../.github/workflows/publish-check.yml), the
+     payload, the userguide, and `build-wheel.py`'s hardcoded `DISTRIBUTION`
+     already assume. Cost: one owner registration, and a second name.
+
+   _Leaning:_ two. The cost difference is real but secondary; what decides it is
+   that the two executables have different audiences and different cadences. A
+   `uvx vantage-check` on one document should not fetch a server, and the
+   server's users install by brew or curl, not by `uvx`. Note the reuse variant
+   is the worst of both: `vantage-md` on PyPI meaning the app while `vantage-md`
+   on npm means the Markdown library, with the CLI a third meaning under the
+   same string.
 
    **Answer:**
 
