@@ -916,15 +916,80 @@ describe("the `collapsed` token", () => {
   });
 
   it("stamps nothing for `collapsed=false`", async () => {
-    // A no-op, not a second state: the token exists so an inner section can
-    // cancel an enclosing one, and "not collapsed" is not a thing an attribute
-    // can say.
+    // `false` is the default written down, not a second state: "not collapsed"
+    // is not a thing an attribute can usefully say, so the token's only effect
+    // is on a `collapsed=true` in the same directive run (below).
     const host = await render(
       "<!-- vantage: section collapsed=false -->\n\n## Open\n\nBody.\n",
     );
 
     expect(stamped(host.querySelector("h2"))).toEqual({});
     expect(stamped(host.querySelector("p"))).toEqual({});
+  });
+
+  it("cancels a `collapsed=true` earlier in the same directive run", async () => {
+    // The one thing `false` does do, and the reason it is in the vocabulary
+    // rather than being an unknown value: adjacent comments merge into one
+    // directive, last key wins, so the second pair overrides the first.
+    const host = await render(
+      [
+        "<!-- vantage: section collapsed=true -->",
+        "<!-- vantage: section collapsed=false -->",
+        "",
+        "## Head",
+        "",
+        "Body.",
+        "",
+      ].join("\n"),
+    );
+
+    expect(stamped(host.querySelector("h2"))).toEqual({});
+    expect(stamped(host.querySelector("p"))).toEqual({});
+  });
+
+  it("cannot cancel an ENCLOSING collapsed section", async () => {
+    // Pinned deliberately, because the shipped comments used to claim the
+    // opposite. A nested heading inside a collapsed `##` is a hidden member of
+    // the outer group by design (A3) — that asymmetry is what makes nesting work
+    // — and the outer run is stamped by a walk that has not resolved the inner
+    // heading's directive yet. So the inner section is hidden until the reader
+    // opens the outer one, and the inner `collapsed=false` changes nothing.
+    //
+    // Opting a subsection out would mean excluding its whole run from the outer
+    // group, so closing the outer section would leave a subsection on screen.
+    // That is a feature with its own question to answer, not this behaviour
+    // being wrong.
+    const host = await render(
+      [
+        "<!-- vantage: section collapsed=true -->",
+        "",
+        "## Outer",
+        "",
+        "Outer body.",
+        "",
+        "<!-- vantage: section collapsed=false -->",
+        "",
+        "### Inner",
+        "",
+        "Inner body.",
+        "",
+      ].join("\n"),
+    );
+
+    expect(stamped(host.querySelector("h2"))).toEqual({
+      "data-vantage-collapse-toggle": "1",
+    });
+    // The inner heading: a hidden member of group 1, and no toggle of its own.
+    expect(stamped(host.querySelector("h3"))).toEqual({
+      "data-vantage-collapsed": "true",
+      "data-vantage-collapse-group": "1",
+    });
+    for (const paragraph of Array.from(host.querySelectorAll("p"))) {
+      expect(stamped(paragraph)).toEqual({
+        "data-vantage-collapsed": "true",
+        "data-vantage-collapse-group": "1",
+      });
+    }
   });
 
   it("drops `collapsed` on a `block` scope", async () => {

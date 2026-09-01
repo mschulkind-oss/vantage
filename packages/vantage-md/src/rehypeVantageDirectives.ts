@@ -185,9 +185,15 @@ function styleRange(
 /**
  * Whether this directive collapses its section — three ways to say no.
  *
- * `collapsed=false` is a no-op: the token exists so an inner section can cancel
- * an enclosing one, and stamping "not collapsed" is not a thing an attribute can
- * say. A `block` scope is **dropped**, and so is a `section` that degraded onto
+ * `collapsed=false` stamps nothing: it is the default written down, and "not
+ * collapsed" is not a thing an attribute can usefully say. Its only effect is
+ * upstream of here — `stampRun` merges a run of comments last-key-wins, so a
+ * `false` cancels a `true` in the *same* run. It does not cancel an *enclosing*
+ * section: `styleRange` walks the outer heading's whole sibling span before any
+ * inner directive is resolved, and a nested heading being a hidden member of the
+ * outer group is the design (A3), not an oversight.
+ *
+ * A `block` scope is **dropped**, and so is a `section` that degraded onto
  * a non-heading, because both would hide a lone paragraph with nothing left
  * behind to reveal it — content that is simply gone, which is the P1/D8 failure
  * the readiness gate exists to prevent. Only a heading can be a summary.
