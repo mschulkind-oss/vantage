@@ -417,7 +417,7 @@ The `tone` vocabulary is the **GFM alert set** — `note`, `tip`, `important`,
 | :--- | :--- | :--- |
 | `tone` | `note` `tip` `important` `warning` `caution` `muted` | The section's role — same five meanings as a `> [!WARNING]` callout, plus de-emphasis |
 | `emphasis` | `strong` `normal` `quiet` | How much the section should pull the eye |
-| `collapsed` | `true` `false` | The section's body blocks start hidden behind a caret on the heading — a flat stamp, no wrapper |
+| `collapsed` | `true` `false` | The section's body blocks start hidden behind a caret on the heading — a flat stamp, no wrapper. `false` is the default written down (§4.3) |
 | `badge` | `draft` `stale` `blocked` `done` `wip` | A small chip after the heading text |
 
 **Why reuse the alert vocabulary rather than invent an importance scale.** An
@@ -625,9 +625,23 @@ Three refusals fall out of the same principle, and all three are in the plugin: 
 `block` scope drops `collapsed`, a `section` that degraded onto a non-heading
 drops it, and a heading with no body blocks gets no toggle. In the first two,
 hiding a lone paragraph leaves nothing on screen to bring it back; in the third,
-a caret that hides nothing is an affordance that lies. `collapsed=false` stamps
-nothing at all — the token exists so an inner section can cancel an enclosing
-one, and "not collapsed" is not a thing an attribute can usefully say.
+a caret that hides nothing is an affordance that lies.
+
+`collapsed=false` is **the default written down, not an exception mechanism**. It
+stamps nothing at all — "not collapsed" is not a thing an attribute can usefully
+say — and its one real effect is overriding a `collapsed=true` earlier in the
+*same* merged directive run, since `stampRun` is last-key-wins. That is why it is
+in the vocabulary rather than being an unknown value that drops.
+
+It **cannot** cancel an *enclosing* collapsed section, and no amount of writing it
+will: a nested heading inside a collapsed `##` is a hidden member of the outer
+group by design — the asymmetry above is what makes nesting work at all — and
+`styleRange` stamps the outer heading's whole sibling span before any inner
+directive has been resolved. Opting a subsection out would mean excluding its
+entire run from the outer group, so closing the outer section would leave a
+subsection stranded on screen. That is a feature with its own question to answer,
+and it is not implemented; the plugin's behaviour is pinned by a test so the
+documented semantics and the shipped ones cannot drift apart again.
 
 The caret is a **real `<button>`** the pass injects, not a third pseudo-element:
 `::before` is already the tone rule and `::after` is the badge, and one heading

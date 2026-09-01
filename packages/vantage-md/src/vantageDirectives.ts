@@ -71,8 +71,14 @@ export const VANTAGE_BADGES = [
 ] as const;
 
 /**
- * `collapsed` is a token, not a flag: `false` has to be expressible so an inner
- * section can cancel an enclosing one.
+ * `collapsed` is a token, not a flag: `false` is the default written down.
+ *
+ * It stamps nothing on its own. Its one real effect is overriding a
+ * `collapsed=true` earlier in the same merged directive run — last key wins — so
+ * it is in the vocabulary rather than being an unknown value that drops. It
+ * cannot cancel an *enclosing* collapsed section: a nested heading is a hidden
+ * member of the outer group by design (A3), and the outer run is stamped before
+ * any inner directive has been resolved.
  */
 export const VANTAGE_COLLAPSED = ["true", "false"] as const;
 
