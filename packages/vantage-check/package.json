@@ -4,7 +4,7 @@
   "private": true,
   "description": "Agent-facing CLI for Vantage: emit the Markdown style guide, and check that a document really renders",
   "type": "module",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/mschulkind-oss/vantage",
