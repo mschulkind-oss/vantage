@@ -8,7 +8,8 @@ summary: "Vantage cannot initiate contact with an agent. The review payload is n
 
 # The first thing we ever say to an agent, and how to make it stick
 
-**Status:** DESIGN SKETCH, 2026-08-31. Nothing built. Extends
+**Status:** DESIGN SKETCH, 2026-08-31, amended 2026-09-01 with §3.1 and **P6**.
+Nothing built. Extends
 [`agent-cli.md`](agent-cli.md), which is DECIDED and whose **P1**–**P3** hold
 unchanged here. Every claim about existing code was verified against the tree on
 2026-08-31.
@@ -60,6 +61,11 @@ continue that doc's sequence so either can cite either:
   that exists precisely because there was no way to fetch it; a generator that
   emitted the guide's text would be a copy *factory*, with our name on the
   drift.
+- **P6. The payload is idempotent, not a handshake.** It says the same thing
+  every turn, and never asks the document — or the agent — whether we have
+  spoken before. The state that would answer lives in a context window Vantage
+  cannot see and that dies without notice, so every stamp we could read answers
+  a weaker question than the one we asked (§3.1).
 
 ## 2. The payload is first contact, not a late reminder
 
@@ -136,6 +142,69 @@ acting. What stays forbidden is the implicit write and the setup precondition.
 The unsettled part is who "someone" is when the invoker is an agent following
 our payload. That is [OQ-B2](#open-questions), and it is the real decision in
 this document.
+
+### 3.1 Why the payload never asks whether the agent already knows
+
+Now that a document can carry Vantage-only markup
+([`../reference/inline-markup.md`](../reference/inline-markup.md)), there is an
+obvious economy available: send the proactive half only when it is *new*. Have a
+bootstrapped agent stamp something — a `vantage:` schema version, a token — and
+have the payload builder omit the block when it sees the stamp. I priced it, and
+it is a trap for a reason that has nothing to do with the token's size.
+
+**The state we would be probing for is unobservable in principle.** The question
+is whether the context window about to read this paste already holds the
+conventions. That state lives in a process on the far side of **P1**, and
+[§2](#2-the-payload-is-first-contact-not-a-late-reminder) already says what
+becomes of it: the knowledge "evaporates with the context window" — silently,
+and without touching the filesystem. So every signal we could actually read
+answers a different, weaker question:
+
+| Signal | The question it really answers | Footprint |
+| :--- | :--- | :--- |
+| A schema version or token in the document | "Did an informed writer touch this file, once?" | New markup in the artifact, forever |
+| The repo's own `AGENTS.md` already names the checker | "Is this repository set up?" — the closest true proxy, and it needs no markup at all | None |
+| A prior agent delivery in review state (`CommentReaction.Actor`, [`models.go:185`](../../internal/model/models.go#L185)) | "Has an agent ever read *a* payload here?" | None — already recorded on disk |
+
+None of them answers *now*, and they share their failure in the expensive
+direction. A **false negative** — stamp present, reader cold — suppresses the
+bootstrap for a fresh session, a different agent, or a human pasting into a
+different tool, which is exactly the population bootstrapping exists for. It
+fails silently, and it fails permanently, because nothing ever un-stamps a
+document.
+
+The cost side is worse than the saving is good, and this project has already
+paid it once. A version or token in the document makes the document a **message
+channel with memory** — something a reader consumes, dedupes, and remembers
+having seen. That is precisely the protocol
+[`../reference/inline-markup.md`](../reference/inline-markup.md) retired: a
+directive is *"declarative and idempotent … nothing consumes it,"* unlike the
+retired `<!-- changelog -->` protocol, which *"had to dedupe and remember what
+it had already seen."* Its **D3** then forbids the narrower form by name — *"no
+version negotiation, no minimum-version key"* — and by **D1** a frontmatter
+stamp is the one thing in that family GitHub does not hide: it prints
+`vantage` as a table row.
+
+Which makes the two footprints the reverse of how they feel. A repeated
+instruction costs prompt tokens no human ever reads (**R2** — real, and bounded
+at one sentence). A stamp costs bytes in the artifact that every human reads —
+in the diff, in `git blame`, on GitHub — in order to save those tokens.
+
+**Ruling: no version, no token, no conditionality — P6.** What idempotence buys
+is not elegance but debuggability: an unconditional payload is a pure function
+of the document, so the builder is readable and every agent demonstrably saw the
+same text. A conditional one has variants, and *"why didn't it get the line?"*
+becomes unanswerable after the fact, because the state that decided it is
+already gone.
+
+> [!NOTE]
+> **There is one legitimate version here, and this is not it.** If the generator
+> ([§5](#5-packaging-one-binary-one-distribution-more-subcommands)) ever emits an
+> artifact a later run must recognise — a stale `AGENTS.md` stanza to replace —
+> that version belongs *in the generated artifact*, inside the user's own
+> configuration, and is read by the generator. Never in the reviewed document,
+> and never read by the payload. **P5** makes even that close to moot: a
+> two-line pointer has nothing to go stale.
 
 ## 4. What "proactive" persists
 
@@ -261,6 +330,9 @@ depends on, which is [§8](#8-what-i-would-build-in-order) step 2.
 - **Not an unrequested write to anyone's repository.** What "requested" means
   when an agent is the invoker is [OQ-B2](#open-questions); that it must be
   requested is not open.
+- **Not a handshake, a schema version, or any other conditionality.** The
+  payload is the same text on every turn —
+  **P6**, [§3.1](#31-why-the-payload-never-asks-whether-the-agent-already-knows).
 - **Not a longer payload than it has to be.** Every line is prompt tokens on
   every review turn, forever.
 - **Not a change to the inbox protocol.** The `reply` wrapper stays iceboxed
@@ -271,7 +343,7 @@ depends on, which is [§8](#8-what-i-would-build-in-order) step 2.
 | Risk | Mitigation |
 | :--- | :--- |
 | **R1. The payload already promises a command that does not resolve** — `uvx vantage-check` has no PyPI project and no release (§5.1). An agent that tries it once and gets nothing does not try again | Register and tag before anything else here ([§8](#8-what-i-would-build-in-order) step 2). Until then the line's own "deliver anyway" clause keeps it from blocking work, but it is spending first contact on a dead command |
-| **R2. Payload bloat** — tokens on every turn, and a long block gets skimmed rather than read | One sentence for the proactive line, measured against the fixative paragraph already there. [OQ-B5](#open-questions) |
+| **R2. Payload bloat** — tokens on every turn, and a long block gets skimmed rather than read | One sentence for the proactive line, measured against the fixative paragraph already there. [OQ-B5](#open-questions). Not by sending it conditionally: that trade is priced and rejected in [§3.1](#31-why-the-payload-never-asks-whether-the-agent-already-knows) |
 | **R3. An agent writes to a repo nobody asked it to write to** — following our instructions, which makes it our doing | [OQ-B2](#open-questions). Default to printing, not writing |
 | **R4. A persisted pointer outlives the tool's reach** — a skill that says "run `uvx …`" in a sandbox without `uvx` is a dead end on every future document, not just once | The generated text carries the same fallback the fixative line does: if it is not available, carry on |
 | **R5. Name lock-in** — the distribution name is unclaimed today and permanent after first publish, while the tool is growing commands that are not checks | Settle it before step 2, not after. [OQ-B4](#open-questions) |
@@ -318,13 +390,26 @@ happen automatically next time."*
   [`agent-cli.md`](agent-cli.md) **R3**, and it has no PyPI presence anyway.
 - **Embed the style guide in the generated artifact.** Rejected on **P5**. This
   is the copy that already drifted once.
+- **A schema version or handshake token the agent stamps into the document**, so
+  the proactive half is sent only when it is new. Rejected —
+  [§3.1](#31-why-the-payload-never-asks-whether-the-agent-already-knows): it probes a state
+  Vantage cannot observe, and it rebuilds the document-as-message-channel
+  protocol the directive contract retired.
 - **Have Vantage detect and write agent config directly** — scan for `.claude/`
   or `AGENTS.md` on server start. Rejected: [`agent-cli.md`](agent-cli.md) §7,
   and it needs Vantage running to help an agent, against the spirit of **P1**.
 - **An MCP server.** Rejected in [`agent-cli.md`](agent-cli.md) §11 and nothing
   here changes it.
 
+## Decision Ledger
+
+| ID | Ruling / Decision | Date | Settled in |
+| :--- | :--- | :--- | :--- |
+| OQ-B6 | No schema version, token, or conditionality in the payload. Raised and settled the same day: the state it would probe is unobservable, and `inline-markup.md` **D3** already forbids version negotiation | 2026-09-01 | §3.1, **P6** |
+
 ## Open Questions
+
+Settled questions move to the [Decision Ledger](#decision-ledger) above.
 
 1. 💬 **OQ-B1: The generator's command surface.** `vantage-check init`?
    `install-guide`? A flag on the existing command
