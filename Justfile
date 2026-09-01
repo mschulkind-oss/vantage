@@ -163,17 +163,18 @@ _self-check: cli
 
 # Refresh web/dist — the tracked frontend export — from frontend/ sources.
 #
-# web/dist is committed (see .gitignore), because //go:embed accepts an empty
-# directory and every build path that skips this step would otherwise ship a
-# placeholder page — including `go install …@latest`, which gets whatever git
-# holds. The cost of that choice lands here: this recipe MAY MODIFY TRACKED
-# FILES, and it is the only one that may. Commit what it changes.
+# web/dist is ignored (see .gitignore), so this writes only untracked files and
+# there is nothing to commit afterwards. //go:embed accepts an empty directory,
+# so a binary built without running this serves the "Frontend bundle not found."
+# placeholder — which is what a fresh clone gets until you run it.
 #
-# Without npm it warns and leaves the committed export in place, so a checkout
-# with only a Go toolchain still builds a working binary — the same trade
-# polyclav makes for the same reason.
+# `go install …@latest` has no npm and cannot run this, so it relies on the
+# bundle being present in the tag's tree; `just release` is what puts it there.
+#
+# Without npm this warns and leaves whatever is already in web/dist alone, so a
+# checkout with only a Go toolchain still builds.
 
-# Rebuild web/dist (the tracked frontend export) from frontend/ sources.
+# Rebuild web/dist (the local, ignored frontend export) from frontend/ sources.
 web-sync:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -186,6 +187,42 @@ web-sync:
     mkdir -p web/dist
     cp -R frontend/dist/. web/dist/
     touch web/dist/.gitkeep
+
+# Cut a release: build the frontend into a commit that exists only on the tag,
+# then push the tag. publish.yml does everything else.
+#
+# web/dist is not tracked on main, so nothing derived can drift out of step with
+# its sources. But `go install …@latest` builds from whatever git holds at the
+# tag, with no npm in the picture, so the tag itself has to carry the bundle. It
+# gets its own commit, reachable only from the tag: main stays clean, and the tag
+# is created once, already correct.
+#
+# The tag is NEVER moved afterwards, and that is why CI cannot do this job. Go's
+# checksum database records a tag's tree hash the first time anyone fetches it;
+# re-pointing the tag makes every later fetch fail with a mismatch. A workflow
+# triggered *by* the tag push is already too late to add anything to it.
+
+# Build the frontend into a tag-only commit and push the tag.
+release version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -n "$(git status --porcelain)" ]; then
+        echo "working tree is dirty — commit or stash first" >&2
+        exit 1
+    fi
+    if git rev-parse -q --verify "refs/tags/v{{version}}" >/dev/null; then
+        echo "tag v{{version}} already exists — pick another version" >&2
+        exit 1
+    fi
+    just web-sync
+    branch=$(git rev-parse --abbrev-ref HEAD)
+    git checkout --quiet --detach
+    git add --force web/dist
+    git commit --quiet -m "release v{{version}}"
+    git tag "v{{version}}"
+    git checkout --quiet "$branch"
+    git push origin "v{{version}}"
+    echo "pushed v{{version}} — publish.yml takes it from here"
 
 # Point git at the tracked hooks dir. Idempotent.
 [private]
