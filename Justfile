@@ -25,8 +25,23 @@ dev path=".":
 # Build the vantage binary with a freshly built frontend embedded.
 build: web-sync build-bin
 
-# Build the binary from the export committed in web/dist, changing nothing else.
+# The fast path: skip the frontend build when only Go changed. It used to mean
+# "embed the export committed in web/dist", but nothing is committed there any
+# more, so on a fresh clone there is no export to embed and //go:embed would
+# cheerfully produce a binary serving "Frontend bundle not found."
+#
+# So it builds one when there is none. That keeps the fast path fast — an
+# existing bundle is left exactly as it is — without leaving a recipe that
+# silently produces a broken binary the first time anyone runs it.
+
+# Build the binary without rebuilding an existing frontend bundle.
 build-bin:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ ! -f web/dist/index.html ]; then
+        echo "web/dist has no bundle — building the frontend first"
+        just web-sync
+    fi
     go build -ldflags "-X github.com/mschulkind-oss/vantage/internal/buildinfo.commit=$(git rev-parse --short HEAD)" -o vantage ./cmd/vantage
 
 # bun compiles the TypeScript into one self-contained executable in about a
