@@ -1,4 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   Check,
@@ -18,6 +24,7 @@ import {
   useReviewStore,
 } from "../stores/useReviewStore";
 import type { CommentReaction, ReviewComment } from "../types";
+import { AnchoredMenu } from "./AnchoredMenu";
 
 interface ReviewPanelProps {
   isOpen: boolean;
@@ -102,6 +109,8 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
   const replyRef = useRef<HTMLTextAreaElement>(null);
   const editRef = useRef<HTMLTextAreaElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [confirmDismiss, setConfirmDismiss] = useState(false);
   // Which button last failed to write the clipboard: a comment id, "all" for
@@ -133,13 +142,6 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
     () => comments.filter((c) => commentMatchesFilter(c, filter)),
     [comments, filter],
   );
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const close = () => setMenuOpen(false);
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, [menuOpen]);
 
   // Closing the panel disarms the destructive confirms. Without this, arming
   // "Dismiss all" or "End review (delete all data)" and then closing left the
@@ -319,6 +321,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
           <div className="flex items-center gap-1">
             <div className="relative">
               <button
+                ref={menuTriggerRef}
                 onClick={(e) => {
                   e.stopPropagation();
                   setMenuOpen((v) => !v);
@@ -328,11 +331,14 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
               >
                 <MoreHorizontal size={18} />
               </button>
-              {menuOpen && (
-                <div
-                  onClick={(e) => e.stopPropagation()}
-                  className="absolute right-0 top-full mt-1 w-56 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-lg py-1 z-10"
-                >
+              <AnchoredMenu
+                open={menuOpen}
+                onClose={closeMenu}
+                anchorRef={menuTriggerRef}
+                width={224}
+                aria-label="More actions"
+              >
+                <div onClick={(e) => e.stopPropagation()}>
                   <button
                     onClick={handleEndReview}
                     className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
@@ -343,7 +349,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                       : "End review (delete all data)"}
                   </button>
                 </div>
-              )}
+              </AnchoredMenu>
             </div>
             <button
               onClick={onClose}
