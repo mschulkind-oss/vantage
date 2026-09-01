@@ -716,7 +716,7 @@ describe("vantage/block-split", () => {
     const report = await one(markdown);
 
     expect(ruleIds(report)).toEqual(["vantage/block-split"]);
-    expect(report.findings[0]?.message).toContain("code block");
+    expect(report.findings[0]?.message).toContain("an indented code block");
 
     const [withIt, withoutIt] = await bothWays(markdown, directive);
     expect(withIt.match(/<pre\b/g)).toHaveLength(2);
@@ -763,6 +763,35 @@ describe("vantage/block-split", () => {
       "para\n\n<!-- vantage: block tone=note -->\n\n| a | b |\n| - | - |\n| 1 | 2 |\n",
     ]) {
       expect(await check(markdown)).toEqual([]);
+    }
+  });
+
+  /**
+   * The question the rule has to answer is "does deleting *this directive*
+   * change the document?", not "does deleting every comment here change it?".
+   * `<!-- -->` is CommonMark's own documented separator between two lists and
+   * between two indented code blocks, so it is exactly the comment most likely
+   * to sit beside a directive — and when it is the thing doing the splitting,
+   * the directive must not be blamed for it. Each case asserts the finding and
+   * the measured HTML together: deleting the directive line changes nothing.
+   */
+  it("does not blame the directive for a separator comment's split", async () => {
+    const directive = "<!-- vantage: block tone=note -->";
+    for (const markdown of [
+      // The separator before the directive, and after it.
+      `    code a\n\n<!-- -->\n\n${directive}\n\n    code b\n`,
+      `    code a\n\n${directive}\n\n<!-- -->\n\n    code b\n`,
+      // The list form, which `vantage/list-split` also has to get right.
+      `- one\n\n<!-- -->\n\n${directive}\n\n- two\n`,
+      // A foreign comment on the line above, which ends the paragraph itself.
+      `para one\n<!-- prettier-ignore -->\n${directive}\npara two\n`,
+    ]) {
+      expect(await check(markdown)).toEqual([]);
+
+      const [withIt, withoutIt] = await bothWays(markdown, directive);
+      const blocks = (html: string) =>
+        (html.match(/<(?:pre|ul|p)\b/g) ?? []).join(" ");
+      expect(blocks(withIt)).toBe(blocks(withoutIt));
     }
   });
 });
