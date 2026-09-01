@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { renderMarkdown } from "../../vantage-md/src/renderMarkdown.js";
 import { STYLE_GUIDE } from "../../vantage-md/src/styleGuide.js";
 import { parseConfig } from "../src/core/config.js";
+import type { Settings } from "../src/core/settings.js";
 import { checkTree, makeTree, ruleIds } from "./helpers.js";
 
 /**
@@ -902,6 +903,13 @@ describe("vantage/block-split", () => {
    * Measured on the 40-question fixture below: 328 ms with the rule on and
    * 0.3 ms with it off, once the experiment is gated on the rule being enabled.
    * Before the gate, `off` paid every parse and there was no way out.
+   *
+   * Compared as a ratio rather than against a wall-clock budget, because a
+   * budget in milliseconds encodes how fast the machine is. The old form
+   * asserted `elapsed < 100` for a 0.3 ms measurement and still failed CI at
+   * 101 ms and 113 ms — cold module-load and JIT costs landing inside the one
+   * timed call, on a runner slower than the one the budget was written on. The
+   * ratio cancels both: whatever the machine costs, it costs both runs.
    */
   it("runs no experiment when the rule is switched off", async () => {
     const questions = 40;
@@ -918,19 +926,34 @@ describe("vantage/block-split", () => {
       );
     }
     const root = makeTree({ "oq.md": lines.join("\n") });
-    const off = parseConfig(
-      '[check.rules]\n"vantage/block-split" = "off"\n',
-    ).settings;
+    const setting = (level: string) =>
+      parseConfig(`[check.rules]\n"vantage/block-split" = "${level}"\n`)
+        .settings;
 
-    const started = performance.now();
-    const report = await checkTree(root, ["."], off);
-    const elapsed = performance.now() - started;
+    const timed = async (settings: Settings) => {
+      const started = performance.now();
+      const report = await checkTree(root, ["."], settings);
+      return { elapsed: performance.now() - started, report };
+    };
 
-    // The legal placement, so nothing to report either way.
-    expect(ruleIds(report)).toEqual([]);
-    // Two orders of magnitude of headroom over the 0.3 ms this measures, and
-    // two under the 328 ms the ungated experiment costs on the same document.
-    expect(elapsed).toBeLessThan(100);
+    // One untimed pass first. Whichever configuration runs first in a process
+    // pays to load the parser and warm the JIT, and those milliseconds belong
+    // to neither of them — charged to `off`, they are the whole reason the old
+    // absolute threshold was flaky.
+    await timed(setting("off"));
+
+    const off = await timed(setting("off"));
+    const on = await timed(setting("error"));
+
+    // The legal placement, so nothing to report either way. Without this the
+    // ratio would also be satisfied by two runs that did no work at all.
+    expect(ruleIds(off.report)).toEqual([]);
+    expect(ruleIds(on.report)).toEqual([]);
+
+    // Two orders of magnitude of headroom: gated, `off` is about a thousandth
+    // of `on`; ungated, the two land within noise of each other. Anything
+    // under a tenth means the experiment did not run.
+    expect(off.elapsed).toBeLessThan(on.elapsed / 10);
   });
 });
 
