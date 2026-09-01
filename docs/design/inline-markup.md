@@ -884,8 +884,8 @@ is.
 > becomes two, one block quote becomes two, a setext heading's `===` stops being
 > an underline and lands on the page, and an indented code block splits in half
 > even with blank lines on both sides. So the checker does not enumerate them:
-> `vantage/block-split` runs **P1's own test** — delete the comment lines,
-> re-parse, compare the block structure — over a slice around the directive, and
+> `vantage/block-split` runs **P1's own test** — delete the directive's own
+> lines, re-parse, compare the block structure — over the enclosing block, and
 > reports any construct the deletion changes. `vantage/list-split` stays as the
 > list-shaped instance because its fix ("indent it inside the item") is worth
 > spelling out, and it reports first when both apply.
