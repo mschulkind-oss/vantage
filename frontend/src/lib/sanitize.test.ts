@@ -5,15 +5,26 @@
  * of its own; the frontend resolves `vantage-md` to that package's TypeScript
  * source (see `vite.config.ts`), so these run against the real thing.
  *
- * `style` cannot simply be dropped — KaTeX positions every glyph with it — so
- * the schema filters values instead. These tests pin both halves of that
- * bargain: the attacks stay out, and everything KaTeX emits stays in. The
- * second half matters most, because a KaTeX release that starts using a new
- * property would otherwise silently lose the whole attribute and render maths
- * wrong, with nothing failing.
+ * **The only content the filter ever sees is document-authored raw HTML.** That
+ * is the whole reason `style` is allowlisted with a value filter rather than
+ * dropped: a `<div style="…">` written into a Markdown file is untrusted input,
+ * and it used to reach the page verbatim. KaTeX is *not* in this picture —
+ * `rehypeKatex` runs after `rehypeSanitize` (see `pipeline.ts`), so math styles
+ * are trusted by construction and never tested against `SAFE_STYLE` at all.
+ *
+ * So there are three things to pin, and they are different jobs:
+ *
+ * 1. Attacks in author HTML stay out, and ordinary typography stays in.
+ * 2. Rejection is flat-time — a `style` value is document-controlled input to
+ *    the CLI checker as well as to the viewer.
+ * 3. Math is *unfiltered*, measured end to end rather than assumed. The KaTeX
+ *    battery below no longer asks "would `SAFE_STYLE` accept this?" — a question
+ *    the pipeline never asks. It renders the formulas through the real chain and
+ *    requires that values the filter *rejects* are on the page, which is only
+ *    true because math is outside its reach. Move `rehypeKatex` ahead of the
+ *    sanitiser and that fails loudly, instead of math quietly losing its layout.
  */
 import { describe, it, expect } from "vitest";
-import katex from "katex";
 import { renderMarkdown, SAFE_STYLE } from "vantage-md";
 
 const styled = async (html: string) => (await renderMarkdown(html + "\n")).html;
@@ -45,6 +56,33 @@ describe("inline style filtering", () => {
     ).not.toContain("style=");
   });
 
+  it("strips every form of positioning, absolute and relative included", async () => {
+    // `position` is banned as a property, not enumerated by value. The filter
+    // only ever sees author HTML (math is rendered after the sanitiser), and
+    // nothing in a document needs to position itself: this is a Markdown
+    // viewer, not a layout API.
+    //
+    // `absolute` is the case that matters, and it is not the modest "overlaps
+    // its neighbours" residual it reads as. Measured in Chrome against the
+    // viewer's own ancestor chain: the nearest positioned ancestor of the prose
+    // container is `ViewerPage.tsx`'s `flex-1 flex min-h-0 relative`, which sits
+    // *outside* the scroll container — so an author's
+    // `position:absolute;top:0;left:0;width:100%;height:100%` is sized to the
+    // whole content pane, is not clipped by the scroller, and does not scroll
+    // away. That is the §8.1 overlay, one keyword over.
+    for (const value of [
+      "position:absolute;top:0;left:0;width:100%;height:100%",
+      "position:relative;top:-2px",
+      "position:static",
+      "color:red;position:absolute",
+    ]) {
+      expect(SAFE_STYLE.test(value), value).toBe(false);
+      expect(await styled(`<div style="${value}">x</div>`)).not.toContain(
+        "style=",
+      );
+    }
+  });
+
   it("keeps ordinary typographic styling", async () => {
     expect(await styled(`<span style="color: red">x</span>`)).toContain(
       `style="color: red"`,
@@ -52,10 +90,11 @@ describe("inline style filtering", () => {
     expect(await styled(`<div style="text-align:center">x</div>`)).toContain(
       `style="text-align:center"`,
     );
-    // KaTeX needs relative and absolute; only fixed and sticky escape the page.
     expect(
-      await styled(`<span style="position:relative;top:-2px">x</span>`),
-    ).toContain(`style="position:relative;top:-2px"`);
+      await styled(
+        `<span style="font-weight:600;letter-spacing:0.02em">x</span>`,
+      ),
+    ).toContain(`style="font-weight:600;letter-spacing:0.02em"`);
   });
 
   it("drops the whole attribute when any declaration is unsafe", async () => {
@@ -125,7 +164,32 @@ describe("inline style filtering", () => {
     }
   });
 
-  it("accepts every style KaTeX emits", () => {
+  it("does not filter math at all, because KaTeX renders after the sanitiser", async () => {
+    // The load-bearing fact, asserted end to end. `buildRehypePlugins` pushes
+    // `rehypeSanitize` and only then `rehypeKatex`, so no KaTeX `style` value is
+    // ever tested against `SAFE_STYLE`. This is the doc's own example formula,
+    // and the attribute it emits is one the filter now rejects — so if anyone
+    // moves `rehypeKatex` ahead of the sanitiser, this fails loudly instead of
+    // math silently losing its layout.
+    const { html } = await renderMarkdown("$$\n\\int_0^\\infty f(x)dx\n$$\n");
+    const emitted = [...html.matchAll(/\sstyle="([^"]*)"/g)].map((m) => m[1]);
+    const positioned = emitted.filter((v) => v.includes("position:relative"));
+    expect(positioned.length).toBeGreaterThan(0);
+    for (const value of positioned) expect(SAFE_STYLE.test(value)).toBe(false);
+  });
+
+  it("pins the volume of math styling, and that none of it is filtered", async () => {
+    // This battery is not a check on `SAFE_STYLE` — it cannot be, since the
+    // filter never runs on math. It measures the *rendered page*: how much
+    // inline CSS math brings with it, and that some of that CSS is CSS the
+    // filter rejects. If `rehypeKatex` ever moved ahead of the sanitiser, the
+    // rejected values would be the first thing to vanish and the last assertion
+    // here would fail.
+    //
+    // Deliberately no direct `katex.renderToString` comparison: the frontend's
+    // own `katex` is 0.16 while the one `rehype-katex` renders with is
+    // `vantage-md`'s 0.18, and the two disagree in the fourth decimal place. A
+    // test that compares them is measuring the version skew, not the pipeline.
     const formulas = [
       String.raw`\begin{pmatrix} a & b \\ c & d \end{pmatrix}`,
       String.raw`\frac{\sum_{i=1}^{n} x_i}{\int_0^\infty e^{-x}dx}`,
@@ -139,22 +203,49 @@ describe("inline style filtering", () => {
       String.raw`\mathop{\mathrm{lim}}\limits_{x \to 0} \tfrac{1}{2}`,
       String.raw`\begin{cases} a & x<0 \\ b & x\ge0 \end{cases}`,
       String.raw`\overline{AB} \underline{CD} \vec{v} \widehat{xyz}`,
+      // `\pmb` is here because it is the counter-example: it emits
+      // `text-shadow`, which is not on the property allowlist, and it reaches
+      // the page anyway. Under the old reading of this battery that was a bug
+      // waiting to be reported; it is in fact the design working as built.
+      String.raw`\pmb{x}`,
     ];
-    const rejected: string[] = [];
+    // A leading space in the pattern, so MathML's `displaystyle="true"` on
+    // `<mstyle>` is not counted as a CSS `style`. Any measurement of "what does
+    // KaTeX put in `style`" that greps for `style="` counts those booleans and
+    // concludes the filter is eating real declarations when it is not.
+    const values = (html: string) =>
+      [...html.matchAll(/\sstyle="([^"]*)"/g)].map((m) => m[1]);
+
     let examined = 0;
+    const properties = new Set<string>();
+    const rejectedByTheFilter: string[] = [];
     for (const formula of formulas) {
-      const html = katex.renderToString(formula, {
-        throwOnError: true,
-        displayMode: true,
-      });
-      // A leading space, so `displaystyle="true"` is not mistaken for a style.
-      for (const match of html.matchAll(/\sstyle="([^"]*)"/g)) {
+      const { html } = await renderMarkdown(`$$\n${formula}\n$$\n`);
+      for (const value of values(html)) {
         examined++;
-        if (!SAFE_STYLE.test(match[1])) rejected.push(match[1]);
+        for (const declaration of value.split(";")) {
+          if (declaration.trim()) {
+            properties.add(declaration.split(":")[0].trim());
+          }
+        }
+        if (!SAFE_STYLE.test(value)) rejectedByTheFilter.push(value);
       }
     }
     expect(examined).toBeGreaterThan(200);
-    expect(rejected).toEqual([]);
+    // Two properties named explicitly, because both are load-bearing to the
+    // record: `position` is what the design once claimed forced the filter to
+    // enumerate position values rather than ban the property, and `text-shadow`
+    // has never been on the allowlist at all.
+    expect(properties).toContain("position");
+    expect(properties).toContain("text-shadow");
+    // The proof: values the filter throws away, on the page. Four of the 261, as
+    // measured — two `position:relative` and two `text-shadow` — so the
+    // assertion is on the kinds rather than on the count, which would be a
+    // KaTeX-version pin dressed up as a security check.
+    expect(rejectedByTheFilter.some((v) => v.includes("position:"))).toBe(true);
+    expect(rejectedByTheFilter.some((v) => v.includes("text-shadow"))).toBe(
+      true,
+    );
   });
 
   it("leaves table alignment alone, which uses attributes rather than CSS", async () => {
