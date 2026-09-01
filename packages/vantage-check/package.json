@@ -21,7 +21,7 @@
   "dependencies": {
     "dompurify": "^3.3.1",
     "github-slugger": "^2.0.0",
-    "katex": "0.18.0",
+    "katex": "^0.18.4",
     "mdast-util-to-string": "^4.0.0",
     "mermaid": "11.16.0",
     "remark-gfm": "^4.0.1",
@@ -36,14 +36,14 @@
     "yaml": "^2.9.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/mdast": "^4.0.4",
     "@types/node": "^24.10.1",
-    "prettier": "^3.8.1",
-    "typescript": "~5.9.3",
-    "vitest": "^4.1.10",
-    "@eslint/js": "^10.0.1",
     "eslint": "^10.7.0",
     "globals": "^16.5.0",
-    "typescript-eslint": "^8.63.0"
+    "prettier": "^3.8.1",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.63.0",
+    "vitest": "^4.1.10"
   }
 }
