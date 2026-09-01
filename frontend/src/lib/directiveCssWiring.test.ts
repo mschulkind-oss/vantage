@@ -64,6 +64,21 @@ describe("the app imports the package's directive stylesheet", () => {
     expect(at).toBeLessThan(appCss.indexOf(".review-highlight-block {"));
   });
 
+  it("imports it before `@plugin` and `@custom-variant`, or it is dropped", () => {
+    // The one that actually bit. CSS requires `@import` to precede other
+    // at-rules, and Tailwind's importer enforces it by *silently discarding*
+    // the file: with this line below `@plugin`, `vantage-chip` appears 24 times
+    // in `dist/assets/*.css`; above it, zero. No vite warning, no failing test,
+    // no styled directive anywhere in the built app. Measured both ways with
+    // `npm run build`, which is the only place it shows — dev and vitest never
+    // load this stylesheet at all.
+    const at = appCss.indexOf(IMPORT_LINE);
+    expect(at).toBeGreaterThan(appCss.indexOf('@import "tailwindcss";'));
+    expect(at).toBeLessThan(appCss.indexOf("@plugin "));
+    expect(at).toBeLessThan(appCss.indexOf("@custom-variant "));
+    expect(at).toBeLessThan(appCss.indexOf("@source "));
+  });
+
   it("does not wrap the import in a cascade layer", () => {
     // Unlayered is the whole mechanism: a layered `@import … layer(…)` loses to
     // every `@tailwindcss/typography` utility regardless of specificity.

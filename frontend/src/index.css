@@ -1,17 +1,14 @@
 @import "tailwindcss";
-@plugin "@tailwindcss/typography";
-@custom-variant dark (&:where(.dark, .dark *));
-
-/* The vantage-md package ships its own components (e.g. the mermaid zoom
-   modal). The app resolves it to package source (see vite.config.ts), so scan
-   that source to keep classes used only inside the package from being purged. */
-@source "../../packages/vantage-md/src";
-
-/* The theme layer for the `data-vantage-*` directive attributes. It lives in
-   packages/vantage-md so the app, the package's own viewer and the CLI checker
-   read one palette (D5). Imported *here*, and by relative source path, for two
-   measured reasons:
-     - it must land BEFORE the app's own rules. The lone-block tone wash and the
+/* The theme layer for the `data-vantage-*` directive attributes and the chrome
+   chips. It lives in packages/vantage-md so the app, the package's own viewer
+   and the CLI checker read one palette (D5). Imported *here*, on this line, by
+   relative source path, for three measured reasons:
+     - **it has to come before `@plugin` and `@custom-variant`.** CSS requires
+       every `@import` to precede other at-rules, and Tailwind's importer obeys
+       that literally: from below them the file is silently DROPPED — measured,
+       `vantage-chip` went from 24 occurrences in `dist/assets/*.css` to zero,
+       with no warning from vite and every test still green.
+     - it must land before the app's own rules. The lone-block tone wash and the
        transient state backgrounds below (`.line-anchor-highlight`,
        `.review-highlight-block`, `.review-block-hovered`) are all one-class
        specificity, so source order is the entire tie-break — and a transient
@@ -24,6 +21,13 @@
    attribute selectors outrank the typography plugin's utilities.
    `frontend/src/lib/directiveCssWiring.test.ts` pins the path and the order. */
 @import "../../packages/vantage-md/src/styles/directives.css";
+@plugin "@tailwindcss/typography";
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* The vantage-md package ships its own components (e.g. the mermaid zoom
+   modal). The app resolves it to package source (see vite.config.ts), so scan
+   that source to keep classes used only inside the package from being purged. */
+@source "../../packages/vantage-md/src";
 
 body {
   margin: 0;

@@ -54,6 +54,22 @@ export type {
   FrontmatterProblem,
 } from "./frontmatter.js";
 
+// The `vantage:` frontmatter key — file-scoped chrome. Same split as the
+// directive vocabulary above: one reader, shared by the viewers and (by relative
+// path, not by package name) the CLI checker.
+export {
+  DOC_STATUSES,
+  DOC_STATUS_TONES,
+  VANTAGE_FRONTMATTER_KEYS,
+  isDocStatus,
+  readVantageFrontmatter,
+} from "./vantageFrontmatter.js";
+export type {
+  DocStatus,
+  VantageFrontmatter,
+  VantageFrontmatterIssue,
+} from "./vantageFrontmatter.js";
+
 export { sanitizeSchema, SAFE_STYLE } from "./sanitize.js";
 
 export { renderMermaidBlocks } from "./renderMermaidBlocks.js";

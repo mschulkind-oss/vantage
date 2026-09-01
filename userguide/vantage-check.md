@@ -202,12 +202,33 @@ will ever tell you.
 | `vantage/list-split` | A directive between two list items, which ends the list and starts a second one | error |
 | `vantage/duplicate-key` | The same key twice — the last one wins, so a warning | warning |
 | `vantage/orphan` | A directive with no block it can attach to, so it styles nothing | warning |
+| `vantage/frontmatter-shape` | A `vantage:` frontmatter key that is not a table of keys, so it configures nothing | warning |
+| `vantage/frontmatter-key` | A key under `vantage:` this build does not know | warning |
+| `vantage/frontmatter-value` | A `vantage:` value outside its closed set, so the chrome silently vanishes | error |
+| `vantage/status-chip-stale` | A status chip with no `status:` to show, or one that disagrees with it | warning |
 
 The grammar, the vocabulary and the list of blocks a directive can attach to are
 all imported from the viewer's own module, so the checker cannot disagree with
 the renderer about what a directive means. And like links, directives come from
 the parsed document — a `<!-- vantage: … -->` inside a fenced block or backticks
 is a code sample, not a finding.
+
+The last four are the same family one scope up: the reserved `vantage:`
+frontmatter key, which carries chrome that belongs to the *file* rather than to a
+section. They are not `frontmatter/*` rules, because those delegate to `yaml` and
+`smol-toml` — parsers that own the syntax and have no opinion about Vantage's
+vocabulary. Once the block has parsed, everything under `vantage:` is ours, and
+just as silent: a mistyped `status-chip: Draft` renders no chip and says nothing.
+
+`vantage/frontmatter-key` is a warning while `vantage/frontmatter-value` is an
+error, and the asymmetry is deliberate. An unknown *key* is what a document
+written for a newer Vantage looks like to an older checker, and that must not
+fail a gate. An unknown *value* for a key this build does know is a typo in the
+vocabulary this build itself defines. `vantage/status-chip-stale` covers the two
+ways a chip goes stale rather than wrong: a `status-chip: true` with no `status:`
+to show, and a literal `status-chip: accepted` sitting above a `status: draft` —
+which is why `status-chip: true`, the form that cannot disagree, is the one the
+style guide recommends.
 
 `vantage/unterminated` is an error rather than a warning because of what it
 costs: Markdown reads every line below an unclosed `<!--` as part of the comment,

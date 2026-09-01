@@ -55,8 +55,13 @@ date: 2026-08-15
 status: in-review # draft | in-review | accepted | deprecated
 tags: [architecture, backend, api]
 summary: "Brief description of the document purpose."
+vantage:
+  status-chip: true # show \`status\` as a chip above the metadata card
 ---
 \`\`\`
+- **\`vantage:\` is Vantage's own reserved key.** It holds chrome that belongs to the file rather than to a section, it never shows up in the metadata card, and every other renderer ignores it. One key today: \`status-chip\`.
+- **Prefer \`status-chip: true\`**, which shows the document's own \`status:\` and therefore cannot disagree with it. A literal \`status-chip: accepted\` is accepted too, but it is a second value that goes stale on its own — \`vantage-check\` reports the disagreement.
+- The chip's vocabulary is \`status\`'s, exactly: \`draft | in-review | accepted | deprecated\`, lowercase. \`Draft\` renders no chip at all, silently.
 
 ### Mermaid diagrams
 - Use \`\`\`mermaid code blocks for flowcharts, sequence diagrams, and architecture diagrams. Vantage provides interactive zoom, pan, dark/light theme adaptation, and SVG export.

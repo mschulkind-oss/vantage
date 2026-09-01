@@ -1,4 +1,6 @@
 import React, { memo } from "react";
+import { DocumentStatusChip } from "./DocumentStatusChip.js";
+import { readVantageFrontmatter } from "./vantageFrontmatter.js";
 
 // Inline FileText icon
 const FileTextIcon = () => (
@@ -69,6 +71,12 @@ function ValueCell({ value }: { value: unknown }) {
 function flattenEntries(entries: [string, unknown][]): [string, unknown][] {
   const result: [string, unknown][] = [];
   for (const [key, value] of entries) {
+    // `vantage:` is Vantage's own reserved namespace, and it is chrome rather
+    // than metadata. Left in, `ValueCell`'s isPlainObject branch would print it
+    // as a monospace JSON blob row — `{"status-chip": "in-review"}` — so the
+    // chip would ship alongside the burial it exists to remove. Top level only:
+    // a hoisted `extra.vantage` is the user's key, not the reserved one.
+    if (key === "vantage") continue;
     if (key === "taxonomies" && isPlainObject(value)) {
       for (const [taxKey, taxVal] of Object.entries(value)) {
         result.push([taxKey, taxVal]);
@@ -87,39 +95,53 @@ function flattenEntries(entries: [string, unknown][]): [string, unknown][] {
 const FrontmatterDisplayInner: React.FC<FrontmatterDisplayProps> = ({
   frontmatter,
 }) => {
-  const raw = Object.entries(frontmatter);
-  if (raw.length === 0) return null;
+  const entries = flattenEntries(Object.entries(frontmatter));
+  // Only the value. `issues` is deliberately not read here: the viewer stays
+  // silent on bad chrome (P3) and `vantage-check` is what reports it.
+  const { statusChip } = readVantageFrontmatter(frontmatter);
 
-  const entries = flattenEntries(raw);
+  // Two independent halves now, so both have to be absent for this to render
+  // nothing — a document whose only frontmatter key is `vantage:` would
+  // otherwise get an empty gradient card wrapped around an empty <table>.
+  if (entries.length === 0 && statusChip === undefined) return null;
 
   return (
-    <div className="mb-8 rounded-lg overflow-hidden bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-800/80 border border-slate-200 dark:border-slate-700 shadow-sm">
-      <div className="px-4 py-2.5 bg-white/60 dark:bg-slate-900/40 border-b border-slate-200 dark:border-slate-700 flex items-center gap-2">
-        <FileTextIcon />
-        <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-          Metadata
-        </span>
-      </div>
-      <div className="p-4">
-        <table className="w-full text-sm">
-          <tbody>
-            {entries.map(([key, value]) => (
-              <tr
-                key={key}
-                className="border-b border-slate-200/60 dark:border-slate-700/60 last:border-0"
-              >
-                <td className="py-2 pr-4 font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap align-top w-1/4 min-w-[100px]">
-                  {key}
-                </td>
-                <td className="py-2 text-slate-800 dark:text-slate-200 align-top">
-                  <ValueCell value={value} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <>
+      {statusChip !== undefined && (
+        <div className="vantage-chrome">
+          <DocumentStatusChip status={statusChip} />
+        </div>
+      )}
+      {entries.length > 0 && (
+        <div className="mb-8 rounded-lg overflow-hidden bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-800/80 border border-slate-200 dark:border-slate-700 shadow-sm">
+          <div className="px-4 py-2.5 bg-white/60 dark:bg-slate-900/40 border-b border-slate-200 dark:border-slate-700 flex items-center gap-2">
+            <FileTextIcon />
+            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+              Metadata
+            </span>
+          </div>
+          <div className="p-4">
+            <table className="w-full text-sm">
+              <tbody>
+                {entries.map(([key, value]) => (
+                  <tr
+                    key={key}
+                    className="border-b border-slate-200/60 dark:border-slate-700/60 last:border-0"
+                  >
+                    <td className="py-2 pr-4 font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap align-top w-1/4 min-w-[100px]">
+                      {key}
+                    </td>
+                    <td className="py-2 text-slate-800 dark:text-slate-200 align-top">
+                      <ValueCell value={value} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </>
   );
 };
 
