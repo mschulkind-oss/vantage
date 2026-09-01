@@ -9,12 +9,11 @@ all discoverable, so they are deliberately not here.
 - One Go binary serves an embedded React SPA, and the backend **shells out to
   the `git` CLI**. There is no in-process git library; introducing one is a
   design change, not an implementation detail.
-- `web/dist` is that embedded frontend, filled by `just build`. In git it holds
-  only `.gitkeep`, and `//go:embed all:dist` accepts that — so a `go build` on a
-  pristine checkout yields a server that logs one `slog.Warn` and serves
-  `Frontend bundle not found.` instead of the app. That includes the
-  `go install …@latest` line in the README, whose module zip is the git
-  contents. Verified 2026-09-01; see `docs/design/pypi-distribution.md` §4.1.
+- `web/dist` is that embedded frontend, and it is **tracked on purpose** — the
+  one build product in the tree. `//go:embed all:dist` accepts an empty
+  directory, so while it was ignored, any build that skipped the bundle step
+  served `Frontend bundle not found.` behind one `slog.Warn`, `go install
+  …@latest` included. Rationale: `docs/design/pypi-distribution.md` §4.1.
 - `packages/vantage-md` is consumed **from TypeScript source, never from
   `dist/`**: the frontend resolves it through a Vite alias
   (`frontend/vite.config.ts`), and `packages/vantage-check` imports it by
@@ -57,9 +56,12 @@ Never kill it; run test instances on other ports.
   `packages/vantage-check/dist/vantage-check <file>` is the same check locally,
   and `… style-guide` prints the conventions it enforces — cheaper before
   writing than at commit time.
-- **Every `just` recipe must leave tracked files unchanged** — `npm ci` in CI
-  and deploy, `npm install` only in dev, and a `package.json` change lands in
-  the same commit as its `package-lock.json`.
+- **Every `just` recipe must leave tracked files unchanged, with exactly one
+  exception**: `just web-sync` rewrites the tracked `web/dist` export, and
+  `just build`/`just deploy` run it. Commit what it changes, or use `just
+  build-bin` to get a binary without touching it. Otherwise the rule holds —
+  `npm ci` in CI and deploy, `npm install` only in dev, and a `package.json`
+  change lands in the same commit as its `package-lock.json`.
 
 ## Releases
 

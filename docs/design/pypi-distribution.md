@@ -1,20 +1,21 @@
 ---
 title: "The PyPI half of Vantage ships software that no longer exists"
-status: in-review # draft | in-review | accepted | deprecated
+status: accepted # draft | in-review | accepted | deprecated
 date: 2026-09-01
 tags: [packaging, pypi, releases, cli, agents]
-summary: "PyPI `vantage-md` is meant to be the executable server's distribution — the twin of npm `vantage-md`, the library. It froze in April holding the retired FastAPI app, because the Go cutover deleted the Python packaging and never replaced it. Fix the wheel path, yank the dead releases, and give the agent CLI its own project rather than a seat in the server's wheel."
+summary: "PyPI `vantage-md` is the executable server's distribution — the twin of npm `vantage-md`, the library. It froze in April holding the retired FastAPI app, because the Go cutover deleted the Python packaging and never replaced it. Every question is settled and the repo side is built: the export is tracked so a bare build embeds a real frontend, our own wheel builder wraps the release's own binary, and the agent CLI gets its own project. What is left is owner action on pypi.org."
 ---
 
 # The PyPI half of Vantage ships software that no longer exists
 
-**Status:** DESIGN, 2026-09-01, reviewed the same day — **OQ-P1 through OQ-P5
-are settled** (see the [Decision Ledger](#decision-ledger)); the review opened
-two, [OQ-P6](#open-questions) (is the built frontend tracked?) and
-[OQ-P7](#open-questions) (whose wheel builder?), which are the only things still
-open. Nothing built. Every claim about the tree, pypi.org, and the GitHub
-releases was verified on 2026-09-01, and the checks are named inline so they can
-be repeated.
+**Status:** DECIDED, 2026-09-01, over two review rounds the same day. Every
+question is settled — see the [Decision Ledger](#decision-ledger). **The repo
+side is built:** the frontend export is tracked (`08579a0`), the wheel builder is
+shared and parameterized, and `publish.yml` builds and publishes wheels. What
+remains is owner action on pypi.org — the yank, and registering `vantage-check` —
+plus cutting the release that exercises it ([§9](#9-what-i-would-do-in-order)).
+Every claim about the tree, pypi.org, and the GitHub releases was verified on
+2026-09-01, and the checks are named inline so they can be repeated.
 
 **The short version.** One product name, one registry each: npm `vantage-md`
 carries the library form, PyPI `vantage-md` carries the executable server. The
@@ -132,49 +133,25 @@ someone a different program.
 
 ## 4. What "fixed" looks like
 
-One new job in [`publish.yml`](../../.github/workflows/publish.yml), on the
-trigger that already exists (`release: [published]`), guarded exactly as the
-`build` job is, and building the frontend before it builds the binary. Sketched
-with `go-to-wheel` below because that is the shape swarf proves; which builder
-actually runs is [OQ-P7](#open-questions), and [§4.5](#45-which-builder--and-the-dual-entry-question-it-settles)
-argues for the one we already own. The job's *shape* — trigger, guard, frontend
-first, OIDC publish — is the same either way:
+The release trigger already exists (`release: [published]`), so the fix rides it
+rather than adding a channel of its own. As built:
 
-```yaml
-wheels:
-  # Same guard as `build`, for the same reason: `release: [published]` takes no
-  # tag filter, and `vantage-check@…` / `vantage-md@…` both start with `v`.
-  if: >-
-    github.event_name == 'release' && startsWith(github.ref_name, 'v')
-    && !contains(github.ref_name, '@')
-  environment: pypi
-  permissions: { id-token: write } # trusted publishing; no token
-  steps:
-    # …the three steps `build` already runs: tsup the library, `npm run build`
-    # the frontend, copy `frontend/dist` → `web/dist`. Then:
-    - run: |
-        version="${GITHUB_REF_NAME#v}"
-        test -f web/dist/index.html   # see §4.1
-        uvx go-to-wheel . --name vantage-md --version "$version" \
-          --entry-point <OQ-P3> \
-          --platforms <OQ-P4> \
-          --set-version-var github.com/mschulkind-oss/vantage/internal/buildinfo.version \
-          --ldflags "-X github.com/mschulkind-oss/vantage/internal/buildinfo.commit=${GITHUB_SHA::7}" \
-          --readme README.md --url https://vantageapp.dev --license <OQ-P5>
-    - run: uv publish dist/*.whl --check-url https://pypi.org/simple/
-```
+- **Each matrix leg of `publish.yml`'s `build` job now also produces wheels**,
+  from the binary it just cross-compiled and attached to the release — so the
+  wheel and the archive carry the same bytes ([§4.5](#45-which-builder--and-the-dual-entry-question-it-settles)). The leg
+  carries its own platform tags, and a static Linux binary gets both a
+  `manylinux_2_17` and a `musllinux_1_2` tag: a second tag, never a second build.
+- **A separate `pypi` job** downloads every leg's wheels and runs
+  `uv publish` under trusted publishing (`environment: pypi`,
+  `id-token: write`, no token). Separate on purpose — the archives and the
+  Homebrew formula are already published by the time it runs, so a PyPI failure
+  costs the release nothing but its wheels.
+- **The guard is `build`'s, verbatim**: `release: [published]` takes no tag
+  filter, and `vantage-check@…` and `vantage-md@…` both start with `v`, so the
+  `@` test is what separates a package tag from `v0.5.4`.
 
-`go-to-wheel` is simonw's, `0.2` on PyPI: *"Compile Go CLI programs into Python
-wheels."* It cross-compiles the module and emits `py3-none-<platform>` wheels,
-with `--entry-point` naming the installed command, `--set-version-var` passing
-one `-X` ldflag, and `--ldflags` for any others. The precedent is in this org:
-`mschulkind-oss/swarf` publishes on release with `uvx go-to-wheel` then
-`uv publish` under OIDC, and `swarf 0.4.0` on PyPI carries six wheels — glibc and
-musl Linux on x86-64 and aarch64, macOS on x86-64 and arm64 (verified
-2026-09-01).
-
-Vantage needs one thing swarf does not, and it is the trap below — which turns
-out to be bigger than the wheel.
+The wheel metadata is `vantage-md`, Apache-2.0, with `vantage` as the installed
+command ([§4.3](#43-the-command-is-vantage-the-one-shot-pays-for-it)).
 
 ### 4.1 The frontend has to be there at build time, and today it often isn't
 
@@ -216,9 +193,27 @@ Cross-target binaries cannot be executed on the runner, so an assertion on
 `index.html` is the only publish-time check either way; the difference is
 whether there is anything left to assert.
 
-Which shape vantage takes is [OQ-P6](#open-questions) — the one question this
-review round opened rather than closed, because committing a build product is a
-repo-wide decision, not a packaging detail.
+**Ruling (2026-09-01, built in `08579a0`): commit the export**, polyclav's shape,
+because it is the only one that reaches `go install`. The recipes split the way
+polyclav's do, so the cost is explicit rather than ambient — `just web-sync`
+rebuilds the tracked export and is *the only recipe permitted to modify a tracked
+file*, `just build-bin` embeds whatever is committed, and `just build` is both.
+Without npm, `web-sync` warns and keeps the committed export, so a Go-only
+checkout still builds a working binary.
+
+The price, measured: 5.5 MB across 89 files, of which 19 `woff2` KaTeX fonts are
+stable; the churn per refresh is mostly the 1.5 MB main chunk, whose hash moves
+on any source edit. Refreshing is deliberate, not per-commit.
+
+> [!NOTE]
+> **Verified the same way the defect was found.** `git archive HEAD` into a temp
+> directory, `go build ./cmd/vantage`, serve, curl: the pristine binary now
+> returns the real `index.html` with no warning in the log, and
+> `/assets/index-*.js` answers 200 with 1,472,550 bytes. The wheel chain was
+> checked end to end too — `pip install` of the built wheel puts `vantage` on
+> `PATH`, and that binary serves the same asset. A side effect worth having:
+> `TestSPAFallbackServesIndex` used to `t.Skip` when the bundle was missing, and
+> now runs.
 
 ### 4.2 Version continuity, and why the yank is not cosmetic
 
@@ -297,7 +292,7 @@ a deliberately narrow set makes the yank matter more, not less.
 
 `go-to-wheel` is the obvious choice right up to the moment you notice **we
 already own a wheel builder, and it does not care what language produced the
-binary.** [`build-wheel.py`](../../packages/vantage-check/scripts/build-wheel.py)
+binary.** [`build-wheel.py`](../../scripts/build-wheel.py)
 takes `--binary`, `--platform-tag`, `--version` and writes the zip: the binary
 goes in `<pkg>-<ver>.data/scripts/` as the console script itself, with no Python
 shim anywhere. Nothing in those ~160 lines knows bun from Go. What is hardcoded
@@ -325,9 +320,17 @@ means the thing on PyPI is provably the thing on the release.
 > dropped from both artifacts ([§4.4](#44-which-platforms-the-server-wheel-covers)),
 > the trap that made a second script name expensive is gone.
 
-This is [OQ-P7](#open-questions), and it is the one place where "we already
-built this" is an argument *for* doing more with our own code rather than an
-argument for reaching outside.
+**Ruling (2026-09-01): ours.** It moved to
+[`scripts/build-wheel.py`](../../scripts/build-wheel.py) — a shared tool has no
+business living inside one of its two consumers — and took flags for the parts
+that were constants: `--distribution`, `--script`, `--summary`, `--readme`,
+`--requires-python`. Both release workflows now call it, and it is verified
+locally on both binaries: a 37 MB `vantage_check` wheel from the bun binary and a
+10 MB `vantage_md` wheel from the Go one, the latter installed into a venv where
+`vantage --version` answers and the server serves its embedded assets.
+
+No upstream patch is needed for anything here, now or later: the alias is a file
+we would write into `.data/scripts/`, not a feature we would have to request.
 
 ## 5. The install matrix after the fix
 
@@ -350,7 +353,7 @@ new PyPI project, or does it belong in the `vantage-md` project we are fixing up
 
 **The mechanics answer most of it.** `go-to-wheel` builds a wheel *from a Go
 module*. The CLI is not Go — it is a bun-compiled binary, wrapped by
-[`build-wheel.py`](../../packages/vantage-check/scripts/build-wheel.py), a
+[`build-wheel.py`](../../scripts/build-wheel.py), a
 deliberately zero-dependency script that installs the binary *as* the console
 script with no Python shim. Putting both programs under one project means either
 abandoning `go-to-wheel` for a hand-rolled builder that packs two binaries, or
@@ -425,8 +428,8 @@ payload's `uvx vantage-check <file>` string, and
 | Risk | Mitigation |
 | :--- | :--- |
 | **R1. Silent fallback to the dead app** — `py3-none-any` `0.4.x` stays compatible with every platform, so any machine outside the wheel set resolves to it and runs the Python viewer with no warning ([§4.2](#42-version-continuity-and-why-the-yank-is-not-cosmetic)) | Yank `0.4.1` and `0.4.2` — settled, and step 1 of [§9](#9-what-i-would-do-in-order) |
-| **R2. A build with no frontend in it** — the embed tolerates an empty `web/dist`, so any build path that skips the three frontend steps ships a placeholder page instead of the app, warning only to the server's own stderr ([§4.1](#41-the-frontend-has-to-be-there-at-build-time-and-today-it-often-isnt)) | Depends on [OQ-P6](#open-questions): a committed export removes the failure mode, a per-job assertion catches it one job at a time. Either way, assert `web/dist/index.html` before the build — cross-target binaries cannot be smoke-tested on the runner |
-| **R8. `go install` already ships the placeholder** — [`README.md:21-25`](../../README.md#L21-L25) documents `go install …/cmd/vantage@latest` with no caveat, and the module zip carries only `web/dist/.gitkeep`. Verified 2026-09-01 against a pristine `git archive HEAD` build | The same [OQ-P6](#open-questions) decision, and it is the reason that question is repo-wide rather than packaging-local. Until it is settled, the README line needs a caveat or the path needs removing |
+| **R2. A build with no frontend in it** — the embed tolerates an empty `web/dist`, so any build path that skipped the frontend steps shipped a placeholder page instead of the app, warning only to the server's own stderr ([§4.1](#41-the-frontend-has-to-be-there-at-build-time-and-today-it-often-isnt)) | **Closed** by tracking the export (`08579a0`): there is no longer a build path without a frontend. The residual risk is a *stale* export rather than a missing one, which `just build` refreshes and a reviewer can see in the diff |
+| **R8. `go install` shipped the placeholder** — [`README.md:21-25`](../../README.md#L21-L25) documents `go install …/cmd/vantage@latest`, and the module zip carried only `web/dist/.gitkeep`. Verified 2026-09-01 against a pristine `git archive HEAD` build | **Closed** by the same commit, and re-verified the same way. Note the module proxy caches by version, so the fix reaches `@latest` only once a release tag includes the tracked export |
 | **R3. The wheel job fails after the release is public** | Keep it a separate job with no `needs:` on `build`, so archives and the tap land regardless — the same tolerance `publish-check.yml` already documents for its own PyPI step |
 | **R4. Firing on the wrong tag** — a `vantage-check@*` release also fires `release: [published]`, and an unguarded job would publish an app wheel versioned `antage-check@0.1.0` | Copy `build`'s guard verbatim. This is a documented near-miss in `publish.yml`, not a hypothetical |
 | **R5. Two projects drifting about one style guide** | They share source, not copies: `packages/vantage-check` imports `vantage-md`'s TypeScript by relative path, and `check-ci` pins its katex and mermaid to `vantage-md`'s |
@@ -435,39 +438,47 @@ payload's `uvx vantage-check <file>` string, and
 
 ## 9. What I would do, in order
 
-1. **Yank `0.4.1` and `0.4.2`.** Owner action, one minute, settled. The only
-   step that makes today's state *less* wrong entirely on its own.
-2. **Settle [OQ-P6](#open-questions)** — committed export or per-job frontend
-   build. Everything about the wheel job's shape follows from it, and so does
-   whether `go install` (**R8**) is fixed or documented as broken.
-3. **Settle [OQ-P7](#open-questions)** — our builder or `go-to-wheel` — then
-   **add the wheel job** to `publish.yml`: `build`'s guard verbatim, a `vantage`
-   entry point, the four archive targets (plus musl tags if the builder allows),
-   Apache-2.0 metadata, and an `index.html` assertion before the build.
-4. **Cut the next app release** (102 commits are waiting) and verify the wheel
-   end to end: install it on a clean machine, confirm the server serves the real
-   frontend rather than the placeholder, and that it reports the right version
-   from `internal/buildinfo.version`.
-5. **Register `vantage-check` on PyPI**, configure trusted publishing for this
-   repo, push `vantage-check@0.1.0`, and watch that first run
+**Done in the repo, 2026-09-01.** Apache-2.0 across both manifests and the
+wheel metadata; the tracked export and the `web-sync`/`build-bin` split
+(`08579a0`); the shared `scripts/build-wheel.py`; and `publish.yml`'s wheel build
+plus its `pypi` job.
+
+**What is left, in order:**
+
+1. **Yank `0.4.1` and `0.4.2`.** Owner action on pypi.org, one minute. The only
+   step that makes today's state *less* wrong entirely on its own, and the fix
+   for **R1**.
+2. **Confirm `vantage-md`'s trusted publisher** on pypi.org names this repo and
+   the `publish.yml` workflow. The 2026-04 configuration pointed at the job
+   `e4e3120` deleted, so this is a check, not an assumption — a wrong publisher
+   fails the `pypi` job and nothing else.
+3. **Cut the next app release** (102 commits are waiting) and watch the `pypi`
+   job. Then install from PyPI on a clean machine and confirm the server serves
+   the real frontend and reports the tag's version from
+   `internal/buildinfo.version` — the local check used a locally built binary,
+   whose version came from `debug.ReadBuildInfo` rather than the release ldflags.
+4. **Register `vantage-check` on PyPI**, configure its trusted publisher, push
+   `vantage-check@0.1.0`, and watch that first run
    ([§6](#6-the-agent-cli-its-own-project-or-a-passenger)'s IMPORTANT).
-6. **Then** [`agent-bootstrap.md`](agent-bootstrap.md) step 2 is unblocked and
+5. **Then** [`agent-bootstrap.md`](agent-bootstrap.md) step 2 is unblocked and
    its **R1** clears — the payload's `uvx vantage-check` resolves for the first
    time.
 
-Step 5 is independent of steps 1–4 and is the only one that gates the bootstrap
-design. The Apache-2.0 alignment is not in this list because it is already
-done — `packages/vantage-md`, `packages/vantage-check`, and `build-wheel.py`'s
-wheel metadata all declare it as of 2026-09-01.
+Step 4 is independent of steps 1–3 and is the only one that gates the bootstrap
+design.
 
 ## 10. Alternatives considered
 
-- **Parameterize `build-wheel.py` for the server too**, instead of adding
-  `go-to-wheel`. Not rejected — on a second look this is the *leading* option,
-  and it is [OQ-P7](#open-questions). The first draft of this doc dismissed it in
-  favour of a maintained upstream tool, before noticing that `publish.yml`
-  already cross-compiles the binaries a wheel needs, which makes the upstream
-  tool's own compile a duplicate ([§4.5](#45-which-builder--and-the-dual-entry-question-it-settles)).
+- **`go-to-wheel` for the server.** Rejected, having been this doc's first
+  proposal. It compiles the Go module itself, so the wheel on PyPI would be a
+  different artifact from the archive on the release; it picks its own platform
+  set; and it expresses one entry point. The first draft preferred it for being
+  maintained upstream, before noticing `publish.yml` already cross-compiles the
+  binaries a wheel needs ([§4.5](#45-which-builder--and-the-dual-entry-question-it-settles)). Still the right call for a
+  repo without its own builder — swarf's, for instance.
+- **A per-job `test -f web/dist/index.html` assertion** instead of tracking the
+  export. Rejected: it catches the failure one job at a time and cannot reach
+  `go install` at all, since the module proxy serves what git holds.
 - **`goreleaser` for the whole release**, as swarf does. Rejected as scope: the
   archive path works, and replacing it buys nothing this doc needs.
 - **One project, two entry points.** Rejected —
@@ -496,45 +507,15 @@ wheel metadata all declare it as of 2026-09-01.
 | OQ-P2 | The agent CLI gets **its own PyPI project**, `vantage-check`; not a second executable in the server's wheel. Supersedes `agent-bootstrap.md`'s `OQ-B7` | 2026-09-01 | §6 |
 | OQ-P3 | `--entry-point vantage`, matching every other channel; the one-shot is `uvx --from vantage-md vantage`. The `0.4.2` two-script wheel was a sound trade that `go-to-wheel` cannot express | 2026-09-01 | §4.3 |
 | OQ-P4 | The four archive targets (Linux + macOS × x86-64 + arm64), musl if free, **no Windows**. Pass `--platforms` explicitly rather than trusting defaults | 2026-09-01 | §4.4, §7 |
+| OQ-P6 | The built frontend is a **tracked artifact**, polyclav's shape: `web-sync` refreshes it and is the only recipe allowed to dirty a tracked file, `build-bin` embeds it as-is. It is the only fix that reaches `go install`; 5.5 MB and the churn are the price | 2026-09-01 | §4.1, `08579a0` |
+| OQ-P7 | **Our own builder**, moved to `scripts/build-wheel.py` and parameterized, for both artifacts. `go-to-wheel` would compile the Go binary a second time, so PyPI and the release would carry different bytes | 2026-09-01 | §4.5 |
 | OQ-P5 | Apache-2.0 everywhere. Applied the same day to `packages/vantage-md`, `packages/vantage-check`, and `build-wheel.py`'s wheel metadata, which all declared MIT | 2026-09-01 | §8 **R7**, §9 |
 
 ## Open Questions
 
-1. 💬 **OQ-P6: Is the built frontend a tracked artifact?** `mschulkind-oss/polyclav`
-   commits its web export and refreshes it in `just build`; vantage keeps
-   `web/dist` empty in git and builds it per job. Only the first shape fixes
-   `go install …@latest`, which ships the placeholder page today (**R8**) — but
-   it reverses a deliberate `.gitignore` decision, adds Vite's hashed-filename
-   churn to every frontend commit, and needs an explicit carve-out from the
-   invariant that no `just` recipe dirties tracked files. Full comparison in
-   [§4.1](#41-the-frontend-has-to-be-there-at-build-time-and-today-it-often-isnt); this gates §9 step 3 and decides whether **R8** is
-   fixed or merely documented.
-
-   _Leaning:_ commit the export. `go install` is a documented install path that
-   is broken right now, and no per-job assertion can reach it — the module proxy
-   serves what git holds. The churn is the price, and `just build` refreshing a
-   tracked file is a carve-out worth writing down rather than a rule worth
-   keeping intact. I would want the sync step to warn-and-continue like
-   polyclav's, so a checkout without pnpm/npm still builds.
-
-   **Answer:**
-
-   > _(empty — fill in when decided)_
-
-2. 💬 **OQ-P7: Which wheel builder — ours, or `go-to-wheel`?** We already own
-   `build-wheel.py`, and it is binary-agnostic; `publish.yml` already
-   cross-compiles the binaries a wheel would carry. Full comparison in
-   [§4.5](#45-which-builder--and-the-dual-entry-question-it-settles). It decides §9 step 3, and it decides whether a second
-   entry point is ever available: `go-to-wheel` expresses one, a builder we own
-   expresses as many as we write.
-
-   _Leaning:_ ours, parameterized. The deciding fact is not the ~30 lines either
-   way — it is that `go-to-wheel` would compile the Go binary a *second* time, so
-   the wheel on PyPI and the archive on the release would be different artifacts
-   that ought to be identical. One builder also means the wheel-spec bugs get
-   fixed once, and it hands us the `manylinux` + `musllinux` double-tag on one
-   static binary for free.
-
-   **Answer:**
-
-   > _(empty — fill in when decided)_
+None. Every question this doc opened is in the [Decision Ledger](#decision-ledger),
+and what remains is owner action on pypi.org rather than a decision
+([§9](#9-what-i-would-do-in-order)). New questions get appended here as the first
+release exercises the path — the likeliest candidate is what the `pypi` job does
+on a wheel whose version already exists, which `--check-url` is there to make
+survivable.

@@ -49,5 +49,5 @@ installed.
 
 bun cross-compiles, so **one host builds every platform** — that is why the
 release job is a single runner rather than one per OS. Release CI wraps each
-binary in a platform wheel (`scripts/build-wheel.py`) so `uvx vantage-check`
+binary in a platform wheel ([`../../scripts/build-wheel.py`](../../scripts/build-wheel.py)) so `uvx vantage-check`
 works, and attaches the archives to a GitHub release for the `curl` path.

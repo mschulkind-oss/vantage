@@ -125,8 +125,12 @@ jobs:
             # Wheels land in their own directory. The publish step must be
             # handed *.whl only — packages-dir on dist/ would try to upload the
             # bare ~90 MB binary sitting next to them.
-            python3 scripts/build-wheel.py \
+            python3 "$root/scripts/build-wheel.py" \
               --binary "$binary" \
+              --distribution vantage-check \
+              --script vantage-check \
+              --summary "Vantage's Markdown conventions, and a check that a document really renders" \
+              --readme README.md \
               --platform-tag "$pytag" \
               --version "$version" \
               --out-dir "$root/wheels"

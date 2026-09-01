@@ -47,10 +47,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { goos: linux, goarch: amd64 }
-          - { goos: linux, goarch: arm64 }
-          - { goos: darwin, goarch: amd64 }
-          - { goos: darwin, goarch: arm64 }
+          # `pytags` is the set of PyPI platform tags this leg's binary is valid
+          # for, space-separated. CGO_ENABLED=0 makes it static, so one Linux
+          # binary satisfies glibc and musl both — a second tag, not a second
+          # build. manylinux_2_17 rather than _2_28 for the same reason: nothing
+          # is linked, so the floor is as low as PyPI will accept.
+          # macOS claims 11_0 on both arches because that is Go's own floor;
+          # claiming 10_9 would install on machines the binary cannot run on.
+          - { goos: linux, goarch: amd64, pytags: "manylinux_2_17_x86_64 musllinux_1_2_x86_64" }
+          - { goos: linux, goarch: arm64, pytags: "manylinux_2_17_aarch64 musllinux_1_2_aarch64" }
+          - { goos: darwin, goarch: amd64, pytags: "macosx_11_0_x86_64" }
+          - { goos: darwin, goarch: arm64, pytags: "macosx_11_0_arm64" }
     steps:
       - uses: actions/checkout@v7
         with:
@@ -86,6 +93,66 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${GITHUB_REF_NAME}" vantage_*.tar.gz --clobber
+
+      # PyPI is the server's fourth channel, beside the archive, the tap and
+      # `go install` (docs/design/pypi-distribution.md). The wheel wraps the
+      # binary built above rather than compiling its own, so what PyPI serves is
+      # byte-identical to what the release serves — which is the whole reason
+      # this uses scripts/build-wheel.py instead of a tool that builds for
+      # itself (§4.5 there).
+      - name: Build the wheels
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p wheels
+          for pytag in ${{ matrix.pytags }}; do
+            python3 scripts/build-wheel.py \
+              --binary vantage \
+              --distribution vantage-md \
+              --script vantage \
+              --summary "A beautiful local Markdown viewer with live reload and Git awareness" \
+              --readme README.md \
+              --platform-tag "$pytag" \
+              --version "$version" \
+              --out-dir wheels
+          done
+          ls -l wheels
+
+      - name: Upload the wheels for the publish job
+        uses: actions/upload-artifact@v7
+        with:
+          name: wheels-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: wheels/*.whl
+          if-no-files-found: error
+
+  # Publish the wheels built above to PyPI under `vantage-md` — the same name the
+  # npm library uses, because the registry says which form you get (that doc's
+  # P1). Trusted publishing (OIDC), no token; it needs the `vantage-md` project
+  # on PyPI to have a trusted publisher configured for this workflow, which is an
+  # owner action outside this repo.
+  #
+  # A separate job on purpose: the archives and the tap are already published by
+  # the time this runs, so a PyPI failure costs the release nothing but its
+  # wheels.
+  pypi:
+    if: github.event_name == 'release' && startsWith(github.ref_name, 'v') && !contains(github.ref_name, '@')
+    needs: [build]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write # trusted publishing
+    steps:
+      - name: Download every leg's wheels
+        uses: actions/download-artifact@v8
+        with:
+          pattern: wheels-*
+          merge-multiple: true
+          path: wheels/
+
+      - uses: astral-sh/setup-uv@v7
+
+      - name: Publish to PyPI
+        run: uv publish wheels/*.whl --check-url https://pypi.org/simple/
 
   # Regenerate the Homebrew formula from the released archives and push it to the
   # tap. Runs after a successful build on release events, or standalone on a

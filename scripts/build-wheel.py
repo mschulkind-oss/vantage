@@ -1,22 +1,32 @@
 #!/usr/bin/env python3
-"""Wrap a built vantage-check binary in a platform-specific Python wheel.
+"""Wrap an already-compiled binary in a platform-specific Python wheel.
 
-`uvx vantage-check <file>` is the design's first-choice channel because
-Python-first agent sandboxes are common, and uvx will fetch and cache a wheel
-for exactly this platform. The wheel carries no Python code that matters: the
-binary is installed as a script, so uvx execs the real executable with no
-interpreter in the path.
+`uvx <dist>` is a first-choice channel because Python-first machines and agent
+sandboxes are common, and uvx fetches and caches a wheel for exactly this
+platform. The wheel carries no Python code that matters: the binary is installed
+as the console script itself, so uvx execs a real executable with no interpreter
+in the path.
+
+**It does not care what produced the binary.** Both release workflows use it —
+`publish-check.yml` for the bun-compiled `vantage-check`, `publish.yml` for the
+Go `vantage` server — and each hands over the same binary it already attached to
+the GitHub release, so the wheel and the archive are the same bytes. That
+property is the reason this exists rather than a tool that compiles for itself;
+see docs/design/pypi-distribution.md §4.5.
 
 Deliberately zero-dependency — no setuptools, no hatchling, no build backend.
 A wheel is a zip with three metadata files, and adding a Python build toolchain
-to a TypeScript project to produce one would cost more than writing it out.
+to this repo to produce one would cost more than writing the zip out.
 
 Usage:
     python3 scripts/build-wheel.py \\
         --binary dist/vantage-check \\
+        --distribution vantage-check \\
+        --summary "..." \\
+        --readme packages/vantage-check/README.md \\
         --platform-tag manylinux_2_28_x86_64 \\
         --version 0.1.0 \\
-        --out-dir dist
+        --out-dir wheels
 """
 
 from __future__ import annotations
@@ -28,29 +38,8 @@ import stat
 import zipfile
 from pathlib import Path
 
-DISTRIBUTION = "vantage-check"
-# PEP 503 normalization, which is also the name used inside the archive.
-PACKAGE = DISTRIBUTION.replace("-", "_")
-
-SUMMARY = (
-    "Vantage's Markdown conventions, and a check that a document really renders"
-)
-
-DESCRIPTION = """\
-# vantage-check
-
-The agent-facing CLI for [Vantage](https://github.com/mschulkind-oss/vantage).
-
-```console
-$ uvx vantage-check docs/            # check that documents really render
-$ uvx vantage-check style-guide      # print the conventions Vantage expects
-```
-
-Everything works offline against files on disk: no server, no port, no network.
-
-The wheel carries a standalone binary with the runtime already inside it, so
-nothing else is installed and no Node.js is required.
-"""
+HOMEPAGE = "https://github.com/mschulkind-oss/vantage"
+LICENSE = "Apache-2.0"
 
 
 def record_line(archive_path: str, data: bytes) -> str:
@@ -64,24 +53,53 @@ def main() -> int:
     parser.add_argument(
         "--platform-tag",
         required=True,
-        help="wheel platform tag, e.g. manylinux_2_28_x86_64 or macosx_11_0_arm64",
+        help="wheel platform tag, e.g. manylinux_2_17_x86_64 or macosx_11_0_arm64",
     )
     parser.add_argument("--version", required=True)
     parser.add_argument("--out-dir", default=Path("dist"), type=Path)
+    parser.add_argument(
+        "--distribution",
+        required=True,
+        help="PyPI distribution name, e.g. vantage-check",
+    )
+    parser.add_argument(
+        "--script",
+        help="installed command name (default: the distribution name)",
+    )
+    parser.add_argument("--summary", required=True, help="one-line description")
+    parser.add_argument(
+        "--readme",
+        required=True,
+        type=Path,
+        help="markdown file to use as the PyPI long description",
+    )
+    parser.add_argument(
+        "--requires-python",
+        default=">=3.8",
+        help="Requires-Python metadata (default: %(default)s)",
+    )
     args = parser.parse_args()
 
     binary = args.binary.resolve()
     if not binary.is_file():
         parser.error(f"no binary at {binary}")
+    if not args.readme.is_file():
+        parser.error(f"no readme at {args.readme}")
 
+    distribution: str = args.distribution
+    # PEP 503 normalization, which is also the name used inside the archive.
+    package = distribution.replace("-", "_")
+    description = args.readme.read_text()
     version: str = args.version
     tag = f"py3-none-{args.platform_tag}"
-    dist_info = f"{PACKAGE}-{version}.dist-info"
-    data_scripts = f"{PACKAGE}-{version}.data/scripts"
+    dist_info = f"{package}-{version}.dist-info"
+    data_scripts = f"{package}-{version}.data/scripts"
     # The script name has to be the name the installed executable is invoked by:
     # there is no console-script shim in this wheel, the binary *is* the script,
-    # so `uvx vantage-check` resolves `vantage-check` directly.
-    script_name = "vantage-check"
+    # so `uvx vantage-check` resolves `vantage-check` directly. The server's
+    # wheel is `vantage-md` carrying a `vantage` script, which is why this is a
+    # flag rather than the distribution name (pypi-distribution.md §4.3).
+    script_name = args.script or distribution
 
     # Windows is not a target (docs/design/pypi-distribution.md §4.4). It used
     # to be, and it carried the whole reason this check exists: bun suffixes
@@ -96,13 +114,13 @@ def main() -> int:
         )
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    wheel_path = args.out_dir / f"{PACKAGE}-{version}-{tag}.whl"
+    wheel_path = args.out_dir / f"{package}-{version}-{tag}.whl"
 
     files: list[tuple[str, bytes, bool]] = [
         (
-            f"{PACKAGE}/__init__.py",
+            f"{package}/__init__.py",
             (
-                '"""vantage-check — see the ``vantage-check`` executable '
+                f'"""{distribution} — see the ``{script_name}`` executable '
                 'installed alongside this package."""\n'
                 f'__version__ = "{version}"\n'
             ).encode(),
@@ -113,14 +131,14 @@ def main() -> int:
             f"{dist_info}/METADATA",
             (
                 "Metadata-Version: 2.1\n"
-                f"Name: {DISTRIBUTION}\n"
+                f"Name: {distribution}\n"
                 f"Version: {version}\n"
-                f"Summary: {SUMMARY}\n"
-                "License: Apache-2.0\n"
-                "Project-URL: Homepage, https://github.com/mschulkind-oss/vantage\n"
-                "Requires-Python: >=3.8\n"
+                f"Summary: {args.summary}\n"
+                f"License: {LICENSE}\n"
+                f"Project-URL: Homepage, {HOMEPAGE}\n"
+                f"Requires-Python: {args.requires_python}\n"
                 "Description-Content-Type: text/markdown\n"
-                "\n" + DESCRIPTION
+                "\n" + description
             ).encode(),
             False,
         ),
@@ -128,7 +146,7 @@ def main() -> int:
             f"{dist_info}/WHEEL",
             (
                 "Wheel-Version: 1.0\n"
-                "Generator: vantage-check build-wheel.py\n"
+                "Generator: vantage build-wheel.py\n"
                 # The wheel is platform-specific, so its root belongs in
                 # platlib rather than purelib.
                 "Root-Is-Purelib: false\n"
