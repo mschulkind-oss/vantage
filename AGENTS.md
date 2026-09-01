@@ -33,6 +33,12 @@ Never kill it; run test instances on other ports.
 
 ## What the gate does not tell you
 
+- **On a clone where `just setup` never ran, commits skip the gate silently.**
+  The hooks live in `scripts/hooks/` and are wired by `git config
+  core.hooksPath`, which is per-clone local config — so a second machine has the
+  toolchain (`mise install`) and no hooks, and no npm packages either. `just
+  setup` is the whole answer, and the recipes now say so instead of failing with
+  `prettier: not found`.
 - **A green local gate can still be a CI red.** `check-ci` starts by asserting
   `node_modules` matches the manifests in all three npm packages, because CI
   installs with `npm ci` and therefore answers a different question than a stale
