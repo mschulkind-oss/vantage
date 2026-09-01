@@ -998,7 +998,7 @@ Between `rehypeRaw` and `rehypeSanitize` (§2.2 — the only slot). Per pass:
 1. **Walk the whole tree**, resolving each directive **within its own parent's
    `children` array** — never outside it, so a directive inside a `blockquote` or
    an `li` cannot stamp past it
-   ([`rehypeVantageDirectives.ts:333-370`](../../packages/vantage-md/src/rehypeVantageDirectives.ts#L333-L370)).
+   ([`rehypeVantageDirectives.ts:380-417`](../../packages/vantage-md/src/rehypeVantageDirectives.ts#L380-L417)).
    For each `comment` node, prefix-test for `vantage:`; non-matches are skipped
    and left for the sanitiser.
 2. Parse the grammar (§4.1). A parse failure drops the directive (**P3**).
