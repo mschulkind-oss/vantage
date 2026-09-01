@@ -28,7 +28,6 @@ on:
 
 permissions:
   contents: write # create the GitHub release + upload the archives
-  id-token: write # PyPI trusted publishing (OIDC)
 
 jobs:
   release:
@@ -144,6 +143,19 @@ jobs:
 
           ls -l "$root/archives" "$root/wheels"
 
+      # The CLI's PyPI path has never run — no tag, no project — so its first
+      # release is also its first execution. Prove the host wheel installs and
+      # the command works before uploading, rather than after.
+      - name: Smoke-test the host wheel
+        run: |
+          set -euo pipefail
+          version="${{ steps.ver.outputs.version }}"
+          python3 -m venv /tmp/wheelcheck
+          /tmp/wheelcheck/bin/pip install --quiet \
+            "wheels/vantage_check-${version}-py3-none-manylinux_2_28_x86_64.whl"
+          /tmp/wheelcheck/bin/vantage-check --version
+          /tmp/wheelcheck/bin/vantage-check style-guide | head -5
+
       # `gh release create` rather than a third-party action, matching
       # publish.yml. Creating the release fires `release: published`, which
       # publish.yml also listens for — its build job is guarded against package
@@ -161,10 +173,34 @@ jobs:
           fi
           gh release upload "$GITHUB_REF_NAME" archives/* --clobber
 
+      - name: Upload the wheels for the publish job
+        uses: actions/upload-artifact@v7
+        with:
+          name: wheels
+          path: wheels/*.whl
+          if-no-files-found: error
+
+  # Publishing is its own job for two reasons: the release and its archives are
+  # already up by the time it runs, so a PyPI failure costs only the wheels; and
+  # the `pypi` environment gates just this step rather than the whole release —
+  # which is also what the trusted-publisher config on PyPI names. Its three
+  # GitHub fields are `mschulkind-oss` / `vantage` / `publish-check.yml`, plus
+  # environment `pypi`; the repository field takes the bare name, not owner/name.
+  pypi:
+    needs: [release]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write # trusted publishing (OIDC) — no token
+    steps:
+      - name: Download the wheels
+        uses: actions/download-artifact@v8
+        with:
+          name: wheels
+          path: wheels/
+
       - name: Publish the wheels to PyPI
-        # Trusted publishing (OIDC) — no token, matching the npm publish. The
-        # `vantage-check` PyPI project must name this repo and workflow as a
-        # trusted publisher.
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: wheels/
