@@ -40,7 +40,8 @@
     "prepublishOnly": "npm run build",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write 'src/**/*.{ts,tsx}' '*.{ts,js,json}'",
-    "format:check": "prettier --check 'src/**/*.{ts,tsx}' '*.{ts,js,json}'"
+    "format:check": "prettier --check 'src/**/*.{ts,tsx}' '*.{ts,js,json}'",
+    "typecheck:published": "node scripts/typecheck-published.mjs"
   },
   "keywords": [
     "markdown",
@@ -109,6 +110,7 @@
     "react-markdown": "^10.1.0",
     "tsdown": "^0.22.14",
     "typescript": "~6.0.3",
+    "typescript-5": "npm:typescript@~5.9.3",
     "typescript-eslint": "^8.63.0"
   }
 }

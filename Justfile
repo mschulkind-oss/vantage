@@ -81,6 +81,7 @@ check: format
     staticcheck ./cmd/... ./internal/... ./web/...
     go test ./cmd/... ./internal/... ./web/...
     npm run lint -w vantage-md && npm run typecheck -w vantage-md
+    just _published-types
     npm run lint -w vantage-check && npm run typecheck -w vantage-check && npm run test -w vantage-check
     npm run lint -w frontend && npx tsc --build frontend && npm run test -w frontend
     just _self-check
@@ -102,6 +103,7 @@ check-ci: _deps-match
     # it runs the package standalone under its own TypeScript (~6.0.3), where
     # frontend/'s --build reads the same files under ~5.9.3.
     ( npm run format:check -w vantage-md && npm run lint -w vantage-md && npm run typecheck -w vantage-md )
+    just _published-types
     ( npm run format:check -w vantage-check && npm run lint -w vantage-check && npm run typecheck -w vantage-check && npm run test -w vantage-check )
     ( npm run format:check -w frontend && npm run lint -w frontend && npx tsc --build frontend && npm run test -w frontend )
     # Then the artifact, not just the source it was built from.
@@ -240,6 +242,20 @@ release version:
     git tag "v{{version}}" "$commit"
     git push origin "v{{version}}"
     echo "pushed v{{version}} — publish.yml takes it from here"
+
+# Build vantage-md and check a consumer of the result under every TypeScript
+# version we support.
+#
+# Everything in this repo imports vantage-md's SOURCE, so nothing else would
+# notice if the emitted declarations were wrong — and `dist/` is what npm
+# consumers get. Building here is the point, not overhead: the check is
+# meaningless against a stale dist.
+[private]
+_published-types:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    npm run build --workspace vantage-md >/dev/null
+    npm run typecheck:published --workspace vantage-md
 
 # Point git at the tracked hooks dir. Idempotent.
 [private]

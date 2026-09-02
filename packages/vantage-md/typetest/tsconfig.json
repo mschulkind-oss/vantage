@@ -1,0 +1,17 @@
+{
+  // Deliberately NOT extending the package tsconfig: this compiles a consumer
+  // of the built package, so it must resolve `vantage-md` through the published
+  // `exports` map like npm consumers do, not through any source alias.
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": false,
+    "noEmit": true,
+    "types": []
+  },
+  "include": ["consumer.ts"]
+}
