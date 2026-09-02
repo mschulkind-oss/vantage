@@ -1,7 +1,19 @@
 # Roadmap
 
-**Status:** 1 blocked
+**Status:** 1 ready · 1 blocked
 **Updated:** 2026-09-01
+
+---
+
+## 📦 Up Next
+
+### 📦 Publish a release so the v0.5.5 retraction takes effect
+
+`go.mod` retracts `v0.5.5`, which was tagged without `web/dist` and therefore serves the "Frontend bundle not found." placeholder from `go install`. Every other 0.5.5 artifact is correct.
+
+**A retraction is inert until a later version carrying the directive is published.** `v0.5.6` predates it, so today `go install …@v0.5.5` still resolves and still installs a broken binary. The next release — whenever there is something else worth releasing — makes `go get` and `go install` skip it and warn if it is named directly.
+
+Nothing to build; this is a note that the fix is staged and lands with the next `just release`.
 
 ---
 
