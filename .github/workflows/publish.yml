@@ -133,6 +133,32 @@ jobs:
       - name: Build the vantage-md library
         run: npm exec --workspace vantage-md -- tsdown
 
+      # The archives, wheels, npm package and formula are all built right here,
+      # so they never read the committed web/dist. `go install …@latest` is the
+      # exception: it builds from the tag's tree on the user's own machine, with
+      # no npm and no CI, and `//go:embed all:dist` accepts an empty directory —
+      # so a tag without the bundle produces a binary serving "Frontend bundle
+      # not found." and nothing else notices.
+      #
+      # `just release` puts the bundle in the commit it tags. Tagging by hand
+      # skips that, which is what happened to v0.5.5: every artifact here
+      # published correctly while `go install` was broken, and the tag could not
+      # be repaired afterwards — Go's checksum database records a tag's tree
+      # hash on first fetch, so re-pointing it turns a placeholder into a hard
+      # checksum failure for everyone.
+      #
+      # Fail here instead, before anything is published.
+      - name: Assert the tag carries the frontend bundle
+        run: |
+          set -euo pipefail
+          if [ -z "$(git ls-tree -r --name-only HEAD -- web/dist | grep -v '^web/dist/.gitkeep$' || true)" ]; then
+            echo "::error::${GITHUB_REF_NAME} has no web/dist — it was not cut with 'just release'."
+            echo "go install …@${GITHUB_REF_NAME} would serve the placeholder page."
+            echo "Delete this tag and re-cut it with: just release ${GITHUB_REF_NAME#v}"
+            exit 1
+          fi
+          echo "web/dist present in the tag: $(git ls-tree -r --name-only HEAD -- web/dist | wc -l) files"
+
       - name: Build and bundle the frontend
         run: |
           set -euo pipefail
