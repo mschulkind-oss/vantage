@@ -2,6 +2,23 @@ module github.com/mschulkind-oss/vantage
 
 go 1.26
 
+// v0.5.5 was tagged by hand rather than through `just release`, so its tree
+// carries no web/dist. //go:embed accepts the empty directory, so `go install
+// …@v0.5.5` builds a binary that serves "Frontend bundle not found." instead of
+// the app. Everything else published for 0.5.5 is correct — the archives,
+// wheels, npm package and Homebrew formula are all built by CI, which rebuilds
+// the frontend itself and never reads the committed copy.
+//
+// The tag cannot be repaired: Go's checksum database recorded its tree hash on
+// first fetch, so re-pointing it would turn a placeholder into a checksum
+// failure for everyone. Retracting is the supported way to withdraw it — `go
+// get` and `go install` skip retracted versions when resolving @latest, and
+// warn when one is asked for by name.
+//
+// A retraction only takes effect once a LATER version carrying this directive
+// is published, so this is inert until the next release.
+retract v0.5.5
+
 require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/caarlos0/env/v11 v11.4.1
