@@ -59,15 +59,20 @@ Never kill it; run test instances on other ports.
   files** until the gate moved to `tsc --build`, which walks the references and
   covers `frontend/src` and `packages/vantage-md/src` both. Keep it `--build`;
   reverting to `--noEmit` looks identical and silently checks nothing.
-- **`packages/vantage-md` is type-checked twice, under two TypeScript
-  versions** — standalone at its own pin (`~6.0.3`) and again through
-  `frontend/`'s project reference (`~5.9.3`). Both are deliberate; a change that
-  passes one and not the other is a real finding, not a flake. The workspace
-  keeps this working by **declaring `typescript` at the root**: the dts build
-  hoists there and resolves TypeScript from its own location, not the package's,
-  so without the 6.x pin it would generate `vantage-md`'s declarations under a
-  different compiler than the one that type-checks it. Root holds 6.x;
-  `frontend` and `vantage-check` nest their own 5.9.3. It has no tests
+- **Every package is on one TypeScript (`~6.0.3`), and the old-compiler
+  guarantee is a real check instead of an accident.** Until 2026-09-02
+  `frontend` pinned 5.9 while `vantage-md` pinned 6.0, and because
+  `frontend/tsconfig.json` references this package its sources were compiled by
+  both. That was true but it proved the wrong thing: it compiled `src/`, while
+  npm consumers only ever see the emitted `dist/`, and nothing checked the half
+  that ships. `just check` now builds the package and type-checks
+  `packages/vantage-md/typetest/consumer.ts` — an importer of the built
+  `dist/` — under both `typescript` and `typescript-5`, an alias pinning the
+  oldest version we support. Widen the range by adding another alias.
+- **`typescript` is declared at the workspace root on purpose.** The dts build
+  hoists there and resolves TypeScript from its own location rather than the
+  package's, so a root without the pin would generate `vantage-md`'s
+  declarations under a different compiler than the one that type-checks it. It has no tests
   of its own: its behaviour is covered by `frontend/`'s tests through the source
   alias.
 - **Editing Markdown can fail the gate.** It rebuilds the CLI and runs it over
