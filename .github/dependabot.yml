@@ -18,6 +18,20 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      # TypeScript 7 is blocked on typescript-eslint, not on us. Its latest
+      # (8.69.0, 2026-08-31) declares `typescript: >=4.8.4 <6.1.0` and refuses
+      # to run with "typescript-eslint does not support TS 7.0."; no published
+      # version, canary included, names 7.x. We lint at --max-warnings 0 in all
+      # three packages, so this is a hard stop rather than a warning.
+      #
+      # This ignore previously blamed tsup's bundled rollup-plugin-dts, which
+      # was also true and is now fixed (c0e70d5d moved the dts build to
+      # tsdown, whose peer range names 7.x and which builds clean under 7.0.2).
+      # Lift this when typescript-eslint ships a release naming 7.x — that is
+      # the only remaining blocker.
+      - dependency-name: "typescript"
+        versions: ["7.x"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
