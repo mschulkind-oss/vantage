@@ -60,7 +60,7 @@ Never kill it; run test instances on other ports.
   covers `frontend/src` and `packages/vantage-md/src` both. Keep it `--build`;
   reverting to `--noEmit` looks identical and silently checks nothing.
 - **Every package is on one TypeScript (`~6.0.3`), and the old-compiler
-  guarantee is a real check instead of an accident.** Until 2026-09-02
+  guarantee is a real check instead of an accident.** Until 2026-09-01
   `frontend` pinned 5.9 while `vantage-md` pinned 6.0, and because
   `frontend/tsconfig.json` references this package its sources were compiled by
   both. That was true but it proved the wrong thing: it compiled `src/`, while

@@ -2,7 +2,7 @@
  * Type-check a consumer of the built package under every TypeScript version we
  * claim to support.
  *
- * Until 2026-09-02 this guarantee was a side effect: `frontend` pinned
+ * Until 2026-09-01 this guarantee was a side effect: `frontend` pinned
  * TypeScript 5.9 and vantage-md pinned 6.0, and because `frontend/tsconfig.json`
  * references this package, its sources got compiled by both. That was real but
  * it was a lie about what it proved — it compiled `src/`, while npm consumers
