@@ -36,28 +36,32 @@ export default defineConfig([
     ...shared,
     entry: { index: "src/index.ts" },
     clean: true,
-    external: ["react", "react-dom", "mermaid", "yaml", "smol-toml"],
+    deps: {
+      neverBundle: ["react", "react-dom", "mermaid", "yaml", "smol-toml"],
+    },
   },
   // React entry — requires the React peer dep.
   {
     ...shared,
     entry: { react: "src/react.ts" },
-    external: [
-      "react",
-      "react-dom",
-      "mermaid",
-      "yaml",
-      "smol-toml",
-      "react-markdown",
-      "remark-gfm",
-      "remark-math",
-      "rehype-raw",
-      "rehype-sanitize",
-      "rehype-highlight",
-      "rehype-katex",
-      "rehype-slug",
-      "katex",
-    ],
+    deps: {
+      neverBundle: [
+        "react",
+        "react-dom",
+        "mermaid",
+        "yaml",
+        "smol-toml",
+        "react-markdown",
+        "remark-gfm",
+        "remark-math",
+        "rehype-raw",
+        "rehype-sanitize",
+        "rehype-highlight",
+        "rehype-katex",
+        "rehype-slug",
+        "katex",
+      ],
+    },
     // The CSS ships as-is rather than through the bundler: it is plain CSS with
     // no imports to resolve, and tsup's third config existed only to copy it.
     hooks: {
