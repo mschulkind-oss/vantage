@@ -38,7 +38,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/mdast": "^4.0.4",
-    "@types/node": "^24.10.1",
+    "@types/node": "^26.4.0",
     "eslint": "^10.7.0",
     "globals": "^17.11.0",
     "prettier": "^3.8.1",
