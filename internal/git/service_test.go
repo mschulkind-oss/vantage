@@ -516,3 +516,32 @@ func TestIntegrationRecentsExcludeDir(t *testing.T) {
 	require.True(t, paths["keep.md"])
 	require.False(t, paths["node_modules/skip.md"], "excluded directory is pruned")
 }
+
+// An untracked symlink pointing outside the repository must not have its
+// target's contents rendered into a synthetic diff. WorkingDiff reaches
+// diffUntrackedFile with a path git's status output vouched for, but git
+// vouches for the *link*, not for where it points.
+func TestIntegrationWorkingDiffUntrackedSymlinkEscapingRoot(t *testing.T) {
+	ClearStatusCache()
+
+	dir := initRepo(t)
+	writeFile(t, dir, "page.md", "one\n")
+	runGit(t, dir, "add", "page.md")
+	runGit(t, dir, "commit", "-m", "c")
+
+	outside := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(outside); err == nil {
+		outside = resolved
+	}
+	const canary = "OUT-OF-ROOT-CANARY"
+	require.NoError(t, os.WriteFile(filepath.Join(outside, "secret.md"), []byte(canary+"\n"), 0o600))
+	require.NoError(t, os.Symlink(filepath.Join(outside, "secret.md"), filepath.Join(dir, "link.md")))
+
+	ClearStatusCache()
+	svc := NewService(dir, Options{})
+	diff, err := svc.WorkingDiff("link.md")
+	require.NoError(t, err)
+	if diff != nil {
+		require.NotContains(t, diff.RawDiff, canary, "the link target's contents must not appear in the diff")
+	}
+}

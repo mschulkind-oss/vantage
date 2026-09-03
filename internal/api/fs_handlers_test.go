@@ -3,6 +3,8 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/mschulkind-oss/vantage/internal/model"
@@ -208,4 +210,77 @@ func TestRecentAllItemHasRepoAndFileKeys(t *testing.T) {
 	require.Contains(t, m, "path")
 	require.Contains(t, m, "date")
 	require.Equal(t, "myrepo", m["repo"])
+}
+
+// outsideCanary builds an out-of-root directory holding a canary file under
+// each of the two /content branches' extensions, returning (dir, canary).
+func outsideCanary(t *testing.T) (string, string) {
+	t.Helper()
+	outside := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(outside); err == nil {
+		outside = resolved
+	}
+	const canary = "OUT-OF-ROOT-CANARY"
+	require.NoError(t, os.WriteFile(filepath.Join(outside, "secret.md"), []byte(canary+"\n"), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(outside, "secret.png"), []byte(canary+"\n"), 0o600))
+	return outside, canary
+}
+
+// The raw-image branch streams bytes verbatim with a 200 and an image content
+// type, so an escaping symlink there discloses any readable file regardless of
+// type — the JSON branch at least blanks non-UTF-8 content. The mime is chosen
+// from the *requested* extension, never the target's, so "logo.png" pointing at
+// a private key is served as image/png.
+func TestContentImageSymlinkEscapingRootRejected(t *testing.T) {
+	e := newTestEnv(t, false)
+	outside, canary := outsideCanary(t)
+	require.NoError(t, os.Symlink(filepath.Join(outside, "secret.png"), filepath.Join(e.dir, "logo.png")))
+
+	w := e.do(e.h.Content, http.MethodGet, "/content?path=logo.png", "", true)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.NotContains(t, w.Body.String(), canary)
+}
+
+func TestContentJSONSymlinkEscapingRootRejected(t *testing.T) {
+	e := newTestEnv(t, false)
+	outside, canary := outsideCanary(t)
+	require.NoError(t, os.Symlink(filepath.Join(outside, "secret.md"), filepath.Join(e.dir, "link.md")))
+
+	w := e.do(e.h.Content, http.MethodGet, "/content?path=link.md", "", true)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.NotContains(t, w.Body.String(), canary)
+}
+
+// A symlinked directory carries the rest of the path with it, on both branches.
+func TestContentSymlinkedDirEscapingRootRejected(t *testing.T) {
+	e := newTestEnv(t, false)
+	outside, canary := outsideCanary(t)
+	require.NoError(t, os.Symlink(outside, filepath.Join(e.dir, "linkdir")))
+
+	for _, path := range []string{"linkdir/secret.md", "linkdir/secret.png"} {
+		w := e.do(e.h.Content, http.MethodGet, "/content?path="+path, "", true)
+		require.Equal(t, http.StatusBadRequest, w.Code, path)
+		require.NotContains(t, w.Body.String(), canary, path)
+	}
+}
+
+// Listing through an escaping symlinked directory enumerates filenames outside
+// the root even when their contents stay unreadable.
+func TestTreeSymlinkedDirEscapingRootRejected(t *testing.T) {
+	e := newTestEnv(t, false)
+	outside, _ := outsideCanary(t)
+	require.NoError(t, os.Symlink(outside, filepath.Join(e.dir, "linkdir")))
+
+	w := e.do(e.h.Tree, http.MethodGet, "/tree?path=linkdir", "", true)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	require.NotContains(t, w.Body.String(), "secret.md")
+}
+
+// A missing file must stay a 404 from the image branch, not become a 400: the
+// containment check resolves the nearest existing ancestor precisely so that a
+// path that simply is not there keeps its old answer.
+func TestContentImageMissingFileStill404(t *testing.T) {
+	e := newTestEnv(t, false)
+	w := e.do(e.h.Content, http.MethodGet, "/content?path=nope/missing.png", "", true)
+	require.Equal(t, http.StatusNotFound, w.Code)
 }

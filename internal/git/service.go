@@ -34,6 +34,7 @@ import (
 	"github.com/mschulkind-oss/vantage/internal/gitenv"
 	"github.com/mschulkind-oss/vantage/internal/ignore"
 	"github.com/mschulkind-oss/vantage/internal/model"
+	"github.com/mschulkind-oss/vantage/internal/pathsafe"
 	"github.com/mschulkind-oss/vantage/internal/perf"
 )
 
@@ -541,8 +542,18 @@ func (s *GitService) WorkingDiff(path string) (*model.FileDiff, error) {
 
 // diffUntrackedFile renders an untracked file's full contents as an
 // all-additions unified diff, mirroring how git would show a new file.
+//
+// The path arrives vouched for by "git status", but git vouches for the entry,
+// not for where it points: an untracked symlink is reported as an untracked
+// path, and reading it followed the link to whatever the server process could
+// read. So containment is re-proved here through [pathsafe.Resolve] before the
+// read, and an escaping path yields no diff at all.
 func (s *GitService) diffUntrackedFile(path string) string {
-	full := filepath.Join(s.repoPath, path)
+	full, err := pathsafe.Resolve(s.repoPath, path)
+	if err != nil {
+		slog.Warn("git: refusing to diff a path outside the repository", "path", path, "error", err)
+		return ""
+	}
 	data, err := readFileReplace(full)
 	if err != nil {
 		return ""
