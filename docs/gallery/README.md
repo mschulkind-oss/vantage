@@ -6,7 +6,7 @@ summary: "A set of specimen documents that render every Vantage directive, for r
 
 # The directive gallery
 
-Six specimen documents that render **every** Vantage directive, token and
+Seven specimen documents that render **every** Vantage directive, token and
 combination, with nothing else on the page. Their only job is to be looked at.
 
 They exist because the directive vocabulary is
@@ -66,6 +66,7 @@ Two switches change what these pages are showing you:
 | [Sections and the run](./sections.md) | one toned section across nine block types; adjacent runs; the unstampable hole | is the stripe continuous, and does it stop where the section stops? |
 | [Collapse](./collapse.md) | `collapsed=true`, nesting, the caret, the three gates | does the caret work by keyboard, and does everything print open? |
 | [Open questions](./open-questions.md) | `oq`, the one-click button, and where it will not appear | one affirmative button per question, and nothing when review mode is off? |
+| [Status at a glance](./status.md) | task lists, badges and chips together, in the shapes a roadmap uses | can you tell what still needs you *without reading*? |
 
 Each page opens with its own "what to look at" list. Those lists are the point —
 they are what turns "this looks a bit off" into a specific claim about a

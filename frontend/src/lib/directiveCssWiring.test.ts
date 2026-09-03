@@ -114,6 +114,55 @@ describe("the toned-heading gutter cancels the ¶-anchor shift exactly", () => {
   });
 });
 
+describe("the task-list stylesheet is reached by both consumers", () => {
+  const TASK_IMPORT =
+    '@import "../../packages/vantage-md/src/styles/task-list.css";';
+
+  it("is imported by the app, by relative source path", () => {
+    // Same rule as directives.css: `vantage-md/styles/task-list.css` resolves
+    // to the gitignored publish-only build, so it works off a stale local
+    // dist/ and fails in CI.
+    expect(appCss).toContain(TASK_IMPORT);
+  });
+
+  it("is re-exported by the package, so an external consumer is styled too", () => {
+    expect(packageCss).toContain('@import "./task-list.css";');
+  });
+
+  it("is imported after directives.css, whose palette it reads", () => {
+    // The done box is `--vantage-tone-tip-accent`. Declared before that
+    // variable exists it resolves to nothing and the box renders unfilled —
+    // which reads as "not done", the one thing it must never say.
+    expect(appCss.indexOf(TASK_IMPORT)).toBeGreaterThan(
+      appCss.indexOf(IMPORT_LINE),
+    );
+    expect(packageCss.indexOf('@import "./task-list.css";')).toBeGreaterThan(
+      packageCss.indexOf('@import "./directives.css";'),
+    );
+  });
+
+  it("is not wrapped in a layer", () => {
+    // It has to beat typography's list utilities, which sit in
+    // `@layer utilities`; only unlayered declarations do that.
+    expect(appCss).not.toMatch(/@import\s+[^;]*task-list\.css[^;]*layer\(/);
+  });
+
+  it("targets the task-list classes, not a container class", () => {
+    // The app uses Tailwind typography's `prose` and the package's own viewer
+    // uses `.vantage-prose`; a rule scoped to either reaches one renderer and
+    // silently misses the other (D5).
+    // Comments stripped first: the file's own header explains why it does *not*
+    // scope to either container, so a raw substring test matches the prose that
+    // states the rule and fails on the file that follows it.
+    const taskCss = read(
+      "../../../packages/vantage-md/src/styles/task-list.css",
+    ).replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(taskCss).toContain(".task-list-item");
+    expect(taskCss).not.toContain(".prose");
+    expect(taskCss).not.toContain(".vantage-prose");
+  });
+});
+
 describe("a member's own left border is compensated, so the rule stays straight", () => {
   /**
    * `left` on the rule's pseudo-element resolves from the member's PADDING

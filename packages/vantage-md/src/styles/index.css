@@ -1,8 +1,8 @@
 /* vantage-md styles
  *
  * Import this file to get the line-anchor highlight styles, the theme layer for
- * the `data-vantage-*` directive attributes, and the chrome chips
- * (`FrontmatterDisplay`'s document status chip).
+ * the `data-vantage-*` directive attributes, the chrome chips
+ * (`FrontmatterDisplay`'s document status chip), and the task-list treatment.
  * Usage: import "vantage-md/styles";
  *
  * Both halves of the directive wiring are load-bearing. Without this re-export
@@ -14,3 +14,5 @@
 
 @import "./line-anchor.css";
 @import "./directives.css";
+/* After directives.css, which declares the tone palette this reads. */
+@import "./task-list.css";
