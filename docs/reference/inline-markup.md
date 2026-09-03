@@ -343,6 +343,54 @@ positions. Members are joined by an upward bleed keyed off `data-vantage-run`
 > treatment. Computed-style assertions cannot catch this — the pseudo-element's
 > `left` was correct all along; it simply did not paint. Only a pixel test sees it.
 
+## GFM alerts
+
+`> [!WARNING]` and its four siblings are compiled by `rehypeVantageAlerts` into
+`data-vantage-alert` on the blockquote, with the marker removed from the text and
+a title element prepended. It is a **pipeline** plugin, so all four renderers get
+it — the live viewer, the package's exported viewer, the static export, and the
+CLI checker's `renderMarkdown` (**D5**).
+
+The five kinds resolve to the **same per-tone properties** the `tone` vocabulary
+resolves, so `[!WARNING]` and `<!-- vantage: block tone=warning -->` cannot drift
+apart and a new theme is still one custom-property block. They stay two closed
+lists because they are closed by different authorities: `muted` is ours and is not
+an alert word. A test asserts the alert set is a strict subset of the tones.
+
+An alert is a **heavier** treatment than a tone, deliberately: a real left border,
+a full wash and a visible title, because the author asked for a callout. A tone
+annotates a block that reads perfectly well without it.
+
+> [!IMPORTANT]
+> **Alerts resolve to `--vantage-alert-*`, never to `--vantage-tone-*`, and the
+> separation is a bug fix rather than tidiness.** Custom properties inherit. A
+> `[!CAUTION]` inside a `tone=important` section is both an alert *and* a stamped
+> run member, so resolving both onto `--vantage-tone-accent` let the alert's kind
+> win on that element — and the section's own vertical rule turned red for the
+> height of the alert plus the 2.5rem it bleeds upward. The section read as three
+> colours and looked broken.
+
+Three `@tailwindcss/typography` defaults have to be overridden, and all three are
+why an unrendered alert looked far worse than merely plain: typography italicises
+blockquotes, greys their text, and draws `open-quote`/`close-quote` around the
+first paragraph. So a callout rendered as an italic *quotation* whose opening
+words were the literal `[!WARNING]`.
+
+An unrecognised marker is **left exactly as written** — `[!HINT]` is not an alert
+on GitHub either, and silently swallowing it would hide a typo that reads as a
+callout on no renderer at all. The marker must also be alone on the blockquote's
+first line, which is what keeps a paragraph that merely *begins* with bracketed
+text from being eaten.
+
+> [!NOTE]
+> The title is a real element rather than CSS `content`, unlike the collapse
+> caret. The caret is injected by app JS that may never run, so its glyph had to
+> stay out of the document's text; this plugin is in the shared pipeline and
+> always runs. It is a `div` rather than a `p` so it carries no
+> `data-source-line` and therefore cannot become the block a review comment
+> anchors to — `anchorBlockWithin` filters candidates to those with a finite
+> line.
+
 ## Collapse without a wrapper
 
 `collapsed=true` stamps a flat sibling run — a toggle attribute on the heading, a
@@ -611,12 +659,6 @@ every example the style guide tells agents to copy.
 
 ## Known gaps
 
-- **Vantage does not render GFM alerts.** `remark-gfm` does not implement them, so
-  `> [!WARNING]` renders as a plain blockquote with the literal bracket text
-  visible — while `styleGuide.ts` instructs every agent to write them. Tracked as
-  **OQ-10**, cited from `rules/markdown.ts`. The `tone` palette that shipped *is*
-  the six-colour light/dark treatment alert rendering needs; whoever ships it
-  should consume these tokens rather than build a second palette.
 - **Non-stampable siblings inside a section leave an unreported hole**, as
   described under [extent](#names-position-and-extent).
 
@@ -627,10 +669,13 @@ table is the only place the values themselves are stated.
 
 | Value | Setting | Defined in |
 | :--- | :--- | :--- |
-| Section rule width | `3px` | `--vantage-tone-rule-width`, `styles/directives.css` |
+| Section rule width | `5px` (`strong` 6px, `quiet` 4px) | `--vantage-tone-rule-width`, `styles/directives.css` |
+| Alert border width | `4px` | `--vantage-alert-rule-width`, same |
 | Rule offset into the gutter | `0.75rem` | `--vantage-tone-rule-offset`, same |
 | Upward bleed joining run members | `2.5rem` | `--vantage-tone-run-bleed`, same |
 | Heading gutter compensation | `1.5em` | `--vantage-tone-heading-gutter`, set by `frontend/src/index.css` |
+| Member border compensation | `0px` default; `0.25em` blockquote, `1px` `pre` (app), `4px` alert (package) | `--vantage-tone-border-compensation`, declared wherever the border is |
+| `quiet` fade | `0.88` | `styles/directives.css` |
 | Per-tone properties | `accent`, `wash`, `chip`, `ink` — light on `:root`, dark under `.dark` | `styles/directives.css` |
 | Collapse group id format | digits only | `COLLAPSE_GROUP_ID`, `sanitize.ts` |
 | Max `leaning` length carried to the DOM | 500 characters, whitespace-collapsed | `rehypeVantageDirectives.ts` |
@@ -647,4 +692,4 @@ cited from code comments.
 | OQ-2 | **Stamp, do not wrap.** A `<details>` wrapper puts comment cards inside `<summary>`, makes a summary click also open the comment popover, and breaks typography's `h2 + *` margin reset. The often-repeated justification — that the review system walks a flat sibling structure — is *false*; it climbs ancestors. The ruling stands on the four measured breakages, not on that claim. |
 | OQ-3 | **Semantic, never chromatic.** A document that names a colour has decided how it looks in every theme, including ones that do not exist yet. The theme owns the mapping. |
 | OQ-4 | **One button, affirmative only,** labelled to match the `leaning=` key. |
-| OQ-10 | The GFM alert gap is a real product defect, filed rather than fixed here. See [Known gaps](#known-gaps). |
+| OQ-10 | **Settled.** The alert gap was filed rather than fixed, and now is fixed: `rehypeVantageAlerts` compiles `> [!WARNING]` into `data-vantage-alert` and consumes the tone palette rather than building a second one — which is what the gap entry said whoever fixed it should do. See [GFM alerts](#gfm-alerts). |

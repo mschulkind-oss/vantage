@@ -16,11 +16,11 @@ export const HYGIENE_RULE = "markdown/hygiene";
  * style guide tells authors to write them, so flagging them would be the checker
  * arguing with its own guide.
  *
- * Vantage does **not** render them as callouts, measured: `remark-gfm` has no
- * alert support, so `> [!WARNING]` is a plain blockquote with the bracket text
- * visible on the page. This allowance is not evidence that rendering exists —
- * it is deference to the guide. The gap is `docs/reference/inline-markup.md`, "Known gaps"
- * and OQ-10.
+ * Vantage **does** render them, as of `rehypeVantageAlerts` — the marker is
+ * compiled into `data-vantage-alert` and never reaches the page as text. So
+ * this allowance is no longer deference to the guide: it is now simply correct
+ * that the label is markup rather than a broken reference, and the lint has
+ * nothing to say about it either way.
  */
 const ALERT_LABELS = ["!NOTE", "!TIP", "!IMPORTANT", "!WARNING", "!CAUTION"];
 

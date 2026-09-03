@@ -206,6 +206,22 @@ code {
 .prose :is(h1, h2, h3, h4, h5, h6)[data-vantage-tone] {
   --vantage-tone-heading-gutter: 1.5em;
 }
+/* The other half of the same arrangement, for borders rather than for the
+   heading gutter. A toned member's rule slice is positioned from its PADDING
+   edge, so a member carrying a left border draws it that far right of the rest
+   of the run — a visible break in what should be one continuous line. CSS
+   cannot read an element's own border width, so the compensation is declared
+   wherever the border is, and these two are the app's: typography's
+   `prose-blockquote:border-l-[0.25em]` (set in MarkdownViewer) and the 1px the
+   highlight theme puts on a code fence. The alert's own 4px is compensated
+   inside vantage-md, which is where that border is declared.
+   `directiveCssWiring.test.ts` pins each of these to the border it cancels. */
+.prose blockquote[data-vantage-tone]:not([data-vantage-alert]) {
+  --vantage-tone-border-compensation: 0.25em;
+}
+.prose pre[data-vantage-tone] {
+  --vantage-tone-border-compensation: 1px;
+}
 .heading-anchor {
   position: absolute;
   left: 0;

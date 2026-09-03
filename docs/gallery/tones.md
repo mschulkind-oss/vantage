@@ -113,36 +113,47 @@ A muted section is a section the reader is invited to skip. It should be the
 quietest thing on the page while still visibly *being* a marked section — if it
 disappears entirely, the token is doing nothing.
 
-## For comparison — the GFM alerts
+## The GFM alerts
 
-> [!WARNING]
-> **These do not render as callouts, and that is a known defect** — not
-> something this page is showing off. `remark-gfm` has no alert support, so
-> each block below is a plain blockquote with its bracket label visible as
-> text. Tracked as OQ-10 in
-> [the reference](../reference/inline-markup.md#known-gaps).
+The five alert words are the tone vocabulary's, and they now resolve to **the
+same four per-tone properties** — so `> [!WARNING]` and
+`<!-- vantage: block tone=warning -->` cannot drift apart, and a new theme is
+still one custom-property block.
 
-The tone vocabulary borrows its five names from GitHub's alert set on purpose,
-so an author who knows `> [!WARNING]` already knows `tone=warning`. The point of
-putting them side by side here is the *other* direction: whoever eventually
-implements alert rendering should consume these same tone tokens rather than
-build a second palette, and this page is where you can see whether that would
-look right.
+An alert is a heavier treatment than a tone on purpose. It draws a real left
+border, a full wash and a title, because the author asked for a callout; a tone
+annotates a block that reads perfectly well without it.
 
 > [!NOTE]
-> A note alert, unrendered.
+> A note alert.
 
 > [!TIP]
-> A tip alert, unrendered.
+> A tip alert.
 
 > [!IMPORTANT]
-> An important alert, unrendered.
+> An important alert.
 
 > [!WARNING]
-> A warning alert, unrendered.
+> A warning alert.
 
 > [!CAUTION]
-> A caution alert, unrendered.
+> A caution alert.
+
+What to check here: that the five are distinguishable at a glance, that the
+title reads as a label rather than as the first words of the sentence, and that
+the wash is strong enough to bound the box without fighting the text.
+
+### An unknown marker is left alone
+
+`[!HINT]` is not an alert word on GitHub either, so it stays exactly as written —
+visible literal text rather than a silently swallowed typo.
+
+> [!HINT]
+> This is a plain blockquote, and it should look like one: italic, quote marks,
+> and the marker still showing.
+
+That is also the specimen for **an ordinary blockquote**, which is worth having
+on the page now that alerts no longer look like one.
 
 ## Next
 

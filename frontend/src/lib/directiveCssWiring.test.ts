@@ -114,6 +114,66 @@ describe("the toned-heading gutter cancels the ¶-anchor shift exactly", () => {
   });
 });
 
+describe("a member's own left border is compensated, so the rule stays straight", () => {
+  /**
+   * `left` on the rule's pseudo-element resolves from the member's PADDING
+   * edge, so any member carrying a left border draws its slice that far right
+   * of the rest of the run. Measured before this existed: plain blockquotes at
+   * 312 and code fences at 309 against 308 for everything else, which on a 5px
+   * slice reads as the rule breaking rather than bending. CSS cannot read an
+   * element's own border width, so each bordered case declares the
+   * compensation, and each declaration has to equal the border it cancels.
+   */
+  it("cancels typography's blockquote border", () => {
+    const compensation = declaration(
+      appCss,
+      ".prose blockquote[data-vantage-tone]:not([data-vantage-alert])",
+      "--vantage-tone-border-compensation",
+    );
+    // The border is a Tailwind class on the component
+    // (`prose-blockquote:border-l-[0.25em]` in MarkdownViewer), so the value is
+    // pinned here rather than read from CSS. Change one and this fails.
+    expect(compensation).toBe("0.25em");
+  });
+
+  it("cancels the code fence's border", () => {
+    expect(
+      declaration(
+        appCss,
+        ".prose pre[data-vantage-tone]",
+        "--vantage-tone-border-compensation",
+      ),
+    ).toBe("1px");
+  });
+
+  it("leaves the alert's own border to the package that declares it", () => {
+    // Ownership, not duplication: vantage-md draws the alert's left border, so
+    // vantage-md cancels it. The app compensating a border it does not set
+    // would silently double up if the package ever retuned the width.
+    const packageDirectives = read(
+      "../../../packages/vantage-md/src/styles/directives.css",
+    );
+    expect(
+      declaration(
+        packageDirectives,
+        "[data-vantage-alert]",
+        "--vantage-tone-border-compensation",
+      ),
+    ).toBe("var(--vantage-alert-rule-width)");
+    // And the app must not also claim it.
+    expect(appCss).not.toContain("[data-vantage-alert] {");
+  });
+
+  it("defaults to zero, so an unbordered member is unaffected", () => {
+    const packageDirectives = read(
+      "../../../packages/vantage-md/src/styles/directives.css",
+    );
+    expect(packageDirectives).toContain(
+      "var(--vantage-tone-border-compensation, 0px)",
+    );
+  });
+});
+
 describe("the package ships the stylesheet too", () => {
   it("re-exports it from `styles/index.css`", () => {
     // Without this line `import "vantage-md/styles"` — the package's documented
