@@ -325,6 +325,12 @@ hr[data-vantage-tone]:is(
   border-left: var(--vantage-alert-rule-width) solid var(--vantage-alert-accent);
   background-color: var(--vantage-alert-wash);
   font-style: normal;
+  /* Typography gives `blockquote` BOTH `font-style: italic` and
+     `font-weight: 500`. Resetting only the italic left every alert's body a
+     half-step bolder than the prose around it — subtle enough to read as "this
+     callout is shouting" without anyone being able to say why, and measured at
+     500 against 400 for an ordinary paragraph. */
+  font-weight: 400;
   color: inherit;
   /* Typography sets this on blockquotes to hang the quote mark; an alert has no
      quote mark and the indent leaves its first line looking broken. */

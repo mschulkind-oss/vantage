@@ -438,6 +438,8 @@ Settled questions move to the [Decision Ledger](#decision-ledger) above.
    (`style-guide --format skill`)? This decides what the payload sentence says,
    so it is upstream of step 4.
 
+   <!-- vantage: oq id=OQ-B1 leaning="`init`, printing to stdout, with `--format agents-md|skill` — it reads as setup rather than as another check, and it keeps `style-guide` meaning exactly one thing." -->
+
    _Leaning:_ `init`, printing to stdout, with `--format agents-md|skill`. It
    reads as setup rather than as another check, and it keeps `style-guide`
    meaning exactly one thing.
@@ -454,6 +456,8 @@ Settled questions move to the [Decision Ledger](#decision-ledger) above.
    and relies on the agent's own memory. This is the closure question for
    [§3](#3-fixative-and-proactive) and gates step 5.
 
+   <!-- vantage: oq id=OQ-B2 leaning="Read-only in the payload, with `--write` as a human-invoked convenience. A pasted review comment is thin consent for a config write, and R3 is the kind of surprise that gets a tool uninstalled." -->
+
    _Leaning:_ read-only in the payload; `--write` exists but is a
    human-invoked convenience. A pasted review comment is thin consent for a
    config write, and **R3** is the kind of surprise that gets a tool uninstalled.
@@ -464,6 +468,8 @@ Settled questions move to the [Decision Ledger](#decision-ledger) above.
 
 3. 💬 **OQ-B3: Which formats does the generator emit?** `AGENTS.md` stanza only,
    `SKILL.md` only, both, or a broader set as conventions multiply.
+
+   <!-- vantage: oq id=OQ-B3 leaning="Both, and stop there. They cover the portable case and the progressive-disclosure case; a third is a maintenance surface with no distinct reach." -->
 
    _Leaning:_ both, and stop there. They cover the portable case and the
    progressive-disclosure case; a third is a maintenance surface with no
@@ -479,6 +485,8 @@ Settled questions move to the [Decision Ledger](#decision-ledger) above.
    name is arguably slightly narrow — but it is the name the payload, the
    userguide, and the wheel builder all hardcode.
 
+   <!-- vantage: oq id=OQ-B4 leaning="Register as-is. `check` is the load-bearing command, and a marginally narrow name costs less than a rename across three surfaces plus a squatted PyPI project." -->
+
    _Leaning:_ register as-is. `check` is the load-bearing command; a marginally
    narrow name costs less than a rename across three surfaces plus a squatted
    PyPI project. The owner action is a repeat, not a first: §5.1 shows it was
@@ -493,6 +501,8 @@ Settled questions move to the [Decision Ledger](#decision-ledger) above.
 5. 💬 🤷 **OQ-B5: How much payload budget does the proactive line get?** One
    sentence, or a short block with the install command spelled out per format?
    Pure judgement about a prompt you read more often than I do.
+
+   <!-- vantage: oq id=OQ-B5 leaning="One sentence. The fixative paragraph is already the longest non-protocol block in the payload, and R2 compounds every turn." -->
 
    _Leaning:_ one sentence. The fixative paragraph is already the longest
    non-protocol block in the payload, and **R2** compounds every turn.

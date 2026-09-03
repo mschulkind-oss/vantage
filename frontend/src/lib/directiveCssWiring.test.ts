@@ -114,6 +114,41 @@ describe("the toned-heading gutter cancels the ¶-anchor shift exactly", () => {
   });
 });
 
+describe("an alert overrides all three typography blockquote defaults", () => {
+  /**
+   * Typography styles `blockquote` with `font-style: italic`, a grey `color`,
+   * AND `font-weight: 500`, plus generated quotation marks on the first
+   * paragraph. Resetting only some of them is how an alert ends up looking
+   * subtly wrong in a way nobody can name — the weight was missed first time
+   * round, and measured at 500 against 400 for an ordinary paragraph, which
+   * reads as the callout shouting.
+   */
+  const alertCss = () =>
+    read("../../../packages/vantage-md/src/styles/directives.css").replace(
+      /\/\*[\s\S]*?\*\//g,
+      "",
+    );
+
+  it("resets the italic, the weight and the colour together", () => {
+    const css = alertCss();
+    const block = css.slice(
+      css.indexOf("[data-vantage-alert] {"),
+      css.indexOf("}", css.indexOf("[data-vantage-alert] {")),
+    );
+    expect(block).toContain("font-style: normal");
+    expect(block).toContain("font-weight: 400");
+    expect(block).toContain("color: inherit");
+  });
+
+  it("suppresses the generated quotation marks", () => {
+    // `content: none`, not `""` — typography also gives the pseudo a margin,
+    // which an empty string would keep.
+    const css = alertCss();
+    expect(css).toContain("[data-vantage-alert] p:first-of-type::before");
+    expect(css).toContain("content: none");
+  });
+});
+
 describe("the task-list stylesheet is reached by both consumers", () => {
   const TASK_IMPORT =
     '@import "../../packages/vantage-md/src/styles/task-list.css";';

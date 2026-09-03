@@ -1045,3 +1045,120 @@ describe("a run of directives across two comments", () => {
     expect(report.findings[0]?.message).toContain("Open Question button");
   });
 });
+
+/**
+ * `vantage/oq-missing` — the convention written without the markup.
+ *
+ * The report this rule exists for: a design doc with two fully-formed Open
+ * Questions, review mode on, and no button on either, because the directives
+ * had never been written. The agent that produced it followed the convention in
+ * `styleGuide.ts` and stopped there. Every failure in this family is silent by
+ * design, so the author's only clue was the absence of something they had never
+ * seen present.
+ */
+describe("vantage/oq-missing", () => {
+  /** The convention's shape, with the directive left out. */
+  const question = (
+    marker: string,
+    answer = "_(empty — fill in when decided)_",
+  ) =>
+    [
+      `1. ${marker} **OQ-1: Should the gate run on push?** The tradeoff is`,
+      "   latency against a red main.",
+      "",
+      "   _Leaning:_ on push, because a red main costs more than a slow push.",
+      "",
+      "   **Answer:**",
+      "",
+      `   > ${answer}`,
+      "",
+    ].join("\n");
+
+  it("reports an open question with a leaning and no directive", async () => {
+    expect(await check(question("💬"))).toEqual(["vantage/oq-missing"]);
+  });
+
+  it("says nothing once the directive is there", async () => {
+    const withDirective = question("💬").replace(
+      "   _Leaning:_",
+      '   <!-- vantage: oq id=OQ-1 leaning="On push, because a red main costs more than a slow push." -->\n\n   _Leaning:_',
+    );
+    expect(await check(withDirective)).toEqual([]);
+  });
+
+  it("says nothing about a question already marked answered", async () => {
+    // ✅ beats 💬: a settled question wants no invitation to re-answer it.
+    // Measured over this repo's own docs, the version without this carve-out
+    // fired on eight settled questions in one design doc.
+    expect(await check(question("✅"))).toEqual([]);
+    expect(await check(question("💬 ✅"))).toEqual([]);
+  });
+
+  it("says nothing about an item carrying no status marker", async () => {
+    // The older format, predating the emoji convention, is usually a settled
+    // question in an archived doc. Silence there is the point of keying on 💬.
+    expect(await check(question(""))).toEqual([]);
+  });
+
+  it("says nothing about an open question with no stated leaning", async () => {
+    // Nothing for the button to file. `leaning=` is optional on the directive,
+    // but a question with no leaning at all is not yet at the point of wanting
+    // a one-click answer.
+    const noLeaning = [
+      "1. 💬 **OQ-2: Still thinking about this one.**",
+      "",
+      "   **Answer:**",
+      "",
+      "   > _(empty)_",
+      "",
+    ].join("\n");
+    expect(await check(noLeaning)).toEqual([]);
+  });
+
+  it("does not mistake prose about leanings for a leaning", async () => {
+    // Anchored on purpose: a paragraph that mentions the word is commentary.
+    const prose = [
+      "1. 💬 **OQ-3: A question.**",
+      "",
+      "   My leaning here would depend on what the benchmark says.",
+      "",
+    ].join("\n");
+    expect(await check(prose)).toEqual([]);
+  });
+
+  it("reports each uncovered question separately", async () => {
+    const two = question("💬") + question("💬").replace("OQ-1", "OQ-2");
+    expect(await check(two)).toEqual([
+      "vantage/oq-missing",
+      "vantage/oq-missing",
+    ]);
+  });
+
+  it("scopes the directive to its own item, not the document", async () => {
+    // One directive does not cover a second question. A document-wide search
+    // would call a doc with one directive and nine questions fully covered.
+    const covered = question("💬").replace(
+      "   _Leaning:_",
+      '   <!-- vantage: oq id=OQ-1 leaning="Yes." -->\n\n   _Leaning:_',
+    );
+    expect(
+      await check(covered + question("💬").replace("OQ-1", "OQ-2")),
+    ).toEqual(["vantage/oq-missing"]);
+  });
+
+  it("points at the leaning, which is where the directive goes", async () => {
+    const report = await one(question("💬"));
+    expect(report.findings).toHaveLength(1);
+    // The `_Leaning:_` line of the fixture above.
+    expect(report.findings[0]?.line).toBe(4);
+  });
+
+  it("stays quiet when the rule is switched off", async () => {
+    const tree = makeTree({ "index.md": question("💬") });
+    const loaded = parseConfig(
+      '[check.rules]\n"vantage/oq-missing" = "off"\n',
+      "/x/.vantage.toml",
+    );
+    expect(ruleIds(await checkTree(tree, ["."], loaded.settings))).toEqual([]);
+  });
+});
