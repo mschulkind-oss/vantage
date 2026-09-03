@@ -1078,6 +1078,30 @@ describe("vantage/oq-missing", () => {
     expect(await check(question("💬"))).toEqual(["vantage/oq-missing"]);
   });
 
+  it("reports it as an error, not a warning", async () => {
+    // With all four convention markers present and no directive, the tree has
+    // settled it — the reviewer has a question, a leaning, and no way to file
+    // it. A repo that wants it advisory sets it to "warning" (below).
+    const report = await one(question("💬"));
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0]?.severity).toBe("error");
+  });
+
+  it("says nothing about a question blocked on something upstream", async () => {
+    // 🔒 means it cannot be answered yet, so a one-click answer would be a lie.
+    // This is the carve-out that matters most now the rule fails a build.
+    expect(await check(question("🔒"))).toEqual([]);
+    expect(await check(question("💬 🔒"))).toEqual([]);
+  });
+
+  it("says nothing without the convention's stable ID", async () => {
+    // The tightening that makes an error defensible: two prose signals (an
+    // emoji and the word "Leaning:") are thin evidence on which to fail a
+    // build. A document *about* the convention trips them and should not fail.
+    const noId = question("💬").replace("**OQ-1: ", "**");
+    expect(await check(noId)).toEqual([]);
+  });
+
   it("says nothing once the directive is there", async () => {
     const withDirective = question("💬").replace(
       "   _Leaning:_",
@@ -1151,6 +1175,17 @@ describe("vantage/oq-missing", () => {
     expect(report.findings).toHaveLength(1);
     // The `_Leaning:_` line of the fixture above.
     expect(report.findings[0]?.line).toBe(4);
+  });
+
+  it("can be downgraded to a warning by config", async () => {
+    const tree = makeTree({ "index.md": question("💬") });
+    const loaded = parseConfig(
+      '[check.rules]\n"vantage/oq-missing" = "warning"\n',
+      "/x/.vantage.toml",
+    );
+    const report = await checkTree(tree, ["."], loaded.settings);
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0]?.severity).toBe("warning");
   });
 
   it("stays quiet when the rule is switched off", async () => {
