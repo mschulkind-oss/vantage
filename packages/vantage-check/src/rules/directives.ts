@@ -1115,18 +1115,41 @@ const LEANING_MARKER = /^\s*leaning\s*:/i;
 /**
  * The convention's status emoji, which is what makes this rule usable.
  *
- * 💬 means "active decision awaiting a ruling" and ✅ means "decided". Only the
- * first wants a one-click answer, and keying on it is the difference between a
- * useful rule and a nag: measured over this repo's own docs, the unkeyed version
- * fired on eight *settled* questions in `docs/design/review-mode.md` — each with
- * a filled-in `**Answer:**` — where a button would be an invitation to re-answer
- * something already ruled on.
- *
- * ✅ wins over 💬 when both appear, because a question that has been marked
- * answered is answered whatever else its item says.
+ * 💬 means "active decision awaiting a ruling". Only that state wants a
+ * one-click answer, and keying on it is the difference between a useful rule and
+ * a nag: measured over this repo's own docs, the unkeyed version fired on eight
+ * *settled* questions in `docs/design/review-mode.md` — each with a filled-in
+ * `**Answer:**` — where a button would be an invitation to re-answer something
+ * already ruled on.
  */
 const OQ_OPEN_MARKER = "\u{1F4AC}";
-const OQ_ANSWERED_MARKER = "\u2705";
+
+/**
+ * States that are not awaiting a ruling, and therefore want no button. Either
+ * one wins over 💬 when both appear on the same item.
+ *
+ * ✅ is decided. 🔒 is **blocked on something upstream** — an experiment, another
+ * doc's decision — and that is the one this rule must never demand a directive
+ * for: the whole point of the marker is that the question cannot be answered
+ * yet, so a control offering to answer it in one click would be a lie. This
+ * matters more now the rule is an error, because a false positive fails a build
+ * rather than printing a line.
+ */
+const OQ_SETTLED_MARKERS = ["\u2705", "\u{1F512}"];
+
+/**
+ * The convention's stable ID — `OQ-1`, `OQ-C3`, `OQ-HS5`.
+ *
+ * Required, and it is the tightening that makes an error severity defensible.
+ * Without it the trigger was two prose signals (an emoji and the word
+ * "Leaning:"), which is thin evidence on which to fail somebody's build: a
+ * document *about* the convention, or one that happens to pair a 💬 with a
+ * sentence starting "Leaning:", would have failed it. With the ID the rule fires
+ * only on something that is unambiguously an Open Question written to the
+ * convention — four independent markers of it — which is what the house rule
+ * means by a question the parsed tree has settled.
+ */
+const OQ_ID = /\bOQ-[A-Za-z]*\d+\b/;
 
 /** Flatten a node's text the way a reader sees it, phrasing included. */
 function nodeText(node: RootContent | ListItem): string {
@@ -1163,11 +1186,18 @@ function nodeText(node: RootContent | ListItem): string {
  *   directive has to be indented to reach it. A leaning in running prose has no
  *   well-defined scope to search, and searching the document would call a doc
  *   with one directive and nine questions fully covered.
- * - **Marked 💬 and not ✅.** See `OQ_OPEN_MARKER`.
+ * - **Carrying the convention's stable ID.** See `OQ_ID` — this is the signal
+ *   that makes the finding an error rather than a guess.
+ * - **Marked 💬, and not ✅ or 🔒.** See `OQ_OPEN_MARKER` and
+ *   `OQ_SETTLED_MARKERS`.
  *
- * A warning, not an error: the document renders correctly and reads correctly,
- * and a question nobody wants a button on is a legitimate thing to write. What
- * it cannot be is *silent*.
+ * **An error**, because with all four markers present the parsed tree has
+ * settled it: this is an Open Question, written to the convention, awaiting a
+ * ruling, with a stated leaning and no way for the reviewer to file it. That is
+ * the house rule's error criterion, not a judgement about taste. A document that
+ * wants the question without the button says so with its marker — 🔒 if it is
+ * blocked, ✅ once it is decided — and a repo that wants the whole rule advisory
+ * sets `"vantage/oq-missing" = "warning"` under `[check.rules]`.
  */
 export function checkOpenQuestions(collector: Collector): void {
   if (!collector.enabled("vantage/oq-missing")) return;
@@ -1193,7 +1223,8 @@ export function checkOpenQuestions(collector: Collector): void {
     if (scopesWithOq.has(item)) return;
     const text = nodeText(item);
     if (!text.includes(OQ_OPEN_MARKER)) return;
-    if (text.includes(OQ_ANSWERED_MARKER)) return;
+    if (OQ_SETTLED_MARKERS.some((marker) => text.includes(marker))) return;
+    if (!OQ_ID.test(text)) return;
 
     const leaning = item.children.find(
       (child) =>
@@ -1208,10 +1239,12 @@ export function checkOpenQuestions(collector: Collector): void {
         column: leaning.position?.start.column ?? 1,
       },
       "This is an open question (\u{1F4AC}) with a stated leaning and no `oq` " +
-        "directive, so review mode renders no one-click answer for it. Add " +
+        "directive, so review mode renders no one-click answer for it and the " +
+        "reviewer has no way to file the leaning. Add " +
         '`<!-- vantage: oq id=\u2026 leaning="\u2026" -->` beside it, indented into ' +
         "the same list item, restating the leaning as the comment the agent will " +
-        "receive.",
+        "receive. If the question is not answerable yet, mark it \u{1F512} " +
+        "instead of \u{1F4AC}; if it is already decided, mark it \u2705.",
     );
   });
 }

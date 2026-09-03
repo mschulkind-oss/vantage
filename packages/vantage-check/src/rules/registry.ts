@@ -145,8 +145,8 @@ export const RULES: readonly RuleMeta[] = [
   {
     id: "vantage/oq-missing",
     summary:
-      "An Open Question written in the convention with no `oq` directive, so it gets no one-click answer",
-    default: "warning",
+      "An open question (💬) with a stated leaning and no `oq` directive, so the reviewer cannot file it",
+    default: "error",
   },
   {
     id: "vantage/orphan",
