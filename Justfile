@@ -13,7 +13,16 @@ setup: _hooks
     # built only at release.
     npm ci
 
-# Run the backend + frontend dev servers (Ctrl-C to stop).
+# Both halves live-reload: vite rebuilds the frontend and packages/vantage-md
+# (which it resolves through a source alias, not from dist/), and air rebuilds
+# and restarts the Go backend — see .air.toml.
+#
+# Develop against :8201, the vite port. :8200 is the backend it proxies to, and
+# on its own it serves whatever web/dist was last built with, so frontend and
+# vantage-md edits are invisible there. That is the one mistake that makes a
+# stylesheet change look like it did nothing.
+
+# Run the backend + frontend dev servers, both live-reloading (Ctrl-C to stop).
 dev path=".":
     TARGET_REPO={{path}} overmind start
 
@@ -47,21 +56,6 @@ build-bin:
 # output lands in packages/vantage-check/dist, which is gitignored, so this
 # never dirties a tracked file.
 #
-# Serve the directive gallery — the visual reference for `<!-- vantage: … -->`
-# markup, at docs/gallery/.
-#
-# `just dev` with the URL written down, and nothing else: the gallery is
-# ordinary Markdown in this repo, so the dev server already serves it. The
-# reason it earns a recipe is the port — the gallery exists to review CSS in
-# packages/vantage-md/src/styles/, and only :8201 (Vite) picks those edits up
-# live. Reviewing it on :8200 reads whatever web/dist was last built with, which
-# is the one mistake that makes the whole surface look unchanged.
-
-# Serve the directive gallery on the Vite port, for reviewing directive styling.
-gallery:
-    @echo "gallery → http://localhost:{{ env('DEV_FRONTEND_PORT', '8201') }}/docs/gallery/README.md"
-    @just dev
-
 # Build the vantage-check CLI for the current host.
 cli:
     cd packages/vantage-check && bun run build

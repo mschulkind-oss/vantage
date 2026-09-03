@@ -1,0 +1,46 @@
+# Live reload for the Go backend during `just dev`.
+#
+# Only the WATCH RULES live here. The command itself is in the Procfile, where
+# the dev ports and the target repo are already parameterised — air's config
+# does no shell expansion, so `${DEV_BACKEND_PORT}` would reach the server as a
+# literal string if the invocation moved here.
+#
+# `just dev` is now live on both halves: vite already hot-reloaded the frontend
+# and `packages/vantage-md` through its source alias, and this does the Go side.
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/vantage-dev ./cmd/vantage"
+# Go only. The frontend has its own watcher, and rebuilding the backend because
+# a `.tsx` file changed would restart the server on every keystroke in the other
+# half of the dev loop.
+include_ext = ["go"]
+# `stop_on_error` is deliberately left at its default of false: a build that
+# fails mid-edit leaves the last good binary serving, so the browser keeps
+# working instead of showing a connection error until the code compiles again.
+#
+# Excluded to keep the watcher off trees that never contain Go, the largest of
+# which (`node_modules`) would otherwise cost tens of thousands of inotify
+# watches. `web` is here because `just web-sync` rewrites `web/dist` wholesale
+# and `tmp` because it is air's own output.
+exclude_dir = [
+  "tmp",
+  "web",
+  "frontend",
+  "packages",
+  "node_modules",
+  "docs",
+  "userguide",
+  "scratch",
+  "swarf",
+  "dist",
+  ".git",
+  ".venv",
+  ".vantage",
+  ".yolo",
+]
+
+[misc]
+# Leave ./tmp in place between runs, so a restart does not pay a cold `go build`.
+clean_on_exit = false

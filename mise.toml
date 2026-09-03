@@ -4,3 +4,7 @@ node = "22"
 just = "latest"
 bun = "1.4.0"
 "go:honnef.co/go/tools/cmd/staticcheck" = "2026.1"
+# Live reload for the Go backend in `just dev`. Pinned like everything else
+# here: a dev-loop tool that changes behaviour under you is worse than one that
+# is a version behind.
+"go:github.com/air-verse/air" = "1.67.4"
