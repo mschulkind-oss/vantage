@@ -40,6 +40,9 @@ packages/vantage-check/dist/
 # Environment
 .env
 
+# air's dev build output (`just dev`)
+/tmp/
+
 # Overmind
 .overmind.sock
 .overmind.pid

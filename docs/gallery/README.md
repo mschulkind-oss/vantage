@@ -33,19 +33,20 @@ only shows what it looks like.
 ## Fire it up
 
 ```bash
-just gallery
+just dev
 ```
 
-That is `just dev` with the URL written down. Then open:
+Then open:
 
 ```text
 http://localhost:8201/docs/gallery/README.md
 ```
 
 **Use :8201, not :8200.** :8201 is the Vite dev server, so edits to
-`frontend/src` and to `packages/vantage-md` are live. :8200 is the Go backend it
-proxies to, and on its own it serves whatever `web/dist` was last built with —
-which is not your CSS edits.
+`frontend/src` and to `packages/vantage-md` are live — including the stylesheet
+this gallery exists to review. :8200 is the Go backend it proxies to, and on its
+own it serves whatever `web/dist` was last built with, so a CSS edit looks like
+it did nothing there.
 
 Two switches change what these pages are showing you:
 
