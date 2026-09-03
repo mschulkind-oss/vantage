@@ -1,0 +1,138 @@
+/* vantage-md/styles/task-list.css
+ *
+ * GFM task lists — `- [ ]` and `- [x]` — styled so the *status* of a checklist
+ * reads while scrolling past it, not only when you stop and look.
+ *
+ * Until this file existed they had no styling at all: `remark-gfm` emits
+ * `<input type="checkbox" disabled>` inside `li.task-list-item`, the sanitiser
+ * passes it, and the browser drew its default 13px square. A roadmap or an Open
+ * Questions checklist is one of the densest status surfaces a document has, and
+ * it was rendering as the least legible thing on the page.
+ *
+ * **The design goal is asymmetric on purpose: open items should be loud and done
+ * items should recede.** "What still needs me" is the question a reader brings
+ * to a checklist, so a done item is de-emphasised — nothing is hidden, and the
+ * text stays fully legible, but it stops competing. That is the same reasoning
+ * `emphasis=quiet` follows, and the same limit: quiet, never invisible.
+ *
+ * Like `directives.css` this file must stay UNLAYERED, and for the same reason:
+ * `@tailwindcss/typography`'s `prose` utilities sit in `@layer utilities`, and
+ * unlayered declarations outrank every layer regardless of specificity. That is
+ * the only thing letting these plain class selectors override the list styling
+ * typography applies in the app.
+ *
+ * It targets `.task-list-item` directly rather than `.prose` or
+ * `.vantage-prose`, because the two viewers use different container classes —
+ * Tailwind typography in the app, `.vantage-prose` for an external consumer of
+ * the package — and one selector has to reach both (D5).
+ *
+ * Colours come from the tone palette in `directives.css`, so a checklist and a
+ * `tone=tip` section agree about what "done" looks like and a new theme is still
+ * one custom-property block. It therefore depends on `directives.css` having
+ * been imported; `styles/index.css` imports both, in that order.
+ */
+
+.contains-task-list {
+  /* The marker would sit beside the checkbox and say the same thing twice. */
+  list-style: none;
+  padding-left: 0;
+}
+/* Nested task lists keep an indent — losing it flattens the hierarchy the
+   author wrote, which for a roadmap is the difference between a sub-task and a
+   sibling. */
+.contains-task-list .contains-task-list {
+  padding-left: 1.5em;
+}
+
+.task-list-item {
+  position: relative;
+  padding-left: 1.75em;
+  list-style: none;
+}
+/* `::marker` is suppressed explicitly as well as by `list-style`: Safari has
+   drawn one from the parent's computed value in the past, and a stray bullet
+   beside a checkbox is exactly the clutter this file exists to remove. */
+.task-list-item::marker {
+  content: none;
+}
+
+/* ── The box ────────────────────────────────────────────────────────────── */
+/* `appearance: none` and drawn by hand. The platform checkbox cannot be sized
+   or coloured reliably across browsers, and — measured — renders at 13px
+   regardless of the surrounding font size, so it shrank to illegibility in a
+   nested list and looked wrong beside 16px text everywhere else.
+   It stays `disabled`, as `remark-gfm` emits it: a document is not a form, and a
+   clickable box that cannot persist anything is the "control that lies" D4
+   forbids. `cursor: default` says so rather than leaving the platform's
+   not-allowed cursor to imply a fault. */
+.task-list-item > input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: absolute;
+  left: 0;
+  /* Optically centred on the first line rather than aligned to its top: the box
+     is square and the line box is not. */
+  top: 0.2em;
+  width: 1.05em;
+  height: 1.05em;
+  margin: 0;
+  border: 2px solid var(--vantage-tone-muted-accent);
+  border-radius: 4px;
+  background-color: transparent;
+  cursor: default;
+  flex-shrink: 0;
+}
+
+/* ── Done ───────────────────────────────────────────────────────────────── */
+/* Filled, in the tip tone — the same green a `badge=done` chip and a
+   `tone=tip` section use. */
+.task-list-item > input[type="checkbox"]:checked {
+  border-color: var(--vantage-tone-tip-accent);
+  background-color: var(--vantage-tone-tip-accent);
+}
+/* The tick is drawn as a rotated border pair rather than as a glyph, so it does
+   not depend on a font having the character and cannot be selected or copied as
+   text — a checkbox's state belongs to the input, not to the document's text. */
+.task-list-item > input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  left: 0.22em;
+  top: 0.04em;
+  width: 0.3em;
+  height: 0.55em;
+  border: solid var(--vantage-task-tick, #fff);
+  border-width: 0 2px 2px 0;
+  transform: rotate(40deg);
+}
+/* The dark theme's tip accent is a *light* green, so a white tick on it is the
+   low-contrast pairing rather than the safe one. Invert: the tick has to read
+   against the fill in both themes, which is the whole job of a tick. */
+.dark .task-list-item > input[type="checkbox"]:checked {
+  --vantage-task-tick: #052e16;
+}
+/* A done item recedes. `--vantage-task-done-fade` is a variable rather than a
+   literal so the one judgement call in this file is tunable in one place, and
+   0.62 is deliberately further down than `emphasis=quiet`'s 0.88: a checklist
+   is scanned for what is left, and this text has already been read. */
+.task-list-item:has(> input[type="checkbox"]:checked) {
+  opacity: var(--vantage-task-done-fade, 0.62);
+}
+
+/* ── Print ──────────────────────────────────────────────────────────────── */
+/* The fade goes: on paper a faint line is a legibility loss with no scrolling
+   reader to serve, and the same restoration `emphasis=quiet` gets. The box
+   keeps its shape in monochrome, because *which* items are done is information
+   and must survive printing. #57606a is the grey the rest of the print block
+   uses. */
+@media print {
+  .task-list-item:has(> input[type="checkbox"]:checked) {
+    opacity: 1;
+  }
+  .task-list-item > input[type="checkbox"] {
+    border-color: #57606a;
+  }
+  .task-list-item > input[type="checkbox"]:checked {
+    border-color: #57606a;
+    background-color: #57606a;
+  }
+}

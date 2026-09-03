@@ -21,6 +21,9 @@
    attribute selectors outrank the typography plugin's utilities.
    `frontend/src/lib/directiveCssWiring.test.ts` pins the path and the order. */
 @import "../../packages/vantage-md/src/styles/directives.css";
+/* Task lists, from the same package and by the same relative-source-path
+   rule. After directives.css, whose tone palette it reads. */
+@import "../../packages/vantage-md/src/styles/task-list.css";
 @plugin "@tailwindcss/typography";
 @custom-variant dark (&:where(.dark, .dark *));
 
