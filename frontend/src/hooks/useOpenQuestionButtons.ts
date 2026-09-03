@@ -191,6 +191,50 @@ function claimClick(e: Event): void {
   e.preventDefault();
 }
 
+/** A stamped directive and the block that will host its affordance. */
+export interface AnswerableOpenQuestion {
+  /** The element the directive stamped — where `data-vantage-leaning` lives. */
+  stamped: HTMLElement;
+  /** The block the affordance hangs off, and a review anchor resolves to. */
+  block: HTMLElement;
+}
+
+/**
+ * Every Open Question in `el` that can actually be answered in one click.
+ *
+ * Exported and shared, because two callers ask this question and they must not
+ * answer it differently: the pass below renders one row per result, and the
+ * viewer counts the results to say how many answerable questions a document
+ * holds. A count that disagrees with the number of buttons is worse than no
+ * count — it sends the reader looking for a control that was never there.
+ *
+ * Deliberately free of the review-mode and static gates. The gates decide
+ * whether the *affordance* renders (D4); this decides what exists in the
+ * document, which is true either way and is exactly what a reader with review
+ * mode off needs told.
+ */
+export function answerableOpenQuestions(
+  el: HTMLElement,
+): AnswerableOpenQuestion[] {
+  const found: AnswerableOpenQuestion[] = [];
+  const hosted = new Set<HTMLElement>();
+  for (const stamped of el.querySelectorAll<HTMLElement>("[data-vantage-oq]")) {
+    // Not `stamped` itself. A stamped `blockquote` or `li` shares its
+    // `data-source-line` with its own first paragraph, and the highlighter
+    // indexes blocks by line with last-write-wins — so it resolves the inner
+    // block. Anchoring on the outer one stores a hash of different text and the
+    // comment renders divergent the moment it is created.
+    const block = anchorBlockWithin(stamped);
+    if (!block || !OQ_HOST_TAGS.has(block.tagName)) continue;
+    // Two directives can resolve to one block (a stamped `li` and a stamped `p`
+    // inside it). One question, one button.
+    if (hosted.has(block)) continue;
+    hosted.add(block);
+    found.push({ stamped, block });
+  }
+  return found;
+}
+
 /**
  * Render the "Take this leaning" affordance for every `[data-vantage-oq]` block
  * in the prose container.
@@ -212,6 +256,7 @@ export function useOpenQuestionButtons(
   currentContent: string | null,
   onTake: TakeLeaning,
   onUndo: UndoLeaning,
+  onCount?: (count: number) => void,
 ): void {
   useEffect(() => {
     const el = containerRef.current;
@@ -221,6 +266,15 @@ export function useOpenQuestionButtons(
     // left behind (D4(a): no button and no trace of one).
     sweep(el);
 
+    const questions = answerableOpenQuestions(el);
+    // Reported BEFORE the gates, and that is the point: with review mode off
+    // there is no button and — until this existed — nothing anywhere saying a
+    // one-click answer was on offer at all. A reader looked at three Open
+    // Questions carrying leanings and saw three ordinary paragraphs. The count
+    // is what makes the affordance discoverable without rendering a control
+    // that cannot work (D4).
+    onCount?.(questions.length);
+
     // D4. Review mode only — and never where the click cannot be persisted: a
     // static export runs review mode with every write coerced by the axios
     // interceptor into a GET of a file that does not exist, so an ungated button
@@ -228,22 +282,7 @@ export function useOpenQuestionButtons(
     // reviewer believes they answered.
     if (!enabled || isStaticMode()) return;
 
-    const hosted = new Set<HTMLElement>();
-    for (const stamped of el.querySelectorAll<HTMLElement>(
-      "[data-vantage-oq]",
-    )) {
-      // Not `stamped` itself. A stamped `blockquote` or `li` shares its
-      // `data-source-line` with its own first paragraph, and the highlighter
-      // indexes blocks by line with last-write-wins — so it resolves the inner
-      // block. Anchoring on the outer one stores a hash of different text and
-      // the comment renders divergent the moment it is created.
-      const block = anchorBlockWithin(stamped);
-      if (!block || !OQ_HOST_TAGS.has(block.tagName)) continue;
-      // Two directives can resolve to one block (a stamped `li` and a stamped
-      // `p` inside it). One question, one button.
-      if (hosted.has(block)) continue;
-      hosted.add(block);
-
+    for (const { stamped, block } of questions) {
       const built = buildWholeBlockAnchor(block);
       if (!built) continue;
 
@@ -319,5 +358,13 @@ export function useOpenQuestionButtons(
     // Unmount, review mode off, or a file switch: leave no trace. The listeners
     // go with the nodes they were attached to.
     return () => sweep(el);
-  }, [containerRef, comments, enabled, currentContent, onTake, onUndo]);
+  }, [
+    containerRef,
+    comments,
+    enabled,
+    currentContent,
+    onTake,
+    onUndo,
+    onCount,
+  ]);
 }

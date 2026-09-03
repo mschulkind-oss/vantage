@@ -453,6 +453,26 @@ review endpoint, appears in the panel, reaches the agent in the ordinary clipboa
 payload, and is answered through the inbox. There is no new endpoint and no new
 inbox verb — per **P4** this is a *macro over an existing command*.
 
+### The count, and why the gate needed one
+
+The button renders only in review mode, which is correct and was also, on its
+own, a dead end: a document carrying three `oq` directives with leanings
+rendered as three ordinary paragraphs, and **nothing anywhere said the affordance
+existed**. The reader had to already know.
+
+So the viewer reports how many answerable questions a document holds —
+before the gates, so the number is right whether or not review mode is on — and
+the Review toggle carries it while review mode is off, with a tooltip saying what
+it is for. Clicking the toggle is what makes the count actionable, which is why
+it lives there rather than in the document: the count is not a second control,
+it is a label on the control that already existed.
+
+`answerableOpenQuestions` is exported and **shared with the render pass**, so the
+count and the buttons cannot disagree. A count of five against three buttons
+would send the reader hunting for controls that were never there — and five is
+what a naive count of `[data-vantage-oq]` gives on a document that also stamps a
+`pre` and a `table`.
+
 The button renders only when **all three** hold: review mode is on, the directive
 parsed, and static mode is off. The static gate is not optional — an exported site
 runs review mode with every write silently coerced into a GET, so an ungated

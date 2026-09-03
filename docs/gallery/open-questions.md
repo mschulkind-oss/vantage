@@ -24,6 +24,12 @@ comment came from a button.
 > per-file and remembered per file, so turning it on elsewhere does not turn it
 > on here. Switch it on for this document and the buttons appear; switch it off
 > and the page must read exactly as it does now.
+>
+> With it off, the **Review toggle in the toolbar carries the count**, and its
+> tooltip says the questions can be answered in one click. That count is the
+> only thing that says the affordance exists when the buttons cannot render, and
+> it is there because without it a document full of leanings read as ordinary
+> prose — which is exactly how the feature was first reported broken.
 
 ## What to look at
 
@@ -37,7 +43,9 @@ comment came from a button.
 - **Then click Undo.** The comment should go, and the button should come back.
 - **Take a leaning, then dismiss the comment from its card.** The chip and Undo
   must both still be there — that is the state this feature used to dead-end in.
-- Turn review mode off. Every row must vanish, and the prose must be unchanged.
+- Turn review mode off. Every row must vanish, the prose must be unchanged,
+  and the **count on the Review toggle must appear** — and must equal the number
+  of buttons that were just there.
 
 ## In a list, which is where they really live
 
