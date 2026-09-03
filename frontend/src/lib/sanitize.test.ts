@@ -250,8 +250,10 @@ describe("inline style filtering", () => {
 
   it("leaves table alignment alone, which uses attributes rather than CSS", async () => {
     const html = await styled("| a | b |\n| :-: | --: |\n| 1 | 2 |");
-    expect(html).toContain(`<th align="center">`);
-    expect(html).toContain(`<th align="right">`);
+    // Matched without pinning the rest of the tag: a cell also carries a
+    // `data-source-line` now, so a review comment can anchor to one.
+    expect(html).toMatch(/<th align="center"[^>]*>/);
+    expect(html).toMatch(/<th align="right"[^>]*>/);
   });
 });
 

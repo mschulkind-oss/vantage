@@ -191,7 +191,7 @@ Manually listed `[[repos]]` take precedence — duplicates are skipped. See [Con
 
 Vantage includes a built-in review mode for annotating documents:
 
-- **Inline comments** — attach a comment to any line or block of rendered Markdown
+- **Inline comments** — attach a comment to any block of rendered Markdown: hover it and click, or drag-select a phrase inside it. Tables are commentable cell by cell — point at a cell for that cell, or beside the table for the table as a whole
 - **Copy for the agent** — copy pending comments to the clipboard as a prompt that tells the agent exactly how to respond
 - **Agent responses** — after editing the document, the agent delivers a per-comment summary by appending a JSON line to `.vantage/inbox/` in the repo; Vantage consumes it and shows the response inline next to the comment
 - **Paste box** — for chat agents that cannot write files, paste their `- [<id>] <summary>` bullet reply into the Review panel instead

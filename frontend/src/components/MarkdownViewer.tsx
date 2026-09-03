@@ -24,6 +24,7 @@ import {
   hashBlockText,
   stripBlockText,
 } from "../lib/reviewAnchor";
+import { hoverTargetAt } from "../lib/reviewHover";
 import type { CommentAnchor } from "../types";
 
 interface MarkdownViewerProps {
@@ -40,11 +41,23 @@ interface MarkdownViewerProps {
   onOpenQuestionCount?: (count: number) => void;
 }
 
-// Tags eligible to be the anchor block for a comment.  We deliberately
-// exclude container-only tags that `rehypeSourceLines` also tags
-// (`ul`, `ol`, `tr`, `div`, `hr`) — selecting "an item in a list"
-// should anchor on the `<li>`, not collapse to the parent `<ul>`.
-const ANCHOR_TAGS = "p, h1, h2, h3, h4, h5, h6, li, blockquote, pre, table";
+/**
+ * Tags eligible to be the anchor block for a comment — the tags
+ * `resolveAnchorBlock` stops on. Container-only tags that `rehypeSourceLines`
+ * also stamps (`ul`, `ol`, `tr`, `div`, `hr`) are deliberately absent:
+ * selecting "an item in a list" should anchor on the `<li>` rather than
+ * collapse to the parent `<ul>`. This mirrors `ANCHORABLE_BLOCK_SELECTOR`'s tag
+ * list — keep the two together, or a selection will anchor to a block the
+ * highlighter never indexes.
+ *
+ * `td`/`th` are reached before `table` by virtue of being deeper, so a
+ * selection inside a cell anchors to the cell. That is also what makes a
+ * cross-cell drag report itself as clamped — two different cells, where both
+ * ends used to resolve to the one table — and hint that the comment lands
+ * where the selection started.
+ */
+const ANCHOR_TAGS =
+  "p, h1, h2, h3, h4, h5, h6, li, blockquote, pre, table, td, th";
 
 const MULTIBLOCK_HINT_KEY = "vantage.reviewMode.multiBlockHintShown";
 
@@ -62,7 +75,9 @@ function showMultiBlockHintToast(rect: DOMRect) {
   const toast = document.createElement("div");
   toast.id = "review-multiblock-hint";
   toast.className = "review-blocked-toast";
-  toast.textContent = "Comment will attach to the first paragraph";
+  // Not "the first paragraph": a selection dragged across two table cells
+  // clamps the same way, and it never met a paragraph.
+  toast.textContent = "Comment will attach where the selection starts";
   document.body.appendChild(toast);
 
   const top = rect.top + window.scrollY - 36;
@@ -458,9 +473,10 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     return () => clearTimeout(id);
   }, [isReviewMode, captureCurrentSelection]);
 
-  // Hover-to-comment: highlight the block whose vertical span contains the
-  // mouse cursor, regardless of horizontal position.  Click anywhere on the
-  // highlighted block opens the comment popover for that block's text.
+  // Hover-to-comment: highlight the block the cursor is pointing at, and let a
+  // click anywhere on it open the comment popover for that block's text. Prose
+  // is matched on the cursor's Y alone and table cells on X and Y both;
+  // `hoverTargetAt` owns that rule and the reasoning behind it.
   // Text selection still works normally — the click handler defers to any
   // active selection so drag-selecting a phrase isn't intercepted.
   const hoveredBlockRef = useRef<HTMLElement | null>(null);
@@ -469,7 +485,6 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     const el = containerRef.current;
     if (!el) return;
 
-    const BLOCK_SELECTOR = "p, h1, h2, h3, h4, h5, h6, li, blockquote";
     const HOVERED_CLASS = "review-block-hovered";
 
     const clear = () => {
@@ -479,37 +494,8 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       }
     };
 
-    const findBlockAtY = (clientY: number): HTMLElement | null => {
-      const blocks = el.querySelectorAll(
-        BLOCK_SELECTOR,
-      ) as NodeListOf<HTMLElement>;
-      let best: HTMLElement | null = null;
-      let bestDepth = -1;
-      for (const block of blocks) {
-        // Skip review-UI elements rendered inside the prose container.
-        if (block.closest("[data-review-inline-comment]")) continue;
-        const text = (block.innerText || block.textContent || "").trim();
-        if (text.length < 3) continue;
-        const r = block.getBoundingClientRect();
-        if (clientY < r.top || clientY > r.bottom) continue;
-        // Prefer the deepest matching block (e.g. an `li` inside an outer
-        // wrapper) so nested lists don't always resolve to their parent.
-        let depth = 0;
-        let cur: Element | null = block;
-        while (cur && cur !== el) {
-          depth++;
-          cur = cur.parentElement;
-        }
-        if (depth > bestDepth) {
-          bestDepth = depth;
-          best = block;
-        }
-      }
-      return best;
-    };
-
     const onMove = (e: MouseEvent) => {
-      const block = findBlockAtY(e.clientY);
+      const block = hoverTargetAt(el, e.clientX, e.clientY);
       if (block === hoveredBlockRef.current) return;
       clear();
       if (block) {
@@ -554,9 +540,10 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       const hovered = hoveredBlockRef.current;
       if (!hovered || !el.contains(hovered)) return;
 
-      // The hover-block selector includes p, h1-h6, li, blockquote;
-      // resolveAnchorBlock walks to the nearest tag with data-source-line
-      // (which may be the same element or a closer ancestor).
+      // `hoverTargetAt` already returns an anchorable element in every case
+      // it has one (a cell, a table, or a prose block), but it answers a
+      // *pointing* question, not an anchoring one — so still resolve, in case a
+      // future hover target is a tag no comment can attach to.
       const block = resolveAnchorBlock(el, hovered) ?? hovered;
       if (!block.hasAttribute("data-source-line")) return;
 

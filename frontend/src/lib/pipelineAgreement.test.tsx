@@ -160,9 +160,25 @@ function throughAppViewer(content = FIXTURE): Rendered {
 
 describe("every renderer runs the same chain", () => {
   it("agrees on file-relative data-source-line numbers", async () => {
-    // Body lines 2, 4, 6, 8, 8, 10, 12, 14 → file lines 6, 8, 10, 12, 12, 14,
-    // 16, 18. The two 12s are the table and its header row.
-    const expected = ["10", "12", "12", "14", "16", "18", "6", "8"];
+    // File lines 6, 8, 10, 12, 14, 16, 18, sorted as strings. Line 12 appears
+    // four times — the table, its header row, and that row's two cells — and 14
+    // three times, for the body row and its two cells. Cells are stamped so a
+    // review comment can anchor to one, which is what makes a line name several
+    // blocks at once.
+    const expected = [
+      "10",
+      "12",
+      "12",
+      "12",
+      "12",
+      "14",
+      "14",
+      "14",
+      "16",
+      "18",
+      "6",
+      "8",
+    ];
 
     expect((await throughRenderMarkdown()).sourceLines).toEqual(expected);
     expect(throughPackageViewer().sourceLines).toEqual(expected);

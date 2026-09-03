@@ -5,6 +5,7 @@ import {
   NEIGHBOR_RADIUS,
   ANCHORABLE_BLOCK_SELECTOR,
   blockVisibleText,
+  commentCardHost,
   hashBlockText,
   rangeFromCanonicalOffsets,
 } from "../lib/reviewAnchor";
@@ -167,7 +168,7 @@ export function useReviewHighlights(
     const allBlocks = el.querySelectorAll<HTMLElement>(
       ANCHORABLE_BLOCK_SELECTOR,
     );
-    const blocksByLine = new Map<number, HTMLElement>();
+    const blocksByLine = new Map<number, HTMLElement[]>();
     const blocksByHash = new Map<string, HTMLElement[]>();
     for (const block of allBlocks) {
       const lineAttr = block.getAttribute("data-source-line");
@@ -176,7 +177,9 @@ export function useReviewHighlights(
       if (!Number.isFinite(line)) continue;
       const hash = hashBlockText(blockVisibleText(block));
       block.setAttribute("data-block-hash", hash);
-      blocksByLine.set(line, block);
+      const atLine = blocksByLine.get(line) ?? [];
+      atLine.push(block);
+      blocksByLine.set(line, atLine);
       const list = blocksByHash.get(hash) ?? [];
       list.push(block);
       blocksByHash.set(hash, list);
@@ -198,7 +201,11 @@ export function useReviewHighlights(
         continue;
       }
 
-      let block = blocksByLine.get(anchor.source_line) ?? null;
+      let block = blockAtLine(
+        blocksByLine,
+        anchor.source_line,
+        anchor.block_text_hash,
+      );
       let divergent = false;
       let matchedByHash = false;
 
@@ -218,7 +225,7 @@ export function useReviewHighlights(
         }
       } else {
         console.warn(
-          "[review] comment %s: no block found at source_line=%d (blocksByLine has %d entries)",
+          "[review] comment %s: no block found at source_line=%d (blocksByLine has %d lines)",
           comment.id.slice(0, 8),
           anchor.source_line,
           blocksByLine.size,
@@ -315,6 +322,49 @@ export function useReviewHighlights(
   }, [containerRef, comments, currentContent, actions]);
 }
 
+/**
+ * The block at `line` an anchor carrying `hash` means.
+ *
+ * A source line used to name at most one anchorable block, so the index could be
+ * a plain line→block map and the tie between a container and its first child (a
+ * `blockquote` and its `<p>`, an `<li>` and its `<p>` — both stamped with the
+ * same line) was settled by last-write-wins in document order, the inner one.
+ * Table cells broke that: every cell in a row carries the *row's* line, and they
+ * are siblings rather than nested, so document order alone picks the last cell in
+ * the row and there is no sense in which that is "the" block for the line.
+ *
+ * So the hash decides first and document order only breaks what the hash cannot.
+ * The fallback is still the last candidate, which keeps the container/child
+ * tie-break exactly as it was — and as `anchorBlockWithin` documents and relies
+ * on when it captures an anchor.
+ *
+ * Residual, in two parts, both from the same root — a cell's line does not
+ * identify it, so when the hash cannot either, nothing can:
+ *
+ * - Two cells in one row holding the *same* text are indistinguishable, and a
+ *   comment on the first renders on the last. They read identically, so the
+ *   misplacement is invisible in every way but position.
+ * - Once a commented cell is *rewritten*, its hash is gone from the row, and the
+ *   fallback tints whichever cell came last rather than the one that changed.
+ *   The comment is still correctly reported as drifted; only which cell of the
+ *   row wears the faint tint is arbitrary.
+ *
+ * Closing either means putting a column index in the anchor — a schema change
+ * shared with the Go side and the stored comments, for a cosmetic gain.
+ */
+function blockAtLine(
+  blocksByLine: Map<number, HTMLElement[]>,
+  line: number,
+  hash: string,
+): HTMLElement | null {
+  const candidates = blocksByLine.get(line);
+  if (!candidates || candidates.length === 0) return null;
+  for (const candidate of candidates) {
+    if (candidate.getAttribute("data-block-hash") === hash) return candidate;
+  }
+  return candidates[candidates.length - 1];
+}
+
 /** Walk neighbors by source line, find one whose hash matches. */
 function findHashNeighbor(
   blocksByHash: Map<string, HTMLElement[]>,
@@ -343,15 +393,15 @@ function findHashNeighbor(
 
 /** Closest block whose source-line ≤ target — anchor for outdated rendering. */
 function findClosestPriorBlock(
-  blocksByLine: Map<number, HTMLElement>,
+  blocksByLine: Map<number, HTMLElement[]>,
   targetLine: number,
 ): HTMLElement | null {
   let best: HTMLElement | null = null;
   let bestLine = -Infinity;
-  for (const [line, block] of blocksByLine) {
+  for (const [line, blocks] of blocksByLine) {
     if (line <= targetLine && line > bestLine) {
       bestLine = line;
-      best = block;
+      best = blocks[blocks.length - 1];
     }
   }
   return best;
@@ -386,11 +436,12 @@ function insertInlineCommentAfter(
   divergent: boolean,
 ) {
   const wrapper = createCommentBlock(comment, actions, divergent);
-  joinToneRun(blockEl, wrapper);
-  if (blockEl.nextSibling) {
-    blockEl.parentNode!.insertBefore(wrapper, blockEl.nextSibling);
+  const host = commentCardHost(blockEl);
+  joinToneRun(host, wrapper);
+  if (host.nextSibling) {
+    host.parentNode!.insertBefore(wrapper, host.nextSibling);
   } else {
-    blockEl.parentNode!.appendChild(wrapper);
+    host.parentNode!.appendChild(wrapper);
   }
 }
 
@@ -401,12 +452,13 @@ function insertOutdatedComment(
   anchorBlock: HTMLElement | null = null,
 ) {
   const wrapper = createOutdatedBlock(comment, actions);
-  if (anchorBlock?.parentNode) {
-    joinToneRun(anchorBlock, wrapper);
-    if (anchorBlock.nextSibling) {
-      anchorBlock.parentNode.insertBefore(wrapper, anchorBlock.nextSibling);
+  const host = anchorBlock ? commentCardHost(anchorBlock) : null;
+  if (host?.parentNode) {
+    joinToneRun(host, wrapper);
+    if (host.nextSibling) {
+      host.parentNode.insertBefore(wrapper, host.nextSibling);
     } else {
-      anchorBlock.parentNode.appendChild(wrapper);
+      host.parentNode.appendChild(wrapper);
     }
     return;
   }

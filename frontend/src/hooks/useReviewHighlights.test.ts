@@ -782,3 +782,143 @@ describe("useReviewHighlights — a comment card inside a toned section", () => 
     expect(card.getAttribute("data-vantage-run")).toBe("middle");
   });
 });
+
+describe("useReviewHighlights — comments on table cells", () => {
+  /**
+   * Two rows whose cells share their row's line, and a duplicate ("120ms" twice
+   * in one column, on different rows) so the hash lookup has to pick between
+   * candidates rather than merely find one.
+   */
+  const TABLE_DOC = `
+    <p data-source-line="1">Before the table.</p>
+    <table data-source-line="3">
+      <thead><tr data-source-line="3">
+        <th data-source-line="3">Engine</th><th data-source-line="3">Latency</th>
+      </tr></thead>
+      <tbody>
+        <tr data-source-line="5">
+          <td data-source-line="5">whisper.cpp</td><td data-source-line="5">120ms</td>
+        </tr>
+        <tr data-source-line="6">
+          <td data-source-line="6">faster-whisper</td><td data-source-line="6">120ms</td>
+        </tr>
+      </tbody>
+    </table>
+    <p data-source-line="8">After the table.</p>
+  `;
+
+  /** The anchor a click on the cell holding `text` would have produced. */
+  const cellAnchor = (text: string): CommentAnchor => {
+    const cell = Array.from(
+      container.querySelectorAll<HTMLElement>("td, th"),
+    ).find((c) => c.textContent === text)!;
+    return {
+      source_line: Number.parseInt(cell.getAttribute("data-source-line")!, 10),
+      block_text_hash: hashBlockText(blockVisibleText(cell)),
+      selection_offset: 0,
+      selection_length: 0,
+    };
+  };
+
+  const cellFor = (text: string) =>
+    Array.from(container.querySelectorAll<HTMLElement>("td, th")).find(
+      (c) => c.textContent === text,
+    )!;
+
+  beforeEach(() => {
+    container.innerHTML = TABLE_DOC;
+  });
+
+  it("highlights the cell the comment was written on, and no other", () => {
+    renderInline([baseComment({ anchor: cellAnchor("whisper.cpp") })]);
+
+    expect(
+      cellFor("whisper.cpp").classList.contains("review-highlight-block"),
+    ).toBe(true);
+    expect(
+      cellFor("faster-whisper").classList.contains("review-highlight-block"),
+    ).toBe(false);
+    expect(
+      container
+        .querySelector("table")!
+        .classList.contains("review-highlight-block"),
+    ).toBe(false);
+  });
+
+  it("picks the right cell when a whole row shares one source line", () => {
+    // Both cells of row 5 are indexed under line 5. Document order alone would
+    // hand back the last of them for either comment.
+    renderInline([baseComment({ anchor: cellAnchor("120ms") })]);
+
+    expect(cellFor("120ms").classList.contains("review-highlight-block")).toBe(
+      true,
+    );
+    expect(
+      cellFor("whisper.cpp").classList.contains("review-highlight-block"),
+    ).toBe(false);
+  });
+
+  it("places the card after the table, not between two cells", () => {
+    // A `<div>` inserted as a sibling of a `<td>` is hoisted out of the table by
+    // HTML parsing rules — the card lands above the table, detached from the row
+    // it answers, and the table's layout shifts under it.
+    renderInline([baseComment({ anchor: cellAnchor("whisper.cpp") })]);
+
+    const card = blockFor("c1")!;
+    expect(card.parentElement).toBe(container);
+    expect(card.previousElementSibling!.tagName).toBe("TABLE");
+    expect(card.closest("table")).toBeNull();
+  });
+
+  it("does not claim drift for a comment on an untouched cell", () => {
+    renderInline([baseComment({ anchor: cellAnchor("120ms") })]);
+
+    expect(useReviewStore.getState().commentsDrifted).toBe(false);
+  });
+
+  it("drifts the one comment whose cell was rewritten, and only that one", () => {
+    // The gain over anchoring a table comment to the whole table: an edit to one
+    // cell used to change the table's hash, and so every comment on the table.
+    // Which cell of the row carries the faint tint is deliberately not asserted
+    // — with the commented text gone there is nothing left to tell one cell of a
+    // row from another, and `blockAtLine` says so.
+    const comments = [
+      baseComment({ id: "c1", anchor: cellAnchor("whisper.cpp") }),
+      baseComment({ id: "c2", anchor: cellAnchor("faster-whisper") }),
+    ];
+    const { rerender } = renderInline(comments);
+    cellFor("whisper.cpp").textContent = "whisper.cpp (metal)";
+    rerender({ cs: [...comments] });
+
+    expect(useReviewStore.getState().commentsDrifted).toBe(true);
+    expect(
+      cellFor("faster-whisper").classList.contains("review-highlight-block"),
+    ).toBe(true);
+    expect(
+      cellFor("faster-whisper").classList.contains(
+        "review-highlight-block-divergent",
+      ),
+    ).toBe(false);
+    // Both cards are still outside the table.
+    expect(blockFor("c1")!.closest("table")).toBeNull();
+    expect(blockFor("c2")!.closest("table")).toBeNull();
+  });
+
+  it("still anchors a comment on the table as a whole", () => {
+    // What a click between cells, or on an empty one, produces.
+    const table = container.querySelector<HTMLElement>("table")!;
+    renderInline([
+      baseComment({
+        anchor: {
+          source_line: 3,
+          block_text_hash: hashBlockText(blockVisibleText(table)),
+          selection_offset: 0,
+          selection_length: 0,
+        },
+      }),
+    ]);
+
+    expect(table.classList.contains("review-highlight-block")).toBe(true);
+    expect(blockFor("c1")!.previousElementSibling).toBe(table);
+  });
+});
