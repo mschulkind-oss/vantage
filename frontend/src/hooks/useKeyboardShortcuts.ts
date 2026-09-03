@@ -17,6 +17,7 @@ export const useKeyboardShortcuts = ({
   onViewDiff,
   onViewHistory,
   onCopyPath,
+  onEscape,
   contentScrollRef,
   isMultiRepo,
   currentRepo,
@@ -32,6 +33,12 @@ export const useKeyboardShortcuts = ({
   onViewDiff: () => void;
   onViewHistory: () => void;
   onCopyPath: () => void;
+  /**
+   * Escape with no modal of our own open. Raw view is a toggle but reads as a
+   * mode — it replaces the whole content pane — so Escape has to leave it, the
+   * way it leaves everything else that takes the pane over.
+   */
+  onEscape: () => void;
   contentScrollRef: React.RefObject<HTMLDivElement | null>;
   isMultiRepo: boolean;
   currentRepo: string | null;
@@ -113,8 +120,12 @@ export const useKeyboardShortcuts = ({
           setShortcutsOpen(true);
           break;
         case "Escape":
+          // Innermost thing first: the shortcuts modal sits on top of whatever
+          // the pane is showing, so one Escape must not close both.
           if (shortcutsOpen) {
             setShortcutsOpen(false);
+          } else {
+            onEscape();
           }
           break;
         case "t":
@@ -206,6 +217,7 @@ export const useKeyboardShortcuts = ({
   }, [
     enabled,
     shortcutsOpen,
+    onEscape,
     clearPending,
     onOpenFilePicker,
     onOpenGlobalFilePicker,
