@@ -1101,3 +1101,117 @@ export function orList(values: readonly string[]): string {
   if (quoted.length <= 1) return quoted.join("");
   return `${quoted.slice(0, -1).join(", ")} or ${quoted[quoted.length - 1]}`;
 }
+
+/**
+ * The marker the Open Questions convention puts on a leaning.
+ *
+ * Matched against the paragraph's *rendered text*, so `_Leaning:_`,
+ * `**Leaning:**` and a bare `Leaning:` all hit — the convention's own examples
+ * use the first and real documents use all three. Anchored, because a paragraph
+ * that merely mentions the word is prose about leanings rather than a leaning.
+ */
+const LEANING_MARKER = /^\s*leaning\s*:/i;
+
+/**
+ * The convention's status emoji, which is what makes this rule usable.
+ *
+ * 💬 means "active decision awaiting a ruling" and ✅ means "decided". Only the
+ * first wants a one-click answer, and keying on it is the difference between a
+ * useful rule and a nag: measured over this repo's own docs, the unkeyed version
+ * fired on eight *settled* questions in `docs/design/review-mode.md` — each with
+ * a filled-in `**Answer:**` — where a button would be an invitation to re-answer
+ * something already ruled on.
+ *
+ * ✅ wins over 💬 when both appear, because a question that has been marked
+ * answered is answered whatever else its item says.
+ */
+const OQ_OPEN_MARKER = "\u{1F4AC}";
+const OQ_ANSWERED_MARKER = "\u2705";
+
+/** Flatten a node's text the way a reader sees it, phrasing included. */
+function nodeText(node: RootContent | ListItem): string {
+  let out = "";
+  visit(node, (child) => {
+    if (child.type === "text" || child.type === "inlineCode")
+      out += child.value;
+  });
+  return out;
+}
+
+/**
+ * An Open Question written in the convention but carrying no `oq` directive.
+ *
+ * The convention — a status emoji, a stable `OQ-N` id, a `_Leaning:_` line and
+ * a fill-in `**Answer:**` — is *prose*. The one-click answer is a *directive*.
+ * Nothing connected them, so a document could carry a dozen questions, each
+ * with a stated leaning, and offer no button on any of them; and because every
+ * directive failure in this family is silent by design, the author's only clue
+ * was the absence of something they may never have seen present.
+ *
+ * That is not hypothetical — it is the report this rule was written for. A
+ * design doc with two fully-formed Open Questions rendered with no affordance,
+ * review mode on, and the diagnosis was that the directives had simply never
+ * been written. The agent that produced the doc followed the convention in
+ * `styleGuide.ts` and stopped there. This repo's own
+ * `docs/design/agent-bootstrap.md` had the same gap in five places.
+ *
+ * Three conditions, and each one exists to keep the rule quiet:
+ *
+ * - **A `_Leaning:_` paragraph.** The precise marker, and the exact thing
+ *   `leaning=` mirrors — not a guess from a heading or a question mark.
+ * - **Inside a list item.** Where the convention puts a question and where the
+ *   directive has to be indented to reach it. A leaning in running prose has no
+ *   well-defined scope to search, and searching the document would call a doc
+ *   with one directive and nine questions fully covered.
+ * - **Marked 💬 and not ✅.** See `OQ_OPEN_MARKER`.
+ *
+ * A warning, not an error: the document renders correctly and reads correctly,
+ * and a question nobody wants a button on is a legitimate thing to write. What
+ * it cannot be is *silent*.
+ */
+export function checkOpenQuestions(collector: Collector): void {
+  if (!collector.enabled("vantage/oq-missing")) return;
+  const root = collector.doc.mdast;
+
+  /** Every `oq` directive's owning scope, resolved once. */
+  const scopesWithOq = new Set<Parents | Root>();
+  visit(root, "html", (node: Html, _index, parent) => {
+    // The cheap prefix test first, as the render pass does: the overwhelming
+    // majority of html nodes in a document carry no directive at all.
+    if (!node.value.includes(VANTAGE_SENTINEL) || !parent) return;
+    for (const segment of scanComments(node.value)) {
+      if (segment.kind !== "comment") continue;
+      if (!hasVantageSentinel(segment.value)) continue;
+      const parsed = parseVantageDirective(segment.value);
+      if (parsed?.kind === "directive" && parsed.name === "oq") {
+        scopesWithOq.add(parent);
+      }
+    }
+  });
+
+  visit(root, "listItem", (item: ListItem) => {
+    if (scopesWithOq.has(item)) return;
+    const text = nodeText(item);
+    if (!text.includes(OQ_OPEN_MARKER)) return;
+    if (text.includes(OQ_ANSWERED_MARKER)) return;
+
+    const leaning = item.children.find(
+      (child) =>
+        child.type === "paragraph" && LEANING_MARKER.test(nodeText(child)),
+    );
+    if (leaning === undefined) return;
+
+    collector.report(
+      "vantage/oq-missing",
+      {
+        line: fileLine(collector.doc, leaning.position?.start.line ?? 1),
+        column: leaning.position?.start.column ?? 1,
+      },
+      "This is an open question (\u{1F4AC}) with a stated leaning and no `oq` " +
+        "directive, so review mode renders no one-click answer for it. Add " +
+        '`<!-- vantage: oq id=\u2026 leaning="\u2026" -->` beside it, indented into ' +
+        "the same list item, restating the leaning as the comment the agent will " +
+        "receive.",
+    );
+  });
+}

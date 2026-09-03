@@ -143,6 +143,12 @@ export const RULES: readonly RuleMeta[] = [
     default: "warning",
   },
   {
+    id: "vantage/oq-missing",
+    summary:
+      "An Open Question written in the convention with no `oq` directive, so it gets no one-click answer",
+    default: "warning",
+  },
+  {
     id: "vantage/orphan",
     summary:
       "A directive with no block it can attach to, so it styles nothing — it resolves, so a warning",
