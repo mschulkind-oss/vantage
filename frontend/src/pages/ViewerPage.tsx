@@ -647,6 +647,18 @@ export const ViewerPage: React.FC = () => {
       setTimeout(() => setPathCopied(false), 2000);
     });
   }, [repoRootPath, currentPath]);
+  /**
+   * Escape leaves raw view.
+   *
+   * Raw is a toggle, but it replaces the entire content pane, so it reads as a
+   * mode — and every other thing that takes the pane or the screen over leaves
+   * on Escape. Nothing else here claims the key: the shortcuts modal is handled
+   * one level in, inside the hook, and gets first refusal.
+   */
+  const handleEscape = useCallback(() => {
+    setShowRaw((raw) => (raw ? false : raw));
+  }, []);
+
   const { shortcutsOpen, setShortcutsOpen } = useKeyboardShortcuts({
     onOpenFilePicker: handleOpenFilePicker,
     onOpenGlobalFilePicker: handleOpenGlobalFilePicker,
@@ -658,6 +670,7 @@ export const ViewerPage: React.FC = () => {
     onViewDiff: handleViewDiff,
     onViewHistory: handleViewHistory,
     onCopyPath: handleCopyPath,
+    onEscape: handleEscape,
     contentScrollRef: contentRef,
     isMultiRepo,
     currentRepo,

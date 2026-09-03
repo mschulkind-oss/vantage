@@ -25,7 +25,7 @@ const shortcutGroups: ShortcutGroup[] = [
       { keys: ["g", "h"], description: "Go home (root)" },
       { keys: ["g", "r"], description: "Go to recent files page" },
       { keys: ["b"], description: "Toggle sidebar" },
-      { keys: ["Esc"], description: "Close any open dialog" },
+      { keys: ["Esc"], description: "Close a dialog, or leave raw view" },
     ],
   },
   {

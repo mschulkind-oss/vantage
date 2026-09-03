@@ -11,6 +11,7 @@ describe("useKeyboardShortcuts", () => {
     onViewDiff: vi.fn(),
     onViewHistory: vi.fn(),
     onCopyPath: vi.fn(),
+    onEscape: vi.fn(),
     contentScrollRef: {
       current: null,
     } as React.RefObject<HTMLDivElement | null>,
@@ -36,6 +37,29 @@ describe("useKeyboardShortcuts", () => {
     expect(result.current.shortcutsOpen).toBe(false);
     fireKey("?");
     expect(result.current.shortcutsOpen).toBe(true);
+  });
+
+  it("fires onEscape when nothing of its own is open", () => {
+    // Raw view is the caller's to close, and it reads as a mode even though it
+    // is a toggle — Escape has to leave it.
+    renderHook(() => useKeyboardShortcuts(mockCallbacks));
+    fireKey("Escape");
+    expect(mockCallbacks.onEscape).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes its own modal on Escape instead of firing onEscape", () => {
+    // One Escape must not close the modal *and* leave raw view underneath it.
+    const { result } = renderHook(() => useKeyboardShortcuts(mockCallbacks));
+    fireKey("?");
+    expect(result.current.shortcutsOpen).toBe(true);
+
+    fireKey("Escape");
+    expect(result.current.shortcutsOpen).toBe(false);
+    expect(mockCallbacks.onEscape).not.toHaveBeenCalled();
+
+    // And the next one reaches the caller, now that the modal is gone.
+    fireKey("Escape");
+    expect(mockCallbacks.onEscape).toHaveBeenCalledTimes(1);
   });
 
   it("toggles sidebar on b key", () => {
