@@ -34,6 +34,7 @@ import (
 	"github.com/mschulkind-oss/vantage/internal/gitenv"
 	"github.com/mschulkind-oss/vantage/internal/ignore"
 	"github.com/mschulkind-oss/vantage/internal/model"
+	"github.com/mschulkind-oss/vantage/internal/pathsafe"
 	"github.com/mschulkind-oss/vantage/internal/perf"
 )
 
@@ -52,22 +53,17 @@ const checkIgnoreTimeout = 5 * time.Second
 
 // ErrInvalidPath is the sentinel the handler maps to HTTP 400. Callers should
 // use errors.As to recover the *PathError and its Detail message.
-var ErrInvalidPath = errors.New("fs: invalid path")
+var ErrInvalidPath = pathsafe.ErrInvalid
 
 // PathError is returned by validatePath (and surfaced by ListDirectory and
 // ReadFile) when a caller-supplied path is rejected. Detail is a human-readable
 // reason the HTTP layer puts in a {"detail":…} 400 body. PathError unwraps to
 // ErrInvalidPath so callers can match with errors.Is(err, ErrInvalidPath).
-type PathError struct {
-	// Detail explains why the path was rejected (e.g. "Absolute paths not
-	// allowed"). It is safe to expose to the client.
-	Detail string
-}
-
-func (e *PathError) Error() string { return "fs: " + e.Detail }
-
-// Unwrap lets errors.Is(err, ErrInvalidPath) succeed for any PathError.
-func (e *PathError) Unwrap() error { return ErrInvalidPath }
+//
+// It is an alias rather than its own type: the containment rule lives in
+// [pathsafe] and every caller — this service, the API's raw-image branch, the
+// git service — has to be able to raise and recognize the same rejection.
+type PathError = pathsafe.Error
 
 // newPathError builds a *PathError with the given detail message.
 func newPathError(detail string) *PathError { return &PathError{Detail: detail} }
@@ -213,39 +209,12 @@ func (s *FileSystemService) git() *git.GitService {
 }
 
 // validatePath validates and resolves a caller-supplied path relative to the
-// root. It returns a *PathError (which the handler maps to 400) when the path is
-// empty, contains a NUL byte, is absolute, descends into ".git", or resolves
-// outside the root.
+// root, deferring the whole rule to [pathsafe.Resolve]. It returns a *PathError
+// (which the handler maps to 400) when the path is empty, contains a NUL byte,
+// is absolute, descends into ".git" or ".vantage", or leaves the root — either
+// lexically or by following a symlink.
 func (s *FileSystemService) validatePath(path string) (string, error) {
-	if path == "" || strings.ContainsRune(path, '\x00') {
-		return "", newPathError("Invalid path")
-	}
-	if strings.HasPrefix(path, "/") {
-		return "", newPathError("Absolute paths not allowed")
-	}
-
-	// Block access to .git internals: reject any segment equal to ".git".
-	normalized := strings.ReplaceAll(path, "\\", "/")
-	for _, part := range strings.Split(normalized, "/") {
-		if part == ".git" {
-			return "", newPathError("Access to .git directory is not allowed")
-		}
-	}
-	// .vantage is vantage's own machine-to-machine state, hidden from every
-	// listing and search. Hiding it from listings but still serving it by direct
-	// path left it fetchable — and openable as a "document" to annotate — by
-	// anyone who typed the path. Hard-blocked here like .git so every
-	// caller-supplied path into this service is covered by one rule.
-	if ignore.IsAlwaysIgnored(normalized) {
-		return "", newPathError("Access to .vantage directory is not allowed")
-	}
-
-	full := filepath.Clean(filepath.Join(s.rootPath, normalized))
-	rel, err := filepath.Rel(s.rootPath, full)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", newPathError("Path traversal detected")
-	}
-	return full, nil
+	return pathsafe.Resolve(s.rootPath, path)
 }
 
 // ListDirectory lists the entries of path (relative to the root), returning

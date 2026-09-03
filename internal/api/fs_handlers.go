@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/mschulkind-oss/vantage/internal/fs"
-	"github.com/mschulkind-oss/vantage/internal/ignore"
+	"github.com/mschulkind-oss/vantage/internal/pathsafe"
 )
 
 // imageExtensions are the file suffixes the /content endpoint serves as raw
@@ -110,14 +110,16 @@ func (h *Handlers) Content(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, content)
 }
 
-// serveRawImage streams an image file's bytes with the given content type. The
-// requested path is validated and resolved against the repository root with the
-// same rules the fs service enforces (no NUL, no absolute paths, no ".git"
-// segment, no traversal above the root), since the fs service exposes only its
-// root and not its internal validator. Validation failures map to a 400
-// {"detail":…}; a non-file or unreadable path after validation is a 404.
+// serveRawImage streams an image file's bytes with the given content type. It
+// resolves the requested path through [pathsafe.Resolve] — the same rule the fs
+// service applies, called directly because the service exposes its root but not
+// its validator. That shared call is load-bearing here: this branch answers with
+// raw bytes and a 200, so a path that escapes the root discloses any readable
+// file whatever its type, while the JSON branch at least blanks non-UTF-8
+// content. Validation failures map to a 400 {"detail":…}; a non-file or
+// unreadable path after validation is a 404.
 func (h *Handlers) serveRawImage(w http.ResponseWriter, svc *fs.FileSystemService, path, mime string) {
-	abs, err := resolveImagePath(svc.RootPath(), path)
+	abs, err := pathsafe.Resolve(svc.RootPath(), path)
 	if writePathError(w, err) {
 		return
 	}
@@ -136,37 +138,6 @@ func (h *Handlers) serveRawImage(w http.ResponseWriter, svc *fs.FileSystemServic
 	if _, werr := w.Write(data); werr != nil {
 		slog.Debug("api: failed to write image body", "path", path, "error", werr)
 	}
-}
-
-// resolveImagePath validates path against root and returns the cleaned absolute
-// file path. It mirrors the fs service's validatePath: it rejects empty paths,
-// NUL bytes, absolute paths, any ".git" segment, and any path that resolves
-// outside root, returning a *fs.PathError (→ 400 {"detail":…}) in each case.
-func resolveImagePath(root, path string) (string, error) {
-	if path == "" || strings.ContainsRune(path, '\x00') {
-		return "", &fs.PathError{Detail: "Invalid path"}
-	}
-	if strings.HasPrefix(path, "/") {
-		return "", &fs.PathError{Detail: "Absolute paths not allowed"}
-	}
-	normalized := strings.ReplaceAll(path, "\\", "/")
-	for _, part := range strings.Split(normalized, "/") {
-		if part == ".git" {
-			return "", &fs.PathError{Detail: "Access to .git directory is not allowed"}
-		}
-	}
-	// This validator bypasses the fs service entirely, so it needs its own copy
-	// of the .vantage block — otherwise images under .vantage stream raw while
-	// every other read of the same tree is refused.
-	if ignore.IsAlwaysIgnored(normalized) {
-		return "", &fs.PathError{Detail: "Access to .vantage directory is not allowed"}
-	}
-	full := filepath.Clean(filepath.Join(root, normalized))
-	rel, err := filepath.Rel(root, full)
-	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", &fs.PathError{Detail: "Path traversal detected"}
-	}
-	return full, nil
 }
 
 // Files handles GET /files (and /r/{repo}/files): every Markdown file in the

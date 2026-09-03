@@ -465,3 +465,72 @@ func TestVantageDirIsNeitherListedNorServed(t *testing.T) {
 		})
 	}
 }
+
+// escapeFixture builds an out-of-root directory holding a canary file and
+// returns (outsideDir, canaryContent). The directory is resolved so comparisons
+// match the service's resolved root.
+func escapeFixture(t *testing.T) (string, string) {
+	t.Helper()
+	outside := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(outside); err == nil {
+		outside = resolved
+	}
+	const canary = "OUT-OF-ROOT-CANARY"
+	require.NoError(t, os.WriteFile(filepath.Join(outside, "secret.md"), []byte(canary+"\n"), 0o600))
+	return outside, canary
+}
+
+// A symlink inside the root that points at a file outside it must not be
+// readable: validatePath is lexical, so containment has to survive symlink
+// resolution or /content becomes an arbitrary-file read.
+func TestReadFileRejectsSymlinkEscapingRoot(t *testing.T) {
+	t.Cleanup(ClearMarkdownDirCache)
+	dir := initRepo(t)
+	outside, _ := escapeFixture(t)
+	require.NoError(t, os.Symlink(filepath.Join(outside, "secret.md"), filepath.Join(dir, "link.md")))
+
+	svc := newSvc(dir)
+	fc, err := svc.ReadFile("link.md")
+	require.ErrorIs(t, err, ErrInvalidPath)
+	require.Nil(t, fc, "no content is returned for an escaping link")
+}
+
+// A symlinked *directory* inside the root exposes its whole subtree, not just
+// one file: the rest of the request path rides through the link.
+func TestReadFileRejectsSymlinkedDirEscapingRoot(t *testing.T) {
+	t.Cleanup(ClearMarkdownDirCache)
+	dir := initRepo(t)
+	outside, _ := escapeFixture(t)
+	require.NoError(t, os.Symlink(outside, filepath.Join(dir, "linkdir")))
+
+	svc := newSvc(dir)
+	_, err := svc.ReadFile("linkdir/secret.md")
+	require.ErrorIs(t, err, ErrInvalidPath)
+}
+
+// Listing through an escaping symlinked directory enumerates filenames outside
+// the root, so ListDirectory has to refuse it too.
+func TestListDirectoryRejectsSymlinkedDirEscapingRoot(t *testing.T) {
+	t.Cleanup(ClearMarkdownDirCache)
+	dir := initRepo(t)
+	outside, _ := escapeFixture(t)
+	require.NoError(t, os.Symlink(outside, filepath.Join(dir, "linkdir")))
+
+	svc := newSvc(dir)
+	_, err := svc.ListDirectory("linkdir", Options{})
+	require.ErrorIs(t, err, ErrInvalidPath)
+}
+
+// Containment must not cost in-root symlinks, which are a legitimate way to
+// surface one document in two places.
+func TestReadFileAllowsSymlinkInsideRoot(t *testing.T) {
+	t.Cleanup(ClearMarkdownDirCache)
+	dir := initRepo(t)
+	writeFile(t, dir, "real.md", "real\n")
+	require.NoError(t, os.Symlink(filepath.Join(dir, "real.md"), filepath.Join(dir, "link.md")))
+
+	svc := newSvc(dir)
+	fc, err := svc.ReadFile("link.md")
+	require.NoError(t, err)
+	require.Equal(t, "real\n", fc.Content)
+}
