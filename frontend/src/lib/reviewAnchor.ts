@@ -34,6 +34,21 @@ import type { CommentAnchor } from "../types";
  * whether the toggle JS ran — because "injected UI is not document" is the rule,
  * and a caret that later gained a visible label should not have to rediscover it.
  */
+/**
+ * Max ±`source_line` distance at which two anchors are still "the same block".
+ *
+ * Lives here, not in a hook, because two surfaces ask the question and they must
+ * not answer it differently. `useReviewHighlights` walks this radius to re-anchor
+ * a comment whose block moved (`findHashNeighbor`), and
+ * `useOpenQuestionButtons` needs the same tolerance to decide whether a leaning
+ * has already been taken. While the hook used exact line equality and the
+ * highlighter used this walk, inserting a line above an `oq` block rendered the
+ * "Leaning taken" chip *and* a live "Take this leaning" button on the same
+ * paragraph — one surface saying the comment was still attached, the other
+ * saying it had never existed.
+ */
+export const NEIGHBOR_RADIUS = 10;
+
 export const REVIEW_UI_SELECTOR =
   "[data-review-inline-comment], .review-revision-badge, .review-addressed-badge, [data-vantage-oq-button], [data-vantage-collapse-caret]";
 

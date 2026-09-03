@@ -1052,14 +1052,25 @@ h6:hover > .heading-anchor,
   border-color: rgb(74 222 128 / 0.5);
 }
 
-/* The one-click Open Question answer (design §5.2). It shares the Copy/Reopen
-   outline treatment: like them it carries a thread forward rather than
-   terminating one. Inline-block, because it sits at the end of the question's
-   own paragraph rather than in an action row. */
+/* The one-click Open Question answer (design §5.2).
+   The affordances sit in their own row below the question, inserted as the
+   block's next sibling — never appended into the block. Appended, the control
+   landed after the question's last word, and inside a blockquote it landed
+   before typography's generated closing quote (`content: close-quote` on the
+   paragraph's ::after), reading as part of the quotation. The row is also what
+   gives the taken state room for a chip and an Undo button side by side.
+   `margin-top` is negative against the block's own bottom margin so the row
+   reads as belonging to the question above it rather than floating between two
+   paragraphs. */
+.review-oq-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -0.5em 0 1.25em;
+}
+/* It shares the Copy/Reopen outline treatment: like them it carries a thread
+   forward rather than terminating one. */
 .review-oq-take {
-  display: inline-block;
-  margin-left: 8px;
-  vertical-align: baseline;
   font-size: 11px;
   font-weight: 500;
   color: rgb(37 99 235);
@@ -1090,9 +1101,6 @@ h6:hover > .heading-anchor,
    treatment anywhere in this stylesheet, so a disabled button would keep the
    live look and read as clickable. */
 .review-oq-taken {
-  display: inline-block;
-  margin-left: 8px;
-  vertical-align: baseline;
   font-size: 11px;
   font-weight: 500;
   color: rgb(22 163 74);
@@ -1105,6 +1113,35 @@ h6:hover > .heading-anchor,
 .dark .review-oq-taken {
   color: rgb(74 222 128);
   border-color: rgb(74 222 128 / 0.5);
+}
+/* Undo, beside the chip. Deliberately quieter than both the take button and the
+   chip: it is the way back out of a one-click action, not a peer of it, and it
+   is the only destructive control in the row. Borderless so the row reads as
+   one object with a single outlined element in it. */
+.review-oq-undo {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgb(100 116 139);
+  background: none;
+  border: none;
+  border-radius: 4px;
+  padding: 2px 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+.review-oq-undo:hover {
+  color: rgb(185 28 28);
+  background: rgb(220 38 38 / 0.08);
+}
+.dark .review-oq-undo {
+  color: rgb(148 163 184);
+}
+.dark .review-oq-undo:hover {
+  color: rgb(252 165 165);
+  background: rgb(248 113 113 / 0.12);
 }
 
 /* Flash used when jumping to a comment from the sidebar. */
@@ -1530,8 +1567,10 @@ h6:hover > .heading-anchor,
   }
 
   /* Review affordances are decoration, not document: they must not print. */
+  .review-oq-row,
   .review-oq-take,
-  .review-oq-taken {
+  .review-oq-taken,
+  .review-oq-undo {
     display: none !important;
   }
 
