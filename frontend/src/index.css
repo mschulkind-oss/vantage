@@ -643,6 +643,50 @@ h6:hover > .heading-anchor,
   box-shadow: inset 2px 0 0 rgb(96 165 250 / 0.5);
 }
 
+/* Tables and their cells as comment targets.
+   The rules above draw an inset bar down the *left edge* of the block, which is
+   the right shape for prose: a paragraph is wide, and the bar sits in the margin
+   beside it. Inside a table it lands on a cell's own collapsed border and reads
+   as a stray rule in the grid rather than as "this one". A ring around the whole
+   box is that same affordance at the scale of a cell — and on a table it is what
+   makes "your comment will land on the whole table" legible, which the tint alone
+   is far too faint to say across a wide one.
+   Ordering, not specificity, decides hover-vs-highlight: these selectors are all
+   (0,1,1) — or (0,2,1) with `.dark` — so the hovered pair must stay last, for the
+   reason the file header gives. `border-radius` is inert on a cell under
+   `border-collapse: collapse`, which is what prose tables use; the grid squares
+   the box off, not anything here. */
+table.review-highlight-block,
+td.review-highlight-block,
+th.review-highlight-block {
+  box-shadow: inset 0 0 0 2px rgb(234 179 8 / 0.6);
+}
+.dark table.review-highlight-block,
+.dark td.review-highlight-block,
+.dark th.review-highlight-block {
+  box-shadow: inset 0 0 0 2px rgb(234 179 8 / 0.5);
+}
+table.review-highlight-block-divergent,
+td.review-highlight-block-divergent,
+th.review-highlight-block-divergent {
+  box-shadow: inset 0 0 0 2px rgb(245 158 11 / 0.5);
+}
+.dark table.review-highlight-block-divergent,
+.dark td.review-highlight-block-divergent,
+.dark th.review-highlight-block-divergent {
+  box-shadow: inset 0 0 0 2px rgb(245 158 11 / 0.45);
+}
+table.review-block-hovered,
+td.review-block-hovered,
+th.review-block-hovered {
+  box-shadow: inset 0 0 0 2px rgb(59 130 246 / 0.55);
+}
+.dark table.review-block-hovered,
+.dark td.review-block-hovered,
+.dark th.review-block-hovered {
+  box-shadow: inset 0 0 0 2px rgb(96 165 250 / 0.55);
+}
+
 /* Collapsed resolved-comment indicator */
 .review-resolved-indicator {
   display: flex;

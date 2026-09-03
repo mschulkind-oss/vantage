@@ -5,6 +5,7 @@ import {
   blockVisibleText,
   buildWholeBlockAnchor,
   canonicalOffsetsFromRange,
+  commentCardHost,
   hashBlockText,
   rangeFromCanonicalOffsets,
   stripBlockText,
@@ -20,9 +21,13 @@ const mount = (html: string) => {
 };
 
 /**
- * `useReviewHighlights`' own index, rebuilt locally: every anchorable block in
- * document order into a Map keyed by source line, last write winning. The point
- * of pinning `anchorBlockWithin` against this rather than against a hand-copied
+ * `useReviewHighlights`' index, rebuilt locally at its *fallback* tie-break:
+ * every anchorable block in document order keyed by source line, last write
+ * winning. The real one prefers the candidate whose hash the anchor names and
+ * falls back to this, which is the same answer for every shape here — a block
+ * and its first child are the only things that share a line in prose, and
+ * `anchorBlockWithin` stores the hash of whichever it returns. The point of
+ * pinning `anchorBlockWithin` against this rather than against a hand-copied
  * expectation is that the two rules stay tied to each other — an anchor built on
  * a block the highlighter does not resolve for that line renders divergent.
  */
@@ -180,5 +185,80 @@ describe("an injected OQ button is not part of the document", () => {
     range.setStart(label, 0);
     range.setEnd(label, 4);
     expect(canonicalOffsetsFromRange(block, range)).toBeNull();
+  });
+});
+
+describe("table cells as anchor blocks", () => {
+  const TABLE = `
+    <table data-source-line="3">
+      <thead><tr data-source-line="3">
+        <th data-source-line="3">Engine</th><th data-source-line="3">Latency</th>
+      </tr></thead>
+      <tbody><tr data-source-line="5">
+        <td data-source-line="5">whisper.cpp</td><td data-source-line="5">120ms</td>
+      </tr></tbody>
+    </table>
+  `;
+
+  it("indexes every cell, and the table, but never the row", () => {
+    // `tr` is stamped by `rehypeSourceLines` and deliberately not anchorable: a
+    // reviewer points at a cell, never at "the row".
+    const el = mount(TABLE);
+    const tags = Array.from(
+      el.querySelectorAll<HTMLElement>(ANCHORABLE_BLOCK_SELECTOR),
+    ).map((b) => b.tagName);
+
+    expect(tags).toEqual(["TABLE", "TH", "TH", "TD", "TD"]);
+  });
+
+  it("hashes each cell to its own text, so one edited cell drifts alone", () => {
+    const el = mount(TABLE);
+    const [first, second] = Array.from(el.querySelectorAll<HTMLElement>("td"));
+
+    expect(buildWholeBlockAnchor(first)!.anchor.block_text_hash).not.toBe(
+      buildWholeBlockAnchor(second)!.anchor.block_text_hash,
+    );
+    expect(buildWholeBlockAnchor(first)!.fallbackText).toBe("whisper.cpp");
+  });
+
+  it("carries the row's source line onto every cell in it", () => {
+    // Which is why a line no longer names one block, and why the highlighter
+    // has to break the tie by hash.
+    const el = mount(TABLE);
+    const lines = Array.from(el.querySelectorAll<HTMLElement>("td, th")).map(
+      (c) => buildWholeBlockAnchor(c)!.anchor.source_line,
+    );
+
+    expect(lines).toEqual([3, 3, 5, 5]);
+  });
+});
+
+describe("commentCardHost", () => {
+  it("sends a cell's card to the table, which is where HTML will allow it", () => {
+    // A `<div>` between two `<td>`s is hoisted out of the table by the parser:
+    // the card would render above the table, detached from its row.
+    const el = mount(`
+      <table data-source-line="3"><tbody><tr data-source-line="5">
+        <td data-source-line="5">whisper.cpp</td>
+      </tr></tbody></table>
+    `);
+
+    expect(commentCardHost(el.querySelector("td")!)).toBe(
+      el.querySelector("table"),
+    );
+  });
+
+  it("leaves every other block hosting its own card", () => {
+    const el = mount(`
+      <p data-source-line="1">A paragraph.</p>
+      <table data-source-line="3"><tbody><tr data-source-line="4">
+        <td data-source-line="4">cell</td>
+      </tr></tbody></table>
+    `);
+    const p = el.querySelector("p")!;
+    const table = el.querySelector("table")!;
+
+    expect(commentCardHost(p)).toBe(p);
+    expect(commentCardHost(table)).toBe(table);
   });
 });

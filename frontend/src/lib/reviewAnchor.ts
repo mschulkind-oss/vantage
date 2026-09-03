@@ -59,9 +59,31 @@ export const REVIEW_UI_SELECTOR =
  * anchors on the `<li>`, not on the `<ul>` holding it. `useReviewHighlights`
  * indexes blocks with this selector, so anything resolving an anchor must use
  * the same one or it will name a block the highlighter never looks at.
+ *
+ * `td`/`th` are here and `tr` is not, for the same reason: a reviewer points at
+ * one cell, never at "the row". Cells are the one anchorable kind that does not
+ * own a unique `data-source-line` — every cell in a row carries the row's line —
+ * so a line can name several blocks and the tie is broken by hash. They are also
+ * the one kind that cannot hold the comment card that answers them; see
+ * {@link commentCardHost}.
  */
 export const ANCHORABLE_BLOCK_SELECTOR =
-  "p[data-source-line], h1[data-source-line], h2[data-source-line], h3[data-source-line], h4[data-source-line], h5[data-source-line], h6[data-source-line], li[data-source-line], blockquote[data-source-line], pre[data-source-line], table[data-source-line]";
+  "p[data-source-line], h1[data-source-line], h2[data-source-line], h3[data-source-line], h4[data-source-line], h5[data-source-line], h6[data-source-line], li[data-source-line], blockquote[data-source-line], pre[data-source-line], table[data-source-line], td[data-source-line], th[data-source-line]";
+
+/**
+ * The element a comment card for `block` is inserted after.
+ *
+ * For everything but a table cell that is `block` itself. A card placed after a
+ * `<td>` would be a `<div>` between two cells of a `<tr>`, which HTML parsing
+ * rules hoist straight out of the table — the card renders *above* the table,
+ * detached from the row it belongs to, and the table's own layout shifts. So a
+ * cell's card goes after the whole table instead: the nearest legal position
+ * that still reads as "about this table".
+ */
+export function commentCardHost(block: HTMLElement): HTMLElement {
+  if (!block.matches("td, th")) return block;
+  return block.closest("table") ?? block;
+}
 
 const lineOf = (el: Element): number =>
   Number.parseInt(el.getAttribute("data-source-line") ?? "", 10);

@@ -91,6 +91,33 @@ describe("renderMarkdown data-source-line", () => {
     expect(lineOf(html, "p")).toBe("3");
   });
 
+  it("stamps every table cell with its row's line", async () => {
+    // Cells are anchorable in review mode, so each needs a line of its own to be
+    // found again — and a GFM row is one source line, so the cells of a row all
+    // report the same one. That is what makes a line stop naming at most one
+    // anchorable block; `useReviewHighlights` breaks the tie by block hash.
+    const { html } = await renderMarkdown(
+      [
+        "# T",
+        "",
+        "| Engine | Latency |",
+        "| --- | --- |",
+        "| whisper | 120ms |",
+      ].join("\n"),
+      { highlight: false, math: false },
+    );
+
+    const lines = [
+      ...html.matchAll(/<(t[dh])[^>]*data-source-line="(\d+)"/g),
+    ].map((m) => [m[1], m[2]]);
+    expect(lines).toEqual([
+      ["th", "3"],
+      ["th", "3"],
+      ["td", "5"],
+      ["td", "5"],
+    ]);
+  });
+
   it("does not shift when frontmatter parsing is turned off", async () => {
     const { html } = await renderMarkdown(WITH_FRONTMATTER, {
       frontmatter: false,

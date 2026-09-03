@@ -12,6 +12,7 @@ import { BrowserRouter } from "react-router-dom";
 import { useReviewStore } from "../stores/useReviewStore";
 import { useRepoStore } from "../stores/useRepoStore";
 import { blockVisibleText, hashBlockText } from "../lib/reviewAnchor";
+import { layout } from "../test/layout";
 import type { CommentReaction, ReviewComment } from "../types";
 
 // Store writes (resolve, dismiss, reply, …) fire command requests via axios.
@@ -775,5 +776,157 @@ describe("MarkdownViewer — the one-click Open Question answer", () => {
     expect(useReviewStore.getState().commentsDrifted).toBe(false);
     // And the button is still there: a typed answer is not this leaning.
     expect(takeButton()).not.toBeNull();
+  });
+});
+
+describe("MarkdownViewer — commenting on a table cell", () => {
+  const TABLE_DOC = [
+    "Before the table.",
+    "",
+    "| Engine | Latency |",
+    "| --- | --- |",
+    "| whisper.cpp | 120ms |",
+    "| faster-whisper | 90ms |",
+  ].join("\n");
+
+  const renderWithRouter = (ui: React.ReactElement) =>
+    render(<BrowserRouter>{ui}</BrowserRouter>);
+
+  /**
+   * Render in review mode and give the table a browser's worth of geometry:
+   * two 200px columns at x 0–400, one row band per 50px. Without it every rect
+   * is jsdom's zero box and no pointer position can name a cell.
+   */
+  const renderTable = () => {
+    const rendered = renderWithRouter(
+      <MarkdownViewer content={TABLE_DOC} currentPath="doc.md" isReviewMode />,
+    );
+    layout(rendered.container, {
+      "p[data-source-line]": { top: 0, bottom: 40, left: 0, right: 800 },
+      table: { top: 60, bottom: 210, left: 0, right: 400 },
+      "th, td": [
+        { top: 60, bottom: 110, left: 0, right: 200 },
+        { top: 60, bottom: 110, left: 200, right: 400 },
+        { top: 110, bottom: 160, left: 0, right: 200 },
+        { top: 110, bottom: 160, left: 200, right: 400 },
+        { top: 160, bottom: 210, left: 0, right: 200 },
+        { top: 160, bottom: 210, left: 200, right: 400 },
+      ],
+    });
+    return rendered;
+  };
+
+  /** Point at (x, y) inside the prose container, then click there. */
+  const pointAndClick = (container: HTMLElement, x: number, y: number) => {
+    const prose = container.querySelector<HTMLElement>(".prose")!;
+    act(() => {
+      fireEvent.mouseMove(prose, { clientX: x, clientY: y });
+    });
+    const hovered = container.querySelector<HTMLElement>(
+      ".review-block-hovered",
+    );
+    act(() => {
+      fireEvent.click(hovered ?? prose, { clientX: x, clientY: y });
+    });
+    return hovered;
+  };
+
+  beforeEach(() => {
+    useReviewStore.setState({
+      comments: [],
+      filePath: "doc.md",
+      lastContent: TABLE_DOC,
+      pendingSelection: null,
+      commentsDrifted: false,
+    });
+    useRepoStore.setState({ currentRepo: null, isMultiRepo: false });
+    vi.clearAllMocks();
+  });
+
+  it("highlights the cell under the cursor and opens the popover on its text", () => {
+    // The reported defect, end to end: hovering a cell highlighted nothing and
+    // clicking it opened no popover, because cells were absent from the hover
+    // hit-test altogether.
+    const { container } = renderTable();
+
+    const hovered = pointAndClick(container, 300, 135);
+
+    expect(hovered?.tagName).toBe("TD");
+    expect(hovered?.textContent).toBe("120ms");
+    // The popover quotes the cell, so `getByText` would match the cell too —
+    // scope the assertion to the popover.
+    const popover = screen.getByText("Add Comment").closest(".fixed")!;
+    expect(popover).toHaveTextContent("120ms");
+  });
+
+  it("anchors the saved comment to that cell, on its row's line", () => {
+    const { container } = renderTable();
+    const cell = Array.from(container.querySelectorAll<HTMLElement>("td")).find(
+      (c) => c.textContent === "90ms",
+    )!;
+
+    pointAndClick(container, 300, 185);
+    act(() => {
+      fireEvent.change(screen.getByPlaceholderText("Your comment..."), {
+        target: { value: "Is this p50 or p99?" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    });
+
+    const [comment] = useReviewStore.getState().comments;
+    expect(comment.comment).toBe("Is this p50 or p99?");
+    expect(comment.fallback_text).toBe("90ms");
+    expect(comment.anchor).toEqual({
+      // The last row is source line 6, and both its cells carry that line.
+      source_line: 6,
+      block_text_hash: hashBlockText(blockVisibleText(cell)),
+      selection_offset: 0,
+      selection_length: 0,
+    });
+  });
+
+  it("renders the new comment against the cell, without claiming drift", () => {
+    const { container } = renderTable();
+
+    pointAndClick(container, 100, 135);
+    act(() => {
+      fireEvent.change(screen.getByPlaceholderText("Your comment..."), {
+        target: { value: "Pin the build flags." },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    });
+
+    const cell = Array.from(container.querySelectorAll<HTMLElement>("td")).find(
+      (c) => c.textContent === "whisper.cpp",
+    )!;
+    expect(cell.classList.contains("review-highlight-block")).toBe(true);
+    expect(cell.classList.contains("review-highlight-block-divergent")).toBe(
+      false,
+    );
+    expect(useReviewStore.getState().commentsDrifted).toBe(false);
+    // And the card is outside the table, where HTML will keep it.
+    const card = container.querySelector("[data-review-inline-comment]")!;
+    expect(card.closest("table")).toBeNull();
+    expect(card.previousElementSibling!.tagName).toBe("TABLE");
+  });
+
+  it("comments on the whole table where the cursor is beside it", () => {
+    // The strip to the right of a table narrower than the prose column: a click
+    // there means the table, which is what keeps it from being a dead spot.
+    const { container } = renderTable();
+
+    const hovered = pointAndClick(container, 600, 135);
+
+    expect(hovered?.tagName).toBe("TABLE");
+    expect(screen.getByText("Add Comment")).toBeInTheDocument();
+  });
+
+  it("leaves prose hover exactly as it was", () => {
+    const { container } = renderTable();
+
+    const hovered = pointAndClick(container, 780, 20);
+
+    expect(hovered?.tagName).toBe("P");
+    expect(hovered?.textContent).toBe("Before the table.");
   });
 });

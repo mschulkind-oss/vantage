@@ -9,6 +9,15 @@
 import type { Root, Element } from "hast";
 import type { Plugin } from "unified";
 
+/**
+ * Tags that get a `data-source-line`.
+ *
+ * `td`/`th` are here for review mode: a comment anchors to the cell it was
+ * written on, so the cell needs a line of its own to be found again. Every cell
+ * in a row reports the *row's* start line — a GFM row is one source line — so a
+ * line no longer names at most one anchorable element, and whatever resolves an
+ * anchor has to break the tie by block hash (`useReviewHighlights`).
+ */
 const BLOCK_TAGS = new Set([
   "p",
   "h1",
@@ -21,6 +30,8 @@ const BLOCK_TAGS = new Set([
   "blockquote",
   "pre",
   "table",
+  "td",
+  "th",
   "tr",
   "ul",
   "ol",

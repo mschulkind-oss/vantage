@@ -760,7 +760,9 @@ describe("vantage/block-split", () => {
     const [withIt, withoutIt] = await bothWays(markdown, directive);
     expect(withIt).toContain("| 3 | 4 |");
     expect(withoutIt).not.toContain("| 3 | 4 |");
-    expect(withoutIt).toContain("<td>3</td>");
+    // Matched without the opening tag's attributes: cells carry a
+    // `data-source-line` of their own now, so review comments can anchor to one.
+    expect(withoutIt).toMatch(/<td[^>]*>3<\/td>/);
   });
 
   it("reports a directive that cuts one paragraph in two", async () => {
