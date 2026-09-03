@@ -150,6 +150,35 @@ documented consequence of putting an unstampable block inside a toned section,
 and the fix is to move the figure out of the section rather than to widen the
 bleed.
 
+## An alert inside a toned section
+
+The busiest combination in the whole system, and the one worth the most
+attention: a section tone puts a slice in the gutter, and an alert inside it
+draws a border of its own a few pixels to the right. Two bars, two different
+meanings — the section's tone and the alert's kind.
+
+<!-- vantage: section tone=important -->
+
+### A toned section containing two alerts
+
+The section's rule is `important` purple, in the gutter. The alerts below carry
+their own colours, inside the text column.
+
+> [!TIP]
+> An alert whose kind *disagrees* with the section's tone. This is the common
+> case in real documents — a tip inside an important section — and it must not
+> read as a rendering fault.
+
+An ordinary paragraph between them, still a member of the run.
+
+> [!CAUTION]
+> A second alert, a second kind. Check that the section rule stays continuous
+> down the gutter past both of them.
+
+The question to answer: is two bars legible, or does it read as clutter? If the
+latter, the choice is to suppress the section slice on an alert member or to
+pull the alert's own border in.
+
 ## Sections on non-headings
 
 `section` before something that is not a heading degrades to covering that one

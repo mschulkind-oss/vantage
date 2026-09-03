@@ -113,11 +113,10 @@ headings, `pre` and `table`.
 
 ## Findings from the first pass
 
-Two things the gallery caught the first time it was rendered — which is the
-argument for its existence, so they stay written down here after they are dealt
-with.
+Things the gallery caught by being looked at, which is the argument for its
+existence — so they stay written down here after they are dealt with.
 
-### Open — a bordered member draws its slice 1–4px right of everyone else's
+### Fixed — a bordered member drew its slice 1–4px right of everyone else's
 
 The stripe is an absolutely-positioned `::before`, and `left` on an absolutely
 positioned element resolves from the **padding** edge of its containing block —
@@ -137,8 +136,18 @@ border edge at the same x and every computed `left` identical at `-12px`:
 The blockquote's 4px is visible as a jog in an otherwise straight stripe, and
 because the slice is only 3px wide it reads as a break rather than as a bend.
 
-Still open: the fix is a change to the theme layer — measuring the pseudo from
-the border edge rather than the padding edge — with its own test to write.
+Fixed by `--vantage-tone-border-compensation`, declared wherever the border is:
+`vantage-md` cancels the alert border it draws itself, and the app cancels the
+two Tailwind gives `blockquote` and `pre`. CSS cannot read an element's own
+border width, so this is the same arrangement `--vantage-tone-heading-gutter`
+already used, and `directiveCssWiring.test.ts` pins each declaration to the
+border it exists to cancel.
+
+Measured after: all twelve stampable member types — headings, paragraphs, both
+list kinds, `blockquote`, `pre`, `table`, `hr`, the KaTeX span and both alert
+kinds — land on one x. It became urgent rather than cosmetic when alerts started
+drawing a 4px border of their own and the rule went to 5px: what had been a
+subtle bend became an obvious break.
 
 > [!NOTE]
 > `directives.css` says "Measured: the pseudo's computed `left` puts all eight
@@ -158,6 +167,18 @@ paragraph's `::after` with `content: close-quote` — so the generated `"` rende
 Fixed by moving every OQ affordance into a row inserted as the block's next
 sibling, which also took the control out of the middle of the prose. See
 [Open questions](./open-questions.md).
+
+### Fixed — an alert recoloured the section rule around it
+
+Alerts and tones resolved to the same `--vantage-tone-*` properties, on the
+argument that they share a palette. They do share it, but custom properties
+**inherit**: a `> [!CAUTION]` inside a `tone=important` section is both an alert
+and a stamped run member, so the alert's kind won on that element and the
+section's own rule turned red for the height of the alert *and* for the 2.5rem
+it bleeds upward. A three-paragraph section read as three colours.
+
+Alerts now resolve to `--vantage-alert-*`, populated from the same per-tone
+values — so the palette is still shared and one element can carry both facts.
 
 ## Keeping it honest
 

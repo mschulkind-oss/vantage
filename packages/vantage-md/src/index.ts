@@ -8,6 +8,14 @@
 // architecture and invariants: docs/reference/inline-markup.md
 
 export { renderMarkdown } from "./renderMarkdown.js";
+// GFM alerts: the vocabulary and its labels, so a consumer styling them reads
+// the same closed list the plugin compiles against.
+export {
+  ALERT_TITLES,
+  VANTAGE_ALERTS,
+  rehypeVantageAlerts,
+} from "./rehypeVantageAlerts.js";
+export type { VantageAlert } from "./rehypeVantageAlerts.js";
 export type { RenderOptions, RenderResult } from "./renderMarkdown.js";
 
 export { default as rehypeSourceLines } from "./rehypeSourceLines.js";

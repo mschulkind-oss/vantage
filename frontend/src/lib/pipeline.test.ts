@@ -33,6 +33,7 @@ const DEFAULT_REMARK = ["remarkGfm", "remarkMath"];
 const DEFAULT_REHYPE = [
   "rehypeRaw",
   "rehypeSourceLines",
+  "rehypeVantageAlerts",
   "rehypeVantageDirectives",
   "rehypeSanitize",
   "rehypeSlug",
@@ -69,6 +70,15 @@ describe("buildPipeline order", () => {
     const order = names(buildPipeline().rehypePlugins);
 
     expect(order[0]).toBe("rehypeRaw");
+    // Alerts share the same window for a different reason: the title element
+    // must be stamped before the sanitiser sees it, and after
+    // `rehypeSourceLines` so it carries no line and cannot become an anchor.
+    expect(order.indexOf("rehypeVantageAlerts")).toBeGreaterThan(
+      order.indexOf("rehypeSourceLines"),
+    );
+    expect(order.indexOf("rehypeVantageAlerts")).toBeLessThan(
+      order.indexOf("rehypeSanitize"),
+    );
     expect(order.indexOf("rehypeVantageDirectives")).toBeGreaterThan(
       order.indexOf("rehypeRaw"),
     );
@@ -170,6 +180,7 @@ describe("buildPipeline toggles", () => {
     expect(names(rehypePlugins)).toEqual([
       "rehypeRaw",
       "rehypeSourceLines",
+      "rehypeVantageAlerts",
       "rehypeVantageDirectives",
       "rehypeSanitize",
       "rehypeSlug",
@@ -193,6 +204,7 @@ describe("buildPipeline toggles", () => {
     expect(names(rehypePlugins)).toEqual([
       "rehypeRaw",
       "rehypeSourceLines",
+      "rehypeVantageAlerts",
       "rehypeVantageDirectives",
       "rehypeSanitize",
       "rehypeSlug",
@@ -207,6 +219,7 @@ describe("buildPipeline toggles", () => {
 
     expect(names(rehypePlugins)).toEqual([
       "rehypeRaw",
+      "rehypeVantageAlerts",
       "rehypeVantageDirectives",
       "rehypeSanitize",
       "rehypeSlug",
@@ -223,6 +236,7 @@ describe("buildPipeline toggles", () => {
     expect(names(rehypePlugins)).toEqual([
       "rehypeRaw",
       "rehypeSourceLines",
+      "rehypeVantageAlerts",
       "rehypeVantageDirectives",
       "rehypeSlug",
       "rehypeHighlight",

@@ -12,6 +12,7 @@ import {
   VANTAGE_RUNS,
   VANTAGE_TONES,
 } from "./vantageDirectives.js";
+import { VANTAGE_ALERTS } from "./rehypeVantageAlerts.js";
 
 type Schema = typeof defaultSchema;
 
@@ -255,6 +256,10 @@ export const sanitizeSchema: Schema = {
       ["dataVantageCollapseToggle", COLLAPSE_GROUP_ID],
       ["dataVantageRun", ...VANTAGE_RUNS],
       ["dataVantageOq", "true"],
+      // GFM alerts, compiled by `rehypeVantageAlerts`. Value-allowlisted like
+      // the tone tokens it shares a palette with, so a document cannot forge a
+      // sixth kind through raw HTML.
+      ["dataVantageAlert", ...VANTAGE_ALERTS],
       // The design's one genuinely free-text value: the body of a review
       // comment, so it cannot be value-allowlisted and this entry is name-only.
       // Two defences remain rather than three — `hast` escapes the value on

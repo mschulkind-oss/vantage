@@ -38,6 +38,7 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import rehypeSlug from "rehype-slug";
 import rehypeSourceLines from "./rehypeSourceLines.js";
+import { rehypeVantageAlerts } from "./rehypeVantageAlerts.js";
 import rehypeVantageDirectives from "./rehypeVantageDirectives.js";
 import {
   rehypeCaptureMathStamps,
@@ -110,6 +111,13 @@ function buildRehypePlugins(options: PipelineOptions = {}): PluggableList {
   // `rehypeRaw` there are no comment nodes, and `rehypeSanitize` deletes them.
   // It gets no option of its own: every renderer has to agree about what a
   // document means, and a flag is a way for them to disagree.
+  // GFM alerts. After `rehypeSourceLines` so the title it injects carries no
+  // `data-source-line` and therefore cannot become a review anchor, and before
+  // the sanitiser so its one attribute is allowlisted like every other
+  // `data-vantage-*`. No option of its own, for the same reason the directives
+  // plugin has none: a flag is a way for two renderers to disagree about what a
+  // document means.
+  plugins.push(rehypeVantageAlerts);
   plugins.push(rehypeVantageDirectives);
   if (sanitize) plugins.push([rehypeSanitize, sanitizeSchema]);
   plugins.push(rehypeSlug);
