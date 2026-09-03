@@ -6,6 +6,7 @@ import {
   OQ_LABEL,
   OQ_TAKEN_LABEL,
   OQ_UNDO_LABEL,
+  answerableOpenQuestions,
   useOpenQuestionButtons,
   type TakeLeaning,
   type UndoLeaning,
@@ -781,5 +782,84 @@ describe("useOpenQuestionButtons — the row and the tone rule", () => {
   it("claims no tone on a block with none", () => {
     renderOq();
     expect(rowAfter(7)!.getAttribute("data-vantage-tone")).toBeNull();
+  });
+});
+
+/**
+ * The count, which is the only thing that says the affordance exists at all
+ * while review mode is off.
+ *
+ * The reported bug: a document with three `oq` directives carrying leanings
+ * rendered as three ordinary paragraphs, because the button is gated on review
+ * mode (D4) and nothing else mentioned it. The gate is right; the silence was
+ * not.
+ */
+describe("useOpenQuestionButtons — the answerable count", () => {
+  const renderWithCount = (enabled: boolean) => {
+    const onCount = vi.fn();
+    const ref = { current: container };
+    const hook = renderHook(
+      ({ on }: { on: boolean }) =>
+        useOpenQuestionButtons(
+          ref,
+          [],
+          on,
+          "doc content",
+          onTake,
+          onUndo,
+          onCount,
+        ),
+      { initialProps: { on: enabled } },
+    );
+    return { ...hook, onCount };
+  };
+
+  it("is reported with review mode ON, and equals the button count", () => {
+    const { onCount } = renderWithCount(true);
+    expect(onCount).toHaveBeenLastCalledWith(3);
+    expect(takeButtons()).toHaveLength(3);
+  });
+
+  it("is reported with review mode OFF, when no button renders", () => {
+    // The whole point. The count is a fact about the document; the button is a
+    // fact about the mode.
+    const { onCount } = renderWithCount(false);
+    expect(onCount).toHaveBeenLastCalledWith(3);
+    expect(takeButtons()).toHaveLength(0);
+  });
+
+  it("is reported in a static export too", () => {
+    // Static mode can never enter review mode, so the button can never appear
+    // — but the questions are still in the document, and saying so costs
+    // nothing and lies about nothing.
+    window.__VANTAGE_STATIC__ = true;
+    const { onCount } = renderWithCount(true);
+    expect(onCount).toHaveBeenLastCalledWith(3);
+    expect(takeButtons()).toHaveLength(0);
+  });
+
+  it("counts zero for a document with no directives", () => {
+    container.innerHTML = `<p data-source-line="1">Just prose.</p>`;
+    const { onCount } = renderWithCount(false);
+    expect(onCount).toHaveBeenLastCalledWith(0);
+  });
+
+  it("excludes the hosts that cannot carry a button", () => {
+    // The fixture stamps a `pre` and a `table` as well, and neither can host
+    // the affordance. A count of 5 against 3 buttons would send the reader
+    // looking for controls that were never there — which is why the walk is
+    // shared rather than reimplemented.
+    const { onCount } = renderWithCount(true);
+    expect(container.querySelectorAll("[data-vantage-oq]")).toHaveLength(5);
+    expect(onCount).toHaveBeenLastCalledWith(3);
+  });
+
+  it("agrees with the shared walk the buttons are built from", () => {
+    // Belt and braces on the same invariant, stated against the exported
+    // helper so a future second caller inherits it.
+    renderWithCount(true);
+    expect(answerableOpenQuestions(container)).toHaveLength(
+      takeButtons().length,
+    );
   });
 });

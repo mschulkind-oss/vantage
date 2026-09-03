@@ -195,6 +195,15 @@ export const ViewerPage: React.FC = () => {
     };
   }, []);
   const [showRaw, setShowRaw] = useState(false);
+  /**
+   * How many Open Questions the open document offers a one-click answer for.
+   *
+   * Reported by the viewer whether or not review mode is on, because the
+   * button is gated on review mode (D4) and until this count existed nothing
+   * said the affordance was there at all — a document with three `oq`
+   * directives and review mode off looked exactly like one with none.
+   */
+  const [openQuestionCount, setOpenQuestionCount] = useState(0);
   const [copied, setCopied] = useState(false);
   const [pathCopied, setPathCopied] = useState(false);
   const [keyboardShortcutsEnabled, setKeyboardShortcutsEnabled] =
@@ -251,6 +260,30 @@ export const ViewerPage: React.FC = () => {
   // like it worked. A control that cannot work must not render (design D4/R7),
   // the same way the Untracked-file button below is gated.
   const reviewToggleVisible = !showRaw && !isStaticMode();
+  /**
+   * Whether to advertise this document's one-click Open Questions on the
+   * Review toggle.
+   *
+   * Only while review mode is OFF: once it is on, the buttons are on the page
+   * and the count would be repeating what the reader can already see. This is
+   * the only thing anywhere that says the affordance exists — the button is
+   * gated on review mode (D4), so a document with three answerable questions
+   * and review mode off used to look exactly like a document with none.
+   */
+  const advertiseOpenQuestions =
+    reviewToggleVisible &&
+    !isReviewMode &&
+    !reviewExitConfirm &&
+    openQuestionCount > 0;
+  const reviewToggleTitle = reviewExitConfirm
+    ? "Click again to end review & clear data"
+    : isReviewMode
+      ? "Exit review mode"
+      : advertiseOpenQuestions
+        ? `Enter review mode — ${openQuestionCount} open question${
+            openQuestionCount === 1 ? "" : "s"
+          } here can be answered in one click`
+        : "Enter review mode";
 
   const handleReviewToggle = useCallback(() => {
     if (isReviewMode && hasReviewData()) {
@@ -1175,18 +1208,17 @@ export const ViewerPage: React.FC = () => {
                                 ? "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 ring-1 ring-purple-300 dark:ring-purple-700"
                                 : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
                           )}
-                          title={
-                            reviewExitConfirm
-                              ? "Click again to end review & clear data"
-                              : isReviewMode
-                                ? "Exit review mode"
-                                : "Enter review mode"
-                          }
+                          title={reviewToggleTitle}
                         >
                           <MessageSquarePlus size={14} />
                           <span className="hidden sm:inline">
                             {reviewExitConfirm ? "End review?" : "Review"}
                           </span>
+                          {advertiseOpenQuestions && (
+                            <span className="review-oq-count">
+                              {openQuestionCount}
+                            </span>
+                          )}
                         </button>
                       )}
                       {isReviewMode && (
@@ -1343,18 +1375,17 @@ export const ViewerPage: React.FC = () => {
                               ? "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 ring-1 ring-purple-300 dark:ring-purple-700"
                               : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
                         )}
-                        title={
-                          reviewExitConfirm
-                            ? "Click again to end review & clear data"
-                            : isReviewMode
-                              ? "Exit review mode"
-                              : "Enter review mode"
-                        }
+                        title={reviewToggleTitle}
                       >
                         <MessageSquarePlus size={14} />
                         <span className="hidden sm:inline">
                           {reviewExitConfirm ? "End review?" : "Review"}
                         </span>
+                        {advertiseOpenQuestions && (
+                          <span className="review-oq-count">
+                            {openQuestionCount}
+                          </span>
+                        )}
                       </button>
                     )}
                     {isReviewMode && (
@@ -1506,6 +1537,7 @@ export const ViewerPage: React.FC = () => {
                           content={fileContent.content}
                           currentPath={fileContent.path}
                           isReviewMode={isReviewMode}
+                          onOpenQuestionCount={setOpenQuestionCount}
                         />
                       )}
                     </div>

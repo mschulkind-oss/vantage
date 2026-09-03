@@ -30,6 +30,14 @@ interface MarkdownViewerProps {
   content: string;
   currentPath: string;
   isReviewMode?: boolean;
+  /**
+   * How many Open Questions in this document can be answered in one click.
+   *
+   * Reported whether or not review mode is on, because the count is a fact
+   * about the document and the button is a fact about the mode. Must be a
+   * stable reference — it is in the reporting effect's dep array.
+   */
+  onOpenQuestionCount?: (count: number) => void;
 }
 
 // Tags eligible to be the anchor block for a comment.  We deliberately
@@ -107,6 +115,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   content,
   currentPath,
   isReviewMode = false,
+  onOpenQuestionCount,
 }) => {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -311,6 +320,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     isReviewMode ? body : null,
     addComment,
     deleteComment,
+    onOpenQuestionCount,
   );
 
   // Build a CapturedSelection from the current window selection or a
@@ -729,6 +739,10 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
 export const MarkdownViewer = memo(
   MarkdownViewerInner,
   (prevProps, nextProps) => {
+    // `onOpenQuestionCount` is deliberately absent: it must be a stable
+    // reference from the parent, and comparing it would only matter if it were
+    // not — in which case the fix is the parent's `useCallback`, not a
+    // re-render on every keystroke here.
     return (
       prevProps.content === nextProps.content &&
       prevProps.currentPath === nextProps.currentPath &&
