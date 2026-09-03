@@ -7,10 +7,14 @@ summary: "The `oq` directive and its one-click review button, and where the butt
 # Open questions
 
 `oq` is the only directive that produces an **affordance** rather than a
-treatment. Beside a question it marks, review mode renders one button labelled
-**"Take this leaning"**. Clicking it files the directive's `leaning=` text as an
-ordinary review comment — the same call the comment popover makes, with an
-anchor identical in shape to what click-and-type produces.
+treatment. Below a question it marks, review mode renders one button labelled
+**"Take this leaning"**, in a row of its own. Clicking it files the directive's
+`leaning=` text as an ordinary review comment — the same call the comment popover
+makes, with an anchor identical in shape to what click-and-type produces.
+
+The row is the block's next sibling, never a child of it, and it stays inside
+whatever contains the question — so an item's button keeps the item's indent and
+a blockquote's sits inside the quote.
 
 There is no new endpoint, no new inbox verb, and nothing downstream knows the
 comment came from a button.
@@ -23,14 +27,17 @@ comment came from a button.
 
 ## What to look at
 
-- Does the button sit beside its question without pushing the text around?
+- Does the row sit under its question without pushing the prose around, and does
+  it keep its container's indentation?
 - Is there exactly **one** button per `oq`, and is it affirmative only? There is
   deliberately no Reject — a rejection needs a reason, which means typing
   anyway, so a Reject button would mostly produce content-free rejections.
 - Click one. The comment that lands in the review panel should read as the
   leaning sentence, not as "yes".
-- Turn review mode off. Every button must vanish, and the prose must be
-  unchanged.
+- **Then click Undo.** The comment should go, and the button should come back.
+- **Take a leaning, then dismiss the comment from its card.** The chip and Undo
+  must both still be there — that is the state this feature used to dead-end in.
+- Turn review mode off. Every row must vanish, and the prose must be unchanged.
 
 ## In a list, which is where they really live
 
@@ -64,15 +71,25 @@ item.
 
 <!-- vantage: oq id=OQ-4 leaning="A paragraph is the plainest host, and the button should look identical here to how it looks in a list." -->
 
-A question written as a plain paragraph rather than a list item. The button
-hangs off this block.
+A question written as a plain paragraph rather than a list item. The row goes
+directly below this block.
+
+This is the best specimen for the **taken** state, because nothing else is
+competing for the space. Take it, and the button becomes a green **Leaning
+taken** chip with a quiet **Undo** beside it; the comment's own card appears
+below the row. Undo deletes that comment and restores the button.
+
+Undo is withheld in exactly one case: once anything has replied to the comment,
+deleting it would take the reply with it, so the chip renders alone and its
+tooltip says where the thread is instead.
 
 ## On a blockquote
 
 <!-- vantage: oq id=OQ-5 leaning="A blockquote already has a border in the gutter, so this is the placement most likely to collide." -->
 
-> A question written as a blockquote. Check whether the button clears the quote
-> bar rather than sitting on top of it.
+> A question written as a blockquote. Check two things: that the row clears the
+> quote bar rather than sitting on top of it, and that the closing quotation mark
+> is at the end of the quoted sentence rather than after the button.
 
 ## On a heading
 
@@ -80,9 +97,10 @@ hangs off this block.
 
 ### A question as a heading
 
-A heading can host the button too. The thing to check is the baseline: the
-button must not shift the heading text up or down relative to the headings
-around it.
+A heading can host the button too. The row lands between the heading and this
+paragraph, which is the one placement worth a second look: the heading's own
+bottom margin and the row's negative top margin have to add up to something that
+still reads as "this button belongs to that heading".
 
 ## With no leaning
 

@@ -18,7 +18,11 @@
 
 import { useEffect, type RefObject } from "react";
 import { VANTAGE_OQ_HOST_TARGETS } from "vantage-md";
-import { anchorBlockWithin, buildWholeBlockAnchor } from "../lib/reviewAnchor";
+import {
+  NEIGHBOR_RADIUS,
+  anchorBlockWithin,
+  buildWholeBlockAnchor,
+} from "../lib/reviewAnchor";
 import { isStaticMode } from "../lib/staticMode";
 import type { CommentAnchor, ReviewComment } from "../types";
 
@@ -41,6 +45,20 @@ export const OQ_DEFAULT_LEANING = "Take the stated leaning.";
 
 /** Shown in place of the button once this leaning has been taken. */
 export const OQ_TAKEN_LABEL = "Leaning taken";
+
+/** The way back out, beside the chip. Deletes the comment the click created. */
+export const OQ_UNDO_LABEL = "Undo";
+
+/**
+ * Why an undone leaning cannot be undone from here.
+ *
+ * A taken leaning with a reply on it is a live thread, and Undo deletes the
+ * comment — which would take the reply with it. So the chip renders alone and
+ * says where the thread is instead. D4: a control that would destroy something
+ * the reviewer cannot get back must not be the one offered.
+ */
+export const OQ_ANSWERED_TITLE =
+  "This leaning was filed as a review comment and has a reply. Open the comment to act on it.";
 
 /**
  * Blocks the affordance may live inside.
@@ -67,36 +85,110 @@ export type TakeLeaning = (
   fallbackText: string,
 ) => void;
 
+/** Undo a take: delete the comment it created, which re-arms the button. */
+export type UndoLeaning = (commentId: string) => void;
+
 function sweep(el: HTMLElement): void {
   el.querySelectorAll(`[${OQ_BUTTON_ATTR}]`).forEach((n) => n.remove());
 }
 
 /**
- * Whether this exact leaning has already been taken on this exact block.
+ * The comment a previous take created on this block, if there is one.
  *
- * Both halves matter. Matching the anchor alone would retire the button because
- * the reviewer typed something *else* on the same paragraph, which is the D4(b)
- * failure — the button must never remove the typing path, and typing must never
- * remove the button. Matching the text alone would retire it because an
- * identical leaning was taken on a different question.
+ * Returns the comment rather than a boolean because the chip needs its id: Undo
+ * deletes it, and a chip that cannot name what it would delete cannot offer the
+ * way out.
+ *
+ * Three clauses identify it, and each is load-bearing:
+ *
+ * - **the body**, because the comment carries no marker saying a button made it
+ *   — its identity *is* the leaning text. Matching the anchor alone would retire
+ *   the button because the reviewer typed something else on the same paragraph,
+ *   which is the D4(b) failure: the button must never remove the typing path,
+ *   and typing must never remove the button.
+ * - **the block hash**, because matching the text alone would retire it for an
+ *   identical leaning taken on a different question.
+ * - **a whole-block selection**, because a take never anchors to a sub-range.
+ *
+ * The line is a **tolerance, not an equality** — `NEIGHBOR_RADIUS`, the same
+ * radius `useReviewHighlights` re-anchors within. Exact equality here is what
+ * put a chip and a live button on one paragraph: insert a line above an `oq`
+ * block and the highlighter's neighbour walk still found the comment while this
+ * function decided the leaning had never been taken. It stays a tolerance rather
+ * than being dropped entirely so that two identical questions carrying identical
+ * leanings, far apart in one document, keep separate buttons.
  *
  * `resolved` is ignored on purpose: dismissing a taken leaning must not re-arm
  * the button, or the reviewer gets a fresh duplicate for a thread they closed.
- * Deleting the comment does re-arm it, which is the same escape hatch the rest
- * of the review UI offers.
+ * Undo is what re-arms it, and unlike the delete this used to point at, Undo is
+ * beside the chip rather than at the top of the document.
  */
-function alreadyTaken(
+function findTaken(
   comments: ReviewComment[],
   anchor: CommentAnchor,
   text: string,
-): boolean {
-  return comments.some(
+): ReviewComment | undefined {
+  return comments.find(
     (c) =>
       c.comment === text &&
-      c.anchor?.source_line === anchor.source_line &&
       c.anchor?.block_text_hash === anchor.block_text_hash &&
-      c.anchor?.selection_length === 0,
+      c.anchor?.selection_length === 0 &&
+      Math.abs(c.anchor.source_line - anchor.source_line) <= NEIGHBOR_RADIUS,
   );
+}
+
+/**
+ * The row every OQ affordance lives in, inserted as the block's next sibling.
+ *
+ * A row rather than a trailing inline node, and a sibling rather than a child,
+ * for four measured reasons:
+ *
+ * - **it stops interrupting the sentence.** Appended to the block, the control
+ *   landed after the question's last word — and inside a blockquote it landed
+ *   before typography's generated closing quotation mark (`content: close-quote`
+ *   on the paragraph's `::after`), so it read as part of the quote.
+ * - **it has room for more than one control.** The taken state is a chip *and*
+ *   an Undo button; two inline nodes trailing a paragraph wrap independently of
+ *   each other.
+ * - **it leaves the block's subtree alone**, so no injected node can perturb the
+ *   block text a hash is taken over. It still carries `OQ_BUTTON_ATTR`, which
+ *   `REVIEW_UI_SELECTOR` names and the container's click handler bails on.
+ * - **it is the shape the inline comment card already uses**
+ *   (`insertInlineCommentAfter`), including `joinToneRun` — without which a row
+ *   inserted between two members of a toned section punches a hole in the
+ *   section's rule.
+ *
+ * Not the gutter. A per-block gutter control was built and deleted (`7652eb7`,
+ * `docs/design/review-mode.md`): its hit zone broke on tall blocks, and the
+ * principle adopted in its place is to pick the natural unit rather than a
+ * sub-region. There is also no room — the prose column carries 16-32px of left
+ * padding, the tone rule already claims 12px of it, and the scroller's computed
+ * `overflow-x: auto` clips anything further left instead of scrolling to it.
+ */
+function makeRow(block: HTMLElement): HTMLElement {
+  const row = document.createElement("div");
+  row.setAttribute(OQ_BUTTON_ATTR, "row");
+  row.className = "review-oq-row";
+  // Copied off the block, not computed: a row between two stamped members of a
+  // section is an unstamped sibling, and the rule's upward bleed cannot span it.
+  const tone = block.getAttribute("data-vantage-tone");
+  const run = block.getAttribute("data-vantage-run");
+  if (tone !== null && (run === "start" || run === "middle")) {
+    row.setAttribute("data-vantage-tone", tone);
+    row.setAttribute("data-vantage-run", "middle");
+  }
+  if (block.nextSibling) {
+    block.parentNode!.insertBefore(row, block.nextSibling);
+  } else {
+    block.parentNode!.appendChild(row);
+  }
+  return row;
+}
+
+/** Stop a click on an injected control reaching the popover handler. */
+function claimClick(e: Event): void {
+  e.stopPropagation();
+  e.preventDefault();
 }
 
 /**
@@ -119,6 +211,7 @@ export function useOpenQuestionButtons(
   enabled: boolean,
   currentContent: string | null,
   onTake: TakeLeaning,
+  onUndo: UndoLeaning,
 ): void {
   useEffect(() => {
     const el = containerRef.current;
@@ -161,15 +254,44 @@ export function useOpenQuestionButtons(
       // behave identically — a comment body of `""` is the "broken" D6 forbids.
       const text = leaning || OQ_DEFAULT_LEANING;
 
-      if (alreadyTaken(comments, built.anchor, text)) {
+      const taken = findTaken(comments, built.anchor, text);
+      const row = makeRow(block);
+
+      if (taken !== undefined) {
         // A chip, not a disabled button: this stylesheet has no `:disabled`
         // treatment at all, so a disabled button would keep the live look and
         // read as clickable.
-        const taken = document.createElement("span");
-        taken.setAttribute(OQ_BUTTON_ATTR, "taken");
-        taken.className = "review-oq-taken";
-        taken.textContent = OQ_TAKEN_LABEL;
-        block.appendChild(taken);
+        const chip = document.createElement("span");
+        chip.setAttribute(OQ_BUTTON_ATTR, "taken");
+        chip.className = "review-oq-taken";
+        chip.textContent = OQ_TAKEN_LABEL;
+        row.appendChild(chip);
+
+        // Undo is offered only while the take is still the whole thread. Once
+        // anyone has replied, deleting the comment would discard the reply with
+        // it, and nothing brings a deleted comment back — so the chip says
+        // where the thread is rather than offering to destroy it.
+        if ((taken.reactions?.length ?? 0) > 0) {
+          chip.title = OQ_ANSWERED_TITLE;
+          continue;
+        }
+
+        const undo = document.createElement("button");
+        undo.setAttribute(OQ_BUTTON_ATTR, "undo");
+        undo.type = "button";
+        undo.className = "review-oq-undo";
+        undo.textContent = OQ_UNDO_LABEL;
+        undo.title = "Delete the review comment this button filed";
+        undo.addEventListener("click", (e) => {
+          claimClick(e);
+          // Same one-gesture guard as the take: the store write is synchronous
+          // and the next pass replaces this row, so this covers only the window
+          // before that commit.
+          if (undo.disabled) return;
+          undo.disabled = true;
+          onUndo(taken.id);
+        });
+        row.appendChild(undo);
         continue;
       }
 
@@ -183,8 +305,7 @@ export function useOpenQuestionButtons(
         // The container's own click handler opens the comment popover, and this
         // click is not a request for that — the same reason
         // `wireCommentButtons` stops propagation on every inline action.
-        e.stopPropagation();
-        e.preventDefault();
+        claimClick(e);
         // The store write is synchronous, so the next pass replaces this button
         // with the taken chip. This guard covers only the window before that
         // commit — a physical double-click delivering two clicks in one gesture.
@@ -192,11 +313,11 @@ export function useOpenQuestionButtons(
         btn.disabled = true;
         onTake(built.anchor, text, built.fallbackText);
       });
-      block.appendChild(btn);
+      row.appendChild(btn);
     }
 
     // Unmount, review mode off, or a file switch: leave no trace. The listeners
     // go with the nodes they were attached to.
     return () => sweep(el);
-  }, [containerRef, comments, enabled, currentContent, onTake]);
+  }, [containerRef, comments, enabled, currentContent, onTake, onUndo]);
 }

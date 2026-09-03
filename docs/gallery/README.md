@@ -113,11 +113,11 @@ headings, `pre` and `table`.
 
 ## Findings from the first pass
 
-Two things the gallery caught the first time it was rendered. Both are recorded
-here rather than fixed, because each is a change to the theme layer with its own
-test to write.
+Two things the gallery caught the first time it was rendered — which is the
+argument for its existence, so they stay written down here after they are dealt
+with.
 
-### A bordered member draws its slice 1–4px right of everyone else's
+### Open — a bordered member draws its slice 1–4px right of everyone else's
 
 The stripe is an absolutely-positioned `::before`, and `left` on an absolutely
 positioned element resolves from the **padding** edge of its containing block —
@@ -137,6 +137,9 @@ border edge at the same x and every computed `left` identical at `-12px`:
 The blockquote's 4px is visible as a jog in an otherwise straight stripe, and
 because the slice is only 3px wide it reads as a break rather than as a bend.
 
+Still open: the fix is a change to the theme layer — measuring the pseudo from
+the border edge rather than the padding edge — with its own test to write.
+
 > [!NOTE]
 > `directives.css` says "Measured: the pseudo's computed `left` puts all eight
 > block types on the same pixel." That claim is **true and does not imply what
@@ -145,15 +148,16 @@ because the slice is only 3px wide it reads as a break rather than as a bend.
 > compensation is not the culprit and works exactly as documented: `h3` and
 > `h4` land on 308 with the paragraphs.
 
-### The Open Question button lands inside the closing quotation mark
+### Fixed — the Open Question button landed inside the closing quotation mark
 
-On a blockquote host, the button is appended as the last element child of the
+On a blockquote host the button was appended as the last element child of the
 paragraph, and `@tailwindcss/typography` draws the closing quote as that same
-paragraph's `::after` with `content: close-quote`. So the generated `"` renders
-*after* the button, and the button reads as part of the quoted sentence.
+paragraph's `::after` with `content: close-quote` — so the generated `"` rendered
+*after* the button and it read as part of the quoted sentence.
 
-Only blockquotes are affected — no other host has generated content after its
-content.
+Fixed by moving every OQ affordance into a row inserted as the block's next
+sibling, which also took the control out of the middle of the prose. See
+[Open questions](./open-questions.md).
 
 ## Keeping it honest
 

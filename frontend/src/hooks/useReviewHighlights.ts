@@ -2,6 +2,7 @@ import { useEffect, type RefObject } from "react";
 import type { ReviewComment } from "../types";
 import { renderCommentMarkdown } from "../lib/commentMarkdown";
 import {
+  NEIGHBOR_RADIUS,
   ANCHORABLE_BLOCK_SELECTOR,
   blockVisibleText,
   hashBlockText,
@@ -30,9 +31,6 @@ const DELETE_CONFIRM_MS = 3000;
  * timestamp expires it, so a stale arm cannot make a later click destructive.
  */
 let armedDelete: { id: string; at: number } | null = null;
-
-/** Max ±source_line distance for the neighbor walk before marking outdated. */
-const NEIGHBOR_RADIUS = 10;
 
 /**
  * Render review comments inline.  Comments are anchored to a block via

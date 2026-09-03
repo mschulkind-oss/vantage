@@ -596,29 +596,41 @@ describe("MarkdownViewer — the one-click Open Question answer", () => {
     vi.clearAllMocks();
   });
 
-  it("renders one button for a parsed directive, on the block it attached to", () => {
+  it("renders one button for a parsed directive, in a row after the block it attached to", () => {
     const { container } = renderDoc(OQ_DOC);
 
     expect(takeButton()).not.toBeNull();
     expect(container.querySelectorAll(".review-oq-take")).toHaveLength(1);
-    expect(
-      container
-        .querySelector('p[data-source-line="3"]')!
-        .querySelector(".review-oq-take"),
-    ).not.toBeNull();
+    // The row is the block's next sibling, never a child of it: appended into
+    // the block the control landed after the question's last word, and nothing
+    // injected may sit inside the subtree a block hash is taken over.
+    const block = container.querySelector<HTMLElement>(
+      'p[data-source-line="3"]',
+    )!;
+    expect(block.querySelector("[data-vantage-oq-button]")).toBeNull();
+    const row = block.nextElementSibling as HTMLElement;
+    expect(row.classList.contains("review-oq-row")).toBe(true);
+    expect(row.querySelector(".review-oq-take")).not.toBeNull();
   });
 
-  it("lands on the _Leaning:_ paragraph for a directive indented inside a list item", () => {
+  it("lands after the _Leaning:_ paragraph for a directive indented inside a list item", () => {
     const { container } = renderDoc(OQ_LIST_DOC);
 
     // The whole reason the plugin recurses: at column 0 between items the
     // directive would split the list instead.
     expect(container.querySelectorAll("ol")).toHaveLength(1);
-    expect(
-      container
-        .querySelector('p[data-source-line="5"]')!
-        .querySelector(".review-oq-take"),
-    ).not.toBeNull();
+    const block = container.querySelector<HTMLElement>(
+      'p[data-source-line="5"]',
+    )!;
+    const row = block.nextElementSibling as HTMLElement;
+    expect(row.querySelector(".review-oq-take")).not.toBeNull();
+    // Inside the item, so it stays indented with the question it answers
+    // instead of breaking out to the document's left edge.
+    expect(row.closest("li")).not.toBeNull();
+    // And it did not become a fourth list item.
+    expect(container.querySelectorAll("li")).toHaveLength(
+      container.querySelectorAll("ol > li").length,
+    );
   });
 
   it("posts exactly one comment carrying the leaning, and renders it anchored", () => {

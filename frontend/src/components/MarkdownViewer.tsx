@@ -298,13 +298,19 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   // The one-click Open Question answer (design §5.2). A sibling pass rather than
   // an addition to useReviewHighlights, whose effect returns early when there
   // are no comments — the normal state of a fresh review, and exactly when this
-  // button matters. `addComment` is a zustand action, so it is a stable ref.
+  // button matters. Both are zustand actions, so both are stable refs.
+  //
+  // Undo is `deleteComment`, the same action the inline card's `×` calls: taking
+  // a leaning writes one comment and Undo removes it, so the pair is symmetric
+  // and nothing new reaches the server. The hook offers Undo only while the
+  // comment carries no reactions, so this can never discard a reply.
   useOpenQuestionButtons(
     containerRef,
     comments,
     isReviewMode,
     isReviewMode ? body : null,
     addComment,
+    deleteComment,
   );
 
   // Build a CapturedSelection from the current window selection or a
@@ -521,9 +527,10 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
       if (!target) return;
-      // Don't intercept clicks on links, buttons, or existing review UI. The
-      // "Leaning taken" chip is a <span>, so it needs naming here; the OQ
-      // button itself is already covered by `button`.
+      // Don't intercept clicks on links, buttons, or existing review UI. Every
+      // OQ affordance — the take button, the "Leaning taken" chip, and Undo —
+      // sits in a row carrying `data-vantage-oq-button`, so the one selector
+      // covers the chip, which is a <span> and would not be caught by `button`.
       if (
         target.closest(
           "a, button, [data-review-inline-comment], [data-vantage-oq-button]",

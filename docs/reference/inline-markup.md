@@ -373,10 +373,32 @@ helper is `anchorScroll.ts`; the callers are the `#L` line anchor, in-document
 
 ## The one-click Open Question answer
 
-An `oq` directive renders one button beside the question in review mode, labelled
-**"Take this leaning"**. Clicking it calls the same `addComment` the comment
-popover calls, with an anchor identical in shape to what click-and-type produces.
-The comment text is the `leaning` value, or a fixed default when absent.
+An `oq` directive renders one button in review mode, labelled **"Take this
+leaning"**. Clicking it calls the same `addComment` the comment popover calls,
+with an anchor identical in shape to what click-and-type produces. The comment
+text is the `leaning` value, or a fixed default when absent.
+
+**The affordance sits in its own row, inserted as the question block's next
+sibling** — never appended into the block. Appended, it landed after the
+question's last word, and inside a blockquote it landed *before* typography's
+generated closing quotation mark (`content: close-quote` on the paragraph's
+`::after`), reading as part of the quote. The row is also what gives the taken
+state room for two controls side by side, and it keeps every injected node out of
+the subtree a block hash is taken over.
+
+The row stays inside its parent, so a question in a list item keeps the item's
+indentation, and it copies a toned block's `data-vantage-tone`/`run` the way
+`insertInlineCommentAfter` does — an unstamped sibling between two members of a
+section is a gap the rule's upward bleed cannot span.
+
+> [!WARNING]
+> **Not the gutter.** A per-block gutter control was built and deleted
+> (`7652eb7`, `docs/design/review-mode.md`): its hit zone broke on tall blocks,
+> and the principle adopted in its place is to pick the natural unit rather than
+> a sub-region of it. There is also nowhere to put one — the prose column carries
+> 16–32px of left padding, the section tone rule already claims 12px of it, and
+> the scroller's computed `overflow-x: auto` clips anything further left instead
+> of scrolling to it.
 
 Everything downstream is unchanged: the comment rides the existing command to the
 review endpoint, appears in the panel, reaches the agent in the ordinary clipboard
@@ -391,6 +413,41 @@ button would look live and do nothing, which is worse than no button.
 There is exactly one button and it is **affirmative only**. A rejection almost
 always needs a reason, which means typing anyway, so a Reject button would mostly
 produce content-free rejections the agent then has to chase.
+
+### Taken, and the way back out
+
+Once the leaning is taken the button is replaced by a **"Leaning taken" chip and
+an Undo button**, in the same row. Undo is `deleteComment` — the action the
+inline card's `×` already calls — so taking writes one comment and Undo removes
+it, and nothing new reaches the server.
+
+Undo is offered **only while the take is still the whole thread**. Once any
+reaction exists, deleting the comment would discard the reply with it and nothing
+brings a deleted comment back, so the chip renders alone and carries a `title`
+saying where the thread is. D4: a control that would destroy something
+unrecoverable must not be the one offered.
+
+> [!WARNING]
+> **`resolved` is deliberately ignored**, so dismissing a taken leaning does not
+> re-arm the button — otherwise the reviewer gets a fresh duplicate for a thread
+> they closed. That is why Undo has to exist *here*. Before it did, dismissing
+> was the only thing that looked like an undo, and it left an inert chip with no
+> tooltip beside the question while the comment moved to a collapsed section at
+> the top of the document, the minimap mark disappeared and the toolbar count
+> went to zero. The escape hatch was a two-click delete behind a hover-hidden
+> trash icon in the panel, and nothing said so.
+
+Whether a leaning is already taken is decided by the comment's **body, the
+block's hash, a whole-block selection, and the line within
+`NEIGHBOR_RADIUS`** — the same radius `useReviewHighlights` re-anchors within,
+shared from `reviewAnchor.ts` rather than written twice. The line is a tolerance
+and not an equality, and that is a fix rather than a nicety: while this pass
+compared `source_line` exactly and the highlighter walked a neighbourhood,
+inserting a line above an `oq` block rendered the chip **and** a live button on
+one paragraph — one surface saying the comment was still attached, the other
+saying the leaning had never been taken. It stays a tolerance rather than being
+dropped so that two identical questions carrying identical leanings, far apart in
+one document, keep separate buttons.
 
 > [!WARNING]
 > **Do not place a directive at column 0 between list items.** It terminates the
