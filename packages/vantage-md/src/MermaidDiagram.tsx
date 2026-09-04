@@ -4,10 +4,13 @@ import React, {
   useRef,
   useMemo,
   useCallback,
+  useSyncExternalStore,
   memo,
 } from "react";
-import { svgCache } from "./mermaidCache.js";
+import { getCachedSvg, setCachedSvg } from "./mermaidCache.js";
 import { getMermaid } from "./mermaidLoader.js";
+import { currentMermaidTheme } from "./mermaidTheme.js";
+import type { MermaidThemeName } from "./mermaidTheme.js";
 
 // Inline SVG icons to avoid lucide-react dependency
 const AlertTriangleIcon = () => (
@@ -70,7 +73,7 @@ const MaximizeIcon = () => (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
-    className="w-4 h-4 text-gray-600"
+    className="w-4 h-4 text-gray-600 dark:text-slate-200"
   >
     <polyline points="15 3 21 3 21 9" />
     <polyline points="9 21 3 21 3 15" />
@@ -260,10 +263,13 @@ function ZoomableSvg({ svg }: { svg: string }) {
         />
       </div>
 
-      <div className="absolute bottom-4 right-4 flex items-center gap-1 rounded-lg bg-white/95 shadow-md border border-gray-200 px-1.5 py-1">
+      {/* The controls float over the diagram, so they carry their own surface
+          in both themes — a white bar over a dark page was the one piece of
+          chrome that never followed the theme. */}
+      <div className="absolute bottom-4 right-4 flex items-center gap-1 rounded-lg bg-white/95 dark:bg-slate-800/95 shadow-md border border-gray-200 dark:border-slate-600 px-1.5 py-1">
         <button
           onClick={() => zoomBy(1 / 1.3)}
-          className="p-1.5 rounded hover:bg-gray-100 text-gray-600"
+          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-600 dark:text-slate-200"
           aria-label="Zoom out"
           title="Zoom out"
         >
@@ -271,23 +277,23 @@ function ZoomableSvg({ svg }: { svg: string }) {
         </button>
         <button
           onClick={reset}
-          className="px-2 py-1 text-xs font-medium rounded hover:bg-gray-100 text-gray-600 min-w-[3rem]"
+          className="px-2 py-1 text-xs font-medium rounded hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-600 dark:text-slate-200 min-w-[3rem]"
           title="Reset zoom (or double-click)"
         >
           {Math.round(scale * 100)}%
         </button>
         <button
           onClick={() => zoomBy(1.3)}
-          className="p-1.5 rounded hover:bg-gray-100 text-gray-600"
+          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-600 dark:text-slate-200"
           aria-label="Zoom in"
           title="Zoom in"
         >
           <PlusIcon />
         </button>
-        <div className="w-px h-5 bg-gray-200 mx-0.5" />
+        <div className="w-px h-5 bg-gray-200 dark:bg-slate-600 mx-0.5" />
         <button
           onClick={reset}
-          className="p-1.5 rounded hover:bg-gray-100 text-gray-600"
+          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-600 dark:text-slate-200"
           aria-label="Reset view"
           title="Reset view"
         >
@@ -347,37 +353,88 @@ function DiagramModal({
     >
       {/* overflow-hidden keeps the header's border from poking past the rounded corners */}
       <div
-        className="bg-white rounded-lg shadow-xl w-[96vw] h-[94vh] flex flex-col overflow-hidden"
+        className="bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 rounded-lg shadow-xl w-[96vw] h-[94vh] flex flex-col overflow-hidden"
         role="dialog"
         aria-modal="true"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-4 border-b shrink-0">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-slate-700 shrink-0">
           <h2 className="text-lg font-semibold">Mermaid Diagram</h2>
           <button
             onClick={onClose}
-            className="p-1 hover:bg-gray-100 rounded-full transition-colors"
+            className="p-1 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full transition-colors"
             aria-label="Close modal"
           >
             <CloseIcon />
           </button>
         </div>
-        <div className="flex-1 overflow-hidden bg-gray-50">{children}</div>
+        <div className="flex-1 overflow-hidden bg-gray-50 dark:bg-slate-800">
+          {children}
+        </div>
       </div>
     </div>
   );
 }
 
+/**
+ * The palette the page is asking for, re-read whenever `<html>`'s class list
+ * changes.
+ *
+ * A diagram is an SVG baked at render time, so unlike everything else on the
+ * page it does not restyle when the theme flips — it has to be drawn again. The
+ * observer is what notices; the effect below is what redraws. Without it a
+ * session that started in light mode kept white boxes with black ink on the
+ * dark page for as long as it lived.
+ *
+ * `useSyncExternalStore` rather than state plus an effect: the class list *is*
+ * an external store, and reading it in an effect would both miss a flip that
+ * landed before the effect ran and set state synchronously inside one.
+ */
+function subscribeToTheme(onChange: () => void): () => void {
+  if (typeof MutationObserver === "undefined") return () => {};
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class"],
+  });
+  return () => observer.disconnect();
+}
+
+/** Server render has no `<html>` to read, and no diagram to draw either. */
+const serverTheme = (): MermaidThemeName => "default";
+
+function useMermaidTheme(): MermaidThemeName {
+  return useSyncExternalStore(
+    subscribeToTheme,
+    currentMermaidTheme,
+    serverTheme,
+  );
+}
+
 const MermaidDiagramInner: React.FC<MermaidDiagramProps> = ({ code }) => {
-  const hasCached = svgCache.has(code);
-  const [svg, setSvg] = useState<string>(() => svgCache.get(code) || "");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const theme = useMermaidTheme();
   const [showSource, setShowSource] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(!hasCached);
   const [minHeight, setMinHeight] = useState<string>("auto");
   const containerRef = useRef<HTMLDivElement>(null);
   const lastHeightRef = useRef<number | null>(null);
+
+  /**
+   * What this render produced, and which (code, theme) it was for.
+   *
+   * Keyed rather than plain, and read past the cache rather than instead of it,
+   * because a theme flip has to invalidate both: the cache is a miss in the new
+   * palette, and last render's SVG is the wrong palette. Deriving `svg` here
+   * rather than mirroring the cache into state is also what keeps a cache hit
+   * from being a `setState` inside an effect.
+   */
+  const [rendered, setRendered] = useState<{ key: string; svg: string } | null>(
+    null,
+  );
+  const [failure, setFailure] = useState<{
+    key: string;
+    message: string;
+  } | null>(null);
 
   const stableId = useMemo(() => {
     let hash = 0;
@@ -389,10 +446,20 @@ const MermaidDiagramInner: React.FC<MermaidDiagramProps> = ({ code }) => {
     return `mermaid-${Math.abs(hash).toString(36)}`;
   }, [code]);
 
+  const attempt = `${theme} ${stableId}`;
+  const svg =
+    getCachedSvg(code, theme) ??
+    (rendered?.key === attempt ? rendered.svg : "");
+  const errorMessage = failure?.key === attempt ? failure.message : null;
+  const isLoading = svg === "" && errorMessage === null;
+
   useEffect(() => {
-    if (hasCached) return;
+    // The cache is keyed by theme, so a flip is a miss and re-renders; a flip
+    // back is a hit and costs nothing.
+    if (getCachedSvg(code, theme) !== undefined) return;
 
     let mounted = true;
+    const key = `${theme} ${stableId}`;
 
     const renderDiagram = async () => {
       try {
@@ -407,17 +474,12 @@ const MermaidDiagramInner: React.FC<MermaidDiagramProps> = ({ code }) => {
         const { svg: renderedSvg } = await m.render(id, code);
 
         if (mounted) {
-          svgCache.set(code, renderedSvg);
-          setSvg(renderedSvg);
-          setErrorMessage(null);
-          setIsLoading(false);
+          setCachedSvg(code, renderedSvg, theme);
+          setRendered({ key, svg: renderedSvg });
         }
       } catch (err) {
         console.error("Mermaid render error:", err);
-        if (mounted) {
-          setErrorMessage(extractErrorMessage(err));
-          setIsLoading(false);
-        }
+        if (mounted) setFailure({ key, message: extractErrorMessage(err) });
       }
     };
 
@@ -425,7 +487,7 @@ const MermaidDiagramInner: React.FC<MermaidDiagramProps> = ({ code }) => {
     return () => {
       mounted = false;
     };
-  }, [code, stableId, hasCached]);
+  }, [code, stableId, theme]);
 
   if (errorMessage) {
     return (
@@ -473,7 +535,7 @@ const MermaidDiagramInner: React.FC<MermaidDiagramProps> = ({ code }) => {
         {svg && (
           <button
             onClick={() => setIsModalOpen(true)}
-            className="absolute top-2 right-2 p-2 bg-white/90 shadow-sm border rounded-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-50"
+            className="absolute top-2 right-2 p-2 bg-white/90 dark:bg-slate-800/90 shadow-sm border border-gray-200 dark:border-slate-600 rounded-md opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-50 dark:hover:bg-slate-700"
             aria-label="Maximize diagram"
           >
             <MaximizeIcon />

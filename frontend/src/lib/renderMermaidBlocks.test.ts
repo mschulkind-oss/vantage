@@ -8,14 +8,14 @@
  * the page under a closed heading; and `#L42` pointing at the fence resolved to
  * nothing.
  *
- * Every case here pre-seeds `svgCache`, which is what keeps mermaid itself —
+ * Every case here pre-seeds the SVG cache, which is what keeps mermaid itself —
  * the heaviest dependency in the package — out of the test: `renderMermaidBlocks`
  * loads it on the first cache miss and not before.
  */
 import { describe, it, expect, beforeEach } from "vitest";
 import { renderMermaidBlocks } from "vantage-md";
 import {
-  svgCache,
+  setCachedSvg,
   clearMermaidCache,
 } from "../../../packages/vantage-md/src/mermaidCache";
 
@@ -35,7 +35,7 @@ function fence(attributes: string): HTMLElement {
 describe("renderMermaidBlocks carries the pipeline's stamps across the splice", () => {
   beforeEach(() => {
     clearMermaidCache();
-    svgCache.set(CODE, SVG);
+    setCachedSvg(CODE, SVG);
   });
 
   it("replaces the fence with the rendered diagram", async () => {
