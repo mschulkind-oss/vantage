@@ -462,10 +462,15 @@ existed**. The reader had to already know.
 
 So the viewer reports how many answerable questions a document holds —
 before the gates, so the number is right whether or not review mode is on — and
-the Review toggle carries it while review mode is off, with a tooltip saying what
-it is for. Clicking the toggle is what makes the count actionable, which is why
-it lives there rather than in the document: the count is not a second control,
-it is a label on the control that already existed.
+the Review toggle's **tooltip** carries it while review mode is off. Clicking
+the toggle is what makes the count actionable, which is why it lives there
+rather than in the document: the count is not a second control, it is a label on
+the control that already existed.
+
+It is a tooltip and not a chip beside the label. A number rendered on the button
+reads as an unread badge on a toolbar that has no other notification, so it
+claimed more urgency than "this document has answerable questions" deserves; the
+sentence in the tooltip says the same thing and says what it is for.
 
 `answerableOpenQuestions` is exported and **shared with the render pass**, so the
 count and the buttons cannot disagree. A count of five against three buttons

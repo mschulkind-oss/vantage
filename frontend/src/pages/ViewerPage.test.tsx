@@ -15,8 +15,19 @@ vi.mock("../hooks/useWebSocket");
 vi.mock("../components/FileTree", () => ({
   FileTree: () => <div data-testid="file-tree">FileTree</div>,
 }));
+// The viewer is what reports the answerable-Open-Question count up to the page,
+// so the mock has to be able to report one — otherwise every assertion about
+// what the Review toggle says is vacuously true at zero.
+let mockOpenQuestionCount = 0;
 vi.mock("../components/MarkdownViewer", () => ({
-  MarkdownViewer: () => <div data-testid="markdown-viewer">MarkdownViewer</div>,
+  MarkdownViewer: ({
+    onOpenQuestionCount,
+  }: {
+    onOpenQuestionCount?: (count: number) => void;
+  }) => {
+    onOpenQuestionCount?.(mockOpenQuestionCount);
+    return <div data-testid="markdown-viewer">MarkdownViewer</div>;
+  },
 }));
 vi.mock("../components/DirectoryViewer", () => ({
   DirectoryViewer: () => (
@@ -57,6 +68,7 @@ describe("ViewerPage", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockOpenQuestionCount = 0;
 
     // Zustand stores are module singletons — reset review state so seeded
     // comments don't leak between cases.
@@ -379,6 +391,72 @@ describe("ViewerPage", () => {
     it("stays hidden by default", () => {
       renderPage();
       expect(indicators()).toHaveLength(0);
+    });
+  });
+
+  // The count of answerable Open Questions reaches the reader through the
+  // Review toggle's TOOLTIP and nowhere else. It used to also render as a chip
+  // beside the label, which read as an unread badge on a toolbar that has no
+  // other notification; these pin that it is gone and that the sentence which
+  // replaced it is still there.
+  describe("the Review toggle's Open Questions count", () => {
+    const toggles = () =>
+      screen.queryAllByRole("button", { name: /Review/ }) as HTMLElement[];
+
+    // The count comes up from the viewer, and the viewer renders only once the
+    // file has content — with the default `fileContent: null` every assertion
+    // here would pass at a count of zero without testing anything.
+    const withContent = () => {
+      const repoStore = useRepoStore as unknown as ReturnType<typeof vi.fn>;
+      repoStore.mockReturnValue({
+        ...repoStore(),
+        fileContent: "# A document with open questions",
+      });
+    };
+
+    it("names the count in the tooltip while review mode is off", () => {
+      mockOpenQuestionCount = 3;
+      withContent();
+      renderPage();
+
+      expect(
+        screen.queryAllByTitle(
+          "Enter review mode — 3 open questions here can be answered in one click",
+        ).length,
+      ).toBeGreaterThan(0);
+    });
+
+    it("says one question in the singular", () => {
+      mockOpenQuestionCount = 1;
+      withContent();
+      renderPage();
+
+      expect(
+        screen.queryAllByTitle(
+          "Enter review mode — 1 open question here can be answered in one click",
+        ).length,
+      ).toBeGreaterThan(0);
+    });
+
+    it("renders no number beside the label", () => {
+      mockOpenQuestionCount = 3;
+      withContent();
+      renderPage();
+
+      const labelled = toggles();
+      expect(labelled.length).toBeGreaterThan(0);
+      for (const toggle of labelled) {
+        expect(toggle.textContent).not.toMatch(/\d/);
+      }
+    });
+
+    it("says nothing about questions when there are none", () => {
+      withContent();
+      renderPage();
+
+      expect(
+        screen.queryAllByTitle("Enter review mode").length,
+      ).toBeGreaterThan(0);
     });
   });
 
