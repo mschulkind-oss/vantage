@@ -46,7 +46,11 @@ export async function renderMermaidBlocks(
   );
   if (codeBlocks.length === 0) return;
 
-  const mermaid = await getMermaid();
+  // Loaded on the first cache miss, not up front: mermaid is the heaviest
+  // dependency in the package, and a container whose every diagram is already
+  // in `svgCache` — the common case on a re-render — has no use for it.
+  let loading: Promise<Awaited<ReturnType<typeof getMermaid>>> | undefined;
+  const mermaidOnce = () => (loading ??= getMermaid());
 
   const renderPromises = Array.from(codeBlocks).map(async (codeEl) => {
     const preEl = codeEl.parentElement;
@@ -63,6 +67,7 @@ export async function renderMermaidBlocks(
     }
 
     try {
+      const mermaid = await mermaidOnce();
       // Generate a stable ID from code hash
       let hash = 0;
       for (let i = 0; i < code.length; i++) {
@@ -84,6 +89,28 @@ export async function renderMermaidBlocks(
   await Promise.all(renderPromises);
 }
 
+/**
+ * Attributes the wrapper inherits from the `<pre>` it replaces.
+ *
+ * The splice is the same shape of problem `rehypeVantageMathStamps` solves for
+ * KaTeX: the pipeline stamped the fence, and swapping the element out throws
+ * the stamps away. A mermaid diagram inside a toned section then drew no slice
+ * of the section's vertical rule, leaving a hole as tall as the diagram; a
+ * collapsed section left the diagram visible under a closed heading; and a
+ * `#L` anchor pointing at the fence resolved to nothing.
+ *
+ * Named individually rather than copied wholesale: `class` is the caller's
+ * (`className`), and `id` would be duplicated onto a second element.
+ */
+const CARRIED_ATTRIBUTES = [
+  "data-source-line",
+  "data-vantage-tone",
+  "data-vantage-emphasis",
+  "data-vantage-run",
+  "data-vantage-collapsed",
+  "data-vantage-collapse-group",
+];
+
 function replaceWithSvg(
   preEl: HTMLElement,
   svg: string,
@@ -91,6 +118,10 @@ function replaceWithSvg(
 ): void {
   const wrapper = document.createElement("div");
   wrapper.className = className;
+  for (const name of CARRIED_ATTRIBUTES) {
+    const value = preEl.getAttribute(name);
+    if (value !== null) wrapper.setAttribute(name, value);
+  }
   wrapper.innerHTML = svg;
   preEl.replaceWith(wrapper);
 }
