@@ -96,7 +96,7 @@ export const RecentsModal: React.FC<RecentsModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+            className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
             aria-label="Close"
           >
             <X size={18} />
@@ -132,7 +132,7 @@ export const RecentsModal: React.FC<RecentsModalProps> = ({
               <Loader2 size={32} className="animate-spin text-blue-600" />
             </div>
           ) : recentFiles.length === 0 && !recentFilesError ? (
-            <div className="text-center py-20 text-slate-400">
+            <div className="text-center py-20 text-slate-500 dark:text-slate-400">
               <p className="text-lg font-medium text-slate-500 dark:text-slate-400">
                 No recent files found
               </p>
@@ -172,7 +172,7 @@ export const RecentsModal: React.FC<RecentsModalProps> = ({
                         />
                       </div>
                       <span
-                        className="text-[11px] text-slate-400 shrink-0 tabular-nums"
+                        className="text-[11px] text-slate-500 dark:text-slate-400 shrink-0 tabular-nums"
                         title={format(new Date(file.date), "PPpp")}
                       >
                         <RelativeTime date={file.date} />
@@ -182,7 +182,7 @@ export const RecentsModal: React.FC<RecentsModalProps> = ({
                     {/* Row 2: Directory path */}
                     {parentDir && (
                       <div
-                        className="text-xs text-slate-400 truncate mb-0.5"
+                        className="text-xs text-slate-500 dark:text-slate-400 truncate mb-0.5"
                         title={parentDir}
                       >
                         {parentDir}
@@ -190,7 +190,7 @@ export const RecentsModal: React.FC<RecentsModalProps> = ({
                     )}
 
                     {/* Row 3: Metadata line */}
-                    <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                    <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
                       {file.untracked ? (
                         <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
                           <FileQuestion size={11} className="shrink-0" />
@@ -205,7 +205,7 @@ export const RecentsModal: React.FC<RecentsModalProps> = ({
                           )}
                           {file.message &&
                             (file.author_name || file.hexsha) && (
-                              <span className="text-slate-300 dark:text-slate-500">
+                              <span className="text-slate-500 dark:text-slate-400">
                                 ·
                               </span>
                             )}

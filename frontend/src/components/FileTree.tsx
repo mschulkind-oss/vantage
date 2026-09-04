@@ -157,18 +157,18 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
   const fileIconColor = isSymlinkError
     ? "text-red-400"
     : isSymlink
-      ? "text-slate-400"
+      ? "text-slate-500 dark:text-slate-400"
       : hasGitChange
         ? gitStatus === "untracked"
           ? "text-green-500"
           : "text-amber-500"
-        : "text-slate-400";
+        : "text-slate-500 dark:text-slate-400";
   const folderIconColor = isSymlinkError
     ? "text-red-400"
     : isSymlink
-      ? "text-slate-400"
+      ? "text-slate-500 dark:text-slate-400"
       : isDimmed
-        ? "text-slate-400 dark:text-slate-500"
+        ? "text-slate-500 dark:text-slate-400"
         : dirHasChanges
           ? "text-amber-400"
           : isExpanded
@@ -177,7 +177,7 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
   const nameColor = isSymlinkError
     ? "text-red-400 line-through"
     : isSymlink
-      ? "text-slate-400 italic"
+      ? "text-slate-500 dark:text-slate-400 italic"
       : isDimmed
         ? "text-slate-500 dark:text-slate-400"
         : hasGitChange
@@ -242,7 +242,10 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
                 className="text-slate-500 dark:text-slate-400"
               />
             ) : (
-              <ChevronRight size={14} className="text-slate-400" />
+              <ChevronRight
+                size={14}
+                className="text-slate-500 dark:text-slate-400"
+              />
             )
           ) : (
             <span className="w-3.5 block" />
@@ -262,7 +265,7 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
               {isSymlinkError ? (
                 <AlertTriangle size={8} className="text-red-500" />
               ) : (
-                <Link size={7} className="text-slate-400" />
+                <Link size={7} className="text-slate-500 dark:text-slate-400" />
               )}
             </span>
           )}

@@ -121,13 +121,19 @@ export const HistoryPage: React.FC = () => {
                       >
                         {currentRepo}
                       </AppLink>
-                      <ChevronRight size={10} className="text-slate-300" />
+                      <ChevronRight
+                        size={10}
+                        className="text-slate-500 dark:text-slate-400"
+                      />
                     </>
                   )}
                   {breadcrumbs.map((part, i) => (
                     <React.Fragment key={i}>
                       {i > 0 && (
-                        <ChevronRight size={10} className="text-slate-300" />
+                        <ChevronRight
+                          size={10}
+                          className="text-slate-500 dark:text-slate-400"
+                        />
                       )}
                       <span
                         className={cn(
@@ -154,8 +160,8 @@ export const HistoryPage: React.FC = () => {
             <div className="w-8 h-8 border-4 border-slate-200 dark:border-slate-600 border-t-blue-600 rounded-full animate-spin" />
           </div>
         ) : history.length === 0 ? (
-          <div className="text-center py-20 text-slate-400">
-            <GitBranch size={48} className="mx-auto mb-4 text-slate-300" />
+          <div className="text-center py-20 text-slate-500 dark:text-slate-400">
+            <GitBranch size={48} className="mx-auto mb-4" />
             <p className="text-lg font-medium text-slate-500 dark:text-slate-400">
               No commit history found
             </p>
@@ -178,7 +184,7 @@ export const HistoryPage: React.FC = () => {
                       "relative z-10 w-10 h-10 rounded-full flex items-center justify-center shrink-0 mt-1 transition-colors",
                       index === 0
                         ? "bg-blue-500 text-white"
-                        : "bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-600 text-slate-400 group-hover:border-blue-300 group-hover:text-blue-500",
+                        : "bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 group-hover:border-blue-300 group-hover:text-blue-500",
                     )}
                   >
                     <GitBranch size={16} />
@@ -199,7 +205,7 @@ export const HistoryPage: React.FC = () => {
                         <div className="flex items-center space-x-2 mb-1.5">
                           <MessageSquare
                             size={14}
-                            className="text-slate-400 shrink-0"
+                            className="text-slate-500 dark:text-slate-400 shrink-0"
                           />
                           <span className="font-medium text-slate-900 dark:text-slate-100 truncate">
                             {commit.message}
@@ -218,7 +224,7 @@ export const HistoryPage: React.FC = () => {
                           </div>
                         </div>
                       </div>
-                      <span className="font-mono text-xs text-slate-400 bg-slate-50 dark:bg-slate-700 px-2 py-1 rounded-md border border-slate-100 dark:border-slate-600 shrink-0">
+                      <span className="font-mono text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-700 px-2 py-1 rounded-md border border-slate-100 dark:border-slate-600 shrink-0">
                         {commit.hexsha.slice(0, 8)}
                       </span>
                     </div>

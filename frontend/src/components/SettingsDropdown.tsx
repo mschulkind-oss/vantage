@@ -81,7 +81,7 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
           "p-1.5 rounded-md transition-colors",
           open
             ? "bg-slate-200 text-slate-700 dark:bg-slate-600 dark:text-slate-200"
-            : "hover:bg-slate-100 text-slate-400 dark:hover:bg-slate-700 dark:text-slate-400",
+            : "hover:bg-slate-100 text-slate-500 dark:hover:bg-slate-700 dark:text-slate-400",
         )}
         aria-label="Settings"
         title="Settings"
@@ -99,7 +99,7 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
         <>
           {/* Theme section */}
           <div className="px-3 py-2">
-            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+            <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
               Theme
             </div>
             <div className="flex gap-1">
@@ -134,7 +134,7 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
 
           {/* Keyboard section */}
           <div className="px-3 py-2">
-            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+            <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
               Keyboard
             </div>
             <label className="flex items-center gap-2 cursor-pointer group">
@@ -157,7 +157,7 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
 
           {/* File tree section */}
           <div className="px-3 py-2">
-            <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+            <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
               File Tree
             </div>
             <div className="flex flex-col gap-1.5">

@@ -329,7 +329,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                   e.stopPropagation();
                   setMenuOpen((v) => !v);
                 }}
-                className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400"
+                className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"
                 title="More actions"
               >
                 <MoreHorizontal size={18} />
@@ -356,7 +356,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
             </div>
             <button
               onClick={onClose}
-              className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400"
+              className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"
             >
               <X size={18} />
             </button>
@@ -412,7 +412,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
 
         <div className="flex-1 overflow-y-auto">
           {comments.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 text-slate-400 text-sm">
+            <div className="flex flex-col items-center justify-center h-48 text-slate-500 dark:text-slate-400 text-sm">
               <MessageSquare size={24} className="mb-2 opacity-40" />
               <p>No comments yet</p>
               <p className="text-xs mt-1">
@@ -420,7 +420,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
               </p>
             </div>
           ) : visible.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-32 text-slate-400 text-sm">
+            <div className="flex flex-col items-center justify-center h-32 text-slate-500 dark:text-slate-400 text-sm">
               <p>No comments in this view</p>
             </div>
           ) : (
@@ -442,7 +442,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                         title="Jump to this comment in the document"
                         className={
                           c.resolved
-                            ? "flex items-center gap-1.5 text-xs text-slate-400 flex-1 cursor-pointer"
+                            ? "flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 flex-1 cursor-pointer"
                             : "text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900 rounded px-2 py-1 border-l-2 border-blue-400 line-clamp-2 flex-1 cursor-pointer"
                         }
                       >
@@ -473,7 +473,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                             // (hover: hover) — the bare opacity-0 was not, so
                             // on a touch screen Edit and Delete sat at zero
                             // opacity with no gesture that could reveal them.
-                            className="p-1 rounded [@media(hover:hover)]:opacity-0 group-hover:opacity-100 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-slate-400 hover:text-blue-500 transition-opacity"
+                            className="p-1 rounded [@media(hover:hover)]:opacity-0 group-hover:opacity-100 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-slate-500 dark:text-slate-400 hover:text-blue-500 transition-opacity"
                             title="Edit comment"
                           >
                             <Pencil size={12} />
@@ -487,7 +487,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                           className={
                             confirmDeleteId === c.id
                               ? "flex items-center gap-1 px-1.5 py-1 rounded text-[10px] font-medium bg-red-600 text-white"
-                              : "p-1 rounded [@media(hover:hover)]:opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-400 hover:text-red-500 transition-opacity"
+                              : "p-1 rounded [@media(hover:hover)]:opacity-0 group-hover:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/30 text-slate-500 dark:text-slate-400 hover:text-red-500 transition-opacity"
                           }
                           title={
                             confirmDeleteId === c.id

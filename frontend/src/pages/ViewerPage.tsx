@@ -789,7 +789,7 @@ export const ViewerPage: React.FC = () => {
       <div className="flex h-screen bg-slate-50 dark:bg-slate-900 items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <Loader2 size={24} className="animate-spin text-blue-500" />
-          <p className="text-sm text-slate-400">Loading…</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>
         </div>
       </div>
     );
@@ -838,7 +838,7 @@ export const ViewerPage: React.FC = () => {
                   href="https://github.com/mschulkind-oss/vantage"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                  className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                   title="View on GitHub"
                 >
                   <svg
@@ -866,7 +866,7 @@ export const ViewerPage: React.FC = () => {
                   onOpenStyleGuide={() => setStyleGuideOpen(true)}
                 />
                 <button
-                  className="hidden md:block p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                  className="hidden md:block p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                   onClick={() => {
                     setSidebarCollapsed(true);
                     try {
@@ -918,7 +918,7 @@ export const ViewerPage: React.FC = () => {
                   {isRecentLoading && (
                     <Loader2
                       size={10}
-                      className="animate-spin text-slate-400"
+                      className="animate-spin text-slate-500 dark:text-slate-400"
                     />
                   )}
                 </button>
@@ -959,7 +959,7 @@ export const ViewerPage: React.FC = () => {
                                 "mr-1.5 mt-0.5 shrink-0",
                                 file.untracked
                                   ? "text-amber-400"
-                                  : "text-slate-400",
+                                  : "text-slate-500 dark:text-slate-400",
                               )}
                             />
                             <div className="min-w-0 flex-1">
@@ -967,7 +967,7 @@ export const ViewerPage: React.FC = () => {
                                 <span className="truncate text-slate-700 dark:text-slate-300 font-medium">
                                   {fileName}
                                 </span>
-                                <span className="text-[10px] text-slate-400 whitespace-nowrap shrink-0">
+                                <span className="text-[10px] text-slate-500 dark:text-slate-400 whitespace-nowrap shrink-0">
                                   <RelativeTime
                                     date={file.date}
                                     addSuffix={false}
@@ -975,7 +975,7 @@ export const ViewerPage: React.FC = () => {
                                 </span>
                               </div>
                               {parentDir && (
-                                <div className="truncate text-slate-400">
+                                <div className="truncate text-slate-500 dark:text-slate-400">
                                   {parentDir}/
                                 </div>
                               )}
@@ -1050,7 +1050,7 @@ export const ViewerPage: React.FC = () => {
                     <React.Fragment key={i}>
                       <ChevronRight
                         size={14}
-                        className="text-slate-300 shrink-0"
+                        className="text-slate-500 dark:text-slate-400 shrink-0"
                       />
                       {i < breadcrumbs.length - 1 ? (
                         <AppLink
@@ -1108,15 +1108,18 @@ export const ViewerPage: React.FC = () => {
                       <span>
                         <RelativeTime date={latestCommit.date} />
                       </span>
-                      <span className="text-slate-300 dark:text-slate-500">
+                      <span className="text-slate-500 dark:text-slate-400">
                         ·
                       </span>
-                      <span className="text-slate-400">
+                      <span className="text-slate-500 dark:text-slate-400">
                         {formatDateTime(latestCommit.date)}
                       </span>
                     </div>
                     <div className="flex items-center space-x-1.5 bg-slate-100 dark:bg-slate-700 group-hover:bg-slate-200 dark:group-hover:bg-slate-600 px-2.5 py-1.5 rounded-md transition-colors">
-                      <MessageSquare size={12} className="text-slate-400" />
+                      <MessageSquare
+                        size={12}
+                        className="text-slate-500 dark:text-slate-400"
+                      />
                       <span className="font-medium text-slate-700 dark:text-slate-200 truncate max-w-[200px]">
                         {latestCommit.message}
                       </span>
@@ -1318,10 +1321,10 @@ export const ViewerPage: React.FC = () => {
                       <span>
                         <RelativeTime date={fileMtime} />
                       </span>
-                      <span className="text-slate-300 dark:text-slate-500">
+                      <span className="text-slate-500 dark:text-slate-400">
                         ·
                       </span>
-                      <span className="text-slate-400">
+                      <span className="text-slate-500 dark:text-slate-400">
                         {formatDateTime(fileMtime)}
                       </span>
                     </div>
@@ -1488,7 +1491,7 @@ export const ViewerPage: React.FC = () => {
                     </AppLink>
                   </div>
                 ) : isLoading && !fileContent && !currentDirectory ? (
-                  <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+                  <div className="flex flex-col items-center justify-center h-64 text-slate-500 dark:text-slate-400">
                     <Loader2
                       size={32}
                       className="animate-spin text-blue-500 mb-4"
@@ -1499,8 +1502,8 @@ export const ViewerPage: React.FC = () => {
                   </div>
                 ) : fileContent ? (
                   fileContent.encoding === "binary" ? (
-                    <div className="flex flex-col items-center justify-center h-64 text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800">
-                      <File size={48} className="mb-3 text-slate-300" />
+                    <div className="flex flex-col items-center justify-center h-64 text-slate-500 dark:text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800">
+                      <File size={48} className="mb-3" />
                       <p className="text-sm">
                         Binary file content cannot be displayed.
                       </p>
@@ -1549,7 +1552,7 @@ export const ViewerPage: React.FC = () => {
                         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">
                           Projects
                         </h1>
-                        <p className="text-sm text-slate-400 mt-1">
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                           {repos.length}{" "}
                           {repos.length === 1 ? "repository" : "repositories"}
                         </p>
@@ -1610,7 +1613,7 @@ export const ViewerPage: React.FC = () => {
                             {repo.name}
                           </span>
                           {repo.last_activity && (
-                            <span className="ml-auto pl-4 text-xs text-slate-400 whitespace-nowrap shrink-0 tabular-nums">
+                            <span className="ml-auto pl-4 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap shrink-0 tabular-nums">
                               <RelativeTime date={repo.last_activity} />
                             </span>
                           )}
@@ -1619,14 +1622,14 @@ export const ViewerPage: React.FC = () => {
                     </div>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center h-64 text-slate-400">
+                  <div className="flex flex-col items-center justify-center h-64 text-slate-500 dark:text-slate-400">
                     <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
-                      <GitBranch size={32} className="text-slate-300" />
+                      <GitBranch size={32} />
                     </div>
                     <p className="text-lg font-medium text-slate-500 dark:text-slate-400">
                       Select a file or folder to browse
                     </p>
-                    <p className="text-sm text-slate-400 mt-1">
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
                       Vantage supports Markdown and Mermaid diagrams
                     </p>
                   </div>
