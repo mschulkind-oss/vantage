@@ -91,7 +91,9 @@ export const RecentsPage: React.FC = () => {
                 Recently Changed
               </h1>
               {isMultiRepo && currentRepo && (
-                <p className="text-xs text-slate-500 mt-0.5">{currentRepo}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {currentRepo}
+                </p>
               )}
             </div>
           </div>
@@ -129,7 +131,7 @@ export const RecentsPage: React.FC = () => {
         ) : recentFiles.length === 0 && !recentFilesError ? (
           <div className="text-center py-20 text-slate-400">
             <File size={48} className="mx-auto mb-4 text-slate-300" />
-            <p className="text-lg font-medium text-slate-500">
+            <p className="text-lg font-medium text-slate-500 dark:text-slate-400">
               No recent files found
             </p>
             <p className="text-sm mt-1">
@@ -180,7 +182,7 @@ export const RecentsPage: React.FC = () => {
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-4 text-xs text-slate-500">
+                    <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400">
                       {file.untracked ? (
                         <span className="text-amber-600 dark:text-amber-400 font-medium">
                           Untracked
@@ -206,7 +208,7 @@ export const RecentsPage: React.FC = () => {
 
                   {/* Date & SHA */}
                   <div className="text-right shrink-0">
-                    <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-1">
+                    <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 mb-1">
                       <Clock size={12} />
                       <span title={format(new Date(file.date), "PPpp")}>
                         <RelativeTime date={file.date} />

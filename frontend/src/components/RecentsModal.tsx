@@ -88,7 +88,9 @@ export const RecentsModal: React.FC<RecentsModalProps> = ({
                 Recently Changed
               </h2>
               {isMultiRepo && currentRepo && (
-                <p className="text-xs text-slate-500 mt-0.5">{currentRepo}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {currentRepo}
+                </p>
               )}
             </div>
           </div>
@@ -131,7 +133,7 @@ export const RecentsModal: React.FC<RecentsModalProps> = ({
             </div>
           ) : recentFiles.length === 0 && !recentFilesError ? (
             <div className="text-center py-20 text-slate-400">
-              <p className="text-lg font-medium text-slate-500">
+              <p className="text-lg font-medium text-slate-500 dark:text-slate-400">
                 No recent files found
               </p>
               <p className="text-sm mt-1">
@@ -180,7 +182,7 @@ export const RecentsModal: React.FC<RecentsModalProps> = ({
                     {/* Row 2: Directory path */}
                     {parentDir && (
                       <div
-                        className="text-xs text-slate-400 dark:text-slate-500 truncate mb-0.5"
+                        className="text-xs text-slate-400 truncate mb-0.5"
                         title={parentDir}
                       >
                         {parentDir}
@@ -188,7 +190,7 @@ export const RecentsModal: React.FC<RecentsModalProps> = ({
                     )}
 
                     {/* Row 3: Metadata line */}
-                    <div className="flex items-center gap-2 text-[11px] text-slate-400 dark:text-slate-500">
+                    <div className="flex items-center gap-2 text-[11px] text-slate-400">
                       {file.untracked ? (
                         <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-medium">
                           <FileQuestion size={11} className="shrink-0" />
@@ -203,7 +205,7 @@ export const RecentsModal: React.FC<RecentsModalProps> = ({
                           )}
                           {file.message &&
                             (file.author_name || file.hexsha) && (
-                              <span className="text-slate-300 dark:text-slate-600">
+                              <span className="text-slate-300 dark:text-slate-500">
                                 ·
                               </span>
                             )}

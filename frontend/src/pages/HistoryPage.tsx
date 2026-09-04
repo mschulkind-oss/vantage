@@ -112,7 +112,7 @@ export const HistoryPage: React.FC = () => {
                 <h1 className="font-semibold text-lg text-slate-900 dark:text-slate-100">
                   File History
                 </h1>
-                <nav className="flex items-center text-xs text-slate-500 space-x-1 mt-0.5">
+                <nav className="flex items-center text-xs text-slate-500 dark:text-slate-400 space-x-1 mt-0.5">
                   {isMultiRepo && currentRepo && (
                     <>
                       <AppLink
@@ -156,7 +156,7 @@ export const HistoryPage: React.FC = () => {
         ) : history.length === 0 ? (
           <div className="text-center py-20 text-slate-400">
             <GitBranch size={48} className="mx-auto mb-4 text-slate-300" />
-            <p className="text-lg font-medium text-slate-500">
+            <p className="text-lg font-medium text-slate-500 dark:text-slate-400">
               No commit history found
             </p>
             <p className="text-sm mt-1">This file may be untracked or new.</p>
@@ -205,7 +205,7 @@ export const HistoryPage: React.FC = () => {
                             {commit.message}
                           </span>
                         </div>
-                        <div className="flex items-center space-x-4 text-xs text-slate-500">
+                        <div className="flex items-center space-x-4 text-xs text-slate-500 dark:text-slate-400">
                           <div className="flex items-center space-x-1.5">
                             <User size={12} />
                             <span>{commit.author_name}</span>

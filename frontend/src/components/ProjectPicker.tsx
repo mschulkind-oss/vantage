@@ -205,7 +205,7 @@ export const ProjectPicker: React.FC<ProjectPickerProps> = ({
                 />
                 <HighlightedName name={result.name} indices={result.indices} />
                 {result.last_activity && (
-                  <span className="ml-auto pl-4 text-xs text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0">
+                  <span className="ml-auto pl-4 text-xs text-slate-400 whitespace-nowrap shrink-0">
                     <RelativeTime date={result.last_activity} />
                   </span>
                 )}

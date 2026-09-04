@@ -399,7 +399,7 @@ export const FilePicker: React.FC<FilePickerProps> = ({
                   )}
                 />
                 {isGlobal && result.repo && (
-                  <span className="text-xs font-medium text-slate-400 dark:text-slate-500 mr-1.5 shrink-0">
+                  <span className="text-xs font-medium text-slate-400 mr-1.5 shrink-0">
                     {result.repo}/
                   </span>
                 )}
