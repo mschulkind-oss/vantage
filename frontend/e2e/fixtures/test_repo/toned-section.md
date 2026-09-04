@@ -2,10 +2,11 @@
 
 Fixture for `directive_tone_rule.spec.ts`, which measures — in pixels, over the
 real stylesheet — whether a toned section's vertical rule is one continuous line.
-Every block type a `section` directive can stamp appears once below, in one run,
-because the two ways the rule used to break were both per-tag: a `<pre>` and an
-`<hr>` clipped their own `::before` away, and a `$$…$$` block lost its stamp to
-`rehype-katex`.
+Every block type a `section` can reach appears once below, in one run, because
+every way the rule has broken was per-tag: a `<pre>` and an `<hr>` clipped their
+own `::before` away, a `$$…$$` block lost its stamp to `rehype-katex`, and a
+raw-HTML `<figure>` was never stamped at all because the range was gated by the
+list of tags a directive may *target*.
 
 <!-- vantage: section tone=warning -->
 
@@ -25,6 +26,10 @@ console.log(clipped, bleed, "one line long enough that the fence has to scroll h
 ```
 
 A paragraph after the fence, which is where the void used to end.
+
+<figure>
+  <figcaption>A raw-HTML figure: a member no directive could have targeted.</figcaption>
+</figure>
 
 $$
 \frac{a}{b} = \sum_{i=1}^{n} x_i^2

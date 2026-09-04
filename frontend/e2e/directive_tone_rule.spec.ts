@@ -23,6 +23,10 @@
  *      then *replaced* by `rehype-katex` with a `<span class="katex-display">`
  *      that carries none of the stamps. Measured before the fix: a 58px hole for
  *      a one-line fraction.
+ *   3. A raw-HTML `<figure>` was not stamped at all: the range used to be gated
+ *      by `VANTAGE_STYLE_TARGETS`, the list of tags a directive may *target*.
+ *      Measured before the fix: a 44px hole for a one-line figure, against the
+ *      40px a neighbour can bleed upward, and taller for a taller block.
  *
  * The `Justfile` never invokes playwright, so this documents rather than guards —
  * run it by hand (`cd frontend && npx playwright test directive_tone_rule`) after
@@ -195,6 +199,13 @@ test.describe("a toned section's rule is one continuous line", () => {
         `${member.tag}[run=${member.run}] painted ${member.painted} of its ${member.height} rows`,
       ).toBe(member.height);
     }
+    // `FIGURE` is the one member the stampable-tag list would have skipped, so
+    // name it: a regression there paints nothing rather than painting wrongly,
+    // and the row scan above would blame whichever member follows it.
+    expect(
+      scan.members.some((member) => member.tag === "FIGURE"),
+      "the raw-HTML figure is not in the run at all",
+    ).toBe(true);
 
     // The fixture is one run over every stampable block type.
     expect(scan.members.map((member) => member.tag)).toEqual([
@@ -203,6 +214,7 @@ test.describe("a toned section's rule is one continuous line", () => {
       "UL",
       "PRE",
       "P",
+      "FIGURE",
       "SPAN",
       "BLOCKQUOTE",
       "TABLE",
@@ -211,7 +223,7 @@ test.describe("a toned section's rule is one continuous line", () => {
     ]);
     expect(scan.members.map((member) => member.run)).toEqual([
       "start",
-      ...Array(8).fill("middle"),
+      ...Array(9).fill("middle"),
       "end",
     ]);
   });
