@@ -159,7 +159,7 @@ function HighlightedPath({
             key={i}
             className={cn(
               isHighlighted && "text-blue-600 font-semibold",
-              isDir && !isHighlighted && "text-slate-400",
+              isDir && !isHighlighted && "text-slate-500 dark:text-slate-400",
             )}
           >
             {char}
@@ -325,7 +325,10 @@ export const FilePicker: React.FC<FilePickerProps> = ({
       <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-xl flex flex-col overflow-hidden border border-slate-200 dark:border-slate-700">
         {/* Search input */}
         <div className="flex items-center px-4 border-b border-slate-200 dark:border-slate-700">
-          <Search size={16} className="text-slate-400 shrink-0" />
+          <Search
+            size={16}
+            className="text-slate-500 dark:text-slate-400 shrink-0"
+          />
           <input
             ref={inputRef}
             type="text"
@@ -337,7 +340,7 @@ export const FilePicker: React.FC<FilePickerProps> = ({
             autoComplete="off"
             spellCheck={false}
           />
-          <kbd className="text-[10px] text-slate-400 border border-slate-200 dark:border-slate-600 rounded px-1.5 py-0.5 font-mono shrink-0">
+          <kbd className="text-[10px] text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600 rounded px-1.5 py-0.5 font-mono shrink-0">
             ESC
           </kbd>
         </div>
@@ -345,7 +348,7 @@ export const FilePicker: React.FC<FilePickerProps> = ({
         {/* Results */}
         <div ref={listRef} className="overflow-y-auto max-h-80">
           {loading ? (
-            <div className="py-8 flex flex-col items-center text-sm text-slate-400">
+            <div className="py-8 flex flex-col items-center text-sm text-slate-500 dark:text-slate-400">
               <svg
                 className="animate-spin h-5 w-5 mb-2 text-blue-500"
                 xmlns="http://www.w3.org/2000/svg"
@@ -369,7 +372,7 @@ export const FilePicker: React.FC<FilePickerProps> = ({
               Loading files...
             </div>
           ) : results.length === 0 ? (
-            <div className="py-8 text-center text-sm text-slate-400">
+            <div className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">
               {query ? "No matching files" : "No files found"}
             </div>
           ) : (
@@ -395,11 +398,13 @@ export const FilePicker: React.FC<FilePickerProps> = ({
                   size={14}
                   className={cn(
                     "shrink-0 mr-2.5",
-                    i === selectedIndex ? "text-blue-500" : "text-slate-400",
+                    i === selectedIndex
+                      ? "text-blue-500"
+                      : "text-slate-500 dark:text-slate-400",
                   )}
                 />
                 {isGlobal && result.repo && (
-                  <span className="text-xs font-medium text-slate-400 mr-1.5 shrink-0">
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400 mr-1.5 shrink-0">
                     {result.repo}/
                   </span>
                 )}
@@ -410,7 +415,7 @@ export const FilePicker: React.FC<FilePickerProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between text-[11px] text-slate-400">
+        <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
           <span>
             {results.length} {results.length === 1 ? "file" : "files"}
             {query && ` matching "${query}"`}

@@ -156,7 +156,10 @@ export const ProjectPicker: React.FC<ProjectPickerProps> = ({
       <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden border border-slate-200 dark:border-slate-700">
         {/* Search input */}
         <div className="flex items-center px-4 border-b border-slate-200 dark:border-slate-700">
-          <Search size={16} className="text-slate-400 shrink-0" />
+          <Search
+            size={16}
+            className="text-slate-500 dark:text-slate-400 shrink-0"
+          />
           <input
             ref={inputRef}
             type="text"
@@ -168,7 +171,7 @@ export const ProjectPicker: React.FC<ProjectPickerProps> = ({
             autoComplete="off"
             spellCheck={false}
           />
-          <kbd className="text-[10px] text-slate-400 border border-slate-200 dark:border-slate-600 rounded px-1.5 py-0.5 font-mono shrink-0">
+          <kbd className="text-[10px] text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600 rounded px-1.5 py-0.5 font-mono shrink-0">
             ESC
           </kbd>
         </div>
@@ -176,7 +179,7 @@ export const ProjectPicker: React.FC<ProjectPickerProps> = ({
         {/* Results */}
         <div ref={listRef} className="overflow-y-auto max-h-80">
           {results.length === 0 ? (
-            <div className="py-8 text-center text-sm text-slate-400">
+            <div className="py-8 text-center text-sm text-slate-500 dark:text-slate-400">
               {query ? "No matching projects" : "No projects found"}
             </div>
           ) : (
@@ -200,12 +203,14 @@ export const ProjectPicker: React.FC<ProjectPickerProps> = ({
                   size={16}
                   className={cn(
                     "shrink-0 mr-3",
-                    i === selectedIndex ? "text-blue-500" : "text-slate-400",
+                    i === selectedIndex
+                      ? "text-blue-500"
+                      : "text-slate-500 dark:text-slate-400",
                   )}
                 />
                 <HighlightedName name={result.name} indices={result.indices} />
                 {result.last_activity && (
-                  <span className="ml-auto pl-4 text-xs text-slate-400 whitespace-nowrap shrink-0">
+                  <span className="ml-auto pl-4 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap shrink-0">
                     <RelativeTime date={result.last_activity} />
                   </span>
                 )}
@@ -215,7 +220,7 @@ export const ProjectPicker: React.FC<ProjectPickerProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between text-[11px] text-slate-400">
+        <div className="px-4 py-2 border-t border-slate-100 dark:border-slate-700 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
           <span>
             {results.length} {results.length === 1 ? "project" : "projects"}
           </span>

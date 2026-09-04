@@ -170,7 +170,7 @@ const PopoverCard: React.FC<PopoverCardProps> = ({
             <div className="flex items-start gap-2">
               <MessageSquare
                 size={13}
-                className="shrink-0 mt-0.5 text-slate-400"
+                className="shrink-0 mt-0.5 text-slate-500 dark:text-slate-400"
               />
               <span className="text-slate-700 dark:text-slate-300 text-xs leading-relaxed">
                 {file.message}
@@ -199,7 +199,7 @@ const PopoverCard: React.FC<PopoverCardProps> = ({
             <div className="flex items-center gap-1.5">
               <GitCommitHorizontal
                 size={12}
-                className="shrink-0 text-slate-400"
+                className="shrink-0 text-slate-500 dark:text-slate-400"
               />
               <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-100 dark:border-slate-600">
                 {file.hexsha.slice(0, 8)}

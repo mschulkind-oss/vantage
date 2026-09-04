@@ -40,7 +40,7 @@ const DiffLineComponent: React.FC<{ line: DiffLine }> = ({ line }) => {
   const prefixClasses = {
     add: "text-green-600 dark:text-green-400",
     delete: "text-red-600 dark:text-red-400",
-    context: "text-slate-400",
+    context: "text-slate-500 dark:text-slate-400",
     header: "text-blue-600 dark:text-blue-400",
   };
 
@@ -129,11 +129,14 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ diff, onClose }) => {
         {/* Commit metadata */}
         <div className="flex items-center space-x-6 px-6 py-3 border-b border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm">
           <div className="flex items-center space-x-2 text-slate-600 dark:text-slate-400">
-            <User size={14} className="text-slate-400" />
+            <User size={14} className="text-slate-500 dark:text-slate-400" />
             <span>{diff.commit_author}</span>
           </div>
           <div className="flex items-center space-x-2 text-slate-600 dark:text-slate-400">
-            <Calendar size={14} className="text-slate-400" />
+            <Calendar
+              size={14}
+              className="text-slate-500 dark:text-slate-400"
+            />
             <span>
               <RelativeTime date={diff.commit_date} />
             </span>
@@ -148,7 +151,7 @@ export const DiffViewer: React.FC<DiffViewerProps> = ({ diff, onClose }) => {
         {/* Diff content */}
         <div className="flex-1 overflow-auto">
           {diff.hunks.length === 0 ? (
-            <div className="flex items-center justify-center h-48 text-slate-400">
+            <div className="flex items-center justify-center h-48 text-slate-500 dark:text-slate-400">
               <p>No changes in this file for this commit</p>
             </div>
           ) : (

@@ -93,7 +93,10 @@ export const DirectoryViewer: React.FC<DirectoryViewerProps> = ({ nodes }) => {
                     {node.is_dir ? (
                       <Folder size={18} className="text-blue-400 shrink-0" />
                     ) : (
-                      <File size={18} className="text-slate-400 shrink-0" />
+                      <File
+                        size={18}
+                        className="text-slate-500 dark:text-slate-400 shrink-0"
+                      />
                     )}
                     <span className="text-blue-600 dark:text-blue-400 group-hover:underline truncate font-medium">
                       {node.name}
@@ -103,17 +106,17 @@ export const DirectoryViewer: React.FC<DirectoryViewerProps> = ({ nodes }) => {
                 <td className="px-4 py-2 text-slate-500 dark:text-slate-400">
                   <span className="truncate block max-w-md">
                     {node.last_commit?.message || (
-                      <span className="text-slate-300 dark:text-slate-500">
+                      <span className="text-slate-500 dark:text-slate-400">
                         —
                       </span>
                     )}
                   </span>
                 </td>
-                <td className="px-4 py-2 text-slate-400 text-right whitespace-nowrap">
+                <td className="px-4 py-2 text-slate-500 dark:text-slate-400 text-right whitespace-nowrap">
                   {node.last_commit?.date ? (
                     <RelativeTime date={node.last_commit.date} />
                   ) : (
-                    <span className="text-slate-300 dark:text-slate-500">
+                    <span className="text-slate-500 dark:text-slate-400">
                       —
                     </span>
                   )}
@@ -127,7 +130,7 @@ export const DirectoryViewer: React.FC<DirectoryViewerProps> = ({ nodes }) => {
       {readme && (
         <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
           <div className="bg-slate-50/80 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-700 px-4 py-2 flex items-center space-x-2">
-            <File size={16} className="text-slate-400" />
+            <File size={16} className="text-slate-500 dark:text-slate-400" />
             <span className="font-medium text-slate-700 dark:text-slate-300 text-sm">
               {readme.path.split("/").pop()}
             </span>

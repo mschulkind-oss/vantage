@@ -54,7 +54,9 @@ const KeyCombo: React.FC<{ keys: string[] }> = ({ keys }) => (
     {keys.map((key, i) => (
       <React.Fragment key={i}>
         {i > 0 && (
-          <span className="text-slate-400 text-[10px] mx-0.5">then</span>
+          <span className="text-slate-500 dark:text-slate-400 text-[10px] mx-0.5">
+            then
+          </span>
         )}
         <kbd
           className={cn(
@@ -118,7 +120,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-400 transition-colors"
+            className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 transition-colors"
             aria-label="Close"
           >
             <X size={18} />
@@ -129,7 +131,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
         <div className="px-6 py-4 overflow-y-auto flex-1 space-y-5">
           {shortcutGroups.map((group) => (
             <div key={group.title}>
-              <h3 className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+              <h3 className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
                 {group.title}
               </h3>
               <div className="space-y-1">
@@ -151,7 +153,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
 
         {/* Footer */}
         <div className="px-6 py-3 border-t border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80">
-          <p className="text-[11px] text-slate-400 text-center">
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 text-center">
             Press{" "}
             <kbd className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded text-[10px] font-mono text-slate-700 dark:text-slate-200">
               ?
@@ -176,7 +178,7 @@ export const KeyboardShortcutsButton: React.FC<{ onClick: () => void }> = ({
     onClick={onClick}
     className={cn(
       "p-1.5 rounded-md transition-colors",
-      "hover:bg-slate-100 text-slate-400 dark:hover:bg-slate-700 dark:text-slate-400",
+      "hover:bg-slate-100 text-slate-500 dark:hover:bg-slate-700 dark:text-slate-400",
     )}
     aria-label="Keyboard shortcuts"
     title="Keyboard shortcuts"

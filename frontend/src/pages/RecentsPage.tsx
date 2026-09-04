@@ -129,8 +129,8 @@ export const RecentsPage: React.FC = () => {
             <Loader2 size={32} className="animate-spin text-blue-600" />
           </div>
         ) : recentFiles.length === 0 && !recentFilesError ? (
-          <div className="text-center py-20 text-slate-400">
-            <File size={48} className="mx-auto mb-4 text-slate-300" />
+          <div className="text-center py-20 text-slate-500 dark:text-slate-400">
+            <File size={48} className="mx-auto mb-4" />
             <p className="text-lg font-medium text-slate-500 dark:text-slate-400">
               No recent files found
             </p>
@@ -166,7 +166,10 @@ export const RecentsPage: React.FC = () => {
                     {file.untracked ? (
                       <FileQuestion size={20} className="text-amber-500" />
                     ) : (
-                      <File size={20} className="text-slate-400" />
+                      <File
+                        size={20}
+                        className="text-slate-500 dark:text-slate-400"
+                      />
                     )}
                   </div>
 
@@ -177,7 +180,7 @@ export const RecentsPage: React.FC = () => {
                         {fileName}
                       </span>
                       {parentDir && (
-                        <span className="text-xs text-slate-400 truncate hidden sm:inline">
+                        <span className="text-xs text-slate-500 dark:text-slate-400 truncate hidden sm:inline">
                           {parentDir}
                         </span>
                       )}
@@ -215,7 +218,7 @@ export const RecentsPage: React.FC = () => {
                       </span>
                     </div>
                     {file.hexsha && (
-                      <span className="font-mono text-[10px] text-slate-400 bg-slate-50 dark:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-100 dark:border-slate-600">
+                      <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-100 dark:border-slate-600">
                         {file.hexsha.slice(0, 8)}
                       </span>
                     )}
