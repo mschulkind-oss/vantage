@@ -29,6 +29,8 @@ import (
 	"time"
 
 	gitignore "github.com/sabhiram/go-gitignore"
+
+	"github.com/mschulkind-oss/vantage/internal/config"
 )
 
 // workspaceIgnoreName is the per-repo ignore file, resolved against the root.
@@ -54,16 +56,18 @@ func IsAlwaysIgnored(rel string) bool {
 // stat two files).
 const reloadInterval = 2 * time.Second
 
-// DefaultUserIgnorePath returns the user-level ignore file path
-// (<config>/vantage/ignore, XDG-aware via [os.UserConfigDir]). It returns ""
-// when the user config directory cannot be determined, in which case the user
-// layer is simply absent.
+// DefaultUserIgnorePath returns the user-level ignore file path,
+// ~/.config/vantage/ignore, resolved by [config.UserFilePath] so it lands
+// beside config.toml on every platform — including the legacy macOS location,
+// when that is where an existing install keeps its files. It returns "" when
+// the home directory cannot be determined, in which case the user layer is
+// simply absent.
 func DefaultUserIgnorePath() string {
-	dir, err := os.UserConfigDir()
+	p, err := config.UserFilePath("ignore")
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(dir, "vantage", "ignore")
+	return p
 }
 
 // loadedSpec is one parsed ignore source plus the mtime it was parsed from, so

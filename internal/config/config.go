@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -475,14 +476,77 @@ func (c *Config) Validate() []string {
 	return errs
 }
 
-// DefaultConfigPath returns the daemon config location,
-// <UserConfigDir>/vantage/config.toml, honoring XDG_CONFIG_HOME on Linux.
+// DefaultConfigPath returns the daemon config location, the "config.toml"
+// resolved by [UserFilePath].
 func DefaultConfigPath() (string, error) {
-	dir, err := os.UserConfigDir()
+	return UserFilePath("config.toml")
+}
+
+// UserFilePath resolves one user-level vantage file — "config.toml", "ignore" —
+// to an absolute path.
+//
+// The preferred directory is XDG-derived on every platform:
+// $XDG_CONFIG_HOME/vantage, else ~/.config/vantage. It deliberately does not
+// use [os.UserConfigDir], which hard-codes ~/Library/Application Support on
+// darwin and consults XDG_CONFIG_HOME only on Linux — so a Mac silently got a
+// second location that no doc, no help text and no other vantage path had ever
+// named.
+//
+// Macs set up before 2026-09-04 hold their files under that Application
+// Support directory, and they keep working: when the preferred path holds no
+// such file and the legacy one does, the legacy one is returned. Moving the
+// file to ~/.config/vantage is the whole migration.
+func UserFilePath(name string) (string, error) {
+	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("config: locating user config dir: %w", err)
+		return "", fmt.Errorf("config: locating home dir: %w", err)
 	}
-	return filepath.Join(dir, "vantage", "config.toml"), nil
+	return resolveUserFilePath(runtime.GOOS, home, os.Getenv("XDG_CONFIG_HOME"), name, fileExists), nil
+}
+
+// resolveUserFilePath is [UserFilePath] with the platform, the home directory,
+// the XDG override and the existence check all passed in, so every branch —
+// including darwin's — is reachable from a test on any host.
+func resolveUserFilePath(goos, home, xdgConfigHome, name string, exists func(string) bool) string {
+	preferred := filepath.Join(preferredConfigDir(home, xdgConfigHome), "vantage", name)
+	if exists(preferred) {
+		return preferred
+	}
+	if legacy := legacyConfigDir(goos, home); legacy != "" {
+		if p := filepath.Join(legacy, "vantage", name); exists(p) {
+			return p
+		}
+	}
+	return preferred
+}
+
+// preferredConfigDir returns the base directory vantage's user files should
+// live in. A relative XDG_CONFIG_HOME is not a usable base, so it is ignored
+// rather than propagated as an error — the same call [os.UserConfigDir] makes,
+// minus the error return.
+func preferredConfigDir(home, xdgConfigHome string) string {
+	if filepath.IsAbs(xdgConfigHome) {
+		return xdgConfigHome
+	}
+	return filepath.Join(home, ".config")
+}
+
+// legacyConfigDir returns the base directory goos used before 2026-09-04, or
+// "" when that platform never had one that differed from [preferredConfigDir].
+// Only darwin ever did: [os.UserConfigDir] answers ~/Library/Application
+// Support there, while on Linux it already answers the XDG path.
+func legacyConfigDir(goos, home string) string {
+	if goos != "darwin" {
+		return ""
+	}
+	return filepath.Join(home, "Library", "Application Support")
+}
+
+// fileExists reports whether p can be stat'd, the existence check
+// [UserFilePath] resolves its fallback with.
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }
 
 // ReviewDir returns the on-disk review store, the literal

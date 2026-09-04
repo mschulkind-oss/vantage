@@ -409,6 +409,118 @@ func TestDefaultConfigPath(t *testing.T) {
 	require.Equal(t, "vantage", filepath.Base(filepath.Dir(p)))
 }
 
+// The preferred location is XDG-derived on every platform, macOS included.
+// os.UserConfigDir answers ~/Library/Application Support on darwin, which is
+// the split this resolver exists to close, so the darwin rows are the point of
+// the table rather than an afterthought.
+func TestResolveUserFilePathPrefersXDG(t *testing.T) {
+	const home = "/home/u"
+	none := func(string) bool { return false }
+
+	tests := []struct {
+		name string
+		goos string
+		xdg  string
+		want string
+	}{
+		{
+			name: "linux falls back to ~/.config",
+			goos: "linux",
+			want: "/home/u/.config/vantage/config.toml",
+		},
+		{
+			name: "linux honors XDG_CONFIG_HOME",
+			goos: "linux",
+			xdg:  "/xdg",
+			want: "/xdg/vantage/config.toml",
+		},
+		{
+			name: "darwin uses ~/.config, not Application Support",
+			goos: "darwin",
+			want: "/home/u/.config/vantage/config.toml",
+		},
+		{
+			name: "darwin honors XDG_CONFIG_HOME too",
+			goos: "darwin",
+			xdg:  "/xdg",
+			want: "/xdg/vantage/config.toml",
+		},
+		{
+			name: "a relative XDG_CONFIG_HOME is ignored",
+			goos: "linux",
+			xdg:  "relative/path",
+			want: "/home/u/.config/vantage/config.toml",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := resolveUserFilePath(tt.goos, home, tt.xdg, "config.toml", none)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// Macs configured before 2026-09-04 keep their config under ~/Library/
+// Application Support, and must keep working without being touched. The
+// fallback is per-file and existence-gated, so it engages only for a file
+// that is genuinely there and only until the same file appears under
+// ~/.config.
+func TestResolveUserFilePathFallsBackOnDarwin(t *testing.T) {
+	const (
+		home      = "/Users/matt"
+		preferred = "/Users/matt/.config/vantage/config.toml"
+		legacy    = "/Users/matt/Library/Application Support/vantage/config.toml"
+		legacyIgn = "/Users/matt/Library/Application Support/vantage/ignore"
+		preferIgn = "/Users/matt/.config/vantage/ignore"
+	)
+	only := func(present ...string) func(string) bool {
+		return func(p string) bool {
+			for _, q := range present {
+				if p == q {
+					return true
+				}
+			}
+			return false
+		}
+	}
+
+	t.Run("legacy file wins when the preferred one is absent", func(t *testing.T) {
+		got := resolveUserFilePath("darwin", home, "", "config.toml", only(legacy))
+		require.Equal(t, legacy, got)
+	})
+
+	t.Run("preferred file wins when both exist", func(t *testing.T) {
+		got := resolveUserFilePath("darwin", home, "", "config.toml", only(preferred, legacy))
+		require.Equal(t, preferred, got)
+	})
+
+	t.Run("neither exists yields the preferred path to create", func(t *testing.T) {
+		got := resolveUserFilePath("darwin", home, "", "config.toml", only())
+		require.Equal(t, preferred, got)
+	})
+
+	// Per-file, not per-directory: creating ~/.config/vantage/ignore must not
+	// drag config.toml's lookup out of Application Support with it.
+	t.Run("each file falls back on its own", func(t *testing.T) {
+		exists := only(preferIgn, legacy)
+		require.Equal(t, preferIgn, resolveUserFilePath("darwin", home, "", "ignore", exists))
+		require.Equal(t, legacy, resolveUserFilePath("darwin", home, "", "config.toml", exists))
+	})
+
+	// XDG still leads on darwin, and the fallback still catches behind it.
+	t.Run("XDG override still falls back", func(t *testing.T) {
+		got := resolveUserFilePath("darwin", home, "/xdg", "config.toml", only(legacy))
+		require.Equal(t, legacy, got)
+	})
+
+	// Linux never had an Application Support config, so it must never find one
+	// even on a home directory that happens to hold that path.
+	t.Run("linux never consults Application Support", func(t *testing.T) {
+		got := resolveUserFilePath("linux", home, "", "config.toml", only(legacy, legacyIgn))
+		require.Equal(t, preferred, got)
+	})
+}
+
 func TestExampleConfigEmbedded(t *testing.T) {
 	require.NotEmpty(t, ExampleConfig)
 	require.Contains(t, ExampleConfig, "[[repos]]")
