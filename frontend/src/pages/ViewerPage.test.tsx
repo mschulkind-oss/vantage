@@ -138,6 +138,24 @@ describe("ViewerPage", () => {
     expect(screen.getByText("Vantage")).toBeInTheDocument();
   });
 
+  // The last breadcrumb segment is the only element in the header that
+  // truncates, so a long filename reaches the ellipsis with nowhere else to
+  // read it. The title attribute is that somewhere else.
+  it("gives the truncated breadcrumb filename a title with the full name", () => {
+    const name = "a-very-long-macos-launchd-and-config-paths-design.md";
+    (useRepoStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+      ...useRepoStore(),
+      currentPath: `docs/design/${name}`,
+    });
+    mockUseParams.mockReturnValue({ "*": `docs/design/${name}` });
+
+    renderPage();
+
+    const leaf = screen.getByText(name);
+    expect(leaf).toHaveClass("truncate");
+    expect(leaf).toHaveAttribute("title", name);
+  });
+
   it("loads file when path ends with .md service call", () => {
     renderPage();
     expect(mockLoadFile).toHaveBeenCalledWith("path/to/file.md");
