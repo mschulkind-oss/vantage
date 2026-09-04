@@ -121,15 +121,14 @@ between this heading and the caution paragraph above it.
 
 The colour should change exactly at this heading's top edge.
 
-## The hole a section cannot fill
+## The hole a section used to leave
 
-A block type the pipeline does not stamp is **skipped inside a range, not
-treated as the end of it** — so the section continues past it and the stripe
-visibly breaks there.
+A block the pipeline could not have **targeted** is still a **member**: the
+section reaches every sibling element in its span, and each one draws its slice.
 
-Nothing reports this. It is the one failure mode in the whole feature that only
-an author looking at the page can catch, which is the reason this gallery
-exists.
+That was not always true, and while it was not, nothing reported the difference.
+It is the shape of failure that only an author looking at the page can catch,
+which is the reason this gallery exists.
 
 <!-- vantage: section tone=warning -->
 
@@ -138,17 +137,18 @@ exists.
 This paragraph is stamped and paints its slice.
 
 <figure>
-  <figcaption>A raw-HTML figure. Not a stampable tag, so no slice.</figcaption>
+  <figcaption>A raw-HTML figure. Not a tag a directive could target.</figcaption>
 </figure>
 
-This paragraph is stamped again and the run continues — but the stripe has a
-hole the height of the figure above, because the figure drew nothing and this
-block's upward bleed cannot span it.
+This paragraph is stamped again and the run continues — and so does the stripe,
+straight down the side of the figure.
 
-That break is **expected** and is not a bug in the stylesheet. It is the
-documented consequence of putting an unstampable block inside a toned section,
-and the fix is to move the figure out of the section rather than to widen the
-bleed.
+The tag list that decides what a directive may **target** does not decide what a
+section **reaches**: every sibling element in the span is a member, whether or
+not a directive could have pointed at it. Until 2026-09-03 the range was gated
+by that list too, and this specimen was where you could see what it cost — a
+hole in the stripe the height of the figure, because the figure drew no slice
+and the paragraph below it can only bleed 40px upward.
 
 ## An alert inside a toned section
 

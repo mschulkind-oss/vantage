@@ -439,14 +439,13 @@ describe("extent: position picks the target, the name picks how far", () => {
     expect(stamped(host.querySelectorAll("p")[1])).toEqual({});
   });
 
-  it("skips a sibling whose tag is not stampable, and does not stop there", async () => {
-    // The extent is "every following sibling" *within the stampable-tag list*
-    // (`VANTAGE_STYLE_TARGETS`). A raw-HTML `<figure>` or `<dl>` in the range is
-    // skipped, not treated as a terminator — so the run jumps the hole, which is
-    // where §4.3's "one continuous vertical rule" visibly breaks. Documented in
-    // §4.2 rather than fixed: the stampable list is deliberately
-    // `rehypeSourceLines`'s block list, so the styling surface and the anchor
-    // surface coincide.
+  it("stamps a sibling whose tag it could not have targeted", async () => {
+    // The stampable-tag list (`VANTAGE_STYLE_TARGETS`) gates the *target* and
+    // nothing else. It used to gate the range too, which left a raw-HTML
+    // `<figure>` or `<dl>` unstamped between two stamped paragraphs — and since
+    // the section's one continuous vertical rule is drawn per member, an
+    // unstamped member is a hole the height of the block: measured at 44px for
+    // a one-line figure, against the 40px a neighbour bleeds upward.
     const host = await render(
       [
         "<!-- vantage: section tone=warning -->",
@@ -465,20 +464,52 @@ describe("extent: position picks the target, the name picks how far", () => {
       ].join("\n"),
     );
 
-    expect(stamped(host.querySelector("figure"))).toEqual({});
-    expect(stamped(host.querySelector("dl"))).toEqual({});
-    // Three paragraphs, all stamped: the section continued past both holes.
+    expect(
+      host.querySelector("figure")!.getAttribute("data-vantage-tone"),
+    ).toBe("warning");
+    expect(host.querySelector("dl")!.getAttribute("data-vantage-tone")).toBe(
+      "warning",
+    );
     expect(
       Array.from(host.querySelectorAll("p")).map((p) =>
         p.getAttribute("data-vantage-tone"),
       ),
     ).toEqual(["warning", "warning", "warning"]);
+    // Six members in one unbroken chain, the two raw-HTML blocks among them.
     expect(runs(host, "[data-vantage-tone]")).toEqual([
       "start",
       "middle",
       "middle",
+      "middle",
+      "middle",
       "end",
     ]);
+  });
+
+  it("hides a non-targetable sibling along with the rest of a collapsed section", async () => {
+    // The same hole, the other way round: with the range restricted to the
+    // stampable list, `collapsed=true` hid the paragraphs and left the figure
+    // sitting on the page under a closed heading.
+    const host = await render(
+      [
+        "<!-- vantage: section collapsed=true -->",
+        "",
+        "## Section",
+        "",
+        "Para one.",
+        "",
+        "<figure><figcaption>Cap</figcaption></figure>",
+      ].join("\n"),
+    );
+
+    expect(
+      host.querySelector("figure")!.getAttribute("data-vantage-collapsed"),
+    ).toBe("true");
+    expect(
+      host.querySelector("figure")!.getAttribute("data-vantage-collapse-group"),
+    ).toBe(
+      host.querySelector("p")!.getAttribute("data-vantage-collapse-group"),
+    );
   });
 
   it("is inert when the target itself is not a stampable tag", async () => {
