@@ -179,7 +179,7 @@ const PopoverCard: React.FC<PopoverCardProps> = ({
           )}
 
           {/* Author & Date row */}
-          <div className="flex items-center gap-3 text-xs text-slate-500">
+          <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
             {file.author_name && (
               <div className="flex items-center gap-1">
                 <User size={12} className="shrink-0" />
@@ -201,7 +201,7 @@ const PopoverCard: React.FC<PopoverCardProps> = ({
                 size={12}
                 className="shrink-0 text-slate-400"
               />
-              <span className="font-mono text-[11px] text-slate-500 bg-slate-50 dark:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-100 dark:border-slate-600">
+              <span className="font-mono text-[11px] text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-700 px-1.5 py-0.5 rounded border border-slate-100 dark:border-slate-600">
                 {file.hexsha.slice(0, 8)}
               </span>
             </div>

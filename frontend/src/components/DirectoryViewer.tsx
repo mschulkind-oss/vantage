@@ -103,7 +103,7 @@ export const DirectoryViewer: React.FC<DirectoryViewerProps> = ({ nodes }) => {
                 <td className="px-4 py-2 text-slate-500 dark:text-slate-400">
                   <span className="truncate block max-w-md">
                     {node.last_commit?.message || (
-                      <span className="text-slate-300 dark:text-slate-600">
+                      <span className="text-slate-300 dark:text-slate-500">
                         —
                       </span>
                     )}
@@ -113,7 +113,7 @@ export const DirectoryViewer: React.FC<DirectoryViewerProps> = ({ nodes }) => {
                   {node.last_commit?.date ? (
                     <RelativeTime date={node.last_commit.date} />
                   ) : (
-                    <span className="text-slate-300 dark:text-slate-600">
+                    <span className="text-slate-300 dark:text-slate-500">
                       —
                     </span>
                   )}

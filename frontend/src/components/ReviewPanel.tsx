@@ -308,7 +308,10 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
       <div className="fixed right-0 top-0 bottom-0 z-[91] w-96 max-w-[90vw] bg-white dark:bg-slate-800 border-l border-slate-200 dark:border-slate-700 shadow-2xl flex flex-col">
         <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
-            <MessageSquare size={16} className="text-slate-500" />
+            <MessageSquare
+              size={16}
+              className="text-slate-500 dark:text-slate-400"
+            />
             <span className="font-semibold text-sm text-slate-800 dark:text-slate-200">
               Review Comments
             </span>
@@ -439,7 +442,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                         title="Jump to this comment in the document"
                         className={
                           c.resolved
-                            ? "flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500 flex-1 cursor-pointer"
+                            ? "flex items-center gap-1.5 text-xs text-slate-400 flex-1 cursor-pointer"
                             : "text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-900 rounded px-2 py-1 border-l-2 border-blue-400 line-clamp-2 flex-1 cursor-pointer"
                         }
                       >
@@ -520,7 +523,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                         <div className="flex justify-end gap-1.5 mt-1">
                           <button
                             onClick={() => setEditingId(null)}
-                            className="px-2 py-1 text-[11px] rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
+                            className="px-2 py-1 text-[11px] rounded text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
                           >
                             Cancel
                           </button>
@@ -578,7 +581,7 @@ export const ReviewPanel: React.FC<ReviewPanelProps> = ({
                               setReplyingId(null);
                               setReplyText("");
                             }}
-                            className="px-2 py-1 text-[11px] rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
+                            className="px-2 py-1 text-[11px] rounded text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700"
                           >
                             Cancel
                           </button>

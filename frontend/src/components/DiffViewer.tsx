@@ -33,11 +33,15 @@ const DiffLineComponent: React.FC<{ line: DiffLine }> = ({ line }) => {
       "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 font-mono text-xs border-l-4 border-blue-400",
   };
 
+  // The `+`/`-`/`@@` markers are the only thing that says which side a line is
+  // on when the row tints are as faint as they are in dark mode, so they carry
+  // their own dark values. The 600 shades are tuned against a white page and
+  // land at 3.6:1 or less on the tinted rows here; the 400 shades clear 4.5:1.
   const prefixClasses = {
-    add: "text-green-600",
-    delete: "text-red-600",
+    add: "text-green-600 dark:text-green-400",
+    delete: "text-red-600 dark:text-red-400",
     context: "text-slate-400",
-    header: "text-blue-600",
+    header: "text-blue-600 dark:text-blue-400",
   };
 
   const prefixChar = {

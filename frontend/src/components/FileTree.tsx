@@ -168,18 +168,18 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
     : isSymlink
       ? "text-slate-400"
       : isDimmed
-        ? "text-slate-300"
+        ? "text-slate-400 dark:text-slate-500"
         : dirHasChanges
           ? "text-amber-400"
           : isExpanded
             ? "text-blue-500"
             : "text-blue-400";
   const nameColor = isSymlinkError
-    ? "text-red-400 dark:text-red-500 line-through"
+    ? "text-red-400 line-through"
     : isSymlink
-      ? "text-slate-400 dark:text-slate-500 italic"
+      ? "text-slate-400 italic"
       : isDimmed
-        ? "text-slate-400 dark:text-slate-600"
+        ? "text-slate-500 dark:text-slate-400"
         : hasGitChange
           ? gitStatus === "untracked"
             ? "text-green-700 dark:text-green-400"
@@ -198,7 +198,13 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
           isActive &&
             !isSymlinkError &&
             "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium",
-          isDimmed && "opacity-40",
+          // A directory with no Markdown in it is de-emphasised by COLOUR
+          // alone. It used to also take `opacity-40`, and dimming twice put the
+          // name at 1.6:1 against the sidebar in dark mode and 1.4:1 in light —
+          // a row the reader had asked to see (it renders only with "show empty
+          // directories" on) and then could not read. `nameColor` and
+          // `folderIconColor` each drop one step for `isDimmed`, which is the
+          // same signal at 4.8:1 and above.
           isRecentlyChanged && "animate-flash-update",
           isSymlinkError && "cursor-not-allowed opacity-60",
         )}
@@ -231,7 +237,10 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
         >
           {node.is_dir ? (
             isExpanded ? (
-              <ChevronDown size={14} className="text-slate-500" />
+              <ChevronDown
+                size={14}
+                className="text-slate-500 dark:text-slate-400"
+              />
             ) : (
               <ChevronRight size={14} className="text-slate-400" />
             )

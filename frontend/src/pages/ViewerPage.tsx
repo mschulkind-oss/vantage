@@ -911,7 +911,7 @@ export const ViewerPage: React.FC = () => {
               <div className="border-t border-slate-200 dark:border-slate-700 px-2 py-2 shrink-0">
                 <button
                   onClick={() => setRecentsModalOpen(true)}
-                  className="px-2 py-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center space-x-1.5 hover:text-blue-600 dark:hover:text-blue-400 transition-colors w-full"
+                  className="px-2 py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center space-x-1.5 hover:text-blue-600 dark:hover:text-blue-400 transition-colors w-full"
                 >
                   <Clock size={12} />
                   <span>Recent</span>
@@ -1017,7 +1017,7 @@ export const ViewerPage: React.FC = () => {
               <div className="flex items-center min-w-0 gap-2">
                 <button
                   className={cn(
-                    "p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 shrink-0",
+                    "p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 shrink-0",
                     sidebarCollapsed ? "" : "md:hidden",
                   )}
                   onClick={() => {
@@ -1042,7 +1042,7 @@ export const ViewerPage: React.FC = () => {
                 <nav className="flex items-center text-sm space-x-1 min-w-0 overflow-hidden">
                   <AppLink
                     to={isMultiRepo && currentRepo ? `/${currentRepo}` : "/"}
-                    className="text-slate-500 hover:text-blue-600 font-medium transition-colors shrink-0 no-underline"
+                    className="text-slate-500 dark:text-slate-400 hover:text-blue-600 font-medium transition-colors shrink-0 no-underline"
                   >
                     {isMultiRepo && currentRepo ? currentRepo : "root"}
                   </AppLink>
@@ -1060,7 +1060,7 @@ export const ViewerPage: React.FC = () => {
                               .slice(0, i + 1)
                               .join("/") || ".",
                           )}
-                          className="text-slate-500 hover:text-blue-600 transition-colors no-underline hidden sm:inline"
+                          className="text-slate-500 dark:text-slate-400 hover:text-blue-600 transition-colors no-underline hidden sm:inline"
                         >
                           {part}
                         </AppLink>
@@ -1108,10 +1108,10 @@ export const ViewerPage: React.FC = () => {
                       <span>
                         <RelativeTime date={latestCommit.date} />
                       </span>
-                      <span className="text-slate-300 dark:text-slate-600">
+                      <span className="text-slate-300 dark:text-slate-500">
                         ·
                       </span>
-                      <span className="text-slate-400 dark:text-slate-500">
+                      <span className="text-slate-400">
                         {formatDateTime(latestCommit.date)}
                       </span>
                     </div>
@@ -1318,10 +1318,10 @@ export const ViewerPage: React.FC = () => {
                       <span>
                         <RelativeTime date={fileMtime} />
                       </span>
-                      <span className="text-slate-300 dark:text-slate-600">
+                      <span className="text-slate-300 dark:text-slate-500">
                         ·
                       </span>
-                      <span className="text-slate-400 dark:text-slate-500">
+                      <span className="text-slate-400">
                         {formatDateTime(fileMtime)}
                       </span>
                     </div>
@@ -1493,7 +1493,9 @@ export const ViewerPage: React.FC = () => {
                       size={32}
                       className="animate-spin text-blue-500 mb-4"
                     />
-                    <p className="text-sm text-slate-500">Loading...</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      Loading...
+                    </p>
                   </div>
                 ) : fileContent ? (
                   fileContent.encoding === "binary" ? (
@@ -1547,7 +1549,7 @@ export const ViewerPage: React.FC = () => {
                         <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">
                           Projects
                         </h1>
-                        <p className="text-sm text-slate-400 dark:text-slate-500 mt-1">
+                        <p className="text-sm text-slate-400 mt-1">
                           {repos.length}{" "}
                           {repos.length === 1 ? "repository" : "repositories"}
                         </p>
@@ -1608,7 +1610,7 @@ export const ViewerPage: React.FC = () => {
                             {repo.name}
                           </span>
                           {repo.last_activity && (
-                            <span className="ml-auto pl-4 text-xs text-slate-400 dark:text-slate-500 whitespace-nowrap shrink-0 tabular-nums">
+                            <span className="ml-auto pl-4 text-xs text-slate-400 whitespace-nowrap shrink-0 tabular-nums">
                               <RelativeTime date={repo.last_activity} />
                             </span>
                           )}
@@ -1621,7 +1623,7 @@ export const ViewerPage: React.FC = () => {
                     <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
                       <GitBranch size={32} className="text-slate-300" />
                     </div>
-                    <p className="text-lg font-medium text-slate-500">
+                    <p className="text-lg font-medium text-slate-500 dark:text-slate-400">
                       Select a file or folder to browse
                     </p>
                     <p className="text-sm text-slate-400 mt-1">
