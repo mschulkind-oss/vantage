@@ -1065,7 +1065,13 @@ export const ViewerPage: React.FC = () => {
                           {part}
                         </AppLink>
                       ) : (
-                        <span className="font-semibold text-slate-900 dark:text-slate-100 truncate">
+                        // `truncate` is what puts the ellipsis there, and it
+                        // is the only place the full name is ever elided, so
+                        // the title is the only way to read it back.
+                        <span
+                          className="font-semibold text-slate-900 dark:text-slate-100 truncate"
+                          title={part}
+                        >
                           {part}
                         </span>
                       )}
