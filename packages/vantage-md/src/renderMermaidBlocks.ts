@@ -8,7 +8,7 @@
  * Framework-agnostic — works in any browser environment.
  */
 
-import { svgCache } from "./mermaidCache.js";
+import { getCachedSvg, setCachedSvg } from "./mermaidCache.js";
 import { getMermaid } from "./mermaidLoader.js";
 
 export interface RenderMermaidOptions {
@@ -59,8 +59,9 @@ export async function renderMermaidBlocks(
     const code = codeEl.textContent || "";
     if (!code.trim()) return;
 
-    // Check cache first
-    const cached = svgCache.get(code);
+    // Check cache first. Keyed by theme as well as code — the same fence
+    // renders to a different SVG in each palette.
+    const cached = getCachedSvg(code);
     if (cached) {
       replaceWithSvg(preEl, cached, className);
       return;
@@ -77,7 +78,7 @@ export async function renderMermaidBlocks(
       const id = `mermaid-${Math.abs(hash).toString(36)}-${Date.now()}`;
 
       const { svg } = await mermaid.render(id, code);
-      svgCache.set(code, svg);
+      setCachedSvg(code, svg);
       replaceWithSvg(preEl, svg, className);
     } catch (err) {
       if (onError) {
