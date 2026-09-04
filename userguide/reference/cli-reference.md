@@ -85,13 +85,20 @@ See [Static Sites](../guides/static-sites.md) for a full guide on this workflow.
 
 ## `vantage install-service`
 
-Install Vantage as a systemd user service that starts on login.
+Install Vantage as a per-user background service that starts on login.
 
 ```bash
 vantage install-service
 ```
 
-This creates `~/.config/systemd/user/vantage.service`. See [Daemon Mode](../guides/daemon-mode.md#running-as-a-systemd-service) for the full setup steps.
+It writes the service definition for the host platform and prints the commands that load it — it does not activate anything itself.
+
+| Platform | Writes | Full setup |
+| -------- | ------ | ---------- |
+| Linux (systemd) | `~/.config/systemd/user/vantage.service` | [Daemon Mode](../guides/daemon-mode.md#running-as-a-systemd-service) |
+| macOS (launchd) | `~/Library/LaunchAgents/io.github.mschulkind-oss.vantage.plist` | [Daemon Mode](../guides/daemon-mode.md#running-as-a-launchd-agent-macos) |
+
+Any other platform prints that it is unsupported and exits 0; run `vantage daemon` directly there.
 
 ---
 

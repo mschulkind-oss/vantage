@@ -91,7 +91,7 @@ vantage daemon
 - **Dark Mode** — Toggle with Shift+D, persisted across sessions
 - **Keyboard Shortcuts** — Quick file picker with `t`, fuzzy search, keyboard navigation
 - **Performance Diagnostics** — Built-in `perf-report` command for anonymized timing data
-- **systemd Service** (Linux) — Run as a background service that starts on login
+- **Login Service** — Run in the background from login: a systemd user unit on Linux, a launchd agent on macOS
 
 ---
 
@@ -154,27 +154,26 @@ exclude_dirs = ["node_modules", "vendor", "dist"]
 
 ---
 
-## 🔧 Service Management (Linux)
+## 🔧 Service Management
 
-On Linux, Vantage can run as a systemd user service that starts automatically on login. On macOS, run `vantage` directly or wrap it in a `launchd` agent yourself.
-
-### Install the Service
+Vantage can run as a per-user background service that starts on login — a systemd user unit on Linux, a launchd agent on macOS. One command writes either:
 
 ```bash
 vantage install-service
 ```
 
-### Enable and Start
+It writes the service definition and prints the commands that load it; it never activates anything for you.
+
+### Linux (systemd)
+
+`install-service` creates `~/.config/systemd/user/vantage.service`.
 
 ```bash
+# Enable and start
 systemctl --user daemon-reload
 systemctl --user enable vantage
 systemctl --user start vantage
-```
 
-### Common Commands
-
-```bash
 # Check status
 systemctl --user status vantage
 
@@ -188,13 +187,34 @@ systemctl --user restart vantage
 systemctl --user stop vantage
 ```
 
-### Keep Running After Logout
-
-By default, user services stop when you log out. To keep Vantage running:
+User services stop when you log out. To keep Vantage running past logout:
 
 ```bash
 loginctl enable-linger $USER
 ```
+
+### macOS (launchd)
+
+`install-service` creates `~/Library/LaunchAgents/io.github.mschulkind-oss.vantage.plist`.
+
+```bash
+# Load and start — now, and at every login
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/io.github.mschulkind-oss.vantage.plist
+
+# Check status
+launchctl print gui/$(id -u)/io.github.mschulkind-oss.vantage
+
+# View logs (launchd has no journal; the agent writes to a file)
+tail -f ~/Library/Logs/vantage.log
+
+# Restart after config changes
+launchctl kickstart -k gui/$(id -u)/io.github.mschulkind-oss.vantage
+
+# Stop and unload
+launchctl bootout gui/$(id -u)/io.github.mschulkind-oss.vantage
+```
+
+`kickstart` restarts the job from the plist launchd read at bootstrap time, not from the file on disk — so after re-running `install-service`, `bootout` and `bootstrap` again. See [Daemon Mode](userguide/guides/daemon-mode.md#running-as-a-launchd-agent-macos) for the rest.
 
 ---
 
@@ -207,7 +227,7 @@ vantage [PATH]                      # Serve a dir or file, auto-open browser
 vantage serve [PATH] [flags]        # Same as above, with explicit flags
 vantage daemon [-c config.toml]     # Serve multiple directories from config
 vantage init-config                 # Generate example config file
-vantage install-service             # Install systemd user service (Linux only)
+vantage install-service             # Install a login service (systemd / launchd)
 vantage build PATH -o OUTPUT        # Build a static site
 vantage perf-report [--url]         # Performance diagnostics from a running instance
 ```

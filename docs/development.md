@@ -13,7 +13,7 @@ cmd/vantage/          Command-line entry point (cobra commands)
   daemon.go           Multi-repo daemon (reads config.toml)
   build.go            Static-site export
   initconfig.go       Writes a starter config.toml
-  installservice.go   systemd --user unit installer (Linux)
+  installservice.go   Login-service installer (systemd unit / launchd agent)
   perfreport.go       Performance report client
 internal/             Backend packages (not importable outside the module)
   server/             Integrator: wires config, per-repo services, router
