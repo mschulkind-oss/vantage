@@ -199,9 +199,10 @@ export const ViewerPage: React.FC = () => {
    * How many Open Questions the open document offers a one-click answer for.
    *
    * Reported by the viewer whether or not review mode is on, because the
-   * button is gated on review mode (D4) and until this count existed nothing
-   * said the affordance was there at all — a document with three `oq`
-   * directives and review mode off looked exactly like one with none.
+   * button is gated on review mode (D4) and nothing else says the affordance
+   * is there at all — a document with three `oq` directives and review mode
+   * off otherwise looks exactly like one with none. It reaches the reader
+   * through the Review toggle's tooltip; see `advertiseOpenQuestions`.
    */
   const [openQuestionCount, setOpenQuestionCount] = useState(0);
   const [copied, setCopied] = useState(false);
@@ -264,11 +265,13 @@ export const ViewerPage: React.FC = () => {
    * Whether to advertise this document's one-click Open Questions on the
    * Review toggle.
    *
+   * The tooltip, and nothing else. It used to be a count chip beside the
+   * label too; that read as an unread badge on a toolbar that has no other
+   * notification, so the number is gone and the sentence it stood for now
+   * lives only in `reviewToggleTitle`.
+   *
    * Only while review mode is OFF: once it is on, the buttons are on the page
-   * and the count would be repeating what the reader can already see. This is
-   * the only thing anywhere that says the affordance exists — the button is
-   * gated on review mode (D4), so a document with three answerable questions
-   * and review mode off used to look exactly like a document with none.
+   * and the count would be repeating what the reader can already see.
    */
   const advertiseOpenQuestions =
     reviewToggleVisible &&
@@ -1214,11 +1217,6 @@ export const ViewerPage: React.FC = () => {
                           <span className="hidden sm:inline">
                             {reviewExitConfirm ? "End review?" : "Review"}
                           </span>
-                          {advertiseOpenQuestions && (
-                            <span className="review-oq-count">
-                              {openQuestionCount}
-                            </span>
-                          )}
                         </button>
                       )}
                       {isReviewMode && (
@@ -1381,11 +1379,6 @@ export const ViewerPage: React.FC = () => {
                         <span className="hidden sm:inline">
                           {reviewExitConfirm ? "End review?" : "Review"}
                         </span>
-                        {advertiseOpenQuestions && (
-                          <span className="review-oq-count">
-                            {openQuestionCount}
-                          </span>
-                        )}
                       </button>
                     )}
                     {isReviewMode && (

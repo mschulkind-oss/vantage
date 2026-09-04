@@ -1207,25 +1207,6 @@ th.review-block-hovered {
   background: rgb(248 113 113 / 0.12);
 }
 
-/* The count of answerable Open Questions, on the Review toggle while review
-   mode is off. Borrows the chip geometry from `.vantage-chip` and the note tone
-   from the palette, so it reads as the same kind of object as a `badge=wip`
-   chip rather than as a notification dot. It is not a control of its own: the
-   whole button is the control, and clicking it turns review mode on, which is
-   what makes the count actionable rather than merely informative. */
-.review-oq-count {
-  display: inline-block;
-  min-width: 1.25em;
-  padding: 0 4px;
-  border-radius: 4px;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1.6;
-  text-align: center;
-  color: var(--vantage-tone-note-ink);
-  background-color: var(--vantage-tone-note-chip);
-}
-
 /* Flash used when jumping to a comment from the sidebar. */
 .review-inline-comment--flash .review-inline-comment-body {
   animation: review-comment-flash 1.2s ease-out;
