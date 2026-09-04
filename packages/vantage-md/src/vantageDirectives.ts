@@ -94,12 +94,17 @@ export const VANTAGE_COLLAPSED = ["true", "false"] as const;
 export const VANTAGE_RUNS = ["start", "middle", "end", "only"] as const;
 
 /**
- * The tags a `section`/`block` directive may stamp.
+ * The tags a `section`/`block` directive may **target**.
  *
- * Deliberately `rehypeSourceLines`'s `BLOCK_TAGS`: a stamped block should also
- * be a block with a `data-source-line`, so the styling surface and the anchor
- * surface coincide. It also keeps an inline directive from stamping the `<em>`
- * that happens to follow it inside a paragraph.
+ * Deliberately `rehypeSourceLines`'s `BLOCK_TAGS`: a directive's target should
+ * also be a block with a `data-source-line`, so the styling surface and the
+ * anchor surface coincide. It also keeps an inline directive from stamping the
+ * `<em>` that happens to follow it inside a paragraph.
+ *
+ * It does **not** bound a `section`'s range. Every element in the span is
+ * stamped, on the tag list or not, because a member only has to be a box in the
+ * flow for the section's vertical rule to cross it — see `styleRange` in
+ * `rehypeVantageDirectives.ts` for the hole that restricting the range left.
  *
  * It lives here rather than in the plugin because the CLI checker has to answer
  * "will this directive stamp anything?" from an mdast tree with no hast in

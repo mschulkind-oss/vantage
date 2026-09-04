@@ -29,11 +29,13 @@ import {
 import type { KeyVocabulary, ParsedDirective } from "./vantageDirectives.js";
 
 /**
- * What a `section`/`block` and an `oq` directive may stamp.
+ * What a `section`/`block` and an `oq` directive may **target**.
  *
  * Both lists live in `vantageDirectives.ts`, with the reasoning for each tag,
  * because the CLI checker resolves the same question over mdast and must reach
  * the same answer (D5).
+ *
+ * Neither list bounds a `section`'s range: see `styleRange`.
  */
 const STYLE_TARGET_TAGS = new Set<string>(VANTAGE_STYLE_TARGETS);
 const ANCHOR_TARGET_TAGS = new Set<string>(VANTAGE_ANCHOR_TARGETS);
@@ -182,6 +184,22 @@ function accepts(name: string, key: string, value: string): boolean {
  * `section` before anything else degrades to that one block, and `block` is
  * always that one block. A heading nested inside a stamped `blockquote` or
  * `li` does not end the section: the walk never descends.
+ *
+ * **Every element in the span, not only a `VANTAGE_STYLE_TARGETS` one.** That
+ * list gates the *target* and nothing else. Restricting the range to it as well
+ * used to leave a raw-HTML `<figure>`, `<dl>` or `<details>` unstamped between
+ * two stamped paragraphs — and the section's one continuous vertical rule is
+ * drawn per member, so an unstamped member is a hole the height of the block
+ * plus its margins. Measured over the real stylesheet: 44px for a one-line
+ * `<figure>`, against the 40px a neighbour can bleed upward, and arbitrarily
+ * large for anything taller. `collapsed=true` had the same shape of bug the
+ * other way round — it hid the paragraphs and left the figure on the page.
+ *
+ * The two lists answering different questions is the point, not an oversight:
+ * a *target* must be a block a review anchor can name, because a directive
+ * pointing at something unanchorable is a directive with no addressable effect.
+ * A *member* only has to be a box in the flow, because all it does is carry the
+ * run's tone across itself.
  */
 function styleRange(
   children: RootContent[],
@@ -197,9 +215,7 @@ function styleRange(
     const node = children[i];
     const nodeDepth = headingDepth(node);
     if (nodeDepth !== undefined && nodeDepth <= depth) break;
-    if (node.type === "element" && STYLE_TARGET_TAGS.has(node.tagName)) {
-      range.push(i);
-    }
+    if (node.type === "element") range.push(i);
   }
   return range;
 }

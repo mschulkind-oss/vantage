@@ -170,7 +170,7 @@ The name set is closed and is exactly three, in `DIRECTIVE_NAMES`:
 
 | Name | Target | Extent |
 | :--- | :--- | :--- |
-| `section` before a **heading** | next sibling element, stampable tags only | the heading and every following *stampable* sibling until the first heading of same-or-shallower depth |
+| `section` before a **heading** | next sibling element, stampable tags only | the heading and **every** following sibling element until the first heading of same-or-shallower depth |
 | `section` before a **non-heading** | next sibling element, stampable tags only | that one block |
 | `block` | next sibling element, stampable tags only | that one block, even in front of a heading |
 | `oq` | next sibling element, **anchor-capable** tags only | that one block |
@@ -193,21 +193,25 @@ unmatched-close failure mode for a use case nobody has asked for.
 
 **"Stampable" is a closed tag list**, `VANTAGE_STYLE_TARGETS`, deliberately the
 same block list `rehypeSourceLines` uses — so the styling surface and the anchor
-surface coincide and a stamped block is always one a review anchor can name. The
-list bites asymmetrically:
+surface coincide and a directive's target is always a block a review anchor can
+name. **It gates the target and nothing else.** A directive whose next sibling
+element is not on the list stamps nothing and does not look further:
+`block tone=note` above a raw-HTML `<figure>` is inert, and `vantage/orphan`
+reports it.
 
-- **As the target it is fatal.** A directive whose next sibling element is not on
-  the list stamps nothing and does not look further. `block tone=note` above a
-  raw-HTML `<figure>` is inert.
-- **In the range it is a hole.** A non-stampable sibling *inside* a section's
-  span is skipped, not treated as a terminator, so the section continues past it.
-  Raw-HTML `<figure>`, `<dl>`, `<details>` inside a toned section get no stamp
-  while the paragraphs around them do, and the section's vertical rule visibly
-  breaks there.
+A `section`'s **range** is not gated by it. Every sibling element in the span is
+stamped, on the list or not, and the two lists answering different questions is
+the point: a *target* must be addressable, because a directive pointing at
+something no anchor can name has no addressable effect; a *member* only has to
+be a box in the flow, because all it does is carry the run's tone across itself.
 
-Nothing reports either case: `vantage/orphan` inspects the target, and in the
-range case the plugin did stamp *something*. This is the one failure mode in the
-feature visible only to an author looking at the page.
+Until 2026-09-03 the range was gated too, and both halves of that were bugs a
+reader saw and nothing reported. A raw-HTML `<figure>`, `<dl>` or `<details>`
+between two stamped paragraphs got no stamp, so the section's one continuous
+vertical rule had a hole the height of the block — 44px for a one-line figure,
+against the 40px a neighbour can bleed upward, and arbitrarily large for
+anything taller. And `collapsed=true` hid the paragraphs while leaving the
+figure on the page under a closed heading.
 
 ## Where the plugin runs
 
@@ -684,8 +688,11 @@ every example the style guide tells agents to copy.
 
 ## Known gaps
 
-- **Non-stampable siblings inside a section leave an unreported hole**, as
-  described under [extent](#names-position-and-extent).
+- **A block the app inserts into a run after render is the app's to bridge.**
+  The pipeline stamps every element it can see, but review mode adds inline
+  comment cards as siblings *inside* a stamped run, and those are stamped by
+  `useReviewHighlights` rather than here. Anything else that splices a sibling
+  into rendered prose has to do the same or it punches a hole in the rule.
 
 ## Current values
 
