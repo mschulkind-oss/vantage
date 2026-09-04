@@ -10,6 +10,11 @@ The default config path is:
 ~/.config/vantage/config.toml
 ```
 
+That is the path on Linux and macOS alike. `$XDG_CONFIG_HOME` overrides the `~/.config` half of it when set, on both.
+
+> [!NOTE]
+> Macs set up before 2026-09-04 got `~/Library/Application Support/vantage/config.toml` instead, and that file is still honored: when `~/.config/vantage/config.toml` does not exist and the Application Support one does, Vantage reads the old location. Moving the file to `~/.config/vantage/` is the whole migration, and the same rule covers the user ignore file (`~/.config/vantage/ignore`) alongside it.
+
 Generate a starter config with:
 
 ```bash

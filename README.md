@@ -97,7 +97,7 @@ vantage daemon
 
 ## ⚙️ Configuration
 
-The config file lives at `~/.config/vantage/config.toml`. Generate one with:
+The config file lives at `~/.config/vantage/config.toml` on Linux and macOS alike (`$XDG_CONFIG_HOME/vantage/config.toml` when that is set). Generate one with:
 
 ```bash
 vantage init-config
