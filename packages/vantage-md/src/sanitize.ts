@@ -11,6 +11,7 @@ import {
   VANTAGE_EMPHASIS,
   VANTAGE_RUNS,
   VANTAGE_TONES,
+  VANTAGE_OQ_ID,
 } from "./vantageDirectives.js";
 import { VANTAGE_ALERTS } from "./rehypeVantageAlerts.js";
 
@@ -256,6 +257,13 @@ export const sanitizeSchema: Schema = {
       ["dataVantageCollapseToggle", COLLAPSE_GROUP_ID],
       ["dataVantageRun", ...VANTAGE_RUNS],
       ["dataVantageOq", "true"],
+      // The Open Question's id on its way to becoming a real `id`, pattern-
+      // allowlisted like the collapse-group counters above rather than left
+      // name-only: `rehypeVantageAnchors` writes this value straight into the
+      // document's id namespace on the other side of this schema, so anything
+      // a document could smuggle through here it would be smuggling into `id`.
+      // The grammar is imported, never restated — see `VANTAGE_OQ_ID`.
+      ["dataVantageOqId", VANTAGE_OQ_ID],
       // GFM alerts, compiled by `rehypeVantageAlerts`. Value-allowlisted like
       // the tone tokens it shares a palette with, so a document cannot forge a
       // sixth kind through raw HTML.

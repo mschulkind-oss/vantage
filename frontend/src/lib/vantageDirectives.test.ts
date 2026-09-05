@@ -1125,14 +1125,18 @@ describe("the `oq` directive", () => {
     );
   });
 
-  it("resolves `id` without putting it in the DOM", async () => {
-    // Nothing in the DOM reads it: the button finds its block by
-    // `[data-vantage-oq]` and its text by `data-vantage-leaning`. The id stays
-    // in the source, for the checker and for `rg`.
+  it("resolves `id` into the block's anchor", async () => {
+    // The id used to stop at the source: nothing in the DOM read it, so
+    // stamping it bought a sanitiser entry for nothing. A reference of the form
+    // `[OQ-9](#OQ-9)` is what gave it a reader, and `ref/unlinked-oq` is what
+    // requires references to take that form. See `oqAnchors.test.ts` for the
+    // sanitiser trap that shape has to survive.
     const markup = await html("<!-- vantage: oq id=OQ-9 -->\n\nBody.\n");
 
     expect(markup).toContain('data-vantage-oq="true"');
-    expect(markup).not.toContain("OQ-9");
+    expect(markup).toContain('id="OQ-9"');
+    // The carrier attribute does not outlive the promotion.
+    expect(markup).not.toContain("data-vantage-oq-id");
   });
 });
 
@@ -1496,10 +1500,15 @@ describe("the document is the artifact (P1/D8/D1)", () => {
     .join("\n");
 
   it("changes nothing but attributes — including every data-source-line", async () => {
-    const withDirectives = (await html(FIXTURE)).replace(
-      / data-vantage-[a-z-]+="[^"]*"/g,
-      "",
-    );
+    const withDirectives = (await html(FIXTURE))
+      .replace(/ data-vantage-[a-z-]+="[^"]*"/g, "")
+      // An `oq` directive also mints an `id`, which is an attribute and so is
+      // within what P1 permits — but it has to come off alongside the
+      // `data-vantage-*` set for this comparison to be about anything else.
+      // Matched by the id grammar rather than by the fixture's literal value:
+      // that removes exactly what a directive can add and leaves the heading
+      // slugs, which `rehypeSlug` mints and which never start with `OQ-`.
+      .replace(/ id="OQ-[A-Z0-9]*[0-9]+"/g, "");
 
     expect(withDirectives.replace(/\s+/g, " ").trim()).toBe(
       (await html(BLANKED)).replace(/\s+/g, " ").trim(),
