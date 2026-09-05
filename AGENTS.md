@@ -15,21 +15,21 @@ all discoverable, so they are deliberately not here.
   fresh clone gets until `just web-sync` runs. It was tracked until 2026-09-01
   to spare `go install …@latest` that fate; **`just release` now carries the
   bundle in a commit reachable only from the tag**, which is where `go install`
-  reads it from. Rationale: `docs/design/pypi-distribution.md` §4.1.
+  reads it from. Rationale: [`docs/design/pypi-distribution.md` §4.1](docs/design/pypi-distribution.md#41-the-frontend-has-to-be-there-at-build-time-and-today-it-often-isnt).
 - `packages/vantage-md` is consumed **from TypeScript source, never from
   `dist/`**: the frontend resolves it through a Vite alias
-  (`frontend/vite.config.ts`), and `packages/vantage-check` imports it by
+  ([`frontend/vite.config.ts`](frontend/vite.config.ts)), and `packages/vantage-check` imports it by
   relative path. `dist/` (tsdown) is produced only at `npm publish`. So never
   copy pipeline code into `frontend/src` — one implementation, three consumers.
 - The three packages are **one npm workspace** with a single root
-  `package-lock.json`. `npm ci` at the root installs all of them; there is no
+  [`package-lock.json`](package-lock.json). `npm ci` at the root installs all of them; there is no
   per-package lockfile and no per-package install. This is what makes `katex`
   and `mermaid` resolve to one hoisted copy shared by the viewer and the CLI —
   the checker's whole claim is that it validates with the engines the viewer
-  renders with, and `packages/vantage-check/test/deps.test.ts` asserts they are
+  renders with, and [`packages/vantage-check/test/deps.test.ts`](packages/vantage-check/test/deps.test.ts) asserts they are
   literally the same file, not merely the same version string.
 - `packages/vantage-check` ships as one compiled binary (~92 MB per platform)
-  and is never published to npm. Design: `docs/design/agent-cli.md`.
+  and is never published to npm. Design: [`docs/design/agent-cli.md`](docs/design/agent-cli.md).
 
 ## Ports
 
@@ -54,7 +54,7 @@ Never kill it; run test instances on other ports.
   install. A stale eslint plugin once hid three live suppressions, so
   deleting them as dead broke CI (`caba056`, fixed in `5226587`). Lint runs at
   `--max-warnings 0`, so a stale suppression is an error, not a note.
-- **`tsc --noEmit` in `frontend/` checks nothing.** `frontend/tsconfig.json` is
+- **`tsc --noEmit` in `frontend/` checks nothing.** [`frontend/tsconfig.json`](frontend/tsconfig.json) is
   solution-style (`files: []` plus project references), so it checked **zero
   files** until the gate moved to `tsc --build`, which walks the references and
   covers `frontend/src` and `packages/vantage-md/src` both. Keep it `--build`;
@@ -62,11 +62,11 @@ Never kill it; run test instances on other ports.
 - **Every package is on one TypeScript (`~6.0.3`), and the old-compiler
   guarantee is a real check instead of an accident.** Until 2026-09-01
   `frontend` pinned 5.9 while `vantage-md` pinned 6.0, and because
-  `frontend/tsconfig.json` references this package its sources were compiled by
+  [`frontend/tsconfig.json`](frontend/tsconfig.json) references this package its sources were compiled by
   both. That was true but it proved the wrong thing: it compiled `src/`, while
   npm consumers only ever see the emitted `dist/`, and nothing checked the half
   that ships. `just check` now builds the package and type-checks
-  `packages/vantage-md/typetest/consumer.ts` — an importer of the built
+  [`packages/vantage-md/typetest/consumer.ts`](packages/vantage-md/typetest/consumer.ts) — an importer of the built
   `dist/` — under both `typescript` and `typescript-5`, an alias pinning the
   oldest version we support. Widen the range by adding another alias.
 - **`typescript` is declared at the workspace root on purpose.** The dts build
@@ -85,13 +85,13 @@ Never kill it; run test instances on other ports.
   build command lives in their dashboard, not here.** It ran `bash
   build-docs.sh` from 2026-05-30 — when that file was deleted — until
   2026-09-01, so every PR carried a red check nothing in the tree could explain
-  or fix. `scripts/build-site.sh` is the real entry point, and its header says
+  or fix. [`scripts/build-site.sh`](scripts/build-site.sh) is the real entry point, and its header says
   so. A rename here is invisible to CI; update the dashboard in the same breath.
 - **Every `just` recipe leaves tracked files unchanged — no exceptions.**
   `web-sync` used to be one, rewriting the tracked `web/dist`; untracking it on
   2026-09-01 removed the carve-out. The rest still holds: `npm ci` in CI and
-  deploy, `npm install` only in dev, and a `package.json` change lands in the
-  same commit as its `package-lock.json`.
+  deploy, `npm install` only in dev, and a package manifest change lands in the
+  same commit as its lockfile.
 - **Releases are cut with `just release <semver>`, not by tagging by hand.** The
   tag has to be born carrying `web/dist`, because Go's checksum database records
   a tag's tree hash on first fetch and re-pointing it breaks every later fetch.
@@ -106,7 +106,7 @@ per-platform archives carrying *both* binaries, a PyPI wheel for each of
 `vantage-md` (the server) and `vantage-check` (the CLI), the `vantage-md`
 library to npm, and a Homebrew formula that installs both binaries. There are no
 per-package tags any more, and **no manifest decides a version** — CI stamps the
-tag into both `package.json`s before building, so nothing can disagree with it.
+tag into both package manifests before building, so nothing can disagree with it.
 
 The tag filter is `v[0-9]*`, not `v*`, and that is load-bearing: it is what makes
 a stray `vantage-…` tag unable to reach the workflow at all. Until 2026-09-01 the
@@ -133,4 +133,4 @@ Since v0.5.4 (2026-09-01) all three registries carry that version: PyPI has
 `vantage-md` and `vantage-check`, the first release to register the CLI at all,
 and npm has `vantage-md`. npm sat at `0.1.7` from April until then — not from
 repeated failures but because `36a75506` moved it onto a `vantage-md@*` tag that
-was never pushed. See `docs/design/pypi-distribution.md`.
+was never pushed. See [`docs/design/pypi-distribution.md`](docs/design/pypi-distribution.md).

@@ -57,6 +57,28 @@ export const RULES: readonly RuleMeta[] = [
     summary: "A `#section` anchor matching no heading in the target document",
     default: "error",
   },
+  // `ref/*` — the family that asks the question underneath `link/*`. Those
+  // rules ask whether a link works; these ask whether something that reads like
+  // a pointer should have been one. A reference written as prose cannot be
+  // dead, which is exactly why nothing else can ever notice it went stale.
+  {
+    id: "ref/unlinked-oq",
+    summary:
+      "An `OQ-…` id in prose with no link on it, or one linking to a document without naming the question",
+    default: "error",
+  },
+  {
+    id: "ref/unlinked-section",
+    summary:
+      "A `§N` reference with no link on it, or one pointing at a different section than the number names",
+    default: "error",
+  },
+  {
+    id: "ref/unlinked-file",
+    summary:
+      "A filename in prose that names a real file beside the document and does not link to it",
+    default: "error",
+  },
   {
     id: "frontmatter/parse",
     summary:

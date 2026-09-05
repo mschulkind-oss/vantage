@@ -22,6 +22,7 @@ import {
 } from "../rules/directives.js";
 import { checkFrontmatter } from "../rules/frontmatter.js";
 import { checkLinks } from "../rules/links.js";
+import { checkReferences } from "../rules/references.js";
 import { checkMath } from "../rules/math.js";
 import { checkMarkdownHygiene } from "../rules/markdown.js";
 import { checkMermaid } from "../rules/mermaid.js";
@@ -122,6 +123,7 @@ export async function checkFiles(
 
     filesChecked++;
     checkLinks(collector);
+    checkReferences(collector);
     checkFrontmatter(collector);
     // After `checkFrontmatter`, not before: the block has to have been judged
     // as frontmatter before anything reads what is inside it.

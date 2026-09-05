@@ -366,7 +366,7 @@ is repeatable, and `publish.yml` passes `--alias vantage-md`
 | :--- | :--- | :--- |
 | Human, macOS/Linux | Homebrew | `brew install mschulkind-oss/tap/vantage` — installs **both** binaries, since one archive carries both |
 | Human, Go toolchain | `go install` | `go install …/cmd/vantage@latest` |
-| Human, Python-first machine | **PyPI wheel** | `uvx vantage-md <path>` for a one-shot, or `uv tool install vantage-md` for `vantage` on `PATH` (§4.3) |
+| Human, Python-first machine | **PyPI wheel** | `uvx vantage-md <path>` for a one-shot, or `uv tool install vantage-md` for `vantage` on `PATH` ([§4.3](#43-the-command-is-vantage-the-one-shot-pays-for-it)) |
 | Human, neither | release archive | download and untar |
 | **Agent** | **PyPI wheel** | `uvx vantage-check <file>` — its own project, at the repo's shared version |
 | Frontend / library consumer | npm | `npm i vantage-md` |
@@ -455,7 +455,7 @@ payload's `uvx vantage-check <file>` string, and
   [`agent-cli.md`](agent-cli.md) as **R3** — a second renderer implementation
   that drifts invisibly — and nothing here changes it.
 - **Not Windows, for either artifact.** The server wheel covers Linux and macOS
-  only, and the CLI's `win_amd64` target was removed the same day (§4.4).
+  only, and the CLI's `win_amd64` target was removed the same day ([§4.4](#44-which-platforms-the-server-wheel-covers)).
 - **Not the website's install copy.** Out of this tree, and unverifiable from
   here.
 
@@ -541,7 +541,7 @@ design.
   the two programs diverge.
 - **`--entry-point vantage-md`**, keeping the historical `uvx vantage-md <path>`
   line. Rejected 2026-09-01: the installed command should match every other
-  channel. The `--from` tax lands only on the ephemeral one-shot (§4.3).
+  channel. The `--from` tax lands only on the ephemeral one-shot ([§4.3](#43-the-command-is-vantage-the-one-shot-pays-for-it)).
 - **A hand-rolled two-entry-point wheel** to get `vantage` and `vantage-md`
   both, as the `0.4.2` setuptools wheel did. Rejected as the wrong lever — if
   the alias matters later, patch `go-to-wheel` upstream rather than owning a
@@ -551,14 +551,14 @@ design.
 
 | ID | Ruling / Decision | Date | Settled in |
 | :--- | :--- | :--- | :--- |
-| OQ-P1 | Yank `vantage-md` `0.4.1` and `0.4.2` — the `py3-none-any` fallback is the silent failure | 2026-09-01 | §4.2, §9 step 1 |
-| OQ-P2 | The agent CLI gets **its own PyPI project**, `vantage-check`; not a second executable in the server's wheel. Supersedes `agent-bootstrap.md`'s `OQ-B7` | 2026-09-01 | §6 |
-| OQ-P3 | **Both commands**: `vantage` is the binary, `vantage-md` an alias, so `uvx vantage-md` needs no `--from` — the two-script wheel's original point, restored as a console-script entry point once the builder became ours (**OQ-P7**) | 2026-09-01 | §4.3 |
-| OQ-P4 | The four archive targets (Linux + macOS × x86-64 + arm64), musl if free, **no Windows**. Pass `--platforms` explicitly rather than trusting defaults | 2026-09-01 | §4.4, §7 |
-| OQ-P8 | **One version, one tag, one run.** The three release workflows and their tag namespaces collapse into `publish.yml` on `v[0-9]*`; CI stamps the tag into both manifests; one archive per platform carries both binaries and the Homebrew formula installs both. Owner ruling, for consistency with the sibling projects — it voids **OQ-P2**'s cadence argument while leaving the separate-projects ruling intact | 2026-09-01 | §4, §6 |
-| OQ-P6 | The built frontend is a **tracked artifact**, polyclav's shape: `web-sync` refreshes it and is the only recipe allowed to dirty a tracked file, `build-bin` embeds it as-is. It is the only fix that reaches `go install`; 5.5 MB and the churn are the price | 2026-09-01 | §4.1, `08579a0` |
-| OQ-P7 | **Our own builder**, moved to `scripts/build-wheel.py` and parameterized, for both artifacts. `go-to-wheel` would compile the Go binary a second time, so PyPI and the release would carry different bytes | 2026-09-01 | §4.5 |
-| OQ-P5 | Apache-2.0 everywhere. Applied the same day to `packages/vantage-md`, `packages/vantage-check`, and `build-wheel.py`'s wheel metadata, which all declared MIT | 2026-09-01 | §8 **R7**, §9 |
+| OQ-P1 | Yank `vantage-md` `0.4.1` and `0.4.2` — the `py3-none-any` fallback is the silent failure | 2026-09-01 | [§4.2](#42-version-continuity-and-why-the-yank-is-not-cosmetic), [§9](#9-what-i-would-do-in-order) step 1 |
+| OQ-P2 | The agent CLI gets **its own PyPI project**, `vantage-check`; not a second executable in the server's wheel. Supersedes [`agent-bootstrap.md`](agent-bootstrap.md)'s [`OQ-B7`](agent-bootstrap.md#decision-ledger) | 2026-09-01 | [§6](#6-the-agent-cli-its-own-project-or-a-passenger) |
+| OQ-P3 | **Both commands**: `vantage` is the binary, `vantage-md` an alias, so `uvx vantage-md` needs no `--from` — the two-script wheel's original point, restored as a console-script entry point once the builder became ours ([**OQ-P7**](#decision-ledger)) | 2026-09-01 | [§4.3](#43-the-command-is-vantage-the-one-shot-pays-for-it) |
+| OQ-P4 | The four archive targets (Linux + macOS × x86-64 + arm64), musl if free, **no Windows**. Pass `--platforms` explicitly rather than trusting defaults | 2026-09-01 | [§4.4](#44-which-platforms-the-server-wheel-covers), [§7](#7-non-goals) |
+| OQ-P8 | **One version, one tag, one run.** The three release workflows and their tag namespaces collapse into `publish.yml` on `v[0-9]*`; CI stamps the tag into both manifests; one archive per platform carries both binaries and the Homebrew formula installs both. Owner ruling, for consistency with the sibling projects — it voids [**OQ-P2**](#decision-ledger)'s cadence argument while leaving the separate-projects ruling intact | 2026-09-01 | [§4](#4-what-fixed-looks-like), [§6](#6-the-agent-cli-its-own-project-or-a-passenger) |
+| OQ-P6 | The built frontend is a **tracked artifact**, polyclav's shape: `web-sync` refreshes it and is the only recipe allowed to dirty a tracked file, `build-bin` embeds it as-is. It is the only fix that reaches `go install`; 5.5 MB and the churn are the price | 2026-09-01 | [§4.1](#41-the-frontend-has-to-be-there-at-build-time-and-today-it-often-isnt), `08579a0` |
+| OQ-P7 | **Our own builder**, moved to `scripts/build-wheel.py` and parameterized, for both artifacts. `go-to-wheel` would compile the Go binary a second time, so PyPI and the release would carry different bytes | 2026-09-01 | [§4.5](#45-which-builder--and-the-dual-entry-question-it-settles) |
+| OQ-P5 | Apache-2.0 everywhere. Applied the same day to `packages/vantage-md`, `packages/vantage-check`, and `build-wheel.py`'s wheel metadata, which all declared MIT | 2026-09-01 | [§8](#8-risks) **R7**, [§9](#9-what-i-would-do-in-order) |
 
 ## Open Questions
 

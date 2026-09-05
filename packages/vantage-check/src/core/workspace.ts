@@ -1,6 +1,6 @@
 import { readFileSync, statSync } from "node:fs";
 import { extname } from "node:path";
-import { documentAnchors } from "./slugs.js";
+import { documentAnchors, numberedHeadings } from "./slugs.js";
 import { parseMarkdown } from "./document.js";
 import { parseFrontmatter } from "../../../vantage-md/src/frontmatter.js";
 
@@ -20,6 +20,7 @@ export class Workspace {
   private readonly kinds = new Map<string, TargetKind>();
   private readonly lineCounts = new Map<string, number | null>();
   private readonly anchors = new Map<string, Set<string> | null>();
+  private readonly numbered = new Map<string, Map<string, string> | null>();
 
   kind(path: string): TargetKind {
     const cached = this.kinds.get(path);
@@ -79,6 +80,29 @@ export class Workspace {
       }
     }
     this.anchors.set(path, result);
+    return result;
+  }
+
+  /**
+   * Section number → heading slug for a Markdown file, or null when it is not
+   * Markdown or cannot be read. An empty map is a real answer, distinct from
+   * null: the document is Markdown and has no numbered headings, which is what
+   * `ref/unlinked-section` reads as "nothing to resolve against".
+   */
+  numberedHeadings(path: string): Map<string, string> | null {
+    const cached = this.numbered.get(path);
+    if (cached !== undefined) return cached;
+
+    let result: Map<string, string> | null = null;
+    if (isMarkdown(path)) {
+      try {
+        const text = readFileSync(path, "utf8");
+        result = numberedHeadings(parseMarkdown(parseFrontmatter(text).body));
+      } catch {
+        result = null;
+      }
+    }
+    this.numbered.set(path, result);
     return result;
   }
 }

@@ -28,7 +28,7 @@ User documentation: [`../../userguide/vantage-check.md`](../../userguide/guides/
 
 | Path | What lives there |
 | :--- | :--- |
-| `src/cli.ts` | Argument parsing and dispatch — no filesystem, no process |
+| [`src/cli.ts`](./src/cli.ts) | Argument parsing and dispatch — no filesystem, no process |
 | `src/commands/` | One file per command |
 | `src/core/` | Config, file discovery, document parsing, heading slugs |
 | `src/rules/` | One file per rule family; each owns its failure classification |
