@@ -36,6 +36,7 @@ const DEFAULT_REHYPE = [
   "rehypeVantageAlerts",
   "rehypeVantageDirectives",
   "rehypeSanitize",
+  "rehypeVantageAnchors",
   "rehypeSlug",
   "rehypeHighlight",
   "rehypeCaptureMathStamps",
@@ -57,7 +58,7 @@ describe("buildPipeline order", () => {
     // link in every document into a dead anchor.
     const order = names(buildPipeline().rehypePlugins);
 
-    expect(order.indexOf("rehypeSlug")).toBeGreaterThan(
+    expect(order.indexOf("rehypeVantageAnchors", "rehypeSlug")).toBeGreaterThan(
       order.indexOf("rehypeSanitize"),
     );
   });
@@ -183,6 +184,7 @@ describe("buildPipeline toggles", () => {
       "rehypeVantageAlerts",
       "rehypeVantageDirectives",
       "rehypeSanitize",
+      "rehypeVantageAnchors",
       "rehypeSlug",
       "rehypeHighlight",
     ]);
@@ -207,6 +209,7 @@ describe("buildPipeline toggles", () => {
       "rehypeVantageAlerts",
       "rehypeVantageDirectives",
       "rehypeSanitize",
+      "rehypeVantageAnchors",
       "rehypeSlug",
       "rehypeCaptureMathStamps",
       "rehypeKatex",
@@ -222,6 +225,7 @@ describe("buildPipeline toggles", () => {
       "rehypeVantageAlerts",
       "rehypeVantageDirectives",
       "rehypeSanitize",
+      "rehypeVantageAnchors",
       "rehypeSlug",
       "rehypeHighlight",
       "rehypeCaptureMathStamps",
@@ -238,6 +242,7 @@ describe("buildPipeline toggles", () => {
       "rehypeSourceLines",
       "rehypeVantageAlerts",
       "rehypeVantageDirectives",
+      "rehypeVantageAnchors",
       "rehypeSlug",
       "rehypeHighlight",
       "rehypeCaptureMathStamps",

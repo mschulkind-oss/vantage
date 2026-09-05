@@ -88,6 +88,18 @@ const POINT_PROPERTIES = new Map([["badge", "dataVantageBadge"]]);
 const RUN_PROPERTY = "dataVantageRun";
 const OQ_PROPERTY = "dataVantageOq";
 const LEANING_PROPERTY = "dataVantageLeaning";
+/**
+ * The id, carried as a `data-` attribute rather than written straight to `id`.
+ *
+ * This plugin runs *before* `rehypeSanitize` — it has to, it reads comments and
+ * the sanitiser deletes them — and the sanitiser's default schema clobbers `id`
+ * with the prefix `user-content-`. A bare `id` set here would reach the page as
+ * `user-content-OQ-4`, every `#OQ-4` link in every document would land nowhere,
+ * and nothing would error. `rehypeVantageAnchors` promotes this to a real `id`
+ * on the other side of the sanitiser, which is the same reason `rehypeSlug` is
+ * registered there (`pipeline.ts`).
+ */
+const OQ_ID_PROPERTY = "dataVantageOqId";
 
 /**
  * The three properties `collapsed=true` stamps across a section.
@@ -319,10 +331,16 @@ function stampOq(target: Element, pairs: Map<string, string>) {
   // requires every renderer to emit the same markup.
   setProperty(target, OQ_PROPERTY, "true");
 
-  // `id` resolves and is deliberately not stamped: nothing in the DOM reads it
-  // — the button finds its block by `[data-vantage-oq]` and its text by
-  // `data-vantage-leaning` — and an attribute nobody reads is a sanitiser entry
-  // bought for nothing. It stays in the source for the checker and for `rg`.
+  // `id` becomes the block's anchor, so `[OQ-4](#OQ-4)` scrolls to the question.
+  // Verbatim, case intact: heading slugs are lowercased by `github-slugger` and
+  // these are author-chosen tokens that already appear verbatim in prose, so
+  // the two id namespaces cannot collide by accident. A malformed id is stamped
+  // anyway — the grammar is the checker's to enforce (`vantage/oq-id-format`),
+  // and a renderer that silently dropped one would hide the mistake it is the
+  // checker's job to name. The sanitiser's value allowlist is the backstop.
+  const id = pairs.get("id");
+  if (id !== undefined && id !== "") setProperty(target, OQ_ID_PROPERTY, id);
+
   const leaning = pairs.get("leaning");
   if (leaning === undefined) return;
   // A wrapped directive puts newlines and indentation in the value, and this is

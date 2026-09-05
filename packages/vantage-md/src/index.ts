@@ -21,6 +21,7 @@ export type { RenderOptions, RenderResult } from "./renderMarkdown.js";
 export { default as rehypeSourceLines } from "./rehypeSourceLines.js";
 
 export { default as rehypeVantageDirectives } from "./rehypeVantageDirectives.js";
+export { default as rehypeVantageAnchors } from "./rehypeVantageAnchors.js";
 
 // The directive grammar and vocabulary, with no renderer attached. The CLI
 // checker imports the module by relative path (it must not depend on this

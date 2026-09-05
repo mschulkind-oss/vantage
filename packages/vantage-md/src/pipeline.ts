@@ -15,12 +15,14 @@
  *   so raw HTML is still a string until this plugin parses it.
  * - `rehypeSourceLines` before `rehypeSanitize`: `data-source-line` has to be
  *   an allowlisted attribute on an element the sanitiser keeps.
- * - `rehypeSlug`, `rehypeHighlight` and `rehypeKatex` after `rehypeSanitize`.
- *   For `rehypeSlug` this is not a preference: the sanitiser's default schema
- *   clobbers `id` with the prefix `user-content-`, so slugging before it turns
- *   every `#heading` link in every document into a dead anchor. For the other
- *   two it means their output is trusted rather than filtered — KaTeX emits
- *   inline `style` on nearly every glyph.
+ * - `rehypeVantageAnchors`, `rehypeSlug`, `rehypeHighlight` and `rehypeKatex`
+ *   after `rehypeSanitize`. For the first two this is not a preference: the
+ *   sanitiser's default schema clobbers `id` with the prefix `user-content-`,
+ *   so writing one before it turns every `#heading` and every `#OQ-4` link in
+ *   every document into a dead anchor. `rehypeVantageAnchors` precedes
+ *   `rehypeSlug` because `rehype-slug` leaves an element that already has an
+ *   `id` alone. For the other two, being here means their output is trusted
+ *   rather than filtered — KaTeX emits inline `style` on nearly every glyph.
  *
  * Anything that reads HTML comments must sit between `rehypeRaw` and
  * `rehypeSanitize`: before `rehypeRaw` there are no comment nodes, and
@@ -37,6 +39,7 @@ import rehypeSanitize from "rehype-sanitize";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import rehypeSlug from "rehype-slug";
+import rehypeVantageAnchors from "./rehypeVantageAnchors.js";
 import rehypeSourceLines from "./rehypeSourceLines.js";
 import { rehypeVantageAlerts } from "./rehypeVantageAlerts.js";
 import rehypeVantageDirectives from "./rehypeVantageDirectives.js";
@@ -120,6 +123,14 @@ function buildRehypePlugins(options: PipelineOptions = {}): PluggableList {
   plugins.push(rehypeVantageAlerts);
   plugins.push(rehypeVantageDirectives);
   if (sanitize) plugins.push([rehypeSanitize, sanitizeSchema]);
+  // ── The id slot ───────────────────────────────────────────────────────
+  // Both of these write `id`, and both are here rather than earlier for the
+  // same reason: the sanitiser clobbers `id` with `user-content-`, so anything
+  // that sets one upstream of it produces dead anchors in every document with
+  // no error anywhere. `rehypeVantageAnchors` goes first — `rehypeSlug` skips
+  // an element that already has an `id`, so promoting an Open Question's id
+  // before slugging is what lets a question written as a heading keep it.
+  plugins.push(rehypeVantageAnchors);
   plugins.push(rehypeSlug);
   if (highlight) plugins.push(rehypeHighlight);
   // ── The KaTeX bracket ─────────────────────────────────────────────────

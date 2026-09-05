@@ -176,6 +176,24 @@ export const VANTAGE_OQ_HOST_TARGETS = VANTAGE_ANCHOR_TARGETS.filter(
   (tag) => tag !== "pre" && tag !== "table",
 );
 
+/**
+ * The shape of an `oq` directive's `id`: `OQ-` then an optional short uppercase
+ * prefix then digits. `OQ-9`, `OQ-TP6` and `OQ-A03` are ids; `OQ-foo`, `OQ-tp6`
+ * and a bare `OQ6` are not.
+ *
+ * The prefix is what keeps ids distinct once one document references another's
+ * questions — `trust-paths.md`'s `OQ-4` and a design sketch's `OQ-4` are
+ * different questions, and a bare number cannot say which one a cross-document
+ * reference means. It is optional because most documents never leave their own
+ * file, and requiring it everywhere would fire on every single-doc sketch.
+ *
+ * Three consumers read it from here and none of them may re-spell it: the
+ * plugin that stamps the anchor, the sanitiser that allowlists the value, and
+ * the checker's `vantage/oq-id-format`. A fourth copy is how the checker starts
+ * calling a working anchor malformed.
+ */
+export const VANTAGE_OQ_ID = /^OQ-(?:[A-Z][A-Z0-9]{0,5})?[0-9]+$/;
+
 /** `null` for a key the grammar accepts but no closed set covers. */
 export type KeyVocabulary = readonly string[] | null;
 
