@@ -1199,3 +1199,94 @@ describe("vantage/oq-missing", () => {
     expect(ruleIds(await checkTree(tree, ["."], loaded.settings))).toEqual([]);
   });
 });
+
+describe("vantage/oq-id-format", () => {
+  it("fires on an id outside the grammar", async () => {
+    const root = makeTree({
+      "docs/index.md":
+        '# Q\n\n<!-- vantage: oq id=OQ-nope leaning="Yes." -->\n\nA question.\n',
+    });
+
+    const report = await checkTree(root);
+
+    expect(ruleIds(report)).toEqual(["vantage/oq-id-format"]);
+    expect(report.findings[0]?.message).toContain("OQ-TP6");
+  });
+
+  it.each(["OQ-9", "OQ-TP6", "OQ-A03"])("accepts %s", async (id) => {
+    const root = makeTree({
+      "docs/index.md": `# Q\n\n<!-- vantage: oq id=${id} leaning="Yes." -->\n\nA question.\n`,
+    });
+
+    const report = await checkTree(root);
+
+    expect(ruleIds(report)).toEqual([]);
+  });
+
+  it.each(["OQ-tp6", "OQ-", "OQ-4x", "oq-4"])("rejects %s", async (id) => {
+    const root = makeTree({
+      "docs/index.md": `# Q\n\n<!-- vantage: oq id=${id} leaning="Yes." -->\n\nA question.\n`,
+    });
+
+    const report = await checkTree(root);
+
+    expect(ruleIds(report)).toContain("vantage/oq-id-format");
+  });
+
+  it("says nothing about a directive with no id at all", async () => {
+    const root = makeTree({
+      "docs/index.md":
+        '# Q\n\n<!-- vantage: oq leaning="Yes." -->\n\nA question.\n',
+    });
+
+    const report = await checkTree(root);
+
+    expect(ruleIds(report)).toEqual([]);
+  });
+});
+
+describe("vantage/oq-id-duplicate", () => {
+  // The failure a reader cannot detect by clicking: both blocks carry the id,
+  // so the link works — it just arrives at the other question.
+  it("fires on the second use and names the first", async () => {
+    const root = makeTree({
+      "docs/index.md":
+        '# Q\n\n<!-- vantage: oq id=OQ-4 leaning="One." -->\n\nFirst.\n\n' +
+        '<!-- vantage: oq id=OQ-4 leaning="Two." -->\n\nSecond.\n',
+    });
+
+    const report = await checkTree(root);
+
+    expect(ruleIds(report)).toEqual(["vantage/oq-id-duplicate"]);
+    // Reported at the duplicate, pointing back at the original.
+    expect(report.findings[0]?.line).toBe(7);
+    expect(report.findings[0]?.message).toContain("line 3");
+  });
+
+  it("leaves distinct ids alone", async () => {
+    const root = makeTree({
+      "docs/index.md":
+        '# Q\n\n<!-- vantage: oq id=OQ-4 leaning="One." -->\n\nFirst.\n\n' +
+        '<!-- vantage: oq id=OQ-5 leaning="Two." -->\n\nSecond.\n',
+    });
+
+    const report = await checkTree(root);
+
+    expect(ruleIds(report)).toEqual([]);
+  });
+
+  it("does not double-report a malformed id as a duplicate", async () => {
+    const root = makeTree({
+      "docs/index.md":
+        '# Q\n\n<!-- vantage: oq id=OQ-bad leaning="One." -->\n\nFirst.\n\n' +
+        '<!-- vantage: oq id=OQ-bad leaning="Two." -->\n\nSecond.\n',
+    });
+
+    const report = await checkTree(root);
+
+    expect(ruleIds(report)).toEqual([
+      "vantage/oq-id-format",
+      "vantage/oq-id-format",
+    ]);
+  });
+});

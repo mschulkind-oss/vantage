@@ -149,6 +149,18 @@ export const RULES: readonly RuleMeta[] = [
     default: "error",
   },
   {
+    id: "vantage/oq-id-format",
+    summary:
+      "An `oq` id outside `OQ-<prefix?><digits>`, which the sanitiser refuses, so the question gets no anchor",
+    default: "error",
+  },
+  {
+    id: "vantage/oq-id-duplicate",
+    summary:
+      "The same `oq` id twice in one document — `#id` resolves to the first, so references to the second land on the wrong question",
+    default: "error",
+  },
+  {
     id: "vantage/orphan",
     summary:
       "A directive with no block it can attach to, so it styles nothing — it resolves, so a warning",

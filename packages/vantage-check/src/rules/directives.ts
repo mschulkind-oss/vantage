@@ -14,6 +14,8 @@ import {
   VANTAGE_STYLE_TARGETS,
 } from "../../../vantage-md/src/vantageDirectives.js";
 import { scanComments } from "../core/comments.js";
+import { collectOqIds } from "../core/openQuestions.js";
+import type { DeclaredOq } from "../core/openQuestions.js";
 import type { CommentSegment, Segment } from "../core/comments.js";
 import type { Collector, FilePosition } from "../core/collector.js";
 import { fileLine, parseMarkdown } from "../core/document.js";
@@ -1152,4 +1154,62 @@ export function checkOpenQuestions(collector: Collector): void {
         "instead of \u{1F4AC}; if it is already decided, mark it \u2705.",
     );
   });
+}
+
+/* ------------------------------------------------------------------ *
+ * The id an Open Question is anchored by
+ * ------------------------------------------------------------------ */
+
+/**
+ * `vantage/oq-id-format` and `vantage/oq-id-duplicate` — the two ways an `oq`
+ * directive's `id` fails to become the anchor a reference needs.
+ *
+ * Both are errors because the parsed tree settles them, and both are silent
+ * without a checker. A malformed id is stamped by the plugin and then refused
+ * by the sanitiser's value allowlist, so the page renders correctly and simply
+ * has no anchor. A duplicate is worse: both elements carry the id, `#OQ-4`
+ * resolves to the first, and every reference to the second lands on the wrong
+ * question with nothing anywhere reporting a problem. That is the one failure
+ * a reader cannot detect by clicking, because the link works.
+ */
+export function checkOpenQuestionIds(collector: Collector): void {
+  const declared = collectOqIds(collector.doc.mdast);
+  if (declared.length === 0) return;
+
+  const seen = new Map<string, DeclaredOq>();
+
+  for (const oq of declared) {
+    if (!oq.wellFormed) {
+      collector.report(
+        "vantage/oq-id-format",
+        collector.at(oq.node),
+        `\`${oq.id}\` is not a usable open-question id, so the block gets no ` +
+          "anchor and `#" +
+          oq.id +
+          "` links to nothing. Write `OQ-` then an " +
+          "optional short uppercase prefix then digits — `OQ-9`, `OQ-TP6`, " +
+          "`OQ-A03`. The prefix is what keeps ids distinct once another " +
+          "document references this one's questions.",
+      );
+      continue;
+    }
+
+    const first = seen.get(oq.id);
+    if (first === undefined) {
+      seen.set(oq.id, oq);
+      continue;
+    }
+
+    collector.report(
+      "vantage/oq-id-duplicate",
+      collector.at(oq.node),
+      `\`${oq.id}\` is already used by the open question on line ` +
+        `${fileLine(collector.doc, first.node.position?.start.line ?? 1)}. ` +
+        "Both blocks carry the id, `#" +
+        oq.id +
+        "` resolves to the first, and every " +
+        "reference to this one lands on the other question — a link that works " +
+        "and goes to the wrong place. Give this question its own id.",
+    );
+  }
 }
