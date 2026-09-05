@@ -6,6 +6,7 @@ import {
   headingSlugs,
   nearestAnchor,
 } from "../src/core/slugs.js";
+import { checkTree, makeTree, ruleIds } from "./helpers.js";
 
 /**
  * Section slugs are not reasonable to guess. An em dash leaves two hyphens, a
@@ -88,5 +89,65 @@ describe("nearestAnchor", () => {
 
   it("suggests nothing when nothing is close", () => {
     expect(nearestAnchor("usage", ["system-architecture"])).toBeUndefined();
+  });
+});
+
+describe("open question anchors", () => {
+  const OQ = '<!-- vantage: oq id=OQ-4 leaning="Yes." -->';
+
+  it("counts a well-formed oq id as a link target", async () => {
+    const root = makeTree({
+      "docs/index.md": `# Anchors\n\n${OQ}\n\nA question.\n\nSee [OQ-4](#OQ-4).\n`,
+    });
+
+    const report = await checkTree(root);
+
+    expect(ruleIds(report)).toEqual([]);
+  });
+
+  it("resolves one across documents", async () => {
+    const root = makeTree({
+      "docs/index.md": "See [OQ-4](./questions.md#OQ-4).\n",
+      "docs/questions.md": `# Questions\n\n${OQ}\n\nA question.\n`,
+    });
+
+    const report = await checkTree(root);
+
+    expect(ruleIds(report)).toEqual([]);
+  });
+
+  it("still reports a fragment no oq declares", async () => {
+    const root = makeTree({
+      "docs/index.md": `# Anchors\n\n${OQ}\n\nA question.\n\nSee [OQ-9](#OQ-9).\n`,
+    });
+
+    const report = await checkTree(root);
+
+    expect(ruleIds(report)).toEqual(["link/dead-section-anchor"]);
+    expect(report.findings[0]?.message).toContain("#OQ-4");
+  });
+
+  // The sanitiser refuses a malformed id, so it reaches no `id` attribute and
+  // the fragment navigates nowhere. Counting it here would call a dead link
+  // live — the one direction the checker must not err in.
+  it("does not count a malformed id", async () => {
+    const root = makeTree({
+      "docs/index.md":
+        '# Anchors\n\n<!-- vantage: oq id=OQ-nope leaning="Yes." -->\n\nA question.\n\nSee [OQ-nope](#OQ-nope).\n',
+    });
+
+    const report = await checkTree(root);
+
+    expect(ruleIds(report)).toContain("link/dead-section-anchor");
+  });
+
+  it("leaves heading slugs alone", async () => {
+    const root = makeTree({
+      "docs/index.md": `# Anchors\n\n## Open questions\n\n${OQ}\n\nA question.\n\nSee [the list](#open-questions).\n`,
+    });
+
+    const report = await checkTree(root);
+
+    expect(ruleIds(report)).toEqual([]);
   });
 });

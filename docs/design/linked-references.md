@@ -47,7 +47,7 @@ the assertion is unverifiable by the reader and unverified by anyone — which i
 exactly how `OQ-TP4` outlives the question it names.
 
 **P2. Only report when the tree has settled it.** Inherited from the existing
-link rules ([`links.ts:20`](../../packages/vantage-check/src/rules/links.ts#L20)):
+link rules ([`links.ts:21`](../../packages/vantage-check/src/rules/links.ts#L21)):
 walk the AST, never the raw text, and stay silent on anything ambiguous. A
 checker that invents one finding stops being run.
 
@@ -64,17 +64,18 @@ Verified against the code 2026-09-04.
 
 | Piece | Where | What it does |
 | :--- | :--- | :--- |
-| `vantage/oq-missing` | [`directives.ts:1203`](../../packages/vantage-check/src/rules/directives.ts#L1203) | Errors on a 💬 question with a leaning and no `oq` directive |
+| `vantage/oq-missing` | [`directives.ts:1105`](../../packages/vantage-check/src/rules/directives.ts#L1105) | Errors on a 💬 question with a leaning and no `oq` directive |
 | `link/dead-section-anchor` | [`links.ts`](../../packages/vantage-check/src/rules/links.ts) | Errors on a `#fragment` matching no heading in the target |
 | `link/missing-target` | [`links.ts`](../../packages/vantage-check/src/rules/links.ts) | Errors on a relative link whose target is not on disk |
-| `documentAnchors` | [`slugs.ts:57`](../../packages/vantage-check/src/core/slugs.ts#L57) | Heading slugs + hand-written HTML ids — the set a fragment may target |
-| `oq` vocabulary | [`vantageDirectives.ts:209`](../../packages/vantage-md/src/vantageDirectives.ts#L209) | `{ id: null, leaning: null }` — `null` meaning "free text, no closed set" |
+| `documentAnchors` | [`slugs.ts:67`](../../packages/vantage-check/src/core/slugs.ts#L67) | Heading slugs + hand-written HTML ids — the set a fragment may target |
+| `oq` vocabulary | [`vantageDirectives.ts:224`](../../packages/vantage-md/src/vantageDirectives.ts#L224) | `{ id: null, leaning: null }` — `null` meaning "free text, no closed set" |
 
 Two facts do the shaping.
 
-**An OQ id never reaches the DOM.** `stampOq` sets `data-vantage-oq` and
-`data-vantage-leaning` and drops `id` on purpose
-([`rehypeVantageDirectives.ts:322`](../../packages/vantage-md/src/rehypeVantageDirectives.ts#L322)):
+**An OQ id never reached the DOM** — the state this design changes, recorded
+here as it stood. `stampOq` set `data-vantage-oq` and `data-vantage-leaning` and
+dropped `id` on purpose
+([`rehypeVantageDirectives.ts:328`](../../packages/vantage-md/src/rehypeVantageDirectives.ts#L328)):
 *"`id` resolves and is deliberately not stamped: nothing in the DOM reads it …
 an attribute nobody reads is a sanitiser entry bought for nothing. It stays in
 the source for the checker and for `rg`."* That reasoning was correct when the
@@ -135,7 +136,7 @@ flowchart TD
 > (it must — it reads HTML comments, which the sanitiser deletes), and the
 > sanitiser's default schema clobbers `id` with the prefix `user-content-`.
 > `rehypeSlug` is registered *after* the sanitiser for exactly this reason
-> ([`pipeline.ts:19`](../../packages/vantage-md/src/pipeline.ts#L19)). A bare
+> ([`pipeline.ts:20`](../../packages/vantage-md/src/pipeline.ts#L20)). A bare
 > `id` stamped early becomes `user-content-OQ-TP4`, every `#OQ-TP4` link in
 > every document dies, and nothing errors anywhere.
 
@@ -144,7 +145,7 @@ The id therefore travels in two hops:
 1. **Before sanitize**, `stampOq` sets `data-vantage-oq-id` alongside the
    attributes it already sets. The schema allowlists it **by pattern**, not by
    name alone — the same treatment `data-vantage-collapse-group` gets
-   ([`sanitize.ts:252`](../../packages/vantage-md/src/sanitize.ts#L252)) — so a
+   ([`sanitize.ts:256`](../../packages/vantage-md/src/sanitize.ts#L256)) — so a
    document cannot smuggle an arbitrary `id` into the page through raw HTML.
 2. **After sanitize**, a promotion step registered beside `rehypeSlug` moves
    `data-vantage-oq-id` onto `id` and removes the data attribute.
