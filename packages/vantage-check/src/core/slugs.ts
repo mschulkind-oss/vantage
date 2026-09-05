@@ -73,6 +73,39 @@ export function documentAnchors(mdast: Root): Set<string> {
 }
 
 /**
+ * Section number → the slug of the heading carrying it, for every heading whose
+ * text opens with a dotted number: `## 4.1 The id grammar` yields
+ * `"4.1" -> "41-the-id-grammar"`.
+ *
+ * This is what lets `ref/unlinked-section` check that `§4.1` links to §4.1 and
+ * not merely to *something*. Built from the same slugger pass as the anchors,
+ * because a number resolved against one slugging and linked against another is
+ * a mismatch the rule would report as the author's mistake.
+ *
+ * An empty map means the document never adopted numbered headings, which the
+ * rule reads as "nothing to resolve against" rather than "every reference is
+ * wrong".
+ */
+export function numberedHeadings(mdast: Root): Map<string, string> {
+  const slugger = new GithubSlugger();
+  const numbers = new Map<string, string>();
+
+  visit(mdast, "heading", (node) => {
+    const text = mdastToString(node, {
+      includeImageAlt: false,
+      includeHtml: false,
+    });
+    const slug = slugger.slug(text);
+    const number = /^([0-9]+(?:\.[0-9]+)*)[.)\s]/.exec(text.trim())?.[1];
+    // First one wins: a repeated number is already a document bug, and the
+    // reference should resolve to the section that claimed it first.
+    if (number !== undefined && !numbers.has(number)) numbers.set(number, slug);
+  });
+
+  return numbers;
+}
+
+/**
  * The closest anchor to what someone wrote, when there is an obvious one.
  *
  * A dead-anchor finding an agent can fix in one shot is worth more than a

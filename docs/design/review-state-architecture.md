@@ -1,17 +1,17 @@
 # Where Review State Lives — and Why It Keeps Biting Us
 
 > Status: **implemented** · 2026-07-19 (proposed and shipped the same day;
-> amended the same day — see §11; further amended 2026-07-20 — see §12)
+> amended the same day — see [§11](#11-follow-up-two-facts-that-were-still-sharing-one-slot); further amended 2026-07-20 — see [§12](#12-follow-up-the-inbox-was-guessing-when-the-writer-was-done))
 >
 > Landed as `59c95eaa` (command endpoints, review_changed push, response
 > inbox), `b417e787` (frontend commands, paste box, inbox payload), `b732ff6a`
 > (changelog protocol retired, machinery deleted, stale-payload warning), and
-> `7e1c0bd6` (two silent-swallow defects found by attacking the result). §10's
+> `7e1c0bd6` (two silent-swallow defects found by attacking the result). [§10](#10-decisions-and-what-shipping-taught-us)'s
 > "do not build it now" recommendation was overtaken by the decision to build
 > it; the reasoning below stands as the record of why.
 >
-> **§1–§5 describe the architecture as it was before that work** — they are the
-> diagnosis, kept in their original present tense. §6 onward is what now
+> **[§1](#1-verdict-up-front)–[§5](#5-what-the-compensation-costs-today) describe the architecture as it was before that work** — they are the
+> diagnosis, kept in their original present tense. [§6](#6-the-right-shape-commands-in-state-out-delivery-is-an-event) onward is what now
 > exists.
 >
 > Prompted by a one-line bug report — "replying to a comment doesn't relight the
@@ -22,7 +22,7 @@
 > It ends with a proposal whose deletion list is longer than its addition list.
 >
 > This doc was itself adversarially fact-checked against the code; corrections
-> from that pass are incorporated, and §6 owes its push-channel section to it.
+> from that pass are incorporated, and [§6](#6-the-right-shape-commands-in-state-out-delivery-is-an-event) owes its push-channel section to it.
 
 ## 1. Verdict up front
 
@@ -131,7 +131,7 @@ meaning can change without content changing (verbatim repeat rounds).
 
 The rule this violates: **messages need identity, and identity must travel
 with the message.** When it does, dedup is a lookup. When it must be inferred
-from content, dedup is the nine-commit chase in §3.
+from content, dedup is the nine-commit chase in [§3](#3-the-incident-record-one-failure-seven-doors).
 
 ### 4.2 Full-state replacement from two writers
 
@@ -269,7 +269,7 @@ only — no REST endpoint, ever," on the grounds that the agent's contract is
 editing Markdown and a second channel was out of scope — while presciently
 warning that this made the changelog grammar load-bearing. That was a
 reasonable call made *before the parser existed*, when the dedup tax was
-invisible; §3–§5 of this document are what the single-channel simplicity
+invisible; [§3](#3-the-incident-record-one-failure-seven-doors)–[§5](#5-what-the-compensation-costs-today) of this document are what the single-channel simplicity
 turned out to cost. The 2026-07-19 review reaffirmed the original constraint
 on the *medium* — no direct agent-to-server comms, no CLI; agents transfer by
 copy/paste and file writes — so the change here is deliberately minimal: the
@@ -367,7 +367,7 @@ parser, demoted from protocol to paste-box input format.
 - **Durability, mostly preserved.** The doc-block channel was
   zero-infrastructure at-least-once delivery — it survived server crashes and
   arbitrary downtime, re-offered on every save, and the entire dedup tax of
-  §5 was the *price* of that property. With the inbox as the primary door the
+  [§5](#5-what-the-compensation-costs-today) was the *price* of that property. With the inbox as the primary door the
   class is kept: lines buffer through downtime and survive crashes
   (consumption is rename → persist → delete), now deduped by nonce instead of
   by inference. What is lost is only the re-offered-forever behavior — which
@@ -454,10 +454,10 @@ conversation system losing turns.
 
 The original recommendation was "adopt the direction, but do not build it
 now." That was overtaken: the rework was built immediately after the
-decisions below were made. What shipped follows §6–§8 with one addition the
+decisions below were made. What shipped follows [§6](#6-the-right-shape-commands-in-state-out-delivery-is-an-event)–[§8](#8-migration-sketch) with one addition the
 plan missed and two defects worth recording.
 
-**The addition:** §6.1's push channel turned out to be load-bearing in a way
+**The addition:** [§6.1](#61-reviewer-writes-become-commands)'s push channel turned out to be load-bearing in a way
 the first draft understated. Severing the response-from-document coupling
 also severs the *only* path by which an agent's answer reached the browser,
 because the websocket fired solely on document file changes. Every command
@@ -475,7 +475,7 @@ both the same failure this rework exists to eliminate wearing new clothes:
    marker, unreviewed and unfenced, so serving this very repository nagged on
    every save of the design docs that quote the retired format. It was made
    fence-aware and gated on the document being under review — and then, later,
-   deleted outright. See §10.1. *Lesson: a warning that cries wolf on
+   deleted outright. See [§10.1](#101-two-unfalsifiable-signals-and-the-one-that-replaced-them). *Lesson: a warning that cries wolf on
    documentation gets trained away.*
 
 ### 10.1 Two unfalsifiable signals, and the one that replaced them
@@ -526,7 +526,7 @@ That bit is falsifiable in both directions. Byte-identical blocks mean a definit
 *no* — edits that miss every commented block correctly say nothing, because the
 comments' context is genuinely still valid. It needs no timers, no TTL, and no
 handoff tracking: it is a function of content, so it clears itself when the text
-is restored, when a reply re-captures the block (§4), or when the agent answers
+is restored, when a reply re-captures the block ([§4](#4-diagnosis)), or when the agent answers
 and the comment stops being pending. And it is deliberately one bit, not a count.
 The reviewer's response to it is "re-read the document before handing these over",
 which is a whole-document action; knowing it was two of five comments would not
@@ -539,7 +539,7 @@ distinguish the case it names from its opposite.* Both failed versions named
 something unobservable — a lost turn, then an intention — and each fired on
 evidence equally consistent with the opposite. The fix was not a better heuristic
 but a better question: ask something the stored data can answer, and let the
-reviewer draw the conclusion. This is §9's "prefer failure modes that are
+reviewer draw the conclusion. This is [§9](#9-how-to-smell-this-earlier)'s "prefer failure modes that are
 visible" with a corollary: visible, and not lying about which failure it is.
 
 The decisions that shaped the build (2026-07-19 review — conducted, fittingly,
@@ -547,10 +547,10 @@ through the changelog protocol this work retires):
 
 1. **Delivery doors: inbox + paste only.** No agent-facing API or CLI, ever —
    copy/paste and file writes are the transfer mediums. This reaffirms the
-   original design's constraint on medium (§6.2) rather than reversing it.
+   original design's constraint on medium ([§6.2](#62-agent-responses-become-deliveries)) rather than reversing it.
 2. **Fast retirement.** No transition release: the changelog protocol and its
    dedup apparatus go in one change, leaving only the stale-payload warning.
-   (That warning has since been removed too — §10.1 — so retirement is total:
+   (That warning has since been removed too — [§10.1](#101-two-unfalsifiable-signals-and-the-one-that-replaced-them) — so retirement is total:
    nothing in the codebase reads the marker.)
 3. **History is machine-local, by preference.** No export command; reviewed
    documents stay free of review litter in git.
@@ -573,7 +573,7 @@ _Added 2026-07-19, after the above shipped._
 The rework moved reviewer writes to commands and agent writes to the inbox, and
 the defects it was built to kill stayed dead. But three user-visible bugs
 surfaced afterwards, and they turned out to be one bug wearing three hats — the
-same failure mode as §1, one level up.
+same failure mode as [§1](#1-verdict-up-front), one level up.
 
 The architecture separated **who writes what**. It did not separate **what is a
 turn from what is a flag**, or **turn state from anchor state**:
@@ -634,14 +634,14 @@ Two smaller things were fixed alongside, in the same pass:
   again. It now also treats an entry as a redelivery when the comment already
   carries an agent reaction with the same round *and* summary — a distinction
   that was impossible under the in-document protocol and is available only
-  because deliveries now carry `round` explicitly (§7).
+  because deliveries now carry `round` explicitly ([§7](#7-what-this-deletes-keeps-and-costs)).
 - **The paste box is gone.** `POST /review/responses`, the bullet grammar, and
   the panel UI are deleted; the inbox is the only delivery door. The decision
   above ("inbox + paste only") kept paste as the door for tool-less chat
   models; in practice every agent writes files, and a second door meant a
   second dedup story (content-hashed nonces) for no realized benefit.
 
-**The lesson worth carrying:** §1's diagnosis was "the same fact is derived in
+**The lesson worth carrying:** [§1](#1-verdict-up-front)'s diagnosis was "the same fact is derived in
 two places." This follow-up is its sibling — "two different facts are presented
 in one place." Both produce the same symptom: reasoning that seems to work,
 until the two things drift apart and the UI starts asserting something nobody
@@ -653,7 +653,7 @@ decided.
 
 _Added 2026-07-20._
 
-The inbox fixed the channel — messages are consumed once and gone (§6.2). But
+The inbox fixed the channel — messages are consumed once and gone ([§6.2](#62-agent-responses-become-deliveries)). But
 its *completion signal* was inferred, not stated, and that reopened the same
 class of silent loss the whole rework exists to kill, now on the delivery leg.
 
@@ -677,7 +677,7 @@ two ways:
 Every scrap of machinery around it — `hasCompleteLine`, the tail split in
 `readCompleteLines`, `*.partial`, `preservePartialLine` — was compensation for
 one thing: **the consumer was reconstructing "is the writer done?" from byte
-structure.** That is §9's first smell exactly, one leg further out: a fact
+structure.** That is [§9](#9-how-to-smell-this-earlier)'s first smell exactly, one leg further out: a fact
 (*this delivery is complete*) inferred after the fact from an artifact that was
 never a record of it, instead of stated by the party who knows it.
 
@@ -697,7 +697,7 @@ clipboard payload now teaches write-then-rename; the `*.partial` leftover is
 gone from the user guide, replaced by `*.writing`.
 
 Cleaned up in the same pass: the "If you cannot write files — reply in chat"
-fallback in the clipboard payload pointed at the paste box, which §11 had
+fallback in the clipboard payload pointed at the paste box, which [§11](#11-follow-up-two-facts-that-were-still-sharing-one-slot) had
 already removed. It was instructing agents to use a door that no longer existed.
 
 ### 12.1 The first cut denylisted; it had to allowlist

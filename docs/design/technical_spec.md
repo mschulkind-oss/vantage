@@ -56,7 +56,7 @@ frontend.
 - `RepoInfo` / `RepoInfoResponse`: repository identity for `/repos` and `/info`.
 - `VersionInfo`: short HEAD SHA + dirty flag for `/version`.
 - `ReviewData`, `ReviewComment`, `ReviewSnapshot`, `CommentAnchor`,
-  `CommentReaction`: the review-mode record (see §2.5). Review timestamps are
+  `CommentReaction`: the review-mode record (see [§2.5](#25-review-mode-internalreview-internalreviewanchor)). Review timestamps are
   JSON numbers (epoch seconds authored client-side), distinct from the RFC3339
   `time.Time` used elsewhere.
 
@@ -129,7 +129,7 @@ review store, perf store, and live Manager) are built once.
     git/fs caches, applies review changelog blocks for changed Markdown files,
     and broadcasts a sorted `files_changed` payload.
 
-- **`review.Store`** — review-mode persistence (see §2.5).
+- **`review.Store`** — review-mode persistence (see [§2.5](#25-review-mode-internalreview-internalreviewanchor)).
 
 - **`perf`** — in-memory timing instrumentation: a ring buffer of timing
   records, request-timing middleware, percentile diagnostics, and an anonymized

@@ -9,7 +9,7 @@ summary: "Review of the nine commits implementing the agent-facing CLI design: w
 # Implementation review — the `vantage-check` CLI
 
 **What this reviews.** The nine commits from `7cafe4b` to `554da8e` that
-implement [`../design/agent-cli.md`](../design/agent-cli.md). Reviewed
+implement [[`../design/agent-cli.md`](../design/agent-cli.md)](../design/agent-cli.md). Reviewed
 2026-08-25 against the tree at `554da8e`. Every claim below was verified by
 running the code, not by reading it — the commands are in
 [Appendix B](#appendix-b--verification-log).
@@ -39,7 +39,7 @@ head.
 ## Verdict
 
 The implementation is faithful and the hard parts are genuinely solved. Nine
-commits map one-to-one onto the design's §9 build order, the delegate-failure
+commits map one-to-one onto the design's [§9](../design/agent-cli.md#9-what-i-would-build-in-order) build order, the delegate-failure
 classification of **P2** is real code rather than a comment, and the trap the
 design flagged as measured-not-theoretical (Mermaid's DOM dependency) was
 rediscovered by dogfooding and fixed properly.
@@ -59,7 +59,7 @@ findings live there.
 
 ## 1. What shipped
 
-| Phase (design §9) | Commits | Landed |
+| Phase (design [§9](../design/agent-cli.md#9-what-i-would-build-in-order)) | Commits | Landed |
 | :--- | :--- | :--- |
 | 1. Style guide single-sourced in the package | `7cafe4b` | Yes |
 | 2. CLI scaffold, compile pipeline, release wiring | `668d755` | Yes |
@@ -156,7 +156,7 @@ And two rulings given through `AskUserQuestion`:
 
 | Question | Options offered | Ruling |
 | :--- | :--- | :--- |
-| How much of §9 should this pass cover? | Phases 1–4 *(recommended)* · **All six phases** · Spike: phases 1–2 | **All six phases** |
+| How much of [§9](../design/agent-cli.md#9-what-i-would-build-in-order) should this pass cover? | Phases 1–4 *(recommended)* · **All six phases** · Spike: phases 1–2 | **All six phases** |
 | How should the single-file binary be built? Node SEA cannot cross-compile; `bun build --compile` can, but bun is not installed | **bun cross-compile** *(recommended)* · Node SEA, per-platform | **bun cross-compile** |
 
 The plan was then approved through `ExitPlanMode` with no edits.
@@ -183,7 +183,7 @@ elsewhere. Reconstructed from the compaction summaries and error results:
 | Cross-compiling to a non-host target needs a runtime download, blocked in the sandbox | Unresolvable locally | Deferred to CI — **and therefore never verified** (see [F3](#f3-the-uvx-channel-has-never-worked)) |
 | `mermaid.parse` throws `DOMPurify.addHook is not a function` on every *labeled* flowchart, headless | Found late, by dogfooding | Headless `dompurify` shim (see [F2](#f2-the-shims-binary-side-wiring-is-untested)) |
 
-The last one is the most interesting: the design's §5.2 predicted the DOM
+The last one is the most interesting: the design's [§5.2](../design/agent-cli.md#52-a-delegates-failure-is-not-automatically-a-finding) predicted the DOM
 problem and the agent built the classifier for it, but the *specific* trigger —
 node **labels**, not diagrams in general — only surfaced when the built binary
 was run against this repo's own `userguide/`, at hour eleven. The design's own
@@ -262,7 +262,7 @@ before upload) and run it against a labeled flowchart.
 > [!NOTE]
 > **`publish-check.yml` no longer exists.** It was merged into `publish.yml` on
 > 2026-09-01, when every artifact moved to one version and one tag
-> ([`../design/pypi-distribution.md`](../design/pypi-distribution.md) §4). Line
+> ([`../design/pypi-distribution.md`](../design/pypi-distribution.md) [§4](../design/pypi-distribution.md#4-what-fixed-looks-like)). Line
 > references below are to the file as it stood at review time and are kept as
 > plain text rather than links.
 
@@ -348,7 +348,7 @@ root, which is why the primary flow works.
 | N4 | A non-Markdown file argument and an empty directory both print `✓ 0 files checked, no findings`, exit 0 | `src/check.ts` |
 | N5 | `--strict` ORs with config `strict`, so a config `strict = true` cannot be overridden; the userguide claims flags win | `src/check.ts` |
 | N6 | No regression test for the design's headline `link/*` trap (links inside inline code and fences) — behavior is correct, but untested; raw-HTML `<a href>` is not checked at all | `src/rules/links.test.ts` |
-| N7 | Inverted-range detection was dropped (correctly — [`parseLineAnchor`](../../packages/vantage-md/src/lineAnchor.ts#L15-L26) normalizes with min/max, and there is a test asserting it), but §5.3 and the Decision Ledger still promise it | `../design/agent-cli.md` |
+| N7 | Inverted-range detection was dropped (correctly — [`parseLineAnchor`](../../packages/vantage-md/src/lineAnchor.ts#L15-L26) normalizes with min/max, and there is a test asserting it), but [§5.3](../design/agent-cli.md#53-what-we-write-ourselves) and the Decision Ledger still promise it | [`../design/agent-cli.md`](../design/agent-cli.md) |
 | N8 | The design doc's own `#L13-L97` anchor went stale when `7cafe4b` moved the style guide — it is the single finding the checker reports on this repo, so the tree fails its own checker | [`../design/agent-cli.md:68`](../design/agent-cli.md#L68) |
 | N9 | R5 deserves its measurement on the record: 92 MB binary, 36 MB wheel, per platform, per release | — |
 

@@ -51,7 +51,7 @@ Three principles do the load-bearing work:
   failures.** We do not reimplement Markdown, Mermaid, or KaTeX parsing; we run
   those projects' own parsers. But a delegate can fail because *our environment
   is wrong* rather than because *the document is wrong*, and reporting the first
-  kind as a finding is the fastest way to destroy trust in the tool. See §5.2 —
+  kind as a finding is the fastest way to destroy trust in the tool. See [§5.2](#52-a-delegates-failure-is-not-automatically-a-finding) —
   this is not hypothetical, it is measured.
 - **P3. Discovery rides a channel we already control.** The agent's environment
   is not guaranteed to contain anything Vantage-related, and we are **not**
@@ -65,7 +65,7 @@ moves by hand.
 
 **The style guide** lives as a TypeScript string constant,
 `STYLE_GUIDE_SNIPPET`, at `frontend/src/components/StyleGuideModal.tsx:13-97`
-(as of `3e7d8e4`; §9 step 1 has since moved it to
+(as of `3e7d8e4`; [§9](#9-what-i-would-build-in-order) step 1 has since moved it to
 [`../../packages/vantage-md/src/styleGuide.ts`](../../packages/vantage-md/src/styleGuide.ts)
 and renamed it `STYLE_GUIDE`) — roughly 85 lines covering structure, relative-link rules, frontmatter, Mermaid
 label quoting, code and diff fences, callouts, tables, and the `$$...$$` math
@@ -78,7 +78,7 @@ button, and the modal tells you to paste it into your agent's context.
 > [!WARNING]
 > **The style guide is a shipped, undocumented feature.** As of 2026-08-24 there
 > are zero mentions of it in `userguide/`, `README.md`, or `docs/`. Whatever else
-> this design does, §9 step 6 should finally write it down.
+> this design does, [§9](#9-what-i-would-build-in-order) step 6 should finally write it down.
 
 There is also a copy of substantially this guidance living outside the repo, as
 an agent skill file. It is referenced nowhere in this tree and is not this
@@ -147,7 +147,7 @@ at all.
 
 **The build cost is one-time setup, then per-release CI.** A cross-compile
 matrix (linux x64/arm64, darwin x64/arm64 — Windows was dropped on 2026-09-01,
-see [`pypi-distribution.md`](pypi-distribution.md) §4.4) wired once into the
+see [`pypi-distribution.md`](pypi-distribution.md) [§4.4](pypi-distribution.md#44-which-platforms-the-server-wheel-covers)) wired once into the
 existing release workflow; no per-user cost, and nothing an agent ever waits on.
 The toolchain is already Node 22 (`mise.toml`), so Node's SEA is available;
 `bun build --compile` is the other candidate and is not currently installed
@@ -176,7 +176,7 @@ $ vantage-check docs/design/api.md --format json
 
 | Concern | Delegated to | Already a dependency? |
 | :--- | :--- | :--- |
-| Mermaid diagrams parse | `mermaid`'s own parser — with the caveat in §5.2 | Yes — `optionalDependencies` |
+| Mermaid diagrams parse | `mermaid`'s own parser — with the caveat in [§5.2](#52-a-delegates-failure-is-not-automatically-a-finding) | Yes — `optionalDependencies` |
 | Math expressions compile | `katex` in `throwOnError` mode | Yes — direct dependency |
 | Markdown is well-formed | `remark` / `remark-gfm` (the viewer's own parser) | Yes — direct dependency |
 | General Markdown hygiene | `remark-lint` presets, opt-in | New |
@@ -221,7 +221,7 @@ wrong* (report it) versus *our environment is wrong* (never report it; fail the
 run loudly instead, because a checker that cannot check must not report green).
 For mermaid specifically that means matching on grammar errors and, if a DOM
 shim proves necessary for full coverage, weighing it against binary size — a
-question §4's compile decision makes real, since jsdom is not small.
+question [§4](#4-distribution-one-compiled-artifact-no-runtime)'s compile decision makes real, since jsdom is not small.
 
 ### 5.3 What we write ourselves
 
@@ -249,7 +249,7 @@ earn that rate by being filesystem-verified rather than heuristic.
 > blocks, and autolinks are not links. That one is on the record because it is
 > the obvious way to get `link/*` wrong.
 >
-> And while writing §5.2's cross-reference I hand-derived its slug and got it
+> And while writing [§5.2](#52-a-delegates-failure-is-not-automatically-a-finding)'s cross-reference I hand-derived its slug and got it
 > wrong: an em dash inside a heading leaves **two** hyphens, not one
 > (`5-check--delegate-…`). Section slugs are not reasonable to guess — the
 > checker must run the same slugger the renderer runs. That is the entire case
@@ -283,7 +283,7 @@ anything else itself once it has been told what is wrong.
 ## 6. How the agent finds out any of this exists
 
 **P3** is the part that is easy to skip and fatal to skip. A CLI nobody knows
-about is exactly as undiscoverable as a modal nobody knows about — and §2's
+about is exactly as undiscoverable as a modal nobody knows about — and [§2](#2-what-exists-today-precisely)'s
 finding is that we have already shipped one of those.
 
 **We are not touching `AGENTS.md`.** Not writing to it, not requiring a stanza
@@ -331,13 +331,13 @@ command remains available for anyone who wants to wire it in earlier.
 
 | Risk | Mitigation |
 | :--- | :--- |
-| **R1. Delegate environment failures reported as document defects** — measured, not hypothetical (§5.2) | Classify every delegate's failures into document-wrong vs environment-wrong. Environment-wrong fails the run loudly; it never becomes a finding, and a checker that cannot check never reports green. |
+| **R1. Delegate environment failures reported as document defects** — measured, not hypothetical ([§5.2](#52-a-delegates-failure-is-not-automatically-a-finding)) | Classify every delegate's failures into document-wrong vs environment-wrong. Environment-wrong fails the run loudly; it never becomes a finding, and a checker that cannot check never reports green. |
 | **R2. False positives erode trust** — one bogus error and the agent stops running it | Our own rules are filesystem-verified, not heuristic. Ship `link/*` first because it is checkable rather than inferable. R1 is the other half of this. |
 | **R3. Two-implementation drift** if the Go binary also grows checks | Don't. Per **P2**, TypeScript owns it. If the Go binary ever needs to check, it shells out or does nothing. |
 | **R4. Release-matrix maintenance** — five platform binaries per release | One-time CI wiring into a release pipeline that already exists; no per-user cost. Accepted deliberately over shipping two runtimes. |
-| **R5. Binary size** if full Mermaid coverage needs a DOM shim | Weigh jsdom against dropping to grammar-error matching (§5.2). Decide with a measurement, not a guess. |
+| **R5. Binary size** if full Mermaid coverage needs a DOM shim | Weigh jsdom against dropping to grammar-error matching ([§5.2](#52-a-delegates-failure-is-not-automatically-a-finding)). Decide with a measurement, not a guess. |
 | **R6. Version skew** — agent runs a newer binary against an older server | Checks describe the *format*, which is stable, not server behavior. |
-| **R7. Scope gravity** — "the CLI could also…" is how this becomes a second product | §7 is the defense. Every proposed command justifies itself against **P1**. |
+| **R7. Scope gravity** — "the CLI could also…" is how this becomes a second product | [§7](#7-non-goals--what-this-does-not-license) is the defense. Every proposed command justifies itself against **P1**. |
 
 **What it costs us.** A cross-compile release matrix, a published command
 surface that becomes a compatibility promise, and the release discipline of a
@@ -355,18 +355,18 @@ that currently reach a human before they reach a check.
 2. **The CLI skeleton and compile pipeline**, with `style-guide` as its only
    command. Proves the cross-compile and the release matrix on a command whose
    logic cannot fail.
-3. **`check`, our own `link/*` rules only** (§5.3). The minimum viable useful
+3. **`check`, our own `link/*` rules only** ([§5.3](#53-what-we-write-ourselves)). The minimum viable useful
    checker and the highest-value slice.
-4. **Payload pointer** (§6), so the thing is actually reachable. Immediately
+4. **Payload pointer** ([§6](#6-how-the-agent-finds-out-any-of-this-exists)), so the thing is actually reachable. Immediately
    after step 3 — a checker nobody runs scores zero.
-5. **Delegated validators** (§5.1), each landing with its failure classification
-   (§5.2) — KaTeX and frontmatter first because they are clean, Mermaid last
-   because it is not. Config (§5.4) lands here, since severities are what it
+5. **Delegated validators** ([§5.1](#51-what-we-delegate)), each landing with its failure classification
+   ([§5.2](#52-a-delegates-failure-is-not-automatically-a-finding)) — KaTeX and frontmatter first because they are clean, Mermaid last
+   because it is not. Config ([§5.4](#54-configuration)) lands here, since severities are what it
    configures.
 6. **Document all of it** in `userguide/` — including, finally, the style guide
    feature that has been shipping undocumented.
 
-`--fix` (§5.5) comes after all of it, if at all.
+`--fix` ([§5.5](#55---fix)) comes after all of it, if at all.
 
 ## 10. Icebox
 
@@ -394,7 +394,7 @@ someone.
   without Node, slower cold, and it drags a lint-time dependency tree into a
   library package. Shipping it *alongside* a binary is worse than either alone:
   two dependency stories and two failure modes for one tool.
-- **Put the checker in the Go binary.** Rejected on **P2** and §4: guaranteed
+- **Put the checker in the Go binary.** Rejected on **P2** and [§4](#4-distribution-one-compiled-artifact-no-runtime): guaranteed
   invisible drift from the real renderer.
 - **Write our own rules for Mermaid, math, and Markdown validity.** Rejected —
   this was the first draft's plan and it was wrong. Those parsers exist, four of
@@ -402,11 +402,11 @@ someone.
   drift. This is now **P2**.
 - **Use `@mermaid-js/parser` instead of dealing with mermaid's DOM dependency.**
   Rejected as a general solution — verified 2026-08-24 to cover only the newer
-  Langium grammars, not flowchart or sequence. See the §5.2 caution.
+  Langium grammars, not flowchart or sequence. See the [§5.2](#52-a-delegates-failure-is-not-automatically-a-finding) caution.
 - **A `remark-lint` preset as the user-facing surface.** Rejected as the
   surface — it needs a config file and a `remark` install, failing the
   one-command bootstrap. **Adopted as an internal engine** for general Markdown
-  hygiene (§5.1).
+  hygiene ([§5.1](#51-what-we-delegate)).
 - **Ship it as an agent skill / prompt file instead of a tool.** Rejected as a
   substitute. A prompt can state the rules; it cannot check a `#L400` anchor
   against a 200-line file.
@@ -419,16 +419,16 @@ someone.
 
 | ID | Ruling / Decision | Date | Settled in |
 | :--- | :--- | :--- | :--- |
-| OQ-1 | Both `style-guide` and `check`; the anchor question was a false choice | 2026-08-24 | §1, §9 |
-| OQ-2 | No rename. The `vantage-md` collision is illusory; the Go `Use` string is a separate cosmetic fix | 2026-08-24 | §4 note |
-| OQ-3 | Repo-level config ships in v1, not deferred | 2026-08-24 | §5.4 |
-| OQ-4 | `reply` iceboxed — protocol works; revisit if the race bites | 2026-08-24 | §10 |
-| OQ-5 | `--fix` narrow, and only if it happens at all | 2026-08-24 | §5.5 |
-| OQ-6 | Non-zero on errors, `--strict` for warnings, policy configurable | 2026-08-24 | §5.4 |
-| OQ-7 | Dropped — the out-of-tree skill is referenced nowhere in this repo | 2026-08-24 | §2 |
-| OQ-A1 | Compile to a standalone binary; `uvx` + `curl`, no `npx`. One-time CI matrix cost | 2026-08-24 | §4 |
-| OQ-A2 | Moot once npm is dropped — `vantage-md` stays a pure library, CLI is an unpublished sibling | 2026-08-24 | §4 |
-| OQ-A3 | `.vantage.toml` at the repository root | 2026-08-24 | §5.4 |
+| OQ-1 | Both `style-guide` and `check`; the anchor question was a false choice | 2026-08-24 | [§1](#1-verdict-up-front), [§9](#9-what-i-would-build-in-order) |
+| OQ-2 | No rename. The `vantage-md` collision is illusory; the Go `Use` string is a separate cosmetic fix | 2026-08-24 | [§4](#4-distribution-one-compiled-artifact-no-runtime) note |
+| OQ-3 | Repo-level config ships in v1, not deferred | 2026-08-24 | [§5.4](#54-configuration) |
+| OQ-4 | `reply` iceboxed — protocol works; revisit if the race bites | 2026-08-24 | [§10](#10-icebox) |
+| OQ-5 | `--fix` narrow, and only if it happens at all | 2026-08-24 | [§5.5](#55---fix) |
+| OQ-6 | Non-zero on errors, `--strict` for warnings, policy configurable | 2026-08-24 | [§5.4](#54-configuration) |
+| OQ-7 | Dropped — the out-of-tree skill is referenced nowhere in this repo | 2026-08-24 | [§2](#2-what-exists-today-precisely) |
+| OQ-A1 | Compile to a standalone binary; `uvx` + `curl`, no `npx`. One-time CI matrix cost | 2026-08-24 | [§4](#4-distribution-one-compiled-artifact-no-runtime) |
+| OQ-A2 | Moot once npm is dropped — `vantage-md` stays a pure library, CLI is an unpublished sibling | 2026-08-24 | [§4](#4-distribution-one-compiled-artifact-no-runtime) |
+| OQ-A3 | `.vantage.toml` at the repository root | 2026-08-24 | [§5.4](#54-configuration) |
 
 > [!IMPORTANT]
 > **Two objections were investigated and are settled — do not re-derive them.**
@@ -436,7 +436,7 @@ someone.
 > `vantage` ([`Justfile:22`](../../Justfile#L22)) and only its help text says
 > otherwise. (2) `@mermaid-js/parser` is *not* a drop-in replacement for
 > mermaid's DOM-dependent parse path; it does not know what a flowchart is
-> (§5.2, verified against 11.12.2 on 2026-08-24).
+> ([§5.2](#52-a-delegates-failure-is-not-automatically-a-finding), verified against 11.12.2 on 2026-08-24).
 
 ## Open Questions
 

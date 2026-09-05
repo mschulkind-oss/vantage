@@ -47,7 +47,7 @@ carries **both** binaries — `vantage` and `vantage-check` — as
 `vantage_<version>_<os>_<arch>.tar.gz`, where `<os>` is `linux` or `darwin` and
 `<arch>` is `amd64` or `arm64`. There is no Windows build
 ([`../docs/design/pypi-distribution.md`](../../docs/design/pypi-distribution.md)
-§4.4), and no separate `vantage-check@*` release: everything in this repo ships
+[§4.4](../../docs/design/pypi-distribution.md#44-which-platforms-the-server-wheel-covers)), and no separate `vantage-check@*` release: everything in this repo ships
 on one tag at one version.
 
 ### From source
@@ -167,6 +167,21 @@ here — and why they are filesystem-verified rather than guessed at.
 | `link/inverted-range` | A `#L50-L10` anchor that ends before it starts — it resolves, so a warning | warning |
 | `link/line-anchor-format` | A `#L4x` anchor Vantage cannot parse, so it scrolls nowhere | error |
 | `link/dead-section-anchor` | A `#section` anchor matching no heading in the target document | error |
+| `ref/unlinked-oq` | An `OQ-…` id in prose with no link on it, or one linking to a document without naming the question | error |
+| `ref/unlinked-section` | A `§N` reference with no link on it, or one pointing at a different section than the number names | error |
+| `ref/unlinked-file` | A filename in prose naming a real file beside the document, with no link to it | error |
+
+The `ref/*` family asks the question underneath the rest: **should this have
+been a link at all?** A reference written as prose cannot be dead, so nothing
+can ever notice when it goes stale — an `OQ-` id outlives the question, a `§`
+number outlives the renumbering, a filename outlives the move, and no check
+fails. Three markers are recognised because all three are unambiguous; ordinary
+prose is left alone.
+
+Definition sites are never findings: a question's own bold title, and the ID
+column of a Decision Ledger, are where the id is *declared*. Nor is a
+specimen inside a fenced block — which is how to write one on purpose, in a
+document that is about the convention rather than using it.
 
 Section anchors are checked with the *renderer's own slugger*, not a
 hand-derived guess, and a near miss comes back as a suggestion

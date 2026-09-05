@@ -221,7 +221,7 @@ Two of Run A's three findings are false positives.
 | `<a id="notes">` then `[x](#notes)` | dead-section-anchor | quiet | **B.** The sanitizer renames it to `user-content-notes`, and [`MarkdownViewer.tsx:154-155`](../../frontend/src/components/MarkdownViewer.tsx#L154-L155) falls back to exactly that id |
 | Mermaid syntax error | line of the opening fence | line *inside* the diagram | **B.** The error is on diagram line 2 = file line 5; A reports line 3 |
 | Section-anchor typo | names the bad anchor | names it and suggests the nearest real one | **B**, and its suggestion is byte-correct against `rehype-slug` (verified: `já--em-dash--section`) |
-| Link in inline code or a fence | quiet | quiet | **Both.** Both walk the AST, as the design's §5.3 tip demands |
+| Link in inline code or a fence | quiet | quiet | **Both.** Both walk the AST, as the design's [§5.3](../design/agent-cli.md#53-what-we-write-ourselves) tip demands |
 | Raw-HTML `<a href="/x.md">` | unchecked | unchecked | **Neither.** `rehypeRaw` renders it; both miss it |
 
 On the one real defect in this repository's own docs — a `#L13-L97` anchor that
@@ -233,7 +233,7 @@ went stale when the style guide moved — **both agree**, and both report it.
 
 ### 4.1 The Mermaid trap — the same problem, two mechanisms
 
-The design predicted (§5.2) that Mermaid's parser would fail headless. Both
+The design predicted ([§5.2](../design/agent-cli.md#52-a-delegates-failure-is-not-automatically-a-finding)) that Mermaid's parser would fail headless. Both
 runs hit it. The difference is in how the fix is wired.
 
 **Run A** replaces the `dompurify` module at build time with a hand-written
@@ -334,7 +334,7 @@ Run B also ships more surface: `--quiet`, `--color`/`--no-color`,
 `--no-config`, a `help` command, an ESLint-style report with columns, a
 distinct exit code (`3`) for "could not check" as against `2` for "bad
 arguments", and a configurable `check.exit-code` — which is the part of the
-design's OQ-6 that Run A left unimplemented.
+design's [OQ-6](../design/agent-cli.md#decision-ledger) that Run A left unimplemented.
 
 ---
 
@@ -344,7 +344,7 @@ Both runs had the **same standing instructions**: identical `AGENTS.md` at the
 base commit, and both sessions ran in `bypassPermissions`, which tells the agent
 to work through Bash rather than the dedicated file tools. Run B followed that
 (one `Read`, no `Edit`); Run A did not (52 `Read`s, 81 `Edit`s). The tool-use gap
-in §2 is adherence to the same instruction, not a different one.
+in [§2](#2-how-each-one-worked) is adherence to the same instruction, not a different one.
 
 What the comparison cannot carry:
 
