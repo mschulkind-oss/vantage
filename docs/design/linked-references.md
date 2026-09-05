@@ -2,7 +2,7 @@
 title: "Linked references — making OQ ids, § refs and filenames clickable, and erroring when they are not"
 author: "Matt Schulkind"
 date: 2026-09-04
-status: in-review
+status: accepted
 tags: [vantage-check, vantage-md, docs-conventions]
 summary: "A `ref/*` rule family that errors when a reference is written as text instead of a link, plus the renderer change that gives an Open Question a real anchor to be linked to."
 vantage:
@@ -11,7 +11,7 @@ vantage:
 
 # Linked references — making OQ ids, § refs and filenames clickable, and erroring when they are not
 
-**Status:** DESIGN, 2026-09-04. Nothing built.
+**Status:** DECIDED (2026-09-04). Nothing built yet; every question ruled.
 
 **The short version.** Our docs are full of references written as plain text —
 `OQ-TP4`, `§4.1`, `` `agent-cli.md` `` — that read like pointers and behave like
@@ -210,10 +210,36 @@ node **not inside a `link`**, find matches of the reference pattern; report each
 | Anything inside a fenced code block | `code` nodes are not `text` nodes (P2) |
 | Any occurrence already inside a `link` node, at any depth | That is the state the rule wants |
 
-**Does the link have to point at the right thing?** For `ref/unlinked-oq`, yes,
-and it comes free: the reference must link to a fragment equal to the id, and
-`link/dead-section-anchor` then proves the fragment exists in the target. For
-`ref/unlinked-section` it does not come free — see [OQ-1](#open-questions).
+**Both rules check that the link points at the right thing.**
+
+For `ref/unlinked-oq` this is two-tier, because an OQ has two lifecycle phases
+and only the first one has an anchor:
+
+- **In flight** — the question is a live `oq` directive, so `#OQ-4` resolves.
+  A reference whose fragment equals the id is checked by
+  `link/dead-section-anchor` for free.
+- **Compacted** — the question is a Decision Ledger row and the directive is
+  gone, so nothing declares `OQ-4` any more. The reference must still be a link,
+  and its fragment must still resolve *somewhere* in the target document —
+  `#decision-ledger` being the honest target. The rule does not demand a
+  fragment equal to the id, because after compaction no such anchor exists.
+
+> [!NOTE]
+> This two-tier shape is not elegant and it is not an oversight. Compaction
+> deliberately destroys the `oq` directive — that is what compaction is — and
+> nothing should reintroduce a per-row anchor just to keep a fragment alive.
+> Writing `<a id="OQ-4"></a>` into a ledger cell does not work either: raw HTML
+> ids are clobbered to `user-content-OQ-4` by the sanitiser, the same trap
+> [§4.1](#41-the-anchor-an-oq-id-has-to-survive-the-sanitiser) is about, and the
+> checker's `htmlAnchors` would accept it while the viewer refused to navigate
+> to it.
+
+For `ref/unlinked-section`, the rule resolves `§N` against the target document's
+headings: a heading whose text begins with that number followed by a `.` or a
+space. A link pointing at a different heading is a finding. When the target has
+**no numbered headings at all**, the rule requires the link and says nothing
+about where it points — an unnumbered document has no §N to resolve against, and
+guessing would invent findings on every doc that never adopted the convention.
 
 **Degenerate cases:**
 
@@ -250,9 +276,17 @@ character extension. `agent-cli.md`, `../design/agent-cli.md`,
   path-shape test, which is what keeps `` `npm ci` `` and
   `` `git config core.hooksPath` `` silent.
 - **A generic manifest name that happens to resolve** — `` `package.json` `` in
-  a root-level document still fires. This is the rule's known false-positive
-  class and it is accepted rather than special-cased; see
-  [OQ-2](#open-questions).
+  a root-level document still fires, and gets linked rather than exempted. An
+  exemption list of "generic" manifest names would be a second vocabulary
+  maintained against nothing in particular, and in a repo that serves its own
+  files a link to `go.mod` is genuinely useful. Revisit if it hurts in a repo
+  carrying more manifests than this one.
+
+**The link must point at the file it names.** `` `agent-cli.md` `` written as
+`[agent-cli.md](./pypi-distribution.md)` is a finding: the rule resolves both the
+token and the link target against the document's directory and compares them.
+Unlike the section case this has nothing to trip over — both sides are paths,
+and the file provably exists.
 
 ### 4.5 `vantage/oq-id-format` and `vantage/oq-id-duplicate`
 
@@ -339,8 +373,8 @@ What I would build, in order. Each step leaves the gate green.
 | Risk | Mitigation |
 | :--- | :--- |
 | The bare-`id` trap in [§4.1](#41-the-anchor-an-oq-id-has-to-survive-the-sanitiser) is taken and every OQ link dies silently | A test asserting the rendered id is exactly `OQ-1`, not `user-content-OQ-1` — the failure is invisible without it |
-| `ref/unlinked-file` fires on generic manifest names | Doc-relative resolution only; accepted residue in [OQ-2](#open-questions) |
-| The corpus fix mislinks a `§` ref to the wrong section | `link/dead-section-anchor` catches a *dead* target but not a *wrong* one; [OQ-1](#open-questions) decides whether the rule closes that hole |
+| `ref/unlinked-file` fires on generic manifest names | Doc-relative resolution only; accepted residue in [OQ-2](#decision-ledger) |
+| The corpus fix mislinks a `§` ref to the wrong section | `link/dead-section-anchor` catches a *dead* target but not a *wrong* one; [OQ-1](#decision-ledger) decides whether the rule closes that hole |
 | A `ref/*` error blocks an unrelated commit on a doc nobody is editing | The whole corpus is fixed in the same commit, so the steady state is zero findings |
 | Quadratic cost on a long Open Questions list | These rules walk the tree once and do no re-parsing, unlike `vantage/block-split` — no new cost of that shape |
 
@@ -359,56 +393,17 @@ What I would build, in order. Each step leaves the gate green.
 
 ---
 
-## Open Questions
+## Decision Ledger
 
-1. 💬 **OQ-1: Does `ref/unlinked-section` check that the link points at the
-   *right* section?** Requiring only "it is a link" lets
-   `[§4.1](#some-unrelated-heading)` pass, which satisfies the letter of P1 and
-   none of its point. Checking properly means resolving `§4.1` to the heading
-   whose text begins `4.1` in the target document — cheap for a numbered doc,
-   undefined for an unnumbered one. This decides whether the rule is a
-   correctness check or a formatting one.
+| ID | Ruling / Decision | Date | Settled in |
+| :--- | :--- | :--- | :--- |
+| OQ-1 | `ref/unlinked-section` resolves `§N` to the heading beginning with that number and reports a mismatch; silent when the target has no numbered headings | 2026-09-04 | [§4.3](#43-refunlinked-oq-and-refunlinked-section) |
+| OQ-2 | No exemption list — a resolvable manifest name is a finding and gets linked | 2026-09-04 | [§4.4](#44-refunlinked-file) |
+| OQ-3 | `ref/unlinked-file` compares the resolved link target to the resolved token | 2026-09-04 | [§4.4](#44-refunlinked-file) |
+| OQ-4 | A compacted OQ has no `#id` anchor; the reference links to the ledger instead, and the rule requires only that the fragment resolve | 2026-09-04 | [§4.3](#43-refunlinked-oq-and-refunlinked-section) |
 
-   <!-- vantage: oq id=OQ-1 leaning="Check it, but only where the target document has numbered headings — resolve §N against headings matching ^N[. ], report a mismatch, and stay silent when there are none. A rule satisfiable by any link is one an agent will satisfy with any link." -->
-
-   _Leaning:_ Check it, but only when the target document has numbered headings
-   at all — resolve `§N` against headings matching `^N[. ]`, report a mismatch,
-   and stay silent when the target has no numbered headings to resolve against.
-   A rule that can be satisfied by any link is one an agent will satisfy with
-   any link.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
-
-2. 💬 **OQ-2: Is `` `package.json` `` in a root-level doc a finding, or an
-   exemption?** Doc-relative resolution kills the worst of this class but not
-   all of it: `AGENTS.md` sits at the repo root, so its mentions of
-   `package.json`, `go.mod` and `mise.toml` all resolve and all become findings —
-   even where the prose means "any package.json", not that one. The alternatives
-   are an exemption list of generic manifest names (a hack that will need
-   maintaining) or accepting the noise and linking them.
-
-   <!-- vantage: oq id=OQ-2 leaning="Accept it and link them. In a repo that serves its own files a link to go.mod is genuinely useful, and an exemption list is a second vocabulary to keep in sync with nothing in particular." -->
-
-   _Leaning:_ Accept it and link them. In a repo that serves its own files, a
-   link to `go.mod` is genuinely useful, and an exemption list is a second
-   vocabulary to keep in sync with nothing in particular. Revisit if it turns
-   out to hurt in a repo with more manifests than this one.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
-
-3. 💬 **OQ-3: Should `ref/unlinked-file` require the link target to equal the
-   token?** `` `agent-cli.md` `` linked as `[agent-cli.md](./pypi-distribution.md)`
-   would pass a bare "is it a link" test. The same hole as OQ-1, one rule over,
-   but with a much cheaper fix: compare the resolved link target to the resolved
-   token and report a mismatch.
-
-   <!-- vantage: oq id=OQ-3 leaning="Yes — it is a path comparison against a file that provably exists, with no ambiguity to trip over. Cheaper and safer than OQ-1's version of the same question." -->
-
-   _Leaning:_ Yes — it is a path comparison against a file that provably exists,
-   with no ambiguity to trip over. Cheaper and safer than OQ-1's version of the
-   same question.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
+> [!NOTE]
+> OQ-4 was not in the original draft. It surfaced while compacting this very
+> document: three body references pointed at `#open-questions`, that section
+> became the ledger, and the rule being designed had no answer for what a
+> reference to an already-compacted question should link to.
