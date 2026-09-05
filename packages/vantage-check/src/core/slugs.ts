@@ -2,6 +2,7 @@ import type { Root } from "mdast";
 import { toString as mdastToString } from "mdast-util-to-string";
 import GithubSlugger from "github-slugger";
 import { visit } from "unist-util-visit";
+import { oqAnchors } from "./openQuestions.js";
 
 /**
  * The set of fragment ids a document actually exposes.
@@ -54,9 +55,21 @@ export function htmlAnchors(mdast: Root): string[] {
   return ids;
 }
 
-/** Every fragment a link can legitimately target in this document. */
+/**
+ * Every fragment a link can legitimately target in this document.
+ *
+ * Three sources, and Open Question ids are the one that is not HTML at all:
+ * `<!-- vantage: oq id=OQ-4 -->` becomes `id="OQ-4"` on the block it marks
+ * (`rehypeVantageAnchors`), so `#OQ-4` navigates and a reference of the form
+ * `[OQ-4](#OQ-4)` is checkable. Only well-formed ids count — the sanitiser
+ * refuses the rest, so counting one would accept a fragment that goes nowhere.
+ */
 export function documentAnchors(mdast: Root): Set<string> {
-  return new Set([...headingSlugs(mdast), ...htmlAnchors(mdast)]);
+  return new Set([
+    ...headingSlugs(mdast),
+    ...htmlAnchors(mdast),
+    ...oqAnchors(mdast),
+  ]);
 }
 
 /**
