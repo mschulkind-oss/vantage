@@ -1,6 +1,6 @@
 module github.com/mschulkind-oss/vantage
 
-go 1.26
+go 1.26.0
 
 // v0.5.5 was tagged by hand rather than through `just release`, so its tree
 // carries no web/dist. //go:embed accepts the empty directory, so `go install
@@ -28,7 +28,7 @@ require (
 	github.com/sabhiram/go-gitignore v0.0.0-20210923224102-525f6e181f06
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
-	golang.org/x/sync v0.22.0
+	golang.org/x/sync v0.23.0
 )
 
 require (
