@@ -178,6 +178,13 @@ number outlives the renumbering, a filename outlives the move, and no check
 fails. Three markers are recognised because all three are unambiguous; ordinary
 prose is left alone.
 
+Resolution is **relative to the document's own directory**, so a name that
+matches nothing beside it is left alone — it may be a file in another repo, a
+config key, or a name in passing, and the checker cannot tell which. An
+absolute path is left alone too: `/etc/resolv.conf` is not a reference to
+anything a document can link to, however real the file is on the machine
+running the check.
+
 Definition sites are never findings: a question's own bold title, and the ID
 column of a Decision Ledger, are where the id is *declared*. Nor is a
 specimen inside a fenced block — which is how to write one on purpose, in a

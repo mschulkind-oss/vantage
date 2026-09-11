@@ -1,3 +1,5 @@
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { checkTree, makeTree, ruleIds } from "./helpers.js";
 
@@ -307,6 +309,36 @@ describe("ref/unlinked-file", () => {
       "docs/index.md": "```bash\ncat design.md\n```\n",
       "docs/design.md": "# Design\n",
     });
+
+    const report = await checkTree(root);
+
+    expect(ruleIds(report)).toEqual([]);
+  });
+
+  // A leading slash leaves the document behind entirely: `resolve` discards the
+  // document's directory, so the token is statted against the machine's root.
+  // A runbook naming `/etc/mkinitcpio.conf` was told the file "exists beside
+  // this document" and offered `](.//etc/mkinitcpio.conf)` as the fix.
+  it("says nothing about an absolute path, even one that exists", async () => {
+    const root = makeTree({
+      "docs/design.md": "# Design\n",
+      "docs/index.md": "placeholder\n",
+    });
+    const absolute = join(root, "docs/design.md");
+    writeFileSync(join(root, "docs/index.md"), `Edit \`${absolute}\`.\n`);
+
+    const report = await checkTree(root);
+
+    expect(ruleIds(report)).toEqual([]);
+  });
+
+  it("says nothing about an absolute path written in prose", async () => {
+    const root = makeTree({
+      "docs/design.md": "# Design\n",
+      "docs/index.md": "placeholder\n",
+    });
+    const absolute = join(root, "docs/design.md");
+    writeFileSync(join(root, "docs/index.md"), `Edit ${absolute} first.\n`);
 
     const report = await checkTree(root);
 

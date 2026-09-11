@@ -319,6 +319,15 @@ export function checkSectionReferences(collector: Collector): void {
  * specific manifest out of the several in the tree. A token that does not
  * resolve beside the document is left alone — it is a file in another repo, a
  * config key, or a name in passing, and the checker cannot tell which.
+ *
+ * A token with a leading slash is skipped outright, because it is the one
+ * shape that escapes that rule: `resolve` discards the document's directory
+ * and the token is answered against the *machine's* root instead. A runbook
+ * naming `/etc/mkinitcpio.conf` was told the file exists beside it and offered
+ * `.//etc/mkinitcpio.conf` as the link — a finding about the checker's
+ * filesystem, and a fix that resolves nowhere. Absolute paths are also not
+ * linkable by design: naming `/etc/…` is a runbook's whole job. The link form
+ * of the same mistake is `link/leading-slash`, which already reports it.
  */
 export function checkFileReferences(collector: Collector): void {
   if (!collector.enabled("ref/unlinked-file")) return;
@@ -340,6 +349,8 @@ export function checkFileReferences(collector: Collector): void {
 
     for (const { text, offset } of tokens) {
       if (!PATH_SHAPED.test(text)) continue;
+      // Not a path relative to this document, so this rule has no claim on it.
+      if (text.startsWith("/")) continue;
 
       const target = resolve(documentDir, text);
       // Never a reference to itself, and never a directory.

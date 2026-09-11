@@ -290,6 +290,15 @@ v0.5.4                     no
   block is structurally exempt; inline code containing whitespace fails the
   path-shape test, which is what keeps `` `npm ci` `` and
   `` `git config core.hooksPath` `` silent.
+- **An absolute path** — `/etc/mkinitcpio.conf`, `/lib/firmware/edid/tv.bin`.
+  Skipped on the leading slash alone, before anything is statted. It is the one
+  token shape that escapes doc-relative resolution entirely: `resolve` discards
+  the document's directory, so the token is answered against the *checker's*
+  filesystem root, and a runbook naming real system files was told they exist
+  "beside this document" and offered `.//etc/mkinitcpio.conf` as the fix. Even
+  where such a path resolves, it is not linkable — naming `/etc/…` and `/lib/…`
+  is a runbook's whole job. The link form of the same mistake belongs to
+  `link/leading-slash`, which already reports it.
 - **A generic manifest name that happens to resolve** — `` `package.json` `` in
   a root-level document still fires, and gets linked rather than exempted. An
   exemption list of "generic" manifest names would be a second vocabulary
