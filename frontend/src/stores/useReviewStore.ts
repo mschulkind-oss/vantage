@@ -953,7 +953,18 @@ function respondingInstructions(
     `{"path":"${filePath}","id":"${exampleId}","round":${exampleRound},"summary":"Reworded the paragraph for clarity","nonce":"k7f29qd1x4"}`,
     "EOF",
     'mv "$f.writing" "$f"',
+    "# Vantage consumes and deletes the file; its disappearance is the receipt.",
+    'n=0; while [ -e "$f" ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done',
+    '[ -e "$f" ] && echo "queued: Vantage is not running; it will consume this file at startup" || echo "delivered: Vantage consumed $f"',
     "```",
+    "",
+    // The wait loop above turns the confusing signal into a printed one, and
+    // this says the same thing in words for the agent that composed its own
+    // delivery command instead of running this one. Both are needed: the file
+    // vanishing looks exactly like a failed write, and an agent that reads it
+    // that way either re-delivers (recording its answer twice) or reports a
+    // delivery failure that never happened.
+    "> **The file is meant to vanish.** Vantage consumes the delivery and deletes it, usually within a second of the rename — that disappearance *is* the receipt, which is what the wait loop above reports as `delivered:`. A later `cat` or `ls` of that path saying `No such file or directory` is therefore success, not a lost delivery: do not re-send it.",
     "",
     "One JSON object per line, one line per comment you acted on. The fields:",
     "",

@@ -998,6 +998,32 @@ describe("useReviewStore", () => {
       expect(payload).toContain("from the root of this document's repository");
     });
 
+    // Consumption deletes the file, so the shell that delivered it sees the
+    // path disappear — which reads exactly like a failed write. The command
+    // therefore waits for the disappearance and names it, rather than leaving
+    // every agent to re-derive that a missing file means success.
+    it("waits for the consume and prints the outcome in words", async () => {
+      seedNested();
+      const payload = await copiedPayload();
+      expect(payload).toContain(
+        'n=0; while [ -e "$f" ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done',
+      );
+      expect(payload).toContain('echo "delivered: Vantage consumed $f"');
+      // A server that is not running is a wait that times out, and that is a
+      // different outcome from a lost delivery: the file drains at startup.
+      expect(payload).toContain(
+        'echo "queued: Vantage is not running; it will consume this file at startup"',
+      );
+    });
+
+    it("says the vanished delivery file is the receipt, not a failure", async () => {
+      seedNested();
+      const payload = await copiedPayload();
+      expect(payload).toContain("**The file is meant to vanish.**");
+      expect(payload).toContain("No such file or directory");
+      expect(payload).toContain("do not re-send it");
+    });
+
     it("warns against writing directly to the .jsonl name", async () => {
       seedNested();
       const payload = await copiedPayload();

@@ -48,11 +48,24 @@ mkdir -p .vantage/inbox && f=.vantage/inbox/docs__design__api.md.$RANDOM.jsonl &
 {"path":"docs/design/api.md","id":"abcd1234","round":2,"summary":"Rewrote the intro in plain language.","nonce":"k7f29qd1x4"}
 EOF
 mv "$f.writing" "$f"
+# Vantage consumes and deletes the file; its disappearance is the receipt.
+n=0; while [ -e "$f" ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+[ -e "$f" ] && echo "queued: Vantage is not running; it will consume this file at startup" || echo "delivered: Vantage consumed $f"
 ```
 
 Each line is one JSON object, newline-terminated. The random suffix keeps two
 deliveries for the same document from colliding, and the rename onto `.jsonl` is
 what tells Vantage the delivery is complete.
+
+**Why the command waits.** Consumption happens within a second of the rename and
+**deletes the file**, so the shell that just delivered it watches the path
+disappear — which is indistinguishable, from the agent's side, from a write that
+failed. Left to infer it, agents report the delivery as lost or send it a second
+time. The wait loop names the outcome instead: `delivered:` once the file is
+gone, or `queued:` if it is still there five seconds later, which means no
+Vantage is watching this repository and the delivery will drain at the next
+startup. The payload tells the agent the same thing in words, since an agent
+that writes its own delivery command never runs this one.
 
 **Why the rename, and why the random name?** Vantage consumes **only** completed
 `.jsonl` files, and treats the rename into that name as the "I am done" signal.
