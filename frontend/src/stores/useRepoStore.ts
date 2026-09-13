@@ -21,6 +21,7 @@ interface RepoState {
   recentlyChangedPaths: ReadonlySet<string>; // Paths that just changed (for flash animation)
 
   loadRepos: () => Promise<void>;
+  refreshRepos: () => Promise<void>;
   setCurrentRepo: (repo: string | null) => void;
   setRepoSortMode: (mode: "alphabetical" | "recent") => void;
   sortedRepos: () => RepoInfo[];
@@ -202,6 +203,27 @@ export const useRepoStore = create<RepoState>((set, get) => ({
     } catch (error) {
       console.error("Failed to load repos", error);
       set({ reposLoaded: true }); // Mark as loaded even on error to avoid infinite loop
+    }
+  },
+
+  // loadRepos, but for a list that changed under a session already in
+  // progress — the daemon discovering a repository in a source dir. It writes
+  // only `repos`, because everything else loadRepos sets is a fresh-start
+  // decision: re-running those would drop the open document and deselect the
+  // repository being read, which is a worse interruption than the stale
+  // sidebar it fixes.
+  refreshRepos: async () => {
+    try {
+      const response = await axios.get<RepoInfo[]>("/api/repos");
+      const repos = response.data;
+      const isMultiRepo = !(repos.length === 1 && repos[0].name === "");
+      // A mode flip cannot happen without a server restart, and a restart is
+      // already handled by the version check on the socket's hello. Bailing
+      // beats re-routing the whole app from a background refresh.
+      if (isMultiRepo !== get().isMultiRepo) return;
+      set({ repos });
+    } catch (error) {
+      console.error("Failed to refresh repos", error);
     }
   },
 

@@ -187,6 +187,15 @@ export const useWebSocket = () => {
         return;
       }
 
+      if (message.type === "repos_changed") {
+        // The daemon started serving a repository it found under a source dir.
+        // Refetch the list so the project picker shows it without a reload —
+        // the whole point of discovering it without a restart.
+        wsLog.log("[ws] repos_changed: %s", (message.repos ?? []).join(", "));
+        void useRepoStore.getState().refreshRepos();
+        return;
+      }
+
       if (message.type === "review_changed" && message.path) {
         // A review command or an inbox delivery changed this document's
         // review server-side. Reload it when it's the document on screen;

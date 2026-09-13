@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/mschulkind-oss/vantage/internal/config"
 	"github.com/mschulkind-oss/vantage/internal/gitenv"
+	"github.com/mschulkind-oss/vantage/internal/model"
 	"github.com/mschulkind-oss/vantage/web"
 )
 
@@ -26,7 +28,15 @@ import (
 // the git service shells out to the git binary.
 func initRepo(t *testing.T, files map[string]string) string {
 	t.Helper()
-	root := t.TempDir()
+	return initRepoAt(t, t.TempDir(), files)
+}
+
+// initRepoAt is initRepo at a caller-chosen path, for the discovery tests: a
+// repository has to be created *inside* a source dir to be discovered there,
+// which a fresh t.TempDir() cannot be.
+func initRepoAt(t *testing.T, root string, files map[string]string) string {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(root, 0o755))
 
 	run := func(args ...string) {
 		cmd := exec.Command("git", args...)
@@ -87,6 +97,45 @@ func daemonServer(t *testing.T) (*Server, map[string]string) {
 	srv, err := NewServer(cfg)
 	require.NoError(t, err)
 	return srv, map[string]string{"alpha": rootA, "beta": rootB}
+}
+
+// discoveryServer builds a daemon Server whose repositories all come from one
+// source dir — the shape `source_dirs = ["~/code"]` produces — with "alpha"
+// already in it at startup. It returns the server and that source dir, so a
+// test can create a second repository in it and watch the daemon pick it up.
+// The refresh loop is retuned to a test-scale period; production runs it at
+// [defaultRefreshInterval].
+func discoveryServer(t *testing.T) (*Server, string) {
+	t.Helper()
+	sourceDir := t.TempDir()
+	initRepoAt(t, filepath.Join(sourceDir, "alpha"), map[string]string{"a.md": "# A\n"})
+
+	cfg := config.Defaults()
+	cfg.MultiRepo = true
+	cfg.SourceDirs = []string{sourceDir}
+	require.NoError(t, cfg.Resolve())
+	// LoadDaemonFile runs this one startup scan; the loop is what this file is
+	// about, so the fixture has to start from the same place production does.
+	require.Len(t, cfg.DiscoverReposFromSourceDirs(), 1)
+
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+	srv.refreshInterval = 20 * time.Millisecond
+	return srv, cfg.SourceDirs[0]
+}
+
+// repoNames returns the names GET /api/repos currently reports.
+func repoNames(t *testing.T, h http.Handler) []string {
+	t.Helper()
+	rec := doGET(t, h, "/api/repos")
+	require.Equal(t, http.StatusOK, rec.Code)
+	var infos []model.RepoInfo
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &infos))
+	out := make([]string, 0, len(infos))
+	for _, i := range infos {
+		out = append(out, i.Name)
+	}
+	return out
 }
 
 func doGET(t *testing.T, h http.Handler, target string) *httptest.ResponseRecorder {
@@ -373,6 +422,126 @@ func TestRunAndShutdown(t *testing.T) {
 		t.Fatal("Run did not return after context cancel")
 	}
 	require.NoError(t, srv.Shutdown(context.Background()))
+}
+
+// A repository that appears under a source dir after startup used to stay
+// invisible until the daemon was restarted: LoadDaemonFile ran the only scan
+// there ever was.
+func TestSourceDirRepoIsServedWithoutRestart(t *testing.T) {
+	isolateReviewDir(t)
+	srv, sourceDir := discoveryServer(t)
+	h := srv.Handler()
+	require.Equal(t, []string{"alpha"}, repoNames(t, h))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- srv.Run(ctx) }()
+
+	initRepoAt(t, filepath.Join(sourceDir, "beta"), map[string]string{"b.md": "# B\n"})
+
+	deadline := time.Now().Add(10 * time.Second)
+	for !slices.Contains(repoNames(t, h), "beta") {
+		if time.Now().After(deadline) {
+			t.Fatal("a repository created under the source dir was never discovered")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	// Listed is not enough: the discovered repo has to resolve as a repo, which
+	// means its own services were built and registered, not just its name.
+	rec := doGET(t, h, "/api/r/beta/tree?path=.")
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "b.md")
+
+	cancel()
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run did not return after context cancel")
+	}
+	require.NoError(t, srv.Shutdown(context.Background()))
+}
+
+// Discovery that only the server knows about leaves every open browser showing
+// a stale project list until someone reloads it, which is the same "restart
+// something" complaint one level up.
+func TestReposChangedBroadcastReachesWebSocket(t *testing.T) {
+	isolateReviewDir(t)
+	srv, sourceDir := discoveryServer(t)
+
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	runCtx, stop := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- srv.Run(runCtx) }()
+	defer func() {
+		stop()
+		<-done
+		require.NoError(t, srv.Shutdown(context.Background()))
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ws, _, err := websocket.Dial(ctx, "ws"+ts.URL[len("http"):]+"/api/ws", nil)
+	require.NoError(t, err)
+	defer ws.Close(websocket.StatusNormalClosure, "")
+
+	// First frame is the hello.
+	_, data, err := ws.Read(ctx)
+	require.NoError(t, err)
+	var hello map[string]any
+	require.NoError(t, json.Unmarshal(data, &hello))
+	require.Equal(t, "hello", hello["type"])
+
+	initRepoAt(t, filepath.Join(sourceDir, "beta"), map[string]string{"b.md": "# B\n"})
+
+	// Skip any files_changed a watcher emits while the repo is being created;
+	// the push under test is the one that names the new repository.
+	for {
+		_, data, err = ws.Read(ctx)
+		require.NoError(t, err)
+		var msg map[string]any
+		require.NoError(t, json.Unmarshal(data, &msg))
+		if msg["type"] != "repos_changed" {
+			continue
+		}
+		require.JSONEq(t, `{"type":"repos_changed","repos":["beta"]}`, string(data))
+		return
+	}
+}
+
+func TestDiscoverReposIsAdditiveOnly(t *testing.T) {
+	isolateReviewDir(t)
+	srv, sourceDir := discoveryServer(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// The startup scan already saw alpha, so a pass with nothing new adds
+	// nothing — otherwise every pass would re-register every repository.
+	require.Empty(t, srv.discoverRepos(ctx))
+
+	initRepoAt(t, filepath.Join(sourceDir, "beta"), map[string]string{"b.md": "# B\n"})
+	require.Equal(t, []string{"beta"}, srv.discoverRepos(ctx))
+	require.Empty(t, srv.discoverRepos(ctx))
+
+	// A repository whose directory goes away keeps its entry: dropping it would
+	// tear down a watcher and 404 a browser mid-read, over a directory that may
+	// be back a second later (a move, a re-clone).
+	require.NoError(t, os.RemoveAll(filepath.Join(sourceDir, "beta")))
+	require.Empty(t, srv.discoverRepos(ctx))
+	require.Contains(t, repoNames(t, srv.Handler()), "beta")
+}
+
+// Single-repo mode has no source dirs to scan, and its lone repository is keyed
+// by the empty-name sentinel — a discovery pass that ran there would register a
+// second repo under a name the sentinel routing cannot express.
+func TestDiscoverReposIsDaemonOnly(t *testing.T) {
+	srv, _ := singleRepoServer(t)
+	srv.cfg.SourceDirs = []string{t.TempDir()}
+	require.Empty(t, srv.discoverRepos(context.Background()))
+	require.Equal(t, []string{""}, repoNames(t, srv.Handler()))
 }
 
 // jsEncodeURIComponent mirrors the browser's encodeURIComponent, which is what

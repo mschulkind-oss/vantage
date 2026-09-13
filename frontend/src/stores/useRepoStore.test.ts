@@ -699,4 +699,62 @@ describe("useRepoStore", () => {
       expect(tree[0].children![0].git_status).toBe("modified");
     });
   });
+
+  // The daemon discovers repositories under its source dirs while the app is
+  // open, so the list has to be refreshable mid-session — without unpicking
+  // the session that is in progress.
+  describe("refreshRepos", () => {
+    const seedSession = () =>
+      useRepoStore.setState({
+        isMultiRepo: true,
+        reposLoaded: true,
+        repos: [{ name: "alpha" }],
+        currentRepo: "alpha",
+        currentPath: "docs/a.md",
+        fileTree: [{ name: "docs", path: "docs", is_dir: true }],
+      });
+
+    it("adds a newly served repo without disturbing the open one", async () => {
+      seedSession();
+      mockedAxios.get.mockResolvedValueOnce({
+        data: [{ name: "alpha" }, { name: "beta" }],
+      });
+
+      await useRepoStore.getState().refreshRepos();
+
+      const state = useRepoStore.getState();
+      expect(state.repos.map((r) => r.name)).toEqual(["alpha", "beta"]);
+      // loadRepos deselects the repo and drops the tree; a background refresh
+      // doing that would throw the reader out of the document they are in.
+      expect(state.currentRepo).toBe("alpha");
+      expect(state.currentPath).toBe("docs/a.md");
+      expect(state.fileTree).toHaveLength(1);
+    });
+
+    it("ignores a response that disagrees about the run mode", async () => {
+      seedSession();
+      // The single-repo sentinel: only a restarted server can answer this, and
+      // the socket's version check already reloads the page for that.
+      mockedAxios.get.mockResolvedValueOnce({ data: [{ name: "" }] });
+
+      await useRepoStore.getState().refreshRepos();
+
+      expect(useRepoStore.getState().repos.map((r) => r.name)).toEqual([
+        "alpha",
+      ]);
+      expect(useRepoStore.getState().isMultiRepo).toBe(true);
+    });
+
+    it("keeps the existing list when the request fails", async () => {
+      seedSession();
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      mockedAxios.get.mockRejectedValueOnce(new Error("network"));
+
+      await useRepoStore.getState().refreshRepos();
+
+      expect(useRepoStore.getState().repos.map((r) => r.name)).toEqual([
+        "alpha",
+      ]);
+    });
+  });
 });

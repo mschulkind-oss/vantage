@@ -78,6 +78,8 @@ source_dirs = ["~/code", "~/projects"]
 
 Auto-discovered repos use the directory name as their display name. If a repo is already listed explicitly in `[[repos]]` (by matching its resolved path), it is skipped — so you can mix manual entries with auto-discovery without duplicates. If two discovered repos would have the same name, a numeric suffix is added (e.g., `my-project-2`).
 
+**The scan repeats while the daemon runs**, every 30 seconds, so a repo you clone into a source dir is served within half a minute — no restart, and any browser already open adds it to the project list on its own. Only additions are noticed: a repo whose directory you delete or move away stays in the list until the daemon restarts, because dropping it would have to close files a reader may be in the middle of.
+
 This feature is **off by default** — add `source_dirs` to your config to enable it.
 
 ## Allowed Read Roots

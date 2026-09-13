@@ -1,7 +1,8 @@
 // Package server is the integrator: it assembles the resolved configuration,
 // per-repository services, the shared singletons (review store, perf store, live
 // Manager), and the api handlers into a single chi router and runs the
-// background lifecycle (file watchers + the repo-activity refresh loop).
+// background lifecycle (file watchers + the refresh loop that discovers new
+// repositories and re-warms repo activity).
 //
 // # What the server owns that the api package cannot
 //
@@ -21,6 +22,9 @@
 //     (resolve.go) that aggregate across every repository.
 //   - It keeps a repo-activity cache (last commit time per repo) warmed at
 //     startup and refreshed on a loop, feeding RepoInfo.last_activity.
+//   - The same loop rescans the configured source_dirs, so a repository that
+//     appears under one after startup is registered, watched and broadcast
+//     without a daemon restart.
 //
 // # Routing families
 //
@@ -33,6 +37,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -52,10 +57,13 @@ import (
 	"github.com/mschulkind-oss/vantage/internal/review"
 )
 
-// activityRefreshInterval is how often the repo-activity cache is recomputed in
-// daemon mode. It mirrors the historical 30s TTL: the cache always serves
-// (possibly stale) values instantly and the loop keeps them fresh.
-const activityRefreshInterval = 30 * time.Second
+// defaultRefreshInterval is how often the daemon refresh loop runs: it rescans
+// source_dirs for repositories that have appeared and recomputes the
+// repo-activity cache. It mirrors the historical 30s activity TTL — the cache
+// always serves (possibly stale) values instantly and the loop keeps them
+// fresh — and a repository cloned into a source dir is served within the same
+// window.
+const defaultRefreshInterval = 30 * time.Second
 
 // repoServices is the server-side bundle for one repository: its name plus the
 // git and fs services scoped to it. It is the value the resolve middleware
@@ -80,10 +88,19 @@ type Server struct {
 	reviews *review.Store
 	perf    *perf.Store
 
+	// refreshInterval is the daemon refresh loop's period. It is
+	// [defaultRefreshInterval] in production; tests shorten it to observe a
+	// source-dir discovery without waiting out the real one.
+	refreshInterval time.Duration
+
+	// reposMu guards repos and order. Both were immutable after construction
+	// until source-dir discovery began registering repositories at runtime, so
+	// every read goes through repoByName/repoList rather than the maps directly.
+	reposMu sync.RWMutex
 	// repos holds the per-repository services. Single-repo mode has exactly one
 	// entry keyed by the empty string (the sentinel); daemon mode has one entry
-	// per configured repo keyed by name. order preserves configuration order for
-	// stable fan-out output.
+	// per configured repo keyed by name. order preserves registration order —
+	// configuration order, then discovery order — for stable fan-out output.
 	repos map[string]*repoServices
 	order []string
 
@@ -93,9 +110,16 @@ type Server struct {
 	activityMu sync.RWMutex
 	activity   map[string]model.RepoInfo
 
+	// watchersMu guards watchers, which Run appends to at startup and the
+	// refresh loop appends to for every repository it discovers.
+	watchersMu sync.Mutex
 	// watchers are the live file watchers started by Run, retained so Shutdown
 	// can close them.
 	watchers []*live.Watcher
+
+	// wg tracks the goroutines Run starts — one per watcher plus the refresh
+	// loop — so Run does not return before they have stopped.
+	wg sync.WaitGroup
 }
 
 // NewServer assembles a Server from a resolved [config.Config]. It constructs
@@ -116,13 +140,14 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	}
 
 	s := &Server{
-		cfg:      cfg,
-		logger:   logger,
-		manager:  live.NewManager(logger, cfg.AllowedOrigins),
-		reviews:  review.NewStore(reviewDir),
-		perf:     perf.Default,
-		repos:    map[string]*repoServices{},
-		activity: map[string]model.RepoInfo{},
+		cfg:             cfg,
+		logger:          logger,
+		refreshInterval: defaultRefreshInterval,
+		manager:         live.NewManager(logger, cfg.AllowedOrigins),
+		reviews:         review.NewStore(reviewDir),
+		perf:            perf.Default,
+		repos:           map[string]*repoServices{},
+		activity:        map[string]model.RepoInfo{},
 	}
 
 	if err := s.buildRepoServices(); err != nil {
@@ -146,14 +171,46 @@ func NewServer(cfg *config.Config) (*Server, error) {
 func (s *Server) buildRepoServices() error {
 	if s.cfg.MultiRepo {
 		for _, rc := range s.cfg.Repos {
-			s.repos[rc.Name] = s.newRepoServices(rc.Name, rc.Path)
-			s.order = append(s.order, rc.Name)
+			s.register(rc.Name, rc.Path)
 		}
 		return nil
 	}
-	s.repos[""] = s.newRepoServices("", s.cfg.TargetRepo)
-	s.order = append(s.order, "")
+	s.register("", s.cfg.TargetRepo)
 	return nil
+}
+
+// register builds and records the services for one repository, returning them.
+// It is how every repository enters s.repos — the configured ones at
+// construction, the discovered ones from the refresh loop.
+func (s *Server) register(name, root string) *repoServices {
+	rs := s.newRepoServices(name, root)
+	s.reposMu.Lock()
+	defer s.reposMu.Unlock()
+	s.repos[name] = rs
+	s.order = append(s.order, name)
+	return rs
+}
+
+// repoByName returns the services for a repository name, or nil when none is
+// registered under it.
+func (s *Server) repoByName(name string) *repoServices {
+	s.reposMu.RLock()
+	defer s.reposMu.RUnlock()
+	return s.repos[name]
+}
+
+// repoList returns the registered repositories in registration order:
+// configuration order first, then whatever source-dir discovery has added
+// since. The slice is a snapshot, so a fan-out handler iterating it is
+// unaffected by a repository registered while the request is in flight.
+func (s *Server) repoList() []*repoServices {
+	s.reposMu.RLock()
+	defer s.reposMu.RUnlock()
+	out := make([]*repoServices, 0, len(s.order))
+	for _, name := range s.order {
+		out = append(out, s.repos[name])
+	}
+	return out
 }
 
 // newRepoServices constructs the git and fs services for one repository root,
@@ -259,6 +316,15 @@ type reviewChangedMessage struct {
 	Path string `json:"path"`
 }
 
+// reposChangedMessage is the push sent when the set of served repositories
+// grows, naming what was added. The browser's repository list is fetched from
+// /api/repos, so the message is a "refetch that" signal; the names ride along
+// for the log line on the other side, not as a list to merge in.
+type reposChangedMessage struct {
+	Type  string   `json:"type"`
+	Repos []string `json:"repos"`
+}
+
 // broadcastReviewChanged pushes a review_changed message through the live hub.
 // It is the api package's Deps.ReviewChanged, invoked after every successful
 // review command so open browsers reload the document's review state.
@@ -285,9 +351,9 @@ func (s *Server) Handler() http.Handler {
 }
 
 // Run starts the background lifecycle — one live.Watcher per repository plus the
-// repo-activity refresh loop (daemon mode) — and blocks until ctx is cancelled.
-// It returns ctx.Err() on cancellation. Watchers and the loop are torn down
-// before Run returns. Serving HTTP is the caller's responsibility (cmd owns the
+// refresh loop (daemon mode) — and blocks until ctx is cancelled. It returns
+// ctx.Err() on cancellation. Watchers and the loop are torn down before Run
+// returns. Serving HTTP is the caller's responsibility (cmd owns the
 // http.Server); Run only drives the realtime/background machinery.
 func (s *Server) Run(ctx context.Context) error {
 	// Warm the activity cache before accepting the first /repos so it is instant.
@@ -295,63 +361,115 @@ func (s *Server) Run(ctx context.Context) error {
 		s.warmActivity(ctx)
 	}
 
-	g, gctx := errgroup.WithContext(ctx)
-
-	for _, name := range s.order {
-		rs := s.repos[name]
-		w, err := live.NewWatcher(rs.root, rs.name, s.manager, s.reviews, s.cfg.UseIgnoreFiles, s.logger)
-		if err != nil {
-			s.logger.Warn("server: failed to start watcher", "repo", rs.name, "root", rs.root, "error", err)
-			continue
-		}
-		s.watchers = append(s.watchers, w)
-		g.Go(func() error {
-			// Start blocks until gctx is cancelled; its ctx.Err() return is
-			// expected on shutdown and must not poison the group.
-			if err := w.Start(gctx); err != nil && err != gctx.Err() {
-				s.logger.Warn("server: watcher stopped with error", "repo", rs.name, "error", err)
-			}
-			return nil
-		})
+	for _, rs := range s.repoList() {
+		s.startWatcher(ctx, rs)
 	}
 
 	if s.cfg.MultiRepo {
-		g.Go(func() error {
-			s.activityLoop(gctx)
-			return nil
-		})
+		s.wg.Add(1)
+		go func() {
+			defer s.wg.Done()
+			s.refreshLoop(ctx)
+		}()
 	}
 
 	<-ctx.Done()
-	_ = g.Wait()
+	s.wg.Wait()
 	return ctx.Err()
+}
+
+// startWatcher starts the live watcher for one repository and tracks it, so
+// Shutdown can close it and Run can wait for it. A watcher that cannot be
+// created is logged and skipped: the repository stays served over HTTP, it just
+// does not push live updates. It is called for every repository Run finds at
+// startup and for every one the refresh loop discovers afterwards.
+func (s *Server) startWatcher(ctx context.Context, rs *repoServices) {
+	w, err := live.NewWatcher(rs.root, rs.name, s.manager, s.reviews, s.cfg.UseIgnoreFiles, s.logger)
+	if err != nil {
+		s.logger.Warn("server: failed to start watcher", "repo", rs.name, "root", rs.root, "error", err)
+		return
+	}
+	s.watchersMu.Lock()
+	s.watchers = append(s.watchers, w)
+	s.watchersMu.Unlock()
+
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		// Start blocks until ctx is cancelled; its ctx.Err() return is the
+		// expected shutdown path, not a failure worth logging.
+		if err := w.Start(ctx); err != nil && !errors.Is(err, ctx.Err()) {
+			s.logger.Warn("server: watcher stopped with error", "repo", rs.name, "error", err)
+		}
+	}()
 }
 
 // Shutdown closes the live watchers. It is idempotent and safe to call after Run
 // has returned. The HTTP server is owned and shut down by cmd; Shutdown only
 // releases the realtime resources this package created.
 func (s *Server) Shutdown(_ context.Context) error {
+	s.watchersMu.Lock()
+	defer s.watchersMu.Unlock()
 	for _, w := range s.watchers {
 		_ = w.Close()
 	}
 	return nil
 }
 
-// activityLoop refreshes the repo-activity cache on a fixed interval until ctx
-// is cancelled. Newly discovered source-dir repos are not hot-added here (the
-// historical behavior restarted the watcher); that responsibility belongs to a
-// future enhancement. Each pass recomputes last-activity for the known repos.
-func (s *Server) activityLoop(ctx context.Context) {
-	ticker := time.NewTicker(activityRefreshInterval)
+// refreshLoop runs the daemon's periodic maintenance until ctx is cancelled:
+// discover repositories that have appeared under source_dirs, then recompute
+// last-activity for every repository now known. Discovery runs first so a
+// repository found this pass is warmed by the same pass and reaches the browser
+// with its last_activity already populated.
+func (s *Server) refreshLoop(ctx context.Context) {
+	ticker := time.NewTicker(s.refreshInterval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			added := s.discoverRepos(ctx)
 			s.warmActivity(ctx)
+			if len(added) > 0 {
+				s.manager.Broadcast(reposChangedMessage{Type: "repos_changed", Repos: added})
+			}
 		}
 	}
+}
+
+// discoverRepos rescans source_dirs and serves every repository that has
+// appeared since the last pass, returning their names. Each one is registered,
+// given a watcher, and thereafter indistinguishable from a configured repo.
+//
+// This is what makes `git clone` into a source dir enough: the scan at startup
+// was previously the only one, so a directory created afterwards stayed unseen
+// until the daemon was restarted.
+//
+// Discovery is additive only. A repository whose directory disappears keeps its
+// entry, its services and its watcher: dropping it would have to tear down a
+// watcher and 404 a browser that is reading one of its documents, and a
+// directory that is missing for a moment (a move, a re-clone) is not a request
+// to stop serving it.
+func (s *Server) discoverRepos(ctx context.Context) []string {
+	if !s.cfg.MultiRepo || len(s.cfg.SourceDirs) == 0 {
+		return nil
+	}
+	// DiscoverReposFromSourceDirs appends to cfg.Repos and resolves name
+	// collisions against what is already there, so it returns only repos this
+	// pass is the first to see.
+	added := s.cfg.DiscoverReposFromSourceDirs()
+	if len(added) == 0 {
+		return nil
+	}
+
+	names := make([]string, 0, len(added))
+	for _, rc := range added {
+		s.logger.Info("server: discovered repository", "repo", rc.Name, "path", rc.Path)
+		s.startWatcher(ctx, s.register(rc.Name, rc.Path))
+		names = append(names, rc.Name)
+	}
+	return names
 }
 
 // warmActivity recomputes last-activity for every repository concurrently and
@@ -367,11 +485,12 @@ func (s *Server) warmActivity(_ context.Context) {
 		name string
 		info model.RepoInfo
 	}
-	results := make([]result, len(s.order))
+	repos := s.repoList()
+	results := make([]result, len(repos))
 
 	g := new(errgroup.Group)
-	for i, name := range s.order {
-		rs := s.repos[name]
+	for i, rs := range repos {
+		name := rs.name
 		g.Go(func() error {
 			recents := rs.git.Recents(1, nil, true, true)
 			if len(recents) > 0 {

@@ -110,7 +110,8 @@ vantage init-config
 host = "127.0.0.1"
 port = 8000
 
-# Auto-discover git repos under these directories
+# Auto-discover git repos under these directories, re-scanned every 30s so a
+# new clone is served without a restart
 source_dirs = ["~/code", "~/projects"]
 
 # Or list repos explicitly (both methods can be combined)

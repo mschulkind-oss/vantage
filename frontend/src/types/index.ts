@@ -35,11 +35,17 @@ export interface FileContent {
 }
 
 export interface WebSocketMessage {
-  type: "files_changed" | "review_changed" | "hello";
+  type: "files_changed" | "review_changed" | "repos_changed" | "hello";
   paths?: string[];
   /** review_changed: the document whose review state changed server-side. */
   path?: string;
   repo?: string;
+  /**
+   * repos_changed: the repositories the daemon has just started serving,
+   * discovered under a configured source dir. Informational — the list itself
+   * is refetched from /api/repos.
+   */
+  repos?: string[];
   version?: string;
 }
 

@@ -22,6 +22,7 @@ describe("useWebSocket", () => {
   const mockViewDirectory = vi.fn();
   const mockFetchRecentFiles = vi.fn();
   const mockMarkPathsChanged = vi.fn();
+  const mockRefreshRepos = vi.fn();
   // The review store is NOT module-mocked — we swap the real store's
   // loadReview action so we observe the real call the hook makes.
   const mockLoadReview = vi.fn();
@@ -33,6 +34,7 @@ describe("useWebSocket", () => {
     refreshExpandedTree: mockRefreshExpandedTree,
     viewDirectory: mockViewDirectory,
     markPathsChanged: mockMarkPathsChanged,
+    refreshRepos: mockRefreshRepos,
     reposLoaded: true,
     isMultiRepo: false,
     currentRepo: null,
@@ -276,6 +278,26 @@ describe("useWebSocket", () => {
 
     // WebSocket constructor called again (initial + reconnect)
     expect(global.WebSocket).toHaveBeenCalledTimes(2);
+  });
+
+  // The daemon serves a repository as soon as it appears under a source dir;
+  // the picker showing it only after a reload would put the restart back.
+  describe("repos_changed", () => {
+    it("refetches the repository list and nothing else", () => {
+      renderHook(() => useWebSocket());
+
+      act(() => {
+        mockWebSocket.onmessage!({
+          data: JSON.stringify({ type: "repos_changed", repos: ["beta"] }),
+        } as MessageEvent);
+        vi.advanceTimersByTime(600);
+      });
+
+      expect(mockRefreshRepos).toHaveBeenCalledTimes(1);
+      // Not a file change: the batch machinery must stay untouched.
+      expect(mockLoadFile).not.toHaveBeenCalled();
+      expect(mockRefreshExpandedTree).not.toHaveBeenCalled();
+    });
   });
 
   describe("review_changed", () => {

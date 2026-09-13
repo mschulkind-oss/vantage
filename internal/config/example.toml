@@ -48,7 +48,9 @@ port = 8000
 # Source directories: parent directories that are automatically scanned
 # for git repos.  Any subdirectory containing a .git folder is added as
 # a repo (using the directory name).  Repos already listed in [[repos]]
-# are not duplicated.  This is off by default — uncomment to enable.
+# are not duplicated.  The scan runs at startup and every 30 seconds after
+# it, so a repo cloned into one of these directories is served without a
+# restart.  This is off by default — uncomment to enable.
 #
 # source_dirs = ["~/code", "~/projects"]
 

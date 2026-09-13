@@ -29,8 +29,8 @@ func (s *Server) resolveLegacy(next http.HandlerFunc) http.HandlerFunc {
 				"Legacy endpoints are disabled in multi-repo mode. Use /api/r/{repo}/... instead.")
 			return
 		}
-		rs, ok := s.repos[""]
-		if !ok {
+		rs := s.repoByName("")
+		if rs == nil {
 			writeJSONError(w, http.StatusNotFound, "Repository not found")
 			return
 		}
@@ -53,15 +53,15 @@ func (s *Server) resolveLegacy(next http.HandlerFunc) http.HandlerFunc {
 func (s *Server) resolveRepo(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		name := chi.URLParam(r, "repo")
-		rs, ok := s.repos[name]
-		if !ok {
+		rs := s.repoByName(name)
+		if rs == nil {
 			if decoded, err := url.PathUnescape(name); err == nil && decoded != name {
-				if drs, dok := s.repos[decoded]; dok {
-					name, rs, ok = decoded, drs, true
+				if drs := s.repoByName(decoded); drs != nil {
+					name, rs = decoded, drs
 				}
 			}
 		}
-		if !ok || name == "" {
+		if rs == nil || name == "" {
 			writeJSONError(w, http.StatusNotFound, "Repository not found: "+name)
 			return
 		}
@@ -78,7 +78,7 @@ func (s *Server) resolveRepo(next http.HandlerFunc) http.HandlerFunc {
 func (s *Server) resolveGlobal(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !s.cfg.MultiRepo {
-			if rs, ok := s.repos[""]; ok {
+			if rs := s.repoByName(""); rs != nil {
 				next(w, r.WithContext(withRepo(r.Context(), rs)))
 				return
 			}
@@ -102,16 +102,19 @@ func withRepo(ctx context.Context, rs *repoServices) context.Context {
 // ---------------------------------------------------------------------------
 
 // handleReposMulti handles GET /repos in daemon mode. It returns one RepoInfo
-// per configured repository in configuration order, attaching last_activity from
-// the activity cache. The single-repo sentinel ([{"name":""}]) is never emitted
+// per served repository in registration order — configured first, then any the
+// source-dir scan has discovered since — attaching last_activity from the
+// activity cache. The single-repo sentinel ([{"name":""}]) is never emitted
 // here — that is the api package's job in single-repo mode.
 func (s *Server) handleReposMulti(w http.ResponseWriter, _ *http.Request) {
 	s.activityMu.RLock()
 	cache := s.activity
 	s.activityMu.RUnlock()
 
-	out := make([]model.RepoInfo, 0, len(s.order))
-	for _, name := range s.order {
+	repos := s.repoList()
+	out := make([]model.RepoInfo, 0, len(repos))
+	for _, rs := range repos {
+		name := rs.name
 		if info, ok := cache[name]; ok {
 			out = append(out, info)
 			continue
@@ -124,13 +127,13 @@ func (s *Server) handleReposMulti(w http.ResponseWriter, _ *http.Request) {
 
 // handleFilesAllMulti handles GET /files/all in daemon mode. It fans out across
 // every repository, tags each Markdown path with its repo name, and concatenates
-// the per-repo results in configuration order.
+// the per-repo results in registration order.
 func (s *Server) handleFilesAllMulti(w http.ResponseWriter, _ *http.Request) {
-	perRepo := make([][]model.RepoFile, len(s.order))
+	repos := s.repoList()
+	perRepo := make([][]model.RepoFile, len(repos))
 
 	g := new(errgroup.Group)
-	for i, name := range s.order {
-		rs := s.repos[name]
+	for i, rs := range repos {
 		g.Go(func() error {
 			perRepo[i] = api.BuildFilesAllScoped(rs.fs, rs.name)
 			return nil
@@ -153,10 +156,10 @@ func (s *Server) handleRecentAllMulti(w http.ResponseWriter, r *http.Request) {
 	showHidden := queryBool(r, "show_hidden", true)
 	showGitignored := queryBool(r, "show_gitignored", true)
 
-	perRepo := make([][]api.RecentAllItem, len(s.order))
+	repos := s.repoList()
+	perRepo := make([][]api.RecentAllItem, len(repos))
 	g := new(errgroup.Group)
-	for i, name := range s.order {
-		rs := s.repos[name]
+	for i, rs := range repos {
 		g.Go(func() error {
 			perRepo[i] = api.BuildRecentAll(rs.git, rs.name, limit, showHidden, showGitignored)
 			return nil
@@ -187,7 +190,7 @@ func (s *Server) handleRecentAllMulti(w http.ResponseWriter, r *http.Request) {
 
 // handlePerfDiagnosticsMulti handles GET /perf/diagnostics in daemon mode. It
 // builds the timing report once and, when include_shape=true, attaches each
-// repository's anonymized shape under repo_1..repo_n keys (configuration order),
+// repository's anonymized shape under repo_1..repo_n keys (registration order),
 // matching the historical multi-repo shape contract.
 func (s *Server) handlePerfDiagnosticsMulti(w http.ResponseWriter, r *http.Request) {
 	diag := s.perf.Diagnostics()
@@ -196,9 +199,9 @@ func (s *Server) handlePerfDiagnosticsMulti(w http.ResponseWriter, r *http.Reque
 
 	if queryBool(r, "include_shape", false) {
 		excl := excludeSet(s.cfg.ExcludeDirs)
-		shapes := make(map[string]perf.RepoShape, len(s.order))
-		for i, name := range s.order {
-			rs := s.repos[name]
+		repos := s.repoList()
+		shapes := make(map[string]perf.RepoShape, len(repos))
+		for i, rs := range repos {
 			shapes["repo_"+strconv.Itoa(i+1)] = perf.CollectRepoShape(rs.fs.RootPath(), excl)
 		}
 		diag.RepoShape = shapes
