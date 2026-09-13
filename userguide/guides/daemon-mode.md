@@ -54,7 +54,7 @@ name = "notes"
 path = "~/Documents/notes"
 ```
 
-Any subdirectory of `source_dirs` that contains a `.git` folder is added automatically, using the directory name. Repos already listed in `[[repos]]` are not duplicated. The scan also repeats every 30 seconds while the daemon runs, so a repo cloned into one of these directories shows up on its own — in the daemon and in any browser already open on it — without a restart. See [Configuration](../reference/configuration.md#source-directory-auto-discovery) for details.
+Any subdirectory of `source_dirs` that contains a `.git` folder is added automatically, using the directory name. Repos already listed in `[[repos]]` are not duplicated. The scan also repeats every 30 seconds while the daemon runs, so a repo cloned into one of these directories shows up on its own — in the daemon and in any browser already open on it — without a restart, and one whose directory goes away drops out the same way. See [Configuration](../reference/configuration.md#source-directory-auto-discovery) for details.
 
 ### 3. Start the daemon
 

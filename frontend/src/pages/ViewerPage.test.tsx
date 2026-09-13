@@ -4,6 +4,7 @@ import { ViewerPage } from "./ViewerPage";
 import { useRepoStore } from "../stores/useRepoStore";
 import { useGitStore } from "../stores/useGitStore";
 import { useReviewStore } from "../stores/useReviewStore";
+import { useConnectionStore } from "../stores/useConnectionStore";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { BrowserRouter } from "react-router-dom";
 import type { CommentReaction, ReviewComment } from "../types";
@@ -261,6 +262,84 @@ describe("ViewerPage", () => {
     expect(
       screen.getAllByText(/does-not-exist.md/i).length,
     ).toBeGreaterThanOrEqual(1);
+  });
+
+  // A repository the daemon retires (its directory went away) drops out of
+  // /api/repos, which reaches this page as a shorter `repos` list. The viewer
+  // has to survive that and, more importantly, come back from it.
+  describe("a repository that disappears and returns", () => {
+    const installRepoStore = (
+      overrides: Record<string, unknown> & { repos: { name: string }[] },
+    ) => {
+      (useRepoStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+        // Multi-repo mode renders the project picker, which sorts the list.
+        sortedRepos: () => overrides.repos,
+        repoSortMode: "alphabetical",
+        setRepoSortMode: vi.fn(),
+        fileTree: [],
+        fileContent: null,
+        currentDirectory: null,
+        currentPath: "beta/b.md",
+        error: null,
+        refreshTree: mockRefreshTree,
+        viewDirectory: mockViewDirectory,
+        loadFile: mockLoadFile,
+        expandToPath: mockExpandToPath,
+        loadPathDirectories: mockLoadPathDirectories,
+        isMultiRepo: true,
+        reposLoaded: true,
+        loadRepos: mockLoadRepos,
+        setCurrentRepo: mockSetCurrentRepo,
+        ...overrides,
+      });
+    };
+
+    const rerenderPage = (rerender: (ui: React.ReactElement) => void) =>
+      rerender(
+        <BrowserRouter>
+          <ViewerPage />
+        </BrowserRouter>,
+      );
+
+    it("deselects it while it is gone and reloads the document when it is back", () => {
+      mockUseParams.mockReturnValue({ "*": "beta/b.md" });
+      installRepoStore({ repos: [{ name: "beta" }], currentRepo: "beta" });
+      const { rerender } = renderPage();
+      expect(mockLoadFile).toHaveBeenCalledWith("b.md");
+
+      // Retired: the push refreshed `repos` and beta is no longer in it.
+      installRepoStore({ repos: [], currentRepo: "beta" });
+      rerenderPage(rerender);
+      // Deselected, so the return goes through setCurrentRepo — which refetches
+      // the file tree this branch drops. Left selected, the document would come
+      // back under an empty sidebar.
+      expect(mockSetCurrentRepo).toHaveBeenCalledWith(null);
+
+      // Back: same URL, same page, no reload anywhere.
+      mockSetCurrentRepo.mockClear();
+      installRepoStore({ repos: [{ name: "beta" }], currentRepo: null });
+      rerenderPage(rerender);
+      expect(mockSetCurrentRepo).toHaveBeenCalledWith("beta");
+    });
+
+    it("tells the reader the error page is waiting, while the socket is up", () => {
+      installRepoStore({
+        repos: [],
+        currentRepo: null,
+        error: "Repository not found: beta",
+      });
+      useConnectionStore.setState({ connected: true });
+
+      const { rerender } = renderPage();
+      expect(screen.getByText(/loads it automatically/i)).toBeInTheDocument();
+
+      // Disconnected, the page cannot promise anything: nothing will tell it
+      // the repository came back.
+      useConnectionStore.setState({ connected: false, disconnectedAt: 1 });
+      rerenderPage(rerender);
+      expect(screen.queryByText(/loads it automatically/i)).toBeNull();
+      useConnectionStore.setState({ connected: true, disconnectedAt: null });
+    });
   });
 
   describe("review toolbar copy button", () => {

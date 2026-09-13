@@ -255,6 +255,30 @@ func TestNewWatcherSetsRoot(t *testing.T) {
 	require.Equal(t, "myrepo", w.repoName)
 }
 
+// A repository can be retired between the moment its watcher is created and the
+// moment Start gets to run — discovered and deleted inside one refresh period.
+// Close used to read a nil fsw there, do nothing, and leave Start to watch a
+// directory nobody serves any more.
+func TestWatcherCloseBeforeStartStopsIt(t *testing.T) {
+	w, err := NewWatcher(t.TempDir(), "gone", NewManager(quietLogger(), nil), nil, false, quietLogger())
+	require.NoError(t, err)
+	require.NoError(t, w.Close())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- w.Start(ctx) }()
+
+	select {
+	case err := <-done:
+		// Returns of its own accord, with the context still live: nothing was
+		// watched, so there is nothing to wait for.
+		require.NoError(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Start kept running after Close")
+	}
+}
+
 func TestWatcherFlushBroadcastsSortedPaths(t *testing.T) {
 	root := t.TempDir()
 	m := NewManager(quietLogger(), nil)

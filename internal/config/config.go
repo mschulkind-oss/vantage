@@ -72,6 +72,12 @@ type RepoConfig struct {
 	// AllowedReadRoots are additional absolute roots outside Path that the
 	// filesystem service may read (e.g. shared skill directories).
 	AllowedReadRoots []string `toml:"allowed_read_roots"`
+	// Discovered marks a repo that a source-dir scan added, as opposed to an
+	// explicit [[repos]] entry. It is deliberately not a TOML key — a config
+	// file cannot set it — and exists so the daemon can retire an entry it
+	// invented when the directory behind it goes away, which it must never do
+	// to a repository someone wrote down by hand.
+	Discovered bool `toml:"-"`
 }
 
 // Config is the resolved configuration shared by both run modes.
@@ -371,7 +377,9 @@ func (c *Config) Resolve() error {
 // DiscoverReposFromSourceDirs scans each source dir for immediate subdirectories
 // that contain a .git entry (directory or file, the latter covering worktrees)
 // and appends any not already configured. Names default to the directory name,
-// with a numeric "-N" suffix on collision. It returns the newly added repos.
+// with a numeric "-N" suffix on collision. Added repos are marked Discovered,
+// which is what makes them eligible for [Config.PruneMissingDiscoveredRepos]
+// later. It returns the newly added repos.
 //
 // Unreadable source dirs and entries are skipped silently; callers that want to
 // warn can inspect the source-dir existence themselves.
@@ -419,7 +427,7 @@ func (c *Config) DiscoverReposFromSourceDirs() []RepoConfig {
 				repoName = fmt.Sprintf("%s-%d", name, counter)
 			}
 
-			repo := RepoConfig{Name: repoName, Path: resolved}
+			repo := RepoConfig{Name: repoName, Path: resolved, Discovered: true}
 			c.Repos = append(c.Repos, repo)
 			existingPaths[resolved] = struct{}{}
 			existingNames[repoName] = struct{}{}
@@ -427,6 +435,52 @@ func (c *Config) DiscoverReposFromSourceDirs() []RepoConfig {
 		}
 	}
 	return added
+}
+
+// PruneMissingDiscoveredRepos removes every discovered repo whose directory is
+// no longer one [Config.DiscoverReposFromSourceDirs] would add — gone, replaced
+// by a file, or no longer holding a .git entry — and returns the removed
+// entries. It is the inverse of that scan and the two are meant to run
+// together: the pair reconciles the repo list with what the source dirs
+// currently hold.
+//
+// Only Discovered repos are considered. An explicit [[repos]] entry whose path
+// is missing stays in the list and keeps being served (as a repository whose
+// every request fails), because the user asserted it should exist and a
+// transiently-missing directory is not a retraction of that.
+//
+// A source dir that becomes unreadable in one go — an unmounted home, say —
+// therefore looks exactly like every repo under it being deleted, and is
+// treated that way. That is the honest reading: nothing under it can be served
+// while it is gone, and the next scan restores every one of them when it is
+// back.
+func (c *Config) PruneMissingDiscoveredRepos() []RepoConfig {
+	var removed []RepoConfig
+	kept := c.Repos[:0]
+	for _, r := range c.Repos {
+		if r.Discovered && !isGitRepoDir(r.Path) {
+			removed = append(removed, r)
+			continue
+		}
+		kept = append(kept, r)
+	}
+	if len(removed) == 0 {
+		return nil
+	}
+	c.Repos = kept
+	return removed
+}
+
+// isGitRepoDir reports whether path is a directory holding a .git entry — the
+// same test the source-dir scan admits a candidate with, so a repo is retired
+// exactly when it would no longer be discovered.
+func isGitRepoDir(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil || !info.IsDir() {
+		return false
+	}
+	_, err = os.Stat(filepath.Join(path, ".git"))
+	return err == nil
 }
 
 // GetRepo returns the configured repo with the given name, or nil if none.

@@ -57,6 +57,7 @@ import { MessageSquarePlus, ClipboardCopy } from "lucide-react";
 import { useLineAnchor } from "../hooks/useLineAnchor";
 import { StyleGuideModal } from "../components/StyleGuideModal";
 import { ConnectionBanner } from "../components/ConnectionBanner";
+import { useConnectionStore } from "../stores/useConnectionStore";
 import { ReviewStripe } from "../components/ReviewStripe";
 
 /** Format an ISO date string as a short local datetime (e.g. "Mar 2, 2026 3:45 PM"). */
@@ -103,6 +104,10 @@ export const ViewerPage: React.FC = () => {
     setRepoSortMode,
     sortedRepos,
   } = useRepoStore();
+
+  // Whether the live socket is up, which decides if the error view can promise
+  // to recover on its own.
+  const connected = useConnectionStore((s) => s.connected);
 
   const {
     latestCommit,
@@ -435,7 +440,16 @@ export const ViewerPage: React.FC = () => {
       // Check if this repo exists
       const repoExists = repos.some((r) => r.name === repoName);
       if (!repoExists) {
-        // Repo not found - set error and clear content
+        // Not served: never configured, or retired by the daemon because its
+        // directory went away. This page is live either way — `repos` is
+        // refetched on every repos_changed push, so this effect re-runs when
+        // the repo comes back and loads the document below.
+        //
+        // Deselecting the repo is what makes that return clean: with
+        // currentRepo cleared it re-enters through setCurrentRepo, which
+        // refetches the file tree this branch is about to drop. Left selected,
+        // the document would come back under an empty sidebar.
+        if (currentRepo) setCurrentRepo(null);
         useRepoStore.setState({
           error: `Repository not found: ${repoName}`,
           fileContent: null,
@@ -1487,6 +1501,17 @@ export const ViewerPage: React.FC = () => {
                     {currentPath && (
                       <p className="text-sm text-red-400 mt-1 font-mono">
                         {currentPath}
+                      </p>
+                    )}
+                    {connected && (
+                      // Both errors that land here — a document that is gone and
+                      // a repository the daemon has retired — are re-checked on
+                      // the live socket, so this page loads by itself the moment
+                      // the thing returns. Saying so stops the reader reaching
+                      // for a reload that does nothing extra.
+                      <p className="text-sm text-slate-500 dark:text-slate-400 mt-3">
+                        Waiting — this page loads it automatically if it comes
+                        back.
                       </p>
                     )}
                     <AppLink

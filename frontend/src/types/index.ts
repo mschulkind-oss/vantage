@@ -41,11 +41,13 @@ export interface WebSocketMessage {
   path?: string;
   repo?: string;
   /**
-   * repos_changed: the repositories the daemon has just started serving,
-   * discovered under a configured source dir. Informational — the list itself
-   * is refetched from /api/repos.
+   * repos_changed: the repositories the daemon has just started serving
+   * (discovered under a configured source dir) and stopped serving (their
+   * directories are gone). Informational — the list itself is refetched from
+   * /api/repos.
    */
-  repos?: string[];
+  added?: string[];
+  removed?: string[];
   version?: string;
 }
 

@@ -50,7 +50,9 @@ port = 8000
 # a repo (using the directory name).  Repos already listed in [[repos]]
 # are not duplicated.  The scan runs at startup and every 30 seconds after
 # it, so a repo cloned into one of these directories is served without a
-# restart.  This is off by default — uncomment to enable.
+# restart, and one whose directory is gone stops being served.  Repos listed
+# in [[repos]] are never dropped this way.  This is off by default —
+# uncomment to enable.
 #
 # source_dirs = ["~/code", "~/projects"]
 

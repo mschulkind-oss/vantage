@@ -78,7 +78,9 @@ source_dirs = ["~/code", "~/projects"]
 
 Auto-discovered repos use the directory name as their display name. If a repo is already listed explicitly in `[[repos]]` (by matching its resolved path), it is skipped — so you can mix manual entries with auto-discovery without duplicates. If two discovered repos would have the same name, a numeric suffix is added (e.g., `my-project-2`).
 
-**The scan repeats while the daemon runs**, every 30 seconds, so a repo you clone into a source dir is served within half a minute — no restart, and any browser already open adds it to the project list on its own. Only additions are noticed: a repo whose directory you delete or move away stays in the list until the daemon restarts, because dropping it would have to close files a reader may be in the middle of.
+**The scan repeats while the daemon runs**, every 30 seconds, and the project list follows the directories in both directions. A repo you clone into a source dir is served within half a minute; one you delete or move away — or whose `.git` you remove, which is the same test that admitted it — stops being served just as quickly. No restart either way, and browsers already open follow along: the project list updates itself, and a page showing a document from a repo that has gone says the repository is not found, then loads that same document again by itself if the repo comes back.
+
+Only repos that auto-discovery added are retired this way. An explicit `[[repos]]` entry whose directory is missing stays in the list and keeps being served — you asserted it should exist, so Vantage lets its requests fail loudly rather than quietly dropping it.
 
 This feature is **off by default** — add `source_dirs` to your config to enable it.
 

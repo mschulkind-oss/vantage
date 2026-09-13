@@ -138,6 +138,19 @@ func repoNames(t *testing.T, h http.Handler) []string {
 	return out
 }
 
+// waitFor polls cond on the test goroutine — where the require calls inside it
+// belong — until it holds or the deadline passes.
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 func doGET(t *testing.T, h http.Handler, target string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, target, nil)
@@ -439,13 +452,9 @@ func TestSourceDirRepoIsServedWithoutRestart(t *testing.T) {
 
 	initRepoAt(t, filepath.Join(sourceDir, "beta"), map[string]string{"b.md": "# B\n"})
 
-	deadline := time.Now().Add(10 * time.Second)
-	for !slices.Contains(repoNames(t, h), "beta") {
-		if time.Now().After(deadline) {
-			t.Fatal("a repository created under the source dir was never discovered")
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
+	waitFor(t, "the new repository to be discovered", func() bool {
+		return slices.Contains(repoNames(t, h), "beta")
+	})
 
 	// Listed is not enough: the discovered repo has to resolve as a repo, which
 	// means its own services were built and registered, not just its name.
@@ -507,12 +516,12 @@ func TestReposChangedBroadcastReachesWebSocket(t *testing.T) {
 		if msg["type"] != "repos_changed" {
 			continue
 		}
-		require.JSONEq(t, `{"type":"repos_changed","repos":["beta"]}`, string(data))
+		require.JSONEq(t, `{"type":"repos_changed","added":["beta"],"removed":[]}`, string(data))
 		return
 	}
 }
 
-func TestDiscoverReposIsAdditiveOnly(t *testing.T) {
+func TestDiscoverReposAddsEachRepoOnce(t *testing.T) {
 	isolateReviewDir(t)
 	srv, sourceDir := discoveryServer(t)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -525,13 +534,110 @@ func TestDiscoverReposIsAdditiveOnly(t *testing.T) {
 	initRepoAt(t, filepath.Join(sourceDir, "beta"), map[string]string{"b.md": "# B\n"})
 	require.Equal(t, []string{"beta"}, srv.discoverRepos(ctx))
 	require.Empty(t, srv.discoverRepos(ctx))
+}
 
-	// A repository whose directory goes away keeps its entry: dropping it would
-	// tear down a watcher and 404 a browser mid-read, over a directory that may
-	// be back a second later (a move, a re-clone).
+func TestRetireReposDropsOnlyWhatIsGone(t *testing.T) {
+	isolateReviewDir(t)
+	srv, sourceDir := discoveryServer(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// An explicitly configured repo is never retired, whatever happens to its
+	// directory: the user asserted it should be served.
+	configured := initRepo(t, map[string]string{"c.md": "# C\n"})
+	srv.cfg.Repos = append(srv.cfg.Repos, config.RepoConfig{Name: "configured", Path: configured})
+	srv.register("configured", configured)
+
+	initRepoAt(t, filepath.Join(sourceDir, "beta"), map[string]string{"b.md": "# B\n"})
+	require.Equal(t, []string{"beta"}, srv.discoverRepos(ctx))
+	require.Empty(t, srv.retireRepos(), "nothing is missing yet")
+
 	require.NoError(t, os.RemoveAll(filepath.Join(sourceDir, "beta")))
-	require.Empty(t, srv.discoverRepos(ctx))
-	require.Contains(t, repoNames(t, srv.Handler()), "beta")
+	require.NoError(t, os.RemoveAll(configured))
+
+	require.Equal(t, []string{"beta"}, srv.retireRepos())
+	require.Empty(t, srv.retireRepos(), "and not again once it is gone")
+
+	names := repoNames(t, srv.Handler())
+	require.NotContains(t, names, "beta")
+	require.Contains(t, names, "configured")
+
+	// A repo that stops being a git repo is gone by the same test that admitted
+	// it, even though its directory is still there.
+	require.NoError(t, os.RemoveAll(filepath.Join(sourceDir, "alpha", ".git")))
+	require.Equal(t, []string{"alpha"}, srv.retireRepos())
+}
+
+// Ordering inside one reconciliation pass: the name a departing repository gives
+// up is available to one arriving in the same pass. Discovering first would name
+// the arrival "foo-2" — permanently, since nothing renames a repo later — and
+// leave "foo" unused.
+func TestRetiringFreesTheNameForANewcomer(t *testing.T) {
+	isolateReviewDir(t)
+	srcA, srcB := t.TempDir(), t.TempDir()
+	initRepoAt(t, filepath.Join(srcA, "foo"), map[string]string{"a.md": "# A\n"})
+
+	cfg := config.Defaults()
+	cfg.MultiRepo = true
+	cfg.SourceDirs = []string{srcA, srcB}
+	require.NoError(t, cfg.Resolve())
+	require.Len(t, cfg.DiscoverReposFromSourceDirs(), 1)
+
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Same basename, different directory, inside one refresh window.
+	require.NoError(t, os.RemoveAll(filepath.Join(srcA, "foo")))
+	initRepoAt(t, filepath.Join(srcB, "foo"), map[string]string{"b.md": "# B\n"})
+
+	require.Equal(t, []string{"foo"}, srv.retireRepos())
+	require.Equal(t, []string{"foo"}, srv.discoverRepos(ctx))
+	require.Equal(t, []string{"foo"}, repoNames(t, srv.Handler()))
+
+	rec := doGET(t, srv.Handler(), "/api/r/foo/tree?path=.")
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "b.md", "the name now serves the new directory")
+}
+
+// The round trip the whole design rests on: a repository can leave and come
+// back, and the browser watching it is told both times.
+func TestRetiredRepoIsServedAgainWhenItReturns(t *testing.T) {
+	isolateReviewDir(t)
+	srv, sourceDir := discoveryServer(t)
+	h := srv.Handler()
+	beta := filepath.Join(sourceDir, "beta")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- srv.Run(ctx) }()
+	defer func() {
+		cancel()
+		<-done
+		require.NoError(t, srv.Shutdown(context.Background()))
+	}()
+
+	initRepoAt(t, beta, map[string]string{"b.md": "# B\n"})
+	waitFor(t, "beta to be served", func() bool {
+		return slices.Contains(repoNames(t, h), "beta")
+	})
+
+	require.NoError(t, os.RemoveAll(beta))
+	waitFor(t, "beta to be retired", func() bool {
+		return !slices.Contains(repoNames(t, h), "beta")
+	})
+	// Retired means gone from the routing too, which is what makes the browser
+	// show its "repository not found" page rather than a hung request.
+	require.Equal(t, http.StatusNotFound, doGET(t, h, "/api/r/beta/tree?path=.").Code)
+
+	initRepoAt(t, beta, map[string]string{"b.md": "# B again\n"})
+	waitFor(t, "beta to come back", func() bool {
+		return slices.Contains(repoNames(t, h), "beta")
+	})
+	rec := doGET(t, h, "/api/r/beta/content?path=b.md")
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "B again")
 }
 
 // Single-repo mode has no source dirs to scan, and its lone repository is keyed

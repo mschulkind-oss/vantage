@@ -188,10 +188,16 @@ export const useWebSocket = () => {
       }
 
       if (message.type === "repos_changed") {
-        // The daemon started serving a repository it found under a source dir.
-        // Refetch the list so the project picker shows it without a reload —
-        // the whole point of discovering it without a restart.
-        wsLog.log("[ws] repos_changed: %s", (message.repos ?? []).join(", "));
+        // The set of served repositories changed: one appeared under a source
+        // dir, or one's directory went away. Refetch the list so the project
+        // picker follows without a reload — and so the viewer, which keys off
+        // that list, either shows its "repository not found" page or loads the
+        // document it was on when the repo comes back.
+        wsLog.log(
+          "[ws] repos_changed: +[%s] -[%s]",
+          (message.added ?? []).join(", "),
+          (message.removed ?? []).join(", "),
+        );
         void useRepoStore.getState().refreshRepos();
         return;
       }

@@ -280,15 +280,20 @@ describe("useWebSocket", () => {
     expect(global.WebSocket).toHaveBeenCalledTimes(2);
   });
 
-  // The daemon serves a repository as soon as it appears under a source dir;
-  // the picker showing it only after a reload would put the restart back.
+  // The daemon serves a repository as soon as it appears under a source dir and
+  // stops the moment its directory goes; the picker showing either only after a
+  // reload would put the restart back.
   describe("repos_changed", () => {
     it("refetches the repository list and nothing else", () => {
       renderHook(() => useWebSocket());
 
       act(() => {
         mockWebSocket.onmessage!({
-          data: JSON.stringify({ type: "repos_changed", repos: ["beta"] }),
+          data: JSON.stringify({
+            type: "repos_changed",
+            added: [],
+            removed: ["beta"],
+          }),
         } as MessageEvent);
         vi.advanceTimersByTime(600);
       });

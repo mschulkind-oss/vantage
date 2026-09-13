@@ -110,10 +110,18 @@ type Watcher struct {
 	matcher *ignore.Matcher
 	logger  *slog.Logger
 
+	// mu guards fsw, closed and stats.
+	mu sync.Mutex
+	// fsw is assigned by Start and read by Close. Both take mu: a Watcher is
+	// started from one goroutine and closed from another (Shutdown, or the
+	// refresh loop retiring its repository), and those two can overlap.
 	fsw *fsnotify.Watcher
-
-	mu    sync.Mutex
-	stats watcherStats
+	// closed records a Close that arrived before Start. Without it that Close
+	// found a nil fsw, did nothing, and left the watcher running for the life
+	// of the process — a repository retired in the same breath as it was
+	// discovered would have kept watching a directory that is gone.
+	closed bool
+	stats  watcherStats
 }
 
 // watcherStats are reset every heartbeat so they describe the most recent
@@ -157,7 +165,14 @@ func (w *Watcher) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	w.mu.Lock()
+	if w.closed {
+		w.mu.Unlock()
+		_ = fsw.Close()
+		return nil
+	}
 	w.fsw = fsw
+	w.mu.Unlock()
 
 	added := w.addRecursive(w.root)
 	w.logStartup(added)
@@ -202,9 +217,13 @@ func (w *Watcher) Start(ctx context.Context) error {
 }
 
 // Close stops watching and releases the inotify handle. It is safe to call once
-// Start has returned or to unblock a running Start (which also closes on ctx
-// cancellation).
+// Start has returned, to unblock a running Start (which also closes on ctx
+// cancellation), and before Start — a Start that runs afterwards returns
+// immediately without watching anything.
 func (w *Watcher) Close() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.closed = true
 	if w.fsw == nil {
 		return nil
 	}

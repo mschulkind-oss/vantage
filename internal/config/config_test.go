@@ -282,6 +282,57 @@ func TestDiscoverReposSkipsExistingAndDedupesNames(t *testing.T) {
 	require.ElementsMatch(t, []string{"beta-2"}, names)
 }
 
+func TestDiscoveredReposAreMarkedAsSuch(t *testing.T) {
+	src := t.TempDir()
+	mkGitRepo(t, filepath.Join(src, "alpha"))
+
+	c := Defaults()
+	c.MultiRepo = true
+	c.SourceDirs = []string{src}
+	c.Repos = []RepoConfig{{Name: "explicit", Path: t.TempDir()}}
+	require.NoError(t, c.Resolve())
+	added := c.DiscoverReposFromSourceDirs()
+
+	// The mark is what tells a later prune which entries the daemon invented
+	// and may therefore retire.
+	require.True(t, added[0].Discovered)
+	require.False(t, c.GetRepo("explicit").Discovered)
+	require.True(t, c.GetRepo("alpha").Discovered)
+}
+
+func TestPruneMissingDiscoveredRepos(t *testing.T) {
+	src := t.TempDir()
+	mkGitRepo(t, filepath.Join(src, "alpha"))
+	mkGitRepo(t, filepath.Join(src, "beta"))
+	mkGitRepo(t, filepath.Join(src, "gamma"))
+	explicit := t.TempDir()
+
+	c := Defaults()
+	c.MultiRepo = true
+	c.SourceDirs = []string{src}
+	c.Repos = []RepoConfig{{Name: "explicit", Path: explicit}}
+	require.NoError(t, c.Resolve())
+	require.Len(t, c.DiscoverReposFromSourceDirs(), 3)
+
+	require.Empty(t, c.PruneMissingDiscoveredRepos(), "nothing is missing yet")
+
+	// beta is deleted outright; gamma stops being a git repo; the explicit
+	// entry's directory is deleted too and must survive anyway.
+	require.NoError(t, os.RemoveAll(filepath.Join(src, "beta")))
+	require.NoError(t, os.RemoveAll(filepath.Join(src, "gamma", ".git")))
+	require.NoError(t, os.RemoveAll(explicit))
+
+	removed := c.PruneMissingDiscoveredRepos()
+	require.ElementsMatch(t, []string{"beta", "gamma"}, repoNames(removed))
+	require.ElementsMatch(t, []string{"explicit", "alpha"}, repoNames(c.Repos))
+	require.Empty(t, c.PruneMissingDiscoveredRepos(), "and not again on the next pass")
+
+	// Re-creating the directory makes it discoverable again, under its old name:
+	// nothing remembers that it was ever retired.
+	mkGitRepo(t, filepath.Join(src, "beta"))
+	require.Equal(t, []string{"beta"}, repoNames(c.DiscoverReposFromSourceDirs()))
+}
+
 func TestValidateErrorClasses(t *testing.T) {
 	t.Run("no-repos", func(t *testing.T) {
 		c := Defaults()

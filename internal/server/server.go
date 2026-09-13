@@ -22,9 +22,10 @@
 //     (resolve.go) that aggregate across every repository.
 //   - It keeps a repo-activity cache (last commit time per repo) warmed at
 //     startup and refreshed on a loop, feeding RepoInfo.last_activity.
-//   - The same loop rescans the configured source_dirs, so a repository that
-//     appears under one after startup is registered, watched and broadcast
-//     without a daemon restart.
+//   - The same loop reconciles the served set with the configured source_dirs,
+//     so a repository that appears under one after startup is registered,
+//     watched and broadcast without a daemon restart — and one whose directory
+//     goes away is retired, its watcher closed, its routes 404 until it returns.
 //
 // # Routing families
 //
@@ -40,7 +41,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
+	"slices"
 	"sync"
 	"time"
 
@@ -57,12 +60,12 @@ import (
 	"github.com/mschulkind-oss/vantage/internal/review"
 )
 
-// defaultRefreshInterval is how often the daemon refresh loop runs: it rescans
-// source_dirs for repositories that have appeared and recomputes the
-// repo-activity cache. It mirrors the historical 30s activity TTL — the cache
-// always serves (possibly stale) values instantly and the loop keeps them
-// fresh — and a repository cloned into a source dir is served within the same
-// window.
+// defaultRefreshInterval is how often the daemon refresh loop runs: it
+// reconciles the served repositories with what source_dirs now hold and
+// recomputes the repo-activity cache. It mirrors the historical 30s activity
+// TTL — the cache always serves (possibly stale) values instantly and the loop
+// keeps them fresh — and it bounds how long a repository takes to start or stop
+// being served after it appears or disappears.
 const defaultRefreshInterval = 30 * time.Second
 
 // repoServices is the server-side bundle for one repository: its name plus the
@@ -105,17 +108,20 @@ type Server struct {
 	order []string
 
 	// activity caches the last-activity RepoInfo per repo name (daemon mode). It
-	// is read by the /repos override and written by warmActivity. The mutex
-	// guards both the map contents and replacement.
+	// is read by the /repos override and written by warmActivity.
+	//
+	// The map is copy-on-write: a reader takes the reference under the lock and
+	// then reads the map outside it, so a writer must swap in a new map and
+	// never mutate the live one.
 	activityMu sync.RWMutex
 	activity   map[string]model.RepoInfo
 
-	// watchersMu guards watchers, which Run appends to at startup and the
-	// refresh loop appends to for every repository it discovers.
+	// watchersMu guards watchers, which Run fills at startup and the refresh
+	// loop adds to and deletes from as repositories come and go.
 	watchersMu sync.Mutex
-	// watchers are the live file watchers started by Run, retained so Shutdown
-	// can close them.
-	watchers []*live.Watcher
+	// watchers are the live file watchers, keyed by repository name, retained so
+	// Shutdown can close them all and retireRepos can close exactly one.
+	watchers map[string]*live.Watcher
 
 	// wg tracks the goroutines Run starts — one per watcher plus the refresh
 	// loop — so Run does not return before they have stopped.
@@ -147,6 +153,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		reviews:         review.NewStore(reviewDir),
 		perf:            perf.Default,
 		repos:           map[string]*repoServices{},
+		watchers:        map[string]*live.Watcher{},
 		activity:        map[string]model.RepoInfo{},
 	}
 
@@ -317,12 +324,28 @@ type reviewChangedMessage struct {
 }
 
 // reposChangedMessage is the push sent when the set of served repositories
-// grows, naming what was added. The browser's repository list is fetched from
-// /api/repos, so the message is a "refetch that" signal; the names ride along
-// for the log line on the other side, not as a list to merge in.
+// changes, naming what came and what went. The browser's repository list is
+// fetched from /api/repos, so the message is a "refetch that" signal; the names
+// ride along for the log line on the other side, not as a list to merge in.
+//
+// Both fields are always present (empty rather than absent) so a reader never
+// has to distinguish "none" from "not stated".
 type reposChangedMessage struct {
-	Type  string   `json:"type"`
-	Repos []string `json:"repos"`
+	Type    string   `json:"type"`
+	Added   []string `json:"added"`
+	Removed []string `json:"removed"`
+}
+
+// broadcastReposChanged pushes repos_changed, normalizing nil name slices to
+// empty ones so the message shape does not depend on which half fired.
+func (s *Server) broadcastReposChanged(added, removed []string) {
+	if added == nil {
+		added = []string{}
+	}
+	if removed == nil {
+		removed = []string{}
+	}
+	s.manager.Broadcast(reposChangedMessage{Type: "repos_changed", Added: added, Removed: removed})
 }
 
 // broadcastReviewChanged pushes a review_changed message through the live hub.
@@ -390,7 +413,7 @@ func (s *Server) startWatcher(ctx context.Context, rs *repoServices) {
 		return
 	}
 	s.watchersMu.Lock()
-	s.watchers = append(s.watchers, w)
+	s.watchers[rs.name] = w
 	s.watchersMu.Unlock()
 
 	s.wg.Add(1)
@@ -417,10 +440,14 @@ func (s *Server) Shutdown(_ context.Context) error {
 }
 
 // refreshLoop runs the daemon's periodic maintenance until ctx is cancelled:
-// discover repositories that have appeared under source_dirs, then recompute
-// last-activity for every repository now known. Discovery runs first so a
+// reconcile the served repositories with what the source dirs now hold, then
+// recompute last-activity for whatever survived. Reconciliation runs first so a
 // repository found this pass is warmed by the same pass and reaches the browser
 // with its last_activity already populated.
+//
+// Retiring precedes discovering so a name freed by a departing repository is
+// available to one arriving in the same pass. The other order hands the arrival
+// a "-2" suffix it then keeps for good, while the name it wanted sits unused.
 func (s *Server) refreshLoop(ctx context.Context) {
 	ticker := time.NewTicker(s.refreshInterval)
 	defer ticker.Stop()
@@ -429,10 +456,11 @@ func (s *Server) refreshLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			removed := s.retireRepos()
 			added := s.discoverRepos(ctx)
 			s.warmActivity(ctx)
-			if len(added) > 0 {
-				s.manager.Broadcast(reposChangedMessage{Type: "repos_changed", Repos: added})
+			if len(added) > 0 || len(removed) > 0 {
+				s.broadcastReposChanged(added, removed)
 			}
 		}
 	}
@@ -446,11 +474,7 @@ func (s *Server) refreshLoop(ctx context.Context) {
 // was previously the only one, so a directory created afterwards stayed unseen
 // until the daemon was restarted.
 //
-// Discovery is additive only. A repository whose directory disappears keeps its
-// entry, its services and its watcher: dropping it would have to tear down a
-// watcher and 404 a browser that is reading one of its documents, and a
-// directory that is missing for a moment (a move, a re-clone) is not a request
-// to stop serving it.
+// It pairs with [Server.retireRepos], which drops the ones that have gone away.
 func (s *Server) discoverRepos(ctx context.Context) []string {
 	if !s.cfg.MultiRepo || len(s.cfg.SourceDirs) == 0 {
 		return nil
@@ -470,6 +494,68 @@ func (s *Server) discoverRepos(ctx context.Context) []string {
 		names = append(names, rc.Name)
 	}
 	return names
+}
+
+// retireRepos stops serving every discovered repository whose directory has
+// gone away, returning their names. Each one is unregistered and its watcher
+// closed, so its routes 404 from the next request on.
+//
+// That 404 is the point rather than a cost: a browser reading one of its
+// documents is told the repository is gone the moment it goes, and told again
+// — by the repos_changed that follows the next discovery — when it comes back,
+// at which point the page loads the document it was on. Keeping a dead
+// repository listed instead would leave the sidebar advertising something whose
+// every request already fails, with nothing to announce its return.
+//
+// Only repos the source-dir scan invented are eligible; see
+// [config.Config.PruneMissingDiscoveredRepos] for why an explicit [[repos]]
+// entry is never retired.
+func (s *Server) retireRepos() []string {
+	if !s.cfg.MultiRepo || len(s.cfg.SourceDirs) == 0 {
+		return nil
+	}
+	removed := s.cfg.PruneMissingDiscoveredRepos()
+	if len(removed) == 0 {
+		return nil
+	}
+
+	names := make([]string, 0, len(removed))
+	for _, rc := range removed {
+		s.logger.Info("server: retired repository; its directory is gone",
+			"repo", rc.Name, "path", rc.Path)
+		s.unregister(rc.Name)
+		names = append(names, rc.Name)
+	}
+	return names
+}
+
+// unregister removes a repository's services and closes its watcher. The
+// watcher's goroutine ends on its own: closing the fsnotify watcher closes the
+// event channel, which is one of the two ways Start returns.
+//
+// In-flight requests already holding the services finish against them; the
+// services are plain structs over a path, so a request that was mid-read when
+// the directory vanished fails the same way it would have anyway.
+func (s *Server) unregister(name string) {
+	s.reposMu.Lock()
+	delete(s.repos, name)
+	s.order = slices.DeleteFunc(s.order, func(n string) bool { return n == name })
+	s.reposMu.Unlock()
+
+	s.watchersMu.Lock()
+	if w, ok := s.watchers[name]; ok {
+		_ = w.Close()
+		delete(s.watchers, name)
+	}
+	s.watchersMu.Unlock()
+
+	// Copy-on-write, per the invariant on the field: readers are holding this
+	// map without the lock.
+	s.activityMu.Lock()
+	next := maps.Clone(s.activity)
+	delete(next, name)
+	s.activity = next
+	s.activityMu.Unlock()
 }
 
 // warmActivity recomputes last-activity for every repository concurrently and
