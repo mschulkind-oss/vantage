@@ -678,8 +678,16 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
         // prose container, which looks like accidental multi-link merging.
         "prose-a:text-blue-600 dark:prose-a:text-blue-400 prose-a:no-underline prose-a:hover:underline",
 
-        // Images
-        "prose-img:rounded-lg prose-img:my-4",
+        // Images: inline, which is what GitHub does and what a badge row
+        // needs. Badges written on adjacent source lines are ONE paragraph
+        // joined by a soft break, so GitHub lays them out as a row; Tailwind's
+        // preflight makes every replaced element `display: block`, which turns
+        // that row into a column. Vertical spacing is the wrapping `<p>`'s
+        // (`prose-p:my-[16px]` above), exactly as on GitHub — a margin on the
+        // image itself would also prise apart the lines of any paragraph an
+        // image sits inside, so it is zeroed rather than inherited from
+        // typography's 2em.
+        "prose-img:inline-block prose-img:rounded-lg prose-img:my-0",
 
         // Blockquotes: Simpler vertical bar style
         "prose-blockquote:border-l-[0.25em] prose-blockquote:border-slate-300 dark:prose-blockquote:border-slate-600 prose-blockquote:pl-4 prose-blockquote:text-slate-600 dark:prose-blockquote:text-slate-400 prose-blockquote:italic",

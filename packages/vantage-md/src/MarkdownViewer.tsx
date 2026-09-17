@@ -202,7 +202,10 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     "prose-ol:my-[16px] prose-li:marker:text-slate-900 dark:prose-li:marker:text-slate-300",
     "prose-pre:bg-slate-50 dark:prose-pre:bg-slate-800 prose-pre:border prose-pre:border-slate-200 dark:prose-pre:border-slate-700 prose-pre:p-4 prose-pre:rounded-md prose-pre:text-[85%] prose-pre:leading-[1.45]",
     "prose-a:text-blue-600 dark:prose-a:text-blue-400 prose-a:no-underline hover:prose-a:underline",
-    "prose-img:rounded-lg prose-img:my-4",
+    // Inline, not block: see the app viewer's note on the same line — badges
+    // on adjacent source lines are one paragraph, and Tailwind's preflight
+    // would stack them. Spacing comes from the wrapping `<p>`.
+    "prose-img:inline-block prose-img:rounded-lg prose-img:my-0",
     "prose-blockquote:border-l-[0.25em] prose-blockquote:border-slate-300 dark:prose-blockquote:border-slate-600 prose-blockquote:pl-4 prose-blockquote:text-slate-600 dark:prose-blockquote:text-slate-400 prose-blockquote:italic",
     "prose-code:before:content-none prose-code:after:content-none",
     "prose-code:bg-slate-100 dark:prose-code:bg-slate-800 prose-code:px-[0.4em] prose-code:py-[0.2em] prose-code:rounded-md prose-code:text-slate-800 dark:prose-code:text-slate-200 prose-code:font-mono prose-code:text-[85%] prose-code:font-normal prose-code:border prose-code:border-slate-200/50 dark:prose-code:border-slate-700/50",

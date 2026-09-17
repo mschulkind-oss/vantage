@@ -169,10 +169,15 @@
 }
 
 /* ── Images ── */
+/* `display` is declared because a consumer on Tailwind gets `display: block`
+   from its preflight, and that is what turns a README's badge row into a badge
+   column: badges written on adjacent source lines are one paragraph joined by a
+   soft break, which GitHub renders as a row. Vertical spacing is the wrapping
+   paragraph's, as it is on GitHub — margins here would prise apart the lines of
+   any paragraph an image sits inside. */
 .vantage-prose img {
+  display: inline-block;
   border-radius: 0.5rem;
-  margin-top: 1rem;
-  margin-bottom: 1rem;
 }
 
 /* ── Blockquotes ── */

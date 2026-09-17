@@ -6,6 +6,7 @@ import {
   act,
 } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import axios from "axios";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { BrowserRouter } from "react-router-dom";
@@ -131,6 +132,84 @@ describe("MarkdownViewer", () => {
 
     const img = screen.getByRole("img");
     expect(img).toHaveAttribute("src", "/api/content?path=folder%2Fimage.png");
+  });
+
+  /**
+   * Badges are the case this exists for. A README writes them on adjacent
+   * source lines, which is ONE paragraph joined by a soft break — GitHub lays
+   * that out as a row, and Vantage showed a column, because Tailwind's
+   * preflight gives every replaced element `display: block`.
+   *
+   * The paragraph half is checked by rendering. The `display` half cannot be:
+   * the prose treatment is Tailwind variants compiled by the real build, and
+   * under vitest no Tailwind runs, so `getComputedStyle` on the image reports
+   * jsdom's `inline` no matter what the class list says. What is held here
+   * instead is the class list itself, and the other two renderers agreeing with
+   * it — the same drift-guard shape `lib/directiveCssWiring.test.ts` uses, and
+   * for the same reason: three renderers, one appearance (D5).
+   *
+   * Measured in Chrome over the real build, on `yolo-jail`'s README: the CI and
+   * License badges render on one line, as they do on GitHub.
+   */
+  describe("images are inline, as they are on GitHub", () => {
+    const proseClasses = (container: HTMLElement): string => {
+      const prose = container.querySelector<HTMLElement>(
+        '[class*="prose-img:"]',
+      );
+      expect(prose, "no prose container in the rendered output").not.toBeNull();
+      return prose!.className;
+    };
+
+    it("keeps two badges written on adjacent lines in one paragraph", () => {
+      const content =
+        "[![CI](ci.svg)](https://example.test/ci)\n[![License](license.svg)](LICENSE)";
+      const { container } = renderWithRouter(
+        <MarkdownViewer content={content} currentPath="README.md" />,
+      );
+
+      const images = container.querySelectorAll("img");
+      expect(images).toHaveLength(2);
+      // One paragraph, and no <br> between them: a soft break is a space.
+      expect(images[0].closest("p")).toBe(images[1].closest("p"));
+      expect(container.querySelectorAll("br")).toHaveLength(0);
+    });
+
+    it("asks for `inline-block` and no margin of its own", () => {
+      const { container } = renderWithRouter(
+        <MarkdownViewer
+          content={"![Badge](badge.svg)"}
+          currentPath="README.md"
+        />,
+      );
+
+      const classes = proseClasses(container);
+      expect(classes).toContain("prose-img:inline-block");
+      // Typography's own rule is 2em; anything non-zero here prises apart the
+      // lines of a paragraph the image sits inside. The paragraph spaces a
+      // standalone image, exactly as on GitHub.
+      expect(classes).toContain("prose-img:my-0");
+      expect(classes).not.toMatch(/prose-img:m[ty]-(?!0\b)/);
+    });
+
+    it("is the same answer in the package viewer and in `.vantage-prose`", () => {
+      const read = (path: string): string =>
+        readFileSync(new URL(path, import.meta.url), "utf8");
+
+      // The package's own <MarkdownViewer>, for a consumer on Tailwind.
+      expect(
+        read("../../../packages/vantage-md/src/MarkdownViewer.tsx"),
+      ).toContain("prose-img:inline-block prose-img:rounded-lg prose-img:my-0");
+
+      // `vantage-md/prose`, for a consumer who is not. Comments stripped: the
+      // rule's own note explains the trap by naming `display: block`.
+      const prose = read(
+        "../../../packages/vantage-md/src/styles/prose.css",
+      ).replace(/\/\*[\s\S]*?\*\//g, "");
+      const rule = prose.slice(prose.indexOf(".vantage-prose img {"));
+      expect(rule.slice(0, rule.indexOf("}"))).toContain(
+        "display: inline-block;",
+      );
+    });
   });
 
   it("does not intercept Ctrl+click on internal links (allows new tab)", () => {
