@@ -19,7 +19,7 @@ vantage serve [PATH] [--host HOST] [--port PORT] [--no-open] [--show-hidden]
 | --------------------- | ----------------------- | ------------------------------------------------------ |
 | `PATH`                | `.` (current directory) | Directory or Markdown file to serve                    |
 | `--host`              | `127.0.0.1`             | Server bind address                                    |
-| `--port`              | `8000`                  | Server port                                            |
+| `--port`              | `8000`                  | Server port; scans up to 100 ports above it if taken, then fails |
 | `--no-open`           |                         | Do not open the browser on startup                     |
 | `--show-hidden`       | `true`                  | Show hidden files/directories (dotfiles) in the sidebar |
 | `--exclude-dirs`      | _(see Configuration)_   | Directory names to exclude from listings (replaces defaults) |

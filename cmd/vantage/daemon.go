@@ -69,8 +69,16 @@ func newDaemonCmd() *cobra.Command {
 
 			warnNonLocal(cfg.Host)
 
+			// Bound before the banner: the configured port may be taken, and
+			// the banner has to name the port actually bound rather than the
+			// one that was asked for.
+			listeners, boundPort, err := listenAll(cfg.Host, cfg.Port)
+			if err != nil {
+				return err
+			}
+
 			fmt.Fprintf(os.Stderr, "Starting Vantage daemon %s on %v:%d\n",
-				buildinfo.Version(), cfg.Host, cfg.Port)
+				buildinfo.Version(), cfg.Host, boundPort)
 			fmt.Fprintf(os.Stderr, "Serving %d repositories:\n", len(cfg.Repos))
 			for _, repo := range cfg.Repos {
 				fmt.Fprintf(os.Stderr, "  - %s: %s\n", repo.Name, repo.Path)
@@ -82,7 +90,7 @@ func newDaemonCmd() *cobra.Command {
 			}
 
 			// Daemon mode serves many repos headlessly; never open a browser.
-			return runServers(cmd.Context(), s, cfg.Host, cfg.Port, false)
+			return runServers(cmd.Context(), s, listeners, boundPort, cfg.Host, false)
 		},
 	}
 

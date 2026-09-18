@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
 	"runtime"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -29,6 +31,11 @@ var localHosts = map[string]struct{}{
 
 // shutdownTimeout bounds the graceful HTTP shutdown after a signal arrives.
 const shutdownTimeout = 10 * time.Second
+
+// portScanLimit is how many consecutive ports are tried before giving up when
+// the configured one is taken. A machine with a hundred busy ports in a row is
+// not one where quietly picking the hundred-and-first is helpful.
+const portScanLimit = 100
 
 // newServeCmd builds the `serve` command: serve a single repository. It is also
 // the default command — a bare path argument is rewritten to `serve <path>` by
@@ -103,7 +110,11 @@ func newServeCmd() *cobra.Command {
 				return err
 			}
 
-			return runServers(cmd.Context(), s, cfg.Host, cfg.Port, !noOpen)
+			listeners, boundPort, err := listenAll(cfg.Host, cfg.Port)
+			if err != nil {
+				return err
+			}
+			return runServers(cmd.Context(), s, listeners, boundPort, cfg.Host, !noOpen)
 		},
 	}
 
@@ -121,10 +132,16 @@ func newServeCmd() *cobra.Command {
 	return cmd
 }
 
-// runServers starts one http.Server per bind address sharing the assembled
-// handler, runs the server's background lifecycle, and shuts everything down
-// gracefully on SIGINT/SIGTERM. It returns the first non-shutdown error.
-func runServers(parent context.Context, s *server.Server, hosts []string, port int, open bool) error {
+// runServers runs one http.Server per already-bound listener sharing the
+// assembled handler, runs the server's background lifecycle, and shuts
+// everything down gracefully on SIGINT/SIGTERM. It returns the first
+// non-shutdown error.
+//
+// It takes listeners rather than hosts and a port so that a caller who wants
+// to report the bound port — daemon's startup banner names it before this
+// function starts logging its own "Serving on" lines — can resolve it first
+// with listenAll and print that report before handing the listeners over.
+func runServers(parent context.Context, s *server.Server, listeners []net.Listener, port int, hosts []string, open bool) error {
 	if parent == nil {
 		parent = context.Background()
 	}
@@ -142,12 +159,9 @@ func runServers(parent context.Context, s *server.Server, hosts []string, port i
 
 	handler := s.Handler()
 
-	httpServers := make([]*http.Server, 0, len(hosts))
-	for _, h := range hosts {
-		httpServers = append(httpServers, &http.Server{
-			Addr:    fmt.Sprintf("%s:%d", h, port),
-			Handler: handler,
-		})
+	httpServers := make([]*http.Server, 0, len(listeners))
+	for range listeners {
+		httpServers = append(httpServers, &http.Server{Handler: handler})
 	}
 
 	g, gctx := errgroup.WithContext(ctx)
@@ -161,11 +175,11 @@ func runServers(parent context.Context, s *server.Server, hosts []string, port i
 		return nil
 	})
 
-	for _, hs := range httpServers {
-		hs := hs
+	for i, hs := range httpServers {
+		hs, ln := hs, listeners[i]
 		g.Go(func() error {
-			fmt.Fprintf(os.Stderr, "Serving on http://%s\n", hs.Addr)
-			if err := hs.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			fmt.Fprintf(os.Stderr, "Serving on http://%s\n", ln.Addr().String())
+			if err := hs.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				return err
 			}
 			return nil
@@ -189,6 +203,66 @@ func runServers(parent context.Context, s *server.Server, hosts []string, port i
 		return err
 	}
 	return nil
+}
+
+// listenAll binds every host in hosts to one shared port, starting at the
+// requested port and walking upwards until it finds one free on all of them. It
+// returns the listeners and the port they share.
+//
+// The walk is why the listeners are opened here rather than left to
+// http.Server.ListenAndServe: a port is only usable if every bind address can
+// take it, and that is not knowable without trying. A partial bind is undone
+// before moving on, so the run either owns the port everywhere or nowhere —
+// otherwise two Vantage instances could end up interleaved across addresses on
+// the same port, each answering for some of them.
+func listenAll(hosts []string, port int) ([]net.Listener, int, error) {
+	if len(hosts) == 0 {
+		return nil, port, fmt.Errorf("no bind address configured")
+	}
+	// Port 0 asks the kernel for an arbitrary free port, which cannot be shared
+	// across bind addresses and has no "next port" to walk to; a negative port
+	// is nonsense on its own, but worth calling out separately because the
+	// walk below would otherwise count up through it and silently land on the
+	// port-0 behavior once it reached zero, handing back an ephemeral port
+	// under a different host than the one that "found" it.
+	if port <= 0 {
+		return nil, 0, fmt.Errorf("port %d is not supported; configure a positive port to start scanning from", port)
+	}
+
+	first := port
+	for p := first; p < first+portScanLimit && p <= 65535; p++ {
+		lns := make([]net.Listener, 0, len(hosts))
+		var bindErr error
+		for _, h := range hosts {
+			ln, err := net.Listen("tcp", net.JoinHostPort(h, strconv.Itoa(p)))
+			if err != nil {
+				bindErr = err
+				break
+			}
+			lns = append(lns, ln)
+		}
+		if bindErr != nil {
+			for _, ln := range lns {
+				_ = ln.Close()
+			}
+			// Only "someone else is already listening" is a reason to try the
+			// next port. Anything else — an invalid host, a permission error
+			// on a privileged port, a system out of file descriptors — will
+			// fail identically on every remaining candidate, so scanning
+			// through the rest of the range would just spend a hundred
+			// failures to arrive at a misleading "no free port found" instead
+			// of the real reason.
+			if !errors.Is(bindErr, syscall.EADDRINUSE) {
+				return nil, 0, bindErr
+			}
+			continue
+		}
+		if p != first {
+			fmt.Fprintf(os.Stderr, "Port %d is in use; serving on %d instead.\n", first, p)
+		}
+		return lns, p, nil
+	}
+	return nil, 0, fmt.Errorf("no free port found in %d..%d", first, first+portScanLimit-1)
 }
 
 // warnNonLocal prints a warning to stderr when any bind address is not a

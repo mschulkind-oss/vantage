@@ -48,14 +48,15 @@ name = "project"
 path = "~/code/my-project"
 ```
 
-Each directory is accessible at `http://localhost:8000/{name}/`.
+Each directory is accessible at `http://localhost:8000/{name}/` — or
+whatever port Vantage printed on startup, if 8000 was taken.
 
 ## Reference
 
 | Key                        | Type             | Default       | Description                                          |
 | -------------------------- | ---------------- | ------------- | ---------------------------------------------------- |
 | `host`                     | string           | `"127.0.0.1"` | Server bind address                                  |
-| `port`                     | integer          | `8000`        | Server port                                          |
+| `port`                     | integer          | `8000`        | Server port; scans up to 100 ports above it if taken, then fails |
 | `repos`                    | array            | `[]`          | List of directories to serve                         |
 | `repos[].name`             | string           | _required_    | Display name and URL slug                            |
 | `repos[].path`             | string           | _required_    | Path to the directory (supports `~`)                 |
