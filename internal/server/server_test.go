@@ -585,6 +585,12 @@ func TestRetiringFreesTheNameForANewcomer(t *testing.T) {
 
 	srv, err := NewServer(cfg)
 	require.NoError(t, err)
+	// Stop the watchers before the test's TempDirs are cleaned up: the
+	// newcomer discovered below gets a watcher of its own, and on macOS
+	// (kqueue) a live watcher holds the watched directories open, so
+	// RemoveAll racing it fails the cleanup with EBADF. Every other test
+	// in this file shuts the server down; this one forgot.
+	defer func() { require.NoError(t, srv.Shutdown(context.Background())) }()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
