@@ -128,6 +128,9 @@ review store, perf store, and live Manager) are built once.
   - Two package-level TTL caches back the hottest calls (status and recent
     files); the file watcher flushes them via `ClearStatusCache` /
     `ClearRecentFilesCache` when git state changes on disk.
+  - Every invocation carries `--no-optional-locks`. All of them are reads, and
+    without it `git status` refreshes `.git/index` as a side effect — a write
+    the watcher sees, broadcasts, and gets asked for status over again.
 
 - **`live.Manager` + `live.Watcher`** — the realtime layer.
   - The `Manager` owns a set of WebSocket connections, each driven by its own
@@ -137,6 +140,11 @@ review store, perf store, and live Manager) are built once.
   - The `Watcher` (fsnotify) coalesces filesystem events, invalidates the
     git/fs caches, applies review changelog blocks for changed Markdown files,
     and broadcasts a sorted `files_changed` payload.
+  - A `.git` state file is broadcast only when its **contents** differ from the
+    last time it was read. git rewrites `.git/index` whole — identical bytes and
+    all — whenever anything on the machine runs `git status`, so without the
+    content check an editor's git panel polling in the background reloads every
+    open browser once a second.
 
 - **`review.Store`** — review-mode persistence (see [§2.5](#25-review-mode-internalreview-internalreviewanchor)).
 

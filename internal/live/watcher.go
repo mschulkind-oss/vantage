@@ -2,7 +2,10 @@ package live
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"io"
 	iofs "io/fs"
 	"log/slog"
 	"os"
@@ -122,6 +125,16 @@ type Watcher struct {
 	// discovered would have kept watching a directory that is gone.
 	closed bool
 	stats  watcherStats
+	// gitStateFP is the last content fingerprint seen for each watched .git
+	// state file, keyed by repo-relative slash path. It is what lets the
+	// watcher tell a real repo-state change from a rewrite that changed
+	// nothing: `git status` refreshes .git/index by writing a whole new file
+	// and renaming it over the old one, and it does that even when the bytes
+	// come out identical. Every such rewrite is an fsnotify Write, so without
+	// this gate any tool on the machine running `git status` — an editor's git
+	// panel polling every second, an agent, a shell — reloads every open
+	// browser for nothing.
+	gitStateFP map[string]string
 }
 
 // watcherStats are reset every heartbeat so they describe the most recent
@@ -132,6 +145,7 @@ type watcherStats struct {
 	droppedExt     int
 	droppedIgnore  int
 	droppedOutside int
+	droppedSameFP  int
 }
 
 // NewWatcher constructs a Watcher rooted at the repository at root. repoName is
@@ -148,12 +162,13 @@ func NewWatcher(root, repoName string, mgr *Manager, store *review.Store, useIgn
 		return nil, err
 	}
 	return &Watcher{
-		root:     filepath.Clean(abs),
-		repoName: repoName,
-		manager:  mgr,
-		store:    store,
-		matcher:  ignore.GetMatcher(abs, useIgnoreFiles),
-		logger:   logger.With("component", "watcher", "repo", repoName),
+		root:       filepath.Clean(abs),
+		repoName:   repoName,
+		manager:    mgr,
+		store:      store,
+		matcher:    ignore.GetMatcher(abs, useIgnoreFiles),
+		logger:     logger.With("component", "watcher", "repo", repoName),
+		gitStateFP: map[string]string{},
 	}, nil
 }
 
@@ -175,6 +190,7 @@ func (w *Watcher) Start(ctx context.Context) error {
 	w.mu.Unlock()
 
 	added := w.addRecursive(w.root)
+	w.seedGitStateFingerprints()
 	w.logStartup(added)
 
 	// Deliveries that landed while the server was down are consumed before the
@@ -309,11 +325,20 @@ func (w *Watcher) handleEvent(ev fsnotify.Event, co *coalescer) {
 		return
 	}
 
-	keep, _ := classify(rel)
+	keep, isGitState := classify(rel)
 	if !keep {
 		w.mu.Lock()
 		w.stats.droppedExt++
 		w.mu.Unlock()
+		return
+	}
+	// A .git state file whose contents are byte-for-byte what they were is not
+	// a state change, however many times it is rewritten.
+	if isGitState && !w.gitStateDidChange(rel) {
+		w.mu.Lock()
+		w.stats.droppedSameFP++
+		w.mu.Unlock()
+		w.logger.Debug("watcher event dropped: git state file rewritten unchanged", "path", rel)
 		return
 	}
 	// Ignore filtering applies to .md content paths; .git state files are
@@ -432,6 +457,52 @@ func (w *Watcher) consumeInbox() {
 	}
 }
 
+// seedGitStateFingerprints records the current contents of every watched .git
+// state file, so the first event after startup is compared against reality
+// rather than against nothing. Without it the first `git status` of the session
+// always looks like a change.
+func (w *Watcher) seedGitStateFingerprints() {
+	for name := range gitStateFiles {
+		rel := ".git/" + name
+		fp := w.fingerprint(rel)
+		w.mu.Lock()
+		w.gitStateFP[rel] = fp
+		w.mu.Unlock()
+	}
+}
+
+// gitStateDidChange reports whether the .git state file at rel (repo-relative,
+// slash-separated) holds different bytes than the last time it was looked at,
+// recording the new fingerprint either way. An unreadable file — deleted, or
+// caught mid-rename — fingerprints as empty, which differs from any real
+// content and so errs towards broadcasting.
+func (w *Watcher) gitStateDidChange(rel string) bool {
+	fp := w.fingerprint(rel)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	prev, seen := w.gitStateFP[rel]
+	w.gitStateFP[rel] = fp
+	return !seen || prev != fp
+}
+
+// fingerprint hashes the file at the repo-relative path rel. A missing or
+// unreadable file yields "". The files this is used on are git's own state
+// files: HEAD and friends are a line long, and .git/index is a few tens of KB
+// in a typical repo, so hashing one is cheaper than the WebSocket broadcast and
+// the round of API calls it saves.
+func (w *Watcher) fingerprint(rel string) string {
+	f, err := os.Open(filepath.Join(w.root, filepath.FromSlash(rel)))
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 // handleError surfaces an fsnotify error, adding a hint for the common inotify
 // watch-exhaustion case (ENOSPC) which otherwise manifests as live reload
 // silently failing for some files.
@@ -458,5 +529,6 @@ func (w *Watcher) logHeartbeat() {
 		"dropped_ext", s.droppedExt,
 		"dropped_ignore", s.droppedIgnore,
 		"dropped_outside", s.droppedOutside,
+		"dropped_same_content", s.droppedSameFP,
 	)
 }

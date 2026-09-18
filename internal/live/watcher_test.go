@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mschulkind-oss/vantage/internal/ignore"
@@ -583,3 +584,77 @@ func TestWatcherConsumesInboxCreatedAfterStartup(t *testing.T) {
 // design docs among them — is ordinary prose, whether or not it is under review.
 // TestWatcherFlushIgnoresChangelogBlock covers the reviewed case; nothing about
 // the marker is inspected anymore, so there is no gate left to test here.
+
+// TestGitStateDidChangeOnlyOnDifferentContent covers the gate that keeps a
+// `git status` from waking every open browser. git refreshes .git/index by
+// writing a fresh file and renaming it into place, and it does that even when
+// the bytes are identical — which is an fsnotify Write either way.
+func TestGitStateDidChangeOnlyOnDifferentContent(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".git"), 0o755))
+	idx := filepath.Join(root, ".git", "index")
+	require.NoError(t, os.WriteFile(idx, []byte("state-one"), 0o644))
+
+	w, err := NewWatcher(root, "", nil, nil, false, slog.New(slog.DiscardHandler))
+	require.NoError(t, err)
+	w.seedGitStateFingerprints()
+
+	// The rewrite git actually performs: same content, new file.
+	require.NoError(t, os.WriteFile(idx, []byte("state-one"), 0o644))
+	require.False(t, w.gitStateDidChange(".git/index"), "identical content is not a state change")
+
+	require.NoError(t, os.WriteFile(idx, []byte("state-two"), 0o644))
+	require.True(t, w.gitStateDidChange(".git/index"), "different content is a state change")
+	require.False(t, w.gitStateDidChange(".git/index"), "and is only reported once")
+
+	// A file that is gone differs from any content, so it still reports.
+	require.NoError(t, os.Remove(idx))
+	require.True(t, w.gitStateDidChange(".git/index"))
+}
+
+// TestGitStateDidChangeUnseenFile guards the seeding: a state file that was not
+// there at startup (MERGE_HEAD during a merge) must report on first sight.
+func TestGitStateDidChangeUnseenFile(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".git"), 0o755))
+	w, err := NewWatcher(root, "", nil, nil, false, slog.New(slog.DiscardHandler))
+	require.NoError(t, err)
+	w.seedGitStateFingerprints()
+
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".git", "MERGE_HEAD"), []byte("abc\n"), 0o644))
+	require.True(t, w.gitStateDidChange(".git/MERGE_HEAD"))
+}
+
+// TestWatcherDropsUnchangedGitStateEvent is the same gate seen from the event
+// loop: a Write on an unchanged .git/index reaches the coalescer as nothing,
+// while a real edit still does.
+func TestWatcherDropsUnchangedGitStateEvent(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, ".git"), 0o755))
+	idx := filepath.Join(root, ".git", "index")
+	require.NoError(t, os.WriteFile(idx, []byte("same"), 0o644))
+
+	w, err := NewWatcher(root, "", nil, nil, false, slog.New(slog.DiscardHandler))
+	require.NoError(t, err)
+	w.seedGitStateFingerprints()
+
+	var flushed []string
+	co := newCoalescer(time.Hour, time.Hour, func(p []string) { flushed = append(flushed, p...) })
+	defer co.stop()
+
+	require.NoError(t, os.WriteFile(idx, []byte("same"), 0o644))
+	w.handleEvent(fsnotify.Event{Name: idx, Op: fsnotify.Write}, co)
+
+	w.mu.Lock()
+	dropped := w.stats.droppedSameFP
+	w.mu.Unlock()
+	require.Equal(t, 1, dropped, "unchanged rewrite should be counted as dropped")
+
+	require.NoError(t, os.WriteFile(idx, []byte("different"), 0o644))
+	w.handleEvent(fsnotify.Event{Name: idx, Op: fsnotify.Write}, co)
+
+	w.mu.Lock()
+	kept := w.stats.kept
+	w.mu.Unlock()
+	require.Equal(t, 1, kept, "a real state change is kept")
+}

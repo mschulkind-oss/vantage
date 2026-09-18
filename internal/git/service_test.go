@@ -545,3 +545,46 @@ func TestIntegrationWorkingDiffUntrackedSymlinkEscapingRoot(t *testing.T) {
 		require.NotContains(t, diff.RawDiff, canary, "the link target's contents must not appear in the diff")
 	}
 }
+
+// TestReadsDoNotTouchTheIndex is the regression for the loop the live watcher
+// used to feed itself. `git status` refreshes .git/index as a side effect, so
+// every status call this service made looked to the file watcher like a repo
+// change, which made the browser ask for status again — an endless stream of
+// `files changed … .git/index` with nobody editing anything.
+//
+// The dirty working tree matters: it is the case where git has something to
+// refresh, and so the case where an unguarded status definitely rewrites.
+func TestReadsDoNotTouchTheIndex(t *testing.T) {
+	ClearStatusCache()
+	ClearRecentFilesCache()
+
+	dir := initRepo(t)
+	writeFile(t, dir, "README.md", "line one\n")
+	runGit(t, dir, "add", "README.md")
+	runGit(t, dir, "commit", "-m", "initial commit")
+	// Leave the tree dirty so a refresh has work to do.
+	writeFile(t, dir, "README.md", "line one\nline two\n")
+
+	idx := filepath.Join(dir, ".git", "index")
+	before, err := os.Stat(idx)
+	require.NoError(t, err)
+
+	svc := NewService(dir, Options{})
+	svc.Status()
+	ClearStatusCache()
+	svc.Status()
+	svc.IsDirty()
+	svc.HeadHash()
+	svc.Recents(10, []string{".md"}, true, false)
+
+	after, err := os.Stat(idx)
+	require.NoError(t, err)
+	// os.SameFile, not just ModTime: git replaces the index by renaming a new
+	// file over it, which changes its inode. A filesystem with coarse mtime
+	// granularity could let a real replacement slip past an mtime-only check
+	// by landing in the same tick; identity cannot.
+	require.True(t, os.SameFile(before, after),
+		"reads must not replace .git/index — that is what made the watcher loop")
+	require.Equal(t, before.ModTime(), after.ModTime(),
+		"reads must not rewrite .git/index — that is what made the watcher loop")
+}
