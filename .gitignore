@@ -66,3 +66,7 @@ Thumbs.db
 
 # Vantage's own per-repo state (review delivery inbox)
 .vantage/
+
+# The e2e fixture repository is built at run time (scripts/e2e-fixture.sh);
+# a nested .git cannot be committed, so it lives only on the machine running it.
+frontend/e2e/fixtures/test_repo/.git/

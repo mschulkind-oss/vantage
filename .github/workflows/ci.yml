@@ -82,5 +82,6 @@ jobs:
         working-directory: frontend
         run: npx playwright install --with-deps chromium
       - name: Run end-to-end tests
-        working-directory: frontend
-        run: npx playwright test
+        # just e2e builds the git fixture the commit-info spec serves
+        # before the suite boots its servers (scripts/e2e-fixture.sh).
+        run: just e2e
