@@ -6,7 +6,10 @@ import tseslint from "typescript-eslint";
 import { defineConfig, globalIgnores } from "eslint/config";
 
 export default defineConfig([
-  globalIgnores(["dist"]),
+  // coverage/ is vitest's v8 report output — never source, but present in a
+  // working tree after `npm run test:coverage`, and its vendored reporter
+  // scripts carry eslint-disable directives that trip --max-warnings 0.
+  globalIgnores(["dist", "coverage"]),
   {
     files: ["**/*.{ts,tsx}"],
     extends: [
