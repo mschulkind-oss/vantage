@@ -99,6 +99,7 @@ check: format
 # (see frontend/playwright.config.ts). First run downloads chromium:
 # `npx playwright install` from frontend/. CI runs this on every push and PR.
 e2e:
+    sh scripts/e2e-fixture.sh
     cd frontend && npx playwright test
 
 # Read-only gate (errors on issues, never rewrites) — used by the pre-commit hook and CI.
