@@ -94,8 +94,40 @@ test.describe("table of contents", () => {
       .poll(async () => (await toc.boundingBox())!.y)
       .toBeLessThan(tocBox.y + 40);
   });
-});
 
+  test("is glued to the left and never centers the document", async ({
+    page,
+  }) => {
+    // The band is left-aligned by design: file list, then contents, then
+    // text, with the window's leftover width gathered on the right. On a
+    // wide viewport a centered document would start well right of the
+    // contents; a left-glued one starts immediately after the gap.
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await page.goto("/mermaid-diagrams-test.md");
+    await page.getByRole("button", { name: "Show contents" }).click();
+
+    const toc = page.getByTestId("table-of-contents");
+    const heading = page.locator("h1").first();
+    const tocBox = (await toc.boundingBox())!;
+    const headingBox = (await heading.boundingBox())!;
+
+    // The document begins right after the contents and the 3rem gap —
+    // nowhere near the viewport's center, which is where a centered
+    // column would put it on a window this wide.
+    expect(headingBox.x).toBeLessThan(800);
+    expect(headingBox.x - (tocBox.x + tocBox.width)).toBeLessThanOrEqual(48 + 1);
+
+    // The fixed-width column keeps its measure with the contents open and
+    // closed alike: max-w-5xl caps the column wherever it sits, so closing
+    // the contents slides the text left (the band is glued to the pane's
+    // left edge) without changing its width.
+    const widthWithToc = headingBox.width;
+    await page.getByRole("button", { name: "Hide contents" }).click();
+    const headingBoxAfter = (await heading.boundingBox())!;
+    expect(Math.abs(headingBoxAfter.width - widthWithToc)).toBeLessThanOrEqual(1);
+    expect(headingBoxAfter.x).toBeLessThan(headingBox.x);
+  });
+});
 test.describe("full width", () => {
   test("recalculates the active heading when full width changes the layout", async ({
     page,
