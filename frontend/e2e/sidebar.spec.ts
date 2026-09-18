@@ -15,19 +15,19 @@ test.describe("Sidebar file tree", () => {
       .filter({ hasText: "subdir" });
     await expect(subdirRow).toBeVisible({ timeout: 10000 });
 
-    // Before clicking, there should be NO nested README.md (inside subdir)
-    // The only README.md visible should be at the root level
-    const allReadmes = sidebar.getByText("README.md");
-    await expect(allReadmes).toHaveCount(1);
+    // The nested README is counted by its own href, not by text: other
+    // things in the sidebar legitimately show the same text (a recents
+    // row, the hover-portal clone of a filename), so text counts are not
+    // the tree's state. Collapsed, the nested link is not in the DOM.
+    const nestedReadme = sidebar.locator('a.cursor-pointer[href="/subdir/README.md"]');
+    await expect(nestedReadme).toHaveCount(0);
 
     // Click the arrow to expand (clicking row no longer expands)
     const arrow = subdirRow.locator("span").first();
     await arrow.click();
 
-    // After expanding, we should see TWO README.md entries - one at root, one nested
-    await expect(sidebar.getByText("README.md")).toHaveCount(2, {
-      timeout: 10000,
-    });
+    // After expanding, the nested README is reachable by its own link.
+    await expect(nestedReadme).toBeVisible({ timeout: 10000 });
   });
 
   test("navigating via sidebar updates URL", async ({ page }) => {

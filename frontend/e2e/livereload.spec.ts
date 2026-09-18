@@ -68,13 +68,14 @@ test.describe("Live reload", () => {
       .filter({ hasText: "subdir" });
     await expect(subdirRow).toBeVisible();
 
-    // Expand subdir
+    // Expand subdir, and track the nested README by its own href: text
+    // counts also match the recents row and the hover-portal clone of a
+    // filename, which are not the tree's state.
+    const nestedReadme = sidebar.locator('a.cursor-pointer[href="/subdir/README.md"]');
+    await expect(nestedReadme).toHaveCount(0);
     const arrow = subdirRow.locator("span").first();
     await arrow.click();
-
-    // Verify it is expanded (we see the nested README inside)
-    // There are 2 READMEs now
-    await expect(sidebar.getByText("README.md")).toHaveCount(2);
+    await expect(nestedReadme).toBeVisible();
 
     // Now modify a file to trigger live reload
     const newContent = originalPage1.replace("Page 1", "Page 1 UPDATED");
@@ -84,10 +85,9 @@ test.describe("Live reload", () => {
     // processed, then check the side effect the test exists for: the tree
     // refreshed without losing its expansion state.
     await page.waitForTimeout(2000);
-
-    // Verify we STILL have 2 READMEs (meaning subdir is still expanded AND
-    // populated)
-    await expect(sidebar.getByText("README.md")).toHaveCount(2);
+    // Verify the expansion survived the tree refresh: the nested README's
+    // link is still there.
+    await expect(nestedReadme).toBeVisible();
   });
 
   test("an edit to a different document does not disturb the open one", async ({
