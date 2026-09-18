@@ -18,23 +18,17 @@ test.describe("UI Behavior", () => {
     // The arrow is the first span in the row
     const arrow = subdirRow.locator("span").first();
 
-    // Check initial state (collapsed)
-    // We check that NO nested README.md is visible (count 1 for root README)
-    // Note: getByText('README.md') might find multiple if expanded.
-    // Initially expandedDirs is empty.
-    // But verify subdir is collapsed.
-    // We can't easily check "collapsed" state without checking children visibility.
-    // But we can check that we have 1 README (root).
-    await expect(sidebar.getByText("README.md")).toHaveCount(1);
+    // Initial state: collapsed. The nested README is counted by its href —
+    // text counts would also match the recents row and the hover-portal
+    // clone of a filename, which are not the tree's state.
+    const nestedReadme = sidebar.locator('a.cursor-pointer[href="/subdir/README.md"]');
+    await expect(nestedReadme).toHaveCount(0);
 
     // Click arrow
     await arrow.click();
 
-    // Should expand - look for the nested README.md
-    // We expect 2 README.mds now (one in root, one in subdir)
-    await expect(sidebar.getByText("README.md")).toHaveCount(2, {
-      timeout: 5000,
-    });
+    // Should expand: the nested README's own link appears
+    await expect(nestedReadme).toBeVisible({ timeout: 5000 });
 
     // Should NOT have navigated (URL should still be root)
     await expect(page).toHaveURL(/\/$/);
