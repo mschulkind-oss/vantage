@@ -150,6 +150,19 @@ func (s *GitService) RepoName() string {
 	return filepath.Base(s.repoPath)
 }
 
+// readOnlyArgs are prepended to every git invocation. --no-optional-locks stops
+// git from taking the index lock for operations that only need to read, which
+// in practice stops `git status` from rewriting .git/index to refresh its stat
+// cache. That rewrite is why this server used to talk to itself: a status call
+// touched .git/index, the file watcher saw the write and broadcast
+// files_changed, the browser answered by re-fetching status, and the next
+// status touched the index again — a loop that never quiesced and that showed
+// up as an endless stream of `files changed … paths: .git/index` with nobody
+// editing anything. Every command here is a read, so none of them wants that
+// lock; see also the watcher's content-fingerprint gate, which covers the same
+// rewrite when some other tool on the machine performs it.
+var readOnlyArgs = []string{"--no-optional-locks"}
+
 // run executes "git <args...>" in cwd with the given timeout and returns stdout.
 // A non-zero exit, a timeout, or a missing binary is returned as an error; the
 // caller is expected to degrade to an empty result. stderr is intentionally
@@ -158,7 +171,7 @@ func (s *GitService) run(cwd string, timeout time.Duration, args ...string) ([]b
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd := exec.CommandContext(ctx, "git", append(append([]string{}, readOnlyArgs...), args...)...)
 	cmd.Dir = cwd
 	cmd.Env = gitenv.Scrubbed()
 	var stdout bytes.Buffer
