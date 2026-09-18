@@ -11,7 +11,7 @@ test.describe("Sidebar file tree", () => {
     // Verify subdir is visible in the sidebar tree
     // Target the row specifically
     const subdirRow = sidebar
-      .locator("div.flex.items-center.cursor-pointer")
+      .locator("a.flex.items-center.cursor-pointer")
       .filter({ hasText: "subdir" });
     await expect(subdirRow).toBeVisible({ timeout: 10000 });
 
