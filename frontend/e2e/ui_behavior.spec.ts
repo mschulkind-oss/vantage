@@ -43,9 +43,13 @@ test.describe("UI Behavior", () => {
 
   test("Markdown styling is applied", async ({ page }) => {
     await page.goto("/");
-    // Navigate to page1.md - click the one in the table (main view) to be safe
-    // or use sidebar. The table one is a link in a cell.
-    await page.locator('[data-testid="sidebar"]').getByText("page1.md").click();
+    // Navigate via the tree row: the recents section renders its own
+    // "page1.md" link (its accessible name carries a relative time), so
+    // exact-name matching picks the tree row alone.
+    await page
+      .locator('[data-testid="sidebar"]')
+      .getByRole("link", { name: "page1.md", exact: true })
+      .click();
 
     // Wait for content (Page 1)
     // The heading's text includes the `#` of its hover anchor (it parks a
