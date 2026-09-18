@@ -29,6 +29,9 @@ import {
   ArrowDownAZ,
   FolderGit2,
   PanelLeftClose,
+  List,
+  Expand,
+  Shrink,
 } from "lucide-react";
 // History icon retained for the file-history link in the breadcrumb area.
 import { RelativeTime } from "../components/RelativeTime";
@@ -59,6 +62,7 @@ import { StyleGuideModal } from "../components/StyleGuideModal";
 import { ConnectionBanner } from "../components/ConnectionBanner";
 import { useConnectionStore } from "../stores/useConnectionStore";
 import { ReviewStripe } from "../components/ReviewStripe";
+import { TableOfContents } from "../components/TableOfContents";
 
 /** Format an ISO date string as a short local datetime (e.g. "Mar 2, 2026 3:45 PM"). */
 function formatDateTime(dateStr: string): string {
@@ -200,6 +204,23 @@ export const ViewerPage: React.FC = () => {
     };
   }, []);
   const [showRaw, setShowRaw] = useState(false);
+  // Remembered across documents and reloads, like the sidebar's collapse: a
+  // reader who wants a table of contents wants it for the next document too.
+  const [tocOpen, setTocOpen] = useState(() => {
+    try {
+      return localStorage.getItem("vantage:tocOpen") === "true";
+    } catch {
+      return false;
+    }
+  });
+  // Whether the document uses the whole window instead of a measured column.
+  const [fullWidth, setFullWidth] = useState(() => {
+    try {
+      return localStorage.getItem("vantage:fullWidth") === "true";
+    } catch {
+      return false;
+    }
+  });
   /**
    * How many Open Questions the open document offers a one-click answer for.
    *
@@ -664,6 +685,28 @@ export const ViewerPage: React.FC = () => {
       });
     }
   }, []);
+  const handleToggleToc = useCallback(() => {
+    setTocOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("vantage:tocOpen", String(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
+  const handleToggleFullWidth = useCallback(() => {
+    setFullWidth((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("vantage:fullWidth", String(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, []);
   const handleShortcutNavigate = useCallback(
     (path: string) => {
       navigate(path);
@@ -794,6 +837,15 @@ export const ViewerPage: React.FC = () => {
 
   // Whether to show the sidebar (hide on repo picker page)
   const showSidebar = !(isMultiRepo && !currentRepo);
+
+  // The table of contents is built from the rendered headings, so it only has anything to
+  // say while a document is actually rendered: not over raw source, a binary
+  // file, a directory listing or the repo picker.
+  const tocAvailable =
+    !showRaw &&
+    !!fileContent &&
+    fileContent.encoding !== "binary" &&
+    !!currentPath?.toLowerCase().endsWith(".md");
 
   // Show a minimal loading state until repos metadata is loaded.
   // This prevents flashing the single-repo sidebar before multi-repo
@@ -1053,6 +1105,40 @@ export const ViewerPage: React.FC = () => {
                 >
                   <Menu size={20} />
                 </button>
+                {tocAvailable && (
+                  <button
+                    onClick={handleToggleToc}
+                    className={cn(
+                      "hidden md:block p-1.5 rounded-md shrink-0 transition-colors cursor-pointer",
+                      tocOpen
+                        ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30"
+                        : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700",
+                    )}
+                    aria-label={tocOpen ? "Hide contents" : "Show contents"}
+                    aria-pressed={tocOpen}
+                    title={tocOpen ? "Hide contents" : "Show contents"}
+                  >
+                    <List size={18} />
+                  </button>
+                )}
+                {showSidebar && (
+                  <button
+                    onClick={handleToggleFullWidth}
+                    className={cn(
+                      "hidden md:block p-1.5 rounded-md shrink-0 transition-colors cursor-pointer",
+                      fullWidth
+                        ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30"
+                        : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700",
+                    )}
+                    aria-label={
+                      fullWidth ? "Use fixed width" : "Use full width"
+                    }
+                    aria-pressed={fullWidth}
+                    title={fullWidth ? "Use fixed width" : "Use full width"}
+                  >
+                    {fullWidth ? <Shrink size={18} /> : <Expand size={18} />}
+                  </button>
+                )}
                 <nav className="flex items-center text-sm space-x-1 min-w-0 overflow-hidden">
                   <AppLink
                     to={isMultiRepo && currentRepo ? `/${currentRepo}` : "/"}
@@ -1491,180 +1577,212 @@ export const ViewerPage: React.FC = () => {
                   "ring-1 ring-inset ring-purple-200 dark:ring-purple-800/50",
               )}
             >
-              <div className="max-w-5xl mx-auto py-4 px-4 sm:py-6 sm:px-8">
-                {error ? (
-                  <div className="flex flex-col items-center justify-center h-64 text-red-500">
-                    <div className="w-16 h-16 rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center mb-4">
-                      <AlertCircle size={32} className="text-red-400" />
-                    </div>
-                    <p className="text-lg font-medium text-red-600">{error}</p>
-                    {currentPath && (
-                      <p className="text-sm text-red-400 mt-1 font-mono">
-                        {currentPath}
+              <div
+                className={cn(
+                  "mx-auto flex gap-12 py-4 px-4 sm:py-6 sm:px-8",
+                  // The band holds the table of contents and the document side
+                  // by side, so the table of contents is always beside the text
+                  // instead of pinned to the window. Widening it by exactly its
+                  // width plus the gap keeps the column of prose the same
+                  // measure either way.
+                  //
+                  // The gap is 3rem because every prose heading hangs 1.5em
+                  // into its left margin to park the `#` anchor there, and at
+                  // h1's 2em that is 48px of box reaching towards it.
+                  fullWidth
+                    ? "max-w-none"
+                    : tocOpen && tocAvailable
+                      ? "max-w-[80rem]"
+                      : "max-w-5xl",
+                )}
+              >
+                <TableOfContents
+                  containerRef={contentRef}
+                  open={tocOpen && tocAvailable}
+                />
+                <div className="min-w-0 flex-1">
+                  {error ? (
+                    <div className="flex flex-col items-center justify-center h-64 text-red-500">
+                      <div className="w-16 h-16 rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center mb-4">
+                        <AlertCircle size={32} className="text-red-400" />
+                      </div>
+                      <p className="text-lg font-medium text-red-600">
+                        {error}
                       </p>
-                    )}
-                    {connected && (
-                      // Both errors that land here — a document that is gone and
-                      // a repository the daemon has retired — are re-checked on
-                      // the live socket, so this page loads by itself the moment
-                      // the thing returns. Saying so stops the reader reaching
-                      // for a reload that does nothing extra.
-                      <p className="text-sm text-slate-500 dark:text-slate-400 mt-3">
-                        Waiting — this page loads it automatically if it comes
-                        back.
-                      </p>
-                    )}
-                    <AppLink
-                      to="/"
-                      className="mt-4 px-4 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-medium rounded-lg hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors no-underline inline-block"
-                    >
-                      Go to Home
-                    </AppLink>
-                  </div>
-                ) : isLoading && !fileContent && !currentDirectory ? (
-                  <div className="flex flex-col items-center justify-center h-64 text-slate-500 dark:text-slate-400">
-                    <Loader2
-                      size={32}
-                      className="animate-spin text-blue-500 mb-4"
-                    />
-                    <p className="text-sm text-slate-500 dark:text-slate-400">
-                      Loading...
-                    </p>
-                  </div>
-                ) : fileContent ? (
-                  fileContent.encoding === "binary" ? (
-                    <div className="flex flex-col items-center justify-center h-64 text-slate-500 dark:text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800">
-                      <File size={48} className="mb-3" />
-                      <p className="text-sm">
-                        Binary file content cannot be displayed.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="pb-8">
-                      {showRaw ? (
-                        <div className="relative">
-                          <button
-                            onClick={() => {
-                              copyTextOrWarn(fileContent.content).then((ok) => {
-                                if (!ok) return;
-                                setCopied(true);
-                                setTimeout(() => setCopied(false), 2000);
-                              });
-                            }}
-                            className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-md transition-colors z-10"
-                            title="Copy to clipboard"
-                          >
-                            {copied ? <Check size={12} /> : <Copy size={12} />}
-                            {copied ? "Copied!" : "Copy"}
-                          </button>
-                          <pre className="p-4 pr-24 text-sm font-mono whitespace-pre-wrap break-words bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg overflow-auto max-h-[80vh] text-slate-700 dark:text-slate-300">
-                            {fileContent.content}
-                          </pre>
-                        </div>
-                      ) : (
-                        <MarkdownViewer
-                          content={fileContent.content}
-                          currentPath={fileContent.path}
-                          isReviewMode={isReviewMode}
-                          onOpenQuestionCount={setOpenQuestionCount}
-                        />
+                      {currentPath && (
+                        <p className="text-sm text-red-400 mt-1 font-mono">
+                          {currentPath}
+                        </p>
                       )}
+                      {connected && (
+                        // Both errors that land here — a document that is gone and
+                        // a repository the daemon has retired — are re-checked on
+                        // the live socket, so this page loads by itself the moment
+                        // the thing returns. Saying so stops the reader reaching
+                        // for a reload that does nothing extra.
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-3">
+                          Waiting — this page loads it automatically if it comes
+                          back.
+                        </p>
+                      )}
+                      <AppLink
+                        to="/"
+                        className="mt-4 px-4 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-medium rounded-lg hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors no-underline inline-block"
+                      >
+                        Go to Home
+                      </AppLink>
                     </div>
-                  )
-                ) : currentDirectory ? (
-                  <DirectoryViewer
-                    nodes={currentDirectory}
-                    currentPath={currentPath || "."}
-                  />
-                ) : isMultiRepo && !currentRepo ? (
-                  <div className="max-w-2xl mx-auto w-full py-12 md:py-16">
-                    <div className="flex items-end justify-between mb-8">
-                      <div>
-                        <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">
-                          Projects
-                        </h1>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                          {repos.length}{" "}
-                          {repos.length === 1 ? "repository" : "repositories"}
+                  ) : isLoading && !fileContent && !currentDirectory ? (
+                    <div className="flex flex-col items-center justify-center h-64 text-slate-500 dark:text-slate-400">
+                      <Loader2
+                        size={32}
+                        className="animate-spin text-blue-500 mb-4"
+                      />
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                        Loading...
+                      </p>
+                    </div>
+                  ) : fileContent ? (
+                    fileContent.encoding === "binary" ? (
+                      <div className="flex flex-col items-center justify-center h-64 text-slate-500 dark:text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800">
+                        <File size={48} className="mb-3" />
+                        <p className="text-sm">
+                          Binary file content cannot be displayed.
                         </p>
                       </div>
-                      <button
-                        onClick={() =>
-                          setRepoSortMode(
-                            repoSortMode === "alphabetical"
-                              ? "recent"
-                              : "alphabetical",
-                          )
-                        }
-                        className={cn(
-                          "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
-                          "border border-slate-200 dark:border-slate-700",
-                          "text-slate-500 dark:text-slate-400",
-                          "hover:bg-slate-50 dark:hover:bg-slate-800",
-                        )}
-                        title={
-                          repoSortMode === "alphabetical"
-                            ? "Sort by recent activity"
-                            : "Sort alphabetically"
-                        }
-                      >
-                        {repoSortMode === "alphabetical" ? (
-                          <>
-                            <ArrowDownAZ size={14} />
-                            <span>A–Z</span>
-                          </>
-                        ) : (
-                          <>
-                            <Clock size={14} />
-                            <span>Recent</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                    <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-800/50 shadow-sm divide-y divide-slate-100 dark:divide-slate-700/50">
-                      {sortedRepos().map((repo) => (
-                        <AppLink
-                          key={repo.name}
-                          to={`/${repo.name}`}
-                          onBeforeNavigate={() => {
-                            setCurrentRepo(repo.name);
-                          }}
-                          className={cn(
-                            "flex items-center gap-3 px-5 py-4 no-underline transition-colors group",
-                            "hover:bg-blue-50/50 dark:hover:bg-slate-700/40",
-                          )}
-                        >
-                          <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center shrink-0 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/50 transition-colors">
-                            <FolderGit2
-                              size={18}
-                              className="text-blue-500 dark:text-blue-400"
-                            />
+                    ) : (
+                      <div className="pb-8">
+                        {showRaw ? (
+                          <div className="relative">
+                            <button
+                              onClick={() => {
+                                copyTextOrWarn(fileContent.content).then(
+                                  (ok) => {
+                                    if (!ok) return;
+                                    setCopied(true);
+                                    setTimeout(() => setCopied(false), 2000);
+                                  },
+                                );
+                              }}
+                              className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-md transition-colors z-10"
+                              title="Copy to clipboard"
+                            >
+                              {copied ? (
+                                <Check size={12} />
+                              ) : (
+                                <Copy size={12} />
+                              )}
+                              {copied ? "Copied!" : "Copy"}
+                            </button>
+                            <pre className="p-4 pr-24 text-sm font-mono whitespace-pre-wrap break-words bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg overflow-auto max-h-[80vh] text-slate-700 dark:text-slate-300">
+                              {fileContent.content}
+                            </pre>
                           </div>
-                          <span className="font-semibold text-slate-800 dark:text-slate-200 truncate text-[15px]">
-                            {repo.name}
-                          </span>
-                          {repo.last_activity && (
-                            <span className="ml-auto pl-4 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap shrink-0 tabular-nums">
-                              <RelativeTime date={repo.last_activity} />
-                            </span>
+                        ) : (
+                          <MarkdownViewer
+                            content={fileContent.content}
+                            currentPath={fileContent.path}
+                            isReviewMode={isReviewMode}
+                            onOpenQuestionCount={setOpenQuestionCount}
+                          />
+                        )}
+                      </div>
+                    )
+                  ) : currentDirectory ? (
+                    <DirectoryViewer
+                      nodes={currentDirectory}
+                      currentPath={currentPath || "."}
+                    />
+                  ) : isMultiRepo && !currentRepo ? (
+                    <div className="max-w-2xl mx-auto w-full py-12 md:py-16">
+                      <div className="flex items-end justify-between mb-8">
+                        <div>
+                          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">
+                            Projects
+                          </h1>
+                          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                            {repos.length}{" "}
+                            {repos.length === 1 ? "repository" : "repositories"}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() =>
+                            setRepoSortMode(
+                              repoSortMode === "alphabetical"
+                                ? "recent"
+                                : "alphabetical",
+                            )
+                          }
+                          className={cn(
+                            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                            "border border-slate-200 dark:border-slate-700",
+                            "text-slate-500 dark:text-slate-400",
+                            "hover:bg-slate-50 dark:hover:bg-slate-800",
                           )}
-                        </AppLink>
-                      ))}
+                          title={
+                            repoSortMode === "alphabetical"
+                              ? "Sort by recent activity"
+                              : "Sort alphabetically"
+                          }
+                        >
+                          {repoSortMode === "alphabetical" ? (
+                            <>
+                              <ArrowDownAZ size={14} />
+                              <span>A–Z</span>
+                            </>
+                          ) : (
+                            <>
+                              <Clock size={14} />
+                              <span>Recent</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-800/50 shadow-sm divide-y divide-slate-100 dark:divide-slate-700/50">
+                        {sortedRepos().map((repo) => (
+                          <AppLink
+                            key={repo.name}
+                            to={`/${repo.name}`}
+                            onBeforeNavigate={() => {
+                              setCurrentRepo(repo.name);
+                            }}
+                            className={cn(
+                              "flex items-center gap-3 px-5 py-4 no-underline transition-colors group",
+                              "hover:bg-blue-50/50 dark:hover:bg-slate-700/40",
+                            )}
+                          >
+                            <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center shrink-0 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/50 transition-colors">
+                              <FolderGit2
+                                size={18}
+                                className="text-blue-500 dark:text-blue-400"
+                              />
+                            </div>
+                            <span className="font-semibold text-slate-800 dark:text-slate-200 truncate text-[15px]">
+                              {repo.name}
+                            </span>
+                            {repo.last_activity && (
+                              <span className="ml-auto pl-4 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap shrink-0 tabular-nums">
+                                <RelativeTime date={repo.last_activity} />
+                              </span>
+                            )}
+                          </AppLink>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-64 text-slate-500 dark:text-slate-400">
-                    <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
-                      <GitBranch size={32} />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-64 text-slate-500 dark:text-slate-400">
+                      <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
+                        <GitBranch size={32} />
+                      </div>
+                      <p className="text-lg font-medium text-slate-500 dark:text-slate-400">
+                        Select a file or folder to browse
+                      </p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                        Vantage supports Markdown and Mermaid diagrams
+                      </p>
                     </div>
-                    <p className="text-lg font-medium text-slate-500 dark:text-slate-400">
-                      Select a file or folder to browse
-                    </p>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                      Vantage supports Markdown and Mermaid diagrams
-                    </p>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
           </div>

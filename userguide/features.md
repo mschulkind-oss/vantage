@@ -151,6 +151,26 @@ The diff viewer shows changes in a unified format with:
 
 The sidebar shows recently changed files (by Git commit date), so you can quickly jump to whatever was worked on most recently.
 
+## Table of Contents
+
+The list icon in the toolbar, beside the breadcrumb, shows a table of
+contents for the open document in the margin to its left. Every heading is
+listed and indented by level; clicking one jumps to it and updates the
+address bar, so the link is ready to copy. The heading you are currently
+reading stays highlighted, and the table of contents stays put as the
+document scrolls under it.
+
+The choice is remembered: turn it on once and it stays on as you move
+between documents and across restarts. It appears only for a rendered Markdown
+document — not for raw view, a directory listing or a binary file — and only on
+a screen wide enough to have a margin to put it in.
+
+## Full Width
+
+The expand icon beside it drops the fixed reading column and lets the document
+use the whole window, which is what you want for a wide table or a large
+diagram. It is remembered the same way.
+
 ## File Tree Navigation
 
 The sidebar displays a file tree with:
