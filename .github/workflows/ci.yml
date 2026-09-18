@@ -57,3 +57,30 @@ jobs:
 
       - name: Check (lint, type-check, test, self-check the docs)
         run: just check-ci
+
+  # The browser suite: layout and behaviour only a real browser can check.
+  # Playwright's webServer config self-hosts everything (a real `vantage
+  # serve` behind a real Vite dev server), so the job needs the toolchain
+  # and the npm workspace, nothing else. Ubuntu only — the projects run
+  # chromium alone, and one OS exercising the DOM is what this suite is for.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # buildinfo reads vcs metadata
+      - name: Install mise
+        uses: jdx/mise-action@v4
+      - name: Install the npm workspace
+        run: npm ci
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Run end-to-end tests
+        working-directory: frontend
+        run: npx playwright test
