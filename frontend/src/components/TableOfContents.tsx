@@ -47,7 +47,10 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
   return (
     <aside
       data-testid="table-of-contents"
-      className="hidden md:block w-52 shrink-0"
+      // w-64, not a skinny rail: the band is glued to the left of the pane,
+      // so a wider contents column spends the window's leftover right-hand
+      // space rather than the document's measure.
+      className="hidden md:block w-64 shrink-0"
     >
       <nav
         aria-label="Table of contents"

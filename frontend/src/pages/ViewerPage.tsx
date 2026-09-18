@@ -1579,28 +1579,31 @@ export const ViewerPage: React.FC = () => {
             >
               <div
                 className={cn(
-                  "mx-auto flex gap-12 py-4 px-4 sm:py-6 sm:px-8",
                   // The band holds the table of contents and the document side
-                  // by side, so the table of contents is always beside the text
-                  // instead of pinned to the window. Widening it by exactly its
-                  // width plus the gap keeps the column of prose the same
-                  // measure either way.
+                  // by side, glued to the left of the pane: file list, then
+                  // contents, then text, with whatever window is left over
+                  // gathered on the right rather than split around the text.
+                  // Nothing is centered horizontally — the document column
+                  // carries its own max width, so the prose keeps its measure
+                  // while the table of contents may take a comfortable width
+                  // without ever squeezing it.
                   //
                   // The gap is 3rem because every prose heading hangs 1.5em
                   // into its left margin to park the `#` anchor there, and at
                   // h1's 2em that is 48px of box reaching towards it.
-                  fullWidth
-                    ? "max-w-none"
-                    : tocOpen && tocAvailable
-                      ? "max-w-[80rem]"
-                      : "max-w-5xl",
+                  "flex gap-12 py-4 px-4 sm:py-6 sm:px-8",
                 )}
               >
                 <TableOfContents
                   containerRef={contentRef}
                   open={tocOpen && tocAvailable}
                 />
-                <div className="min-w-0 flex-1">
+                <div
+                  className={cn(
+                    "min-w-0 flex-1",
+                    fullWidth ? "max-w-none" : "max-w-5xl",
+                  )}
+                >
                   {error ? (
                     <div className="flex flex-col items-center justify-center h-64 text-red-500">
                       <div className="w-16 h-16 rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center mb-4">
