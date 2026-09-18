@@ -125,14 +125,15 @@ path = "~/work/documentation"
 ```
 
 Each repo is accessible at `http://localhost:8000/{name}/` — or whatever
-port Vantage printed on startup, if 8000 was taken.
+port Vantage printed on startup, if 8000 was taken (only the default port
+falls forward; see the note under `--port` below).
 
 ### Configuration Reference
 
 | Key                          | Type             | Default            | Description                                      |
 | ---------------------------- | ---------------- | ------------------ | ------------------------------------------------ |
 | `host`                       | string           | `"127.0.0.1"`      | Server bind address                              |
-| `port`                       | integer          | `8000`             | Server port; scans up to 100 ports above it if taken, then fails |
+| `port`                       | integer          | `8000`             | Server port. Set explicitly it must be free or startup fails; only the default falls forward, scanning up to 100 ports |
 | `source_dirs`                | array of strings | `[]`               | Parent directories to scan for git repos         |
 | `repos[].name`               | string           | _required_         | Display name and URL slug for the directory      |
 | `repos[].path`               | string           | _required_         | Path to directory (supports `~`)                 |
@@ -239,7 +240,7 @@ vantage perf-report [--url]         # Performance diagnostics from a running ins
 | Flag                  | Description                                          |
 | --------------------- | ---------------------------------------------------- |
 | `--host`              | Bind address (default `127.0.0.1`)                   |
-| `--port`              | Server port (default `8000`); scans up to 100 ports above it if taken, then fails |
+| `--port`              | Server port (default `8000`). A port set explicitly — flag, `PORT` env, or config — must be free or startup fails; only the default falls forward, scanning up to 100 ports |
 | `--no-open`           | Don't open the browser on start                      |
 | `--show-hidden`       | Show dotfiles in the sidebar                         |
 | `--exclude-dirs`      | Directories to hide from file listings               |

@@ -101,8 +101,13 @@ type Config struct {
 	// Host is the set of bind addresses. Always normalized to a slice; a
 	// single TOML string or HOST env value becomes a one-element slice.
 	Host []string
-	// Port is the TCP listen port.
-	Port int
+	// Port is the TCP listen port. PortExplicit reports whether Port came
+	// from an explicit setting — a flag, an environment variable, or a
+	// config file — rather than the built-in default. An explicit port is
+	// a promise: the server binds exactly that port or fails to start and
+	// never falls forward to another; only the default may fall forward.
+	Port         int
+	PortExplicit bool
 
 	// AllowedOrigins are extra hostnames permitted to open the live-reload
 	// WebSocket, beyond the always-allowed loopback names. Required when the
@@ -188,6 +193,7 @@ func (c *Config) ApplyEnv() error {
 	}
 	if in.Port != nil {
 		c.Port = *in.Port
+		c.PortExplicit = true
 	}
 	if in.ShowHidden != nil {
 		c.ShowHidden = *in.ShowHidden
@@ -310,6 +316,7 @@ func LoadDaemonFile(path string) (*Config, error) {
 	}
 	if df.Port != nil {
 		c.Port = *df.Port
+		c.PortExplicit = true
 	}
 	if df.ExcludeDirs != nil {
 		c.SetExcludeDirs(*df.ExcludeDirs)

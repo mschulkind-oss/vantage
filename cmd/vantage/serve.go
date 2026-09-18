@@ -78,6 +78,7 @@ func newServeCmd() *cobra.Command {
 			}
 			if flags.Changed("port") {
 				cfg.Port = port
+				cfg.PortExplicit = true
 			}
 			if flags.Changed("show-hidden") {
 				cfg.ShowHidden = showHidden
@@ -110,7 +111,7 @@ func newServeCmd() *cobra.Command {
 				return err
 			}
 
-			listeners, boundPort, err := listenAll(cfg.Host, cfg.Port)
+			listeners, boundPort, err := listenAll(cfg.Host, cfg.Port, cfg.PortExplicit)
 			if err != nil {
 				return err
 			}
@@ -121,7 +122,7 @@ func newServeCmd() *cobra.Command {
 	f := cmd.Flags()
 	f.StringVar(&host, "host", "", "Server host (default 127.0.0.1)")
 	f.StringSliceVar(&allowedOrigins, "allowed-origins", nil, "Extra hostnames allowed to open the live-reload WebSocket (loopback is always allowed)")
-	f.IntVar(&port, "port", 0, "Server port (default 8000)")
+	f.IntVar(&port, "port", 0, "Server port (default 8000; an explicitly set port must be free, only the default falls forward)")
 	f.BoolVar(&showHidden, "show-hidden", true, "Show hidden files/directories")
 	f.StringSliceVar(&excludeDirs, "exclude-dirs", nil, "Directory names to exclude from listings (replaces defaults)")
 	f.BoolVar(&useIgnore, "use-ignore-files", true, "Honor .vantageignore and the user ignore file")
@@ -205,17 +206,22 @@ func runServers(parent context.Context, s *server.Server, listeners []net.Listen
 	return nil
 }
 
-// listenAll binds every host in hosts to one shared port, starting at the
-// requested port and walking upwards until it finds one free on all of them. It
-// returns the listeners and the port they share.
+// listenAll binds every host in hosts to one shared port and returns the
+// listeners with the port they share.
 //
-// The walk is why the listeners are opened here rather than left to
+// When strict is false — the caller left the port at its default — a busy
+// port is walked upwards until one is free on all bind addresses. When
+// strict is true, the port was named by the operator (a flag, an env var, or
+// a config file), and a port someone chose is a promise: it binds exactly or
+// the run fails, with no falling forward to a port nobody asked for.
+//
+// Either way the listeners are opened here rather than left to
 // http.Server.ListenAndServe: a port is only usable if every bind address can
 // take it, and that is not knowable without trying. A partial bind is undone
 // before moving on, so the run either owns the port everywhere or nowhere —
 // otherwise two Vantage instances could end up interleaved across addresses on
 // the same port, each answering for some of them.
-func listenAll(hosts []string, port int) ([]net.Listener, int, error) {
+func listenAll(hosts []string, port int, strict bool) ([]net.Listener, int, error) {
 	if len(hosts) == 0 {
 		return nil, port, fmt.Errorf("no bind address configured")
 	}
@@ -229,22 +235,18 @@ func listenAll(hosts []string, port int) ([]net.Listener, int, error) {
 		return nil, 0, fmt.Errorf("port %d is not supported; configure a positive port to start scanning from", port)
 	}
 
+	if strict {
+		lns, err := bindAll(hosts, port)
+		if err != nil {
+			return nil, 0, fmt.Errorf("port %d is configured explicitly and could not be bound: %w", port, err)
+		}
+		return lns, port, nil
+	}
+
 	first := port
 	for p := first; p < first+portScanLimit && p <= 65535; p++ {
-		lns := make([]net.Listener, 0, len(hosts))
-		var bindErr error
-		for _, h := range hosts {
-			ln, err := net.Listen("tcp", net.JoinHostPort(h, strconv.Itoa(p)))
-			if err != nil {
-				bindErr = err
-				break
-			}
-			lns = append(lns, ln)
-		}
+		lns, bindErr := bindAll(hosts, p)
 		if bindErr != nil {
-			for _, ln := range lns {
-				_ = ln.Close()
-			}
 			// Only "someone else is already listening" is a reason to try the
 			// next port. Anything else — an invalid host, a permission error
 			// on a privileged port, a system out of file descriptors — will
@@ -263,6 +265,24 @@ func listenAll(hosts []string, port int) ([]net.Listener, int, error) {
 		return lns, p, nil
 	}
 	return nil, 0, fmt.Errorf("no free port found in %d..%d", first, first+portScanLimit-1)
+}
+
+// bindAll binds every host in hosts to the same port, undoing any partial
+// bind before returning the failure, so a candidate port is owned everywhere
+// or nowhere.
+func bindAll(hosts []string, port int) ([]net.Listener, error) {
+	lns := make([]net.Listener, 0, len(hosts))
+	for _, h := range hosts {
+		ln, err := net.Listen("tcp", net.JoinHostPort(h, strconv.Itoa(port)))
+		if err != nil {
+			for _, l := range lns {
+				_ = l.Close()
+			}
+			return nil, err
+		}
+		lns = append(lns, ln)
+	}
+	return lns, nil
 }
 
 // warnNonLocal prints a warning to stderr when any bind address is not a

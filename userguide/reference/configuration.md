@@ -56,7 +56,7 @@ whatever port Vantage printed on startup, if 8000 was taken.
 | Key                        | Type             | Default       | Description                                          |
 | -------------------------- | ---------------- | ------------- | ---------------------------------------------------- |
 | `host`                     | string           | `"127.0.0.1"` | Server bind address                                  |
-| `port`                     | integer          | `8000`        | Server port; scans up to 100 ports above it if taken, then fails |
+| `port`                     | integer          | `8000`        | Server port. Set explicitly (config, env, or flag) it must be free or startup fails; only the default falls forward, scanning up to 100 ports |
 | `repos`                    | array            | `[]`          | List of directories to serve                         |
 | `repos[].name`             | string           | _required_    | Display name and URL slug                            |
 | `repos[].path`             | string           | _required_    | Path to the directory (supports `~`)                 |
@@ -132,7 +132,7 @@ When running in single-directory mode (`vantage serve`), you can also configure 
 | -------------------- | ---------------------------------------------------- |
 | `TARGET_REPO`        | Path to the directory to serve                       |
 | `HOST`               | Server bind address                                  |
-| `PORT`               | Server port                                          |
+| `PORT`               | Server port (explicit: must be free, never falls forward) |
 | `SHOW_HIDDEN`        | Show hidden files (`true`/`false`, default `true`)   |
 | `EXCLUDE_DIRS`       | Comma-separated directory names to hide (replaces defaults) |
 | `WALK_MAX_DEPTH`     | Max directory depth for untracked-file discovery     |

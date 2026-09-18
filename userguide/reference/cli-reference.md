@@ -19,7 +19,7 @@ vantage serve [PATH] [--host HOST] [--port PORT] [--no-open] [--show-hidden]
 | --------------------- | ----------------------- | ------------------------------------------------------ |
 | `PATH`                | `.` (current directory) | Directory or Markdown file to serve                    |
 | `--host`              | `127.0.0.1`             | Server bind address                                    |
-| `--port`              | `8000`                  | Server port; scans up to 100 ports above it if taken, then fails |
+| `--port`              | `8000`                  | Server port. Set explicitly (flag, `PORT` env, or config) it must be free or startup fails; only the default falls forward, scanning up to 100 ports |
 | `--no-open`           |                         | Do not open the browser on startup                     |
 | `--show-hidden`       | `true`                  | Show hidden files/directories (dotfiles) in the sidebar |
 | `--exclude-dirs`      | _(see Configuration)_   | Directory names to exclude from listings (replaces defaults) |
@@ -43,7 +43,7 @@ vantage daemon [--config PATH] [--host HOST] [--port PORT]
 | ---------------- | ------------------------------- | --------------------------------- |
 | `--config`, `-c` | `~/.config/vantage/config.toml` | Path to the config file           |
 | `--host`         | From config                     | Override the host from the config |
-| `--port`         | From config                     | Override the port from the config |
+| `--port`         | From config                     | Override the port from the config (must be free — explicit ports never fall forward) |
 
 See [Daemon Mode](../guides/daemon-mode.md) for details on the config file format.
 

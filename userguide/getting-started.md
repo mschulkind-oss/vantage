@@ -59,6 +59,11 @@ If port 8000 is already taken — another Vantage, or anything else — Vantage
 moves to the next free port above it (scanning up to 100 ports before giving
 up) and prints the one it picked, so a second instance never fails to start.
 
+That freedom belongs to the default alone: a port you set yourself —
+`--port` on the command line, `PORT` in the environment, or `port` in the
+config file — binds exactly or Vantage exits with an error. A systemd unit
+or a script that names a port must never come up on a different one.
+
 You can also just run `vantage` with no arguments — it serves the current directory:
 
 ```bash
