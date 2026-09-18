@@ -1,47 +1,50 @@
 import { test, expect } from "@playwright/test";
-import path from "path";
-import fs from "fs";
-import { fileURLToPath } from "url";
+import { execSync } from "node:child_process";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-test.describe("Commit Info", () => {
-  const testDir = path.join(__dirname, "../../tests/e2e/test_repo");
-  const readmePath = path.join(testDir, "commit_info_test.md");
+// The fixture cannot ship as a git repository (a nested .git cannot be
+// committed), so this spec builds one at run time and takes it apart after.
+// The commit bar and diff viewer are what it exercises: the message of the
+// latest commit for the open file, and the diff that opens from it.
+const testRepoPath = path.join(__dirname, "fixtures/test_repo");
+const COMMIT_MESSAGE = "e2e: commit info fixture";
 
-  test.beforeAll(async () => {
-    // Create a new file to ensure it has a commit
-    if (!fs.existsSync(testDir)) {
-      fs.mkdirSync(testDir, { recursive: true });
-    }
-    // We don't actually need to create a file since we are using page1.md which exists
+test.describe("Commit Info", () => {
+  test.beforeAll(() => {
+    const git = (args: string) =>
+      execSync(`git -C ${JSON.stringify(testRepoPath)} ${args}`, {
+        stdio: "pipe",
+      });
+    git("init -q");
+    git("config user.email e2e@vantage.local");
+    git("config user.name Vantage e2e");
+    git("add page1.md");
+    git(`commit -qm ${JSON.stringify(COMMIT_MESSAGE)}`);
   });
 
   test.afterAll(() => {
-    if (fs.existsSync(readmePath)) {
-      fs.unlinkSync(readmePath);
-    }
+    execSync(`rm -rf ${JSON.stringify(path.join(testRepoPath, ".git"))}`);
   });
 
-  test("displays commit info for a markdown file", async ({ page }) => {
-    // Navigate to an existing file that should have commit info
+  test("displays the latest commit and opens its diff", async ({ page }) => {
     await page.goto("/page1.md");
-
-    // Wait for file content to load
     await expect(page.getByRole("heading", { name: "Page 1" })).toBeVisible();
 
-    // Check for commit info elements
-    const commitButton = page.locator('button[title="Click to view diff"]');
+    // The commit bar names the commit this spec made. Its title is
+    // "<date> — click to view diff", so match on the stable part.
+    const commitButton = page.locator('button[title*="click to view diff"]');
+    await expect(commitButton).toBeVisible({ timeout: 10_000 });
+    await expect(commitButton).toContainText(COMMIT_MESSAGE);
 
-    // It might take a moment to load the commit info
-    await expect(commitButton).toBeVisible({ timeout: 5000 });
-
-    // The message should perform an action (open diff)
+    // Opening it renders the diff viewer, headed with the same message.
     await commitButton.click();
-
-    // Check if diff modal opens
-    // Note: Since this file definitely has commits, valid output is expected
-    await expect(page.locator("text=Commit Diff")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Commit Diff" }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Close diff viewer")).toBeVisible();
   });
 });

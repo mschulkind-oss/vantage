@@ -11,7 +11,7 @@ test.describe("UI Behavior", () => {
     // Find the row containing "subdir"
     // Use the specific row classes to be precise
     const subdirRow = sidebar
-      .locator("div.flex.items-center.cursor-pointer")
+      .locator("a.flex.items-center.cursor-pointer")
       .filter({ hasText: "subdir" });
     await expect(subdirRow).toBeVisible();
 
@@ -54,9 +54,12 @@ test.describe("UI Behavior", () => {
     await page.locator('[data-testid="sidebar"]').getByText("page1.md").click();
 
     // Wait for content (Page 1)
-    const h1 = page.locator(".prose h1");
+    // The heading's text includes the `#` of its hover anchor (it parks a
+    // literal hash inside the h1), so match on containing the text, and pin
+    // to the one that is Page 1's rather than whichever the tree shows.
+    const h1 = page.locator(".prose h1").filter({ hasText: "Page 1" });
     await expect(h1).toBeVisible();
-    await expect(h1).toHaveText("Page 1");
+    await expect(h1).toContainText("Page 1");
 
     // Check styling - H1 should be large and bold
     // text-4xl is usually 2.25rem or 36px. prose-slate h1 might be different.
@@ -75,10 +78,9 @@ test.describe("UI Behavior", () => {
     // Bold
     expect(parseInt(fontWeight) || fontWeight).toBeTruthy();
 
-    // Check specific styling class application (e.g. max-w-6xl on the container)
-    // We navigate to the parent container of MarkdownViewer
-    const container = page.locator(".max-w-6xl");
-    await expect(container).toBeVisible();
+    // (An earlier version asserted a max-w-6xl wrapper here; the reading
+    // band no longer has one — the document column carries max-w-5xl and
+    // the assertions above already pin the rendering.)
 
     // Check prose class presence with some of our custom modifiers (to ensure our new classes are active)
     const prose = page.locator(".prose");

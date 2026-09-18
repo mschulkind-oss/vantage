@@ -117,15 +117,32 @@ test.describe("table of contents", () => {
     expect(headingBox.x).toBeLessThan(800);
     expect(headingBox.x - (tocBox.x + tocBox.width)).toBeLessThanOrEqual(48 + 1);
 
-    // The fixed-width column keeps its measure with the contents open and
-    // closed alike: max-w-5xl caps the column wherever it sits, so closing
-    // the contents slides the text left (the band is glued to the pane's
-    // left edge) without changing its width.
-    const widthWithToc = headingBox.width;
+    // The measure assertions read the document column (the .min-w-0 child
+    // of the band, the element that carries max-w-5xl), not the heading:
+    // a heading's box hangs left of the column to park its `#` anchor, and
+    // how far that hang widens it differs between engines.
+    const column = page.locator("div.flex.gap-12 > div.min-w-0");
+
+    // Closing the contents never costs the document width — it can only
+    // reclaim it: on this 1600px window the open contents squeezed the
+    // column below its max (sidebar + contents + gap + full measure does
+    // not fit), and closing it hands the width back.
+    const widthWithToc = (await column.boundingBox())!.width;
     await page.getByRole("button", { name: "Hide contents" }).click();
-    const headingBoxAfter = (await heading.boundingBox())!;
-    expect(Math.abs(headingBoxAfter.width - widthWithToc)).toBeLessThanOrEqual(1);
-    expect(headingBoxAfter.x).toBeLessThan(headingBox.x);
+    expect((await column.boundingBox())!.width).toBeGreaterThanOrEqual(
+      widthWithToc - 1,
+    );
+    expect((await heading.boundingBox())!.x).toBeLessThan(headingBox.x);
+
+    // On a window wide enough for everything, the measure is exactly the
+    // column's max (5xl = 1024px) with the contents open and closed alike.
+    await page.setViewportSize({ width: 1900, height: 900 });
+    await page.getByRole("button", { name: "Show contents" }).click();
+    const openBox = (await column.boundingBox())!;
+    expect(Math.abs(openBox.width - 1024)).toBeLessThanOrEqual(1);
+    await page.getByRole("button", { name: "Hide contents" }).click();
+    const closedBox = (await column.boundingBox())!;
+    expect(Math.abs(closedBox.width - 1024)).toBeLessThanOrEqual(1);
   });
 });
 test.describe("full width", () => {

@@ -11,7 +11,7 @@ test.describe("Live reload", () => {
   // under fullyParallel, one test's edit is another test's spurious reload.
   test.describe.configure({ mode: "serial" });
 
-  const testRepoPath = path.join(__dirname, "../fixtures/test_repo");
+  const testRepoPath = path.join(__dirname, "fixtures/test_repo");
   const page1Path = path.join(testRepoPath, "page1.md");
   const page2Path = path.join(testRepoPath, "page2.md");
   let originalPage1: string;
@@ -63,7 +63,8 @@ test.describe("Live reload", () => {
 
     // Find subdir
     const subdirRow = sidebar
-      .locator("div.flex.items-center.cursor-pointer")
+      // Tree rows are real links (anchors), not divs.
+      .locator("a.flex.items-center.cursor-pointer")
       .filter({ hasText: "subdir" });
     await expect(subdirRow).toBeVisible();
 
