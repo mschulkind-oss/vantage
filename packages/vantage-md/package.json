@@ -77,7 +77,7 @@
     }
   },
   "dependencies": {
-    "katex": "^0.18.4",
+    "katex": "^0.18.7",
     "rehype-highlight": "^7.0.2",
     "rehype-katex": "^7.0.1",
     "rehype-raw": "^7.0.0",

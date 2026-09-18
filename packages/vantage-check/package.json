@@ -21,7 +21,7 @@
   "dependencies": {
     "dompurify": "^3.3.1",
     "github-slugger": "^2.0.0",
-    "katex": "^0.18.4",
+    "katex": "^0.18.7",
     "mdast-util-to-string": "^4.0.0",
     "mermaid": "^11.17.2",
     "remark-gfm": "^4.0.1",
