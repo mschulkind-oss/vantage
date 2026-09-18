@@ -200,8 +200,12 @@ vantage daemon --config /path/to/config.toml
 
 ### Port already in use
 
-Change the port in your config file or override it on the command line:
+The daemon moves to the next free port above the one configured — up to 100
+ports above it — and prints the port it actually bound, so this is rarely
+something you need to act on. If the whole range is taken (unusual outside a
+test environment spinning up many instances), pick a different starting port
+in your config file or on the command line:
 
 ```bash
-vantage daemon --port 8001
+vantage daemon --port 9000
 ```

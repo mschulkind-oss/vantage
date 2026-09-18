@@ -55,6 +55,10 @@ vantage serve ~/Documents/notes
 
 Open **http://localhost:8000** in your browser. That's it.
 
+If port 8000 is already taken — another Vantage, or anything else — Vantage
+moves to the next free port above it (scanning up to 100 ports before giving
+up) and prints the one it picked, so a second instance never fails to start.
+
 You can also just run `vantage` with no arguments — it serves the current directory:
 
 ```bash
