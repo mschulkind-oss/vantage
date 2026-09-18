@@ -200,11 +200,12 @@ vantage daemon --config /path/to/config.toml
 
 ### Port already in use
 
-The daemon moves to the next free port above the one configured — up to 100
-ports above it — and prints the port it actually bound, so this is rarely
-something you need to act on. If the whole range is taken (unusual outside a
-test environment spinning up many instances), pick a different starting port
-in your config file or on the command line:
+A port from the config file or `--port` is explicit, and an explicit port
+binds exactly or the daemon exits with an error — a service that names a
+port must never come up on a different one. Only the built-in default
+(8000) falls forward, moving to the next free port above it — up to 100
+ports above — and printing the port it actually bound. If the default range
+is exhausted (unusual outside a test environment), set a port explicitly:
 
 ```bash
 vantage daemon --port 9000

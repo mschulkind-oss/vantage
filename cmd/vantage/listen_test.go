@@ -28,7 +28,7 @@ func closeAll(lns []net.Listener) {
 
 func TestListenAllUsesRequestedPortWhenFree(t *testing.T) {
 	want := freePort(t)
-	lns, got, err := listenAll([]string{"127.0.0.1"}, want)
+	lns, got, err := listenAll([]string{"127.0.0.1"}, want, false)
 	require.NoError(t, err)
 	defer closeAll(lns)
 	require.Equal(t, want, got)
@@ -50,7 +50,7 @@ func TestListenAllWalksPastOccupiedPorts(t *testing.T) {
 	}
 	defer closeAll(blockers)
 
-	lns, got, err := listenAll([]string{"127.0.0.1"}, first)
+	lns, got, err := listenAll([]string{"127.0.0.1"}, first, false)
 	require.NoError(t, err)
 	defer closeAll(lns)
 	require.Equal(t, first+2, got, "should land on the first free port above the requested one")
@@ -69,7 +69,7 @@ func TestListenAllSharesOnePortAcrossHosts(t *testing.T) {
 	}
 	defer blocker.Close()
 
-	lns, got, err := listenAll([]string{"127.0.0.1", "::1"}, first)
+	lns, got, err := listenAll([]string{"127.0.0.1", "::1"}, first, false)
 	require.NoError(t, err)
 	defer closeAll(lns)
 	require.NotEqual(t, first, got, "a port taken on any host must be skipped for all of them")
@@ -98,18 +98,18 @@ func TestListenAllGivesUpRatherThanWrapping(t *testing.T) {
 	}
 	defer closeAll(blockers)
 
-	_, _, err := listenAll([]string{"127.0.0.1"}, 65533)
+	_, _, err := listenAll([]string{"127.0.0.1"}, 65533, false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "no free port")
 }
 
 func TestListenAllRejectsPortZero(t *testing.T) {
-	_, _, err := listenAll([]string{"127.0.0.1"}, 0)
+	_, _, err := listenAll([]string{"127.0.0.1"}, 0, false)
 	require.Error(t, err)
 }
 
 func TestListenAllRejectsNegativePort(t *testing.T) {
-	_, _, err := listenAll([]string{"127.0.0.1"}, -1)
+	_, _, err := listenAll([]string{"127.0.0.1"}, -1, false)
 	require.Error(t, err)
 }
 
@@ -120,8 +120,41 @@ func TestListenAllRejectsNegativePort(t *testing.T) {
 // port found" instead of the real cause.
 func TestListenAllSurfacesNonAddrInUseErrorsImmediately(t *testing.T) {
 	port := freePort(t)
-	_, _, err := listenAll([]string{"256.256.256.256"}, port)
+	_, _, err := listenAll([]string{"256.256.256.256"}, port, false)
 	require.Error(t, err)
 	require.NotContains(t, err.Error(), "no free port",
 		"a host that can never bind should fail with its own error, not exhaust the scan")
+}
+
+// TestListenAllStrictBindsExactlyTheRequestedPort is the operator-named-a-port
+// half of the port rule: strict binds exactly what was asked, and an occupied
+// port is an error rather than a reason to walk — the whole point being that a
+// systemd unit or a script that names a port must never come up on a different
+// one it was never configured to use.
+func TestListenAllStrictBindsExactlyTheRequestedPort(t *testing.T) {
+	want := freePort(t)
+	lns, got, err := listenAll([]string{"127.0.0.1"}, want, true)
+	require.NoError(t, err)
+	defer closeAll(lns)
+	require.Equal(t, want, got)
+	require.Len(t, lns, 1)
+}
+
+func TestListenAllStrictFailsOnOccupiedPortWithoutWalking(t *testing.T) {
+	first := freePort(t)
+	blocker, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(first)))
+	if err != nil {
+		t.Skipf("port %d unexpectedly unavailable: %v", first, err)
+	}
+	defer func() { _ = blocker.Close() }()
+
+	_, _, err = listenAll([]string{"127.0.0.1"}, first, true)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "configured explicitly",
+		"the error should say the port was chosen, so the operator knows to free it or change it")
+
+	// No walk: the port above the occupied one must not have been taken.
+	nextLn, walkErr := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(first+1)))
+	require.NoError(t, walkErr, "strict mode must not bind the next port up")
+	_ = nextLn.Close()
 }

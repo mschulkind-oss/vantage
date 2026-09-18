@@ -57,6 +57,7 @@ func newDaemonCmd() *cobra.Command {
 			}
 			if flags.Changed("port") {
 				cfg.Port = port
+				cfg.PortExplicit = true
 			}
 
 			if errs := cfg.Validate(); len(errs) > 0 {
@@ -72,7 +73,7 @@ func newDaemonCmd() *cobra.Command {
 			// Bound before the banner: the configured port may be taken, and
 			// the banner has to name the port actually bound rather than the
 			// one that was asked for.
-			listeners, boundPort, err := listenAll(cfg.Host, cfg.Port)
+			listeners, boundPort, err := listenAll(cfg.Host, cfg.Port, cfg.PortExplicit)
 			if err != nil {
 				return err
 			}
@@ -97,7 +98,7 @@ func newDaemonCmd() *cobra.Command {
 	f := cmd.Flags()
 	f.StringVarP(&configPath, "config", "c", "", "Path to config file (default: per-user config dir)")
 	f.StringSliceVar(&hosts, "host", nil, "Override server host(s) from config (repeatable / comma-separated)")
-	f.IntVar(&port, "port", 0, "Override server port from config")
+	f.IntVar(&port, "port", 0, "Override server port from config (an explicitly set port must be free; only the default falls forward)")
 
 	return cmd
 }
