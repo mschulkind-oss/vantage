@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from "@testing-library/react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ViewerPage } from "./ViewerPage";
 import { useRepoStore } from "../stores/useRepoStore";
 import { useGitStore } from "../stores/useGitStore";
@@ -604,6 +604,79 @@ describe("ViewerPage", () => {
       asUntracked();
       renderPage();
       expect(toggles()).toHaveLength(0);
+    });
+  });
+
+  // A second tab of the same repo is the same reader, and these two preferences
+  // are stored per origin — so a toggle in one tab has to land in the other
+  // without waiting for a reload. `usePersistentFlag` is what carries that, and
+  // its own tests cover the parsing and the event filtering; these cases exist
+  // to prove the header is wired to it at all, in both directions.
+  describe("reading preferences shared across tabs", () => {
+    /** The event the browser raises in *this* tab when another tab writes. */
+    const writeFromAnotherTab = (key: string, newValue: string) => {
+      localStorage.setItem(key, newValue);
+      fireEvent(
+        window,
+        new StorageEvent("storage", {
+          key,
+          newValue,
+          storageArea: localStorage,
+        }),
+      );
+    };
+
+    beforeEach(() => {
+      localStorage.clear();
+      // The contents button needs a rendered Markdown document to have any
+      // headings to offer — `tocAvailable` is false over a directory.
+      (useRepoStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+        ...useRepoStore(),
+        fileContent: "Some content",
+        currentPath: "file.md",
+      });
+    });
+
+    afterEach(() => localStorage.clear());
+
+    it("adopts another tab's contents toggle", () => {
+      renderPage();
+      expect(screen.getByLabelText("Show contents")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+
+      writeFromAnotherTab("vantage:tocOpen", "true");
+
+      expect(screen.getByLabelText("Hide contents")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    it("adopts another tab's width toggle", () => {
+      renderPage();
+      expect(screen.getByLabelText("Use full width")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+
+      writeFromAnotherTab("vantage:fullWidth", "true");
+
+      expect(screen.getByLabelText("Use fixed width")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    it("still writes a toggle made in this tab", () => {
+      renderPage();
+
+      fireEvent.click(screen.getByLabelText("Show contents"));
+      fireEvent.click(screen.getByLabelText("Use full width"));
+
+      expect(localStorage.getItem("vantage:tocOpen")).toBe("true");
+      expect(localStorage.getItem("vantage:fullWidth")).toBe("true");
     });
   });
 
