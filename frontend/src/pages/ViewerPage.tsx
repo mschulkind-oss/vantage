@@ -58,6 +58,7 @@ import {
 import { ReviewPanel } from "../components/ReviewPanel";
 import { MessageSquarePlus, ClipboardCopy } from "lucide-react";
 import { useLineAnchor } from "../hooks/useLineAnchor";
+import { usePersistentFlag } from "../hooks/usePersistentFlag";
 import { StyleGuideModal } from "../components/StyleGuideModal";
 import { ConnectionBanner } from "../components/ConnectionBanner";
 import { useConnectionStore } from "../stores/useConnectionStore";
@@ -204,23 +205,13 @@ export const ViewerPage: React.FC = () => {
     };
   }, []);
   const [showRaw, setShowRaw] = useState(false);
-  // Remembered across documents and reloads, like the sidebar's collapse: a
-  // reader who wants a table of contents wants it for the next document too.
-  const [tocOpen, setTocOpen] = useState(() => {
-    try {
-      return localStorage.getItem("vantage:tocOpen") === "true";
-    } catch {
-      return false;
-    }
-  });
+  // Remembered across documents, reloads and tabs: a reader who wants a table
+  // of contents wants it for the next document too, and a second tab of the
+  // same repo is the same reader — so `usePersistentFlag` also adopts the
+  // change when the other tab makes it, rather than waiting for a reload.
+  const [tocOpen, setTocOpen] = usePersistentFlag("vantage:tocOpen");
   // Whether the document uses the whole window instead of a measured column.
-  const [fullWidth, setFullWidth] = useState(() => {
-    try {
-      return localStorage.getItem("vantage:fullWidth") === "true";
-    } catch {
-      return false;
-    }
-  });
+  const [fullWidth, setFullWidth] = usePersistentFlag("vantage:fullWidth");
   /**
    * How many Open Questions the open document offers a one-click answer for.
    *
@@ -686,27 +677,11 @@ export const ViewerPage: React.FC = () => {
     }
   }, []);
   const handleToggleToc = useCallback(() => {
-    setTocOpen((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem("vantage:tocOpen", String(next));
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-  }, []);
+    setTocOpen((prev) => !prev);
+  }, [setTocOpen]);
   const handleToggleFullWidth = useCallback(() => {
-    setFullWidth((prev) => {
-      const next = !prev;
-      try {
-        localStorage.setItem("vantage:fullWidth", String(next));
-      } catch {
-        /* ignore */
-      }
-      return next;
-    });
-  }, []);
+    setFullWidth((prev) => !prev);
+  }, [setFullWidth]);
   const handleShortcutNavigate = useCallback(
     (path: string) => {
       navigate(path);

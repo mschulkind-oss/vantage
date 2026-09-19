@@ -204,3 +204,39 @@ test.describe("full width", () => {
       .toBe(fixed);
   });
 });
+
+// Two tabs, one browser context — so one `localStorage` and real `storage`
+// events between them. This is the half the unit tests cannot reach: there,
+// the second tab's event is hand-dispatched, and whether a browser raises it
+// at all is precisely what is being assumed.
+test.describe("preferences shared between tabs", () => {
+  test("a toggle in one tab lands in the other without a reload", async ({
+    context,
+  }) => {
+    const open = async () => {
+      const tab = await context.newPage();
+      await tab.setViewportSize({ width: 1600, height: 900 });
+      await tab.goto("/mermaid-diagrams-test.md");
+      await expect(tab.locator("h1").first()).toBeVisible();
+      return tab;
+    };
+
+    const first = await open();
+    const second = await open();
+    await expect(second.getByTestId("table-of-contents")).toHaveCount(0);
+
+    // Contents, opened in the first tab and adopted by the second.
+    await first.getByRole("button", { name: "Show contents" }).click();
+    await expect(second.getByTestId("table-of-contents")).toBeVisible();
+
+    // Width, the other way round — the listener is not one tab's privilege.
+    await second.getByRole("button", { name: "Use full width" }).click();
+    await expect(
+      first.getByRole("button", { name: "Use fixed width" }),
+    ).toBeVisible();
+
+    // And turning a preference back off propagates too, rather than latching.
+    await first.getByRole("button", { name: "Hide contents" }).click();
+    await expect(second.getByTestId("table-of-contents")).toHaveCount(0);
+  });
+});
