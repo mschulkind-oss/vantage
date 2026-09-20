@@ -103,8 +103,8 @@ type Deps struct {
 	ReviewChanged func(repo, path string)
 	// Starred is the bookmark store for this vantage invocation. It is keyed by
 	// the launch root rather than by repository, which is why the /starred
-	// routes are ScopeGlobal. A nil store (static builds, most tests) makes
-	// them answer 503 rather than panicking.
+	// routes are ScopeGlobal. A nil store — most tests, or a Config with no
+	// root to key on — makes them answer 503 rather than panicking.
 	Starred *starred.Store
 	// StarredChanged, when non-nil, is called after every successful bookmark
 	// mutation. The server wires it to the live hub so every open browser

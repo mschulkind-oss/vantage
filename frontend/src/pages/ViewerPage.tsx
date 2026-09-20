@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRepoStore } from "../stores/useRepoStore";
 import { useGitStore } from "../stores/useGitStore";
 import { FileTree } from "../components/FileTree";
@@ -43,6 +49,7 @@ import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { scrollToAnchor } from "../lib/anchorScroll";
 import { isStaticMode } from "../lib/staticMode";
+import { bookmarkTargetFromRoute } from "../lib/bookmarkTarget";
 import { useStarredStore } from "../stores/useStarredStore";
 import { copyTextOrWarn } from "../lib/clipboard";
 import axios from "axios";
@@ -394,6 +401,13 @@ export const ViewerPage: React.FC = () => {
   useEffect(() => {
     void loadStarred();
   }, [loadStarred]);
+
+  // What a bookmark for this route would be keyed by. Derived from the URL so
+  // it still answers when the repo store cannot — see bookmarkTargetFromRoute.
+  const bookmarkTarget = useMemo(
+    () => bookmarkTargetFromRoute(pathParam, isMultiRepo),
+    [pathParam, isMultiRepo],
+  );
 
   // Clear the cached file list when the repo changes, and close the mobile
   // sidebar when the path does. Both adjust state during render (React's
@@ -1632,9 +1646,15 @@ export const ViewerPage: React.FC = () => {
                           // condition as the "it may come back" notice above.
                           // A backend hiccup must not invite deleting a
                           // bookmark whose target is fine.
+                          //
+                          // The target comes from the route, not the store: a
+                          // retired daemon repo clears currentRepo and leaves
+                          // the whole route in currentPath, which would never
+                          // match the (repo, path) the bookmark was stored
+                          // under.
                           <RemoveBookmarkButton
-                            path={currentPath}
-                            repo={currentRepo}
+                            path={bookmarkTarget?.path ?? null}
+                            repo={bookmarkTarget?.repo ?? null}
                           />
                         )}
                       </div>

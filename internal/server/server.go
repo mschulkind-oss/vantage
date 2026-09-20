@@ -170,9 +170,12 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		return nil, err
 	}
 
-	// Bookmarks are a convenience, not a precondition for serving documents:
-	// an unresolvable home directory leaves the store nil and the /starred
-	// routes answering 503, rather than refusing to start.
+	// Bookmarks are a convenience, not a precondition for serving documents, so
+	// a store that cannot be built leaves the routes answering 503 rather than
+	// failing startup. Note this cannot rescue an unresolvable home directory:
+	// config.ReviewDir above needs one too and has already returned by then.
+	// What it does cover is a Config with no root to key on — one assembled in
+	// process rather than by the serve/daemon commands.
 	if root, err := starred.RootKey(cfg); err != nil {
 		logger.Warn("server: bookmarks unavailable", "error", err)
 	} else if store, err := starred.DefaultStore(root); err != nil {

@@ -178,11 +178,17 @@ folder — and fills in amber once it is. Bookmarks collect in a **Starred**
 section at the top of the sidebar, above the file tree; the section is not there
 at all until something is starred.
 
-Bookmarks belong to the directory Vantage was launched in, not to the browser.
-They are stored under `~/.config/vantage/starred/`, so they come back when you
-restart Vantage in the same place — on any port, in any browser — and every open
-tab updates the moment one is added or removed anywhere else. Launch Vantage
-somewhere else and you get that project's own list.
+Bookmarks belong to the project, not to the browser. They are stored under
+`~/.config/vantage/starred/`, so they come back when you restart Vantage — on
+any port, in any browser — and every open tab updates the moment one is added or
+removed anywhere else.
+
+Which list you get depends on how Vantage was started. `vantage serve` keys on
+the directory it is serving, so each project has its own and launching somewhere
+else gives you that project's. A [daemon](guides/daemon-mode.md) keys on its
+config file instead, which does not depend on the working directory a service
+manager happens to hand it, so one list covers every repository it serves and
+each bookmark remembers which one it came from.
 
 Nothing checks that a bookmark still points at something. A starred document
 that has been deleted or renamed keeps its place in the list and only says so

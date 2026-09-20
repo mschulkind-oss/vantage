@@ -123,6 +123,19 @@ func TestCorruptFileIsTreatedAsEmpty(t *testing.T) {
 
 // A 64-bit hash collision is negligible but not impossible, and the file can be
 // hand-edited. Either way it must never show another project's bookmarks.
+// A file with no root was not written by this package — the format has never
+// had a version without one — so it is a hand-edited file and gets the same
+// treatment as a foreign one.
+func TestRootlessFileIsTreatedAsEmpty(t *testing.T) {
+	s := newTestStore(t)
+	require.NoError(t, os.MkdirAll(filepath.Dir(s.path), 0o755))
+	require.NoError(t, os.WriteFile(s.path, []byte(`{"entries":[{"repo":"","path":"a.md"}]}`), 0o644))
+
+	got, err := s.List()
+	require.NoError(t, err)
+	require.Empty(t, got)
+}
+
 func TestForeignRootIsTreatedAsEmpty(t *testing.T) {
 	s := newTestStore(t)
 	require.NoError(t, os.MkdirAll(filepath.Dir(s.path), 0o755))

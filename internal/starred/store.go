@@ -259,18 +259,19 @@ func (s *Store) loadLocked() (*file, error) {
 		slog.Warn("starred: unreadable store file, treating as empty", "path", s.path, "error", err)
 		return empty, nil
 	}
-	// A file written for another root means the hash collided or someone edited
-	// it by hand. Never merge: that would show one project's bookmarks in
-	// another.
-	if f.Root != "" && f.Root != s.root {
-		slog.Warn("starred: store file belongs to another root, treating as empty",
+	// A file that does not name this exact root means the hash collided or
+	// someone edited it by hand. Never merge: that would show one project's
+	// bookmarks in another. The match is exact — including against an absent
+	// root, since this format has never had a version without one, so a file
+	// missing it was not written by us.
+	if f.Root != s.root {
+		slog.Warn("starred: store file does not belong to this root, treating as empty",
 			"path", s.path, "want", s.root, "got", f.Root)
 		return empty, nil
 	}
 	if f.Entries == nil {
 		f.Entries = []Entry{}
 	}
-	f.Root = s.root
 	SortEntries(f.Entries)
 	return &f, nil
 }

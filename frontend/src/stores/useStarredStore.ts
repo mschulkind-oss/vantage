@@ -25,6 +25,18 @@ import type { StarredEntry } from "../types";
  */
 const API_BASE = "/api";
 
+/**
+ * Monotonic counter discarding a bookmark response that lost a race, the same
+ * device useReviewStore's loadSeq is.
+ *
+ * Four things write this list — the mount GET, the reconnect GET, a GET
+ * triggered by a `starred_changed` push, and every mutation's own response —
+ * and none of them can be cancelled. Without sequencing, starring while the
+ * first GET is still in flight lets that older, emptier response land last and
+ * erase the bookmark from the sidebar until something else refetches.
+ */
+let listSeq = 0;
+
 interface StarredResponse {
   entries: StarredEntry[];
 }
@@ -46,8 +58,10 @@ export const useStarredStore = create<StarredState>((set, get) => ({
 
   loadStarred: async () => {
     if (isStaticMode()) return;
+    const seq = ++listSeq;
     try {
       const res = await axios.get<StarredResponse>(`${API_BASE}/starred`);
+      if (seq !== listSeq) return;
       set({ entries: res.data.entries ?? [], loaded: true });
     } catch (error) {
       // Keep whatever was on screen rather than blanking the section on a
@@ -65,12 +79,14 @@ export const useStarredStore = create<StarredState>((set, get) => ({
       await get().removeStar(repo, path);
       return;
     }
+    const seq = ++listSeq;
     try {
       const res = await axios.post<StarredResponse>(`${API_BASE}/starred`, {
         repo,
         path,
         is_dir: isDir,
       });
+      if (seq !== listSeq) return;
       set({ entries: res.data.entries ?? [], loaded: true });
     } catch (error) {
       console.error("Failed to add bookmark:", error);
@@ -79,10 +95,12 @@ export const useStarredStore = create<StarredState>((set, get) => ({
 
   removeStar: async (repo, path) => {
     if (isStaticMode()) return;
+    const seq = ++listSeq;
     try {
       const res = await axios.delete<StarredResponse>(`${API_BASE}/starred`, {
         params: { repo, path },
       });
+      if (seq !== listSeq) return;
       set({ entries: res.data.entries ?? [], loaded: true });
     } catch (error) {
       console.error("Failed to remove bookmark:", error);

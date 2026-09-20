@@ -25,10 +25,12 @@
 //     it is precisely what the viewer does when the target fails to load. The
 //     same applies to a daemon repository that has been retired: its bookmarks
 //     stay listed, and clicking one lands in the viewer's error notice, which
-//     offers to delete it.
-//   - A second vantage process on the *same* root is last-write-wins across the
-//     lock file and does not push to the first process's browsers, so those see
-//     a stale list until they reload. Two processes on one root is an unusual
+//     offers to delete it — the viewer takes the (repo, path) for that offer
+//     from the route rather than from its repo store, which by then has
+//     deselected the missing repo.
+//   - A second vantage process on the *same* root is serialized by the lock
+//     file but does not push to the first process's browsers, so those see a
+//     stale list until they reload. Two processes on one root is an unusual
 //     setup, and an mtime poller is not worth its weight.
 package starred
 

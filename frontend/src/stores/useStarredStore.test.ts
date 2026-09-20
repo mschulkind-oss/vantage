@@ -113,6 +113,52 @@ describe("useStarredStore", () => {
     });
   });
 
+  // Four callers write this list and none can be cancelled, so an older
+  // response must never land on a newer one.
+  describe("racing responses", () => {
+    it("discards a GET that a mutation overtook", async () => {
+      let resolveSlowGet: (v: unknown) => void = () => {};
+      mockedAxios.get.mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveSlowGet = resolve;
+        }),
+      );
+      mockedAxios.post.mockResolvedValue({
+        data: { entries: [entry({ path: "just-starred.md" })] },
+      });
+
+      const slowGet = useStarredStore.getState().loadStarred();
+      await useStarredStore.getState().toggleStar("", "just-starred.md", false);
+
+      // The initial GET finally answers, from before the star existed.
+      resolveSlowGet({ data: { entries: [] } });
+      await slowGet;
+
+      expect(useStarredStore.getState().entries).toEqual([
+        entry({ path: "just-starred.md" }),
+      ]);
+    });
+
+    it("discards a GET that a newer GET overtook", async () => {
+      let resolveFirst: (v: unknown) => void = () => {};
+      mockedAxios.get
+        .mockReturnValueOnce(
+          new Promise((resolve) => {
+            resolveFirst = resolve;
+          }),
+        )
+        .mockResolvedValueOnce({ data: { entries: [entry()] } });
+
+      const first = useStarredStore.getState().loadStarred();
+      await useStarredStore.getState().loadStarred();
+
+      resolveFirst({ data: { entries: [] } });
+      await first;
+
+      expect(useStarredStore.getState().entries).toEqual([entry()]);
+    });
+  });
+
   describe("isStarred", () => {
     it("matches on both repo and path", () => {
       useStarredStore.setState({
