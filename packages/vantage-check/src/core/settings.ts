@@ -48,6 +48,17 @@ export class Settings {
     return setting === "off" ? "error" : setting;
   }
 
+  /**
+   * The overrides, as plain data.
+   *
+   * For crossing a thread boundary: structured cloning strips a class's methods,
+   * so a worker is handed what a `Settings` *is* and rebuilds one. The registry
+   * defaults are compiled in on both sides, so only the overrides travel.
+   */
+  entries(): [string, RuleSetting][] {
+    return [...this.overrides];
+  }
+
   /** Every rule that will actually run, for `--explain`-style output. */
   activeRules(): string[] {
     return RULES.map((rule) => rule.id).filter((id) => this.enabled(id));

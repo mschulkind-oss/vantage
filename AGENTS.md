@@ -29,7 +29,17 @@ all discoverable, so they are deliberately not here.
   renders with, and [`packages/vantage-check/test/deps.test.ts`](packages/vantage-check/test/deps.test.ts) asserts they are
   literally the same file, not merely the same version string.
 - `packages/vantage-check` ships as one compiled binary (~92 MB per platform)
-  and is never published to npm. Design: [`docs/design/agent-cli.md`](docs/design/agent-cli.md).
+  and is never published to npm. Design: [`docs/design/agent-cli.md`](docs/design/agent-cli.md);
+  what a run spends its time on: [`docs/design/check-performance.md`](docs/design/check-performance.md).
+- **A `check` worker thread runs [`packages/vantage-check/src/main.ts`](packages/vantage-check/src/main.ts) again, and a worker
+  module of its own cannot replace it.** `bun build --compile` puts every module
+  *inside* the executable, so a second build entry point lands in the bundle
+  under a name the parent cannot address and the thread dies with `Cannot find
+  module '/$bunfs/root/…'`. The entry point is the one module that is
+  addressable from inside the bundle *and* a real file when the program is run
+  from source, which is why it branches on `isMainThread` and hands
+  `core/parallel.ts` its own URL rather than letting that module derive one.
+  Rationale: [`docs/design/check-performance.md` §4.2](docs/design/check-performance.md#42-the-worker-is-this-programs-own-entry-point).
 
 ## Ports
 

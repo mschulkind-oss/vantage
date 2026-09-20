@@ -30,9 +30,11 @@ the design turns on the CLI being an orchestrator of real validators, and on
 trap that makes orchestration harder than it looks.
 
 **Reads with:** [`review-state-architecture.md`](review-state-architecture.md)
-(why the inbox protocol looks the way it does), and the user-facing
+(why the inbox protocol looks the way it does), the user-facing
 [`../../userguide/review-inbox.md`](../../userguide/guides/review-inbox.md) (the
-protocol as agents are told it today).
+protocol as agents are told it today), and
+[`check-performance.md`](check-performance.md) (what a `check` run spends its
+time on, and how it is sharded across threads).
 
 ---
 

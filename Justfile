@@ -186,10 +186,33 @@ _self-check: cli
     #!/usr/bin/env bash
     set -euo pipefail
     bin=./packages/vantage-check/dist/vantage-check
+    paths=(docs userguide README.md AGENTS.md
+           packages/vantage-check/README.md packages/vantage-md/README.md)
     "$bin" version
     test -n "$("$bin" style-guide)" || { echo "style-guide printed nothing"; exit 1; }
-    "$bin" check docs userguide README.md AGENTS.md \
-        packages/vantage-check/README.md packages/vantage-md/README.md
+    "$bin" check "${paths[@]}"
+    # And the same run in one thread, byte for byte. A parallel check exists to
+    # produce the sequential report sooner, never a different one — and the
+    # worker-thread half of it can only be proved here: a worker runs the
+    # compiled binary's own entry point, which vitest cannot load because in the
+    # source tree it is TypeScript. So the unit tests drive the shard seam
+    # in-process, and this drives the threads.
+    #
+    # With the hygiene family turned up to warnings, because the tree above is
+    # clean and two empty finding lists agree no matter how badly the merge is
+    # ordered. This config turns those warnings into a dozen-odd findings spread
+    # across several files, which is what makes the diff an assertion about
+    # ordering rather than about emptiness.
+    cfg=$(mktemp) one=$(mktemp) many=$(mktemp)
+    trap 'rm -f "$cfg" "$one" "$many"' EXIT
+    printf '[check]\nexit-code = 0\n\n[check.rules]\n"markdown/hygiene" = "warning"\n' > "$cfg"
+    "$bin" check --config "$cfg" --format json --jobs 1 "${paths[@]}" > "$one"
+    "$bin" check --config "$cfg" --format json --jobs 4 "${paths[@]}" > "$many"
+    if grep -q '"warnings": 0' "$one"; then
+        echo "the parallel-agreement check found nothing to compare — is the hygiene family still reporting?"
+        exit 1
+    fi
+    diff -u "$one" "$many" || { echo "a 4-thread check disagreed with a 1-thread check"; exit 1; }
 
 # Refresh web/dist — the tracked frontend export — from frontend/ sources.
 #

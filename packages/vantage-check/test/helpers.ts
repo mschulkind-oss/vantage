@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach } from "vitest";
-import { checkFiles } from "../src/commands/check.js";
+import { checkFiles } from "../src/core/runner.js";
 import { Collector } from "../src/core/collector.js";
 import { discover } from "../src/core/discover.js";
 import { loadDocument } from "../src/core/document.js";

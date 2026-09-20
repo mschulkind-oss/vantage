@@ -2,7 +2,12 @@ import { EXIT_OK, EXIT_USAGE } from "./exit.js";
 import type { Io } from "./io.js";
 import { USAGE, versionLine } from "./help.js";
 import { styleGuideCommand } from "./commands/styleGuide.js";
-import { checkCommand, type CheckOptions } from "./commands/check.js";
+import {
+  checkCommand,
+  parseJobs,
+  type CheckOptions,
+} from "./commands/check.js";
+import type { RunShard } from "./core/parallel.js";
 
 export type Invocation =
   | { kind: "check"; options: CheckOptions }
@@ -122,6 +127,19 @@ function parseCheck(argv: string[]): Invocation {
       case "--no-config":
         options.noConfig = true;
         break;
+      case "-j":
+      case "--jobs": {
+        const value = takeValue();
+        if (value === undefined) {
+          return { kind: "usage-error", message: "--jobs needs a number" };
+        }
+        try {
+          options.jobs = parseJobs(value, "--jobs");
+        } catch (error) {
+          return { kind: "usage-error", message: (error as Error).message };
+        }
+        break;
+      }
       default:
         return { kind: "usage-error", message: `unknown option: ${name}` };
     }
@@ -131,7 +149,12 @@ function parseCheck(argv: string[]): Invocation {
 }
 
 /** Run one invocation and return the process exit code. */
-export async function run(argv: string[], io: Io): Promise<number> {
+export async function run(
+  argv: string[],
+  io: Io,
+  /** How a check's shards are run. Tests substitute an in-process runner. */
+  runShard?: RunShard,
+): Promise<number> {
   const invocation = parseArgs(argv);
 
   switch (invocation.kind) {
@@ -144,7 +167,9 @@ export async function run(argv: string[], io: Io): Promise<number> {
     case "style-guide":
       return styleGuideCommand(io);
     case "check":
-      return checkCommand(invocation.options, io);
+      return runShard === undefined
+        ? checkCommand(invocation.options, io)
+        : checkCommand(invocation.options, io, runShard);
     case "usage-error":
       io.err(`vantage-check: ${invocation.message}\n\n`);
       io.err(USAGE);

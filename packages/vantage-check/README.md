@@ -31,6 +31,8 @@ User documentation: [`../../userguide/vantage-check.md`](../../userguide/guides/
 | [`src/cli.ts`](./src/cli.ts) | Argument parsing and dispatch — no filesystem, no process |
 | `src/commands/` | One file per command |
 | `src/core/` | Config, file discovery, document parsing, heading slugs |
+| [`src/core/runner.ts`](./src/core/runner.ts) | Every rule over every file, in one thread |
+| [`src/core/parallel.ts`](./src/core/parallel.ts) | Sharding that file list across worker threads |
 | `src/rules/` | One file per rule family; each owns its failure classification |
 | `src/report/` | Text and JSON output |
 | `scripts/` | The single-file binary and the Python wheel |
