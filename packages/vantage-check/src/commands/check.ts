@@ -104,12 +104,11 @@ export async function checkFiles(
   for (const file of files) {
     let collector: Collector;
     try {
-      collector = new Collector(
-        loadDocument(file, cwd),
-        settings,
-        workspace,
-        cwd,
-      );
+      const doc = loadDocument(file, cwd);
+      // Before any rule runs: the next document that links to this one gets its
+      // anchors and line count from the parse we just did.
+      workspace.offer(doc);
+      collector = new Collector(doc, settings, workspace, cwd);
     } catch (error) {
       // A file we cannot open has not been judged. It is a failure of the run,
       // never a finding against the document.
