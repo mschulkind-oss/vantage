@@ -22,8 +22,8 @@ biggest win was arithmetic rather than concurrency. With those removed, `check`
 also shards its file list across worker threads by default.
 
 Measured on a 32-core machine, median of five, compiled binary, a 110-file
-corpus: **8206ms → 1966ms**, of which the sequential work accounts for 8206 →
-4378 and the threads for the rest.
+corpus: **7979ms → 1947ms**, of which removing the duplicate parses accounts for
+7979 → 4316 and the threads for the rest. On a 750-file corpus, 44.0s → 6.1s.
 
 **The most important section is [§4.1](#41-worker-threads-not-processes-and-why-auto-stops-at-six)** —
 this workload stops scaling at six threads and gets actively *slower* past it,
@@ -138,8 +138,8 @@ target the run has already reached costs nothing at all.
 > reader never produces. Faster and differently-answering is P1's failure mode,
 > and this is where it was one guard away.
 
-Result, before any threads: **8206ms → 4378ms** on the 110-file corpus, and
-1836ms → 1247ms on this repository's own docs.
+Result, before any threads: **7979ms → 4316ms** on the 110-file corpus, and
+1880ms → 1293ms on this repository's own docs.
 
 ---
 
@@ -297,16 +297,25 @@ explicit choice disappear with nothing said.
 
 ## 6. Results
 
-Median of five, compiled binary, 32-core machine:
+The old binary and the new one, built from the same tree and run back to back
+over the same bytes. 32-core machine, median of five (three for 750 files):
 
-| Corpus | Before | Sequential wins | With `auto` |
-| :--- | ----: | ----: | ----: |
-| 36 files (this repo's docs) | 1836ms | 1247ms | 1008ms |
-| 110 files | 8206ms | 4378ms | 1966ms |
-| 750 files | ~47s (est.) | 22857ms | 6153ms |
+| Corpus | Before | `--jobs 1` | `auto` | Overall |
+| :--- | ----: | ----: | ----: | ----: |
+| 36 files (this repo's docs) | 1880ms | 1293ms | 993ms | 1.9× |
+| 110 files | 7979ms | 4316ms | 1947ms | 4.1× |
+| 750 files | 44043ms | 22040ms | 6134ms | 7.2× |
 
-The 750-file figure before the parse work was not measured directly; it is
-scaled from the 110-file ratio, and it is marked as an estimate for that reason.
+Note the `--jobs 1` column: removing the duplicate parses roughly halved the run
+on its own, and it is the half that helps a *small* run too — a single-file check
+gets no threads at all.
+
+> [!NOTE]
+> Figures in other sections come from separate measurement runs and vary by a few
+> percent against these. The sweep in
+> [§4.1](#41-worker-threads-not-processes-and-why-auto-stops-at-six) is
+> internally consistent — one experiment, one sitting — which is what matters for
+> reading a shape out of it.
 
 ---
 
