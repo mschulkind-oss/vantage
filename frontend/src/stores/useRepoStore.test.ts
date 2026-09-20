@@ -77,6 +77,20 @@ describe("useRepoStore", () => {
       expect(useRepoStore.getState().error).toBe("Failed to load file content");
       expect(useRepoStore.getState().isLoading).toBe(false);
     });
+
+    // currentPath is the document the viewer is on, not the last one that
+    // loaded. The error notice prints it, the live socket compares pushes
+    // against it to reload when the file returns, and the "remove this
+    // bookmark" offer is keyed on it — all three were wrong while a failure
+    // left the previous document's path in place.
+    it("records the failed path as the current one", async () => {
+      useRepoStore.setState({ currentPath: "previous.md" });
+      mockedAxios.get.mockRejectedValueOnce(new Error("Not found"));
+
+      await useRepoStore.getState().loadFile("nonexistent.md");
+
+      expect(useRepoStore.getState().currentPath).toBe("nonexistent.md");
+    });
   });
 
   describe("viewDirectory", () => {
@@ -105,6 +119,15 @@ describe("useRepoStore", () => {
 
       expect(useRepoStore.getState().error).toBe("Failed to load directory");
       expect(useRepoStore.getState().isLoading).toBe(false);
+    });
+
+    it("records the failed path as the current one", async () => {
+      useRepoStore.setState({ currentPath: "previous.md" });
+      mockedAxios.get.mockRejectedValueOnce(new Error("Not found"));
+
+      await useRepoStore.getState().viewDirectory("nonexistent");
+
+      expect(useRepoStore.getState().currentPath).toBe("nonexistent");
     });
   });
 
