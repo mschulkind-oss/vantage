@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { renderMarkdown } from "../../vantage-md/src/renderMarkdown.js";
 import { Settings } from "../src/core/settings.js";
+import { loadDocument } from "../src/core/document.js";
 import type { RuleSetting } from "../src/core/types.js";
 import { checkPipeline, type Render } from "../src/rules/render.js";
 import { checkTree, collectorFor, makeTree } from "./helpers.js";
@@ -126,6 +128,97 @@ describe("render/pipeline", () => {
 
     expect(collector.findings).toEqual([]);
     expect(collector.failures).toEqual([]);
+  });
+});
+
+/**
+ * The optimisation the rule rests on: the pipeline is fed the tree
+ * `loadDocument` already built, instead of parsing the same bytes twice.
+ *
+ * Both halves of the claim are tested here rather than in `vantage-md`, which
+ * has no runner of its own — and this is the only caller that passes a tree, so
+ * this is where a regression would actually bite.
+ */
+describe("rendering from an already-parsed body", () => {
+  /** Frontmatter and one of everything the chain can trip over. */
+  const DOCUMENT = [
+    "---",
+    'title: "Everything"',
+    "tags: [a, b]",
+    "---",
+    "",
+    "# Everything at once",
+    "",
+    "> [!NOTE]",
+    "> An alert, which is markup rather than a broken reference.",
+    "",
+    "Prose with `code`, ~~strike~~, a [link](./other.md) and $$E = mc^2$$.",
+    "",
+    "| Column | Value |",
+    "| ------ | ----- |",
+    "| one    | two   |",
+    "",
+    "- [x] a task",
+    "",
+    "```ts",
+    "export const x = 1;",
+    "```",
+    "",
+    '<div id="raw">raw html</div>',
+    "",
+  ].join("\n");
+
+  it("produces byte-identical HTML either way", async () => {
+    const root = makeTree({ "index.md": DOCUMENT, "other.md": "# Other\n" });
+    const doc = loadDocument("index.md", root);
+
+    const fromString = await renderMarkdown(doc.text);
+    const fromTree = await renderMarkdown(doc.text, { tree: doc.mdast });
+
+    // Not "close enough": the checker's whole claim is that it renders through
+    // the viewer's pipeline, so skipping the parse has to change nothing at
+    // all — including the `data-source-line` numbers, which depend on the
+    // frontmatter offset above.
+    expect(fromTree.html).toBe(fromString.html);
+    // And it really did render the whole chain, rather than agreeing about a
+    // document neither of them got very far with.
+    expect(fromTree.html).toContain('data-vantage-alert="note"');
+    expect(fromTree.html).toContain("katex");
+    // Line 23 of the *file*, four of which are frontmatter: the offset the
+    // viewer's `#L` anchors depend on survives the shortcut.
+    expect(fromTree.html).toContain(
+      '<div id="user-content-raw" data-source-line="23">',
+    );
+  });
+
+  it("leaves the tree as it found it, so a second reader sees the same document", async () => {
+    const root = makeTree({ "index.md": DOCUMENT, "other.md": "# Other\n" });
+    const doc = loadDocument("index.md", root);
+    const before = JSON.stringify(doc.mdast);
+
+    const first = await renderMarkdown(doc.text, { tree: doc.mdast });
+    const second = await renderMarkdown(doc.text, { tree: doc.mdast });
+
+    expect(JSON.stringify(doc.mdast)).toBe(before);
+    expect(second.html).toBe(first.html);
+  });
+
+  it("hands the rule's own document tree to the renderer", async () => {
+    const root = makeTree({ "index.md": DOCUMENT, "other.md": "# Other\n" });
+    const collector = collectorFor(root, "index.md");
+    const seen: { content?: string; tree?: unknown }[] = [];
+    const spy: Render = (content, options) => {
+      seen.push({ content, tree: options?.tree });
+      return Promise.resolve({});
+    };
+
+    await checkPipeline(collector, spy);
+
+    // The canary renders from a string; the document renders from its tree.
+    const forDocument = seen.find(
+      (call) => call.content === collector.doc.text,
+    );
+    expect(forDocument?.tree).toBe(collector.doc.mdast);
   });
 });
 

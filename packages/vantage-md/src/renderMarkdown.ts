@@ -3,6 +3,7 @@
  * Uses the same remark/rehype chain as the Vantage viewer.
  */
 
+import type { Root } from "mdast";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
@@ -24,6 +25,25 @@ export interface RenderOptions {
   sanitize?: boolean;
   /** Parse and strip frontmatter (default: true) */
   frontmatter?: boolean;
+  /**
+   * The body's mdast, already parsed — an optimisation, not a second input.
+   *
+   * Parsing is the most expensive step in this function: measured over
+   * `docs/design/`, `remark-parse` with GFM costs about twice what the whole
+   * rehype half costs. A caller that already holds the tree — the CLI checker
+   * does, because every `mdast` rule ran on it before the render rule got its
+   * turn — was paying for the same parse twice.
+   *
+   * The tree must have been parsed by **this package's remark half with these
+   * same options** (`buildRemarkPlugins`, which is exported for exactly that
+   * reason). Anything parsed some other way renders through a chain the viewer
+   * does not use, which is the one thing the shared pipeline exists to prevent,
+   * and nothing here can detect it: a tree is a tree.
+   *
+   * `content` is still read, for its frontmatter. The two have to describe the
+   * same document.
+   */
+  tree?: Root;
 }
 
 export interface RenderResult {
@@ -62,6 +82,7 @@ export async function renderMarkdown(
     sourceLines = true,
     sanitize = true,
     frontmatter: parseFm = true,
+    tree,
   } = options;
 
   // Parse frontmatter
@@ -96,7 +117,17 @@ export async function renderMarkdown(
     .use(rehypePlugins)
     .use(rehypeStringify);
 
-  const result = await processor.process(parsed.body);
+  // `process` is `parse` then `run` then `stringify`. With the tree in hand the
+  // first of those is already done, so the other two are called directly —
+  // same processor, same plugins, same order, one parse less. `parsed.body` is
+  // handed to both as the file, which is what `process` does with it too.
+  const result =
+    tree === undefined
+      ? String(await processor.process(parsed.body))
+      : processor.stringify(
+          await processor.run(tree, parsed.body),
+          parsed.body,
+        );
 
   return {
     html: String(result),
