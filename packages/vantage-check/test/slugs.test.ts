@@ -4,7 +4,9 @@ import { parseMarkdown } from "../src/core/document.js";
 import {
   documentAnchors,
   headingSlugs,
+  indexDocument,
   nearestAnchor,
+  numberedHeadings,
 } from "../src/core/slugs.js";
 import { checkTree, makeTree, ruleIds } from "./helpers.js";
 
@@ -77,6 +79,38 @@ describe("documentAnchors", () => {
     );
 
     expect([...anchors].sort()).toEqual(["legacy", "notes", "title"]);
+  });
+});
+
+describe("indexDocument", () => {
+  // The invariant that makes one pass worth having: `github-slugger` is
+  // stateful, so a number resolved against one slugging and a link checked
+  // against another could disagree about `#a-1`. Sharing the pass is what makes
+  // that impossible rather than merely unlikely.
+  it("numbers a repeated heading once, for both answers", () => {
+    const tree = parseMarkdown("## 4.1 A\n\n## 4.1 A\n\n## 4.2 B");
+    const index = indexDocument(tree);
+
+    expect(index.slugs).toEqual(["41-a", "41-a-1", "42-b"]);
+    // First number wins, and the slug it names is the one the anchors hold.
+    expect([...index.numbered]).toEqual([
+      ["4.1", "41-a"],
+      ["4.2", "42-b"],
+    ]);
+    for (const slug of index.numbered.values()) {
+      expect(index.anchors.has(slug)).toBe(true);
+    }
+  });
+
+  it("is what the three single-answer helpers return", () => {
+    const tree = parseMarkdown(
+      '# Title\n\n## 2. Second\n\n<a id="notes"></a>\n',
+    );
+    const index = indexDocument(tree);
+
+    expect(headingSlugs(tree)).toEqual(index.slugs);
+    expect(documentAnchors(tree)).toEqual(index.anchors);
+    expect(numberedHeadings(tree)).toEqual(index.numbered);
   });
 });
 

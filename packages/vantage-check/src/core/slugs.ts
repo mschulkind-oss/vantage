@@ -4,8 +4,18 @@ import GithubSlugger from "github-slugger";
 import { visit } from "unist-util-visit";
 import { oqAnchors } from "./openQuestions.js";
 
+/** Everything one heading pass over a document can answer. */
+export interface DocumentIndex {
+  /** Heading slugs, in document order. See `headingSlugs`. */
+  slugs: string[];
+  /** Every fragment a link can target. See `documentAnchors`. */
+  anchors: Set<string>;
+  /** Section number → heading slug. See `numberedHeadings`. */
+  numbered: Map<string, string>;
+}
+
 /**
- * The set of fragment ids a document actually exposes.
+ * Walk the headings once and answer everything that depends on them.
  *
  * Section anchors are not reasonable to guess: an em dash inside a heading
  * leaves *two* hyphens in the slug, a trailing colon leaves none, and a
@@ -13,23 +23,48 @@ import { oqAnchors } from "./openQuestions.js";
  * slugger the renderer runs (`github-slugger`, via `rehype-slug`), over the
  * same text, in the same order.
  *
- * `mdast-util-to-string` is configured to match what `hast-util-to-string`
- * sees after the markdown is turned into HTML: image alt text and raw HTML
- * tags are not part of a heading's text content.
+ * `mdast-util-to-string` is configured to match what `hast-util-to-string` sees
+ * after the markdown is turned into HTML: image alt text and raw HTML tags are
+ * not part of a heading's text content.
+ *
+ * One pass rather than three because the slugger is *stateful*: those `-1`
+ * suffixes mean a second pass is only ever correct by virtue of being an
+ * identical replay. Sharing the pass makes what the rules already assume — that
+ * a number resolved against one slugging and a link checked against another
+ * cannot disagree — true by construction instead of by luck. It is also what
+ * lets `Workspace` cache one index per file rather than parsing a target twice
+ * to ask it two questions.
  */
-export function headingSlugs(mdast: Root): string[] {
+export function indexDocument(mdast: Root): DocumentIndex {
   const slugger = new GithubSlugger();
   const slugs: string[] = [];
+  const numbered = new Map<string, string>();
 
   visit(mdast, "heading", (node) => {
     const text = mdastToString(node, {
       includeImageAlt: false,
       includeHtml: false,
     });
-    slugs.push(slugger.slug(text));
+    const slug = slugger.slug(text);
+    slugs.push(slug);
+
+    const number = /^([0-9]+(?:\.[0-9]+)*)[.)\s]/.exec(text.trim())?.[1];
+    // First one wins: a repeated number is already a document bug, and the
+    // reference should resolve to the section that claimed it first.
+    if (number !== undefined && !numbered.has(number))
+      numbered.set(number, slug);
   });
 
-  return slugs;
+  return {
+    slugs,
+    anchors: new Set([...slugs, ...htmlAnchors(mdast), ...oqAnchors(mdast)]),
+    numbered,
+  };
+}
+
+/** The ids `rehype-slug` gives this document's headings, in document order. */
+export function headingSlugs(mdast: Root): string[] {
+  return indexDocument(mdast).slugs;
 }
 
 const ID_ATTRIBUTE = /\s(?:id|name)\s*=\s*["']([^"']+)["']/gi;
@@ -65,11 +100,7 @@ export function htmlAnchors(mdast: Root): string[] {
  * refuses the rest, so counting one would accept a fragment that goes nowhere.
  */
 export function documentAnchors(mdast: Root): Set<string> {
-  return new Set([
-    ...headingSlugs(mdast),
-    ...htmlAnchors(mdast),
-    ...oqAnchors(mdast),
-  ]);
+  return indexDocument(mdast).anchors;
 }
 
 /**
@@ -78,31 +109,17 @@ export function documentAnchors(mdast: Root): Set<string> {
  * `"4.1" -> "41-the-id-grammar"`.
  *
  * This is what lets `ref/unlinked-section` check that `§4.1` links to §4.1 and
- * not merely to *something*. Built from the same slugger pass as the anchors,
- * because a number resolved against one slugging and linked against another is
- * a mismatch the rule would report as the author's mistake.
+ * not merely to *something*. Built from the same slugger pass as the anchors —
+ * literally the same, see `indexDocument` — because a number resolved against
+ * one slugging and linked against another is a mismatch the rule would report as
+ * the author's mistake.
  *
  * An empty map means the document never adopted numbered headings, which the
  * rule reads as "nothing to resolve against" rather than "every reference is
  * wrong".
  */
 export function numberedHeadings(mdast: Root): Map<string, string> {
-  const slugger = new GithubSlugger();
-  const numbers = new Map<string, string>();
-
-  visit(mdast, "heading", (node) => {
-    const text = mdastToString(node, {
-      includeImageAlt: false,
-      includeHtml: false,
-    });
-    const slug = slugger.slug(text);
-    const number = /^([0-9]+(?:\.[0-9]+)*)[.)\s]/.exec(text.trim())?.[1];
-    // First one wins: a repeated number is already a document bug, and the
-    // reference should resolve to the section that claimed it first.
-    if (number !== undefined && !numbers.has(number)) numbers.set(number, slug);
-  });
-
-  return numbers;
+  return indexDocument(mdast).numbered;
 }
 
 /**

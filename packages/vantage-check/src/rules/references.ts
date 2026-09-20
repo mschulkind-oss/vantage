@@ -4,7 +4,6 @@ import { visit } from "unist-util-visit";
 import { toString } from "mdast-util-to-string";
 import type { Collector, FilePosition } from "../core/collector.js";
 import { fileLine } from "../core/document.js";
-import { numberedHeadings } from "../core/slugs.js";
 import { isMarkdown } from "../core/workspace.js";
 
 /**
@@ -289,10 +288,11 @@ export function checkSectionReferences(collector: Collector): void {
         : resolve(documentDir, decodeURIComponent(targetPath));
     if (!isMarkdown(target)) continue;
 
-    const headings =
-      target === collector.doc.path
-        ? numberedHeadings(collector.doc.mdast)
-        : collector.workspace.numberedHeadings(target);
+    // Through the workspace even for this document's own headings: it holds the
+    // index built from the very tree `loadDocument` parsed (see
+    // `Workspace.offer`), so a document with twenty `§` references indexes its
+    // headings once rather than twenty times.
+    const headings = collector.workspace.numberedHeadings(target);
     // Nothing to resolve against, or the target could not be read.
     if (!headings || headings.size === 0) continue;
 
