@@ -35,7 +35,12 @@ export interface FileContent {
 }
 
 export interface WebSocketMessage {
-  type: "files_changed" | "review_changed" | "repos_changed" | "hello";
+  type:
+    | "files_changed"
+    | "review_changed"
+    | "repos_changed"
+    | "starred_changed"
+    | "hello";
   paths?: string[];
   /** review_changed: the document whose review state changed server-side. */
   path?: string;
@@ -49,6 +54,22 @@ export interface WebSocketMessage {
   added?: string[];
   removed?: string[];
   version?: string;
+}
+
+/**
+ * One bookmark. `repo` is "" in single-repo mode — the same sentinel the API
+ * uses everywhere — and the repo name in daemon mode, where a single list spans
+ * several repositories. Build a bookmark's link from this field, never from the
+ * currently selected repo.
+ *
+ * `is_dir` records what the target was when it was starred; it drives the icon
+ * only, and may be stale if the target changed kind since.
+ */
+export interface StarredEntry {
+  repo: string;
+  path: string;
+  is_dir: boolean;
+  starred_at: string;
 }
 
 export interface RecentFile {

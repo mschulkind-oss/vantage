@@ -5,6 +5,7 @@ import { useRepoStore } from "../stores/useRepoStore";
 import { useGitStore } from "../stores/useGitStore";
 import { useReviewStore } from "../stores/useReviewStore";
 import { useConnectionStore } from "../stores/useConnectionStore";
+import { useStarredStore } from "../stores/useStarredStore";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { BrowserRouter } from "react-router-dom";
 import type { CommentReaction, ReviewComment } from "../types";
@@ -704,5 +705,100 @@ describe("ViewerPage", () => {
     // Should show loading indicator, NOT the sidebar or file tree
     expect(screen.getByText("Loading…")).toBeInTheDocument();
     expect(screen.queryByTestId("file-tree")).not.toBeInTheDocument();
+  });
+
+  // The star, the sidebar section and the error notice's remove offer each have
+  // their own suite. What only this page can prove is that they are wired to
+  // the open document at all.
+  describe("bookmarks", () => {
+    beforeEach(() => {
+      useStarredStore.setState({ entries: [], loaded: true });
+    });
+
+    it("offers to bookmark the open document", () => {
+      renderPage();
+      expect(
+        screen.getByRole("button", { name: "Bookmark this" }),
+      ).toBeInTheDocument();
+    });
+
+    it("shows the open document's own bookmark state", () => {
+      useStarredStore.setState({
+        entries: [
+          {
+            repo: "",
+            path: "path/to/file.md",
+            is_dir: false,
+            starred_at: "2026-09-20T12:00:00Z",
+          },
+        ],
+      });
+
+      renderPage();
+
+      expect(
+        screen.getByRole("button", { name: "Remove bookmark" }),
+      ).toHaveAttribute("aria-pressed", "true");
+    });
+
+    it("lists bookmarks in the sidebar", () => {
+      useStarredStore.setState({
+        entries: [
+          {
+            repo: "",
+            path: "docs/pinned.md",
+            is_dir: false,
+            starred_at: "2026-09-20T12:00:00Z",
+          },
+        ],
+      });
+
+      renderPage();
+
+      expect(screen.getByText("Starred")).toBeInTheDocument();
+      expect(screen.getByText("pinned.md")).toBeInTheDocument();
+    });
+
+    // A bookmark that cannot be opened is the only way to reach the offer, and
+    // the sidebar deliberately never flags one, so this is where it surfaces.
+    it("offers to remove the bookmark when the document fails to load", () => {
+      useConnectionStore.setState({ connected: true });
+      useStarredStore.setState({
+        entries: [
+          {
+            repo: "",
+            path: "path/to/file.md",
+            is_dir: false,
+            starred_at: "2026-09-20T12:00:00Z",
+          },
+        ],
+      });
+      (useRepoStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+        ...useRepoStore(),
+        error: "Failed to load file content",
+      });
+
+      renderPage();
+
+      const buttons = screen.getAllByRole("button", {
+        name: "Remove bookmark",
+      });
+      expect(buttons.length).toBeGreaterThan(1);
+      expect(screen.getByText("Go to Home")).toBeInTheDocument();
+    });
+
+    it("does not offer to remove a document that is not bookmarked", () => {
+      useConnectionStore.setState({ connected: true });
+      (useRepoStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+        ...useRepoStore(),
+        error: "Failed to load file content",
+      });
+
+      renderPage();
+
+      expect(
+        screen.queryByRole("button", { name: "Remove bookmark" }),
+      ).not.toBeInTheDocument();
+    });
   });
 });
