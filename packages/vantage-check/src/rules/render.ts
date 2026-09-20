@@ -1,3 +1,4 @@
+import type { Root } from "mdast";
 import { renderMarkdown } from "../../../vantage-md/src/renderMarkdown.js";
 import type { Collector, FilePosition } from "../core/collector.js";
 import { fileLine } from "../core/document.js";
@@ -25,8 +26,12 @@ const RULE = "render/pipeline";
  * at all, a throw is a statement about the document, and the viewer would
  * throw on it too.
  *
- * Cost is one render per document — a few milliseconds — which is the price of
- * the only end-to-end check in the tool.
+ * Cost is one *render* per document, and deliberately not one parse: the tree
+ * `loadDocument` already built is handed straight to the pipeline. Parsing is
+ * the expensive half — over `docs/design/` it costs about twice what the whole
+ * rehype chain does — so re-deriving it here was the single largest waste in a
+ * run. Same processor, same plugins, same order; `parse` is simply not called
+ * twice on the same bytes. See `RenderOptions.tree`.
  */
 
 /** A document we know renders: the plugins that could break, all at once. */
@@ -51,7 +56,10 @@ const CANARY = [
 ].join("\n");
 
 /** Just enough of `renderMarkdown` to call it. Tests substitute their own. */
-export type Render = (content: string) => Promise<unknown>;
+export type Render = (
+  content: string,
+  options?: { tree?: Root },
+) => Promise<unknown>;
 
 type Health = { ok: true } | { ok: false; message: string };
 
@@ -76,7 +84,13 @@ export async function checkPipeline(
   }
 
   try {
-    await render(collector.doc.text);
+    // The tree every other rule has already read. Safe to hand over because
+    // this rule runs last: nothing looks at the mdast after the pipeline has,
+    // so even a future plugin that rewrote the tree in place could not change
+    // another rule's verdict. A document whose *parse* throws never reaches
+    // here at all — `loadDocument` threw first, and the run reported
+    // `document/read`.
+    await render(collector.doc.text, { tree: collector.doc.mdast });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     collector.report(
