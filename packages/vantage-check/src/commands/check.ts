@@ -1,11 +1,15 @@
 import { resolve } from "node:path";
-import { Collector } from "../core/collector.js";
 import { ConfigError, loadConfig, type CheckPolicy } from "../core/config.js";
 import { discover } from "../core/discover.js";
-import { loadDocument } from "../core/document.js";
-import type { Settings } from "../core/settings.js";
-import type { EnvironmentFailure, Finding, RunReport } from "../core/types.js";
-import { Workspace } from "../core/workspace.js";
+import {
+  checkFilesInParallel,
+  resolveJobs,
+  workerShard,
+  type JobsRequest,
+  type RunShard,
+} from "../core/parallel.js";
+import { checkFiles } from "../core/runner.js";
+import type { RunReport } from "../core/types.js";
 import {
   EXIT_ENVIRONMENT,
   EXIT_FINDINGS,
@@ -15,19 +19,6 @@ import {
 import type { Io } from "../io.js";
 import { renderJson } from "../report/json.js";
 import { renderFailures, renderFindings } from "../report/text.js";
-import {
-  checkDirectives,
-  checkOpenQuestionIds,
-  checkOpenQuestions,
-} from "../rules/directives.js";
-import { checkFrontmatter } from "../rules/frontmatter.js";
-import { checkLinks } from "../rules/links.js";
-import { checkReferences } from "../rules/references.js";
-import { checkMath } from "../rules/math.js";
-import { checkMarkdownHygiene } from "../rules/markdown.js";
-import { checkMermaid } from "../rules/mermaid.js";
-import { checkPipeline } from "../rules/render.js";
-import { checkVantageFrontmatter } from "../rules/vantageFrontmatter.js";
 
 export interface CheckOptions {
   /** Files and directories to check. Empty means the working directory. */
@@ -42,11 +33,18 @@ export interface CheckOptions {
   configPath?: string;
   /** Ignore any `.vantage.toml` and use the built-in defaults. */
   noConfig?: boolean;
+  /** Threads to check with. Undefined means "ask the environment, then auto". */
+  jobs?: JobsRequest;
 }
+
+/** Sets the default for `--jobs` on a machine, without touching a command line. */
+export const JOBS_ENV = "VANTAGE_CHECK_JOBS";
 
 export async function checkCommand(
   options: CheckOptions,
   io: Io,
+  /** How a shard is run. Tests substitute an in-process runner. */
+  runShard: RunShard = workerShard,
 ): Promise<number> {
   const color = options.color ?? io.isTty;
   const paths = options.paths.length > 0 ? options.paths : ["."];
@@ -75,7 +73,25 @@ export async function checkCommand(
     return EXIT_USAGE;
   }
 
-  const report = await checkFiles(files, io.cwd, config.settings);
+  let request: JobsRequest;
+  try {
+    request = options.jobs ?? jobsFromEnv(io);
+  } catch (error) {
+    io.err(`vantage-check: ${(error as Error).message}\n`);
+    return EXIT_USAGE;
+  }
+
+  const jobs = resolveJobs(request, files.length);
+  const report =
+    jobs === 1
+      ? await checkFiles(files, io.cwd, config.settings)
+      : await checkFilesInParallel(
+          files,
+          io.cwd,
+          config.settings,
+          jobs,
+          runShard,
+        );
 
   if (options.format === "json") {
     io.out(renderJson(report));
@@ -90,58 +106,34 @@ export async function checkCommand(
   });
 }
 
-/** Run every enabled rule over every file. */
-export async function checkFiles(
-  files: string[],
-  cwd: string,
-  settings: Settings,
-): Promise<RunReport> {
-  const workspace = new Workspace();
-  const findings: Finding[] = [];
-  const failures: EnvironmentFailure[] = [];
-  let filesChecked = 0;
+/**
+ * `VANTAGE_CHECK_JOBS`, when it is set.
+ *
+ * An environment variable rather than a `.vantage.toml` key on purpose: how many
+ * threads to use is a fact about the *machine*, not about the repository, so a
+ * committed `jobs = 16` would be wrong for everyone who checks out the tree on a
+ * laptop. This is where CI pins it.
+ *
+ * A value that is not a thread count is a usage error, not a silent fallback to
+ * `auto`: a typo in the variable would otherwise make an explicit choice
+ * disappear with nothing said.
+ */
+function jobsFromEnv(io: Io): JobsRequest {
+  const raw = io.env[JOBS_ENV];
+  if (raw === undefined || raw === "") return "auto";
+  return parseJobs(raw, JOBS_ENV);
+}
 
-  for (const file of files) {
-    let collector: Collector;
-    try {
-      const doc = loadDocument(file, cwd);
-      // Before any rule runs: the next document that links to this one gets its
-      // anchors and line count from the parse we just did.
-      workspace.offer(doc);
-      collector = new Collector(doc, settings, workspace, cwd);
-    } catch (error) {
-      // A file we cannot open has not been judged. It is a failure of the run,
-      // never a finding against the document.
-      failures.push({
-        rule: "document/read",
-        file,
-        message: error instanceof Error ? error.message : String(error),
-      });
-      continue;
-    }
-
-    filesChecked++;
-    checkLinks(collector);
-    checkReferences(collector);
-    checkFrontmatter(collector);
-    // After `checkFrontmatter`, not before: the block has to have been judged
-    // as frontmatter before anything reads what is inside it.
-    checkVantageFrontmatter(collector);
-    checkDirectives(collector);
-    checkOpenQuestions(collector);
-    checkOpenQuestionIds(collector);
-    checkMath(collector);
-    await checkMermaid(collector);
-    await checkMarkdownHygiene(collector);
-    // Last: the specific rules have had their say, and this catches whatever
-    // they do not cover.
-    await checkPipeline(collector);
-
-    findings.push(...collector.findings);
-    failures.push(...collector.failures);
+/** `auto`, or a positive whole number of threads. */
+export function parseJobs(value: string, source: string): JobsRequest {
+  if (value === "auto") return "auto";
+  const count = Number(value);
+  if (!Number.isInteger(count) || count < 1) {
+    throw new Error(
+      `${source} takes auto or a number of 1 or more (got ${value})`,
+    );
   }
-
-  return { filesChecked, findings, failures };
+  return count;
 }
 
 /**

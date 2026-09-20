@@ -88,6 +88,7 @@ checks the working directory; `vantage-check` with no arguments prints the help.
 | `--color` / `--no-color` | Force colour on or off (default: on when stdout is a terminal). |
 | `--config <path>` | Use this `.vantage.toml`. A path that is not there is an error. |
 | `--no-config` | Ignore `.vantage.toml` and use the built-in defaults. |
+| `-j`, `--jobs <n>\|auto` | Threads to check with. Default `auto` — see [Large corpora](#large-corpora). |
 | `--` | Everything after it is a path, not an option. |
 
 ### Exit codes
@@ -395,6 +396,46 @@ document being drafted with no review round yet gets no pointer;
 
 ---
 
+## Large corpora
+
+`check` runs on several threads by default, and the report is the same either
+way: shards are contiguous slices of the file list, merged in order, so a
+parallel run prints the bytes a single-threaded one would have printed. `just
+check` in the Vantage repository asserts exactly that, by diffing a four-thread
+run's JSON against a one-thread run's.
+
+`auto` spends one thread per 12 files, up to six and never more than the machine
+has cores. Six is a measured ceiling rather than a safety margin: each thread
+initialises the binary's own module graph in a fresh JavaScript VM, and past six
+that cost grows faster than the parallelism pays for it. Measured on a 32-core
+machine:
+
+| Files | `--jobs 1` | `auto` | `--jobs 16` | `--jobs 32` |
+| ----: | ---------: | -----: | ----------: | ----------: |
+|    36 |     1261ms | 1008ms |           — |           — |
+|   110 |     4378ms | 1966ms |      3778ms |      7995ms |
+|   750 |    22857ms | 6153ms |      9123ms |     17901ms |
+
+Override it when your machine says otherwise:
+
+```bash
+vantage-check docs/ --jobs 12     # more threads
+vantage-check docs/ --jobs 1      # this thread only
+export VANTAGE_CHECK_JOBS=4       # a default for this machine
+```
+
+`VANTAGE_CHECK_JOBS` is where a CI runner or a workstation pins the count;
+`--jobs` beats it. There is deliberately **no `jobs` key in `.vantage.toml`**:
+how many threads to use is a fact about the machine, not about the repository,
+so a committed number would be wrong for everyone who checks the tree out
+somewhere else.
+
+A thread that dies takes its files with it, and the run says so — `run/shard`
+on stderr and exit `3`, naming the files that were not checked. It never reports
+a short run as a clean one.
+
+---
+
 ## In CI
 
 ```yaml
@@ -404,7 +445,8 @@ document being drafted with no review round yet gets no pointer;
 
 Non-zero on findings, so it fails the job. Add `--strict` to fail on warnings
 too, or set `exit-code = 0` in config for an advisory run that reports without
-failing anything.
+failing anything. On a small runner, pin the thread count with
+`VANTAGE_CHECK_JOBS` — see [Large corpora](#large-corpora).
 
 ---
 

@@ -21,6 +21,10 @@ Options for check:
   --color / --no-color               force colour on or off
   --config <path>                    use this .vantage.toml
   --no-config                        ignore .vantage.toml entirely
+  -j, --jobs <n>|auto                threads to check with (default: auto — one
+                                     per 12 files, at most 6). --jobs 1 checks
+                                     in this thread alone. VANTAGE_CHECK_JOBS
+                                     sets the default for a machine.
 
 Exit codes:
   0  nothing to fix
