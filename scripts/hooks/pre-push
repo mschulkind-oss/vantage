@@ -1,37 +1,30 @@
 #!/bin/sh
-# Defence-in-depth: reject pushes containing AI attribution trailers,
-# generation footers, or AI author emails. Catches commits that bypassed
-# `commit-msg` (--no-verify, imported history, commits made from other
-# machines). Installed via `just install-hooks`.
+# Defence-in-depth: reject pushes containing AI attribution trailers, generation
+# footers, AI author emails, or non-conventional subjects. Catches commits that
+# bypassed `commit-msg` (--no-verify, imported history, commits made from another
+# machine). Wired by `just setup` via core.hooksPath.
+#
+# The rules live in scripts/check-commit-messages.sh — one copy, shared with the
+# commit-msg hook and CI's `commits` job. Until they were extracted this file and
+# commit-msg each carried their own patterns and had already drifted.
 
+set -eu
+
+checker="$(git rev-parse --show-toplevel)/scripts/check-commit-messages.sh"
 zero='0000000000000000000000000000000000000000'
-ai_coauthor='^[[:space:]]*Co-authored-by:[[:space:]]*(Copilot|Claude|Gemini|ChatGPT|GPT-|Codex|Cursor|Windsurf|Devin|aider|Bard|Llama)'
-ai_noreply='^[[:space:]]*Co-authored-by:.*<[^>]*(anthropic\.com|openai\.com)'
-ai_footer='(Generated (with|by) (\[?Claude|Copilot|Cursor|aider)|Co-generated with)'
-ai_author_email='(copilot@|noreply@anthropic\.com|Copilot@users\.noreply\.github\.com)'
-
 fail=0
+
 while read -r local_ref local_sha remote_ref remote_sha; do
     [ "$local_sha" = "$zero" ] && continue
     if [ "$remote_sha" = "$zero" ]; then
-        range=$(git rev-list "$local_sha" --not --remotes)
+        # A branch the remote does not have yet: everything it would add that no
+        # other remote branch already carries. Passed through as rev-list
+        # arguments rather than folded into a range, because there is no single
+        # commit to anchor one to.
+        "$checker" "$local_sha" --not --remotes || fail=1
     else
-        range=$(git rev-list "$remote_sha..$local_sha")
+        "$checker" "$remote_sha..$local_sha" || fail=1
     fi
-    for sha in $range; do
-        msg=$(git log -1 --format='%B' "$sha")
-        email=$(git log -1 --format='%ae' "$sha")
-        if printf '%s\n' "$msg" | grep -Eqi "$ai_coauthor" \
-        || printf '%s\n' "$msg" | grep -Eqi "$ai_noreply"  \
-        || printf '%s\n' "$msg" | grep -Eqi "$ai_footer"; then
-            echo "pre-push: $sha has an AI attribution trailer"
-            fail=1
-        fi
-        if printf '%s\n' "$email" | grep -Eqi "$ai_author_email"; then
-            echo "pre-push: $sha has an AI author email: $email"
-            fail=1
-        fi
-    done
 done
 
 if [ "$fail" -ne 0 ]; then

@@ -58,6 +58,20 @@ Never kill it; run test instances on other ports.
   toolchain (`mise install`) and no hooks, and no npm packages either. `just
   setup` is the whole answer, and the recipes now say so instead of failing with
   `prettier: not found`.
+
+  **The commit-message half of that is no longer silent.** Since 2026-09-20 the
+  `commits` CI job runs [`scripts/check-commit-messages.sh`](scripts/check-commit-messages.sh)
+  over a pull request's range — the same script both message hooks exec, so the
+  policy has one copy. It exists because a fork has no hooks *at all*, which is
+  how a contribution arrived carrying `Co-Authored-By: Claude` trailers with
+  nothing anywhere reporting it. A human co-author is fine; only the AI names and
+  provider noreply domains are refused. Merge commits are exempt from the
+  conventional-subject rule, because git and GitHub compose those subjects and
+  this repo's own `main` carries them from dependabot merges.
+
+  The rest of the gate is still hook-and-CI only: `check-ci` looks at the working
+  tree and has no revision range to apply a per-commit rule to, so what it runs
+  for the commit policy is that script's *tests*, not the policy itself.
 - **A green local gate can still be a CI red.** `check-ci` starts by asserting
   the workspace `node_modules` matches the manifests, because CI installs with
   `npm ci` and therefore answers a different question than a stale local

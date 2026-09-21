@@ -1,30 +1,8 @@
 #!/bin/sh
 # Reject AI attribution trailers, generation footers, and non-conventional
-# commit messages. Installed via `just install-hooks`. Source of truth is
-# https://github.com/mschulkind/backplane/blob/main/docs/standards/commit-attribution.md
-# and agent-standards.md in the same directory.
-msg_file="$1"
-
-ai_coauthor='^[[:space:]]*Co-authored-by:[[:space:]]*(Copilot|Claude|Gemini|ChatGPT|GPT-|Codex|Cursor|Windsurf|Devin|aider|Bard|Llama)'
-ai_noreply='^[[:space:]]*Co-authored-by:.*<[^>]*(anthropic\.com|openai\.com|users\.noreply\.github\.com.*Copilot)'
-ai_footer='(Generated (with|by) (\[?Claude|Copilot|Cursor|aider)|Co-generated with|powered by (Claude|GPT|Copilot))'
-
-if grep -Eqi "$ai_coauthor" "$msg_file" \
-|| grep -Eqi "$ai_noreply"  "$msg_file" \
-|| grep -Eqi "$ai_footer"   "$msg_file"; then
-    echo "commit-msg: rejected — AI attribution is forbidden in this repo."
-    exit 1
-fi
-
-# Conventional commit prefix. First non-empty, non-comment line must start
-# with one of the recognized types, optional scope and "!", then ": ".
-first_line=$(grep -v '^#' "$msg_file" | sed '/^[[:space:]]*$/d' | head -1)
-prefix_re='^(feat|fix|docs|chore|refactor|test|perf|ci|build|style|revert)(\([^)]+\))?!?:[[:space:]]'
-if ! printf '%s\n' "$first_line" | grep -Eq "$prefix_re"; then
-    echo "commit-msg: first line must use conventional commits."
-    echo "  Got:    $first_line"
-    echo "  Expect: feat|fix|docs|chore|refactor|test|perf|ci|build|style|revert: <summary>"
-    exit 1
-fi
-
-exit 0
+# commit messages. Wired by `just setup` via core.hooksPath.
+#
+# The rules live in scripts/check-commit-messages.sh, which CI's `commits` job
+# runs over a pull request's range — so a fork with no hooks installed is now
+# caught on the PR instead of at review time.
+exec "$(git rev-parse --show-toplevel)/scripts/check-commit-messages.sh" --message "$1"
