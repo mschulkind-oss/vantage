@@ -198,7 +198,11 @@ because its store is keyed by the vantage invocation instead of by repository
 
 - **`starred.Store`** persists one JSON file per *launch root* under
   `~/.local/share/vantage/starred` — the data directory, beside the review store,
-  resolved by `config.DataFilePath` and deliberately not XDG-resolved. `RootKey` picks
+  resolved by `config.DataFilePath` and deliberately not XDG-resolved. The file is
+  named `<root's folder>-<16 hex of sha256(normalized root)>.json`: both halves come
+  from the normalized root, and the hash is unconditional because it is the collision
+  defence and it is what keeps a root called `nul` from naming a Windows device.
+  `RootKey` picks
   it: the resolved `TargetRepo` in serve mode, the daemon config file's path in
   daemon mode. The daemon deliberately does not key on its working directory —
   under `systemctl --user` that is `/`, which would make every daemon on the
