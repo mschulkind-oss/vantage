@@ -65,11 +65,21 @@ export interface WebSocketMessage {
  * `is_dir` records what the target was when it was starred; it drives the icon
  * only, and may be stale if the target changed kind since.
  */
+export type StarredSource = "user" | "repo" | "user-config";
+
 export interface StarredEntry {
   repo: string;
   path: string;
   is_dir: boolean;
   starred_at: string;
+  /**
+   * Where the row came from. `"user"` is one the reader starred; the others are
+   * promoted by a config file and are not theirs to remove.
+   *
+   * Never widen a check for "is this starred" to include the promoted sources —
+   * see `isStarred` in `useStarredStore`, which explains what breaks.
+   */
+  source: StarredSource;
 }
 
 export interface RecentFile {

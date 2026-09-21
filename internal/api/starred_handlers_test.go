@@ -19,6 +19,7 @@ type starredList struct {
 		Path      string `json:"path"`
 		IsDir     bool   `json:"is_dir"`
 		StarredAt string `json:"starred_at"`
+		Source    string `json:"source"`
 	} `json:"entries"`
 }
 
@@ -32,6 +33,29 @@ func (e *testEnv) star(t *testing.T, body string) *starredList {
 	var got starredList
 	decode(t, w, &got)
 	return &got
+}
+
+// Every row on the wire says where it came from. The viewer keys the star's
+// meaning on it, so a response without it would render every promoted document as
+// one the reader had chosen.
+func TestStarredRowsAreLabelledAsTheUsers(t *testing.T) {
+	e := newTestEnv(t, false)
+
+	added := e.star(t, `{"repo":"","path":"docs/a.md","is_dir":false}`)
+	require.Len(t, added.Entries, 1)
+	require.Equal(t, "user", added.Entries[0].Source, "the mutation response is labelled too")
+
+	w := e.do(e.h.StarredList, http.MethodGet, "/starred", "", false)
+	require.Equal(t, http.StatusOK, w.Code)
+	var got starredList
+	decode(t, w, &got)
+	require.Len(t, got.Entries, 1)
+	require.Equal(t, "user", got.Entries[0].Source)
+
+	// Flat, beside the other keys rather than nested under one: a nested shape
+	// would have been a breaking change to every reader of this response.
+	require.Contains(t, w.Body.String(), `"source":"user"`)
+	require.NotContains(t, w.Body.String(), `"entry":`)
 }
 
 func TestStarredListIsEmptyNotNull(t *testing.T) {

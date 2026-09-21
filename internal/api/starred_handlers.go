@@ -28,7 +28,18 @@ import (
 // is always present and never null, so a client can render it without a nil
 // check.
 type starredResponse struct {
-	Entries []starred.Entry `json:"entries"`
+	Entries []starred.Listed `json:"entries"`
+}
+
+// listed labels stored entries as the reader's own and orders them.
+//
+// Every route answers through this, so the mutation responses and the list agree
+// about the shape without a builder. Promotion joins here later; until it does,
+// every row is SourceUser.
+func listed(entries []starred.Entry) []starred.Listed {
+	rows := starred.UserListed(entries)
+	starred.SortListed(rows)
+	return rows
 }
 
 // starredOr503 recovers the bookmark store, writing a 503 when bookmarks are
@@ -53,7 +64,7 @@ func (h *Handlers) StarredList(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Failed to read bookmarks")
 		return
 	}
-	writeJSON(w, http.StatusOK, starredResponse{Entries: entries})
+	writeJSON(w, http.StatusOK, starredResponse{Entries: listed(entries)})
 }
 
 // starredAddRequest is the POST /starred body.
@@ -81,7 +92,7 @@ func (h *Handlers) StarredAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.starredChanged()
-	writeJSON(w, http.StatusOK, starredResponse{Entries: entries})
+	writeJSON(w, http.StatusOK, starredResponse{Entries: listed(entries)})
 }
 
 // StarredDelete handles DELETE /starred?repo=&path=. An absent repo and an
@@ -110,7 +121,7 @@ func (h *Handlers) StarredDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.starredChanged()
-	writeJSON(w, http.StatusOK, starredResponse{Entries: entries})
+	writeJSON(w, http.StatusOK, starredResponse{Entries: listed(entries)})
 }
 
 // starredChanged fires the live push, if one is wired. A nil hook (tests,

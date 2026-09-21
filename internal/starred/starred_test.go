@@ -1,6 +1,7 @@
 package starred
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -79,4 +80,53 @@ func TestSortEntriesOrdersByRepoThenPath(t *testing.T) {
 		{"alpha", "b.md"},
 		{"beta", "a.md"},
 	}, got)
+}
+
+// A list with no promotions must be byte-identical to what the store alone
+// produced, or adding the label would have reordered every existing user's
+// sidebar.
+func TestSortListedAgreesWithSortEntries(t *testing.T) {
+	entries := []Entry{
+		{Repo: "b", Path: "z.md"},
+		{Repo: "a", Path: "b.md"},
+		{Repo: "a", Path: "a.md"},
+		{Repo: "b", Path: "a.md"},
+	}
+	want := append([]Entry(nil), entries...)
+	SortEntries(want)
+
+	rows := UserListed(entries)
+	SortListed(rows)
+
+	require.Len(t, rows, len(want))
+	for i := range want {
+		require.Equal(t, want[i], rows[i].Entry)
+		require.Equal(t, SourceUser, rows[i].Source)
+	}
+}
+
+// The embedding has to marshal FLAT. A nested object would have been a breaking
+// change to every reader of the response for no gain.
+func TestListedMarshalsFlat(t *testing.T) {
+	row := Listed{
+		Entry:  Entry{Repo: "docs", Path: "a.md", IsDir: false, StarredAt: time.Unix(0, 0).UTC()},
+		Source: SourceRepo,
+	}
+	raw, err := json.Marshal(row)
+	require.NoError(t, err)
+
+	var flat map[string]any
+	require.NoError(t, json.Unmarshal(raw, &flat))
+	require.Equal(t, "docs", flat["repo"])
+	require.Equal(t, "a.md", flat["path"])
+	require.Equal(t, "repo", flat["source"])
+	require.NotContains(t, flat, "entry", "the entry must not be nested under a key")
+}
+
+// The label is wire-only. If it ever reached the persisted type, every row of
+// every user's file would carry it and the store could persist a promoted row.
+func TestSourceIsNeverPersisted(t *testing.T) {
+	raw, err := json.Marshal(Entry{Repo: "docs", Path: "a.md"})
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), "source")
 }
