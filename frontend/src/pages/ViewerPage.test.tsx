@@ -730,6 +730,7 @@ describe("ViewerPage", () => {
             path: "path/to/file.md",
             is_dir: false,
             starred_at: "2026-09-20T12:00:00Z",
+            source: "user" as const,
           },
         ],
       });
@@ -749,6 +750,7 @@ describe("ViewerPage", () => {
             path: "docs/pinned.md",
             is_dir: false,
             starred_at: "2026-09-20T12:00:00Z",
+            source: "user" as const,
           },
         ],
       });
@@ -770,6 +772,7 @@ describe("ViewerPage", () => {
             path: "path/to/file.md",
             is_dir: false,
             starred_at: "2026-09-20T12:00:00Z",
+            source: "user" as const,
           },
         ],
       });
@@ -801,6 +804,7 @@ describe("ViewerPage", () => {
             path: "b.md",
             is_dir: false,
             starred_at: "2026-09-20T12:00:00Z",
+            source: "user" as const,
           },
         ],
       });

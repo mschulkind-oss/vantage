@@ -28,8 +28,16 @@ export const RemoveBookmarkButton: React.FC<RemoveBookmarkButtonProps> = ({
   repo,
 }) => {
   const repoKey = repo ?? "";
+  // Filtered to the reader's own rows for the same reason isStarred is: a
+  // promoted document is not theirs to remove, and offering to would issue a
+  // delete the server refuses. The inline predicate is deliberate — see below —
+  // but it must agree with the store's about what "starred" means.
   const starred = useStarredStore((s) =>
-    path ? s.entries.some((e) => e.repo === repoKey && e.path === path) : false,
+    path
+      ? s.entries.some(
+          (e) => e.source === "user" && e.repo === repoKey && e.path === path,
+        )
+      : false,
   );
   const removeStar = useStarredStore((s) => s.removeStar);
 

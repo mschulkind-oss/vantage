@@ -60,6 +60,62 @@ type Entry struct {
 	StarredAt time.Time `json:"starred_at"`
 }
 
+// Source says where a listed bookmark came from.
+//
+// WIRE ONLY. It is never persisted, which is what makes "a promoted document is
+// never written into the user's bookmark file" true by construction rather than
+// by care. Putting it on [Entry] instead would write a source into every row of
+// every user's file, and would make [Store.Add] capable of persisting a promoted
+// row — a mistake nothing in the type system would catch.
+type Source string
+
+const (
+	// SourceUser is a bookmark the reader starred. The only kind that is stored,
+	// the only kind with an honest StarredAt, and the only kind they can remove.
+	SourceUser Source = "user"
+	// SourceRepo is promoted by the repository's own `.vantage.toml`.
+	SourceRepo Source = "repo"
+	// SourceUserConfig is promoted by the reader's user-level config, and so
+	// applies in every repository they open.
+	SourceUserConfig Source = "user-config"
+)
+
+// Listed is one row of the `/starred` response: an [Entry] plus where it came
+// from.
+//
+// The embedding is load-bearing rather than stylistic. An embedded struct
+// marshals flat, so the JSON stays one object with one new key beside the others
+// — a nested `{"entry": {...}, "source": "..."}` would have been a breaking
+// change to every reader of the response for no gain.
+type Listed struct {
+	Entry
+	Source Source `json:"source"`
+}
+
+// UserListed labels stored entries as the reader's own, in order.
+func UserListed(entries []Entry) []Listed {
+	out := make([]Listed, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, Listed{Entry: e, Source: SourceUser})
+	}
+	return out
+}
+
+// SortListed orders rows the way [SortEntries] orders entries, so a list with no
+// promotions is byte-identical to what the store alone would have produced.
+//
+// Source is deliberately NOT part of the ordering: the sidebar groups by
+// repository and reads alphabetically within it, and sorting promoted rows into a
+// block of their own would make one project's documents appear in two places.
+func SortListed(rows []Listed) {
+	sort.SliceStable(rows, func(i, j int) bool {
+		if rows[i].Repo != rows[j].Repo {
+			return rows[i].Repo < rows[j].Repo
+		}
+		return rows[i].Path < rows[j].Path
+	})
+}
+
 // ErrInvalid is the sentinel every shape rejection unwraps to, so handlers can
 // map the whole family to one status with errors.Is.
 var ErrInvalid = errors.New("starred: invalid bookmark")
