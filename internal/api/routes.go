@@ -42,6 +42,14 @@ func (h *Handlers) Routes() []Route {
 		{http.MethodGet, "/repos", h.Repos, ScopeGlobal},
 		{http.MethodGet, "/files/all", h.FilesAll, ScopeGlobal},
 		{http.MethodGet, "/recent/all", h.RecentAll, ScopeGlobal},
+
+		// Bookmarks are global rather than repo-scoped because the store is
+		// keyed by the vantage invocation: in daemon mode one list spans every
+		// served repository and each entry carries its own repo name. See
+		// [starred.RootKey].
+		{http.MethodGet, "/starred", h.StarredList, ScopeGlobal},
+		{http.MethodPost, "/starred", h.StarredAdd, ScopeGlobal},
+		{http.MethodDelete, "/starred", h.StarredDelete, ScopeGlobal},
 		{http.MethodGet, "/perf/diagnostics", h.PerfDiagnostics, ScopeGlobal},
 		{http.MethodPost, "/perf/reset", h.PerfReset, ScopeGlobal},
 

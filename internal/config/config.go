@@ -93,6 +93,15 @@ type Config struct {
 	// symlink-resolved once [Config.Resolve] has run.
 	TargetRepo string
 
+	// ConfigPath is the absolute path of the daemon config file this Config was
+	// loaded from, or "" when none was (serve mode, or a Config built in
+	// process). It is not a setting any source can provide: [LoadDaemonFile]
+	// records where it read from, so callers that must key per-daemon state
+	// have something stable to key on. The working directory is not usable for
+	// that — a daemon under `systemctl --user` runs in "/" — see
+	// [starred.RootKey].
+	ConfigPath string
+
 	// Repos are the repositories served in daemon mode.
 	Repos []RepoConfig
 	// SourceDirs are parent directories scanned for additional git repos.
@@ -305,6 +314,7 @@ func LoadDaemonFile(path string) (*Config, error) {
 
 	c := Defaults()
 	c.MultiRepo = true
+	c.ConfigPath = abs
 	c.Repos = df.Repos
 	c.SourceDirs = df.SourceDirs
 
