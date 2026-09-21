@@ -91,6 +91,55 @@ describe("useRepoStore", () => {
 
       expect(useRepoStore.getState().currentPath).toBe("nonexistent.md");
     });
+
+    // Neither loader can be cancelled, so a slow request for a document the
+    // reader has already navigated away from must not land on top of a newer
+    // one — on either the success or the failure path.
+    it("discards a response that lost the race to a newer load", async () => {
+      let resolveSlow: (v: unknown) => void = () => {};
+      mockedAxios.get
+        .mockReturnValueOnce(
+          new Promise((resolve) => {
+            resolveSlow = resolve;
+          }),
+        )
+        .mockResolvedValueOnce({
+          data: { path: "new.md", content: "# New", encoding: "utf-8" },
+        });
+
+      const slow = useRepoStore.getState().loadFile("slow.md");
+      await useRepoStore.getState().loadFile("new.md");
+
+      resolveSlow({
+        data: { path: "slow.md", content: "# Slow", encoding: "utf-8" },
+      });
+      await slow;
+
+      expect(useRepoStore.getState().currentPath).toBe("new.md");
+      expect(useRepoStore.getState().fileContent?.content).toBe("# New");
+    });
+
+    it("discards a failure that lost the race to a newer load", async () => {
+      let rejectSlow: (e: unknown) => void = () => {};
+      mockedAxios.get
+        .mockReturnValueOnce(
+          new Promise((_, reject) => {
+            rejectSlow = reject;
+          }),
+        )
+        .mockResolvedValueOnce({
+          data: { path: "new.md", content: "# New", encoding: "utf-8" },
+        });
+
+      const slow = useRepoStore.getState().loadFile("gone.md");
+      await useRepoStore.getState().loadFile("new.md");
+
+      rejectSlow(new Error("Not found"));
+      await slow;
+
+      expect(useRepoStore.getState().error).toBeNull();
+      expect(useRepoStore.getState().currentPath).toBe("new.md");
+    });
   });
 
   describe("viewDirectory", () => {
