@@ -1,7 +1,11 @@
 import React, { type RefObject } from "react";
 import { cn } from "../lib/utils";
-import { scrollToAnchor } from "../lib/anchorScroll";
-import { useDocumentHeadings } from "../hooks/useDocumentHeadings";
+import { scrollToAnchorElement } from "../lib/anchorScroll";
+import {
+  entryAccessibleName,
+  useDocumentOutline,
+  type OutlineEntry,
+} from "../hooks/useDocumentOutline";
 
 interface TableOfContentsProps {
   /** The scroll container holding the rendered document. */
@@ -14,7 +18,8 @@ interface TableOfContentsProps {
 const MAX_INDENT = 3;
 
 /**
- * The document's headings, floating in the margin beside the content.
+ * The document's outline — its headings, and the Open Questions still awaiting a
+ * ruling — floating in the margin beside the content.
  *
  * It is a column of the same flex row the document sits in, so it is always
  * adjacent to the text rather than pinned to the window — and it carries no
@@ -24,7 +29,7 @@ const MAX_INDENT = 3;
  * `sticky` rather than scrolling away with the prose: a table of contents you have to
  * scroll back up to reach is one you stop using.
  *
- * Clicking an entry goes through `scrollToAnchor`, which is the same path the
+ * Clicking an entry goes through `scrollToAnchorElement`, which is the same path the
  * heading's own `#` link takes — so an entry pointing into a
  * `<!-- vantage: section collapsed=true -->` section opens that section on the
  * way, instead of scrolling to a box with no height.
@@ -36,13 +41,14 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
   containerRef,
   open,
 }) => {
-  const { headings, activeId } = useDocumentHeadings(containerRef, open);
+  const { entries, activeId } = useDocumentOutline(containerRef, open);
 
   if (!open) return null;
 
-  // Indent relative to the document's own shallowest heading: a document whose
+  // Indent relative to the document's own shallowest entry: a document whose
   // body starts at h2 should not be indented one step throughout.
-  const topLevel = headings.reduce((min, h) => Math.min(min, h.level), 6);
+  const topLevel = entries.reduce((min, e) => Math.min(min, e.level), 6);
+  const questions = entries.filter((e) => e.kind === "question").length;
 
   return (
     <aside
@@ -56,45 +62,149 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
         aria-label="Table of contents"
         className="sticky top-2 max-h-[calc(100vh-8rem)] overflow-y-auto pb-6"
       >
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-          Contents
-        </p>
-        {headings.length === 0 ? (
+        <div className="mb-2 flex items-baseline justify-between gap-2">
+          <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Contents
+          </p>
+          {/*
+           * The one number in the column, and it is here rather than beside the
+           * questions themselves because it answers a question asked before the
+           * column is read at all: does this document want anything from me? It
+           * is absent at zero — a document with nothing outstanding should say
+           * nothing, not say "0".
+           */}
+          {questions > 0 && (
+            <span
+              data-testid="toc-question-count"
+              className="shrink-0 text-xs tabular-nums text-slate-500 dark:text-slate-400"
+              title={`${questions} open ${questions === 1 ? "question" : "questions"} in this document`}
+            >
+              💬 {questions}
+            </span>
+          )}
+        </div>
+        {entries.length === 0 ? (
           <p className="text-[13px] text-slate-500 dark:text-slate-400">
             No headings in this document.
           </p>
         ) : (
-          headings.map((h) => (
-            <a
-              key={h.id}
-              href={`#${h.id}`}
-              // A real link, not a button: this is the same "#id" navigation
-              // the heading's own hover anchor offers, and it keeps what a
-              // button would drop — modifier-click and middle-click open the
-              // section in a new tab, and right-click offers "Copy Link" for
-              // the exact URL this entry addresses. preventDefault only
-              // covers the plain click, so those all keep working natively.
-              onClick={(e) => {
-                e.preventDefault();
-                window.history.replaceState(null, "", `#${h.id}`);
-                scrollToAnchor(h.id, containerRef.current);
-              }}
-              aria-current={h.id === activeId ? "location" : undefined}
-              className={cn(
-                "block w-full text-left py-1 pr-2 text-[13px] leading-snug no-underline transition-colors cursor-pointer",
-                h.id === activeId
-                  ? "text-blue-600 dark:text-blue-400 font-medium"
-                  : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100",
-              )}
-              style={{
-                paddingLeft: `${8 + Math.min(h.level - topLevel, MAX_INDENT) * 12}px`,
-              }}
-            >
-              {h.text}
-            </a>
+          entries.map((entry, i) => (
+            <OutlineLink
+              key={entry.id || `${entry.kind}-${i}`}
+              entry={entry}
+              active={entry.id !== "" && entry.id === activeId}
+              indent={8 + Math.min(entry.level - topLevel, MAX_INDENT) * 12}
+              containerRef={containerRef}
+            />
           ))
         )}
       </nav>
     </aside>
+  );
+};
+
+/**
+ * One entry, as a real link wherever it can be one.
+ *
+ * A link, not a button: this is the same "#id" navigation the heading's own
+ * hover anchor offers, and it keeps what a button would drop — modifier-click
+ * and middle-click open the section in a new tab, and right-click offers
+ * "Copy Link" for the exact URL this entry addresses. `preventDefault` only
+ * covers the plain click, so those all keep working natively.
+ *
+ * A question whose directive carried no `id=` has no URL to offer, so it renders
+ * as a `span` that still scrolls. Rendering an `<a>` with no `href` would look
+ * identical and quietly drop keyboard focus.
+ */
+const OutlineLink: React.FC<{
+  entry: OutlineEntry;
+  active: boolean;
+  indent: number;
+  containerRef: RefObject<HTMLElement | null>;
+}> = ({ entry, active, indent, containerRef }) => {
+  const question = entry.kind === "question";
+
+  const go = () => {
+    // The enclosing item, not the stamped element. The directive stamps the
+    // *leaning* paragraph, so scrolling to the anchor itself puts the question's
+    // own title above the top of the viewport — the reader arrives at an answer
+    // to a question they cannot see. The `href` above still addresses the
+    // anchor, which is what a cross-document reference has to be able to use.
+    const target = question
+      ? (entry.element.closest("li") ?? entry.element)
+      : entry.element;
+    scrollToAnchorElement(target, containerRef.current);
+  };
+
+  const className = cn(
+    "block w-full text-left py-1 pr-2 text-[13px] leading-snug no-underline transition-colors cursor-pointer",
+    active
+      ? "text-blue-600 dark:text-blue-400 font-medium"
+      : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100",
+  );
+
+  const body = (
+    <>
+      {entry.marker !== "" && (
+        // The emoji is the document's own text, shown rather than translated
+        // into a colour: it renders in print and in a theme that does not
+        // exist yet, which a chip would not. `aria-hidden` because
+        // `entryAccessibleName` already says the state in words.
+        <span aria-hidden="true" className="mr-1">
+          {entry.marker}
+        </span>
+      )}
+      {/*
+       * Clamped rather than truncated in JS: a question title is a sentence, and
+       * two lines of it is usually enough to recognise the question without
+       * making the column a wall of text. The `title` carries the whole thing.
+       */}
+      <span className={question ? "line-clamp-2" : undefined}>
+        {entry.text}
+      </span>
+    </>
+  );
+
+  const shared = {
+    "data-testid": question ? "toc-question" : "toc-heading",
+    "aria-current": active ? ("location" as const) : undefined,
+    title: question ? entryAccessibleName(entry) : undefined,
+    className,
+    style: { paddingLeft: `${indent}px` },
+  };
+
+  if (entry.id === "") {
+    return (
+      <span
+        {...shared}
+        role="link"
+        tabIndex={0}
+        onClick={go}
+        // A real `<a>` gets this from the browser; a span with a link role has
+        // to say it, or the entry is reachable by keyboard and does nothing.
+        onKeyDown={(e) => {
+          if (e.key !== "Enter" && e.key !== " ") return;
+          e.preventDefault();
+          go();
+        }}
+      >
+        {body}
+      </span>
+    );
+  }
+
+  return (
+    <a
+      {...shared}
+      href={`#${entry.id}`}
+      aria-label={question ? entryAccessibleName(entry) : undefined}
+      onClick={(e) => {
+        e.preventDefault();
+        window.history.replaceState(null, "", `#${entry.id}`);
+        go();
+      }}
+    >
+      {body}
+    </a>
   );
 };
