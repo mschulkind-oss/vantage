@@ -34,11 +34,14 @@ export {
   VANTAGE_COLLAPSED,
   VANTAGE_EMPHASIS,
   VANTAGE_OQ_HOST_TARGETS,
+  VANTAGE_OQ_STATUS,
+  VANTAGE_OQ_STATUS_LABEL,
   VANTAGE_RUNS,
   VANTAGE_SENTINEL,
   VANTAGE_TONES,
   hasVantageSentinel,
   parseVantageDirective,
+  vantageOqStatus,
 } from "./vantageDirectives.js";
 export type {
   DirectiveParse,
@@ -48,6 +51,7 @@ export type {
   KeyVocabulary,
   MalformedDirective,
   ParsedDirective,
+  VantageOqStatus,
 } from "./vantageDirectives.js";
 
 export { buildPipeline, buildRemarkPlugins } from "./pipeline.js";

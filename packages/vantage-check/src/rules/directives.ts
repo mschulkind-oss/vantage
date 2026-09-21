@@ -12,6 +12,7 @@ import {
   VANTAGE_OQ_HOST_TARGETS,
   VANTAGE_SENTINEL,
   VANTAGE_STYLE_TARGETS,
+  vantageOqStatus,
 } from "../../../vantage-md/src/vantageDirectives.js";
 import { scanComments } from "../core/comments.js";
 import { collectOqIds } from "../core/openQuestions.js";
@@ -1020,29 +1021,24 @@ export function orList(values: readonly string[]): string {
 const LEANING_MARKER = /^\s*leaning\s*:/i;
 
 /**
- * The convention's status emoji, which is what makes this rule usable.
+ * Why this rule keys on the convention's status emoji at all.
  *
- * 💬 means "active decision awaiting a ruling". Only that state wants a
- * one-click answer, and keying on it is the difference between a useful rule and
- * a nag: measured over this repo's own docs, the unkeyed version fired on eight
+ * The vocabulary itself is `VANTAGE_OQ_STATUS`, imported above and shared with
+ * the viewer — only the measurement behind the choice is local. 💬 means "active
+ * decision awaiting a ruling", and that is the only state wanting a one-click
+ * answer: keying on it is the difference between a useful rule and a nag, because
+ * measured over this repo's own docs the unkeyed version fired on eight
  * *settled* questions in `docs/design/review-mode.md` — each with a filled-in
  * `**Answer:**` — where a button would be an invitation to re-answer something
  * already ruled on.
- */
-const OQ_OPEN_MARKER = "\u{1F4AC}";
-
-/**
- * States that are not awaiting a ruling, and therefore want no button. Either
- * one wins over 💬 when both appear on the same item.
  *
- * ✅ is decided. 🔒 is **blocked on something upstream** — an experiment, another
- * doc's decision — and that is the one this rule must never demand a directive
- * for: the whole point of the marker is that the question cannot be answered
- * yet, so a control offering to answer it in one click would be a lie. This
- * matters more now the rule is an error, because a false positive fails a build
- * rather than printing a line.
+ * 🔒 is the one this rule must never demand a directive for: the whole point of
+ * the marker is that the question cannot be answered yet, so a control offering
+ * to answer it in one click would be a lie. That matters more now the rule is an
+ * error, because a false positive fails a build rather than printing a line —
+ * and it is why `vantageOqStatus` resolves a non-open marker ahead of 💬 rather
+ * than leaving the precedence to each caller.
  */
-const OQ_SETTLED_MARKERS = ["\u2705", "\u{1F512}"];
 
 /**
  * The convention's stable ID — `OQ-1`, `OQ-C3`, `OQ-HS5`.
@@ -1095,8 +1091,8 @@ function nodeText(node: RootContent | ListItem): string {
  *   with one directive and nine questions fully covered.
  * - **Carrying the convention's stable ID.** See `OQ_ID` — this is the signal
  *   that makes the finding an error rather than a guess.
- * - **Marked 💬, and not ✅ or 🔒.** See `OQ_OPEN_MARKER` and
- *   `OQ_SETTLED_MARKERS`.
+ * - **Marked 💬, and not ✅ or 🔒.** See `VANTAGE_OQ_STATUS` and the note above
+ *   `OQ_ID` on why the distinction is what keeps this rule honest.
  *
  * **An error**, because with all four markers present the parsed tree has
  * settled it: this is an Open Question, written to the convention, awaiting a
@@ -1129,8 +1125,7 @@ export function checkOpenQuestions(collector: Collector): void {
   visit(root, "listItem", (item: ListItem) => {
     if (scopesWithOq.has(item)) return;
     const text = nodeText(item);
-    if (!text.includes(OQ_OPEN_MARKER)) return;
-    if (OQ_SETTLED_MARKERS.some((marker) => text.includes(marker))) return;
+    if (vantageOqStatus(text) !== "open") return;
     if (!OQ_ID.test(text)) return;
 
     const leaning = item.children.find(

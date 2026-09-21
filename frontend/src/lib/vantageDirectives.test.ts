@@ -25,9 +25,12 @@ import {
   VANTAGE_BADGES,
   VANTAGE_EMPHASIS,
   VANTAGE_RUNS,
+  VANTAGE_OQ_STATUS,
+  VANTAGE_OQ_STATUS_LABEL,
   VANTAGE_SENTINEL,
   VANTAGE_TONES,
   hasVantageSentinel,
+  vantageOqStatus,
   parseVantageDirective,
   renderMarkdown,
 } from "vantage-md";
@@ -1577,5 +1580,63 @@ describe("the sanitiser is the second gate", () => {
     expect(markup).not.toContain("everywhere");
     expect(markup).not.toContain("OQ-9");
     expect(markup).toContain('data-vantage-tone="warning"');
+  });
+});
+
+/**
+ * The status emoji are *prose*, not directive syntax — they sit in the
+ * question's title where any renderer shows them — so nothing about them can be
+ * asserted through `renderMarkdown`. What has to hold is that the two consumers
+ * read one vocabulary: the checker's `vantage/oq-missing`, which must demand a
+ * directive on an open question and never on a blocked one, and the viewer's
+ * contents column, which shows the marker and needs a word for it.
+ */
+describe("open question status markers", () => {
+  it("names the three states the convention defines, and only those", () => {
+    expect(Object.keys(VANTAGE_OQ_STATUS)).toEqual([
+      "open",
+      "settled",
+      "blocked",
+    ]);
+  });
+
+  it("reads each marker out of a question title", () => {
+    expect(vantageOqStatus("\u{1F4AC} **OQ-1: Should it?**")).toBe("open");
+    expect(vantageOqStatus("\u2705 **OQ-2: Should it?**")).toBe("settled");
+    expect(vantageOqStatus("\u{1F512} **OQ-3: Should it?**")).toBe("blocked");
+  });
+
+  it("returns null for a title carrying no marker", () => {
+    expect(vantageOqStatus("**OQ-4: An unmarked question.**")).toBeNull();
+    expect(vantageOqStatus("")).toBeNull();
+  });
+
+  it("does not mistake a deferred question for an unmarked one", () => {
+    // The convention writes a pure-preference question as both markers, and the
+    // second one is not in the vocabulary at all.
+    expect(vantageOqStatus("\u{1F4AC} \u{1F937} **OQ-B5: How much?**")).toBe(
+      "open",
+    );
+  });
+
+  it("resolves a non-open marker ahead of an open one", () => {
+    // A question wearing both has been ruled on and the stale marker simply has
+    // not been cleared. Reading it as open re-opens a settled decision — and on
+    // the checker's side would demand a directive for a blocked question, which
+    // is a false positive that fails a build.
+    expect(vantageOqStatus("\u{1F4AC} \u2705 **OQ-5: Decided.**")).toBe(
+      "settled",
+    );
+    expect(vantageOqStatus("\u{1F4AC} \u{1F512} **OQ-6: Waiting.**")).toBe(
+      "blocked",
+    );
+  });
+
+  it("has a spoken label for every state, since one glyph says nothing aloud", () => {
+    for (const state of Object.keys(VANTAGE_OQ_STATUS)) {
+      expect(
+        VANTAGE_OQ_STATUS_LABEL[state as keyof typeof VANTAGE_OQ_STATUS],
+      ).toMatch(/\S/);
+    }
   });
 });
