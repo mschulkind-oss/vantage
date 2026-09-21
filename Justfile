@@ -93,6 +93,7 @@ check: format
     just _published-types
     npm run lint -w vantage-check && npm run typecheck -w vantage-check && npm run test -w vantage-check
     npm run lint -w frontend && npx tsc --build frontend && npm run test -w frontend
+    sh scripts/test-commit-messages.sh
     just _self-check
 
 # Run the Playwright end-to-end suite. Self-hosts a real serve + Vite pair
@@ -122,6 +123,11 @@ check-ci: _deps-match
     just _published-types
     ( npm run format:check -w vantage-check && npm run lint -w vantage-check && npm run typecheck -w vantage-check && npm run test -w vantage-check )
     ( npm run format:check -w frontend && npm run lint -w frontend && npx tsc --build frontend && npm run test -w frontend )
+    # The commit-message policy is a script the hooks and CI share, so its own
+    # tests belong in the gate. The policy is applied to actual commits by the
+    # hooks and by CI's `commits` job, which need a revision range — something
+    # this recipe, which only ever looks at the working tree, does not have.
+    sh scripts/test-commit-messages.sh
     # Then the artifact, not just the source it was built from.
     just _self-check
 
@@ -302,5 +308,7 @@ _hooks:
     #!/usr/bin/env bash
     set -euo pipefail
     chmod +x scripts/hooks/pre-commit scripts/hooks/commit-msg scripts/hooks/pre-push
+    # Both message hooks exec this, so a non-executable copy breaks every commit.
+    chmod +x scripts/check-commit-messages.sh scripts/test-commit-messages.sh
     git config core.hooksPath scripts/hooks
     echo "Hooks active via core.hooksPath=scripts/hooks"
