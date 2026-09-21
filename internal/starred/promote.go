@@ -2,6 +2,7 @@ package starred
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"sort"
 	"strings"
@@ -40,6 +41,18 @@ type PromoteRequest struct {
 	// called at most once, and ONLY if some line is a pattern — see [Promote].
 	// May be nil, in which case patterns resolve to nothing.
 	Candidates func() []string
+	// RequireExists drops a literal line whose target is not in the repository.
+	//
+	// Off for a repository's own config, where a named document is an assertion
+	// about this project and may legitimately not be written yet. On for the
+	// reader's user-level list, which is applied to EVERY repository they open:
+	// "always star my roadmap" means "if there is one", and without this a reader
+	// with one such line would carry a phantom row into every project that has
+	// no roadmap.
+	//
+	// Costs one stat per literal line per repository, which is a handful — not a
+	// walk. Patterns are unaffected: a candidate list is existing files already.
+	RequireExists bool
 }
 
 // Promote resolves one source's promote lines into rows.
@@ -106,6 +119,12 @@ func Promote(req PromoteRequest) (rows []Listed, rejected []string) {
 			rejected = append(rejected, fmt.Sprintf("%q: %v", raw, err))
 			continue
 		}
+		if req.RequireExists && !exists(req.Root, clean) {
+			// Not rejected: absence is the expected answer in most repositories
+			// for a list written once and applied everywhere. Reporting it would
+			// warn on every project that simply has no roadmap.
+			continue
+		}
 		add(clean, isDir)
 	}
 
@@ -134,6 +153,19 @@ func Promote(req PromoteRequest) (rows []Listed, rejected []string) {
 		rows = rows[:MaxPromoted]
 	}
 	return rows, rejected
+}
+
+// exists reports whether p is present in the repository at root.
+//
+// Resolved through [pathsafe] rather than joined by hand, so the check cannot be
+// tricked into stat'ing outside the tree by a path that passed the lexical rules.
+func exists(root, p string) bool {
+	resolved, err := pathsafe.Resolve(root, p)
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(resolved)
+	return err == nil
 }
 
 // promotable reports whether p may be promoted in the repository at root: the

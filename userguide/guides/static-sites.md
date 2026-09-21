@@ -142,7 +142,7 @@ Static sites are a snapshot — they don't include:
 - **Live reload** — no WebSocket connection, so file changes aren't reflected
 - **Search** — the file picker still works (all filenames are included), but there's no full-text search
 - **Review mode** — a comment has to be written back to the repository, and there's nothing to write to, so the **Review** button isn't offered on an exported site
-- **Starred** — bookmarks live in the config of the machine running Vantage, so there is nowhere to keep a visitor's, and one reader's bookmarks have no business shipping to everyone else's. The star and the sidebar section are both absent on an exported site
+- **Starred** — an export has no server, so there is nothing to merge a visitor's bookmarks with, nowhere to put one, and no way to resolve the documents a project promotes. One reader's own bookmarks also have no business shipping to every visitor. The star and the sidebar section are both absent on an exported site
 - **Updates** — rebuild and redeploy to pick up new content
 
 For a live, updating experience, use `vantage serve` or `vantage daemon` instead.

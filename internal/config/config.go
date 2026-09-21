@@ -17,6 +17,7 @@ package config
 
 import (
 	_ "embed"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -633,6 +634,54 @@ func legacyConfigDir(goos, home string) string {
 func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
+}
+
+// UserStarred is the reader's own `[starred]` table, from their user config.
+type UserStarred struct {
+	// Promote is a list of repo-relative paths and gitignore-syntax patterns,
+	// applied in every repository they open.
+	Promote []string `toml:"promote"`
+}
+
+// userStarredFile is the narrow view of the user config this reader decodes. It
+// names one table and ignores the rest of the file, which is the whole point.
+type userStarredFile struct {
+	Starred UserStarred `toml:"starred"`
+}
+
+// LoadUserStarred reads only the `[starred]` table from the user's config file.
+//
+// A missing file is not an error — most readers have none — so it yields the zero
+// value and nil.
+//
+// Narrow on purpose, in two ways that are both load-bearing:
+//
+// It does not route through [LoadDaemonFile]. That function sets MultiRepo
+// unconditionally and overlays hosts, ports and repository lists, so calling it
+// from serve mode would flip a single-repo process into daemon mode as a
+// side-effect of reading one list.
+//
+// And it does not reject unknown keys, where [repoconfig.Parse] does. This file is
+// the daemon's own config, full of keys that are none of this reader's business;
+// policing them here would reject every real daemon config in existence.
+func LoadUserStarred() (UserStarred, error) {
+	path, err := UserFilePath("config.toml")
+	if err != nil {
+		return UserStarred{}, err
+	}
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return UserStarred{}, nil
+	}
+	if err != nil {
+		return UserStarred{}, fmt.Errorf("config: reading %s: %w", path, err)
+	}
+
+	var f userStarredFile
+	if _, err := toml.Decode(string(data), &f); err != nil {
+		return UserStarred{}, fmt.Errorf("config: decoding %s: %w", path, err)
+	}
+	return f.Starred, nil
 }
 
 // DataFilePath resolves one user-level vantage *data* file or directory —

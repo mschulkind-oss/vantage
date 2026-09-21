@@ -199,6 +199,13 @@ updates the moment one is added or removed anywhere else. They are yours rather
 than the repository's: nothing about them is committed, and nothing travels when
 you share the project.
 
+Some rows you did not star. A project can name documents worth starting with in
+its own `.vantage.toml`, and you can name files you always want starred — your
+roadmap, say — in your own config; both are covered in
+[Stored Bookmarks](reference/configuration.md#stored-bookmarks). Those rows carry a
+small pin and say in their tooltip which file put them there. They are not yours
+to remove, because nothing of yours created them — edit the config that did.
+
 Which list you get depends on how Vantage was started. `vantage serve` keys on
 the directory it is serving, so each project has its own and launching somewhere
 else gives you that project's. A [daemon](guides/daemon-mode.md) keys on its
