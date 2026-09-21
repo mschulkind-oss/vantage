@@ -345,7 +345,7 @@ func doJSON(t *testing.T, h http.Handler, method, target, body string) *httptest
 
 // isolateUserDirs points $HOME at a temp dir BEFORE NewServer resolves the
 // per-user paths under it, so a test never reads or writes the developer's real
-// ~/.local/share/vantage/reviews or ~/.config/vantage/starred.
+// ~/.local/share/vantage/reviews or ~/.local/share/vantage/starred.
 //
 // Every server constructor in this file calls it, so a test gets the isolation
 // by building a server rather than by remembering to ask for it. It was named

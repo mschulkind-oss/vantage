@@ -127,10 +127,20 @@ func NewStore(root, filePath string) *Store {
 }
 
 // DefaultStore returns a Store for root whose file is resolved through
-// [config.UserFilePath], which already handles the XDG location and the darwin
-// legacy fallback.
+// [config.DataFilePath] — the data directory, beside the review store.
+//
+// The data directory and not the config one, because a bookmark is content the
+// user made rather than a setting they wrote. The review store already answers
+// that question the same way for the same reason, and the two are the same
+// species of state; splitting them across two roots would have meant a reader
+// looking for "what has this user accumulated" in two places.
+//
+// It is not merely tidiness. ~/.config is what dotfile managers sync, and these
+// files are keyed by absolute paths on one machine — synced to another they are
+// dead weight under names nothing can identify, conflicting on content nobody
+// can read. ~/.local/share is not carried around that way.
 func DefaultStore(root string) (*Store, error) {
-	p, err := config.UserFilePath(FileName(root))
+	p, err := config.DataFilePath(FileName(root))
 	if err != nil {
 		return nil, fmt.Errorf("starred: resolving store path: %w", err)
 	}

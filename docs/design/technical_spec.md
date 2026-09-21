@@ -197,7 +197,8 @@ because its store is keyed by the vantage invocation instead of by repository
 ### 2.6 Bookmarks (`internal/starred`)
 
 - **`starred.Store`** persists one JSON file per *launch root* under
-  `~/.config/vantage/starred`, named after a hash of that root. `RootKey` picks
+  `~/.local/share/vantage/starred` — the data directory, beside the review store,
+  resolved by `config.DataFilePath` and deliberately not XDG-resolved. `RootKey` picks
   it: the resolved `TargetRepo` in serve mode, the daemon config file's path in
   daemon mode. The daemon deliberately does not key on its working directory —
   under `systemctl --user` that is `/`, which would make every daemon on the
