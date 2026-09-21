@@ -194,6 +194,66 @@ export const VANTAGE_OQ_HOST_TARGETS = VANTAGE_ANCHOR_TARGETS.filter(
  */
 export const VANTAGE_OQ_ID = /^OQ-(?:[A-Z][A-Z0-9]{0,5})?[0-9]+$/;
 
+/**
+ * The status emoji the documentation convention marks an Open Question with, and
+ * what each one means to a reader deciding whether the question wants them.
+ *
+ * These are *prose* — ordinary characters in the question's title, not part of
+ * any directive — which is exactly why they need a home that both readers of
+ * them can import. Two consumers ask what a marker means and they must not
+ * answer differently: the checker's `vantage/oq-missing`, which demands a
+ * directive on an open question and must never demand one on a blocked one, and
+ * the viewer's contents column, which shows the marker and needs a word for it
+ * that a screen reader can say. They were private constants in the checker until
+ * the second consumer arrived.
+ *
+ * `open` is the only state that wants a one-click answer. `settled` and
+ * `blocked` deliberately carry no directive at all — a control offering to
+ * answer a question that is already decided, or that cannot be answered yet, is
+ * a lie — so the checker keys on the distinction rather than on the word
+ * "Leaning:" alone. Either non-open marker wins when both appear on one item.
+ */
+export const VANTAGE_OQ_STATUS = {
+  /** 💬 — an active decision awaiting a ruling. */
+  open: "\u{1F4AC}",
+  /** ✅ — decided, awaiting compaction into a Decision Ledger. */
+  settled: "\u2705",
+  /** 🔒 — blocked on an upstream decision or experiment. */
+  blocked: "\u{1F512}",
+} as const;
+
+/** One of the convention's three states, as [VANTAGE_OQ_STATUS] names them. */
+export type VantageOqStatus = keyof typeof VANTAGE_OQ_STATUS;
+
+/**
+ * What a marker says, in words, for somewhere an emoji cannot go.
+ *
+ * An accessible name is the reason this exists: a contents entry whose whole
+ * status is one glyph says nothing to a screen reader, and "speech bubble" —
+ * which is what it would otherwise read out — is worse than nothing.
+ */
+export const VANTAGE_OQ_STATUS_LABEL: Readonly<
+  Record<VantageOqStatus, string>
+> = {
+  open: "Open question",
+  settled: "Answered question",
+  blocked: "Blocked question",
+};
+
+/**
+ * The state `text` is marked with, or `null` when it carries no marker.
+ *
+ * Non-open wins over open, the resolution `vantage/oq-missing` has always made:
+ * a question marked both 💬 and ✅ has been answered and the stale marker simply
+ * has not been cleared yet, so treating it as open would re-open a ruling.
+ */
+export function vantageOqStatus(text: string): VantageOqStatus | null {
+  if (text.includes(VANTAGE_OQ_STATUS.settled)) return "settled";
+  if (text.includes(VANTAGE_OQ_STATUS.blocked)) return "blocked";
+  if (text.includes(VANTAGE_OQ_STATUS.open)) return "open";
+  return null;
+}
+
 /** `null` for a key the grammar accepts but no closed set covers. */
 export type KeyVocabulary = readonly string[] | null;
 
