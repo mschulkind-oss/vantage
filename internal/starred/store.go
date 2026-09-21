@@ -44,15 +44,83 @@ type file struct {
 	Entries []Entry `json:"entries"`
 }
 
-// FileName returns the store file's path relative to the user config dir:
-// "starred/<first 16 hex of sha256(root)>.json".
+// FileName returns the store file's path relative to the data dir:
+// "starred/<root's name>-<first 16 hex of sha256(root)>.json".
 //
-// Hashing rather than flattening the root keeps the name bounded on a deeply
-// nested path; 64 bits makes a collision negligible, and the Root field inside
-// the file catches the one that happens anyway.
+// Both halves are derived from [NormalizeRoot], never from the raw argument. On
+// darwin /Users/me/Docs and /Users/me/docs are one directory, so slugging the raw
+// string would produce Docs-<hex>.json and docs-<hex>.json carrying the SAME hash
+// — one project with two files, the exact failure NormalizeRoot exists to prevent.
+//
+// The hash alone was enough to be correct and is not enough to be usable: the
+// user guide tells people deleting a file here clears that project's bookmarks,
+// which is advice nobody can act on when every name is sixteen hex digits. The
+// readable half is what `internal/review`'s store does with its own filenames.
+//
+// The hash stays, unconditionally and at 16 hex. It is the collision defence —
+// and a collision is not benign, since the second root reads the first's file,
+// sees a foreign Root and reports empty. It also keeps the name a *file*: a root
+// called "nul" slugs to the Windows NUL device, while nul-<hex>.json is a file.
+// Making the suffix conditional on the slug looking unique would retract both
+// guarantees for eight characters of filename.
 func FileName(root string) string {
-	sum := sha256.Sum256([]byte(NormalizeRoot(root)))
-	return filepath.Join(dirName, hex.EncodeToString(sum[:])[:16]+".json")
+	return fileName(runtime.GOOS, root)
+}
+
+// fileName is [FileName] with the platform passed in, the same seam
+// [normalizeRoot] uses and for a sharper reason: the "slug from the raw root"
+// mistake is invisible on a case-sensitive host, where normalization is the
+// identity and both spellings really are two roots. Without this, the test for it
+// passes on Linux with the bug fully present.
+func fileName(goos, root string) string {
+	norm := normalizeRoot(goos, root)
+	sum := sha256.Sum256([]byte(norm))
+	return filepath.Join(dirName, rootSlug(norm)+"-"+hex.EncodeToString(sum[:])[:16]+".json")
+}
+
+// slugMax bounds the readable half. 48 + 1 + 16 + 5 is 70 bytes, comfortably
+// inside NAME_MAX (255) on every filesystem we target, with room for the ".lock"
+// the writer puts beside it.
+const slugMax = 48
+
+// rootSlug is the recognisable half of a store filename: the root's own last
+// path segment, reduced to characters every filesystem accepts.
+//
+// Takes an already-normalized root — see [FileName] on why that is not optional.
+// Anything outside [A-Za-z0-9._-] becomes a single "-", because a root's name can
+// hold spaces, colons, non-ASCII, or a path separator this reduction is the whole
+// point of removing. Truncation is on a rune boundary so a multi-byte name cannot
+// be cut into invalid UTF-8.
+//
+// Returns "root" when nothing survives — "/" has no segment to name, and a root
+// called "..." reduces to nothing. The hash still separates those from each other.
+func rootSlug(normalizedRoot string) string {
+	base := filepath.Base(normalizedRoot)
+
+	var b strings.Builder
+	lastDash := false
+	for _, r := range base {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			r == '.', r == '_', r == '-':
+			b.WriteRune(r)
+			lastDash = false
+		default:
+			if !lastDash {
+				b.WriteByte('-')
+				lastDash = true
+			}
+		}
+		if b.Len() >= slugMax {
+			break
+		}
+	}
+
+	slug := strings.Trim(b.String(), "-.")
+	if slug == "" {
+		return "root"
+	}
+	return slug
 }
 
 // NormalizeRoot returns the canonical form of a launch root for this platform.
