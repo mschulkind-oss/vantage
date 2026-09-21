@@ -112,9 +112,9 @@ Setting `exclude_dirs` replaces the default list entirely — include everything
 
 ## Stored Bookmarks
 
-The [Starred](../features.md#starred) list is not a setting — nothing in the
-config file controls it. It is something you accumulated, so it is kept with your
-review comments in the data directory rather than beside your settings:
+The [Starred](../features.md#starred) list is mostly not a setting — what you star
+is something you accumulated, so it is kept with your review comments in the data
+directory rather than beside your settings:
 
 ```
 ~/.local/share/vantage/starred/
@@ -141,6 +141,48 @@ way those filesystems do, so starting Vantage in `~/Docs` and `~/docs` finds the
 same bookmarks. On Linux those are two directories and get two lists.
 
 Deleting a file here clears that project's bookmarks and nothing else.
+
+### Documents you always want starred
+
+Two config files *can* add rows to the section, and neither writes anything into
+the file above.
+
+Your own list travels with you and applies in whichever project you open:
+
+```toml
+# ~/.config/vantage/config.toml
+[starred]
+promote = ["roadmap.md", "ROADMAP.md"]
+```
+
+A plain path is starred **only where it exists**, which is what makes a list like
+that one useful across projects: name every spelling of the file you care about,
+and each project shows the one it actually has.
+
+A project can also name documents for anyone who opens it, in the same
+`.vantage.toml` that [configures `vantage-check`](../guides/vantage-check.md):
+
+```toml
+# .vantage.toml, committed at the repository root
+[starred]
+promote = ["roadmap.md", "docs/design/*.md"]
+```
+
+A pattern uses gitignore syntax and matches documents, not folders; a plain path
+may name a folder if you give it a trailing slash. Paths are relative to the
+repository root and cannot point outside it. Here a plain path is starred whether
+or not it exists yet, because a project naming a document it has not written is an
+ordinary state.
+
+Both lists add to each other rather than one replacing the other, and the rows
+they add carry a pin and name the file that promoted them. You cannot unstar one
+— nothing of yours created it — so remove the line instead. Anything you starred
+yourself always wins: if you star a promoted document, it becomes yours and the
+pin goes.
+
+If either file cannot be read, the rows it would have added are simply absent:
+Vantage logs a warning naming the file and serves the project as though the list
+were empty.
 
 ## Performance Tuning
 

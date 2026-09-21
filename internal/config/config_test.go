@@ -498,6 +498,84 @@ func TestReviewDirIsLiteralPath(t *testing.T) {
 	require.Equal(t, filepath.Join(home, ".local", "share", "vantage", "reviews"), dir)
 }
 
+// The reader's own standing list, read out of the daemon config file without
+// going through LoadDaemonFile.
+func TestLoadUserStarred(t *testing.T) {
+	setHome := func(t *testing.T) string {
+		t.Helper()
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		t.Setenv("USERPROFILE", home)
+		t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+		require.NoError(t, os.MkdirAll(filepath.Join(home, ".config", "vantage"), 0o755))
+		return home
+	}
+	writeUserConfig := func(t *testing.T, home, body string) {
+		t.Helper()
+		require.NoError(t, os.WriteFile(
+			filepath.Join(home, ".config", "vantage", "config.toml"), []byte(body), 0o644))
+	}
+
+	t.Run("reads the promote list", func(t *testing.T) {
+		home := setHome(t)
+		writeUserConfig(t, home, "[starred]\npromote = [\"roadmap.md\", \"ROADMAP.md\"]\n")
+
+		got, err := LoadUserStarred()
+		require.NoError(t, err)
+		require.Equal(t, []string{"roadmap.md", "ROADMAP.md"}, got.Promote)
+	})
+
+	t.Run("no file is not an error", func(t *testing.T) {
+		setHome(t)
+		got, err := LoadUserStarred()
+		require.NoError(t, err)
+		require.Empty(t, got.Promote)
+	})
+
+	// The file is the daemon's own config, full of keys that are none of this
+	// reader's business. Policing them would reject every real config in
+	// existence — which is the opposite of repoconfig.Parse's rule, on purpose.
+	t.Run("reads past everything else in the file", func(t *testing.T) {
+		home := setHome(t)
+		writeUserConfig(t, home, `
+port = 9000
+host = "0.0.0.0"
+log_level = "DEBUG"
+
+[[repos]]
+name = "a"
+path = "/srv/a"
+
+[starred]
+promote = ["roadmap.md"]
+`)
+		got, err := LoadUserStarred()
+		require.NoError(t, err)
+		require.Equal(t, []string{"roadmap.md"}, got.Promote)
+	})
+
+	// It must not route through LoadDaemonFile, which sets MultiRepo
+	// unconditionally — reading one list would otherwise flip a serve process
+	// into daemon mode.
+	t.Run("does not touch the caller's config", func(t *testing.T) {
+		home := setHome(t)
+		writeUserConfig(t, home, "[[repos]]\nname = \"a\"\npath = \"/srv/a\"\n\n[starred]\npromote = [\"a.md\"]\n")
+
+		c := Defaults()
+		_, err := LoadUserStarred()
+		require.NoError(t, err)
+		require.False(t, c.MultiRepo, "reading the starred list must not change the mode")
+		require.Empty(t, c.Repos)
+	})
+
+	t.Run("a broken file is an error, not a panic", func(t *testing.T) {
+		home := setHome(t)
+		writeUserConfig(t, home, "[starred\npromote = []\n")
+		_, err := LoadUserStarred()
+		require.Error(t, err)
+	})
+}
+
 // The data path is an on-disk upgrade contract: a release that moved it would
 // orphan what is already there rather than fail, so XDG_DATA_HOME must not move
 // it. Modelled on TestReviewDirIsLiteralPath, which makes the same promise for

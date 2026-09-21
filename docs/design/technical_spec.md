@@ -196,6 +196,16 @@ because its store is keyed by the vantage invocation instead of by repository
 
 ### 2.6 Bookmarks (`internal/starred`)
 
+- **Promotion** adds rows nobody starred. `internal/repoconfig` reads a
+  repository's own `.vantage.toml` — the file `vantage-check` also reads, making the
+  server its second reader — and `config.LoadUserStarred` reads the same `[starred]
+  promote` shape from the user's own config. `starred.Promote` resolves both: a
+  literal costs no filesystem access, only a pattern lists candidates, and every
+  path clears `pathsafe` containment as well as `ValidateEntry`. Rows are
+  `starred.Listed` (wire-only), so nothing promoted is ever persisted; the reader's
+  own bookmark wins any collision. Design:
+  [`repo-config.md`](repo-config.md).
+
 - **`starred.Store`** persists one JSON file per *launch root* under
   `~/.local/share/vantage/starred` — the data directory, beside the review store,
   resolved by `config.DataFilePath` and deliberately not XDG-resolved. The file is
