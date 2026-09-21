@@ -6,6 +6,7 @@ import {
   loadConfig,
   parseConfig,
 } from "../src/core/config.js";
+import { Settings } from "../src/core/settings.js";
 import { run } from "../src/cli.js";
 import { bufferIo } from "../src/io.js";
 import { EXIT_FINDINGS, EXIT_OK, EXIT_USAGE } from "../src/exit.js";
@@ -57,8 +58,43 @@ describe("parseConfig", () => {
 
   it("ignores sections that belong to other tools", () => {
     expect(() =>
-      parseConfig("[server]\nport = 8000\n\n[check]\nstrict = true\n"),
+      parseConfig("[tool.ruff]\nline-length = 100\n\n[check]\nstrict = true\n"),
     ).not.toThrow();
+  });
+
+  // `.vantage.toml` has a second reader: the server reads its own top-level
+  // table out of the same file (docs/design/repo-config.md). This is not the
+  // "other tools" guarantee above wearing a different hat — that one is about
+  // being a good neighbour, and this one is load-bearing for a Vantage feature.
+  // If it ever stops holding, every repository that promotes a starred document
+  // gets exit code 2 from the checker instead of a clean run.
+  it("reads past the viewer's own section in the same file", () => {
+    const { policy } = parseConfig(
+      '[starred]\npromote = ["roadmap.md", "docs/*.md"]\n\n[check]\nstrict = true\n',
+    );
+
+    expect(policy.strict).toBe(true);
+  });
+
+  it("accepts the viewer's section on its own, with no [check] at all", () => {
+    const { policy, settings } = parseConfig(
+      '[starred]\npromote = ["roadmap.md"]\n',
+    );
+
+    expect(policy).toEqual({ strict: false, exitCode: 1 });
+    expect(settings).toEqual(Settings.defaults());
+  });
+
+  // The one arrangement that breaks the shared file, pinned so nobody "tidies"
+  // the server's keys under the checker's table. The parser IS strict — one
+  // level down — so this reads as the neat option and is a breaking change for
+  // every existing .vantage.toml user.
+  it.each([
+    '[check.starred]\npromote = ["roadmap.md"]\n',
+    '[check]\nstarred = ["roadmap.md"]\n',
+  ])("refuses the viewer's keys nested under [check]: %s", (source) => {
+    expect(() => parseConfig(source)).toThrow(ConfigError);
+    expect(() => parseConfig(source)).toThrow(/unknown key/);
   });
 
   // A typo that silently disables nothing is the quiet kind of wrong a checker
