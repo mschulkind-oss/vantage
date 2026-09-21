@@ -109,6 +109,7 @@ export const ViewerPage: React.FC = () => {
     currentRepo,
     setCurrentRepo,
     loadRepos,
+    refreshRepos,
     reposLoaded,
     showEmptyDirs,
     setShowEmptyDirs,
@@ -157,6 +158,13 @@ export const ViewerPage: React.FC = () => {
   const [allFiles, setAllFiles] = useState<string[]>([]);
   const [globalFiles, setGlobalFiles] = useState<GlobalFile[]>([]);
   const [filePickerLoading, setFilePickerLoading] = useState(false);
+  // What the cached lists are lists *of*: which repo `allFiles` was fetched
+  // for, and which endpoint filled `globalFiles` (the global picker is shared
+  // by all-files and recents search). A cache from a different source is not
+  // stale data worth showing while the refetch is in flight — it is the wrong
+  // list — so it gets cleared rather than displayed.
+  const allFilesRepoRef = useRef<string | null>(null);
+  const globalFilesSourceRef = useRef<"all" | "recent" | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
@@ -651,34 +659,74 @@ export const ViewerPage: React.FC = () => {
   );
 
   // Keyboard shortcuts
-  const handleOpenFilePicker = useCallback(() => {
-    setFilePickerOpen(true);
-  }, []);
-  const handleOpenGlobalFilePicker = useCallback(() => {
-    setGlobalFilePickerOpen(true);
-    if (globalFiles.length === 0) {
-      setFilePickerLoading(true);
-      axios.get<GlobalFile[]>("/api/files/all").then((res) => {
-        setGlobalFiles(res.data);
-        setFilePickerLoading(false);
-      });
+  //
+  // Every picker refetches its list each time it opens. Files appear and
+  // disappear under a long-lived tab — watching that happen is what this app is
+  // for — so a list fetched once on first open went stale immediately, and `t`
+  // could not find a file the sidebar and the recents modal were both already
+  // showing. The list that is already on screen stays there while the request is
+  // in flight, so reopening a picker is never a spinner; only a first open, or
+  // one whose cache came from another repo or another endpoint, is.
+  const openLocalFilePicker = useCallback(() => {
+    const apiBase = getApiBase();
+    const repo = useRepoStore.getState().currentRepo;
+    if (allFilesRepoRef.current !== repo) {
+      setAllFiles([]);
+      allFilesRepoRef.current = repo;
     }
-  }, [globalFiles]);
+    setFilePickerOpen(true);
+    setFilePickerLoading(true);
+    axios
+      .get<string[]>(`${apiBase}/files`)
+      .then((res) => setAllFiles(res.data))
+      .catch((err) => console.error("Failed to load file list", err))
+      .finally(() => setFilePickerLoading(false));
+  }, [getApiBase]);
+  const openGlobalFilePicker = useCallback((source: "all" | "recent") => {
+    if (globalFilesSourceRef.current !== source) {
+      setGlobalFiles([]);
+      globalFilesSourceRef.current = source;
+    }
+    setGlobalFilePickerOpen(true);
+    setFilePickerLoading(true);
+    axios
+      .get<GlobalFile[]>(
+        source === "all" ? "/api/files/all" : "/api/recent/all?limit=200",
+      )
+      .then((res) => setGlobalFiles(res.data))
+      .catch((err) => console.error("Failed to load file list", err))
+      .finally(() => setFilePickerLoading(false));
+  }, []);
+  const handleOpenFilePicker = useCallback(() => {
+    const {
+      isMultiRepo: imr,
+      currentRepo: cr,
+      reposLoaded: rl,
+    } = useRepoStore.getState();
+    if (!rl) return;
+    // In multi-repo mode with no repo selected there is no local list to search
+    if (imr && !cr) {
+      openGlobalFilePicker("all");
+      return;
+    }
+    openLocalFilePicker();
+  }, [openLocalFilePicker, openGlobalFilePicker]);
+  const handleOpenGlobalFilePicker = useCallback(() => {
+    openGlobalFilePicker("all");
+  }, [openGlobalFilePicker]);
   const handleOpenProjectPicker = useCallback(() => {
     setProjectPickerOpen(true);
-  }, []);
+    // `repos` tracks `repos_changed` pushes, but only while the socket is up —
+    // a project discovered during a disconnect would otherwise be missing here
+    // until a reload.
+    refreshRepos();
+  }, [refreshRepos]);
   const handleOpenRecentFiles = useCallback(() => {
     setRecentsModalOpen(true);
   }, []);
   const handleOpenGlobalRecentFiles = useCallback(() => {
-    // For global recents, fetch from /api/recent/all and open global file picker
-    setGlobalFilePickerOpen(true);
-    setFilePickerLoading(true);
-    axios.get<GlobalFile[]>("/api/recent/all?limit=200").then((res) => {
-      setGlobalFiles(res.data);
-      setFilePickerLoading(false);
-    });
-  }, []);
+    openGlobalFilePicker("recent");
+  }, [openGlobalFilePicker]);
   const handleProjectSelect = useCallback(
     (repoName: string) => {
       navigate(`/${repoName}`);
@@ -770,7 +818,6 @@ export const ViewerPage: React.FC = () => {
     enabled: keyboardShortcutsEnabled,
   });
 
-  // 't' hotkey for file picker
   useEffect(() => {
     try {
       localStorage.setItem(
@@ -781,56 +828,6 @@ export const ViewerPage: React.FC = () => {
       // ignore
     }
   }, [keyboardShortcutsEnabled]);
-
-  useEffect(() => {
-    if (!keyboardShortcutsEnabled) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger if typing in an input/textarea, or if modifier keys are held
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      )
-        return;
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (e.key !== "t") return;
-
-      e.preventDefault();
-
-      const {
-        isMultiRepo: imr,
-        currentRepo: cr,
-        reposLoaded: rl,
-      } = useRepoStore.getState();
-      if (!rl) return;
-
-      // In multi-repo mode without repo selected, open global search
-      if (imr && !cr) {
-        setGlobalFilePickerOpen(true);
-        if (globalFiles.length === 0) {
-          setFilePickerLoading(true);
-          axios.get<GlobalFile[]>("/api/files/all").then((res) => {
-            setGlobalFiles(res.data);
-            setFilePickerLoading(false);
-          });
-        }
-        return;
-      }
-
-      // Fetch file list if not already loaded, then open picker
-      const apiBase = getApiBase();
-      setFilePickerOpen(true);
-      if (allFiles.length === 0) {
-        setFilePickerLoading(true);
-        axios.get<string[]>(`${apiBase}/files`).then((res) => {
-          setAllFiles(res.data);
-          setFilePickerLoading(false);
-        });
-      }
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [allFiles, globalFiles, getApiBase, keyboardShortcutsEnabled]);
 
   const breadcrumbs =
     currentPath && currentPath !== "." ? currentPath.split("/") : [];
@@ -1852,7 +1849,7 @@ export const ViewerPage: React.FC = () => {
           }}
           onSelect={handleFilePickerSelect}
           files={allFiles}
-          loading={filePickerLoading}
+          loading={filePickerLoading && allFiles.length === 0}
         />
         {/* File Picker (global - all repos) */}
         <FilePicker
@@ -1866,7 +1863,7 @@ export const ViewerPage: React.FC = () => {
           globalFiles={globalFiles}
           mode="global"
           placeholder="Search all projects' files..."
-          loading={filePickerLoading}
+          loading={filePickerLoading && globalFiles.length === 0}
         />
         {/* Project Picker */}
         <ProjectPicker

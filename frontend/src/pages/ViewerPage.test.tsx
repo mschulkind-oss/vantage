@@ -1,4 +1,5 @@
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import axios from "axios";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ViewerPage } from "./ViewerPage";
 import { useRepoStore } from "../stores/useRepoStore";
@@ -200,6 +201,41 @@ describe("ViewerPage", () => {
     });
     renderPage();
     expect(screen.getByTestId("diff-viewer")).toBeInTheDocument();
+  });
+
+  // The picker used to fetch its list once and keep it for the life of the tab,
+  // so a file created after the page loaded could not be found with `t` until a
+  // reload — even while the sidebar and the recents modal were already showing
+  // it. Every open refetches.
+  it("refetches the file list every time the file picker opens", async () => {
+    (useRepoStore as unknown as { getState: () => unknown }).getState = () => ({
+      currentRepo: null,
+      isMultiRepo: false,
+      reposLoaded: true,
+    });
+    // Scoped to the file list on purpose: every other request this page makes
+    // has to keep whatever answer it already got, because a wrong-shaped one
+    // corrupts a store that is a module singleton shared with the next test.
+    const realGet = axios.get.bind(axios);
+    const get = vi.spyOn(axios, "get");
+    get.mockImplementation(((url: string, config?: never) =>
+      url.endsWith("/files")
+        ? Promise.resolve({ data: ["docs/one.md"] })
+        : realGet(url, config)) as typeof axios.get);
+
+    renderPage();
+    const filesCalls = () =>
+      get.mock.calls.filter((c) => String(c[0]).endsWith("/files")).length;
+
+    fireEvent.keyDown(document, { key: "t" });
+    const input = await screen.findByPlaceholderText("Search files by name...");
+    await waitFor(() => expect(filesCalls()).toBe(1));
+
+    fireEvent.keyDown(input, { key: "Escape" });
+    fireEvent.keyDown(document, { key: "t" });
+    await waitFor(() => expect(filesCalls()).toBe(2));
+
+    get.mockRestore();
   });
 
   it("handles breadcrumb navigation", () => {
