@@ -8,10 +8,14 @@
 // working directory.
 //
 // On-disk layout: one JSON file per root under a base directory (in production
-// ~/.config/vantage/starred, resolved by [config.UserFilePath], which is where
-// every other user-level vantage file lives on every platform), named after a
-// hash of the root. One file per root means two vantage processes serving
-// different roots never touch the same file.
+// ~/.local/share/vantage/starred, resolved by [config.DataFilePath]), named after
+// that root. One file per root means two vantage processes serving different
+// roots never touch the same file.
+//
+// The DATA directory and not the config one: a bookmark is content the user made,
+// not a setting they wrote, which is the same call [config.ReviewDir] makes for
+// the same reason — and it keeps these files out of the tree dotfile managers
+// sync, where a list keyed by one machine's absolute paths is noise on another.
 //
 // The root is canonicalized for the platform before it is hashed, because it is
 // an identity and has to answer "same directory?" the way the filesystem does —

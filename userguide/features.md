@@ -193,9 +193,11 @@ section at the top of the sidebar, above the file tree; the section is not there
 at all until something is starred.
 
 Bookmarks belong to the project, not to the browser. They are stored under
-`~/.config/vantage/starred/`, so they come back when you restart Vantage — on
-any port, in any browser — and every open tab updates the moment one is added or
-removed anywhere else.
+`~/.local/share/vantage/starred/`, beside your review comments, so they come back
+when you restart Vantage — on any port, in any browser — and every open tab
+updates the moment one is added or removed anywhere else. They are yours rather
+than the repository's: nothing about them is committed, and nothing travels when
+you share the project.
 
 Which list you get depends on how Vantage was started. `vantage serve` keys on
 the directory it is serving, so each project has its own and launching somewhere

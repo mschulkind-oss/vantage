@@ -635,16 +635,34 @@ func fileExists(p string) bool {
 	return err == nil
 }
 
-// ReviewDir returns the on-disk review store, the literal
-// ~/.local/share/vantage/reviews. Unlike the other paths this is intentionally
-// NOT XDG-resolved: it is an on-disk upgrade contract and must stay byte-stable
-// across releases regardless of XDG_DATA_HOME.
-func ReviewDir() (string, error) {
+// DataFilePath resolves one user-level vantage *data* file or directory —
+// "reviews", "starred/<file>.json" — under the literal ~/.local/share/vantage.
+// `name` is relative and may carry separators.
+//
+// Deliberately NOT XDG-resolved, and with no darwin legacy fallback, which is
+// what separates this from [UserFilePath]. Everything under here is content the
+// user made rather than a setting they wrote, so it is an on-disk upgrade
+// contract: the path must stay byte-stable across releases regardless of
+// XDG_DATA_HOME, because a release that moved it would silently orphan what is
+// already there rather than fail.
+//
+// It is also the line between the two kinds of state. A setting belongs beside
+// the config, where a user edits it and a dotfile manager may sync it; durable
+// content does not — a bookmark list keyed by absolute paths on one machine is
+// noise on another.
+func DataFilePath(name string) (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("config: locating home dir: %w", err)
 	}
-	return filepath.Join(home, ".local", "share", "vantage", "reviews"), nil
+	return filepath.Join(home, ".local", "share", "vantage", name), nil
+}
+
+// ReviewDir returns the on-disk review store, the literal
+// ~/.local/share/vantage/reviews. See [DataFilePath], which owns that prefix so
+// only one copy of it exists in this package.
+func ReviewDir() (string, error) {
+	return DataFilePath("reviews")
 }
 
 // normalizeHosts splits a host string on commas, trims whitespace, and drops
