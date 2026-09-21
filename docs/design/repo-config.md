@@ -262,12 +262,13 @@ piece of work. The export's stated reason is corrected to say that.
   the filename as a repository-root marker when it suggests link targets. Test
   fixtures therefore use a plain `.toml` name.
 
-## 5. Deferred, with its location recorded
+## 5. Deferred, then done
 
-Passing a **directory** to the checker's `--config` crashes rather than reporting:
-the load throws a bare `EISDIR` which the command re-raises. It is a real bug,
-this change makes it likelier to be hit, and it is independent of everything here
-— so it wants one commit of its own with a test, not a hitchhike on this one.
+Passing a **directory** to the checker's `--config` used to crash rather than
+report: the load threw a bare `EISDIR` which the command re-raised, so a mistyped
+argument was announced as the checker's own environment breaking. Fixed in its own
+commit, as this section said it wanted — every way the read can fail is now a
+config error, which is the family the command maps to "fix the invocation".
 
 ## 6. Decision Ledger
 
