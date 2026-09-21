@@ -129,7 +129,8 @@ export const useKeyboardShortcuts = ({
           }
           break;
         case "t":
-          // Handled by ViewerPage's existing listener — don't double-fire
+          e.preventDefault();
+          onOpenFilePicker();
           break;
         case "T":
           if (e.shiftKey) {
