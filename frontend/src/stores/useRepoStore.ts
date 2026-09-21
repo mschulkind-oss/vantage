@@ -40,6 +40,18 @@ interface RepoState {
   markPathsChanged: (paths: Iterable<string>) => void;
 }
 
+/**
+ * Monotonic counter making document loads safe against races, the same device
+ * useReviewStore's loadSeq is.
+ *
+ * loadFile and viewDirectory have no cancellation, so a slow request for the
+ * document the reader has already navigated away from can land after a newer
+ * one and overwrite it — including on the error path, where it would leave the
+ * notice naming the wrong document, the live socket watching for the wrong
+ * path to return, and the bookmark offer keyed to it.
+ */
+let navSeq = 0;
+
 // Helper to get API base path.
 // Returns null in multi-repo mode when no repo is selected, to prevent
 // accidental calls to legacy endpoints (which would serve CWD).
@@ -388,6 +400,7 @@ export const useRepoStore = create<RepoState>((set, get) => ({
   },
 
   loadFile: async (path) => {
+    const seq = ++navSeq;
     const { currentRepo, isMultiRepo } = get();
     const apiBase = getApiBase(currentRepo, isMultiRepo);
     if (!apiBase) return; // No repo selected in multi-repo mode
@@ -397,6 +410,7 @@ export const useRepoStore = create<RepoState>((set, get) => ({
       const response = await axios.get<FileContent>(
         `${apiBase}/content?path=${encodeURIComponent(path)}`,
       );
+      if (seq !== navSeq) return;
       set({
         fileContent: response.data,
         currentPath: path,
@@ -404,6 +418,7 @@ export const useRepoStore = create<RepoState>((set, get) => ({
         currentDirectory: null,
       });
     } catch {
+      if (seq !== navSeq) return;
       set({
         error: "Failed to load file content",
         isLoading: false,
@@ -421,6 +436,7 @@ export const useRepoStore = create<RepoState>((set, get) => ({
   },
 
   viewDirectory: async (path) => {
+    const seq = ++navSeq;
     const { currentRepo, isMultiRepo } = get();
     const apiBase = getApiBase(currentRepo, isMultiRepo);
     if (!apiBase) return; // No repo selected in multi-repo mode
@@ -431,6 +447,7 @@ export const useRepoStore = create<RepoState>((set, get) => ({
       const response = await axios.get<FileNode[]>(
         `${apiBase}/tree?${getTreeParams(path, { include_git: "true" })}`,
       );
+      if (seq !== navSeq) return;
       set({
         currentDirectory: response.data,
         currentPath: path,
@@ -438,6 +455,7 @@ export const useRepoStore = create<RepoState>((set, get) => ({
         fileContent: null,
       });
     } catch {
+      if (seq !== navSeq) return;
       set({
         error: "Failed to load directory",
         isLoading: false,
