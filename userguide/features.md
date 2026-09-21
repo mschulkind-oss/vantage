@@ -160,6 +160,20 @@ address bar, so the link is ready to copy. The heading you are currently
 reading stays highlighted, and the table of contents stays put as the
 document scrolls under it.
 
+**Open Questions are listed too**, indented under the heading they sit below,
+each wearing the status emoji the document gave it — so a document that wants a
+decision from you says so before you read a word of it. A tally beside
+**Contents** counts them by state: `💬 3` is three awaiting a ruling, and
+`💬 1 ✅ 2` is one outstanding and two already answered. Clicking a question
+scrolls to the question itself, and the link it copies is the question's own
+`#OQ-…` anchor, which is what a reference from another document uses.
+
+Only questions carrying an [`oq` directive](reference/style-guide.md) appear,
+which by convention means exactly the ones that can be answered in one click —
+the same set the **Review** toggle counts in its tooltip. A question the author
+marked blocked or answered and left untagged is not an action, so it is not
+listed.
+
 The choice is remembered: turn it on once and it stays on as you move
 between documents and across restarts. It appears only for a rendered Markdown
 document — not for raw view, a directory listing or a binary file — and only on

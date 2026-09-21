@@ -482,6 +482,12 @@ would send the reader hunting for controls that were never there — and five is
 what a naive count of `[data-vantage-oq]` gives on a document that also stamps a
 `pre` and a `table`.
 
+There is now a third caller, and the argument holds one surface further on: the
+table of contents lists these questions and tallies them by state
+([`contents-open-questions.md`](../design/contents-open-questions.md)). A column
+listing five entries against three buttons is the same lie in a new place, so it
+derives the set from the same function rather than re-querying the attribute.
+
 The button renders only when **all three** hold: review mode is on, the directive
 parsed, and static mode is off. The static gate is not optional — an exported site
 runs review mode with every write silently coerced into a GET, so an ungated
