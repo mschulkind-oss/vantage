@@ -110,6 +110,30 @@ exclude_dirs = ["node_modules", "vendor", "dist", "build"]
 
 Setting `exclude_dirs` replaces the default list entirely — include everything you want hidden.
 
+## Stored Bookmarks
+
+The [Starred](../features.md#starred) list is not a setting — nothing in the
+config file controls it — but it is kept beside the config, under:
+
+```
+~/.config/vantage/starred/
+```
+
+One file per project, named after a hash of its path. Which project a list
+belongs to is decided by where Vantage was started: `vantage serve` keys on the
+directory it is serving, so relaunching there restores the same bookmarks
+whatever port or browser you use, while `vantage daemon` keys on its config
+file, which stays the same across restarts and does not depend on the working
+directory a service manager happens to give it. In daemon mode the one list
+covers every repository being served, and each bookmark remembers which it came
+from.
+
+On macOS and Windows the project's path is matched without regard to case, the
+way those filesystems do, so starting Vantage in `~/Docs` and `~/docs` finds the
+same bookmarks. On Linux those are two directories and get two lists.
+
+Deleting a file here clears that project's bookmarks and nothing else.
+
 ## Performance Tuning
 
 For very large repositories with deep directory trees, two settings control how Vantage discovers untracked Markdown files:

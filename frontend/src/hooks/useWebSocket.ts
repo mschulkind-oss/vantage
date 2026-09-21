@@ -3,6 +3,7 @@ import { useRepoStore } from "../stores/useRepoStore";
 import { useGitStore } from "../stores/useGitStore";
 import { useConnectionStore } from "../stores/useConnectionStore";
 import { useReviewStore } from "../stores/useReviewStore";
+import { useStarredStore } from "../stores/useStarredStore";
 import { WebSocketMessage } from "../types";
 import { isStaticMode } from "../lib/staticMode";
 import { wsLog, bindLoggerSocket } from "../lib/wsLogger";
@@ -129,6 +130,11 @@ export const useWebSocket = () => {
 
   /** Do a full refresh after reconnecting (we may have missed changes). */
   const refreshAfterReconnect = useCallback(() => {
+    // Bookmarks first, above the repo guards: /api/starred is global, so it
+    // neither needs a selected repo nor waits for one. A star added from
+    // another browser during the outage is only recoverable here.
+    void useStarredStore.getState().loadStarred();
+
     // Guard: don't fire API calls before the repo store is initialised.
     // Before loadRepos() completes, isMultiRepo defaults to false and
     // getApiBase() returns "/api", which 404s in multi-repo setups.
@@ -199,6 +205,18 @@ export const useWebSocket = () => {
           (message.removed ?? []).join(", "),
         );
         void useRepoStore.getState().refreshRepos();
+        return;
+      }
+
+      if (message.type === "starred_changed") {
+        // Deliberately ungated: unlike review_changed, the bookmark list is
+        // repo-agnostic and per-invocation, so it is refetched whatever the
+        // repo store currently holds. The payload is empty by design — the
+        // push says "changed" and the list is the server's answer, so two
+        // near-simultaneous mutations cannot leave a client holding a list
+        // nobody has.
+        wsLog.log("[ws] starred_changed");
+        void useStarredStore.getState().loadStarred();
         return;
       }
 

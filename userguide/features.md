@@ -185,6 +185,31 @@ The expand icon beside it drops the fixed reading column and lets the document
 use the whole window, which is what you want for a wide table or a large
 diagram. It is remembered the same way.
 
+## Starred
+
+The star beside the document name bookmarks whatever is open — a document or a
+folder — and fills in amber once it is. Bookmarks collect in a **Starred**
+section at the top of the sidebar, above the file tree; the section is not there
+at all until something is starred.
+
+Bookmarks belong to the project, not to the browser. They are stored under
+`~/.config/vantage/starred/`, so they come back when you restart Vantage — on
+any port, in any browser — and every open tab updates the moment one is added or
+removed anywhere else.
+
+Which list you get depends on how Vantage was started. `vantage serve` keys on
+the directory it is serving, so each project has its own and launching somewhere
+else gives you that project's. A [daemon](guides/daemon-mode.md) keys on its
+config file instead, which does not depend on the working directory a service
+manager happens to hand it, so one list covers every repository it serves and
+each bookmark remembers which one it came from.
+
+Nothing checks that a bookmark still points at something. A starred document
+that has been deleted or renamed keeps its place in the list and only says so
+when you open it: the page reports that it could not be loaded and offers to
+remove the bookmark. That way a file that is briefly missing — mid-rebase, say —
+does not quietly disappear from your list.
+
 ## File Tree Navigation
 
 The sidebar displays a file tree with:

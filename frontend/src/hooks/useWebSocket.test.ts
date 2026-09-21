@@ -4,6 +4,7 @@ import { useWebSocket } from "./useWebSocket";
 import { useRepoStore } from "../stores/useRepoStore";
 import { useGitStore } from "../stores/useGitStore";
 import { useReviewStore } from "../stores/useReviewStore";
+import { useStarredStore } from "../stores/useStarredStore";
 
 vi.mock("../stores/useRepoStore");
 vi.mock("../stores/useGitStore");
@@ -27,6 +28,12 @@ describe("useWebSocket", () => {
   // loadReview action so we observe the real call the hook makes.
   const mockLoadReview = vi.fn();
   let realLoadReview: ReturnType<typeof useReviewStore.getState>["loadReview"];
+  // Same treatment for the starred store: swap the real action rather than
+  // module-mocking, so this observes the call the hook actually makes.
+  const mockLoadStarred = vi.fn();
+  let realLoadStarred: ReturnType<
+    typeof useStarredStore.getState
+  >["loadStarred"];
 
   const makeRepoStoreState = (overrides: Record<string, unknown> = {}) => ({
     currentPath: "test.md",
@@ -47,6 +54,9 @@ describe("useWebSocket", () => {
 
     realLoadReview = useReviewStore.getState().loadReview;
     useReviewStore.setState({ loadReview: mockLoadReview });
+
+    realLoadStarred = useStarredStore.getState().loadStarred;
+    useStarredStore.setState({ loadStarred: mockLoadStarred });
 
     // Mock Stores - support both destructuring and selector patterns
     const repoState = makeRepoStoreState();
@@ -89,6 +99,7 @@ describe("useWebSocket", () => {
 
   afterEach(() => {
     useReviewStore.setState({ loadReview: realLoadReview });
+    useStarredStore.setState({ loadStarred: realLoadStarred });
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
@@ -457,6 +468,58 @@ describe("useWebSocket", () => {
 
       // Socket appeared healthy and hidden time < 30s — no extra reconnect
       expect(global.WebSocket).toHaveBeenCalledTimes(initialCalls);
+    });
+  });
+
+  describe("starred_changed", () => {
+    // This push is the whole cross-browser sync: starring in one tab has to
+    // reach every other open tab without a reload.
+    it("refetches the bookmark list", () => {
+      renderHook(() => useWebSocket());
+
+      act(() => {
+        mockWebSocket.onmessage!({
+          data: JSON.stringify({ type: "starred_changed" }),
+        } as MessageEvent);
+      });
+
+      expect(mockLoadStarred).toHaveBeenCalled();
+    });
+
+    // Unlike review_changed, bookmarks are global and per-invocation, so the
+    // refetch must not wait on a repo being loaded or selected.
+    it("is not gated on the repo store", () => {
+      (useRepoStore as unknown as { getState: () => unknown }).getState =
+        () => ({
+          ...makeRepoStoreState({
+            reposLoaded: false,
+            isMultiRepo: true,
+            currentRepo: null,
+          }),
+        });
+
+      renderHook(() => useWebSocket());
+
+      act(() => {
+        mockWebSocket.onmessage!({
+          data: JSON.stringify({ type: "starred_changed" }),
+        } as MessageEvent);
+      });
+
+      expect(mockLoadStarred).toHaveBeenCalled();
+    });
+
+    // A star added from another browser during an outage is only recoverable
+    // on reconnect.
+    it("refetches on reconnect", () => {
+      renderHook(() => useWebSocket());
+      mockLoadStarred.mockClear();
+
+      act(() => {
+        mockWebSocket.onopen!(new Event("open"));
+      });
+
+      expect(mockLoadStarred).toHaveBeenCalled();
     });
   });
 });
