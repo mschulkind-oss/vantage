@@ -111,6 +111,16 @@ type Deps struct {
 	// refetches the list — this is what keeps several browsers in sync. A nil
 	// value silently skips the push, as with ReviewChanged.
 	StarredChanged func()
+	// Promoted, when non-nil, returns the bookmark rows promoted by config —
+	// a repository's own `.vantage.toml` and the reader's user config. A nil
+	// value means no promotions, which is what every test that does not care gets.
+	//
+	// A hook rather than a service on Deps because the /starred routes are
+	// ScopeGlobal: the resolve middleware injects per-repo services only in
+	// single-repo mode, so a handler reaching for one would get the zero value and
+	// panic in daemon mode — a path single-repo tests never exercise. The server
+	// knows every repository it serves, so it answers this from outside.
+	Promoted func() []starred.Listed
 }
 
 // Handlers holds the dependency-injected state for every API handler. Construct

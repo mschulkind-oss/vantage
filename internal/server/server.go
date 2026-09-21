@@ -61,6 +61,7 @@ import (
 	"github.com/mschulkind-oss/vantage/internal/live"
 	"github.com/mschulkind-oss/vantage/internal/model"
 	"github.com/mschulkind-oss/vantage/internal/perf"
+	"github.com/mschulkind-oss/vantage/internal/repoconfig"
 	"github.com/mschulkind-oss/vantage/internal/review"
 	"github.com/mschulkind-oss/vantage/internal/starred"
 )
@@ -82,6 +83,13 @@ type repoServices struct {
 	fs   *fs.FileSystemService
 	// root is the absolute repository root, used to start a watcher.
 	root string
+	// cfg reads this repository's own .vantage.toml — the file vantage-check
+	// also reads. Attached here rather than in NewServer because
+	// newRepoServices is the only path a repository takes into s.repos, whether
+	// configured at construction or discovered by the source-dir loop later;
+	// wiring it anywhere else is correct at startup and silently leaves every
+	// discovered repository without a config.
+	cfg *repoconfig.Config
 }
 
 // Server is the assembled application. Construct it with [NewServer]; expose its
@@ -191,6 +199,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		ReviewChanged:  s.broadcastReviewChanged,
 		Starred:        s.starred,
 		StarredChanged: s.broadcastStarredChanged,
+		Promoted:       s.promoted,
 	})
 
 	s.router = s.buildRouter(handlers)
@@ -265,7 +274,56 @@ func (s *Server) newRepoServices(name, root string) *repoServices {
 		git:  gitSvc,
 		fs:   fsSvc,
 		root: fsSvc.RootPath(),
+		cfg:  repoconfig.New(fsSvc.RootPath()),
 	}
+}
+
+// promoted collects the bookmark rows config promotes, across every repository
+// this server serves plus the reader's own user-level list.
+//
+// Wired to api.Deps.Promoted. It runs on every GET /starred, which the viewer
+// issues on mount, on reconnect and after every change push — so the cheap path
+// has to stay cheap: a literal promote line never touches the filesystem, and
+// ListAllFiles is passed as a closure that only a pattern calls.
+func (s *Server) promoted() []starred.Listed {
+	var repoRows []starred.Listed
+	for _, rs := range s.repoList() {
+		settings, err := rs.cfg.Settings()
+		if err != nil {
+			// Warned, not fatal, and the repository is served as if it had no
+			// config: in daemon mode, failing on this would let one
+			// contributor's typo take out every other repository here.
+			s.logger.Warn("server: ignoring repository config",
+				"repo", rs.name, "path", rs.cfg.Path(), "error", err)
+			continue
+		}
+		if settings.IsZero() {
+			continue
+		}
+
+		// "" is the repo key in single-repo mode — the sentinel Entry uses — and
+		// the {repo} segment in daemon mode.
+		repoKey := ""
+		if s.cfg.MultiRepo {
+			repoKey = rs.name
+		}
+		rows, rejected := starred.Promote(starred.PromoteRequest{
+			Repo:       repoKey,
+			Root:       rs.root,
+			Lines:      settings.Starred.Promote,
+			Source:     starred.SourceRepo,
+			Candidates: rs.fs.ListAllFiles,
+		})
+		for _, r := range rejected {
+			s.logger.Warn("server: ignoring promoted document",
+				"repo", rs.name, "reason", r)
+		}
+		repoRows = append(repoRows, rows...)
+	}
+
+	// Deduplicated across repositories. The reader's own stored bookmarks beat
+	// these, and the handler puts those ahead of whatever this returns.
+	return starred.MergeListed(repoRows)
 }
 
 // buildRouter wires the chi router: the perf middleware on /api, the WebSocket,
