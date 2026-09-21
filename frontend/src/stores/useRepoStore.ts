@@ -409,6 +409,13 @@ export const useRepoStore = create<RepoState>((set, get) => ({
         isLoading: false,
         fileContent: null,
         currentDirectory: null,
+        // currentPath is the document the viewer is *on*, not the last one that
+        // loaded. Leaving the previous value here made the error notice print
+        // the wrong path (or none at all, when the failure was the first load
+        // of the session), and left the live socket comparing pushes against a
+        // stale path — so the notice's promise that the page reloads itself
+        // when the file comes back went unkept.
+        currentPath: path,
       });
     }
   },
@@ -436,6 +443,9 @@ export const useRepoStore = create<RepoState>((set, get) => ({
         isLoading: false,
         currentDirectory: null,
         fileContent: null,
+        // See loadFile's catch: the viewer is on this path whether or not it
+        // loaded.
+        currentPath: path,
       });
     }
   },
