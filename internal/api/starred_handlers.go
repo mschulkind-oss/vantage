@@ -36,10 +36,15 @@ type starredResponse struct {
 // Every route answers through this, so the mutation responses and the list agree
 // about the shape without a builder. Promotion joins here later; until it does,
 // every row is SourceUser.
-func listed(entries []starred.Entry) []starred.Listed {
-	rows := starred.UserListed(entries)
-	starred.SortListed(rows)
-	return rows
+func (h *Handlers) listed(entries []starred.Entry) []starred.Listed {
+	own := starred.UserListed(entries)
+	if h.deps.Promoted == nil {
+		starred.SortListed(own)
+		return own
+	}
+	// The reader's own rows first, so they win every collision: theirs is the
+	// only row with an honest timestamp and the only one they can remove.
+	return starred.MergeListed(own, h.deps.Promoted())
 }
 
 // starredOr503 recovers the bookmark store, writing a 503 when bookmarks are
@@ -64,7 +69,7 @@ func (h *Handlers) StarredList(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "Failed to read bookmarks")
 		return
 	}
-	writeJSON(w, http.StatusOK, starredResponse{Entries: listed(entries)})
+	writeJSON(w, http.StatusOK, starredResponse{Entries: h.listed(entries)})
 }
 
 // starredAddRequest is the POST /starred body.
@@ -92,7 +97,7 @@ func (h *Handlers) StarredAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.starredChanged()
-	writeJSON(w, http.StatusOK, starredResponse{Entries: listed(entries)})
+	writeJSON(w, http.StatusOK, starredResponse{Entries: h.listed(entries)})
 }
 
 // StarredDelete handles DELETE /starred?repo=&path=. An absent repo and an
@@ -121,7 +126,7 @@ func (h *Handlers) StarredDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.starredChanged()
-	writeJSON(w, http.StatusOK, starredResponse{Entries: listed(entries)})
+	writeJSON(w, http.StatusOK, starredResponse{Entries: h.listed(entries)})
 }
 
 // starredChanged fires the live push, if one is wired. A nil hook (tests,

@@ -120,4 +120,62 @@ describe("StarredSection", () => {
     expect(container.querySelector(".lucide-file")).toBeTruthy();
     expect(container.querySelector(".lucide-folder")).toBeFalsy();
   });
+
+  // A promoted row is in the list and is not the reader's. It reads as an ordinary
+  // row on purpose — the section is a list of documents to open — but it says
+  // where it came from, because it is the one row they cannot remove.
+  it("marks a row the reader did not star", () => {
+    useStarredStore.setState({
+      entries: [
+        entry({ path: "roadmap.md", source: "repo" }),
+        entry({ path: "docs/a.md", source: "user" }),
+      ],
+      loaded: true,
+    });
+
+    renderSection();
+
+    const marks = screen.getAllByTestId("starred-promoted");
+    expect(marks).toHaveLength(1);
+    expect(
+      screen.getByTitle(
+        "roadmap.md — Promoted by this project's .vantage.toml",
+      ),
+    ).toBeTruthy();
+    // The reader's own row is untouched.
+    expect(screen.getByTitle("docs/a.md")).toBeTruthy();
+  });
+
+  it("names the reader's own config when that is what promoted it", () => {
+    useStarredStore.setState({
+      entries: [entry({ path: "roadmap.md", source: "user-config" })],
+      loaded: true,
+    });
+
+    renderSection();
+
+    expect(
+      screen.getByTitle("roadmap.md — Promoted by your Vantage config"),
+    ).toBeTruthy();
+  });
+
+  // Promoted rows must not be grouped separately: the sidebar reads by repository,
+  // and a block of its own would put one project's documents in two places.
+  it("leaves promoted rows in the server's order", () => {
+    useStarredStore.setState({
+      entries: [
+        entry({ path: "a.md", source: "user" }),
+        entry({ path: "b.md", source: "repo" }),
+        entry({ path: "c.md", source: "user" }),
+      ],
+      loaded: true,
+    });
+
+    renderSection();
+
+    const names = screen
+      .getAllByRole("link")
+      .map((a) => a.getAttribute("title")?.split(" — ")[0]);
+    expect(names).toEqual(["a.md", "b.md", "c.md"]);
+  });
 });
