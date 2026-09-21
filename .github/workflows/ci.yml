@@ -21,6 +21,34 @@ jobs:
         with:
           extra_args: --only-verified
 
+  # The commit-message policy the local hooks enforce, run where a contribution
+  # can actually be seen. `core.hooksPath` is per-clone local config, so a fork
+  # that never ran `just setup` has no hooks at all — which is how a PR arrived
+  # carrying AI attribution trailers with nothing anywhere reporting it.
+  #
+  # Same script the hooks call, so the two cannot disagree about the policy.
+  commits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the range below has to be reachable
+
+      - name: Check commit messages
+        env:
+          # On a pull request, exactly the commits it contributes. On a push,
+          # what that push added — `before` is all-zeros for a new branch and
+          # unreachable after a force-push, so fall back to the tip alone
+          # rather than failing the job on a range git cannot read.
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            exec scripts/check-commit-messages.sh "$BASE..$HEAD"
+          fi
+          echo "no readable base ($BASE) — checking $HEAD alone"
+          exec scripts/check-commit-messages.sh "$HEAD~1..$HEAD"
+
   check:
     strategy:
       fail-fast: false
