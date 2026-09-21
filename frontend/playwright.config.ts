@@ -1,4 +1,22 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
+
+/**
+ * A home directory of this run's own, for the real `vantage serve` below.
+ *
+ * The backend writes user-level state outside the repository — the review store,
+ * and now the bookmark store — resolved from `$HOME` (and `%USERPROFILE%` on
+ * Windows, which is what `os.UserHomeDir` reads there). Without this, the first
+ * e2e run that stars anything writes a bookmark file into the developer's own
+ * home and leaves it there.
+ *
+ * `XDG_CONFIG_HOME` is pinned too, because `config.UserFilePath` reads it
+ * straight from the environment: a developer who exports it would otherwise keep
+ * their real config directory in play while `$HOME` looked isolated.
+ */
+const runHome = mkdtempSync(join(tmpdir(), "vantage-e2e-home-"));
 
 export default defineConfig({
   testDir: "./e2e",
@@ -28,5 +46,12 @@ export default defineConfig({
     url: "http://localhost:5201/api/health",
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
+    // Applies to the shell that runs both halves of the command above, so the
+    // Go backend inherits it. See `runHome`.
+    env: {
+      HOME: runHome,
+      USERPROFILE: runHome,
+      XDG_CONFIG_HOME: join(runHome, ".config"),
+    },
   },
 });
