@@ -93,13 +93,16 @@ type Config struct {
 	// symlink-resolved once [Config.Resolve] has run.
 	TargetRepo string
 
-	// ConfigPath is the absolute path of the daemon config file this Config was
-	// loaded from, or "" when none was (serve mode, or a Config built in
-	// process). It is not a setting any source can provide: [LoadDaemonFile]
-	// records where it read from, so callers that must key per-daemon state
-	// have something stable to key on. The working directory is not usable for
-	// that — a daemon under `systemctl --user` runs in "/" — see
-	// [starred.RootKey].
+	// ConfigPath is the daemon config file this Config was loaded from, or ""
+	// when none was (serve mode, or a Config built in process). Absolute and
+	// symlink-resolved once [Config.Resolve] has run, exactly like TargetRepo,
+	// because it is an identity rather than merely a location: callers key
+	// per-daemon state on it, and two spellings of one file must not read as two
+	// daemons. The working directory is not usable for that — a daemon under
+	// `systemctl --user` runs in "/" — see [starred.RootKey].
+	//
+	// It is not a setting any source can provide: [LoadDaemonFile] records where
+	// it read from.
 	ConfigPath string
 
 	// Repos are the repositories served in daemon mode.
@@ -366,6 +369,18 @@ func (c *Config) Resolve() error {
 			return err
 		}
 		c.TargetRepo = p
+	}
+	// The same discipline, for the same reason: ConfigPath is an *identity* —
+	// `starred.RootKey` keys a daemon's bookmark file on it — and two spellings
+	// of one file must not be two daemons. `LoadDaemonFile` only makes it
+	// absolute, which leaves `~/.config/vantage/config.toml` and the path it
+	// symlinks to reading as different daemons with different bookmark lists.
+	if c.ConfigPath != "" {
+		p, err := resolvePath(c.ConfigPath)
+		if err != nil {
+			return err
+		}
+		c.ConfigPath = p
 	}
 	for i := range c.Repos {
 		p, err := resolvePath(c.Repos[i].Path)
