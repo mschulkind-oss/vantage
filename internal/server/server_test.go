@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -20,6 +21,7 @@ import (
 	"github.com/mschulkind-oss/vantage/internal/config"
 	"github.com/mschulkind-oss/vantage/internal/gitenv"
 	"github.com/mschulkind-oss/vantage/internal/model"
+	"github.com/mschulkind-oss/vantage/internal/repoconfig"
 	"github.com/mschulkind-oss/vantage/web"
 )
 
@@ -866,4 +868,139 @@ func TestStarredChangedBroadcastReachesWebSocket(t *testing.T) {
 	_, data, err = ws.Read(ctx)
 	require.NoError(t, err)
 	require.JSONEq(t, `{"type":"starred_changed"}`, string(data))
+}
+
+// starredRows returns the /starred list as "repo/path=source" strings, so a test
+// can assert where each row came from as well as which rows there are.
+func starredRows(t *testing.T, h http.Handler) []string {
+	t.Helper()
+	rec := doGET(t, h, "/api/starred")
+	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+
+	var body struct {
+		Entries []struct {
+			Repo   string `json:"repo"`
+			Path   string `json:"path"`
+			Source string `json:"source"`
+		} `json:"entries"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+
+	out := make([]string, 0, len(body.Entries))
+	for _, e := range body.Entries {
+		out = append(out, path.Join(e.Repo, e.Path)+"="+e.Source)
+	}
+	return out
+}
+
+// writeRepoConfig puts a .vantage.toml at a repository root.
+func writeRepoConfig(t *testing.T, root, body string) {
+	t.Helper()
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".vantage.toml"), []byte(body), 0o644))
+	repoconfig.ClearCache()
+	t.Cleanup(repoconfig.ClearCache)
+}
+
+// A repository promotes its own documents into Starred, end to end: the config
+// file the checker also reads, through the server, into the response the viewer
+// renders.
+func TestRepositoryPromotesItsOwnDocuments(t *testing.T) {
+	isolateUserDirs(t)
+	root := initRepo(t, map[string]string{
+		"roadmap.md":  "# Roadmap\n",
+		"docs/a.md":   "# A\n",
+		"docs/b.md":   "# B\n",
+		"other/c.md":  "# C\n",
+		".vantage.md": "# not config\n",
+	})
+	writeRepoConfig(t, root, "[check]\nstrict = true\n\n[starred]\npromote = [\"roadmap.md\", \"docs/*.md\"]\n")
+
+	cfg := config.Defaults()
+	cfg.TargetRepo = root
+	require.NoError(t, cfg.Resolve())
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+	h := srv.Handler()
+
+	require.Equal(t,
+		[]string{"docs/a.md=repo", "docs/b.md=repo", "roadmap.md=repo"},
+		starredRows(t, h),
+		"the literal and the pattern both promote, and nothing else does")
+}
+
+// The reader's own bookmark wins a collision: it is the only row with an honest
+// timestamp and the only one they can remove.
+func TestAUsersBookmarkBeatsAPromotionOfTheSameDocument(t *testing.T) {
+	isolateUserDirs(t)
+	root := initRepo(t, map[string]string{"roadmap.md": "# Roadmap\n"})
+	writeRepoConfig(t, root, "[starred]\npromote = [\"roadmap.md\"]\n")
+
+	cfg := config.Defaults()
+	cfg.TargetRepo = root
+	require.NoError(t, cfg.Resolve())
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+	h := srv.Handler()
+
+	require.Equal(t, []string{"roadmap.md=repo"}, starredRows(t, h))
+
+	rec := doJSON(t, h, http.MethodPost, "/api/starred", `{"repo":"","path":"roadmap.md"}`)
+	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+
+	require.Equal(t, []string{"roadmap.md=user"}, starredRows(t, h),
+		"one row, and it is the reader's own")
+}
+
+// A repository with a broken config is served as if it had none. Failing here
+// would let one contributor's typo take out every other repository on a daemon.
+func TestABrokenRepositoryConfigIsIgnoredNotFatal(t *testing.T) {
+	isolateUserDirs(t)
+	root := initRepo(t, map[string]string{"doc.md": "# Doc\n"})
+	writeRepoConfig(t, root, "[starred]\npromotes = [\"doc.md\"]\n")
+
+	cfg := config.Defaults()
+	cfg.TargetRepo = root
+	require.NoError(t, cfg.Resolve())
+	srv, err := NewServer(cfg)
+	require.NoError(t, err, "a bad repository config must not fail startup")
+
+	require.Empty(t, starredRows(t, srv.Handler()))
+}
+
+// In daemon mode each repository promotes only its own, and every row says which
+// repository it belongs to.
+func TestDaemonPromotesPerRepository(t *testing.T) {
+	isolateUserDirs(t)
+	rootA := initRepo(t, map[string]string{"a.md": "# A\n"})
+	rootB := initRepo(t, map[string]string{"b.md": "# B\n"})
+	writeRepoConfig(t, rootA, "[starred]\npromote = [\"a.md\"]\n")
+	writeRepoConfig(t, rootB, "[starred]\npromote = [\"b.md\"]\n")
+
+	cfg := config.Defaults()
+	cfg.MultiRepo = true
+	cfg.Repos = []config.RepoConfig{{Name: "alpha", Path: rootA}, {Name: "beta", Path: rootB}}
+	require.NoError(t, cfg.Resolve())
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+
+	require.Equal(t, []string{"alpha/a.md=repo", "beta/b.md=repo"},
+		starredRows(t, srv.Handler()))
+}
+
+// A promotion pointing out of the tree is refused. Unlike a bookmark, which is
+// deliberately never validated against the filesystem, a promoted path has no
+// round-trip to protect and is config-driven rather than typed by the reader.
+func TestPromotionCannotEscapeTheRepository(t *testing.T) {
+	isolateUserDirs(t)
+	root := initRepo(t, map[string]string{"doc.md": "# Doc\n"})
+	writeRepoConfig(t, root, "[starred]\npromote = [\"../escape.md\", \"doc.md\"]\n")
+
+	cfg := config.Defaults()
+	cfg.TargetRepo = root
+	require.NoError(t, cfg.Resolve())
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+
+	require.Equal(t, []string{"doc.md=repo"}, starredRows(t, srv.Handler()),
+		"the escaping line is dropped and the rest still promotes")
 }
