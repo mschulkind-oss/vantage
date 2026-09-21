@@ -24,6 +24,8 @@ import {
   collectOutline,
   measureEntryOffsets,
   questionLabel,
+  tallyQuestions,
+  tallySentence,
   type OutlineEntry,
 } from "../hooks/useDocumentOutline";
 
@@ -182,6 +184,24 @@ describe("collectOutline", () => {
     ]);
   });
 
+  it("points at the enclosing item, not at the stamped leaning paragraph", () => {
+    // One element does two jobs — the scroll target and what the active
+    // highlight measures — and it has to be the item for both. Measuring the
+    // leaning while scrolling to the item puts them ~90px apart, which made
+    // clicking a question highlight the *previous* entry.
+    const container = document.createElement("div");
+    container.innerHTML = documentWithQuestionsHTML();
+    const [first] = collectOutline(container).filter(
+      (e) => e.kind === "question",
+    );
+
+    expect(first.element.tagName).toBe("LI");
+    expect(first.element.querySelector("[data-vantage-oq]")).toBeTruthy();
+    // The id it links to still belongs to the paragraph inside.
+    expect(first.element.id).toBe("");
+    expect(first.id).toBe("OQ-1");
+  });
+
   it("nests a question one step under the heading it falls beneath", () => {
     const container = document.createElement("div");
     container.innerHTML = documentWithQuestionsHTML();
@@ -256,6 +276,24 @@ describe("questionLabel", () => {
     expect(questionLabel(stamped).marker).toBe("💬 🤷");
   });
 
+  it("flattens a title the author wrapped across source lines", () => {
+    // The newline is real — it is in the Markdown — and it reaches the `title`
+    // tooltip and the accessible name, both of which are single-line surfaces.
+    const container = document.createElement("div");
+    container.innerHTML = `
+      <li>
+        <p>💬 <strong>OQ-B2: Does the proactive line ask the agent to write, or only to
+read?</strong></p>
+        <p data-source-line="3" data-vantage-oq="true" id="OQ-B2">A leaning.</p>
+      </li>
+    `;
+    const stamped = container.querySelector<HTMLElement>("[data-vantage-oq]")!;
+
+    expect(questionLabel(stamped).text).toBe(
+      "OQ-B2: Does the proactive line ask the agent to write, or only to read?",
+    );
+  });
+
   it("ignores a bold run that is not a question title", () => {
     const container = document.createElement("div");
     container.innerHTML = `
@@ -268,6 +306,60 @@ describe("questionLabel", () => {
     const stamped = container.querySelector<HTMLElement>("[data-vantage-oq]")!;
 
     expect(questionLabel(stamped).text).toBe("OQ-3: The real title?");
+  });
+});
+
+describe("tallyQuestions", () => {
+  /** A question entry in `status`, which is all the tally reads. */
+  function q(status: OutlineEntry["status"]): OutlineEntry {
+    return {
+      kind: "question",
+      id: "OQ-1",
+      text: "A question?",
+      marker: "",
+      status,
+      level: 2,
+      element: document.createElement("li"),
+    };
+  }
+
+  it("counts only questions, and only states that occur", () => {
+    const heading = { ...q(null), kind: "heading" as const };
+    expect(
+      tallyQuestions([heading, q("open"), q("open"), q("blocked")]),
+    ).toEqual([
+      { status: "open", glyph: "💬", count: 2 },
+      { status: "blocked", glyph: "🔒", count: 1 },
+    ]);
+  });
+
+  it("keeps the convention's order, whatever order the document used", () => {
+    expect(
+      tallyQuestions([q("blocked"), q(null), q("settled"), q("open")]).map(
+        (t) => t.status,
+      ),
+    ).toEqual(["open", "settled", "blocked", null]);
+  });
+
+  it("gives an unmarked question a neutral glyph rather than borrowing one", () => {
+    expect(tallyQuestions([q(null)])).toEqual([
+      { status: null, glyph: "•", count: 1 },
+    ]);
+  });
+
+  it("is empty for a document with no questions", () => {
+    expect(tallyQuestions([])).toEqual([]);
+  });
+
+  it("says what every listed question has in common, then the split", () => {
+    // The shared part is the bit a reader cannot see: these are not merely
+    // questions, they are the ones answerable without typing.
+    expect(tallySentence(tallyQuestions([q("open")]))).toBe(
+      "1 question here can be answered in one click",
+    );
+    expect(tallySentence(tallyQuestions([q("open"), q("settled")]))).toBe(
+      "2 questions here can be answered in one click — 1 open, 1 answered",
+    );
   });
 });
 
@@ -580,9 +672,15 @@ describe("TableOfContents", () => {
     ).toBeTruthy();
   });
 
-  it("counts the questions in the header, and says nothing at zero", () => {
+  it("tallies the questions by state, and says nothing at zero", () => {
+    // The fixture holds one open question and one answered one, so a single
+    // "💬 2" would claim two rulings are outstanding when only one is.
     const { unmount } = render(<Harness html={documentWithQuestionsHTML()} />);
-    expect(screen.getByTestId("toc-question-count").textContent).toContain("2");
+    const tally = screen.getByTestId("toc-question-count");
+    expect(tally.textContent?.replace(/\s+/g, " ")).toBe("💬 1✅ 1");
+    expect(tally.getAttribute("title")).toBe(
+      "2 questions here can be answered in one click — 1 open, 1 answered",
+    );
     unmount();
 
     render(<Harness />);
