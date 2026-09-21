@@ -119,6 +119,35 @@ describe("parseConfig", () => {
     expect(settings.severity("link/dead-section-anchor")).toBe("warning");
   });
 
+  // A mistyped --config is a bad argument, and it has to READ like one.
+  //
+  // `existsSync` is true for a directory, so this reached readFileSync and
+  // aborted with `EISDIR: illegal operation on a directory` and a stack trace
+  // into the bundle — reported as exit 3, "a check could not run", which claims
+  // the checker's own environment broke rather than that the invocation was
+  // wrong. Exit 2 is the code for "fix the invocation".
+  it("reports a directory passed to --config instead of crashing", async () => {
+    const cwd = makeTree({ "index.md": "# Doc\n", "sub/keep.md": "# Sub\n" });
+    const io = bufferIo(cwd);
+
+    const code = await run(["check", "--config", "sub", "."], io);
+
+    expect(code).toBe(EXIT_USAGE);
+    expect(io.stderr).toContain("is a directory, not a config file");
+    expect(io.stderr).not.toContain("internal error");
+    expect(io.stderr).not.toContain("EISDIR");
+  });
+
+  it("still reports a --config path that is not there", async () => {
+    const cwd = makeTree({ "index.md": "# Doc\n" });
+    const io = bufferIo(cwd);
+
+    const code = await run(["check", "--config", "no-such.toml", "."], io);
+
+    expect(code).toBe(EXIT_USAGE);
+    expect(io.stderr).toContain("no config file at");
+  });
+
   // The one arrangement that breaks the shared file, pinned so nobody "tidies"
   // the server's keys under the checker's table. The parser IS strict — one
   // level down — so this reads as the neat option and is a breaking change for

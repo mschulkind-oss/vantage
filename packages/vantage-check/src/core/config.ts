@@ -76,7 +76,25 @@ export function loadConfig(options: LoadOptions): LoadedConfig {
     throw new ConfigError(`no config file at ${options.explicitPath}`);
   }
 
-  return { path, ...parseConfig(readFileSync(path, "utf8"), path) };
+  // Every way the read can fail becomes a ConfigError, because the caller maps
+  // that family to "fix the invocation" and re-raises anything else as an
+  // internal error. `existsSync` above is true for a DIRECTORY, so
+  // `--config docs/` used to reach readFileSync and abort with a bare
+  // `EISDIR: illegal operation on a directory` plus a stack trace into the
+  // bundle — exit 3, "a check could not run", for what is a mistyped argument.
+  // A permission error read the same way.
+  let source: string;
+  try {
+    source = readFileSync(path, "utf8");
+  } catch (error) {
+    const reason =
+      (error as NodeJS.ErrnoException).code === "EISDIR"
+        ? "is a directory, not a config file"
+        : `could not be read: ${(error as Error).message}`;
+    throw new ConfigError(`${options.explicitPath ?? path} ${reason}`);
+  }
+
+  return { path, ...parseConfig(source, path) };
 }
 
 /**
