@@ -12,6 +12,7 @@ const entry = (over: Partial<StarredEntry> = {}): StarredEntry => ({
   path: "docs/a.md",
   is_dir: false,
   starred_at: "2026-09-20T12:00:00Z",
+  source: "user" as const,
   ...over,
 });
 
@@ -23,6 +24,38 @@ describe("useStarredStore", () => {
 
   afterEach(() => {
     delete window.__VANTAGE_STATIC__;
+  });
+
+  // "The reader starred this", not "this path is in the list". A promoted row is
+  // in the list and is not theirs, and the difference decides both what the star
+  // looks like and what clicking it does.
+  describe("isStarred distinguishes the reader's own rows", () => {
+    it("is true for a row the reader starred", () => {
+      useStarredStore.setState({ entries: [entry()], loaded: true });
+      expect(useStarredStore.getState().isStarred("", "docs/a.md")).toBe(true);
+    });
+
+    it.each(["repo", "user-config"] as const)(
+      "is false for a %s-promoted row",
+      (source) => {
+        useStarredStore.setState({
+          entries: [entry({ source })],
+          loaded: true,
+        });
+        expect(useStarredStore.getState().isStarred("", "docs/a.md")).toBe(
+          false,
+        );
+      },
+    );
+
+    it("is true when the reader also starred a promoted document", () => {
+      // Both rows can exist before the server dedupes them; the reader's wins.
+      useStarredStore.setState({
+        entries: [entry({ source: "repo" }), entry({ source: "user" })],
+        loaded: true,
+      });
+      expect(useStarredStore.getState().isStarred("", "docs/a.md")).toBe(true);
+    });
   });
 
   describe("loadStarred", () => {

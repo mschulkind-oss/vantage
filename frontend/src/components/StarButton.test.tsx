@@ -34,6 +34,7 @@ describe("StarButton", () => {
           path: "docs/a.md",
           is_dir: false,
           starred_at: "2026-09-20T12:00:00Z",
+          source: "user" as const,
         },
       ],
     });
@@ -42,6 +43,33 @@ describe("StarButton", () => {
 
     const button = screen.getByRole("button", { name: "Remove bookmark" });
     expect(button).toHaveAttribute("aria-pressed", "true");
+  });
+
+  // The failure this guards is silent end to end: a promoted row counted as
+  // starred renders a filled amber star, whose click sends a DELETE the server
+  // answers 404, which the store logs and swallows, leaving the star filled.
+  it("does not claim a promoted document is bookmarked", () => {
+    useStarredStore.setState({
+      entries: [
+        {
+          repo: "",
+          path: "docs/a.md",
+          is_dir: false,
+          starred_at: "2026-09-20T12:00:00Z",
+          source: "repo" as const,
+        },
+      ],
+    });
+
+    render(<StarButton path="docs/a.md" repo={null} isDir={false} />);
+
+    const button = screen.getByRole("button", { name: "Bookmark this" });
+    expect(button).toHaveAttribute("aria-pressed", "false");
+
+    // And the click adds rather than removing something that was never theirs.
+    fireEvent.click(button);
+    expect(mockedAxios.post).toHaveBeenCalled();
+    expect(mockedAxios.delete).not.toHaveBeenCalled();
   });
 
   it("stars the open document on click", () => {

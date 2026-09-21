@@ -107,6 +107,15 @@ export const useStarredStore = create<StarredState>((set, get) => ({
     }
   },
 
+  // "The reader starred this" — NOT "this path is in the list". The distinction
+  // is invisible until something is promoted and then breaks in a way nothing
+  // reports: StarButton uses this one predicate both to render filled-vs-empty
+  // and to choose add-vs-remove, so a promoted row counted here renders a filled
+  // amber star for a document the reader never starred, whose click issues a
+  // DELETE the server answers 404, which is logged and swallowed, leaving the
+  // star filled. Nothing crashes and no test fails.
   isStarred: (repo, path) =>
-    get().entries.some((e) => e.repo === repo && e.path === path),
+    get().entries.some(
+      (e) => e.source === "user" && e.repo === repo && e.path === path,
+    ),
 }));
