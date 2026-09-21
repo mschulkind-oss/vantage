@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   ConfigError,
@@ -83,6 +84,39 @@ describe("parseConfig", () => {
 
     expect(policy).toEqual({ strict: false, exitCode: 1 });
     expect(settings).toEqual(Settings.defaults());
+  });
+
+  // The TypeScript half of the shared-file conformance check. Its sibling is
+  // TestSharedFixtureIsReadableByThisReader in internal/repoconfig, which parses
+  // the same bytes and asserts the complementary half.
+  //
+  // One fixture rather than two copies, because the property under test is that
+  // the two readers agree about one file. Two would let them drift apart while
+  // both suites stayed green — the failure sharing a file invites.
+  //
+  // The fixture deliberately is not named `.vantage.toml`: findConfig walks up
+  // from any document below it, so a file with that name committed in this tree
+  // would silently become the configuration for the documentation gate.
+  it("reads the shared conformance fixture the server also parses", () => {
+    const fixture = join(
+      import.meta.dirname,
+      "..",
+      "..",
+      "..",
+      "internal",
+      "repoconfig",
+      "testdata",
+      "shared-config.toml",
+    );
+    const { policy, settings } = parseConfig(
+      readFileSync(fixture, "utf8"),
+      fixture,
+    );
+
+    // Our own keys, read out of a file that also holds the server's.
+    expect(policy.strict).toBe(true);
+    expect(policy.exitCode).toBe(3);
+    expect(settings.severity("link/dead-section-anchor")).toBe("warning");
   });
 
   // The one arrangement that breaks the shared file, pinned so nobody "tidies"

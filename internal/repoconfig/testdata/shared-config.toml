@@ -1,0 +1,32 @@
+# A repository config exercising BOTH readers of this file at once.
+#
+# Deliberately NOT named `.vantage.toml`: the checker finds that name by walking
+# up from any document below it, so a file with that name committed in this tree
+# would silently become the configuration for the documentation gate.
+#
+# Two test suites parse this file and assert complementary halves:
+#
+#   - internal/repoconfig (Go)            reads [starred], reads past [check]
+#   - packages/vantage-check/test (TS)    reads [check], reads past [starred]
+#
+# The invariant is narrow and it is the whole reason the file is shared: neither
+# reader rejects a file containing the other's sections, and each reads its own
+# keys correctly out of a file that holds both. If the two ever disagree, one of
+# those two suites goes red here rather than a user's run going red in the field.
+#
+# Keep the two tables' values distinctive, so a reader that picked up the wrong
+# table would assert against a value it cannot have got right by chance.
+
+[check]
+strict = true
+exit-code = 3
+
+[check.rules]
+"link/dead-section-anchor" = "warning"
+
+[starred]
+promote = ["roadmap.md", "docs/design/*.md"]
+
+# A table belonging to neither, which both must step over.
+[tool.ruff]
+line-length = 100
