@@ -234,24 +234,52 @@ func TestRootKey(t *testing.T) {
 	})
 }
 
-// DefaultStore must land under the user config dir the rest of vantage uses.
+// DefaultStore must land in the DATA dir, beside the review store — a bookmark
+// is content the user made, not a setting they wrote.
 //
 // The expected path is derived from os.UserHomeDir rather than from the HOME
 // this sets, because those are the same variable only on unix — on windows
 // UserHomeDir reads USERPROFILE and the assertion would be testing the wrong
 // thing.
-func TestDefaultStoreUsesTheUserConfigDir(t *testing.T) {
+//
+// Both XDG variables are cleared, and XDG_DATA_HOME is the load-bearing one:
+// the data path is deliberately literal, so a developer or CI machine that
+// exports it must not move the store. Set to a junk value rather than emptied,
+// since an empty variable is not the same as one pointing somewhere real.
+func TestDefaultStoreUsesTheUserDataDir(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("HOME", dir)
 	t.Setenv("USERPROFILE", dir) // what os.UserHomeDir reads on windows
-	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Setenv("XDG_CONFIG_HOME", "/somewhere/else")
+	t.Setenv("XDG_DATA_HOME", "/somewhere/else")
 
 	home, err := os.UserHomeDir()
 	require.NoError(t, err)
 
 	s, err := DefaultStore("/srv/docs")
 	require.NoError(t, err)
-	require.Equal(t, filepath.Join(home, ".config", "vantage", FileName("/srv/docs")), s.Path())
+	require.Equal(t,
+		filepath.Join(home, ".local", "share", "vantage", FileName("/srv/docs")),
+		s.Path())
+	// The trap this replaces: it used to be ~/.config/vantage/…, which is where
+	// settings live and where dotfile managers sync.
+	require.NotContains(t, s.Path(), filepath.Join(".config", "vantage"))
+}
+
+// The bookmark store and the review store must stay in one place, since they are
+// the same species of state. A future change that moved one should have to
+// notice it is separating them.
+func TestBookmarksLiveBesideTheReviews(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+
+	s, err := DefaultStore("/srv/docs")
+	require.NoError(t, err)
+	reviews, err := config.ReviewDir()
+	require.NoError(t, err)
+
+	require.Equal(t, filepath.Dir(reviews), filepath.Dir(filepath.Dir(s.Path())))
 }
 
 // On a case-insensitive filesystem the same directory reaches us as several

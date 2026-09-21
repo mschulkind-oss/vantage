@@ -498,6 +498,43 @@ func TestReviewDirIsLiteralPath(t *testing.T) {
 	require.Equal(t, filepath.Join(home, ".local", "share", "vantage", "reviews"), dir)
 }
 
+// The data path is an on-disk upgrade contract: a release that moved it would
+// orphan what is already there rather than fail, so XDG_DATA_HOME must not move
+// it. Modelled on TestReviewDirIsLiteralPath, which makes the same promise for
+// the review store.
+func TestDataFilePathIsLiteral(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", "/somewhere/else")
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+
+	p, err := DataFilePath(filepath.Join("starred", "abc.json"))
+	require.NoError(t, err)
+	require.Equal(t,
+		filepath.Join(home, ".local", "share", "vantage", "starred", "abc.json"), p)
+
+	// ReviewDir is a wrapper now, so one literal survives in the package.
+	reviews, err := ReviewDir()
+	require.NoError(t, err)
+	wantReviews, err := DataFilePath("reviews")
+	require.NoError(t, err)
+	require.Equal(t, wantReviews, reviews)
+}
+
+// Unlike UserFilePath, the data path has no darwin legacy fallback: nothing has
+// ever been written to an Application Support data directory, so consulting one
+// would only invent a second place to look.
+func TestDataFilePathHasNoLegacyFallback(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+	legacy := filepath.Join(dir, "Library", "Application Support", "vantage", "reviews")
+	require.NoError(t, os.MkdirAll(legacy, 0o755))
+
+	p, err := ReviewDir()
+	require.NoError(t, err)
+	require.NotEqual(t, legacy, p)
+}
+
 func TestDefaultConfigPath(t *testing.T) {
 	p, err := DefaultConfigPath()
 	require.NoError(t, err)

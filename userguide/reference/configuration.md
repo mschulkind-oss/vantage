@@ -113,13 +113,18 @@ Setting `exclude_dirs` replaces the default list entirely — include everything
 ## Stored Bookmarks
 
 The [Starred](../features.md#starred) list is not a setting — nothing in the
-config file controls it — but it is kept beside the config, under:
+config file controls it. It is something you accumulated, so it is kept with your
+review comments in the data directory rather than beside your settings:
 
 ```
-~/.config/vantage/starred/
+~/.local/share/vantage/starred/
 ```
 
-One file per project, named after a hash of its path. Which project a list
+That location is deliberately fixed, and `XDG_DATA_HOME` does not move it — the
+same promise the review store makes, for the same reason: a release that moved it
+would leave what you already had behind without saying so.
+
+One file per project, named after its path. Which project a list
 belongs to is decided by where Vantage was started: `vantage serve` keys on the
 directory it is serving, so relaunching there restores the same bookmarks
 whatever port or browser you use, while `vantage daemon` keys on its config
