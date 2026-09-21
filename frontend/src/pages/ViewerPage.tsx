@@ -1,7 +1,16 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRepoStore } from "../stores/useRepoStore";
 import { useGitStore } from "../stores/useGitStore";
 import { FileTree } from "../components/FileTree";
+import { StarButton } from "../components/StarButton";
+import { StarredSection } from "../components/StarredSection";
+import { RemoveBookmarkButton } from "../components/RemoveBookmarkButton";
 import { MarkdownViewer } from "../components/MarkdownViewer";
 import { DirectoryViewer } from "../components/DirectoryViewer";
 import { DiffViewer } from "../components/DiffViewer";
@@ -40,6 +49,8 @@ import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { scrollToAnchor } from "../lib/anchorScroll";
 import { isStaticMode } from "../lib/staticMode";
+import { bookmarkTargetFromRoute } from "../lib/bookmarkTarget";
+import { useStarredStore } from "../stores/useStarredStore";
 import { copyTextOrWarn } from "../lib/clipboard";
 import axios from "axios";
 import { SettingsDropdown } from "../components/SettingsDropdown";
@@ -383,6 +394,20 @@ export const ViewerPage: React.FC = () => {
   useEffect(() => {
     loadRepos();
   }, [loadRepos]);
+
+  // Bookmarks are global rather than repo-scoped, so they load once on mount
+  // and do not wait for a repo to be selected.
+  const loadStarred = useStarredStore((s) => s.loadStarred);
+  useEffect(() => {
+    void loadStarred();
+  }, [loadStarred]);
+
+  // What a bookmark for this route would be keyed by. Derived from the URL so
+  // it still answers when the repo store cannot — see bookmarkTargetFromRoute.
+  const bookmarkTarget = useMemo(
+    () => bookmarkTargetFromRoute(pathParam, isMultiRepo),
+    [pathParam, isMultiRepo],
+  );
 
   // Clear the cached file list when the repo changes, and close the mobile
   // sidebar when the path does. Both adjust state during render (React's
@@ -944,6 +969,7 @@ export const ViewerPage: React.FC = () => {
                     <span className="font-medium">{currentRepo}</span>
                   </AppLink>
                 )}
+                <StarredSection />
                 <FileTree nodes={fileTree} />
               </>
             </div>
@@ -1153,6 +1179,11 @@ export const ViewerPage: React.FC = () => {
                     </React.Fragment>
                   ))}
                 </nav>
+                <StarButton
+                  path={currentPath}
+                  repo={currentRepo}
+                  isDir={currentDirectory !== null}
+                />
               </div>
 
               {latestCommit ? (
@@ -1603,12 +1634,30 @@ export const ViewerPage: React.FC = () => {
                           back.
                         </p>
                       )}
-                      <AppLink
-                        to="/"
-                        className="mt-4 px-4 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-medium rounded-lg hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors no-underline inline-block"
-                      >
-                        Go to Home
-                      </AppLink>
+                      <div className="mt-4 flex items-center gap-2">
+                        <AppLink
+                          to="/"
+                          className="px-4 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-medium rounded-lg hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors no-underline inline-block"
+                        >
+                          Go to Home
+                        </AppLink>
+                        {connected && (
+                          // Only offered while the socket is up — the same
+                          // condition as the "it may come back" notice above.
+                          // A backend hiccup must not invite deleting a
+                          // bookmark whose target is fine.
+                          //
+                          // The target comes from the route, not the store: a
+                          // retired daemon repo clears currentRepo and leaves
+                          // the whole route in currentPath, which would never
+                          // match the (repo, path) the bookmark was stored
+                          // under.
+                          <RemoveBookmarkButton
+                            path={bookmarkTarget?.path ?? null}
+                            repo={bookmarkTarget?.repo ?? null}
+                          />
+                        )}
+                      </div>
                     </div>
                   ) : isLoading && !fileContent && !currentDirectory ? (
                     <div className="flex flex-col items-center justify-center h-64 text-slate-500 dark:text-slate-400">
