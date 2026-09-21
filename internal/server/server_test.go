@@ -69,6 +69,7 @@ func initRepoAt(t *testing.T, root string, files map[string]string) string {
 // singleRepoServer builds a single-repo Server rooted at a fresh git repo.
 func singleRepoServer(t *testing.T) (*Server, string) {
 	t.Helper()
+	isolateUserDirs(t)
 	root := initRepo(t, map[string]string{"doc.md": "# Title\n\nbody\n"})
 
 	cfg := config.Defaults()
@@ -83,6 +84,7 @@ func singleRepoServer(t *testing.T) (*Server, string) {
 // daemonServer builds a daemon (multi-repo) Server with two named git repos.
 func daemonServer(t *testing.T) (*Server, map[string]string) {
 	t.Helper()
+	isolateUserDirs(t)
 	rootA := initRepo(t, map[string]string{"a.md": "# A\n"})
 	rootB := initRepo(t, map[string]string{"b.md": "# B\n"})
 
@@ -107,6 +109,7 @@ func daemonServer(t *testing.T) (*Server, map[string]string) {
 // [defaultRefreshInterval].
 func discoveryServer(t *testing.T) (*Server, string) {
 	t.Helper()
+	isolateUserDirs(t)
 	sourceDir := t.TempDir()
 	initRepoAt(t, filepath.Join(sourceDir, "alpha"), map[string]string{"a.md": "# A\n"})
 
@@ -340,15 +343,25 @@ func doJSON(t *testing.T, h http.Handler, method, target, body string) *httptest
 	return rec
 }
 
-// isolateReviewDir points $HOME at a temp dir BEFORE NewServer resolves
-// config.ReviewDir, so review-writing tests never touch the real store.
-func isolateReviewDir(t *testing.T) {
+// isolateUserDirs points $HOME at a temp dir BEFORE NewServer resolves the
+// per-user paths under it, so a test never reads or writes the developer's real
+// ~/.local/share/vantage/reviews or ~/.config/vantage/starred.
+//
+// Every server constructor in this file calls it, so a test gets the isolation
+// by building a server rather than by remembering to ask for it. It was named
+// isolateReviewDir while reviews were the only thing under $HOME.
+//
+// USERPROFILE is set alongside HOME because that is the one os.UserHomeDir
+// reads on windows — setting only HOME would leave a windows run writing into
+// the developer's real profile while looking isolated.
+func isolateUserDirs(t *testing.T) {
 	t.Helper()
-	t.Setenv("HOME", t.TempDir())
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
 }
 
 func TestReviewCommandRoutesMountedPerRepo(t *testing.T) {
-	isolateReviewDir(t)
 	srv, _ := daemonServer(t)
 	h := srv.Handler()
 
@@ -388,7 +401,6 @@ func TestReviewCommandRoutesMountedPerRepo(t *testing.T) {
 }
 
 func TestReviewChangedBroadcastReachesWebSocket(t *testing.T) {
-	isolateReviewDir(t)
 	srv, _ := singleRepoServer(t)
 
 	ts := httptest.NewServer(srv.Handler())
@@ -441,7 +453,6 @@ func TestRunAndShutdown(t *testing.T) {
 // invisible until the daemon was restarted: LoadDaemonFile ran the only scan
 // there ever was.
 func TestSourceDirRepoIsServedWithoutRestart(t *testing.T) {
-	isolateReviewDir(t)
 	srv, sourceDir := discoveryServer(t)
 	h := srv.Handler()
 	require.Equal(t, []string{"alpha"}, repoNames(t, h))
@@ -476,7 +487,6 @@ func TestSourceDirRepoIsServedWithoutRestart(t *testing.T) {
 // a stale project list until someone reloads it, which is the same "restart
 // something" complaint one level up.
 func TestReposChangedBroadcastReachesWebSocket(t *testing.T) {
-	isolateReviewDir(t)
 	srv, sourceDir := discoveryServer(t)
 
 	ts := httptest.NewServer(srv.Handler())
@@ -522,7 +532,6 @@ func TestReposChangedBroadcastReachesWebSocket(t *testing.T) {
 }
 
 func TestDiscoverReposAddsEachRepoOnce(t *testing.T) {
-	isolateReviewDir(t)
 	srv, sourceDir := discoveryServer(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -537,7 +546,6 @@ func TestDiscoverReposAddsEachRepoOnce(t *testing.T) {
 }
 
 func TestRetireReposDropsOnlyWhatIsGone(t *testing.T) {
-	isolateReviewDir(t)
 	srv, sourceDir := discoveryServer(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -573,7 +581,7 @@ func TestRetireReposDropsOnlyWhatIsGone(t *testing.T) {
 // the arrival "foo-2" — permanently, since nothing renames a repo later — and
 // leave "foo" unused.
 func TestRetiringFreesTheNameForANewcomer(t *testing.T) {
-	isolateReviewDir(t)
+	isolateUserDirs(t)
 	srcA, srcB := t.TempDir(), t.TempDir()
 	initRepoAt(t, filepath.Join(srcA, "foo"), map[string]string{"a.md": "# A\n"})
 
@@ -610,7 +618,6 @@ func TestRetiringFreesTheNameForANewcomer(t *testing.T) {
 // The round trip the whole design rests on: a repository can leave and come
 // back, and the browser watching it is told both times.
 func TestRetiredRepoIsServedAgainWhenItReturns(t *testing.T) {
-	isolateReviewDir(t)
 	srv, sourceDir := discoveryServer(t)
 	h := srv.Handler()
 	beta := filepath.Join(sourceDir, "beta")
@@ -702,4 +709,161 @@ func TestRepoRouteResolvesAwkwardNames(t *testing.T) {
 	// A genuinely unknown repo still 404s, decoded or not.
 	rec := doGET(t, h, "/api/r/"+jsEncodeURIComponent("no&such")+"/tree?path=.")
 	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+// --- Bookmarks ------------------------------------------------------------
+
+// starredPaths returns the paths GET /api/starred currently reports.
+func starredPaths(t *testing.T, h http.Handler) []string {
+	t.Helper()
+	rec := doGET(t, h, "/api/starred")
+	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+
+	var body struct {
+		Entries []struct {
+			Repo string `json:"repo"`
+			Path string `json:"path"`
+		} `json:"entries"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+
+	out := make([]string, 0, len(body.Entries))
+	for _, e := range body.Entries {
+		if e.Repo == "" {
+			out = append(out, e.Path)
+			continue
+		}
+		out = append(out, e.Repo+"/"+e.Path)
+	}
+	return out
+}
+
+// Bookmarks are keyed by the invocation, so unlike every other path-taking
+// route they mount once and have no "/r/{repo}" form — in either mode.
+func TestStarredRoutesAreGlobalInBothModes(t *testing.T) {
+	t.Run("single repo", func(t *testing.T) {
+		srv, _ := singleRepoServer(t)
+		h := srv.Handler()
+
+		rec := doJSON(t, h, http.MethodPost, "/api/starred", `{"repo":"","path":"doc.md"}`)
+		require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+		require.Equal(t, []string{"doc.md"}, starredPaths(t, h))
+	})
+
+	t.Run("daemon", func(t *testing.T) {
+		srv, _ := daemonServer(t)
+		h := srv.Handler()
+
+		// The global route works even though every legacy repo route 404s here.
+		rec := doJSON(t, h, http.MethodPost, "/api/starred", `{"repo":"alpha","path":"a.md"}`)
+		require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+
+		// And there is deliberately no repo-scoped mounting to find.
+		rec = doJSON(t, h, http.MethodPost, "/api/r/alpha/starred", `{"repo":"alpha","path":"a.md"}`)
+		require.Equal(t, http.StatusNotFound, rec.Code,
+			"/starred is ScopeGlobal; a /r/{repo} form would key bookmarks by repo, which they are not")
+	})
+}
+
+// One list spans every served repository, which is the whole reason the store
+// is keyed by the invocation rather than by repo.
+func TestDaemonBookmarksSpanRepos(t *testing.T) {
+	srv, _ := daemonServer(t)
+	h := srv.Handler()
+
+	for _, body := range []string{
+		`{"repo":"alpha","path":"a.md"}`,
+		`{"repo":"beta","path":"b.md"}`,
+	} {
+		rec := doJSON(t, h, http.MethodPost, "/api/starred", body)
+		require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+	}
+
+	require.Equal(t, []string{"alpha/a.md", "beta/b.md"}, starredPaths(t, h))
+}
+
+// The acceptance criterion for "relaunching vantage in the same directory
+// restores them": a second Server over the same config and home sees the first
+// one's bookmarks, with no shared process state between them.
+func TestBookmarksSurviveAServerRestart(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // what os.UserHomeDir reads on windows
+	root := initRepo(t, map[string]string{"doc.md": "# Title\n"})
+
+	newServerAt := func(t *testing.T) http.Handler {
+		t.Helper()
+		cfg := config.Defaults()
+		cfg.TargetRepo = root
+		require.NoError(t, cfg.Resolve())
+		srv, err := NewServer(cfg)
+		require.NoError(t, err)
+		return srv.Handler()
+	}
+
+	first := newServerAt(t)
+	rec := doJSON(t, first, http.MethodPost, "/api/starred", `{"repo":"","path":"doc.md"}`)
+	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+
+	second := newServerAt(t)
+	require.Equal(t, []string{"doc.md"}, starredPaths(t, second),
+		"a fresh process at the same root must see the bookmarks the last one left")
+}
+
+// A different root is a different list — bookmarks do not leak between projects.
+func TestBookmarksAreScopedToTheirRoot(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // what os.UserHomeDir reads on windows
+
+	handlerFor := func(t *testing.T, root string) http.Handler {
+		t.Helper()
+		cfg := config.Defaults()
+		cfg.TargetRepo = root
+		require.NoError(t, cfg.Resolve())
+		srv, err := NewServer(cfg)
+		require.NoError(t, err)
+		return srv.Handler()
+	}
+
+	a := handlerFor(t, initRepo(t, map[string]string{"doc.md": "# A\n"}))
+	b := handlerFor(t, initRepo(t, map[string]string{"doc.md": "# B\n"}))
+
+	rec := doJSON(t, a, http.MethodPost, "/api/starred", `{"repo":"","path":"doc.md"}`)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	require.Equal(t, []string{"doc.md"}, starredPaths(t, a))
+	require.Empty(t, starredPaths(t, b), "another root must start empty")
+}
+
+// The push is what keeps several open browsers in sync, so it has to reach a
+// real socket rather than merely be wired.
+func TestStarredChangedBroadcastReachesWebSocket(t *testing.T) {
+	srv, _ := singleRepoServer(t)
+
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	ws, _, err := websocket.Dial(ctx, "ws"+ts.URL[len("http"):]+"/api/ws", nil)
+	require.NoError(t, err)
+	defer ws.Close(websocket.StatusNormalClosure, "")
+
+	// First frame is the hello.
+	_, data, err := ws.Read(ctx)
+	require.NoError(t, err)
+	var hello map[string]any
+	require.NoError(t, json.Unmarshal(data, &hello))
+	require.Equal(t, "hello", hello["type"])
+
+	resp, err := http.Post(ts.URL+"/api/starred", "application/json",
+		strings.NewReader(`{"repo":"","path":"doc.md"}`))
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	_, data, err = ws.Read(ctx)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"type":"starred_changed"}`, string(data))
 }

@@ -161,7 +161,7 @@ Routes are declared in a single table (`routes.go`) with a `Scope`:
 
 - **`ScopeGlobal`** routes mount once under `/api{Pattern}` (cross-repo or
   repo-agnostic): `/health`, `/repos`, `/files/all`, `/recent/all`,
-  `/perf/diagnostics`, `/perf/reset`.
+  `/perf/diagnostics`, `/perf/reset`, and `/starred` (GET/POST/DELETE).
 - **`ScopeRepo`** routes mount twice, sharing one handler: the legacy form
   `/api{Pattern}` (single-repo; 404 in daemon mode) and the multi form
   `/api/r/{repo}{Pattern}`. The handler reads the resolved `RepoServices` from
@@ -174,6 +174,11 @@ and `/review` (GET/PUT/DELETE).
 
 The `/api/ws` WebSocket route is not in the table; the `live` package mounts it
 directly.
+
+`/starred` is the one path-taking family that is global rather than repo-scoped,
+because its store is keyed by the vantage invocation instead of by repository
+(see [2.6](#26-bookmarks-internalstarred)). There is deliberately no
+`/api/r/{repo}/starred`.
 
 ### 2.5 Review Mode (`internal/review`, `internal/reviewanchor`)
 
@@ -189,7 +194,35 @@ directly.
   The hash must remain byte-identical to the frontend implementation in
   `frontend/src/lib/reviewAnchor.ts`; golden vectors pin the contract.
 
-### 2.6 Static Export (`internal/static`)
+### 2.6 Bookmarks (`internal/starred`)
+
+- **`starred.Store`** persists one JSON file per *launch root* under
+  `~/.config/vantage/starred`, named after a hash of that root. `RootKey` picks
+  it: the resolved `TargetRepo` in serve mode, the daemon config file's path in
+  daemon mode. The daemon deliberately does not key on its working directory —
+  under `systemctl --user` that is `/`, which would make every daemon on the
+  machine share one list. One list therefore spans repositories, and each entry
+  carries its own repo name.
+- **Validation is lexical only.** `ValidateEntry` never touches the filesystem,
+  so `pathsafe.Resolve` is not used: it proves physical containment and would
+  reject exactly the deleted-target bookmark the feature exists to round-trip
+  (the viewer's error notice is what offers to remove it).
+- **Portability:** the root is case-folded before hashing on darwin and windows
+  and left alone on linux, matching each platform's default filesystem — folding
+  everywhere would merge two real directories on linux, folding nowhere would
+  split one directory into two lists on the other two. The replace step retries
+  briefly: Go opens files on windows without `FILE_SHARE_DELETE`, so a
+  concurrent reader (another vantage, an indexer, an antivirus) can fail a
+  `MoveFileEx` that would be atomic and unblockable on unix.
+- **Concurrency:** a mutex serializes this process's read-modify-writes and an
+  `O_EXCL` lock file serializes them against another vantage on the same root,
+  where the atomic temp+rename write alone would still lose an update. A second
+  process does not receive the first's push, so its browsers see a stale list
+  until they reload; that is accepted rather than polled for.
+- Mutations broadcast a payload-free `starred_changed`, which every browser
+  answers by refetching. That is the cross-browser sync.
+
+### 2.7 Static Export (`internal/static`)
 
 `static` builds a self-contained site from a Markdown repository: every API
 endpoint the frontend calls is pre-rendered to a JSON file under `api/`, the
@@ -217,6 +250,12 @@ interceptor (`frontend/src/lib/staticMode.ts`).
   - Comments, snapshots, and reactions for the current file.
   - Loads via `GET /api/review`, saves via `PUT /api/review`, and ends a review
     via `DELETE /api/review`.
+- **`useStarredStore`**
+  - `entries`, `isStarred(repo, path)`, `toggleStar()`, `removeStar()`.
+  - Talks to the literal `/api/starred`, with no repo-scoped base — the route is
+    global. Writes are not optimistic: each answers with the whole list.
+  - Refetches on `starred_changed` and on reconnect; every action is a no-op in
+    static mode, which has no backend to store a bookmark in.
 
 ### 3.2 Component Architecture (`frontend/src/components/`)
 

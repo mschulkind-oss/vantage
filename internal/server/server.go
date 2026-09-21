@@ -1,6 +1,6 @@
 // Package server is the integrator: it assembles the resolved configuration,
-// per-repository services, the shared singletons (review store, perf store, live
-// Manager), and the api handlers into a single chi router and runs the
+// per-repository services, the shared singletons (review store, bookmark store,
+// perf store, live Manager), and the api handlers into a single chi router and runs the
 // background lifecycle (file watchers + the refresh loop that discovers new
 // repositories and re-warms repo activity).
 //
@@ -20,6 +20,10 @@
 //   - In daemon mode it replaces the api package's single-repo /repos,
 //     /files/all, /recent/all, and /perf/diagnostics with fan-out handlers
 //     (resolve.go) that aggregate across every repository.
+//   - It owns the bookmark store, which is keyed by the vantage invocation
+//     rather than by repository, so in daemon mode one list spans every served
+//     repo (see [starred.RootKey]). That is why the /starred routes are
+//     [api.ScopeGlobal] and have no "/r/{repo}" mounting.
 //   - It keeps a repo-activity cache (last commit time per repo) warmed at
 //     startup and refreshed on a loop, feeding RepoInfo.last_activity.
 //   - The same loop reconciles the served set with the configured source_dirs,
@@ -58,6 +62,7 @@ import (
 	"github.com/mschulkind-oss/vantage/internal/model"
 	"github.com/mschulkind-oss/vantage/internal/perf"
 	"github.com/mschulkind-oss/vantage/internal/review"
+	"github.com/mschulkind-oss/vantage/internal/starred"
 )
 
 // defaultRefreshInterval is how often the daemon refresh loop runs: it
@@ -90,6 +95,10 @@ type Server struct {
 	manager *live.Manager
 	reviews *review.Store
 	perf    *perf.Store
+	// starred is the bookmark store for this invocation, or nil when the user
+	// config dir could not be resolved — bookmarks then answer 503 and
+	// everything else keeps working.
+	starred *starred.Store
 
 	// refreshInterval is the daemon refresh loop's period. It is
 	// [defaultRefreshInterval] in production; tests shorten it to observe a
@@ -161,11 +170,27 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		return nil, err
 	}
 
+	// Bookmarks are a convenience, not a precondition for serving documents, so
+	// a store that cannot be built leaves the routes answering 503 rather than
+	// failing startup. Note this cannot rescue an unresolvable home directory:
+	// config.ReviewDir above needs one too and has already returned by then.
+	// What it does cover is a Config with no root to key on — one assembled in
+	// process rather than by the serve/daemon commands.
+	if root, err := starred.RootKey(cfg); err != nil {
+		logger.Warn("server: bookmarks unavailable", "error", err)
+	} else if store, err := starred.DefaultStore(root); err != nil {
+		logger.Warn("server: bookmarks unavailable", "error", err)
+	} else {
+		s.starred = store
+	}
+
 	handlers := api.NewHandlers(api.Deps{
-		Reviews:       s.reviews,
-		Perf:          s.perf,
-		Config:        cfg,
-		ReviewChanged: s.broadcastReviewChanged,
+		Reviews:        s.reviews,
+		Perf:           s.perf,
+		Config:         cfg,
+		ReviewChanged:  s.broadcastReviewChanged,
+		Starred:        s.starred,
+		StarredChanged: s.broadcastStarredChanged,
 	})
 
 	s.router = s.buildRouter(handlers)
@@ -353,6 +378,21 @@ func (s *Server) broadcastReposChanged(added, removed []string) {
 // review command so open browsers reload the document's review state.
 func (s *Server) broadcastReviewChanged(repo, path string) {
 	s.manager.Broadcast(reviewChangedMessage{Type: "review_changed", Repo: repo, Path: path})
+}
+
+// starredChangedMessage is the push sent after a bookmark is added or removed.
+// It carries no payload: the list is per-invocation and global, so every
+// browser refetches /api/starred rather than merging a delta — which also means
+// two near-simultaneous mutations cannot leave anyone holding a list nobody has.
+type starredChangedMessage struct {
+	Type string `json:"type"`
+}
+
+// broadcastStarredChanged pushes starred_changed through the live hub. It is
+// the api package's Deps.StarredChanged, and it is what keeps several open
+// browsers showing the same bookmarks.
+func (s *Server) broadcastStarredChanged() {
+	s.manager.Broadcast(starredChangedMessage{Type: "starred_changed"})
 }
 
 // warmFunc returns the cache-warm closure handed to the WebSocket Handler. On

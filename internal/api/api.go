@@ -45,6 +45,7 @@ import (
 	"github.com/mschulkind-oss/vantage/internal/git"
 	"github.com/mschulkind-oss/vantage/internal/perf"
 	"github.com/mschulkind-oss/vantage/internal/review"
+	"github.com/mschulkind-oss/vantage/internal/starred"
 )
 
 // RepoServices bundles the per-request, repo-scoped services a handler needs.
@@ -100,6 +101,16 @@ type Deps struct {
 	// The server wires it to the live hub so connected browsers reload the
 	// review; a nil value (tests, static builds) silently skips the push.
 	ReviewChanged func(repo, path string)
+	// Starred is the bookmark store for this vantage invocation. It is keyed by
+	// the launch root rather than by repository, which is why the /starred
+	// routes are ScopeGlobal. A nil store — most tests, or a Config with no
+	// root to key on — makes them answer 503 rather than panicking.
+	Starred *starred.Store
+	// StarredChanged, when non-nil, is called after every successful bookmark
+	// mutation. The server wires it to the live hub so every open browser
+	// refetches the list — this is what keeps several browsers in sync. A nil
+	// value silently skips the push, as with ReviewChanged.
+	StarredChanged func()
 }
 
 // Handlers holds the dependency-injected state for every API handler. Construct

@@ -16,6 +16,7 @@ import (
 	"github.com/mschulkind-oss/vantage/internal/gitenv"
 	"github.com/mschulkind-oss/vantage/internal/perf"
 	"github.com/mschulkind-oss/vantage/internal/review"
+	"github.com/mschulkind-oss/vantage/internal/starred"
 	"github.com/stretchr/testify/require"
 )
 
@@ -26,6 +27,11 @@ type testEnv struct {
 	fs   *fs.FileSystemService
 	repo string // repo name attached to RepoServices ("" = single-repo)
 	dir  string // repo root on disk
+
+	// starredPushes counts the Deps.StarredChanged calls the handlers made, so
+	// a test can assert a successful mutation pushed exactly once — and that a
+	// rejected one pushed not at all.
+	starredPushes *int
 }
 
 // newTestEnv builds a Handlers over a fresh temp directory. initGit controls
@@ -44,13 +50,19 @@ func newTestEnv(t *testing.T, initGit bool) *testEnv {
 	gitSvc := git.NewService(dir, git.Options{})
 	fsSvc := fs.New(fs.Config{RootPath: dir})
 
+	pushes := 0
 	h := NewHandlers(Deps{
 		Reviews: review.NewStore(t.TempDir()),
 		Perf:    perf.NewStore(),
 		Config:  config.Defaults(),
+		// A per-test store under t.TempDir(): the bookmark routes are global,
+		// so without this they would resolve the developer's real
+		// ~/.config/vantage and the suite would edit their bookmarks.
+		Starred:        starred.NewStore(dir, filepath.Join(t.TempDir(), "starred", "s.json")),
+		StarredChanged: func() { pushes++ },
 	})
 
-	return &testEnv{h: h, git: gitSvc, fs: fsSvc, repo: "", dir: dir}
+	return &testEnv{h: h, git: gitSvc, fs: fsSvc, repo: "", dir: dir, starredPushes: &pushes}
 }
 
 // runGit runs a git command in dir, failing the test on error.
@@ -130,6 +142,13 @@ func TestRoutesTableShapes(t *testing.T) {
 	require.Equal(t, ScopeGlobal, scopeOf("/repos", http.MethodGet))
 	require.Equal(t, ScopeGlobal, scopeOf("/health", http.MethodGet))
 	require.Equal(t, ScopeGlobal, scopeOf("/perf/diagnostics", http.MethodGet))
+	// Bookmarks are keyed by the invocation, not the repository, so all three
+	// are global and none gets an "/r/{repo}" mounting. This is the asymmetry
+	// most likely to be "fixed" into ScopeRepo by someone pattern-matching the
+	// other path-taking routes.
+	require.Equal(t, ScopeGlobal, scopeOf("/starred", http.MethodGet))
+	require.Equal(t, ScopeGlobal, scopeOf("/starred", http.MethodPost))
+	require.Equal(t, ScopeGlobal, scopeOf("/starred", http.MethodDelete))
 	require.Equal(t, ScopeRepo, scopeOf("/git/history", http.MethodGet))
 	require.Equal(t, ScopeRepo, scopeOf("/tree", http.MethodGet))
 	require.Equal(t, ScopeRepo, scopeOf("/review", http.MethodGet))
