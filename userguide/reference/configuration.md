@@ -157,7 +157,9 @@ promote = ["roadmap.md", "ROADMAP.md"]
 
 A plain path is starred **only where it exists**, which is what makes a list like
 that one useful across projects: name every spelling of the file you care about,
-and each project shows the one it actually has.
+and each project shows the one it actually has. On macOS and Windows, where the
+filesystem treats those spellings as one file, you get a single row under the
+first spelling you wrote rather than one per spelling.
 
 A project can also name documents for anyone who opens it, in the same
 `.vantage.toml` that [configures `vantage-check`](../guides/vantage-check.md):

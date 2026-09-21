@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -81,14 +82,34 @@ type PromoteRequest struct {
 // reader's stale bookmark. So it clears physical containment too, which is what
 // catches a promoted `docs/notes.md` that is a symlink pointing out of the tree.
 func Promote(req PromoteRequest) (rows []Listed, rejected []string) {
+	return promote(runtime.GOOS, req)
+}
+
+// promote is [Promote] with the platform passed in, the seam [normalizeRoot]
+// uses, and here it is what makes case-folding testable on any host.
+//
+// On darwin and windows the filesystem treats two spellings of one name as one
+// file, so `promote = ["roadmap.md", "ROADMAP.md"]` — the shape the
+// documentation recommends, because it lets one list match whichever spelling a
+// project uses — finds the SAME file twice there and would list it twice under
+// two names. Folding the dedupe key makes the answer identical on every
+// platform: the first spelling wins, and a project that spells it the other way
+// still matches.
+func promote(goos string, req PromoteRequest) (rows []Listed, rejected []string) {
 	var patterns []string
 	seen := map[string]bool{}
+	key := func(p string) string {
+		if foldsCase(goos) {
+			return strings.ToLower(p)
+		}
+		return p
+	}
 
 	add := func(p string, isDir bool) {
-		if seen[p] {
+		if seen[key(p)] {
 			return
 		}
-		seen[p] = true
+		seen[key(p)] = true
 		rows = append(rows, Listed{
 			// StarredAt is deliberately the zero time: a promoted row was never
 			// starred, so there is no honest moment to report. Nothing renders
@@ -200,13 +221,27 @@ func promotable(root, p string) error {
 // its repository and path, so two rows with one key is a duplicate-key warning and
 // a visibly doubled row.
 func MergeListed(sources ...[]Listed) []Listed {
+	return mergeListed(runtime.GOOS, sources...)
+}
+
+// mergeListed is [MergeListed] with the platform passed in. The key folds case
+// where the filesystem does, so a bookmark the reader stored as `roadmap.md` and
+// a promotion spelled `ROADMAP.md` are one row on darwin — otherwise the sidebar
+// shows one document twice, under two names, and only one of them is theirs.
+func mergeListed(goos string, sources ...[]Listed) []Listed {
 	type key struct{ repo, path string }
+	fold := func(p string) string {
+		if foldsCase(goos) {
+			return strings.ToLower(p)
+		}
+		return p
+	}
 	seen := map[key]bool{}
 	var out []Listed
 
 	for _, rows := range sources {
 		for _, row := range rows {
-			k := key{row.Repo, row.Path}
+			k := key{fold(row.Repo), fold(row.Path)}
 			if seen[k] {
 				continue
 			}

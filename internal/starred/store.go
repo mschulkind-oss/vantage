@@ -145,12 +145,21 @@ func NormalizeRoot(root string) string {
 // is reachable from a test on any host — the seam internal/config uses for the
 // same reason.
 func normalizeRoot(goos, root string) string {
-	switch goos {
-	case "darwin", "windows":
+	if foldsCase(goos) {
 		return strings.ToLower(root)
-	default:
-		return root
 	}
+	return root
+}
+
+// foldsCase reports whether goos's default filesystem treats two spellings of
+// one name as one file.
+//
+// One statement of that question for the whole package, because two callers ask
+// it about different things — [normalizeRoot] about a repository root, and
+// promotion about a path inside one — and a platform list that appeared twice
+// would eventually disagree with itself.
+func foldsCase(goos string) bool {
+	return goos == "darwin" || goos == "windows"
 }
 
 // RootKey returns the storage key for cfg.
