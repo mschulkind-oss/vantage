@@ -124,7 +124,10 @@ That location is deliberately fixed, and `XDG_DATA_HOME` does not move it — th
 same promise the review store makes, for the same reason: a release that moved it
 would leave what you already had behind without saying so.
 
-One file per project, named after its path. Which project a list
+One file per project, named after the project's own folder with a short hash
+after it — `vantage-a1b2c3d4e5f60718.json` — so you can tell at a glance which
+list is which. The hash is what keeps two projects of the same name apart, and it
+is always there. Which project a list
 belongs to is decided by where Vantage was started: `vantage serve` keys on the
 directory it is serving, so relaunching there restores the same bookmarks
 whatever port or browser you use, while `vantage daemon` keys on its config

@@ -7,9 +7,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/require"
 
@@ -195,7 +197,70 @@ func TestFileNameIsStableAndPerRoot(t *testing.T) {
 	require.Equal(t, a, FileName("/home/me/project"), "the same root must always hash the same")
 	require.NotEqual(t, a, FileName("/home/me/other"))
 
-	require.Regexp(t, regexp.MustCompile(`^starred[/\\][0-9a-f]{16}\.json$`), a)
+	require.Regexp(t, regexp.MustCompile(`^starred[/\\][A-Za-z0-9._-]+-[0-9a-f]{16}\.json$`), a)
+	// The readable half is the point of the name.
+	require.Contains(t, a, "project-")
+}
+
+// The slug has to come from the NORMALIZED root, not the raw one. On darwin
+// ~/Docs and ~/docs are one directory, so two spellings must not produce two
+// files — and a version that slugged the raw string produces exactly that, with
+// the same hash on both, while every other test still passes.
+func TestFileNameSlugFollowsRootNormalisation(t *testing.T) {
+	for _, goos := range []string{"darwin", "windows"} {
+		t.Run(goos, func(t *testing.T) {
+			require.Equal(t,
+				fileName(goos, "/home/me/Docs"),
+				fileName(goos, "/home/me/docs"),
+				"one directory must not get two bookmark files")
+		})
+	}
+
+	// Linux folds nothing, so there the two are genuinely different projects and
+	// must keep different files.
+	require.NotEqual(t, fileName("linux", "/home/me/Docs"), fileName("linux", "/home/me/docs"))
+
+	// And the exported entry point agrees with the seam for this host.
+	require.Equal(t, fileName(runtime.GOOS, "/home/me/Docs"), FileName("/home/me/Docs"))
+}
+
+// A root's last segment is arbitrary text: it can hold spaces, separators,
+// non-ASCII, or be absent entirely. The name it produces must still be a legal,
+// bounded filename on every platform.
+func TestRootSlugIsAlwaysAUsableFilename(t *testing.T) {
+	name := regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+	cases := []string{
+		"/home/me/my docs",
+		"/home/me/Ünïcode-Dir",
+		"/home/me/a:b*c?d",
+		"/",
+		"/home/me/...",
+		"/home/me/" + strings.Repeat("x", 300),
+		"/home/me/nul",
+		"relative",
+	}
+	seen := map[string]bool{}
+	for _, root := range cases {
+		got := FileName(root)
+		base := filepath.Base(got)
+		require.False(t, seen[base], "two roots produced one filename: %q", base)
+		seen[base] = true
+
+		slug := strings.TrimSuffix(base, ".json")
+		slug = slug[:strings.LastIndex(slug, "-")]
+		require.Regexp(t, name, slug, "root %q produced an unusable slug", root)
+		require.LessOrEqual(t, len(slug), slugMax, "root %q produced an unbounded slug", root)
+		require.True(t, utf8.ValidString(slug), "root %q produced invalid UTF-8", root)
+		// The hash is never dropped: it is the collision defence, and it is what
+		// keeps a reserved device name like "nul" resolving to a file.
+		require.Regexp(t, regexp.MustCompile(`-[0-9a-f]{16}\.json$`), base)
+	}
+}
+
+// "/" has no segment to name, but it is still a root somebody can serve.
+func TestRootSlugFallsBackWhenNothingSurvives(t *testing.T) {
+	require.Contains(t, FileName("/"), "root-")
+	require.NotEqual(t, FileName("/"), FileName("/home/me/..."))
 }
 
 func TestRootKey(t *testing.T) {
