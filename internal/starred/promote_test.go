@@ -324,3 +324,54 @@ func TestPromoteRequireExistsAcceptsADirectory(t *testing.T) {
 	require.Equal(t, "docs", rows[0].Path)
 	require.True(t, rows[0].IsDir)
 }
+
+// The macOS failure this exists to prevent, reproducible on any host.
+//
+// On a case-insensitive filesystem `os.Stat` answers yes for BOTH spellings, so
+// the two-spelling list the documentation recommends found one file twice and
+// listed it twice under two names. The dedupe key folds where the platform does,
+// which makes the answer identical everywhere: one row, the first spelling.
+func TestPromoteFoldsSpellingsWhereTheFilesystemDoes(t *testing.T) {
+	// Both spellings "exist", which is what a case-insensitive filesystem
+	// reports — so the difference here is the folding, not the stat.
+	rows, _ := promote("darwin", PromoteRequest{
+		Root:   t.TempDir(),
+		Lines:  []string{"roadmap.md", "ROADMAP.md"},
+		Source: SourceUserConfig,
+	})
+	require.Equal(t, []string{"roadmap.md"}, PromotedPaths(rows),
+		"two spellings of one file must not be two rows on a folding platform")
+
+	// Linux: genuinely two different files, so genuinely two rows.
+	rows, _ = promote("linux", PromoteRequest{
+		Root:   t.TempDir(),
+		Lines:  []string{"roadmap.md", "ROADMAP.md"},
+		Source: SourceUserConfig,
+	})
+	require.Len(t, rows, 2, "on a case-sensitive filesystem they are two documents")
+}
+
+// A pattern and a literal naming one file, spelled differently.
+func TestPromoteFoldsAcrossLiteralAndPattern(t *testing.T) {
+	rows, _ := promote("darwin", PromoteRequest{
+		Root:       t.TempDir(),
+		Lines:      []string{"ROADMAP.md", "*.md"},
+		Source:     SourceRepo,
+		Candidates: func() []string { return []string{"roadmap.md"} },
+	})
+	require.Len(t, rows, 1)
+	require.Equal(t, "ROADMAP.md", rows[0].Path, "the first spelling written wins")
+}
+
+// The same question for the merge: a stored bookmark and a promotion that name
+// one file with different spellings are one row, and it is the reader's.
+func TestMergeListedFoldsSpellingsWhereTheFilesystemDoes(t *testing.T) {
+	own := []Listed{{Entry: Entry{Path: "roadmap.md"}, Source: SourceUser}}
+	promoted := []Listed{{Entry: Entry{Path: "ROADMAP.md"}, Source: SourceRepo}}
+
+	got := mergeListed("darwin", own, promoted)
+	require.Len(t, got, 1, "one document must not appear twice under two names")
+	require.Equal(t, SourceUser, got[0].Source, "and the row is the reader's own")
+
+	require.Len(t, mergeListed("linux", own, promoted), 2)
+}
