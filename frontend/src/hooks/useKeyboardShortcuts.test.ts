@@ -62,6 +62,16 @@ describe("useKeyboardShortcuts", () => {
     expect(mockCallbacks.onEscape).toHaveBeenCalledTimes(1);
   });
 
+  it("calls onOpenFilePicker on t key", () => {
+    // The caller refetches the file list in this callback, so the key has to
+    // reach it on every press — a picker that only ever loaded its list once
+    // could not find a file created after the tab was opened.
+    renderHook(() => useKeyboardShortcuts(mockCallbacks));
+    fireKey("t");
+    fireKey("t");
+    expect(mockCallbacks.onOpenFilePicker).toHaveBeenCalledTimes(2);
+  });
+
   it("toggles sidebar on b key", () => {
     renderHook(() => useKeyboardShortcuts(mockCallbacks));
     fireKey("b");
