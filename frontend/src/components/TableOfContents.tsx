@@ -3,6 +3,8 @@ import { cn } from "../lib/utils";
 import { scrollToAnchorElement } from "../lib/anchorScroll";
 import {
   entryAccessibleName,
+  tallyQuestions,
+  tallySentence,
   useDocumentOutline,
   type OutlineEntry,
 } from "../hooks/useDocumentOutline";
@@ -48,7 +50,7 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
   // Indent relative to the document's own shallowest entry: a document whose
   // body starts at h2 should not be indented one step throughout.
   const topLevel = entries.reduce((min, e) => Math.min(min, e.level), 6);
-  const questions = entries.filter((e) => e.kind === "question").length;
+  const tallies = tallyQuestions(entries);
 
   return (
     <aside
@@ -67,19 +69,23 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
             Contents
           </p>
           {/*
-           * The one number in the column, and it is here rather than beside the
-           * questions themselves because it answers a question asked before the
-           * column is read at all: does this document want anything from me? It
-           * is absent at zero — a document with nothing outstanding should say
-           * nothing, not say "0".
+           * The tally, here rather than beside the questions themselves because
+           * it answers something asked before the column is read at all: does
+           * this document want anything from me? Absent at zero — a document with
+           * nothing outstanding should say nothing, not say "0".
            */}
-          {questions > 0 && (
+          {tallies.length > 0 && (
             <span
               data-testid="toc-question-count"
-              className="shrink-0 text-xs tabular-nums text-slate-500 dark:text-slate-400"
-              title={`${questions} open ${questions === 1 ? "question" : "questions"} in this document`}
+              className="flex shrink-0 gap-1.5 text-xs tabular-nums text-slate-500 dark:text-slate-400"
+              title={tallySentence(tallies)}
+              aria-label={tallySentence(tallies)}
             >
-              💬 {questions}
+              {tallies.map((t) => (
+                <span key={t.status ?? "unmarked"}>
+                  <span aria-hidden="true">{t.glyph}</span> {t.count}
+                </span>
+              ))}
             </span>
           )}
         </div>
@@ -124,17 +130,13 @@ const OutlineLink: React.FC<{
 }> = ({ entry, active, indent, containerRef }) => {
   const question = entry.kind === "question";
 
-  const go = () => {
-    // The enclosing item, not the stamped element. The directive stamps the
-    // *leaning* paragraph, so scrolling to the anchor itself puts the question's
-    // own title above the top of the viewport — the reader arrives at an answer
-    // to a question they cannot see. The `href` above still addresses the
-    // anchor, which is what a cross-document reference has to be able to use.
-    const target = question
-      ? (entry.element.closest("li") ?? entry.element)
-      : entry.element;
-    scrollToAnchorElement(target, containerRef.current);
-  };
+  // `entry.element` and not `#${entry.id}`: for a question the anchor sits on the
+  // leaning paragraph, so scrolling to it puts the question's own title above the
+  // top of the viewport — the reader arrives at an answer to a question they
+  // cannot see. The element is the enclosing item, which the active highlight
+  // measures too. The `href` still addresses the anchor, which is what a
+  // cross-document reference has to be able to use.
+  const go = () => scrollToAnchorElement(entry.element, containerRef.current);
 
   const className = cn(
     "block w-full text-left py-1 pr-2 text-[13px] leading-snug no-underline transition-colors cursor-pointer",
@@ -143,26 +145,30 @@ const OutlineLink: React.FC<{
       : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-100",
   );
 
+  /*
+   * The marker is INSIDE the clamped box, not a sibling of it. `line-clamp` is
+   * `display: -webkit-box`, so a clamped sibling is a block: the emoji ended up
+   * alone on its own line above the title, turning every entry into three lines
+   * and the column into a ladder. Inside, it is the first inline run of the text
+   * it belongs to.
+   *
+   * Clamped rather than truncated in JS: a question title is a sentence, and two
+   * lines of it is usually enough to recognise the question without making the
+   * column a wall of text. The `title` carries the whole thing.
+   */
   const body = (
-    <>
+    <span className={question ? "line-clamp-2" : undefined}>
       {entry.marker !== "" && (
-        // The emoji is the document's own text, shown rather than translated
-        // into a colour: it renders in print and in a theme that does not
-        // exist yet, which a chip would not. `aria-hidden` because
-        // `entryAccessibleName` already says the state in words.
+        // The document's own text, shown rather than translated into a colour:
+        // it renders in print and in a theme that does not exist yet, which a
+        // chip would not. `aria-hidden` because `entryAccessibleName` already
+        // says the state in words.
         <span aria-hidden="true" className="mr-1">
           {entry.marker}
         </span>
       )}
-      {/*
-       * Clamped rather than truncated in JS: a question title is a sentence, and
-       * two lines of it is usually enough to recognise the question without
-       * making the column a wall of text. The `title` carries the whole thing.
-       */}
-      <span className={question ? "line-clamp-2" : undefined}>
-        {entry.text}
-      </span>
-    </>
+      {entry.text}
+    </span>
   );
 
   const shared = {
