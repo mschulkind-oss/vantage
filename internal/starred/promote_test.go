@@ -263,3 +263,64 @@ func itoa(n int) string {
 	}
 	return string(b)
 }
+
+// A list applied to EVERY repository has to be existence-filtered, or one line
+// carries a phantom row into every project that lacks the document. The
+// repository's own list is not filtered, because there a named document is an
+// assertion about this project and may not be written yet.
+func TestPromoteRequireExistsOnlyDropsMissingLiterals(t *testing.T) {
+	root := repoWith(t, "roadmap.md", "docs/a.md")
+
+	withFilter, rejected := Promote(PromoteRequest{
+		Root:          root,
+		Lines:         []string{"roadmap.md", "ROADMAP.md", "docs/missing.md"},
+		Source:        SourceUserConfig,
+		RequireExists: true,
+	})
+	require.Equal(t, []string{"roadmap.md"}, PromotedPaths(withFilter))
+	require.Empty(t, rejected,
+		"a document this project simply does not have is not a config error")
+
+	withoutFilter, _ := Promote(PromoteRequest{
+		Root:   root,
+		Lines:  []string{"roadmap.md", "docs/missing.md"},
+		Source: SourceRepo,
+	})
+	require.Len(t, withoutFilter, 2,
+		"a repository's own list still promotes a document it has not written yet")
+}
+
+// The filter must not turn into a walk, and must not reach outside the tree.
+func TestPromoteRequireExistsStatsInsideTheRepositoryOnly(t *testing.T) {
+	root := repoWith(t, "docs/a.md")
+	outside := filepath.Join(t.TempDir(), "secret.md")
+	require.NoError(t, os.WriteFile(outside, []byte("secret\n"), 0o600))
+	require.NoError(t, os.Symlink(outside, filepath.Join(root, "leak.md")))
+
+	rows, _ := Promote(PromoteRequest{
+		Root:          root,
+		Lines:         []string{"leak.md", "docs/a.md"},
+		Source:        SourceUserConfig,
+		RequireExists: true,
+		Candidates: func() []string {
+			t.Fatal("the existence filter must stat, not walk")
+			return nil
+		},
+	})
+	require.Equal(t, []string{"docs/a.md"}, PromotedPaths(rows),
+		"a symlink out of the tree exists but is not promotable")
+}
+
+// A directory the reader always wants starred still works through the filter.
+func TestPromoteRequireExistsAcceptsADirectory(t *testing.T) {
+	root := repoWith(t, "docs/a.md")
+	rows, _ := Promote(PromoteRequest{
+		Root:          root,
+		Lines:         []string{"docs/", "nope/"},
+		Source:        SourceUserConfig,
+		RequireExists: true,
+	})
+	require.Len(t, rows, 1)
+	require.Equal(t, "docs", rows[0].Path)
+	require.True(t, rows[0].IsDir)
+}

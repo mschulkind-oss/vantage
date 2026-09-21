@@ -321,9 +321,55 @@ func (s *Server) promoted() []starred.Listed {
 		repoRows = append(repoRows, rows...)
 	}
 
-	// Deduplicated across repositories. The reader's own stored bookmarks beat
-	// these, and the handler puts those ahead of whatever this returns.
-	return starred.MergeListed(repoRows)
+	// The reader's own config beats the repository's on a collision, so it goes
+	// first. Their stored bookmarks beat both, and the handler puts those ahead of
+	// whatever this returns.
+	return starred.MergeListed(s.userPromoted(), repoRows)
+}
+
+// userPromoted resolves the reader's own `[starred] promote` list against every
+// repository this server serves.
+//
+// Their list travels with them rather than with a project, so it is applied per
+// repository — which is also why its literals are existence-filtered. "Always
+// star my roadmap" means "if there is one"; without the filter a single line
+// would carry a phantom row into every project that has no roadmap.
+//
+// Read in both modes on purpose. Serve mode has never opened a config file —
+// cmd/vantage/serve.go is Defaults, ApplyEnv, flags — so reading it only in
+// daemon mode would leave the motivating use case dead in the mode most people
+// use.
+func (s *Server) userPromoted() []starred.Listed {
+	user, err := config.LoadUserStarred()
+	if err != nil {
+		s.logger.Warn("server: ignoring the user bookmark list", "error", err)
+		return nil
+	}
+	if len(user.Promote) == 0 {
+		return nil
+	}
+
+	var rows []starred.Listed
+	for _, rs := range s.repoList() {
+		repoKey := ""
+		if s.cfg.MultiRepo {
+			repoKey = rs.name
+		}
+		got, rejected := starred.Promote(starred.PromoteRequest{
+			Repo:          repoKey,
+			Root:          rs.root,
+			Lines:         user.Promote,
+			Source:        starred.SourceUserConfig,
+			Candidates:    rs.fs.ListAllFiles,
+			RequireExists: true,
+		})
+		for _, r := range rejected {
+			s.logger.Warn("server: ignoring an entry in the user bookmark list",
+				"repo", rs.name, "reason", r)
+		}
+		rows = append(rows, got...)
+	}
+	return rows
 }
 
 // buildRouter wires the chi router: the perf middleware on /api, the WebSocket,

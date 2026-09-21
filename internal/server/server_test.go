@@ -1004,3 +1004,82 @@ func TestPromotionCannotEscapeTheRepository(t *testing.T) {
 	require.Equal(t, []string{"doc.md=repo"}, starredRows(t, srv.Handler()),
 		"the escaping line is dropped and the rest still promotes")
 }
+
+// writeUserConfig puts a `[starred]` list in the reader's own config. The caller
+// must have run isolateUserDirs first, or this writes into a real home.
+func writeUserConfig(t *testing.T, body string) {
+	t.Helper()
+	home, err := os.UserHomeDir()
+	require.NoError(t, err)
+	dir := filepath.Join(home, ".config", "vantage")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "config.toml"), []byte(body), 0o644))
+}
+
+// "Always star my roadmap" — the reader's own list, applied in whatever project
+// they open, in serve mode, which has never read a config file before.
+func TestTheUsersOwnListPromotesInServeMode(t *testing.T) {
+	isolateUserDirs(t)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	writeUserConfig(t, "[starred]\npromote = [\"roadmap.md\", \"ROADMAP.md\"]\n")
+
+	root := initRepo(t, map[string]string{"roadmap.md": "# Roadmap\n", "doc.md": "# Doc\n"})
+	cfg := config.Defaults()
+	cfg.TargetRepo = root
+	require.NoError(t, cfg.Resolve())
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+
+	require.Equal(t, []string{"roadmap.md=user-config"}, starredRows(t, srv.Handler()),
+		"the one the project has is promoted; the one it does not have is not")
+}
+
+// Their list travels with them, so it applies to every repository a daemon
+// serves — and only where the document actually exists.
+func TestTheUsersOwnListAppliesToEveryRepository(t *testing.T) {
+	isolateUserDirs(t)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	writeUserConfig(t, "[starred]\npromote = [\"roadmap.md\"]\n")
+
+	withRoadmap := initRepo(t, map[string]string{"roadmap.md": "# A\n"})
+	without := initRepo(t, map[string]string{"b.md": "# B\n"})
+
+	cfg := config.Defaults()
+	cfg.MultiRepo = true
+	cfg.Repos = []config.RepoConfig{
+		{Name: "alpha", Path: withRoadmap},
+		{Name: "beta", Path: without},
+	}
+	require.NoError(t, cfg.Resolve())
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+
+	require.Equal(t, []string{"alpha/roadmap.md=user-config"},
+		starredRows(t, srv.Handler()),
+		"no phantom row in the project that has no roadmap")
+}
+
+// The two promotion lists union; only a collision has a winner, and there the
+// reader's own config beats the repository's.
+func TestUserAndRepositoryPromotionsUnion(t *testing.T) {
+	isolateUserDirs(t)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	writeUserConfig(t, "[starred]\npromote = [\"roadmap.md\"]\n")
+
+	root := initRepo(t, map[string]string{
+		"roadmap.md":     "# Roadmap\n",
+		"docs/design.md": "# Design\n",
+	})
+	writeRepoConfig(t, root, "[starred]\npromote = [\"roadmap.md\", \"docs/design.md\"]\n")
+
+	cfg := config.Defaults()
+	cfg.TargetRepo = root
+	require.NoError(t, cfg.Resolve())
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+
+	require.Equal(t,
+		[]string{"docs/design.md=repo", "roadmap.md=user-config"},
+		starredRows(t, srv.Handler()),
+		"both lists contribute; the shared row is labelled with the reader's own")
+}
