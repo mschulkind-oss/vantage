@@ -11,8 +11,9 @@ vantage:
 
 # Open questions in the contents — telling a reader what a document still owes them
 
-**Status:** DESIGNED (2026-09-20). Every question below is ruled; nothing here is
-waiting on a decision.
+**Status:** IMPLEMENTED (2026-09-20). Every question below is ruled, and the
+mechanism landed with them. Two things the design did not anticipate are recorded
+in [§5](#5-what-building-it-changed).
 
 **The short version.** A reader opening a design document wants two things before
 they read a word: what state is this in, and is there anything here for me to do?
@@ -120,7 +121,9 @@ things fall out of that rather than being built:
 - **Nesting.** A question's indent is one step deeper than the last heading above
   it, so the outline stays truthful about where in the document it lives.
 - **Active tracking.** The entry the reader is inside already highlights by
-  measuring each id's offset; a question is just another id in that list.
+  measuring each entry's offset; a question is just another entry in that list.
+  Which element gets measured turned out to matter — see
+  [§5](#5-what-building-it-changed).
 - **Collapsed sections.** The offset pass already skips anything whose
   `offsetParent` is null, which is how a question inside a collapsed section
   stops winning every comparison.
@@ -185,7 +188,37 @@ that are already shared, and the checker imports them.
 - **Nothing changes on mobile.** The contents column is hidden below `md`
   already, for want of a margin to put it in.
 
-## 5. Decision Ledger
+## 5. What building it changed
+
+Two things, both found by running it against this repo's own documents rather
+than against a fixture.
+
+**One number over one emoji was a claim the document does not make.** The header
+was going to read `💬 3`, and on [`status.md`](../gallery/status.md) that is
+wrong: the three questions there are one open, one answered and one blocked, all
+three tagged deliberately. Every listed question is answerable — that is what
+being tagged means — but heading the count with the *open* marker says all three
+await a ruling. So the header tallies by state and omits the states that do not
+occur, which leaves the common case (every question open) rendering as the single
+group it always was.
+
+**The scroll target and the measured element have to be the same one.** They were
+not: the scroll went to the enclosing list item so the question's title would be
+on screen ([§3.5](#35-the-link-addresses-the-anchor-the-scroll-targets-the-question)),
+while the active highlight measured the stamped leaning paragraph. Those sit about
+90px apart and the active band is 96, so clicking a question scrolled to it and
+then highlighted the **previous** entry. An entry now carries one element that
+does both jobs, and the anchor id is kept only for the link.
+
+> [!NOTE]
+> A third symptom turned out not to be a defect and is recorded so it is not
+> "fixed" later. Clicking a question near the end of a document leaves it partway
+> down the viewport rather than at the top, and highlights the entry above it.
+> That is the scroller reaching its maximum offset — the last screenful cannot be
+> scrolled any further — and headings at the end of a document have always behaved
+> the same way.
+
+## 6. Decision Ledger
 
 | ID | Ruling / Decision | Date | Settled in |
 | :--- | :--- | :--- | :--- |

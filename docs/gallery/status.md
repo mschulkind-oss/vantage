@@ -23,6 +23,10 @@ the test.
   words?
 - Print it. Every fade must go, and every box must keep its shape — *which*
   items are done is information, not decoration.
+- **Turn the contents column on** (the list icon beside the breadcrumb). The
+  three questions below should be in it, each with its emoji, under a tally
+  reading one open, one answered, one blocked. Does the tally read as status at a
+  glance, or as three numbers?
 
 ## A checklist
 
@@ -131,10 +135,20 @@ judged as a set rather than one token at a time.
 | `oq` | this is answerable | one block | a button, in review mode only |
 
 The overlap is deliberate and mostly harmless — `badge=done` and `- [x]` say the
-same thing at different scopes. The gap is the interesting part: **nothing says
-"this document has three unanswered questions" at the top of the page**, which is
-the one thing a scanning reader most wants and the one thing no mechanism here
-provides.
+same thing at different scopes.
+
+The gap used to be the interesting part: nothing said "this document has three
+unanswered questions" without reading the page, which is the one thing a scanning
+reader most wants. **The table of contents now does** — the three questions above
+are listed in it, each with its emoji, under a tally counting them by state. See
+[`contents-open-questions.md`](../design/contents-open-questions.md).
+
+So the check this page asks for has moved. The emoji no longer has to carry the
+whole weight on its own at item level: it also appears in the margin, where the
+reader is already looking for structure. What is left to judge here is whether it
+still reads *in the prose* — a document printed, or exported, or read on a phone
+has no contents column, and the questions above are still the ones that decide
+whether the convention works without one.
 
 ## Next
 
