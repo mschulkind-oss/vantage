@@ -161,6 +161,51 @@ path = "` + repoB + `"
 	require.Empty(t, c.Validate())
 }
 
+// ConfigPath is the bookmark store's identity for a daemon, so two spellings of
+// one config file must not read as two daemons.
+//
+// The symlink is created explicitly rather than relying on t.TempDir(), and that
+// is the whole point of the test: on Linux /tmp is a real directory and
+// EvalSymlinks is the identity there, so a version asserting against a bare
+// t.TempDir() path passes with the bug fully present and fails only on macOS,
+// where t.TempDir() sits under /var — itself a symlink to /private/var. That
+// reads as flaky-by-platform rather than as a correct assertion.
+func TestResolveCanonicalisesTheConfigPath(t *testing.T) {
+	real := filepath.Join(t.TempDir(), "real")
+	require.NoError(t, os.MkdirAll(real, 0o755))
+	link := filepath.Join(t.TempDir(), "link")
+	require.NoError(t, os.Symlink(real, link))
+
+	body := "port = 8080\n"
+	require.NoError(t, os.WriteFile(filepath.Join(real, "config.toml"), []byte(body), 0o644))
+
+	viaReal, err := LoadDaemonFile(filepath.Join(real, "config.toml"))
+	require.NoError(t, err)
+	require.NoError(t, viaReal.Resolve())
+
+	viaLink, err := LoadDaemonFile(filepath.Join(link, "config.toml"))
+	require.NoError(t, err)
+	require.NoError(t, viaLink.Resolve())
+
+	want, err := filepath.EvalSymlinks(filepath.Join(real, "config.toml"))
+	require.NoError(t, err)
+	require.Equal(t, want, viaReal.ConfigPath)
+	require.Equal(t, want, viaLink.ConfigPath,
+		"a config reached through a symlink must key the same daemon as the real path")
+
+	// Idempotent, like the rest of Resolve.
+	require.NoError(t, viaLink.Resolve())
+	require.Equal(t, want, viaLink.ConfigPath)
+}
+
+// Serve mode has no config file, and the new branch must not invent one.
+func TestResolveLeavesAnEmptyConfigPathEmpty(t *testing.T) {
+	c := Defaults()
+	c.TargetRepo = t.TempDir()
+	require.NoError(t, c.Resolve())
+	require.Equal(t, "", c.ConfigPath)
+}
+
 func TestLoadDaemonFileHostScalar(t *testing.T) {
 	repo := t.TempDir()
 	body := `
