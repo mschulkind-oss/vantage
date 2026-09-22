@@ -684,6 +684,55 @@ func LoadUserStarred() (UserStarred, error) {
 	return f.Starred, nil
 }
 
+// userThemeFile is the narrow view of the user config [LoadUserTheme] decodes.
+type userThemeFile struct {
+	Theme string `toml:"theme"`
+}
+
+// LoadUserTheme reads only the top-level `theme` key from the user's config
+// file: the colour theme a browser shows until its reader picks another in the
+// settings menu. "" — no file, or no key — means the built-in look.
+//
+// Narrow for the same reasons as [LoadUserStarred], and read from the same
+// file in both modes: a colour theme is the reader's setting, not a
+// repository's, so serve mode honours it too.
+func LoadUserTheme() (string, error) {
+	path, err := UserFilePath("config.toml")
+	if err != nil {
+		return "", err
+	}
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("config: reading %s: %w", path, err)
+	}
+
+	var f userThemeFile
+	if _, err := toml.Decode(string(data), &f); err != nil {
+		return "", fmt.Errorf("config: decoding %s: %w", path, err)
+	}
+	return f.Theme, nil
+}
+
+// UserThemesDir returns the directory user colour themes are read from: a
+// "themes" folder beside the config.toml [UserFilePath] resolves.
+//
+// It is derived from the config file rather than resolved as a name of its
+// own, because [UserFilePath] decides the legacy fallback per name. On a Mac
+// whose config still lives under ~/Library/Application Support, a themes folder
+// created there — "beside your config", as the guide says — would otherwise
+// lose to the ~/.config path chosen at startup while it did not yet exist, and
+// never be read.
+func UserThemesDir() (string, error) {
+	path, err := UserFilePath("config.toml")
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(filepath.Dir(path), "themes"), nil
+}
+
 // DataFilePath resolves one user-level vantage *data* file or directory —
 // "reviews", "starred/<file>.json" — under the literal ~/.local/share/vantage.
 // `name` is relative and may carry separators.

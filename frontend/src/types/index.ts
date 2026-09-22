@@ -188,3 +188,25 @@ export interface ReviewData {
   /** Delivery dedup keys, most-recent-last. Server-side only. */
   nonces?: string[];
 }
+
+/**
+ * One user colour theme: a stylesheet in the reader's themes directory. `id` is
+ * the file stem, the URL segment it is served under and the value the browser
+ * stores; `name` is what the settings menu shows. The server sets `name` to the
+ * id today — a directory listing has nothing else to go on — so that a display
+ * name can arrive later without changing the wire format.
+ */
+export interface ThemeInfo {
+  id: string;
+  name: string;
+}
+
+/**
+ * The /api/themes response. `default` is the theme id the reader's config.toml
+ * names, or `""` for the built-in look — a choice made in the browser outranks
+ * it. The built-in themes are not listed: they ship in this bundle.
+ */
+export interface ThemeList {
+  default: string;
+  themes: ThemeInfo[];
+}

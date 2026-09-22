@@ -68,6 +68,7 @@ whatever port Vantage printed on startup, if 8000 was taken.
 | `walk_timeout`             | float            | `30.0`        | Timeout in seconds for the file-discovery subprocess |
 | `use_ignore_files`         | boolean          | `true`        | Honor `~/.config/vantage/ignore` and `.vantageignore` |
 | `log_level`                | string           | `"INFO"`      | Log verbosity: `DEBUG`, `INFO`, `WARNING`, or `ERROR` |
+| `theme`                    | string           | `""` (built-in look) | Colour theme a browser opens in until its reader picks another. Read only from `~/.config/vantage/config.toml`, at startup (see [Colour Themes](../guides/themes.md#a-default-for-every-browser)) |
 
 ## Source Directory Auto-Discovery
 

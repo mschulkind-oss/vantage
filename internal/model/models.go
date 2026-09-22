@@ -255,3 +255,23 @@ func NewReviewComment(id, comment string, createdAt float64) ReviewComment {
 		Reactions: []CommentReaction{},
 	}
 }
+
+// ThemeInfo names one user theme: a stylesheet in the themes directory. ID is
+// the file stem, the URL segment it is served under, and the value the frontend
+// stores; Name is what the settings menu shows. Name is always the ID today —
+// a directory listing has nothing else to go on — and is a field of its own so
+// that a display name (a `/* name: … */` header, docs/design/color-themes.md
+// §9) can arrive without changing the wire format.
+type ThemeInfo struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// ThemeList is the /themes response. Themes is always a non-nil slice so it
+// marshals as [] when the directory is empty or absent. Default is the theme id
+// the reader's config names, or "" for the built-in look; a choice made in the
+// browser outranks it.
+type ThemeList struct {
+	Default string      `json:"default"`
+	Themes  []ThemeInfo `json:"themes"`
+}
