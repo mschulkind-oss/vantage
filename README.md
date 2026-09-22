@@ -145,7 +145,7 @@ falls forward; see the note under `--port` below).
 | `walk_timeout`               | float            | `30.0`             | Timeout (seconds) for git ls-files subprocess     |
 | `use_ignore_files`           | boolean          | `true`             | Honor `.gitignore` and ignore files during walks  |
 | `log_level`                  | string           | `"info"`           | Logging verbosity                                 |
-| `theme`                      | string           | `""` (built-in)    | Default colour theme for every browser; user config only ([guide](userguide/guides/themes.md)) |
+| `theme`                      | string           | `""` (built-in)    | Default colour theme for every browser; user config only, and a project may offer one below it ([guide](userguide/guides/themes.md)) |
 
 ### Excluded Directories
 
@@ -294,7 +294,7 @@ In daemon mode, endpoints are prefixed with `/api/r/{repo}/`:
 | `GET /api/version`          | Server version info                     |
 | `GET /api/perf/diagnostics` | Performance diagnostics (anonymized)    |
 | `POST /api/perf/reset`      | Reset performance counters              |
-| `GET /api/themes`           | User colour themes + configured default |
+| `GET /api/themes`           | User colour themes + the defaults       |
 | `GET /api/themes/{id}`      | One user colour theme's stylesheet      |
 | `WS /ws`                    | WebSocket for live reload notifications |
 
