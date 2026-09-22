@@ -38,6 +38,57 @@ export function currentMermaidTheme(): MermaidThemeName {
 }
 
 /**
+ * The attribute on `<html>` naming the active colour theme. Absent means the
+ * built-in look. The app sets it only once the theme's stylesheet has loaded,
+ * so a reader of this attribute can trust the theme's variables are in effect.
+ */
+export const COLOR_THEME_ATTRIBUTE = "data-vantage-theme";
+
+/**
+ * The attribute on `<html>` saying where the active theme came from: `"user"`
+ * for a stylesheet in the reader's themes directory, `"built-in"` for one the
+ * app ships. Set with {@link COLOR_THEME_ATTRIBUTE}, and absent with it.
+ *
+ * It exists because an id alone is not a palette. A user theme may share a
+ * built-in's id — that is how a reader tweaks one — and the app applies the
+ * stored built-in synchronously, then swaps in the same-id user file once
+ * /api/themes answers. Keyed on the id, the diagrams drawn in between kept the
+ * built-in's colours: the key did not change, so neither the cache nor
+ * `useSyncExternalStore` saw a reason to redraw.
+ */
+export const COLOR_THEME_SOURCE_ATTRIBUTE = "data-vantage-theme-source";
+
+/** The active colour theme's id, or `""` for the built-in look. */
+export function currentColorTheme(): string {
+  if (typeof document === "undefined") return "";
+  return document.documentElement.getAttribute(COLOR_THEME_ATTRIBUTE) ?? "";
+}
+
+/**
+ * Everything a rendered diagram's colours depend on, as one string: the
+ * light/dark mode, plus the colour theme when one is active.
+ *
+ * A diagram is baked at render time, so anything that changes its colours has
+ * to change this key — it is what the SVG cache and the loader's "configured
+ * for" check compare. Under the built-in look it is exactly the mode name,
+ * which is what both keyed on before colour themes existed.
+ */
+export function currentMermaidPalette(): string {
+  const theme = currentColorTheme();
+  if (!theme) return currentMermaidTheme();
+  // Only a user theme is marked, so a built-in's key stays "mode id".
+  const user =
+    document.documentElement.getAttribute(COLOR_THEME_SOURCE_ATTRIBUTE) ===
+    "user";
+  return `${currentMermaidTheme()} ${theme}${user ? " user" : ""}`;
+}
+
+/** The mermaid theme name a palette key was built from. */
+export function mermaidThemeOf(palette: string): MermaidThemeName {
+  return palette.startsWith("dark") ? "dark" : "default";
+}
+
+/**
  * Theme variables per theme. Mermaid derives most of its palette from these, so
  * the set is deliberately small: the surfaces, the ink, and the lines.
  */
@@ -68,8 +119,92 @@ const THEME_VARIABLES: Record<MermaidThemeName, Record<string, string>> = {
   },
 };
 
+/**
+ * Where each variable comes from under a colour theme: the palette step the
+ * built-in value was chosen from. The hex above IS that step in Tailwind's own
+ * palette, so reading the step back out of the page gives the same diagram
+ * under the built-in look and the theme's colours under any other.
+ */
+const THEME_SOURCES: Record<MermaidThemeName, Record<string, string>> = {
+  dark: {
+    background: "--color-slate-800",
+    mainBkg: "--color-slate-700",
+    nodeBorder: "--color-slate-400",
+    nodeTextColor: "--color-slate-100",
+    lineColor: "--color-slate-400",
+    textColor: "--color-slate-200",
+    edgeLabelBackground: "--color-slate-800",
+  },
+  default: {
+    background: "--color-slate-50",
+    mainBkg: "--color-slate-100",
+    nodeBorder: "--color-slate-500",
+    nodeTextColor: "--color-slate-900",
+    lineColor: "--color-slate-500",
+    textColor: "--color-slate-800",
+    edgeLabelBackground: "--color-slate-50",
+  },
+};
+
 export function mermaidThemeVariables(
   theme: MermaidThemeName,
 ): Record<string, string> {
-  return THEME_VARIABLES[theme];
+  const fixed = THEME_VARIABLES[theme];
+  // The built-in look keeps its measured constants verbatim: no DOM reads, and
+  // nothing a colour conversion could round.
+  if (!currentColorTheme()) return fixed;
+  const out: Record<string, string> = {};
+  for (const [key, hex] of Object.entries(fixed)) {
+    out[key] = resolveCssColor(THEME_SOURCES[theme][key]) ?? hex;
+  }
+  return out;
+}
+
+/**
+ * A custom property's colour as `#rrggbb`, or `null` when it cannot be read.
+ *
+ * Mermaid wants hex at `initialize()` time, and a theme's value can be any CSS
+ * colour — `oklch()`, `color-mix()`, a `var()` of another variable. So the
+ * browser does the work: a probe element resolves the property to a computed
+ * colour, and a 1×1 canvas turns that into sRGB bytes whatever syntax it came
+ * back in. No canvas (jsdom, a locked-down embed) is `null`, and the caller
+ * falls back to the built-in value.
+ *
+ * A property nobody declared is `null` too, and has to be checked for up
+ * front: `color: var(--unset)` is invalid at computed-value time, so the probe
+ * *inherits* its colour instead — the page's text colour, which the canvas
+ * would dutifully turn into a plausible hex and mermaid would paint every node
+ * box with.
+ */
+export function resolveCssColor(property: string): string | null {
+  if (typeof document === "undefined") return null;
+  const declared = getComputedStyle(document.documentElement)
+    .getPropertyValue(property)
+    .trim();
+  if (!declared) return null;
+  const probe = document.createElement("span");
+  probe.style.display = "none";
+  probe.style.color = `var(${property})`;
+  document.documentElement.appendChild(probe);
+  const computed = getComputedStyle(probe).color;
+  probe.remove();
+  if (!computed) return null;
+
+  const ctx = pixelContext();
+  if (!ctx) return null;
+  ctx.fillStyle = computed;
+  ctx.fillRect(0, 0, 1, 1);
+  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+  return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/** A 1×1 2D context to read a colour back from, or `null` where there is none. */
+function pixelContext(): CanvasRenderingContext2D | null {
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 1;
+    return canvas.getContext("2d", { willReadFrequently: true });
+  } catch {
+    return null;
+  }
 }
