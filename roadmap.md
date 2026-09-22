@@ -1,19 +1,11 @@
 # Roadmap
 
-**Status:** 4 ready · 1 blocked
+**Status:** 3 ready · 1 blocked
 **Updated:** 2026-09-22
 
 ---
 
 ## 📦 Up Next
-
-### 📦 Publish a release so the v0.5.5 retraction takes effect
-
-[`go.mod`](go.mod) retracts `v0.5.5`, which was tagged without `web/dist` and therefore serves the "Frontend bundle not found." placeholder from `go install`. Every other 0.5.5 artifact is correct.
-
-**A retraction is inert until a later version carrying the directive is published.** `v0.5.6` predates it, so today `go install …@v0.5.5` still resolves and still installs a broken binary. The next release — whenever there is something else worth releasing — makes `go get` and `go install` skip it and warn if it is named directly.
-
-Nothing to build; this is a note that the fix is staged and lands with the next `just release`.
 
 ### 📦 A semantic-token vocabulary, before any component moves
 
@@ -23,6 +15,14 @@ Nothing to build; this is a note that the fix is staged and lands with the next 
 
 Themes written against today's contract keep working through the migration, because a token is defined in terms of the ramps rather than instead of them ([`color-themes.md` §5](docs/design/color-themes.md#5-why-runtime-variables-now-and-not-a-semantic-token-migration)).
 
+### 📦 The rest of the app's accent glyphs onto per-mode ink
+
+A handful of glyphs are painted in one accent shade for both modes, so each is chosen against one surface and unreadable on the other. Measured by the contrast guard, worst first: the folder icon for a directory containing changes and [`StarButton`](frontend/src/components/StarButton.tsx)'s star are `text-amber-400` at **1.57:1** on the light chrome, collapsed folder icons are `text-blue-400` at 2.41:1, four check marks are `text-green-500` at 2.02:1, [`RecentsPage`](frontend/src/pages/RecentsPage.tsx)'s untracked marker is `text-amber-500` at 1.95:1, and two spinners are `text-blue-600` at 2.79:1 on the dark panel.
+
+**Nothing catches these and nothing can.** [`contrast.ts`](frontend/src/lib/contrast.ts) holds them in the tier it does not floor, because the built-in look misses the floor on them itself — flooring the tier would fail Slate, and no palette can fix a shade the app never steps. The fix is the one [`FileTree`](frontend/src/components/FileTree.tsx)'s git icons already had: a `dark:` half, so each mode's ink is chosen for its own surface, which moves each glyph in one mode only.
+
+It changes the built-in look in a dozen small places at once, which is [`OQ-CT2`](docs/design/color-themes.md#decision-ledger)'s shape rather than a fix to fold into something else: a PR of its own, before/after in both modes. The guard's skip list is the work list, and each site's target ratio is in its output.
+
 ### 📦 The review UI's literal colours onto the ramps
 
 About 300 fixed colours in [`frontend/src/index.css`](frontend/src/index.css) — comment highlights, the inline comment cards, their hover and outdated states — ignore every colour theme, so under a dark theme whose surfaces are not Tailwind's slate they are the parts that look wrong. [`OQ-CT2`](docs/design/color-themes.md#decision-ledger) rules the conversion in and accepts what it costs.
@@ -30,12 +30,6 @@ About 300 fixed colours in [`frontend/src/index.css`](frontend/src/index.css) �
 **It shifts the built-in look, which is the whole reason it is a PR of its own.** Of the 342 literals counted in that file, 301 are Tailwind v3 palette steps written as `rgb()`, and v4 defines the same steps in `oklch()` — different in the last digits. Snapping each literal to its nearest ramp step therefore moves some of them by a shade with no theme selected at all, which is the one thing the theme system promised not to do ([`color-themes.md` §4](docs/design/color-themes.md#4-the-zero-change-guarantee-and-how-each-piece-keeps-it)). So the PR does only this, and carries before/after screenshots in both modes, so that the shift is what gets reviewed rather than a side effect of something larger. The `¶` heading anchors, the `#L42` line highlight and the two amber flashes go in the same pass.
 
 Self-contained: nothing waits on it and it waits on nothing.
-
-### 📦 More community palettes as built-ins
-
-[`OQ-CT5`](docs/design/color-themes.md#decision-ledger) keeps Catppuccin and Lila in the tree and leaves the door open for more. A theme may be as small as one ramp, so a further palette costs about what the file costs, and each one exercises [the contract](docs/design/color-themes.md#2-the-contract) somewhere the two existing built-ins do not — which is the reason to have built-ins at all.
-
-One stylesheet beside [`frontend/src/themes/catppuccin.css`](frontend/src/themes/catppuccin.css) and its id in the built-in list in [`frontend/src/lib/colorTheme.ts`](frontend/src/lib/colorTheme.ts). The check is the specimen pages in [`docs/gallery/`](docs/gallery/README.md), in both modes, plus a page with prose, code, callouts, a table and a mermaid diagram.
 
 ---
 

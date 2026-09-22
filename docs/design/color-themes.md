@@ -17,7 +17,7 @@ mechanism below is implemented, and the five questions this design opened were
 ruled on 2026-09-21 — they are in the [Decision Ledger](#decision-ledger), and
 two of the rulings are built in the sections they govern
 ([§2.2](#22-a-built-in-is-a-stylesheet-not-a-string-in-the-bundle),
-[§2.4](#24-a-repository-may-offer-a-default)). One call is still open,
+[§2.5](#25-a-repository-may-offer-a-default)). One call is still open,
 [OQ-CT6](#OQ-CT6), and nothing here waits on it.
 
 **The short version.** A colour theme is a CSS stylesheet that sets custom
@@ -104,19 +104,23 @@ flowchart LR
 ```
 
 - **Built-ins ship with the bundle**, as stylesheets rather than as text inside
-  it. `default` (named "Vantage") has no stylesheet; `catppuccin` is
-  [`frontend/src/themes/catppuccin.css`](../../frontend/src/themes/catppuccin.css)
-  and `lila` is [`frontend/src/themes/lila.css`](../../frontend/src/themes/lila.css),
-  each emitted as a build asset and loaded through the same `<link>` a reader's
-  own theme takes ([§2.2](#22-a-built-in-is-a-stylesheet-not-a-string-in-the-bundle)).
+  it. `default` (named "Slate", after the ramp the contract is built on) has no
+  stylesheet; the six that do are one file each in
+  [`frontend/src/themes/`](../../frontend/src/themes/) — `catppuccin`, `gruvbox`,
+  `lila`, `nord`, `solarized` and `tokyo-night` — each emitted as a build asset
+  and loaded through the same `<link>` a reader's own theme takes
+  ([§2.2](#22-a-built-in-is-a-stylesheet-not-a-string-in-the-bundle)).
   A stored built-in still applies **before the first paint**, because its link is
   appended before the first render — a property of when the link goes in, not of
   whether the CSS travelled inside the chunk.
-- **Catppuccin and Lila are built-ins the project maintains.** A palette in the
-  tree is what keeps the contract honest — a gap in it shows up in a theme the
+- **The built-ins are palettes the project maintains.** A palette in the tree is
+  what keeps the contract honest — a gap in it shows up in a theme the
   maintainers look at — and Catppuccin doubles as the worked example the user
   guide points at. A theme may be as small as one ramp, so a further community
-  palette costs about as much as the file it is written in.
+  palette costs about as much as the file it is written in, which is why there
+  are six rather than one. Each is held to the readability floor
+  ([§2.4](#24-a-theme-may-not-make-the-app-unreadable)), and holding them to it
+  is what turned up what review had missed in the two that shipped first.
 - **The control is called Colours**, a native select under the Light/Dark
   buttons. Light and dark are what the user guide already calls themes, so the
   palette needs the other word; the prose writes "colour" and the identifiers
@@ -147,7 +151,7 @@ flowchart LR
 - **Precedence.** A choice stored in this browser, then `theme = "…"` from the
   user's `config.toml` (read at startup by `config.LoadUserTheme`, in serve and
   daemon mode alike), then `theme = "…"` from the repository's `.vantage.toml`
-  ([§2.4](#24-a-repository-may-offer-a-default)), then the built-in look.
+  ([§2.5](#25-a-repository-may-offer-a-default)), then the built-in look.
   Choosing the built-in look in the menu stores `"default"` explicitly, so
   neither a configured default nor a repository's offer can override a reader
   who chose it.
@@ -251,7 +255,49 @@ theme that has one is a worse lie than silence about a theme that has not.
 }
 ```
 
-### 2.4 A repository may offer a default
+### 2.4 A theme may not make the app unreadable
+
+A theme is free to be any colour it likes, and free to be ugly. It is not free
+to put text at a ratio a reader cannot resolve, and one of the two palettes this
+repository shipped did exactly that: Lila's light `slate-500` — the muted ink
+behind every secondary label in the interface — sat at **2.14:1** on the surface
+it is painted on, against a floor this repository already held its own look to.
+Nobody noticed in review, because the failure is a shade of grey looking like a
+slightly lighter shade of grey.
+
+The floor is **3:1**, and it is
+[`textContrast.test.ts`](../../frontend/src/lib/textContrast.test.ts)'s, not a
+new one invented here: WCAG asks 4.5:1 of body text and 3:1 of incidental
+glyphs, and neither guard can tell which a given line is, so 3:1 is what both
+can honestly enforce. The steps it applies at are scanned out of the components
+rather than chosen — light `500`–`900` against `slate-100`, dark `100`–`400`
+against `slate-800`, each mode's hardest surface — and
+[`contrast.ts`](../../frontend/src/lib/contrast.ts) is the one thing the two
+guards share, with the scanning guard asserting the list still matches what the
+class names say. A shade the app starts using fails there first, naming the step
+to add.
+
+**The theme half has to run in a browser, and that is the interesting part.** A
+theme's values are `oklch()`, `color-mix(in oklab, …)` and chains of `var()` —
+Catppuccin's mid greys are all three — and jsdom computes none of them. A unit
+test could only measure the literals, which is to say it would pass every theme
+whose faint step happens to be written as a mix, and Catppuccin's are. So
+[`e2e/color_theme_contrast.spec.ts`](../../frontend/e2e/color_theme_contrast.spec.ts)
+picks each theme through the real settings menu, reads each step back through a
+probe element and a 1×1 canvas — the technique
+[`mermaidTheme.ts`](../../packages/vantage-md/src/mermaidTheme.ts) already uses
+to hand mermaid a hex — and reports every pair with its ratio, so a failure says
+which palette and which step rather than that something is too faint. It also
+asserts a theme visibly recolours real elements, which nothing did before: until
+this spec, every theme test could have passed against a stylesheet that did
+nothing.
+
+**A reader's own theme is not checked.** It cannot be — the guard runs at build
+time and a user theme arrives afterwards — and refusing to apply one would be
+worse than a faint label. What the guide gets instead is the rule and the two
+step lists, in the section that already asks for ramps in order.
+
+### 2.5 A repository may offer a default
 
 A repository names a theme with a **top-level** `theme = "…"` in
 `.vantage.toml`, beside the `[starred]` table the server already reads there. Top
@@ -275,7 +321,7 @@ and a re-stat at most once every two seconds rather than a read per request.
 
 **A repository offers; it never overrides.** Highest first:
 
-1. The choice stored in this browser — picking **Vantage** is a choice.
+1. The choice stored in this browser — picking **Slate** is a choice.
 2. `theme` in the reader's `~/.config/vantage/config.toml`.
 3. `theme` in the repository's `.vantage.toml`.
 4. The built-in look.
@@ -490,7 +536,7 @@ vocabulary still in flight has to be redone.
 | OQ-CT1 | **Semantic tokens next**, as the style-system layer over this one: a named token vocabulary defined over the ramps, as a series of its own after this, one area of the app per PR so each diff stays reviewable. It needs a design note first, because the vocabulary is the decision and the migration only follows from it | 2026-09-21 | [§5](#5-why-runtime-variables-now-and-not-a-semantic-token-migration), [§9](#9-follow-ups) |
 | OQ-CT2 | **Convert the review UI's literals**, accepting the slight shift in the built-in look, in a PR that does only that and carries before/after screenshots — so the shift is reviewed on its own rather than hidden inside a larger change | 2026-09-21 | [§6](#6-alternatives-considered), [§7](#7-what-is-not-themed-yet) |
 | OQ-CT3 | The control stays **Colours**. Settled by indifference, not by argument: no preference was expressed, so what carries it is the leaning's one reason — it does not collide with light/dark, which the user guide already calls themes | 2026-09-21 | [§2.1](#21-delivery) |
-| OQ-CT4 | **Yes, narrowed to an offer.** A repository may name a default in `.vantage.toml`; it may never override the reader. Highest first: the reader's choice in their browser, the reader's `config.toml`, then the repository. Narrower than the question asked, and ruled in now rather than deferred as the leaning had it | 2026-09-21 | [§2.4](#24-a-repository-may-offer-a-default) |
+| OQ-CT4 | **Yes, narrowed to an offer.** A repository may name a default in `.vantage.toml`; it may never override the reader. Highest first: the reader's choice in their browser, the reader's `config.toml`, then the repository. Narrower than the question asked, and ruled in now rather than deferred as the leaning had it | 2026-09-21 | [§2.5](#25-a-repository-may-offer-a-default) |
 | OQ-CT5 | **Ship both** Catppuccin and Lila as built-ins — the project maintains two palettes, which is what keeps the contract honest. More community favourites may follow, cheaply, because a theme can be as small as one ramp | 2026-09-21 | [§2.1](#21-delivery), [§9](#9-follow-ups) |
 
 ## Open Questions
@@ -498,7 +544,7 @@ vocabulary still in flight has to be redone.
 Settled questions move to the [Decision Ledger](#decision-ledger) above.
 
 1. 💬 **OQ-CT6: May a repository ship theme _files_, not just name one?**
-   [§2.4](#24-a-repository-may-offer-a-default) lets a repository name a theme,
+   [§2.5](#25-a-repository-may-offer-a-default) lets a repository name a theme,
    which means the palette it wants must already be in the reader's themes folder
    or in the bundle — so the case that motivates the key at all, a project whose
    diagrams and screenshots are drawn in its own palette, is the one it cannot
