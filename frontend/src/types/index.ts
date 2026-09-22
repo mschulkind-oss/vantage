@@ -199,14 +199,27 @@ export interface ReviewData {
 export interface ThemeInfo {
   id: string;
   name: string;
+  /**
+   * Whether the stylesheet declares a `:root.dark` rule. The server reads the
+   * file anyway, and only it can tell: `:root` alone applies in both modes, so
+   * a theme with no dark half renders its light palette in dark mode instead of
+   * failing in any way the reader could attribute to the theme.
+   */
+  has_dark: boolean;
 }
 
 /**
  * The /api/themes response. `default` is the theme id the reader's config.toml
  * names, or `""` for the built-in look — a choice made in the browser outranks
  * it. The built-in themes are not listed: they ship in this bundle.
+ *
+ * `repo_defaults` is the theme each repository offers its readers, keyed by repo
+ * name with `""` for single-repo mode — the same sentinel the bookmarks API
+ * uses. It ranks below `default`, because a repository may suggest a palette but
+ * the reader's own config decides.
  */
 export interface ThemeList {
   default: string;
+  repo_defaults: Record<string, string>;
   themes: ThemeInfo[];
 }

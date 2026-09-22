@@ -6,6 +6,17 @@ import { SettingsDropdown } from "./SettingsDropdown";
 vi.mock("axios");
 const mockedAxios = vi.mocked(axios, true);
 
+/**
+ * Let the colour theme's stylesheet load. Every theme is a `<link>` now, and
+ * jsdom fetches nothing, so the event a browser fires has to be fired here.
+ */
+async function loadThemeLink() {
+  const links = () =>
+    Array.from(document.head.querySelectorAll<HTMLLinkElement>("link"));
+  await waitFor(() => expect(links().length).toBeGreaterThan(0));
+  links()[links().length - 1].dispatchEvent(new Event("load"));
+}
+
 function renderDropdown() {
   return render(
     <SettingsDropdown
@@ -29,7 +40,7 @@ describe("SettingsDropdown", () => {
   });
 
   afterEach(() => {
-    document.getElementById("vantage-color-theme")?.remove();
+    document.head.querySelectorAll("link").forEach((l) => l.remove());
     document.documentElement.removeAttribute("data-vantage-theme");
   });
 
@@ -234,6 +245,7 @@ describe("SettingsDropdown", () => {
       fireEvent.change(screen.getByLabelText("Colours"), {
         target: { value: "catppuccin" },
       });
+      await loadThemeLink();
       await waitFor(() =>
         expect(
           document.documentElement.getAttribute("data-vantage-theme"),
@@ -242,6 +254,46 @@ describe("SettingsDropdown", () => {
       expect(localStorage.getItem("vantage:colorTheme")).toBe("catppuccin");
       expect(document.documentElement.classList.contains("dark")).toBe(true);
       expect(localStorage.getItem("vantage:theme")).toBe("dark");
+    });
+
+    it("marks a theme with no dark half, so dark mode is not a surprise", async () => {
+      mockedAxios.get.mockResolvedValue({
+        data: {
+          default: "",
+          repo_defaults: {},
+          themes: [
+            { id: "daylight", name: "daylight", has_dark: false },
+            { id: "nord", name: "nord", has_dark: true },
+          ],
+        },
+      });
+      renderDropdown();
+      fireEvent.click(screen.getByLabelText("Settings"));
+      const select = screen.getByLabelText("Colours") as HTMLSelectElement;
+      await waitFor(() =>
+        expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
+          "Vantage",
+          "Catppuccin",
+          "Lila",
+          "daylight (light only)",
+          "nord",
+        ]),
+      );
+    });
+
+    it("says nothing about a theme the list never described", async () => {
+      // A user theme is in effect but the server cannot be reached, so its
+      // option is synthesised — and a "(light only)" guess about a file this
+      // list has not seen would be worse than no claim at all.
+      document.documentElement.setAttribute("data-vantage-theme", "nord");
+      mockedAxios.get.mockRejectedValue(new Error("network"));
+      renderDropdown();
+      fireEvent.click(screen.getByLabelText("Settings"));
+      const select = screen.getByLabelText("Colours") as HTMLSelectElement;
+      await waitFor(() => expect(mockedAxios.get).toHaveBeenCalled());
+      expect(
+        Array.from(select.options).find((o) => o.value === "nord")?.textContent,
+      ).toBe("nord");
     });
   });
 });
