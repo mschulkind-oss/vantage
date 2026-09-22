@@ -7,6 +7,7 @@ import { useGitStore } from "../stores/useGitStore";
 import { useReviewStore } from "../stores/useReviewStore";
 import { useConnectionStore } from "../stores/useConnectionStore";
 import { useStarredStore } from "../stores/useStarredStore";
+import { useFilePickerStore } from "../stores/useFilePickerStore";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { BrowserRouter } from "react-router-dom";
 import type { CommentReaction, ReviewComment } from "../types";
@@ -80,6 +81,16 @@ describe("ViewerPage", () => {
       filePath: null,
       comments: [],
       commentsDrifted: false,
+    });
+    // Likewise a picker one case opened: it would still be on screen in the
+    // next one, over the header every other assertion is about.
+    useFilePickerStore.setState({
+      open: null,
+      files: [],
+      filesRepo: null,
+      globalFiles: [],
+      globalSource: null,
+      loading: false,
     });
 
     (useRepoStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({

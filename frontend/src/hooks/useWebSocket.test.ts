@@ -5,6 +5,7 @@ import { useRepoStore } from "../stores/useRepoStore";
 import { useGitStore } from "../stores/useGitStore";
 import { useReviewStore } from "../stores/useReviewStore";
 import { useStarredStore } from "../stores/useStarredStore";
+import { useFilePickerStore } from "../stores/useFilePickerStore";
 
 vi.mock("../stores/useRepoStore");
 vi.mock("../stores/useGitStore");
@@ -31,6 +32,11 @@ describe("useWebSocket", () => {
   // Same treatment for the starred store: swap the real action rather than
   // module-mocking, so this observes the call the hook actually makes.
   const mockLoadStarred = vi.fn();
+  // And for the file pickers' lists.
+  const mockPickerRefresh = vi.fn();
+  let realPickerRefresh: ReturnType<
+    typeof useFilePickerStore.getState
+  >["refresh"];
   let realLoadStarred: ReturnType<
     typeof useStarredStore.getState
   >["loadStarred"];
@@ -57,6 +63,9 @@ describe("useWebSocket", () => {
 
     realLoadStarred = useStarredStore.getState().loadStarred;
     useStarredStore.setState({ loadStarred: mockLoadStarred });
+
+    realPickerRefresh = useFilePickerStore.getState().refresh;
+    useFilePickerStore.setState({ refresh: mockPickerRefresh });
 
     // Mock Stores - support both destructuring and selector patterns
     const repoState = makeRepoStoreState();
@@ -100,6 +109,7 @@ describe("useWebSocket", () => {
   afterEach(() => {
     useReviewStore.setState({ loadReview: realLoadReview });
     useStarredStore.setState({ loadStarred: realLoadStarred });
+    useFilePickerStore.setState({ refresh: realPickerRefresh });
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
@@ -160,6 +170,62 @@ describe("useWebSocket", () => {
     expect(mockLoadFile).not.toHaveBeenCalled();
     // Still refreshes tree
     expect(mockRefreshExpandedTree).toHaveBeenCalled();
+  });
+
+  // An open file picker has to follow the watcher like everything else on
+  // screen: a file created while the picker is up is exactly the file the
+  // reader opened it to find.
+  it("refreshes an open file picker with the batch", () => {
+    renderHook(() => useWebSocket());
+
+    act(() => {
+      mockWebSocket.onmessage!({
+        data: JSON.stringify({ type: "files_changed", paths: ["new.md"] }),
+      } as MessageEvent);
+    });
+    expect(mockPickerRefresh).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+
+    // Coalesced with the rest of the batch — one refresh, not one per path.
+    expect(mockPickerRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  // The picker refresh sits above the repo guards on purpose: the repo-picker
+  // screen is where the global picker is opened, and the endpoints behind it are
+  // repo-agnostic.
+  it("refreshes the picker even with no repository selected", () => {
+    const repoState = makeRepoStoreState({
+      isMultiRepo: true,
+      currentRepo: null,
+    });
+    const mockStore = (selector?: (state: typeof repoState) => unknown) => {
+      if (typeof selector === "function") return selector(repoState);
+      return repoState;
+    };
+    mockStore.getState = () => repoState;
+    (useRepoStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      mockStore,
+    );
+    (useRepoStore as unknown as { getState: () => typeof repoState }).getState =
+      () => repoState;
+
+    renderHook(() => useWebSocket());
+
+    act(() => {
+      mockWebSocket.onmessage!({
+        data: JSON.stringify({ type: "files_changed", paths: ["new.md"] }),
+      } as MessageEvent);
+    });
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+
+    expect(mockPickerRefresh).toHaveBeenCalled();
+    // …while the repo-scoped work the guards protect is still skipped.
+    expect(mockRefreshExpandedTree).not.toHaveBeenCalled();
   });
 
   it("batches multiple rapid messages into one refresh", () => {
