@@ -1,11 +1,36 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import axios from "axios";
 import { SettingsDropdown } from "./SettingsDropdown";
+
+vi.mock("axios");
+const mockedAxios = vi.mocked(axios, true);
+
+function renderDropdown() {
+  return render(
+    <SettingsDropdown
+      showEmptyDirs={true}
+      onShowEmptyDirsChange={vi.fn()}
+      showHidden={true}
+      onShowHiddenChange={vi.fn()}
+      showGitignored={true}
+      onShowGitignoredChange={vi.fn()}
+      keyboardShortcutsEnabled={true}
+      onKeyboardShortcutsEnabledChange={vi.fn()}
+    />,
+  );
+}
 
 describe("SettingsDropdown", () => {
   beforeEach(() => {
     document.documentElement.classList.remove("dark");
     localStorage.clear();
+    mockedAxios.get.mockResolvedValue({ data: { default: "", themes: [] } });
+  });
+
+  afterEach(() => {
+    document.getElementById("vantage-color-theme")?.remove();
+    document.documentElement.removeAttribute("data-vantage-theme");
   });
 
   it("renders settings button", () => {
@@ -144,5 +169,77 @@ describe("SettingsDropdown", () => {
     const checkboxes = screen.getAllByRole("checkbox");
     fireEvent.click(checkboxes[0]);
     expect(onKeyboardShortcutsEnabledChange).toHaveBeenCalledWith(true);
+  });
+
+  describe("colour theme picker", () => {
+    it("lists the built-ins and the server's user themes when opened", async () => {
+      mockedAxios.get.mockResolvedValue({
+        data: { default: "", themes: [{ id: "nord", name: "nord" }] },
+      });
+      renderDropdown();
+      fireEvent.click(screen.getByLabelText("Settings"));
+      const select = screen.getByLabelText("Colours") as HTMLSelectElement;
+      await waitFor(() =>
+        expect(Array.from(select.options).map((o) => o.value)).toEqual([
+          "default",
+          "catppuccin",
+          "nord",
+        ]),
+      );
+      expect(select.value).toBe("default");
+      expect(mockedAxios.get).toHaveBeenCalledWith("/api/themes");
+    });
+
+    it("shows the active theme", async () => {
+      document.documentElement.setAttribute("data-vantage-theme", "catppuccin");
+      renderDropdown();
+      fireEvent.click(screen.getByLabelText("Settings"));
+      expect(
+        (screen.getByLabelText("Colours") as HTMLSelectElement).value,
+      ).toBe("catppuccin");
+    });
+
+    it("keeps the applied theme selectable when the list lacks it", async () => {
+      // A user theme is in effect, but the server cannot be reached, so the
+      // list is the built-ins only.
+      document.documentElement.setAttribute("data-vantage-theme", "nord");
+      mockedAxios.get.mockRejectedValue(new Error("network"));
+      renderDropdown();
+      fireEvent.click(screen.getByLabelText("Settings"));
+      const select = screen.getByLabelText("Colours") as HTMLSelectElement;
+      await waitFor(() => expect(mockedAxios.get).toHaveBeenCalled());
+      expect(Array.from(select.options).map((o) => o.value)).toEqual([
+        "default",
+        "catppuccin",
+        "nord",
+      ]);
+      expect(select.value).toBe("nord");
+
+      // So "Vantage" is a real change, and returns to the built-in look.
+      fireEvent.change(select, { target: { value: "default" } });
+      await waitFor(() =>
+        expect(
+          document.documentElement.hasAttribute("data-vantage-theme"),
+        ).toBe(false),
+      );
+    });
+
+    it("applies and remembers a choice, leaving light/dark alone", async () => {
+      document.documentElement.classList.add("dark");
+      localStorage.setItem("vantage:theme", "dark");
+      renderDropdown();
+      fireEvent.click(screen.getByLabelText("Settings"));
+      fireEvent.change(screen.getByLabelText("Colours"), {
+        target: { value: "catppuccin" },
+      });
+      await waitFor(() =>
+        expect(
+          document.documentElement.getAttribute("data-vantage-theme"),
+        ).toBe("catppuccin"),
+      );
+      expect(localStorage.getItem("vantage:colorTheme")).toBe("catppuccin");
+      expect(document.documentElement.classList.contains("dark")).toBe(true);
+      expect(localStorage.getItem("vantage:theme")).toBe("dark");
+    });
   });
 });
