@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import axios from "axios";
 import { SettingsDropdown } from "./SettingsDropdown";
+import { builtInColorThemes } from "../lib/colorTheme";
 
 vi.mock("axios");
 const mockedAxios = vi.mocked(axios, true);
@@ -185,17 +186,15 @@ describe("SettingsDropdown", () => {
   describe("colour theme picker", () => {
     it("lists the built-ins and the server's user themes when opened", async () => {
       mockedAxios.get.mockResolvedValue({
-        data: { default: "", themes: [{ id: "nord", name: "nord" }] },
+        data: { default: "", themes: [{ id: "ocean", name: "ocean" }] },
       });
       renderDropdown();
       fireEvent.click(screen.getByLabelText("Settings"));
       const select = screen.getByLabelText("Colours") as HTMLSelectElement;
       await waitFor(() =>
         expect(Array.from(select.options).map((o) => o.value)).toEqual([
-          "default",
-          "catppuccin",
-          "lila",
-          "nord",
+          ...builtInColorThemes().map((t) => t.id),
+          "ocean",
         ]),
       );
       expect(select.value).toBe("default");
@@ -214,21 +213,19 @@ describe("SettingsDropdown", () => {
     it("keeps the applied theme selectable when the list lacks it", async () => {
       // A user theme is in effect, but the server cannot be reached, so the
       // list is the built-ins only.
-      document.documentElement.setAttribute("data-vantage-theme", "nord");
+      document.documentElement.setAttribute("data-vantage-theme", "ocean");
       mockedAxios.get.mockRejectedValue(new Error("network"));
       renderDropdown();
       fireEvent.click(screen.getByLabelText("Settings"));
       const select = screen.getByLabelText("Colours") as HTMLSelectElement;
       await waitFor(() => expect(mockedAxios.get).toHaveBeenCalled());
       expect(Array.from(select.options).map((o) => o.value)).toEqual([
-        "default",
-        "catppuccin",
-        "lila",
-        "nord",
+        ...builtInColorThemes().map((t) => t.id),
+        "ocean",
       ]);
-      expect(select.value).toBe("nord");
+      expect(select.value).toBe("ocean");
 
-      // So "Vantage" is a real change, and returns to the built-in look.
+      // So "Slate" is a real change, and returns to the built-in look.
       fireEvent.change(select, { target: { value: "default" } });
       await waitFor(() =>
         expect(
@@ -263,7 +260,7 @@ describe("SettingsDropdown", () => {
           repo_defaults: {},
           themes: [
             { id: "daylight", name: "daylight", has_dark: false },
-            { id: "nord", name: "nord", has_dark: true },
+            { id: "ocean", name: "ocean", has_dark: true },
           ],
         },
       });
@@ -272,11 +269,9 @@ describe("SettingsDropdown", () => {
       const select = screen.getByLabelText("Colours") as HTMLSelectElement;
       await waitFor(() =>
         expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
-          "Vantage",
-          "Catppuccin",
-          "Lila",
+          ...builtInColorThemes().map((t) => t.name),
           "daylight (light only)",
-          "nord",
+          "ocean",
         ]),
       );
     });
@@ -285,15 +280,16 @@ describe("SettingsDropdown", () => {
       // A user theme is in effect but the server cannot be reached, so its
       // option is synthesised — and a "(light only)" guess about a file this
       // list has not seen would be worse than no claim at all.
-      document.documentElement.setAttribute("data-vantage-theme", "nord");
+      document.documentElement.setAttribute("data-vantage-theme", "ocean");
       mockedAxios.get.mockRejectedValue(new Error("network"));
       renderDropdown();
       fireEvent.click(screen.getByLabelText("Settings"));
       const select = screen.getByLabelText("Colours") as HTMLSelectElement;
       await waitFor(() => expect(mockedAxios.get).toHaveBeenCalled());
       expect(
-        Array.from(select.options).find((o) => o.value === "nord")?.textContent,
-      ).toBe("nord");
+        Array.from(select.options).find((o) => o.value === "ocean")
+          ?.textContent,
+      ).toBe("ocean");
     });
   });
 });
