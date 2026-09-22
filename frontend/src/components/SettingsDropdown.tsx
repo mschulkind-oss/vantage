@@ -102,7 +102,15 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
     ? colorThemes
     : [
         ...colorThemes,
-        { id: colorTheme, name: colorTheme, source: "user" as const },
+        // `hasDark` is a claim about a file this list never saw, so it claims
+        // nothing: "(light only)" on a theme that has a dark half would be a
+        // worse lie than saying nothing about one that does not.
+        {
+          id: colorTheme,
+          name: colorTheme,
+          source: "user" as const,
+          hasDark: true,
+        },
       ];
 
   const handleColorThemeChange = (id: string) => {
@@ -197,7 +205,12 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
               >
                 {colorOptions.map((t) => (
                   <option key={t.id} value={t.id}>
-                    {t.name}
+                    {/* A theme with no `:root.dark` rule looks broken rather
+                        than absent in dark mode — its light palette on a page
+                        the reader asked to be dark — and the theme's own file
+                        is the only place that can be fixed, so the picker says
+                        which theme it is. */}
+                    {t.hasDark ? t.name : `${t.name} (light only)`}
                   </option>
                 ))}
               </select>

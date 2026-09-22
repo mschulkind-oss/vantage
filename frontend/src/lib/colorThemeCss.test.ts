@@ -341,6 +341,24 @@ describe("the scrollbar", () => {
   });
 });
 
+describe("the built-ins' dark halves", () => {
+  // `colorTheme.ts` hardcodes `hasDark: true` for both built-ins: it links to
+  // their stylesheets rather than reading them, and a theme that declares only
+  // `:root` is one the picker marks "(light only)". Delete a `:root.dark` rule
+  // and that promise would be silently false — dark mode would render the light
+  // palette, which is the failure the flag exists to name.
+  it.each([
+    ["catppuccin", catppuccinCss],
+    ["lila", lilaCss],
+  ])("%s declares a :root.dark rule", (_id, css) => {
+    const dark = rules(css).filter((r) => r.selectors.includes(":root.dark"));
+    expect(dark.length).toBeGreaterThan(0);
+    expect(dark.some((r) => Object.keys(declarations(r.body)).length > 0)).toBe(
+      true,
+    );
+  });
+});
+
 describe("the built-in Catppuccin theme", () => {
   const lightRules = [
     ruleFor(catppuccinCss, ":root"),
