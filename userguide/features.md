@@ -293,6 +293,13 @@ they meant:
 
 Press **Shift+D** to toggle between light and dark themes. The setting is persisted across sessions.
 
+## Colour Themes
+
+Light and dark are drawn in a colour theme: the built-in look, **Catppuccin**, or
+one you write yourself as a single CSS file in `~/.config/vantage/themes/`. Pick
+one from **Colours** in the settings menu, or set a default for every browser
+with `theme = "…"` in your config. See [Colour Themes](guides/themes.md).
+
 ## Performance Diagnostics
 
 Vantage includes built-in performance instrumentation. Run `vantage perf-report` against a running instance to see anonymized timing data for all API endpoints. See the [CLI Reference](reference/cli-reference.md#vantage-perf-report) for details.
