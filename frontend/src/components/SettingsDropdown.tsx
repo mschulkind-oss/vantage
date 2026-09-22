@@ -96,7 +96,7 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
   // The applied theme is always an option, even when the list lacks it — it
   // starts as the built-ins, falls back to them when the server cannot be
   // reached, and drops a theme whose file was removed. Without it the select
-  // showed "Vantage" over a user theme still in effect, and picking "Vantage"
+  // showed "Slate" over a user theme still in effect, and picking "Slate"
   // was then no change at all, so the reader could not get back to it.
   const colorOptions = colorThemes.some((t) => t.id === colorTheme)
     ? colorThemes
