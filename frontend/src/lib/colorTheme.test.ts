@@ -81,10 +81,11 @@ describe("colorTheme", () => {
   });
 
   describe("built-ins", () => {
-    it("are the default look, named Vantage, and Catppuccin", () => {
+    it("are the default look, named Vantage, Catppuccin and Lila", () => {
       expect(builtInColorThemes().map((t) => [t.id, t.name])).toEqual([
         ["default", "Vantage"],
         ["catppuccin", "Catppuccin"],
+        ["lila", "Lila"],
       ]);
     });
   });
@@ -168,6 +169,7 @@ describe("colorTheme", () => {
       expect(themes.map((t) => [t.id, t.source])).toEqual([
         ["default", "built-in"],
         ["catppuccin", "built-in"],
+        ["lila", "built-in"],
         ["nord", "user"],
       ]);
       expect(mockedAxios.get).toHaveBeenCalledWith("/api/themes");

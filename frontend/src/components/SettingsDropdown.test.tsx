@@ -183,6 +183,7 @@ describe("SettingsDropdown", () => {
         expect(Array.from(select.options).map((o) => o.value)).toEqual([
           "default",
           "catppuccin",
+          "lila",
           "nord",
         ]),
       );
@@ -211,6 +212,7 @@ describe("SettingsDropdown", () => {
       expect(Array.from(select.options).map((o) => o.value)).toEqual([
         "default",
         "catppuccin",
+        "lila",
         "nord",
       ]);
       expect(select.value).toBe("nord");

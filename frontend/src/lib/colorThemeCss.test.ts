@@ -1,6 +1,6 @@
 /**
  * Drift guards over the colour-theme half of `frontend/src/index.css` and the
- * built-in `frontend/src/themes/catppuccin.css`.
+ * built-in themes in `frontend/src/themes/`.
  *
  * The promise these rules make is two-sided, and each side fails silently:
  *
@@ -36,6 +36,7 @@ const stripComments = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, "");
 
 const indexCss = stripComments(read("../index.css"));
 const catppuccinCss = stripComments(read("../themes/catppuccin.css"));
+const lilaCss = stripComments(read("../themes/lila.css"));
 
 const require = createRequire(import.meta.url);
 
@@ -402,5 +403,30 @@ describe("the built-in Catppuccin theme", () => {
         [],
       );
     });
+  });
+});
+
+describe("the built-in Lila theme", () => {
+  const light = declarations(ruleFor(lilaCss, ":root").body);
+  const dark = declarations(ruleFor(lilaCss, ":root.dark").body);
+
+  it("gives every colour it sets in light mode a dark-mode value too", () => {
+    // A step set in one mode only would carry its light value into dark mode
+    // (the `:root` rule applies in both), or fall back to Tailwind's.
+    expect(Object.keys(dark).sort()).toEqual(Object.keys(light).sort());
+    expect(Object.keys(light).length).toBeGreaterThan(20);
+  });
+
+  it("recesses the dark chrome into mantle, below the content", () => {
+    // The one deliberate break from Tailwind's order: `dark:bg-slate-800`
+    // paints the sidebar, top bar and menus, `dark:bg-slate-900` the content,
+    // and Lila puts the chrome *below* the content, as terminal panes sit.
+    expect(dark["--color-slate-800"]).toBe("#181825");
+    expect(dark["--color-slate-900"]).toBe("#1e1e2e");
+  });
+
+  it("uses mauve for the accent family in both modes", () => {
+    expect(dark["--color-blue-500"]).toBe("#cba6f7");
+    expect(light["--color-blue-500"]).toBe("#8839ef");
   });
 });

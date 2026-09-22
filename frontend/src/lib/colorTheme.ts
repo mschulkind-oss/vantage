@@ -34,6 +34,7 @@ import {
   COLOR_THEME_SOURCE_ATTRIBUTE,
 } from "vantage-md";
 import catppuccinCss from "../themes/catppuccin.css?inline";
+import lilaCss from "../themes/lila.css?inline";
 import { isStaticMode } from "./staticMode";
 import type { ThemeList } from "../types";
 
@@ -64,11 +65,13 @@ export interface ColorTheme {
  */
 const BUILT_IN_CSS: Record<string, string> = {
   catppuccin: catppuccinCss,
+  lila: lilaCss,
 };
 
 const BUILT_INS: readonly ColorTheme[] = [
   { id: DEFAULT_COLOR_THEME, name: "Vantage", source: "built-in" },
   { id: "catppuccin", name: "Catppuccin", source: "built-in" },
+  { id: "lila", name: "Lila", source: "built-in" },
 ];
 
 export function builtInColorThemes(): ColorTheme[] {

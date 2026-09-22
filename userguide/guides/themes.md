@@ -4,8 +4,9 @@ Vantage has two independent appearance settings. **Light or dark** is the one
 you already know: **Shift+D**, or the Light/Dark buttons in the settings menu.
 A **colour theme** is the palette both of those modes are drawn in. The
 built-in look is called **Vantage**; Vantage also ships **Catppuccin** (Latte in
-light mode, Mocha in dark), and you can add your own by dropping a stylesheet
-into a folder.
+light mode, Mocha in dark) and **Lila** (the same flavours with a mauve accent
+and the sidebar and top bar recessed below the content in dark mode), and you
+can add your own by dropping a stylesheet into a folder.
 
 Switching mode never changes your theme, and switching theme never changes your
 mode.
@@ -153,6 +154,11 @@ background in light mode **and** the text on accent buttons in both modes, and
 > light page, `slate-800` is the chrome in dark mode — so a ramp that is in
 > order keeps each of them legible, and a ramp that is out of order puts light
 > text on a light surface somewhere you did not look.
+>
+> Break the order only on purpose, one step you know the use of. Lila does it
+> once: in dark mode its `slate-800` (the sidebar, top bar and menus) is darker
+> than its `slate-900` (the content), so the chrome sits below the page, the way
+> terminal panes do.
 
 The rest of the contract is things that are not Tailwind colours:
 

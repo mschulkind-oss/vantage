@@ -100,8 +100,9 @@ flowchart LR
 
 - **Built-ins ship in the bundle.** `default` (named "Vantage") has no
   stylesheet; `catppuccin` is
-  [`frontend/src/themes/catppuccin.css`](../../frontend/src/themes/catppuccin.css),
-  inlined at build time so a stored choice applies **before the first paint**
+  [`frontend/src/themes/catppuccin.css`](../../frontend/src/themes/catppuccin.css)
+  and `lila` is [`frontend/src/themes/lila.css`](../../frontend/src/themes/lila.css),
+  both inlined at build time so a stored choice applies **before the first paint**
   rather than after a request.
 - **User themes are files.** `GET /api/themes` lists
   `~/.config/vantage/themes/*.css`, re-reading the directory on every request so
@@ -367,16 +368,20 @@ Settled questions move to the [Decision Ledger](#decision-ledger) above.
 
    > _(empty — fill in when decided)_
 
-5. 💬 **OQ-CT5: Ship Catppuccin as a built-in, or only the mechanism?** A
-   built-in is a palette the project then maintains. It is also the worked
+5. 💬 **OQ-CT5: Ship Catppuccin and Lila as built-ins, or only the mechanism?**
+   A built-in is a palette the project then maintains. Catppuccin is the worked
    example the user guide points at, and the proof that the contract is complete
-   enough to restyle the whole app.
+   enough to restyle the whole app. Lila is the theme this PR's author uses day
+   to day — the palette his terminal, editor and window borders share — and the
+   one that shows a theme may break ramp order on purpose (its recessed dark
+   chrome). Either could equally live outside the tree as a user theme.
 
-   <!-- vantage: oq id=OQ-CT5 leaning="Ship it: one built-in keeps the contract honest, because any gap shows up in a theme the maintainers look at, and it doubles as the documentation's example." -->
+   <!-- vantage: oq id=OQ-CT5 leaning="Ship Catppuccin: a built-in keeps the contract honest, because any gap shows up in a theme the maintainers look at, and it doubles as the documentation's example. Lila is optional — it can move out to a user theme if two built-ins are one more than you want to maintain." -->
 
-   _Leaning:_ ship it. One built-in keeps the contract honest, because any gap
-   shows up in a theme the maintainers look at, and it doubles as the
-   documentation's example.
+   _Leaning:_ ship Catppuccin. A built-in keeps the contract honest, because any
+   gap shows up in a theme the maintainers look at, and it doubles as the
+   documentation's example. Lila is optional: it can move out to a user theme if
+   two built-ins are one more than you want to maintain.
 
    **Answer:**
 
