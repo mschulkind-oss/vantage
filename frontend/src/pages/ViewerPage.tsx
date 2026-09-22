@@ -15,7 +15,7 @@ import { MarkdownViewer } from "../components/MarkdownViewer";
 import { DirectoryViewer } from "../components/DirectoryViewer";
 import { DiffViewer } from "../components/DiffViewer";
 import { FilePicker } from "../components/FilePicker";
-import type { GlobalFile } from "../components/FilePicker";
+import { useFilePickerStore } from "../stores/useFilePickerStore";
 import { ProjectPicker } from "../components/ProjectPicker";
 import { AppLink } from "../components/AppLink";
 import { useWebSocket } from "../hooks/useWebSocket";
@@ -52,7 +52,6 @@ import { isStaticMode } from "../lib/staticMode";
 import { bookmarkTargetFromRoute } from "../lib/bookmarkTarget";
 import { useStarredStore } from "../stores/useStarredStore";
 import { copyTextOrWarn } from "../lib/clipboard";
-import axios from "axios";
 import { SettingsDropdown } from "../components/SettingsDropdown";
 import { RecentFilePopover } from "../components/RecentFilePopover";
 import {
@@ -151,20 +150,19 @@ export const ViewerPage: React.FC = () => {
   const contentRef = useRef<HTMLDivElement>(null);
   useLineAnchor(contentRef);
   const prevPathRef = useRef<string | null>(null);
-  const [filePickerOpen, setFilePickerOpen] = useState(false);
-  const [globalFilePickerOpen, setGlobalFilePickerOpen] = useState(false);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const [recentsModalOpen, setRecentsModalOpen] = useState(false);
-  const [allFiles, setAllFiles] = useState<string[]>([]);
-  const [globalFiles, setGlobalFiles] = useState<GlobalFile[]>([]);
-  const [filePickerLoading, setFilePickerLoading] = useState(false);
-  // What the cached lists are lists *of*: which repo `allFiles` was fetched
-  // for, and which endpoint filled `globalFiles` (the global picker is shared
-  // by all-files and recents search). A cache from a different source is not
-  // stale data worth showing while the refetch is in flight — it is the wrong
-  // list — so it gets cleared rather than displayed.
-  const allFilesRepoRef = useRef<string | null>(null);
-  const globalFilesSourceRef = useRef<"all" | "recent" | null>(null);
+  // The file pickers' lists live in a store so the watcher can refresh them
+  // while they are on screen.
+  const {
+    open: filePickerMode,
+    files: allFiles,
+    globalFiles,
+    loading: filePickerLoading,
+    openLocal: openLocalFilePicker,
+    openGlobal: openGlobalFilePicker,
+    close: closeFilePicker,
+  } = useFilePickerStore();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
@@ -380,13 +378,6 @@ export const ViewerPage: React.FC = () => {
   // --- Style guide ---
   const [styleGuideOpen, setStyleGuideOpen] = useState(false);
 
-  // Helper to get API base
-  const getApiBase = useCallback((): string => {
-    const { currentRepo: cr, isMultiRepo: imr } = useRepoStore.getState();
-    if (imr && cr) return `/api/r/${encodeURIComponent(cr)}`;
-    return "/api";
-  }, []);
-
   // Build the proper URL path considering multi-repo mode
   const buildPath = useCallback(
     (filePath: string): string => {
@@ -417,17 +408,12 @@ export const ViewerPage: React.FC = () => {
     [pathParam, isMultiRepo],
   );
 
-  // Clear the cached file list when the repo changes, and close the mobile
-  // sidebar when the path does. Both adjust state during render (React's
-  // documented pattern) rather than from an effect: an effect published one
-  // render carrying the previous repo's file list — which the file picker could
-  // open against — and then re-rendered to correct itself.
-  const [prevRepo, setPrevRepo] = useState(currentRepo);
-  if (prevRepo !== currentRepo) {
-    setPrevRepo(currentRepo);
-    setAllFiles([]);
-  }
-
+  // Close the mobile sidebar when the path changes. This adjusts state during
+  // render (React's documented pattern) rather than from an effect.
+  //
+  // Dropping the previous repository's file list used to live here too, for the
+  // same reason; useFilePickerStore now drops it as it opens, which cannot
+  // publish a render carrying the wrong repo's list at all.
   const [prevPathParam, setPrevPathParam] = useState(pathParam);
   if (prevPathParam !== pathParam) {
     setPrevPathParam(pathParam);
@@ -660,43 +646,10 @@ export const ViewerPage: React.FC = () => {
 
   // Keyboard shortcuts
   //
-  // Every picker refetches its list each time it opens. Files appear and
-  // disappear under a long-lived tab — watching that happen is what this app is
-  // for — so a list fetched once on first open went stale immediately, and `t`
-  // could not find a file the sidebar and the recents modal were both already
-  // showing. The list that is already on screen stays there while the request is
-  // in flight, so reopening a picker is never a spinner; only a first open, or
-  // one whose cache came from another repo or another endpoint, is.
-  const openLocalFilePicker = useCallback(() => {
-    const apiBase = getApiBase();
-    const repo = useRepoStore.getState().currentRepo;
-    if (allFilesRepoRef.current !== repo) {
-      setAllFiles([]);
-      allFilesRepoRef.current = repo;
-    }
-    setFilePickerOpen(true);
-    setFilePickerLoading(true);
-    axios
-      .get<string[]>(`${apiBase}/files`)
-      .then((res) => setAllFiles(res.data))
-      .catch((err) => console.error("Failed to load file list", err))
-      .finally(() => setFilePickerLoading(false));
-  }, [getApiBase]);
-  const openGlobalFilePicker = useCallback((source: "all" | "recent") => {
-    if (globalFilesSourceRef.current !== source) {
-      setGlobalFiles([]);
-      globalFilesSourceRef.current = source;
-    }
-    setGlobalFilePickerOpen(true);
-    setFilePickerLoading(true);
-    axios
-      .get<GlobalFile[]>(
-        source === "all" ? "/api/files/all" : "/api/recent/all?limit=200",
-      )
-      .then((res) => setGlobalFiles(res.data))
-      .catch((err) => console.error("Failed to load file list", err))
-      .finally(() => setFilePickerLoading(false));
-  }, []);
+  // Opening a picker refetches its list, and the watcher's pushes keep it
+  // current while it is open (see useFilePickerStore). The list already on
+  // screen stays there until the answer arrives, so neither a reopen nor a live
+  // refresh is a spinner.
   const handleOpenFilePicker = useCallback(() => {
     const {
       isMultiRepo: imr,
@@ -706,13 +659,13 @@ export const ViewerPage: React.FC = () => {
     if (!rl) return;
     // In multi-repo mode with no repo selected there is no local list to search
     if (imr && !cr) {
-      openGlobalFilePicker("all");
+      void openGlobalFilePicker("all");
       return;
     }
-    openLocalFilePicker();
+    void openLocalFilePicker();
   }, [openLocalFilePicker, openGlobalFilePicker]);
   const handleOpenGlobalFilePicker = useCallback(() => {
-    openGlobalFilePicker("all");
+    void openGlobalFilePicker("all");
   }, [openGlobalFilePicker]);
   const handleOpenProjectPicker = useCallback(() => {
     setProjectPickerOpen(true);
@@ -725,7 +678,7 @@ export const ViewerPage: React.FC = () => {
     setRecentsModalOpen(true);
   }, []);
   const handleOpenGlobalRecentFiles = useCallback(() => {
-    openGlobalFilePicker("recent");
+    void openGlobalFilePicker("recent");
   }, [openGlobalFilePicker]);
   const handleProjectSelect = useCallback(
     (repoName: string) => {
@@ -1842,22 +1795,16 @@ export const ViewerPage: React.FC = () => {
           ))}
         {/* File Picker (local) */}
         <FilePicker
-          isOpen={filePickerOpen}
-          onClose={() => {
-            setFilePickerOpen(false);
-            setFilePickerLoading(false);
-          }}
+          isOpen={filePickerMode === "local"}
+          onClose={closeFilePicker}
           onSelect={handleFilePickerSelect}
           files={allFiles}
           loading={filePickerLoading && allFiles.length === 0}
         />
         {/* File Picker (global - all repos) */}
         <FilePicker
-          isOpen={globalFilePickerOpen}
-          onClose={() => {
-            setGlobalFilePickerOpen(false);
-            setFilePickerLoading(false);
-          }}
+          isOpen={filePickerMode === "global"}
+          onClose={closeFilePicker}
           onSelect={handleFilePickerSelect}
           files={[]}
           globalFiles={globalFiles}
