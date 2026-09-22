@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -770,4 +771,72 @@ func joinAll(ss []string) string {
 		out += s + "\n"
 	}
 	return out
+}
+
+func TestLoadUserTheme(t *testing.T) {
+	setHome := func(t *testing.T) string {
+		t.Helper()
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		t.Setenv("USERPROFILE", home)
+		t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+		require.NoError(t, os.MkdirAll(filepath.Join(home, ".config", "vantage"), 0o755))
+		return home
+	}
+	writeUserConfig := func(t *testing.T, home, body string) {
+		t.Helper()
+		require.NoError(t, os.WriteFile(
+			filepath.Join(home, ".config", "vantage", "config.toml"), []byte(body), 0o644))
+	}
+
+	t.Run("reads the top-level theme key", func(t *testing.T) {
+		home := setHome(t)
+		writeUserConfig(t, home, "theme = \"catppuccin\"\n")
+		got, err := LoadUserTheme()
+		require.NoError(t, err)
+		require.Equal(t, "catppuccin", got)
+	})
+
+	t.Run("a daemon config's other keys are none of its business", func(t *testing.T) {
+		home := setHome(t)
+		writeUserConfig(t, home, "port = 8000\ntheme = \"mocha\"\n\n[[repos]]\nname = \"a\"\npath = \"/a\"\n\n[starred]\npromote = [\"x.md\"]\n")
+		got, err := LoadUserTheme()
+		require.NoError(t, err)
+		require.Equal(t, "mocha", got)
+	})
+
+	t.Run("no file or no key means the built-in look", func(t *testing.T) {
+		home := setHome(t)
+		got, err := LoadUserTheme()
+		require.NoError(t, err)
+		require.Equal(t, "", got)
+
+		writeUserConfig(t, home, "port = 8000\n")
+		got, err = LoadUserTheme()
+		require.NoError(t, err)
+		require.Equal(t, "", got)
+	})
+
+	t.Run("the themes directory sits beside the config", func(t *testing.T) {
+		home := setHome(t)
+		got, err := UserThemesDir()
+		require.NoError(t, err)
+		require.Equal(t, filepath.Join(home, ".config", "vantage", "themes"), got)
+	})
+
+	// Resolved as a name of its own, "themes" took the ~/.config path whenever
+	// that folder did not exist yet at startup — even on a Mac whose config.toml
+	// is still the legacy one, where the guide says to put it.
+	t.Run("follows a legacy darwin config", func(t *testing.T) {
+		if runtime.GOOS != "darwin" {
+			t.Skip("the legacy location exists only on darwin")
+		}
+		home := setHome(t)
+		legacy := filepath.Join(home, "Library", "Application Support", "vantage")
+		require.NoError(t, os.MkdirAll(legacy, 0o755))
+		require.NoError(t, os.WriteFile(filepath.Join(legacy, "config.toml"), nil, 0o644))
+		got, err := UserThemesDir()
+		require.NoError(t, err)
+		require.Equal(t, filepath.Join(legacy, "themes"), got)
+	})
 }

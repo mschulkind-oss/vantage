@@ -62,27 +62,282 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: var(--vantage-scrollbar-thumb, #d1d5db);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: var(--vantage-scrollbar-thumb-hover, #9ca3af);
 }
 
 /* Custom scrollbar — dark */
 .dark ::-webkit-scrollbar-thumb {
-  background: #4b5563;
+  background: var(--vantage-scrollbar-thumb, #4b5563);
 }
 
 .dark ::-webkit-scrollbar-thumb:hover {
-  background: #6b7280;
+  background: var(--vantage-scrollbar-thumb-hover, #6b7280);
 }
 
 code {
   font-family:
     "JetBrains Mono", "Fira Code", source-code-pro, Menlo, Monaco, Consolas,
     "Courier New", monospace;
+}
+
+/* ── Colour themes ─────────────────────────────────────────────────────────
+   A colour theme is a stylesheet that sets CSS variables on `:root` (light)
+   and `:root.dark` (dark) — see userguide/guides/themes.md. Nearly everything already
+   reads one: every Tailwind colour utility compiles to `var(--color-…)`, and
+   the tone palette is `--vantage-tone-*`. The blocks below route the three
+   things that did not.
+
+   Each is written so the built-in look is unchanged: the typography values are
+   the very palette steps the plugin inlined, the scrollbar variables fall back
+   to their old hex, and the code-colour roles apply only while a theme is
+   active (`data-vantage-theme` on `<html>`). */
+
+/* The typography plugin inlines its palette as literal colours, so a theme
+   could not reach body text, bold, bullets, rules or table borders. These are
+   the `prose-slate` values, restated as the steps they came from. Unlayered,
+   so they outrank the plugin's copy in `@layer utilities`.
+
+   Two stay literal, exactly as the plugin writes them: the dark `kbd` shadow
+   and the dark `pre` fill are white and black at an alpha, and the build turns
+   the plugin's `rgb(… / 10%)` into 8-bit hex (`#ffffff1a`, alpha 0.102) while a
+   `color-mix()` of the variable keeps 0.1 — measured in `dist/`, a sub-LSB
+   drift that would still break "identical" for no reach worth having.
+   `colorThemeCss.test.ts` derives every value here from the plugin's source. */
+.prose-slate {
+  --tw-prose-body: var(--color-slate-700);
+  --tw-prose-headings: var(--color-slate-900);
+  --tw-prose-lead: var(--color-slate-600);
+  --tw-prose-links: var(--color-slate-900);
+  --tw-prose-bold: var(--color-slate-900);
+  --tw-prose-counters: var(--color-slate-500);
+  --tw-prose-bullets: var(--color-slate-300);
+  --tw-prose-hr: var(--color-slate-200);
+  --tw-prose-quotes: var(--color-slate-900);
+  --tw-prose-quote-borders: var(--color-slate-200);
+  --tw-prose-captions: var(--color-slate-500);
+  --tw-prose-kbd: var(--color-slate-900);
+  --tw-prose-kbd-shadows: color-mix(
+    in oklab,
+    var(--color-slate-900) 10%,
+    transparent
+  );
+  --tw-prose-code: var(--color-slate-900);
+  --tw-prose-pre-code: var(--color-slate-200);
+  --tw-prose-pre-bg: var(--color-slate-800);
+  --tw-prose-th-borders: var(--color-slate-300);
+  --tw-prose-td-borders: var(--color-slate-200);
+  --tw-prose-invert-body: var(--color-slate-300);
+  --tw-prose-invert-headings: var(--color-white);
+  --tw-prose-invert-lead: var(--color-slate-400);
+  --tw-prose-invert-links: var(--color-white);
+  --tw-prose-invert-bold: var(--color-white);
+  --tw-prose-invert-counters: var(--color-slate-400);
+  --tw-prose-invert-bullets: var(--color-slate-600);
+  --tw-prose-invert-hr: var(--color-slate-700);
+  --tw-prose-invert-quotes: var(--color-slate-100);
+  --tw-prose-invert-quote-borders: var(--color-slate-700);
+  --tw-prose-invert-captions: var(--color-slate-400);
+  --tw-prose-invert-kbd: var(--color-white);
+  --tw-prose-invert-kbd-shadows: rgb(255 255 255 / 10%);
+  --tw-prose-invert-code: var(--color-white);
+  --tw-prose-invert-pre-code: var(--color-slate-300);
+  --tw-prose-invert-pre-bg: rgb(0 0 0 / 50%);
+  --tw-prose-invert-th-borders: var(--color-slate-600);
+  --tw-prose-invert-td-borders: var(--color-slate-700);
+}
+
+/* Restating `--tw-prose-*` above, unlayered, would also outrank the plugin's
+   own invert mapping — so it is restated here, after, for both ways the app
+   asks for it. The second selector is what `dark:prose-invert` compiles to
+   under the `@custom-variant dark` at the top of this file, so it matches the
+   same elements the plugin's rule does and no others. */
+.prose-invert,
+.dark\:prose-invert:where(.dark, .dark *) {
+  --tw-prose-body: var(--tw-prose-invert-body);
+  --tw-prose-headings: var(--tw-prose-invert-headings);
+  --tw-prose-lead: var(--tw-prose-invert-lead);
+  --tw-prose-links: var(--tw-prose-invert-links);
+  --tw-prose-bold: var(--tw-prose-invert-bold);
+  --tw-prose-counters: var(--tw-prose-invert-counters);
+  --tw-prose-bullets: var(--tw-prose-invert-bullets);
+  --tw-prose-hr: var(--tw-prose-invert-hr);
+  --tw-prose-quotes: var(--tw-prose-invert-quotes);
+  --tw-prose-quote-borders: var(--tw-prose-invert-quote-borders);
+  --tw-prose-captions: var(--tw-prose-invert-captions);
+  --tw-prose-kbd: var(--tw-prose-invert-kbd);
+  --tw-prose-kbd-shadows: var(--tw-prose-invert-kbd-shadows);
+  --tw-prose-code: var(--tw-prose-invert-code);
+  --tw-prose-pre-code: var(--tw-prose-invert-pre-code);
+  --tw-prose-pre-bg: var(--tw-prose-invert-pre-bg);
+  --tw-prose-th-borders: var(--tw-prose-invert-th-borders);
+  --tw-prose-td-borders: var(--tw-prose-invert-td-borders);
+}
+
+/* Code colours, by role. The built-in look keeps GitHub's highlight.js
+   palette (the import in MarkdownViewer and the dark override below), so these
+   rules only apply under a theme. A theme names a role with
+   `--vantage-code-<role>`; a role it leaves out falls back to a step of the
+   theme's own palette, so a theme that only recolours the ramps still gets
+   coherent code. `!important` because the dark override it replaces uses it.
+
+   Screen only. The print block forces code to near-black with
+   `.prose * { color: … !important }`, and these selectors outrank it — so
+   under a theme, Mocha's pastels printed on the print block's near-white
+   `pre`. Scoped to the screen, a themed page prints as the built-in look
+   does. */
+@media screen {
+  :root[data-vantage-theme] .hljs,
+  :root[data-vantage-theme] .hljs-variable,
+  :root[data-vantage-theme] .hljs-template-variable,
+  :root[data-vantage-theme] .hljs-subst,
+  :root[data-vantage-theme] .hljs-operator,
+  :root[data-vantage-theme] .hljs-params,
+  :root[data-vantage-theme] .hljs-punctuation,
+  :root[data-vantage-theme] .hljs-emphasis,
+  :root[data-vantage-theme] .hljs-strong {
+    color: var(--vantage-code-fg, var(--color-slate-800)) !important;
+  }
+  :root[data-vantage-theme].dark .hljs,
+  :root[data-vantage-theme].dark .hljs-variable,
+  :root[data-vantage-theme].dark .hljs-template-variable,
+  :root[data-vantage-theme].dark .hljs-subst,
+  :root[data-vantage-theme].dark .hljs-operator,
+  :root[data-vantage-theme].dark .hljs-params,
+  :root[data-vantage-theme].dark .hljs-punctuation,
+  :root[data-vantage-theme].dark .hljs-emphasis,
+  :root[data-vantage-theme].dark .hljs-strong {
+    color: var(--vantage-code-fg, var(--color-slate-200)) !important;
+  }
+  :root[data-vantage-theme] .hljs-comment,
+  :root[data-vantage-theme] .hljs-quote,
+  :root[data-vantage-theme] .hljs-code,
+  :root[data-vantage-theme] .hljs-formula {
+    color: var(--vantage-code-comment, var(--color-slate-500)) !important;
+  }
+  :root[data-vantage-theme].dark .hljs-comment,
+  :root[data-vantage-theme].dark .hljs-quote,
+  :root[data-vantage-theme].dark .hljs-code,
+  :root[data-vantage-theme].dark .hljs-formula {
+    color: var(--vantage-code-comment, var(--color-slate-400)) !important;
+  }
+  :root[data-vantage-theme] .hljs-keyword,
+  :root[data-vantage-theme] .hljs-doctag,
+  :root[data-vantage-theme] .hljs-template-tag,
+  :root[data-vantage-theme] .hljs-variable.language_,
+  :root[data-vantage-theme] .hljs-meta .hljs-keyword {
+    color: var(--vantage-code-keyword, var(--color-purple-600)) !important;
+  }
+  :root[data-vantage-theme].dark .hljs-keyword,
+  :root[data-vantage-theme].dark .hljs-doctag,
+  :root[data-vantage-theme].dark .hljs-template-tag,
+  :root[data-vantage-theme].dark .hljs-variable.language_,
+  :root[data-vantage-theme].dark .hljs-meta .hljs-keyword {
+    color: var(--vantage-code-keyword, var(--color-purple-400)) !important;
+  }
+  :root[data-vantage-theme] .hljs-string,
+  :root[data-vantage-theme] .hljs-regexp,
+  :root[data-vantage-theme] .hljs-meta .hljs-string,
+  :root[data-vantage-theme] .hljs-char.escape_ {
+    color: var(--vantage-code-string, var(--color-green-700)) !important;
+  }
+  :root[data-vantage-theme].dark .hljs-string,
+  :root[data-vantage-theme].dark .hljs-regexp,
+  :root[data-vantage-theme].dark .hljs-meta .hljs-string,
+  :root[data-vantage-theme].dark .hljs-char.escape_ {
+    color: var(--vantage-code-string, var(--color-green-400)) !important;
+  }
+  :root[data-vantage-theme] .hljs-number,
+  :root[data-vantage-theme] .hljs-literal,
+  :root[data-vantage-theme] .hljs-symbol,
+  :root[data-vantage-theme] .hljs-bullet,
+  :root[data-vantage-theme] .hljs-link {
+    color: var(--vantage-code-number, var(--color-orange-600)) !important;
+  }
+  :root[data-vantage-theme].dark .hljs-number,
+  :root[data-vantage-theme].dark .hljs-literal,
+  :root[data-vantage-theme].dark .hljs-symbol,
+  :root[data-vantage-theme].dark .hljs-bullet,
+  :root[data-vantage-theme].dark .hljs-link {
+    color: var(--vantage-code-number, var(--color-orange-400)) !important;
+  }
+  :root[data-vantage-theme] .hljs-title,
+  :root[data-vantage-theme] .hljs-title.function_,
+  :root[data-vantage-theme] .hljs-title.class_,
+  :root[data-vantage-theme] .hljs-section {
+    color: var(--vantage-code-title, var(--color-blue-600)) !important;
+  }
+  :root[data-vantage-theme].dark .hljs-title,
+  :root[data-vantage-theme].dark .hljs-title.function_,
+  :root[data-vantage-theme].dark .hljs-title.class_,
+  :root[data-vantage-theme].dark .hljs-section {
+    color: var(--vantage-code-title, var(--color-blue-400)) !important;
+  }
+  :root[data-vantage-theme] .hljs-name,
+  :root[data-vantage-theme] .hljs-tag,
+  :root[data-vantage-theme] .hljs-selector-tag,
+  :root[data-vantage-theme] .hljs-selector-id,
+  :root[data-vantage-theme] .hljs-selector-class,
+  :root[data-vantage-theme] .hljs-selector-pseudo,
+  :root[data-vantage-theme] .hljs-selector-attr {
+    color: var(--vantage-code-tag, var(--color-red-600)) !important;
+  }
+  :root[data-vantage-theme].dark .hljs-name,
+  :root[data-vantage-theme].dark .hljs-tag,
+  :root[data-vantage-theme].dark .hljs-selector-tag,
+  :root[data-vantage-theme].dark .hljs-selector-id,
+  :root[data-vantage-theme].dark .hljs-selector-class,
+  :root[data-vantage-theme].dark .hljs-selector-pseudo,
+  :root[data-vantage-theme].dark .hljs-selector-attr {
+    color: var(--vantage-code-tag, var(--color-red-400)) !important;
+  }
+  :root[data-vantage-theme] .hljs-attr,
+  :root[data-vantage-theme] .hljs-attribute,
+  :root[data-vantage-theme] .hljs-property {
+    color: var(--vantage-code-attr, var(--color-amber-700)) !important;
+  }
+  :root[data-vantage-theme].dark .hljs-attr,
+  :root[data-vantage-theme].dark .hljs-attribute,
+  :root[data-vantage-theme].dark .hljs-property {
+    color: var(--vantage-code-attr, var(--color-amber-400)) !important;
+  }
+  :root[data-vantage-theme] .hljs-built_in,
+  :root[data-vantage-theme] .hljs-type {
+    color: var(--vantage-code-builtin, var(--color-amber-600)) !important;
+  }
+  :root[data-vantage-theme].dark .hljs-built_in,
+  :root[data-vantage-theme].dark .hljs-type {
+    color: var(--vantage-code-builtin, var(--color-amber-300)) !important;
+  }
+  :root[data-vantage-theme] .hljs-meta {
+    color: var(--vantage-code-meta, var(--color-slate-600)) !important;
+  }
+  :root[data-vantage-theme].dark .hljs-meta {
+    color: var(--vantage-code-meta, var(--color-slate-400)) !important;
+  }
+  :root[data-vantage-theme] .hljs-addition {
+    color: var(--vantage-code-addition, var(--color-green-700)) !important;
+  }
+  :root[data-vantage-theme].dark .hljs-addition {
+    color: var(--vantage-code-addition, var(--color-green-400)) !important;
+  }
+  :root[data-vantage-theme] .hljs-deletion {
+    color: var(--vantage-code-deletion, var(--color-red-700)) !important;
+  }
+  :root[data-vantage-theme].dark .hljs-deletion {
+    color: var(--vantage-code-deletion, var(--color-red-400)) !important;
+  }
+  :root[data-vantage-theme] .hljs {
+    background: transparent !important;
+  }
+  :root[data-vantage-theme] .hljs-addition,
+  :root[data-vantage-theme] .hljs-deletion {
+    background-color: transparent !important;
+  }
 }
 
 /* GitHub highlight.js dark override — comprehensive token colors */
