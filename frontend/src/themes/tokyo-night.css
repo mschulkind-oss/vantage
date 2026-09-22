@@ -1,0 +1,183 @@
+/* Tokyo Night — Day in light mode, Night in dark.
+ * https://github.com/folke/tokyonight.nvim
+ *
+ * Night is a deep blue-black with pastel ink; Day is its inversion, a cool grey
+ * page written in blue — its foreground, #3760bf, is a blue rather than a grey,
+ * and so is most of this file's light half. `white` is Day's background
+ * (#e1e2e7), because Day has nothing lighter and a white page beside a grey one
+ * reads as an unstyled panel.
+ *
+ * The two halves lend each other an end. Day stops at its own foreground, so the
+ * light ramp's last steps walk that toward Night's background and `slate-950`
+ * *is* Night's background; the dark half's brightest ink, in turn, is Day's
+ * background. Both are marked below.
+ *
+ * Both flavours put their comment colour below the 3:1 floor this repo keeps for
+ * text (frontend/src/lib/textContrast.test.ts) once it is measured on a panel
+ * rather than the page, and Day's accents are tuned that same shade too bright:
+ *
+ *   1. Day's `comment` (#848cb5) is 2.24:1 on `bg_dark`, the panel colour, so
+ *      the muted text token is `fg_dark` (3.15:1) — Day's secondary text — and
+ *      600 is `fg` itself. Night's `comment` (#565f89) is 2.17:1 on its own
+ *      highlight for the same reason, so there the token is `dark5`.
+ *   2. Day's blue is 2.74:1 on that panel (3.11 on the page), so the light ink
+ *      step is it half way to `fg`, which is a blue too. Day's red, a hot pink,
+ *      is 2.65:1; `red1` — Day's own error colour — is 3.34:1 and holds 500,
+ *      with the pink above it at 400. Night's accents need none of this: they are
+ *      3.68:1 and up on its chrome, and it is the *surfaces* that had to move —
+ *      see the dark ramp.
+ *
+ * It sets only the steps the app leans on; the rest — `purple` (review mode),
+ * code highlighting, tones and scrollbars — keep their built-in values (see
+ * userguide/guides/themes.md). */
+
+/* ── light: Day ── */
+:root {
+  --color-white: #e1e2e7; /* bg — the page */
+
+  --color-slate-50: #e1e2e7; /* bg; Day has nothing lighter */
+  --color-slate-100: #d0d5e3; /* bg_dark */
+  --color-slate-200: #c4c8da; /* bg_highlight */
+  --color-slate-300: #a8aecb; /* fg_gutter */
+  --color-slate-400: #8990b3; /* dark3 */
+  --color-slate-500: #6172b0; /* fg_dark — muted text, 3.15:1 on slate-100 */
+  --color-slate-600: #3760bf; /* fg */
+  --color-slate-700: #2f4b8d; /* fg 70% over Night's bg … */
+  --color-slate-800: #283966; /* … 45% … */
+  --color-slate-900: #212a44; /* … 22% */
+  --color-slate-950: #1a1b26; /* Night's bg */
+
+  --color-blue-50: #c9d5e9;
+  --color-blue-100: #b6caea;
+  --color-blue-200: #a0beeb;
+  --color-blue-300: #7890dd; /* blue0 */
+  --color-blue-400: #2e7de9; /* blue */
+  --color-blue-500: #346ed4; /* blue half way to fg — 3.31:1 */
+  --color-blue-600: #3162b9;
+  --color-blue-700: #2f569f;
+  --color-blue-800: #2b4a86;
+  --color-blue-900: #283f6f;
+
+  --color-red-50: #e9cdd4;
+  --color-red-100: #eebdc5;
+  --color-red-200: #f2a9b4;
+  --color-red-300: #f6889a;
+  --color-red-400: #f52a65; /* red */
+  --color-red-500: #c64343; /* red1 — 3.34:1 */
+  --color-red-600: #ac3f40;
+  --color-red-700: #933b3d;
+  --color-red-800: #7a3639;
+  --color-red-900: #633135;
+
+  /* Day's yellow is a brown (#8c6c3e) and its green an olive, so their washes
+     come out warm greys over the page rather than pastels. */
+  --color-amber-50: #d5d1cf;
+  --color-amber-100: #ccc4bc;
+  --color-amber-200: #c0b4a6;
+  --color-amber-300: #af9c84;
+  --color-amber-400: #9f8563;
+  --color-amber-500: #8c6c3e; /* yellow, unshaded — 3.30:1 */
+  --color-amber-600: #7b603c;
+  --color-amber-700: #69543a;
+  --color-amber-800: #594937;
+  --color-amber-900: #4a3e34;
+
+  --color-green-50: #cdd2ce;
+  --color-green-100: #bdc6ba;
+  --color-green-200: #abb8a4;
+  --color-green-300: #8fa281;
+  --color-green-400: #748c5f;
+  --color-green-500: #587539; /* green, unshaded — 3.56:1 */
+  --color-green-600: #4f6838;
+  --color-green-700: #455a36;
+  --color-green-800: #3c4d34;
+  --color-green-900: #344232;
+}
+
+/* ── dark: Night ── */
+:root.dark {
+  --color-white: #ffffff; /* back to white: it is the ink on accent buttons */
+
+  --color-slate-50: #e1e2e7; /* Day's bg — brightest ink */
+  --color-slate-100: #c0caf5; /* fg */
+  --color-slate-200: #a9b1d6; /* fg_dark */
+  --color-slate-300: #8e95bc; /* fg_dark half way to dark5 */
+  --color-slate-400: #737aa2; /* dark5 — muted text, 3.22:1 on slate-800 */
+  --color-slate-500: #565f89; /* comment */
+  /* The surfaces sit one member deeper than the obvious reading, and skip
+     `terminal_black`. `dark5` on `fg_gutter` was 2.35:1 — the app writes muted
+     text on a raised row — and Night has no member between `fg_gutter` and
+     `bg_highlight` to promote instead, so the surfaces move rather than the ink:
+     `bg_highlight` is what Night highlights a line with, and the chrome becomes
+     the content lifted half way to it. `terminal_black` is an ANSI colour, the
+     one member here with no editor role, so it is what drops out. */
+  --color-slate-600: #3b4261; /* fg_gutter — borders, dividers */
+  --color-slate-700: #292e42; /* bg_highlight — hover / raised rows */
+  --color-slate-800: #212434; /* bg half way to bg_highlight — sidebar, top bar */
+  --color-slate-900: #1a1b26; /* bg — the content surface */
+  --color-slate-950: #16161e; /* bg_dark — deepest wells */
+
+  --color-blue-50: #ccd6eb;
+  --color-blue-100: #b7c9ef;
+  --color-blue-200: #a3bdf2;
+  --color-blue-300: #8eaff5;
+  --color-blue-400: #7aa2f7; /* blue — 5.33:1 */
+  --color-blue-500: #5b7dcb; /* blue half way to blue0 */
+  --color-blue-600: #3d59a1; /* blue0 */
+  --color-blue-700: #394b70; /* blue7 */
+  --color-blue-800: #303c59;
+  --color-blue-900: #293148;
+
+  --color-red-50: #e9ced5;
+  --color-red-100: #efb9c3;
+  --color-red-200: #f3a4b1;
+  --color-red-300: #f68e9f;
+  --color-red-400: #f7768e; /* red — 5.08:1 */
+  --color-red-500: #db4b4b; /* red1 */
+  --color-red-600: #ad4344;
+  --color-red-700: #683338;
+  --color-red-800: #502c33;
+  --color-red-900: #3f272f;
+
+  --color-amber-50: #e1d8cf;
+  --color-amber-100: #e1ceb6;
+  --color-amber-200: #e1c49e;
+  --color-amber-300: #e1ba84;
+  --color-amber-400: #e0af68; /* yellow — 6.72:1 */
+  --color-amber-500: #bf975f;
+  --color-amber-600: #977a54;
+  --color-amber-700: #5b4d41;
+  --color-amber-800: #463d39;
+  --color-amber-900: #383233;
+
+  --color-green-50: #d4dfd0;
+  --color-green-100: #c6dbb8;
+  --color-green-200: #b9d79f;
+  --color-green-300: #abd386;
+  --color-green-400: #9ece6a; /* green — 7.35:1 */
+  --color-green-500: #88b061;
+  --color-green-600: #6d8c55;
+  --color-green-700: #455641;
+  --color-green-800: #374339;
+  --color-green-900: #2e3633;
+}
+
+/* Families the app reads in a handful of places follow a main one: `gray` draws
+   the mermaid dialog and one modal, `indigo` ends a review-mode gradient, and
+   `yellow` is what the mermaid error box reads. */
+:root,
+:root.dark {
+  --color-gray-50: var(--color-slate-50);
+  --color-gray-100: var(--color-slate-100);
+  --color-gray-200: var(--color-slate-200);
+  --color-gray-600: var(--color-slate-600);
+  --color-emerald-500: var(--color-green-500);
+  --color-emerald-600: var(--color-green-600);
+  --color-indigo-600: var(--color-blue-600);
+  --color-yellow-50: var(--color-amber-50);
+  --color-yellow-200: var(--color-amber-200);
+  --color-yellow-300: var(--color-amber-300);
+  --color-yellow-400: var(--color-amber-400);
+  --color-yellow-700: var(--color-amber-700);
+  --color-yellow-800: var(--color-amber-800);
+}

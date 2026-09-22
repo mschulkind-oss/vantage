@@ -22,13 +22,18 @@
  * would make every assertion below pass vacuously.
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { describe, it, expect } from "vitest";
 
 /** See `directiveTheme.test.ts`: a literal URL here is rewritten by Vite. */
 function read(path: string): string {
-  return readFileSync(new URL(path, import.meta.url), "utf8");
+  return readFileSync(at(path), "utf8");
+}
+
+/** Same reason `read` takes its path as an argument: Vite rewrites a literal. */
+function at(path: string): URL {
+  return new URL(path, import.meta.url);
 }
 
 /** Comments name the selectors and variables they explain, so drop them. */
@@ -37,6 +42,20 @@ const stripComments = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, "");
 const indexCss = stripComments(read("../index.css"));
 const catppuccinCss = stripComments(read("../themes/catppuccin.css"));
 const lilaCss = stripComments(read("../themes/lila.css"));
+
+/**
+ * Every built-in stylesheet, read off the directory rather than listed here, so
+ * a palette added to `frontend/src/themes/` is held to the rules below without
+ * anyone remembering to add it. Registering it in `colorTheme.ts` is the edit
+ * that makes it real; this is the one that cannot be forgotten.
+ */
+const builtInThemes: [string, string][] = readdirSync(at("../themes"))
+  .filter((file) => file.endsWith(".css"))
+  .sort()
+  .map((file) => [
+    file.replace(/\.css$/, ""),
+    stripComments(read(`../themes/${file}`)),
+  ]);
 
 const require = createRequire(import.meta.url);
 
@@ -342,15 +361,17 @@ describe("the scrollbar", () => {
 });
 
 describe("the built-ins' dark halves", () => {
-  // `colorTheme.ts` hardcodes `hasDark: true` for both built-ins: it links to
+  // `colorTheme.ts` hardcodes `hasDark: true` for every built-in: it links to
   // their stylesheets rather than reading them, and a theme that declares only
   // `:root` is one the picker marks "(light only)". Delete a `:root.dark` rule
   // and that promise would be silently false — dark mode would render the light
   // palette, which is the failure the flag exists to name.
-  it.each([
-    ["catppuccin", catppuccinCss],
-    ["lila", lilaCss],
-  ])("%s declares a :root.dark rule", (_id, css) => {
+  it("has a stylesheet for every palette to check", () => {
+    // A directory read that returned nothing would make every case below vacuous.
+    expect(builtInThemes.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it.each(builtInThemes)("%s declares a :root.dark rule", (_id, css) => {
     const dark = rules(css).filter((r) => r.selectors.includes(":root.dark"));
     expect(dark.length).toBeGreaterThan(0);
     expect(dark.some((r) => Object.keys(declarations(r.body)).length > 0)).toBe(

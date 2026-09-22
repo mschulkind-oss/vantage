@@ -1,0 +1,184 @@
+/* Solarized — Light in light mode, Dark in dark. https://ethanschoonover.com/solarized
+ *
+ * Solarized is eight monotones (base03 darkest … base3 lightest) and eight
+ * accents that both modes share; a mode is chosen by which end of the monotones
+ * is background and which is ink. Light puts the page on base3, panels on base2
+ * and body text on base00; dark puts the page on base03, panels on base02 and
+ * body text on base0. `white` is base3, because Solarized Light on a white page
+ * loses the one thing it is famous for.
+ *
+ * The monotones are eight, and a Tailwind ramp is eleven, so four steps in each
+ * mode are interpolations between neighbours; they are marked. The rest of the
+ * file is Solarized's own numbers, and three of its own habits had to give way
+ * to the 3:1 floor this repo keeps for text
+ * (frontend/src/lib/textContrast.test.ts):
+ *
+ *   1. **Light's faint inks.** base1, which Solarized Light uses for secondary
+ *      text and comments, is 2.18:1 on base2 and base0 is 2.58:1. So the muted
+ *      text token is base00 — Light's body ink, 3.64:1 — base1 drops to 400
+ *      where it draws borders rather than words, and base0 is left to the dark
+ *      half, where it is 4.11:1 and is Dark's own body ink.
+ *   2. **Dark's ink sits one step brighter than an editor's.** The app's
+ *      workhorse muted token is `slate-400`, and the monotone below base0 is
+ *      base01 at 2.42:1 on base02 — under the floor. So base0 holds 400 and the
+ *      steps above it are base1, base2 and base3, which Solarized offers for
+ *      emphasis: prose here reads a shade brighter than in a Solarized editor.
+ *   3. **A shared swatch is an ink at neither end.** In light, blue is exactly
+ *      3.00:1 on base2 (3.41 on the page itself), yellow and green 2.62:1, so
+ *      their ink steps shade toward base03 until they clear it. In dark the same
+ *      swatches are too dark rather than too light — red is 2.81:1 on base02 —
+ *      so there both ink steps lift toward base2 instead and the swatch itself
+ *      drops to 600, below anything that carries text.
+ *
+ * It sets only the steps the app leans on; the rest — `purple` (review mode),
+ * code highlighting, tones and scrollbars — keep their built-in values (see
+ * userguide/guides/themes.md). */
+
+/* ── light ── */
+:root {
+  --color-white: #fdf6e3; /* base3 — the page */
+
+  --color-slate-50: #fdf6e3; /* base3; Solarized has nothing between it and base2 */
+  --color-slate-100: #eee8d5; /* base2 */
+  --color-slate-200: #d2d2c5; /* base2 70% toward base1 */
+  --color-slate-300: #b2b9b3; /* base2 35% toward base1 */
+  --color-slate-400: #93a1a1; /* base1 */
+  --color-slate-500: #657b83; /* base00 — muted text, 3.64:1 on slate-100 */
+  --color-slate-600: #586e75; /* base01 */
+  --color-slate-700: #3b5861; /* base01 62% toward base02 */
+  --color-slate-800: #073642; /* base02 */
+  --color-slate-900: #03303c; /* base02 half way to base03 */
+  --color-slate-950: #002b36; /* base03 */
+
+  --color-blue-50: #e1e7e2;
+  --color-blue-100: #ccdce1;
+  --color-blue-200: #b2cee0;
+  --color-blue-300: #8ab9dc;
+  --color-blue-400: #60a4d8;
+  --color-blue-500: #2181c1; /* blue, a tenth toward base03 — 3.45:1 */
+  --color-blue-600: #1b74ac;
+  --color-blue-700: #156897;
+  --color-blue-800: #105b83;
+  --color-blue-900: #0b5071;
+
+  --color-red-50: #fdddca;
+  --color-red-100: #fbcab6;
+  --color-red-200: #f9b39f;
+  --color-red-300: #f28e7b;
+  --color-red-400: #e96758;
+  --color-red-500: #dc322f; /* red, unshaded — 3.77:1 */
+  --color-red-600: #be3934;
+  --color-red-700: #a13c37;
+  --color-red-800: #853d39;
+  --color-red-900: #6a3b3a;
+
+  --color-amber-50: #f3e7c9;
+  --color-amber-100: #ebdbb5;
+  --color-amber-200: #e2cc9d;
+  --color-amber-300: #d3b777;
+  --color-amber-400: #c5a14e;
+  --color-amber-500: #917628; /* yellow, a fifth toward base03 — 3.55:1 */
+  --color-amber-600: #7d6c30;
+  --color-amber-700: #6a6134;
+  --color-amber-800: #575737;
+  --color-amber-900: #454d39;
+
+  --color-green-50: #ebe9c9;
+  --color-green-100: #dddfb5;
+  --color-green-200: #cdd39c;
+  --color-green-300: #b5c077;
+  --color-green-400: #9eae4e;
+  --color-green-500: #6a8228; /* green, a fifth toward base03 — 3.54:1 */
+  --color-green-600: #5b7530;
+  --color-green-700: #4c6934;
+  --color-green-800: #3e5d37;
+  --color-green-900: #315139;
+}
+
+/* ── dark ── */
+:root.dark {
+  --color-white: #ffffff; /* back to white: it is the ink on accent buttons */
+
+  --color-slate-50: #fdf6e3; /* base3 — brightest ink */
+  --color-slate-100: #eee8d5; /* base2 */
+  --color-slate-200: #c4c8bd; /* base2 55% toward base1 */
+  --color-slate-300: #93a1a1; /* base1 */
+  --color-slate-400: #839496; /* base0 — muted text, 4.11:1 on slate-800 */
+  --color-slate-500: #586e75; /* base01 */
+  --color-slate-600: #36545e; /* base01 55% toward base02 — borders, dividers */
+  --color-slate-700: #1c424d; /* base01 22% toward base02 — hover / raised rows */
+  --color-slate-800: #073642; /* base02 — sidebar, top bar, menus */
+  --color-slate-900: #002b36; /* base03 — the content surface */
+  --color-slate-950: #002b36; /* base03 again; Solarized has nothing below it */
+
+  /* On base02 the swatch is a fill, not an ink. Solarized gives a hue one value
+     for both modes, and that value is chosen against base3 and base02 *as a
+     background*: red reads 2.81:1 on the chrome and blue 3.53:1, where the app
+     inks 400 and 500 both. So the two ink steps are the swatch lifted toward
+     base2 — 72% and 88% of it — and the swatch itself holds 600, one step below
+     anything that carries text. Shading downward instead is what put blue-500 at
+     2.87:1; there is no room under a swatch this dark. */
+  --color-blue-50: #e0e6e1;
+  --color-blue-100: #c2d6df;
+  --color-blue-200: #a5c6dc;
+  --color-blue-300: #88b6d9;
+  --color-blue-400: #69a6d5; /* blue 72% over base2 — 4.96:1 */
+  --color-blue-500: #4797d4; /* blue 88% over base2 — 4.11:1 */
+  --color-blue-600: #268bd2; /* blue */
+  --color-blue-700: #196ea3; /* blue over base03, 72% … */
+  --color-blue-800: #0f5980;
+  --color-blue-900: #084a68;
+
+  --color-red-50: #fcdcc8;
+  --color-red-100: #f9c2ad;
+  --color-red-200: #f5a793;
+  --color-red-300: #ef8c79;
+  --color-red-400: #e8705f; /* red 72% over base2 — 4.28:1 */
+  --color-red-500: #e25045; /* red 88% over base2 — 3.38:1 */
+  --color-red-600: #dc322f; /* red */
+  --color-red-700: #a13c37;
+  --color-red-800: #753c39;
+  --color-red-900: #55393a;
+
+  --color-amber-50: #f2e5c8;
+  --color-amber-100: #e6d5ac;
+  --color-amber-200: #dbc591;
+  --color-amber-300: #d0b475;
+  --color-amber-400: #c5a457; /* yellow 72% over base2 — 5.46:1 */
+  --color-amber-500: #bc9434; /* yellow 88% over base2 — 4.60:1 */
+  --color-amber-600: #b58900; /* yellow */
+  --color-amber-700: #836f2e;
+  --color-amber-800: #5d5b37;
+  --color-amber-900: #424c39;
+
+  --color-green-50: #eae8c8;
+  --color-green-100: #d7daac;
+  --color-green-200: #c5cb91;
+  --color-green-300: #b3bd75;
+  --color-green-400: #a1af57; /* green 72% over base2 — 5.44:1 */
+  --color-green-500: #91a333; /* green 88% over base2 — 4.64:1 */
+  --color-green-600: #859900; /* green */
+  --color-green-700: #5f792e;
+  --color-green-800: #436137;
+  --color-green-900: #2f5039;
+}
+
+/* Families the app reads in a handful of places follow a main one: `gray` draws
+   the mermaid dialog and one modal, `indigo` ends a review-mode gradient, and
+   `yellow` is what the mermaid error box reads. */
+:root,
+:root.dark {
+  --color-gray-50: var(--color-slate-50);
+  --color-gray-100: var(--color-slate-100);
+  --color-gray-200: var(--color-slate-200);
+  --color-gray-600: var(--color-slate-600);
+  --color-emerald-500: var(--color-green-500);
+  --color-emerald-600: var(--color-green-600);
+  --color-indigo-600: var(--color-blue-600);
+  --color-yellow-50: var(--color-amber-50);
+  --color-yellow-200: var(--color-amber-200);
+  --color-yellow-300: var(--color-amber-300);
+  --color-yellow-400: var(--color-amber-400);
+  --color-yellow-700: var(--color-amber-700);
+  --color-yellow-800: var(--color-amber-800);
+}

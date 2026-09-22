@@ -44,7 +44,11 @@ import {
   COLOR_THEME_SOURCE_ATTRIBUTE,
 } from "vantage-md";
 import catppuccinUrl from "../themes/catppuccin.css?url";
+import gruvboxUrl from "../themes/gruvbox.css?url";
 import lilaUrl from "../themes/lila.css?url";
+import nordUrl from "../themes/nord.css?url";
+import solarizedUrl from "../themes/solarized.css?url";
+import tokyoNightUrl from "../themes/tokyo-night.css?url";
 import { isStaticMode } from "./staticMode";
 import type { ThemeList } from "../types";
 
@@ -85,20 +89,35 @@ export interface ColorTheme {
  */
 const BUILT_IN_HREF: Record<string, string> = {
   catppuccin: catppuccinUrl,
+  gruvbox: gruvboxUrl,
   lila: lilaUrl,
+  nord: nordUrl,
+  solarized: solarizedUrl,
+  "tokyo-night": tokyoNightUrl,
 };
 
-// Both built-in sheets declare `:root.dark`, and `colorThemeCss.test.ts` reads
-// the files to make sure this stays true rather than merely once having been.
+/**
+ * The palettes the project maintains: the app's own look first, because it is
+ * what "no theme" means, then the rest alphabetically — the picker shows this
+ * order and a list of palettes has no better one.
+ *
+ * Every sheet here declares `:root.dark`, which is what `hasDark` claims;
+ * `colorThemeCss.test.ts` reads the files to keep that true rather than merely
+ * once having been, and holds each to the readability floor.
+ */
 const BUILT_INS: readonly ColorTheme[] = [
   {
     id: DEFAULT_COLOR_THEME,
-    name: "Vantage",
+    name: "Slate",
     source: "built-in",
     hasDark: true,
   },
   { id: "catppuccin", name: "Catppuccin", source: "built-in", hasDark: true },
+  { id: "gruvbox", name: "Gruvbox", source: "built-in", hasDark: true },
   { id: "lila", name: "Lila", source: "built-in", hasDark: true },
+  { id: "nord", name: "Nord", source: "built-in", hasDark: true },
+  { id: "solarized", name: "Solarized", source: "built-in", hasDark: true },
+  { id: "tokyo-night", name: "Tokyo Night", source: "built-in", hasDark: true },
 ];
 
 export function builtInColorThemes(): ColorTheme[] {

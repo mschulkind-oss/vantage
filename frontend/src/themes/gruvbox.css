@@ -1,0 +1,190 @@
+/* Gruvbox — light in light mode, dark in dark. https://github.com/morhetz/gruvbox
+ *
+ * Gruvbox is a retro palette built on warm greys: seven backgrounds and five
+ * foregrounds per mode, which the two modes trade (light's `bg1` #ebdbb2 is
+ * dark's `fg1`), plus every hue in three intensities — `bright`, `neutral` and
+ * `faded`. Those three are what makes this theme easy to keep in order: the
+ * light half runs bright → neutral → faded down steps 300, 400 and 500, and the
+ * dark half runs the same three down 400, 500 and 600.
+ *
+ * Three deliberate departures:
+ *
+ *   1. `white` is `bg0_h` (#f9f5d7), Gruvbox's "hard" light background. Gruvbox
+ *      on a white page is not Gruvbox, and `white` is what the app paints the
+ *      page and its cards with.
+ *   2. The neutral `gray` (#928374) is absent from the light ramp: it is 2.92:1
+ *      on `slate-100`, just under the 3:1 floor this repo keeps for text
+ *      (frontend/src/lib/textContrast.test.ts), so the muted text step is `fg4`
+ *      instead and `gray` is left to the dark half, where it is 3.16:1 on the
+ *      chrome and is Gruvbox's own comment colour.
+ *   3. The dark ramp skips `bg4` (#7c6f64) above 600, so that the chrome lands
+ *      on `bg1` and the content on `bg0` — where Gruvbox itself puts a
+ *      statusline and an editor — and so that `bg3` and `bg2`, one step darker
+ *      each, hold 600 and 700, the two surfaces the app writes text on. `bg4` is
+ *      the lightest background Gruvbox has and doubles as the light theme's
+ *      `fg4`; `fg2` on it read 2.83:1, and dragging the surface down costs less
+ *      than dragging that ink up, since `fg2`…`fg4` are a tight cluster by
+ *      design and brightening one flattens the three into two.
+ *   4. In dark mode the **bright** intensity holds both ink steps, 400 and 500,
+ *      and neutral drops to 600 — neutral and faded are the light-background
+ *      intensities, and on `bg1` the neutral red was 2.11:1. See the accents.
+ *
+ * It sets only the steps the app leans on; the rest — `purple` (review mode),
+ * code highlighting, tones and scrollbars — keep their built-in values (see
+ * userguide/guides/themes.md). */
+
+/* ── light ── */
+:root {
+  --color-white: #f9f5d7; /* bg0_h — the page */
+
+  --color-slate-50: #fbf1c7; /* bg0 */
+  --color-slate-100: #f2e5bc; /* bg0_s */
+  --color-slate-200: #ebdbb2; /* bg1 */
+  --color-slate-300: #d5c4a1; /* bg2 */
+  --color-slate-400: #bdae93; /* bg3 */
+  --color-slate-500: #7c6f64; /* fg4 — muted text, 3.87:1 on slate-100 */
+  --color-slate-600: #665c54; /* fg3 */
+  --color-slate-700: #504945; /* fg2 */
+  --color-slate-800: #3c3836; /* fg1 */
+  --color-slate-900: #282828; /* fg0 */
+  --color-slate-950: #1d2021; /* dark bg0_h — the darkest grey Gruvbox has */
+
+  /* Gruvbox's blue is greenish, so its washes come out sage over the cream. */
+  --color-blue-50: #dbddbc;
+  --color-blue-100: #c3cdb4;
+  --color-blue-200: #a6bbaa;
+  --color-blue-300: #83a598; /* bright blue */
+  --color-blue-400: #458588; /* neutral blue */
+  --color-blue-500: #076678; /* faded blue — the link colour, 5.25:1 */
+  --color-blue-600: #175d6c;
+  --color-blue-700: #1f5460;
+  --color-blue-800: #244b55;
+  --color-blue-900: #26434b;
+
+  --color-red-50: #f1d3ac;
+  --color-red-100: #e9bc97;
+  --color-red-200: #dea17f;
+  --color-red-300: #fb4934; /* bright red */
+  --color-red-400: #cc241d; /* neutral red */
+  --color-red-500: #9d0006; /* faded red, 6.86:1 */
+  --color-red-600: #8d1612;
+  --color-red-700: #7c1f19;
+  --color-red-800: #6c241e;
+  --color-red-900: #5d2721;
+
+  /* The bright yellow is more saturated than it is light — #fabd2f is darker
+     than a 38% wash — so it stays out of the ramp here and amber's 300 is a
+     wash like the two above it. The faded yellow is 3.00:1 on `slate-100`,
+     exactly the floor with nothing to spare, so the ink step is it a twentieth
+     of the way to `fg0` (3.21:1). */
+  --color-amber-50: #f2dfb0;
+  --color-amber-100: #ead29f;
+  --color-amber-200: #e1c28a;
+  --color-amber-300: #d3a969;
+  --color-amber-400: #d79921; /* neutral yellow */
+  --color-amber-500: #ad7219; /* faded yellow, shaded 5% toward fg0 */
+  --color-amber-600: #996722;
+  --color-amber-700: #855d27;
+  --color-amber-800: #72522a;
+  --color-amber-900: #61492b;
+
+  --color-green-50: #e8dfaf;
+  --color-green-100: #d9d19c;
+  --color-green-200: #c7c086;
+  --color-green-300: #b8bb26; /* bright green */
+  --color-green-400: #98971a; /* neutral green */
+  --color-green-500: #79740e; /* faded green, 3.87:1 */
+  --color-green-600: #6d691b;
+  --color-green-700: #615e22;
+  --color-green-800: #555326;
+  --color-green-900: #4a4928;
+}
+
+/* ── dark ── */
+:root.dark {
+  --color-white: #ffffff; /* back to white: it is the ink on accent buttons */
+
+  --color-slate-50: #fbf1c7; /* fg0 — brightest ink */
+  --color-slate-100: #ebdbb2; /* fg1 */
+  --color-slate-200: #d5c4a1; /* fg2 */
+  --color-slate-300: #bdae93; /* fg3 */
+  --color-slate-400: #a89984; /* fg4 — muted text, 4.17:1 on slate-800 */
+  --color-slate-500: #928374; /* gray — Gruvbox's comment colour */
+  --color-slate-600: #665c54; /* bg3 — borders, dividers */
+  --color-slate-700: #504945; /* bg2 — hover / raised rows */
+  --color-slate-800: #3c3836; /* bg1 — sidebar, top bar, menus */
+  --color-slate-900: #282828; /* bg0 — the content surface */
+  --color-slate-950: #1d2021; /* bg0_h — deepest wells */
+
+  /* The bright intensity holds 400 *and* 500, and the neutral one drops to 600.
+     The app paints both steps as ink — `dark:text-red-400` in the tree,
+     `text-red-500` with no dark half in a few places — and on `bg1` the neutral
+     red is 2.11:1 and the neutral blue 2.74:1. That is the split working as
+     designed: neutral and faded are Gruvbox's light-background intensities, and
+     bright is the one a dark sidebar is for. Repeating it rather than
+     interpolating is deliberate — every value between the two intensities that
+     clears 3:1 is indistinguishable from bright anyway. */
+  --color-blue-50: #e3e2be;
+  --color-blue-100: #cad2b4;
+  --color-blue-200: #b2c3ab;
+  --color-blue-300: #9bb4a1;
+  --color-blue-400: #83a598; /* bright blue — the ink, 4.31:1 */
+  --color-blue-500: #83a598; /* bright blue again */
+  --color-blue-600: #458588; /* neutral blue */
+  --color-blue-700: #076678; /* faded blue */
+  --color-blue-800: #234e58; /* faded blue over bg0, 62% … */
+  --color-blue-900: #274047; /* … 40% */
+
+  --color-red-50: #ffd3aa;
+  --color-red-100: #ffb58e;
+  --color-red-200: #ff9571;
+  --color-red-300: #ff7254;
+  --color-red-400: #fb4934; /* bright red — the ink, 3.37:1 */
+  --color-red-500: #fb4934; /* bright red again */
+  --color-red-600: #cc241d; /* neutral red */
+  --color-red-700: #9d0006; /* faded red */
+  --color-red-800: #71231d;
+  --color-red-900: #582822;
+
+  --color-amber-50: #fbe7ae;
+  --color-amber-100: #fbdd95;
+  --color-amber-200: #fbd279;
+  --color-amber-300: #fbc85a;
+  --color-amber-400: #fabd2f; /* bright yellow — the ink, 6.84:1 */
+  --color-amber-500: #fabd2f; /* bright yellow again */
+  --color-amber-600: #d79921; /* neutral yellow */
+  --color-amber-700: #b57614; /* faded yellow */
+  --color-amber-800: #7c5829;
+  --color-amber-900: #5d462b;
+
+  --color-green-50: #ede6ac;
+  --color-green-100: #dfdc91;
+  --color-green-200: #d2d174;
+  --color-green-300: #c5c653;
+  --color-green-400: #b8bb26; /* bright green — the ink, 5.62:1 */
+  --color-green-500: #b8bb26; /* bright green again */
+  --color-green-600: #98971a; /* neutral green */
+  --color-green-700: #79740e; /* faded green */
+  --color-green-800: #585625;
+  --color-green-900: #464528;
+}
+
+/* Families the app reads in a handful of places follow a main one: `gray` draws
+   the mermaid dialog and one modal, `indigo` ends a review-mode gradient, and
+   `yellow` is what the mermaid error box reads. */
+:root,
+:root.dark {
+  --color-gray-50: var(--color-slate-50);
+  --color-gray-100: var(--color-slate-100);
+  --color-gray-200: var(--color-slate-200);
+  --color-gray-600: var(--color-slate-600);
+  --color-emerald-500: var(--color-green-500);
+  --color-emerald-600: var(--color-green-600);
+  --color-indigo-600: var(--color-blue-600);
+  --color-yellow-50: var(--color-amber-50);
+  --color-yellow-200: var(--color-amber-200);
+  --color-yellow-300: var(--color-amber-300);
+  --color-yellow-400: var(--color-amber-400);
+  --color-yellow-700: var(--color-amber-700);
+  --color-yellow-800: var(--color-amber-800);
+}
