@@ -31,6 +31,45 @@ func TestParseReadsTheStarredTable(t *testing.T) {
 	require.False(t, s.IsZero())
 }
 
+// The theme a repository offers is a top-level key, so a file that says only
+// that is still a file the server acts on.
+func TestParseReadsTheThemeKey(t *testing.T) {
+	s, err := Parse([]byte("theme = \"catppuccin\"\n"))
+	require.NoError(t, err)
+	require.Equal(t, "catppuccin", s.Theme)
+	require.False(t, s.IsZero(),
+		"a repository offering a theme and nothing else must not read as empty")
+}
+
+// TOML puts a bare key after a table header *inside* that table, so a theme
+// written below `[check]` is `check.theme` and not ours at all. That trap is
+// pinned here because it is the mistake a reader of this file will make, and
+// because the other reader of the file is what catches it: `vantage-check`
+// polices its own table's keys, so `check.theme` fails a run loudly rather than
+// doing nothing.
+func TestAThemeUnderTheCheckersTableIsNotOurs(t *testing.T) {
+	s, err := Parse([]byte("[check]\nstrict = true\ntheme = \"catppuccin\"\n"))
+	require.NoError(t, err, "another tool's keys are not ours to reject")
+	require.Empty(t, s.Theme)
+}
+
+// Guessing at a shape that does not exist has to be an error rather than a key
+// that quietly does nothing, which is the discipline the `[starred]` table holds.
+// Here it is the decoder's type check that says so, not the unknown-key branch,
+// because `theme` is a scalar the decoder consumes either way.
+func TestParseRejectsAThemeTable(t *testing.T) {
+	for name, body := range map[string]string{
+		"table":  "[theme]\nname = \"catppuccin\"\n",
+		"dotted": "theme.name = \"catppuccin\"\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			s, err := Parse([]byte(body))
+			require.Error(t, err)
+			require.True(t, s.IsZero(), "a rejected file must yield nothing, not half")
+		})
+	}
+}
+
 // The whole point of sharing the file: the checker's table is not ours to read,
 // and it is not ours to reject either.
 func TestParseReadsPastTheCheckersTable(t *testing.T) {
@@ -62,6 +101,8 @@ func TestParseRejectsBadSyntaxAndTypes(t *testing.T) {
 		"duplicate key":  "[starred]\npromote = [\"a\"]\npromote = [\"b\"]\n",
 		"element type":   "[starred]\npromote = [1, 2]\n",
 		"table not list": "[starred]\n[starred.promote]\na = 1\n",
+		"theme type":     "theme = 7\n",
+		"theme list":     "theme = [\"catppuccin\"]\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			s, err := Parse([]byte(body))
