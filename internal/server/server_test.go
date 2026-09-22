@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1082,4 +1083,151 @@ func TestUserAndRepositoryPromotionsUnion(t *testing.T) {
 		[]string{"docs/design.md=repo", "roadmap.md=user-config"},
 		starredRows(t, srv.Handler()),
 		"both lists contribute; the shared row is labelled with the reader's own")
+}
+
+// repoThemeDefaults is the repo_defaults half of GET /api/themes.
+func repoThemeDefaults(t *testing.T, h http.Handler) map[string]string {
+	t.Helper()
+	rec := doGET(t, h, "/api/themes")
+	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+
+	var body struct {
+		RepoDefaults map[string]string `json:"repo_defaults"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.NotNil(t, body.RepoDefaults, "the field marshals as {} rather than null")
+	return body.RepoDefaults
+}
+
+// captureWarnings points a server's logger at a buffer, so a test can assert on
+// what it told the operator and not only on what it served.
+func captureWarnings(srv *Server) *strings.Builder {
+	var buf strings.Builder
+	srv.logger = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	return &buf
+}
+
+// A repository offers a theme, keyed by "" in single-repo mode — the same
+// sentinel every other repo-keyed value on the wire uses.
+func TestARepositoryOffersADefaultTheme(t *testing.T) {
+	isolateUserDirs(t)
+	root := initRepo(t, map[string]string{"doc.md": "# Doc\n"})
+	// Top-level keys come before the first table header or TOML puts them inside
+	// it, which is why the theme leads and `[check]` follows.
+	writeRepoConfig(t, root, "theme = \"catppuccin\"\n\n[check]\nstrict = true\n")
+
+	cfg := config.Defaults()
+	cfg.TargetRepo = root
+	require.NoError(t, cfg.Resolve())
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+
+	require.Equal(t, map[string]string{"": "catppuccin"},
+		repoThemeDefaults(t, srv.Handler()))
+}
+
+// In daemon mode each repository speaks only for itself, and one that names no
+// theme is absent rather than present and empty: the frontend asks whether a key
+// is there.
+func TestDaemonReportsEachRepositorysOfferedTheme(t *testing.T) {
+	isolateUserDirs(t)
+	rootA := initRepo(t, map[string]string{"a.md": "# A\n"})
+	rootB := initRepo(t, map[string]string{"b.md": "# B\n"})
+	rootC := initRepo(t, map[string]string{"c.md": "# C\n"})
+	writeRepoConfig(t, rootA, "theme = \"catppuccin\"\n")
+	writeRepoConfig(t, rootB, "theme = \"lila\"\n")
+	writeRepoConfig(t, rootC, "[starred]\npromote = [\"c.md\"]\n")
+
+	cfg := config.Defaults()
+	cfg.MultiRepo = true
+	cfg.Repos = []config.RepoConfig{
+		{Name: "alpha", Path: rootA},
+		{Name: "beta", Path: rootB},
+		{Name: "gamma", Path: rootC},
+	}
+	require.NoError(t, cfg.Resolve())
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+
+	require.Equal(t, map[string]string{"alpha": "catppuccin", "beta": "lila"},
+		repoThemeDefaults(t, srv.Handler()))
+}
+
+// One contributor's typo must not decide what every other repository on a daemon
+// is coloured in, so a broken config is warned about and stepped over.
+func TestABrokenRepositoryConfigDoesNotHideAnothersTheme(t *testing.T) {
+	isolateUserDirs(t)
+	broken := initRepo(t, map[string]string{"a.md": "# A\n"})
+	good := initRepo(t, map[string]string{"b.md": "# B\n"})
+	writeRepoConfig(t, broken, "[starred]\npromotes = [\"a.md\"]\n")
+	writeRepoConfig(t, good, "theme = \"lila\"\n")
+
+	cfg := config.Defaults()
+	cfg.MultiRepo = true
+	cfg.Repos = []config.RepoConfig{
+		{Name: "alpha", Path: broken},
+		{Name: "beta", Path: good},
+	}
+	require.NoError(t, cfg.Resolve())
+	srv, err := NewServer(cfg)
+	require.NoError(t, err, "a bad repository config must not fail startup")
+	logged := captureWarnings(srv)
+
+	require.Equal(t, map[string]string{"beta": "lila"}, repoThemeDefaults(t, srv.Handler()))
+	require.Contains(t, logged.String(), "alpha", "the warning names the repository")
+}
+
+// A theme id outside the charset the /themes routes serve under can never resolve
+// to a stylesheet, so it is dropped here rather than stored by a browser that then
+// requests a permanent 404.
+// The reader's own `theme` is held to the same charset as a repository's offer.
+// Passing an id nothing can resolve through to the browser buys silence: no
+// theme applies and no line anywhere says why.
+func TestAnUnusableConfiguredThemeIsDropped(t *testing.T) {
+	isolateUserDirs(t)
+	writeUserConfig(t, "theme = \"Catppuccin\"\n")
+	root := initRepo(t, map[string]string{"doc.md": "# Doc\n"})
+
+	cfg := config.Defaults()
+	cfg.TargetRepo = root
+	require.NoError(t, cfg.Resolve())
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+
+	rec := doGET(t, srv.Handler(), "/api/themes")
+	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+	var body struct {
+		Default string `json:"default"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Empty(t, body.Default, "an id outside the charset never reaches the browser")
+}
+
+func TestAnUnusableRepositoryThemeIsDropped(t *testing.T) {
+	for name, id := range map[string]string{
+		"traversal": "../../etc/passwd",
+		"a path":    "themes/mine",
+		"uppercase": "Catppuccin",
+		"dotted":    "mine.css",
+		"a space":   "my theme",
+		"leading -": "-mine",
+		"too long":  strings.Repeat("x", 65),
+	} {
+		t.Run(name, func(t *testing.T) {
+			isolateUserDirs(t)
+			root := initRepo(t, map[string]string{"doc.md": "# Doc\n"})
+			writeRepoConfig(t, root, "theme = \""+id+"\"\n")
+
+			cfg := config.Defaults()
+			cfg.TargetRepo = root
+			require.NoError(t, cfg.Resolve())
+			srv, err := NewServer(cfg)
+			require.NoError(t, err)
+			logged := captureWarnings(srv)
+
+			require.Empty(t, repoThemeDefaults(t, srv.Handler()))
+			require.Contains(t, logged.String(), "ignoring repository theme",
+				"a dropped theme is reported, not silently discarded")
+		})
+	}
 }

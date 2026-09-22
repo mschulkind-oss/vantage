@@ -128,6 +128,17 @@ type Deps struct {
 	// DefaultTheme is the theme id the reader's config names (`theme = "…"`),
 	// or "" for the built-in look.
 	DefaultTheme string
+	// ThemeDefaults, when non-nil, returns the theme id each repository offers
+	// in its own `.vantage.toml`, keyed by repository name ("" in single-repo
+	// mode). It is only ever an offer: the reader's stored choice and their
+	// DefaultTheme both outrank it. A nil value means no repository offers one,
+	// which is what every test that does not care gets.
+	//
+	// A hook rather than a value for the same reason Promoted is one: /themes is
+	// ScopeGlobal, so no per-repo service is in the request context, and the
+	// answer has to change when a repository edits its config rather than being
+	// frozen at startup.
+	ThemeDefaults func() map[string]string
 }
 
 // Handlers holds the dependency-injected state for every API handler. Construct

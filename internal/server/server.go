@@ -204,6 +204,15 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	if err != nil {
 		logger.Warn("server: ignoring configured theme", "error", err)
 	}
+	// Held to the same charset as a repository's offer, and dropped the same way.
+	// Nothing downstream can resolve an id outside it, so the alternative is
+	// silence: the browser looks for a theme nobody has, applies none, and a
+	// reader who typed `Catppuccin` in their own config is left to guess why the
+	// page never changed.
+	if defaultTheme != "" && !api.ValidThemeID(defaultTheme) {
+		logger.Warn("server: ignoring configured theme", "theme", defaultTheme)
+		defaultTheme = ""
+	}
 
 	handlers := api.NewHandlers(api.Deps{
 		Reviews:        s.reviews,
@@ -215,6 +224,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		Promoted:       s.promoted,
 		ThemesDir:      themesDir,
 		DefaultTheme:   defaultTheme,
+		ThemeDefaults:  s.themeDefaults,
 	})
 
 	s.router = s.buildRouter(handlers)
@@ -340,6 +350,53 @@ func (s *Server) promoted() []starred.Listed {
 	// first. Their stored bookmarks beat both, and the handler puts those ahead of
 	// whatever this returns.
 	return starred.MergeListed(s.userPromoted(), repoRows)
+}
+
+// themeDefaults collects the colour theme each repository offers, keyed the way
+// every other repo-keyed map on the wire is: "" in single-repo mode, the
+// repository name in daemon mode.
+//
+// Wired to api.Deps.ThemeDefaults, and shaped like [Server.promoted] because it
+// answers the same kind of question about the same file — /themes is a global
+// route, so the server walks its repositories from outside rather than a handler
+// reaching for a per-repo service that is absent in daemon mode.
+//
+// A repository only ever *offers* a theme. The reader's stored choice and the
+// `theme` key in their own config both outrank it, and the frontend applies that
+// order; see docs/design/color-themes.md.
+func (s *Server) themeDefaults() map[string]string {
+	out := map[string]string{}
+	for _, rs := range s.repoList() {
+		settings, err := rs.cfg.Settings()
+		if err != nil {
+			// Warned, not fatal, exactly as in promoted(): in daemon mode one
+			// contributor's typo must not decide what every other repository on
+			// the machine is coloured in.
+			s.logger.Warn("server: ignoring repository config",
+				"repo", rs.name, "path", rs.cfg.Path(), "error", err)
+			continue
+		}
+		if settings.Theme == "" {
+			continue
+		}
+		if !api.ValidThemeID(settings.Theme) {
+			// Dropped rather than passed on: the browser would store it and then
+			// ask for a /themes/{id} that can never answer, and the charset is
+			// also what closes path traversal on that route.
+			s.logger.Warn("server: ignoring repository theme",
+				"repo", rs.name, "path", rs.cfg.Path(), "theme", settings.Theme)
+			continue
+		}
+
+		// "" is the repo key in single-repo mode — the sentinel Entry uses — and
+		// the {repo} segment in daemon mode.
+		repoKey := ""
+		if s.cfg.MultiRepo {
+			repoKey = rs.name
+		}
+		out[repoKey] = settings.Theme
+	}
+	return out
 }
 
 // userPromoted resolves the reader's own `[starred] promote` list against every
