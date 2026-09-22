@@ -121,6 +121,13 @@ type Deps struct {
 	// panic in daemon mode — a path single-repo tests never exercise. The server
 	// knows every repository it serves, so it answers this from outside.
 	Promoted func() []starred.Listed
+	// ThemesDir is the directory user themes are read from — one *.css file per
+	// theme. Empty means there is no user config directory, and the /themes
+	// routes then list no themes and serve none.
+	ThemesDir string
+	// DefaultTheme is the theme id the reader's config names (`theme = "…"`),
+	// or "" for the built-in look.
+	DefaultTheme string
 }
 
 // Handlers holds the dependency-injected state for every API handler. Construct

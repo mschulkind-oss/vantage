@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   Settings,
   Sun,
@@ -8,8 +8,16 @@ import {
   Eye,
   FileX,
   BookOpen,
+  Palette,
 } from "lucide-react";
 import { cn } from "../lib/utils";
+import {
+  activeColorThemeId,
+  builtInColorThemes,
+  chooseColorTheme,
+  listColorThemes,
+  type ColorTheme,
+} from "../lib/colorTheme";
 import { AnchoredMenu } from "./AnchoredMenu";
 
 type Theme = "light" | "dark";
@@ -66,6 +74,47 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
   const [theme, setTheme] = useState<Theme>(getStoredTheme);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const close = useCallback(() => setOpen(false), []);
+  const [colorThemes, setColorThemes] =
+    useState<ColorTheme[]>(builtInColorThemes);
+  const [colorTheme, setColorTheme] = useState(activeColorThemeId);
+  const colorSelectId = useId();
+
+  // Asked each time the menu opens rather than once, because the server
+  // re-reads the themes directory per request: a theme file dropped in while
+  // the page is open shows up without a reload.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void listColorThemes().then((themes) => {
+      if (!cancelled) setColorThemes(themes);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
+  // The applied theme is always an option, even when the list lacks it — it
+  // starts as the built-ins, falls back to them when the server cannot be
+  // reached, and drops a theme whose file was removed. Without it the select
+  // showed "Vantage" over a user theme still in effect, and picking "Vantage"
+  // was then no change at all, so the reader could not get back to it.
+  const colorOptions = colorThemes.some((t) => t.id === colorTheme)
+    ? colorThemes
+    : [
+        ...colorThemes,
+        { id: colorTheme, name: colorTheme, source: "user" as const },
+      ];
+
+  const handleColorThemeChange = (id: string) => {
+    const chosen = colorOptions.find((t) => t.id === id);
+    if (!chosen) return;
+    setColorTheme(id);
+    // A user theme applies only once its sheet loads, and not at all if it
+    // fails, so the picker settles on whatever is actually in effect.
+    void chooseColorTheme(chosen).then(() =>
+      setColorTheme(activeColorThemeId()),
+    );
+  };
 
   const handleThemeChange = (newTheme: Theme) => {
     setTheme(newTheme);
@@ -76,7 +125,11 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
     <div className="relative">
       <button
         ref={triggerRef}
-        onClick={() => setOpen(!open)}
+        onClick={() => {
+          // Startup may have switched themes since the last render.
+          if (!open) setColorTheme(activeColorThemeId());
+          setOpen(!open);
+        }}
         className={cn(
           "p-1.5 rounded-md transition-colors",
           open
@@ -127,6 +180,27 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
                 <Moon size={13} />
                 Dark
               </button>
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <label
+                htmlFor={colorSelectId}
+                className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300"
+              >
+                <Palette size={13} />
+                Colours
+              </label>
+              <select
+                id={colorSelectId}
+                value={colorTheme}
+                onChange={(e) => handleColorThemeChange(e.target.value)}
+                className="flex-1 min-w-0 rounded-md border border-slate-200 bg-white px-1.5 py-1 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+              >
+                {colorOptions.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 

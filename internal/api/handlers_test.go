@@ -149,6 +149,10 @@ func TestRoutesTableShapes(t *testing.T) {
 	require.Equal(t, ScopeGlobal, scopeOf("/starred", http.MethodGet))
 	require.Equal(t, ScopeGlobal, scopeOf("/starred", http.MethodPost))
 	require.Equal(t, ScopeGlobal, scopeOf("/starred", http.MethodDelete))
+	// A colour theme is the reader's, like a bookmark, so both theme routes are
+	// global: the stylesheet URL must not depend on which repository is open.
+	require.Equal(t, ScopeGlobal, scopeOf("/themes", http.MethodGet))
+	require.Equal(t, ScopeGlobal, scopeOf("/themes/{id}", http.MethodGet))
 	require.Equal(t, ScopeRepo, scopeOf("/git/history", http.MethodGet))
 	require.Equal(t, ScopeRepo, scopeOf("/tree", http.MethodGet))
 	require.Equal(t, ScopeRepo, scopeOf("/review", http.MethodGet))

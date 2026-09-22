@@ -192,6 +192,19 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		s.starred = store
 	}
 
+	// Colour themes are cosmetic, so neither lookup can fail startup: with no
+	// themes directory the routes list none, and an unreadable config falls
+	// back to the built-in look.
+	themesDir, err := config.UserThemesDir()
+	if err != nil {
+		logger.Warn("server: user themes unavailable", "error", err)
+		themesDir = ""
+	}
+	defaultTheme, err := config.LoadUserTheme()
+	if err != nil {
+		logger.Warn("server: ignoring configured theme", "error", err)
+	}
+
 	handlers := api.NewHandlers(api.Deps{
 		Reviews:        s.reviews,
 		Perf:           s.perf,
@@ -200,6 +213,8 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		Starred:        s.starred,
 		StarredChanged: s.broadcastStarredChanged,
 		Promoted:       s.promoted,
+		ThemesDir:      themesDir,
+		DefaultTheme:   defaultTheme,
 	})
 
 	s.router = s.buildRouter(handlers)

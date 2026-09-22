@@ -9,8 +9,11 @@ import React, {
 } from "react";
 import { getCachedSvg, setCachedSvg } from "./mermaidCache.js";
 import { getMermaid } from "./mermaidLoader.js";
-import { currentMermaidTheme } from "./mermaidTheme.js";
-import type { MermaidThemeName } from "./mermaidTheme.js";
+import {
+  COLOR_THEME_ATTRIBUTE,
+  COLOR_THEME_SOURCE_ATTRIBUTE,
+  currentMermaidPalette,
+} from "./mermaidTheme.js";
 
 // Inline SVG icons to avoid lucide-react dependency
 const AlertTriangleIcon = () => (
@@ -378,7 +381,7 @@ function DiagramModal({
 
 /**
  * The palette the page is asking for, re-read whenever `<html>`'s class list
- * changes.
+ * or its colour-theme attribute changes.
  *
  * A diagram is an SVG baked at render time, so unlike everything else on the
  * page it does not restyle when the theme flips — it has to be drawn again. The
@@ -395,18 +398,24 @@ function subscribeToTheme(onChange: () => void): () => void {
   const observer = new MutationObserver(onChange);
   observer.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ["class"],
+    // `class` carries light/dark; the colour theme attributes carry the rest.
+    attributeFilter: [
+      "class",
+      COLOR_THEME_ATTRIBUTE,
+      COLOR_THEME_SOURCE_ATTRIBUTE,
+    ],
   });
   return () => observer.disconnect();
 }
 
 /** Server render has no `<html>` to read, and no diagram to draw either. */
-const serverTheme = (): MermaidThemeName => "default";
+const serverTheme = (): string => "default";
 
-function useMermaidTheme(): MermaidThemeName {
+/** The palette key the page is asking for (see `currentMermaidPalette`). */
+function useMermaidTheme(): string {
   return useSyncExternalStore(
     subscribeToTheme,
-    currentMermaidTheme,
+    currentMermaidPalette,
     serverTheme,
   );
 }

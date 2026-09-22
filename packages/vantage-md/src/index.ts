@@ -90,6 +90,15 @@ export type {
 export { sanitizeSchema, SAFE_STYLE } from "./sanitize.js";
 
 export { renderMermaidBlocks } from "./renderMermaidBlocks.js";
+// The attributes on `<html>` that name the active colour theme. The viewer sets
+// them and the mermaid code reads them to key and redraw diagrams, so both
+// sides import one copy: a rename on only one side would silently stop
+// diagrams following a theme switch.
+export {
+  COLOR_THEME_ATTRIBUTE,
+  COLOR_THEME_SOURCE_ATTRIBUTE,
+  currentColorTheme,
+} from "./mermaidTheme.js";
 export type { RenderMermaidOptions } from "./renderMermaidBlocks.js";
 
 export { resolveLinks } from "./resolveLinks.js";
