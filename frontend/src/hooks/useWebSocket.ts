@@ -4,6 +4,7 @@ import { useGitStore } from "../stores/useGitStore";
 import { useConnectionStore } from "../stores/useConnectionStore";
 import { useReviewStore } from "../stores/useReviewStore";
 import { useStarredStore } from "../stores/useStarredStore";
+import { useFilePickerStore } from "../stores/useFilePickerStore";
 import { WebSocketMessage } from "../types";
 import { isStaticMode } from "../lib/staticMode";
 import { wsLog, bindLoggerSocket } from "../lib/wsLogger";
@@ -81,6 +82,13 @@ export const useWebSocket = () => {
       maxWaitTimerRef.current = null;
     }
 
+    // An open file picker follows the batch, and sits above the repo guards
+    // below: its global mode is what the repo-picker screen opens, and that
+    // mode's endpoints are repo-agnostic — the same reason the bookmark
+    // refresh sits above them in refreshAfterReconnect. A closed picker makes
+    // this a no-op, so nothing is fetched for a list nobody is looking at.
+    void useFilePickerStore.getState().refresh();
+
     // Guard: don't fire API calls before the repo store is initialised
     const { reposLoaded, isMultiRepo, currentRepo } = useRepoStore.getState();
     if (!reposLoaded) return;
@@ -134,6 +142,9 @@ export const useWebSocket = () => {
     // neither needs a selected repo nor waits for one. A star added from
     // another browser during the outage is only recoverable here.
     void useStarredStore.getState().loadStarred();
+    // Likewise a picker left open across the outage: every change the watcher
+    // announced while the socket was down is only recoverable here.
+    void useFilePickerStore.getState().refresh();
 
     // Guard: don't fire API calls before the repo store is initialised.
     // Before loadRepos() completes, isMultiRepo defaults to false and

@@ -256,15 +256,21 @@ export const FilePicker: React.FC<FilePickerProps> = ({
     return matched.slice(0, 100);
   }, [debouncedQuery, files, isGlobal, globalFiles]);
 
-  // Reset selection to the top whenever the result set changes. This is the
-  // "adjusting state during render" pattern (react.dev/learn/you-might-not-need-an-effect):
-  // deriving it here instead of in an effect avoids the extra render pass — and
-  // the react-hooks/set-state-in-effect error — that a useEffect would cause.
-  const [prevResults, setPrevResults] = useState(results);
-  if (results !== prevResults) {
-    setPrevResults(results);
+  // Reset selection to the top whenever the query changes — but deliberately
+  // not when the list changes under it. The watcher refreshes an open picker, so
+  // a document being written elsewhere would otherwise move the row out from
+  // under the reader mid-keystroke. This is the "adjusting state during render"
+  // pattern (react.dev/learn/you-might-not-need-an-effect): deriving it here
+  // instead of in an effect avoids the extra render pass — and the
+  // react-hooks/set-state-in-effect error — that a useEffect would cause.
+  const [prevQuery, setPrevQuery] = useState(debouncedQuery);
+  if (debouncedQuery !== prevQuery) {
+    setPrevQuery(debouncedQuery);
     setSelectedIndex(0);
   }
+  // A refresh can also shorten the list past the selection.
+  const lastIndex = Math.max(results.length - 1, 0);
+  const selected = Math.min(selectedIndex, lastIndex);
 
   // Focus input when opened
   useEffect(() => {
@@ -283,24 +289,29 @@ export const FilePicker: React.FC<FilePickerProps> = ({
   useEffect(() => {
     if (!listRef.current) return;
     const items = listRef.current.querySelectorAll("[data-file-item]");
-    items[selectedIndex]?.scrollIntoView({ block: "nearest" });
-  }, [selectedIndex]);
+    items[selected]?.scrollIntoView({ block: "nearest" });
+  }, [selected]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       switch (e.key) {
+        // Updater form, and clamped inside it: two keydowns in one tick both
+        // read the same rendered value and a held arrow key would advance one
+        // row for the pair.
         case "ArrowDown":
           e.preventDefault();
-          setSelectedIndex((i) => Math.min(i + 1, results.length - 1));
+          setSelectedIndex((i) =>
+            Math.min(Math.min(i, lastIndex) + 1, lastIndex),
+          );
           break;
         case "ArrowUp":
           e.preventDefault();
-          setSelectedIndex((i) => Math.max(i - 1, 0));
+          setSelectedIndex((i) => Math.max(Math.min(i, lastIndex) - 1, 0));
           break;
         case "Enter":
           e.preventDefault();
-          if (results[selectedIndex]) {
-            onSelect(results[selectedIndex].path, results[selectedIndex].repo);
+          if (results[selected]) {
+            onSelect(results[selected].path, results[selected].repo);
             onClose();
           }
           break;
@@ -310,7 +321,7 @@ export const FilePicker: React.FC<FilePickerProps> = ({
           break;
       }
     },
-    [results, selectedIndex, onSelect, onClose],
+    [results, selected, lastIndex, onSelect, onClose],
   );
 
   if (!isOpen) return null;
@@ -384,7 +395,7 @@ export const FilePicker: React.FC<FilePickerProps> = ({
                 data-file-item
                 className={cn(
                   "flex items-center px-4 py-2 text-sm cursor-pointer transition-colors",
-                  i === selectedIndex
+                  i === selected
                     ? "bg-blue-50 dark:bg-blue-900/30 text-blue-900 dark:text-blue-100"
                     : "hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300",
                 )}
@@ -398,7 +409,7 @@ export const FilePicker: React.FC<FilePickerProps> = ({
                   size={14}
                   className={cn(
                     "shrink-0 mr-2.5",
-                    i === selectedIndex
+                    i === selected
                       ? "text-blue-500"
                       : "text-slate-500 dark:text-slate-400",
                   )}
