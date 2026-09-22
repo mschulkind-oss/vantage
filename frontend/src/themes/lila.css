@@ -2,7 +2,7 @@
  *
  * "Lila" is German for lilac. The palette is Catppuccin's — Latte in light
  * mode, Mocha in dark — tuned to sit beside a terminal, editor and window
- * borders that use the same constants. It differs from catppuccin.css in two
+ * borders that use the same constants. It differs from catppuccin.css in four
  * deliberate ways:
  *
  *   1. The accent (Tailwind's `blue` family, which paints links, selection and
@@ -11,6 +11,21 @@
  *      app uses for the sidebar, top bar and menus, is mantle — darker than
  *      `slate-900` (base), the content. This breaks Tailwind's ramp order at
  *      those two steps on purpose; every other step stays in order.
+ *   3. In light mode the mid ramp starts one member lower than Latte's own order
+ *      suggests: `slate-500` is overlay2 and `slate-600` subtext0, where the
+ *      obvious reading would be overlay0 and overlay2. `slate-500` is the token
+ *      the app paints secondary labels in, and overlay0 is 2.14:1 on
+ *      `slate-100` (mantle) — less than half the 3:1 floor this repo keeps for
+ *      text (frontend/src/lib/textContrast.test.ts). overlay1 is 2.63:1 and
+ *      also short, so overlay2 (3.25:1) is the first member that will do, and
+ *      subtext0 follows it to keep the ramp monotonic. Latte's two lightest
+ *      overlays are therefore absent from the light ramp. Mocha needs none of
+ *      this: every dark text step clears the floor already.
+ *   4. Two of Latte's accents are shaded toward its text, for the same reason
+ *      and by the least that clears the floor: green (2.75:1 on mantle, and
+ *      `text-green-500` is light-mode ink in the review UI). The light accent
+ *      ramps also run ink-dark at the bottom and wash-pale at the top, rather
+ *      than the reverse — see the note above `--color-blue-50`.
  *
  * It sets only the steps the app leans on; the rest keep Tailwind's values.
  * Code highlighting, tones and scrollbars are left to their theme fallbacks
@@ -23,29 +38,48 @@
   --color-slate-200: #dce0e8; /* crust         */
   --color-slate-300: #ccd0da; /* surface0      */
   --color-slate-400: #acb0be; /* surface2      */
-  --color-slate-500: #9ca0b0; /* overlay0      */
-  --color-slate-600: #7c7f93; /* overlay2      */
+  --color-slate-500: #7c7f93; /* overlay2 — muted text, 3.25:1 on mantle */
+  --color-slate-600: #6c6f85; /* subtext0      */
   --color-slate-700: #5c5f77; /* subtext1      */
   --color-slate-800: #4c4f69; /* text          */
   --color-slate-900: #4c4f69; /* text — darkest */
   --color-slate-950: #3c3f57;
 
+  /* The accent ramp is ink from 300 down and wash above it, in that order: the
+     app paints `text-blue-900` on `bg-blue-50` for the selected row in both
+     pickers, so the dark end has to be ink. It was a pair of pale mauves —
+     `blue-900` was surface0 — and that row's label came out at 1.27:1, which is
+     to say invisible. The washes moved up to 50–200, where `bg-blue-50` reads
+     them and nothing paints text in them. */
+  --color-blue-50: #e9e6f5; /* mauve, a whisper over base — selected rows */
+  --color-blue-100: #e3dbf4;
+  --color-blue-200: #dcd0f0;
   --color-blue-300: #7287fd; /* latte lavender */
   --color-blue-400: #8839ef; /* latte mauve    */
   --color-blue-500: #8839ef;
   --color-blue-600: #7a2fd8;
   --color-blue-700: #6b26bd;
-  --color-blue-800: #dcd0f0;
-  --color-blue-900: #ccd0da;
+  --color-blue-800: #5a2196;
+  --color-blue-900: #4a1a7c; /* the selected row's label: 6.7:1 on blue-50 */
 
+  /* Same shape, for the same reason: a wash at the ink end is a ramp out of
+     order, and the rule exists because that puts light text on a light surface
+     somewhere nobody looked. */
+  --color-red-100: #f6dce2;
+  --color-red-200: #f0d0d8;
   --color-red-400: #d20f39;
   --color-red-500: #d20f39;
   --color-red-600: #b80c31;
-  --color-red-900: #f0d0d8;
+  --color-red-700: #9c0a29;
+  --color-red-800: #7f0821;
+  --color-red-900: #62061a;
 
-  --color-emerald-500: #40a02b;
-  --color-emerald-600: #40a02b;
-  --color-green-500: #40a02b;
+  /* Latte's green is 2.75:1 on mantle, and `text-green-500` is light-mode ink in
+     the review UI. Shaded an eighth toward Latte's text — the least that clears
+     the floor, so it still reads as Latte's green. */
+  --color-emerald-500: #419632;
+  --color-emerald-600: #419632;
+  --color-green-500: #419632;
   --color-amber-400: #df8e1d;
   --color-amber-500: #df8e1d;
   --color-yellow-500: #df8e1d;
@@ -64,12 +98,22 @@
      Tailwind's scale makes 800 LIGHTER than 900 — so the sidebar and top bar read
      as washed-out rather than separate. Mapping 800 to mantle puts them BELOW the
      content, which is the same language the terminal uses for jail panes. */
-  --color-slate-600: #585b70; /* surface2 — borders, dividers */
+  /* surface1, not surface2: Mocha's subtext0 is `slate-200`, and the app writes
+     it on this step (a raised row's label), where surface2 left it at 2.99:1 —
+     a hair under. surface1 is the member one step down, and the gap Mocha left
+     in this ramp, so filling it costs nothing: 4.09:1. */
+  --color-slate-600: #45475a; /* surface1 — borders, dividers */
   --color-slate-700: #313244; /* surface0 — hover / raised rows */
   --color-slate-800: #181825; /* mantle   — sidebar, top bar, menus */
   --color-slate-900: #1e1e2e; /* base     — the content surface */
   --color-slate-950: #11111b; /* crust    — deepest wells */
 
+  /* The wash end is restated here, lightest-first like the rest of the ramp, so
+     a pale Latte mauve cannot leak into dark mode — every value the light half
+     sets has one here, which the theme's own test pins. */
+  --color-blue-50: #efe8fd;
+  --color-blue-100: #e3d6fb;
+  --color-blue-200: #d7c4f9;
   --color-blue-300: #b4befe;
   --color-blue-400: #cba6f7;
   --color-blue-500: #cba6f7;
@@ -78,9 +122,13 @@
   --color-blue-800: #4a3a63;
   --color-blue-900: #313244;
 
+  --color-red-100: #fbdae4;
+  --color-red-200: #f8c3d3;
   --color-red-400: #f38ba8;
   --color-red-500: #f38ba8;
   --color-red-600: #e06c8b;
+  --color-red-700: #b95573;
+  --color-red-800: #7c3b4d;
   --color-red-900: #4a2b36;
 
   --color-emerald-500: #89d88b;

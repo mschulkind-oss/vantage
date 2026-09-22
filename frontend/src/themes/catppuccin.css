@@ -158,31 +158,19 @@
     var(--ctp-base)
   );
   --color-amber-500: var(--ctp-yellow);
-  --color-amber-600: color-mix(
-    in oklab,
-    var(--ctp-yellow) 88%,
-    var(--ctp-text)
-  );
-  --color-amber-700: color-mix(
-    in oklab,
-    var(--ctp-yellow) 75%,
-    var(--ctp-text)
-  );
-  --color-amber-800: color-mix(
-    in oklab,
-    var(--ctp-yellow) 60%,
-    var(--ctp-text)
-  );
-  --color-amber-900: color-mix(
-    in oklab,
-    var(--ctp-yellow) 45%,
-    var(--ctp-text)
-  );
-  --color-amber-950: color-mix(
-    in oklab,
-    var(--ctp-yellow) 30%,
-    var(--ctp-text)
-  );
+  /* Amber's ink steps shade toward black, not toward text, and they travel
+     further than the other families'. Latte's yellow is a light swatch: the 12%
+     and 25% of text that turn blue and red into ink left `amber-600` at 2.46:1
+     on `amber-50` — its own wash, which the app pairs them with — and
+     `amber-700`, the modified-file icon in the tree, at 2.56:1 on the sidebar.
+     Toward text that lightness comes out taupe; toward black it stays yellow,
+     which is the same trade the code roles below already make, for the same
+     reason. Now 3.30:1 and 4.03:1 on the wash, 3.67:1 on the sidebar. */
+  --color-amber-600: color-mix(in oklab, var(--ctp-yellow) 85%, black);
+  --color-amber-700: color-mix(in oklab, var(--ctp-yellow) 78%, black);
+  --color-amber-800: color-mix(in oklab, var(--ctp-yellow) 64%, black);
+  --color-amber-900: color-mix(in oklab, var(--ctp-yellow) 50%, black);
+  --color-amber-950: color-mix(in oklab, var(--ctp-yellow) 38%, black);
 
   --color-green-50: color-mix(in oklab, var(--ctp-green) 8%, var(--ctp-base));
   --color-green-100: color-mix(in oklab, var(--ctp-green) 16%, var(--ctp-base));
@@ -425,6 +413,17 @@
   --color-orange-500: color-mix(
     in oklab,
     var(--ctp-peach) 85%,
+    var(--ctp-crust)
+  );
+  /* Restated here, at the same 65% every other family's 600 uses, because
+     leaving it out does not leave it alone: `:root`'s value mixes peach toward
+     `text`, and re-resolving that in dark mode — where `text` is light — makes
+     `orange-600` *lighter* than `orange-500`. A ramp out of order, from a
+     declaration that looks absent. Nothing paints text on it today, which is why
+     no guard catches it. */
+  --color-orange-600: color-mix(
+    in oklab,
+    var(--ctp-peach) 65%,
     var(--ctp-crust)
   );
 
