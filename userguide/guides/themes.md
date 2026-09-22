@@ -17,7 +17,9 @@ mode.
 
 Open the settings menu (the gear icon) and pick one from **Colours**, under
 the Light/Dark buttons. The list is fetched each time the menu opens, so a
-theme you have just added shows up without reloading.
+theme you have just added shows up without reloading. One of your own themes
+that has no dark half is listed as **(light only)** — see
+[The structure](#the-structure) for what that means and why it is not a fault.
 
 The choice is remembered **per browser**, in that browser's local storage for the
 address you opened Vantage at — the same way light/dark is. A second browser, a
@@ -42,21 +44,59 @@ because a colour theme is your setting rather than a project's — in single-dir
 mode as well as in daemon mode, and even when the daemon was started with
 `--config` pointing somewhere else.
 
+### A default a project offers
+
+A project can name the theme its documents look best in, in the `.vantage.toml`
+committed at its repository root:
+
+```toml
+# .vantage.toml, at the repository root
+theme = "catppuccin"
+
+[check]
+strict = true
+```
+
+> [!IMPORTANT]
+> **Put `theme` before any `[table]` header**, as above. TOML reads a key written
+> after `[check]` as part of that table, and `vantage-check` refuses keys in its
+> own table it does not know — so a line in the wrong place does not fail quietly
+> as a theme nobody sees, it fails the project's own `vantage-check` run with
+> `unknown key check.theme`.
+
+It is an offer, never an override: it reaches you only if you have picked nothing
+in this browser and named nothing in your own config. Anything you choose
+outranks it, and clearing your choice is what lets it through again.
+
+Unlike your own config's `theme`, this one is picked up as the file changes: edit
+it and the next page load has it, with no restart.
+
+The theme has to be one you already have — a built-in, or a file in your themes
+folder. A project names a theme; it does not ship one, so a project naming
+something you do not have simply leaves you where you were.
+
+In daemon mode this is worked out from the project in the address you are
+looking at, which is the first part of the path (`/notes/README.md` is the
+`notes` project). On the project list itself, at the server's root, there is no
+project yet and so no offer to apply.
+
 ### Which one wins
 
 1. **A choice made in this browser.** Picking **Vantage** counts: it is stored
-   as an explicit choice, so a configured default does not override it.
+   as an explicit choice, so neither default below overrides it.
 2. **`theme` in the user config.**
-3. **The built-in look.**
+3. **`theme` in the project's `.vantage.toml`.**
+4. **The built-in look.**
 
 If a browser's stored choice names a theme of yours that no longer loads — you
-deleted or renamed the file — the browser forgets that choice and falls back to
-the configured default, as if nothing had been picked. If the configured default
-names a theme that does not exist, you get the built-in look. A theme of yours
-that fails to load leaves a warning in the browser console saying which.
+deleted or renamed the file — the browser forgets that choice and falls to the
+next line of the list, as if nothing had been picked. A default that names a
+theme which does not exist is skipped the same way, and if none of them resolve
+you get the built-in look. A theme of yours that fails to load leaves a warning
+in the browser console saying which.
 
-To forget a choice made in a browser and follow the configured default again,
-clear the site data for Vantage in that browser.
+To forget a choice made in a browser and follow the defaults again, clear the
+site data for Vantage in that browser.
 
 ---
 
@@ -124,6 +164,13 @@ dark mode. So anything you set only in `:root` is also what dark mode gets. That
 is fine for a palette meant to serve both modes, the way Tailwind's own does, but
 a palette tuned for a light background has to be restated in `:root.dark`.
 Put values that are the same in both modes in `:root, :root.dark { … }`.
+
+A theme with no `:root.dark` rule at all is a **light-only** theme rather than a
+broken one: in dark mode it draws its light palette, and how readable that stays
+depends on nothing but whether its ramps are in order (below). **Colours** lists
+it as **(light only)** so that it is something you picked rather than something
+you discover after pressing Shift+D. Nothing refuses such a theme — if you never
+leave light mode there is no reason to write the other half.
 
 Anything a theme does not set keeps its built-in value, so a theme can be as
 small as one ramp.
@@ -224,5 +271,5 @@ leaving the page.
   built-in look prints it in the same mode, with prose text forced dark on a light
   page.
 - **Static sites.** A [static export](static-sites.md) has no server, so it
-  offers the built-in themes only. Your own themes, and the configured default,
-  are not part of it.
+  offers the built-in themes only. Your own themes are not part of it, and
+  neither default is — both live in files the export does not carry.
