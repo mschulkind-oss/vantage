@@ -158,7 +158,10 @@ function HighlightedPath({
           <span
             key={i}
             className={cn(
-              isHighlighted && "text-blue-600 font-semibold",
+              // Stepped like the dimmed characters below it: `blue-600` alone is
+              // 2.8:1 on the dark panel, and these are the characters the
+              // reader's own keystrokes matched.
+              isHighlighted && "text-blue-600 dark:text-blue-400 font-semibold",
               isDir && !isHighlighted && "text-slate-500 dark:text-slate-400",
             )}
           >

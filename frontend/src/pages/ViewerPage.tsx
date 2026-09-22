@@ -1565,7 +1565,11 @@ export const ViewerPage: React.FC = () => {
                       <div className="w-16 h-16 rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center mb-4">
                         <AlertCircle size={32} className="text-red-400" />
                       </div>
-                      <p className="text-lg font-medium text-red-600">
+                      {/* Stepped per mode, like every other red ink in the app
+                          (`DiffViewer`, `ReviewPanel`): `red-600` is 2.8:1 on
+                          the dark content surface, and this is the sentence
+                          that says what went wrong. */}
+                      <p className="text-lg font-medium text-red-600 dark:text-red-400">
                         {error}
                       </p>
                       {currentPath && (

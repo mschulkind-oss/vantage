@@ -153,15 +153,21 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
   // Hide non-markdown directories when the toggle is off
   if (isDimmed && !showEmptyDirs) return null;
 
-  // Determine file icon color based on git status
+  // Determine file icon color based on git status.
+  //
+  // The git colours step per mode — `700` light, `400` dark — like `nameColor`
+  // below and for the same reason: one shade cannot be ink on both surfaces.
+  // `green-500`/`amber-500` read 2.0:1 and 1.9:1 on a light panel, which is a
+  // status you cannot see; `green-700`/`amber-700` are 4.5:1 there, and the
+  // `400`s are 8:1 on the dark sidebar.
   const fileIconColor = isSymlinkError
     ? "text-red-400"
     : isSymlink
       ? "text-slate-500 dark:text-slate-400"
       : hasGitChange
         ? gitStatus === "untracked"
-          ? "text-green-500"
-          : "text-amber-500"
+          ? "text-green-700 dark:text-green-400"
+          : "text-amber-700 dark:text-amber-400"
         : "text-slate-500 dark:text-slate-400";
   const folderIconColor = isSymlinkError
     ? "text-red-400"
