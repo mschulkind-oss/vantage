@@ -111,11 +111,17 @@ describe("colorTheme", () => {
   });
 
   describe("built-ins", () => {
-    it("are the default look, named Vantage, Catppuccin and Lila", () => {
+    it("lead with the default look, then read alphabetically", () => {
+      // The order the picker shows. The default look is first because it is what
+      // "no theme" means, not because of its name.
       expect(builtInColorThemes().map((t) => [t.id, t.name])).toEqual([
-        ["default", "Vantage"],
+        ["default", "Slate"],
         ["catppuccin", "Catppuccin"],
+        ["gruvbox", "Gruvbox"],
         ["lila", "Lila"],
+        ["nord", "Nord"],
+        ["solarized", "Solarized"],
+        ["tokyo-night", "Tokyo Night"],
       ]);
     });
 
@@ -240,13 +246,11 @@ describe("colorTheme", () => {
 
   describe("listColorThemes", () => {
     it("merges the server's user themes after the built-ins", async () => {
-      serve({ themes: [{ id: "nord", name: "nord", has_dark: true }] });
+      serve({ themes: [{ id: "ocean", name: "ocean", has_dark: true }] });
       const themes = await listColorThemes();
       expect(themes.map((t) => [t.id, t.source])).toEqual([
-        ["default", "built-in"],
-        ["catppuccin", "built-in"],
-        ["lila", "built-in"],
-        ["nord", "user"],
+        ...builtInColorThemes().map((t) => [t.id, "built-in"]),
+        ["ocean", "user"],
       ]);
       expect(mockedAxios.get).toHaveBeenCalledWith("/api/themes");
     });
@@ -254,16 +258,14 @@ describe("colorTheme", () => {
     it("carries each theme's dark half from the server", async () => {
       serve({
         themes: [
-          { id: "nord", name: "nord", has_dark: true },
+          { id: "ocean", name: "ocean", has_dark: true },
           { id: "daylight", name: "daylight", has_dark: false },
         ],
       });
       const themes = await listColorThemes();
       expect(themes.map((t) => [t.id, t.hasDark])).toEqual([
-        ["default", true],
-        ["catppuccin", true],
-        ["lila", true],
-        ["nord", true],
+        ...builtInColorThemes().map((t) => [t.id, true]),
+        ["ocean", true],
         ["daylight", false],
       ]);
     });
@@ -383,11 +385,11 @@ describe("colorTheme", () => {
     });
 
     it("tries an unknown stored id as a user theme", async () => {
-      localStorage.setItem(COLOR_THEME_STORAGE_KEY, "nord");
+      localStorage.setItem(COLOR_THEME_STORAGE_KEY, "ocean");
       const done = initColorTheme();
-      await settleLink("load", "/api/themes/nord");
+      await settleLink("load", "/api/themes/ocean");
       await done;
-      expect(root.getAttribute(ATTR)).toBe("nord");
+      expect(root.getAttribute(ATTR)).toBe("ocean");
     });
 
     // A stored user theme whose file is gone used to end startup: the
@@ -421,8 +423,8 @@ describe("colorTheme", () => {
     it("lets a stored choice outrank the server default", async () => {
       localStorage.setItem(COLOR_THEME_STORAGE_KEY, "catppuccin");
       serve({
-        default: "nord",
-        themes: [{ id: "nord", name: "nord", has_dark: true }],
+        default: "ocean",
+        themes: [{ id: "ocean", name: "ocean", has_dark: true }],
       });
       const done = initColorTheme();
       await settleLink("load");
@@ -452,13 +454,13 @@ describe("colorTheme", () => {
 
     it("applies a user theme as the server default", async () => {
       serve({
-        default: "nord",
-        themes: [{ id: "nord", name: "nord", has_dark: true }],
+        default: "ocean",
+        themes: [{ id: "ocean", name: "ocean", has_dark: true }],
       });
       const done = initColorTheme();
-      await settleLink("load", "/api/themes/nord");
+      await settleLink("load", "/api/themes/ocean");
       await done;
-      expect(root.getAttribute(ATTR)).toBe("nord");
+      expect(root.getAttribute(ATTR)).toBe("ocean");
     });
 
     it("stays on the default look when the server is unreachable", async () => {
@@ -481,7 +483,7 @@ describe("colorTheme", () => {
 
     it("in static mode ignores a stored user theme", async () => {
       window.__VANTAGE_STATIC__ = true;
-      localStorage.setItem(COLOR_THEME_STORAGE_KEY, "nord");
+      localStorage.setItem(COLOR_THEME_STORAGE_KEY, "ocean");
       await initColorTheme();
       expect(links()).toHaveLength(0);
       expect(root.hasAttribute(ATTR)).toBe(false);
@@ -545,13 +547,13 @@ describe("colorTheme", () => {
 
       it("applies a user theme the repository names", async () => {
         serve({
-          repo_defaults: { "": "nord" },
-          themes: [{ id: "nord", name: "nord", has_dark: true }],
+          repo_defaults: { "": "ocean" },
+          themes: [{ id: "ocean", name: "ocean", has_dark: true }],
         });
         const done = initColorTheme();
-        await settleLink("load", "/api/themes/nord");
+        await settleLink("load", "/api/themes/ocean");
         await done;
-        expect(root.getAttribute(ATTR)).toBe("nord");
+        expect(root.getAttribute(ATTR)).toBe("ocean");
       });
 
       it("is outranked by the reader's configured default", async () => {

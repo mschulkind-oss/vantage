@@ -1,0 +1,183 @@
+/* Nord — Polar Night in dark mode, Snow Storm over Polar Night in light.
+ * https://www.nordtheme.com/docs/colors-and-palettes
+ *
+ * Nord is four Polar Night greys (nord0–nord3), three Snow Storm greys
+ * (nord4–nord6), four Frost blues (nord7–nord10) for the accent and five
+ * Aurora hues (nord11–nord15) for status. Only the dark half of this file is
+ * Nord's own design: **Nord publishes no light variant.** The light half is
+ * built by inverting it — Snow Storm surfaces under Polar Night ink — so it is
+ * Nord's palette but nobody's Nord, and `white` is left white because Nord
+ * names no light page colour.
+ *
+ * Three places the palette runs out, each marked below:
+ *
+ *   1. The greys come in two clusters with a gulf between nord4 (#d8dee9) and
+ *      nord3 (#4c566a), so `slate-300` and `slate-400` are nord4 interpolated
+ *      toward nord3, and `slate-500` — the muted text token — is the
+ *      comment grey the Nord Vim port adds in that same gap, #616e88.
+ *   2. Aurora is tuned to sit on Polar Night, and on Snow Storm its yellow is
+ *      1.28:1 and its green 1.67:1, far under the 3:1 floor this repo keeps for
+ *      text (frontend/src/lib/textContrast.test.ts). The light half's ink steps
+ *      (500 and down) shade each toward nord0 until they clear it, which costs
+ *      them their saturation: nord13 ends up a dark taupe. The washes above 500
+ *      stay the bright Aurora swatch, so a warning still reads warm.
+ *   3. Dark has the mirror of that in one place: nord11 is 2.46:1 on nord1, the
+ *      chrome, so its ink step lifts toward nord4 and nord11 itself sits at 500.
+ *
+ * It sets only the steps the app leans on; the rest — `purple` (review mode),
+ * code highlighting, tones and scrollbars — keep their built-in values (see
+ * userguide/guides/themes.md). */
+
+/* ── light: Snow Storm over Polar Night ── */
+:root {
+  --color-slate-50: #eceff4; /* nord6 — lightest surface */
+  --color-slate-100: #e5e9f0; /* nord5 */
+  --color-slate-200: #d8dee9; /* nord4 */
+  --color-slate-300: #b3bac8; /* nord4 three quarters toward nord3 */
+  --color-slate-400: #8890a1; /* nord4 45% toward nord3 */
+  --color-slate-500: #616e88; /* nord3-bright — muted text, 4.21:1 on slate-100 */
+  --color-slate-600: #4c566a; /* nord3 */
+  --color-slate-700: #434c5e; /* nord2 */
+  --color-slate-800: #3b4252; /* nord1 */
+  --color-slate-900: #2e3440; /* nord0 — darkest ink */
+  --color-slate-950: #2e3440; /* nord0 again; Nord has nothing below it */
+
+  /* Frost, with nord8 and nord9 as the light steps and nord10 the link colour;
+     below it, nord10 toward nord0. */
+  --color-blue-50: #d7dfea;
+  --color-blue-100: #c7d3e2;
+  --color-blue-200: #b4c4d9;
+  --color-blue-300: #88c0d0; /* nord8 */
+  --color-blue-400: #81a1c1; /* nord9 */
+  --color-blue-500: #5e81ac; /* nord10 */
+  --color-blue-600: #57769c;
+  --color-blue-700: #506a8c;
+  --color-blue-800: #495f7d;
+  --color-blue-900: #43556e;
+
+  /* nord11 clears the floor on Snow Storm unaided (3.36:1), so red is the one
+     Aurora ramp that keeps its swatch at 500. */
+  --color-red-50: #e8dbe0;
+  --color-red-100: #e4cbd0;
+  --color-red-200: #dfb9be;
+  --color-red-300: #d69da2;
+  --color-red-400: #cc8187;
+  --color-red-500: #bf616a; /* nord11 */
+  --color-red-600: #aa5b64;
+  --color-red-700: #95565f;
+  --color-red-800: #814f59;
+  --color-red-900: #6e4a53;
+
+  /* Washes are nord13 thinned into nord6; the ink is nord13 half way to nord0,
+     which is the closest this palette gets to a yellow you can read (3.38:1). */
+  --color-amber-50: #eceae6;
+  --color-amber-100: #ece6db;
+  --color-amber-200: #ece2cd;
+  --color-amber-300: #ecdbb9;
+  --color-amber-400: #ebd3a3; /* nord13 78% into nord6 */
+  --color-amber-500: #877c67; /* nord13 50% toward nord0 */
+  --color-amber-600: #7a7162;
+  --color-amber-700: #6d675c;
+  --color-amber-800: #605d57;
+  --color-amber-900: #545352;
+
+  /* nord14 the same way: 55% toward nord0 for 3.62:1, a deep sage. */
+  --color-green-50: #e2e8e5;
+  --color-green-100: #d9e3da;
+  --color-green-200: #d0dccc;
+  --color-green-300: #c1d3b8;
+  --color-green-400: #b3c9a3; /* nord14 78% into nord6 */
+  --color-green-500: #6b7d6a; /* nord14 55% toward nord0 */
+  --color-green-600: #627264;
+  --color-green-700: #59685e;
+  --color-green-800: #505d58;
+  --color-green-900: #485453;
+}
+
+/* ── dark: Polar Night ── */
+:root.dark {
+  --color-slate-50: #eceff4; /* nord6 — brightest ink */
+  --color-slate-100: #e5e9f0; /* nord5 */
+  --color-slate-200: #d8dee9; /* nord4 */
+  --color-slate-300: #b5bdcd; /* nord4 toward nord3-bright */
+  --color-slate-400: #949fb3; /* muted text, 3.77:1 on slate-800 */
+  --color-slate-500: #616e88; /* nord3-bright */
+  --color-slate-600: #4c566a; /* nord3 — borders, dividers */
+  --color-slate-700: #434c5e; /* nord2 — hover / raised rows */
+  --color-slate-800: #3b4252; /* nord1 — sidebar, top bar, menus */
+  --color-slate-900: #2e3440; /* nord0 — the content surface */
+  --color-slate-950: #2e3440; /* nord0 again; Nord has nothing below it */
+
+  /* Frost reads top-down here: nord8 is the ink, nord9 and nord10 the steps
+     below it, and nord10 toward nord0 gives the fills. */
+  --color-blue-50: #d8e6ed;
+  --color-blue-100: #c5dce6;
+  --color-blue-200: #b1d3de;
+  --color-blue-300: #9dc9d7;
+  --color-blue-400: #88c0d0; /* nord8 */
+  --color-blue-500: #81a1c1; /* nord9 */
+  --color-blue-600: #5e81ac; /* nord10 */
+  --color-blue-700: #485d79;
+  --color-blue-800: #405067;
+  --color-blue-900: #3a475b;
+
+  /* nord11 is 2.46:1 on the chrome, and the app inks 400 and 500 both, so the
+     lift covers both steps and nord11 itself drops to 600, where nothing paints
+     text. Nord has one red: there is no darker Aurora member to promote and no
+     value between the lift and nord11 that clears 3:1 — 2.95:1 at a fifth of
+     nord4 — so the two ink steps repeat rather than pretending to differ. */
+  --color-red-50: #e7d9de;
+  --color-red-100: #e0c3c8;
+  --color-red-200: #d9adb2;
+  --color-red-300: #d2979d;
+  --color-red-400: #c98188; /* nord11 75% toward nord4 — 3.34:1 */
+  --color-red-500: #c98188; /* the same lift again */
+  --color-red-600: #bf616a; /* nord11 */
+  --color-red-700: #7c4e57; /* nord11 over nord0, 55% … */
+  --color-red-800: #654751; /* … 38% … */
+  --color-red-900: #54414b; /* … 26% */
+
+  /* Aurora needs no help against Polar Night: nord13 is 6.44:1 on the chrome
+     and nord14 4.94:1. */
+  --color-amber-50: #ece8e0;
+  --color-amber-100: #ece1cb;
+  --color-amber-200: #ecdab7;
+  --color-amber-300: #ebd2a1;
+  --color-amber-400: #ebcb8b; /* nord13 */
+  --color-amber-500: #ccb380;
+  --color-amber-600: #a69573;
+  --color-amber-700: #6d685d;
+  --color-amber-800: #595855;
+  --color-amber-900: #4b4c4e;
+
+  --color-green-50: #dde5df;
+  --color-green-100: #cedbca;
+  --color-green-200: #c0d2b5;
+  --color-green-300: #b1c8a1;
+  --color-green-400: #a3be8c; /* nord14 */
+  --color-green-500: #90a881;
+  --color-green-600: #798d73;
+  --color-green-700: #56635c;
+  --color-green-800: #4a5454;
+  --color-green-900: #414a4d;
+}
+
+/* Families the app reads in a handful of places follow a main one: `gray` draws
+   the mermaid dialog and one modal, `indigo` ends a review-mode gradient, and
+   `yellow` is what the mermaid error box reads. */
+:root,
+:root.dark {
+  --color-gray-50: var(--color-slate-50);
+  --color-gray-100: var(--color-slate-100);
+  --color-gray-200: var(--color-slate-200);
+  --color-gray-600: var(--color-slate-600);
+  --color-emerald-500: var(--color-green-500);
+  --color-emerald-600: var(--color-green-600);
+  --color-indigo-600: var(--color-blue-600);
+  --color-yellow-50: var(--color-amber-50);
+  --color-yellow-200: var(--color-amber-200);
+  --color-yellow-300: var(--color-amber-300);
+  --color-yellow-400: var(--color-amber-400);
+  --color-yellow-700: var(--color-amber-700);
+  --color-yellow-800: var(--color-amber-800);
+}
