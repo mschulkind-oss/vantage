@@ -64,7 +64,11 @@ function HighlightedName({
       {name.split("").map((char, i) => (
         <span
           key={i}
-          className={cn(indexSet.has(i) && "text-blue-600 font-semibold")}
+          // Stepped per mode, as in `FilePicker`: `blue-600` alone is 2.8:1 on
+          // the dark panel these matched characters are read on.
+          className={cn(
+            indexSet.has(i) && "text-blue-600 dark:text-blue-400 font-semibold",
+          )}
         >
           {char}
         </span>
