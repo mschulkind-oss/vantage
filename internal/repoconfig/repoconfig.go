@@ -68,6 +68,15 @@ const maxSize = 200 * 1024
 type Settings struct {
 	// Starred promotes documents into the viewer's Starred section.
 	Starred StarredSettings `toml:"starred"`
+
+	// Theme is the colour theme the repository offers its readers, by id.
+	//
+	// An offer and never an override: a choice made in the browser and the
+	// reader's own `theme` key both beat it, so a project may suggest the palette
+	// its diagrams were drawn for without taking the decision away from whoever
+	// is reading. Top-level and spelled exactly as in the reader's own
+	// `config.toml`, so one word means one thing in both files.
+	Theme string `toml:"theme"`
 }
 
 // StarredSettings is the `[starred]` table.
@@ -81,7 +90,7 @@ type StarredSettings struct {
 // IsZero reports whether the file said nothing the server acts on. A repository
 // with only a `[check]` table is indistinguishable from one with no file at all,
 // which is the point.
-func (s Settings) IsZero() bool { return len(s.Starred.Promote) == 0 }
+func (s Settings) IsZero() bool { return len(s.Starred.Promote) == 0 && s.Theme == "" }
 
 // Parse decodes the server's settings from TOML.
 //
@@ -103,8 +112,8 @@ func Parse(data []byte) (Settings, error) {
 	}
 
 	for _, key := range meta.Undecoded() {
-		// Only the server's own tables are policed. A top-level table nobody
-		// here claims belongs to the checker or to another tool.
+		// Only the server's own names are policed. A top-level table nobody here
+		// claims belongs to the checker or to another tool.
 		if len(key) == 0 || !ours(key[0]) {
 			continue
 		}
@@ -115,6 +124,12 @@ func Parse(data []byte) (Settings, error) {
 
 // ours reports whether a top-level table is one this package claims, and is
 // therefore one whose keys it will police.
+//
+// Only tables need claiming. The server's one top-level scalar, `theme`, is
+// decoded, so it never reaches the undecoded list; a guess at the wrong shape
+// (`[theme]`, or `theme.name = "…"`) is refused by the decoder's own type check
+// before this loop runs, which is the same whole-or-nothing outcome by another
+// route.
 func ours(table string) bool { return table == "starred" }
 
 // Config is one repository's settings, reloaded lazily as the file changes.

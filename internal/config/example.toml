@@ -59,9 +59,12 @@ port = 8000
 # Colour theme: the palette light and dark mode are drawn in, for every browser
 # until its reader picks another under "Colours" in the settings menu (a choice
 # made there always wins).  "catppuccin" is built in; your own theme is
-# ~/.config/vantage/themes/<id>.css, named here by <id>.  Omitted, or "default",
-# is the built-in look.  Read only from ~/.config/vantage/config.toml, and only
-# at startup — restart after changing it.  See userguide/guides/themes.md.
+# ~/.config/vantage/themes/<id>.css, named here by <id>.  This also outranks a
+# theme a repository offers in its own .vantage.toml — a repository may suggest a
+# palette, never impose one — so set it here to fix yours everywhere.  Omitted,
+# the repository's offer applies if it makes one; "default" is the built-in look
+# either way.  Read only from ~/.config/vantage/config.toml, and only at
+# startup — restart after changing it.  See userguide/guides/themes.md.
 # theme = "catppuccin"
 
 # Repositories to serve

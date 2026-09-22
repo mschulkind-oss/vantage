@@ -262,16 +262,30 @@ func NewReviewComment(id, comment string, createdAt float64) ReviewComment {
 // a directory listing has nothing else to go on — and is a field of its own so
 // that a display name (a `/* name: … */` header, docs/design/color-themes.md
 // §9) can arrive without changing the wire format.
+//
+// HasDark says whether the stylesheet declares a dark half (`:root.dark`). A
+// theme sets its light palette on `:root`, which applies in *both* modes, so one
+// that stops there renders its light colours in dark mode — which reads as a bug
+// in the app rather than an omission in the theme. The picker labels such a theme
+// instead, and only the server can see the file to tell.
 type ThemeInfo struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	HasDark bool   `json:"has_dark"`
 }
 
 // ThemeList is the /themes response. Themes is always a non-nil slice so it
 // marshals as [] when the directory is empty or absent. Default is the theme id
 // the reader's config names, or "" for the built-in look; a choice made in the
 // browser outranks it.
+//
+// RepoDefaults is the theme each repository offers, keyed by repo name ("" in
+// single-repo mode), and is the lowest of the three precedence levels: the
+// browser's stored choice, then Default, then this. It is always a non-nil map
+// for the same reason Themes is a non-nil slice — the frontend indexes it rather
+// than checking it first, and `null` would have to be special-cased at every use.
 type ThemeList struct {
-	Default string      `json:"default"`
-	Themes  []ThemeInfo `json:"themes"`
+	Default      string            `json:"default"`
+	Themes       []ThemeInfo       `json:"themes"`
+	RepoDefaults map[string]string `json:"repo_defaults"`
 }
