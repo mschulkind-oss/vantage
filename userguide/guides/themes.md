@@ -3,10 +3,21 @@
 Vantage has two independent appearance settings. **Light or dark** is the one
 you already know: **Shift+D**, or the Light/Dark buttons in the settings menu.
 A **colour theme** is the palette both of those modes are drawn in. The
-built-in look is called **Vantage**; Vantage also ships **Catppuccin** (Latte in
-light mode, Mocha in dark) and **Lila** (the same flavours with a mauve accent
-and the sidebar and top bar recessed below the content in dark mode), and you
-can add your own by dropping a stylesheet into a folder.
+built-in look is called **Slate**, after the grey ramp it is built on, and
+Vantage ships six palettes beside it:
+
+| Theme | Light | Dark |
+| --- | --- | --- |
+| **Catppuccin** | Latte | Mocha |
+| **Gruvbox** | Gruvbox light | Gruvbox dark |
+| **Lila** | Latte with a mauve accent | Mocha, chrome recessed below the content |
+| **Nord** | Snow Storm over Polar Night | Polar Night |
+| **Solarized** | Solarized Light | Solarized Dark |
+| **Tokyo Night** | Tokyo Night Day | Tokyo Night |
+
+Each uses its palette's own light and dark variants, except Nord, which has no
+official light one — its light half is built from Snow Storm surfaces over Polar
+Night ink. You can add your own by dropping a stylesheet into a folder.
 
 Switching mode never changes your theme, and switching theme never changes your
 mode.
@@ -82,7 +93,7 @@ project yet and so no offer to apply.
 
 ### Which one wins
 
-1. **A choice made in this browser.** Picking **Vantage** counts: it is stored
+1. **A choice made in this browser.** Picking **Slate** counts: it is stored
    as an explicit choice, so neither default below overrides it.
 2. **`theme` in the user config.**
 3. **`theme` in the project's `.vantage.toml`.**
@@ -206,6 +217,21 @@ background in light mode **and** the text on accent buttons in both modes, and
 > once: in dark mode its `slate-800` (the sidebar, top bar and menus) is darker
 > than its `slate-900` (the content), so the chrome sits below the page, the way
 > terminal panes do.
+
+> [!IMPORTANT]
+> **Every step the interface paints text in has to clear 3:1 against the surface
+> behind it.** In light mode those are `slate-500` through `slate-900` against
+> `slate-100`; in dark mode `slate-100` through `slate-400` against `slate-800`.
+> Those are the hardest surfaces each mode has, so a step that clears them clears
+> everywhere.
+>
+> The step this catches is almost always the muted one — `slate-500` in light
+> mode, which the interface uses for every secondary label. A palette's "mid
+> grey" is usually chosen against white, and it lands on a tinted panel here.
+> Vantage's own built-ins are held to this floor by a browser test; **your theme
+> is not checked**, and the picker will not warn you, so the ratios are yours to
+> keep. 3:1 is a floor rather than a target: it is what WCAG asks of incidental
+> text, and body text is meant to clear 4.5:1.
 
 The rest of the contract is things that are not Tailwind colours:
 
