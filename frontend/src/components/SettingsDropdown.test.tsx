@@ -1,8 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import {
+  act,
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+} from "@testing-library/react";
 import axios from "axios";
 import { SettingsDropdown } from "./SettingsDropdown";
 import { builtInColorThemes } from "../lib/colorTheme";
+import { toggleColorMode } from "../lib/darkMode";
 
 vi.mock("axios");
 const mockedAxios = vi.mocked(axios, true);
@@ -291,5 +298,51 @@ describe("SettingsDropdown", () => {
           ?.textContent,
       ).toBe("ocean");
     });
+  });
+});
+
+/**
+ * The bug the Light/Dark tests above could not see, because they only ever
+ * clicked: the menu used to keep its own `useState` copy of the mode, so Shift+D
+ * changed the page and left the buttons showing the mode the reader had just
+ * left. The mode is now subscribed rather than copied, and these are the two
+ * writers it has to hear.
+ */
+describe("the mode the buttons show", () => {
+  const darkButton = () => screen.getByText("Dark").closest("button")!;
+
+  beforeEach(() => {
+    document.documentElement.classList.remove("dark");
+    localStorage.clear();
+    mockedAxios.get.mockResolvedValue({ data: { default: "", themes: [] } });
+  });
+
+  it("follows Shift+D in this tab", () => {
+    renderDropdown();
+    fireEvent.click(screen.getByLabelText("Settings"));
+    expect(darkButton()).not.toHaveClass("bg-slate-700");
+
+    act(() => toggleColorMode());
+
+    expect(darkButton()).toHaveClass("bg-slate-700");
+  });
+
+  it("follows another tab's switch", () => {
+    renderDropdown();
+    fireEvent.click(screen.getByLabelText("Settings"));
+
+    act(() => {
+      localStorage.setItem("vantage:theme", "dark");
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: "vantage:theme",
+          newValue: "dark",
+          storageArea: localStorage,
+        }),
+      );
+    });
+
+    expect(document.documentElement.classList.contains("dark")).toBe(true);
+    expect(darkButton()).toHaveClass("bg-slate-700");
   });
 });

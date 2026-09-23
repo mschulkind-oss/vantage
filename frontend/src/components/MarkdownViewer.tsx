@@ -8,6 +8,7 @@ import { useNavigate } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { scrollToAnchor } from "../lib/anchorScroll";
 import { shouldHandleInternalNavigation } from "../lib/navigation";
+import { readPreference, writePreference } from "../lib/preferences";
 import { useRepoStore } from "../stores/useRepoStore";
 import { useDeltaFlash } from "../hooks/useDeltaFlash";
 import {
@@ -64,11 +65,11 @@ const MULTIBLOCK_HINT_KEY = "vantage.reviewMode.multiBlockHintShown";
 function showMultiBlockHintToast(rect: DOMRect) {
   // One-time per browser; once dismissed, never again.  The hint exists
   // to teach the clamp behavior on first encounter.
-  try {
-    if (localStorage.getItem(MULTIBLOCK_HINT_KEY) === "1") return;
-  } catch {
-    /* ignore */
-  }
+  //
+  // Read at the moment of the selection rather than held in state, which is why
+  // this preference is one of the two in `UNSYNCED_PREFERENCES`: a second tab
+  // reads it the next time it matters, so there is never a stale copy to sync.
+  if (readPreference(MULTIBLOCK_HINT_KEY) === "1") return;
   const existing = document.getElementById("review-multiblock-hint");
   if (existing) existing.remove();
 
@@ -86,11 +87,7 @@ function showMultiBlockHintToast(rect: DOMRect) {
   toast.style.left = `${left}px`;
 
   setTimeout(() => toast.remove(), 2500);
-  try {
-    localStorage.setItem(MULTIBLOCK_HINT_KEY, "1");
-  } catch {
-    /* ignore */
-  }
+  writePreference(MULTIBLOCK_HINT_KEY, "1");
 }
 
 interface CapturedSelection {

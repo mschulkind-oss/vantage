@@ -8,6 +8,7 @@ import {
   applyColorTheme,
   builtInColorThemes,
   chooseColorTheme,
+  followColorTheme,
   initColorTheme,
   listColorThemes,
   type ColorTheme,
@@ -590,6 +591,128 @@ describe("colorTheme", () => {
         expect(links()).toHaveLength(0);
         expect(root.hasAttribute(ATTR)).toBe(false);
       });
+    });
+  });
+
+  describe("another tab choosing a theme", () => {
+    let stop: () => void;
+
+    beforeEach(() => {
+      stop = followColorTheme();
+    });
+
+    afterEach(() => stop());
+
+    /** What a second tab's pick looks like from in here. */
+    function chooseInAnotherTab(id: string | null) {
+      if (id === null) localStorage.removeItem(COLOR_THEME_STORAGE_KEY);
+      else localStorage.setItem(COLOR_THEME_STORAGE_KEY, id);
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: COLOR_THEME_STORAGE_KEY,
+          newValue: id,
+          storageArea: localStorage,
+        }),
+      );
+    }
+
+    it("applies the incoming theme rather than merely noting it", async () => {
+      // The difference that matters: the choice is a stylesheet in `<head>`, so a
+      // tab that only remembered the new id would go on rendering the old
+      // palette while claiming the new one.
+      chooseInAnotherTab("catppuccin");
+      await settleLink("load");
+
+      await vi.waitFor(() =>
+        expect(root.getAttribute(ATTR)).toBe("catppuccin"),
+      );
+      expectBundledHref(managed() as HTMLLinkElement, catppuccinUrl);
+    });
+
+    it("reaches a user theme through the themes route, as a local pick does", async () => {
+      chooseInAnotherTab("ocean");
+      await settleLink("load", "/api/themes/ocean");
+
+      await vi.waitFor(() => expect(root.getAttribute(ATTR)).toBe("ocean"));
+    });
+
+    it("waits for the sheet before telling mermaid the palette changed", async () => {
+      // A diagram drawn from half-loaded variables would be cached in the wrong
+      // colours, which is why the attribute is set in the link's load handler.
+      chooseInAnotherTab("catppuccin");
+      await vi.waitFor(() => expect(lastLink()).toBeDefined());
+      expect(root.hasAttribute(ATTR)).toBe(false);
+
+      await settleLink("load");
+      await vi.waitFor(() =>
+        expect(root.getAttribute(ATTR)).toBe("catppuccin"),
+      );
+    });
+
+    it("does not store what it adopts", async () => {
+      chooseInAnotherTab("catppuccin");
+      // The spy goes on after the seeding write, so the only `setItem` it could
+      // see is one this module made — and the id is already stored, by the tab
+      // the reader actually clicked in.
+      const setItem = vi.spyOn(Storage.prototype, "setItem");
+      await settleLink("load");
+      await vi.waitFor(() =>
+        expect(root.getAttribute(ATTR)).toBe("catppuccin"),
+      );
+
+      expect(setItem).not.toHaveBeenCalled();
+    });
+
+    it("returns to the app's own look when the preference is removed", async () => {
+      await applyLoaded(builtIn("catppuccin"));
+
+      chooseInAnotherTab(null);
+
+      expect(root.hasAttribute(ATTR)).toBe(false);
+      expect(managed()).toBeNull();
+    });
+
+    it("ignores an event naming the theme already in effect", async () => {
+      await applyLoaded(builtIn("catppuccin"));
+      const before = links().length;
+
+      chooseInAnotherTab("catppuccin");
+
+      // Re-applying would discard a sheet still loading and re-fetch one the
+      // browser already has, for no visible change.
+      expect(links()).toHaveLength(before);
+      expect(root.getAttribute(ATTR)).toBe("catppuccin");
+    });
+
+    it("counts as a choice, so a slow startup does not override it", async () => {
+      // The reader picked next door while this tab was still waiting on
+      // /api/themes. Without the `choices` increment the configured default lands
+      // a moment later and takes the palette back off them.
+      let answer: (value: unknown) => void = () => {};
+      mockedAxios.get.mockReturnValue(
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+      );
+      const startup = initColorTheme();
+
+      chooseInAnotherTab("catppuccin");
+      await settleLink("load");
+      await vi.waitFor(() =>
+        expect(root.getAttribute(ATTR)).toBe("catppuccin"),
+      );
+
+      answer({ data: { default: "lila", repo_defaults: {}, themes: [] } });
+      await startup;
+
+      expect(root.getAttribute(ATTR)).toBe("catppuccin");
+    });
+
+    it("stops following once unsubscribed", async () => {
+      stop();
+      chooseInAnotherTab("catppuccin");
+      await Promise.resolve();
+      expect(root.hasAttribute(ATTR)).toBe(false);
     });
   });
 });

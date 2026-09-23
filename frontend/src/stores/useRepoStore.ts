@@ -1,5 +1,10 @@
 import { create } from "zustand";
 import axios from "axios";
+import {
+  readPreference,
+  subscribePreference,
+  writePreference,
+} from "../lib/preferences";
 import { FileNode, FileContent, RepoInfo } from "../types";
 
 interface RepoState {
@@ -115,47 +120,39 @@ const mergeNodes = (
   });
 };
 
+/**
+ * The stored form of each remembered tree setting, parsed in one place.
+ *
+ * Each of these is read twice — once to seed the store at startup, once when
+ * another tab changes it — and two copies of "absent means on" is exactly how a
+ * filter ends up defaulting one way on load and the other way when the next tab
+ * touches it.
+ */
+const parseSortMode = (raw: string | null): "alphabetical" | "recent" =>
+  raw === "recent" ? "recent" : "alphabetical";
+
+/** `!== "false"` because these default to on: only the explicit opt-out is off. */
+const parseDefaultOn = (raw: string | null): boolean => raw !== "false";
+
+/** And this one defaults to off, so only the explicit opt-in is on. */
+const parseDefaultOff = (raw: string | null): boolean => raw === "true";
+
 export const useRepoStore = create<RepoState>((set, get) => ({
   currentPath: null,
   currentRepo: null,
   repos: [],
   isMultiRepo: false,
   reposLoaded: false,
-  repoSortMode: (() => {
-    try {
-      const stored = localStorage.getItem("vantage:repoSortMode");
-      return stored === "recent" ? "recent" : "alphabetical";
-    } catch {
-      return "alphabetical" as const;
-    }
-  })(),
+  repoSortMode: parseSortMode(readPreference("vantage:repoSortMode")),
   fileTree: [],
   fileContent: null,
   currentDirectory: null,
   isLoading: false,
   error: null,
   expandedDirs: {},
-  showEmptyDirs: (() => {
-    try {
-      return localStorage.getItem("vantage:showEmptyDirs") !== "false";
-    } catch {
-      return true;
-    }
-  })(),
-  showHidden: (() => {
-    try {
-      return localStorage.getItem("vantage:showHidden") === "true";
-    } catch {
-      return false;
-    }
-  })(),
-  showGitignored: (() => {
-    try {
-      return localStorage.getItem("vantage:showGitignored") !== "false";
-    } catch {
-      return true;
-    }
-  })(),
+  showEmptyDirs: parseDefaultOn(readPreference("vantage:showEmptyDirs")),
+  showHidden: parseDefaultOff(readPreference("vantage:showHidden")),
+  showGitignored: parseDefaultOn(readPreference("vantage:showGitignored")),
   recentlyChangedPaths: new Set<string>(),
 
   markPathsChanged: (paths) => {
@@ -170,29 +167,17 @@ export const useRepoStore = create<RepoState>((set, get) => ({
   },
 
   setShowEmptyDirs: (show) => {
-    try {
-      localStorage.setItem("vantage:showEmptyDirs", String(show));
-    } catch {
-      /* ignore */
-    }
+    writePreference("vantage:showEmptyDirs", String(show));
     set({ showEmptyDirs: show });
   },
 
   setShowHidden: (show) => {
-    try {
-      localStorage.setItem("vantage:showHidden", String(show));
-    } catch {
-      /* ignore */
-    }
+    writePreference("vantage:showHidden", String(show));
     set({ showHidden: show });
   },
 
   setShowGitignored: (show) => {
-    try {
-      localStorage.setItem("vantage:showGitignored", String(show));
-    } catch {
-      /* ignore */
-    }
+    writePreference("vantage:showGitignored", String(show));
     set({ showGitignored: show });
   },
 
@@ -258,11 +243,7 @@ export const useRepoStore = create<RepoState>((set, get) => ({
 
   setRepoSortMode: (mode) => {
     set({ repoSortMode: mode });
-    try {
-      localStorage.setItem("vantage:repoSortMode", mode);
-    } catch {
-      // localStorage may be unavailable
-    }
+    writePreference("vantage:repoSortMode", mode);
   },
 
   sortedRepos: () => {
@@ -545,3 +526,28 @@ export const useRepoStore = create<RepoState>((set, get) => ({
     });
   },
 }));
+
+/**
+ * The tree filters and the repository sort order, followed between tabs.
+ *
+ * Each one is adopted straight into the store, which is the whole of the work:
+ * every component that shows a filter already re-renders from here, so there is
+ * nobody else to tell. Adopting deliberately does not write — the tab that heard
+ * this event is not the tab that made the choice, and re-storing it would put
+ * every read on the write path.
+ *
+ * These subscriptions are never torn down, because the store is module state and
+ * lives exactly as long as the tab does.
+ */
+subscribePreference("vantage:showEmptyDirs", (raw) =>
+  useRepoStore.setState({ showEmptyDirs: parseDefaultOn(raw) }),
+);
+subscribePreference("vantage:showHidden", (raw) =>
+  useRepoStore.setState({ showHidden: parseDefaultOff(raw) }),
+);
+subscribePreference("vantage:showGitignored", (raw) =>
+  useRepoStore.setState({ showGitignored: parseDefaultOn(raw) }),
+);
+subscribePreference("vantage:repoSortMode", (raw) =>
+  useRepoStore.setState({ repoSortMode: parseSortMode(raw) }),
+);

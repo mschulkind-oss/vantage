@@ -1,4 +1,11 @@
-import React, { useCallback, useEffect, useId, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   Settings,
   Sun,
@@ -18,34 +25,12 @@ import {
   listColorThemes,
   type ColorTheme,
 } from "../lib/colorTheme";
+import {
+  chooseColorMode,
+  colorMode,
+  subscribeColorMode,
+} from "../lib/darkMode";
 import { AnchoredMenu } from "./AnchoredMenu";
-
-type Theme = "light" | "dark";
-
-function getStoredTheme(): Theme {
-  try {
-    return (localStorage.getItem("vantage:theme") as Theme) || "light";
-  } catch {
-    return "light";
-  }
-}
-
-function applyTheme(theme: Theme) {
-  const root = document.documentElement;
-  if (theme === "dark") {
-    root.classList.add("dark");
-  } else {
-    root.classList.remove("dark");
-  }
-  try {
-    localStorage.setItem("vantage:theme", theme);
-  } catch {
-    /* ignore */
-  }
-}
-
-// Initialize theme on module load (before React renders)
-applyTheme(getStoredTheme());
 
 interface SettingsDropdownProps {
   showEmptyDirs: boolean;
@@ -71,7 +56,9 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
   onOpenStyleGuide,
 }) => {
   const [open, setOpen] = useState(false);
-  const [theme, setTheme] = useState<Theme>(getStoredTheme);
+  // Subscribed rather than copied into state, so the buttons show the mode the
+  // page is actually in however it got there: this menu, Shift+D, or another tab.
+  const mode = useSyncExternalStore(subscribeColorMode, colorMode);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const close = useCallback(() => setOpen(false), []);
   const [colorThemes, setColorThemes] =
@@ -124,11 +111,6 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
     );
   };
 
-  const handleThemeChange = (newTheme: Theme) => {
-    setTheme(newTheme);
-    applyTheme(newTheme);
-  };
-
   return (
     <div className="relative">
       <button
@@ -165,10 +147,10 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
             </div>
             <div className="flex gap-1">
               <button
-                onClick={() => handleThemeChange("light")}
+                onClick={() => chooseColorMode("light")}
                 className={cn(
                   "flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors flex-1",
-                  theme === "light"
+                  mode === "light"
                     ? "bg-slate-100 text-slate-900 dark:bg-slate-600 dark:text-white"
                     : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-700",
                 )}
@@ -177,10 +159,10 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
                 Light
               </button>
               <button
-                onClick={() => handleThemeChange("dark")}
+                onClick={() => chooseColorMode("dark")}
                 className={cn(
                   "flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors flex-1",
-                  theme === "dark"
+                  mode === "dark"
                     ? "bg-slate-700 text-white"
                     : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-700",
                 )}

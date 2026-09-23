@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
+import { toggleColorMode } from "../lib/darkMode";
 
 /**
  * Hook that manages the keyboard shortcuts modal state and
@@ -177,22 +178,13 @@ export const useKeyboardShortcuts = ({
           }
           break;
         case "D":
-          // Shift+D = toggle dark mode
+          // Shift+D = toggle dark mode. Through `darkMode` rather than by
+          // touching the class and the storage here: this used to be the second
+          // writer of the preference, and the settings menu it did not tell went
+          // stale in this same tab.
           if (e.shiftKey) {
             e.preventDefault();
-            const root = document.documentElement;
-            const isDark = root.classList.contains("dark");
-            const newTheme = isDark ? "light" : "dark";
-            if (newTheme === "dark") {
-              root.classList.add("dark");
-            } else {
-              root.classList.remove("dark");
-            }
-            try {
-              localStorage.setItem("vantage:theme", newTheme);
-            } catch {
-              /* ignore */
-            }
+            toggleColorMode();
           }
           break;
         case "d":
