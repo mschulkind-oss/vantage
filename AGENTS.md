@@ -97,7 +97,7 @@ Never kill it; run test instances on other ports.
   hoists there and resolves TypeScript from its own location rather than the
   package's, so a root without the pin would generate `vantage-md`'s
   declarations under a different compiler than the one that type-checks it. It has no tests
-  of its own: its behaviour is covered by `frontend/`'s tests through the source
+  of its own: its behavior is covered by `frontend/`'s tests through the source
   alias.
 - **Editing Markdown can fail the gate.** It rebuilds the CLI and runs it over
   `docs/`, `userguide/` and the READMEs, so a broken relative link or a dead
@@ -131,6 +131,20 @@ per-platform archives carrying *both* binaries, a PyPI wheel for each of
 library to npm, and a Homebrew formula that installs both binaries. There are no
 per-package tags any more, and **no manifest decides a version** — CI stamps the
 tag into both package manifests before building, so nothing can disagree with it.
+
+**The notes are written before the tag, not after it.** `just release <semver>`
+stops before it builds anything if [`CHANGELOG.md`](CHANGELOG.md) has no section
+for that version, or has one still carrying a placeholder. That section is lifted
+out byte for byte and becomes the body of the GitHub release — which is where
+people who follow this repository read what changed — so the prose is part of the
+artifact rather than a record kept beside it, and since a tag here is never moved,
+a section improved afterwards improves nothing that was published. What earns a
+line, who the entry is addressed to, and the rules against the usual release-note
+filler are settled in
+[`.claude/skills/release-notes/SKILL.md`](.claude/skills/release-notes/SKILL.md).
+`_self-check` now checks that file and the standard beside it, because a dead
+link in a release body is the one kind that cannot be fixed afterwards — the tag
+it shipped under is never moved.
 
 The tag filter is `v[0-9]*`, not `v*`, and that is load-bearing: it is what makes
 a stray `vantage-…` tag unable to reach the workflow at all. Until 2026-09-01 the

@@ -94,6 +94,7 @@ check: format
     npm run lint -w vantage-check && npm run typecheck -w vantage-check && npm run test -w vantage-check
     npm run lint -w frontend && npx tsc --build frontend && npm run test -w frontend
     sh scripts/test-commit-messages.sh
+    sh scripts/test-changelog-section.sh
     just _self-check
 
 # Run the Playwright end-to-end suite. Self-hosts a real serve + Vite pair
@@ -115,7 +116,7 @@ check-ci: _deps-match
     go test ./cmd/... ./internal/... ./web/...
     # check-ci is one bash script, so a bare `cd` would leak into the next line
     # — each package gets its own subshell.
-    # vantage-md has no tests of its own: its behaviour is covered by frontend/
+    # vantage-md has no tests of its own: its behavior is covered by frontend/
     # tests through the source alias. Its own typecheck still earns its place —
     # it runs the package standalone under its own TypeScript (~6.0.3), where
     # frontend/'s --build reads the same files under ~5.9.3.
@@ -128,6 +129,10 @@ check-ci: _deps-match
     # hooks and by CI's `commits` job, which need a revision range — something
     # this recipe, which only ever looks at the working tree, does not have.
     sh scripts/test-commit-messages.sh
+    # Same arrangement for the release-notes policy: `just release` and
+    # publish.yml's create-release job share one script, and neither is reachable
+    # from the gate — a release happens on a tag, not on a commit. Its tests are.
+    sh scripts/test-changelog-section.sh
     # Then the artifact, not just the source it was built from.
     just _self-check
 
@@ -192,7 +197,11 @@ _self-check: cli
     #!/usr/bin/env bash
     set -euo pipefail
     bin=./packages/vantage-check/dist/vantage-check
-    paths=(docs userguide README.md AGENTS.md
+    # CHANGELOG.md is here because publish.yml lifts a section out of it and
+    # posts it as the GitHub release body, and a tag is never moved: a dead link
+    # in a release that has shipped cannot be fixed, only apologized for.
+    paths=(docs userguide README.md AGENTS.md CHANGELOG.md
+           .claude/skills/release-notes/SKILL.md
            packages/vantage-check/README.md packages/vantage-md/README.md)
     "$bin" version
     test -n "$("$bin" style-guide)" || { echo "style-guide printed nothing"; exit 1; }
@@ -271,6 +280,21 @@ release version:
     fi
     if git rev-parse -q --verify "refs/tags/v{{version}}" >/dev/null; then
         echo "tag v{{version}} already exists — pick another version" >&2
+        exit 1
+    fi
+    # The release notes are written before the tag exists, and this is where that
+    # is enforced. publish.yml puts exactly this section in the GitHub release —
+    # it used to be `--generate-notes`, a commit list, which is why CHANGELOG.md
+    # went stale after 0.3.1: nothing read it. The script is the only definition
+    # of "the prose exists", so what refuses here is what CI refuses.
+    #
+    # It runs before web-sync and before anything is tagged or committed, so a
+    # refusal leaves the tree exactly as it found it. Its stdout is the section;
+    # its reasons go to stderr, which is why discarding one keeps the other.
+    if ! sh scripts/changelog-section.sh "{{version}}" >/dev/null; then
+        echo "" >&2
+        echo "refusing to cut v{{version}} until its CHANGELOG.md section reads like something" >&2
+        echo "a person would want to read. Nothing has been tagged." >&2
         exit 1
     fi
     just web-sync
