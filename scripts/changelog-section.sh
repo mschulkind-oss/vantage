@@ -11,7 +11,7 @@
 # April, because nothing read it and nothing needed it.
 #
 # Usage:
-#   changelog-section.sh [--link-base <url>] <version> [changelog-file]
+#   changelog-section.sh [--link-base <url>] [--unwrap] <version> [changelog-file]
 #
 # <version> may be written `0.7.0` or `v0.7.0`; the file defaults to CHANGELOG.md
 # beside this script's repository root, so the caller's working directory does
@@ -24,7 +24,7 @@
 #
 # WHAT IT PRINTS is the section body — everything under the version heading up to
 # the next version heading, minus the heading itself and the blank lines around
-# the body, and nothing else changed unless `--link-base` asks for one thing
+# the body, and nothing else changed unless `--link-base` or `--unwrap` asks
 # (below). Nothing is re-wrapped, so hard line breaks
 # (two trailing spaces), indentation, tables and link references survive into the
 # release verbatim. The heading is dropped because the GitHub release already
@@ -58,6 +58,15 @@
 # `mailto:` and the like are left alone, as is anything inside a code span or a
 # fenced block, where `](x)` is text and not a link.
 #
+# HARD-WRAPPED PROSE, AND WHY THE RELEASE BODY NEEDS IT JOINED. The file is
+# wrapped at about 80 columns so it diffs and reviews well. GitHub renders a
+# release body the way it renders a comment, with every newline a `<br>`, so the
+# wrapping arrived in v0.7.0's release page and email as a hard ragged column,
+# with "Slate." alone on a line. `--unwrap` joins each paragraph and each list
+# item back onto one line and leaves everything whose line breaks mean something:
+# fences, tables, headings, HTML, reference definitions, block quotes, indented
+# code, and a hard break written as two trailing spaces or a backslash.
+#
 # The version has to match whole. `0.7.0` will not find `## [0.7.0-rc1]` or
 # `## [0.17.0]`: the requested version must be followed by `]`, whitespace, or
 # the end of the line, and `-` is none of those.
@@ -66,17 +75,30 @@ set -eu
 
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
-usage="usage: $0 [--link-base <url>] <version> [changelog-file]"
+usage="usage: $0 [--link-base <url>] [--unwrap] <version> [changelog-file]"
 
 link_base=
-if [ "${1:-}" = "--link-base" ]; then
-    [ "$#" -ge 2 ] && [ -n "$2" ] || { echo "$usage" >&2; exit 2; }
-    link_base=$2
-    shift 2
-    # One trailing slash, however the caller wrote it, so the join never
-    # doubles one or drops one.
-    link_base="${link_base%/}/"
-fi
+unwrap=
+while :; do
+    case "${1:-}" in
+        --link-base)
+            [ "$#" -ge 2 ] && [ -n "$2" ] || { echo "$usage" >&2; exit 2; }
+            # One trailing slash, however the caller wrote it, so the join never
+            # doubles one or drops one.
+            link_base="${2%/}/"
+            shift 2
+            ;;
+        --unwrap)
+            unwrap=1
+            shift
+            ;;
+        -*)
+            echo "$usage" >&2
+            exit 2
+            ;;
+        *) break ;;
+    esac
+done
 
 [ "$#" -ge 1 ] || { echo "$usage" >&2; exit 2; }
 [ "$#" -le 2 ] || { echo "$usage" >&2; exit 2; }
@@ -284,15 +306,11 @@ fi
 
 # --- links, for a body that is read off the repository tree -----------------
 
-if [ -z "$link_base" ]; then
-    printf '%s\n' "$body"
-    exit 0
-fi
-
+if [ -n "$link_base" ]; then
 # Inline links `](target` and reference definitions `[name]: target`. Code spans
 # are skipped by splitting on backticks and rewriting only the even pieces; a
 # fence skips whole lines, the same way the extractor above treats one.
-printf '%s\n' "$body" | awk -v base="$link_base" '
+body=$(printf '%s\n' "$body" | awk -v base="$link_base" '
     function absolute(t) {
         # A scheme (https:, mailto:), or a protocol-relative //host.
         return t ~ /^[A-Za-z][A-Za-z0-9+.-]*:/ || t ~ /^\/\//
@@ -333,4 +351,49 @@ printf '%s\n' "$body" | awk -v base="$link_base" '
         }
         print line
     }
-'
+')
+fi
+
+# --- paragraphs, for a body GitHub renders with every newline a break -------
+
+# A block is buffered until a blank line or the start of another block ends it.
+# Only a paragraph or a list item is joinable; the rest are "verbatim" and keep
+# each line as written. A continuation joins with one space and loses its
+# indentation — which, inside a list item, is only there to hang under the
+# marker — unless the line before it ends in a hard break, which is kept.
+if [ -n "$unwrap" ]; then
+body=$(printf '%s\n' "$body" | awk '
+    function flush() { if (buf != "") print buf; buf = ""; kind = ""; item = 0 }
+    function hard(l) { return l ~ /  $/ || l ~ /\\$/ }
+    /^[[:space:]]*(```|~~~)/ { flush(); fenced = !fenced; print; next }
+    fenced { print; next }
+    /^[[:space:]]*$/ { flush(); print; next }
+    # A heading is one line by definition, so it closes itself.
+    /^[[:space:]]*#/ { flush(); print; next }
+    # A line that opens a block no matter what came before it.
+    /^[[:space:]]*\|/ || /^[[:space:]]*</ || /^[[:space:]]*>/ ||
+    /^ ? ? ?\[[^]]+\]:/ {
+        flush(); buf = $0; kind = "verbatim"; last = $0; next
+    }
+    # A bullet always opens an item. A number only does where CommonMark lets it:
+    # after a blank, inside a list, or as `1.` — so a wrapped sentence whose next
+    # line happens to open with "2026. " stays one sentence.
+    /^[[:space:]]*[-*+][[:space:]]/ ||
+    (/^[[:space:]]*[0-9]+[.)][[:space:]]/ && (buf == "" || item || /^[[:space:]]*1[.)]/)) {
+        flush(); buf = $0; kind = "join"; item = 1; last = $0; next
+    }
+    # Four columns of indent after a blank line is indented code, not prose.
+    buf == "" && (/^    / || /^\t/) { buf = $0; kind = "verbatim"; last = $0; next }
+    buf == "" { buf = $0; kind = "join"; last = $0; next }
+    kind == "verbatim" || hard(last) { buf = buf "\n" $0; last = $0; next }
+    {
+        line = $0
+        sub(/^[[:space:]]+/, "", line)
+        buf = buf " " line
+        last = $0
+    }
+    END { flush() }
+')
+fi
+
+printf '%s\n' "$body"
