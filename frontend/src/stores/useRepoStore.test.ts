@@ -830,3 +830,88 @@ describe("useRepoStore", () => {
     });
   });
 });
+
+/**
+ * The tree filters and the sort order, followed between tabs.
+ *
+ * jsdom raises no `storage` event for this window's own writes, exactly as Chrome
+ * does not, so a second tab is modelled the only way it can be: by dispatching
+ * the event a real one would have caused. What is asserted is adoption into the
+ * store, because that is the whole of the work — every component showing a filter
+ * already re-renders from here.
+ */
+describe("another tab changing a tree setting", () => {
+  function changeInAnotherTab(key: string, value: string | null) {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key,
+        newValue: value,
+        storageArea: localStorage,
+      }),
+    );
+  }
+
+  beforeEach(() => {
+    localStorage.clear();
+    useRepoStore.setState({
+      showEmptyDirs: true,
+      showHidden: false,
+      showGitignored: true,
+      repoSortMode: "alphabetical",
+    });
+  });
+
+  it("adopts each filter into the store", () => {
+    changeInAnotherTab("vantage:showHidden", "true");
+    expect(useRepoStore.getState().showHidden).toBe(true);
+
+    changeInAnotherTab("vantage:showEmptyDirs", "false");
+    expect(useRepoStore.getState().showEmptyDirs).toBe(false);
+
+    changeInAnotherTab("vantage:showGitignored", "false");
+    expect(useRepoStore.getState().showGitignored).toBe(false);
+  });
+
+  it("adopts the repository sort order", () => {
+    changeInAnotherTab("vantage:repoSortMode", "recent");
+    expect(useRepoStore.getState().repoSortMode).toBe("recent");
+
+    changeInAnotherTab("vantage:repoSortMode", "alphabetical");
+    expect(useRepoStore.getState().repoSortMode).toBe("alphabetical");
+  });
+
+  it("parses a removed value the way startup does, not as false", () => {
+    // The trap two copies of this logic would fall into: these filters default
+    // to on, so absence means on — and a filter that came back off after a
+    // `clear()` in another tab would be a setting the reader never chose.
+    useRepoStore.setState({ showEmptyDirs: false, showGitignored: false });
+
+    changeInAnotherTab("vantage:showEmptyDirs", null);
+    changeInAnotherTab("vantage:showGitignored", null);
+
+    expect(useRepoStore.getState().showEmptyDirs).toBe(true);
+    expect(useRepoStore.getState().showGitignored).toBe(true);
+  });
+
+  it("ignores a value it does not recognise for the sort order", () => {
+    changeInAnotherTab("vantage:repoSortMode", "by vibes");
+    expect(useRepoStore.getState().repoSortMode).toBe("alphabetical");
+  });
+
+  it("does not write back what it adopted", () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem");
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: "vantage:showHidden",
+        newValue: "true",
+        storageArea: localStorage,
+      }),
+    );
+
+    expect(useRepoStore.getState().showHidden).toBe(true);
+    expect(setItem).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+  });
+});

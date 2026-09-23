@@ -69,6 +69,7 @@ import { ReviewPanel } from "../components/ReviewPanel";
 import { MessageSquarePlus, ClipboardCopy } from "lucide-react";
 import { useLineAnchor } from "../hooks/useLineAnchor";
 import { usePersistentFlag } from "../hooks/usePersistentFlag";
+import { usePersistentValue } from "../hooks/usePersistentValue";
 import { StyleGuideModal } from "../components/StyleGuideModal";
 import { ConnectionBanner } from "../components/ConnectionBanner";
 import { useConnectionStore } from "../stores/useConnectionStore";
@@ -88,6 +89,32 @@ function formatDateTime(dateStr: string): string {
   } catch {
     return dateStr;
   }
+}
+
+const SIDEBAR_MIN_WIDTH = 200;
+const SIDEBAR_MAX_WIDTH = 800;
+const SIDEBAR_DEFAULT_WIDTH = 288;
+
+/**
+ * The remembered sidebar width, in px.
+ *
+ * Out-of-range and unparseable both mean the default rather than a clamp,
+ * because a stored width outside these bounds is not a preference the reader
+ * expressed — it is a value from a build with different bounds, or a
+ * hand-edited one — and honouring it would leave a sidebar the drag handle
+ * cannot get back to.
+ *
+ * Declared at module scope, not in the component: `usePersistentValue` follows
+ * this preference for as long as this function's identity holds, and an
+ * arrow rebuilt on every render would make it re-read storage on every render.
+ */
+function parseSidebarWidth(raw: string | null): number {
+  const width = raw === null ? NaN : parseInt(raw, 10);
+  return Number.isFinite(width) &&
+    width >= SIDEBAR_MIN_WIDTH &&
+    width <= SIDEBAR_MAX_WIDTH
+    ? width
+    : SIDEBAR_DEFAULT_WIDTH;
 }
 
 export const ViewerPage: React.FC = () => {
@@ -163,39 +190,21 @@ export const ViewerPage: React.FC = () => {
     openGlobal: openGlobalFilePicker,
     close: closeFilePicker,
   } = useFilePickerStore();
+  // `sidebarOpen` is the mobile slide-out panel, which is a gesture rather than a
+  // preference and is deliberately not remembered. The two below are
+  // preferences, and they follow the reader between tabs: a reader who narrowed
+  // the sidebar or put it away meant it for the window, not for one tab of it.
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    try {
-      return localStorage.getItem("vantage:sidebarCollapsed") === "true";
-    } catch {
-      return false;
-    }
-  });
-  const SIDEBAR_MIN_WIDTH = 200;
-  const SIDEBAR_MAX_WIDTH = 800;
-  const SIDEBAR_DEFAULT_WIDTH = 288;
-  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
-    try {
-      const raw = localStorage.getItem("vantage:sidebarWidth");
-      const v = raw == null ? NaN : parseInt(raw, 10);
-      return Number.isFinite(v) &&
-        v >= SIDEBAR_MIN_WIDTH &&
-        v <= SIDEBAR_MAX_WIDTH
-        ? v
-        : SIDEBAR_DEFAULT_WIDTH;
-    } catch {
-      return SIDEBAR_DEFAULT_WIDTH;
-    }
-  });
+  const [sidebarCollapsed, setSidebarCollapsed] = usePersistentFlag(
+    "vantage:sidebarCollapsed",
+  );
+  const [sidebarWidth, setSidebarWidth] = usePersistentValue(
+    "vantage:sidebarWidth",
+    parseSidebarWidth,
+    String,
+  );
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   const isResizingSidebarRef = useRef(false);
-  useEffect(() => {
-    try {
-      localStorage.setItem("vantage:sidebarWidth", String(sidebarWidth));
-    } catch {
-      /* ignore */
-    }
-  }, [sidebarWidth]);
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
       if (!isResizingSidebarRef.current) return;
@@ -220,7 +229,9 @@ export const ViewerPage: React.FC = () => {
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
     };
-  }, []);
+    // The setter is stable — `usePersistentValue` memoises it on the preference
+    // name — so naming it here does not cost the drag listeners a re-bind.
+  }, [setSidebarWidth]);
   const [showRaw, setShowRaw] = useState(false);
   // Remembered across documents, reloads and tabs: a reader who wants a table
   // of contents wants it for the next document too, and a second tab of the
@@ -242,13 +253,7 @@ export const ViewerPage: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [pathCopied, setPathCopied] = useState(false);
   const [keyboardShortcutsEnabled, setKeyboardShortcutsEnabled] =
-    useState<boolean>(() => {
-      try {
-        return localStorage.getItem("vantage:shortcuts-enabled") !== "false";
-      } catch {
-        return true;
-      }
-    });
+    usePersistentFlag("vantage:shortcuts-enabled", true);
   const { isLoading } = useRepoStore();
   const recentlyChangedPaths = useRepoStore((s) => s.recentlyChangedPaths);
 
@@ -691,17 +696,9 @@ export const ViewerPage: React.FC = () => {
     if (window.innerWidth < 768) {
       setSidebarOpen((prev) => !prev);
     } else {
-      setSidebarCollapsed((prev) => {
-        const next = !prev;
-        try {
-          localStorage.setItem("vantage:sidebarCollapsed", String(next));
-        } catch {
-          /* ignore */
-        }
-        return next;
-      });
+      setSidebarCollapsed((prev) => !prev);
     }
-  }, []);
+  }, [setSidebarCollapsed]);
   const handleToggleToc = useCallback(() => {
     setTocOpen((prev) => !prev);
   }, [setTocOpen]);
@@ -770,17 +767,6 @@ export const ViewerPage: React.FC = () => {
     currentRepo,
     enabled: keyboardShortcutsEnabled,
   });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        "vantage:shortcuts-enabled",
-        keyboardShortcutsEnabled ? "true" : "false",
-      );
-    } catch {
-      // ignore
-    }
-  }, [keyboardShortcutsEnabled]);
 
   const breadcrumbs =
     currentPath && currentPath !== "." ? currentPath.split("/") : [];
@@ -885,11 +871,6 @@ export const ViewerPage: React.FC = () => {
                   className="hidden md:block p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                   onClick={() => {
                     setSidebarCollapsed(true);
-                    try {
-                      localStorage.setItem("vantage:sidebarCollapsed", "true");
-                    } catch {
-                      /* ignore */
-                    }
                   }}
                   aria-label="Collapse sidebar"
                   title="Collapse sidebar (b)"
@@ -1042,14 +1023,6 @@ export const ViewerPage: React.FC = () => {
                       setSidebarOpen(true);
                     } else {
                       setSidebarCollapsed(false);
-                      try {
-                        localStorage.setItem(
-                          "vantage:sidebarCollapsed",
-                          "false",
-                        );
-                      } catch {
-                        /* ignore */
-                      }
                     }
                   }}
                   aria-label="Open sidebar"
