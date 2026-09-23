@@ -89,10 +89,24 @@ vantage daemon
 - **Agent CLI** — `vantage-check`: a standalone binary that prints Vantage's Markdown conventions and verifies that a document really renders
 - **Static Site Export** — Build a standalone static site from a directory of Markdown
 - **Dark Mode** — Toggle with Shift+D, persisted across sessions
-- **Color Themes** — The built-in look, Catppuccin or Lila, or your own palette as one CSS file in `~/.config/vantage/themes/` ([guide](userguide/guides/themes.md))
+- **Color Themes** — Slate (the built-in look) plus Catppuccin, Gruvbox, Lila, Nord, Solarized and Tokyo Night, or your own palette as one CSS file in `~/.config/vantage/themes/` ([guide](userguide/guides/themes.md))
 - **Keyboard Shortcuts** — Quick file picker with `t`, fuzzy search, keyboard navigation
 - **Performance Diagnostics** — Built-in `perf-report` command for anonymized timing data
 - **Login Service** — Run in the background from login: a systemd user unit on Linux, a launchd agent on macOS
+
+---
+
+## 🤝 Works well with
+
+[**matt-craft**](https://github.com/mschulkind-oss/matt-craft) is a set of skills for
+writing the kinds of documents Vantage is built to read: design notes that
+carry their open questions, roadmaps, research rounds, user stories — and one skill
+aimed squarely at Vantage's own Markdown conventions. Same author as this one, which is
+not a coincidence.
+
+You do not need it. Vantage renders the Markdown you already write, in whatever style
+you already write it. But if you would rather not invent a house style for design docs,
+there is one sitting right there.
 
 ---
 
