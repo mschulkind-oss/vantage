@@ -160,12 +160,28 @@ reduce() {
         | tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz'
 }
 
-# A line that survives `reduce` as one of these carries no information. The empty
-# alternative at the end is deliberate: a line of `...` or `—` reduces to
-# nothing, which is the same statement made with punctuation.
-placeholder_re='^(tbd|t\.?b\.?d|to be (determined|written|filled in|done)|todo|to-?do|wip|fixme|xxx|coming soon|write (me|this)|nothing (yet|here)|no changes yet|placeholder|notes|n/a|none|…|)$'
+# A line that survives `reduce` as one of these carries no information. A line
+# that reduces to nothing at all — `...`, a lone bullet — is the same statement
+# made with punctuation, so it counts too; it is a second alternative rather than
+# an empty branch inside the first, because BSD grep refuses `(a|b|)` with
+# `empty (sub)expression` and GNU grep accepts it. That divergence is exactly how
+# this went wrong once: the empty branch cost nothing on Linux and made every
+# macOS run print "still a placeholder" for prose that was already written.
+placeholder_re='^(tbd|t\.?b\.?d|to be (determined|written|filled in|done)|todo|to-?do|wip|fixme|xxx|coming soon|write (me|this)|nothing (yet|here)|no changes yet|placeholder|notes|n/a|none|…)$|^$'
 
-unplaceheld=$(printf '%s\n' "$content" | reduce | grep -Eiv "$placeholder_re" || true)
+# `grep -v` exits 1 when it filters everything out and 2 when the pattern itself
+# is bad, and only the first means "every line was a stub". Collapsing them with
+# `|| true` is what let a rejected regex masquerade as a placeholder section on
+# one platform, so a real error is reported as one and nothing is released on the
+# strength of a verdict grep never reached.
+unplaceheld=$(printf '%s\n' "$content" | reduce | grep -Eiv "$placeholder_re") || {
+    _status=$?
+    if [ "$_status" -gt 1 ]; then
+        echo "$0: grep rejected the placeholder pattern (exit $_status)." >&2
+        echo "  That is a bug in this script, not a problem with CHANGELOG.md." >&2
+        exit 2
+    fi
+}
 if [ -z "$unplaceheld" ]; then
     echo "$0: the [$version] section of CHANGELOG.md is still a placeholder." >&2
     echo "  Every line in it is a stub. Replace them before cutting the tag:" >&2
