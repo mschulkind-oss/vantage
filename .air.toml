@@ -1,7 +1,7 @@
 # Live reload for the Go backend during `just dev`.
 #
 # Only the WATCH RULES live here. The command itself is in the Procfile, where
-# the dev ports and the target repo are already parameterised — air's config
+# the dev ports and the target repo are already parameterized — air's config
 # does no shell expansion, so `${DEV_BACKEND_PORT}` would reach the server as a
 # literal string if the invocation moved here.
 #

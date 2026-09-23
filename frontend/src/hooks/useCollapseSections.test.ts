@@ -160,7 +160,7 @@ describe("useCollapseSections — never hide what no control can open (P1/D8)", 
    * A real closed section plus two blocks the collapse machinery cannot address:
    * one in a group with no toggle, one with no group at all. Neither shape can
    * come out of the plugin — it stamps the toggle and its members in the same
-   * loop — so both arrive as raw HTML in a document, which the sanitiser
+   * loop — so both arrive as raw HTML in a document, which the sanitizer
    * allowlists by name and value.
    */
   const withOrphans = () => {
@@ -265,7 +265,7 @@ describe("useCollapseSections — the control", () => {
   it("carries no text, so the heading's hash is the same with and without it", () => {
     // The glyph is CSS `content`. If it were the button's text, every review
     // anchor on a collapsible heading would drift the moment the JS ran — and
-    // `REVIEW_UI_SELECTOR` lists the caret as a second defence.
+    // `REVIEW_UI_SELECTOR` lists the caret as a second defense.
     const before = hashBlockText(blockVisibleText(blockAt(3)));
     renderPass();
 
@@ -305,7 +305,7 @@ describe("useCollapseSections — the control", () => {
   });
 
   it("ignores a group id that is not a number", () => {
-    // The sanitiser already refuses one; this is the second gate, because the
+    // The sanitizer already refuses one; this is the second gate, because the
     // value is interpolated into a selector.
     container.innerHTML = `
       <h2 data-vantage-collapse-toggle='1"], p'>Forged</h2>

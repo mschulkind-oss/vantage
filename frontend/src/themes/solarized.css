@@ -8,7 +8,7 @@
  * loses the one thing it is famous for.
  *
  * The monotones are eight, and a Tailwind ramp is eleven, so four steps in each
- * mode are interpolations between neighbours; they are marked. The rest of the
+ * mode are interpolations between neighbors; they are marked. The rest of the
  * file is Solarized's own numbers, and three of its own habits had to give way
  * to the 3:1 floor this repo keeps for text
  * (frontend/src/lib/textContrast.test.ts):

@@ -92,7 +92,7 @@ beside the chips and boxes above.
 
 1. 💬 **OQ-1: Does the emoji carry enough weight next to a chip?**
 
-   <!-- vantage: oq id=OQ-1 leaning="Probably not on a long page — an emoji is one glyph in a paragraph, and a chip is a coloured object beside a heading." -->
+   <!-- vantage: oq id=OQ-1 leaning="Probably not on a long page — an emoji is one glyph in a paragraph, and a chip is a colored object beside a heading." -->
 
    _Leaning:_ probably not on a long page.
 

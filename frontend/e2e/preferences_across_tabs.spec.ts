@@ -4,12 +4,12 @@
  *
  * `src/lib/preferences.test.ts` holds the wiring: it refuses a key nothing
  * follows and a `vantage:` literal that is not registered, and it exercises the
- * dispatch by handing a synthesised `StorageEvent` to the module. What it cannot
+ * dispatch by handing a synthesized `StorageEvent` to the module. What it cannot
  * do is prove the loop closes. jsdom has one window, so the second tab in those
  * tests is a call to a handler — the browser's own delivery is assumed, and so is
  * every step between the handler and the page actually changing.
  *
- * That gap is where this breaks silently. Adopting a colour theme is not copying
+ * That gap is where this breaks silently. Adopting a color theme is not copying
  * a string: the subscription has to run the real apply path, swap the `<link>`,
  * wait for the sheet, and leave the picker naming what is now on the page. Any
  * one of those can rot while every unit test stays green, and the failure looks
@@ -60,7 +60,7 @@ function resolved(page: Page, property: string): Promise<string> {
 }
 
 test.describe("a preference changed in one tab reaches the other", () => {
-  test("the colour theme, its stylesheet, and the picker that names it", async ({
+  test("the color theme, its stylesheet, and the picker that names it", async ({
     page,
   }) => {
     await page.goto("/");
@@ -76,7 +76,7 @@ test.describe("a preference changed in one tab reaches the other", () => {
     const before = await resolved(other, "--color-slate-800");
 
     await openSettings(page);
-    await settingsMenu(page).getByLabel("Colours").selectOption("gruvbox");
+    await settingsMenu(page).getByLabel("Colors").selectOption("gruvbox");
     await expect(page.locator("html")).toHaveAttribute(
       THEME_ATTRIBUTE,
       "gruvbox",
@@ -94,7 +94,7 @@ test.describe("a preference changed in one tab reaches the other", () => {
       .not.toBe(before);
 
     // One sheet, and it is the palette's own asset: adopting must swap the link
-    // rather than stack a second one over the old colours.
+    // rather than stack a second one over the old colors.
     await expect(other.locator("link#vantage-color-theme")).toHaveCount(1);
     await expect(other.locator("link#vantage-color-theme")).toHaveAttribute(
       "href",
@@ -105,7 +105,7 @@ test.describe("a preference changed in one tab reaches the other", () => {
     // attribute, so this also asserts it never names a theme before the page
     // wears it.
     await openSettings(other);
-    await expect(settingsMenu(other).getByLabel("Colours")).toHaveValue(
+    await expect(settingsMenu(other).getByLabel("Colors")).toHaveValue(
       "gruvbox",
     );
   });

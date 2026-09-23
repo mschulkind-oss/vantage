@@ -155,7 +155,7 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
 
   // Determine file icon color based on git status.
   //
-  // The git colours step per mode — `700` light, `400` dark — like `nameColor`
+  // The git colors step per mode — `700` light, `400` dark — like `nameColor`
   // below and for the same reason: one shade cannot be ink on both surfaces.
   // `green-500`/`amber-500` read 2.0:1 and 1.9:1 on a light panel, which is a
   // status you cannot see; `green-700`/`amber-700` are 4.5:1 there, and the
@@ -204,7 +204,7 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
           isActive &&
             !isSymlinkError &&
             "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 font-medium",
-          // A directory with no Markdown in it is de-emphasised by COLOUR
+          // A directory with no Markdown in it is de-emphasized by COLOR
           // alone. It used to also take `opacity-40`, and dimming twice put the
           // name at 1.6:1 against the sidebar in dark mode and 1.4:1 in light —
           // a row the reader had asked to see (it renders only with "show empty

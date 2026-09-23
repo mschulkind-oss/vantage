@@ -378,7 +378,7 @@ export function ReviewStripe({ scrollRef, comments }: ReviewStripeProps) {
             {hoveredComment.reactions &&
               hoveredComment.reactions.length > 0 &&
               (() => {
-                // Label the last turn by its actor. Unlabelled, the reviewer's
+                // Label the last turn by its actor. Unlabeled, the reviewer's
                 // own follow-up rendered in agent styling, so a thread still
                 // waiting on the agent read as already answered.
                 const last =

@@ -5,7 +5,7 @@
  * frontmatter key asks for (`.vantage-chip`, `.vantage-chrome`) — one file
  * because the badge and the status chip are the same visual object and share
  * the same rule. Plain CSS on attribute selectors and hand-written classes only:
- * no Tailwind utilities, no class names computed in JS, no colour a document
+ * no Tailwind utilities, no class names computed in JS, no color a document
  * can name.
  *
  * This file must stay UNLAYERED. Every `@tailwindcss/typography` variant
@@ -98,8 +98,8 @@
 }
 
 /* ── Token → property resolution ────────────────────────────────────────── */
-/* Six rules so every rule below is tone-agnostic. An unrecognised token sets
-   nothing, which is what makes the treatment inert rather than grey (D2). */
+/* Six rules so every rule below is tone-agnostic. An unrecognized token sets
+   nothing, which is what makes the treatment inert rather than gray (D2). */
 [data-vantage-tone="note"] {
   --vantage-tone-accent: var(--vantage-tone-note-accent);
   --vantage-tone-wash: var(--vantage-tone-note-wash);
@@ -144,7 +144,7 @@
    member, so resolving both onto `--vantage-tone-accent` made the alert's kind
    win on that element — and the section's own vertical rule turned red for the
    height of the alert, and red again for the 2.5rem it bleeds upward. The
-   section read as three colours and looked broken. Distinct names let one
+   section read as three colors and looked broken. Distinct names let one
    element carry both facts without either overwriting the other.
 
    The VALUES are still the tone palette's, which is the whole point: an alert
@@ -197,10 +197,10 @@
    escape below is what makes them paint, and a pixel scan is the only thing
    that can tell the two apart.
    `background-color` is the longhand, and the accent `var()` has no fallback,
-   on purpose: an unrecognised tone leaves the variable unset, the value is
+   on purpose: an unrecognized tone leaves the variable unset, the value is
    invalid at computed-value time, and the rule computes to `transparent` — D2
    inertness enforced by the cascade rather than by enumerating six tokens in
-   every selector. A "safety" fallback would paint every typo grey instead. */
+   every selector. A "safety" fallback would paint every typo gray instead. */
 /* `left` on an absolutely-positioned pseudo resolves from the PADDING edge of
    its containing block, which is the member itself. So a member with a left
    border of its own has its padding edge pushed inward by that border, and its
@@ -269,7 +269,7 @@ pre[data-vantage-tone] > code {
   overflow-x: auto;
 }
 /* An `hr` is 1-2px of box between two 3em margins — 48px, more than the 40px a
-   neighbour can bleed across — so a thematic break inside a section is the one
+   neighbor can bleed across — so a thematic break inside a section is the one
    member whose rule also bleeds DOWNWARD, and by its own margin rather than by
    the shared bleed. 3.5em, not 3em: every other member's 40px bleed overlaps its
    predecessor's border edge by at least 8px, and an exact fit leaves a 1px
@@ -309,7 +309,7 @@ hr[data-vantage-tone]:is(
 
    Three overrides of `@tailwindcss/typography` are load-bearing, and all three
    are why an unrendered alert looked as bad as it did rather than merely plain:
-   typography italicises `blockquote`, greys its text, and draws `open-quote` /
+   typography italicizes `blockquote`, grays its text, and draws `open-quote` /
    `close-quote` around the first paragraph — so a callout rendered as an italic
    *quotation* whose opening words were the literal `[!WARNING]`. This file is
    unlayered, which is the only reason these plain attribute selectors beat the
@@ -376,8 +376,8 @@ hr[data-vantage-tone]:is(
   font-weight: 500;
 }
 /* `quiet` is quiet, not invisible. It used to fade the whole block to 0.72,
-   which on muted grey text put the result close to the page and made a
-   de-emphasised paragraph genuinely hard to read — a legibility loss, which is
+   which on muted gray text put the result close to the page and made a
+   de-emphasized paragraph genuinely hard to read — a legibility loss, which is
    nearer content loss than decoration, and the same reason print restores it.
    The volume now lives mostly in the rule width, where it costs no contrast:
    4px against `normal`'s 5px and `strong`'s 6px. The remaining fade is slight
@@ -478,7 +478,7 @@ hr[data-vantage-tone]:is(
    this document" is not "this block can be reopened". The toggle JS arms only the
    blocks of a group it actually gave a caret, so a group whose toggle is missing
    or unusable — and a bare `data-vantage-collapsed="true"` written in raw HTML
-   with no group at all, which the sanitiser allows by name and value — stays on
+   with no group at all, which the sanitizer allows by name and value — stays on
    the page instead of becoming text nothing can reveal. It is deliberately an
    attribute no document can write.
 
@@ -487,7 +487,7 @@ hr[data-vantage-tone]:is(
    exist in the print stylesheet, so no third rule can defeat it. A collapsed
    section that printed closed would be content loss on paper (D7).
 
-   Residual, recorded honestly: `display` is in the sanitiser's
+   Residual, recorded honestly: `display` is in the sanitizer's
    `SAFE_STYLE_PROPERTIES`, so a document can still hide its own block with
    `style="display: none"`. That allowance, not this rule, is the boundary — what
    these gates guarantee is that nothing *this pipeline* stamps is hidden without
@@ -535,10 +535,10 @@ hr[data-vantage-tone]:is(
 /* ── Print (D7) ─────────────────────────────────────────────────────────── */
 /* Decoration goes to ink-cheap monochrome; nothing informational is dropped.
    `quiet` is restored to full opacity — a faded print is a legibility loss,
-   which is nearer content loss than decoration. #57606a is the grey the host
+   which is nearer content loss than decoration. #57606a is the gray the host
    app's own print block already uses. Tone never sets `color`: the host's
    print block forces `.prose, .prose *` to #1a1a1a with `!important`, so a
-   tone colour would vanish in one of the three renderings D5 covers. */
+   tone color would vanish in one of the three renderings D5 covers. */
 @media print {
   [data-vantage-tone]::before {
     background-color: #57606a;

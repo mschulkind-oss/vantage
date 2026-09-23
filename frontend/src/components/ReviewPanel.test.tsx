@@ -526,7 +526,7 @@ describe("ReviewPanel — clipboard write failure", () => {
 
     expect(writeText).toHaveBeenCalledTimes(1);
     expect(rowCopy.textContent).toContain("Copy failed");
-    // Only the button that failed is relabelled.
+    // Only the button that failed is relabeled.
     expect(
       screen.getByRole("button", { name: /^Copy \(\d+\)$/ }).textContent,
     ).toContain("Copy (1)");
@@ -613,7 +613,7 @@ describe("ReviewPanel — two-click delete", () => {
     expect(commentIds()).toEqual(["c2"]);
     expect(screen.queryByText(FIRST)).toBeNull();
     expect(screen.getByText(SECOND)).toBeTruthy();
-    // The surviving row's own button was never armed by its neighbour.
+    // The surviving row's own button was never armed by its neighbor.
     expect(deleteButtonFor(SECOND).textContent).toBe("");
   });
 

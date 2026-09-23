@@ -172,11 +172,11 @@ func scanThemes(dir string, withDark bool) []model.ThemeInfo {
 // The app toggles a `dark` class on the root element, so a theme's dark palette
 // is written on `:root.dark` (or `.dark:root`, the same selector spelled the
 // other way round). `:root` alone applies in both modes, which is why a theme
-// that sets only that one silently shows its light colours in dark mode, and why
+// that sets only that one silently shows its light colors in dark mode, and why
 // this is worth detecting at all.
 //
 // The test is textual rather than a parse: a CSS parser is a dependency and a
-// much larger surface for a file that is here only to be labelled in a picker.
+// much larger surface for a file that is here only to be labeled in a picker.
 // The one thing a plain search gets wrong is a comment — a theme's header
 // typically explains the very selectors it uses — so comments come out first.
 //

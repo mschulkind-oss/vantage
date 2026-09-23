@@ -116,7 +116,7 @@ describe("the toned-heading gutter cancels the ¶-anchor shift exactly", () => {
 
 describe("an alert overrides all three typography blockquote defaults", () => {
   /**
-   * Typography styles `blockquote` with `font-style: italic`, a grey `color`,
+   * Typography styles `blockquote` with `font-style: italic`, a gray `color`,
    * AND `font-weight: 500`, plus generated quotation marks on the first
    * paragraph. Resetting only some of them is how an alert ends up looking
    * subtly wrong in a way nobody can name — the weight was missed first time
@@ -129,7 +129,7 @@ describe("an alert overrides all three typography blockquote defaults", () => {
       "",
     );
 
-  it("resets the italic, the weight and the colour together", () => {
+  it("resets the italic, the weight and the color together", () => {
     const css = alertCss();
     const block = css.slice(
       css.indexOf("[data-vantage-alert] {"),

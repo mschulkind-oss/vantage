@@ -381,7 +381,7 @@ function DiagramModal({
 
 /**
  * The palette the page is asking for, re-read whenever `<html>`'s class list
- * or its colour-theme attribute changes.
+ * or its color-theme attribute changes.
  *
  * A diagram is an SVG baked at render time, so unlike everything else on the
  * page it does not restyle when the theme flips — it has to be drawn again. The
@@ -398,7 +398,7 @@ function subscribeToTheme(onChange: () => void): () => void {
   const observer = new MutationObserver(onChange);
   observer.observe(document.documentElement, {
     attributes: true,
-    // `class` carries light/dark; the colour theme attributes carry the rest.
+    // `class` carries light/dark; the color theme attributes carry the rest.
     attributeFilter: [
       "class",
       COLOR_THEME_ATTRIBUTE,

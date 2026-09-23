@@ -98,9 +98,9 @@ describe("colorTheme", () => {
   });
 
   // Mermaid redraws when its palette key changes. A user theme that replaces
-  // the same-id built-in changes every colour but not the id, so if the key
+  // the same-id built-in changes every color but not the id, so if the key
   // did not change with it, diagrams drawn under the built-in would be served
-  // from the cache in the built-in's colours.
+  // from the cache in the built-in's colors.
   it("gives mermaid a new palette key when a user theme replaces a built-in", async () => {
     await applyLoaded(builtIn("catppuccin"));
     const builtInKey = currentMermaidPalette();
@@ -638,7 +638,7 @@ describe("colorTheme", () => {
 
     it("waits for the sheet before telling mermaid the palette changed", async () => {
       // A diagram drawn from half-loaded variables would be cached in the wrong
-      // colours, which is why the attribute is set in the link's load handler.
+      // colors, which is why the attribute is set in the link's load handler.
       chooseInAnotherTab("catppuccin");
       await vi.waitFor(() => expect(lastLink()).toBeDefined());
       expect(root.hasAttribute(ATTR)).toBe(false);

@@ -31,7 +31,7 @@ const API_BASE = "/api";
  *
  * Four things write this list — the mount GET, the reconnect GET, a GET
  * triggered by a `starred_changed` push, and every mutation's own response —
- * and none of them can be cancelled. Without sequencing, starring while the
+ * and none of them can be canceled. Without sequencing, starring while the
  * first GET is still in flight lets that older, emptier response land last and
  * erase the bookmark from the sidebar until something else refetches.
  */

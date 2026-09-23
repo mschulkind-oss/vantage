@@ -24,7 +24,7 @@ export type SetValue<T> = (next: T | ((prev: T) => T)) => void;
  * this preference's storage format, which stays the app's own rather than
  * becoming this hook's, because a tab on an older bundle still has to read what
  * a new one writes. `parse` must return a default rather than throw for anything
- * it does not recognise: storage holds whatever an older bundle, a devtools
+ * it does not recognize: storage holds whatever an older bundle, a devtools
  * session or a different app on this origin left there.
  *
  * Both functions must be **stable** — module-level, or `useCallback`-wrapped.
@@ -61,7 +61,7 @@ export function usePersistentValue<T>(
 
   useEffect(() => {
     // Re-read on mount and whenever the preference being followed changes. On
-    // mount this is the value the initialiser already produced, so React bails
+    // mount this is the value the initializer already produced, so React bails
     // out without a re-render.
     const adopt = (raw: string | null) => {
       const incoming = parse(raw);

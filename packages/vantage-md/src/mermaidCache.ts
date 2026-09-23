@@ -5,8 +5,8 @@
 // switch, and the dark one onto the light page.
 //
 // "Theme" here is the palette key (`currentMermaidPalette`): the mode, plus the
-// colour theme when one is active, since switching colour themes changes a
-// diagram's colours exactly as a light/dark flip does.
+// color theme when one is active, since switching color themes changes a
+// diagram's colors exactly as a light/dark flip does.
 import { currentMermaidPalette } from "./mermaidTheme.js";
 
 const svgCache = new Map<string, string>();

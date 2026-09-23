@@ -59,7 +59,7 @@ vantage:
   status-chip: true # show \`status\` as a chip above the metadata card
 ---
 \`\`\`
-- **Nothing may sit above the opening delimiter** — not a blank line, not an editorial comment, not a \`<!-- vantage: … -->\` directive. Frontmatter is recognised only at the very first byte of the file (in Vantage, on GitHub, and in every other reader), so one line above it turns the whole block into body text: a horizontal rule followed by a heading made of the raw keys, with every field lost. \`vantage-check\` reports it as \`frontmatter/not-at-top\`.
+- **Nothing may sit above the opening delimiter** — not a blank line, not an editorial comment, not a \`<!-- vantage: … -->\` directive. Frontmatter is recognized only at the very first byte of the file (in Vantage, on GitHub, and in every other reader), so one line above it turns the whole block into body text: a horizontal rule followed by a heading made of the raw keys, with every field lost. \`vantage-check\` reports it as \`frontmatter/not-at-top\`.
 - **\`vantage:\` is Vantage's own reserved key.** It holds chrome that belongs to the file rather than to a section, it never shows up in the metadata card, and every other renderer ignores it. One key today: \`status-chip\`.
 - **Prefer \`status-chip: true\`**, which shows the document's own \`status:\` and therefore cannot disagree with it. A literal \`status-chip: accepted\` is accepted too, but it is a second value that goes stale on its own — \`vantage-check\` reports the disagreement.
 - The chip's vocabulary is \`status\`'s, exactly: \`draft | in-review | accepted | deprecated\`, lowercase. \`Draft\` renders no chip at all, silently.
@@ -111,7 +111,7 @@ The steps below predate the rewrite.
 \`\`\`
 
 - **Three names**: \`section\` (the heading and everything under it), \`block\` (the one block after it), \`oq\` (one answerable Open Question).
-- **The keys and values are a closed set**: \`tone\` = \`note | tip | important | warning | caution | muted\`; \`emphasis\` = \`strong | normal | quiet\`; \`badge\` = \`draft | stale | blocked | done | wip\`; \`collapsed\` = \`true | false\`. Name a *tone*, never a colour — the theme decides what a warning looks like, in light mode, in dark mode, and in print.
+- **The keys and values are a closed set**: \`tone\` = \`note | tip | important | warning | caution | muted\`; \`emphasis\` = \`strong | normal | quiet\`; \`badge\` = \`draft | stale | blocked | done | wip\`; \`collapsed\` = \`true | false\`. Name a *tone*, never a color — the theme decides what a warning looks like, in light mode, in dark mode, and in print.
 - **Use them sparingly.** One or two per document, on the sections that genuinely differ. A document where everything is toned says nothing, and a rainbow one is harder to read than a plain one.
 - **Anything outside those sets is silently ignored** — nothing breaks, and nothing styles either. Run \`vantage-check\` on the document: the \`vantage/*\` rules are the only thing that will ever tell you a directive did nothing.
 - **Always close the comment with \`-->\`.** Never \`--!>\`, and never leave it open: Markdown reads every line below an unclosed \`<!--\` as part of the comment, and the whole rest of the document vanishes from the page. For the same reason \`-->\` cannot appear *inside* a value — it ends the comment early and spills the remainder into the page as literal text.

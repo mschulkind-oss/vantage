@@ -4,17 +4,17 @@
  *
  * Two tests hold that floor, and neither can do the other's job:
  *
- * - `textContrast.test.ts` reads the sources and answers "which colour does the
+ * - `textContrast.test.ts` reads the sources and answers "which color does the
  *   app paint this text in, on what surface" — a question only the class names
  *   can answer. It measures against the reference palette below, so it says
- *   nothing about a colour theme that replaces those values.
+ *   nothing about a color theme that replaces those values.
  * - `e2e/color_theme_contrast.spec.ts` asks a browser what each of those tokens
  *   actually resolves to under every theme — `color-mix(in oklab, …)` and
  *   `oklch()` are real engine work — but from inside a page it cannot see a
  *   class name.
  *
  * So the pairs travel from the first to the second as constants, and the first
- * asserts they still match what it scans: a colour the app starts painting text
+ * asserts they still match what it scans: a color the app starts painting text
  * in fails in vitest, naming the pair to add, before the browser guard is ever
  * asked about it. This module is the only thing both import; it is deliberately
  * free of `node:*` and of the DOM, because `tsconfig.app.json` type-checks
@@ -31,13 +31,13 @@
  */
 export const CONTRAST_FLOOR = 3;
 
-/** Light and dark are separate palettes, and a token means a different colour in each. */
+/** Light and dark are separate palettes, and a token means a different color in each. */
 export type ContrastMode = "light" | "dark";
 
 export const CONTRAST_MODES: readonly ContrastMode[] = ["light", "dark"];
 
 /**
- * A Tailwind colour name — `slate-500`, `blue-50`, `white`. Every one of them is
+ * A Tailwind color name — `slate-500`, `blue-50`, `white`. Every one of them is
  * a `--color-<token>` custom property, which is what makes a theme able to
  * replace it and this guard able to read it back.
  */
@@ -72,7 +72,7 @@ export const SURFACE: Record<ContrastMode, ColorToken> = {
  * `textContrast.test.ts` fails if this drifts from what the class names say.
  *
  * Two kinds of pair qualify, and the second is what extends this guard past the
- * grey ramp:
+ * gray ramp:
  *
  * - A slate ink with no background of its own, measured against the mode's
  *   chrome. The app's own layout guarantees that surface.
@@ -190,7 +190,7 @@ export const ACCENT_ON_CHROME: Record<ContrastMode, readonly TextPair[]> = {
  * page. Tailwind v4 declares its palette in `oklch`, so these are not written
  * anywhere in the repo — they were read off the running app, and the browser
  * guard asserts the default look still resolves to them, which is what keeps
- * the unit guard's arithmetic measuring the same colours the reader sees.
+ * the unit guard's arithmetic measuring the same colors the reader sees.
  *
  * It is also the reference every theme is compared against for the accent pairs
  * above, and the reason that comparison can be honest: these values are the

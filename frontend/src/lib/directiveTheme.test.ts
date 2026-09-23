@@ -16,16 +16,16 @@
  *
  * What is guarded here instead is the wiring between the CSS and the two things
  * that can silently disagree with it: the plugin's vocabulary, and the
- * sanitiser's allowlist. Both failure modes are invisible — a palette entry for
+ * sanitizer's allowlist. Both failure modes are invisible — a palette entry for
  * a token no document can name renders nothing, and a rule that styles an
- * attribute the sanitiser strips renders nothing, in every renderer, with no
+ * attribute the sanitizer strips renders nothing, in every renderer, with no
  * error anywhere.
  *
  * The geometry was measured in Chrome, over the real Tailwind build of this file
  * (all 87 prose classes from `MarkdownViewer`, a stamped run of every member
  * type): every member's rule lands on the same x to a tenth of a pixel — h2, h3,
  * p, ul, pre, blockquote and table, whose boxes start at three different x — an
- * unrecognised tone computes `rgba(0, 0, 0, 0)` for both rule and wash,
+ * unrecognized tone computes `rgba(0, 0, 0, 0)` for both rule and wash,
  * `emphasis=strong` leaves an h2 at 600 while taking a p to 500, and a lone
  * toned block that is also line-anchor-highlighted keeps the line-anchor
  * background.
@@ -58,7 +58,7 @@ import {
  *
  * The path goes through a variable because Vite statically rewrites a *literal*
  * `new URL("./x", import.meta.url)` into an asset URL, which `fs` then rejects
- * with `ERR_INVALID_URL_SCHEME`. An unanalysable argument is left alone.
+ * with `ERR_INVALID_URL_SCHEME`. An unanalyzable argument is left alone.
  */
 function read(path: string): string {
   return readFileSync(new URL(path, import.meta.url), "utf8");
@@ -77,7 +77,7 @@ const css = read(
 const TONE_CHANNELS = ["accent", "wash", "chip", "ink"] as const;
 
 /**
- * Attributes the CSS may select on that never pass through the sanitiser
+ * Attributes the CSS may select on that never pass through the sanitizer
  * because no document can write them: the toggle JS sets them at runtime — one
  * on the prose container, one on each block whose group it armed. Being
  * unforgeable is the point of both; they are what turns an attribute a document
@@ -103,7 +103,7 @@ function captures(pattern: RegExp): Set<string> {
   return new Set(Array.from(css.matchAll(pattern), (match) => match[1]));
 }
 
-/** `data-vantage-run` → `dataVantageRun`, the hast property the sanitiser lists. */
+/** `data-vantage-run` → `dataVantageRun`, the hast property the sanitizer lists. */
 function hastProperty(attribute: string): string {
   return `data-vantage-${attribute}`.replace(/-([a-z])/g, (_, letter: string) =>
     letter.toUpperCase(),
@@ -176,7 +176,7 @@ describe("the tone palette covers exactly the plugin's vocabulary", () => {
   });
 });
 
-describe("every styled attribute survives the sanitiser", () => {
+describe("every styled attribute survives the sanitizer", () => {
   // The silent failure mode of the whole design: CSS that selects on an
   // attribute `rehype-sanitize` strips renders nothing, in the app, in the
   // static export and in the CLI checker's HTML, with no error anywhere. This
@@ -207,17 +207,17 @@ describe("the mechanisms the treatment rests on", () => {
   });
 
   it("gives the accent no `var()` fallback — the absence is what makes an unknown tone inert", () => {
-    // With no fallback an unrecognised token leaves the variable unset, the
+    // With no fallback an unrecognized token leaves the variable unset, the
     // declaration is invalid at computed-value time, and the rule computes to
     // `transparent`. A well-meaning fallback would paint every typo'd token
-    // grey, which is the opposite of "unknown markup is inert" (D2).
+    // gray, which is the opposite of "unknown markup is inert" (D2).
     expect(css).not.toMatch(/var\(--vantage-tone-accent,/);
     expect(css).not.toMatch(/var\(--vantage-tone-wash,/);
   });
 
   it("paints with the `background-color` longhand, never the shorthand", () => {
     // An invalid-at-computed-value-time failure on `background` would reset
-    // `background-image` and friends along with the colour.
+    // `background-image` and friends along with the color.
     expect(css).not.toMatch(/^\s*background:/m);
     expect(css).toContain("background-color: var(--vantage-tone-accent);");
   });
@@ -256,7 +256,7 @@ describe("the mechanisms the treatment rests on", () => {
 
   it("bleeds a thematic break's rule both ways, since 3em > the shared bleed", () => {
     // An `hr` is 1-2px of box between two 3em margins — 48px, more than the 40px
-    // a neighbour can bleed up — so it is the one member that also bleeds down,
+    // a neighbor can bleed up — so it is the one member that also bleeds down,
     // and by its own margin. Both selectors stay positive for the same D3 reason
     // as the shared bleed, so the run still ends exactly at its last member.
     expect(css).toMatch(
@@ -299,7 +299,7 @@ describe("the mechanisms the treatment rests on", () => {
     // `[data-vantage-collapse-armed]` is that same invariant per block, and the
     // container marker does not imply it: the JS arms only the blocks of a group
     // it gave a caret, so a group with no toggle — or a `collapsed="true"` written
-    // in raw HTML with no group at all, which the sanitiser allows — is not hidden
+    // in raw HTML with no group at all, which the sanitizer allows — is not hidden
     // by a document that happens to contain one real collapsed section elsewhere.
     //
     // `@media not print` is the third: a collapsed section must print open, and
@@ -345,12 +345,12 @@ describe("the mechanisms the treatment rests on", () => {
 
   it("sets no `color` on prose, which print would discard anyway", () => {
     // The host stylesheet's print block forces `.prose, .prose *` to #1a1a1a
-    // with `!important`. A tone that expressed itself as text colour would
+    // with `!important`. A tone that expressed itself as text color would
     // therefore vanish in one of the three renderings D5 covers — and dark mode
     // already tunes body text for contrast. Only the chip and the print
     // overrides set `color`, and both are pseudo-elements or chips.
-    const proseColour =
+    const proseColor =
       /\[data-vantage-(?:tone|emphasis)="?[a-z]*"?\]\s*\{[^}]*\bcolor:/;
-    expect(css).not.toMatch(proseColour);
+    expect(css).not.toMatch(proseColor);
   });
 });

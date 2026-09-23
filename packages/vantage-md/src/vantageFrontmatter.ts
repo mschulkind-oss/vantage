@@ -45,7 +45,7 @@ export type DocStatus = (typeof DOC_STATUSES)[number];
 export const VANTAGE_FRONTMATTER_KEYS = ["status-chip"] as const;
 
 /**
- * Which tone each status borrows its colours from.
+ * Which tone each status borrows its colors from.
  *
  * The chip has no palette of its own: it reuses the tone chips
  * (`.vantage-chip--<tone>` in `styles/directives.css`), which is also what makes
@@ -166,7 +166,7 @@ function readStatusChip(
   const status = frontmatter["status"];
 
   // Explicitly off. Not an issue: saying so is the point of a token vocabulary
-  // that can be cancelled (the same reason `collapsed` has a `false`).
+  // that can be canceled (the same reason `collapsed` has a `false`).
   if (raw === false) return undefined;
 
   if (raw === true) {
@@ -176,7 +176,7 @@ function readStatusChip(
   }
 
   // Exact match, no case folding and no trimming — the same all-or-nothing
-  // posture as the directive grammar and the sanitiser. `status-chip: Draft`
+  // posture as the directive grammar and the sanitizer. `status-chip: Draft`
   // is dropped, and the checker is what says so.
   if (isDocStatus(raw)) {
     if (isDocStatus(status) && status !== raw) {

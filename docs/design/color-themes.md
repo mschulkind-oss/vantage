@@ -1,15 +1,15 @@
 ---
-title: "Colour themes — a runtime palette over the colours the app already uses"
+title: "Color themes — a runtime palette over the colors the app already uses"
 author: "Paul Gaggl"
 date: 2026-09-21
 status: in-review # draft | in-review | accepted | deprecated
 tags: [frontend, theming, config, server]
-summary: "A colour theme is one stylesheet of CSS variables on `:root` and `:root.dark`. It works with no component changes because Tailwind v4 already compiles every colour utility to a variable, and with the built-in look selected nothing on the page changes."
+summary: "A color theme is one stylesheet of CSS variables on `:root` and `:root.dark`. It works with no component changes because Tailwind v4 already compiles every color utility to a variable, and with the built-in look selected nothing on the page changes."
 vantage:
   status-chip: true
 ---
 
-# Colour themes — a runtime palette over the colours the app already uses
+# Color themes — a runtime palette over the colors the app already uses
 
 **Status:** PROTOTYPE (2026-09-21), built as a pull request in answer to "feel
 free to send a PR with your theme, but we might need a theme system too". The
@@ -20,18 +20,18 @@ two of the rulings are built in the sections they govern
 [§2.5](#25-a-repository-may-offer-a-default)). One call is still open,
 [OQ-CT6](#OQ-CT6), and nothing here waits on it.
 
-**The short version.** A colour theme is a CSS stylesheet that sets custom
+**The short version.** A color theme is a CSS stylesheet that sets custom
 properties on `:root` (light) and `:root.dark` (dark — the class the app already
 toggles). Only the active theme's stylesheet is in the page. That is enough to
-recolour almost the whole interface **without touching a component**, because
-Tailwind v4 compiles every colour utility to `var(--color-<family>-<step>)` and
+recolor almost the whole interface **without touching a component**, because
+Tailwind v4 compiles every color utility to `var(--color-<family>-<step>)` and
 emits the defaults in `@layer theme`, which any unlayered stylesheet outranks.
 Three things did not read a variable — the typography plugin's inlined palette,
-the syntax-highlighting colours, and the scrollbars — and each is routed through
+the syntax-highlighting colors, and the scrollbars — and each is routed through
 one in a way that restates the old value exactly. With the built-in look
 selected, the page is the page it was before this change.
 
-User-facing documentation: [Colour Themes](../../userguide/guides/themes.md).
+User-facing documentation: [Color Themes](../../userguide/guides/themes.md).
 
 **The most important section is [§4](#4-the-zero-change-guarantee-and-how-each-piece-keeps-it)**
 — the guarantee is what makes this reviewable as a small change, and every piece
@@ -42,7 +42,7 @@ of the design is shaped by it.
 ## 1. The corpus, measured
 
 The question that decided the design was how the components choose their
-colours today. Counted over the component sources when this was designed — the
+colors today. Counted over the component sources when this was designed — the
 `.ts`/`.tsx` files under `frontend/src` and `packages/vantage-md/src`, tests
 excluded, matching each class token of a string literal against
 `<prefix>-<family>-<step>` (plus `white`, `black` and the opacity form), and
@@ -50,14 +50,14 @@ pairing a class with its `dark:` twin when both sit in the same literal:
 
 | Measure | Count |
 | --- | --- |
-| Tailwind colour utility classes | 1,368 |
+| Tailwind color utility classes | 1,368 |
 | Distinct light/dark pairings (`bg-white dark:bg-slate-900` counts once) | 193 |
 | Of the classes, in the `slate` family | 925 |
-| Literal colours (hex and `rgb()`) in [`frontend/src/index.css`](../../frontend/src/index.css) — review UI, anchor and flash highlights, print styles | about 300 |
+| Literal colors (hex and `rgb()`) in [`frontend/src/index.css`](../../frontend/src/index.css) — review UI, anchor and flash highlights, print styles | about 300 |
 
 Two readings of those numbers matter. First, the palette is **already
-indirect**: 1,368 classes resolve through a few dozen variables, so recolouring
-those variables recolours the classes. Second, the app speaks in Tailwind's
+indirect**: 1,368 classes resolve through a few dozen variables, so recoloring
+those variables recolors the classes. Second, the app speaks in Tailwind's
 families by *role* — two-thirds of it is `slate`, the neutral — and it picks a
 step within a family for its lightness. That is a contract, even though nobody
 wrote it down; this design writes it down.
@@ -74,7 +74,7 @@ A theme may set:
   choice of step relies on.
 - **`--color-white` and `--color-black`.** White is two roles at once — the
   light page and the ink on accent buttons — which is why the built-in
-  Catppuccin sets it to the flavour's base in light mode and leaves it white in
+  Catppuccin sets it to the flavor's base in light mode and leaves it white in
   dark.
 - **Tones**: `--vantage-tone-<tone>-{accent,ink,wash,chip}`, which already
   existed as variables in `packages/vantage-md`'s directive stylesheet.
@@ -82,14 +82,14 @@ A theme may set:
 - **Scrollbars**: `--vantage-scrollbar-thumb` and `--vantage-scrollbar-thumb-hover`.
 
 Mermaid diagrams are part of the contract without variables of their own: under
-a theme, the seven colours Vantage hands mermaid are read back from the `slate`
+a theme, the seven colors Vantage hands mermaid are read back from the `slate`
 steps the built-in hex values were chosen from.
 
 ### 2.1 Delivery
 
 ```mermaid
 flowchart LR
-  pick["Settings menu<br/>(Colours)"] --> ls["localStorage<br/>vantage:colorTheme"]
+  pick["Settings menu<br/>(Colors)"] --> ls["localStorage<br/>vantage:colorTheme"]
   cfg["config.toml<br/>theme = …"] --> api["GET /api/themes<br/>(defaults + list)"]
   repo[".vantage.toml<br/>theme = …"] --> api
   dir["~/.config/vantage/themes/*.css"] --> api
@@ -112,7 +112,7 @@ flowchart LR
   ([§2.2](#22-a-built-in-is-a-stylesheet-not-a-string-in-the-bundle)).
   A stored built-in still applies **before the first paint**, because its link is
   appended before the first render — a property of when the link goes in, not of
-  whether the CSS travelled inside the chunk.
+  whether the CSS traveled inside the chunk.
 - **The built-ins are palettes the project maintains.** A palette in the tree is
   what keeps the contract honest — a gap in it shows up in a theme the
   maintainers look at — and Catppuccin doubles as the worked example the user
@@ -121,9 +121,9 @@ flowchart LR
   are six rather than one. Each is held to the readability floor
   ([§2.4](#24-a-theme-may-not-make-the-app-unreadable)), and holding them to it
   is what turned up what review had missed in the two that shipped first.
-- **The control is called Colours**, a native select under the Light/Dark
+- **The control is called Colors**, a native select under the Light/Dark
   buttons. Light and dark are what the user guide already calls themes, so the
-  palette needs the other word; the prose writes "colour" and the identifiers
+  palette needs the other word; the prose writes "color" and the identifiers
   write `color`, as everywhere else in this repository.
 - **User themes are files.** `GET /api/themes` lists
   `~/.config/vantage/themes/*.css`, re-reading the directory on every request so
@@ -162,7 +162,7 @@ flowchart LR
   `/api/themes` answers, so the id alone does not say which palette is live:
   `data-vantage-theme-source` (`built-in` or `user`) is set beside the id, and
   mermaid's palette key includes it, or diagrams drawn in between would be
-  served from the cache in the built-in's colours.
+  served from the cache in the built-in's colors.
 - **Static exports get the built-ins only.** There is no server to list or serve
   a user's files, and neither default — the reader's configured one nor the
   repository's — is in the export; both live in files the export does not carry.
@@ -194,7 +194,7 @@ Anything that makes the href arrive later breaks that and nothing else will say
 so — a dynamic `import()` of the asset, waiting for `/api/themes` first,
 deferring the append to an idle callback. Each of those moves the append past the
 first paint, and the reader gets one frame of the built-in look and then a
-repaint. Deferring is the natural-looking optimisation here, because theme CSS in
+repaint. Deferring is the natural-looking optimization here, because theme CSS in
 the critical path is exactly what a performance audit tells you to take out of it.
 
 > [!WARNING]
@@ -235,8 +235,8 @@ would read every other file in the directory to answer a question the response
 does not carry.
 
 The test is textual, and deliberately so: a dark half written some third way
-(`html.dark`) is labelled light-only although it works, and a theme too large or
-unreadable is labelled the same. Those are wrong labels on a working theme, which
+(`html.dark`) is labeled light-only although it works, and a theme too large or
+unreadable is labeled the same. Those are wrong labels on a working theme, which
 is cosmetic; the alternative is a CSS parser in Go, a second implementation of
 what the browser is already doing, carried for the sake of a word in a picker.
 
@@ -257,13 +257,13 @@ theme that has one is a worse lie than silence about a theme that has not.
 
 ### 2.4 A theme may not make the app unreadable
 
-A theme is free to be any colour it likes, and free to be ugly. It is not free
+A theme is free to be any color it likes, and free to be ugly. It is not free
 to put text at a ratio a reader cannot resolve, and one of the two palettes this
 repository shipped did exactly that: Lila's light `slate-500` — the muted ink
 behind every secondary label in the interface — sat at **2.14:1** on the surface
 it is painted on, against a floor this repository already held its own look to.
-Nobody noticed in review, because the failure is a shade of grey looking like a
-slightly lighter shade of grey.
+Nobody noticed in review, because the failure is a shade of gray looking like a
+slightly lighter shade of gray.
 
 The floor is **3:1**, and it is
 [`textContrast.test.ts`](../../frontend/src/lib/textContrast.test.ts)'s, not a
@@ -279,7 +279,7 @@ to add.
 
 **The theme half has to run in a browser, and that is the interesting part.** A
 theme's values are `oklch()`, `color-mix(in oklab, …)` and chains of `var()` —
-Catppuccin's mid greys are all three — and jsdom computes none of them. A unit
+Catppuccin's mid grays are all three — and jsdom computes none of them. A unit
 test could only measure the literals, which is to say it would pass every theme
 whose faint step happens to be written as a mix, and Catppuccin's are. So
 [`e2e/color_theme_contrast.spec.ts`](../../frontend/e2e/color_theme_contrast.spec.ts)
@@ -288,7 +288,7 @@ probe element and a 1×1 canvas — the technique
 [`mermaidTheme.ts`](../../packages/vantage-md/src/mermaidTheme.ts) already uses
 to hand mermaid a hex — and reports every pair with its ratio, so a failure says
 which palette and which step rather than that something is too faint. It also
-asserts a theme visibly recolours real elements, which nothing did before: until
+asserts a theme visibly recolors real elements, which nothing did before: until
 this spec, every theme test could have passed against a stylesheet that did
 nothing.
 
@@ -304,7 +304,7 @@ A repository names a theme with a **top-level** `theme = "…"` in
 level because a key under the checker's own table is an `unknown key`, exit 2,
 for that repository's own check run — see
 [`repo-config.md` §1.1](repo-config.md#11-the-checker-already-tolerates-it-by-construction),
-which is also where the rest of this reader's behaviour is settled: the
+which is also where the rest of this reader's behavior is settled: the
 repository root only, no upward walk, a malformed file
 [rejected whole rather than half](repo-config.md#23-rejected-whole-never-half),
 and a re-stat at most once every two seconds rather than a read per request.
@@ -346,7 +346,7 @@ fails is dropped with a warning that names it, rather than passed on: a reader w
 typed `Catppuccin` in their config is otherwise left to guess why the page never
 changed. A repository whose config does not parse is dropped the same way, by the
 repository's name, and served as though it had said nothing — so in daemon mode
-one contributor's typo cannot decide what colour anybody else's page is. A
+one contributor's typo cannot decide what color anybody else's page is. A
 repository naming a *valid* id the reader does not have is simply no default,
 exactly as a configured default that names nothing is.
 
@@ -363,8 +363,8 @@ close: at `/` there is no repository whose default it would be.
 
 ### 3.1 Prose: the typography plugin inlines its palette
 
-`@tailwindcss/typography` writes `prose-slate` as literal colours into
-`--tw-prose-*`, so a theme could recolour every component and still leave the
+`@tailwindcss/typography` writes `prose-slate` as literal colors into
+`--tw-prose-*`, so a theme could recolor every component and still leave the
 document body — the part a reader looks at most — in Tailwind's slate. The fix
 restates each `--tw-prose-*` and `--tw-prose-invert-*` value in `.prose-slate` as
 the step it came from (`var(--color-slate-700)` for body text, and so on),
@@ -373,7 +373,7 @@ unlayered so it outranks the plugin's copy in `@layer utilities`.
 That restatement has a trap, and it is the one place this design can be built
 wrong in a way that looks right in light mode. Unlayered, the restated
 `--tw-prose-body` also outranks the plugin's *invert* mapping, so dark mode
-would render light-mode prose colours. The block after it re-asserts
+would render light-mode prose colors. The block after it re-asserts
 `--tw-prose-X: var(--tw-prose-invert-X)` for both ways the app asks for inversion
 (`.prose-invert`, and `.dark\:prose-invert:where(.dark, .dark *)`, which is what
 `dark:prose-invert` compiles to under the app's `@custom-variant dark`).
@@ -388,12 +388,12 @@ to a step of the theme's own ramps — keyword to `purple`, string to `green`,
 title to `blue` — so a theme that only sets ramps still gets code that belongs to
 it. The rules sit in `@media screen`: their selectors outrank the print block's
 `.prose * { color: … !important }`, so unscoped they printed a theme's syntax
-colours — Mocha's pastels — on print's near-white `pre`. A themed page prints as
+colors — Mocha's pastels — on print's near-white `pre`. A themed page prints as
 the built-in look does.
 
 ### 3.3 Scrollbars
 
-The four thumb colours read `--vantage-scrollbar-thumb(-hover)` with the old hex
+The four thumb colors read `--vantage-scrollbar-thumb(-hover)` with the old hex
 as the fallback. Nothing in the built-in look sets the variable.
 
 ## 4. The zero-change guarantee, and how each piece keeps it
@@ -408,7 +408,7 @@ guarantee is kept **by construction** rather than by tuning, piece by piece:
 | Prose restatement | Each value is the very `slate` step, `white` or `black` the plugin inlined, and Tailwind's own variables still define those steps |
 | Invert re-assertion | Restores the mapping the plugin already had; it only exists because of the restatement above |
 | Scrollbars | The variable is unset, so the fallback — the old hex — applies |
-| Mermaid | The palette key is exactly the old mode key (`default` / `dark`), so the SVG cache and loader behave as before; the theme variables are the old hard-coded hex, verbatim, with no DOM read and no colour conversion to round |
+| Mermaid | The palette key is exactly the old mode key (`default` / `dark`), so the SVG cache and loader behave as before; the theme variables are the old hard-coded hex, verbatim, with no DOM read and no color conversion to round |
 | Tones, print styles, review UI | Untouched |
 
 The check for a change to any of these is a before/after screenshot comparison
@@ -424,7 +424,7 @@ order:
 
 - **It is a rewrite of nearly every component.** 1,368 classes and 193 distinct
   pairings have to be mapped onto a token vocabulary, and each mapping is a
-  judgement. That is not a diff a maintainer can review for correctness, and on a
+  judgment. That is not a diff a maintainer can review for correctness, and on a
   `main` that moves daily it would conflict with everything in flight.
 - **The token vocabulary is the maintainer's design decision**, not a
   contributor's. Choosing names in a drive-by PR presumes the answer.
@@ -452,11 +452,11 @@ vocabulary still in flight has to be redone.
   their selectors, and authors could no longer write the plain `:root` /
   `:root.dark` they would write anywhere else. One active stylesheet keeps
   specificity to two cases.
-- **A palette as data** (TOML or JSON of colours, turned into variables by the
+- **A palette as data** (TOML or JSON of colors, turned into variables by the
   server). Rejected: it needs a schema and a validator in two languages, and it
   loses what CSS already gives an author for free — `color-mix()`, `oklch()`,
   one variable defined from another. Catppuccin's ramps are derived that way.
-- **Filters** (`hue-rotate`, `invert`). Rejected: they recolour images and
+- **Filters** (`hue-rotate`, `invert`). Rejected: they recolor images and
   diagrams along with the chrome.
 - **Converting the review UI's literals in this change.** Deferred, not
   dropped: most of those values (301 of the 342) are Tailwind **v3** palette
@@ -472,7 +472,7 @@ vocabulary still in flight has to be redone.
 
 ## 7. What is not themed yet
 
-- **The review UI's roughly 300 literal colours** in
+- **The review UI's roughly 300 literal colors** in
   [`frontend/src/index.css`](../../frontend/src/index.css) — highlights, inline
   comment cards and their states. Under a dark theme whose surfaces differ much
   from Tailwind's slate, these are the parts that will look out of place.
@@ -485,7 +485,7 @@ vocabulary still in flight has to be redone.
 - **Print**, deliberately: the print styles ignore the theme, so a themed page
   prints exactly as the built-in look does in the same mode. That forces prose
   text and surfaces light; in dark mode code keeps the built-in dark token
-  colours, as it did before themes existed.
+  colors, as it did before themes existed.
 - **Static exports** carry the built-ins only ([§2.1](#21-delivery)).
 
 ## 8. Risks
@@ -535,9 +535,9 @@ vocabulary still in flight has to be redone.
 | :--- | :--- | :--- | :--- |
 | OQ-CT1 | **Semantic tokens next**, as the style-system layer over this one: a named token vocabulary defined over the ramps, as a series of its own after this, one area of the app per PR so each diff stays reviewable. It needs a design note first, because the vocabulary is the decision and the migration only follows from it | 2026-09-21 | [§5](#5-why-runtime-variables-now-and-not-a-semantic-token-migration), [§9](#9-follow-ups) |
 | OQ-CT2 | **Convert the review UI's literals**, accepting the slight shift in the built-in look, in a PR that does only that and carries before/after screenshots — so the shift is reviewed on its own rather than hidden inside a larger change | 2026-09-21 | [§6](#6-alternatives-considered), [§7](#7-what-is-not-themed-yet) |
-| OQ-CT3 | The control stays **Colours**. Settled by indifference, not by argument: no preference was expressed, so what carries it is the leaning's one reason — it does not collide with light/dark, which the user guide already calls themes | 2026-09-21 | [§2.1](#21-delivery) |
+| OQ-CT3 | The control stays **Colors**. Settled by indifference, not by argument: no preference was expressed, so what carries it is the leaning's one reason — it does not collide with light/dark, which the user guide already calls themes | 2026-09-21 | [§2.1](#21-delivery) |
 | OQ-CT4 | **Yes, narrowed to an offer.** A repository may name a default in `.vantage.toml`; it may never override the reader. Highest first: the reader's choice in their browser, the reader's `config.toml`, then the repository. Narrower than the question asked, and ruled in now rather than deferred as the leaning had it | 2026-09-21 | [§2.5](#25-a-repository-may-offer-a-default) |
-| OQ-CT5 | **Ship both** Catppuccin and Lila as built-ins — the project maintains two palettes, which is what keeps the contract honest. More community favourites may follow, cheaply, because a theme can be as small as one ramp | 2026-09-21 | [§2.1](#21-delivery), [§9](#9-follow-ups) |
+| OQ-CT5 | **Ship both** Catppuccin and Lila as built-ins — the project maintains two palettes, which is what keeps the contract honest. More community favorites may follow, cheaply, because a theme can be as small as one ramp | 2026-09-21 | [§2.1](#21-delivery), [§9](#9-follow-ups) |
 
 ## Open Questions
 
@@ -559,13 +559,13 @@ Settled questions move to the [Decision Ledger](#decision-ledger) above.
    is a suggestion the reader already holds or a file of the repository's that the
    reader's browser fetches on its behalf.
 
-   <!-- vantage: oq id=OQ-CT6 leaning="Read and list a repository's theme files, but do not apply one until the reader has accepted it once for that repository — a repository-supplied stylesheet fetches remote fonts and images from the reader's address, which is a different trust question from a file in their own config directory. Consent rather than sanitising: stripping url() and @import means a CSS parser of our own." -->
+   <!-- vantage: oq id=OQ-CT6 leaning="Read and list a repository's theme files, but do not apply one until the reader has accepted it once for that repository — a repository-supplied stylesheet fetches remote fonts and images from the reader's address, which is a different trust question from a file in their own config directory. Consent rather than sanitizing: stripping url() and @import means a CSS parser of our own." -->
 
    _Leaning:_ the mechanism yes, unasked no. List a repository's theme files and
    apply one only once the reader has accepted it for that repository — the shape
    `allowed_read_roots` already uses, where what a repository's files may reach is
    something the reader granted rather than something the repository declared.
-   Sanitising instead (refuse `url()` and `@import`) is the tempting shortcut, and
+   Sanitizing instead (refuse `url()` and `@import`) is the tempting shortcut, and
    it is a CSS parser of our own — which
    [§2.3](#23-a-theme-with-no-dark-half-says-so) has just declined to write for a
    far smaller job.

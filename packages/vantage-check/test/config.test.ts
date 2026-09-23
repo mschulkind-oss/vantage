@@ -66,7 +66,7 @@ describe("parseConfig", () => {
   // `.vantage.toml` has a second reader: the server reads its own top-level
   // table out of the same file (docs/design/repo-config.md). This is not the
   // "other tools" guarantee above wearing a different hat — that one is about
-  // being a good neighbour, and this one is load-bearing for a Vantage feature.
+  // being a good neighbor, and this one is load-bearing for a Vantage feature.
   // If it ever stops holding, every repository that promotes a starred document
   // gets exit code 2 from the checker instead of a clean run.
   it("reads past the viewer's own section in the same file", () => {
@@ -213,7 +213,7 @@ describe("check with configuration", () => {
     "index.md": "[Gone](./nowhere.md)\n",
   };
 
-  it("honours the discovered config", async () => {
+  it("honors the discovered config", async () => {
     const io = bufferIo(makeTree(tree));
 
     expect(await run(["check", "."], io)).toBe(EXIT_OK);

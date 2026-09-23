@@ -136,7 +136,7 @@ export const useGitStore = create<GitState>((set) => ({
       let lastError = false;
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          // Re-check apiBase on retry — repo may have initialised
+          // Re-check apiBase on retry — repo may have initialized
           const base = attempt === 0 ? apiBase : getApiBase();
           if (!base) break;
           const response = await axios.get<RecentFile[]>(

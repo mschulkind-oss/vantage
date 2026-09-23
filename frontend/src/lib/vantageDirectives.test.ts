@@ -5,9 +5,9 @@
  * The code under test lives in `packages/vantage-md`, which has no test runner
  * of its own; the frontend resolves `vantage-md` to that package's TypeScript
  * source (see `vite.config.ts`), so these run against the real thing — and
- * `renderMarkdown` runs the real chain, sanitiser included, which is the only
+ * `renderMarkdown` runs the real chain, sanitizer included, which is the only
  * way to prove an attribute actually reaches a document rather than merely
- * being written onto a tree that the sanitiser then empties.
+ * being written onto a tree that the sanitizer then empties.
  *
  * Two properties are load-bearing and easy to lose by accident:
  *
@@ -162,7 +162,7 @@ describe("the directive grammar", () => {
     expect(VANTAGE_SENTINEL).toBe("vantage:");
   });
 
-  it("calls a sentinelled comment that does not parse malformed, with a reason", () => {
+  it("calls a sentineled comment that does not parse malformed, with a reason", () => {
     const cases: [string, string][] = [
       [" vantage: ", "no directive name after `vantage:`"],
       [" vantage:", "no directive name after `vantage:`"],
@@ -244,7 +244,7 @@ describe("the closed vocabulary", () => {
     );
     expect(DIRECTIVE_VOCABULARY.section?.tone).toEqual(VANTAGE_TONES);
     // `id` and `leaning` are the design's only values with no closed set, which
-    // is why they are the only ones the sanitiser cannot value-allowlist.
+    // is why they are the only ones the sanitizer cannot value-allowlist.
     expect(DIRECTIVE_VOCABULARY.oq).toEqual({ id: null, leaning: null });
   });
 });
@@ -268,7 +268,7 @@ describe("target resolution", () => {
 
   it("walks past an unrelated comment to reach the target", async () => {
     // An editorial comment is invisible in every renderer and deleted by the
-    // sanitiser. Letting it change a directive's meaning would make behaviour
+    // sanitizer. Letting it change a directive's meaning would make behavior
     // depend on something no reader can see.
     const host = await render(
       "<!-- vantage: block tone=note -->\n\n<!-- TODO: rewrite this -->\n\nParagraph\n",
@@ -448,7 +448,7 @@ describe("extent: position picks the target, the name picks how far", () => {
     // `<figure>` or `<dl>` unstamped between two stamped paragraphs — and since
     // the section's one continuous vertical rule is drawn per member, an
     // unstamped member is a hole the height of the block: measured at 44px for
-    // a one-line figure, against the 40px a neighbour bleeds upward.
+    // a one-line figure, against the 40px a neighbor bleeds upward.
     const host = await render(
       [
         "<!-- vantage: section tone=warning -->",
@@ -1071,7 +1071,7 @@ describe("the `oq` directive", () => {
     // `rehype-stringify` emits a bare `data-vantage-oq` for the boolean `true`
     // while react-markdown emits `="true"`. Different markup from the checker
     // and the app is a D5 violation with no error anywhere, so the plugin emits
-    // the string and this test pins the serialisation, not the tree.
+    // the string and this test pins the serialization, not the tree.
     const markup = await html('<!-- vantage: oq leaning="Yes" -->\n\nBody.\n');
 
     expect(markup).toContain('data-vantage-oq="true"');
@@ -1130,10 +1130,10 @@ describe("the `oq` directive", () => {
 
   it("resolves `id` into the block's anchor", async () => {
     // The id used to stop at the source: nothing in the DOM read it, so
-    // stamping it bought a sanitiser entry for nothing. A reference of the form
+    // stamping it bought a sanitizer entry for nothing. A reference of the form
     // `[OQ-9](#OQ-9)` is what gave it a reader, and `ref/unlinked-oq` is what
     // requires references to take that form. See `oqAnchors.test.ts` for the
-    // sanitiser trap that shape has to survive.
+    // sanitizer trap that shape has to survive.
     const markup = await html("<!-- vantage: oq id=OQ-9 -->\n\nBody.\n");
 
     expect(markup).toContain('data-vantage-oq="true"');
@@ -1357,7 +1357,7 @@ describe("the `collapsed` token", () => {
     //
     // Opting a subsection out would mean excluding its whole run from the outer
     // group, so closing the outer section would leave a subsection on screen.
-    // That is a feature with its own question to answer, not this behaviour
+    // That is a feature with its own question to answer, not this behavior
     // being wrong.
     const host = await render(
       [
@@ -1442,7 +1442,7 @@ describe("the `collapsed` token", () => {
     expect(stamped(host.querySelector("p"))).toEqual({});
   });
 
-  it("survives the sanitiser, group ids included", async () => {
+  it("survives the sanitizer, group ids included", async () => {
     // The two new attributes are value-allowlisted by pattern rather than by
     // token list, so this is the assertion that catches a missing entry — and a
     // pattern that rejects the plugin's own output.
@@ -1457,7 +1457,7 @@ describe("the `collapsed` token", () => {
   });
 
   it("refuses a hand-written group that is not a number", async () => {
-    // The toggle JS interpolates the value into a selector, so the sanitiser
+    // The toggle JS interpolates the value into a selector, so the sanitizer
     // pins it to digits: raw HTML is the only way a different shape could appear.
     const markup = await html(
       [
@@ -1523,7 +1523,7 @@ describe("the document is the artifact (P1/D8/D1)", () => {
   });
 
   it("leaves no comment in the rendered markup", async () => {
-    // The plugin deliberately does not remove the comment node; the sanitiser
+    // The plugin deliberately does not remove the comment node; the sanitizer
     // does, which is why nothing Vantage-specific reaches the DOM but the
     // attributes we allowlisted.
     const markup = await html(FIXTURE);
@@ -1539,7 +1539,7 @@ describe("the document is the artifact (P1/D8/D1)", () => {
   });
 });
 
-describe("the sanitiser is the second gate", () => {
+describe("the sanitizer is the second gate", () => {
   it("keeps every attribute the plugin emits", async () => {
     // The silent failure mode of this whole design: a stamped attribute that
     // `sanitize.ts` does not allowlist disappears with no error anywhere.

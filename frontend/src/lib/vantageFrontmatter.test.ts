@@ -264,7 +264,7 @@ describe("readVantageFrontmatter", () => {
   });
 });
 
-describe("the chip's colours exist in the shared stylesheet", () => {
+describe("the chip's colors exist in the shared stylesheet", () => {
   /**
    * `fs`, not `?raw`: vitest stubs CSS imports to `""` unless `test.css` is on,
    * which would make every assertion below pass vacuously. The path stays a

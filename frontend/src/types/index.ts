@@ -190,7 +190,7 @@ export interface ReviewData {
 }
 
 /**
- * One user colour theme: a stylesheet in the reader's themes directory. `id` is
+ * One user color theme: a stylesheet in the reader's themes directory. `id` is
  * the file stem, the URL segment it is served under and the value the browser
  * stores; `name` is what the settings menu shows. The server sets `name` to the
  * id today — a directory listing has nothing else to go on — so that a display

@@ -85,7 +85,7 @@ checks the working directory; `vantage-check` with no arguments prints the help.
 | `--format text\|json` | Output format. Default `text`. |
 | `--strict` | Warnings fail the run as well as errors. |
 | `-q`, `--quiet` | Drop the summary line. |
-| `--color` / `--no-color` | Force colour on or off (default: on when stdout is a terminal). |
+| `--color` / `--no-color` | Force color on or off (default: on when stdout is a terminal). |
 | `--config <path>` | Use this `.vantage.toml`. A path that is not there is an error. |
 | `--no-config` | Ignore `.vantage.toml` and use the built-in defaults. |
 | `-j`, `--jobs <n>\|auto` | Threads to check with. Default `auto` — see [Large corpora](#large-corpora). |
@@ -176,7 +176,7 @@ The `ref/*` family asks the question underneath the rest: **should this have
 been a link at all?** A reference written as prose cannot be dead, so nothing
 can ever notice when it goes stale — an `OQ-` id outlives the question, a `§`
 number outlives the renumbering, a filename outlives the move, and no check
-fails. Three markers are recognised because all three are unambiguous; ordinary
+fails. Three markers are recognized because all three are unambiguous; ordinary
 prose is left alone.
 
 Resolution is **relative to the document's own directory**, so a name that
@@ -201,7 +201,7 @@ finding: Vantage routes those to a directory listing.
 **Delegated rules** hand the question to the parser that owns it, so a diagram
 fails for exactly the reason the viewer would fail on it, in that parser's own
 words. `frontmatter/not-at-top` is the one that cannot be delegated: frontmatter is
-recognised only at the very first byte of the file, so a comment, a directive or
+recognized only at the very first byte of the file, so a comment, a directive or
 one stray blank line above the opening `---` leaves the parser seeing no
 frontmatter at all and nothing to report. The block renders as a horizontal rule
 followed by a heading of the raw keys, and every field is gone — so this rule
@@ -264,7 +264,7 @@ not a list of the ones somebody thought of. `vantage/list-split` stays because t
 list case has a fix of its own worth spelling out ("indent it inside the item"),
 and it reports first when both apply.
 
-"The block that contains them" is two neighbouring blocks for a directive at the
+"The block that contains them" is two neighboring blocks for a directive at the
 top level, and the **whole enclosing top-level block** for one indented inside a
 list item, a block quote or a footnote definition — so the cost is one re-parse
 of that block per directive. That is normally nothing, and it is not nothing for
@@ -406,7 +406,7 @@ run's JSON against a one-thread run's.
 
 `auto` spends one thread per 12 files, up to six and never more than the machine
 has cores. Six is a measured ceiling rather than a safety margin: each thread
-initialises the binary's own module graph in a fresh JavaScript VM, and past six
+initializes the binary's own module graph in a fresh JavaScript VM, and past six
 that cost grows faster than the parallelism pays for it. Measured on a 32-core
 machine:
 

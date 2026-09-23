@@ -56,8 +56,8 @@ port = 8000
 #
 # source_dirs = ["~/code", "~/projects"]
 
-# Colour theme: the palette light and dark mode are drawn in, for every browser
-# until its reader picks another under "Colours" in the settings menu (a choice
+# Color theme: the palette light and dark mode are drawn in, for every browser
+# until its reader picks another under "Colors" in the settings menu (a choice
 # made there always wins).  "catppuccin" is built in; your own theme is
 # ~/.config/vantage/themes/<id>.css, named here by <id>.  This also outranks a
 # theme a repository offers in its own .vantage.toml — a repository may suggest a

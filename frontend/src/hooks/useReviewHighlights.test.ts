@@ -290,7 +290,7 @@ describe("useReviewHighlights — outdated comments", () => {
   });
 });
 
-describe("useReviewHighlights — comment bodies are sanitised", () => {
+describe("useReviewHighlights — comment bodies are sanitized", () => {
   // Comment text reaches the document through `innerHTML`. A comment is written
   // by whoever can write the review file — and, once the `oq` button ships, by
   // whatever a served document says — so it is untrusted input at this sink.
@@ -708,7 +708,7 @@ describe("useReviewHighlights — armed delete across a rebuild", () => {
     expect(deleteBtn("d2").textContent).toBe("×");
     expect(deleteBtn("d2").classList.contains(ARMED_CLASS)).toBe(false);
 
-    // And the neighbour's first click only arms it, even well past the floor.
+    // And the neighbor's first click only arms it, even well past the floor.
     now += PAST_CONFIRM_FLOOR;
     fireEvent.click(deleteBtn("d2"));
     expect(actions.onDelete).not.toHaveBeenCalled();

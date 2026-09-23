@@ -4,7 +4,7 @@
 //   import { renderMarkdown, rehypeSourceLines, scrollToLineAnchor } from "vantage-md";
 //   import "vantage-md/styles";
 //
-// Directives (`<!-- vantage: … -->`), the render chain and the sanitiser —
+// Directives (`<!-- vantage: … -->`), the render chain and the sanitizer —
 // architecture and invariants: docs/reference/inline-markup.md
 
 export { renderMarkdown } from "./renderMarkdown.js";
@@ -90,7 +90,7 @@ export type {
 export { sanitizeSchema, SAFE_STYLE } from "./sanitize.js";
 
 export { renderMermaidBlocks } from "./renderMermaidBlocks.js";
-// The attributes on `<html>` that name the active colour theme. The viewer sets
+// The attributes on `<html>` that name the active color theme. The viewer sets
 // them and the mermaid code reads them to key and redraw diagrams, so both
 // sides import one copy: a rename on only one side would silently stop
 // diagrams following a theme switch.

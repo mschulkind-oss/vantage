@@ -14,7 +14,7 @@ They exist because the directive vocabulary is
 — a document names `tone=warning` and the theme decides what that means, in
 light, in dark and in print. That is the right design and it has one cost: an
 author writing `tone=warning` has no idea what they are about to get, and a
-maintainer changing a colour has nowhere to check the result. This is that
+maintainer changing a color has nowhere to check the result. This is that
 place.
 
 It is a **maintainer tool, not documentation of the feature.** The user guide's
@@ -51,7 +51,7 @@ it did nothing there.
 Two switches change what these pages are showing you:
 
 - **The theme toggle.** Every tone has a separate dark definition, so light and
-  dark are two independent judgements and a change to one is not a change to the
+  dark are two independent judgments and a change to one is not a change to the
   other. Read each page twice.
 - **Review mode**, per file. [Open questions](./open-questions.md) renders
   nothing at all until it is on.
@@ -87,16 +87,16 @@ product's own:
    [the inbox](../../userguide/guides/review-inbox.md), and the page live-reloads
    under you.
 
-That is why the specimens are labelled with their exact directive rather than
+That is why the specimens are labeled with their exact directive rather than
 with prose descriptions: `tone=muted emphasis=quiet` is a thing a comment can be
-about, and "the faint grey one" is not.
+about, and "the faint gray one" is not.
 
 ## What to change when something looks wrong
 
 Almost always exactly one file: `packages/vantage-md/src/styles/directives.css`.
-Every colour in the system is a custom property declared at the top of it — the
+Every color in the system is a custom property declared at the top of it — the
 light set on `:root`, the dark set under `.dark` — and every rule below reads
-those properties rather than naming a colour. A new theme is one property block
+those properties rather than naming a color. A new theme is one property block
 and zero document changes.
 
 Four things in that file break silently if changed, and all four are recorded in
@@ -169,14 +169,14 @@ Fixed by moving every OQ affordance into a row inserted as the block's next
 sibling, which also took the control out of the middle of the prose. See
 [Open questions](./open-questions.md).
 
-### Fixed — an alert recoloured the section rule around it
+### Fixed — an alert recolored the section rule around it
 
 Alerts and tones resolved to the same `--vantage-tone-*` properties, on the
 argument that they share a palette. They do share it, but custom properties
 **inherit**: a `> [!CAUTION]` inside a `tone=important` section is both an alert
 and a stamped run member, so the alert's kind won on that element and the
 section's own rule turned red for the height of the alert *and* for the 2.5rem
-it bleeds upward. A three-paragraph section read as three colours.
+it bleeds upward. A three-paragraph section read as three colors.
 
 Alerts now resolve to `--vantage-alert-*`, populated from the same per-tone
 values — so the palette is still shared and one element can carry both facts.

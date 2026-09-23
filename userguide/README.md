@@ -37,7 +37,7 @@ Task-shaped: pick the one matching what you are trying to do.
 | [Daemon Mode](guides/daemon-mode.md) | Running Vantage as a background service with multi-repo support |
 | [Review Inbox](guides/review-inbox.md) | The `.vantage/` directory: how agent responses are delivered, and gitignoring it |
 | [Static Sites](guides/static-sites.md) | Building static exports for deployment |
-| [Colour Themes](guides/themes.md) | Choosing a colour theme, setting a default, and writing your own |
+| [Color Themes](guides/themes.md) | Choosing a color theme, setting a default, and writing your own |
 | [vantage-check](guides/vantage-check.md) | The agent CLI: the Markdown style guide, and a check that a document really renders |
 
 ### Reference

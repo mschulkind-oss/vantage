@@ -173,7 +173,7 @@ func NewWatcher(root, repoName string, mgr *Manager, store *review.Store, useIgn
 }
 
 // Start begins watching. It adds the recursive watch set, then runs the event
-// loop until ctx is cancelled or Close is called. Start blocks; run it in its
+// loop until ctx is canceled or Close is called. Start blocks; run it in its
 // own goroutine.
 func (w *Watcher) Start(ctx context.Context) error {
 	fsw, err := fsnotify.NewWatcher()

@@ -7,7 +7,7 @@ summary: "The `oq` directive and its one-click review button, and where the butt
 # Open questions
 
 `oq` is the only directive that produces an **affordance** rather than a
-treatment. Below a question it marks, review mode renders one button labelled
+treatment. Below a question it marks, review mode renders one button labeled
 **"Take this leaning"**, in a row of its own. Clicking it files the directive's
 `leaning=` text as an ordinary review comment — the same call the comment popover
 makes, with an anchor identical in shape to what click-and-type produces.
@@ -72,7 +72,7 @@ item.
 
 1. **OQ-3: Should the gallery ship to end users, or stay a maintainer tool?**
 
-   <!-- vantage: oq id=OQ-3 leaning="Maintainer tool. It is a colour-review surface, not documentation of a feature — the user guide already covers the markup." -->
+   <!-- vantage: oq id=OQ-3 leaning="Maintainer tool. It is a color-review surface, not documentation of a feature — the user guide already covers the markup." -->
 
    _Leaning:_ Maintainer tool.
 

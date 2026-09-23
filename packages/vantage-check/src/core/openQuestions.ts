@@ -64,7 +64,7 @@ export function collectOqIds(mdast: Root): DeclaredOq[] {
 /**
  * The subset of declared ids that actually become anchors in the page.
  *
- * A malformed id is stamped by the plugin and then refused by the sanitiser's
+ * A malformed id is stamped by the plugin and then refused by the sanitizer's
  * value allowlist, so it reaches no `id` attribute and cannot be linked to. The
  * checker has to agree: counting one here would accept `#OQ-nope` as a live
  * target for a fragment that navigates nowhere.

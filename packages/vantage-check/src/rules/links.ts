@@ -148,7 +148,7 @@ function checkFragment(
     if (lineCount === null) return;
 
     // A warning, and a rule of its own, because severity is per rule id and
-    // this one must not fail a run: `parseLineAnchor` normalises `#L50-L20`
+    // this one must not fail a run: `parseLineAnchor` normalizes `#L50-L20`
     // with Math.min/Math.max, so the viewer really does highlight lines 20–50.
     // The link works. Reporting a working link as an error is the
     // false-positive class this package exists to avoid — but an inverted
@@ -183,7 +183,7 @@ function checkFragment(
   const anchors = workspace.documentAnchors(targetPath);
   if (anchors?.has(fragment)) return;
   // Ids the renderer generates for GFM footnotes are not headings and are not
-  // worth modelling; a link to one is vanishingly rare and a false positive is
+  // worth modeling; a link to one is vanishingly rare and a false positive is
   // not.
   if (fragment.startsWith("user-content-")) return;
 
@@ -266,7 +266,7 @@ function cleanPath(path: string): string {
  * Each was verified by running the shape through `parseLineAnchor` and
  * `renderMarkdown` rather than by reasoning about it:
  *
- * - `#L50-L10` — inverted, but `parseLineAnchor` normalises it with
+ * - `#L50-L10` — inverted, but `parseLineAnchor` normalizes it with
  *   Math.min/Math.max and the viewer highlights 10–50. The link *works*, so it
  *   is `link/inverted-range`'s warning, not an error here.
  * - `#l42` — a lowercase `l` is not a line anchor, but it is a perfectly good

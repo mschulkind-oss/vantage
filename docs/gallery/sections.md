@@ -23,7 +23,7 @@ long answer to those two questions.
 ## Every block type in one run
 
 The section below covers a paragraph, a bulleted list, a numbered list, a
-blockquote, a code fence, a table, a thematic break, a block of display maths
+blockquote, a code fence, a table, a thematic break, a block of display math
 and a nested heading — in that order, under one directive.
 
 <!-- vantage: section tone=note -->
@@ -69,7 +69,7 @@ this line is deliberately far too long to fit in the content column, so that the
 ---
 
 A thematic break is the other special member. It is one or two pixels of box
-between two large margins — a gap wider than any neighbour can bleed across — so
+between two large margins — a gap wider than any neighbor can bleed across — so
 it is the only member that also bleeds **downward**, by its own margin rather
 than by the shared amount.
 
@@ -80,7 +80,7 @@ $$
 \sum_{i=1}^{n} w_i x_i \geq \theta
 $$
 
-Display maths is replaced wholesale by KaTeX after the stamp is applied, so the
+Display math is replaced wholesale by KaTeX after the stamp is applied, so the
 stamp has to be captured before and re-applied to the replacement. If that
 failed, this formula would show as an unpainted gap in the stripe and would have
 no line anchor.
@@ -109,17 +109,17 @@ Two runs of different tone meeting with nothing between them is the case
 sibling-based CSS gets wrong. This heading is the first member of a caution run,
 and it must not bleed its stripe upward into the note run above.
 
-If you see a short caution-coloured stripe hanging above this heading, the run
+If you see a short caution-colored stripe hanging above this heading, the run
 selector has been rewritten as a negation.
 
 <!-- vantage: section tone=tip -->
 
 ### A third run, immediately after
 
-The same check again in the other colour pair, and the boundary to look at is
+The same check again in the other color pair, and the boundary to look at is
 between this heading and the caution paragraph above it.
 
-The colour should change exactly at this heading's top edge.
+The color should change exactly at this heading's top edge.
 
 ## The hole a section used to leave
 
@@ -162,7 +162,7 @@ meanings — the section's tone and the alert's kind.
 ### A toned section containing two alerts
 
 The section's rule is `important` purple, in the gutter. The alerts below carry
-their own colours, inside the text column.
+their own colors, inside the text column.
 
 > [!TIP]
 > An alert whose kind *disagrees* with the section's tone. This is the common

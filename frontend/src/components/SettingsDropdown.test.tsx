@@ -19,7 +19,7 @@ vi.mock("axios");
 const mockedAxios = vi.mocked(axios, true);
 
 /**
- * Let the colour theme's stylesheet load. Every theme is a `<link>` now, and
+ * Let the color theme's stylesheet load. Every theme is a `<link>` now, and
  * jsdom fetches nothing, so the event a browser fires has to be fired here.
  */
 async function loadThemeLink() {
@@ -194,14 +194,14 @@ describe("SettingsDropdown", () => {
     expect(onKeyboardShortcutsEnabledChange).toHaveBeenCalledWith(true);
   });
 
-  describe("colour theme picker", () => {
+  describe("color theme picker", () => {
     it("lists the built-ins and the server's user themes when opened", async () => {
       mockedAxios.get.mockResolvedValue({
         data: { default: "", themes: [{ id: "ocean", name: "ocean" }] },
       });
       renderDropdown();
       fireEvent.click(screen.getByLabelText("Settings"));
-      const select = screen.getByLabelText("Colours") as HTMLSelectElement;
+      const select = screen.getByLabelText("Colors") as HTMLSelectElement;
       await waitFor(() =>
         expect(Array.from(select.options).map((o) => o.value)).toEqual([
           ...builtInColorThemes().map((t) => t.id),
@@ -216,9 +216,9 @@ describe("SettingsDropdown", () => {
       document.documentElement.setAttribute("data-vantage-theme", "catppuccin");
       renderDropdown();
       fireEvent.click(screen.getByLabelText("Settings"));
-      expect(
-        (screen.getByLabelText("Colours") as HTMLSelectElement).value,
-      ).toBe("catppuccin");
+      expect((screen.getByLabelText("Colors") as HTMLSelectElement).value).toBe(
+        "catppuccin",
+      );
     });
 
     it("keeps the applied theme selectable when the list lacks it", async () => {
@@ -228,7 +228,7 @@ describe("SettingsDropdown", () => {
       mockedAxios.get.mockRejectedValue(new Error("network"));
       renderDropdown();
       fireEvent.click(screen.getByLabelText("Settings"));
-      const select = screen.getByLabelText("Colours") as HTMLSelectElement;
+      const select = screen.getByLabelText("Colors") as HTMLSelectElement;
       await waitFor(() => expect(mockedAxios.get).toHaveBeenCalled());
       expect(Array.from(select.options).map((o) => o.value)).toEqual([
         ...builtInColorThemes().map((t) => t.id),
@@ -250,7 +250,7 @@ describe("SettingsDropdown", () => {
       localStorage.setItem("vantage:theme", "dark");
       renderDropdown();
       fireEvent.click(screen.getByLabelText("Settings"));
-      fireEvent.change(screen.getByLabelText("Colours"), {
+      fireEvent.change(screen.getByLabelText("Colors"), {
         target: { value: "catppuccin" },
       });
       await loadThemeLink();
@@ -268,7 +268,7 @@ describe("SettingsDropdown", () => {
       const stop = followColorTheme();
       renderDropdown();
       fireEvent.click(screen.getByLabelText("Settings"));
-      const select = screen.getByLabelText("Colours") as HTMLSelectElement;
+      const select = screen.getByLabelText("Colors") as HTMLSelectElement;
       expect(select.value).toBe("default");
 
       localStorage.setItem("vantage:colorTheme", "catppuccin");
@@ -288,7 +288,7 @@ describe("SettingsDropdown", () => {
     it("still names the old theme while a new sheet is loading", async () => {
       // Not a missing optimistic update: until the stylesheet is live the reader
       // is still looking at the previous palette, and saying otherwise would
-      // name colours that are not on the page.
+      // name colors that are not on the page.
       // Not awaited before the link loads: `applyColorTheme` resolves *in* that
       // load handler, so awaiting it first would deadlock the test.
       const applied = applyColorTheme(builtInColorThemes()[1]);
@@ -296,7 +296,7 @@ describe("SettingsDropdown", () => {
       await applied;
       renderDropdown();
       fireEvent.click(screen.getByLabelText("Settings"));
-      const select = screen.getByLabelText("Colours") as HTMLSelectElement;
+      const select = screen.getByLabelText("Colors") as HTMLSelectElement;
       expect(select.value).toBe("catppuccin");
 
       fireEvent.change(select, { target: { value: "gruvbox" } });
@@ -312,7 +312,7 @@ describe("SettingsDropdown", () => {
       });
       renderDropdown();
       fireEvent.click(screen.getByLabelText("Settings"));
-      const select = screen.getByLabelText("Colours") as HTMLSelectElement;
+      const select = screen.getByLabelText("Colors") as HTMLSelectElement;
       await waitFor(() =>
         expect(Array.from(select.options).map((o) => o.value)).toContain(
           "ocean",
@@ -345,7 +345,7 @@ describe("SettingsDropdown", () => {
       });
       renderDropdown();
       fireEvent.click(screen.getByLabelText("Settings"));
-      const select = screen.getByLabelText("Colours") as HTMLSelectElement;
+      const select = screen.getByLabelText("Colors") as HTMLSelectElement;
       await waitFor(() =>
         expect(Array.from(select.options).map((o) => o.textContent)).toEqual([
           ...builtInColorThemes().map((t) => t.name),
@@ -357,13 +357,13 @@ describe("SettingsDropdown", () => {
 
     it("says nothing about a theme the list never described", async () => {
       // A user theme is in effect but the server cannot be reached, so its
-      // option is synthesised — and a "(light only)" guess about a file this
+      // option is synthesized — and a "(light only)" guess about a file this
       // list has not seen would be worse than no claim at all.
       document.documentElement.setAttribute("data-vantage-theme", "ocean");
       mockedAxios.get.mockRejectedValue(new Error("network"));
       renderDropdown();
       fireEvent.click(screen.getByLabelText("Settings"));
-      const select = screen.getByLabelText("Colours") as HTMLSelectElement;
+      const select = screen.getByLabelText("Colors") as HTMLSelectElement;
       await waitFor(() => expect(mockedAxios.get).toHaveBeenCalled());
       expect(
         Array.from(select.options).find((o) => o.value === "ocean")

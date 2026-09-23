@@ -18,7 +18,7 @@ Options for check:
   --format text|json                 output format (default: text)
   --strict                           fail the run on warnings as well as errors
   -q, --quiet                        drop the summary line
-  --color / --no-color               force colour on or off
+  --color / --no-color               force color on or off
   --config <path>                    use this .vantage.toml
   --no-config                        ignore .vantage.toml entirely
   -j, --jobs <n>|auto                threads to check with (default: auto — one

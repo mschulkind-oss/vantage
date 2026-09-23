@@ -39,7 +39,7 @@ type Schema = typeof defaultSchema;
  * **The design doc used to argue the opposite — that `style` had to be allowed
  * and `position` enumerated because KaTeX needs them — and it was wrong.** The
  * measurement behind it was real (KaTeX does emit `position:relative` on every
- * integral) but the inference was not, because the sanitiser has finished before
+ * integral) but the inference was not, because the sanitizer has finished before
  * the first KaTeX span exists. Rebuilding the shipped rehype order with a filter
  * that rejects *every* value leaves all ten of the integral's style attributes
  * untouched. The "Security" section of `docs/reference/inline-markup.md`
@@ -50,7 +50,7 @@ const SAFE_STYLE_PROPERTIES = [
   // Box metrics. `top`/`right`/`bottom`/`left` are inert now that `position` is
   // banned, and they stay only because dropping them would fail the whole
   // attribute for a document that writes one — the all-or-nothing rule below
-  // makes every removal a behaviour change. They buy an attacker nothing that
+  // makes every removal a behavior change. They buy an attacker nothing that
   // negative `margin` does not already buy.
   "height",
   "min-height",
@@ -128,16 +128,16 @@ const SAFE_STYLE_PROPERTIES = [
  * **`position` is not on the property list at all**, so every value of it is
  * refused — `static` and `relative` along with `fixed` and `sticky`. It used to
  * be enumerated, on the belief that KaTeX needed `relative`; KaTeX renders after
- * the sanitiser and never meets this regex, so the enumeration was buying
+ * the sanitizer and never meets this regex, so the enumeration was buying
  * nothing but the residual it conceded. Banning the property closes that
- * residual, and it is bigger than "overlaps its neighbours" made it sound:
+ * residual, and it is bigger than "overlaps its neighbors" made it sound:
  * measured in Chrome against the viewer's real ancestor chain, an author's
  * `position:absolute;top:0;left:0;width:100%;height:100%` is sized to the whole
  * content pane (the nearest positioned ancestor is outside the scroll
  * container), is not clipped by the scroller, and survives scrolling to the end
  * of the document. It was `position:fixed` in all but the keyword.
  *
- * Matching is all-or-nothing: one unrecognised declaration drops the whole
+ * Matching is all-or-nothing: one unrecognized declaration drops the whole
  * attribute, and the element renders unstyled rather than partly styled. That
  * is the safe direction to fail, and it degrades to plain text rather than to a
  * broken page.
@@ -157,7 +157,7 @@ const SAFE_STYLE_PROPERTIES = [
  * `frontend/src/lib/sanitize.test.ts` — do not loosen the separator.
  *
  * Residual, stated plainly and now genuinely small: negative `margin` still lets
- * an element overlap its neighbours *inside the flow*. That one scrolls with the
+ * an element overlap its neighbors *inside the flow*. That one scrolls with the
  * content and is clipped by the scroll container, and closing it means giving up
  * margins, which prose actually uses. Containment in the stylesheet, not another
  * rule here, is what would close it.
@@ -192,7 +192,7 @@ const COLLAPSE_GROUP_ID = /^[0-9]+$/;
  * `false` — comments are not elements, so `tagNames` has nothing to do with it.
  * `rehypeVantageDirectives` relies on that deletion: it consumes a
  * `<!-- vantage: … -->` comment into attributes and deliberately leaves the node
- * for the sanitiser. Turning the switch on readmits every directive comment —
+ * for the sanitizer. Turning the switch on readmits every directive comment —
  * valid and malformed alike — into the rendered HTML, which breaks the carrier's
  * whole premise. `vantageDirectives.test.ts` ("leaves no comment in the rendered
  * markup") is the guard.
@@ -242,7 +242,7 @@ export const sanitizeSchema: Schema = {
       // The value lists are the belt to the plugin's braces: the vocabulary is
       // closed in the plugin *and* here, imported from the one module that
       // defines it, so even if a refactor let an unvalidated value reach the
-      // tree the sanitiser still refuses it.
+      // tree the sanitizer still refuses it.
       ["dataVantageTone", ...VANTAGE_TONES],
       ["dataVantageEmphasis", ...VANTAGE_EMPHASIS],
       ["dataVantageBadge", ...VANTAGE_BADGES],
@@ -270,8 +270,8 @@ export const sanitizeSchema: Schema = {
       ["dataVantageAlert", ...VANTAGE_ALERTS],
       // The design's one genuinely free-text value: the body of a review
       // comment, so it cannot be value-allowlisted and this entry is name-only.
-      // Two defences remain rather than three — `hast` escapes the value on
-      // serialisation and React sets it through the DOM property path, so it
+      // Two defenses remain rather than three — `hast` escapes the value on
+      // serialization and React sets it through the DOM property path, so it
       // cannot break out of the attribute — and the honest record of that is in
       // the design doc rather than a third layer implied here.
       "dataVantageLeaning",

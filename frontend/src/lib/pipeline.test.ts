@@ -11,7 +11,7 @@
  * `pipeline.ts` imported and every `toBe` would fail for the wrong reason.
  * `sanitizeSchema` is the exception — it comes from the same source module
  * through the vitest alias, so its identity *is* comparable, and that is the
- * assertion that catches someone handing the sanitiser a fresh object.
+ * assertion that catches someone handing the sanitizer a fresh object.
  */
 import { describe, it, expect } from "vitest";
 import type { Pluggable, PluggableList } from "unified";
@@ -72,7 +72,7 @@ describe("buildPipeline order", () => {
 
     expect(order[0]).toBe("rehypeRaw");
     // Alerts share the same window for a different reason: the title element
-    // must be stamped before the sanitiser sees it, and after
+    // must be stamped before the sanitizer sees it, and after
     // `rehypeSourceLines` so it carries no line and cannot become an anchor.
     expect(order.indexOf("rehypeVantageAlerts")).toBeGreaterThan(
       order.indexOf("rehypeSourceLines"),
@@ -103,7 +103,7 @@ describe("buildPipeline order", () => {
     expect(capture).toBeGreaterThan(-1);
     expect(katex).toBe(capture + 1);
     expect(restore).toBe(katex + 1);
-    // And the capture has to see the tree the sanitiser rebuilt, not the one it
+    // And the capture has to see the tree the sanitizer rebuilt, not the one it
     // replaced: node identities taken earlier would all be stale.
     expect(capture).toBeGreaterThan(order.indexOf("rehypeSanitize"));
   });
@@ -118,7 +118,7 @@ describe("buildPipeline order", () => {
   it("registers the directive plugin unconditionally, with no options", () => {
     // No toggle: every renderer has to agree about what a document means, and a
     // flag is a way for them to disagree (D5). It is registered even with the
-    // sanitiser off, so `renderMarkdown({ sanitize: false })` still compiles
+    // sanitizer off, so `renderMarkdown({ sanitize: false })` still compiles
     // directives.
     for (const options of [
       {},
@@ -148,7 +148,7 @@ describe("buildPipeline plugin options", () => {
     });
   });
 
-  it("hands the sanitiser Vantage's own schema, not a copy", () => {
+  it("hands the sanitizer Vantage's own schema, not a copy", () => {
     const { rehypePlugins } = buildPipeline();
     const sanitizeEntry = rehypePlugins.find(
       (entry) => nameOf(entry) === "rehypeSanitize",

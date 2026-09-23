@@ -38,12 +38,12 @@ func (e *testEnv) star(t *testing.T, body string) *starredList {
 // Every row on the wire says where it came from. The viewer keys the star's
 // meaning on it, so a response without it would render every promoted document as
 // one the reader had chosen.
-func TestStarredRowsAreLabelledAsTheUsers(t *testing.T) {
+func TestStarredRowsAreLabeledAsTheUsers(t *testing.T) {
 	e := newTestEnv(t, false)
 
 	added := e.star(t, `{"repo":"","path":"docs/a.md","is_dir":false}`)
 	require.Len(t, added.Entries, 1)
-	require.Equal(t, "user", added.Entries[0].Source, "the mutation response is labelled too")
+	require.Equal(t, "user", added.Entries[0].Source, "the mutation response is labeled too")
 
 	w := e.do(e.h.StarredList, http.MethodGet, "/starred", "", false)
 	require.Equal(t, http.StatusOK, w.Code)

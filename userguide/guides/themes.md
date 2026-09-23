@@ -1,9 +1,9 @@
-# Colour Themes
+# Color Themes
 
 Vantage has two independent appearance settings. **Light or dark** is the one
 you already know: **Shift+D**, or the Light/Dark buttons in the settings menu.
-A **colour theme** is the palette both of those modes are drawn in. The
-built-in look is called **Slate**, after the grey ramp it is built on, and
+A **color theme** is the palette both of those modes are drawn in. The
+built-in look is called **Slate**, after the gray ramp it is built on, and
 Vantage ships six palettes beside it:
 
 | Theme | Light | Dark |
@@ -26,7 +26,7 @@ mode.
 
 ## Choosing a theme
 
-Open the settings menu (the gear icon) and pick one from **Colours**, under
+Open the settings menu (the gear icon) and pick one from **Colors**, under
 the Light/Dark buttons. The list is fetched each time the menu opens, so a
 theme you have just added shows up without reloading. One of your own themes
 that has no dark half is listed as **(light only)** — see
@@ -51,7 +51,7 @@ The value is a theme id: `catppuccin`, the id of one of your own themes (below),
 or `default` for the built-in look. The key is read once, when the server
 starts, so restart Vantage after changing it. It is always read from
 `~/.config/vantage/config.toml` (or `$XDG_CONFIG_HOME/vantage/config.toml`),
-because a colour theme is your setting rather than a project's — in single-directory
+because a color theme is your setting rather than a project's — in single-directory
 mode as well as in daemon mode, and even when the daemon was started with
 `--config` pointing somewhere else.
 
@@ -178,7 +178,7 @@ Put values that are the same in both modes in `:root, :root.dark { … }`.
 
 A theme with no `:root.dark` rule at all is a **light-only** theme rather than a
 broken one: in dark mode it draws its light palette, and how readable that stays
-depends on nothing but whether its ramps are in order (below). **Colours** lists
+depends on nothing but whether its ramps are in order (below). **Colors** lists
 it as **(light only)** so that it is something you picked rather than something
 you discover after pressing Shift+D. Nothing refuses such a theme — if you never
 leave light mode there is no reason to write the other half.
@@ -188,7 +188,7 @@ small as one ramp.
 
 ### The variable contract
 
-Vantage's interface is drawn with Tailwind's colour families, and every one of
+Vantage's interface is drawn with Tailwind's color families, and every one of
 them is a variable a theme can set: `--color-<family>-<step>`, for the steps
 `50`, `100`, `200` … `900`, `950`. Each family has a role:
 
@@ -227,28 +227,28 @@ background in light mode **and** the text on accent buttons in both modes, and
 >
 > The step this catches is almost always the muted one — `slate-500` in light
 > mode, which the interface uses for every secondary label. A palette's "mid
-> grey" is usually chosen against white, and it lands on a tinted panel here.
+> gray" is usually chosen against white, and it lands on a tinted panel here.
 > Vantage's own built-ins are held to this floor by a browser test; **your theme
 > is not checked**, and the picker will not warn you, so the ratios are yours to
 > keep. 3:1 is a floor rather than a target: it is what WCAG asks of incidental
 > text, and body text is meant to clear 4.5:1.
 
-The rest of the contract is things that are not Tailwind colours:
+The rest of the contract is things that are not Tailwind colors:
 
-- **Tones** — the colours of callouts (`> [!NOTE]`) and of the `tone=` directive,
+- **Tones** — the colors of callouts (`> [!NOTE]`) and of the `tone=` directive,
   for the six tones `note`, `tip`, `important`, `warning`, `caution` and `muted`:
   `--vantage-tone-<tone>-accent` (the rule and border),
   `--vantage-tone-<tone>-ink` (the text),
   `--vantage-tone-<tone>-wash` (the background) and
   `--vantage-tone-<tone>-chip` (a badge's background). These have their own
-  built-in values rather than following the ramps, so a theme that recolours
+  built-in values rather than following the ramps, so a theme that recolors
   `blue` still gets the built-in blue for `note` until it sets these too.
-- **Code** — syntax-highlighting colours by role. Under the built-in look code
+- **Code** — syntax-highlighting colors by role. Under the built-in look code
   keeps GitHub's palette; under any theme each role reads its variable and, if
   the theme leaves it unset, falls back to a step of the theme's own ramps. A
-  theme that only recolours the ramps therefore still gets coherent code.
+  theme that only recolors the ramps therefore still gets coherent code.
 
-  | Variable | Colours | Falls back to (light / dark) |
+  | Variable | Colors | Falls back to (light / dark) |
   | --- | --- | --- |
   | `--vantage-code-fg` | Plain code, variables, punctuation | `slate-800` / `slate-200` |
   | `--vantage-code-comment` | Comments | `slate-500` / `slate-400` |
@@ -267,12 +267,12 @@ The rest of the contract is things that are not Tailwind colours:
   `--vantage-scrollbar-thumb-hover`.
 - **Mermaid diagrams** have no variables of their own: they follow the `slate`
   ramp. Diagram backgrounds, nodes, borders, lines and labels are read from the
-  same `slate` steps the built-in diagram colours were chosen from, and a
+  same `slate` steps the built-in diagram colors were chosen from, and a
   diagram redraws when the theme changes.
 
 ### Checking a theme
 
-The pages that exercise the most colour at once are a review in progress (review
+The pages that exercise the most color at once are a review in progress (review
 mode uses `purple`, `amber` and `green` together), a document with callouts of
 every kind, and a code block in a few languages. In a clone of the Vantage
 repository, the specimen pages in
@@ -284,10 +284,10 @@ leaving the page.
 
 ## What is not themed yet
 
-- **Parts of review mode.** Roughly 300 colours in the review interface —
+- **Parts of review mode.** Roughly 300 colors in the review interface —
   comment highlights, the inline comment cards, their hover and outdated states —
   are written as fixed values in Vantage's own stylesheet rather than as
-  variables, so they keep the built-in colours under every theme. Converting
+  variables, so they keep the built-in colors under every theme. Converting
   them is planned.
 - **A few accents.** The `¶` anchor beside a heading and the highlight on a
   linked line (`#L42`) stay the built-in blue, and the flash on a document that

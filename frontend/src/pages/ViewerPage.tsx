@@ -101,7 +101,7 @@ const SIDEBAR_DEFAULT_WIDTH = 288;
  * Out-of-range and unparseable both mean the default rather than a clamp,
  * because a stored width outside these bounds is not a preference the reader
  * expressed — it is a value from a build with different bounds, or a
- * hand-edited one — and honouring it would leave a sidebar the drag handle
+ * hand-edited one — and honoring it would leave a sidebar the drag handle
  * cannot get back to.
  *
  * Declared at module scope, not in the component: `usePersistentValue` follows
@@ -229,7 +229,7 @@ export const ViewerPage: React.FC = () => {
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onUp);
     };
-    // The setter is stable — `usePersistentValue` memoises it on the preference
+    // The setter is stable — `usePersistentValue` memoizes it on the preference
     // name — so naming it here does not cost the drag listeners a re-bind.
   }, [setSidebarWidth]);
   const [showRaw, setShowRaw] = useState(false);

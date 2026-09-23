@@ -192,7 +192,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		s.starred = store
 	}
 
-	// Colour themes are cosmetic, so neither lookup can fail startup: with no
+	// Color themes are cosmetic, so neither lookup can fail startup: with no
 	// themes directory the routes list none, and an unreadable config falls
 	// back to the built-in look.
 	themesDir, err := config.UserThemesDir()
@@ -352,7 +352,7 @@ func (s *Server) promoted() []starred.Listed {
 	return starred.MergeListed(s.userPromoted(), repoRows)
 }
 
-// themeDefaults collects the colour theme each repository offers, keyed the way
+// themeDefaults collects the color theme each repository offers, keyed the way
 // every other repo-keyed map on the wire is: "" in single-repo mode, the
 // repository name in daemon mode.
 //
@@ -371,7 +371,7 @@ func (s *Server) themeDefaults() map[string]string {
 		if err != nil {
 			// Warned, not fatal, exactly as in promoted(): in daemon mode one
 			// contributor's typo must not decide what every other repository on
-			// the machine is coloured in.
+			// the machine is colored in.
 			s.logger.Warn("server: ignoring repository config",
 				"repo", rs.name, "path", rs.cfg.Path(), "error", err)
 			continue
@@ -590,7 +590,7 @@ func (s *Server) Handler() http.Handler {
 }
 
 // Run starts the background lifecycle — one live.Watcher per repository plus the
-// refresh loop (daemon mode) — and blocks until ctx is cancelled. It returns
+// refresh loop (daemon mode) — and blocks until ctx is canceled. It returns
 // ctx.Err() on cancellation. Watchers and the loop are torn down before Run
 // returns. Serving HTTP is the caller's responsibility (cmd owns the
 // http.Server); Run only drives the realtime/background machinery.
@@ -635,7 +635,7 @@ func (s *Server) startWatcher(ctx context.Context, rs *repoServices) {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		// Start blocks until ctx is cancelled; its ctx.Err() return is the
+		// Start blocks until ctx is canceled; its ctx.Err() return is the
 		// expected shutdown path, not a failure worth logging.
 		if err := w.Start(ctx); err != nil && !errors.Is(err, ctx.Err()) {
 			s.logger.Warn("server: watcher stopped with error", "repo", rs.name, "error", err)
@@ -655,7 +655,7 @@ func (s *Server) Shutdown(_ context.Context) error {
 	return nil
 }
 
-// refreshLoop runs the daemon's periodic maintenance until ctx is cancelled:
+// refreshLoop runs the daemon's periodic maintenance until ctx is canceled:
 // reconcile the served repositories with what the source dirs now hold, then
 // recompute last-activity for whatever survived. Reconciliation runs first so a
 // repository found this pass is warmed by the same pass and reaches the browser

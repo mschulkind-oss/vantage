@@ -35,7 +35,7 @@
 export const PREFERENCE_KEYS = [
   /** Light or dark — see `lib/darkMode.ts`, which owns the `dark` class. */
   "vantage:theme",
-  /** The colour theme's id, `"default"` meaning the app's own look. */
+  /** The color theme's id, `"default"` meaning the app's own look. */
   "vantage:colorTheme",
   "vantage:tocOpen",
   "vantage:fullWidth",
@@ -137,19 +137,19 @@ export function readPreference(name: PreferenceName): string | null {
  *
  * The caller is not told, because there is nothing it could usefully do: it has
  * already applied the change, and a preference that cannot be saved is still
- * worth honouring for the rest of this tab's life.
+ * worth honoring for the rest of this tab's life.
  */
 export function writePreference(name: PreferenceName, value: string): void {
   try {
     localStorage.setItem(name, value);
   } catch {
-    /* See above: honoured in-tab, just not remembered. */
+    /* See above: honored in-tab, just not remembered. */
   }
 }
 
 /**
  * Forget `name` entirely, which is not the same as storing a default: a removed
- * key is what lets a later-arriving default (a repo's offered colour theme, say)
+ * key is what lets a later-arriving default (a repo's offered color theme, say)
  * apply, where a stored one would outrank it forever.
  */
 export function clearPreference(name: PreferenceName): void {
@@ -205,7 +205,7 @@ function onStorage(event: StorageEvent): void {
  *
  * The handler hears **another tab's** writes only. A `writePreference` from this
  * tab does not call it — the browser raises no `storage` event in the window
- * that wrote, and this module deliberately does not synthesise one: the code
+ * that wrote, and this module deliberately does not synthesize one: the code
  * that wrote has already applied the change, so an echo would put every local
  * write through a second, indistinguishable round trip. In-tab fan-out is the
  * caller's job, and `lib/darkMode.ts` is the one preference that needs it.

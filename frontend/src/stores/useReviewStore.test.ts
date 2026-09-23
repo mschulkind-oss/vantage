@@ -905,7 +905,7 @@ describe("useReviewStore", () => {
 
     it("does not send a legacy 'noted' turn to the agent", async () => {
       // multiRoundThread carries one. It recorded a dismissal, not something
-      // the reviewer said — relabelling it "Follow-up" would put a question in
+      // the reviewer said — relabeling it "Follow-up" would put a question in
       // their mouth that the agent would then try to answer.
       seedBatch();
 
@@ -1721,7 +1721,7 @@ describe("the follow-up note matches the turns actually in the payload", () => {
   };
 
   // An edit re-queues a comment without appending any reviewer reaction, so
-  // the thread has no turn labelled "Follow-up". Sending the agent to read one
+  // the thread has no turn labeled "Follow-up". Sending the agent to read one
   // points it at text that is not there.
   it("does not send the agent to a Follow-up turn that does not exist", async () => {
     const payload = await payloadFor([editRequeued()]);
@@ -1879,7 +1879,7 @@ describe("static export — review mode is unreachable", () => {
 
   describe("runCommand", () => {
     it("sends nothing, and says the write did not happen", async () => {
-      // Defence in depth: the UI gate and the store gate both have to fail for
+      // Defense in depth: the UI gate and the store gate both have to fail for
       // this to be reached, and if they do, silent loss is the worst outcome.
       useReviewStore.setState({ filePath: "doc.md", isReviewMode: true });
 

@@ -1082,7 +1082,7 @@ func TestUserAndRepositoryPromotionsUnion(t *testing.T) {
 	require.Equal(t,
 		[]string{"docs/design.md=repo", "roadmap.md=user-config"},
 		starredRows(t, srv.Handler()),
-		"both lists contribute; the shared row is labelled with the reader's own")
+		"both lists contribute; the shared row is labeled with the reader's own")
 }
 
 // repoThemeDefaults is the repo_defaults half of GET /api/themes.
@@ -1154,7 +1154,7 @@ func TestDaemonReportsEachRepositorysOfferedTheme(t *testing.T) {
 }
 
 // One contributor's typo must not decide what every other repository on a daemon
-// is coloured in, so a broken config is warned about and stepped over.
+// is colored in, so a broken config is warned about and stepped over.
 func TestABrokenRepositoryConfigDoesNotHideAnothersTheme(t *testing.T) {
 	isolateUserDirs(t)
 	broken := initRepo(t, map[string]string{"a.md": "# A\n"})

@@ -24,8 +24,8 @@ before it reaches the DOM. So this design is one renderer change (give an OQ a
 real, navigable `id`) and three checker rules that make writing the reference
 without the link an error.
 
-**The most important section is [§4.1](#41-the-anchor-an-oq-id-has-to-survive-the-sanitiser)** — the
-sanitiser ordering constraint is the one place this design can be built wrong in
+**The most important section is [§4.1](#41-the-anchor-an-oq-id-has-to-survive-the-sanitizer)** — the
+sanitizer ordering constraint is the one place this design can be built wrong in
 a way that type-checks, passes its tests, and produces dead links in every
 document.
 
@@ -78,7 +78,7 @@ here as it stood. `stampOq` set `data-vantage-oq` and `data-vantage-leaning` and
 dropped `id` on purpose
 ([`rehypeVantageDirectives.ts:328`](../../packages/vantage-md/src/rehypeVantageDirectives.ts#L328)):
 *"`id` resolves and is deliberately not stamped: nothing in the DOM reads it …
-an attribute nobody reads is a sanitiser entry bought for nothing. It stays in
+an attribute nobody reads is a sanitizer entry bought for nothing. It stays in
 the source for the checker and for `rg`."* That reasoning was correct when the
 id had no reader. This design gives it one.
 
@@ -128,14 +128,14 @@ flowchart TD
   ref["[OQ-TP4](./trust-paths.md#OQ-TP4)"] -.->|"resolves to"| dom
 ```
 
-### 4.1 The anchor: an OQ id has to survive the sanitiser
+### 4.1 The anchor: an OQ id has to survive the sanitizer
 
 > [!WARNING]
 > Stamping a bare `id` inside `rehypeVantageDirectives` is the obvious
 > implementation and it is wrong. The plugin runs **before** `rehypeSanitize`
-> (it must — it reads HTML comments, which the sanitiser deletes), and the
-> sanitiser's default schema clobbers `id` with the prefix `user-content-`.
-> `rehypeSlug` is registered *after* the sanitiser for exactly this reason
+> (it must — it reads HTML comments, which the sanitizer deletes), and the
+> sanitizer's default schema clobbers `id` with the prefix `user-content-`.
+> `rehypeSlug` is registered *after* the sanitizer for exactly this reason
 > ([`pipeline.ts:20`](../../packages/vantage-md/src/pipeline.ts#L20)). A bare
 > `id` stamped early acquires that prefix, every reference to it dies, and
 > nothing errors anywhere.
@@ -235,8 +235,8 @@ and only the first one has an anchor:
 > deliberately destroys the `oq` directive — that is what compaction is — and
 > nothing should reintroduce a per-row anchor just to keep a fragment alive.
 > Writing a hand-rolled `<a id=…></a>` into a ledger cell does not work either:
-> raw HTML ids are clobbered by the sanitiser too, the same trap
-> [§4.1](#41-the-anchor-an-oq-id-has-to-survive-the-sanitiser) is about, and the
+> raw HTML ids are clobbered by the sanitizer too, the same trap
+> [§4.1](#41-the-anchor-an-oq-id-has-to-survive-the-sanitizer) is about, and the
 > checker's `htmlAnchors` would accept it while the viewer refused to navigate
 > to it.
 
@@ -396,7 +396,7 @@ What I would build, in order. Each step leaves the gate green.
 
 | Risk | Mitigation |
 | :--- | :--- |
-| The bare-`id` trap in [§4.1](#41-the-anchor-an-oq-id-has-to-survive-the-sanitiser) is taken and every OQ link dies silently | A test asserting the rendered id is the author's own, unprefixed — the failure is invisible without it |
+| The bare-`id` trap in [§4.1](#41-the-anchor-an-oq-id-has-to-survive-the-sanitizer) is taken and every OQ link dies silently | A test asserting the rendered id is the author's own, unprefixed — the failure is invisible without it |
 | `ref/unlinked-file` fires on generic manifest names | Doc-relative resolution only; accepted residue in [OQ-2](#decision-ledger) |
 | The corpus fix mislinks a `§` ref to the wrong section | `link/dead-section-anchor` catches a *dead* target but not a *wrong* one; [OQ-1](#decision-ledger) decides whether the rule closes that hole |
 | A `ref/*` error blocks an unrelated commit on a doc nobody is editing | The whole corpus is fixed in the same commit, so the steady state is zero findings |
@@ -437,7 +437,7 @@ this repo.
 **A Decision Ledger's ID column is a declaration site.** The design named the
 in-flight definition site — a question's own title — and missed the compacted
 one. A ledger row *is* the record of the decision, so the id in its first cell
-declares rather than references. Recognised structurally: a table whose header's
+declares rather than references. Recognized structurally: a table whose header's
 first column is exactly `ID`, and within it a first cell that is exactly an id.
 Both halves are load-bearing — the header alone would swallow the `Settled in`
 column's section references, which are real references and do need links. This
@@ -453,7 +453,7 @@ rule exists to catch.
 **A section number beside a filename cannot be resolved mechanically.** A
 reference naming a document and then a number means *that document's* section,
 but a rule sees a link and a number with no way to know the number belongs to the
-neighbour rather than the host. Auto-linking the corpus mislinked exactly this
+neighbor rather than the host. Auto-linking the corpus mislinked exactly this
 shape, and the rule cannot catch it, because the link resolves and the host
 document has a section by that number too:
 
@@ -468,7 +468,7 @@ As [`agent-cli.md`](agent-cli.md) §6 explains…
 > That last one is a real hole and it stays open. `ref/unlinked-section` proves
 > a link points at the section its number names **in the document the link
 > targets**. It cannot prove the author meant that document. A reference that
-> names a neighbouring file and then links the number to *this* file's
+> names a neighboring file and then links the number to *this* file's
 > same-numbered section passes every check and goes to the wrong place. The
 > mitigation is a convention, not a rule: put the document inside the link, so
 > the number and the file it belongs to travel together.
