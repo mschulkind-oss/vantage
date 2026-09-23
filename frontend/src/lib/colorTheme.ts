@@ -11,7 +11,7 @@
  * the app before themes existed.
  *
  * Light/dark stays a separate switch (`.dark` on `<html>`, owned by
- * SettingsDropdown); a theme supplies both halves and the mode picks one.
+ * `lib/darkMode.ts`); a theme supplies both halves and the mode picks one.
  *
  * Two kinds of theme share one id space, and both reach the page the same way —
  * as a `<link>` to a stylesheet, so there is one code path to reason about:
@@ -49,6 +49,12 @@ import lilaUrl from "../themes/lila.css?url";
 import nordUrl from "../themes/nord.css?url";
 import solarizedUrl from "../themes/solarized.css?url";
 import tokyoNightUrl from "../themes/tokyo-night.css?url";
+import {
+  clearPreference,
+  readPreference,
+  subscribePreference,
+  writePreference,
+} from "./preferences";
 import { isStaticMode } from "./staticMode";
 import type { ThemeList } from "../types";
 
@@ -132,30 +138,19 @@ function userTheme(id: string, name = id, hasDark = true): ColorTheme {
   return { id, name, source: "user", hasDark };
 }
 
-// Storage can throw outright — Safari private windows, a sandboxed iframe, or
-// site data blocked — and a colour preference is never worth a broken page.
+// Through `lib/preferences`, which is where the throwing cases live — Safari
+// private windows, a sandboxed iframe, site data blocked — because a colour
+// preference is never worth a broken page.
 function readStored(): string | null {
-  try {
-    return localStorage.getItem(COLOR_THEME_STORAGE_KEY);
-  } catch {
-    return null;
-  }
+  return readPreference(COLOR_THEME_STORAGE_KEY);
 }
 
 function writeStored(id: string): void {
-  try {
-    localStorage.setItem(COLOR_THEME_STORAGE_KEY, id);
-  } catch {
-    /* ignore */
-  }
+  writePreference(COLOR_THEME_STORAGE_KEY, id);
 }
 
 function clearStored(): void {
-  try {
-    localStorage.removeItem(COLOR_THEME_STORAGE_KEY);
-  } catch {
-    /* ignore */
-  }
+  clearPreference(COLOR_THEME_STORAGE_KEY);
 }
 
 /** The theme in effect right now, `"default"` when none is. */
@@ -377,4 +372,44 @@ export async function initColorTheme(): Promise<void> {
   // they are somebody else's choice, and the file that holds them can change.
   if (!theme || (stored && theme.source === "built-in")) return;
   await applyColorTheme(theme);
+}
+
+/**
+ * Follow the colour theme the reader picks in another tab, for the life of this
+ * one. Returns its unsubscribe, which `main.tsx` never calls — the preference
+ * outlives every component — but a test does.
+ *
+ * A storage event has to *apply* the theme, not merely record its id: the choice
+ * is a stylesheet in `<head>`, so a tab that only remembered the new id would go
+ * on rendering the old palette while claiming the new one. It goes through
+ * `applyColorTheme` for both kinds of theme, which is what keeps the `<link>`
+ * swap, the `pending` bookkeeping and the `data-vantage-theme` timing identical
+ * to a local pick — a user theme still waits for its sheet to load before
+ * mermaid is told the palette changed.
+ *
+ * It does not store what it adopts: `applyColorTheme`, never
+ * `chooseColorTheme`. The id is already stored, by the tab the reader actually
+ * clicked in, and writing it back here would put every tab's read on the other
+ * tabs' write path.
+ *
+ * It does count as a choice, because it is one — the reader made it, next door.
+ * `initColorTheme` may still be waiting on a slow `/api/themes`, and `choices`
+ * is how it knows a pick was made while it waited and must not be overridden.
+ * Without the increment, a theme chosen in another tab during this tab's startup
+ * would be replaced by the configured default a moment later.
+ */
+export function followColorTheme(): () => void {
+  return subscribePreference(COLOR_THEME_STORAGE_KEY, (raw) => {
+    // A removed key means the reader is back on the app's own look, which is
+    // also what `initColorTheme` does with a stored id whose file has gone.
+    const id = raw ?? DEFAULT_COLOR_THEME;
+    // Already in effect: re-applying would discard a sheet still loading and
+    // re-fetch one the browser has, for no visible change.
+    if (id === activeColorThemeId()) return;
+    choices++;
+    // An id no built-in claims can only be one of the reader's files, and
+    // trying it needs no list — the `<link>` either loads or reports an error,
+    // and an error leaves the theme already in the page untouched.
+    void applyColorTheme(findBuiltIn(id) ?? userTheme(id));
+  });
 }

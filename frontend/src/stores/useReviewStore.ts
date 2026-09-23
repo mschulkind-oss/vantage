@@ -2,6 +2,13 @@ import { create } from "zustand";
 import axios from "axios";
 import { useRepoStore } from "./useRepoStore";
 import { copyTextOrWarn } from "../lib/clipboard";
+import {
+  clearPreference,
+  readPreference,
+  reviewModePreferenceKey,
+  writePreference,
+  type PreferenceName,
+} from "../lib/preferences";
 import { isStaticMode } from "../lib/staticMode";
 import type {
   CommentAnchor,
@@ -23,32 +30,28 @@ const getApiBase = (): string | null => {
 // file where the user has turned review mode ON but hasn't added any
 // comments yet doesn't silently drop the toggle.  (Files with saved
 // comments auto-enable review mode from server data.)
-const REVIEW_MODE_KEY_PREFIX = "vantage.reviewMode:";
-
-const reviewModeKey = (filePath: string): string => {
+//
+// One key per document, so this is a registered *family* in `lib/preferences`
+// rather than a key — the accessor there is what keeps a per-file key from being
+// the one place an ad-hoc `localStorage` write could still live. Whether it
+// follows the reader between tabs is argued in `UNSYNCED_PREFERENCES`: it does
+// not, because the two tabs are usually on two different documents and the
+// second one adopts the toggle when it opens the same file anyway.
+const reviewModeKey = (filePath: string): PreferenceName => {
   const { currentRepo, isMultiRepo } = useRepoStore.getState();
   const prefix = isMultiRepo && currentRepo ? `${currentRepo}:` : "";
-  return `${REVIEW_MODE_KEY_PREFIX}${prefix}${filePath}`;
+  return reviewModePreferenceKey(`${prefix}${filePath}`);
 };
 
-const readReviewModePref = (filePath: string): boolean => {
-  try {
-    return localStorage.getItem(reviewModeKey(filePath)) === "on";
-  } catch {
-    return false;
-  }
-};
+const readReviewModePref = (filePath: string): boolean =>
+  readPreference(reviewModeKey(filePath)) === "on";
 
 const writeReviewModePref = (filePath: string, on: boolean): void => {
-  try {
-    if (on) {
-      localStorage.setItem(reviewModeKey(filePath), "on");
-    } else {
-      localStorage.removeItem(reviewModeKey(filePath));
-    }
-  } catch {
-    // storage quota / privacy mode — persistence is best-effort
-  }
+  // Off is stored as absence rather than as `"off"`, which is the format this
+  // preference has always had: a reader who turns review mode off should look
+  // exactly like one who never turned it on.
+  if (on) writePreference(reviewModeKey(filePath), "on");
+  else clearPreference(reviewModeKey(filePath));
 };
 
 /**

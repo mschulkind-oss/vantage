@@ -31,4 +31,55 @@ export default defineConfig([
       "react-refresh/only-export-components": "off",
     },
   },
+  {
+    // Web storage is `src/lib/preferences.ts`'s alone. Eleven preferences once
+    // reached `localStorage` at the point of use and nine of them therefore
+    // never followed the reader to a second tab, which no type and no test can
+    // prevent the twelfth from repeating — only a rule that fails at the line
+    // that wrote it. The selectors cover both spellings of the access,
+    // `localStorage.x` and `window.localStorage.x`, because the second is the
+    // obvious way around the first.
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "MemberExpression[object.name=/^(localStorage|sessionStorage)$/]",
+          message:
+            "Use readPreference/writePreference/clearPreference/subscribePreference from src/lib/preferences.ts — a preference read here would not follow the reader to another tab.",
+        },
+        {
+          selector:
+            "MemberExpression[property.name=/^(localStorage|sessionStorage)$/]",
+          message:
+            "Use readPreference/writePreference/clearPreference/subscribePreference from src/lib/preferences.ts — a preference read here would not follow the reader to another tab.",
+        },
+      ],
+    },
+  },
+  {
+    // The three exemptions, each for a different reason:
+    //
+    // - `preferences.ts` is the module the rule exists to funnel everything
+    //   into; it is the one place the access is the point.
+    // - A unit test's whole job here is the storage contract: it seeds the
+    //   stored bytes, asserts the format an older tab has to keep reading, and
+    //   models another tab by dispatching the `StorageEvent` a real one would
+    //   have caused — none of which is expressible through the module under
+    //   test. The rule protects readers from going around the module, and a test
+    //   has no reader to keep in step.
+    // - A Playwright spec's `localStorage` is inside `page.evaluate`, so it runs
+    //   in the browser under test rather than in this app's source. It is how
+    //   those specs set up and assert a preference from outside, which is the
+    //   only vantage point that can prove two tabs agree.
+    files: [
+      "src/lib/preferences.ts",
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      "e2e/**/*.ts",
+    ],
+    rules: {
+      "no-restricted-syntax": "off",
+    },
+  },
 ]);
