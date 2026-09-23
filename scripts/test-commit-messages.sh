@@ -82,6 +82,17 @@ expect_message 0 "human co-author allowed" "$(printf 'feat: a thing\n\nCo-Author
 
 expect_message 1 "empty message" ""
 
+# The tag-only commit bypasses commit-msg (git commit-tree), so the recipe's
+# subject must pass this checker before pre-push sees it. Read the recipe itself
+# rather than testing a second, unrelated copy of its message.
+release_subject=$(sed -n 's/.*git commit-tree .* -m "\([^"]*\)".*/\1/p' "$here/../Justfile")
+if [ -n "$release_subject" ]; then
+    expect_message 0 "release commit subject" "$(printf '%s\n' "$release_subject" | sed 's/{{version}}/9.8.7/g')"
+else
+    fail=$((fail + 1))
+    echo "FAIL [release commit subject]: no commit-tree message in Justfile"
+fi
+
 _got=0
 "$script" --message "$tmp/does-not-exist" >/dev/null 2>&1 || _got=$?
 if [ "$_got" = 2 ]; then
