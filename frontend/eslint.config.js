@@ -37,8 +37,13 @@ export default defineConfig([
     // never followed the reader to a second tab, which no type and no test can
     // prevent the twelfth from repeating — only a rule that fails at the line
     // that wrote it. The selectors cover both spellings of the access,
-    // `localStorage.x` and `window.localStorage.x`, because the second is the
-    // obvious way around the first.
+    // `localStorage.x`, `window.localStorage.x` and `window["localStorage"].x`,
+    // because each is the obvious way around the one before it. The third
+    // matches only a *string literal* property, so `obj[someName]` and
+    // `obj["anythingElse"]` are untouched — the goal is closing the obvious
+    // bypass, not proving impossibility. A genuinely dynamic `window[name]`
+    // where `name` is computed at runtime can still reach storage; nothing short
+    // of a type-aware rule would see that, and nothing in this app does it.
     rules: {
       "no-restricted-syntax": [
         "error",
@@ -51,6 +56,12 @@ export default defineConfig([
         {
           selector:
             "MemberExpression[property.name=/^(localStorage|sessionStorage)$/]",
+          message:
+            "Use readPreference/writePreference/clearPreference/subscribePreference from src/lib/preferences.ts — a preference read here would not follow the reader to another tab.",
+        },
+        {
+          selector:
+            'MemberExpression[computed=true][property.type="Literal"][property.value=/^(localStorage|sessionStorage)$/]',
           message:
             "Use readPreference/writePreference/clearPreference/subscribePreference from src/lib/preferences.ts — a preference read here would not follow the reader to another tab.",
         },

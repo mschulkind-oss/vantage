@@ -23,6 +23,7 @@ import {
   builtInColorThemes,
   chooseColorTheme,
   listColorThemes,
+  subscribeColorTheme,
   type ColorTheme,
 } from "../lib/colorTheme";
 import {
@@ -63,7 +64,17 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
   const close = useCallback(() => setOpen(false), []);
   const [colorThemes, setColorThemes] =
     useState<ColorTheme[]>(builtInColorThemes);
-  const [colorTheme, setColorTheme] = useState(activeColorThemeId);
+  // The theme in effect, watched rather than remembered — the same bargain as
+  // `mode` above. There is deliberately no optimistic update here: a user
+  // theme's colours arrive only when its stylesheet loads, so until then the
+  // control truthfully still names the theme the reader is looking at, and a
+  // sheet that fails to load never names itself at all. What looks like a
+  // missing optimistic update is the control refusing to promise a palette that
+  // is not on the page.
+  const colorTheme = useSyncExternalStore(
+    subscribeColorTheme,
+    activeColorThemeId,
+  );
   const colorSelectId = useId();
 
   // Asked each time the menu opens rather than once, because the server
@@ -103,23 +114,17 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
   const handleColorThemeChange = (id: string) => {
     const chosen = colorOptions.find((t) => t.id === id);
     if (!chosen) return;
-    setColorTheme(id);
-    // A user theme applies only once its sheet loads, and not at all if it
-    // fails, so the picker settles on whatever is actually in effect.
-    void chooseColorTheme(chosen).then(() =>
-      setColorTheme(activeColorThemeId()),
-    );
+    // Nothing to record: `chooseColorTheme` sets the attribute the control is
+    // already watching, once the theme is in effect. Two sources of truth is how
+    // the picker used to end up showing a theme the page was not wearing.
+    void chooseColorTheme(chosen);
   };
 
   return (
     <div className="relative">
       <button
         ref={triggerRef}
-        onClick={() => {
-          // Startup may have switched themes since the last render.
-          if (!open) setColorTheme(activeColorThemeId());
-          setOpen(!open);
-        }}
+        onClick={() => setOpen(!open)}
         className={cn(
           "p-1.5 rounded-md transition-colors",
           open
