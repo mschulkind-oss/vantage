@@ -735,7 +735,7 @@ function turnStyle(r: CommentReaction): { label: string; className: string } {
  * the instant they were submitted, and hid every earlier round of a thread.
  */
 const ThreadView: React.FC<{ comment: ReviewComment }> = ({ comment }) => {
-  // Legacy "noted" turns are dropped, not relabelled: they recorded a dismissal
+  // Legacy "noted" turns are dropped, not relabeled: they recorded a dismissal
   // through a since-removed accept action, and dismissing is a flag on the
   // comment rather than something either party said. Rendering them stacked up
   // "You accepted" rows that no reviewer ever typed.

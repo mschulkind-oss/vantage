@@ -2,10 +2,10 @@
  * The preference store's own contract, and the two guards that make forgetting
  * the next preference impossible rather than merely unlikely.
  *
- * The behavioural half uses jsdom exactly as `usePersistentFlag.test.ts` does: a
+ * The behavioral half uses jsdom exactly as `usePersistentFlag.test.ts` does: a
  * `setItem` in this window raises no `storage` event, just as in Chrome, while a
  * hand-dispatched `StorageEvent` carries `storageArea` through faithfully. So
- * "another tab wrote this" is modelled the only way it can be — by dispatching
+ * "another tab wrote this" is modeled the only way it can be — by dispatching
  * the event a real second tab would have caused.
  *
  * The scanning half reads `src/` off disk, for two things a type cannot see:
@@ -130,7 +130,7 @@ describe("following another tab", () => {
     writePreference(KEY, "true");
 
     // The browser raises no `storage` event in the window that wrote, and this
-    // module does not synthesise one: the writer has already applied the change.
+    // module does not synthesize one: the writer has already applied the change.
     expect(handler).not.toHaveBeenCalled();
     stop();
   });

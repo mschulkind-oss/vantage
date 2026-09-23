@@ -89,7 +89,7 @@ vantage daemon
 - **Agent CLI** — `vantage-check`: a standalone binary that prints Vantage's Markdown conventions and verifies that a document really renders
 - **Static Site Export** — Build a standalone static site from a directory of Markdown
 - **Dark Mode** — Toggle with Shift+D, persisted across sessions
-- **Colour Themes** — The built-in look, Catppuccin or Lila, or your own palette as one CSS file in `~/.config/vantage/themes/` ([guide](userguide/guides/themes.md))
+- **Color Themes** — The built-in look, Catppuccin or Lila, or your own palette as one CSS file in `~/.config/vantage/themes/` ([guide](userguide/guides/themes.md))
 - **Keyboard Shortcuts** — Quick file picker with `t`, fuzzy search, keyboard navigation
 - **Performance Diagnostics** — Built-in `perf-report` command for anonymized timing data
 - **Login Service** — Run in the background from login: a systemd user unit on Linux, a launchd agent on macOS
@@ -145,7 +145,7 @@ falls forward; see the note under `--port` below).
 | `walk_timeout`               | float            | `30.0`             | Timeout (seconds) for git ls-files subprocess     |
 | `use_ignore_files`           | boolean          | `true`             | Honor `.gitignore` and ignore files during walks  |
 | `log_level`                  | string           | `"info"`           | Logging verbosity                                 |
-| `theme`                      | string           | `""` (built-in)    | Default colour theme for every browser; user config only, and a project may offer one below it ([guide](userguide/guides/themes.md)) |
+| `theme`                      | string           | `""` (built-in)    | Default color theme for every browser; user config only, and a project may offer one below it ([guide](userguide/guides/themes.md)) |
 
 ### Excluded Directories
 
@@ -294,8 +294,8 @@ In daemon mode, endpoints are prefixed with `/api/r/{repo}/`:
 | `GET /api/version`          | Server version info                     |
 | `GET /api/perf/diagnostics` | Performance diagnostics (anonymized)    |
 | `POST /api/perf/reset`      | Reset performance counters              |
-| `GET /api/themes`           | User colour themes + the defaults       |
-| `GET /api/themes/{id}`      | One user colour theme's stylesheet      |
+| `GET /api/themes`           | User color themes + the defaults       |
+| `GET /api/themes/{id}`      | One user color theme's stylesheet      |
 | `WS /ws`                    | WebSocket for live reload notifications |
 
 ---

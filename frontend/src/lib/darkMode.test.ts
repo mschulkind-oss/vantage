@@ -151,7 +151,7 @@ describe("another tab choosing", () => {
     expect(root.classList.contains("dark")).toBe(false);
   });
 
-  it("ignores a value it does not recognise rather than inverting the page", () => {
+  it("ignores a value it does not recognize rather than inverting the page", () => {
     writeFromAnotherTab("midnight");
     expect(root.classList.contains("dark")).toBe(false);
   });

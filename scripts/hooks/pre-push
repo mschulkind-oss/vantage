@@ -1,5 +1,5 @@
 #!/bin/sh
-# Defence-in-depth: reject pushes containing AI attribution trailers, generation
+# Defense-in-depth: reject pushes containing AI attribution trailers, generation
 # footers, AI author emails, or non-conventional subjects. Catches commits that
 # bypassed `commit-msg` (--no-verify, imported history, commits made from another
 # machine). Wired by `just setup` via core.hooksPath.

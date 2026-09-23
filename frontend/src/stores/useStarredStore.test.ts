@@ -146,7 +146,7 @@ describe("useStarredStore", () => {
     });
   });
 
-  // Four callers write this list and none can be cancelled, so an older
+  // Four callers write this list and none can be canceled, so an older
   // response must never land on a newer one.
   describe("racing responses", () => {
     it("discards a GET that a mutation overtook", async () => {

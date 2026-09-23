@@ -4,7 +4,7 @@ import { checkTree, makeTree, ruleIds } from "./helpers.js";
 
 /**
  * The delegate the design warns about. Mermaid's grammar works headless but
- * its sanitisation step does not, so a naive `try { mermaid.parse() } catch`
+ * its sanitization step does not, so a naive `try { mermaid.parse() } catch`
  * reports every valid flowchart in a repository as broken.
  *
  * The first test here is the one that matters: valid diagrams, of the kinds
@@ -119,7 +119,7 @@ describe("classification", () => {
     expect(classify(error, "")).toMatchObject({ kind: "environment" });
   });
 
-  it("treats anything else it does not recognise as an environment failure", () => {
+  it("treats anything else it does not recognize as an environment failure", () => {
     expect(
       classify(new ReferenceError("document is not defined"), ""),
     ).toMatchObject({ kind: "environment" });

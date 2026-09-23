@@ -22,7 +22,7 @@
  *    the pipeline never asks. It renders the formulas through the real chain and
  *    requires that values the filter *rejects* are on the page, which is only
  *    true because math is outside its reach. Move `rehypeKatex` ahead of the
- *    sanitiser and that fails loudly, instead of math quietly losing its layout.
+ *    sanitizer and that fails loudly, instead of math quietly losing its layout.
  */
 import { describe, it, expect } from "vitest";
 import { renderMarkdown, SAFE_STYLE } from "vantage-md";
@@ -58,12 +58,12 @@ describe("inline style filtering", () => {
 
   it("strips every form of positioning, absolute and relative included", async () => {
     // `position` is banned as a property, not enumerated by value. The filter
-    // only ever sees author HTML (math is rendered after the sanitiser), and
+    // only ever sees author HTML (math is rendered after the sanitizer), and
     // nothing in a document needs to position itself: this is a Markdown
     // viewer, not a layout API.
     //
     // `absolute` is the case that matters, and it is not the modest "overlaps
-    // its neighbours" residual it reads as. Measured in Chrome against the
+    // its neighbors" residual it reads as. Measured in Chrome against the
     // viewer's own ancestor chain: the nearest positioned ancestor of the prose
     // container is `ViewerPage.tsx`'s `flex-1 flex min-h-0 relative`, which sits
     // *outside* the scroll container — so an author's
@@ -164,12 +164,12 @@ describe("inline style filtering", () => {
     }
   });
 
-  it("does not filter math at all, because KaTeX renders after the sanitiser", async () => {
+  it("does not filter math at all, because KaTeX renders after the sanitizer", async () => {
     // The load-bearing fact, asserted end to end. `buildRehypePlugins` pushes
     // `rehypeSanitize` and only then `rehypeKatex`, so no KaTeX `style` value is
     // ever tested against `SAFE_STYLE`. This is the doc's own example formula,
     // and the attribute it emits is one the filter now rejects — so if anyone
-    // moves `rehypeKatex` ahead of the sanitiser, this fails loudly instead of
+    // moves `rehypeKatex` ahead of the sanitizer, this fails loudly instead of
     // math silently losing its layout.
     const { html } = await renderMarkdown("$$\n\\int_0^\\infty f(x)dx\n$$\n");
     const emitted = [...html.matchAll(/\sstyle="([^"]*)"/g)].map((m) => m[1]);
@@ -182,7 +182,7 @@ describe("inline style filtering", () => {
     // This battery is not a check on `SAFE_STYLE` — it cannot be, since the
     // filter never runs on math. It measures the *rendered page*: how much
     // inline CSS math brings with it, and that some of that CSS is CSS the
-    // filter rejects. If `rehypeKatex` ever moved ahead of the sanitiser, the
+    // filter rejects. If `rehypeKatex` ever moved ahead of the sanitizer, the
     // rejected values would be the first thing to vanish and the last assertion
     // here would fail.
     //
@@ -294,14 +294,14 @@ describe("the data-vantage-* allowlist", () => {
   it("keeps the free-text leaning, escaped rather than filtered", async () => {
     // `leaning` is the one value with no closed set — it is the body of a review
     // comment — so it is allowlisted by name only. What makes that safe is the
-    // serialiser: `hast` escapes the value, and no protocol check applies to a
+    // serializer: `hast` escapes the value, and no protocol check applies to a
     // non-URL attribute, so there is nothing to break out of.
     const leaning = `<img src=x onerror=alert(1)> & say "no" to 'it'`;
     const html = await styled(
       `<p data-vantage-leaning="&lt;img src=x onerror=alert(1)&gt; &amp; say &quot;no&quot; to 'it'">x</p>`,
     );
 
-    // Measured, not assumed: the serialiser escapes `"` and `&` — which is what
+    // Measured, not assumed: the serializer escapes `"` and `&` — which is what
     // keeps a value inside its own quotes — and leaves `<` alone, which is
     // harmless inside a quoted attribute. So the value below survives verbatim
     // and still cannot become an element.

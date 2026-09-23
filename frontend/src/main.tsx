@@ -11,11 +11,11 @@ initStaticMode();
 
 // After static mode, which decides whether there is a server to ask for user
 // themes. A stored built-in theme is applied before this returns, so the first
-// render is already in its colours; the rest settles once /api/themes answers.
+// render is already in its colors; the rest settles once /api/themes answers.
 void initColorTheme();
 
 // And then follow the reader's later picks, including the ones made in another
-// tab: a colour theme is a preference of the whole browser, and a second tab of
+// tab: a color theme is a preference of the whole browser, and a second tab of
 // the same repository is the same reader wanting the same palette.
 followColorTheme();
 

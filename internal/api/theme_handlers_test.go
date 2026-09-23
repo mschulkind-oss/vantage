@@ -116,8 +116,8 @@ func TestThemeCSSUnknownTheme(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, getTheme(e, "missing").Code)
 }
 
-// On macOS's case-folding filesystem a capitalised file used to list under its
-// capitalised id — a second "Catppuccin" beside the built-in it was meant to
+// On macOS's case-folding filesystem a capitalized file used to list under its
+// capitalized id — a second "Catppuccin" beside the built-in it was meant to
 // replace, and a "Default" past the reserved id — and to be served under any
 // spelling. The same files 404'd on Linux.
 func TestThemesAreLowercaseAndServedOnlyUnderTheirListedID(t *testing.T) {

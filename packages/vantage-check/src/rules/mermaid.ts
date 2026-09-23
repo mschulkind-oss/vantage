@@ -72,7 +72,7 @@ export async function checkMermaid(collector: Collector): Promise<void> {
  * Two measured facts drive all of this (mermaid 11.12.2, Node 22):
  *
  * 1. A *valid* flowchart throws `TypeError: DOMPurify.addHook is not a
- *    function`. Mermaid's grammar layer is fine headless; the sanitisation step
+ *    function`. Mermaid's grammar layer is fine headless; the sanitization step
  *    it runs over labels is not, because with no DOM the `dompurify` module
  *    exports its factory function rather than a configured instance. Treating
  *    that throw as a finding would report every valid flowchart in a repository
@@ -83,7 +83,7 @@ export async function checkMermaid(collector: Collector): Promise<void> {
  *
  * The fix is four no-op methods on the dompurify export, installed *before*
  * mermaid is imported, since mermaid calls `addHook` at module-init time. That
- * is why both imports are dynamic and ordered. Sanitisation output does not
+ * is why both imports are dynamic and ordered. Sanitization output does not
  * matter to a parse check — only that the call exists.
  *
  * Then the canary: a diagram we know is valid is parsed before any of the
@@ -126,7 +126,7 @@ async function ensureMermaid(): Promise<Loaded> {
   return loaded;
 }
 
-/** Reset the memoised loader. Tests only. */
+/** Reset the memoized loader. Tests only. */
 export function resetMermaid(): void {
   loaded = undefined;
 }
@@ -143,7 +143,7 @@ interface Classified {
  *
  * Only shapes mermaid produces deliberately count as a verdict on the
  * document: a jison parse error (which carries a `hash`), a Langium parse
- * error ("Parsing failed: …"), and an unrecognised diagram type. Everything
+ * error ("Parsing failed: …"), and an unrecognized diagram type. Everything
  * else — TypeError, ReferenceError, anything reaching for a browser — means we
  * did not manage to check, and says so.
  */

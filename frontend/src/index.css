@@ -85,19 +85,19 @@ code {
     "Courier New", monospace;
 }
 
-/* ── Colour themes ─────────────────────────────────────────────────────────
-   A colour theme is a stylesheet that sets CSS variables on `:root` (light)
+/* ── Color themes ─────────────────────────────────────────────────────────
+   A color theme is a stylesheet that sets CSS variables on `:root` (light)
    and `:root.dark` (dark) — see userguide/guides/themes.md. Nearly everything already
-   reads one: every Tailwind colour utility compiles to `var(--color-…)`, and
+   reads one: every Tailwind color utility compiles to `var(--color-…)`, and
    the tone palette is `--vantage-tone-*`. The blocks below route the three
    things that did not.
 
    Each is written so the built-in look is unchanged: the typography values are
    the very palette steps the plugin inlined, the scrollbar variables fall back
-   to their old hex, and the code-colour roles apply only while a theme is
+   to their old hex, and the code-color roles apply only while a theme is
    active (`data-vantage-theme` on `<html>`). */
 
-/* The typography plugin inlines its palette as literal colours, so a theme
+/* The typography plugin inlines its palette as literal colors, so a theme
    could not reach body text, bold, bullets, rules or table borders. These are
    the `prose-slate` values, restated as the steps they came from. Unlayered,
    so they outrank the plugin's copy in `@layer utilities`.
@@ -178,11 +178,11 @@ code {
   --tw-prose-td-borders: var(--tw-prose-invert-td-borders);
 }
 
-/* Code colours, by role. The built-in look keeps GitHub's highlight.js
+/* Code colors, by role. The built-in look keeps GitHub's highlight.js
    palette (the import in MarkdownViewer and the dark override below), so these
    rules only apply under a theme. A theme names a role with
    `--vantage-code-<role>`; a role it leaves out falls back to a step of the
-   theme's own palette, so a theme that only recolours the ramps still gets
+   theme's own palette, so a theme that only recolors the ramps still gets
    coherent code. `!important` because the dark override it replaces uses it.
 
    Screen only. The print block forces code to near-black with

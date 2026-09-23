@@ -171,7 +171,7 @@ path = "` + repoB + `"
 // t.TempDir() path passes with the bug fully present and fails only on macOS,
 // where t.TempDir() sits under /var — itself a symlink to /private/var. That
 // reads as flaky-by-platform rather than as a correct assertion.
-func TestResolveCanonicalisesTheConfigPath(t *testing.T) {
+func TestResolveCanonicalizesTheConfigPath(t *testing.T) {
 	real := filepath.Join(t.TempDir(), "real")
 	require.NoError(t, os.MkdirAll(real, 0o755))
 	link := filepath.Join(t.TempDir(), "link")
@@ -579,7 +579,7 @@ promote = ["roadmap.md"]
 
 // The data path is an on-disk upgrade contract: a release that moved it would
 // orphan what is already there rather than fail, so XDG_DATA_HOME must not move
-// it. Modelled on TestReviewDirIsLiteralPath, which makes the same promise for
+// it. Modeled on TestReviewDirIsLiteralPath, which makes the same promise for
 // the review store.
 func TestDataFilePathIsLiteral(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", "/somewhere/else")

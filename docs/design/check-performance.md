@@ -52,7 +52,7 @@ is the design the whole tool rests on: a validator that could not run reports
 "unknown" (exit `3`), never "clean". A lost shard is exactly that case, and it
 gets exactly that treatment.
 
-**P3. Optimise by removing work, not by adding hardware.** Four parses per file
+**P3. Optimize by removing work, not by adding hardware.** Four parses per file
 across six threads is still four parses per file. The duplicate work went first,
 and it turned out to be worth more than the threads.
 
@@ -76,7 +76,7 @@ Two things in that table are not what they look like.
 
 **`render/pipeline` is mostly a parse.** Broken down on a 39 KB document:
 `remark-parse` with GFM costs 21ms and the entire rehype chain after it — raw
-HTML, sanitiser, slugs, highlighting, KaTeX, stringify — costs 10ms. So the
+HTML, sanitizer, slugs, highlighting, KaTeX, stringify — costs 10ms. So the
 "expensive end-to-end backstop" was two thirds a second copy of work
 `loadDocument` had already done.
 
@@ -168,7 +168,7 @@ than wall time. Total CPU for one 110-file run:
 | :--- | ----: | ----: | ----: | ----: | ----: |
 | user+sys | 6.6s | 11.5s | 16.8s | 33.1s | 72.0s |
 
-Each thread initialises the binary's 3000-odd modules in a fresh JavaScript VM —
+Each thread initializes the binary's 3000-odd modules in a fresh JavaScript VM —
 300ms of CPU even for a thread that then checks one three-line document — and
 that cost does not stay constant as threads are added. Ten times the CPU for the
 same work is not contention on a lock; it is real work being repeated and then
@@ -327,7 +327,7 @@ gets no threads at all.
   `checkSectionReferences` and `checkFileReferences` each walk the document
   separately. Worth about 2% now that the parses are gone — not worth the risk to
   three rules' position arithmetic today.
-- **A cheaper module graph.** 300ms of per-thread CPU is module initialisation,
+- **A cheaper module graph.** 300ms of per-thread CPU is module initialization,
   and `katex` and `highlight.js` are most of it. They are needed by the render
   rule, so laziness would not help a worker — but a thread that could skip them
   would raise the ceiling in [§4.1](#41-worker-threads-not-processes-and-why-auto-stops-at-six).

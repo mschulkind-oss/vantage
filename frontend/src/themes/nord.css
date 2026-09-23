@@ -1,20 +1,20 @@
 /* Nord — Polar Night in dark mode, Snow Storm over Polar Night in light.
  * https://www.nordtheme.com/docs/colors-and-palettes
  *
- * Nord is four Polar Night greys (nord0–nord3), three Snow Storm greys
+ * Nord is four Polar Night grays (nord0–nord3), three Snow Storm grays
  * (nord4–nord6), four Frost blues (nord7–nord10) for the accent and five
  * Aurora hues (nord11–nord15) for status. Only the dark half of this file is
  * Nord's own design: **Nord publishes no light variant.** The light half is
  * built by inverting it — Snow Storm surfaces under Polar Night ink — so it is
  * Nord's palette but nobody's Nord, and `white` is left white because Nord
- * names no light page colour.
+ * names no light page color.
  *
  * Three places the palette runs out, each marked below:
  *
- *   1. The greys come in two clusters with a gulf between nord4 (#d8dee9) and
+ *   1. The grays come in two clusters with a gulf between nord4 (#d8dee9) and
  *      nord3 (#4c566a), so `slate-300` and `slate-400` are nord4 interpolated
  *      toward nord3, and `slate-500` — the muted text token — is the
- *      comment grey the Nord Vim port adds in that same gap, #616e88.
+ *      comment gray the Nord Vim port adds in that same gap, #616e88.
  *   2. Aurora is tuned to sit on Polar Night, and on Snow Storm its yellow is
  *      1.28:1 and its green 1.67:1, far under the 3:1 floor this repo keeps for
  *      text (frontend/src/lib/textContrast.test.ts). The light half's ink steps
@@ -42,7 +42,7 @@
   --color-slate-900: #2e3440; /* nord0 — darkest ink */
   --color-slate-950: #2e3440; /* nord0 again; Nord has nothing below it */
 
-  /* Frost, with nord8 and nord9 as the light steps and nord10 the link colour;
+  /* Frost, with nord8 and nord9 as the light steps and nord10 the link color;
      below it, nord10 toward nord0. */
   --color-blue-50: #d7dfea;
   --color-blue-100: #c7d3e2;

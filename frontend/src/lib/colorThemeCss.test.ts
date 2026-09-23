@@ -1,12 +1,12 @@
 /**
- * Drift guards over the colour-theme half of `frontend/src/index.css` and the
+ * Drift guards over the color-theme half of `frontend/src/index.css` and the
  * built-in themes in `frontend/src/themes/`.
  *
  * The promise these rules make is two-sided, and each side fails silently:
  *
  *   - **with no theme, nothing moves.** The typography restatement has to be
  *     the plugin's own `prose-slate` values, one for one, or body text changes
- *     colour for every reader who never asked for a theme — and no test that
+ *     color for every reader who never asked for a theme — and no test that
  *     renders in jsdom would notice, because jsdom does not resolve `var()`.
  *     So the expected values are *derived from the plugin's source* in
  *     `node_modules`, never typed out here: a plugin upgrade that moves a step
@@ -15,7 +15,7 @@
  *     scoped wrongly leaks into the built-in look (an unscoped rule would
  *     repaint GitHub's highlight palette for everyone); a role the built-in
  *     theme forgets falls back to a step of its palette, which renders — just
- *     not in the theme's colours.
+ *     not in the theme's colors.
  *
  * Text assertions, read with `fs`, for the reason `directiveTheme.test.ts`
  * gives: vitest stubs CSS imports to the empty string, `?raw` included, which
@@ -164,7 +164,7 @@ describe("the typography restatement (.prose-slate)", () => {
   it("reaches the palette through variables, not literals, wherever it can", () => {
     // The whole point of restating: 34 of the 36 values are a theme's to move.
     // The two that stay literal are the alpha-over-white/black the build
-    // quantises to hex (see the comment above the rule in index.css).
+    // quantizes to hex (see the comment above the rule in index.css).
     const literal = Object.entries(restated).filter(
       ([, value]) => !value.includes("var(--color-"),
     );
@@ -224,7 +224,7 @@ const codeRules = rules(indexCss).filter(
     r.selectors.some((s) => s.startsWith(":root[data-vantage-theme]")),
 );
 
-describe("the code-colour roles", () => {
+describe("the code-color roles", () => {
   it("are the twelve the theme contract names", () => {
     expect(CODE_ROLES).toEqual(
       [
@@ -256,10 +256,10 @@ describe("the code-colour roles", () => {
     }
   });
 
-  it("apply on screen only, so print keeps its own colours", () => {
+  it("apply on screen only, so print keeps its own colors", () => {
     // Unscoped, `:root[data-vantage-theme] .hljs-keyword` outranked the print
     // block's `.prose * { color: … !important }`, and a theme's syntax
-    // colours — Mocha's pastels in dark mode — printed on white.
+    // colors — Mocha's pastels in dark mode — printed on white.
     const open = indexCss.indexOf("@media screen {");
     expect(open, "no `@media screen` block in index.css").toBeGreaterThan(-1);
     let depth = 0;
@@ -298,7 +298,7 @@ describe("the code-colour roles", () => {
     }
   });
 
-  it("colour every token GitHub's highlight palette colours, in both modes", () => {
+  it("color every token GitHub's highlight palette colors, in both modes", () => {
     // A token class the theme rules miss keeps GitHub's hex under every theme
     // — and in dark mode, the app's `.dark .hljs-*` override hex.
     const github = stripComments(
@@ -308,15 +308,15 @@ describe("the code-colour roles", () => {
       .filter((r) => /\bcolor\s*:/.test(r.body))
       .flatMap((r) => r.selectors)
       .filter((s) => s.startsWith(".dark .hljs"));
-    const coloured = new Set<string>();
+    const colored = new Set<string>();
     for (const rule of rules(github)) {
       if (!/\bcolor\s*:/.test(rule.body)) continue;
       for (const s of rule.selectors) {
-        for (const m of s.matchAll(/\.(hljs[\w-]*)/g)) coloured.add(m[1]);
+        for (const m of s.matchAll(/\.(hljs[\w-]*)/g)) colored.add(m[1]);
       }
     }
     for (const s of darkOverride) {
-      for (const m of s.matchAll(/\.(hljs[\w-]*)/g)) coloured.add(m[1]);
+      for (const m of s.matchAll(/\.(hljs[\w-]*)/g)) colored.add(m[1]);
     }
 
     const themed = (dark: boolean) =>
@@ -331,7 +331,7 @@ describe("the code-colour roles", () => {
       );
     for (const dark of [false, true]) {
       const reached = themed(dark);
-      const missing = [...coloured].filter((c) => !reached.has(c));
+      const missing = [...colored].filter((c) => !reached.has(c));
       expect(missing, dark ? "dark" : "light").toEqual([]);
     }
   });
@@ -426,14 +426,14 @@ describe("the built-in Catppuccin theme", () => {
       expect(CODE_ROLES.filter((role) => !modes[mode][role])).toEqual([]);
     });
 
-    it("names both scrollbar colours", () => {
+    it("names both scrollbar colors", () => {
       expect(modes[mode]["--vantage-scrollbar-thumb"]).toBeTruthy();
       expect(modes[mode]["--vantage-scrollbar-thumb-hover"]).toBeTruthy();
     });
 
     it("only reads swatches it defines", () => {
       // A `var(--ctp-typo)` is invalid at computed-value time, and whatever
-      // reads it silently falls back to its inherited or initial colour.
+      // reads it silently falls back to its inherited or initial color.
       const defined = new Set(Object.keys(modes[mode]));
       const read = Object.values(modes[mode]).flatMap((value) =>
         Array.from(value.matchAll(/var\((--ctp-[\w-]+)\)/g), (m) => m[1]),
@@ -449,7 +449,7 @@ describe("the built-in Lila theme", () => {
   const light = declarations(ruleFor(lilaCss, ":root").body);
   const dark = declarations(ruleFor(lilaCss, ":root.dark").body);
 
-  it("gives every colour it sets in light mode a dark-mode value too", () => {
+  it("gives every color it sets in light mode a dark-mode value too", () => {
     // A step set in one mode only would carry its light value into dark mode
     // (the `:root` rule applies in both), or fall back to Tailwind's.
     expect(Object.keys(dark).sort()).toEqual(Object.keys(light).sort());

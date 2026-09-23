@@ -13,7 +13,7 @@ export type FrontmatterFormat = "yaml" | "toml" | "none";
  *
  * The parser deliberately never throws: a document whose frontmatter is broken
  * still renders, with the block treated as body text. That is the right
- * behaviour for a viewer and the wrong one for an author, who gets no signal
+ * behavior for a viewer and the wrong one for an author, who gets no signal
  * at all — so the reason is recorded here for anything that wants to report it
  * (`vantage-check` does; see its frontmatter rules).
  *

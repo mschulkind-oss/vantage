@@ -1,6 +1,6 @@
 /* Gruvbox — light in light mode, dark in dark. https://github.com/morhetz/gruvbox
  *
- * Gruvbox is a retro palette built on warm greys: seven backgrounds and five
+ * Gruvbox is a retro palette built on warm grays: seven backgrounds and five
  * foregrounds per mode, which the two modes trade (light's `bg1` #ebdbb2 is
  * dark's `fg1`), plus every hue in three intensities — `bright`, `neutral` and
  * `faded`. Those three are what makes this theme easy to keep in order: the
@@ -16,7 +16,7 @@
  *      on `slate-100`, just under the 3:1 floor this repo keeps for text
  *      (frontend/src/lib/textContrast.test.ts), so the muted text step is `fg4`
  *      instead and `gray` is left to the dark half, where it is 3.16:1 on the
- *      chrome and is Gruvbox's own comment colour.
+ *      chrome and is Gruvbox's own comment color.
  *   3. The dark ramp skips `bg4` (#7c6f64) above 600, so that the chrome lands
  *      on `bg1` and the content on `bg0` — where Gruvbox itself puts a
  *      statusline and an editor — and so that `bg3` and `bg2`, one step darker
@@ -47,7 +47,7 @@
   --color-slate-700: #504945; /* fg2 */
   --color-slate-800: #3c3836; /* fg1 */
   --color-slate-900: #282828; /* fg0 */
-  --color-slate-950: #1d2021; /* dark bg0_h — the darkest grey Gruvbox has */
+  --color-slate-950: #1d2021; /* dark bg0_h — the darkest gray Gruvbox has */
 
   /* Gruvbox's blue is greenish, so its washes come out sage over the cream. */
   --color-blue-50: #dbddbc;
@@ -55,7 +55,7 @@
   --color-blue-200: #a6bbaa;
   --color-blue-300: #83a598; /* bright blue */
   --color-blue-400: #458588; /* neutral blue */
-  --color-blue-500: #076678; /* faded blue — the link colour, 5.25:1 */
+  --color-blue-500: #076678; /* faded blue — the link color, 5.25:1 */
   --color-blue-600: #175d6c;
   --color-blue-700: #1f5460;
   --color-blue-800: #244b55;
@@ -109,7 +109,7 @@
   --color-slate-200: #d5c4a1; /* fg2 */
   --color-slate-300: #bdae93; /* fg3 */
   --color-slate-400: #a89984; /* fg4 — muted text, 4.17:1 on slate-800 */
-  --color-slate-500: #928374; /* gray — Gruvbox's comment colour */
+  --color-slate-500: #928374; /* gray — Gruvbox's comment color */
   --color-slate-600: #665c54; /* bg3 — borders, dividers */
   --color-slate-700: #504945; /* bg2 — hover / raised rows */
   --color-slate-800: #3c3836; /* bg1 — sidebar, top bar, menus */

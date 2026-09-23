@@ -12,7 +12,7 @@ vantage:
 chrome" feature** — it comes from this document's own frontmatter
 (`status: accepted` plus `vantage: status-chip: true`), not from a directive.
 It should sit as the first thing in the content column, above the metadata
-card, and read `ACCEPTED` in the tip colours.
+card, and read `ACCEPTED` in the tip colors.
 
 A badge and a status chip are **the same visual object**, drawn by one rule.
 The badge is a pseudo-element on a heading; the chip is a real element in the
@@ -25,7 +25,7 @@ wash uses `wash`.
 
 ## The five badge tokens
 
-Five words, and each borrows one tone's colours. `important` has no badge word,
+Five words, and each borrows one tone's colors. `important` has no badge word,
 which is the one place the two vocabularies do not line up.
 
 | Badge | Borrows | Means |
@@ -87,7 +87,7 @@ content is hazardous, the work on it is finished.
 ### Deliberately mismatched
 
 A muted section with a `wip` chip. The stripe says "skip this" and the chip says
-"active" — the note-blue chip against the grey stripe is the contrast to judge.
+"active" — the note-blue chip against the gray stripe is the contrast to judge.
 
 <!-- vantage: section badge=wip -->
 

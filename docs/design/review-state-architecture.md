@@ -607,7 +607,7 @@ reason.
   `resolveComment` are gone; one `Dismiss` button, one action, no reaction
   written. Legacy `noted` reactions still on disk are skipped everywhere they
   are read (predicates, both thread renderers, the agent payload) rather than
-  migrated — they must not reach the agent labelled "Follow-up", which would
+  migrated — they must not reach the agent labeled "Follow-up", which would
   put a question in the reviewer's mouth.
 - **`isPendingForAgent` shed its acceptance handling.** The `acceptedAt`
   re-dating is gone entirely; the trailing-turn skip survives only as legacy

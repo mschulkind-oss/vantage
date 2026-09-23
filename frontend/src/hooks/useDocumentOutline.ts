@@ -76,8 +76,8 @@ const ACTIVE_BAND = 96;
  * with the stable id.
  *
  * Looser than `VANTAGE_OQ_ID`, deliberately. That grammar decides what becomes
- * an anchor; this one only has to *recognise a title in prose*, which a document
- * may have written with a lowercase prefix or a typo. Failing to recognise it
+ * an anchor; this one only has to *recognize a title in prose*, which a document
+ * may have written with a lowercase prefix or a typo. Failing to recognize it
  * costs a readable label, so the loose form is the safer error.
  */
 const OQ_TITLE = /^OQ-[A-Za-z0-9]*\d/;

@@ -86,7 +86,7 @@ jobs:
       - name: Check (lint, type-check, test, self-check the docs)
         run: just check-ci
 
-  # The browser suite: layout and behaviour only a real browser can check.
+  # The browser suite: layout and behavior only a real browser can check.
   # Playwright's webServer config self-hosts everything (a real `vantage
   # serve` behind a real Vite dev server), so the job needs the toolchain
   # and the npm workspace, nothing else. Ubuntu only — the projects run

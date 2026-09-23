@@ -810,7 +810,7 @@ describe("vantage/block-split", () => {
   it("reports a directive that cuts one indented code block in two", async () => {
     // Blank lines on both sides and *still* a split, because a blank line inside
     // an indented code block belongs to the block. This is why the rule deletes
-    // the directive and re-parses rather than looking at the neighbouring lines.
+    // the directive and re-parses rather than looking at the neighboring lines.
     const directive = "<!-- vantage: block tone=note -->";
     const markdown = `    code a\n\n${directive}\n\n    code b\n`;
     const report = await one(markdown);
@@ -898,7 +898,7 @@ describe("vantage/block-split", () => {
   /**
    * The one rule with a cost worth escaping.
    *
-   * A directive at the top level re-parses its two neighbouring blocks, which is
+   * A directive at the top level re-parses its two neighboring blocks, which is
    * free. A directive *nested* inside a list item re-parses the whole enclosing
    * top-level block — and A6 makes that nesting the only legal `oq` placement,
    * so an Open Questions document pays the enclosing list twice per question.

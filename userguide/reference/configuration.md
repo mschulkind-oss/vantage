@@ -68,7 +68,7 @@ whatever port Vantage printed on startup, if 8000 was taken.
 | `walk_timeout`             | float            | `30.0`        | Timeout in seconds for the file-discovery subprocess |
 | `use_ignore_files`         | boolean          | `true`        | Honor `~/.config/vantage/ignore` and `.vantageignore` |
 | `log_level`                | string           | `"INFO"`      | Log verbosity: `DEBUG`, `INFO`, `WARNING`, or `ERROR` |
-| `theme`                    | string           | `""` (built-in look) | Colour theme a browser opens in until its reader picks another. Read only from `~/.config/vantage/config.toml`, at startup. A project can offer one below it — see [A Theme a Project Offers](#a-theme-a-project-offers) |
+| `theme`                    | string           | `""` (built-in look) | Color theme a browser opens in until its reader picks another. Read only from `~/.config/vantage/config.toml`, at startup. A project can offer one below it — see [A Theme a Project Offers](#a-theme-a-project-offers) |
 
 ## Source Directory Auto-Discovery
 
@@ -189,7 +189,7 @@ were empty.
 
 ## A Theme a Project Offers
 
-A project can name the colour theme its documents are meant to be read in, in the
+A project can name the color theme its documents are meant to be read in, in the
 same `.vantage.toml` that holds its starred list:
 
 ```toml
@@ -212,7 +212,7 @@ The value is a theme id — the same ids the `theme` key above takes.
 **It is an offer, not a setting.** It applies only to a reader who has chosen
 nothing in their browser and named nothing in their own config; the full order is
 [Which one wins](../guides/themes.md#which-one-wins). Nothing a repository
-commits can recolour a reader who has picked a theme.
+commits can recolor a reader who has picked a theme.
 
 The theme itself has to be one the reader already has: a built-in, or a file in
 their own themes folder. A project names a theme; it does not ship one, and an id
@@ -223,7 +223,7 @@ This key is re-read as the file changes, so an edit applies on the next page loa
 restart. A `.vantage.toml` that does not parse, or a `theme` that could not be an
 id at all, is ignored whole: Vantage logs a warning naming that repository and
 serves it as though the key were absent, so in daemon mode one project's bad
-commit cannot colour another's pages.
+commit cannot color another's pages.
 
 In daemon mode the project is resolved from the first segment of the URL, which
 every document page has (`/notes/README.md` is the `notes` project). The project

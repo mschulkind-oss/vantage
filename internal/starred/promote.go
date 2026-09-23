@@ -23,7 +23,7 @@ const MaxPromoted = 100
 // promoteGlobChars are what make a line a pattern rather than a path.
 //
 // A line without them costs no filesystem access at all, and that is a
-// requirement rather than an optimisation — see [Promote].
+// requirement rather than an optimization — see [Promote].
 const promoteGlobChars = "*?["
 
 // PromoteRequest is one repository's promotion, from one source.

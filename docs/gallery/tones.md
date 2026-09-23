@@ -19,7 +19,7 @@ should look like. The question this page answers is whether they are
 *distinguishable* and whether they sit at the same visual weight.
 
 Then hit the theme toggle and read the whole page again. Every value has a
-separate dark definition, so light and dark are two independent judgements.
+separate dark definition, so light and dark are two independent judgments.
 
 ## Lone blocks — the wash
 
@@ -40,7 +40,7 @@ token. This is the one tone with no matching badge word.
 
 `tone=warning` — a lone block. Its wash and chip are a notch stronger than the
 others' by design; whether that reads as deliberate or as inconsistent is a
-judgement to make here.
+judgment to make here.
 
 <!-- vantage: block tone=caution -->
 

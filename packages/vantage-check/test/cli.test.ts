@@ -77,8 +77,8 @@ describe("run", () => {
     const io = bufferIo();
     await run(["style-guide"], io);
 
-    // Neither can be a lint: "too many directives" is a judgement, and whether a
-    // `leaning` restates the leaning is a judgement about a sentence. They live
+    // Neither can be a lint: "too many directives" is a judgment, and whether a
+    // `leaning` restates the leaning is a judgment about a sentence. They live
     // here because the guide is the only place they can live — and nothing in
     // the tool counts or caps directives per document.
     expect(io.stdout).toContain("Use them sparingly");

@@ -35,7 +35,7 @@ const { MermaidDiagram } =
 const setDark = (on: boolean) =>
   document.documentElement.classList.toggle("dark", on);
 
-/** What the app does once a colour theme's stylesheet is live; `null` clears. */
+/** What the app does once a color theme's stylesheet is live; `null` clears. */
 const setColorTheme = (id: string | null) =>
   id === null
     ? document.documentElement.removeAttribute(theme.COLOR_THEME_ATTRIBUTE)
@@ -126,7 +126,7 @@ describe("the mermaid loader", () => {
 
   it("hands mermaid a surface its stock theme does not have", async () => {
     // Mermaid's own dark theme paints nodes `#1f2020` and edge-label chips
-    // `#585858` — 1.28:1 and a mid-grey tag against the slate-800 fence the app
+    // `#585858` — 1.28:1 and a mid-gray tag against the slate-800 fence the app
     // draws a diagram in. The variables are what put it on a Vantage surface.
     setDark(true);
     await loader.getMermaid();
@@ -144,21 +144,21 @@ describe("the mermaid loader", () => {
 });
 
 /**
- * Colour themes add a second input to "which palette is this diagram in": the
+ * Color themes add a second input to "which palette is this diagram in": the
  * theme id on `<html>`. Everything keyed on light/dark has to key on it too, or
- * switching theme leaves diagrams in the previous theme's colours exactly the
+ * switching theme leaves diagrams in the previous theme's colors exactly the
  * way a light/dark flip used to. And with no theme, every key and every value
  * has to be what it was before themes existed — that is the zero-change
  * guarantee, and the cache and the loader both compare these strings.
  */
 describe("the palette key", () => {
-  it("is exactly the old mode name when no colour theme is active", () => {
+  it("is exactly the old mode name when no color theme is active", () => {
     expect(theme.currentMermaidPalette()).toBe("default");
     setDark(true);
     expect(theme.currentMermaidPalette()).toBe("dark");
   });
 
-  it("adds the colour theme's id when one is active", () => {
+  it("adds the color theme's id when one is active", () => {
     setColorTheme("catppuccin");
     expect(theme.currentMermaidPalette()).toBe("default catppuccin");
     setDark(true);
@@ -196,7 +196,7 @@ describe("the palette key", () => {
 });
 
 describe("the diagram's theme variables", () => {
-  /** The measured constants from before colour themes; see mermaidTheme.ts. */
+  /** The measured constants from before color themes; see mermaidTheme.ts. */
   const BUILT_IN = {
     dark: {
       background: "#1d293d",
@@ -221,7 +221,7 @@ describe("the diagram's theme variables", () => {
   /**
    * A 2D context that "paints" whatever `fillStyle` names from a lookup, so the
    * resolution path can be exercised in jsdom, which has no canvas at all. The
-   * probe's computed colour comes back from jsdom as the literal `var(--x)`
+   * probe's computed color comes back from jsdom as the literal `var(--x)`
    * string (it resolves no `var()`), which is what the lookup is keyed by.
    */
   function fakeCanvas(bytes: Record<string, [number, number, number]>) {
@@ -244,7 +244,7 @@ describe("the diagram's theme variables", () => {
   }
 
   it.each(["dark", "default"] as const)(
-    "are the exact built-in hex in %s mode with no colour theme",
+    "are the exact built-in hex in %s mode with no color theme",
     (mode) => {
       // No DOM read either: every step is declared and a canvas would answer,
       // and neither is asked.
@@ -288,7 +288,7 @@ describe("the diagram's theme variables", () => {
     expect(vars.background).toBe("#1e1e2e");
     expect(vars.edgeLabelBackground).toBe("#1e1e2e");
     // A step the page does not declare keeps its built-in value rather than
-    // inheriting whatever colour the probe's parent has.
+    // inheriting whatever color the probe's parent has.
     expect(vars.textColor).toBe(BUILT_IN.dark.textColor);
     // Same keys, so the "structural only" rule still holds under a theme.
     expect(Object.keys(vars).sort()).toEqual(Object.keys(BUILT_IN.dark).sort());
@@ -314,7 +314,7 @@ describe("resolveCssColor", () => {
 
   it("is null for a property the page never declared, before any canvas", () => {
     // `color: var(--unset)` inherits instead, which would turn into the page's
-    // text colour — plausible hex, wrong diagram.
+    // text color — plausible hex, wrong diagram.
     const getContext = vi.spyOn(HTMLCanvasElement.prototype, "getContext");
     expect(theme.resolveCssColor("--color-never-declared")).toBeNull();
     expect(getContext).not.toHaveBeenCalled();
@@ -329,7 +329,7 @@ describe("resolveCssColor", () => {
   });
 });
 
-describe("a colour-theme switch", () => {
+describe("a color-theme switch", () => {
   it("is a cache miss, and switching back is a hit", () => {
     cache.setCachedSvg("g", "<svg>vantage</svg>");
     setColorTheme("catppuccin");

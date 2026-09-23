@@ -96,7 +96,7 @@ export function htmlAnchors(mdast: Root): string[] {
  * Three sources, and Open Question ids are the one that is not HTML at all:
  * `<!-- vantage: oq id=OQ-4 -->` becomes `id="OQ-4"` on the block it marks
  * (`rehypeVantageAnchors`), so `#OQ-4` navigates and a reference of the form
- * `[OQ-4](#OQ-4)` is checkable. Only well-formed ids count — the sanitiser
+ * `[OQ-4](#OQ-4)` is checkable. Only well-formed ids count — the sanitizer
  * refuses the rest, so counting one would accept a fragment that goes nowhere.
  */
 export function documentAnchors(mdast: Root): Set<string> {

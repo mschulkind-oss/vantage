@@ -132,7 +132,7 @@ describe("render/pipeline", () => {
 });
 
 /**
- * The optimisation the rule rests on: the pipeline is fed the tree
+ * The optimization the rule rests on: the pipeline is fed the tree
  * `loadDocument` already built, instead of parsing the same bytes twice.
  *
  * Both halves of the claim are tested here rather than in `vantage-md`, which

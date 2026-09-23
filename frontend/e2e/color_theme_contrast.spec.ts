@@ -1,11 +1,11 @@
 /**
- * No colour theme may make the app's text illegible, and picking one must
- * actually recolour the page.
+ * No color theme may make the app's text illegible, and picking one must
+ * actually recolor the page.
  *
  * `src/lib/textContrast.test.ts` already holds the 3:1 floor, but it holds it
  * against the reference palette — it reads class names out of the sources, so it
- * can say *which* colour the app paints a label in and *what* surface sits
- * behind it, and nothing at all about what a theme replaces those colours with.
+ * can say *which* color the app paints a label in and *what* surface sits
+ * behind it, and nothing at all about what a theme replaces those colors with.
  * A theme is a stylesheet that redefines `--color-<family>-<step>`, so it can
  * move a shipped ink to 2:1, or turn the high end of an accent ramp into a wash
  * that its own selected row then writes text in, and every existing test stays
@@ -15,12 +15,12 @@
  * `color-mix(in oklab, var(--ctp-text) 85%, black)`, `oklch(…)` and `var()`
  * chains several links long; jsdom computes none of them, so a unit test here
  * would either read the declaration verbatim and assert nothing, or need a
- * colour-space implementation of our own to be wrong in. Chrome already has one.
+ * color-space implementation of our own to be wrong in. Chrome already has one.
  *
  * What travels between the two guards is `src/lib/contrast.ts`: the WCAG
  * arithmetic, the floor, the ink/surface pairs the app paints, and the reference
  * palette. This file cannot scan a class name from inside a browser and that
- * file cannot resolve a colour, so the pairs are stated once and the vitest
+ * file cannot resolve a color, so the pairs are stated once and the vitest
  * guard fails if they drift from the sources.
  *
  * Two things are asked of a theme, because the pairs come in two kinds:
@@ -34,7 +34,7 @@
  *   clears the floor, a theme must too. Flooring them outright would fail the
  *   default look, which is the one thing a theme guard must never do.
  *
- * The themes are enumerated from the "Colours" select rather than listed here,
+ * The themes are enumerated from the "Colors" select rather than listed here,
  * so a palette added to `src/themes/` is covered the day it ships without
  * touching this spec. In this fixture the select offers the built-ins alone: the
  * suite runs the backend under a scratch `$HOME` (see `playwright.config.ts`),
@@ -72,7 +72,7 @@ const TOKENS = measuredTokens();
 interface Measured {
   /** `--color-<token>` as `#rrggbb`, or `null` when it could not be resolved. */
   colors: Record<ColorToken, string | null>;
-  /** Computed colours of real elements, to prove the page moved at all. */
+  /** Computed colors of real elements, to prove the page moved at all. */
   page: Record<string, string>;
 }
 
@@ -106,7 +106,7 @@ async function openSettings(page: Page): Promise<void> {
  */
 async function offeredThemes(page: Page): Promise<Theme[]> {
   await openSettings(page);
-  const select = settingsMenu(page).getByLabel("Colours");
+  const select = settingsMenu(page).getByLabel("Colors");
   await expect(select).toBeVisible();
   const options = await select.evaluate((el) =>
     Array.from((el as HTMLSelectElement).options).map((o) => ({
@@ -124,7 +124,7 @@ function hasDark(theme: Theme): boolean {
 /** Pick `id` the way a reader does, and wait until its variables are in effect. */
 async function chooseTheme(page: Page, id: string): Promise<void> {
   await openSettings(page);
-  await settingsMenu(page).getByLabel("Colours").selectOption(id);
+  await settingsMenu(page).getByLabel("Colors").selectOption(id);
   const html = page.locator("html");
   // The attribute is the app's own signal that the stylesheet has loaded — it
   // is set in the `<link>`'s load handler, never before. Reading variables
@@ -147,7 +147,7 @@ async function chooseMode(page: Page, mode: ContrastMode): Promise<void> {
 }
 
 /**
- * Each token as sRGB bytes, plus a few real elements' computed colours.
+ * Each token as sRGB bytes, plus a few real elements' computed colors.
  *
  * `getComputedStyle().getPropertyValue()` hands a custom property back
  * verbatim — `color-mix(in oklab, …)` stays that string — so this resolves them
@@ -159,13 +159,13 @@ async function chooseMode(page: Page, mode: ContrastMode): Promise<void> {
  *
  * - A property nobody declared has to be caught before the probe. `color:
  *   var(--unset)` is invalid at computed-value time, so the probe *inherits*
- *   the page's text colour and the canvas reports a plausible hex for a token
+ *   the page's text color and the canvas reports a plausible hex for a token
  *   that does not exist. Hence the empty-declaration check first, and a `null`
  *   the caller reports rather than measures.
  * - The canvas is per token, not per scan. An invalid `fillStyle` assignment is
  *   silently ignored, which on a shared context means the *previous* token's
- *   colour read back as this one's. A fresh context starts from black, so a
- *   colour that cannot be painted reads as black and fails loudly.
+ *   color read back as this one's. A fresh context starts from black, so a
+ *   color that cannot be painted reads as black and fails loudly.
  */
 async function measure(page: Page): Promise<Measured> {
   // The property names are built out here rather than in the page, so the
@@ -234,7 +234,7 @@ async function scanThemes(page: Page): Promise<Theme[]> {
   const themes = await offeredThemes(page);
   expect(
     themes.map((t) => t.id),
-    "the Colours select offered nothing to measure",
+    "the Colors select offered nothing to measure",
   ).toContain(DEFAULT_THEME);
 
   for (const theme of themes) {
@@ -263,7 +263,7 @@ const test = base.extend<Record<string, never>, WorkerFixtures>({
     async ({ browser }, runTests) => {
       const page = await browser.newPage();
       const themes = await scanThemes(page);
-      // Nothing below touches the page — every colour is already read — so it
+      // Nothing below touches the page — every color is already read — so it
       // closes here rather than being held open for the whole worker.
       await page.close();
       await runTests(themes);
@@ -304,7 +304,7 @@ function describePair(measured: Measured, pair: TextPair): string {
 }
 
 /** One line per theme and mode, plus the worst pair in it — the table's summary. */
-function summarise(
+function summarize(
   theme: Theme,
   mode: ContrastMode,
   pairs: readonly TextPair[],
@@ -323,7 +323,7 @@ function summarise(
   return `${theme.id} ${mode}: ${pairs.length} pairs, ${tail}`;
 }
 
-test.describe("every colour theme keeps the app's text legible", () => {
+test.describe("every color theme keeps the app's text legible", () => {
   test(`no pair with a known surface falls below ${CONTRAST_FLOOR}:1`, async ({
     palettes,
   }) => {
@@ -331,7 +331,7 @@ test.describe("every colour theme keeps the app's text legible", () => {
     const failures: string[] = [];
     for (const theme of palettes) {
       for (const mode of CONTRAST_MODES) {
-        table.push(summarise(theme, mode, TEXT_PAIRS[mode]));
+        table.push(summarize(theme, mode, TEXT_PAIRS[mode]));
         const measured = theme.modes[mode];
         if (!measured) continue;
         for (const pair of TEXT_PAIRS[mode]) {
@@ -401,7 +401,7 @@ test.describe("every colour theme keeps the app's text legible", () => {
         if (!measured) continue;
         expect(
           TOKENS.filter((token) => !measured.colors[token]),
-          `${theme.id} (${mode}) resolved no colour for these tokens`,
+          `${theme.id} (${mode}) resolved no color for these tokens`,
         ).toEqual([]);
       }
     }
@@ -414,7 +414,7 @@ test.describe("every colour theme keeps the app's text legible", () => {
     // `oklch()`, which is why it is not written anywhere in the repo. The unit
     // guard's whole arithmetic rests on it, so this is where it is checked
     // against the engine — a byte of slack per channel, because a browser
-    // upgrade may round a conversion differently without changing a colour.
+    // upgrade may round a conversion differently without changing a color.
     const reference = palettes.find((t) => t.id === DEFAULT_THEME)!;
     const drifted: string[] = [];
     for (const [token, expected] of Object.entries(REFERENCE_COLORS)) {
@@ -434,8 +434,8 @@ test.describe("every colour theme keeps the app's text legible", () => {
   });
 });
 
-test.describe("a colour theme reaches the page", () => {
-  test("recolours real elements, and still switches light to dark", async ({
+test.describe("a color theme reaches the page", () => {
+  test("recolors real elements, and still switches light to dark", async ({
     palettes,
   }) => {
     const fingerprint = (m: Measured) => JSON.stringify(m.page);
@@ -460,7 +460,7 @@ test.describe("a colour theme reaches the page", () => {
       if (hasDark(theme)) {
         expect(
           fingerprint(theme.modes.light!),
-          `${theme.id} paints the same colours in light and dark`,
+          `${theme.id} paints the same colors in light and dark`,
         ).not.toEqual(fingerprint(theme.modes.dark!));
       }
 

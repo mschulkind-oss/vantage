@@ -26,7 +26,7 @@
  *   3. A raw-HTML `<figure>` was not stamped at all: the range used to be gated
  *      by `VANTAGE_STYLE_TARGETS`, the list of tags a directive may *target*.
  *      Measured before the fix: a 44px hole for a one-line figure, against the
- *      40px a neighbour can bleed upward, and taller for a taller block.
+ *      40px a neighbor can bleed upward, and taller for a taller block.
  *
  * The `Justfile` never invokes playwright, so this documents rather than guards —
  * run it by hand (`cd frontend && npx playwright test directive_tone_rule`) after
@@ -110,7 +110,7 @@ async function scanRuleColumn(page: import("@playwright/test").Page) {
       .slice(0, 3)
       .map(Number);
     if (target.length !== 3) {
-      throw new Error(`no accent colour: ${rule.backgroundColor}`);
+      throw new Error(`no accent color: ${rule.backgroundColor}`);
     }
 
     const xFrom = Math.round((columnLeft - 3) * scale);
@@ -163,7 +163,7 @@ async function scanRuleColumn(page: import("@playwright/test").Page) {
     });
 
     // If the content panel had to scroll, the rows below the fold were never in
-    // the image and every "gap" below them is an artefact. Report it as one.
+    // the image and every "gap" below them is an artifact. Report it as one.
     const panel = stamped[0].closest<HTMLElement>(".overflow-y-auto");
     const overflowed =
       panel !== null && panel.scrollHeight > panel.clientHeight + 1;

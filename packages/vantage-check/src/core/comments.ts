@@ -9,7 +9,7 @@
 
 export const COMMENT_OPEN = "<!--";
 /**
- * The terminators parse5 honours. `--!>` really does close a comment for the
+ * The terminators parse5 honors. `--!>` really does close a comment for the
  * HTML parser — measured through `rehype-raw` — which is why a scanner that
  * looks only for `-->` both misses the directive after one and calls a closed
  * comment unterminated.

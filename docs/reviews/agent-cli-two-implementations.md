@@ -84,7 +84,7 @@ That front-loading was not wasted — the plan is good and the commits follow it
 and lost the thread each time (the second compaction summary records
 half-written phase-5 sources on disk, untypechecked and untested).
 
-The friction is catalogued in the
+The friction is cataloged in the
 [Run A review](agent-cli-implementation-review.md#23-what-it-got-stuck-on):
 nine traps, several of them self-inflicted gate breakage.
 
@@ -103,7 +103,7 @@ around them:
 | git, shell, everything else | 71 | 49 |
 | **Total** | **455** | **185** |
 
-Three behaviours account for nearly all of the 270 extra calls:
+Three behaviors account for nearly all of the 270 extra calls:
 
 - **Revising versus writing once.** Run A averaged 2.3 mutations per file and
   went back to `Justfile`, `rules/links.ts`, and `src/main.ts` eight, eight, and
@@ -153,7 +153,7 @@ Run B's cost per commit.
 The measurable overhead of the compactions themselves is small:
 
 - **Re-reading its own work:** 20 `Read` calls in a later window for files the
-  session had authored earlier, spread across 14 messages totalling **8,868
+  session had authored earlier, spread across 14 messages totaling **8,868
   output tokens** — and that counts each whole message, most of which were doing
   other work too.
 - **Re-orientation:** none worth the name. The first tool call after *both*

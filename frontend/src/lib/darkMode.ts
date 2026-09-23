@@ -8,7 +8,7 @@
  * the page had gone dark. Both writers now come through `chooseColorMode`, and
  * there is one thing that can be read to learn the mode.
  *
- * Light/dark stays a separate switch from the colour theme (`lib/colorTheme.ts`):
+ * Light/dark stays a separate switch from the color theme (`lib/colorTheme.ts`):
  * a theme supplies both halves of a palette and this decides which half applies.
  */
 
@@ -24,7 +24,7 @@ const COLOR_MODE_KEY = "vantage:theme";
 
 /**
  * Anything but the exact string `"dark"` is light, nothing stored included:
- * light is the app's default, and a value this code does not recognise is no
+ * light is the app's default, and a value this code does not recognize is no
  * reason to invert the page.
  */
 function parseColorMode(raw: string | null): ColorMode {

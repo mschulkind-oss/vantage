@@ -1,10 +1,10 @@
 /* Tokyo Night — Day in light mode, Night in dark.
  * https://github.com/folke/tokyonight.nvim
  *
- * Night is a deep blue-black with pastel ink; Day is its inversion, a cool grey
- * page written in blue — its foreground, #3760bf, is a blue rather than a grey,
+ * Night is a deep blue-black with pastel ink; Day is its inversion, a cool gray
+ * page written in blue — its foreground, #3760bf, is a blue rather than a gray,
  * and so is most of this file's light half. `white` is Day's background
- * (#e1e2e7), because Day has nothing lighter and a white page beside a grey one
+ * (#e1e2e7), because Day has nothing lighter and a white page beside a gray one
  * reads as an unstyled panel.
  *
  * The two halves lend each other an end. Day stops at its own foreground, so the
@@ -12,17 +12,17 @@
  * *is* Night's background; the dark half's brightest ink, in turn, is Day's
  * background. Both are marked below.
  *
- * Both flavours put their comment colour below the 3:1 floor this repo keeps for
+ * Both flavors put their comment color below the 3:1 floor this repo keeps for
  * text (frontend/src/lib/textContrast.test.ts) once it is measured on a panel
  * rather than the page, and Day's accents are tuned that same shade too bright:
  *
- *   1. Day's `comment` (#848cb5) is 2.24:1 on `bg_dark`, the panel colour, so
+ *   1. Day's `comment` (#848cb5) is 2.24:1 on `bg_dark`, the panel color, so
  *      the muted text token is `fg_dark` (3.15:1) — Day's secondary text — and
  *      600 is `fg` itself. Night's `comment` (#565f89) is 2.17:1 on its own
  *      highlight for the same reason, so there the token is `dark5`.
  *   2. Day's blue is 2.74:1 on that panel (3.11 on the page), so the light ink
  *      step is it half way to `fg`, which is a blue too. Day's red, a hot pink,
- *      is 2.65:1; `red1` — Day's own error colour — is 3.34:1 and holds 500,
+ *      is 2.65:1; `red1` — Day's own error color — is 3.34:1 and holds 500,
  *      with the pink above it at 400. Night's accents need none of this: they are
  *      3.68:1 and up on its chrome, and it is the *surfaces* that had to move —
  *      see the dark ramp.
@@ -70,7 +70,7 @@
   --color-red-900: #633135;
 
   /* Day's yellow is a brown (#8c6c3e) and its green an olive, so their washes
-     come out warm greys over the page rather than pastels. */
+     come out warm grays over the page rather than pastels. */
   --color-amber-50: #d5d1cf;
   --color-amber-100: #ccc4bc;
   --color-amber-200: #c0b4a6;
@@ -109,7 +109,7 @@
      text on a raised row — and Night has no member between `fg_gutter` and
      `bg_highlight` to promote instead, so the surfaces move rather than the ink:
      `bg_highlight` is what Night highlights a line with, and the chrome becomes
-     the content lifted half way to it. `terminal_black` is an ANSI colour, the
+     the content lifted half way to it. `terminal_black` is an ANSI color, the
      one member here with no editor role, so it is what drops out. */
   --color-slate-600: #3b4261; /* fg_gutter — borders, dividers */
   --color-slate-700: #292e42; /* bg_highlight — hover / raised rows */

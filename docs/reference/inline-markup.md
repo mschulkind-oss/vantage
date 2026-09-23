@@ -18,7 +18,7 @@ covers:
   - frontend/src/lib/collapseSections.ts
   - frontend/src/lib/commentMarkdown.ts
 tags: [markdown, rendering, review, security, vantage-md]
-summary: "Vantage-only markup carried in HTML comments with a `vantage:` sentinel, compiled to `data-vantage-*` attributes between rehype-raw and rehype-sanitize, and styled through a closed semantic vocabulary the theme maps to colour."
+summary: "Vantage-only markup carried in HTML comments with a `vantage:` sentinel, compiled to `data-vantage-*` attributes between rehype-raw and rehype-sanitize, and styled through a closed semantic vocabulary the theme maps to color."
 ---
 
 # Vantage directives — Vantage-only markup inside ordinary Markdown
@@ -31,8 +31,8 @@ A **directive** is an HTML comment carrying a `vantage:` sentinel —
 other Markdown renderer drops it, and a text editor shows one dim line, so a
 document carrying directives reads identically everywhere else.
 
-Directive values are never CSS and never colours. They are **semantic tokens** —
-`note`, `warning`, `caution` — that the *theme* maps to colour, so a document
+Directive values are never CSS and never colors. They are **semantic tokens** —
+`note`, `warning`, `caution` — that the *theme* maps to color, so a document
 says what a section means and each theme decides how it looks.
 
 | Component | Lives in |
@@ -46,7 +46,7 @@ says what a section means and each theme decides how it looks.
 | File-scoped chrome | `vantage-md` (`vantageFrontmatter.ts`, `DocumentStatusChip.tsx`) |
 | The one-click Open Question control | `frontend` (`hooks/useOpenQuestionButtons.ts`) |
 | Collapse: DOM half and React half | `frontend` (`lib/collapseSections.ts`, `hooks/useCollapseSections.ts`) |
-| Comment-body sanitisation | `frontend` (`lib/commentMarkdown.ts` — `renderCommentMarkdown`) |
+| Comment-body sanitization | `frontend` (`lib/commentMarkdown.ts` — `renderCommentMarkdown`) |
 | Validation | `vantage-check` (`rules/directives.ts`, `rules/vantageFrontmatter.ts`) |
 
 **Reads with:** [`../design/agent-cli.md`](../design/agent-cli.md) (the checker
@@ -65,12 +65,12 @@ Cited by number from code comments and from the rest of this doc.
   change how a block *looks* or what affordances hang off it, never what the
   document *says*. Delete every directive and the prose is unchanged — that is
   the test, and it is a real test in `vantageDirectives.test.ts`.
-- **P2. Values are semantic tokens — never styles, never colours.** A directive
+- **P2. Values are semantic tokens — never styles, never colors.** A directive
   names what a section *is*, never what it should look like. The theme owns the
-  token-to-colour mapping, so one document renders correctly in light, in dark,
+  token-to-color mapping, so one document renders correctly in light, in dark,
   in print, and in themes that do not exist yet. No directive ever contributes a
   byte to a `style` attribute. Hard boundary, not a simplification.
-- **P3. Unknown is inert, never fatal.** An unrecognised name, key, or value is
+- **P3. Unknown is inert, never fatal.** An unrecognized name, key, or value is
   dropped silently where it fails to resolve — no error state, no red box, no
   console output a reader can trigger with a typo. This is what makes an older
   Vantage safe against a newer document. The *only* thing that reports a dropped
@@ -78,7 +78,7 @@ Cited by number from code comments and from the rest of this doc.
 - **P4. Ride existing channels.** Review affordances go through reviewer commands
   that already exist. There is no second path from document to server.
 - **P5. Markup is a hint.** Every capability answers "what if it isn't there?"
-  with today's behaviour unchanged — and "what if the JavaScript isn't there?",
+  with today's behavior unchanged — and "what if the JavaScript isn't there?",
   which is what forces the collapse gating.
 
 > [!IMPORTANT]
@@ -100,7 +100,7 @@ a bug, not a trade-off.
    carrier**. The `vantage:` frontmatter key is the deliberate exception: inert
    everywhere, but GitHub prints frontmatter as a table and therefore prints one
    `vantage` row.
-2. **D2 — Unknown is inert, per key.** An unrecognised name, key, or value
+2. **D2 — Unknown is inert, per key.** An unrecognized name, key, or value
    produces no styling and no error, and one bad key does not discard its
    siblings. In the stylesheet this is the cascade's job — an unset custom
    property with no fallback — not an enumeration in every selector.
@@ -115,7 +115,7 @@ a bug, not a trade-off.
 5. **D5 — Every renderer agrees.** The live viewer, the package's exported
    viewer, the exported static site, and the CLI checker share one plugin, one
    parser, and one vocabulary. A directive must not mean one thing in the app and
-   another through the checker — and must not *serialise* differently either.
+   another through the checker — and must not *serialize* differently either.
 6. **D6 — Malformed degrades to plain, never to broken.** A hostile or malformed
    directive yields an unstyled document, never a broken render, a thrown
    exception, an injected style, or a mis-wired button.
@@ -141,7 +141,7 @@ One directive per comment. `ws` includes `\n` because a directive may legally
 wrap — a multi-line comment is one node whose value contains the newlines. The
 sentinel is mandatory and must be the **first** thing in the comment, so
 `<!--- vantage: x -->` is not a directive. Anything that does not match is left
-alone and removed by the sanitiser like any other comment, silently (**P3**).
+alone and removed by the sanitizer like any other comment, silently (**P3**).
 
 The parser is `parseVantageDirective` in `vantageDirectives.ts`, a **zero-import
 module** — not even a type import — because two callers need it and only one of
@@ -152,7 +152,7 @@ viewer and the checker cannot disagree about what a token means (**D5**).
 > **There is no `--` restriction, and inventing one is the trap.** A careful
 > reading of the grammar suggests `--` is unrepresentable inside an HTML comment.
 > It is not: `tone="a--b"` reaches the tree intact, because HTML5 comment
-> tokenisation closes on `-->` or `--!>` and on nothing else. A hand-written
+> tokenization closes on `-->` or `--!>` and on nothing else. A hand-written
 > scanner — the checker's, which reads source text rather than a parsed tree —
 > must therefore handle `--!>` as a terminator too.
 >
@@ -209,7 +209,7 @@ Until 2026-09-03 the range was gated too, and both halves of that were bugs a
 reader saw and nothing reported. A raw-HTML `<figure>`, `<dl>` or `<details>`
 between two stamped paragraphs got no stamp, so the section's one continuous
 vertical rule had a hole the height of the block — 44px for a one-line figure,
-against the 40px a neighbour can bleed upward, and arbitrarily large for
+against the 40px a neighbor can bleed upward, and arbitrarily large for
 anything taller. And `collapsed=true` hid the paragraphs while leaving the
 figure on the page under a closed heading.
 
@@ -232,19 +232,19 @@ flowchart LR
 Two ordering facts are load-bearing and must not be "tidied":
 
 - **`rehype-slug` must stay after `rehype-sanitize`.** The default schema clobbers
-  `id` with a `user-content-` prefix, so a slug generated before the sanitiser
+  `id` with a `user-content-` prefix, so a slug generated before the sanitizer
   comes out renamed.
 - **`rehype-katex` runs after `rehype-sanitize`**, which means KaTeX's own output
   is never filtered. See [Security](#security).
 
-The sanitiser deleting comments is a feature: the plugin consumes the comment and
+The sanitizer deleting comments is a feature: the plugin consumes the comment and
 emits attributes, and nothing Vantage-specific reaches the DOM except attributes
-deliberately allowlisted in `sanitizeSchema`. An unrecognised directive leaves
+deliberately allowlisted in `sanitizeSchema`. An unrecognized directive leaves
 nothing at all — **P3** for free.
 
 > [!WARNING]
 > **Attribute values are always strings, never booleans.** A hast property set to
-> boolean `true` serialises as a bare attribute through `rehype-stringify` but as
+> boolean `true` serializes as a bare attribute through `rehype-stringify` but as
 > `="true"` through `react-markdown`. Different markup from the checker and the
 > app, with no error anywhere — a silent **D5** violation.
 
@@ -261,7 +261,7 @@ a closed heading.
 `rehypeVantageMathStamps` fixes it with a pair of plugins that **bracket**
 `rehype-katex`: snapshot the stamps before, re-apply them to the replacement span
 after, finding it again by the sibling before it, whose identity survives the
-splice. Both halves run after the sanitiser, which matters twice — the sanitiser
+splice. Both halves run after the sanitizer, which matters twice — the sanitizer
 rebuilds the tree, so identities taken earlier would be stale, and every
 attribute carried is one the schema already passed.
 
@@ -271,7 +271,7 @@ member.
 
 ## The token vocabulary
 
-A document never names a colour. The tokens are the **GFM alert set** plus
+A document never names a color. The tokens are the **GFM alert set** plus
 `muted`; the full enumerations live in `vantageDirectives.ts`
 (`VANTAGE_TONES`, `VANTAGE_EMPHASIS`, `VANTAGE_BADGES`, `VANTAGE_COLLAPSED`).
 
@@ -289,7 +289,7 @@ purpose: "this is a warning" and "shout about it" are different claims, and
 fusing them forces an author to overstate severity to get visual weight.
 
 A token resolves to a **CSS custom property owned by the theme**, never to a
-literal colour anywhere near the document. Adding a theme touches one
+literal color anywhere near the document. Adding a theme touches one
 custom-property block and zero documents.
 
 ### The theme layer
@@ -316,9 +316,9 @@ Five things about this stylesheet break silently if changed:
   review-highlight backgrounds, which are declared later and must win, so a
   transient state still shows on a toned block.
 - **No `var()` fallback on the accent.** Its absence *is* the D2 mechanism: an
-  unrecognised token leaves the property unset, the value is
+  unrecognized token leaves the property unset, the value is
   invalid-at-computed-value-time, and it computes to transparent. A "safety"
-  fallback would style every typo'd token grey. Use the `background-color`
+  fallback would style every typo'd token gray. Use the `background-color`
   longhand, never the `background` shorthand, for the same reason.
 - **`emphasis=strong` must exclude headings, `pre`, and `table`**, or unlayered
   `font-weight` de-bolds a toned heading below its prose weight.
@@ -372,15 +372,15 @@ annotates a block that reads perfectly well without it.
 > run member, so resolving both onto `--vantage-tone-accent` let the alert's kind
 > win on that element — and the section's own vertical rule turned red for the
 > height of the alert plus the 2.5rem it bleeds upward. The section read as three
-> colours and looked broken.
+> colors and looked broken.
 
 Three `@tailwindcss/typography` defaults have to be overridden, and all three are
-why an unrendered alert looked far worse than merely plain: typography italicises
-blockquotes, greys their text, and draws `open-quote`/`close-quote` around the
+why an unrendered alert looked far worse than merely plain: typography italicizes
+blockquotes, grays their text, and draws `open-quote`/`close-quote` around the
 first paragraph. So a callout rendered as an italic *quotation* whose opening
 words were the literal `[!WARNING]`.
 
-An unrecognised marker is **left exactly as written** — `[!HINT]` is not an alert
+An unrecognized marker is **left exactly as written** — `[!HINT]` is not an alert
 on GitHub either, and silently swallowing it would hide a typo that reads as a
 callout on no renderer at all. The marker must also be alone on the blockquote's
 first line, which is what keeps a paragraph that merely *begins* with bracketed
@@ -425,7 +425,7 @@ helper is `anchorScroll.ts`; the callers are the `#L` line anchor, in-document
 
 ## The one-click Open Question answer
 
-An `oq` directive renders one button in review mode, labelled **"Take this
+An `oq` directive renders one button in review mode, labeled **"Take this
 leaning"**. Clicking it calls the same `addComment` the comment popover calls,
 with an anchor identical in shape to what click-and-type produces. The comment
 text is the `leaning` value, or a fixed default when absent.
@@ -525,7 +525,7 @@ block's hash, a whole-block selection, and the line within
 `NEIGHBOR_RADIUS`** — the same radius `useReviewHighlights` re-anchors within,
 shared from `reviewAnchor.ts` rather than written twice. The line is a tolerance
 and not an equality, and that is a fix rather than a nicety: while this pass
-compared `source_line` exactly and the highlighter walked a neighbourhood,
+compared `source_line` exactly and the highlighter walked a neighborhood,
 inserting a line above an `oq` block rendered the chip **and** a live button on
 one paragraph — one surface saying the comment was still attached, the other
 saying the leaning had never been taken. It stays a tolerance rather than being
@@ -556,7 +556,7 @@ the chip *and* the burial the chip exists to remove.
 
 ```yaml
 ---
-title: "Adaptive levelling"
+title: "Adaptive leveling"
 status: in-review
 vantage:
   status-chip: true
@@ -580,23 +580,23 @@ The threat model is a document nobody vetted, in a repository Vantage serves.
 `<!-- vantage: section tone="url(https://evil/x)" -->`: the vocabulary is closed,
 so anything outside it is dropped at resolution; the compilation target is a data
 attribute rather than `style`, and no code path anywhere builds a style string;
-and the sanitiser re-checks with value-level allowlists.
+and the sanitizer re-checks with value-level allowlists.
 
 For **`data-vantage-leaning`** — the one free-text value in the design — there are
 **two** of those three, not three. A free-text value cannot be value-allowlisted,
 so that attribute is allowlisted by name only. It is safe because hast escapes
-attribute values on serialisation and React sets them through the DOM property
+attribute values on serialization and React sets them through the DOM property
 path, so no breakout is possible; and because it never becomes executable or
 styling markup. It *does* become markup — an escaped, inert attribute value.
 
-**Comment bodies are sanitised.** The `leaning` string becomes the body of a
+**Comment bodies are sanitized.** The `leaning` string becomes the body of a
 review comment, and comment bodies are rendered as Markdown into `innerHTML`. That
-path had no sanitiser at all until this work added one (`renderCommentMarkdown`,
+path had no sanitizer at all until this work added one (`renderCommentMarkdown`,
 with a tight allowlist appropriate to comment bodies). Without it, document
 content reached an XSS sink through one button click.
 
 > [!WARNING]
-> **DOMPurify with no DOM is not a sanitiser that fails open — it is not callable
+> **DOMPurify with no DOM is not a sanitizer that fails open — it is not callable
 > at all.** `isSupported` is false and `sanitize` is not a function. The module
 > guards on `isSupported` and escapes instead. An earlier note recorded this as
 > "fails open, returns input unchanged", which is wrong in a way that matters: a
@@ -607,14 +607,14 @@ content reached an XSS sink through one button click.
 `style` is allowlisted on every element, and `SAFE_STYLE` is what makes that safe.
 It enforces a property allowlist, **no parentheses anywhere** (which closes
 `url(…)` and `expression(…)` in one stroke), and now bans `position` outright.
-Matching is **all-or-nothing**: one unrecognised declaration drops the whole
+Matching is **all-or-nothing**: one unrecognized declaration drops the whole
 attribute, so an element renders unstyled rather than half-styled (**D6**).
 
 > [!IMPORTANT]
 > **KaTeX output never passes through this filter, and the filter's original
 > rationale was wrong because of it.** `rehype-katex` runs *after*
 > `rehype-sanitize`, so every style attribute KaTeX emits is injected
-> post-sanitisation and is never examined. Measured: with a schema that forbids
+> post-sanitization and is never examined. Measured: with a schema that forbids
 > `style` outright, KaTeX's style attributes still survive in the shipped order
 > and vanish in the reversed one.
 >
@@ -626,7 +626,7 @@ attribute, so an element renders unstyled rather than half-styled (**D6**).
 >
 > The filter still does real work, for the reason the original rationale
 > obscured: **document-authored** `style` attributes *do* pass through the
-> sanitiser, and that is the actual threat. The KaTeX battery in the test suite
+> sanitizer, and that is the actual threat. The KaTeX battery in the test suite
 > still earns its place by pinning what KaTeX emits — but it does not, and never
 > did, demonstrate anything about the filter.
 
@@ -680,7 +680,7 @@ every example the style guide tells agents to copy.
 - **Not a template language, and never text-changing.** No variables, no
   conditionals, no includes, no `<!-- vantage: replace … -->`.
 - **Not a styling API, and not a palette.** No CSS, no class-name passthrough, no
-  `style=`, and **no colour names at all**. Extending the vocabulary is a code
+  `style=`, and **no color names at all**. Extending the vocabulary is a code
   change with a review.
 - **Not a second review channel.** A directive never triggers a write on render.
   The button writes because a human clicked it, which is categorically different.
@@ -728,6 +728,6 @@ cited from code comments.
 | :--- | :--- |
 | OQ-1 | Keep the full `vantage:` spelling, on **greppability and collision-resistance** — not readability. Agents are the readership, and `rg 'vantage:'` finding every directive with no false positives is what orphan detection and any future migration depend on. |
 | OQ-2 | **Stamp, do not wrap.** A `<details>` wrapper puts comment cards inside `<summary>`, makes a summary click also open the comment popover, and breaks typography's `h2 + *` margin reset. The often-repeated justification — that the review system walks a flat sibling structure — is *false*; it climbs ancestors. The ruling stands on the four measured breakages, not on that claim. |
-| OQ-3 | **Semantic, never chromatic.** A document that names a colour has decided how it looks in every theme, including ones that do not exist yet. The theme owns the mapping. |
-| OQ-4 | **One button, affirmative only,** labelled to match the `leaning=` key. |
+| OQ-3 | **Semantic, never chromatic.** A document that names a color has decided how it looks in every theme, including ones that do not exist yet. The theme owns the mapping. |
+| OQ-4 | **One button, affirmative only,** labeled to match the `leaning=` key. |
 | OQ-10 | **Settled.** The alert gap was filed rather than fixed, and now is fixed: `rehypeVantageAlerts` compiles `> [!WARNING]` into `data-vantage-alert` and consumes the tone palette rather than building a second one — which is what the gap entry said whoever fixed it should do. See [GFM alerts](#gfm-alerts). |

@@ -3,7 +3,7 @@
  *
  * Split out from scrollToLineAnchor.ts so that non-browser consumers — the
  * `vantage-check` CLI, which validates `#L42` links against the file on disk —
- * can share the *same* syntax the viewer honours instead of reimplementing it
+ * can share the *same* syntax the viewer honors instead of reimplementing it
  * and drifting.
  */
 

@@ -1,11 +1,11 @@
 /**
- * Colour themes: which one the reader chose, and putting its stylesheet in the
+ * Color themes: which one the reader chose, and putting its stylesheet in the
  * page.
  *
- * A colour theme is a stylesheet that sets CSS variables on `:root` (light) and
- * `:root.dark` (dark). Tailwind compiles every colour utility to
+ * A color theme is a stylesheet that sets CSS variables on `:root` (light) and
+ * `:root.dark` (dark). Tailwind compiles every color utility to
  * `var(--color-<family>-<step>)` and declares the defaults in `@layer theme`,
- * so an unlayered sheet redefining those variables recolours every component
+ * so an unlayered sheet redefining those variables recolors every component
  * without touching one. Only the active theme's sheet is ever in the page, and
  * the default look has none at all — which is what keeps it pixel-identical to
  * the app before themes existed.
@@ -34,7 +34,7 @@
  * The `data-vantage-theme` attribute on `<html>` names the active theme, and it
  * is set only once the theme's variables are live. Mermaid watches it to redraw
  * diagrams, and a diagram drawn from half-loaded variables would be cached in
- * the wrong colours — so a theme's `<link>` loads beside the old theme and the
+ * the wrong colors — so a theme's `<link>` loads beside the old theme and the
  * swap happens in its `load` handler, never before.
  */
 
@@ -139,7 +139,7 @@ function userTheme(id: string, name = id, hasDark = true): ColorTheme {
 }
 
 // Through `lib/preferences`, which is where the throwing cases live — Safari
-// private windows, a sandboxed iframe, site data blocked — because a colour
+// private windows, a sandboxed iframe, site data blocked — because a color
 // preference is never worth a broken page.
 function readStored(): string | null {
   return readPreference(COLOR_THEME_STORAGE_KEY);
@@ -173,7 +173,7 @@ export function activeColorThemeId(): string {
  *
  * `install` sets the attribute only once the theme's stylesheet is live, which is
  * load-bearing for mermaid's cache and is exactly what makes the attribute safe
- * to show a reader: nothing here can name a theme whose colours are not on the
+ * to show a reader: nothing here can name a theme whose colors are not on the
  * page yet, and nothing here can name one that failed to load at all.
  */
 export function subscribeColorTheme(onChange: () => void): () => void {
@@ -184,8 +184,8 @@ export function subscribeColorTheme(onChange: () => void): () => void {
   observer.observe(document.documentElement, {
     attributes: true,
     // The source as well as the id: a user theme replacing the same-id built-in
-    // changes every colour and not the id, and the picker's option for it is
-    // synthesised from what the list does *not* describe.
+    // changes every color and not the id, and the picker's option for it is
+    // synthesized from what the list does *not* describe.
     attributeFilter: [COLOR_THEME_ATTRIBUTE, COLOR_THEME_SOURCE_ATTRIBUTE],
   });
   return () => observer.disconnect();
@@ -265,7 +265,7 @@ export function applyColorTheme(theme: ColorTheme): Promise<boolean> {
       if (pending !== current) return;
       pending = null;
       link.remove();
-      console.warn(`[Vantage] colour theme "${theme.id}" failed to load`);
+      console.warn(`[Vantage] color theme "${theme.id}" failed to load`);
       resolve(false);
     };
     pending = current;
@@ -405,7 +405,7 @@ export async function initColorTheme(): Promise<void> {
 }
 
 /**
- * Follow the colour theme the reader picks in another tab, for the life of this
+ * Follow the color theme the reader picks in another tab, for the life of this
  * one. Returns its unsubscribe, which `main.tsx` never calls — the preference
  * outlives every component — but a test does.
  *

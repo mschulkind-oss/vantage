@@ -265,7 +265,7 @@ This relied on **block index alignment**, which falls apart any time a block is 
 
 **Context:** Lisa is a stakeholder. Doesn't review. Just reads.
 
-1. She opens the file. `Review` button is grey, off. She doesn't notice it. She reads the doc. No friction.
+1. She opens the file. `Review` button is gray, off. She doesn't notice it. She reads the doc. No friction.
 
 2. A week later, she's asked to review. She finds the `Review` button by hovering toolbar icons. She clicks it. The button turns purple. The side-panel button appears.
 

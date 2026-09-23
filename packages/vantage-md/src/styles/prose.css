@@ -141,7 +141,7 @@
    `directives.css` draws a toned section's vertical rule, and clipping it breaks
    the rule for the height of every code fence. See the note there beside
    `[data-vantage-tone]:is(pre, hr)`. Keeping this unconditional rather than
-   scoping it to toned fences means one behaviour for every fence, and no
+   scoping it to toned fences means one behavior for every fence, and no
    specificity tie between the two stylesheets. */
 .vantage-prose pre code {
   background: none;

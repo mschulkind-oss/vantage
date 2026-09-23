@@ -36,7 +36,7 @@ type conn struct {
 	addr string
 
 	closeOnce sync.Once
-	// closed is signalled by drop so the writer goroutine and Broadcast can
+	// closed is signaled by drop so the writer goroutine and Broadcast can
 	// stop targeting an evicted connection without a second close.
 	closed chan struct{}
 }
@@ -128,7 +128,7 @@ func (c *conn) stop() {
 }
 
 // writeLoop is the single writer for c. It drains the send channel until the
-// connection is stopped or the context is cancelled, then closes the socket.
+// connection is stopped or the context is canceled, then closes the socket.
 func (m *Manager) writeLoop(ctx context.Context, c *conn) {
 	defer func() {
 		// CloseNow is safe to call repeatedly and unblocks any peer.
@@ -152,7 +152,7 @@ func (m *Manager) writeLoop(ctx context.Context, c *conn) {
 
 // Broadcast marshals msg once and delivers the bytes to every active
 // connection. A connection whose buffer is full is evicted as a slow client.
-// Marshalling errors are logged and drop the broadcast.
+// Marshaling errors are logged and drop the broadcast.
 func (m *Manager) Broadcast(msg any) {
 	data, err := json.Marshal(msg)
 	if err != nil {

@@ -76,7 +76,7 @@ The React component includes mermaid diagram rendering (lazy-loaded), frontmatte
 ### Your own processor, Vantage's chain
 
 `buildPipeline` returns the exact remark and rehype lists `renderMarkdown` and
-the React viewer use, in the exact order — including the sanitiser schema, and
+the React viewer use, in the exact order — including the sanitizer schema, and
 `rehypeSlug` after it, which is what keeps generated heading ids free of
 `rehype-sanitize`'s `user-content-` prefix. Use it rather than assembling the
 chain yourself; that is how a document ends up rendering differently in two
@@ -132,7 +132,7 @@ if all you want is `data-source-line`.
 - **Frontmatter** — YAML (`---`) and TOML (`+++`) parsing. A reserved `vantage:` key carries file-scoped chrome: `status-chip: true` makes `FrontmatterDisplay` render the document's `status:` as a chip above the metadata card, and the reserved key itself is never shown as a metadata row
 - **Sanitization** — XSS-safe with allowlisted KaTeX/MathML elements
 - **Dark mode** — all styles support `.dark` class
-- **Colour themes** — `MermaidDiagram` follows a host page's colour theme. While `<html>` carries `data-vantage-theme` (`COLOR_THEME_ATTRIBUTE`), diagram colours are read from the page's `--color-slate-*` variables instead of the built-in hex, and diagrams redraw when it or `data-vantage-theme-source` (`COLOR_THEME_SOURCE_ATTRIBUTE`: `built-in` or `user`, which tells a user theme apart from the built-in it replaces under the same id) changes. `currentColorTheme()` reads the first. A page that sets neither renders exactly as before
+- **Color themes** — `MermaidDiagram` follows a host page's color theme. While `<html>` carries `data-vantage-theme` (`COLOR_THEME_ATTRIBUTE`), diagram colors are read from the page's `--color-slate-*` variables instead of the built-in hex, and diagrams redraw when it or `data-vantage-theme-source` (`COLOR_THEME_SOURCE_ATTRIBUTE`: `built-in` or `user`, which tells a user theme apart from the built-in it replaces under the same id) changes. `currentColorTheme()` reads the first. A page that sets neither renders exactly as before
 
 ## License
 

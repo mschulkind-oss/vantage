@@ -36,7 +36,7 @@ const ANCHOR_MARGIN = 16;
  *
  * The `user-content-` fallback is `rehype-sanitize`'s id clobbering: the default
  * schema rewrites a *hand-written* `id` with that prefix, while `rehypeSlug` runs
- * after the sanitiser and its heading ids are untouched. Both spellings are live,
+ * after the sanitizer and its heading ids are untouched. Both spellings are live,
  * so both are tried — in that order, because the unprefixed one is the heading.
  */
 export function anchorTarget(id: string): HTMLElement | null {

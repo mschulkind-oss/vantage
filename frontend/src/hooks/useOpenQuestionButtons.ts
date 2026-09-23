@@ -32,7 +32,7 @@ import type { CommentAnchor, ReviewComment } from "../types";
  * from block hashes — without which the button would change the hash of the
  * block it sits in and make every comment anchored there read as drifted.
  *
- * A document cannot forge it: `data-*` is not on the sanitiser's `*` allowlist
+ * A document cannot forge it: `data-*` is not on the sanitizer's `*` allowlist
  * and `button` is not an allowed tag name.
  */
 const OQ_BUTTON_ATTR = "data-vantage-oq-button";
@@ -67,7 +67,7 @@ export const OQ_ANSWERED_TITLE =
  * can host a button: inside a `<pre>` it renders as part of the code, and a
  * `<button>` child of `<table>` is not even valid HTML — the parser hoists it
  * out of the table. A directive on one of those yields no button at all, which
- * is D6 (degrade to plain, never to broken), not an optimisation.
+ * is D6 (degrade to plain, never to broken), not an optimization.
  *
  * Derived from `VANTAGE_OQ_HOST_TARGETS`, not re-typed: this list and the
  * checker's `oq` branch of `vantage/orphan` are the same question asked twice,
@@ -113,7 +113,7 @@ function sweep(el: HTMLElement): void {
  * The line is a **tolerance, not an equality** — `NEIGHBOR_RADIUS`, the same
  * radius `useReviewHighlights` re-anchors within. Exact equality here is what
  * put a chip and a live button on one paragraph: insert a line above an `oq`
- * block and the highlighter's neighbour walk still found the comment while this
+ * block and the highlighter's neighbor walk still found the comment while this
  * function decided the leaning had never been taken. It stays a tolerance rather
  * than being dropped entirely so that two identical questions carrying identical
  * leanings, far apart in one document, keep separate buttons.
