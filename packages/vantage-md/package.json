@@ -31,7 +31,8 @@
     "./prose": "./dist/prose.css"
   },
   "files": [
-    "dist"
+    "dist",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsdown",
