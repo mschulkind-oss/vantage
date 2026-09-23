@@ -307,7 +307,8 @@ release version:
     GIT_INDEX_FILE="$idx" git add --force web/dist
     tree=$(GIT_INDEX_FILE="$idx" git write-tree)
     rm -f "$idx"
-    commit=$(git commit-tree "$tree" -p HEAD -m "release v{{version}}")
+    # commit-tree bypasses commit-msg; pre-push still checks this subject.
+    commit=$(git commit-tree "$tree" -p HEAD -m "build(release): bundle frontend for v{{version}}")
     git tag "v{{version}}" "$commit"
     git push origin "v{{version}}"
     echo "pushed v{{version}} — publish.yml takes it from here"
