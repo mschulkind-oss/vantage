@@ -162,6 +162,36 @@ export function activeColorThemeId(): string {
 }
 
 /**
+ * Watch the theme actually in effect, for a control that shows which one it is.
+ *
+ * The `subscribe` half of a `useSyncExternalStore` pair whose snapshot is
+ * `activeColorThemeId` — the same bargain `lib/darkMode.ts` makes with the `dark`
+ * class, and the one `MermaidDiagram` already makes with this very attribute. The
+ * attribute is the store: a component reading it this way has no copy of its own
+ * to go stale, so it is right whether the change came from its own click, from
+ * startup settling on the configured default, or from another tab.
+ *
+ * `install` sets the attribute only once the theme's stylesheet is live, which is
+ * load-bearing for mermaid's cache and is exactly what makes the attribute safe
+ * to show a reader: nothing here can name a theme whose colours are not on the
+ * page yet, and nothing here can name one that failed to load at all.
+ */
+export function subscribeColorTheme(onChange: () => void): () => void {
+  // Guarded because `applyColorTheme` is exercised in environments that have no
+  // observer; a control that never updates beats a page that throws.
+  if (typeof MutationObserver === "undefined") return () => {};
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    // The source as well as the id: a user theme replacing the same-id built-in
+    // changes every colour and not the id, and the picker's option for it is
+    // synthesised from what the list does *not* describe.
+    attributeFilter: [COLOR_THEME_ATTRIBUTE, COLOR_THEME_SOURCE_ATTRIBUTE],
+  });
+  return () => observer.disconnect();
+}
+
+/**
  * A theme's `<link>` that has not loaded yet, and how to tell its caller it was
  * abandoned. There is at most one: a newer choice discards it.
  */
