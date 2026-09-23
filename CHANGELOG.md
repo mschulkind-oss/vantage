@@ -1,9 +1,84 @@
 # Changelog
 
-All notable changes to Vantage will be documented in this file.
+What changed in each release of Vantage, newest first, written for the people who
+read documents in it rather than the people who write it.
+
+A version's section here is not a record of the release — it *is* the release
+announcement. `just release` refuses to cut a tag until the section exists, and
+CI publishes it verbatim as the body of that release on GitHub. The standard the
+entries are held to is
+[`.claude/skills/release-notes/SKILL.md`](.claude/skills/release-notes/SKILL.md).
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Versions `0.3.2` through `0.6.2` shipped without entries here; what they contain
+is in the commit log.
+
+## [0.7.0] - 2026-09-23
+
+Vantage now supports color themes and bookmarks, and reads per-project settings
+from `.vantage.toml`.
+
+### Added
+
+**Color themes.** Pick a palette under **Colors** in the settings menu. Six come
+with Vantage: Catppuccin, Gruvbox, Lila, Nord, Solarized, and Tokyo Night, each
+with its own light and dark variants, alongside the default look, now called
+Slate.
+
+To write your own, put a CSS file in `~/.config/vantage/themes/`. It shows up in
+the menu on the next page load, with no restart. Set `theme = "gruvbox"` in your
+config to start every browser in one. A project can suggest a theme in its
+`.vantage.toml`, and your own choice always wins. A theme with no dark colors is
+listed as "(light only)". Every built-in theme keeps its text at 3:1 contrast or
+better in both modes, checked in a real browser; your own themes aren't checked.
+Review mode's comment colors and printing still ignore the theme. See
+[Color Themes](userguide/guides/themes.md).
+
+**Bookmarks.** Click the star next to a document's name to bookmark it. Folders
+work too. Bookmarks appear in a **Starred** section above the file tree. They're
+stored in `~/.local/share/vantage/starred/` instead of in your browser, so they
+survive a restart and show up in every tab. If a bookmarked file disappears, the
+entry stays put and offers to remove itself when you open it.
+
+A project can also list the documents worth reading first in its `.vantage.toml`,
+and you can list files you always want starred in your own config. Those entries
+are marked with a pin and name the file that added them. See
+[Starred](userguide/features.md#starred).
+
+**Open questions in the contents panel.** A document's open questions now appear
+in the table of contents, under the heading they sit below, with a count next to
+**Contents**. `💬 3` means three are waiting on a decision; `💬 1 ✅ 2` means one
+is open and two are answered. Click one to jump to it. See
+[Table of Contents](userguide/features.md#table-of-contents).
+
+### Changed
+
+Settings now follow you between tabs. Before, a second tab read most settings
+once when it loaded and then drifted, so changing the theme in one tab left the
+other on the old one. `Shift+D` had the same problem inside a single tab: it
+changed the page without updating the settings menu. The sidebar and its width,
+the tree filters, the project sort order, light/dark, and the color theme all
+stay in sync now.
+
+Review mode is a deliberate exception. Two tabs are usually on different
+documents, and picking up a toggle from another tab would close the review pane
+while you're partway through a comment.
+
+### Fixed
+
+- The file pickers (`t`, `Shift+T`, `Shift+R`, `Shift+P`) reload their list every
+  time they open, and a picker that's already open keeps up with the filesystem.
+  Before, a file created after the page loaded was unfindable until you
+  reloaded.
+- A modified file's icon was too faint to read in the file tree in light mode.
+- A document that fails to load no longer moves you off the one you're reading,
+  and the error names the file you actually asked for.
+- A slow response for a document you've already navigated away from is thrown
+  away instead of replacing what you're reading.
+- `vantage-check check --config <a directory>` now says
+  `docs is a directory, not a config file` and exits 2, instead of printing a
+  stack trace.
 
 ## [0.3.1] - 2026-04-06
 

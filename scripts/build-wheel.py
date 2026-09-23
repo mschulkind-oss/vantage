@@ -186,6 +186,16 @@ def main() -> int:
                 f"Summary: {args.summary}\n"
                 f"License: {LICENSE}\n"
                 f"Project-URL: Homepage, {HOMEPAGE}\n"
+                # PyPI renders Project-URLs in the sidebar, and a wheel has no
+                # release-notes field of its own — this link is the only signpost
+                # an installer from PyPI gets. It points at the GitHub release
+                # for the version in this wheel, not at CHANGELOG.md on the
+                # default branch: publish.yml puts that version's changelog
+                # section in that release's body, so the link lands on the prose
+                # for the bytes they installed rather than at the top of a file
+                # that has already moved on. Wheels are only ever built from a
+                # tag, which is what makes the URL resolvable.
+                f"Project-URL: Changelog, {HOMEPAGE}/releases/tag/v{version}\n"
                 f"Requires-Python: {args.requires_python}\n"
                 "Description-Content-Type: text/markdown\n"
                 "\n" + description
