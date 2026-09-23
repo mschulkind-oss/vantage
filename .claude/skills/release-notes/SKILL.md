@@ -21,16 +21,17 @@ first has to stand on its own with no heading above it.
 
 ## Who reads it
 
-Two people, and neither is a contributor.
+Two people are reading for product changes, not implementation history.
 
 - Someone who runs `vantage` over their own documents and wants to know what is
   different this morning.
 - Someone on an older version deciding whether the upgrade is worth the minute.
 
-A contributor already has the commit log, which is longer, more honest and better
-written than any summary of it. So nothing in the entry is addressed to them: no
-hashes, no PR numbers, no package or module names, no file paths, no "refactored
-for clarity", no "see the diff".
+A contributor already has the commit log, which is longer and more complete
+than any summary of it. So the change descriptions are not addressed to them:
+no hashes, no PR numbers, no package or module names, no file paths, no
+"refactored for clarity", no "see the diff". Contributor thanks are separate
+from the change descriptions; see [Crediting contributors](#crediting-contributors).
 
 ## What earns a line
 
@@ -176,6 +177,18 @@ version followed by end-of-line, so it matches. Check a new shape with
 
 The changelog itself carries none of this. It is read by people who want to know
 what changed, and instructions for whoever writes it belong here instead.
+
+## Crediting contributors
+
+Thank people outside the maintainers who contributed to this release, especially
+first-time contributors. Put a short `### Contributors` section after the change
+notes. For each person, use their public GitHub profile name **if they have
+one**, followed by their linked GitHub handle; if the profile has no name, use
+only the linked handle. For example, `Jane Doe ([@jane](https://github.com/jane))`
+or `[@jane](https://github.com/jane)` when no name is listed. Do not infer a name
+from an email address or a commit author field. Say what they contributed in a
+short phrase, without repeating the feature explanation or listing commits.
+Check the profile and the release's commit history before publishing.
 
 ## Gathering the material honestly
 
