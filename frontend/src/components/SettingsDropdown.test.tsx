@@ -8,7 +8,11 @@ import {
 } from "@testing-library/react";
 import axios from "axios";
 import { SettingsDropdown } from "./SettingsDropdown";
-import { builtInColorThemes } from "../lib/colorTheme";
+import {
+  applyColorTheme,
+  builtInColorThemes,
+  followColorTheme,
+} from "../lib/colorTheme";
 import { toggleColorMode } from "../lib/darkMode";
 
 vi.mock("axios");
@@ -258,6 +262,74 @@ describe("SettingsDropdown", () => {
       expect(localStorage.getItem("vantage:colorTheme")).toBe("catppuccin");
       expect(document.documentElement.classList.contains("dark")).toBe(true);
       expect(localStorage.getItem("vantage:theme")).toBe("dark");
+    });
+
+    it("moves when another tab picks a theme, which is the whole point", async () => {
+      const stop = followColorTheme();
+      renderDropdown();
+      fireEvent.click(screen.getByLabelText("Settings"));
+      const select = screen.getByLabelText("Colours") as HTMLSelectElement;
+      expect(select.value).toBe("default");
+
+      localStorage.setItem("vantage:colorTheme", "catppuccin");
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: "vantage:colorTheme",
+          newValue: "catppuccin",
+          storageArea: localStorage,
+        }),
+      );
+      await loadThemeLink();
+
+      await waitFor(() => expect(select.value).toBe("catppuccin"));
+      stop();
+    });
+
+    it("still names the old theme while a new sheet is loading", async () => {
+      // Not a missing optimistic update: until the stylesheet is live the reader
+      // is still looking at the previous palette, and saying otherwise would
+      // name colours that are not on the page.
+      // Not awaited before the link loads: `applyColorTheme` resolves *in* that
+      // load handler, so awaiting it first would deadlock the test.
+      const applied = applyColorTheme(builtInColorThemes()[1]);
+      await loadThemeLink();
+      await applied;
+      renderDropdown();
+      fireEvent.click(screen.getByLabelText("Settings"));
+      const select = screen.getByLabelText("Colours") as HTMLSelectElement;
+      expect(select.value).toBe("catppuccin");
+
+      fireEvent.change(select, { target: { value: "gruvbox" } });
+
+      expect(select.value).toBe("catppuccin");
+      await loadThemeLink();
+      await waitFor(() => expect(select.value).toBe("gruvbox"));
+    });
+
+    it("never names a theme whose stylesheet failed to load", async () => {
+      mockedAxios.get.mockResolvedValue({
+        data: { default: "", themes: [{ id: "ocean", name: "ocean" }] },
+      });
+      renderDropdown();
+      fireEvent.click(screen.getByLabelText("Settings"));
+      const select = screen.getByLabelText("Colours") as HTMLSelectElement;
+      await waitFor(() =>
+        expect(Array.from(select.options).map((o) => o.value)).toContain(
+          "ocean",
+        ),
+      );
+
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      fireEvent.change(select, { target: { value: "ocean" } });
+      const links = () =>
+        Array.from(document.head.querySelectorAll<HTMLLinkElement>("link"));
+      await waitFor(() => expect(links().length).toBeGreaterThan(0));
+      links()[links().length - 1].dispatchEvent(new Event("error"));
+
+      await waitFor(() =>
+        expect(localStorage.getItem("vantage:colorTheme")).toBeNull(),
+      );
+      expect(select.value).toBe("default");
     });
 
     it("marks a theme with no dark half, so dark mode is not a surprise", async () => {
