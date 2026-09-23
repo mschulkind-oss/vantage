@@ -148,7 +148,10 @@ list is on you, and a check that cannot fire is not permission.
   repository's own style — relative path, no leading slash, extension included.
   `vantage-check` runs over this file's neighbors and a dead link or a dead
   anchor is a failure, so check the heading slug you are linking to rather than
-  guessing it.
+  guessing it. Do not write them as `https://github.com/…` URLs to suit the
+  release page: `publish.yml` already rewrites every relative link to one pinned
+  to the tag (`changelog-section.sh --link-base`), and an absolute URL is one the
+  gate cannot follow.
 - **Keep the Keep a Changelog shape**: `## [<version>] - <YYYY-MM-DD>`, then
   `### Added` / `### Changed` / `### Fixed`, omitting the ones with nothing in
   them.

@@ -384,6 +384,62 @@ changelog <<'EOF'
 EOF
 expect 0 "one commit-shaped bullet in a majority of prose" 0.7.0
 
+# --- --link-base: relative links, made absolute for the release page ---------
+#
+# A GitHub release body is rendered at /releases/tag/<tag>, not inside the tree,
+# so a repository-relative link there resolves under /releases/tag/ and 404s.
+# Every shape the rewrite must touch, and every shape it must not, in one section.
+
+base=https://github.com/o/r/blob/v0.7.0
+
+changelog <<'EOF'
+## [0.7.0] - 2026-09-22
+
+See [Themes](userguide/guides/themes.md) and [Starred](userguide/features.md#starred).
+Rooted [one](/docs/a.md), dotted [two](./docs/b.md), same file [three](#060).
+Already absolute: [site](https://example.com/x) and [mail](mailto:a@b.c).
+In a code span it is text: `[x](userguide/not-a-link.md)`, then [real](docs/c.md).
+
+[ref]: userguide/reference.md
+[abs]: https://example.com/y "a title"
+
+```md
+[fenced](userguide/also-text.md)
+```
+EOF
+
+cat >"$tmp/want" <<'EOF'
+See [Themes](https://github.com/o/r/blob/v0.7.0/userguide/guides/themes.md) and [Starred](https://github.com/o/r/blob/v0.7.0/userguide/features.md#starred).
+Rooted [one](https://github.com/o/r/blob/v0.7.0/docs/a.md), dotted [two](https://github.com/o/r/blob/v0.7.0/docs/b.md), same file [three](https://github.com/o/r/blob/v0.7.0/CHANGELOG.md#060).
+Already absolute: [site](https://example.com/x) and [mail](mailto:a@b.c).
+In a code span it is text: `[x](userguide/not-a-link.md)`, then [real](https://github.com/o/r/blob/v0.7.0/docs/c.md).
+
+[ref]: https://github.com/o/r/blob/v0.7.0/userguide/reference.md
+[abs]: https://example.com/y "a title"
+
+```md
+[fenced](userguide/also-text.md)
+```
+EOF
+
+_got=0
+"$script" --link-base "$base" 0.7.0 "$tmp/CHANGELOG.md" >"$tmp/out" 2>"$tmp/err" || _got=$?
+if [ "$_got" = 0 ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL [--link-base]: wanted exit 0, got $_got"; sed 's/^/      /' "$tmp/err"; fi
+expect_body "--link-base rewrites relative links and only those"
+
+# The trailing slash is normalized, so either spelling joins to one slash.
+"$script" --link-base "$base/" 0.7.0 "$tmp/CHANGELOG.md" >"$tmp/out" 2>/dev/null || true
+expect_body "--link-base with a trailing slash"
+
+# Without the option the body is still byte-for-byte what was written.
+sed -n '7,$p' "$tmp/CHANGELOG.md" >"$tmp/want"
+expect 0 "no --link-base" 0.7.0
+expect_body "no --link-base leaves every link as written"
+
+_got=0
+"$script" --link-base >/dev/null 2>&1 || _got=$?
+if [ "$_got" = 2 ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL [--link-base with no url]: wanted exit 2, got $_got"; fi
+
 # --- usage errors are not policy failures ------------------------------------
 
 _got=0

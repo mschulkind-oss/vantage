@@ -11,7 +11,7 @@
 # April, because nothing read it and nothing needed it.
 #
 # Usage:
-#   changelog-section.sh <version> [changelog-file]
+#   changelog-section.sh [--link-base <url>] <version> [changelog-file]
 #
 # <version> may be written `0.7.0` or `v0.7.0`; the file defaults to CHANGELOG.md
 # beside this script's repository root, so the caller's working directory does
@@ -24,7 +24,8 @@
 #
 # WHAT IT PRINTS is the section body — everything under the version heading up to
 # the next version heading, minus the heading itself and the blank lines around
-# the body, and nothing else changed. Nothing is re-wrapped, so hard line breaks
+# the body, and nothing else changed unless `--link-base` asks for one thing
+# (below). Nothing is re-wrapped, so hard line breaks
 # (two trailing spaces), indentation, tables and link references survive into the
 # release verbatim. The heading is dropped because the GitHub release already
 # carries the version and the date in its own title.
@@ -42,6 +43,21 @@
 # except inside a fenced code block, where a `# comment` line is code and not a
 # heading.
 #
+# RELATIVE LINKS, AND WHY THE RELEASE BODY NEEDS THEM ABSOLUTE. The file links
+# the user guide the repository's way — `[Themes](userguide/guides/themes.md)` —
+# because that is what `vantage-check` can follow, so a dead link or a dead anchor
+# fails the gate before it can ship. But a GitHub release body is not rendered
+# inside the repository tree: GitHub leaves the href exactly as written, and the
+# page it sits on is `/releases/tag/v0.7.0`, so every such link resolves under
+# `/releases/tag/` and 404s. Since a tag is never moved, that is a dead link that
+# can never be fixed. `--link-base` is how CI closes the gap: given
+# `https://github.com/<owner>/<repo>/blob/<tag>/`, every relative link target is
+# printed prefixed with it — pinned to the tag, so it shows the guide as it stood
+# for that release — and a bare `#anchor` is pointed at `CHANGELOG.md#anchor`.
+# Without the option the body is byte-for-byte as written. Absolute URLs,
+# `mailto:` and the like are left alone, as is anything inside a code span or a
+# fenced block, where `](x)` is text and not a link.
+#
 # The version has to match whole. `0.7.0` will not find `## [0.7.0-rc1]` or
 # `## [0.17.0]`: the requested version must be followed by `]`, whitespace, or
 # the end of the line, and `-` is none of those.
@@ -50,8 +66,20 @@ set -eu
 
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
-[ "$#" -ge 1 ] || { echo "usage: $0 <version> [changelog-file]" >&2; exit 2; }
-[ "$#" -le 2 ] || { echo "usage: $0 <version> [changelog-file]" >&2; exit 2; }
+usage="usage: $0 [--link-base <url>] <version> [changelog-file]"
+
+link_base=
+if [ "${1:-}" = "--link-base" ]; then
+    [ "$#" -ge 2 ] && [ -n "$2" ] || { echo "$usage" >&2; exit 2; }
+    link_base=$2
+    shift 2
+    # One trailing slash, however the caller wrote it, so the join never
+    # doubles one or drops one.
+    link_base="${link_base%/}/"
+fi
+
+[ "$#" -ge 1 ] || { echo "$usage" >&2; exit 2; }
+[ "$#" -le 2 ] || { echo "$usage" >&2; exit 2; }
 
 version=${1#v}
 file=${2:-$here/../CHANGELOG.md}
@@ -254,4 +282,55 @@ if [ "$fail" -ne 0 ]; then
     exit 1
 fi
 
-printf '%s\n' "$body"
+# --- links, for a body that is read off the repository tree -----------------
+
+if [ -z "$link_base" ]; then
+    printf '%s\n' "$body"
+    exit 0
+fi
+
+# Inline links `](target` and reference definitions `[name]: target`. Code spans
+# are skipped by splitting on backticks and rewriting only the even pieces; a
+# fence skips whole lines, the same way the extractor above treats one.
+printf '%s\n' "$body" | awk -v base="$link_base" '
+    function absolute(t) {
+        # A scheme (https:, mailto:), or a protocol-relative //host.
+        return t ~ /^[A-Za-z][A-Za-z0-9+.-]*:/ || t ~ /^\/\//
+    }
+    function resolve(t) {
+        if (absolute(t)) return t
+        if (t ~ /^#/) return base "CHANGELOG.md" t
+        sub(/^\.\//, "", t)
+        sub(/^\//, "", t)
+        return base t
+    }
+    function inline_links(s,    out, t) {
+        out = ""
+        while (match(s, /\]\([^)[:space:]]+/)) {
+            t = substr(s, RSTART + 2, RLENGTH - 2)
+            out = out substr(s, 1, RSTART + 1) resolve(t)
+            s = substr(s, RSTART + RLENGTH)
+        }
+        return out s
+    }
+    /^[[:space:]]*(```|~~~)/ { fenced = !fenced; print; next }
+    fenced { print; next }
+    # [name]: target — at most three spaces of indent, as CommonMark has it.
+    /^ {0,3}\[[^]]+\]:[[:space:]]*[^[:space:]]/ {
+        match($0, /\]:[[:space:]]*/)
+        head = substr($0, 1, RSTART + RLENGTH - 1)
+        rest = substr($0, RSTART + RLENGTH)
+        t = rest; sub(/[[:space:]].*$/, "", t)
+        print head resolve(t) substr(rest, length(t) + 1)
+        next
+    }
+    {
+        n = split($0, piece, "`")
+        line = ""
+        for (i = 1; i <= n; i++) {
+            if (i > 1) line = line "`"
+            line = line (i % 2 ? inline_links(piece[i]) : piece[i])
+        }
+        print line
+    }
+'
