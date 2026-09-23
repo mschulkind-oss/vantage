@@ -201,7 +201,6 @@ _self-check: cli
     # posts it as the GitHub release body, and a tag is never moved: a dead link
     # in a release that has shipped cannot be fixed, only apologized for.
     paths=(docs userguide README.md AGENTS.md CHANGELOG.md
-           .claude/skills/release-notes/SKILL.md
            packages/vantage-check/README.md packages/vantage-md/README.md)
     "$bin" version
     test -n "$("$bin" style-guide)" || { echo "style-guide printed nothing"; exit 1; }
