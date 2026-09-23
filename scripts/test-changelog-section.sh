@@ -440,6 +440,126 @@ _got=0
 "$script" --link-base >/dev/null 2>&1 || _got=$?
 if [ "$_got" = 2 ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL [--link-base with no url]: wanted exit 2, got $_got"; fi
 
+# --- --unwrap: joined paragraphs, for a page that renders newlines as <br> ---
+#
+# GitHub renders a release body with every newline a hard break, which is how
+# v0.7.0 went out as a ragged 80-column strip. Every block whose line breaks
+# carry meaning has to come through untouched, and only prose is joined.
+
+printf '%s\n' \
+'## [0.7.0] - 2026-09-22' \
+'' \
+'A paragraph wrapped' \
+'at a narrow column,' \
+'  with stray indentation.' \
+'' \
+'- A list item whose text' \
+'  hangs under the marker.' \
+'- A second item.' \
+'  - A nested item, which' \
+'    wraps too.' \
+'' \
+'1. Numbered, and' \
+'   wrapped.' \
+'2. Second.' \
+'' \
+'A sentence that wraps just before a year' \
+'2026. is still one sentence.' \
+'' \
+'A hard break here.  ' \
+'And a backslash one.\' \
+'Then prose that' \
+'joins again.' \
+'' \
+'| a | b |' \
+'| - | - |' \
+'| 1 | 2 |' \
+'' \
+'> Quoted' \
+'> lines.' \
+'' \
+'<!-- a comment' \
+'     over two lines -->' \
+'' \
+'    indented code' \
+'    stays put' \
+'' \
+'```sh' \
+'# a fenced' \
+'# block' \
+'```' \
+'' \
+'### Fixed' \
+'Straight after a heading,' \
+'still a paragraph.' \
+'' \
+'[ref]: userguide/a.md' \
+'[two]: userguide/b.md' \
+    | changelog
+
+printf '%s\n' \
+'A paragraph wrapped at a narrow column, with stray indentation.' \
+'' \
+'- A list item whose text hangs under the marker.' \
+'- A second item.' \
+'  - A nested item, which wraps too.' \
+'' \
+'1. Numbered, and wrapped.' \
+'2. Second.' \
+'' \
+'A sentence that wraps just before a year 2026. is still one sentence.' \
+'' \
+'A hard break here.  ' \
+'And a backslash one.\' \
+'Then prose that joins again.' \
+'' \
+'| a | b |' \
+'| - | - |' \
+'| 1 | 2 |' \
+'' \
+'> Quoted' \
+'> lines.' \
+'' \
+'<!-- a comment' \
+'     over two lines -->' \
+'' \
+'    indented code' \
+'    stays put' \
+'' \
+'```sh' \
+'# a fenced' \
+'# block' \
+'```' \
+'' \
+'### Fixed' \
+'Straight after a heading, still a paragraph.' \
+'' \
+'[ref]: userguide/a.md' \
+'[two]: userguide/b.md' \
+    >"$tmp/want"
+
+_got=0
+"$script" --unwrap 0.7.0 "$tmp/CHANGELOG.md" >"$tmp/out" 2>"$tmp/err" || _got=$?
+if [ "$_got" = 0 ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL [--unwrap]: wanted exit 0, got $_got"; sed 's/^/      /' "$tmp/err"; fi
+expect_body "--unwrap joins prose and keeps every meaningful line break"
+
+# Both options together, in either order: links are rewritten and then joined.
+changelog <<'EOF'
+## [0.7.0] - 2026-09-22
+
+See the
+[Themes](userguide/themes.md) guide.
+EOF
+echo "See the [Themes](https://github.com/o/r/blob/v0.7.0/userguide/themes.md) guide." >"$tmp/want"
+"$script" --unwrap --link-base "$base" 0.7.0 "$tmp/CHANGELOG.md" >"$tmp/out" 2>/dev/null || true
+expect_body "--unwrap then --link-base"
+"$script" --link-base "$base" --unwrap 0.7.0 "$tmp/CHANGELOG.md" >"$tmp/out" 2>/dev/null || true
+expect_body "--link-base then --unwrap"
+
+_got=0
+"$script" --no-such-option 0.7.0 >/dev/null 2>&1 || _got=$?
+if [ "$_got" = 2 ]; then pass=$((pass + 1)); else fail=$((fail + 1)); echo "FAIL [unknown option]: wanted exit 2, got $_got"; fi
+
 # --- usage errors are not policy failures ------------------------------------
 
 _got=0
