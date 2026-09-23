@@ -112,6 +112,12 @@ together.
 - `vantage-check` splits a run across worker threads by default, and the report
   reads the same either way.
 
+### Contributors
+
+Thanks to Eduardo Hidalgo ([@edus44](https://github.com/edus44)) for the table
+of contents, the Vantage favicon, and fixes to port selection and spurious
+browser reloads.
+
 ## 0.5.x
 
 _0.5.0 – 0.5.10, May to September 2026._
