@@ -75,6 +75,11 @@ while you're partway through a comment.
   `docs is a directory, not a config file` and exits 2, instead of printing a
   stack trace.
 
+### Contributors
+
+Thanks to [@nichiflu](https://github.com/nichiflu) for the initial color-theme
+implementation.
+
 ### Works well with
 
 [matt-craft](https://github.com/mschulkind-oss/matt-craft) is out — the skills I use to
