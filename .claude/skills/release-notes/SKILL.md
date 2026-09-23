@@ -10,9 +10,8 @@ description: Use when writing or revising a version entry in Vantage's CHANGELOG
 [`scripts/changelog-section.sh`](../../../scripts/changelog-section.sh) lifts that
 section out byte for byte, and `publish.yml` posts it as the body of the GitHub
 release. So the entry **is** the announcement, and it ships at the instant the tag
-is pushed: a tag is never moved in this repository, and editing the file
-afterwards does not change a release that has already been published. The sentence
-you think of next week is a sentence the release does not have.
+is pushed: a tag is never moved in this repository, so editing the file afterwards
+does not change a release that has already gone out.
 
 Run the extractor over your draft before committing — `sh
 scripts/changelog-section.sh <version>` prints exactly what the release will say,
@@ -153,6 +152,27 @@ list is on you, and a check that cannot fire is not permission.
 - **Keep the Keep a Changelog shape**: `## [<version>] - <YYYY-MM-DD>`, then
   `### Added` / `### Changed` / `### Fixed`, omitting the ones with nothing in
   them.
+
+## Two heading shapes, and why the difference is load-bearing
+
+`## [0.7.0] - 2026-09-23` is a release's own notes. The extractor finds a section
+by exactly that version, so this is the shape `just release` requires and the one
+CI publishes verbatim.
+
+`## 0.6.x` is a retrospective — a summary of a minor line written after the fact,
+which no release ever carried. Releases before 0.7.0 are grouped this way, one
+section per minor line, because a reader upgrading from 0.5 wants to know what the
+0.6 line brought and nobody wants to know what 0.5.9 fixed.
+
+**A retrospective heading must not be extractable**, or a summary nobody wrote as
+release notes can be published as them. `0.6.x` is safe because it is not a
+semver: it cannot be a `just release` argument, a `v[0-9]*` tag, or a match for
+`0.6`, `0.6.0` or `0.6.3`. A bare `## 0.6` is *not* safe — the extractor accepts a
+version followed by end-of-line, so it matches. Check a new shape with
+`sh scripts/changelog-section.sh <version>` before trusting it.
+
+The changelog itself carries none of this. It is read by people who want to know
+what changed, and instructions for whoever writes it belong here instead.
 
 ## Gathering the material honestly
 
