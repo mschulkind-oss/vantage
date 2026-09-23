@@ -1,23 +1,13 @@
 # Changelog
 
-What changed in each release of Vantage, newest first, written for the people who
-read documents in it rather than the people who write it.
+What changed in each release of Vantage, newest first.
 
-A version's section here is not a record of the release — it *is* the release
-announcement. `just release` refuses to cut a tag until the section exists, and
-CI publishes it verbatim as the body of that release on GitHub. The standard the
-entries are held to is
-[`.claude/skills/release-notes/SKILL.md`](.claude/skills/release-notes/SKILL.md).
+Releases before 0.7.0 are summarized one section per minor line — `0.6.x`,
+`0.5.x` — rather than one per patch release. The per-patch detail is in the
+commit log.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-Everything before 0.7.0 is summarized one section per minor line, written after
-the fact for someone upgrading from an old version. Those sections say what the
-line was about; the per-patch detail is in the commit log. The two heading
-shapes mean different things. `## [0.7.0] - 2026-09-23` is a release's own notes,
-which `just release` requires and CI publishes verbatim. `## 0.6.x` is a
-retrospective that no release ever carried.
 
 ## [0.7.0] - 2026-09-23
 
