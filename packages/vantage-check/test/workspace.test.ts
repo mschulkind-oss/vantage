@@ -5,7 +5,7 @@ import { Workspace } from "../src/core/workspace.js";
 import { checkTree, makeTree, ruleIds } from "./helpers.js";
 
 /**
- * `Workspace.offer` is an optimisation, so every test here is the same
+ * `Workspace.offer` is an optimization, so every test here is the same
  * question asked of a different answer: **does the shortcut agree with the long
  * way round?** A cache that is merely fast is a cache that invents findings.
  */

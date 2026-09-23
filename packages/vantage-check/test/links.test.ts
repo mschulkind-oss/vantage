@@ -183,7 +183,7 @@ describe("link/line-anchor-range", () => {
 /**
  * An inverted range is a warning on purpose, and this is the pin.
  *
- * `parseLineAnchor` normalises with Math.min/Math.max, so `#L4-L2` highlights
+ * `parseLineAnchor` normalizes with Math.min/Math.max, so `#L4-L2` highlights
  * lines 2–4 in the viewer: the link *works*. A working link must never fail a
  * run — but it is still almost certainly a typo, so it is not silence either.
  */
@@ -272,7 +272,7 @@ describe("link/line-anchor-format", () => {
     expect(ruleIds(await checkTree(root))).toEqual([]);
   });
 
-  // The judgement call, pinned to the viewer: `#l42` is not a line anchor
+  // The judgment call, pinned to the viewer: `#l42` is not a line anchor
   // (parseLineAnchor wants an uppercase L), but it *is* the slug of a heading
   // called "L42", so the link resolves and must not be a format finding.
   it("leaves a lowercase #l42 alone, because a heading can own that slug", async () => {

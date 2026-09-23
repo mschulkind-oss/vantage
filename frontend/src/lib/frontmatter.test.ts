@@ -6,7 +6,7 @@
  * beside this file, imported by nothing but this test. The copy is gone; the
  * cases are not, so they now assert against the real thing. Anything that
  * special-cases a frontmatter key has to land in the package, or the suite goes
- * green while the viewer renders the old behaviour.
+ * green while the viewer renders the old behavior.
  */
 import { describe, it, expect } from "vitest";
 import { parseFrontmatter } from "vantage-md";

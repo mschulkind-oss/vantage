@@ -10,8 +10,8 @@
  * It deliberately checks the properties a chain divergence would break first:
  * the `data-source-line` numbers a `#L42` link and every review anchor are read
  * against, the heading id every in-document link points at (unprefixed, which
- * is the whole reason `rehypeSlug` runs after the sanitiser), that math renders
- * while a bare `$` does not, and that the sanitiser filtered the style.
+ * is the whole reason `rehypeSlug` runs after the sanitizer), that math renders
+ * while a bare `$` does not, and that the sanitizer filtered the style.
  */
 import { render, cleanup } from "@testing-library/react";
 import { describe, it, expect, afterEach, vi } from "vitest";
@@ -186,7 +186,7 @@ describe("every renderer runs the same chain", () => {
   });
 
   it("agrees on the heading id, with no user-content- prefix", async () => {
-    // `rehypeSlug` runs after `rehypeSanitize` in all three, so the sanitiser's
+    // `rehypeSlug` runs after `rehypeSanitize` in all three, so the sanitizer's
     // `clobberPrefix` never touches a generated id.
     for (const rendered of [
       await throughRenderMarkdown(),
@@ -208,7 +208,7 @@ describe("every renderer runs the same chain", () => {
     }
   });
 
-  it("agrees that the sanitiser filtered position:fixed off the div", async () => {
+  it("agrees that the sanitizer filtered position:fixed off the div", async () => {
     for (const rendered of [
       await throughRenderMarkdown(),
       throughPackageViewer(),
@@ -224,7 +224,7 @@ describe("every renderer runs the same chain", () => {
   });
 
   it("agrees on every data-vantage-* attribute a directive compiles to", async () => {
-    // The test that catches a boolean: `dataVantageOq: true` serialises as a
+    // The test that catches a boolean: `dataVantageOq: true` serializes as a
     // bare `data-vantage-oq` through `rehype-stringify` and as
     // `data-vantage-oq="true"` through react-markdown, so a directive would
     // mean one thing in the app and another in the CLI checker with nothing
@@ -257,11 +257,11 @@ describe("every renderer runs the same chain", () => {
     // ReactMarkdown's `components` prop (`MarkdownViewer.tsx`'s heading
     // factory). That is a viewer affordance, not part of the chain, so it is
     // the one difference this comparison is allowed to ignore.
-    const normalise = (text: string) =>
+    const normalize = (text: string) =>
       text.replace(/\s+/g, " ").replace(/^#/, "").trim();
-    const viaRenderMarkdown = normalise((await throughRenderMarkdown()).text);
+    const viaRenderMarkdown = normalize((await throughRenderMarkdown()).text);
 
-    expect(normalise(throughPackageViewer().text)).toBe(viaRenderMarkdown);
-    expect(normalise(throughAppViewer().text)).toBe(viaRenderMarkdown);
+    expect(normalize(throughPackageViewer().text)).toBe(viaRenderMarkdown);
+    expect(normalize(throughAppViewer().text)).toBe(viaRenderMarkdown);
   });
 });

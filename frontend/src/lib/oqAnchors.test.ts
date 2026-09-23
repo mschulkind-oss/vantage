@@ -7,7 +7,7 @@
  *
  * The reason this file exists at all is one failure mode that is invisible
  * without it. `rehypeVantageDirectives` runs before `rehypeSanitize`, and the
- * sanitiser's default schema clobbers `id` with the prefix `user-content-`. An
+ * sanitizer's default schema clobbers `id` with the prefix `user-content-`. An
  * implementation that writes `id` in the directive plugin renders a perfectly
  * valid page, passes every other test in the suite, and puts `user-content-OQ-4`
  * on the element — so every `#OQ-4` link in every document lands nowhere and
@@ -26,7 +26,7 @@ describe("open question anchors", () => {
     );
 
     expect(html).toContain('id="OQ-4"');
-    // The trap. A bare `id` stamped before the sanitiser arrives like this.
+    // The trap. A bare `id` stamped before the sanitizer arrives like this.
     expect(html).not.toContain("user-content-OQ-4");
   });
 
@@ -76,7 +76,7 @@ describe("open question anchors", () => {
     expect(html).not.toContain(' id="');
   });
 
-  // The sanitiser's value allowlist is the backstop on a value that is about to
+  // The sanitizer's value allowlist is the backstop on a value that is about to
   // be written into the document's id namespace. The renderer stamps a
   // malformed id rather than dropping it silently — naming it is
   // `vantage/oq-id-format`'s job — so the schema is what stops it reaching the

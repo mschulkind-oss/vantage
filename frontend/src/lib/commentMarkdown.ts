@@ -5,9 +5,9 @@ import { marked } from "marked";
  * Render a review comment body — a comment, or an agent's reaction summary — to
  * HTML that is safe to assign to `innerHTML`.
  *
- * ## Why this is sanitised at all
+ * ## Why this is sanitized at all
  *
- * `marked` does not sanitise: it passes raw HTML straight through and does not
+ * `marked` does not sanitize: it passes raw HTML straight through and does not
  * inspect link protocols, so `<img src=x onerror=alert(1)>` and
  * `[click](javascript:alert(1))` both survive verbatim. The inline review
  * surface assigns this string to `innerHTML`, where an `onerror` fires. Comment
@@ -18,7 +18,7 @@ import { marked } from "marked";
  *
  * ## Why DOMPurify rather than the document pipeline's `rehype-sanitize`
  *
- * The repo already has one sanitisation policy — `sanitizeSchema` in
+ * The repo already has one sanitization policy — `sanitizeSchema` in
  * `vantage-md` — and drift between policies is a real cost, so this is a
  * deliberate second one:
  *
@@ -30,8 +30,8 @@ import { marked } from "marked";
  *   unified run; this path needs a synchronous string→string clean at an
  *   `innerHTML` sink. Doing it with hast would mean pulling in `hast-util-from-html`
  *   *and* `hast-util-to-html` (the latter is not even resolved in this tree) and
- *   sanitising a re-parsed tree — more moving parts guarding a smaller surface.
- * - **Right tool for this sink.** DOMPurify sanitises in the same DOM that will
+ *   sanitizing a re-parsed tree — more moving parts guarding a smaller surface.
+ * - **Right tool for this sink.** DOMPurify sanitizes in the same DOM that will
  *   host the result, which is what makes it robust against the mutation-XSS
  *   class that string-into-`innerHTML` invites. It is already resolved in this
  *   tree (mermaid depends on it) and declared in `packages/vantage-check`, so
@@ -73,7 +73,7 @@ export function renderCommentMarkdown(text: string): string {
   // A one-paragraph comment renders inline, without the block wrapper. The
   // guard matters: `<p>a</p>\n<p>b</p>` also matches the outer shape, and
   // unwrapping it would hand `innerHTML` an unbalanced fragment that the
-  // browser re-parses into different markup than the one just sanitised.
+  // browser re-parses into different markup than the one just sanitized.
   const singleParagraph = ONE_PARAGRAPH.exec(clean);
   if (singleParagraph && !singleParagraph[1].includes("</p>")) {
     return singleParagraph[1];

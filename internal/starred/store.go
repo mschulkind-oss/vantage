@@ -57,7 +57,7 @@ type file struct {
 // which is advice nobody can act on when every name is sixteen hex digits. The
 // readable half is what `internal/review`'s store does with its own filenames.
 //
-// The hash stays, unconditionally and at 16 hex. It is the collision defence —
+// The hash stays, unconditionally and at 16 hex. It is the collision defense —
 // and a collision is not benign, since the second root reads the first's file,
 // sees a foreign Root and reports empty. It also keeps the name a *file*: a root
 // called "nul" slugs to the Windows NUL device, while nul-<hex>.json is a file.
@@ -83,7 +83,7 @@ func fileName(goos, root string) string {
 // the writer puts beside it.
 const slugMax = 48
 
-// rootSlug is the recognisable half of a store filename: the root's own last
+// rootSlug is the recognizable half of a store filename: the root's own last
 // path segment, reduced to characters every filesystem accepts.
 //
 // Takes an already-normalized root — see [FileName] on why that is not optional.

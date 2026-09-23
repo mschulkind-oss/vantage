@@ -59,7 +59,7 @@ var loopbackOriginHosts = map[string]struct{}{
 
 // WarmFunc warms expensive caches when the first client connects (the 0->1
 // transition), so the initial API calls after an idle period hit warm caches.
-// It runs in its own goroutine and must tolerate a cancelled context.
+// It runs in its own goroutine and must tolerate a canceled context.
 type WarmFunc func(ctx context.Context)
 
 // Handler returns an http.HandlerFunc serving the /api/ws endpoint. warm, if

@@ -126,7 +126,7 @@ describe("ref/unlinked-oq", () => {
     expect(ruleIds(report)).toEqual([]);
   });
 
-  it("does not recognise a hyphenless OQ4 as a reference", async () => {
+  it("does not recognize a hyphenless OQ4 as a reference", async () => {
     const root = makeTree({
       "docs/index.md": "# Q\n\nOQ4 and OQ 4 are prose.\n",
     });

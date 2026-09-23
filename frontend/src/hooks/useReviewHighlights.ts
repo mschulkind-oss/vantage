@@ -492,7 +492,7 @@ function actionRowHtml(comment: ReviewComment): string {
         `<button class="review-inline-comment-copy" title="Copy this comment thread to send back to the agent">Copy</button>`,
       );
     }
-    // One Dismiss button, one action. There used to be two, both labelled
+    // One Dismiss button, one action. There used to be two, both labeled
     // "Dismiss": on an answered comment it silently meant *accept* and wrote a
     // reviewer turn into the thread, which reopening did not retract — so
     // dismiss/reopen/dismiss stacked up "Accepted" rows nobody asked for.

@@ -32,8 +32,8 @@ export function usePersistentFlag(
   key: PreferenceName,
   fallback = false,
 ): [boolean, SetFlag] {
-  // Memoised on the fallback and nothing else, which is what preserves the
-  // re-read-on-change behaviour this hook has always documented: an unmemoised
+  // Memoized on the fallback and nothing else, which is what preserves the
+  // re-read-on-change behavior this hook has always documented: an unmemoized
   // parse would make `usePersistentValue` re-read on every render instead, and
   // that would overwrite a value storage refused to save. `String` needs no
   // memo — it is the same function every time.

@@ -273,7 +273,7 @@ func generateTreeData(out string, fsSvc *fsservice.FileSystemService, logger *sl
 // files for one Markdown file. Empty status and diffs serialize as literal
 // null. All failures are logged and skipped so one bad file never aborts the
 // build; a write error is logged rather than propagated to keep the bounded
-// errgroup from cancelling its siblings.
+// errgroup from canceling its siblings.
 func generateFileData(
 	out, file string,
 	fsSvc *fsservice.FileSystemService,

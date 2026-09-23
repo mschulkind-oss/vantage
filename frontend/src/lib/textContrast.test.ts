@@ -17,7 +17,7 @@
  *
  * ## What a test can and cannot decide from a class name
  *
- * The class says the colour; it does not say whether the text is a label, a
+ * The class says the color; it does not say whether the text is a label, a
  * sentence, or a separator glyph. WCAG asks 4.5:1 of body text and 3:1 of an
  * incidental glyph, so the **floor** is what this guards: every ink the app puts
  * on a surface must clear 3:1 there, in both themes. The 4.5:1 cases were
@@ -35,11 +35,11 @@
  *
  * ## Scope, stated so its edges are not mistaken for coverage
  *
- * `frontend/src`, un-prefixed or `dark:`-prefixed classes, and **every colour
+ * `frontend/src`, un-prefixed or `dark:`-prefixed classes, and **every color
  * family, not only slate** — an accent's high steps are ink and its low steps
  * are washes, and a pair of them named together (`bg-blue-50 …
  * text-blue-900`, the selected row of both pickers) is as measurable as any
- * grey. What stays out is anything whose surface a class name cannot settle:
+ * gray. What stays out is anything whose surface a class name cannot settle:
  * a background with an opacity modifier (`dark:bg-blue-900/30` is a wash over
  * something this test cannot see), a background painted by an ancestor element
  * rather than the line's own class list, and accent ink with no background at
@@ -47,17 +47,17 @@
  * than floored, because the reference palette misses the floor there itself.
  * See `ACCENT_ON_CHROME` in `contrast.ts`.
  *
- * The colours a document can reach (tone washes, alert inks, syntax
+ * The colors a document can reach (tone washes, alert inks, syntax
  * highlighting) are declared in CSS rather than in a class name, so they are
  * answerable only to a measurement of the running page.
  *
  * ## The other half of this guard
  *
  * Every constant here is shared with `e2e/color_theme_contrast.spec.ts`, which
- * measures the same pairs in a real browser under every colour theme — a theme
+ * measures the same pairs in a real browser under every color theme — a theme
  * replaces these values with `oklch()` and `color-mix()` expressions that only
  * an engine resolves. This file is what keeps the shared pair lists honest: a
- * colour the app starts painting text in fails here first.
+ * color the app starts painting text in fails here first.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -119,7 +119,7 @@ interface Usage {
  * What this line's ink sits on, in one mode.
  *
  * `null` means "cannot tell", and it is the answer whenever the line paints a
- * background this test cannot resolve to a single colour: an opacity modifier
+ * background this test cannot resolve to a single color: an opacity modifier
  * (`bg-red-900/30`), an arbitrary value, a gradient. A line that names a
  * background in any family is measured against *that*, which is both what lets
  * a chip invert (`dark:bg-slate-100 dark:text-slate-900`) and what makes an
@@ -140,7 +140,7 @@ function surfaceOf(
   );
   if (named) return { token: named[1], named: true };
   // A bare `bg-*` also paints in dark mode, unless a `dark:bg-*` overrides it.
-  // Reaching here means whichever applies was not a colour this test can name.
+  // Reaching here means whichever applies was not a color this test can name.
   const bare = /(?<![-\w:])bg-(?!white\b)[a-z]+-\d+/.test(text);
   const dark = /(?<![-\w])dark:bg-/.test(text);
   if (mode === "dark" ? dark || bare : bare) return null;
@@ -150,13 +150,13 @@ function surfaceOf(
 /**
  * Every ink the app paints, and the mode each one paints in.
  *
- * A bare `text-<colour>` is the light value *and* the dark value unless a
+ * A bare `text-<color>` is the light value *and* the dark value unless a
  * `dark:text-…` on the same line overrides it. The line is the unit because a
  * Tailwind class list is written as one string: a `dark:` variant lives beside
  * the base class it overrides, and so does the background the pair sits on.
  *
  * Variant-prefixed shades (`hover:`, `prose-p:`) are out of scope — a hover
- * state is not the resting appearance, and the prose colours are body ink that
+ * state is not the resting appearance, and the prose colors are body ink that
  * `@tailwindcss/typography` already steps per theme.
  */
 function textUsages(): Usage[] {
@@ -197,7 +197,7 @@ function family(token: ColorToken): string {
 
 /**
  * A usage the floor applies to: its surface is either named beside the ink or,
- * for a grey, guaranteed by the app's own layout. The rest is accent ink on the
+ * for a gray, guaranteed by the app's own layout. The rest is accent ink on the
  * chrome, which is measured but not floored — see `ACCENT_ON_CHROME`.
  */
 function floored(usage: Usage): boolean {
@@ -278,7 +278,7 @@ describe("text against the surface it sits on", () => {
 
   it("paints text in exactly the pairs the browser guard measures", () => {
     // The browser guard cannot see a class name, so the pair lists live in
-    // `contrast.ts` and this is what keeps them true. A colour the app starts
+    // `contrast.ts` and this is what keeps them true. A color the app starts
     // inking fails here first, naming the pair to add — to `TEXT_PAIRS` if its
     // surface is known, to `ACCENT_ON_CHROME` if it is an accent on the chrome.
     const usages = textUsages();
@@ -294,7 +294,7 @@ describe("text against the surface it sits on", () => {
     }
   });
 
-  it("has a reference colour for every token it measures", () => {
+  it("has a reference color for every token it measures", () => {
     // A token with no entry would silently measure `undefined` against
     // `undefined` and pass, which is the one way this file can lie.
     const missing = new Set<string>();
@@ -311,7 +311,7 @@ describe("text against the surface it sits on", () => {
     expect(usages.filter((u) => u.mode === "light").length).toBeGreaterThan(20);
     expect(usages.filter((u) => u.mode === "dark").length).toBeGreaterThan(20);
     expect(new Set(usages.map((u) => u.file)).size).toBeGreaterThan(5);
-    // And past the grey ramp, which is all this guard covered until the themes
+    // And past the gray ramp, which is all this guard covered until the themes
     // arrived: the accent pair below was a live 1.27:1 under one of them.
     expect(
       pairsOf(usages, "light", floored).filter(

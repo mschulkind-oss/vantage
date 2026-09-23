@@ -104,7 +104,7 @@ function nearMiss(
 }
 
 /**
- * A value as a reader can recognise it, without printing a whole nested table.
+ * A value as a reader can recognize it, without printing a whole nested table.
  *
  * `yaml` hands back real JavaScript values — a `Date` for `2026-08-31`, a
  * boolean for `true` — so `String(value)` alone would report a date as a full

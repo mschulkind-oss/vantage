@@ -1,7 +1,7 @@
 /**
  * GFM alerts through the real chain.
  *
- * `vantage-md` has no tests of its own — its behaviour is covered from here
+ * `vantage-md` has no tests of its own — its behavior is covered from here
  * through the source alias — so this file drives `renderMarkdown`, the same
  * entry point the CLI checker uses. That matters more than usual for alerts:
  * the treatment is a *pipeline* plugin rather than app JS, and its whole claim
@@ -15,7 +15,7 @@ const render = async (md: string) => (await renderMarkdown(md)).html;
 
 describe("GFM alerts compile to data-vantage-alert", () => {
   for (const kind of VANTAGE_ALERTS) {
-    it(`recognises [!${kind.toUpperCase()}]`, async () => {
+    it(`recognizes [!${kind.toUpperCase()}]`, async () => {
       const html = await render(`> [!${kind.toUpperCase()}]\n> Body text.\n`);
       expect(html).toContain(`data-vantage-alert="${kind}"`);
       // The marker is markup, not prose: it must not survive as text.
@@ -109,7 +109,7 @@ describe("the alert vocabulary and the tone vocabulary", () => {
   });
 });
 
-describe("an alert survives the sanitiser", () => {
+describe("an alert survives the sanitizer", () => {
   it("keeps the attribute the plugin stamps", async () => {
     // The plugin runs before `rehype-sanitize`, so the attribute is only on the
     // page because the schema allowlists it by name and value.
@@ -139,9 +139,9 @@ describe("an alert inside a toned section", () => {
   it("carries both facts without either overwriting the other", async () => {
     // The bug this pins: resolving alerts onto `--vantage-tone-*` made the
     // alert's kind win on a stamped member, because custom properties inherit
-    // — so the section's own vertical rule turned the alert's colour for the
+    // — so the section's own vertical rule turned the alert's color for the
     // height of the alert plus its upward bleed, and the section read as three
-    // colours.
+    // colors.
     const html = await render(
       "<!-- vantage: section tone=important -->\n\n" +
         "## A section\n\n" +

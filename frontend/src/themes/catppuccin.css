@@ -1,17 +1,17 @@
 /* Catppuccin — Latte in light mode, Mocha in dark. https://catppuccin.com/palette
  *
- * A colour theme sets CSS variables on `:root` (light) and `:root.dark` (dark);
+ * A color theme sets CSS variables on `:root` (light) and `:root.dark` (dark);
  * the contract is in userguide/guides/themes.md. This file is also the worked example
  * for writing one, so it is built the way a theme author would build theirs:
  *
- *   1. Name the flavour's swatches once, as `--ctp-*`.
- *   2. Give each Tailwind colour family the app uses a full ramp, 50 (lightest)
+ *   1. Name the flavor's swatches once, as `--ctp-*`.
+ *   2. Give each Tailwind color family the app uses a full ramp, 50 (lightest)
  *      to 950 (darkest), keeping Tailwind's order. Components pick a step for
  *      its lightness — `text-slate-500` is muted text, `dark:bg-slate-800` the
  *      chrome — so a ramp that stays in order keeps every one of them legible.
  *   3. Catppuccin has one swatch per hue, so the steps between are mixed from
- *      it toward the flavour's own base and text with `color-mix()`.
- *   4. Map the roles that are not Tailwind colours: tones, code, scrollbars.
+ *      it toward the flavor's own base and text with `color-mix()`.
+ *   4. Map the roles that are not Tailwind colors: tones, code, scrollbars.
  */
 
 /* ── Latte (light) ─────────────────────────────────────────────────────── */
@@ -206,7 +206,7 @@
 
   /* Latte's swatches are tuned for its base, and several are too light for
      text on the code block's mantle: yellow was 2.15:1, peach 2.45, green
-     2.75, teal 3.08 and the comment grey 3.25, against GitHub's 4.6 and up.
+     2.75, teal 3.08 and the comment gray 3.25, against GitHub's 4.6 and up.
      Each is shaded toward black just far enough to clear 4.5:1 there
      (yellow 5.06, peach 4.87, green 4.66, teal 4.51, comment 4.73, blue 5.1,
      mauve and red 4.98) — the hue stays, only the lightness moves. Mocha
@@ -276,7 +276,7 @@
   --color-slate-950: var(--ctp-crust);
 
   /* Accent ramps: the light steps are ink, the dark steps are washes and fills
-     (`dark:bg-blue-900/30`), so shade toward the crust rather than grey. */
+     (`dark:bg-blue-900/30`), so shade toward the crust rather than gray. */
   --color-blue-50: color-mix(in oklab, var(--ctp-blue) 20%, white);
   --color-blue-100: color-mix(in oklab, var(--ctp-blue) 40%, white);
   --color-blue-200: color-mix(in oklab, var(--ctp-blue) 60%, white);
@@ -489,7 +489,7 @@
   --color-yellow-900: var(--color-amber-900);
   --color-yellow-950: var(--color-amber-950);
 
-  /* A tone's wash and chip are its accent, thinned — in either flavour. */
+  /* A tone's wash and chip are its accent, thinned — in either flavor. */
   --vantage-tone-note-wash: color-mix(
     in oklab,
     var(--ctp-blue) 12%,

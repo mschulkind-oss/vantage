@@ -14,10 +14,10 @@
  * - `rehypeRaw` first: `remark-rehype` runs with `allowDangerousHtml: true`,
  *   so raw HTML is still a string until this plugin parses it.
  * - `rehypeSourceLines` before `rehypeSanitize`: `data-source-line` has to be
- *   an allowlisted attribute on an element the sanitiser keeps.
+ *   an allowlisted attribute on an element the sanitizer keeps.
  * - `rehypeVantageAnchors`, `rehypeSlug`, `rehypeHighlight` and `rehypeKatex`
  *   after `rehypeSanitize`. For the first two this is not a preference: the
- *   sanitiser's default schema clobbers `id` with the prefix `user-content-`,
+ *   sanitizer's default schema clobbers `id` with the prefix `user-content-`,
  *   so writing one before it turns every `#heading` and every `#OQ-4` link in
  *   every document into a dead anchor. `rehypeVantageAnchors` precedes
  *   `rehypeSlug` because `rehype-slug` leaves an element that already has an
@@ -58,7 +58,7 @@ export interface PipelineOptions {
   highlight?: boolean;
   /** `data-source-line` attributes for line anchors (default: true) */
   sourceLines?: boolean;
-  /** XSS sanitisation (default: true) */
+  /** XSS sanitization (default: true) */
   sanitize?: boolean;
   /**
    * Lines the frontmatter consumed, added to every emitted line number so
@@ -116,7 +116,7 @@ function buildRehypePlugins(options: PipelineOptions = {}): PluggableList {
   // document means, and a flag is a way for them to disagree.
   // GFM alerts. After `rehypeSourceLines` so the title it injects carries no
   // `data-source-line` and therefore cannot become a review anchor, and before
-  // the sanitiser so its one attribute is allowlisted like every other
+  // the sanitizer so its one attribute is allowlisted like every other
   // `data-vantage-*`. No option of its own, for the same reason the directives
   // plugin has none: a flag is a way for two renderers to disagree about what a
   // document means.
@@ -125,7 +125,7 @@ function buildRehypePlugins(options: PipelineOptions = {}): PluggableList {
   if (sanitize) plugins.push([rehypeSanitize, sanitizeSchema]);
   // ── The id slot ───────────────────────────────────────────────────────
   // Both of these write `id`, and both are here rather than earlier for the
-  // same reason: the sanitiser clobbers `id` with `user-content-`, so anything
+  // same reason: the sanitizer clobbers `id` with `user-content-`, so anything
   // that sets one upstream of it produces dead anchors in every document with
   // no error anywhere. `rehypeVantageAnchors` goes first — `rehypeSlug` skips
   // an element that already has an `id`, so promoting an Open Question's id

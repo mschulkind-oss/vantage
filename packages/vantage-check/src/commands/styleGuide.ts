@@ -1,5 +1,5 @@
 // The guide itself lives in the vantage-md package, next to the renderer whose
-// behaviour it describes. The CLI imports that source directly (see
+// behavior it describes. The CLI imports that source directly (see
 // ../../README.md) rather than depending on the published package, so there is
 // exactly one copy of the text in the tree.
 import { STYLE_GUIDE } from "../../../vantage-md/src/styleGuide.js";

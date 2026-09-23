@@ -206,7 +206,7 @@ func TestFileNameIsStableAndPerRoot(t *testing.T) {
 // ~/Docs and ~/docs are one directory, so two spellings must not produce two
 // files — and a version that slugged the raw string produces exactly that, with
 // the same hash on both, while every other test still passes.
-func TestFileNameSlugFollowsRootNormalisation(t *testing.T) {
+func TestFileNameSlugFollowsRootNormalization(t *testing.T) {
 	for _, goos := range []string{"darwin", "windows"} {
 		t.Run(goos, func(t *testing.T) {
 			require.Equal(t,
@@ -251,7 +251,7 @@ func TestRootSlugIsAlwaysAUsableFilename(t *testing.T) {
 		require.Regexp(t, name, slug, "root %q produced an unusable slug", root)
 		require.LessOrEqual(t, len(slug), slugMax, "root %q produced an unbounded slug", root)
 		require.True(t, utf8.ValidString(slug), "root %q produced invalid UTF-8", root)
-		// The hash is never dropped: it is the collision defence, and it is what
+		// The hash is never dropped: it is the collision defense, and it is what
 		// keeps a reserved device name like "nul" resolving to a file.
 		require.Regexp(t, regexp.MustCompile(`-[0-9a-f]{16}\.json$`), base)
 	}

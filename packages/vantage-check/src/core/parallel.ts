@@ -15,7 +15,7 @@ import type { RuleSetting, RunReport } from "./types.js";
  * already looked up. That is the whole cost of parallelism here, and it is why
  * shards are contiguous slices of the sorted file list rather than files dealt
  * round-robin: documents that link to each other live near each other, so
- * neighbouring files share cache entries instead of each thread re-reading the
+ * neighboring files share cache entries instead of each thread re-reading the
  * same targets.
  *
  * Determinism is not left to timing. Shards are merged in shard order, and each
@@ -47,7 +47,7 @@ export type JobsRequest = number | "auto";
  * Files per thread that `auto` asks for before it spends another one.
  *
  * A thread is cheap to *start* — about 4ms — and expensive to *have*: it
- * initialises the bundle's 3000-odd modules in its own JavaScript VM, which
+ * initializes the bundle's 3000-odd modules in its own JavaScript VM, which
  * measures at 300ms of CPU even for a thread that then checks one three-line
  * document, and the first mermaid fence it meets loads mermaid again on top of
  * that. So `auto` only spends a thread where there is enough work to pay for it,
@@ -81,7 +81,7 @@ export const MAX_AUTO_JOBS = 6;
  *
  * `auto` never asks for more threads than there is work for, nor more than the
  * machine has cores, nor more than `MAX_AUTO_JOBS`. An explicit number is
- * honoured as far as the file count allows — asking for 32 threads for 4 files
+ * honored as far as the file count allows — asking for 32 threads for 4 files
  * gets 4, because an empty shard is a thread's startup cost for nothing.
  */
 export function resolveJobs(request: JobsRequest, fileCount: number): number {

@@ -153,13 +153,13 @@ const OutlineLink: React.FC<{
    * it belongs to.
    *
    * Clamped rather than truncated in JS: a question title is a sentence, and two
-   * lines of it is usually enough to recognise the question without making the
+   * lines of it is usually enough to recognize the question without making the
    * column a wall of text. The `title` carries the whole thing.
    */
   const body = (
     <span className={question ? "line-clamp-2" : undefined}>
       {entry.marker !== "" && (
-        // The document's own text, shown rather than translated into a colour:
+        // The document's own text, shown rather than translated into a color:
         // it renders in print and in a theme that does not exist yet, which a
         // chip would not. `aria-hidden` because `entryAccessibleName` already
         // says the state in words.

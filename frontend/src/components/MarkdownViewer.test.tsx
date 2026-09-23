@@ -511,7 +511,7 @@ describe("MarkdownViewer — inline review actions wiring", () => {
   it("wires inline Dismiss on an addressed comment to dismissComment (no turn recorded)", () => {
     renderWithComment(baseComment({ reactions: [agentAddressed] }));
 
-    // One Dismiss button, one action. There used to be two, both labelled
+    // One Dismiss button, one action. There used to be two, both labeled
     // "Dismiss": the answered branch quietly meant *accept* and appended a
     // reviewer turn, which reopening never retracted.
     const block = document.querySelector('[data-review-inline-comment="c1"]')!;
@@ -756,7 +756,7 @@ describe("MarkdownViewer — the one-click Open Question answer", () => {
     );
   });
 
-  it("routes a hostile leaning through the comment sanitiser, not into the article", () => {
+  it("routes a hostile leaning through the comment sanitizer, not into the article", () => {
     // The button is what makes this sink reachable from document content, so the
     // seam is worth pinning here and not only in commentMarkdown's own tests.
     const hostile =

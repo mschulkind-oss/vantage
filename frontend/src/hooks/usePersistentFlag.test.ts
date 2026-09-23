@@ -5,7 +5,7 @@
  * `setItem` in this window raises no `storage` event (so the hook cannot hear
  * its own writes, just as in Chrome), while a hand-dispatched `StorageEvent`
  * carries `storageArea` through faithfully. So "another tab wrote this" is
- * modelled the only way it can be — by dispatching the event a real second tab
+ * modeled the only way it can be — by dispatching the event a real second tab
  * would have caused, after putting the value in storage the way that tab did.
  */
 
@@ -60,7 +60,7 @@ describe("usePersistentFlag", () => {
       ).toBe(false);
     });
 
-    it("treats an unrecognised value as the fallback, not as true", () => {
+    it("treats an unrecognized value as the fallback, not as true", () => {
       localStorage.setItem(KEY, "yes please");
       expect(
         renderHook(() => usePersistentFlag(KEY, true)).result.current[0],
@@ -95,7 +95,7 @@ describe("usePersistentFlag", () => {
       expect(localStorage.getItem(KEY)).toBe("true");
     });
 
-    it("still honours the preference in-tab when storage cannot be written", () => {
+    it("still honors the preference in-tab when storage cannot be written", () => {
       vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
         throw new Error("QuotaExceededError");
       });

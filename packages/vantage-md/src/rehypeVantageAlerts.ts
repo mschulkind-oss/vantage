@@ -4,14 +4,14 @@
  * `remark-gfm` does not implement alerts, so until this plugin existed a
  * `> [!WARNING]` rendered as an ordinary blockquote with the literal marker
  * visible as its first words. Worse than merely unstyled: `@tailwindcss/typography`
- * italicises blockquotes and draws `open-quote`/`close-quote` around the first
+ * italicizes blockquotes and draws `open-quote`/`close-quote` around the first
  * paragraph, so a callout came out as an italic *quotation* whose opening words
  * were `"[!WARNING]`. That was the "Known gaps" entry in
  * `docs/reference/inline-markup.md` and OQ-10, filed rather than fixed, while
  * `styleGuide.ts` went on telling every agent to write them.
  *
  * The tokens are deliberately the ones the `tone` vocabulary already resolves —
- * an alert *is* the six-colour light/dark treatment `tone` shipped, which is
+ * an alert *is* the six-color light/dark treatment `tone` shipped, which is
  * exactly what the gap entry said whoever fixed this should do rather than
  * building a second palette. `[!WARNING]` and `<!-- vantage: block tone=warning -->`
  * therefore agree by construction, and adding a theme still touches one
@@ -25,7 +25,7 @@
  *
  * ## What it does not do
  *
- * It does not touch a blockquote that carries no marker, and an unrecognised
+ * It does not touch a blockquote that carries no marker, and an unrecognized
  * marker (`[!HINT]`) is left exactly as it was — visible literal text, which is
  * the honest rendering of something GitHub also would not style. Silently
  * swallowing it would hide a typo that reads as a callout on neither renderer.

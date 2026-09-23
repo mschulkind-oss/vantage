@@ -4,14 +4,14 @@
  * reads while scrolling past it, not only when you stop and look.
  *
  * Until this file existed they had no styling at all: `remark-gfm` emits
- * `<input type="checkbox" disabled>` inside `li.task-list-item`, the sanitiser
+ * `<input type="checkbox" disabled>` inside `li.task-list-item`, the sanitizer
  * passes it, and the browser drew its default 13px square. A roadmap or an Open
  * Questions checklist is one of the densest status surfaces a document has, and
  * it was rendering as the least legible thing on the page.
  *
  * **The design goal is asymmetric on purpose: open items should be loud and done
  * items should recede.** "What still needs me" is the question a reader brings
- * to a checklist, so a done item is de-emphasised — nothing is hidden, and the
+ * to a checklist, so a done item is de-emphasized — nothing is hidden, and the
  * text stays fully legible, but it stops competing. That is the same reasoning
  * `emphasis=quiet` follows, and the same limit: quiet, never invisible.
  *
@@ -26,7 +26,7 @@
  * Tailwind typography in the app, `.vantage-prose` for an external consumer of
  * the package — and one selector has to reach both (D5).
  *
- * Colours come from the tone palette in `directives.css`, so a checklist and a
+ * Colors come from the tone palette in `directives.css`, so a checklist and a
  * `tone=tip` section agree about what "done" looks like and a new theme is still
  * one custom-property block. It therefore depends on `directives.css` having
  * been imported; `styles/index.css` imports both, in that order.
@@ -58,7 +58,7 @@
 
 /* ── The box ────────────────────────────────────────────────────────────── */
 /* `appearance: none` and drawn by hand. The platform checkbox cannot be sized
-   or coloured reliably across browsers, and — measured — renders at 13px
+   or colored reliably across browsers, and — measured — renders at 13px
    regardless of the surrounding font size, so it shrank to illegibility in a
    nested list and looked wrong beside 16px text everywhere else.
    It stays `disabled`, as `remark-gfm` emits it: a document is not a form, and a
@@ -70,7 +70,7 @@
   -webkit-appearance: none;
   position: absolute;
   left: 0;
-  /* Optically centred on the first line rather than aligned to its top: the box
+  /* Optically centered on the first line rather than aligned to its top: the box
      is square and the line box is not. */
   top: 0.2em;
   width: 1.05em;
@@ -111,7 +111,7 @@
   --vantage-task-tick: #052e16;
 }
 /* A done item recedes. `--vantage-task-done-fade` is a variable rather than a
-   literal so the one judgement call in this file is tunable in one place, and
+   literal so the one judgment call in this file is tunable in one place, and
    0.62 is deliberately further down than `emphasis=quiet`'s 0.88: a checklist
    is scanned for what is left, and this text has already been read. */
 .task-list-item:has(> input[type="checkbox"]:checked) {
@@ -122,7 +122,7 @@
 /* The fade goes: on paper a faint line is a legibility loss with no scrolling
    reader to serve, and the same restoration `emphasis=quiet` gets. The box
    keeps its shape in monochrome, because *which* items are done is information
-   and must survive printing. #57606a is the grey the rest of the print block
+   and must survive printing. #57606a is the gray the rest of the print block
    uses. */
 @media print {
   .task-list-item:has(> input[type="checkbox"]:checked) {

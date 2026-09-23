@@ -588,9 +588,9 @@ describe("ViewerPage", () => {
       withContent();
       renderPage();
 
-      const labelled = toggles();
-      expect(labelled.length).toBeGreaterThan(0);
-      for (const toggle of labelled) {
+      const labeled = toggles();
+      expect(labeled.length).toBeGreaterThan(0);
+      for (const toggle of labeled) {
         expect(toggle.textContent).not.toMatch(/\d/);
       }
     });

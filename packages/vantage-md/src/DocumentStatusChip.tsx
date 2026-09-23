@@ -18,7 +18,7 @@ import { DOC_STATUS_TONES, type DocStatus } from "./vantageFrontmatter.js";
  *
  * Styling comes entirely from `styles/directives.css` — `.vantage-chip` for the
  * geometry, shared by selector list with the `badge=` pseudo-element, and
- * `.vantage-chip--<tone>` for the colours. No Tailwind utility appears here, so
+ * `.vantage-chip--<tone>` for the colors. No Tailwind utility appears here, so
  * the chip survives in a consumer that does not run Tailwind and no class name
  * has to be discovered by a content scan.
  */

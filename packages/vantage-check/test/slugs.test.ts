@@ -161,7 +161,7 @@ describe("open question anchors", () => {
     expect(report.findings[0]?.message).toContain("#OQ-4");
   });
 
-  // The sanitiser refuses a malformed id, so it reaches no `id` attribute and
+  // The sanitizer refuses a malformed id, so it reaches no `id` attribute and
   // the fragment navigates nowhere. Counting it here would call a dead link
   // live — the one direction the checker must not err in.
   it("does not count a malformed id", async () => {

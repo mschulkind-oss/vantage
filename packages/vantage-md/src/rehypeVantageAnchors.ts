@@ -1,15 +1,15 @@
 /**
  * Promote a carried Open Question id to a real `id`, on the safe side of the
- * sanitiser.
+ * sanitizer.
  *
  * `rehypeVantageDirectives` cannot write `id` itself. It runs before
- * `rehypeSanitize` — it must, because it reads HTML comments and the sanitiser
- * deletes them — and the sanitiser's default schema clobbers `id` with the
+ * `rehypeSanitize` — it must, because it reads HTML comments and the sanitizer
+ * deletes them — and the sanitizer's default schema clobbers `id` with the
  * prefix `user-content-`. So the directive plugin stamps `data-vantage-oq-id`,
- * the sanitiser validates that value against the id grammar, and this plugin
+ * the sanitizer validates that value against the id grammar, and this plugin
  * moves it onto `id` afterwards.
  *
- * That is the same reason `rehypeSlug` is registered after the sanitiser
+ * That is the same reason `rehypeSlug` is registered after the sanitizer
  * (`pipeline.ts`), and this plugin has to run **before** `rehypeSlug`:
  * `rehype-slug` leaves an element that already has an `id` alone, so promoting
  * first is what lets a question written as a heading keep `OQ-4` instead of

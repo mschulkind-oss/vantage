@@ -493,7 +493,7 @@ function nextBlock(
  * A directive merges with the directives before it, so a node preceded by
  * another directive-carrying comment node is in the middle of a run and stays
  * quiet. A node preceded by a comment that carries no *valid* directive still
- * reports: that neighbour has its own finding, but not this one.
+ * reports: that neighbor has its own finding, but not this one.
  */
 function startsRun(children: RootContent[], index: number): boolean {
   for (let i = index - 1; i >= 0; i--) {
@@ -654,8 +654,8 @@ function splitList(
 ): string | undefined {
   if (!BLOCK_PARENTS.has(parent.type)) return undefined;
 
-  const before = neighbourList(parent.children, index, -1);
-  const after = neighbourList(parent.children, index, 1);
+  const before = neighborList(parent.children, index, -1);
+  const after = neighborList(parent.children, index, 1);
   if (before === undefined || after === undefined) return undefined;
   if (before.ordered !== after.ordered) return undefined;
 
@@ -679,7 +679,7 @@ function splitList(
  * separator between two lists, so it is the one comment that is *load-bearing*
  * between them. Skipping it would report a split this directive did not cause.
  */
-function neighbourList(
+function neighborList(
   children: RootContent[],
   index: number,
   step: -1 | 1,
@@ -706,7 +706,7 @@ function neighbourList(
  * **D1**, measured the way **P1** states it: take the markup away and compare.
  *
  * `splitList` is one instance of this — the one we happened to measure — and the
- * shape of it generalises. A comment at the start of a line ends whatever block
+ * shape of it generalizes. A comment at the start of a line ends whatever block
  * it lands inside, and *every* multi-line construct suffers: a GFM table drops
  * its remaining rows onto the page as literal `| … |` text, one paragraph
  * becomes two, one block quote becomes two, a setext heading's `===` underline
@@ -717,7 +717,7 @@ function neighbourList(
  * parse it without, and compare the block structure.
  *
  * Cost is bounded by *slicing*: the comparison re-parses only the span the
- * deletion can affect — the two neighbouring siblings when the directive sits at
+ * deletion can affect — the two neighboring siblings when the directive sits at
  * the top level, or the enclosing top-level block when it sits inside a list
  * item, a quote or a footnote definition. Both slices start at a top-level block
  * boundary, so they parse the same way in isolation as in place.
@@ -757,8 +757,8 @@ function blockSplit(
   // larger raw-HTML block is not a line either.
   if (node?.type !== "html" || !isCommentOnly(node.value)) return undefined;
 
-  const before = neighbourBlock(parent.children, index, -1);
-  const after = neighbourBlock(parent.children, index, 1);
+  const before = neighborBlock(parent.children, index, -1);
+  const after = neighborBlock(parent.children, index, 1);
   if (before === undefined || after === undefined) return undefined;
 
   // The slice, in *body* lines — which is what the tree's positions are in, and
@@ -772,7 +772,7 @@ function blockSplit(
       : topLevelSpan(root, node);
   if (span?.start === undefined || span.end === undefined) return undefined;
 
-  // Every *directive* line between the two neighbours goes, not just this
+  // Every *directive* line between the two neighbors goes, not just this
   // node's: consecutive directives are one run, they merge onto one target, and
   // P1 asks what the document looks like with the whole run absent. Cutting only
   // the head of a run would leave the rest of it splitting the block and report
@@ -820,7 +820,7 @@ function blockSplit(
 }
 
 /** The sibling before or after `index`, other directive comments skipped. */
-function neighbourBlock(
+function neighborBlock(
   children: RootContent[],
   index: number,
   step: -1 | 1,
@@ -926,7 +926,7 @@ function splitMessage(
   withIt: string,
   withoutIt: string,
 ): string {
-  // A setext heading is the one case the neighbour's own type cannot name: both
+  // A setext heading is the one case the neighbor's own type cannot name: both
   // halves are paragraphs, and the heading only exists in the *absence* of the
   // comment.
   const setext =
@@ -1097,7 +1097,7 @@ function nodeText(node: RootContent | ListItem): string {
  * **An error**, because with all four markers present the parsed tree has
  * settled it: this is an Open Question, written to the convention, awaiting a
  * ruling, with a stated leaning and no way for the reviewer to file it. That is
- * the house rule's error criterion, not a judgement about taste. A document that
+ * the house rule's error criterion, not a judgment about taste. A document that
  * wants the question without the button says so with its marker — 🔒 if it is
  * blocked, ✅ once it is decided — and a repo that wants the whole rule advisory
  * sets `"vantage/oq-missing" = "warning"` under `[check.rules]`.
@@ -1161,7 +1161,7 @@ export function checkOpenQuestions(collector: Collector): void {
  *
  * Both are errors because the parsed tree settles them, and both are silent
  * without a checker. A malformed id is stamped by the plugin and then refused
- * by the sanitiser's value allowlist, so the page renders correctly and simply
+ * by the sanitizer's value allowlist, so the page renders correctly and simply
  * has no anchor. A duplicate is worse: both elements carry the id, `#OQ-4`
  * resolves to the first, and every reference to the second lands on the wrong
  * question with nothing anywhere reporting a problem. That is the one failure

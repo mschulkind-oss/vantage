@@ -53,7 +53,7 @@ func (h *Handlers) Routes() []Route {
 		{http.MethodGet, "/perf/diagnostics", h.PerfDiagnostics, ScopeGlobal},
 		{http.MethodPost, "/perf/reset", h.PerfReset, ScopeGlobal},
 
-		// Colour themes are a reader setting, not a property of a repository.
+		// Color themes are a reader setting, not a property of a repository.
 		{http.MethodGet, "/themes", h.ThemesList, ScopeGlobal},
 		{http.MethodGet, "/themes/{id}", h.ThemeCSS, ScopeGlobal},
 

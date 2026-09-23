@@ -35,7 +35,7 @@ with the finding that motivated this:
 > unanswered questions" at the top of the page**, which is the one thing a
 > scanning reader most wants and the one thing no mechanism here provides.
 
-That gallery page is a colour-review surface, so it stated the gap and stopped.
+That gallery page is a color-review surface, so it stated the gap and stopped.
 This is the mechanism.
 
 ## 2. Why the roadmap already reads well, and design docs do not
@@ -71,7 +71,7 @@ directive. From the printed style guide:
 the tagged set trustworthy: a question awaiting a ruling *cannot* be missing its
 directive and still pass the gate. So "the questions carrying directives" and
 "the questions awaiting a ruling" are the same set, and listing exactly that set
-is not a judgement about which questions matter — it is the author's own marker,
+is not a judgment about which questions matter — it is the author's own marker,
 read back.
 
 This is also the decision that keeps the feature small. Listing settled and

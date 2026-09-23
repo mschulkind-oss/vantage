@@ -86,10 +86,10 @@ function walkText(
     if (node.type === "code" || node.type === "html") return;
 
     const enclosing = node.type === "link" ? (node as Link) : link;
-    const emphasised = bold || node.type === "strong";
+    const emphasized = bold || node.type === "strong";
     const children = (node as { children?: RootContent[] }).children;
     if (!children) return;
-    for (const child of children) descend(child, enclosing, emphasised);
+    for (const child of children) descend(child, enclosing, emphasized);
   };
 
   descend(root, inLink, false);
@@ -103,7 +103,7 @@ function walkText(
  * declaration, not a reference to one. Requiring it to link to itself is the
  * same noise as requiring an in-flight question's title to.
  *
- * Recognised structurally rather than by heading text: a table whose header's
+ * Recognized structurally rather than by heading text: a table whose header's
  * first column is exactly `ID`, and within it any first cell that is exactly an
  * id. Both halves matter — the header alone would swallow the `Settled in`
  * column's `§` references, which are real references and do need links.
@@ -215,7 +215,7 @@ export function checkOqReferences(collector: Collector): void {
     OQ_REFERENCE,
     ledgerIdCells(collector.doc.mdast),
   )) {
-    // A question's own title is not a reference to itself. Recognised by the
+    // A question's own title is not a reference to itself. Recognized by the
     // convention's shape — a bold id followed by a colon — rather than by
     // whether the document declares that id, because a document that declares
     // `OQ-4` may also *refer* to it further down, and that reference needs a

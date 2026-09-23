@@ -193,7 +193,7 @@ afterEach(() => {
 });
 
 describe("useOpenQuestionButtons — what renders", () => {
-  it("renders one button per answerable oq block, labelled exactly", () => {
+  it("renders one button per answerable oq block, labeled exactly", () => {
     renderOq();
 
     const buttons = takeButtons();
@@ -592,7 +592,7 @@ describe("useOpenQuestionButtons — Undo", () => {
     return { ...h, created: commentFromClick() };
   };
 
-  it("is labelled exactly, and is a real button", () => {
+  it("is labeled exactly, and is a real button", () => {
     const { rerender, created } = take();
     rerender({ cs: [created], on: true });
 
@@ -678,7 +678,7 @@ describe("useOpenQuestionButtons — drift, and agreeing with the highlighter", 
     block.setAttribute("data-source-line", String(line + by));
   };
 
-  it("keeps the chip when the block moves within the neighbour radius", () => {
+  it("keeps the chip when the block moves within the neighbor radius", () => {
     // The bug this fixes: the highlighter re-anchors a comment whose block moved
     // by walking ±NEIGHBOR_RADIUS lines, while this pass compared source_line
     // for equality. Insert one line above an `oq` block and the reviewer saw the

@@ -188,7 +188,7 @@ export const VANTAGE_OQ_HOST_TARGETS = VANTAGE_ANCHOR_TARGETS.filter(
  * file, and requiring it everywhere would fire on every single-doc sketch.
  *
  * Three consumers read it from here and none of them may re-spell it: the
- * plugin that stamps the anchor, the sanitiser that allowlists the value, and
+ * plugin that stamps the anchor, the sanitizer that allowlists the value, and
  * the checker's `vantage/oq-id-format`. A fourth copy is how the checker starts
  * calling a working anchor malformed.
  */

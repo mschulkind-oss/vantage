@@ -445,7 +445,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     const filePath = get().filePath;
     if (!base || !filePath) return;
 
-    // Defence in depth behind the two gates above: reaching here in a static
+    // Defense in depth behind the two gates above: reaching here in a static
     // export means one of them failed, and the failure mode is the worst one
     // available — staticMode.ts would turn this POST into a GET, which either
     // 404s or, on a host with an SPA fallback, 200s with index.html, and the
@@ -856,7 +856,7 @@ function commentBlock(
   // Interleave every turn in chronological order so a back-and-forth thread
   // reads correctly.  Only legacy "noted" is skipped: it recorded a dismissal
   // by a since-removed accept action, and dismissing is not something the
-  // agent needs to read — labelling it as a turn would put words in the
+  // agent needs to read — labeling it as a turn would put words in the
   // reviewer's mouth.  `round` above stays the raw count so it keeps agreeing
   // with the positional comparison in [answeredAnOlderRound].
   for (const r of c.reactions ?? []) {

@@ -40,7 +40,7 @@ const inProcess: RunShard = (files, cwd, settings) =>
   checkFiles(files, cwd, settings);
 
 describe("resolveJobs", () => {
-  it("stays sequential when there is nothing to parallelise", () => {
+  it("stays sequential when there is nothing to parallelize", () => {
     expect(resolveJobs("auto", 0)).toBe(1);
     expect(resolveJobs("auto", 1)).toBe(1);
     expect(resolveJobs("auto", MIN_FILES_PER_JOB - 1)).toBe(1);
@@ -62,7 +62,7 @@ describe("resolveJobs", () => {
     expect(huge).toBeLessThanOrEqual(availableParallelism());
   });
 
-  it("honours an explicit count, but not past one thread per file", () => {
+  it("honors an explicit count, but not past one thread per file", () => {
     expect(resolveJobs(4, 400)).toBe(4);
     expect(resolveJobs(1, 400)).toBe(1);
     // An empty shard is a thread's startup cost for no work.

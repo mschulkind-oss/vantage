@@ -9,7 +9,7 @@ export interface Io {
   err(text: string): void;
   /** Directory that relative paths resolve against. */
   cwd: string;
-  /** Whether stdout is a terminal — decides colour when nothing overrides it. */
+  /** Whether stdout is a terminal — decides color when nothing overrides it. */
   isTty: boolean;
   /** The environment. Read for `VANTAGE_CHECK_JOBS`, and nothing else so far. */
   env: Record<string, string | undefined>;

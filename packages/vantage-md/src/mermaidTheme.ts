@@ -11,8 +11,8 @@
  * Mermaid's stock `dark` theme is built for a near-black page: `mainBkg` is
  * `#1f2020`, which against Vantage's `slate-900` content column (`#0f172b`) is
  * 1.28:1. Every node box vanished, and a flowchart read as floating labels
- * joined by lines. Its `edgeLabelBackground` is a mid-grey `#585858` that
- * matched no surface in either theme, so every edge label wore a grey chip.
+ * joined by lines. Its `edgeLabelBackground` is a mid-gray `#585858` that
+ * matched no surface in either theme, so every edge label wore a gray chip.
  *
  * So the two palettes below are the app's own slate steps, chosen the way the
  * rest of the dark audit was: a node box one step off its surface so the box is
@@ -25,7 +25,7 @@
  * siblings are left alone on purpose: mermaid derives the categorical series
  * from them, so overriding them with slate turned a pie chart into three
  * near-black wedges. What is wrong in the stock dark theme is where a diagram
- * sits, not which colours it tells things apart with.
+ * sits, not which colors it tells things apart with.
  */
 export type MermaidThemeName = "dark" | "default";
 
@@ -38,7 +38,7 @@ export function currentMermaidTheme(): MermaidThemeName {
 }
 
 /**
- * The attribute on `<html>` naming the active colour theme. Absent means the
+ * The attribute on `<html>` naming the active color theme. Absent means the
  * built-in look. The app sets it only once the theme's stylesheet has loaded,
  * so a reader of this attribute can trust the theme's variables are in effect.
  */
@@ -53,25 +53,25 @@ export const COLOR_THEME_ATTRIBUTE = "data-vantage-theme";
  * built-in's id — that is how a reader tweaks one — and the app applies the
  * stored built-in synchronously, then swaps in the same-id user file once
  * /api/themes answers. Keyed on the id, the diagrams drawn in between kept the
- * built-in's colours: the key did not change, so neither the cache nor
+ * built-in's colors: the key did not change, so neither the cache nor
  * `useSyncExternalStore` saw a reason to redraw.
  */
 export const COLOR_THEME_SOURCE_ATTRIBUTE = "data-vantage-theme-source";
 
-/** The active colour theme's id, or `""` for the built-in look. */
+/** The active color theme's id, or `""` for the built-in look. */
 export function currentColorTheme(): string {
   if (typeof document === "undefined") return "";
   return document.documentElement.getAttribute(COLOR_THEME_ATTRIBUTE) ?? "";
 }
 
 /**
- * Everything a rendered diagram's colours depend on, as one string: the
- * light/dark mode, plus the colour theme when one is active.
+ * Everything a rendered diagram's colors depend on, as one string: the
+ * light/dark mode, plus the color theme when one is active.
  *
- * A diagram is baked at render time, so anything that changes its colours has
+ * A diagram is baked at render time, so anything that changes its colors has
  * to change this key — it is what the SVG cache and the loader's "configured
  * for" check compare. Under the built-in look it is exactly the mode name,
- * which is what both keyed on before colour themes existed.
+ * which is what both keyed on before color themes existed.
  */
 export function currentMermaidPalette(): string {
   const theme = currentColorTheme();
@@ -120,10 +120,10 @@ const THEME_VARIABLES: Record<MermaidThemeName, Record<string, string>> = {
 };
 
 /**
- * Where each variable comes from under a colour theme: the palette step the
+ * Where each variable comes from under a color theme: the palette step the
  * built-in value was chosen from. The hex above IS that step in Tailwind's own
  * palette, so reading the step back out of the page gives the same diagram
- * under the built-in look and the theme's colours under any other.
+ * under the built-in look and the theme's colors under any other.
  */
 const THEME_SOURCES: Record<MermaidThemeName, Record<string, string>> = {
   dark: {
@@ -151,7 +151,7 @@ export function mermaidThemeVariables(
 ): Record<string, string> {
   const fixed = THEME_VARIABLES[theme];
   // The built-in look keeps its measured constants verbatim: no DOM reads, and
-  // nothing a colour conversion could round.
+  // nothing a color conversion could round.
   if (!currentColorTheme()) return fixed;
   const out: Record<string, string> = {};
   for (const [key, hex] of Object.entries(fixed)) {
@@ -161,18 +161,18 @@ export function mermaidThemeVariables(
 }
 
 /**
- * A custom property's colour as `#rrggbb`, or `null` when it cannot be read.
+ * A custom property's color as `#rrggbb`, or `null` when it cannot be read.
  *
  * Mermaid wants hex at `initialize()` time, and a theme's value can be any CSS
- * colour — `oklch()`, `color-mix()`, a `var()` of another variable. So the
+ * color — `oklch()`, `color-mix()`, a `var()` of another variable. So the
  * browser does the work: a probe element resolves the property to a computed
- * colour, and a 1×1 canvas turns that into sRGB bytes whatever syntax it came
+ * color, and a 1×1 canvas turns that into sRGB bytes whatever syntax it came
  * back in. No canvas (jsdom, a locked-down embed) is `null`, and the caller
  * falls back to the built-in value.
  *
  * A property nobody declared is `null` too, and has to be checked for up
  * front: `color: var(--unset)` is invalid at computed-value time, so the probe
- * *inherits* its colour instead — the page's text colour, which the canvas
+ * *inherits* its color instead — the page's text color, which the canvas
  * would dutifully turn into a plausible hex and mermaid would paint every node
  * box with.
  */
@@ -198,7 +198,7 @@ export function resolveCssColor(property: string): string | null {
   return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
 }
 
-/** A 1×1 2D context to read a colour back from, or `null` where there is none. */
+/** A 1×1 2D context to read a color back from, or `null` where there is none. */
 function pixelContext(): CanvasRenderingContext2D | null {
   try {
     const canvas = document.createElement("canvas");

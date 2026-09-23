@@ -40,7 +40,7 @@ export const COLLAPSED_ATTR = "data-vantage-collapsed";
  * Positive rather than a scrub of the plugin's own attributes: the document
  * still says what it said, so a renderer with this JS torn down and one that
  * never had it agree exactly. And a document cannot forge it — it is not on the
- * sanitiser's allowlist, which is what makes it a real gate rather than a
+ * sanitizer's allowlist, which is what makes it a real gate rather than a
  * second copy of the value it is guarding.
  *
  * Neither shape can come out of the plugin: it stamps the toggle and its members
@@ -54,7 +54,7 @@ export const COLLAPSE_ARMED_ATTR = "data-vantage-collapse-armed";
  * `REVIEW_UI_SELECTOR` excludes them from block hashes.
  *
  * A document cannot forge it — `data-vantage-collapse-caret` is not on the
- * sanitiser's allowlist and `button` is not an allowed tag name.
+ * sanitizer's allowlist and `button` is not an allowed tag name.
  */
 export const COLLAPSE_CARET_ATTR = "data-vantage-collapse-caret";
 
@@ -62,7 +62,7 @@ export const COLLAPSE_CARET_ATTR = "data-vantage-collapse-caret";
  * A group id, as the plugin mints them: digits only.
  *
  * Checked on the way out of the DOM and not merely on the way in, because these
- * values are interpolated into selectors. The sanitiser already refuses anything
+ * values are interpolated into selectors. The sanitizer already refuses anything
  * else, so this is the second gate rather than the first.
  */
 const GROUP_ID = /^[0-9]+$/;

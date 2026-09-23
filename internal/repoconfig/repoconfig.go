@@ -69,7 +69,7 @@ type Settings struct {
 	// Starred promotes documents into the viewer's Starred section.
 	Starred StarredSettings `toml:"starred"`
 
-	// Theme is the colour theme the repository offers its readers, by id.
+	// Theme is the color theme the repository offers its readers, by id.
 	//
 	// An offer and never an override: a choice made in the browser and the
 	// reader's own `theme` key both beat it, so a project may suggest the palette

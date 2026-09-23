@@ -59,7 +59,7 @@ describe("renderCommentMarkdown — hostile input", () => {
     '<math><mtext><a href="javascript:alert(1)">x</a></mtext></math>',
     "<a href=# onclick=alert(1)>x</a>",
     '<p style="position:fixed;top:0">x</p>',
-  ])("neutralises %s", (payload) => {
+  ])("neutralizes %s", (payload) => {
     const out = renderCommentMarkdown(payload);
     expect(out).not.toMatch(EVENT_HANDLER);
     for (const tag of [
@@ -187,7 +187,7 @@ describe("renderCommentMarkdown — DOMPurify unusable", () => {
     // The fail-open branch, measured: with a DOM present but `isSupported`
     // false, `sanitize()` returns its input *unchanged* (purify's own
     // "Return dirty HTML if DOMPurify cannot run"), so a naive call passes the
-    // payload through. Pin the closed behaviour: every markup-significant
+    // payload through. Pin the closed behavior: every markup-significant
     // character escaped, so nothing becomes an element.
     DOMPurify.isSupported = false;
     expect(renderCommentMarkdown('<img src="x" onerror=alert(1)>')).toBe(

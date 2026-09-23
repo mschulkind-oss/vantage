@@ -26,7 +26,7 @@ export interface RenderOptions {
   /** Parse and strip frontmatter (default: true) */
   frontmatter?: boolean;
   /**
-   * The body's mdast, already parsed — an optimisation, not a second input.
+   * The body's mdast, already parsed — an optimization, not a second input.
    *
    * Parsing is the most expensive step in this function: measured over
    * `docs/design/`, `remark-parse` with GFM costs about twice what the whole

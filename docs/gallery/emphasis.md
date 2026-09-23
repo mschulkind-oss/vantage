@@ -62,7 +62,7 @@ is why print restores it to full opacity.
 
 ## Every tone at `strong`
 
-Weight interacts with hue. A 4px stripe in muted grey and a 4px stripe in
+Weight interacts with hue. A 4px stripe in muted gray and a 4px stripe in
 caution red do not carry the same force, so the six are worth seeing at the
 loudest setting.
 

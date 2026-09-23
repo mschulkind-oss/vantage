@@ -206,7 +206,7 @@ already gone.
 > [!NOTE]
 > **There is one legitimate version here, and this is not it.** If the generator
 > ([§5](#5-packaging-one-binary-one-distribution-more-subcommands)) ever emits an
-> artifact a later run must recognise — a stale `AGENTS.md` stanza to replace —
+> artifact a later run must recognize — a stale `AGENTS.md` stanza to replace —
 > that version belongs *in the generated artifact*, inside the user's own
 > configuration, and is read by the generator. Never in the reviewed document,
 > and never read by the payload. **P5** makes even that close to moot: a
@@ -500,7 +500,7 @@ Settled questions move to the [Decision Ledger](#decision-ledger) above.
 
 5. 💬 🤷 **OQ-B5: How much payload budget does the proactive line get?** One
    sentence, or a short block with the install command spelled out per format?
-   Pure judgement about a prompt you read more often than I do.
+   Pure judgment about a prompt you read more often than I do.
 
    <!-- vantage: oq id=OQ-B5 leaning="One sentence. The fixative paragraph is already the longest non-protocol block in the payload, and R2 compounds every turn." -->
 

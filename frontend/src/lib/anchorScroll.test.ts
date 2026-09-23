@@ -51,7 +51,7 @@ function collapsedSection(): { scroller: HTMLElement; target: HTMLElement } {
 }
 
 describe("anchorTarget", () => {
-  it("prefers the plain id and falls back to the sanitiser's clobbered one", () => {
+  it("prefers the plain id and falls back to the sanitizer's clobbered one", () => {
     document.body.innerHTML = `
       <p id="plain">a</p>
       <p id="user-content-clobbered">b</p>`;

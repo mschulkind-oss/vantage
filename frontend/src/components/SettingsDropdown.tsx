@@ -66,7 +66,7 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
     useState<ColorTheme[]>(builtInColorThemes);
   // The theme in effect, watched rather than remembered — the same bargain as
   // `mode` above. There is deliberately no optimistic update here: a user
-  // theme's colours arrive only when its stylesheet loads, so until then the
+  // theme's colors arrive only when its stylesheet loads, so until then the
   // control truthfully still names the theme the reader is looking at, and a
   // sheet that fails to load never names itself at all. What looks like a
   // missing optimistic update is the control refusing to promise a palette that
@@ -82,12 +82,12 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
   // the page is open shows up without a reload.
   useEffect(() => {
     if (!open) return;
-    let cancelled = false;
+    let canceled = false;
     void listColorThemes().then((themes) => {
-      if (!cancelled) setColorThemes(themes);
+      if (!canceled) setColorThemes(themes);
     });
     return () => {
-      cancelled = true;
+      canceled = true;
     };
   }, [open]);
 
@@ -182,7 +182,7 @@ export const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
                 className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300"
               >
                 <Palette size={13} />
-                Colours
+                Colors
               </label>
               <select
                 id={colorSelectId}

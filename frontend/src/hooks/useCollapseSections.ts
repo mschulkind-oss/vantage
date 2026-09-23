@@ -123,7 +123,7 @@ export function useCollapseSections(
       // `$$…$$` formula opened a group of one, and `rehype-katex` then replaced
       // the stamped `<pre>`, leaving the caret with nothing to hide.
       // `rehypeVantageMathStamps` carries the stamp across that replacement now,
-      // so this guard is back to being defence rather than the fix.
+      // so this guard is back to being defense rather than the fix.
       if (members.length === 0) continue;
 
       const caret = document.createElement("button");

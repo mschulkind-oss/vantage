@@ -168,7 +168,7 @@ func runServers(parent context.Context, s *server.Server, listeners []net.Listen
 	g, gctx := errgroup.WithContext(ctx)
 
 	// Background lifecycle (watchers + activity loop). It blocks until gctx is
-	// cancelled and returns gctx.Err() then, which we treat as clean shutdown.
+	// canceled and returns gctx.Err() then, which we treat as clean shutdown.
 	g.Go(func() error {
 		if err := s.Run(gctx); err != nil && !errors.Is(err, context.Canceled) {
 			return err
@@ -187,7 +187,7 @@ func runServers(parent context.Context, s *server.Server, listeners []net.Listen
 		})
 	}
 
-	// Shutdown coordinator: when the group context is cancelled (signal or a
+	// Shutdown coordinator: when the group context is canceled (signal or a
 	// fatal serve error) tear down every HTTP listener and the server.
 	g.Go(func() error {
 		<-gctx.Done()

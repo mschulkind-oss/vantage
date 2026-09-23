@@ -92,7 +92,7 @@ describe("useRepoStore", () => {
       expect(useRepoStore.getState().currentPath).toBe("nonexistent.md");
     });
 
-    // Neither loader can be cancelled, so a slow request for a document the
+    // Neither loader can be canceled, so a slow request for a document the
     // reader has already navigated away from must not land on top of a newer
     // one — on either the success or the failure path.
     it("discards a response that lost the race to a newer load", async () => {
@@ -835,7 +835,7 @@ describe("useRepoStore", () => {
  * The tree filters and the sort order, followed between tabs.
  *
  * jsdom raises no `storage` event for this window's own writes, exactly as Chrome
- * does not, so a second tab is modelled the only way it can be: by dispatching
+ * does not, so a second tab is modeled the only way it can be: by dispatching
  * the event a real one would have caused. What is asserted is adoption into the
  * store, because that is the whole of the work — every component showing a filter
  * already re-renders from here.
@@ -895,7 +895,7 @@ describe("another tab changing a tree setting", () => {
     expect(useRepoStore.getState().showGitignored).toBe(true);
   });
 
-  it("ignores a value it does not recognise for the sort order", () => {
+  it("ignores a value it does not recognize for the sort order", () => {
     changeInAnotherTab("vantage:repoSortMode", "by vibes");
     expect(useRepoStore.getState().repoSortMode).toBe("alphabetical");
   });

@@ -16,7 +16,7 @@ immediately after the bookmark store, and before any code that depends on these
 rulings.
 
 **The short version.** Bookmarks are the reader's own, kept in their data
-directory and never travelling with the repository. Two things are missing at
+directory and never traveling with the repository. Two things are missing at
 either end of that. A reader wants a standing list — *my roadmap is always
 starred, in every project* — which belongs in their user config. And a repository
 wants to say *start here*, which belongs to the repository and therefore in a file
@@ -130,7 +130,7 @@ it. Not half-applied, and not fatal.
 
 Failing startup is defensible in serve mode and indefensible in daemon mode, where
 one contributor's bad commit would take down every other repository on the
-machine. Two behaviours for one file is worse than either, so there is one. "Never
+machine. Two behaviors for one file is worse than either, so there is one. "Never
 half" is the discipline the checker already holds for the same file.
 
 ### 2.4 The file is attacker-controlled
@@ -255,7 +255,7 @@ piece of work. The export's stated reason is corrected to say that.
 
 - The gate runs the compiled checker over the documentation tree with no explicit
   config, and the checker walks *up* — so the moment a root config exists, the
-  gate starts honouring its `[check]` table. That is a retune of the gate hidden
+  gate starts honoring its `[check]` table. That is a retune of the gate hidden
   inside a feature change.
 - A fixture named `.vantage.toml` anywhere under the tree is worse: it is found by
   that same upward walk from any document below it, and the checker also treats

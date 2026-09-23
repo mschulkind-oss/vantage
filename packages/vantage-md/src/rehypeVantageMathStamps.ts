@@ -31,7 +31,7 @@
  *
  * Both halves run *after* `rehype-sanitize` — which is not a detail, twice
  * over. `rehype-sanitize` rebuilds the tree, so node identities taken before it
- * would all be stale; and every attribute carried here is one the sanitiser
+ * would all be stale; and every attribute carried here is one the sanitizer
  * already passed on the node it came from, so nothing here can reintroduce
  * markup the schema rejects.
  */
@@ -76,7 +76,7 @@ function classNames(node: Element): string[] {
  * A `<pre>` `rehype-katex` will replace — its own condition, restated.
  *
  * `language-math` is the only class to test: `rehype-katex` keys the
- * pre-as-scope branch on it, and the sanitiser strips the `math-display` that
+ * pre-as-scope branch on it, and the sanitizer strips the `math-display` that
  * `remark-math` also emits (measured — a stamped fence arrives here with
  * `className: ["language-math"]` alone).
  */

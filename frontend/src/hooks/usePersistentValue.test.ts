@@ -113,7 +113,7 @@ describe("usePersistentValue", () => {
     expect(localStorage.getItem(KEY)).toBe("600");
   });
 
-  it("still honours the value in-tab when storage cannot be written", () => {
+  it("still honors the value in-tab when storage cannot be written", () => {
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new Error("QuotaExceededError");
     });
@@ -129,7 +129,7 @@ describe("usePersistentValue", () => {
   it("does not re-read on re-render, which is what a stable parse buys", () => {
     // The bug this guards: with an unstable `parse` the effect re-runs every
     // render and re-adopts what storage holds — which, after a write storage
-    // refused, is the *old* value, so the preference the hook promised to honour
+    // refused, is the *old* value, so the preference the hook promised to honor
     // in-tab would snap back on the next unrelated render.
     localStorage.setItem(KEY, "300");
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {

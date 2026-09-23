@@ -14,7 +14,7 @@
  * Nothing here throws and nothing logs. An unknown name drops the whole
  * directive, an unknown key or value drops that pair only, and a directive with
  * no block after it does nothing at all (P3/D2/D6). The comment node is left
- * where it is: the sanitiser removes it, which is why no Vantage-specific
+ * where it is: the sanitizer removes it, which is why no Vantage-specific
  * markup other than these attributes ever reaches the DOM.
  */
 
@@ -52,7 +52,7 @@ const HEADING_DEPTHS = new Map([
 /**
  * Key → hast property, for the keys that treat a whole run.
  *
- * A camelCase hast property serialises to the kebab-case attribute, so
+ * A camelCase hast property serializes to the kebab-case attribute, so
  * `dataVantageTone` is `data-vantage-tone` in every renderer.
  *
  * `tone` and `emphasis` describe what a section *is* and how loud it is, so
@@ -92,11 +92,11 @@ const LEANING_PROPERTY = "dataVantageLeaning";
  * The id, carried as a `data-` attribute rather than written straight to `id`.
  *
  * This plugin runs *before* `rehypeSanitize` — it has to, it reads comments and
- * the sanitiser deletes them — and the sanitiser's default schema clobbers `id`
+ * the sanitizer deletes them — and the sanitizer's default schema clobbers `id`
  * with the prefix `user-content-`. A bare `id` set here would reach the page as
  * `user-content-OQ-4`, every `#OQ-4` link in every document would land nowhere,
  * and nothing would error. `rehypeVantageAnchors` promotes this to a real `id`
- * on the other side of the sanitiser, which is the same reason `rehypeSlug` is
+ * on the other side of the sanitizer, which is the same reason `rehypeSlug` is
  * registered there (`pipeline.ts`).
  */
 const OQ_ID_PROPERTY = "dataVantageOqId";
@@ -145,7 +145,7 @@ interface CollapseState {
  * A whitespace-only `text` node always does — measured, with or without a blank
  * line in the source. Comments do too, and an unrelated `<!-- TODO -->` must not
  * break the chain: it is invisible in every renderer and deleted by the
- * sanitiser, so letting it change a directive's meaning would make behaviour
+ * sanitizer, so letting it change a directive's meaning would make behavior
  * depend on something no reader can see.
  */
 function isSkippable(node: RootContent): boolean {
@@ -203,7 +203,7 @@ function accepts(name: string, key: string, value: string): boolean {
  * two stamped paragraphs — and the section's one continuous vertical rule is
  * drawn per member, so an unstamped member is a hole the height of the block
  * plus its margins. Measured over the real stylesheet: 44px for a one-line
- * `<figure>`, against the 40px a neighbour can bleed upward, and arbitrarily
+ * `<figure>`, against the 40px a neighbor can bleed upward, and arbitrarily
  * large for anything taller. `collapsed=true` had the same shape of bug the
  * other way round — it hid the paragraphs and left the figure on the page.
  *
@@ -337,7 +337,7 @@ function stampOq(target: Element, pairs: Map<string, string>) {
   // the two id namespaces cannot collide by accident. A malformed id is stamped
   // anyway — the grammar is the checker's to enforce (`vantage/oq-id-format`),
   // and a renderer that silently dropped one would hide the mistake it is the
-  // checker's job to name. The sanitiser's value allowlist is the backstop.
+  // checker's job to name. The sanitizer's value allowlist is the backstop.
   const id = pairs.get("id");
   if (id !== undefined && id !== "") setProperty(target, OQ_ID_PROPERTY, id);
 

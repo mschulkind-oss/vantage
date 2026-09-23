@@ -265,7 +265,7 @@ func NewReviewComment(id, comment string, createdAt float64) ReviewComment {
 //
 // HasDark says whether the stylesheet declares a dark half (`:root.dark`). A
 // theme sets its light palette on `:root`, which applies in *both* modes, so one
-// that stops there renders its light colours in dark mode — which reads as a bug
+// that stops there renders its light colors in dark mode — which reads as a bug
 // in the app rather than an omission in the theme. The picker labels such a theme
 // instead, and only the server can see the file to tell.
 type ThemeInfo struct {

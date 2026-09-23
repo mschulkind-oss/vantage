@@ -89,7 +89,7 @@ export const useWebSocket = () => {
     // this a no-op, so nothing is fetched for a list nobody is looking at.
     void useFilePickerStore.getState().refresh();
 
-    // Guard: don't fire API calls before the repo store is initialised
+    // Guard: don't fire API calls before the repo store is initialized
     const { reposLoaded, isMultiRepo, currentRepo } = useRepoStore.getState();
     if (!reposLoaded) return;
     if (isMultiRepo && !currentRepo) return;
@@ -146,7 +146,7 @@ export const useWebSocket = () => {
     // announced while the socket was down is only recoverable here.
     void useFilePickerStore.getState().refresh();
 
-    // Guard: don't fire API calls before the repo store is initialised.
+    // Guard: don't fire API calls before the repo store is initialized.
     // Before loadRepos() completes, isMultiRepo defaults to false and
     // getApiBase() returns "/api", which 404s in multi-repo setups.
     const { reposLoaded, isMultiRepo, currentRepo } = useRepoStore.getState();

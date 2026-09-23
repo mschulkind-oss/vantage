@@ -173,7 +173,7 @@ export const RULES: readonly RuleMeta[] = [
   {
     id: "vantage/oq-id-format",
     summary:
-      "An `oq` id outside `OQ-<prefix?><digits>`, which the sanitiser refuses, so the question gets no anchor",
+      "An `oq` id outside `OQ-<prefix?><digits>`, which the sanitizer refuses, so the question gets no anchor",
     default: "error",
   },
   {

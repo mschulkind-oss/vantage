@@ -122,7 +122,7 @@ earlier in the same merged run of directives, where the last key wins:
 ```
 
 Two consecutive directives merge onto one block whether or not there is a blank
-line between them, so the tone survives and the collapse is cancelled.
+line between them, so the tone survives and the collapse is canceled.
 
 > [!IMPORTANT]
 > It cannot cancel an **enclosing** collapsed section. A nested heading is a
@@ -143,7 +143,7 @@ control could fail to exist:
 
 The second is not implied by the first. "A control exists somewhere in this
 document" is not "this block can be reopened", and the difference is what keeps
-a hand-written `data-vantage-collapsed="true"` in raw HTML — which the sanitiser
+a hand-written `data-vantage-collapsed="true"` in raw HTML — which the sanitizer
 allows by name — from hiding a block nothing can reveal.
 
 The third is not a counter-rule but an absence: `not print` means the
