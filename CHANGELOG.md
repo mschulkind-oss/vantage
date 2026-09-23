@@ -80,6 +80,14 @@ while you're partway through a comment.
   `docs is a directory, not a config file` and exits 2, instead of printing a
   stack trace.
 
+### Works well with
+
+[matt-craft](https://github.com/mschulkind-oss/matt-craft) is out — the skills I use to
+write the documents I then read in Vantage: design notes that carry their open
+questions, roadmaps, research rounds, user stories, and one for Vantage's own Markdown
+conventions. It is not part of Vantage and Vantage does not need it. If you write your
+own documents your own way, nothing here changes for you.
+
 ## [0.3.1] - 2026-04-06
 
 ### Fixed
