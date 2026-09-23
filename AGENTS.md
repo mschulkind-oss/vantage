@@ -140,11 +140,10 @@ people who follow this repository read what changed — so the prose is part of 
 artifact rather than a record kept beside it, and since a tag here is never moved,
 a section improved afterwards improves nothing that was published. What earns a
 line, who the entry is addressed to, and the rules against the usual release-note
-filler are settled in
-[`.claude/skills/release-notes/SKILL.md`](.claude/skills/release-notes/SKILL.md).
-`_self-check` now checks that file and the standard beside it, because a dead
-link in a release body is the one kind that cannot be fixed afterwards — the tag
-it shipped under is never moved.
+filler are settled in the **Changelog and Release Notes** standard of the
+`open-source-project` skill. `_self-check` now checks [`CHANGELOG.md`](CHANGELOG.md),
+because a dead link in a release body is the one kind that cannot be fixed
+afterwards — the tag it shipped under is never moved.
 
 The tag filter is `v[0-9]*`, not `v*`, and that is load-bearing: it is what makes
 a stray `vantage-…` tag unable to reach the workflow at all. Until 2026-09-01 the
