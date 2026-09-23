@@ -358,8 +358,8 @@ changelog <<'EOF'
 EOF
 expect 1 "one commit subject, alone" 0.7.0
 
-# Bullets alone are the shape of every section in this repo's changelog today
-# (0.3.1 is nothing else), so the rule is about commit subjects, not bullets.
+# Bullets alone are a shape this repo's changelog has used, so the rule is about
+# commit subjects, not bullets.
 changelog <<'EOF'
 ## [0.7.0] - 2026-09-22
 
@@ -408,11 +408,12 @@ fi
 
 # No file argument: the default is the changelog beside the repository root,
 # which is what both callers rely on — `just release` runs from the repo root and
-# publish.yml from a checkout of the tag, and neither passes a path. 0.3.1 is a
-# section that has been in the file since April; if it is ever legitimately
-# removed, point this at another released version.
+# publish.yml from a checkout of the tag, and neither passes a path. 0.7.0 is the
+# newest released version; this pointed at 0.3.1 until that section was folded
+# into the 0.6.x-style series retrospectives. If 0.7.0 ever goes, point it at
+# whatever the newest `## [<version>] - <date>` heading is by then.
 _got=0
-"$script" 0.3.1 >"$tmp/out" 2>"$tmp/err" || _got=$?
+"$script" 0.7.0 >"$tmp/out" 2>"$tmp/err" || _got=$?
 if [ "$_got" = 0 ] && [ -s "$tmp/out" ]; then
     pass=$((pass + 1))
 else
