@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 import { FolderGit2, Search } from "lucide-react";
+import { isNewTabEnter, openInNewTab } from "../lib/navigation";
 import { cn } from "../lib/utils";
 import { AppLink } from "./AppLink";
 import { RelativeTime } from "./RelativeTime";
@@ -139,20 +140,26 @@ export const ProjectPicker: React.FC<ProjectPickerProps> = ({
           e.preventDefault();
           setSelectedIndex((i) => Math.max(i - 1, 0));
           break;
-        case "Enter":
+        case "Enter": {
           e.preventDefault();
-          if (results[selectedIndex]) {
-            onSelect(results[selectedIndex].name);
-            onClose();
+          const row = results[selectedIndex];
+          if (!row) break;
+          // Alt+Enter or Ctrl/Cmd+Enter opens the row in a new tab instead
+          if (isNewTabEnter(e)) {
+            openInNewTab(hrefFor(row.name));
+          } else {
+            onSelect(row.name);
           }
+          onClose();
           break;
+        }
         case "Escape":
           e.preventDefault();
           onClose();
           break;
       }
     },
-    [results, selectedIndex, onSelect, onClose],
+    [results, selectedIndex, onSelect, hrefFor, onClose],
   );
 
   if (!isOpen) return null;

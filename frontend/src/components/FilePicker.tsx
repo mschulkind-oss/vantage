@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import { createPortal } from "react-dom";
 import { File, Search } from "lucide-react";
+import { isNewTabEnter, openInNewTab } from "../lib/navigation";
 import { cn } from "../lib/utils";
 import { AppLink } from "./AppLink";
 
@@ -318,20 +319,26 @@ export const FilePicker: React.FC<FilePickerProps> = ({
           e.preventDefault();
           setSelectedIndex((i) => Math.max(Math.min(i, lastIndex) - 1, 0));
           break;
-        case "Enter":
+        case "Enter": {
           e.preventDefault();
-          if (results[selected]) {
-            onSelect(results[selected].path, results[selected].repo);
-            onClose();
+          const row = results[selected];
+          if (!row) break;
+          // Alt+Enter or Ctrl/Cmd+Enter opens the row in a new tab instead
+          if (isNewTabEnter(e)) {
+            openInNewTab(hrefFor(row.path, row.repo));
+          } else {
+            onSelect(row.path, row.repo);
           }
+          onClose();
           break;
+        }
         case "Escape":
           e.preventDefault();
           onClose();
           break;
       }
     },
-    [results, selected, lastIndex, onSelect, onClose],
+    [results, selected, lastIndex, onSelect, hrefFor, onClose],
   );
 
   if (!isOpen) return null;
