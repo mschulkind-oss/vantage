@@ -8,6 +8,7 @@ import React, {
 import { createPortal } from "react-dom";
 import { File, Search } from "lucide-react";
 import { cn } from "../lib/utils";
+import { AppLink } from "./AppLink";
 
 export interface GlobalFile {
   repo: string;
@@ -18,6 +19,11 @@ interface FilePickerProps {
   isOpen: boolean;
   onClose: () => void;
   onSelect: (path: string, repo?: string) => void;
+  /**
+   * The SPA route a row leads to. Each row is a real link to it, so the browser
+   * can open it in a new tab (Ctrl/Cmd-click, middle-click).
+   */
+  hrefFor: (path: string, repo?: string) => string;
   files: string[];
   /** Global mode: search across all repos */
   globalFiles?: GlobalFile[];
@@ -177,6 +183,7 @@ export const FilePicker: React.FC<FilePickerProps> = ({
   isOpen,
   onClose,
   onSelect,
+  hrefFor,
   files,
   globalFiles,
   mode = "local",
@@ -391,21 +398,31 @@ export const FilePicker: React.FC<FilePickerProps> = ({
             </div>
           ) : (
             results.map((result, i) => (
-              <div
+              <AppLink
                 key={
                   result.repo ? `${result.repo}/${result.path}` : result.path
                 }
+                to={hrefFor(result.path, result.repo)}
                 data-file-item
+                tabIndex={-1}
                 className={cn(
-                  "flex items-center px-4 py-2 text-sm cursor-pointer transition-colors",
+                  "flex items-center px-4 py-2 text-sm cursor-pointer transition-colors no-underline",
                   i === selected
                     ? "bg-blue-50 dark:bg-blue-900/30 text-blue-900 dark:text-blue-100"
                     : "hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300",
                 )}
-                onClick={() => {
+                // A plain click goes through onSelect, like Enter, so it cancels
+                // both AppLink's navigation and the browser's. AppLink hands
+                // modified and middle clicks to the browser before this runs.
+                onBeforeNavigate={(e) => {
+                  e.preventDefault();
                   onSelect(result.path, result.repo);
                   onClose();
+                  return false;
                 }}
+                // Keep focus in the search box, so the arrow keys still work
+                // after a Ctrl-click has opened a row in the background.
+                onMouseDown={(e) => e.preventDefault()}
                 onMouseEnter={() => setSelectedIndex(i)}
               >
                 <File
@@ -423,7 +440,7 @@ export const FilePicker: React.FC<FilePickerProps> = ({
                   </span>
                 )}
                 <HighlightedPath path={result.path} indices={result.indices} />
-              </div>
+              </AppLink>
             ))
           )}
         </div>

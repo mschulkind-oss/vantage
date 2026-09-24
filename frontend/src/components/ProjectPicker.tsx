@@ -8,6 +8,7 @@ import React, {
 import { createPortal } from "react-dom";
 import { FolderGit2, Search } from "lucide-react";
 import { cn } from "../lib/utils";
+import { AppLink } from "./AppLink";
 import { RelativeTime } from "./RelativeTime";
 
 interface RepoItem {
@@ -19,6 +20,11 @@ interface ProjectPickerProps {
   isOpen: boolean;
   onClose: () => void;
   onSelect: (repoName: string) => void;
+  /**
+   * The SPA route a row leads to. Each row is a real link to it, so the browser
+   * can open it in a new tab (Ctrl/Cmd-click, middle-click).
+   */
+  hrefFor: (repoName: string) => string;
   repos: RepoItem[];
 }
 
@@ -81,6 +87,7 @@ export const ProjectPicker: React.FC<ProjectPickerProps> = ({
   isOpen,
   onClose,
   onSelect,
+  hrefFor,
   repos,
 }) => {
   const [query, setQuery] = useState("");
@@ -188,19 +195,29 @@ export const ProjectPicker: React.FC<ProjectPickerProps> = ({
             </div>
           ) : (
             results.map((result, i) => (
-              <div
+              <AppLink
                 key={result.name}
+                to={hrefFor(result.name)}
                 data-project-item
+                tabIndex={-1}
                 className={cn(
-                  "flex items-center px-4 py-3 cursor-pointer transition-colors",
+                  "flex items-center px-4 py-3 cursor-pointer transition-colors no-underline",
                   i === selectedIndex
                     ? "bg-blue-50 dark:bg-blue-900/30 text-blue-900 dark:text-blue-100"
                     : "hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300",
                 )}
-                onClick={() => {
+                // A plain click goes through onSelect, like Enter, so it cancels
+                // both AppLink's navigation and the browser's. AppLink hands
+                // modified and middle clicks to the browser before this runs.
+                onBeforeNavigate={(e) => {
+                  e.preventDefault();
                   onSelect(result.name);
                   onClose();
+                  return false;
                 }}
+                // Keep focus in the search box, so the arrow keys still work
+                // after a Ctrl-click has opened a row in the background.
+                onMouseDown={(e) => e.preventDefault()}
                 onMouseEnter={() => setSelectedIndex(i)}
               >
                 <FolderGit2
@@ -218,7 +235,7 @@ export const ProjectPicker: React.FC<ProjectPickerProps> = ({
                     <RelativeTime date={result.last_activity} />
                   </span>
                 )}
-              </div>
+              </AppLink>
             ))
           )}
         </div>
