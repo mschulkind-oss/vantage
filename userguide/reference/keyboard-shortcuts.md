@@ -31,14 +31,19 @@ Two-key sequences (like `g g`) have an 800ms timeout — press both keys in quic
 
 When the file picker is open:
 
-| Key           | Action                           |
-| ------------- | -------------------------------- |
-| Type anything | Filter files with fuzzy matching |
-| `↑` / `↓`     | Move through the results         |
-| `Enter`       | Open the selected file           |
-| `Escape`      | Close the picker                 |
+| Key                         | Action                              |
+| --------------------------- | ----------------------------------- |
+| Type anything               | Filter files with fuzzy matching    |
+| `↑` / `↓`                   | Move through the results            |
+| `Enter`                     | Open the selected file              |
+| `Alt+Enter` or `Ctrl+Enter` | Open the selected file in a new tab |
+| `Escape`                    | Close the picker                    |
 
 The file picker uses fuzzy matching — you don't need to type the exact filename. For example, typing `gstart` would match `getting-started.md`.
+
+The project picker (`Shift+P`) takes the same keys, with a project in place of a
+file. In either picker, Ctrl-click or middle-click a row to open it in a new tab.
+On macOS, `Cmd+Enter` works as `Ctrl+Enter` does.
 
 ## Recently Changed Files
 
