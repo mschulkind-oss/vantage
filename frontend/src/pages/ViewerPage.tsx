@@ -636,17 +636,19 @@ export const ViewerPage: React.FC = () => {
     }
   };
 
-  // File picker select handler
+  // File picker route and select handler. The picker renders each row as a
+  // link to `filePickerHref`, and selecting a row navigates to the same route.
+  const filePickerHref = useCallback(
+    (path: string, repo?: string): string =>
+      // Global mode names the repo; local mode is the current one
+      repo ? `/${repo}/${path}` : buildPath(path),
+    [buildPath],
+  );
   const handleFilePickerSelect = useCallback(
     (path: string, repo?: string) => {
-      if (repo) {
-        // Global mode: navigate to the file in the specified repo
-        navigate(`/${repo}/${path}`);
-      } else {
-        navigate(buildPath(path));
-      }
+      navigate(filePickerHref(path, repo));
     },
-    [navigate, buildPath],
+    [navigate, filePickerHref],
   );
 
   // Keyboard shortcuts
@@ -685,11 +687,15 @@ export const ViewerPage: React.FC = () => {
   const handleOpenGlobalRecentFiles = useCallback(() => {
     void openGlobalFilePicker("recent");
   }, [openGlobalFilePicker]);
+  const projectPickerHref = useCallback(
+    (repoName: string): string => `/${repoName}`,
+    [],
+  );
   const handleProjectSelect = useCallback(
     (repoName: string) => {
-      navigate(`/${repoName}`);
+      navigate(projectPickerHref(repoName));
     },
-    [navigate],
+    [navigate, projectPickerHref],
   );
   const handleToggleSidebar = useCallback(() => {
     // On mobile, toggle the slide-out panel; on desktop, collapse the sidebar
@@ -1775,6 +1781,7 @@ export const ViewerPage: React.FC = () => {
           isOpen={filePickerMode === "local"}
           onClose={closeFilePicker}
           onSelect={handleFilePickerSelect}
+          hrefFor={filePickerHref}
           files={allFiles}
           loading={filePickerLoading && allFiles.length === 0}
         />
@@ -1783,6 +1790,7 @@ export const ViewerPage: React.FC = () => {
           isOpen={filePickerMode === "global"}
           onClose={closeFilePicker}
           onSelect={handleFilePickerSelect}
+          hrefFor={filePickerHref}
           files={[]}
           globalFiles={globalFiles}
           mode="global"
@@ -1794,6 +1802,7 @@ export const ViewerPage: React.FC = () => {
           isOpen={projectPickerOpen}
           onClose={() => setProjectPickerOpen(false)}
           onSelect={handleProjectSelect}
+          hrefFor={projectPickerHref}
           repos={repos}
         />
         {/* Recents Modal */}
