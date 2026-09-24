@@ -9,8 +9,8 @@ Vantage supports keyboard shortcuts for fast navigation. Press `?` at any time t
 | `?`       | Show keyboard shortcuts help                                  |
 | `t`       | Open the fuzzy file picker (current project)                  |
 | `Shift+T` | Search files across all projects                              |
-| `r`       | Search recent files (current project)                         |
-| `Shift+R` | Search recent files (all projects)                            |
+| `r`       | Recently changed files (current project)                      |
+| `Shift+R` | Recently changed files (all projects)                         |
 | `Shift+P` | Open the project picker to switch repos                       |
 | `b`       | Toggle the sidebar                                            |
 | `h`       | Open commit history for the current file                      |
@@ -39,6 +39,19 @@ When the file picker is open:
 | `Escape`      | Close the picker                 |
 
 The file picker uses fuzzy matching — you don't need to type the exact filename. For example, typing `gstart` would match `getting-started.md`.
+
+## Recently Changed Files
+
+`r` and `Shift+R` open the same list of recently changed files, with who changed
+each one, in which commit, and when. `r` lists the current project's; `Shift+R`
+lists every project's, with each file's project shown beside its folder. When
+the list is open:
+
+| Key       | Action                                |
+| --------- | ------------------------------------- |
+| `↑` / `↓` | Move through the files                |
+| `Enter`   | Open the highlighted file             |
+| `Escape`  | Close the list                        |
 
 ## Mermaid Diagrams
 

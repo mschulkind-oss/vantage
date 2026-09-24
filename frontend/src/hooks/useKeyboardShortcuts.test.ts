@@ -6,6 +6,8 @@ import React from "react";
 describe("useKeyboardShortcuts", () => {
   const mockCallbacks = {
     onOpenFilePicker: vi.fn(),
+    onOpenRecentFiles: vi.fn(),
+    onOpenGlobalRecentFiles: vi.fn(),
     onToggleSidebar: vi.fn(),
     onNavigate: vi.fn(),
     onViewDiff: vi.fn(),
@@ -70,6 +72,17 @@ describe("useKeyboardShortcuts", () => {
     fireKey("t");
     fireKey("t");
     expect(mockCallbacks.onOpenFilePicker).toHaveBeenCalledTimes(2);
+  });
+
+  it("opens this project's recents on r and every project's on Shift+R", () => {
+    renderHook(() => useKeyboardShortcuts(mockCallbacks));
+    fireKey("r");
+    expect(mockCallbacks.onOpenRecentFiles).toHaveBeenCalledTimes(1);
+    expect(mockCallbacks.onOpenGlobalRecentFiles).not.toHaveBeenCalled();
+
+    fireKey("R", { shiftKey: true });
+    expect(mockCallbacks.onOpenGlobalRecentFiles).toHaveBeenCalledTimes(1);
+    expect(mockCallbacks.onOpenRecentFiles).toHaveBeenCalledTimes(1);
   });
 
   it("toggles sidebar on b key", () => {

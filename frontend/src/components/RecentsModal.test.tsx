@@ -2,12 +2,19 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { RecentsModal } from "./RecentsModal";
 import { BrowserRouter, MemoryRouter, useLocation } from "react-router-dom";
+import axios from "axios";
+import { useAllRecentsStore } from "../stores/useAllRecentsStore";
 
 // Mock stores
 const mockUseGitStore = vi.fn();
 vi.mock("../stores/useGitStore", () => ({
   useGitStore: (...args: unknown[]) => mockUseGitStore(...args),
+  getRecentParams: (limit: number) => `limit=${limit}`,
 }));
+
+// The all-projects store is the real one; only the network under it is fake.
+vi.mock("axios");
+const mockedAxios = vi.mocked(axios, true);
 
 vi.mock("../stores/useRepoStore", () => ({
   useRepoStore: vi.fn(() => ({
@@ -323,6 +330,129 @@ describe("RecentsModal", () => {
       expect(selectedRow()).toHaveAttribute("href", "/a.md");
       press("Enter");
       expect(location).toBe("/a.md");
+    });
+  });
+
+  describe("all-projects scope", () => {
+    const allFiles = [
+      {
+        repo: "notes",
+        path: "docs/plan.md",
+        date: new Date().toISOString(),
+        message: "Plan the thing",
+        author_name: "Ann",
+        hexsha: "1234567890",
+        untracked: false,
+      },
+      {
+        repo: "code",
+        path: "README.md",
+        date: new Date().toISOString(),
+        message: "",
+        author_name: "",
+        hexsha: "",
+        untracked: true,
+      },
+    ];
+
+    let location = "";
+    const LocationProbe = () => {
+      location = useLocation().pathname;
+      return null;
+    };
+
+    const renderAll = (isOpen = true) =>
+      render(
+        <MemoryRouter initialEntries={["/start"]}>
+          <RecentsModal isOpen={isOpen} onClose={mockOnClose} scope="all" />
+          <LocationProbe />
+        </MemoryRouter>,
+      );
+
+    beforeEach(() => {
+      useAllRecentsStore.setState({
+        active: false,
+        files: [],
+        loading: false,
+        error: false,
+      });
+      defaultStoreState.fetchRecentFiles.mockClear();
+      mockedAxios.get.mockReset();
+      mockedAxios.get.mockResolvedValue({ data: allFiles });
+    });
+
+    it("fetches every project's recents when it opens", async () => {
+      renderAll();
+      await screen.findByText("plan.md");
+      expect(mockedAxios.get).toHaveBeenCalledWith("/api/recent/all?limit=50");
+      expect(useAllRecentsStore.getState().active).toBe(true);
+      // Not the per-project list.
+      expect(defaultStoreState.fetchRecentFiles).not.toHaveBeenCalledWith(true);
+    });
+
+    it("stops being refreshed once it closes", async () => {
+      const { unmount } = renderAll();
+      await screen.findByText("plan.md");
+      unmount();
+      expect(useAllRecentsStore.getState().active).toBe(false);
+    });
+
+    it("links each row to its own project, with the project shown", async () => {
+      renderAll();
+      const plan = (await screen.findByText("plan.md")).closest("a");
+      expect(plan).toHaveAttribute("href", "/notes/docs/plan.md");
+      expect(screen.getByText("README.md").closest("a")).toHaveAttribute(
+        "href",
+        "/code/README.md",
+      );
+      const projects = [
+        ...document.querySelectorAll("[data-recent-project]"),
+      ].map((el) => el.textContent);
+      expect(projects).toEqual(["notes", "code"]);
+      expect(screen.getByText("docs")).toBeInTheDocument();
+      expect(screen.getByText("All projects")).toBeInTheDocument();
+    });
+
+    it("keeps the same metadata columns as the per-project scope", async () => {
+      renderAll();
+      await screen.findByText("plan.md");
+      expect(screen.getByText("Plan the thing")).toBeInTheDocument();
+      expect(screen.getByText("Ann")).toBeInTheDocument();
+      expect(screen.getByText("1234567")).toBeInTheDocument();
+      expect(screen.getByText("Untracked")).toBeInTheDocument();
+    });
+
+    it("navigates to the project's file on Enter", async () => {
+      renderAll();
+      await screen.findByText("plan.md");
+      fireEvent.keyDown(document.body, { key: "ArrowDown" });
+      fireEvent.keyDown(document.body, { key: "Enter" });
+      expect(location).toBe("/code/README.md");
+      expect(mockOnClose).toHaveBeenCalled();
+    });
+
+    it("opens the project's file in a new tab on Alt+Enter", async () => {
+      const open = vi.spyOn(window, "open").mockImplementation(() => null);
+      renderAll();
+      await screen.findByText("plan.md");
+      fireEvent.keyDown(document.body, { key: "Enter", altKey: true });
+      expect(open).toHaveBeenCalledWith(
+        "/notes/docs/plan.md",
+        "_blank",
+        "noopener",
+      );
+      open.mockRestore();
+    });
+
+    // Single-repo mode answers /recent/all with repo "", which is the root.
+    it("links a single-repo row to the root, with no project shown", async () => {
+      mockedAxios.get.mockResolvedValue({
+        data: [{ ...allFiles[0], repo: "" }],
+      });
+      renderAll();
+      const plan = (await screen.findByText("plan.md")).closest("a");
+      expect(plan).toHaveAttribute("href", "/docs/plan.md");
+      expect(document.querySelector("[data-recent-project]")).toBeNull();
     });
   });
 });

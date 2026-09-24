@@ -235,7 +235,7 @@ Press **t** to open the fuzzy file picker. Type to search across all files in th
 
 Press **Shift+T** from anywhere to search files across all projects at once. On the project picker page, **t** also opens the global file search.
 
-Press **r** to search recent files in the current project, or **Shift+R** to search recent files across all projects.
+Press **r** to list the recently changed files in the current project, with who changed each one and in which commit, or **Shift+R** for the same list across all projects. Use the arrow keys to move through it and Enter to open a file.
 
 Press **Shift+P** to open the project picker and quickly switch between repos.
 

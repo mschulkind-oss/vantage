@@ -3,8 +3,10 @@ import axios from "axios";
 import { GitCommit, FileDiff, RecentFile, FileStatus } from "../types";
 import { useRepoStore } from "./useRepoStore";
 
-// Build query string for recent files endpoint, including filter state
-const getRecentParams = (limit: number): string => {
+// Build query string for a recent files endpoint, including filter state.
+// Shared with useAllRecentsStore, so both scopes of the recents modal honor the
+// same hidden/gitignored filters.
+export const getRecentParams = (limit: number): string => {
   const { showHidden, showGitignored } = useRepoStore.getState();
   const params = new URLSearchParams({ limit: String(limit) });
   if (!showHidden) params.set("show_hidden", "false");
