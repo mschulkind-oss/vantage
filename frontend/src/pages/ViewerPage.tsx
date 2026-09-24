@@ -59,7 +59,7 @@ import {
   KeyboardShortcutsButton,
 } from "../components/KeyboardShortcuts";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
-import { RecentsModal } from "../components/RecentsModal";
+import { RecentsModal, type RecentsScope } from "../components/RecentsModal";
 import {
   isAnsweredByAgent,
   isPendingForAgent,
@@ -178,7 +178,8 @@ export const ViewerPage: React.FC = () => {
   useLineAnchor(contentRef);
   const prevPathRef = useRef<string | null>(null);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
-  const [recentsModalOpen, setRecentsModalOpen] = useState(false);
+  // Which recents modal is open: `r`'s current project, or `Shift+R`'s all.
+  const [recentsScope, setRecentsScope] = useState<RecentsScope | null>(null);
   // The file pickers' lists live in a store so the watcher can refresh them
   // while they are on screen.
   const {
@@ -682,11 +683,11 @@ export const ViewerPage: React.FC = () => {
     refreshRepos();
   }, [refreshRepos]);
   const handleOpenRecentFiles = useCallback(() => {
-    setRecentsModalOpen(true);
+    setRecentsScope("project");
   }, []);
   const handleOpenGlobalRecentFiles = useCallback(() => {
-    void openGlobalFilePicker("recent");
-  }, [openGlobalFilePicker]);
+    setRecentsScope("all");
+  }, []);
   const projectPickerHref = useCallback(
     (repoName: string): string => `/${repoName}`,
     [],
@@ -914,7 +915,7 @@ export const ViewerPage: React.FC = () => {
             {(!isMultiRepo || currentRepo) && (
               <div className="border-t border-slate-200 dark:border-slate-700 px-2 py-2 shrink-0">
                 <button
-                  onClick={() => setRecentsModalOpen(true)}
+                  onClick={() => setRecentsScope("project")}
                   className="px-2 py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center space-x-1.5 hover:text-blue-600 dark:hover:text-blue-400 transition-colors w-full"
                 >
                   <Clock size={12} />
@@ -1807,8 +1808,9 @@ export const ViewerPage: React.FC = () => {
         />
         {/* Recents Modal */}
         <RecentsModal
-          isOpen={recentsModalOpen}
-          onClose={() => setRecentsModalOpen(false)}
+          isOpen={recentsScope !== null}
+          scope={recentsScope ?? "project"}
+          onClose={() => setRecentsScope(null)}
         />
         {/* Keyboard Shortcuts Modal */}
         <KeyboardShortcutsModal

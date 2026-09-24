@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGitStore } from "../stores/useGitStore";
+import { useAllRecentsStore } from "../stores/useAllRecentsStore";
+import type { RecentFile } from "../types";
 import { useRepoStore } from "../stores/useRepoStore";
 import { AppLink } from "./AppLink";
 import {
@@ -19,32 +21,59 @@ import { MiddleEllipsis } from "./MiddleEllipsis";
 import { cn } from "../lib/utils";
 import { isNewTabEnter, openInNewTab } from "../lib/navigation";
 
+/**
+ * Which files the modal lists: the current project's (`r`) or every
+ * project's (`Shift+R`). Nothing else about the modal differs between them.
+ */
+export type RecentsScope = "project" | "all";
+
 interface RecentsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  scope?: RecentsScope;
 }
+
+/** A row of either scope: the file, and the project it belongs to if shown. */
+type RecentRow = RecentFile & { repo?: string };
 
 export const RecentsModal: React.FC<RecentsModalProps> = ({
   isOpen,
   onClose,
+  scope = "project",
 }) => {
-  const { recentFiles, isRecentLoading, recentFilesError, fetchRecentFiles } =
-    useGitStore();
+  const project = useGitStore();
+  const all = useAllRecentsStore();
   const { isMultiRepo, currentRepo } = useRepoStore();
+  const isAll = scope === "all";
 
-  const buildPath = (filePath: string): string => {
+  const recentFiles: RecentRow[] = isAll ? all.files : project.recentFiles;
+  const isRecentLoading = isAll ? all.loading : project.isRecentLoading;
+  const recentFilesError = isAll ? all.error : project.recentFilesError;
+  const { fetchRecentFiles } = project;
+  const { open: openAll, close: closeAll, refresh: refreshAll } = all;
+  const retry = () => (isAll ? refreshAll() : fetchRecentFiles());
+
+  const buildPath = (file: RecentRow): string => {
+    // All-projects rows name their own project; "" is single-repo mode.
+    if (isAll)
+      return file.repo ? `/${file.repo}/${file.path}` : `/${file.path}`;
     if (isMultiRepo && currentRepo) {
-      return `/${currentRepo}/${filePath}`;
+      return `/${currentRepo}/${file.path}`;
     }
-    return `/${filePath}`;
+    return `/${file.path}`;
   };
 
-  // Fetch fresh data every time the modal opens
+  // Fetch fresh data every time the modal opens. The all-projects list is also
+  // marked as on screen, so the watcher's pushes keep it live until it closes.
   useEffect(() => {
-    if (isOpen) {
+    if (!isOpen) return;
+    if (!isAll) {
       fetchRecentFiles(true);
+      return;
     }
-  }, [isOpen, fetchRecentFiles]);
+    void openAll();
+    return () => closeAll();
+  }, [isOpen, isAll, fetchRecentFiles, openAll, closeAll]);
 
   const navigate = useNavigate();
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -99,7 +128,7 @@ export const RecentsModal: React.FC<RecentsModalProps> = ({
           const file = recentFiles[selected];
           if (!file) break;
           e.preventDefault();
-          const href = buildPath(file.path);
+          const href = buildPath(file);
           onClose();
           if (isNewTabEnter(e)) {
             openInNewTab(href);
@@ -145,10 +174,17 @@ export const RecentsModal: React.FC<RecentsModalProps> = ({
               <h2 className="font-semibold text-base text-slate-900 dark:text-slate-100">
                 Recently Changed
               </h2>
-              {isMultiRepo && currentRepo && (
+              {isAll ? (
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  {currentRepo}
+                  All projects
                 </p>
+              ) : (
+                isMultiRepo &&
+                currentRepo && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    {currentRepo}
+                  </p>
+                )
               )}
             </div>
           </div>
@@ -176,7 +212,7 @@ export const RecentsModal: React.FC<RecentsModalProps> = ({
               <AlertCircle size={16} className="shrink-0" />
               <span className="flex-1">Failed to load recent files.</span>
               <button
-                onClick={() => fetchRecentFiles()}
+                onClick={() => void retry()}
                 className="flex items-center gap-1 rounded px-2 py-1 text-xs font-medium hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
               >
                 <RefreshCw size={12} />
@@ -209,11 +245,12 @@ export const RecentsModal: React.FC<RecentsModalProps> = ({
                 const parentDir = parts.length > 0 ? parts.join("/") : "";
                 const isEven = index % 2 === 0;
                 const isSelected = index === selected;
+                const href = buildPath(file);
 
                 return (
                   <AppLink
-                    key={file.path}
-                    to={buildPath(file.path)}
+                    key={href}
+                    to={href}
                     data-recent-item
                     data-selected={isSelected || undefined}
                     onBeforeNavigate={() => {
@@ -245,13 +282,22 @@ export const RecentsModal: React.FC<RecentsModalProps> = ({
                       </span>
                     </div>
 
-                    {/* Row 2: Directory path */}
-                    {parentDir && (
+                    {/* Row 2: Project (all-projects scope) + directory path */}
+                    {(file.repo || parentDir) && (
                       <div
                         className="text-xs text-slate-500 dark:text-slate-400 truncate mb-0.5"
-                        title={parentDir}
+                        title={[file.repo, parentDir].filter(Boolean).join("/")}
                       >
-                        {parentDir}
+                        {file.repo && (
+                          <span
+                            data-recent-project
+                            className="font-medium text-slate-600 dark:text-slate-300"
+                          >
+                            {file.repo}
+                          </span>
+                        )}
+                        {file.repo && parentDir && " / "}
+                        {parentDir && <span>{parentDir}</span>}
                       </div>
                     )}
 

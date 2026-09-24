@@ -91,6 +91,14 @@ export interface RecentFile {
   untracked?: boolean;
 }
 
+/**
+ * One element of `GET /api/recent/all`: a {@link RecentFile} tagged with the
+ * project it came from. `repo` is `""` in single-repo mode.
+ */
+export interface RecentAllFile extends RecentFile {
+  repo: string;
+}
+
 export interface DiffLine {
   type: "add" | "delete" | "context" | "header";
   content: string;

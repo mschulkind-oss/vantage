@@ -17,8 +17,17 @@ const getApiBase = (): string | null => {
 let localSeq = 0;
 let globalSeq = 0;
 
-/** Which list the global picker is showing: every file, or recently changed. */
-export type GlobalFileSource = "all" | "recent";
+/**
+ * Which list the global picker is showing. Only every file, now: `Shift+R`'s
+ * recently changed files moved to RecentsModal, which also shows who changed
+ * each one and in which commit. The parameter stays so a second list can come
+ * back without changing every caller.
+ */
+export type GlobalFileSource = "all";
+
+const GLOBAL_ENDPOINTS: Record<GlobalFileSource, string> = {
+  all: "/api/files/all",
+};
 
 interface FilePickerState {
   /** Which picker is on screen, if any. */
@@ -74,9 +83,7 @@ export const useFilePickerStore = create<FilePickerState>((set, get) => {
     const seq = ++globalSeq;
     set({ loading: true });
     try {
-      const res = await axios.get<GlobalFile[]>(
-        source === "all" ? "/api/files/all" : "/api/recent/all?limit=200",
-      );
+      const res = await axios.get<GlobalFile[]>(GLOBAL_ENDPOINTS[source]);
       if (seq !== globalSeq) return;
       set({ globalFiles: res.data });
     } catch (error) {
@@ -104,8 +111,8 @@ export const useFilePickerStore = create<FilePickerState>((set, get) => {
     },
 
     openGlobal: async (source) => {
-      // Same for the other endpoint's answer: `Shift+R`'s recents are not a
-      // stale version of `Shift+T`'s every-file list.
+      // Same for another source's answer: it is not a stale version of this
+      // one.
       if (get().globalSource !== source) {
         set({ globalFiles: [], globalSource: source });
       }

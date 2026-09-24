@@ -8,6 +8,7 @@ import { useReviewStore } from "../stores/useReviewStore";
 import { useConnectionStore } from "../stores/useConnectionStore";
 import { useStarredStore } from "../stores/useStarredStore";
 import { useFilePickerStore } from "../stores/useFilePickerStore";
+import { useAllRecentsStore } from "../stores/useAllRecentsStore";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { BrowserRouter } from "react-router-dom";
 import type { CommentReaction, ReviewComment } from "../types";
@@ -245,6 +246,48 @@ describe("ViewerPage", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     fireEvent.keyDown(document, { key: "t" });
     await waitFor(() => expect(filesCalls()).toBe(2));
+
+    get.mockRestore();
+  });
+
+  // `Shift+R` used to open the fuzzy file picker over the recents, while `r`
+  // opened the recents modal; now both open the modal, at two scopes.
+  it("opens the recents modal for every project on Shift+R", async () => {
+    const realGet = axios.get.bind(axios);
+    const get = vi.spyOn(axios, "get");
+    get.mockImplementation(((url: string, config?: never) =>
+      url.startsWith("/api/recent/all")
+        ? Promise.resolve({
+            data: [
+              {
+                repo: "notes",
+                path: "docs/plan.md",
+                date: new Date().toISOString(),
+                author_name: "Ann",
+                message: "Plan it",
+                hexsha: "abc1234",
+              },
+            ],
+          })
+        : realGet(url, config)) as typeof axios.get);
+
+    renderPage();
+    fireEvent.keyDown(document, { key: "R", shiftKey: true });
+
+    const row = (await screen.findByText("plan.md")).closest("a");
+    expect(row).toHaveAttribute("href", "/notes/docs/plan.md");
+    expect(screen.getByText("All projects")).toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText("Search all projects' files..."),
+    ).not.toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    expect(screen.queryByText("All projects")).not.toBeInTheDocument();
+    expect(useAllRecentsStore.getState().active).toBe(false);
+
+    fireEvent.keyDown(document, { key: "r" });
+    expect(screen.getByText("Recently Changed")).toBeInTheDocument();
+    expect(screen.queryByText("All projects")).not.toBeInTheDocument();
 
     get.mockRestore();
   });

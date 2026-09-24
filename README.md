@@ -278,7 +278,7 @@ Vantage exposes a REST API for programmatic access under `/api`.
 | `GET /api/content?path=file.md`             | File content                         |
 | `GET /api/files`                            | List all Markdown files              |
 | `GET /api/files/all`                        | List all files                       |
-| `GET /api/recent/all`                       | Recently accessed files              |
+| `GET /api/recent/all`                       | Recently changed files, all projects |
 | `GET /api/info`                             | Repository metadata                  |
 | `GET /api/git/history?path=file.md`         | Commit history                       |
 | `GET /api/git/diff?path=file.md&commit=SHA` | Diff for a commit                    |
