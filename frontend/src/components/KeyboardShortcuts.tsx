@@ -52,13 +52,20 @@ const shortcutGroups: ShortcutGroup[] = [
   },
 ];
 
+/** Keys held down with the next one, rather than pressed before it. */
+const MODIFIERS = new Set(["Shift", "Alt", "Ctrl", "Cmd"]);
+
+/**
+ * A key sequence. A modifier joins the key after it with `+` (Shift+T is one
+ * chord); anything else is a sequence and reads "then" (`g` then `h`).
+ */
 const KeyCombo: React.FC<{ keys: string[] }> = ({ keys }) => (
   <span className="flex items-center gap-0.5">
     {keys.map((key, i) => (
       <React.Fragment key={i}>
         {i > 0 && (
           <span className="text-slate-500 dark:text-slate-400 text-[10px] mx-0.5">
-            then
+            {MODIFIERS.has(keys[i - 1]) ? "+" : "then"}
           </span>
         )}
         <kbd
