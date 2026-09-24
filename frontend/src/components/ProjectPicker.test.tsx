@@ -1,4 +1,4 @@
-import { render, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { ProjectPicker } from "./ProjectPicker";
@@ -81,4 +81,37 @@ describe("ProjectPicker rows", () => {
     expect(row("beta").className).toContain("bg-blue-50");
     expect(row("alpha").className).not.toContain("bg-blue-50");
   });
+});
+
+describe("ProjectPicker Enter", () => {
+  let open: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    open = vi.spyOn(window, "open").mockReturnValue(null);
+  });
+  afterEach(() => {
+    open.mockRestore();
+  });
+
+  const input = () => screen.getByRole("textbox");
+
+  it("selects the highlighted row and closes on a plain Enter", () => {
+    const { onSelect, onClose } = renderPicker();
+    fireEvent.keyDown(input(), { key: "ArrowDown" });
+    fireEvent.keyDown(input(), { key: "Enter" });
+    expect(onSelect).toHaveBeenCalledWith("beta");
+    expect(onClose).toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it.each([{ altKey: true }, { ctrlKey: true }, { metaKey: true }])(
+    "opens the highlighted row in a new tab on a modified Enter (%o)",
+    (modifier) => {
+      const { onSelect, onClose } = renderPicker();
+      fireEvent.keyDown(input(), { key: "ArrowDown" });
+      fireEvent.keyDown(input(), { key: "Enter", ...modifier });
+      expect(open).toHaveBeenCalledWith("/beta", "_blank", "noopener");
+      expect(onSelect).not.toHaveBeenCalled();
+      expect(onClose).toHaveBeenCalled();
+    },
+  );
 });
