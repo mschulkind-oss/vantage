@@ -1,5 +1,9 @@
-import { describe, it, expect } from "vitest";
-import { shouldHandleInternalNavigation } from "./navigation";
+import { describe, it, expect, vi } from "vitest";
+import {
+  isNewTabEnter,
+  openInNewTab,
+  shouldHandleInternalNavigation,
+} from "./navigation";
 
 describe("shouldHandleInternalNavigation", () => {
   const createMouseEvent = (
@@ -48,5 +52,41 @@ describe("shouldHandleInternalNavigation", () => {
   it("returns false when multiple modifier keys are pressed", () => {
     const event = createMouseEvent({ ctrlKey: true, shiftKey: true });
     expect(shouldHandleInternalNavigation(event)).toBe(false);
+  });
+});
+
+describe("isNewTabEnter", () => {
+  const key = (overrides: Partial<KeyboardEvent> = {}): KeyboardEvent =>
+    ({
+      key: "Enter",
+      altKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      shiftKey: false,
+      ...overrides,
+    }) as KeyboardEvent;
+
+  it("is false for a plain Enter", () => {
+    expect(isNewTabEnter(key())).toBe(false);
+  });
+
+  it.each(["altKey", "ctrlKey", "metaKey"] as const)(
+    "is true for Enter with %s",
+    (mod) => {
+      expect(isNewTabEnter(key({ [mod]: true }))).toBe(true);
+    },
+  );
+
+  it("is false for a modified key that is not Enter", () => {
+    expect(isNewTabEnter(key({ key: "t", ctrlKey: true }))).toBe(false);
+  });
+});
+
+describe("openInNewTab", () => {
+  it("opens the route in a new tab without an opener", () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    openInNewTab("/repo/docs/a.md");
+    expect(open).toHaveBeenCalledWith("/repo/docs/a.md", "_blank", "noopener");
+    open.mockRestore();
   });
 });
