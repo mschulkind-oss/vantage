@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { RecentsModal } from "./RecentsModal";
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter, MemoryRouter, useLocation } from "react-router-dom";
 
 // Mock stores
 const mockUseGitStore = vi.fn();
@@ -203,5 +203,126 @@ describe("RecentsModal", () => {
     );
 
     expect(screen.getByText("Untracked")).toBeInTheDocument();
+  });
+
+  describe("keyboard navigation", () => {
+    const threeFiles = ["a.md", "docs/b.md", "c.md"].map((path) => ({
+      path,
+      date: new Date().toISOString(),
+      message: "m",
+      author_name: "A",
+      hexsha: "abc123",
+      untracked: false,
+    }));
+
+    let location = "";
+    const LocationProbe = () => {
+      location = useLocation().pathname;
+      return null;
+    };
+
+    const renderAt = () =>
+      render(
+        <MemoryRouter initialEntries={["/start"]}>
+          <RecentsModal isOpen={true} onClose={mockOnClose} />
+          <LocationProbe />
+        </MemoryRouter>,
+      );
+
+    const selectedRow = () =>
+      document.querySelector("[data-recent-item][data-selected]");
+
+    // Keys reach the modal the way they do in a browser: dispatched at the
+    // focused element (the body), so they pass `document` on the way down.
+    const press = (key: string, init: KeyboardEventInit = {}) =>
+      fireEvent.keyDown(document.body, { key, ...init });
+
+    beforeEach(() => {
+      mockUseGitStore.mockReturnValue({
+        ...defaultStoreState,
+        recentFiles: threeFiles,
+      });
+    });
+
+    it("highlights the first row on open", () => {
+      renderAt();
+      expect(selectedRow()).toHaveAttribute("href", "/a.md");
+    });
+
+    it("moves the highlight with the arrow keys, clamped at both ends", () => {
+      renderAt();
+      press("ArrowDown");
+      expect(selectedRow()).toHaveAttribute("href", "/docs/b.md");
+      press("ArrowDown");
+      press("ArrowDown");
+      expect(selectedRow()).toHaveAttribute("href", "/c.md");
+      press("ArrowUp");
+      press("ArrowUp");
+      press("ArrowUp");
+      expect(selectedRow()).toHaveAttribute("href", "/a.md");
+    });
+
+    it("moves the highlight to the hovered row", () => {
+      renderAt();
+      fireEvent.mouseEnter(screen.getByText("c.md").closest("a")!);
+      expect(selectedRow()).toHaveAttribute("href", "/c.md");
+    });
+
+    it("navigates to the highlighted file on Enter and closes", () => {
+      renderAt();
+      press("ArrowDown");
+      press("Enter");
+      expect(location).toBe("/docs/b.md");
+      expect(mockOnClose).toHaveBeenCalled();
+    });
+
+    it.each([
+      ["Alt", { altKey: true }],
+      ["Ctrl", { ctrlKey: true }],
+      ["Cmd", { metaKey: true }],
+    ])("opens the highlighted file in a new tab on %s+Enter", (_, mods) => {
+      const open = vi.spyOn(window, "open").mockImplementation(() => null);
+      renderAt();
+      press("ArrowDown");
+      press("Enter", mods);
+      expect(open).toHaveBeenCalledWith("/docs/b.md", "_blank", "noopener");
+      expect(location).toBe("/start");
+      expect(mockOnClose).toHaveBeenCalled();
+      open.mockRestore();
+    });
+
+    // The global shortcut handler listens on `document` as well; a key the
+    // modal owns must not also scroll the page or open another dialog.
+    it("keeps its keys from reaching document listeners", () => {
+      const outside = vi.fn();
+      document.addEventListener("keydown", outside);
+      renderAt();
+      press("j");
+      press("ArrowDown");
+      press("Escape");
+      document.removeEventListener("keydown", outside);
+      expect(outside).not.toHaveBeenCalled();
+    });
+
+    it("clamps the highlight when a refresh shortens the list", () => {
+      const { rerender } = renderAt();
+      press("ArrowDown");
+      press("ArrowDown");
+      expect(selectedRow()).toHaveAttribute("href", "/c.md");
+
+      mockUseGitStore.mockReturnValue({
+        ...defaultStoreState,
+        recentFiles: threeFiles.slice(0, 1),
+      });
+      rerender(
+        <MemoryRouter initialEntries={["/start"]}>
+          <RecentsModal isOpen={true} onClose={mockOnClose} />
+          <LocationProbe />
+        </MemoryRouter>,
+      );
+      expect(selectedRow()).toHaveAttribute("href", "/a.md");
+      press("Enter");
+      expect(location).toBe("/a.md");
+    });
   });
 });
