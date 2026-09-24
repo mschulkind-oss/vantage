@@ -46,6 +46,17 @@ describe("KeyboardShortcutsModal", () => {
     expect(row("Go home (root)")).toContain("gthenh");
   });
 
+  it("lists opening a menu row in a new tab, under every menu it works in", () => {
+    render(<KeyboardShortcutsModal isOpen={true} onClose={vi.fn()} />);
+    const row = screen.getByText(
+      "Open the highlighted row in a new tab",
+    ).parentElement!;
+    expect(row.textContent).toContain("Alt+EnterorCtrl+Enter");
+    expect(
+      screen.getByText("In the file finder, project picker and recents"),
+    ).toBeInTheDocument();
+  });
+
   it("calls onClose when Escape is pressed", () => {
     const onClose = vi.fn();
     render(<KeyboardShortcutsModal isOpen={true} onClose={onClose} />);

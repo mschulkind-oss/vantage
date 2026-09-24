@@ -47,11 +47,12 @@ each one, in which commit, and when. `r` lists the current project's; `Shift+R`
 lists every project's, with each file's project shown beside its folder. When
 the list is open:
 
-| Key       | Action                                |
-| --------- | ------------------------------------- |
-| `↑` / `↓` | Move through the files                |
-| `Enter`   | Open the highlighted file             |
-| `Escape`  | Close the list                        |
+| Key                         | Action                                 |
+| --------------------------- | -------------------------------------- |
+| `↑` / `↓`                   | Move through the files                 |
+| `Enter`                     | Open the highlighted file              |
+| `Alt+Enter` or `Ctrl+Enter` | Open the highlighted file in a new tab |
+| `Escape`                    | Close the list                         |
 
 ## Mermaid Diagrams
 
