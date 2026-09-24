@@ -36,6 +36,16 @@ describe("KeyboardShortcutsModal", () => {
     expect(screen.getByText("Copy absolute file path")).toBeInTheDocument();
   });
 
+  // Shift+T is one chord, not Shift pressed and released before T; only a real
+  // sequence like `g h` reads "then".
+  it("joins a modifier to its key with + and a sequence with then", () => {
+    render(<KeyboardShortcutsModal isOpen={true} onClose={vi.fn()} />);
+    const row = (description: string) =>
+      screen.getByText(description).parentElement!.textContent;
+    expect(row("Search all projects' files")).toContain("Shift+T");
+    expect(row("Go home (root)")).toContain("gthenh");
+  });
+
   it("calls onClose when Escape is pressed", () => {
     const onClose = vi.fn();
     render(<KeyboardShortcutsModal isOpen={true} onClose={onClose} />);
