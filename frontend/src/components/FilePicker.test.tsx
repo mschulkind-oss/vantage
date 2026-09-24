@@ -1,4 +1,4 @@
-import { render, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { FilePicker } from "./FilePicker";
@@ -103,5 +103,48 @@ describe("FilePicker rows", () => {
     fireEvent.mouseEnter(row("b.md"));
     expect(row("b.md").className).toContain("bg-blue-50");
     expect(row("docs/a.md").className).not.toContain("bg-blue-50");
+  });
+});
+
+describe("FilePicker Enter", () => {
+  let open: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    open = vi.spyOn(window, "open").mockReturnValue(null);
+  });
+  afterEach(() => {
+    open.mockRestore();
+  });
+
+  const input = () => screen.getByRole("textbox");
+
+  it("selects the highlighted row and closes on a plain Enter", () => {
+    const { onSelect, onClose } = renderPicker();
+    fireEvent.keyDown(input(), { key: "ArrowDown" });
+    fireEvent.keyDown(input(), { key: "Enter" });
+    expect(onSelect).toHaveBeenCalledWith("b.md", undefined);
+    expect(onClose).toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it.each([{ altKey: true }, { ctrlKey: true }, { metaKey: true }])(
+    "opens the highlighted row in a new tab on a modified Enter (%o)",
+    (modifier) => {
+      const { onSelect, onClose } = renderPicker();
+      fireEvent.keyDown(input(), { key: "ArrowDown" });
+      fireEvent.keyDown(input(), { key: "Enter", ...modifier });
+      expect(open).toHaveBeenCalledWith("/current/b.md", "_blank", "noopener");
+      expect(onSelect).not.toHaveBeenCalled();
+      expect(onClose).toHaveBeenCalled();
+    },
+  );
+
+  it("opens the named repo's route in global mode", () => {
+    renderPicker(globalProps);
+    fireEvent.keyDown(input(), { key: "Enter", altKey: true });
+    expect(open).toHaveBeenCalledWith(
+      "/other/notes/c.md",
+      "_blank",
+      "noopener",
+    );
   });
 });
