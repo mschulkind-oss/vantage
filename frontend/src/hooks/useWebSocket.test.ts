@@ -6,6 +6,7 @@ import { useGitStore } from "../stores/useGitStore";
 import { useReviewStore } from "../stores/useReviewStore";
 import { useStarredStore } from "../stores/useStarredStore";
 import { useFilePickerStore } from "../stores/useFilePickerStore";
+import { useAllRecentsStore } from "../stores/useAllRecentsStore";
 
 vi.mock("../stores/useRepoStore");
 vi.mock("../stores/useGitStore");
@@ -37,6 +38,11 @@ describe("useWebSocket", () => {
   let realPickerRefresh: ReturnType<
     typeof useFilePickerStore.getState
   >["refresh"];
+  // And for the all-projects recents modal's list.
+  const mockAllRecentsRefresh = vi.fn();
+  let realAllRecentsRefresh: ReturnType<
+    typeof useAllRecentsStore.getState
+  >["refresh"];
   let realLoadStarred: ReturnType<
     typeof useStarredStore.getState
   >["loadStarred"];
@@ -66,6 +72,9 @@ describe("useWebSocket", () => {
 
     realPickerRefresh = useFilePickerStore.getState().refresh;
     useFilePickerStore.setState({ refresh: mockPickerRefresh });
+
+    realAllRecentsRefresh = useAllRecentsStore.getState().refresh;
+    useAllRecentsStore.setState({ refresh: mockAllRecentsRefresh });
 
     // Mock Stores - support both destructuring and selector patterns
     const repoState = makeRepoStoreState();
@@ -110,6 +119,7 @@ describe("useWebSocket", () => {
     useReviewStore.setState({ loadReview: realLoadReview });
     useStarredStore.setState({ loadStarred: realLoadStarred });
     useFilePickerStore.setState({ refresh: realPickerRefresh });
+    useAllRecentsStore.setState({ refresh: realAllRecentsRefresh });
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
@@ -191,6 +201,9 @@ describe("useWebSocket", () => {
 
     // Coalesced with the rest of the batch — one refresh, not one per path.
     expect(mockPickerRefresh).toHaveBeenCalledTimes(1);
+    // The all-projects recents modal follows the same batch (its refresh is a
+    // no-op while it is closed).
+    expect(mockAllRecentsRefresh).toHaveBeenCalledTimes(1);
   });
 
   // The picker refresh sits above the repo guards on purpose: the repo-picker
@@ -224,6 +237,8 @@ describe("useWebSocket", () => {
     });
 
     expect(mockPickerRefresh).toHaveBeenCalled();
+    // `Shift+R` works from the repo-picker screen too.
+    expect(mockAllRecentsRefresh).toHaveBeenCalled();
     // …while the repo-scoped work the guards protect is still skipped.
     expect(mockRefreshExpandedTree).not.toHaveBeenCalled();
   });

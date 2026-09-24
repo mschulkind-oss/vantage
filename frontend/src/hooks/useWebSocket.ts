@@ -5,6 +5,7 @@ import { useConnectionStore } from "../stores/useConnectionStore";
 import { useReviewStore } from "../stores/useReviewStore";
 import { useStarredStore } from "../stores/useStarredStore";
 import { useFilePickerStore } from "../stores/useFilePickerStore";
+import { useAllRecentsStore } from "../stores/useAllRecentsStore";
 import { WebSocketMessage } from "../types";
 import { isStaticMode } from "../lib/staticMode";
 import { wsLog, bindLoggerSocket } from "../lib/wsLogger";
@@ -88,6 +89,9 @@ export const useWebSocket = () => {
     // refresh sits above them in refreshAfterReconnect. A closed picker makes
     // this a no-op, so nothing is fetched for a list nobody is looking at.
     void useFilePickerStore.getState().refresh();
+    // The all-projects recents modal, likewise: repo-agnostic, and a no-op
+    // while it is closed.
+    void useAllRecentsStore.getState().refresh();
 
     // Guard: don't fire API calls before the repo store is initialized
     const { reposLoaded, isMultiRepo, currentRepo } = useRepoStore.getState();
@@ -145,6 +149,7 @@ export const useWebSocket = () => {
     // Likewise a picker left open across the outage: every change the watcher
     // announced while the socket was down is only recoverable here.
     void useFilePickerStore.getState().refresh();
+    void useAllRecentsStore.getState().refresh();
 
     // Guard: don't fire API calls before the repo store is initialized.
     // Before loadRepos() completes, isMultiRepo defaults to false and

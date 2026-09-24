@@ -93,17 +93,17 @@ describe("useFilePickerStore", () => {
 
   it("refreshes whichever list the open picker is showing", async () => {
     mockedAxios.get.mockResolvedValue({ data: [] });
-    await useFilePickerStore.getState().openGlobal("recent");
+    await useFilePickerStore.getState().openGlobal("all");
     mockedAxios.get.mockClear();
 
     await useFilePickerStore.getState().refresh();
 
-    expect(mockedAxios.get).toHaveBeenCalledWith("/api/recent/all?limit=200");
+    expect(mockedAxios.get).toHaveBeenCalledWith("/api/files/all");
   });
 
-  // A list of another repository's files, or the other endpoint's answer, is not
-  // stale data worth showing while the refetch is in flight — it is the wrong
-  // list, and it must never be on screen for even one render.
+  // A list of another repository's files is not stale data worth showing while
+  // the refetch is in flight — it is the wrong list, and it must never be on
+  // screen for even one render.
   it("drops another repository's list as it opens", async () => {
     mockedAxios.get.mockResolvedValue({ data: ["docs/a.md"] });
     inRepo("notes");
@@ -116,16 +116,19 @@ describe("useFilePickerStore", () => {
     expect(useFilePickerStore.getState().files).toEqual([]);
   });
 
-  it("drops the other endpoint's list as it opens", async () => {
+  // `Shift+R` used to open this picker over /api/recent/all; it is
+  // RecentsModal's now, and the global picker only ever lists every file.
+  it("lists every file across projects, never the recents", async () => {
     mockedAxios.get.mockResolvedValue({
       data: [{ repo: "notes", path: "docs/a.md" }],
     });
-    await useFilePickerStore.getState().openGlobal("recent");
+    await useFilePickerStore.getState().openGlobal("all");
 
-    mockedAxios.get.mockReturnValue(new Promise(() => {}));
-    void useFilePickerStore.getState().openGlobal("all");
-
-    expect(useFilePickerStore.getState().globalFiles).toEqual([]);
+    expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+    expect(mockedAxios.get).toHaveBeenCalledWith("/api/files/all");
+    expect(useFilePickerStore.getState().globalFiles).toEqual([
+      { repo: "notes", path: "docs/a.md" },
+    ]);
   });
 
   it("keeps the same list across a reopen, so the reopen is not a spinner", async () => {
