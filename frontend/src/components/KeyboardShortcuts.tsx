@@ -5,6 +5,8 @@ import { cn } from "../lib/utils";
 
 interface Shortcut {
   keys: string[];
+  /** Other key sequences that do the same thing, shown after an "or". */
+  alternatives?: string[][];
   description: string;
 }
 
@@ -29,6 +31,17 @@ const shortcutGroups: ShortcutGroup[] = [
       { keys: ["g", "r"], description: "Go to recent files page" },
       { keys: ["b"], description: "Toggle sidebar" },
       { keys: ["Esc"], description: "Close a dialog, or leave raw view" },
+    ],
+  },
+  {
+    title: "In the file finder, project picker and recents",
+    shortcuts: [
+      // Cmd+Enter works too on macOS; see isNewTabEnter.
+      {
+        keys: ["Alt", "Enter"],
+        alternatives: [["Ctrl", "Enter"]],
+        description: "Open the highlighted row in a new tab",
+      },
     ],
   },
   {
@@ -153,7 +166,17 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
                     <span className="text-sm text-slate-700 dark:text-slate-300">
                       {shortcut.description}
                     </span>
-                    <KeyCombo keys={shortcut.keys} />
+                    <span className="flex items-center gap-1 shrink-0">
+                      <KeyCombo keys={shortcut.keys} />
+                      {shortcut.alternatives?.map((alt, i) => (
+                        <React.Fragment key={i}>
+                          <span className="text-slate-500 dark:text-slate-400 text-[10px]">
+                            or
+                          </span>
+                          <KeyCombo keys={alt} />
+                        </React.Fragment>
+                      ))}
+                    </span>
                   </div>
                 ))}
               </div>
