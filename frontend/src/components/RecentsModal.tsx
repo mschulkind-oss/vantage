@@ -1,4 +1,5 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useGitStore } from "../stores/useGitStore";
 import { useRepoStore } from "../stores/useRepoStore";
 import { AppLink } from "./AppLink";
@@ -16,6 +17,7 @@ import { format } from "date-fns";
 import { RelativeTime } from "./RelativeTime";
 import { MiddleEllipsis } from "./MiddleEllipsis";
 import { cn } from "../lib/utils";
+import { isNewTabEnter, openInNewTab } from "../lib/navigation";
 
 interface RecentsModalProps {
   isOpen: boolean;
@@ -44,19 +46,75 @@ export const RecentsModal: React.FC<RecentsModalProps> = ({
     }
   }, [isOpen, fetchRecentFiles]);
 
-  // Close on ESC key
+  const navigate = useNavigate();
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Every open starts at the top row. Derived during render rather than in an
+  // effect, the same "adjusting state during render" pattern FilePicker uses.
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+  if (isOpen !== prevIsOpen) {
+    setPrevIsOpen(isOpen);
+    if (isOpen) setSelectedIndex(0);
+  }
+  // The watcher refreshes the list while the modal is open, and a refresh can
+  // shorten it past the selection.
+  const lastIndex = Math.max(recentFiles.length - 1, 0);
+  const selected = Math.min(selectedIndex, lastIndex);
+
+  // Scroll the highlighted row into view as the arrow keys move it.
+  useEffect(() => {
+    if (!isOpen || !listRef.current) return;
+    const items = listRef.current.querySelectorAll("[data-recent-item]");
+    items[selected]?.scrollIntoView({ block: "nearest" });
+  }, [isOpen, selected]);
+
+  // The modal's keys. Registered in the capture phase and stopped there, like
+  // KeyboardShortcutsModal's Escape: the global shortcut handler listens on
+  // `document` too, and without this `j`/`k` would scroll the page behind the
+  // modal, `t` would stack a picker on it, and Escape would also leave raw view.
   useEffect(() => {
     if (!isOpen) return;
 
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
+    const handleKey = (e: KeyboardEvent) => {
+      e.stopPropagation();
+      switch (e.key) {
+        case "Escape":
+          onClose();
+          break;
+        // Updater form, clamped inside it: two keydowns in one tick both read
+        // the same rendered value, so a held arrow key would otherwise advance
+        // one row for the pair.
+        case "ArrowDown":
+          e.preventDefault();
+          setSelectedIndex((i) =>
+            Math.min(Math.min(i, lastIndex) + 1, lastIndex),
+          );
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          setSelectedIndex((i) => Math.max(Math.min(i, lastIndex) - 1, 0));
+          break;
+        case "Enter": {
+          const file = recentFiles[selected];
+          if (!file) break;
+          e.preventDefault();
+          const href = buildPath(file.path);
+          onClose();
+          if (isNewTabEnter(e)) {
+            openInNewTab(href);
+          } else {
+            navigate(href);
+          }
+          break;
+        }
       }
     };
 
-    document.addEventListener("keydown", handleEscape);
-    return () => document.removeEventListener("keydown", handleEscape);
-  }, [isOpen, onClose]);
+    document.addEventListener("keydown", handleKey, { capture: true });
+    return () =>
+      document.removeEventListener("keydown", handleKey, { capture: true });
+  });
 
   // Prevent body scroll when modal is open
   useEffect(() => {
@@ -141,26 +199,34 @@ export const RecentsModal: React.FC<RecentsModalProps> = ({
               </p>
             </div>
           ) : (
-            <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
+            <div
+              ref={listRef}
+              className="divide-y divide-slate-100 dark:divide-slate-700/50"
+            >
               {recentFiles.map((file, index) => {
                 const parts = file.path.split("/");
                 const fileName = parts.pop() || "";
                 const parentDir = parts.length > 0 ? parts.join("/") : "";
                 const isEven = index % 2 === 0;
+                const isSelected = index === selected;
 
                 return (
                   <AppLink
                     key={file.path}
                     to={buildPath(file.path)}
+                    data-recent-item
+                    data-selected={isSelected || undefined}
                     onBeforeNavigate={() => {
                       onClose();
                     }}
+                    onMouseEnter={() => setSelectedIndex(index)}
                     className={cn(
                       "block px-5 py-3 transition-colors no-underline",
-                      isEven
-                        ? "bg-slate-50 dark:bg-slate-700/20"
-                        : "bg-white dark:bg-slate-800",
-                      "hover:bg-blue-50 dark:hover:bg-blue-900/20",
+                      isSelected
+                        ? "bg-blue-50 dark:bg-blue-900/30"
+                        : isEven
+                          ? "bg-slate-50 dark:bg-slate-700/20"
+                          : "bg-white dark:bg-slate-800",
                     )}
                   >
                     {/* Row 1: Filename + time */}
