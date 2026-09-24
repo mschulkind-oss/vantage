@@ -24,7 +24,7 @@ Vantage supports the full [GitHub Flavored Markdown](https://github.github.com/g
 Vantage renders LaTeX math using [KaTeX](https://katex.org/). Both inline and
 block math use `$$...$$` delimiters.
 
-Single dollars are deliberately *not* math delimiters, so shell variables and
+Single dollars are deliberately _not_ math delimiters, so shell variables and
 amounts in prose — `$HOME`, `$100` — stay literal instead of turning into a
 broken math span.
 
@@ -229,7 +229,7 @@ The sidebar displays a file tree with:
 
 ## File Picker
 
-Press **t** to open the fuzzy file picker. Type to search across all files in the project. Use arrow keys to navigate and Enter to select.
+Press **t** to open the fuzzy file picker. Type to search across all files in the project. Use arrow keys to navigate and Enter to select, or **Alt+Enter** / **Ctrl+Enter** to open the file in a new tab.
 
 ### Global Search
 
