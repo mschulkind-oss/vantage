@@ -107,7 +107,16 @@ export const RecentsModal: React.FC<RecentsModalProps> = ({
 
     const handleKey = (e: KeyboardEvent) => {
       e.stopPropagation();
-      switch (e.key) {
+      // j/k mirror the arrows, as in the file viewer. The modal has no text
+      // input to type them into; modified chords are left to the browser.
+      const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
+      const key =
+        plain && e.key === "j"
+          ? "ArrowDown"
+          : plain && e.key === "k"
+            ? "ArrowUp"
+            : e.key;
+      switch (key) {
         case "Escape":
           onClose();
           break;
