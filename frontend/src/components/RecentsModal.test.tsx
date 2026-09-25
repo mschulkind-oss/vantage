@@ -269,6 +269,30 @@ describe("RecentsModal", () => {
       expect(selectedRow()).toHaveAttribute("href", "/a.md");
     });
 
+    it("moves the highlight with j and k, clamped at both ends", () => {
+      renderAt();
+      press("j");
+      expect(selectedRow()).toHaveAttribute("href", "/docs/b.md");
+      press("j");
+      press("j");
+      expect(selectedRow()).toHaveAttribute("href", "/c.md");
+      press("k");
+      press("k");
+      press("k");
+      expect(selectedRow()).toHaveAttribute("href", "/a.md");
+    });
+
+    // Ctrl+J, Ctrl+K and the like belong to the browser, not the list.
+    it.each([
+      ["Ctrl", { ctrlKey: true }],
+      ["Cmd", { metaKey: true }],
+      ["Alt", { altKey: true }],
+    ])("leaves %s+j alone", (_, mods) => {
+      renderAt();
+      press("j", mods);
+      expect(selectedRow()).toHaveAttribute("href", "/a.md");
+    });
+
     it("moves the highlight to the hovered row", () => {
       renderAt();
       fireEvent.mouseEnter(screen.getByText("c.md").closest("a")!);
