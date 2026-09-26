@@ -22,11 +22,15 @@ func TestDefaults(t *testing.T) {
 	require.Nil(t, c.WalkMaxDepth)
 	require.Equal(t, 30*time.Second, c.WalkTimeout)
 	require.True(t, c.UseIgnoreFiles)
+	require.Equal(t, DefaultWatcherIgnoreDefaults, c.WatcherIgnoreDefaults)
+	require.False(t, c.WatcherIgnoreDefaultsSet)
 	require.Equal(t, "INFO", c.LogLevel)
 
-	// Mutating the returned slice must not corrupt the package default.
+	// Mutating the returned slices must not corrupt the package defaults.
 	c.ExcludeDirs[0] = "MUTATED"
 	require.Equal(t, ".git", DefaultExcludeDirs[0])
+	c.WatcherIgnoreDefaults[0] = "MUTATED"
+	require.Equal(t, ".yolo/", DefaultWatcherIgnoreDefaults[0])
 }
 
 func TestApplyEnvResolvesConfig(t *testing.T) {
@@ -241,6 +245,33 @@ path = "` + repo + `"
 	require.Equal(t, 30*time.Second, c.WalkTimeout)
 	require.False(t, c.ExcludeDirsSet)
 	require.Equal(t, DefaultExcludeDirs, c.ExcludeDirs)
+	require.False(t, c.WatcherIgnoreDefaultsSet)
+	require.Equal(t, DefaultWatcherIgnoreDefaults, c.WatcherIgnoreDefaults)
+}
+
+func TestLoadDaemonFileWatcherIgnoreDefaultsSemantics(t *testing.T) {
+	repo := t.TempDir()
+	t.Run("absent-keeps-defaults", func(t *testing.T) {
+		body := "[[repos]]\nname = \"a\"\npath = \"" + repo + "\"\n"
+		c, err := LoadDaemonFile(writeTOML(t, body))
+		require.NoError(t, err)
+		require.False(t, c.WatcherIgnoreDefaultsSet)
+		require.Equal(t, DefaultWatcherIgnoreDefaults, c.WatcherIgnoreDefaults)
+	})
+	t.Run("present-replaces", func(t *testing.T) {
+		body := "watcher_ignore_defaults = [\"vendor/\", \"cache/\"]\n[[repos]]\nname = \"a\"\npath = \"" + repo + "\"\n"
+		c, err := LoadDaemonFile(writeTOML(t, body))
+		require.NoError(t, err)
+		require.True(t, c.WatcherIgnoreDefaultsSet)
+		require.Equal(t, []string{"vendor/", "cache/"}, c.WatcherIgnoreDefaults)
+	})
+	t.Run("present-empty-disables-defaults", func(t *testing.T) {
+		body := "watcher_ignore_defaults = []\n[[repos]]\nname = \"a\"\npath = \"" + repo + "\"\n"
+		c, err := LoadDaemonFile(writeTOML(t, body))
+		require.NoError(t, err)
+		require.True(t, c.WatcherIgnoreDefaultsSet)
+		require.Equal(t, []string{}, c.WatcherIgnoreDefaults)
+	})
 }
 
 func TestLoadDaemonFileExcludeDirsSemantics(t *testing.T) {

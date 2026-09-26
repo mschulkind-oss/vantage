@@ -3,6 +3,7 @@ package live
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mschulkind-oss/vantage/internal/config"
 	"github.com/mschulkind-oss/vantage/internal/ignore"
 	"github.com/mschulkind-oss/vantage/internal/model"
 	"github.com/mschulkind-oss/vantage/internal/review"
@@ -99,6 +101,59 @@ func TestShouldPruneDir(t *testing.T) {
 	}
 }
 
+func TestShouldPruneDirUsesWatcherDefaults(t *testing.T) {
+	matcher := ignore.NewMatcherWithDefaults(t.TempDir(), false, "", config.DefaultWatcherIgnoreDefaults)
+	for _, rel := range []string{".yolo", "node_modules", ".venv", "venv", "target"} {
+		t.Run(rel, func(t *testing.T) {
+			require.True(t, shouldPruneDir(rel, matcher))
+		})
+	}
+	require.False(t, shouldPruneDir("docs", matcher))
+}
+
+func TestShouldPruneDirWatcherDefaultsCanBeUnignored(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".vantageignore"), []byte("!target/\n"), 0o644))
+	matcher := ignore.NewMatcherWithDefaults(root, true, "", []string{"target/"})
+
+	require.False(t, shouldPruneDir("target", matcher), "workspace negation should restore a default-pruned directory")
+}
+
+func TestShouldPruneDirFileNegationDoesNotRestoreParent(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".vantageignore"), []byte("!target/docs/readme.md\n"), 0o644))
+	matcher := ignore.NewMatcherWithDefaults(root, true, "", []string{"target/"})
+
+	// The watcher prunes while traversing directories. A file-level negation
+	// cannot help unless the parent directory is unignored too.
+	require.True(t, shouldPruneDir("target", matcher))
+}
+
+func TestShouldPruneDirUseIgnoreFilesFalseKeepsWatcherDefaults(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, ".vantageignore"), []byte("!target/\n"), 0o644))
+	matcher := ignore.NewMatcherWithDefaults(root, false, "", []string{"target/"})
+
+	require.True(t, shouldPruneDir("target", matcher), "use_ignore_files=false disables files, not watcher defaults")
+}
+
+func TestHandleEventPrunesNewWatcherDefaultDirectory(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, ".yolo")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	w, err := NewWatcher(root, "", nil, nil, false, quietLogger())
+	require.NoError(t, err)
+	called := false
+	w.addWatch = func(string) error {
+		called = true
+		return nil
+	}
+
+	w.handleEvent(fsnotify.Event{Name: dir, Op: fsnotify.Create}, newCoalescer(time.Hour, time.Hour, func([]string) {}))
+
+	require.False(t, called, "new generated directories should not be recursively watched")
+}
+
 func TestIsInboxPath(t *testing.T) {
 	tests := []struct {
 		rel  string
@@ -124,6 +179,49 @@ func TestShouldPruneDirHonorsIgnore(t *testing.T) {
 
 	require.True(t, shouldPruneDir("node_modules", matcher), "ignored dir should prune")
 	require.False(t, shouldPruneDir("src", matcher), "non-ignored dir should not prune")
+}
+
+func TestAddRecursiveWarnsAndCountsFailedWatchRegistrations(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o755))
+	var rec levelRecorder
+	w, err := NewWatcher(root, "repoX", nil, nil, false, slog.New(&rec), []string{})
+	require.NoError(t, err)
+	failPath := filepath.Join(root, "docs")
+	w.addWatch = func(path string) error {
+		if path == failPath {
+			return errors.New("permission denied")
+		}
+		return nil
+	}
+
+	added := w.addRecursive(root)
+	w.logStartup(added)
+
+	require.Equal(t, 1, added, "root watch should still be counted")
+	r, ok := findRecord(rec.records, "watcher: failed to add watch")
+	require.True(t, ok, "failed Add must be visible above debug")
+	require.Equal(t, slog.LevelWarn, r.Level)
+	require.Equal(t, failPath, recordAttr(r, "path"))
+
+	startup, ok := findRecord(rec.records, "watcher started")
+	require.True(t, ok)
+	require.EqualValues(t, 1, recordAttr(startup, "watched_dirs"))
+	require.EqualValues(t, 1, recordAttr(startup, "watch_failed_dirs"))
+}
+
+func TestAddRecursiveLogsWatchLimitFailuresAsActionableErrors(t *testing.T) {
+	root := t.TempDir()
+	var rec levelRecorder
+	w, err := NewWatcher(root, "repoX", nil, nil, false, slog.New(&rec), []string{})
+	require.NoError(t, err)
+	w.addWatch = func(string) error { return errors.New("no space left on device") }
+
+	require.Equal(t, 0, w.addRecursive(root))
+
+	r, ok := findRecord(rec.records, "watcher: failed to add watch; inotify watch limit may be reached — live reload will miss changes under this directory; raise fs.inotify.max_user_watches (e.g. sysctl fs.inotify.max_user_watches=524288)")
+	require.True(t, ok, "ENOSPC Add failure should include the same actionable limit hint as async watcher errors")
+	require.Equal(t, slog.LevelError, r.Level)
 }
 
 // --- coalescer / debounce ---
