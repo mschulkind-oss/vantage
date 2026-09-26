@@ -67,6 +67,7 @@ whatever port Vantage printed on startup, if 8000 was taken.
 | `walk_max_depth`           | integer or null  | `null` (unlimited) | Max directory depth for untracked file discovery |
 | `walk_timeout`             | float            | `30.0`        | Timeout in seconds for the file-discovery subprocess |
 | `use_ignore_files`         | boolean          | `true`        | Honor `~/.config/vantage/ignore` and `.vantageignore` |
+| `watcher_ignore_defaults`  | array of strings | _(see below)_ | Live-reload watcher-only gitignore patterns |
 | `log_level`                | string           | `"INFO"`      | Log verbosity: `DEBUG`, `INFO`, `WARNING`, or `ERROR` |
 | `theme`                    | string           | `""` (built-in look) | Color theme a browser opens in until its reader picks another. Read only from `~/.config/vantage/config.toml`, at startup. A project can offer one below it — see [A Theme a Project Offers](#a-theme-a-project-offers) |
 
@@ -110,6 +111,44 @@ exclude_dirs = ["node_modules", "vendor", "dist", "build"]
 ```
 
 Setting `exclude_dirs` replaces the default list entirely — include everything you want hidden.
+
+## Ignore Files and Live Reload
+
+When `use_ignore_files = true` (the default), Vantage reads two optional
+gitignore-style files: `~/.config/vantage/ignore` for every repo and
+`<repo>/.vantageignore` for one workspace. These files hide matching paths from
+file listings and from the live-reload watcher. Set `use_ignore_files = false`
+to disable those two file-backed layers.
+
+The live-reload watcher has its own built-in patterns before those files:
+
+```toml
+watcher_ignore_defaults = [".yolo/", "node_modules/", ".venv/", "venv/", "target/"]
+```
+
+These are gitignore-style patterns, not directory basenames. They keep generated
+or dependency trees from consuming one OS watch per directory, and they do not
+affect the sidebar, file picker, recent files, or git discovery. A later user or
+workspace ignore file can restore one with a negation such as `!target/`. To
+watch everything, replace the list with an empty one:
+
+```toml
+watcher_ignore_defaults = []
+```
+
+`use_ignore_files = false` disables only the two ignore files. It does not
+disable `watcher_ignore_defaults`; use the empty list above for that.
+
+The watcher prunes directories while walking the tree. If a default ignores a
+directory, negating only a file inside it (for example
+`!target/docs/readme.md`) is not enough; also unignore the directory itself
+(`!target/`) so the watcher can enter it.
+
+Vantage-owned state remains special: `.vantage/` is hidden and ignored even when
+ignore files are disabled, except the watcher keeps `.vantage/inbox` reachable
+for review deliveries. The watcher also keeps the top-level `.git` directory so
+repository state files can trigger status updates, but it does not descend into
+`.git` internals.
 
 ## Stored Bookmarks
 

@@ -122,6 +122,37 @@ func TestExplainReportsSourceAndPattern(t *testing.T) {
 	require.Equal(t, "", m.Explain("src/main.go"))
 }
 
+func TestDefaultLayerCanBeOverriddenByLaterLayers(t *testing.T) {
+	dir := t.TempDir()
+	userPath := filepath.Join(dir, "user-ignore")
+	require.NoError(t, os.WriteFile(userPath, []byte("!target/\nnode_modules/\n"), 0o644))
+
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(
+		filepath.Join(root, workspaceIgnoreName),
+		[]byte("!node_modules/\n"),
+		0o644,
+	))
+
+	m := NewMatcherWithDefaults(root, true, userPath, []string{"target/", "node_modules/"})
+
+	defaultsOnly := NewMatcherWithDefaults(t.TempDir(), true, "", []string{"target/"})
+	require.True(t, defaultsOnly.IsIgnored("target", true), "default layer matches before user/workspace layers")
+	require.Equal(t, "watcher-default:target/", defaultsOnly.ExplainDir("target"))
+
+	require.False(t, m.IsIgnored("target", true), "user negation overrides a default")
+	require.False(t, m.IsIgnored("node_modules", true), "workspace negation overrides default and user rules")
+}
+
+func TestDefaultLayerStillAppliesWhenIgnoreFilesDisabled(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(root, workspaceIgnoreName), []byte("!target/\n"), 0o644))
+	m := NewMatcherWithDefaults(root, false, "", []string{"target/"})
+
+	require.True(t, m.IsIgnored("target", true))
+	require.Equal(t, "watcher-default:target/", m.ExplainDir("target"))
+}
+
 func TestMissingIgnoreFiles(t *testing.T) {
 	root := t.TempDir()
 	m := NewMatcher(root, true, filepath.Join(root, "does-not-exist"))

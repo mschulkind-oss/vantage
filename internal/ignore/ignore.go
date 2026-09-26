@@ -7,6 +7,10 @@
 //     every repo vantage serves; and
 //   - <root>/.vantageignore, checked into the workspace.
 //
+// Callers may also prepend in-memory default patterns. Those defaults are
+// applied before user and workspace rules, so a later negation can restore a
+// path.
+//
 // Ignored paths are hidden from recent-file search, directory listings, and
 // file-watcher broadcasts. The whole subsystem is disabled by passing
 // enabled=false (mirroring use_ignore_files=false in config): a disabled
@@ -86,11 +90,12 @@ type Matcher struct {
 	userPath      string // user ignore file path ("" ⇒ no user layer)
 	workspacePath string // <root>/.vantageignore
 	enabled       bool
+	defaults      *compiledLines
 
 	mu        sync.Mutex
 	user      *loadedSpec
 	workspace *loadedSpec
-	combined  *gitignore.GitIgnore // user lines then workspace lines
+	combined  *gitignore.GitIgnore // defaults, then user lines, then workspace lines
 	lastCheck time.Time
 }
 
@@ -102,31 +107,34 @@ type Matcher struct {
 // root is cleaned but not required to exist; missing ignore files are treated
 // as empty.
 func NewMatcher(root string, enabled bool, userIgnorePath string) *Matcher {
+	return NewMatcherWithDefaults(root, enabled, userIgnorePath, nil)
+}
+
+// NewMatcherWithDefaults builds a [Matcher] with an in-memory default layer
+// before the optional user and workspace files. The default layer is active even
+// when enabled is false; enabled only controls the two file-backed layers.
+func NewMatcherWithDefaults(root string, enabled bool, userIgnorePath string, defaults []string) *Matcher {
 	root = filepath.Clean(root)
 	m := &Matcher{
 		root:          root,
 		userPath:      userIgnorePath,
 		workspacePath: filepath.Join(root, workspaceIgnoreName),
 		enabled:       enabled,
+		defaults:      compileLines(defaults),
 	}
-	if enabled {
-		m.mu.Lock()
-		m.loadAll(true)
-		m.mu.Unlock()
-	}
+	m.mu.Lock()
+	m.loadAll(true)
+	m.mu.Unlock()
 	return m
 }
 
 // IsIgnored reports whether rel (a repo-relative, slash-or-OS-separated path)
 // is ignored. Set isDir when rel names a directory so directory-only patterns
-// such as ".yolo/" match it. A disabled matcher returns false for everything
-// but the built-in always-ignored set.
+// such as ".yolo/" match it. A matcher with file-backed layers disabled still
+// applies any in-memory defaults passed to [NewMatcherWithDefaults].
 func (m *Matcher) IsIgnored(rel string, isDir bool) bool {
 	if IsAlwaysIgnored(rel) {
 		return true
-	}
-	if !m.enabled {
-		return false
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -154,9 +162,6 @@ func (m *Matcher) explain(rel string, isDir bool) string {
 	if IsAlwaysIgnored(rel) {
 		return "builtin:" + vantageDirName
 	}
-	if !m.enabled {
-		return ""
-	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.maybeReload()
@@ -169,6 +174,7 @@ func (m *Matcher) explain(rel string, isDir bool) string {
 		source   string
 		compiled *compiledLines
 	}{
+		{"watcher-default", m.defaults},
 		{"user", specLines(m.user)},
 		{"workspace", specLines(m.workspace)},
 	} {
@@ -192,6 +198,9 @@ func (m *Matcher) explain(rel string, isDir bool) string {
 // maybeReload re-stats the source files at most once per reloadInterval,
 // re-parsing only those whose mtime changed. Caller must hold m.mu.
 func (m *Matcher) maybeReload() {
+	if !m.enabled {
+		return
+	}
 	now := time.Now()
 	if now.Sub(m.lastCheck) < reloadInterval {
 		return
@@ -203,14 +212,24 @@ func (m *Matcher) maybeReload() {
 // loadAll reloads both sources and rebuilds the combined matcher if either
 // changed (or force is set). Caller must hold m.mu.
 func (m *Matcher) loadAll(force bool) {
-	userChanged := m.reloadOne(m.userPath, &m.user, force)
-	wsChanged := m.reloadOne(m.workspacePath, &m.workspace, force)
+	userChanged := false
+	wsChanged := false
+	if m.enabled {
+		userChanged = m.reloadOne(m.userPath, &m.user, force)
+		wsChanged = m.reloadOne(m.workspacePath, &m.workspace, force)
+	} else {
+		userChanged = m.clearSpec(&m.user)
+		wsChanged = m.clearSpec(&m.workspace)
+	}
 	if !force && !userChanged && !wsChanged {
 		return
 	}
-	// User rules first, workspace rules last: gitignore's last-match-wins
-	// lets the workspace file override the user file.
+	// Defaults first, then user rules, then workspace rules: gitignore's
+	// last-match-wins lets later files override watcher-only defaults.
 	var lines []string
+	if m.defaults != nil {
+		lines = append(lines, m.defaults.raw...)
+	}
 	if c := specLines(m.user); c != nil {
 		lines = append(lines, c.raw...)
 	}
@@ -218,6 +237,14 @@ func (m *Matcher) loadAll(force bool) {
 		lines = append(lines, c.raw...)
 	}
 	m.combined = gitignore.CompileIgnoreLines(lines...)
+}
+
+func (m *Matcher) clearSpec(dst **loadedSpec) bool {
+	if *dst == nil {
+		return false
+	}
+	*dst = nil
+	return true
 }
 
 // reloadOne loads path into *dst, returning whether the slot changed. A
@@ -322,7 +349,7 @@ type compiledLines struct {
 // compileLines parses raw ignore-file lines, dropping blanks and comments and
 // recording each remaining pattern for attribution.
 func compileLines(raw []string) *compiledLines {
-	c := &compiledLines{raw: raw}
+	c := &compiledLines{raw: append([]string(nil), raw...)}
 	for _, line := range raw {
 		stripped := strings.TrimSpace(strings.TrimRight(line, "\r"))
 		if stripped == "" || strings.HasPrefix(stripped, "#") {
@@ -344,8 +371,9 @@ func compileLines(raw []string) *compiledLines {
 
 // matcherKey identifies a cached [Matcher] in [GetMatcher].
 type matcherKey struct {
-	root    string
-	enabled bool
+	root        string
+	enabled     bool
+	defaultsKey string
 }
 
 var (
@@ -359,13 +387,23 @@ var (
 // [DefaultUserIgnorePath]. Callers that need a custom user-ignore path should
 // construct a [Matcher] with [NewMatcher] instead of using the cache.
 func GetMatcher(root string, enabled bool) *Matcher {
-	key := matcherKey{root: filepath.Clean(root), enabled: enabled}
+	return GetMatcherWithDefaults(root, enabled, nil)
+}
+
+// GetMatcherWithDefaults returns a process-cached [Matcher] with an in-memory
+// default layer prepended before user and workspace ignore files.
+func GetMatcherWithDefaults(root string, enabled bool, defaults []string) *Matcher {
+	key := matcherKey{
+		root:        filepath.Clean(root),
+		enabled:     enabled,
+		defaultsKey: strings.Join(defaults, "\x00"),
+	}
 	cacheMu.Lock()
 	defer cacheMu.Unlock()
 	if m, ok := matcherCache[key]; ok {
 		return m
 	}
-	m := NewMatcher(key.root, enabled, defaultUserFn())
+	m := NewMatcherWithDefaults(key.root, enabled, defaultUserFn(), defaults)
 	matcherCache[key] = m
 	return m
 }

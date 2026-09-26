@@ -17,6 +17,7 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
+	"github.com/mschulkind-oss/vantage/internal/config"
 	fssvc "github.com/mschulkind-oss/vantage/internal/fs"
 	gitsvc "github.com/mschulkind-oss/vantage/internal/git"
 	"github.com/mschulkind-oss/vantage/internal/ignore"
@@ -119,12 +120,20 @@ type Watcher struct {
 	// started from one goroutine and closed from another (Shutdown, or the
 	// refresh loop retiring its repository), and those two can overlap.
 	fsw *fsnotify.Watcher
+	// addWatch registers one directory. It is normally fsw.Add and is replaceable
+	// in tests so failed registrations can be exercised without exhausting
+	// inotify.
+	addWatch func(string) error
 	// closed records a Close that arrived before Start. Without it that Close
 	// found a nil fsw, did nothing, and left the watcher running for the life
 	// of the process — a repository retired in the same breath as it was
 	// discovered would have kept watching a directory that is gone.
 	closed bool
 	stats  watcherStats
+	// watchFailedDirs is the lifetime count of directories whose watch could not
+	// be registered. It makes startup and heartbeat logs honest when the watcher
+	// is only partially armed.
+	watchFailedDirs int
 	// gitStateFP is the last content fingerprint seen for each watched .git
 	// state file, keyed by repo-relative slash path. It is what lets the
 	// watcher tell a real repo-state change from a rewrite that changed
@@ -153,7 +162,7 @@ type watcherStats struct {
 // review inbox deliveries; it may be nil to disable that. useIgnoreFiles
 // toggles .vantageignore/user-ignore pruning.
 // If logger is nil the default slog logger is used.
-func NewWatcher(root, repoName string, mgr *Manager, store *review.Store, useIgnoreFiles bool, logger *slog.Logger) (*Watcher, error) {
+func NewWatcher(root, repoName string, mgr *Manager, store *review.Store, useIgnoreFiles bool, logger *slog.Logger, watcherIgnoreDefaults ...[]string) (*Watcher, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -161,12 +170,16 @@ func NewWatcher(root, repoName string, mgr *Manager, store *review.Store, useIgn
 	if err != nil {
 		return nil, err
 	}
+	defaults := config.DefaultWatcherIgnoreDefaults
+	if len(watcherIgnoreDefaults) > 0 {
+		defaults = watcherIgnoreDefaults[0]
+	}
 	return &Watcher{
 		root:       filepath.Clean(abs),
 		repoName:   repoName,
 		manager:    mgr,
 		store:      store,
-		matcher:    ignore.GetMatcher(abs, useIgnoreFiles),
+		matcher:    ignore.GetMatcherWithDefaults(abs, useIgnoreFiles, defaults),
 		logger:     logger.With("component", "watcher", "repo", repoName),
 		gitStateFP: map[string]string{},
 	}, nil
@@ -187,6 +200,7 @@ func (w *Watcher) Start(ctx context.Context) error {
 		return nil
 	}
 	w.fsw = fsw
+	w.addWatch = fsw.Add
 	w.mu.Unlock()
 
 	added := w.addRecursive(w.root)
@@ -270,8 +284,8 @@ func (w *Watcher) addRecursive(dir string) int {
 		if shouldPruneDir(rel, w.matcher) {
 			return iofs.SkipDir
 		}
-		if addErr := w.fsw.Add(path); addErr != nil {
-			w.logger.Debug("watcher: failed to add watch", "path", path, "error", addErr)
+		if addErr := w.registerWatch(path); addErr != nil {
+			w.logAddWatchFailure(path, addErr)
 			return nil
 		}
 		added++
@@ -434,9 +448,13 @@ func (w *Watcher) logStartup(watchedDirs int) {
 	if _, err := os.Stat(inboxDir); err == nil {
 		inboxExists = true
 	}
+	w.mu.Lock()
+	failedDirs := w.watchFailedDirs
+	w.mu.Unlock()
 	w.logger.Info("watcher started",
 		"root", w.root,
 		"watched_dirs", watchedDirs,
+		"watch_failed_dirs", failedDirs,
 		"inbox_enabled", w.store != nil,
 		"inbox_dir", inboxDir,
 		"inbox_exists", inboxExists,
@@ -503,11 +521,34 @@ func (w *Watcher) fingerprint(rel string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+func (w *Watcher) registerWatch(path string) error {
+	if w.addWatch != nil {
+		return w.addWatch(path)
+	}
+	if w.fsw == nil {
+		return errors.New("watcher is not started")
+	}
+	return w.fsw.Add(path)
+}
+
+func (w *Watcher) logAddWatchFailure(path string, err error) {
+	w.mu.Lock()
+	w.watchFailedDirs++
+	w.mu.Unlock()
+	if isWatchLimitError(err) {
+		w.logger.Error("watcher: failed to add watch; inotify watch limit may be reached — live reload will miss changes under this directory; "+
+			"raise fs.inotify.max_user_watches (e.g. sysctl fs.inotify.max_user_watches=524288)",
+			"path", path, "error", err)
+		return
+	}
+	w.logger.Warn("watcher: failed to add watch", "path", path, "error", err)
+}
+
 // handleError surfaces an fsnotify error, adding a hint for the common inotify
 // watch-exhaustion case (ENOSPC) which otherwise manifests as live reload
 // silently failing for some files.
 func (w *Watcher) handleError(err error) {
-	if errors.Is(err, fsnotify.ErrEventOverflow) || strings.Contains(err.Error(), "no space left") {
+	if isWatchLimitError(err) {
 		w.logger.Error("watcher: inotify watch limit reached — live reload will miss some changes; "+
 			"raise fs.inotify.max_user_watches (e.g. sysctl fs.inotify.max_user_watches=524288)",
 			"error", err)
@@ -516,15 +557,21 @@ func (w *Watcher) handleError(err error) {
 	w.logger.Warn("watcher error", "error", err)
 }
 
+func isWatchLimitError(err error) bool {
+	return errors.Is(err, fsnotify.ErrEventOverflow) || strings.Contains(err.Error(), "no space left")
+}
+
 // logHeartbeat emits and resets the interval stats so a stalled watcher is
 // distinguishable from a quiet one.
 func (w *Watcher) logHeartbeat() {
 	w.mu.Lock()
 	s := w.stats
+	failedDirs := w.watchFailedDirs
 	w.stats = watcherStats{}
 	w.mu.Unlock()
 	w.logger.Info("watcher heartbeat",
 		"events", s.eventsTotal,
+		"watch_failed_dirs", failedDirs,
 		"kept", s.kept,
 		"dropped_ext", s.droppedExt,
 		"dropped_ignore", s.droppedIgnore,

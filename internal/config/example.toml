@@ -42,8 +42,16 @@ port = 8000
 #   ~/.config/vantage/ignore   (user-level, every repo)
 #   <repo>/.vantageignore      (per-workspace, checked in)
 # Both files use full gitignore syntax (**, negation with !, comments).
-# Set use_ignore_files = false to disable both layers.
+# Set use_ignore_files = false to disable both file-backed layers. The
+# watcher-only defaults below still apply unless you replace them.
 # use_ignore_files = true
+
+# Live-reload watcher defaults: gitignore-style patterns the watcher prunes
+# before user/workspace ignore files, so generated dependency trees do not
+# consume one OS watch per directory. A later ~/.config/vantage/ignore or
+# .vantageignore negation can restore one, e.g. !target/. Set an empty list to
+# disable these watcher-only defaults. This does not affect listings or recents.
+# watcher_ignore_defaults = [".yolo/", "node_modules/", ".venv/", "venv/", "target/"]
 
 # Source directories: parent directories that are automatically scanned
 # for git repos.  Any subdirectory containing a .git folder is added as
