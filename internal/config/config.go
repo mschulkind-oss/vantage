@@ -54,6 +54,18 @@ var DefaultExcludeDirs = []string{
 	".cache",
 }
 
+// DefaultWatcherIgnoreDefaults lists gitignore-style patterns that only the
+// live-reload watcher applies before user and workspace ignore files. They keep
+// generated dependency trees from consuming inotify watches. A daemon config may
+// replace this set; an explicit empty list disables these watcher-only defaults.
+var DefaultWatcherIgnoreDefaults = []string{
+	".yolo/",
+	"node_modules/",
+	".venv/",
+	"venv/",
+	"target/",
+}
+
 // defaultHost is the loopback address bound when no host is configured.
 const defaultHost = "127.0.0.1"
 
@@ -145,6 +157,12 @@ type Config struct {
 	// UseIgnoreFiles toggles honoring ~/.config/vantage/ignore and
 	// <repo>/.vantageignore. When false vantage acts as if neither existed.
 	UseIgnoreFiles bool
+	// WatcherIgnoreDefaults are watcher-only gitignore-style patterns applied
+	// before user and workspace ignore files. Nil is normalized to an empty slice.
+	WatcherIgnoreDefaults []string
+	// WatcherIgnoreDefaultsSet records whether a source explicitly provided
+	// WatcherIgnoreDefaults, distinguishing absent defaults from present empty.
+	WatcherIgnoreDefaultsSet bool
 	// LogLevel is the slog handler level name (DEBUG/INFO/WARNING/ERROR).
 	LogLevel string
 }
@@ -156,17 +174,21 @@ type Config struct {
 func Defaults() *Config {
 	excl := make([]string, len(DefaultExcludeDirs))
 	copy(excl, DefaultExcludeDirs)
+	watcherDefaults := make([]string, len(DefaultWatcherIgnoreDefaults))
+	copy(watcherDefaults, DefaultWatcherIgnoreDefaults)
 	return &Config{
-		TargetRepo:     ".",
-		Host:           []string{defaultHost},
-		Port:           defaultPort,
-		ExcludeDirs:    excl,
-		ExcludeDirsSet: false,
-		ShowHidden:     true,
-		WalkMaxDepth:   nil,
-		WalkTimeout:    defaultWalkTimeout,
-		UseIgnoreFiles: true,
-		LogLevel:       "INFO",
+		TargetRepo:               ".",
+		Host:                     []string{defaultHost},
+		Port:                     defaultPort,
+		ExcludeDirs:              excl,
+		ExcludeDirsSet:           false,
+		ShowHidden:               true,
+		WalkMaxDepth:             nil,
+		WalkTimeout:              defaultWalkTimeout,
+		UseIgnoreFiles:           true,
+		WatcherIgnoreDefaults:    watcherDefaults,
+		WatcherIgnoreDefaultsSet: false,
+		LogLevel:                 "INFO",
 	}
 }
 
@@ -243,25 +265,39 @@ func (c *Config) SetExcludeDirs(dirs []string) {
 	if dirs == nil {
 		dirs = []string{}
 	}
-	c.ExcludeDirs = dirs
+	c.ExcludeDirs = make([]string, len(dirs))
+	copy(c.ExcludeDirs, dirs)
 	c.ExcludeDirsSet = true
+}
+
+// SetWatcherIgnoreDefaults replaces the watcher-only default ignore patterns
+// and marks them as explicitly provided. Passing an empty (non-nil) slice is a
+// valid request to disable watcher-only defaults.
+func (c *Config) SetWatcherIgnoreDefaults(patterns []string) {
+	if patterns == nil {
+		patterns = []string{}
+	}
+	c.WatcherIgnoreDefaults = make([]string, len(patterns))
+	copy(c.WatcherIgnoreDefaults, patterns)
+	c.WatcherIgnoreDefaultsSet = true
 }
 
 // daemonFile is the TOML schema for daemon mode. Pointer/optional fields let us
 // distinguish an absent key from a zero value, which the exclude_dirs and
 // walk-tuning semantics depend on.
 type daemonFile struct {
-	Repos          []RepoConfig `toml:"repos"`
-	SourceDirs     []string     `toml:"source_dirs"`
-	Host           hostField    `toml:"host"`
-	AllowedOrigins hostField    `toml:"allowed_origins"`
-	Port           *int         `toml:"port"`
-	ExcludeDirs    *[]string    `toml:"exclude_dirs"`
-	ShowHidden     *bool        `toml:"show_hidden"`
-	WalkMaxDepth   *int         `toml:"walk_max_depth"`
-	WalkTimeout    *float64     `toml:"walk_timeout"`
-	UseIgnore      *bool        `toml:"use_ignore_files"`
-	LogLevel       *string      `toml:"log_level"`
+	Repos                 []RepoConfig `toml:"repos"`
+	SourceDirs            []string     `toml:"source_dirs"`
+	Host                  hostField    `toml:"host"`
+	AllowedOrigins        hostField    `toml:"allowed_origins"`
+	Port                  *int         `toml:"port"`
+	ExcludeDirs           *[]string    `toml:"exclude_dirs"`
+	ShowHidden            *bool        `toml:"show_hidden"`
+	WalkMaxDepth          *int         `toml:"walk_max_depth"`
+	WalkTimeout           *float64     `toml:"walk_timeout"`
+	UseIgnore             *bool        `toml:"use_ignore_files"`
+	WatcherIgnoreDefaults *[]string    `toml:"watcher_ignore_defaults"`
+	LogLevel              *string      `toml:"log_level"`
 }
 
 // hostField accepts either a single string or an array of strings for a TOML
@@ -346,6 +382,9 @@ func LoadDaemonFile(path string) (*Config, error) {
 	}
 	if df.UseIgnore != nil {
 		c.UseIgnoreFiles = *df.UseIgnore
+	}
+	if df.WatcherIgnoreDefaults != nil {
+		c.SetWatcherIgnoreDefaults(*df.WatcherIgnoreDefaults)
 	}
 	if df.LogLevel != nil {
 		c.LogLevel = *df.LogLevel

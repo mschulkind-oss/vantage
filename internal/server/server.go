@@ -623,7 +623,7 @@ func (s *Server) Run(ctx context.Context) error {
 // does not push live updates. It is called for every repository Run finds at
 // startup and for every one the refresh loop discovers afterwards.
 func (s *Server) startWatcher(ctx context.Context, rs *repoServices) {
-	w, err := live.NewWatcher(rs.root, rs.name, s.manager, s.reviews, s.cfg.UseIgnoreFiles, s.logger)
+	w, err := live.NewWatcher(rs.root, rs.name, s.manager, s.reviews, s.cfg.UseIgnoreFiles, s.logger, s.cfg.WatcherIgnoreDefaults)
 	if err != nil {
 		s.logger.Warn("server: failed to start watcher", "repo", rs.name, "root", rs.root, "error", err)
 		return
