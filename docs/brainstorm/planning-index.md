@@ -1,318 +1,433 @@
 ---
-title: "Brainstorm — a planning index: what Vantage could derive from a repository's design docs"
+title: "Brainstorm — a planning index: write each fact once, and let Vantage show it everywhere it is referenced"
 author: "Matt Schulkind"
 date: 2026-09-25
 status: draft
 tags: [brainstorm, planning, roadmap, vantage-check, viewer]
-summary: "Whether Vantage should read a repository's design docs as a set — their status and their open questions — and which of the ways it could do that are worth building."
+summary: "Every planning fact gets one home: a document's own frontmatter, its `oq` directives, or an ordered list of links. Vantage decorates links with the current state of what they point at, and builds index pages from them, so nobody hand-copies state and no agent has to re-gather it."
 ---
 
-# A planning index: what Vantage could derive from a repository's design docs
+# A planning index: write each fact once, and let Vantage show it wherever it is referenced
 
-**Status:** SKETCH, 2026-09-25 — undecided, including whether any of it belongs
-in Vantage at all.
+**Status:** SKETCH, 2026-09-26. The second pass: it moves from "an index
+command" to "each fact has one home, and every mention of it is a link." Nothing
+is decided, including whether it belongs in Vantage.
 
-**In short.** Vantage already reads the planning conventions one document at a
-time: a `status:` chip, a one-click button on each `oq` directive, and the open
-questions in the contents column with a tally. It never reads them *across*
-documents. That cross-document picture is what `roadmap.md` and a weekly doc keep
-trying to maintain by hand, and they keep going stale. The idea here is to let
-Vantage **derive** the half that can be derived, so that the hand-written roadmap
-only has to hold judgment.
+**In short.** A roadmap goes stale because it **copies** each design doc's state
+into another file: the doc's status, how many questions it has open, which one to
+rule first. The weekly doc copies the roadmap in turn. The fix proposed here is to
+stop copying. Every fact is written in one place — a design doc's **frontmatter**,
+its **`oq` directives**, or, for priority alone, an **ordered list of links** in
+`roadmap.md`. Every other mention of the fact is a plain Markdown link to that
+place. Vantage then shows the target's *current* state beside each link, and
+builds index pages from the links. On GitHub, all of it reads as ordinary links
+and frontmatter tables.
 
-**Needs your ruling:** [OQ-PI1](#OQ-PI1), [OQ-PI2](#OQ-PI2),
-[OQ-PI3](#OQ-PI3).
+**Needs your ruling:** [OQ-PI1](#OQ-PI1), [OQ-PI2](#OQ-PI2), [OQ-PI3](#OQ-PI3),
+[OQ-PI4](#OQ-PI4), [OQ-PI5](#OQ-PI5).
 
 ## Terms
 
-- **Planning index** *(coined here)* — the table that can be computed from a
-  repository's documents without asking anyone: for each document, its
-  frontmatter status and the ids and leanings of its live open questions.
-- **Derived** and **judged** *(coined here)* — a derived fact can be recomputed
-  from the tree (*"`agent-bootstrap.md` has five live questions"*). A judged fact
-  needs someone to decide it (*"rule [`OQ-CT1`](../design/color-themes.md#decision-ledger) first"*). The whole brainstorm
-  turns on keeping the two apart.
-- **Live open question** — an `oq` directive that is still in the document.
-  Once a question is answered and compacted, its directive is deleted (see
-  `design-doc`'s compaction rules), so a live question is simply a directive
-  that is still present.
+All of these were coined here except the last.
+
+- **Home** — the single place a fact is written. Anything else that wants the
+  fact links to its home.
+- **Derived** and **judged** — a derived fact can be recomputed from the tree
+  (*"`agent-bootstrap.md` has five live questions"*). A judged fact needs
+  someone to decide it (*"rule [`OQ-CT1`](../design/color-themes.md#decision-ledger)
+  first"*). Derived facts are always computed. Judged facts are written once, at
+  their home.
+- **Planning index** — the model Vantage builds by reading every document in the
+  planning tree: each doc's frontmatter, its live questions, and every link
+  between docs. Each idea below is a different view of this one model.
+- **Live link** — an ordinary Markdown link that Vantage renders with a small
+  display of the target's current state. The display is computed; nothing is
+  written into the source. See [#9](#9-live-links).
+- **Live open question** — an `oq` directive still present in its document.
+  Compaction (`design-doc` skill) deletes the directive once a question is
+  answered, so "live" means "the directive is still there."
+
+## The line: decorate and index, never generate
+
+The rule that answers *"how far can this go"*:
+
+| Vantage may… | Example | Why it's safe |
+| --- | --- | --- |
+| **Decorate** what the author wrote | a `💬 5` chip beside a link to a doc | The source is unchanged. GitHub shows the same link without the chip |
+| **Index**: build pages outside the documents | an Open questions page | The page isn't a document, so there's nothing for it to disagree with |
+| ~~**Generate** content into a document~~ | a computed table, transclusion, a template language | A computed table has to be regenerated, is invisible on GitHub, or both. This is where Markdown stops being Markdown |
+
+Everything below stays within the first two rows. [#4](#4-a-generated-index-block-in-roadmapmd--displaced)
+and [#12](#12-transclusion-and-templates--retired) are the ideas that crossed
+into the third, and they are marked as such.
 
 ## Why this keeps turning into a mess, measured on this repository
 
-On 2026-09-25 this repository had 12 docs under `docs/design/` and one
-`roadmap.md`:
+On 2026-09-25 this repository had 12 docs under `docs/design/`:
 
-| Finding | Evidence | Kind of failure |
+| Finding | Evidence | What it copied |
 | --- | --- | --- |
-| A design with five live questions has no roadmap row | [`agent-bootstrap.md`](../design/agent-bootstrap.md): `status: in-review`, 5 `oq` directives; `roadmap.md` never names it | derived fact, maintained by hand, never maintained |
-| A live question in a doc the roadmap *does* track is missing from it | [`color-themes.md`](../design/color-themes.md) [`OQ-CT6`](../design/color-themes.md#OQ-CT6) is live; the roadmap cites only [`OQ-CT1`](../design/color-themes.md#decision-ledger) and [`OQ-CT2`](../design/color-themes.md#decision-ledger), both ruled | same |
-| Status words drift | 4 of 12 docs have no `**Status:**` line; 4 more use `IMPLEMENTED`, `DESIGNED`, `PROTOTYPE` or `DESIGN SKETCH`, none of which is in the `design-doc` skill's seven words | a vocabulary nothing enforces |
-| The obvious count is wrong | `rg -c 💬` finds 4 in [`contents-open-questions.md`](../design/contents-open-questions.md), which has none live, and `rg 'oq id='` matches one inside a Mermaid block in [`linked-references.md`](../design/linked-references.md) | derivation done with grep instead of the parser |
+| A design with five live questions has no roadmap row | [`agent-bootstrap.md`](../design/agent-bootstrap.md): `status: in-review`, 5 `oq` directives; `roadmap.md` never names it | a doc's existence and question count, never copied at all |
+| A live question is missing from the roadmap | [`OQ-CT6`](../design/color-themes.md#OQ-CT6) is live; the roadmap cites only [`OQ-CT1`](../design/color-themes.md#decision-ledger) and [`OQ-CT2`](../design/color-themes.md#decision-ledger), both ruled | the question list, copied once and never again |
+| Status is written twice and the two copies disagree | 4 of 12 docs have no `**Status:**` line; 4 more use words outside the `design-doc` skill's seven; frontmatter `status:` is on 8 | the doc's stage, copied from frontmatter into prose and then from prose into the roadmap |
+| Counting with grep gets the wrong answer | `rg -c 💬` finds 4 in [`contents-open-questions.md`](../design/contents-open-questions.md), which has none live; `rg 'oq id='` matches one inside a Mermaid block in [`linked-references.md`](../design/linked-references.md) | a count, made with the wrong tool |
 | Most questions in the repository are demos | [`docs/gallery/`](../gallery/README.md) holds 11 `oq` directives, against 6 real ones | *which files count* is itself a decision |
 
-Every row above is a **derived** fact that someone was supposed to keep up to date
-by hand. None of them is a failure of judgment. That is the argument for this
-brainstorm in one line: the parts of the roadmap that rot are exactly the parts a
-program could compute.
+Every failure is a copy that went stale. None is a wrong judgment.
 
 ## Axioms
 
-Every idea below is checked against these.
-
-1. **Build only on the markup that already has a fixed meaning in Vantage.** Two
-   things qualify: frontmatter `status:` (one of Vantage's four values — draft,
-   in-review, accepted, deprecated) and the `oq` directive. Heading text comes
-   third. The prose `**Status:**` line, the roadmap's tables, and "Rule these
-   first" do not qualify, because every repository spells them differently, and
-   this one doesn't spell them the same way twice. Reading them generically would
-   be a mechanism with nothing behind it.
-2. **One parser.** Directives are parsed in TypeScript, in `vantage-md`
-   ([`AGENTS.md`](../../AGENTS.md)). If the Go server counted questions, that
-   would be a second implementation, and that is a design change. So any
-   aggregation runs in the checker or in the browser.
-3. **Derive; never ask a person to keep a derived number.** If a number can be
-   computed, it is computed where it is shown, not stored in a file.
-4. **Vantage does not judge.** Priority, intent ("this week we're doing X") and
-   the Rule-these-first order stay in the hand-written roadmap. Vantage can make
-   that file shorter, but it doesn't write it.
-5. **Someone else's conventions plug in through `.vantage.toml` and nothing
-   else.** The Matcraft skills are one set of conventions. Anything specific to
-   them, like the seven-word status line, is opt-in configuration and never
+1. **Build on markup that has a fixed meaning.** That means frontmatter keys, the
+   `oq` directive, and links. Frontmatter counts as standard: GitHub renders it
+   as a table at the top of the file. This was checked against this repository's
+   `repo-config.md` on 2026-09-26, where the nested `vantage:` block showed up in
+   the table. Prose conventions — the `**Status:**` line, roadmap tables — don't
+   qualify.
+2. **One parser.** Directives and links are parsed in TypeScript, by
+   `vantage-md` ([`AGENTS.md`](../../AGENTS.md)). The Go server may answer git
+   questions but never parses Markdown.
+3. **Every fact has one home.** A derived fact's home is the tree, so it's
+   computed wherever it is shown. A judged fact's home is the one place it is
+   written, and everywhere else links to it.
+4. **Decorate and index, never generate.** See [the line](#the-line-decorate-and-index-never-generate).
+5. **Priority is the only judged fact the roadmap owns.** Everything else on a
+   roadmap row belongs to the linked doc.
+6. **Someone else's conventions plug in through `.vantage.toml`.** The Matcraft
+   vocabulary, such as the seven stage words, is configuration. It is never
    hard-coded.
+7. **Agents see what the human sees.** Every view has a `vantage-check` output
+   that computes the same model. Otherwise agents go back to grepping, and the
+   grep is wrong.
 
-**The constraint that decides what to build** is a budget: *not super heavy*,
-taken to mean a first version of roughly a week of work, or about 1,000 lines of
-code plus tests. Parsing is cheap. The checker spends about 9 ms per file parsing
-([`check-performance.md`](../design/check-performance.md)), and a file without the
-`vantage:` sentinel can be skipped before it is parsed. So all 12 of this repo's
-design docs can be scanned in about 100 ms. The budget goes on UI and tests, not
-on computation.
+**Budget.** *Not super heavy*, taken to mean a first version of about a week, or
+roughly 1,000 LOC plus tests. The whole program, [#1](#1-vantage-check-index)
+through [#11](#11-freshness-of-reference-docs), is about 2,400 LOC, roughly two
+and a half weeks. So it ships in phases (see [the pick](#if-you-want-my-pick)),
+and phase 1 fits the budget.
 
 ## Overview
 
-| # | Idea | Reads | Est. cost | Verdict |
+| # | Idea | Home it reads | Est. LOC | Verdict |
 | --- | --- | --- | --- | --- |
-| 1 | `vantage-check index`: the planning index as text or JSON | status, `oq` | ~250 LOC | **Build first** |
-| 2 | A per-project **Open questions** page, answerable in place | status, `oq` | ~450 LOC | **Build second**. This is the reason it belongs in Vantage |
-| 3 | Status chip and question count in the file tree | status, `oq` | ~150 LOC on top of #2 | Ride along with #2 |
-| 4 | A generated index block inside `roadmap.md`, checked for staleness | #1's output | ~300 LOC | Wait. Decide after #1 ships |
-| 5 | "This week": what moved in the planning tree since a date | git history, #1 | ~600 LOC | Parked |
-| 6 | Status-line vocabulary rules, opt-in by config | prose status line | ~200 LOC | Worth it. The slot where Matcraft plugs in |
-| 7 | Vantage owns the roadmap: priority, tasks, a board | — | — | **Retired**. Breaks axiom 4 |
+| 1 | `vantage-check index`: the planning index as text or JSON | all | ~300 | **Phase 1**: it's the engine |
+| 2 | The planning page: Needs you, Ready, Waiting, Unrouted, Stale | all | ~500 | **Phase 2** |
+| 3 | Status chip and question count in the file tree | frontmatter, `oq` | ~150 | Phase 2, together with #2 |
+| 4 | A generated index block in `roadmap.md` | — | — | **Displaced** by #9 |
+| 5 | "This week": a hand-written list of links, plus a derived "what moved" | links, git | ~400 | Phase 3 |
+| 6 | Stage vocabulary rules | — | — | **Folded into #8** |
+| 7 | Vantage owns the roadmap: board, tasks | — | — | **Retired** by axiom 5 |
+| 8 | Frontmatter is the doc's header of record | frontmatter | ~200 | **Phase 1** |
+| 9 | Live links | the link target | ~350 | **Phase 1**: the core of it |
+| 10 | Backlinks, and questions nothing links to | links | ~250 | Phase 2 |
+| 11 | Freshness of reference docs: `covers:` versus git | frontmatter, git | ~250 | Phase 3 |
+| 12 | Transclusion and templates | — | — | **Retired**: it generates |
 
-## 1. `vantage-check index`
+## 8. Frontmatter is the doc's header of record
 
-**Hook.** `vantage-check index docs/design` prints one row per document: path,
-frontmatter status, and each live question's id and leaning. With `--format json`
-it prints the same data for an agent to consume.
+**Hook.** The facts a roadmap copies out of a design doc move into that doc's
+frontmatter, and nowhere else:
 
-**Turn.** The command the `roadmap` skill's reconcile step asks for already has a
-name: *"count live questions per doc, mechanically; put the command in the
-file."* Today that command is a grep, and on this repository the grep is wrong
-(see [the evidence table](#why-this-keeps-turning-into-a-mess-measured-on-this-repository)).
-This gives the step a command that agrees with the viewer, because it is the
-viewer's own parser.
+```yaml
+status: in-review        # Vantage's four, as today
+stage: DESIGN            # the owed word; vocabulary declared in .vantage.toml
+next: "Rule OQ-AB2 — the payload's install step waits on it"
+depends-on:
+  - pypi-distribution.md
+```
 
-| Part | Does | Reuses |
+**Turn.** Today the doc's stage is written twice: frontmatter `status:` and the
+prose `**Status:**` line. The evidence table shows the two copies disagreeing.
+This gives the stage one home, where a program can read it and GitHub still
+displays it. The prose line stays for the *why* ("amended on the 1st, because
+one section was wrong"), but it no longer carries the word.
+
+| Key | Derived or judged | Displaces |
 | --- | --- | --- |
-| Discovery | Walks paths, honors `.vantage.toml` excludes | `core/discover.ts` |
-| Question scan | Live `oq` ids and leanings | `core/openQuestions.ts` (`collectOqIds`, extended to return the leaning) |
-| Status | Frontmatter `status:` | `rules/frontmatter.ts`'s parse |
-| Report | Text table, or JSON | `report/` |
+| `status` | judged | nothing; it exists today |
+| `stage` | judged, from a closed list in `.vantage.toml` | the first word of the prose status line; `status-lines.sh`'s `BADWORD` and `NOSTATUS` |
+| `next` | judged, one line | the roadmap row's "Decides" clause |
+| `depends-on` | judged | the roadmap's 🔒 "blocked on" prose |
+| *(not a key)* live questions | **derived** | the "Needs your ruling" line, and every "Live" count |
 
-**Why it is generic.** It reads only what axiom 1 allows. A repository that
-never heard of the Matcraft skills, but uses `oq` directives because the style
-guide tells it to, gets the same report.
+**What won't work:** a `priority:` key. Priorities written separately into each
+doc can't be compared across docs. Two docs both say `1`, and there's no single
+place to reorder them. Priority is relative, so it needs one list (axiom 5,
+[#9](#9-live-links)).
 
-**Cost.** Command, about 120 lines. Leaning extraction, about 20. Two report
-formats, about 60. Tests, about 150. Total **~250 LOC plus tests: one sitting.**
+> [!IMPORTANT]
+> **This is where it can go bad: the header grows into a form.** Every key added
+> is one more thing to keep true. The test for a new key: would the roadmap
+> otherwise copy it? If not, it stays in the prose.
 
-> [!NOTE]
-> **Displaces** the roadmap's hand-typed counts (`**Status:** 3 ready · 1
-> blocked`), along with every "Live" column the `roadmap` skill tells an agent to
-> re-derive. The agent still re-derives them, but by running one command.
+**Cost.** Known keys plus a vocabulary check in the checker (this absorbs #6),
+~200 LOC. It also changes the Matcraft skills: `design-doc` would write `stage:`
+and `next:`, and stop hand-maintaining the "Needs your ruling" line. See
+[OQ-PI4](#OQ-PI4).
 
-## 2. A per-project Open questions page
+## 9. Live links
 
-**Hook.** One page per project lists every live open question in the repository,
-grouped by document, with the doc's status chip. Each question has the same
-**Take this leaning** button review mode shows today, plus a box for a different
-answer.
+**Hook.** Any link to a document or to an open question renders in Vantage with
+the target's current state:
 
-**Turn.** This is where the idea has to belong in Vantage, or nowhere. Answering
-a question already means filing a review comment, and the review inbox is how
-the agent finds out ([`review-mode.md`](../design/review-mode.md)). No other tool
-has that path back to the agent. Today you have to open each document, turn on
-review mode for it, and scroll. This page is review mode at the scope of the
-whole repository, and it adds no new way of answering.
+| Written | Rendered in Vantage | On GitHub |
+| --- | --- | --- |
+| `[agent-bootstrap](docs/design/agent-bootstrap.md)` | agent-bootstrap `in-review · DESIGN · 💬 5` | the link |
+| a link to [`OQ-CT6`](../design/color-themes.md#OQ-CT6), a live question | the link, then `💬 open` | the link |
+| a link to a question since compacted into its ledger | the link, then `✅ ruled`, or `⚠ gone` if the id is found nowhere | the link; `vantage-check` flags the dead anchor as it does today |
+
+**Turn.** This is what makes the roadmap stop lying without making it stop being
+Markdown. A roadmap row shrinks to its judged part — the position in the list and
+a clause saying why now — plus a link:
+
+```markdown
+## Rule these first
+
+1. [OQ-AB2](docs/design/agent-bootstrap.md#OQ-AB2) — the install step is built and waiting on it
+2. [OQ-CT6](docs/design/color-themes.md#OQ-CT6) — repository themes can't load until it's ruled
+```
+
+The doc, its status, its live count and the gate are all shown next to the link,
+not written. A row whose question has been answered **shows `✅` in its own
+chip**. That's the stale row the `roadmap` skill's reconcile step hunts for, and
+here it's visible without running anything.
 
 | Part | Does |
 | --- | --- |
-| Scan | Browser fetches the Markdown under the configured roots, skips files without the sentinel, parses the rest. The same code as #1, from `vantage-md` |
-| Page | New route beside Recents; groups by doc, sorts by doc status then question count |
-| Answer | Files the comment against the question's anchor in *its* document, exactly as the in-page button does |
-| Entry | A Starred-style link, plus a key in the shortcuts help |
+| Target resolution | The same resolution the link checker already does |
+| Facts | Frontmatter and live questions of the target, from the planning index |
+| Chip | A small appended badge, printed as text and dropped when the target has nothing to show |
+| Checker | `vantage-check index` prints the roadmap with the same chips inline as text, so an agent reads exactly what you see (axiom 7) |
 
-**Failure handling.** If a document changes after it was scanned, the anchor
-still resolves, because the id is the anchor. If the question has since been
-compacted away, the comment lands as outdated, the same as for an in-page comment
-whose block disappeared. There is no special case to handle.
+**Failure handling.** If the target can't be fetched, there's no chip and the
+link works as it always did. If a question has been compacted into a Decision
+Ledger, the chip reads `✅ ruled`, because its id appears in the ledger. If the id
+is found nowhere, the chip reads `⚠ gone`. So decoration can only add
+information.
 
 > [!IMPORTANT]
-> **The way this goes bad is turning into an inbox with its own state:** snooze,
-> assign, "seen". The moment the page stores anything, it can disagree with the
-> documents. It must stay a pure view of the tree plus the existing review
-> comments.
+> **Only for links to planning targets.** A chip on every link in every document
+> is noise. The chip appears when the target has a planning fact: a `status:`, a
+> `stage:`, or a live question.
 
-**Cost.** Scan hook, about 80 lines. Page and grouping, about 200. Wiring the
-answer to the existing comment call, about 50. Route, entry and shortcut, about
-40. Tests, about 200. Total **~450 LOC plus tests.** An open risk: a large
-repository with no roots configured. See [OQ-PI2](#OQ-PI2).
+**Cost.** Chip rendering in the viewer, ~150 LOC; planning-index lookups
+client-side, ~100; the text rendering in the checker, ~100. **~350 LOC.**
 
 > [!NOTE]
-> **Adds.** Nothing today lets a reader answer across documents, so it replaces
-> nothing. It does make [#1](#1-vantage-check-index)'s JSON unnecessary *for
-> people*, though agents still need it.
+> **Displaces #4** (the generated block) completely: the same information, with
+> nothing written into the file and nothing to regenerate. It also displaces
+> most of what the `roadmap` skill's reconcile procedure exists to do.
+
+## 10. Backlinks, and questions nothing links to
+
+**Hook.** A doc's contents column gets a **Referenced by** list: *roadmap.md,
+Rule these first #1 · agent-cli.md section 6*. The planning page (#2) gets an
+**Unrouted** section: live questions that no roadmap entry links to.
+
+**Turn.** Unrouted is the `roadmap` skill's step 7 ("find docs carrying live
+questions that no row names"), made permanent. On this repository it would have
+listed `agent-bootstrap.md`'s five questions and [`OQ-CT6`](../design/color-themes.md#OQ-CT6) on the day each was
+written.
+
+**Cost.** ~250 LOC. The real cost is computation: backlinks need every link in
+every document, and links can't be skipped with the sentinel check the way
+directives can. See the first [open thread](#open-threads).
+
+## 2. The planning page
+
+**Hook.** One page per project, composed entirely from the planning index:
+
+| Section | Derived as |
+| --- | --- |
+| **Needs you** 💬 | Live questions linked from `roadmap.md`, in the roadmap's order, each with **Take this leaning** and an answer box |
+| **Unrouted** | Live questions no roadmap entry links to (#10) |
+| **Ready** 📦 | `status: accepted`, zero live questions, a stage that isn't built yet |
+| **Waiting** 🔒 | 🔒 questions, and docs whose `depends-on` target has live questions |
+| **Graduate** | Stage `BUILT` with zero live questions (the `system-doc` cue) |
+| **Stale references** | #11 |
+
+**Turn.** Answering a question files a review comment, which already goes to
+the agent through the review inbox ([`review-mode.md`](../design/review-mode.md)).
+So this page is review mode across the whole repo, and it adds no new way of
+answering. That's the strongest reason it belongs in Vantage. No other tool has
+the path back to the agent.
+
+> [!IMPORTANT]
+> **The page stores nothing.** No snooze, no assign, no "seen." Anything it
+> stored could disagree with the documents, which would recreate the roadmap's
+> problem one level up.
+
+**Cost.** ~500 LOC. Most of that is the page itself; the answer path reuses the
+existing comment call.
 
 ## 3. Status in the file tree
 
-**Hook.** In the file tree, a design doc gets its status chip, plus `💬 5` when it
-has live questions.
-
-**Turn.** This costs almost nothing once #2's scan exists, and it answers *"is
-there something here for me?"* before a single file is opened. That question is
-the one [`contents-open-questions.md`](../design/contents-open-questions.md)
-answers inside a document.
-
-**Cost.** About 150 LOC on top of #2. On its own it would need the whole scan,
-which is why it isn't a standalone idea.
-
-> [!NOTE]
-> **Adds** to #2. Build them together or not at all.
-
-## 4. A generated index block in `roadmap.md`
-
-**Hook.** `vantage-check index --write roadmap.md` rewrites the table between two
-markers. A rule, `index/stale`, fails the gate when the table no longer matches
-the tree.
-
-**Turn.** This keeps the derived half **visible on GitHub**, where a
-Vantage-only directive would render nothing. It also makes staleness a gate
-failure instead of something a person has to notice.
-
-**What won't work:** rendering the table live with a directive (`<!-- vantage:
-index -->`). The roadmap is the one file people read on GitHub, and there the
-directive is an empty comment. That variant is retired.
-
-**Cost.** About 300 LOC for the writer, the marker handling and the rule. The
-real cost is that a generator now writes a tracked file. That's allowed, since
-the rule in [`AGENTS.md`](../../AGENTS.md) is about `just` recipes, but it's a
-new kind of thing in this repository.
-
-> [!NOTE]
-> **Might displace** the `roadmap` skill's step 1 entirely. Only decide after #1
-> has been used for a few reconciles. See [OQ-PI3](#OQ-PI3).
+The status chip and `💬 N` on each file in the tree, taken from the planning
+index. ~150 LOC. It depends on #2's index, so it ships together with #2.
 
 ## 5. "This week"
 
-**Hook.** A view of what changed in the planning tree since a date: questions
-opened and answered (directives that appeared or disappeared), status changes,
-new docs.
+**Hook.** No weekly file. `roadmap.md` gets a `## This week` heading containing
+a list of links: the intent, which is judged, written once. The planning page
+adds a derived **Moved since Monday** panel: questions opened and answered,
+stage changes, new docs.
 
-**Turn.** It replaces the *derived half* of a weekly doc. The other half, what
-you *meant* to do this week, is judged (axiom 4), and no view can supply it.
+**Turn.** This splits the weekly doc into its two halves. The intent half is
+judged, so it's links, and live links keep it honest. The history half is
+derived from git. `git log -G 'vantage: oq'` finds only the commits that touched
+directives, so the TypeScript parser only has to run on those revisions.
 
-**Why it's parked.** It needs files as of past revisions, parsed. `HistoryPage`
-can already fetch a revision, but scanning N revisions of M files is the first
-idea here whose computation costs more than its UI. About 600 LOC, which is most
-of the budget. Revisit only if #2 is used and the weekly doc still keeps coming
-back.
+**Cost.** ~400 LOC, mostly the history scan. Phase 3.
 
-## 6. Status-line vocabulary rules, opt-in by config
+## 11. Freshness of reference docs
 
-**Hook.** `[planning] status-line = ["SKETCH", "DESIGN", …]` in `.vantage.toml`
-turns on checker rules that do what `design-doc`'s `status-lines.sh` does:
-report a doc with no status line, a word outside the vocabulary, or a `BUILT` doc
-with no live questions that should graduate.
+**Hook.** A system doc already declares `covers:` (the source paths it
+describes) and `verified_commit:`. [`inline-markup.md`](../reference/inline-markup.md)
+does this today, and the `system-doc` skill calls it what "turns *is this doc
+stale?* … into a command." Vantage runs that command itself. `git diff --stat
+<verified_commit>..HEAD -- <covers>` becomes a chip: `⚠ 4 covered files changed
+since verified`.
 
-**Turn.** **This is the slot axiom 5 promises.** The Matcraft skills bring a
-vocabulary, the repository declares it, and the checker enforces it. Someone else
-declares a different list. Nothing Matcraft-specific ships turned on.
+**Turn.** It's the same idea pointed at reference docs: a fact, the perimeter,
+written once, and a staleness state derived from it. The Go server answers the
+git question and never parses the Markdown, which keeps axiom 2.
 
-**Cost.** About 200 LOC plus tests. It would have caught this repo's four
-off-vocabulary status lines and its four missing ones on the day each was
-written.
+**Cost.** ~250 LOC. Phase 3, because only one doc in this repository declares
+`covers:`.
 
-> [!NOTE]
-> **Displaces** the skill's copy of `status-lines.sh`, which the skill itself
-> says rots once it lives in a document instead of in a check.
+## 1. `vantage-check index`
+
+**Hook.** The engine. It builds the planning index from the files — frontmatter,
+live questions and their leanings, and links between planning docs — and prints
+it as text or JSON. The viewer builds the same model from the same `vantage-md`
+code.
+
+**Turn.** The `roadmap` skill's reconcile step becomes one command, and it agrees
+with the viewer by construction. Its text output includes the roadmap with live
+links resolved (#9), so an agent reads what you read.
+
+**Cost.** ~300 LOC, reusing `core/discover.ts`, `core/openQuestions.ts` and the
+frontmatter parse.
+
+## 4. A generated index block in `roadmap.md` — displaced
+
+The checker would rewrite a table between markers in `roadmap.md`, and fail the
+gate when it was stale. **Displaced by [#9](#9-live-links)**, which shows the
+same information without writing anything. It was also the one idea here that
+generated content into a document.
+
+## 6. Stage vocabulary rules — folded into #8
+
+Its checks become the vocabulary check on the `stage:` key.
 
 ## 7. Vantage owns the roadmap — retired
 
-A board, a priority order, task state. **Retired, because it breaks axiom 4.**
-Every item on it would be a judged fact stored in a second place, which is
-exactly the staleness this brainstorm exists to get rid of, moved into a
-database. Keep it written down so it doesn't get proposed again.
+A board, tasks, a priority order kept in a database. **Retired by axiom 5**:
+priority is the one fact whose home is a list in the roadmap, and a database
+would be a second home.
+
+## 12. Transclusion and templates — retired
+
+Embedding one document's section in another (Obsidian-style `![[doc#heading]]`), or computing
+values into the text. **Retired by axiom 4.** Transclusion isn't standard
+Markdown, and a directive that does it is the template language you called too
+far. A hover preview of a link target is the read-only version that stays on the
+right side of the line. It's in the [parking lot](#parking-lot).
 
 ## If you want my pick
 
-Build **#1 now.** It's one sitting, it fixes a reconcile step that is currently
-wrong, and it proves the scan is cheap. Then **#2 with #3**: they answer *"does
-this belong in Vantage?"* with yes, because answering across documents only works
-where the review inbox lives. Do **#6** whenever the status lines next annoy you.
-Leave #4 and #5 until #1 has been in use for a while.
+**Phase 1, which fits the budget: #1, #8, #9.** That's the index, the header of
+record, and live links. At that point `roadmap.md` can be rewritten as ordered
+lists of links with a clause each, every row shows its own truth, and an agent
+reconciles by running one command. About 850 LOC.
 
-What stays by hand: `roadmap.md` shrinks to the Rule-these-first order and the
-rows that have no doc. That's the judged half, and it's small.
+**Phase 2: #2, #3 and #10.** The planning page, where you answer questions
+across the repo, plus Unrouted, which ends the kind of miss that left
+`agent-bootstrap.md` off the roadmap.
+
+**Phase 3: #5 and #11,** once phases 1 and 2 are in daily use.
 
 ## Open Questions
 
-1. 💬 **OQ-PI1: Does the cross-document question page (#2) belong in Vantage?**
-   This decides whether Vantage grows any repository-wide view of documents, or
-   stops at #1 and #6, which live in the checker.
+1. 💬 **OQ-PI1: Does a repository-wide planning page (#2) belong in Vantage?**
+   This decides whether Vantage grows views across documents at all, or whether
+   phase 1 stops at chips on links plus the checker.
 
-   <!-- vantage: oq id=OQ-PI1 leaning="Yes — answering questions across documents rides on the review inbox, which only Vantage has; build #1 first, then #2 with the file-tree status (#3)." -->
+   <!-- vantage: oq id=OQ-PI1 leaning="Yes — answering questions across documents rides on the review inbox, which only Vantage has. Ship phase 1 first (#1, #8, #9), then the planning page with backlinks and file-tree status." -->
 
-   _Leaning:_ Yes. It adds no new way of answering, only a wider scope for the
-   existing one.
+   _Leaning:_ Yes, after phase 1. It's review mode across the whole repo, not a
+   work tracker.
 
    **Answer:**
    > _(empty — fill in when decided)_
 
 2. 💬 **OQ-PI2: Which files make up the planning tree?** Scanning every Markdown
    file needs no configuration, but on this repository 11 of 17 questions are
-   gallery demos. Roots declared in `.vantage.toml` mean nothing gets scanned
-   until someone writes that config.
+   gallery demos.
 
-   <!-- vantage: oq id=OQ-PI2 leaning="Default to every file carrying an oq directive, with an exclude list in .vantage.toml — zero config for other repositories, and this one excludes docs/gallery." -->
+   <!-- vantage: oq id=OQ-PI2 leaning="Default to every file carrying planning frontmatter or an oq directive, with an exclude list in .vantage.toml — zero config elsewhere, one line here for docs/gallery." -->
 
-   _Leaning:_ Scan everything by default, with an exclude list. Other
-   repositories need no configuration, and this one pays one line.
+   _Leaning:_ Scan everything by default, with an exclude list.
 
    **Answer:**
    > _(empty — fill in when decided)_
 
-3. 💬 🤷 **OQ-PI3: Should the derived index ever be written *into*
-   `roadmap.md` (#4)?** A generated block is visible on GitHub and can be
-   checked for staleness. The cost is a generator that writes a tracked file.
+3. 💬 **OQ-PI3: Is the generated roadmap block (#4) dead?** Live links show the
+   same information without writing into the file. What's lost: on GitHub, the
+   roadmap shows plain links with no counts.
 
-   <!-- vantage: oq id=OQ-PI3 leaning="Not yet — ship #1, use it for a few reconciles, and decide from whether the hand-typed counts still drift." -->
+   <!-- vantage: oq id=OQ-PI3 leaning="Yes, retire it — the counts it would write were the part that went wrong, and a GitHub reader who clicks a link sees that doc's frontmatter table anyway." -->
 
-   _Leaning:_ Not yet. Decide from experience with #1.
+   _Leaning:_ Retire it. See [OQ-PI5](#OQ-PI5) for the GitHub cost.
+
+   **Answer:**
+   > _(empty — fill in when decided)_
+
+4. 💬 **OQ-PI4: Should the stage word move from the prose `**Status:**` line into
+   frontmatter `stage:`?** This changes the Matcraft `design-doc` and `roadmap`
+   skills, and every design doc in this repository.
+
+   <!-- vantage: oq id=OQ-PI4 leaning="Yes — one home for the stage; the prose line keeps the why but drops the word, and the skills write stage and next instead of maintaining the Needs your ruling line by hand." -->
+
+   _Leaning:_ Yes. Right now the stage is written twice, and the two copies
+   disagree on this repo.
+
+   **Answer:**
+   > _(empty — fill in when decided)_
+
+5. 💬 🤷 **OQ-PI5: Is a roadmap that's fully readable only in Vantage acceptable?**
+   On GitHub, [#9](#9-live-links)'s roadmap is an ordered list of links with a
+   clause each. The status and counts are one click away rather than inline.
+
+   <!-- vantage: oq id=OQ-PI5 leaning="Acceptable — the roadmap on GitHub keeps its order and reasons, which are the judged part; the derived part is one click away in each doc's frontmatter table." -->
+
+   _Leaning:_ Acceptable, though this is your preference to set.
 
    **Answer:**
    > _(empty — fill in when decided)_
 
 ## Open threads
 
-- **Untested assumption: the browser can scan a large repository fast enough.**
-  About 9 ms per parsed file comes from the checker running on Bun. A browser
-  also has to fetch each file. On a 750-file repository, the sentinel pre-filter
-  is what saves it, and nobody has measured how many files it actually skips
-  there.
+- **Untested assumption: the whole-repo scan is fast enough in a browser.** It's
+  about 9 ms per parsed file in the checker, not counting fetch time. Backlinks
+  (#10) can't skip files the way the directive scan can. On a 750-file repository
+  that's several seconds, unless results are cached by git blob hash. The server
+  can list those hashes cheaply with `git ls-files -s`. This hasn't been measured.
+- **How a live chip recognizes a Decision Ledger** (`✅ ruled` versus
+  `⚠ gone`). That needs the ledger's id column to be findable, and it's a
+  convention table, which axiom 1 excludes. It might need a directive on the
+  ledger, or the chip might just say "not open."
 - **Found here and not fixed:** `agent-bootstrap.md` and [`OQ-CT6`](../design/color-themes.md#OQ-CT6) have no roadmap
-  row, and eight design docs carry missing or off-vocabulary status lines. Those
-  are roadmap and `design-doc` reconcile work, not part of this brainstorm.
-- **Not yet considered:** documents from more than one project on the same page.
-  Recents already works across projects (`Shift+R`), and nobody has asked whether
-  a question queue should too.
+  row, and eight design docs carry missing or off-vocabulary status lines. That's
+  reconcile work, not part of this brainstorm.
+- **Not considered yet:** planning pages across projects. Recents already works
+  across projects (`Shift+R`).
+
+## Parking lot
+
+- Hover preview of a link target: its header and first paragraph, read-only.
+- `depends-on` drawn as a Mermaid graph on the planning page, computed only
+  there and never written into a doc.
+- A **Decided this week** list taken from Decision Ledger rows, if the ledger
+  becomes machine-findable (see the second open thread).
+- A roadmap entry that links a whole doc, not a question, could show that doc's
+  `next:` line as its clause. Then the "why now" wouldn't be written twice.
