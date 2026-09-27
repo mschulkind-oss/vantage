@@ -33,7 +33,9 @@ func TestDefaults(t *testing.T) {
 	require.Equal(t, ".yolo/", DefaultWatcherIgnoreDefaults[0])
 
 	require.Contains(t, DefaultExcludeDirs, "target", "target must be in DefaultExcludeDirs")
-	for _, expected := range []string{".pi/", "target/", "build/", "dist/", ".cache/", "__pycache__/", ".pytest_cache/", ".mypy_cache/", ".ruff_cache/", ".tox/", ".nox/"} {
+	require.Contains(t, DefaultExcludeDirs, "worktrees", "worktrees must be in DefaultExcludeDirs")
+	require.Contains(t, DefaultExcludeDirs, ".worktrees", ".worktrees must be in DefaultExcludeDirs")
+	for _, expected := range []string{".pi/", "target/", "build/", "dist/", ".cache/", "__pycache__/", ".pytest_cache/", ".mypy_cache/", ".ruff_cache/", ".tox/", ".nox/", "worktrees/", ".worktrees/"} {
 		require.Contains(t, DefaultWatcherIgnoreDefaults, expected)
 	}
 }
@@ -335,8 +337,9 @@ func TestDiscoverReposFromSourceDirs(t *testing.T) {
 	added := c.DiscoverReposFromSourceDirs()
 
 	names := repoNames(added)
-	require.ElementsMatch(t, []string{"alpha", "beta", "gamma"}, names)
-	require.Len(t, c.Repos, 3)
+	require.ElementsMatch(t, []string{"alpha", "beta"}, names)
+	require.NotContains(t, names, "gamma", "linked worktrees must not be auto-discovered")
+	require.Len(t, c.Repos, 2)
 }
 
 func TestDiscoverReposSkipsExistingAndDedupesNames(t *testing.T) {

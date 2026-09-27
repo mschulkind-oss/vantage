@@ -73,7 +73,7 @@ whatever port Vantage printed on startup, if 8000 was taken.
 
 ## Source Directory Auto-Discovery
 
-Instead of listing every repo by hand, you can point Vantage at one or more parent directories. Any subdirectory containing a `.git` folder is automatically added as a project:
+Instead of listing every repo by hand, you can point Vantage at one or more parent directories. Any subdirectory containing a `.git` folder is automatically added as a project (linked worktrees are skipped so multiple trees do not duplicate projects):
 
 ```toml
 source_dirs = ["~/code", "~/projects"]
@@ -102,7 +102,7 @@ This allows Vantage to read files under `~/.dotfiles/gemini/skills` when serving
 
 ## Excluded Directories
 
-By default, Vantage hides common version-control, dependency, cache, and build directories from the sidebar, file picker, and recent files list — for example `.git`, `.hg`, `.svn`, `node_modules`, `vendor`, `dist`, `build`, `target`, and `.cache`.
+By default, Vantage hides common version-control, worktree, dependency, cache, and build directories from the sidebar, file picker, and recent files list — for example `.git`, `.hg`, `.svn`, `worktrees`, `node_modules`, `vendor`, `dist`, `build`, `target`, and `.cache`.
 
 You can override this list in your config:
 

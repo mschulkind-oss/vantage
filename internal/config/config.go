@@ -42,8 +42,8 @@ var ExampleConfig string
 // caches, and common build outputs. A config source may replace this set but an
 // absent value leaves it intact (see the package doc).
 var DefaultExcludeDirs = []string{
-	// Version control
-	".git", ".hg", ".svn",
+	// Version control & worktrees
+	".git", ".hg", ".svn", "worktrees", ".worktrees",
 	// Dependencies
 	"node_modules", ".venv", "venv",
 	// Language caches
@@ -74,6 +74,8 @@ var DefaultWatcherIgnoreDefaults = []string{
 	".ruff_cache/",
 	".tox/",
 	".nox/",
+	"worktrees/",
+	".worktrees/",
 }
 
 // defaultHost is the loopback address bound when no host is configured.
@@ -457,11 +459,12 @@ func (c *Config) Resolve() error {
 }
 
 // DiscoverReposFromSourceDirs scans each source dir for immediate subdirectories
-// that contain a .git entry (directory or file, the latter covering worktrees)
-// and appends any not already configured. Names default to the directory name,
-// with a numeric "-N" suffix on collision. Added repos are marked Discovered,
-// which is what makes them eligible for [Config.PruneMissingDiscoveredRepos]
-// later. It returns the newly added repos.
+// that contain a .git directory (skipping linked worktrees, which would
+// duplicate projects and files when multiple trees exist) and appends any not
+// already configured. Names default to the directory name, with a numeric "-N"
+// suffix on collision. Added repos are marked Discovered, which is what makes
+// them eligible for [Config.PruneMissingDiscoveredRepos] later. It returns the
+// newly added repos.
 //
 // Unreadable source dirs and entries are skipped silently; callers that want to
 // warn can inspect the source-dir existence themselves.
@@ -486,11 +489,7 @@ func (c *Config) DiscoverReposFromSourceDirs() []RepoConfig {
 				continue
 			}
 			full := filepath.Join(dir, name)
-			info, err := os.Stat(full)
-			if err != nil || !info.IsDir() {
-				continue
-			}
-			if _, err := os.Stat(filepath.Join(full, ".git")); err != nil {
+			if !isGitRepoDir(full) {
 				continue
 			}
 			resolved, err := resolvePath(full)
@@ -521,7 +520,7 @@ func (c *Config) DiscoverReposFromSourceDirs() []RepoConfig {
 
 // PruneMissingDiscoveredRepos removes every discovered repo whose directory is
 // no longer one [Config.DiscoverReposFromSourceDirs] would add — gone, replaced
-// by a file, or no longer holding a .git entry — and returns the removed
+// by a file, or no longer holding a .git directory — and returns the removed
 // entries. It is the inverse of that scan and the two are meant to run
 // together: the pair reconciles the repo list with what the source dirs
 // currently hold.
@@ -553,16 +552,19 @@ func (c *Config) PruneMissingDiscoveredRepos() []RepoConfig {
 	return removed
 }
 
-// isGitRepoDir reports whether path is a directory holding a .git entry — the
-// same test the source-dir scan admits a candidate with, so a repo is retired
-// exactly when it would no longer be discovered.
+// isGitRepoDir reports whether path is a directory holding a .git directory.
+// Linked worktrees (where .git is a file) are excluded so multiple worktrees
+// of the same repository do not duplicate projects.
 func isGitRepoDir(path string) bool {
 	info, err := os.Stat(path)
 	if err != nil || !info.IsDir() {
 		return false
 	}
-	_, err = os.Stat(filepath.Join(path, ".git"))
-	return err == nil
+	gitInfo, err := os.Stat(filepath.Join(path, ".git"))
+	if err != nil || !gitInfo.IsDir() {
+		return false
+	}
+	return true
 }
 
 // GetRepo returns the configured repo with the given name, or nil if none.

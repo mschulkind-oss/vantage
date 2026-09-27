@@ -277,6 +277,9 @@ func (w *Watcher) addRecursive(dir string) int {
 		if !d.IsDir() {
 			return nil
 		}
+		if path != w.root && gitsvc.IsWorktree(path) {
+			return iofs.SkipDir
+		}
 		rel, relErr := filepath.Rel(w.root, path)
 		if relErr != nil {
 			return nil

@@ -329,6 +329,9 @@ func (s *FileSystemService) buildNode(
 		if _, excluded := s.excludeDirs[name]; excluded {
 			return node, false, false
 		}
+		if git.IsWorktree(full) {
+			return node, false, false
+		}
 	}
 	if !opts.ShowHidden && strings.HasPrefix(name, ".") {
 		return node, false, false
@@ -554,6 +557,9 @@ func (s *FileSystemService) walkForMarkdown(dir string) bool {
 				if name == ".git" || name == ".vantage" {
 					return fs.SkipDir
 				}
+				if git.IsWorktree(p) {
+					return fs.SkipDir
+				}
 				rel := s.relPath(p)
 				if matcher != nil && matcher.IsIgnored(rel, true) {
 					return fs.SkipDir
@@ -604,6 +610,9 @@ func (s *FileSystemService) ListAllFiles() []string {
 			}
 			if strings.HasPrefix(name, ".") {
 				// Hidden dirs are pruned; ListAllFiles never shows hidden trees.
+				return fs.SkipDir
+			}
+			if git.IsWorktree(p) {
 				return fs.SkipDir
 			}
 			rel := s.relPath(p)

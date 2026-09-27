@@ -443,6 +443,41 @@ func TestWalkForMarkdownPrunesExcludedAndIgnored(t *testing.T) {
 	require.True(t, svc.dirHasMarkdown(filepath.Join(dir, "src")))
 }
 
+func TestWorktreePrunedFromListingsAndWalk(t *testing.T) {
+	t.Cleanup(ClearMarkdownDirCache)
+	dir := initRepo(t)
+	writeFile(t, dir, "root.md", "# Root\n")
+
+	// Create a nested worktree with arbitrary directory name
+	wt := filepath.Join(dir, "nested-wt")
+	require.NoError(t, os.MkdirAll(wt, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(wt, ".git"), []byte("gitdir: /main/.git/worktrees/nested\n"), 0o644))
+	writeFile(t, dir, "nested-wt/duplicate.md", "# Duplicate\n")
+
+	svc := New(Config{RootPath: dir})
+
+	// 1. ListDirectory at root must not include nested-wt
+	nodes, err := svc.ListDirectory(".", Options{ShowHidden: true})
+	require.NoError(t, err)
+	var names []string
+	for _, n := range nodes {
+		names = append(names, n.Name)
+	}
+	require.NotContains(t, names, "nested-wt", "worktrees must be pruned from ListDirectory")
+
+	// 2. ListAllFiles must not include files inside the worktree
+	files := svc.ListAllFiles()
+	require.Equal(t, []string{"root.md"}, files, "worktree files must be pruned from ListAllFiles")
+
+	// 3. dirHasMarkdown on a folder containing only a worktree must be false
+	parentOfWt := filepath.Join(dir, "trees")
+	wt2 := filepath.Join(parentOfWt, "wt2")
+	require.NoError(t, os.MkdirAll(wt2, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(wt2, ".git"), []byte("gitdir: /main/.git/worktrees/wt2\n"), 0o644))
+	writeFile(t, dir, "trees/wt2/doc.md", "# Doc\n")
+	require.False(t, svc.dirHasMarkdown(parentOfWt), "folder containing only worktrees must report HasMarkdown = false")
+}
+
 func TestNonMarkdownFilesHidden(t *testing.T) {
 	t.Cleanup(ClearMarkdownDirCache)
 	dir := initRepo(t)
