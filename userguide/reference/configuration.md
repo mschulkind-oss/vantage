@@ -123,7 +123,7 @@ to disable those two file-backed layers.
 The live-reload watcher has its own built-in patterns before those files:
 
 ```toml
-watcher_ignore_defaults = [".yolo/", "node_modules/", ".venv/", "venv/", "target/", "build/", "dist/", ".cache/", "__pycache__/"]
+watcher_ignore_defaults = [".yolo/", ".pi/", "node_modules/", ".venv/", "venv/", "target/", "build/", "dist/", ".cache/", "__pycache__/"]
 ```
 
 These are gitignore-style patterns, not directory basenames. They keep generated

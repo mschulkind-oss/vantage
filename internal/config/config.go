@@ -60,6 +60,7 @@ var DefaultExcludeDirs = []string{
 // replace this set; an explicit empty list disables these watcher-only defaults.
 var DefaultWatcherIgnoreDefaults = []string{
 	".yolo/",
+	".pi/",
 	"node_modules/",
 	".venv/",
 	"venv/",
@@ -68,6 +69,11 @@ var DefaultWatcherIgnoreDefaults = []string{
 	"dist/",
 	".cache/",
 	"__pycache__/",
+	".pytest_cache/",
+	".mypy_cache/",
+	".ruff_cache/",
+	".tox/",
+	".nox/",
 }
 
 // defaultHost is the loopback address bound when no host is configured.
