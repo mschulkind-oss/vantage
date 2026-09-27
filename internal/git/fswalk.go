@@ -11,10 +11,25 @@ import (
 	"github.com/mschulkind-oss/vantage/internal/model"
 )
 
-// dirHasGit reports whether dir contains a ".git" entry (file or directory).
+// dirHasGit reports whether dir contains a ".git" directory (not a worktree file).
 func dirHasGit(dir string) bool {
-	_, err := os.Stat(filepath.Join(dir, ".git"))
-	return err == nil
+	info, err := os.Stat(filepath.Join(dir, ".git"))
+	return err == nil && info.IsDir()
+}
+
+// IsWorktree reports whether dir is a linked git worktree (where .git is a file
+// pointing to a gitdir, as created by "git worktree add").
+func IsWorktree(dir string) bool {
+	gitPath := filepath.Join(dir, ".git")
+	info, err := os.Stat(gitPath)
+	if err != nil || info.IsDir() {
+		return false
+	}
+	data, err := os.ReadFile(gitPath)
+	if err != nil {
+		return false
+	}
+	return strings.HasPrefix(strings.TrimSpace(string(data)), "gitdir:")
 }
 
 // isFile reports whether path exists and is a regular file.
@@ -185,7 +200,7 @@ func (s *GitService) walkSubdir(root string, extLower []string, add func(rel str
 		}
 		if d.IsDir() {
 			name := d.Name()
-			if p != root && (strings.HasPrefix(name, ".") || s.isExcludedDir(name)) {
+			if p != root && (strings.HasPrefix(name, ".") || s.isExcludedDir(name) || IsWorktree(p)) {
 				return fs.SkipDir
 			}
 			return nil

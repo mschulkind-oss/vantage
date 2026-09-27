@@ -103,7 +103,7 @@ func TestShouldPruneDir(t *testing.T) {
 
 func TestShouldPruneDirUsesWatcherDefaults(t *testing.T) {
 	matcher := ignore.NewMatcherWithDefaults(t.TempDir(), false, "", config.DefaultWatcherIgnoreDefaults)
-	for _, rel := range []string{".yolo", ".pi", "node_modules", ".venv", "venv", "target", "build", "dist", ".cache", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", ".nox"} {
+	for _, rel := range []string{".yolo", ".pi", "node_modules", ".venv", "venv", "target", "build", "dist", ".cache", "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", ".nox", "worktrees", ".worktrees"} {
 		t.Run(rel, func(t *testing.T) {
 			require.True(t, shouldPruneDir(rel, matcher))
 		})
@@ -222,6 +222,31 @@ func TestAddRecursiveLogsWatchLimitFailuresAsActionableErrors(t *testing.T) {
 	r, ok := findRecord(rec.records, "watcher: failed to add watch; inotify watch limit may be reached — live reload will miss changes under this directory; raise fs.inotify.max_user_watches (e.g. sysctl fs.inotify.max_user_watches=524288)")
 	require.True(t, ok, "ENOSPC Add failure should include the same actionable limit hint as async watcher errors")
 	require.Equal(t, slog.LevelError, r.Level)
+}
+
+func TestAddRecursivePrunesWorktrees(t *testing.T) {
+	root := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "docs"), 0o755))
+
+	// Nested worktree with arbitrary directory name
+	wt := filepath.Join(root, "arbitrary-wt")
+	require.NoError(t, os.MkdirAll(wt, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(wt, ".git"), []byte("gitdir: /elsewhere\n"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Join(wt, "sub"), 0o755))
+
+	w, err := NewWatcher(root, "repoX", nil, nil, false, quietLogger(), []string{})
+	require.NoError(t, err)
+
+	var watched []string
+	w.addWatch = func(path string) error {
+		rel, _ := filepath.Rel(root, path)
+		watched = append(watched, filepath.ToSlash(rel))
+		return nil
+	}
+
+	added := w.addRecursive(root)
+	require.Equal(t, 2, added, "should watch root and docs, but prune worktree and its children")
+	require.ElementsMatch(t, []string{".", "docs"}, watched)
 }
 
 // --- coalescer / debounce ---

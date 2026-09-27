@@ -22,7 +22,7 @@ port = 8000
 # These are filtered out of the sidebar, file picker, and recent files.
 # Defaults (if omitted): node_modules, .venv, venv, __pycache__,
 #   .pytest_cache, .mypy_cache, .ruff_cache, .egg-info, .tox, .nox,
-#   dist, build, target, .cache, .git, .hg, .svn
+#   dist, build, target, .cache, .git, .hg, .svn, worktrees, .worktrees
 #
 # To override the defaults with your own list:
 # exclude_dirs = ["node_modules", ".venv", "vendor"]
@@ -51,11 +51,11 @@ port = 8000
 # consume one OS watch per directory. A later ~/.config/vantage/ignore or
 # .vantageignore negation can restore one, e.g. !target/. Set an empty list to
 # disable these watcher-only defaults. This does not affect listings or recents.
-# watcher_ignore_defaults = [".yolo/", ".pi/", "node_modules/", ".venv/", "venv/", "target/", "build/", "dist/", ".cache/", "__pycache__/"]
+# watcher_ignore_defaults = [".yolo/", ".pi/", "node_modules/", ".venv/", "venv/", "target/", "build/", "dist/", ".cache/", "__pycache__/", "worktrees/", ".worktrees/"]
 
 # Source directories: parent directories that are automatically scanned
 # for git repos.  Any subdirectory containing a .git folder is added as
-# a repo (using the directory name).  Repos already listed in [[repos]]
+# a repo (using the directory name; linked worktrees are skipped).  Repos already listed in [[repos]]
 # are not duplicated.  The scan runs at startup and every 30 seconds after
 # it, so a repo cloned into one of these directories is served without a
 # restart, and one whose directory is gone stops being served.  Repos listed
