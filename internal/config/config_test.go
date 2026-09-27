@@ -33,7 +33,7 @@ func TestDefaults(t *testing.T) {
 	require.Equal(t, ".yolo/", DefaultWatcherIgnoreDefaults[0])
 
 	require.Contains(t, DefaultExcludeDirs, "target", "target must be in DefaultExcludeDirs")
-	for _, expected := range []string{"target/", "build/", "dist/", ".cache/", "__pycache__/"} {
+	for _, expected := range []string{".pi/", "target/", "build/", "dist/", ".cache/", "__pycache__/", ".pytest_cache/", ".mypy_cache/", ".ruff_cache/", ".tox/", ".nox/"} {
 		require.Contains(t, DefaultWatcherIgnoreDefaults, expected)
 	}
 }

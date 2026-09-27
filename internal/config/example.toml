@@ -51,7 +51,7 @@ port = 8000
 # consume one OS watch per directory. A later ~/.config/vantage/ignore or
 # .vantageignore negation can restore one, e.g. !target/. Set an empty list to
 # disable these watcher-only defaults. This does not affect listings or recents.
-# watcher_ignore_defaults = [".yolo/", "node_modules/", ".venv/", "venv/", "target/", "build/", "dist/", ".cache/", "__pycache__/"]
+# watcher_ignore_defaults = [".yolo/", ".pi/", "node_modules/", ".venv/", "venv/", "target/", "build/", "dist/", ".cache/", "__pycache__/"]
 
 # Source directories: parent directories that are automatically scanned
 # for git repos.  Any subdirectory containing a .git folder is added as
