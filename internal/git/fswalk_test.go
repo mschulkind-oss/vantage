@@ -54,6 +54,9 @@ func TestDirHasGitRequiresDirectory(t *testing.T) {
 
 func TestDiscoverChildReposSkipsWorktrees(t *testing.T) {
 	parent := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(parent); err == nil {
+		parent = resolved
+	}
 
 	// Normal repo
 	repo := filepath.Join(parent, "repo")
@@ -72,6 +75,9 @@ func TestDiscoverChildReposSkipsWorktrees(t *testing.T) {
 
 func TestWalkSubdirSkipsWorktrees(t *testing.T) {
 	parent := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(parent); err == nil {
+		parent = resolved
+	}
 	subdir := filepath.Join(parent, "sub")
 	require.NoError(t, os.MkdirAll(subdir, 0o755))
 	writeFile(t, parent, "sub/normal.md", "# Normal\n")
