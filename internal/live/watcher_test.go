@@ -103,7 +103,7 @@ func TestShouldPruneDir(t *testing.T) {
 
 func TestShouldPruneDirUsesWatcherDefaults(t *testing.T) {
 	matcher := ignore.NewMatcherWithDefaults(t.TempDir(), false, "", config.DefaultWatcherIgnoreDefaults)
-	for _, rel := range []string{".yolo", "node_modules", ".venv", "venv", "target"} {
+	for _, rel := range []string{".yolo", "node_modules", ".venv", "venv", "target", "build", "dist", ".cache", "__pycache__"} {
 		t.Run(rel, func(t *testing.T) {
 			require.True(t, shouldPruneDir(rel, matcher))
 		})

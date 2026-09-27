@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/mschulkind-oss/vantage/internal/config"
 	"github.com/mschulkind-oss/vantage/internal/git"
 	"github.com/mschulkind-oss/vantage/internal/gitenv"
 	"github.com/mschulkind-oss/vantage/internal/model"
@@ -404,6 +405,42 @@ func TestListDirectoryExcludeAndHidden(t *testing.T) {
 		names = append(names, n.Name)
 	}
 	require.ElementsMatch(t, []string{"visible.md", ".dotfile.md"}, names)
+}
+
+func TestListDirectoryExcludesTargetByDefault(t *testing.T) {
+	t.Cleanup(ClearMarkdownDirCache)
+	dir := initRepo(t)
+	writeFile(t, dir, "readme.md", "r\n")
+	writeFile(t, dir, "target/debug/build.md", "b\n")
+
+	svc := New(Config{RootPath: dir, ExcludeDirs: config.DefaultExcludeDirs})
+	nodes, err := svc.ListDirectory(".", Options{})
+	require.NoError(t, err)
+	var names []string
+	for _, n := range nodes {
+		names = append(names, n.Name)
+	}
+	require.Equal(t, []string{"readme.md"}, names, "target must be excluded by DefaultExcludeDirs")
+
+	files := svc.ListAllFiles()
+	require.Equal(t, []string{"readme.md"}, files, "ListAllFiles must prune target")
+}
+
+func TestWalkForMarkdownPrunesExcludedAndIgnored(t *testing.T) {
+	t.Cleanup(ClearMarkdownDirCache)
+	dir := initRepo(t)
+	writeFile(t, dir, "src/node_modules/dep/readme.md", "dep\n")
+	writeFile(t, dir, "src/target/debug/build/out.md", "target\n")
+	writeFile(t, dir, "src/.git/HEAD.md", "git\n")
+
+	svc := New(Config{RootPath: dir, ExcludeDirs: []string{"node_modules", "target"}})
+	// Since all markdown files inside src are in excluded subdirectories, src has no navigable markdown.
+	require.False(t, svc.dirHasMarkdown(filepath.Join(dir, "src")), "excluded subtrees must not cause dirHasMarkdown to be true")
+
+	// Adding a real markdown file outside excluded dirs causes dirHasMarkdown to become true.
+	ClearMarkdownDirCache()
+	writeFile(t, dir, "src/real.md", "real\n")
+	require.True(t, svc.dirHasMarkdown(filepath.Join(dir, "src")))
 }
 
 func TestNonMarkdownFilesHidden(t *testing.T) {
