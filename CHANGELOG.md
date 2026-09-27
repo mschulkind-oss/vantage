@@ -9,6 +9,32 @@ commit log.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-09-27
+
+### Added
+
+**Recent files across all projects on `Shift+R`.** Pressing `Shift+R` opens the
+recent files modal scoped to all configured projects, matching `r` for the
+current project. Rows show their project name and update live via the watcher.
+You can navigate the list with arrow keys or `j` and `k`. See
+[Recently Changed Files](userguide/reference/keyboard-shortcuts.md#recently-changed-files).
+
+**Open picker items in a new tab.** Pressing `Alt+Enter` or `Ctrl+Enter` (or `Cmd+Enter`
+on macOS) in the file picker (`t`, `Shift+T`) or project picker (`Shift+P`) opens
+the highlighted row in a new browser tab. Ctrl-click and middle-click on any row
+work as well. See [File Picker](userguide/reference/keyboard-shortcuts.md#file-picker).
+
+### Fixed
+
+- Build output directories (`target`, `build`, `dist`) and tool caches (`.cache`,
+  `__pycache__`, `.pi`, and test/lint caches) are excluded from file listings,
+  repository discovery, and the filesystem watcher by default. This prevents
+  inotify watch exhaustion and excessive disk I/O while running builds in
+  watched repositories. See [Ignore Files and Live Reload](userguide/reference/configuration.md#ignore-files-and-live-reload).
+- Linked Git worktrees are excluded from repository auto-discovery, directory
+  listings, file picker results, and the live watcher, avoiding duplicate
+  trees and redundant filesystem watches.
+
 ## [0.7.0] - 2026-09-23
 
 Vantage now supports color themes and bookmarks, and reads per-project settings
