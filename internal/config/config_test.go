@@ -31,6 +31,11 @@ func TestDefaults(t *testing.T) {
 	require.Equal(t, ".git", DefaultExcludeDirs[0])
 	c.WatcherIgnoreDefaults[0] = "MUTATED"
 	require.Equal(t, ".yolo/", DefaultWatcherIgnoreDefaults[0])
+
+	require.Contains(t, DefaultExcludeDirs, "target", "target must be in DefaultExcludeDirs")
+	for _, expected := range []string{"target/", "build/", "dist/", ".cache/", "__pycache__/"} {
+		require.Contains(t, DefaultWatcherIgnoreDefaults, expected)
+	}
 }
 
 func TestApplyEnvResolvesConfig(t *testing.T) {

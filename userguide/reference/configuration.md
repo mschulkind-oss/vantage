@@ -102,12 +102,12 @@ This allows Vantage to read files under `~/.dotfiles/gemini/skills` when serving
 
 ## Excluded Directories
 
-By default, Vantage hides common version-control, dependency, cache, and build directories from the sidebar, file picker, and recent files list — for example `.git`, `.hg`, `.svn`, `node_modules`, `vendor`, `dist`, `build`, and `.cache`.
+By default, Vantage hides common version-control, dependency, cache, and build directories from the sidebar, file picker, and recent files list — for example `.git`, `.hg`, `.svn`, `node_modules`, `vendor`, `dist`, `build`, `target`, and `.cache`.
 
 You can override this list in your config:
 
 ```toml
-exclude_dirs = ["node_modules", "vendor", "dist", "build"]
+exclude_dirs = ["node_modules", "vendor", "dist", "build", "target"]
 ```
 
 Setting `exclude_dirs` replaces the default list entirely — include everything you want hidden.
@@ -123,7 +123,7 @@ to disable those two file-backed layers.
 The live-reload watcher has its own built-in patterns before those files:
 
 ```toml
-watcher_ignore_defaults = [".yolo/", "node_modules/", ".venv/", "venv/", "target/"]
+watcher_ignore_defaults = [".yolo/", "node_modules/", ".venv/", "venv/", "target/", "build/", "dist/", ".cache/", "__pycache__/"]
 ```
 
 These are gitignore-style patterns, not directory basenames. They keep generated

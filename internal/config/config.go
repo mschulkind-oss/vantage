@@ -49,7 +49,7 @@ var DefaultExcludeDirs = []string{
 	// Language caches
 	"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".egg-info", ".tox", ".nox",
 	// Build outputs
-	"dist", "build",
+	"dist", "build", "target",
 	// General caches
 	".cache",
 }
@@ -64,6 +64,10 @@ var DefaultWatcherIgnoreDefaults = []string{
 	".venv/",
 	"venv/",
 	"target/",
+	"build/",
+	"dist/",
+	".cache/",
+	"__pycache__/",
 }
 
 // defaultHost is the loopback address bound when no host is configured.

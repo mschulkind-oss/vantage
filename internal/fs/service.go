@@ -514,6 +514,11 @@ func (s *FileSystemService) gitignoredNames(dir string) map[string]struct{} {
 // dirHasMarkdown reports whether dir (recursively) contains any .md file,
 // memoizing the answer for mdDirCacheTTL. It stops at the first match.
 func (s *FileSystemService) dirHasMarkdown(dir string) bool {
+	if dir != s.rootPath {
+		if _, excluded := s.excludeDirs[filepath.Base(dir)]; excluded {
+			return false
+		}
+	}
 	if has, ok := markdownDirCache.get(dir); ok {
 		return has
 	}
@@ -524,9 +529,12 @@ func (s *FileSystemService) dirHasMarkdown(dir string) bool {
 
 // walkForMarkdown walks dir looking for the first .md file, honoring
 // WalkMaxDepth and degrading to false on any walk error (e.g. permission).
+// Excluded, .git, .vantage, and ignored subtrees are pruned so unnavigable
+// directories are never walked.
 func (s *FileSystemService) walkForMarkdown(dir string) bool {
 	maxDepth := s.gitOpts.WalkMaxDepth
 	rootDepth := strings.Count(dir, string(os.PathSeparator))
+	matcher := s.matcher()
 
 	found := false
 	_ = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
@@ -538,6 +546,19 @@ func (s *FileSystemService) walkForMarkdown(dir string) bool {
 			return nil
 		}
 		if d.IsDir() {
+			if p != dir {
+				name := d.Name()
+				if _, excluded := s.excludeDirs[name]; excluded {
+					return fs.SkipDir
+				}
+				if name == ".git" || name == ".vantage" {
+					return fs.SkipDir
+				}
+				rel := s.relPath(p)
+				if matcher != nil && matcher.IsIgnored(rel, true) {
+					return fs.SkipDir
+				}
+			}
 			if maxDepth != nil && strings.Count(p, string(os.PathSeparator))-rootDepth >= *maxDepth {
 				return fs.SkipDir
 			}
