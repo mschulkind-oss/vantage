@@ -24,7 +24,7 @@
     "gray-matter": "^4.0.3",
     "katex": "^0.18.7",
     "lucide-react": "^1.43.0",
-    "marked": "^18.0.4",
+    "marked": "^18.0.14",
     "mermaid": "^12.0.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
