@@ -487,10 +487,10 @@ questions. The ids below still resolve here, so links to them keep working.
 | ID | Ruling / Decision | Date | Settled in | Built |
 | :--- | :--- | :--- | :--- | :--- |
 | OQ-PI1 | Yes: the planning page belongs in Vantage. The user endorsed the vision and asked for a design doc | 2026-09-28 | [design §1](../design/planning-index.md#1-verdict-and-the-principles) | — |
-| OQ-PI2 | Moved to the design as [`OQ-PL2`](../design/planning-index.md#OQ-PL2) | 2026-09-28 | — | — |
+| OQ-PI2 | Moved to the design as [`OQ-PL2`](../design/planning-index.md#decision-ledger) | 2026-09-28 | — | — |
 | OQ-PI3 | Retire the generated block (#4). Live links replace it, as part of the endorsed vision | 2026-09-28 | [design §12](../design/planning-index.md#12-alternatives-considered) | — |
-| OQ-PI4 | Moved to the design as [`OQ-PL1`](../design/planning-index.md#OQ-PL1) | 2026-09-28 | — | — |
-| OQ-PI5 | Moved to the design as [`OQ-PL3`](../design/planning-index.md#OQ-PL3) | 2026-09-28 | — | — |
+| OQ-PI4 | Moved to the design as [`OQ-PL1`](../design/planning-index.md#decision-ledger) | 2026-09-28 | — | — |
+| OQ-PI5 | Moved to the design as [`OQ-PL3`](../design/planning-index.md#decision-ledger) | 2026-09-28 | — | — |
 
 ## Open threads
 
