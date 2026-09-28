@@ -2,15 +2,15 @@
 title: "The planning index — write each planning fact once, and show it wherever it is linked"
 author: "Matt Schulkind"
 date: 2026-09-28
-status: in-review
-stage: DESIGN
+status: accepted
+stage: DECIDED
 tags: [planning, roadmap, viewer, vantage-check, vantage-md, config]
 summary: "Vantage reads a repository's planning documents as a set — frontmatter, open questions, and the links between them — and shows each fact beside every link to it, on a page of its own, and to agents through vantage-check. It never writes a document."
 ---
 
 # The planning index — write each planning fact once, and show it wherever it is linked
 
-**Status:** DESIGN, 2026-09-28. Nothing built. Evidence verified against the tree at `612e784`.
+**Status:** DECIDED, 2026-09-28. Every question is ruled; nothing is built. Evidence verified against the tree at `612e784`.
 
 > **In short.** A roadmap goes stale because it copies each design doc's state. If every
 > planning fact has exactly one home and every other mention of it is a plain link, Vantage
@@ -26,15 +26,15 @@ is a fact that had been copied by hand
 **The shape.** One scan (the *planning index*) and four surfaces that display it: badges on links,
 a planning page, Referenced-by lists plus file-tree badges, and `vantage-check index`.
 
-**Cost.** Two new frontmatter keys and one `.vantage.toml` table. The Matcraft `design-doc` and
-`roadmap` skills change what they write ([§10](#10-what-the-matcraft-skills-change)).
+**Cost.** Two new frontmatter keys and one `.vantage.toml` table. Vantage's style guide and any
+planning conventions built on it change what they write ([§10](#10-what-the-conventions-change)).
 
 **Start at [§3](#3-the-planning-index).** Every surface is a view of that model.
 
-**Needs your ruling:** [OQ-PL1](#OQ-PL1), [OQ-PL2](#OQ-PL2), [OQ-PL3](#OQ-PL3), [OQ-PL4](#OQ-PL4).
+**Needs your ruling:** None.
 
-**Reads with:** [`planning-index-plan.md`](planning-index-plan.md) (the implementation sketch,
-incomplete while questions are open) and [the brainstorm](../brainstorm/planning-index.md)
+**Reads with:** [`planning-index-plan.md`](planning-index-plan.md) (the implementation sketch; it
+becomes the hand-off once completed against the tree) and [the brainstorm](../brainstorm/planning-index.md)
 (the ideas this chose between, and the ones it retired).
 
 ---
@@ -97,8 +97,11 @@ documents, rebuilt from the files and never stored.
 - Only planning documents contribute anything: facts, questions, or links. Any other candidate
   is read, found to be neither, and dropped.
 
-What counts by default is [OQ-PL2](#OQ-PL2). On this repository, `docs/gallery/` has to be
-excluded under any default, because its 11 demo questions outnumber the 6 real ones.
+By default everything is included and nothing is excluded, so a repository that has never
+configured this still gets an index. A repository opts files out with `exclude`. This one
+excludes `docs/gallery/`, whose 11 demo questions outnumber the 6 real ones. Requiring declared
+roots was rejected ([§12](#12-alternatives-considered)): nothing would appear until someone
+wrote the config.
 
 ### 3.2 What a document contributes
 
@@ -122,7 +125,7 @@ A question is identified by **(document path, id)**. It carries:
 
 A question with no `oq` directive does not exist to the index. The `design-doc` skill currently
 exempts 🔒 questions from the directive, so it has to change
-([§10](#10-what-the-matcraft-skills-change)). If an id is duplicated, the first occurrence wins;
+([§10](#10-what-the-conventions-change)). If an id is duplicated, the first occurrence wins;
 the checker already reports the second (`vantage/oq-id-duplicate`).
 
 > [!IMPORTANT]
@@ -170,8 +173,12 @@ numbers are defaults in `[planning]`.
 These are three **top-level** frontmatter keys, next to `status`. They sit at the top level
 because they are facts about the document, while `vantage:` holds only Vantage chrome, and
 because GitHub's frontmatter table then shows each as its own labeled row (verified against this
-repository's [`repo-config.md`](repo-config.md) on 2026-09-26). Whether `stage` should replace the word in the
-prose `**Status:**` line is [OQ-PL1](#OQ-PL1).
+repository's [`repo-config.md`](repo-config.md) on 2026-09-26). **`stage:` is the only place Vantage reads a stage.** Vantage's style guide names it as the
+stage's one home, and a repository that also writes the word in a prose status line has a second
+copy that no tool can read or check (P3). This is decided on generic grounds, not for any one
+set of conventions: a frontmatter key can be read by Vantage, by GitHub's table, and by any
+script, and it is the one spelling a checker can hold to a vocabulary. A prose line, where a
+repository keeps one, carries the date and the *why*, not the word.
 
 ```yaml
 status: in-review
@@ -237,6 +244,9 @@ A link gets a badge when all of the following hold:
 - **Badges appear once the scan finishes, and change as the index updates.** First render never
   waits for them.
 - **In print**, a badge prints as plain text.
+- **On GitHub there are no badges.** A roadmap there is ordered links with their reasons,
+  which are the judged part. The derived part is one click away, in each document's frontmatter
+  table. That is accepted as the cost of writing nothing into the file.
 - **Screen readers** read a badge after the link as its own text, for example
   "agent-bootstrap, in review, design, five open questions".
 
@@ -293,8 +303,15 @@ Each question appears as a card with the following parts:
 
 **Answering** files a comment on the question in its own document. That comment is
 **indistinguishable from one filed with the in-page button**: the same anchor and the same text.
-Filing does not reorder the page. How the agent then receives answers spread across several
-documents is [OQ-PL4](#OQ-PL4).
+Filing does not reorder the page.
+
+**Copy answers** hands the answers to the agent in one trip. The button sits at the top of the
+page and shows how many answers are pending. It copies every comment still pending for the agent
+on a question listed on the page, grouped by document. Each group is the block that document's
+own Copy produces, and one set of responding instructions closes the payload. Agent replies
+already name their `path`, so the reply side needs nothing new. The button is disabled when
+nothing is pending. Other comments in the same documents are not included; each document's own
+Copy still covers those.
 
 **Open document lands at the top of the document**, not at the question (ruled 2026-09-28).
 A question that can't be answered from its own card usually needs the wider document, and no
@@ -364,12 +381,17 @@ CURRENT = "done"
   for bad `[check]` keys.
 - This repository adds `exclude = ["docs/gallery/**"]` and the table above.
 
-## 10. What the Matcraft skills change
+## 10. What the conventions change
 
-The skills live outside this repository, so these changes are proposals for whoever maintains
-them.
+- **Vantage's style guide** (`vantage-check style-guide`, and the user guide's style-guide
+  page) documents `stage`, `next` and `depends-on`, names frontmatter as the stage's one home,
+  and documents the `[planning]` table.
 
-- **`design-doc`:** write `stage:` and `next:` in the frontmatter ([OQ-PL1](#OQ-PL1)). Put an
+The Matcraft skills live outside this repository, so the rest are proposals for whoever
+maintains them.
+
+- **`design-doc`:** write `stage:` and `next:` in the frontmatter, and keep only the date and the
+  why in the prose status line. Put an
   `oq` directive on 🔒 questions too, with no `leaning` required. Drop the hand-maintained
   **Needs your ruling** line, or keep it knowing that nothing checks it (P3).
 - **`roadmap`:** an entry becomes an ordered link plus a one-clause reason. The Doc, Live and
@@ -402,6 +424,9 @@ them.
 | Scanning in Go on the server | **Rejected.** It would be a second Markdown parser, breaking P4 |
 | `stage`/`next` under `vantage:` | **Rejected.** `vantage:` is for chrome, and the keys read worse as a nested table on GitHub |
 | Reading the prose `**Status:**` line | **Rejected.** This repository already spells it several different ways |
+| Writing the stage in both frontmatter and the prose status line | **Rejected.** Two copies, and only one of them can be read or checked |
+| Planning documents only under declared roots | **Rejected.** Nothing appears until someone writes the config |
+| Handing answers to the agent only through each document's own Copy | **Rejected.** Answering three documents from one page would take three trips |
 | Opening a document at the question's anchor | **Rejected** (ruled 2026-09-28). Context is in the wider document, and the contents column puts the question one click away |
 
 ## 13. Risks
@@ -440,70 +465,13 @@ gallery excluded, so it is used the day it ships.
 - On this repository, the first page load has the index ready within 1 s. No document's first
   render waits for it.
 
-## Open Questions
-
-1. 💬 **OQ-PL1: Does `stage:` replace the word in the prose `**Status:**` line?** This changes
-   the `design-doc` skill and every design doc here.
-
-   - **A — Replace it.** The word lives only in frontmatter. The prose line keeps the date and
-     the *why*. The stage has one home, and the checker can hold it to the vocabulary.
-   - **B — Keep both.** The prose line stays as it is and `stage:` is added. That is two homes,
-     and it is exactly the drift [§2](#2-what-exists-today)'s evidence came from.
-
-   <!-- vantage: oq id=OQ-PL1 leaning="A — replace it: the stage word lives only in frontmatter stage:, and the prose status line keeps only the date and the why." -->
-
-   _Leaning:_ A. B is the problem this design exists to remove.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
-
-2. 💬 **OQ-PL2: What makes a file a planning document by default?** This decides what shows up
-   with no configuration in a repository that has never heard of this design.
-
-   - **A — Planning frontmatter or an `oq` directive** ([§3.1](#31-which-files-it-reads)), with
-     everything included and an exclude list. There is nothing to configure, and demos are
-     excluded explicitly.
-   - **B — Only paths under declared roots.** Precise, but nothing appears until someone writes
-     the config.
-
-   <!-- vantage: oq id=OQ-PL2 leaning="A — any file with planning frontmatter or an oq directive, everything included by default, with an exclude list; this repository excludes docs/gallery." -->
-
-   _Leaning:_ A. It costs this repository one line.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
-
-3. 💬 🤷 **OQ-PL3: Is a roadmap that is fully readable only in Vantage acceptable?** On GitHub
-   it is an ordered list of links with their reasons. Status and counts are one click away,
-   in each document's frontmatter table.
-
-   <!-- vantage: oq id=OQ-PL3 leaning="Acceptable — GitHub keeps the order and the reasons, which are the judged part, and the derived part is one click away." -->
-
-   _Leaning:_ Acceptable. This is a preference.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
-
-4. 💬 **OQ-PL4: How does the agent get answers filed on the planning page?** The clipboard
-   handoff covers one document at a time today, and a single sitting on this page can answer
-   questions in several documents.
-
-   - **A — One combined payload.** A **Copy answers** button on the page copies every pending
-     answer, grouped by document. Agent replies already name their `path`, so the reply side
-     needs nothing new.
-   - **B — Per document.** Each document's own Copy stays the only route. Nothing new is built,
-     but three answered documents means three trips.
-
-   <!-- vantage: oq id=OQ-PL4 leaning="A — one Copy answers button on the planning page, grouped by document; replies already carry their path." -->
-
-   _Leaning:_ A.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
-
 ## Decision Ledger
 
 | ID | Ruling / Decision | Date | Settled in | Built |
 | :--- | :--- | :--- | :--- | :--- |
 | — | Build it: a planning index in Vantage, following the brainstorm's direction ([`OQ-PI1`](../brainstorm/planning-index.md#decision-ledger)) | 2026-09-28 | [§1](#1-verdict-and-the-principles) | — |
 | — | **Open document** from the planning page lands at the top of the document, not at the question | 2026-09-28 | [§6.3](#63-a-question-on-the-page) | — |
+| OQ-PL1 | `stage:` is the stage's only home; a prose status line carries the date and the why. Decided on generic grounds, not to fit one set of conventions | 2026-09-28 | [§4](#4-the-header-of-record-stage-next-depends-on) | — |
+| OQ-PL2 | A planning document is any file with planning frontmatter or an `oq` directive; everything is included by default, with an exclude list | 2026-09-28 | [§3.1](#31-which-files-it-reads) | — |
+| OQ-PL3 | A roadmap fully readable only in Vantage is acceptable: GitHub keeps the order and reasons | 2026-09-28 | [§5.3](#53-how-a-badge-behaves) | — |
+| OQ-PL4 | One **Copy answers** button on the planning page, grouped by document | 2026-09-28 | [§6.3](#63-a-question-on-the-page) | — |

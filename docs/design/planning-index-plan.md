@@ -44,5 +44,5 @@ where this file and the design disagree, this file is wrong.
 - **Routes.** Add `/planning/*` next to `/recent/*` in `frontend/src/App.tsx:9-11`.
 - **Badge placement.** Add a post-render hook in the style of `useOpenQuestionButtons`, wired in
   `frontend/src/components/MarkdownViewer.tsx`. Links are resolved by `resolveHref` (`:231-255`).
-- **Blocked on [OQ-PL4](planning-index.md#OQ-PL4):** the combined payload builder. It would sit
+- **The combined payload** ([§6.3](planning-index.md#63-a-question-on-the-page)). Its builder would sit
   next to `copyAllToClipboard` (`useReviewStore.ts:708`).
