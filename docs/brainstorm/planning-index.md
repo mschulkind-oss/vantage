@@ -2,16 +2,16 @@
 title: "Brainstorm — a planning index: write each fact once, and let Vantage show it everywhere it is referenced"
 author: "Matt Schulkind"
 date: 2026-09-25
-status: draft
+status: accepted
 tags: [brainstorm, planning, roadmap, vantage-check, viewer]
 summary: "Every planning fact gets one home: a document's own frontmatter, its `oq` directives, or an ordered list of links. Vantage decorates links with the current state of what they point at, and builds index pages from them, so nobody hand-copies state and no agent has to re-gather it."
 ---
 
 # A planning index: write each fact once, and let Vantage show it wherever it is referenced
 
-**Status:** SKETCH, 2026-09-26. The second pass: it moves from "an index
-command" to "each fact has one home, and every mention of it is a link." Nothing
-is decided, including whether it belongs in Vantage.
+**Status:** SUPERSEDED, 2026-09-28, by the design doc
+[`planning-index.md`](../design/planning-index.md). Ideas #5 and #11 are still
+candidates here, and the retired ideas stay listed with their reasons.
 
 **In short.** A roadmap goes stale because it **copies** each design doc's state
 into another file: the doc's status, how many questions it has open, which one to
@@ -23,8 +23,7 @@ place. Vantage then shows the target's *current* state beside each link, and
 builds index pages from the links. On GitHub, all of it reads as ordinary links
 and frontmatter tables.
 
-**Needs your ruling:** [OQ-PI1](#OQ-PI1), [OQ-PI2](#OQ-PI2), [OQ-PI3](#OQ-PI3),
-[OQ-PI4](#OQ-PI4), [OQ-PI5](#OQ-PI5).
+**Needs your ruling:** None. The live questions moved to the design doc.
 
 ## Terms
 
@@ -231,7 +230,7 @@ this, then edit the lists.
 `roadmap.md` shows as numbered lists of links, each with its clause. That keeps
 the order and the reasons, which are the parts you decided. Clicking a link
 opens a doc whose frontmatter table shows `stage` and `next`. The live counts
-are the only thing GitHub doesn't show ([OQ-PI5](#OQ-PI5)).
+are the only thing GitHub doesn't show ([OQ-PI5](#decision-ledger)).
 
 ### What doesn't change
 
@@ -296,7 +295,7 @@ place to reorder them. Priority is relative, so it needs one list (axiom 5,
 **Cost.** Known keys plus a vocabulary check in the checker (this absorbs #6),
 ~200 LOC. It also changes the Matcraft skills: `design-doc` would write `stage:`
 and `next:`, and stop hand-maintaining the "Needs your ruling" line. See
-[OQ-PI4](#OQ-PI4).
+[OQ-PI4](#decision-ledger).
 
 ## 9. Live links
 
@@ -480,64 +479,18 @@ across the repo, plus Unrouted, which ends the kind of miss that left
 
 **Phase 3: #5 and #11,** once phases 1 and 2 are in daily use.
 
-## Open Questions
+## Decision Ledger
 
-1. 💬 **OQ-PI1: Does a repository-wide planning page (#2) belong in Vantage?**
-   This decides whether Vantage grows views across documents at all, or whether
-   phase 1 stops at chips on links plus the checker.
+The design doc [`planning-index.md`](../design/planning-index.md) now owns this brainstorm's
+questions. The ids below still resolve here, so links to them keep working.
 
-   <!-- vantage: oq id=OQ-PI1 leaning="Yes — answering questions across documents rides on the review inbox, which only Vantage has. Ship phase 1 first (#1, #8, #9), then the planning page with backlinks and file-tree status." -->
-
-   _Leaning:_ Yes, after phase 1. It's review mode across the whole repo, not a
-   work tracker.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
-
-2. 💬 **OQ-PI2: Which files make up the planning tree?** Scanning every Markdown
-   file needs no configuration, but on this repository 11 of 17 questions are
-   gallery demos.
-
-   <!-- vantage: oq id=OQ-PI2 leaning="Default to every file carrying planning frontmatter or an oq directive, with an exclude list in .vantage.toml — zero config elsewhere, one line here for docs/gallery." -->
-
-   _Leaning:_ Scan everything by default, with an exclude list.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
-
-3. 💬 **OQ-PI3: Is the generated roadmap block (#4) dead?** Live links show the
-   same information without writing into the file. What's lost: on GitHub, the
-   roadmap shows plain links with no counts.
-
-   <!-- vantage: oq id=OQ-PI3 leaning="Yes, retire it — the counts it would write were the part that went wrong, and a GitHub reader who clicks a link sees that doc's frontmatter table anyway." -->
-
-   _Leaning:_ Retire it. See [OQ-PI5](#OQ-PI5) for the GitHub cost.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
-
-4. 💬 **OQ-PI4: Should the stage word move from the prose `**Status:**` line into
-   frontmatter `stage:`?** This changes the Matcraft `design-doc` and `roadmap`
-   skills, and every design doc in this repository.
-
-   <!-- vantage: oq id=OQ-PI4 leaning="Yes — one home for the stage; the prose line keeps the why but drops the word, and the skills write stage and next instead of maintaining the Needs your ruling line by hand." -->
-
-   _Leaning:_ Yes. Right now the stage is written twice, and the two copies
-   disagree on this repo.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
-
-5. 💬 🤷 **OQ-PI5: Is a roadmap that's fully readable only in Vantage acceptable?**
-   On GitHub, [#9](#9-live-links)'s roadmap is an ordered list of links with a
-   clause each. The status and counts are one click away rather than inline.
-
-   <!-- vantage: oq id=OQ-PI5 leaning="Acceptable — the roadmap on GitHub keeps its order and reasons, which are the judged part; the derived part is one click away in each doc's frontmatter table." -->
-
-   _Leaning:_ Acceptable, though this is your preference to set.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
+| ID | Ruling / Decision | Date | Settled in | Built |
+| :--- | :--- | :--- | :--- | :--- |
+| OQ-PI1 | Yes: the planning page belongs in Vantage. The user endorsed the vision and asked for a design doc | 2026-09-28 | [design §1](../design/planning-index.md#1-verdict-and-the-principles) | — |
+| OQ-PI2 | Moved to the design as [`OQ-PL2`](../design/planning-index.md#OQ-PL2) | 2026-09-28 | — | — |
+| OQ-PI3 | Retire the generated block (#4). Live links replace it, as part of the endorsed vision | 2026-09-28 | [design §12](../design/planning-index.md#12-alternatives-considered) | — |
+| OQ-PI4 | Moved to the design as [`OQ-PL1`](../design/planning-index.md#OQ-PL1) | 2026-09-28 | — | — |
+| OQ-PI5 | Moved to the design as [`OQ-PL3`](../design/planning-index.md#OQ-PL3) | 2026-09-28 | — | — |
 
 ## Open threads
 
