@@ -105,6 +105,140 @@ through [#11](#11-freshness-of-reference-docs), is about 2,400 LOC, roughly two
 and a half weeks. So it ships in phases (see [the pick](#if-you-want-my-pick)),
 and phase 1 fits the budget.
 
+## What it looks like to use
+
+A Monday on this repository, once phases 1 and 2 have shipped. Screens are
+sketches, not specifications. The `g p` shortcut is proposed here; it's free
+today and matches `g h` and `g r`.
+
+### What you write
+
+The roadmap file is ordered lists of links. That's the entire file:
+
+```markdown
+# Roadmap
+
+## Rule these first
+
+1. [OQ-B2](docs/design/agent-bootstrap.md#OQ-B2) — the install step waits on it
+2. [OQ-CT6](docs/design/color-themes.md#OQ-CT6) — repository themes can't load until it's ruled
+
+## Building
+
+- [color-themes](docs/design/color-themes.md) — semantic tokens, one area per PR
+
+## This week
+
+- [color-themes](docs/design/color-themes.md)
+- [OQ-B2](docs/design/agent-bootstrap.md#OQ-B2)
+```
+
+A design doc's header gains two keys, `stage` and `next`. The rest of the doc is
+unchanged.
+
+### Opening the roadmap
+
+Vantage renders the same file with each link's current state beside it:
+
+```text
+Rule these first
+  1. OQ-B2  💬 open · agent-bootstrap · DESIGN     — the install step waits on it
+  2. OQ-CT6  ✅ ruled                                — repository themes can't load…
+             └ answered since this was written; remove the entry?
+
+Building
+  • color-themes  in-review · PROTOTYPE · 💬 0       — semantic tokens, one area per PR
+
+This week
+  • color-themes  in-review · PROTOTYPE · 💬 0
+  • OQ-B2  💬 open
+```
+
+Entry 2 shows at a glance that it's stale. Nobody had to reconcile anything to
+find that out. Removing the entry is still your edit to make.
+
+### The planning page (`g p`)
+
+```text
+┌ vantage · planning ─────────────────────────────────────────────────┐
+│ Needs you (2)                               in roadmap order        │
+│   OQ-B2  agent-bootstrap · The payload's install step              │
+│           Leaning: install into AGENTS.md, never overwrite …        │
+│           [ Take this leaning ]  [ Answer… ]                        │
+│   OQ-CT6  color-themes · Repository-supplied themes                 │
+│           [ Take this leaning ]  [ Answer… ]                        │
+│                                                                     │
+│ Unrouted (4)                 live, and nothing on the roadmap links │
+│   OQ-B1 · OQ-B3 · OQ-B4 · OQ-B5    agent-bootstrap              │
+│                                                                     │
+│ Ready (1)        accepted, no open questions, not built             │
+│   repo-config    DESIGNED                                           │
+│                                                                     │
+│ Graduate (2)     built, no open questions: hand to system-doc       │
+│   check-performance · linked-references                             │
+│                                                                     │
+│ Stale references (1)                                                │
+│   inline-markup.md   ⚠ 4 covered files changed since 3134838        │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+Clicking **Take this leaning** files an ordinary review comment on that
+question, in its own document. It's the same thing the in-page button does. The
+agent picks it up from the review inbox, writes the ruling in, and compacts the
+question. On your next visit, that question has left **Needs you**, and its
+roadmap entry shows `✅`.
+
+### Inside a design doc
+
+```text
+agent-bootstrap.md                         in-review · DESIGN · 💬 5
+  next: Rule OQ-B2 — the payload's install step waits on it
+  depends on: pypi-distribution  accepted · DECIDED · 💬 0
+  Referenced by: roadmap.md (Rule these first #1) · agent-cli.md
+```
+
+The contents column keeps its question list and tally, which exist today.
+
+### In the file tree
+
+```text
+docs/design/
+  agent-bootstrap.md     DESIGN   💬 5
+  color-themes.md        PROTOTYPE
+  repo-config.md         DESIGNED
+```
+
+### What an agent sees
+
+```text
+$ vantage-check index
+roadmap.md
+  Rule these first
+    1. OQ-B2   open    agent-bootstrap (in-review, DESIGN)
+    2. OQ-CT6   ruled   ← stale entry
+unrouted: OQ-B1 OQ-B3 OQ-B4 OQ-B5 (agent-bootstrap.md)
+ready: repo-config.md
+graduate: check-performance.md linked-references.md
+stale-reference: docs/reference/inline-markup.md (4 files since 3134838)
+```
+
+This is the same model as the planning page. `--format json` gives the
+machine-readable version. The `roadmap` skill's reconcile step becomes: run
+this, then edit the lists.
+
+### On GitHub
+
+`roadmap.md` shows as numbered lists of links, each with its clause. That keeps
+the order and the reasons, which are the parts you decided. Clicking a link
+opens a doc whose frontmatter table shows `stage` and `next`. The live counts
+are the only thing GitHub doesn't show ([OQ-PI5](#OQ-PI5)).
+
+### What doesn't change
+
+You still decide the order, still write the reason for each entry, and still
+delete an entry once it's done. Vantage never edits a file. It only tells you
+which entries have gone stale.
+
 ## Overview
 
 | # | Idea | Home it reads | Est. LOC | Verdict |
@@ -130,7 +264,7 @@ frontmatter, and nowhere else:
 ```yaml
 status: in-review        # Vantage's four, as today
 stage: DESIGN            # the owed word; vocabulary declared in .vantage.toml
-next: "Rule OQ-AB2 — the payload's install step waits on it"
+next: "Rule OQ-B2 — the payload's install step waits on it"
 depends-on:
   - pypi-distribution.md
 ```
@@ -182,7 +316,7 @@ a clause saying why now — plus a link:
 ```markdown
 ## Rule these first
 
-1. [OQ-AB2](docs/design/agent-bootstrap.md#OQ-AB2) — the install step is built and waiting on it
+1. [OQ-B2](docs/design/agent-bootstrap.md#OQ-B2) — the install step is built and waiting on it
 2. [OQ-CT6](docs/design/color-themes.md#OQ-CT6) — repository themes can't load until it's ruled
 ```
 
