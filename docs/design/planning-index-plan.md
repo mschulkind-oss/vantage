@@ -6,15 +6,17 @@ next: "Build WP-A alone; every other work package codes against its types"
 depends-on:
   - planning-index.md
 tags: [planning, implementation-plan]
-summary: "Build hand-off for the whole planning-index design, phases 1 and 2: six work packages with disjoint file sets, the contracts between them, and the tests that prove each behavior."
+summary: "Build hand-off for the whole planning-index design, phases 1 and 2: seven work packages with disjoint file sets, the contracts between them, and the tests that prove each behavior."
 ---
 
 # The planning index — implementation plan
 
 **Design:** [`planning-index.md`](planning-index.md) · **Status:** promoted from sketch on
-2026-09-28; build-ready for phases 1 and 2. Ten questions for the coordinator remain, each
-with a default the work can proceed on ([below](#questions-for-the-coordinator)). Written
-against `4948138`, 2026-09-28.
+2026-09-28 and revised after review the same day; build-ready for phases 1 and 2 on the
+defaults below. Twenty questions for the coordinator remain, each with a default the work can
+proceed on ([below](#questions-for-the-coordinator)). Fifteen of them change observable
+behavior, so the design's *Needs your ruling: None* is not yet true. Written against
+`4948138`; revised against `dc400f6`, 2026-09-28.
 
 **Precedence.** The design wins on behavior. The tree wins on fact: when a file has moved or a
 helper is gone, follow the tree and say so in the commit. This plan is advice, and it is the
@@ -22,12 +24,15 @@ first thing to be wrong. Never twist the code to match it.
 
 **Terms.** A *work package* (WP, coined here) is a slice with its own file set, built in its
 own worktree and cherry-picked onto `main`. The *post-pass* (coined here) is the planning
-rules' run in `check`'s main thread after the per-file workers finish. A *live question* (the
-plan's reading, Q6) is any question the index holds, whatever its state. A compacted question
-has lost its directive, so the index no longer holds it. An *agreement test* runs two
-implementations over one corpus and asserts equal answers, as
-`frontend/src/lib/pipelineAgreement.test.tsx` does. The rest are the design's terms:
-[planning index](planning-index.md#3-the-planning-index),
+rules' run in `check`'s main thread after the per-file workers finish. A *narrow index*
+(coined here) is the index `check` builds from the roadmap plus the run's own files, with no
+walk of the tree. The *single-path mode* (coined here) is the planning endpoint answering for
+one `?path=`. A question's *unit* (coined here) is the element at its `unitLine`: the `<li>`,
+or the host block outside a list. A *live question* (the plan's reading, Q6) is any question
+the index holds, whatever its state. A compacted question has lost its directive, so the
+index no longer holds it. An *agreement test* runs two implementations over one corpus and
+asserts equal answers, as `frontend/src/lib/pipelineAgreement.test.tsx` does. The rest are
+the design's terms: [planning index](planning-index.md#3-the-planning-index),
 [candidate and planning document](planning-index.md#31-which-files-it-reads),
 [stage role](planning-index.md#4-the-header-of-record-stage-next-depends-on),
 [routed](planning-index.md#61-the-roadmap).
@@ -36,28 +41,33 @@ implementations over one corpus and asserts equal answers, as
 
 1. **WP-A, alone.** Every other WP codes against its types, and it moves checker helpers that C
    must not touch.
-2. **WP-B, WP-C, WP-D and WP-F in parallel**, once A is on `main`.
-3. **WP-E after WP-D.** It consumes D's store, badge component and `embedded` viewer.
+2. **WP-B, WP-C, WP-D and WP-F1 in parallel**, once A is on `main`.
+3. **WP-E after WP-D.** It consumes D's store, badge component, socket option and `embedded`
+   viewer.
+4. **WP-F2 after WP-E.** It documents what E ships.
 
 Cherry-pick constraints:
 
-- **F's `.vantage.toml` lands after C.** Its `"planning/unrouted"` line is an unknown rule to
-  today's checker, which exits 2 (`config.ts:151-167`), and the gate goes red. F's other
+- **F1's `.vantage.toml` lands after C.** Its `"planning/unrouted"` line is an unknown rule to
+  today's checker, which exits 2 (`config.ts:151-167`), and the gate goes red. F1's other
   commits can land in any order.
 - **D's and E's e2e specs need B.** Their unit tests mock the endpoint.
-- **Phases** ([§14](planning-index.md#14-sequencing)): phase 1 is A, B, C, F and D's store and
-  link badges. Phase 2 is D's Referenced by and tree badges, plus E. D commits its phase-1
-  slice first, so a release can stop at the line.
+- **Phases** ([§14](planning-index.md#14-sequencing)): phase 1 is A, B, C, F1 and D's phase-1
+  slice (the store, the socket calls, link badges, and the `next` link). Phase 2 is D's
+  Referenced by and tree badges, then E, then F2. D commits its phase-1 slice first, so a
+  release can stop at the line and document only what it ships.
 
 ## Shared contracts
 
 What the WPs code against. Changing one after A lands is a coordinator decision.
 
-### vantage-md exports (A provides; C, D and E consume)
+### vantage-md planning module (A provides; C, D and E consume)
 
-All pure and JSON-serializable (no `Map`, `Set` or class), exported from
-`packages/vantage-md/src/index.ts`. The frontend reaches vantage-md only through that entry
-(`frontend/vite.config.ts:77-90`).
+All pure and JSON-serializable (no `Map`, `Set` or class). Exported from
+`packages/vantage-md/src/planning/index.ts`, **not** from the published entry
+`src/index.ts` (Q19). The frontend reaches it as `vantage-md/planning` through an alias in
+`frontend/vite.config.ts`, `frontend/vitest.config.ts` and `frontend/tsconfig.app.json`;
+vantage-check imports it by relative path, as it does the rest of vantage-md.
 
 ```ts
 // ---- config ---------------------------------------------------------------
@@ -69,10 +79,10 @@ export interface PlanningConfig {
   exclude: string[];     // default []
   maxFileBytes: number;  // default 1048576
   maxCandidates: number; // default 5000
-  stages: Record<string, StageRole> | null; // null: [planning.stages] absent
+  stages: Record<string, StageRole> | null; // null: [planning.stages] absent or empty (Q20)
 }
 export const DEFAULT_PLANNING_CONFIG: Readonly<PlanningConfig>;
-export function compileIgnorePatterns(lines: readonly string[]): (path: string) => boolean; // server semantics (Q1)
+export function compileIgnorePatterns(lines: readonly string[]): (path: string) => boolean; // Go's MatchesPath (Q1)
 export function candidateMatcher(config: PlanningConfig): (path: string) => boolean; // include && !exclude; roadmap always (Q2)
 
 // ---- one document -----------------------------------------------------------
@@ -88,7 +98,7 @@ export interface PlanningQuestion {
   leaning: string | null;  // normalizeLeaning(leaning=); null when absent or empty
   line: number;            // file line of the block the in-page button anchors on
   unitLine: number;        // file line of the enclosing <li>; === line outside a list item
-  block: { startLine: number; endLine: number }; // root-level block holding it, file lines
+  block: { startLine: number; endLine: number }; // the root-level block holding it; a root-level directive's starts at its run's first comment
 }
 export interface PlanningLink {
   target: string;          // repo-relative, normalized
@@ -99,41 +109,55 @@ export interface PlanningLink {
 }
 export interface DependsOn {
   raw: string;
-  target: string | null;   // null when it does not resolve inside the repository
+  target: string | null;   // null when it resolves outside the repository
   fragment: string | null;
   line: number;            // file line of the entry; 1 when unknown
 }
+export interface HeaderProblem { key: "stage" | "next" | "depends-on"; line: number; message: string }
 export interface PlanningDocument {
   path: string;
   status: DocStatus | null; // only the four; the key's presence still makes it planning
-  stage: string | null;
+  stage: string | null;     // a trimmed non-empty string, as written; else null plus a HeaderProblem
   stageLine: number | null;
-  next: string | null;
-  dependsOn: DependsOn[];
+  next: string | null;      // a one-line string, trimmed; else null plus a HeaderProblem
+  dependsOn: DependsOn[];   // a scalar string is a one-entry list; a non-string entry is dropped plus a HeaderProblem
+  headerProblems: HeaderProblem[];
   questions: PlanningQuestion[]; // document order
-  links: PlanningLink[];         // document order; repo-relative only; self-links kept
+  links: PlanningLink[];         // document order; every repo-relative link, self-links kept
   ids: string[];                 // unique OQ-shaped tokens in the raw text, first-seen order
 }
-export type ScanResult = { kind: "planning"; document: PlanningDocument } | { kind: "not-planning" };
+export type ScanResult =
+  | { kind: "planning"; document: PlanningDocument }
+  | { kind: "not-planning" }
+  | { kind: "unreadable"; reason: string }; // parseFrontmatter set `problem` (Q20)
 export function scanPlanningDocument(path: string, source: string, isRoadmap: boolean): ScanResult;
-export function scanParsedDocument(path: string, source: string, frontmatter: ParsedFrontmatter,
-  mdast: Root, isRoadmap: boolean): ScanResult; // the checker has already parsed
 export function normalizeLeaning(raw: string): string; // the plugin's collapse, trim and cap
 
 // ---- the index --------------------------------------------------------------
+export interface PlanningSources { // the batch, camelCased
+  config: PlanningConfig; candidateCount: number; refused: boolean;
+  files: { path: string; content: string }[];
+  skipped: { path: string; size: number }[];
+  unreadable: { path: string; reason: string }[];
+}
+export type SourceEntry = // one path, from the single-path mode
+  | { kind: "file"; path: string; content: string }
+  | { kind: "skipped"; path: string; size: number }
+  | { kind: "unreadable"; path: string; reason: string }
+  | { kind: "absent"; path: string }; // missing, or not a candidate
+export function parsePlanningSources(json: unknown): PlanningSources | null; // null on any other shape
+export function parseSourceEntry(json: unknown): SourceEntry | null;
 export interface PlanningIndex {
   config: PlanningConfig;
-  candidateCount: number;
-  refused: boolean;              // candidateCount > maxCandidates; documents is then []
+  candidateCount: number;        // as of the last batch
+  refused: boolean;              // documents, skipped and unreadable are then []
   documents: PlanningDocument[]; // by path
   skipped: { path: string; size: number }[];      // over maxFileBytes, by path
-  unreadable: { path: string; reason: string }[]; // read or scan failure, by path
+  unreadable: { path: string; reason: string }[]; // B's read failures plus ScanResult "unreadable", by path
 }
-export function buildPlanningIndex(input: { config: PlanningConfig; candidateCount: number;
-  files: { path: string; content: string }[]; skipped?: PlanningIndex["skipped"];
-  unreadable?: PlanningIndex["unreadable"] }): PlanningIndex; // a scan that throws => unreadable
-export function withDocument(index: PlanningIndex, path: string, content: string): PlanningIndex;
-export function withoutDocument(index: PlanningIndex, path: string): PlanningIndex;
+export function buildPlanningIndex(sources: PlanningSources): PlanningIndex;
+export function applySource(index: PlanningIndex, entry: SourceEntry): PlanningIndex;
+export function withoutDirectory(index: PlanningIndex, dir: string): PlanningIndex;
 export function findDocument(index: PlanningIndex, path: string): PlanningDocument | undefined;
 
 // ---- badges (design §5) -------------------------------------------------------
@@ -157,9 +181,9 @@ export type WaitingEntry =
   | { kind: "question"; question: QuestionRef }
   | { kind: "document"; path: string; waitingOn: DependsOn[] };
 export interface PlanningSections {
-  roadmap: { path: string; present: boolean };
+  roadmap: { path: string; present: boolean }; // false: missing, skipped or unreadable (Q20)
   stagesDeclared: boolean;
-  nothingNeedsYou: boolean;       // no open question anywhere
+  nothingNeedsYou: boolean;       // no open question in any document without the done role
   needsYou: RoutedQuestion[];     // no roadmap: every open question, by path then line
   unrouted: QuestionRef[] | null; // null when there is no roadmap
   waiting: WaitingEntry[];
@@ -181,13 +205,56 @@ export interface Reference { from: string; heading: string | null; line: number 
 export function referencedBy(index: PlanningIndex, path: string): Reference[];
   // planning sources only, self-links dropped, one per (from, heading), by from then line
 export function questionCardSource(source: string, question: PlanningQuestion):
-  { markdown: string; lineOffset: number }; // question.block's lines, then the doc's definitions
+  { markdown: string; lineOffset: number };
 ```
+
+Rules the types cannot carry. A tests each one.
+
+- **Roadmap identity.** `isRoadmap` is `path === config.roadmap`, decided inside
+  `buildPlanningIndex` and `applySource`. No caller passes it.
+- **Refusal and the count belong to the batch.** `applySource` and `withoutDirectory` return a
+  refused index unchanged, and never touch `candidateCount` or `refused`, because
+  non-planning candidates are not recorded and a client cannot tell a new path from a known
+  one. The count is as of the last full scan; only a rescan changes either field.
+- **`applySource`** removes the path from `documents`, `skipped` and `unreadable` first, then
+  adds it by kind. A `file` that scans as `not-planning` adds nothing; one that scans as
+  `unreadable` goes to `unreadable`. **`withoutDirectory`** drops every entry under
+  `dir + "/"`.
+- **`parsePlanningSources`** maps the endpoint's snake_case (`candidate_count`,
+  `max_file_bytes`, `max_candidates`) and returns `null` unless `config`, `files`, `skipped`
+  and `unreadable` are present with the right types. A static export's SPA fallback answers
+  the batch URL with `index.html` at 200 (below, WP-D).
+- **The `done` role contributes nothing to any section.** Its questions are not routed, not in
+  Needs you, Unrouted or Waiting, and do not count against `nothingNeedsYou`. Badges,
+  Referenced by and tree badges are unaffected
+  ([§4](planning-index.md#4-the-header-of-record-stage-next-depends-on), "left off the page").
+  A `depends-on` whose target has the `done` role never waits (Q11).
+- **Routing.** A bare document link and a `#OQ-…` link route; a heading link routes nothing
+  (Q12).
+- **`nothingNeedsYou`** can be true while Needs you holds ✅ answered questions; the page then
+  shows both ([§6.2](planning-index.md#62-sections-top-to-bottom)).
+- **`badgeFor` returns `null`** when the target has nothing to show
+  ([§5.1](planning-index.md#51-which-links-get-a-badge) rule 3): no status, no stage, no
+  questions. That covers `status: current` alone and a document whose only `oq` is an orphan,
+  which is still a planning document ([§3.1](planning-index.md#31-which-files-it-reads)). A
+  document badge that would read empty is also `null` (Q20).
+- **Header values** ([§4](planning-index.md#4-the-header-of-record-stage-next-depends-on)).
+  Stage matching is exact and case-sensitive. A multi-word stage is kept as written, and the
+  vocabulary is what rejects it. An out-of-repo `depends-on` keeps `target: null`. Everything
+  else degenerate is in the type comments above (Q20).
+- **`questionCardSource`.** The slice is `question.block`. A root-level directive is its own
+  `html` node before its host (gallery [`OQ-4`](../gallery/open-questions.md#OQ-4) to
+  [`OQ-7`](../gallery/open-questions.md#OQ-7)), so the block starts at that
+  comment, not at the host. The document's link reference definitions follow **after one
+  blank line**: a definition directly after a paragraph is lazy continuation text. A block
+  holding a `footnoteReference` returns the whole source with `lineOffset` 0. Footnotes are
+  numbered in document order, so a slice renders `yes1.` where the document renders `yes2.`,
+  and the anchor hash differs.
 
 ### `GET /api/planning/sources` (B provides; D consumes)
 
-Repo-scoped, so also `/api/r/{repo}/planning/sources`. No parameters. Snake_case like the rest
-of the API; arrays never `null`; every list sorted by path.
+Repo-scoped, so also `/api/r/{repo}/planning/sources`. Snake_case like the rest of the API;
+arrays never `null`; every list sorted by path. Without parameters it answers the batch:
 
 ```json
 {
@@ -207,12 +274,31 @@ of the API; arrays never `null`; every list sorted by path.
 }
 ```
 
-- `stages` is `null` when undeclared. `refused: true` means `files`, `skipped` and
+With `?path=<repo-relative>`, the single-path mode, it answers one entry. This is D's only
+per-file refresh (Q15):
+
+```json
+{ "path": "docs/x.md", "kind": "file", "content": "…" }
+{ "path": "docs/huge.md", "kind": "skipped", "size": 2097152 }
+{ "path": "docs/locked.md", "kind": "unreadable", "reason": "permission denied" }
+{ "path": ".github/pull_request_template.md", "kind": "absent" }
+```
+
+- `stages` is `null` when undeclared or empty. `refused: true` means `files`, `skipped` and
   `unreadable` are `[]` and nothing was opened.
 - `config` is always the effective config: defaults when the table is absent or the file is
   refused, and the refusal is logged.
-- Per-file refreshes use the existing `GET /content?path=` (`{path, content, encoding}`).
-- The `files_changed` push also names the root `.vantage.toml`.
+- The single-path mode applies the batch's own tests: `ListAllFiles`' pruning, `include` and
+  `exclude`, stat before read, the size limit, UTF-8. `absent` covers a missing path and a
+  non-candidate alike; a file that exists but cannot be read is `unreadable`, never `absent`.
+- **Not `/content`**, which lets in paths the listing never yields. The watcher prunes only
+  `.git`, `.vantage` and matcher-ignored directories (`watcher.go:75-96`), so an edit to
+  `.github/pull_request_template.md` is pushed and would be indexed until the next rescan.
+  `/content` also has no size guard, and answers `400 Not a file` for a missing file and an
+  unreadable one alike (`service.go:652-660`).
+- `files_changed` also names the root `.vantage.toml` and the `.md` files already inside a
+  newly created directory, and gains `removed_dirs` (omitempty): a watched directory renamed
+  away or removed, which today yields no file path at all (`watcher.go:303-322`).
 
 ### `vantage-check index` (C provides)
 
@@ -225,7 +311,7 @@ Exit codes: 0 ran, 2 bad arguments or config, 3 could not run (Q7: a refused ind
   "toolVersion": "0.1.0",
   "version": 1,
   "root": "/abs/project",
-  "index": { "…": "PlanningIndex, verbatim" },
+  "index": { "…": "PlanningIndex; each document's links narrowed to other candidates" },
   "sections": { "…": "PlanningSections, verbatim" },
   "roadmap": [
     { "line": 12, "target": "docs/design/x.md", "fragment": null,
@@ -233,6 +319,10 @@ Exit codes: 0 ran, 2 bad arguments or config, 3 could not run (Q7: a refused ind
   ]
 }
 ```
+
+`links` is narrowed on output only, to the walk's candidates minus the document itself, which
+is what [§3.2](planning-index.md#32-what-a-document-contributes) calls a link. The index keeps
+every repo-relative link, because a target's candidacy can change between scans.
 
 Text: non-empty sections in page order, one indented line per entry, and `PLANNING_NOTICES`
 where the page shows them. Then `Roadmap: <path>` and the roadmap's source, with
@@ -246,9 +336,9 @@ In `internal/repoconfig/testdata/`, beside the `shared-config.toml` precedent. N
 
 | File | Shape | Read by |
 | :--- | :--- | :--- |
-| `planning-patterns.json` | `{cases: [{include, exclude, path, candidate}]}` | A's matcher test; B's `internal/planning` test |
-| `planning-config.json` | `{cases: [{name, toml, ok, planning?}]}`, `planning` as `PlanningConfig` | B's repoconfig test; C's config test |
-| `planning-candidates.json` | `{tree: {path: content}, listed: [path]}` | B's `ListAllFiles` test; C's walk test |
+| `planning-patterns.json` | `{cases: [{include, exclude, path, candidate}]}`; every expected value is Go's answer | A's matcher test; B's `internal/planning` test |
+| `planning-config.json` | `{cases: [{name, toml, ok, planning?}]}`, `planning` as `PlanningConfig`; one case is an empty `[planning.stages]` | B's repoconfig test; C's config test |
+| `planning-candidates.json` | `{tree: {path: content}, listed: [path]}`; the tree holds `.github/x.md` and a `DefaultExcludeDirs` path | B's `ListAllFiles` and single-path tests; C's walk test |
 | `shared-config.toml` | gains a valid `[planning]` | both existing shared-fixture tests |
 
 ### Frontend (D provides; E consumes)
@@ -257,17 +347,17 @@ In `internal/repoconfig/testdata/`, beside the `shared-config.toml` precedent. N
 // frontend/src/stores/usePlanningStore.ts
 export type PlanningLoad =
   | { status: "idle" } | { status: "loading" }
-  | { status: "ready"; index: PlanningIndex; version: number;
+  | { status: "ready"; index: PlanningIndex; version: number; rescanning: boolean;
       sources: Readonly<Record<string, string>> } // planning docs' text, for cards and Copy
   | { status: "error"; message: string };
 interface PlanningStore {
   byRepo: Readonly<Record<string, PlanningLoad>>; // "" is single-repo
   reviewEpoch: Readonly<Record<string, number>>;  // `${repo}\n${path}`, bumped on review_changed
-  ensure(repo: string): void;                     // idempotent, background, first need
-  rescan(repo: string): void;                     // Retry, .vantage.toml change, reconnect
-  noteFilesChanged(repo: string, paths: readonly string[]): void;
+  ensure(repo: string): void;  // idempotent, background; no-op until repos load; error at once in static mode
+  rescan(repo: string): void;  // Retry, .vantage.toml; a ready index stays shown until the new batch lands
+  noteFilesChanged(repo: string, paths: readonly string[], removedDirs: readonly string[]): void;
   noteReviewChanged(repo: string, path: string): void;
-  noteReconnect(): void;
+  noteReconnect(): void;       // genuine reconnects only (Q14); nothing for idle, loading or error
 }
 export function usePlanningIndex(): PlanningLoad; // current repo; ensures on mount
 
@@ -275,27 +365,34 @@ export function usePlanningIndex(): PlanningLoad; // current repo; ensures on mo
 export const PLANNING_BADGE_ATTR = "data-vantage-planning-badge";
 export function PlanningBadgeChip(props: { badge: PlanningBadge }): JSX.Element;
 export function planningBadgeElement(badge: PlanningBadge): HTMLElement; // same markup, for DOM passes
+  // role="img", aria-label = badgeSpeech(badge); spacing is a CSS margin, never a text node
 
 // MarkdownViewer gains two optional props
 sourceLineOffset?: number; // added to every data-source-line; default 0
-embedded?: boolean;        // no frontmatter, Referenced by, review wiring, delta flash, drift publish
+embedded?: boolean;        // no frontmatter, Referenced by, comments, buttons, delta flash, drift publish
 
-// frontend/src/lib/reviewAnchor.ts gains, moved from useReviewHighlights.ts:355-393
-export function blockAtLine(byLine: Map<number, HTMLElement[]>, line: number, hash: string): HTMLElement | null;
-export function findHashNeighbor(byHash: Map<string, HTMLElement[]>, hash: string, line: number,
+// frontend/src/lib/reviewAnchor.ts gains, moved from useReviewHighlights.ts:165-185 and :355-393
+export interface BlockIndex { byLine: Map<number, HTMLElement[]>; byHash: Map<string, HTMLElement[]> }
+export function indexBlocks(root: HTMLElement): BlockIndex; // stamps data-block-hash, as the loop did
+export function blockAtLine(index: BlockIndex, line: number, hash: string): HTMLElement | null;
+export function findHashNeighbor(index: BlockIndex, hash: string, line: number,
   radius: number): HTMLElement | null;
+
+// frontend/src/hooks/useWebSocket.ts
+export const useWebSocket: (options?: { viewer?: boolean }) => void;
+  // viewer: false skips the document, tree and recents refreshes; E's page passes it
 ```
 
 ## WP-A — the scan and every derivation (`packages/vantage-md`)
 
 | Path | Change |
 | :--- | :--- |
-| `packages/vantage-md/src/planning/*.ts` | new: config, patterns, scan, index, badges, sections, card source |
+| `packages/vantage-md/src/planning/*.ts` | new: config, patterns, scan, index, badges, sections, card source, and the `index.ts` entry |
 | `packages/vantage-md/src/htmlComments.ts` | new: `scanComments`, moved from the checker's `core/comments.ts` |
 | `packages/vantage-md/src/directiveTargets.ts` | new: target resolution, moved from the checker's `rules/directives.ts` |
 | `packages/vantage-md/src/vantageDirectives.ts` | `normalizeLeaning`, `MAX_LEANING`, `VANTAGE_OQ_PREFERENCE` |
 | `packages/vantage-md/src/rehypeVantageDirectives.ts` | `stampOq` (`:328-350`) calls `normalizeLeaning` |
-| `packages/vantage-md/src/index.ts` | export the contract |
+| `frontend/vite.config.ts`, `frontend/vitest.config.ts`, `frontend/tsconfig.app.json` | the `vantage-md/planning` alias, beside the two that exist (Q19) |
 | `packages/vantage-check/src/core/comments.ts` | becomes a re-export |
 | `packages/vantage-check/src/rules/directives.ts` | imports the moved helpers; behavior unchanged |
 | `internal/repoconfig/testdata/*` | the four fixtures |
@@ -325,6 +422,9 @@ export function findHashNeighbor(byHash: Map<string, HTMLElement[]>, hash: strin
 - **Only answerable directives are questions.** The column lists `answerableOpenQuestions`
   (`useOpenQuestionButtons.ts:216-240`): the host must be in `VANTAGE_OQ_HOST_TARGETS`, and two
   directives on one block are one question. An `oq` above a list, fence or table yields none.
+- **A directive inside a raw HTML block** stamps the inner `<p>`, which the column lists, while
+  the mdast scan sees one `html` node and `nextBlock` answers `"unknown"`
+  (`directives.ts:364-368`, `:481-483`). The index does not count it, pending Q17.
 - **Directives merge per run** (`rehypeVantageDirectives.ts:361-392`), last key wins.
   `collectOqIds` (`packages/vantage-check/src/core/openQuestions.ts:33`) does not merge, so
   don't build on it.
@@ -333,61 +433,93 @@ export function findHashNeighbor(byHash: Map<string, HTMLElement[]>, hash: strin
   `li` or `blockquote` to its first inner block.
 - **Links include `linkReference`** resolved through `definition`; the viewer renders both as
   `<a>`. Code, inline code and html comments are never links.
+- **`parseFrontmatter` never throws** (`frontmatter.ts:11-19`). Invalid YAML gives
+  `frontmatter: {}` with `problem` set, so "a scan that throws" would never fire and a broken
+  header would silently drop its `status` and `stage`. Test `problem`.
 - **Skip the mdast parse for non-planning files.** Test the frontmatter keys and
   `source.includes("vantage:")` first. That is [§13](planning-index.md#13-risks)'s mitigation,
   and [§15](planning-index.md#15-what-done-looks-like)'s 1 s budget depends on it.
 - **The matcher is a port, not a library.** npm `ignore` (7.0.8, present only as a transitive
   dev dependency of `typescript-eslint`) follows git; the server's `sabhiram/go-gitignore` does
   not. It treats `?` as a literal and leaves an inner-slash pattern unanchored, so
-  `docs/gallery/**` also matches `x/docs/gallery/a.md`. Measured on 9 patterns, the two
-  disagree on 4. Port `getPatternFromLine` and `MatchesPathHow` (last match wins; `!` clears
-  only a prior match), and drop a line whose regex will not compile, as Go does. Q1 may
-  change this.
+  `docs/gallery/**` also matches `x/docs/gallery/a.md`. Port `getPatternFromLine` and
+  `MatchesPathHow` (last match wins; `!` clears only a prior match). Q1 may change this.
+- **The port needs a dialect step.** `getPatternFromLine` passes `[`, `(`, `\`, `{` and `+`
+  through into an RE2 expression, and JS `RegExp` is not RE2: `[[:upper:]]*.md` matches
+  `README.md` in Go and not in JS, and `(?=b)` compiles in JS while Go drops the line. Translate
+  POSIX bracket classes; drop a line using lookaround, backreferences or other syntax RE2
+  rejects, as Go drops a line that will not compile; compile without the `u` flag.
+- **Don't export the module from `src/index.ts`.** vantage-md is published, and that entry is
+  semver API that `typetest/consumer.ts` does not cover (Q19).
 
 **Tests** (`frontend/src/lib/`). Prove with `npm run test -w frontend -- src/lib/planning`,
 `npm run test -w vantage-check`, `npm run typecheck -w vantage-md`, `npx tsc --build frontend`.
 
 - [§3.1](planning-index.md#31-which-files-it-reads): planning by `status`, by `stage`, by one
-  `oq`, and as the roadmap; dropped with none.
-- [§3.2](planning-index.md#32-what-a-document-contributes): `status: current` gives `null` and
-  stays planning; links in fences, inline code and comments are excluded; heading attribution;
-  ledger-table ids land in `ids`.
+  `oq`, and as the roadmap; dropped with none. A document whose only `oq` is an orphan is
+  planning, has no questions and gets no badge. A frontmatter `problem` (invalid,
+  unterminated, not a mapping) gives `unreadable` with that reason.
+- [§3.2](planning-index.md#32-what-a-document-contributes): `status: current` gives `null`,
+  stays planning, and gets no badge; links in fences, inline code and comments are excluded;
+  heading attribution; ledger-table ids land in `ids`.
 - [§3.3](planning-index.md#33-a-question): 💬, 💬 🤷, 🔒, ✅ and no marker map to open,
-  preference, blocked, answered and open. A duplicate id gives the second `id: null`. The
-  gallery's orphan (the `oq` above a list in
-  [`open-questions.md`](../gallery/open-questions.md)) is not a question.
+  preference, blocked, answered and open. A duplicate id gives the second `id: null`. Inline
+  fixtures with an `oq` above a list, above a fence and above a table each yield no question.
+  The gallery's orphan example ([`open-questions.md`](../gallery/open-questions.md), `:139-143`)
+  sits inside a `markdown` fence, so it proves fence exclusion only.
 - **The [§3.3](planning-index.md#33-a-question) agreement test** (`planningAgreement.test.tsx`):
   render each corpus document through the app's `MarkdownViewer` and run `collectOutline`.
   Assert the same questions in the same order, equal `id`, and `state` equal to the column's
   `status ?? "open"` (settled is answered). Corpus: every `docs/**/*.md` from disk, gallery
   included, plus fixtures for ✅ in the body, a bare-paragraph question, blockquote and heading
-  hosts, a nested list, and a title containing a link.
+  hosts, a nested list, and a title containing a link. The raw-HTML directive is the one
+  pinned divergence, named for Q17.
+- [§4](planning-index.md#4-the-header-of-record-stage-next-depends-on): each degenerate header
+  value in Q20 (a number, list and date `stage`; a multi-line and a non-string `next`; a
+  scalar `depends-on`; a non-string entry; an out-of-repo target) gives the contract's answer
+  and a `HeaderProblem` where it says so.
 - [§5.1](planning-index.md#51-which-links-get-a-badge),
   [§5.2](planning-index.md#52-what-a-badge-says): every row of the badge table; zero counts
-  dropped; a heading fragment is the document; a self-link and a non-planning target give
-  `null`; an undeclared word gives `stageInVocabulary: false`.
+  dropped; a heading fragment is the document; a self-link, a non-planning target and a
+  target with nothing to show give `null`; an undeclared word gives `stageInVocabulary:
+  false`; a `done` document still gets its badge. `resolveRepoLink` gives `null` for a scheme,
+  `//`, a leading `/` and a path escaping the root, which is the rule
+  [§3.6](planning-index.md#36-failure)'s cross-repository line rests on.
 - [§6.1](planning-index.md#61-the-roadmap), [§6.2](planning-index.md#62-sections-top-to-bottom):
-  routing by question, document and heading link; a second reach keeps its first position;
-  every section's contents, order and empty-hides rule; the no-roadmap and no-stages variants;
-  *Nothing needs you*.
+  routing by question link and by bare document link; a `#decision-ledger` link, as
+  `roadmap.md:16` cites [`OQ-CT1`](color-themes.md#decision-ledger), routes nothing (Q12); a
+  second reach keeps its first position; every section's contents, order and empty-hides
+  rule; the no-roadmap and
+  no-stages variants; a skipped and an unreadable roadmap each route as missing; *Nothing
+  needs you*, including beside a Needs you holding only ✅ questions. A `done` document with an
+  open question is absent from every section and from `nothingNeedsYou`; a `depends-on` on it
+  does not wait.
 - [§7](planning-index.md#7-referenced-by-and-status-in-the-file-tree): self-links excluded,
-  headings named.
+  headings named, no entry from a non-planning document.
 - [§3.5](planning-index.md#35-limits-and-what-happens-past-them): refused at max + 1 and not
   at max; skipped carried through.
-- Matcher: every case in `planning-patterns.json`. Card source: lines round-trip, and
-  definitions come after the block's last line, so no line number moves.
+- Incremental: `applySource` on a refused index returns it unchanged; a rescanned path leaves
+  `skipped` and `unreadable`; `absent` leaves every list; `candidateCount` never moves;
+  `isRoadmap` follows the path; `withoutDirectory("docs/a")` keeps `docs/ab.md`.
+- `parsePlanningSources`: the B contract's example maps field by field; an HTML string,
+  `null`, and a body without `files` each give `null`.
+- Matcher: every case in `planning-patterns.json`, including rows for `[[:upper:]]*.md`,
+  `(?=x)`, `a+b`, `{a,b}` and a directory-only `dir/`. Card source: lines round-trip; a
+  root-level directive's block starts at its comment; definitions follow one blank line; a
+  footnote block returns the whole source.
 
 ## WP-B — config, endpoint, watcher (Go)
 
 | Path | Change |
 | :--- | :--- |
 | `internal/repoconfig/repoconfig.go` | `Settings.Planning`; `ours` (`:133`) claims `planning`; validation; `SettingsNow` |
-| `internal/planning/` | new: candidates, limits, guarded reads, the streamed body |
-| `internal/api/planning_handlers.go` | new: `PlanningSources` |
+| `internal/planning/` | new: candidates, limits, guarded reads, the streamed body, the single-path answer |
+| `internal/api/planning_handlers.go` | new: `PlanningSources`, both modes |
 | `internal/api/routes.go` | `{GET, "/planning/sources", h.PlanningSources, ScopeRepo}` beside `/content` (`:67`) |
 | `internal/api/api.go` | `RepoServices.Config *repoconfig.Config` (`:59-66`) |
 | `internal/server/resolve.go` | `withRepo` (`:92-98`) sets `Config: rs.cfg` |
-| `internal/live/watcher.go` | `classify` (`:53`) keeps exactly the root `.vantage.toml` |
+| `internal/fs/service.go` | `IsListed(rel)`: `ListAllFiles`' pruning (`:589-633`) for one path, one predicate for both |
+| `internal/live/watcher.go` | `classify` (`:53`) keeps exactly the root `.vantage.toml`; a created directory's `.md` files; `removed_dirs` |
 
 Pointer fields, so an absent key and `include = []` stay distinct:
 
@@ -398,13 +530,13 @@ type PlanningSettings struct {
 	Exclude       *[]string         `toml:"exclude"`
 	MaxFileBytes  *int64            `toml:"max-file-bytes"`
 	MaxCandidates *int              `toml:"max-candidates"`
-	Stages        map[string]string `toml:"stages"` // nil: undeclared
+	Stages        map[string]string `toml:"stages"` // nil or empty: undeclared
 }
 func (p PlanningSettings) Resolved() Planning // defaults applied; the endpoint's "config"
 ```
 
 **Reuse.** `fs.ListAllFiles` (`internal/fs/service.go:589`) is the candidate list. Match with
-`gitignore.CompileIgnoreLines` as `starred.Promote` does (`internal/starred/promote.go:153`).
+`gitignore.CompileIgnoreLines`, the call `starred.Promote` makes (`internal/starred/promote.go:153`).
 Read through `pathsafe.Resolve` with `ReadFile`'s UTF-8 test (`service.go:646-666`). Tests use
 `newTestEnv` (`internal/api/handlers_test.go:39`); the server test sits beside
 `TestRepositoryPromotesItsOwnDocuments` (`internal/server/server_test.go:908`), and the
@@ -415,6 +547,9 @@ discovered-repo case mirrors `TestSourceDirRepoIsServedWithoutRestart` (`:458`).
 - **Validation is whole-or-nothing** (`repoconfig.go:107-126`). An unknown `[planning]` key, a
   role outside the four, or a limit below 1 rejects the whole file, `[starred]` and `theme`
   included. Existing behavior: keep it, and log as `promoted()` does (`server.go:316-323`).
+- **Every `include` and `exclude` line goes through the matcher**, literal or not.
+  `starred.Promote` splits literal lines off before matching (`promote.go:122-125`); copying
+  that split would make a literal `roadmap.md` mean something A's port does not.
 - **The reload throttle serves stale config** (`reloadInterval`, `repoconfig.go:56`). The
   `.vantage.toml` push triggers a rescan within about 250 ms, usually inside the window of the
   `/starred` read the same push caused. The endpoint calls `SettingsNow`, which re-stats
@@ -424,6 +559,13 @@ discovered-repo case mirrors `TestSourceDirRepoIsServedWithoutRestart` (`:458`).
   config, and a marshaled slice holds all of it.
 - **`classify` feeds every consumer** (`watcher.go:53`; `flush` at `:379`). Keep only the exact
   root path, so `docs/.vantage.toml` stays dropped. `flush` clears no cache for it, correctly.
+- **Directory events yield no file paths today.** `mv docs/old docs/new` is a Rename of a
+  directory, which `classify` drops, plus a Create that only calls `addRecursive`
+  (`watcher.go:303-322`). Files written into a new directory before its watch exists produce
+  no event at all. Enqueue the `.md` files `addRecursive` walks past, subject to `classify` and
+  the matcher, and broadcast a Rename or Remove of a registered directory in `removed_dirs`.
+  Every consumer now sees those paths; today's recover only because the next push refetches
+  the tree wholesale.
 - **Isolate the user ignore file** in the `ListAllFiles` fixture test. Set `XDG_CONFIG_HOME`
   and call `ignore.ClearCache()`, or the developer's `~/.config/vantage/ignore` changes the
   answer.
@@ -431,53 +573,71 @@ discovered-repo case mirrors `TestSourceDirRepoIsServedWithoutRestart` (`:458`).
 **Tests.** Prove with
 `go test ./internal/repoconfig ./internal/planning ./internal/api ./internal/server ./internal/live ./internal/fs`.
 
-- repoconfig: every case in `planning-config.json`; `[planning]` read from
-  `shared-config.toml`; `SettingsNow` sees an edit made inside the throttle window.
+- repoconfig: every case in `planning-config.json`, the empty `[planning.stages]` resolving to
+  undeclared; `[planning]` read from `shared-config.toml`; `SettingsNow` sees an edit made
+  inside the throttle window.
 - planning: `planning-patterns.json`. At max + 1 the answer is refused and nothing is opened: a
   candidate with mode `000` causes no error. Oversized is skipped, non-UTF-8 is unreadable, and
   a symlink out of the root is never read.
+- single-path: `.github/x.md` carrying `status:` is `absent`; a missing path is `absent`; mode
+  `000` is `unreadable`; an oversized file is `skipped` without being opened.
 - api: the body's shape, with `[]` and never `null`; a bad `[planning]` answers with defaults.
 - server: `/api/r/{repo}/planning/sources` uses that repository's config, in daemon mode and
   for a discovered repository, which is the trap the `repoServices.cfg` comment warns about
   (`server.go:86-91`).
-- live: `TestClassify` (`watcher_test.go:48`) gains rows for the root and nested cases.
-- fs: `planning-candidates.json` gives the same `ListAllFiles` answer as C's walk.
+- live: `TestClassify` (`watcher_test.go:48`) gains rows for the root and nested cases. A
+  renamed directory pushes `removed_dirs` and the new directory's `.md` paths; a file written
+  under a just-created directory is pushed.
+- fs: `planning-candidates.json` gives the same `ListAllFiles` answer as C's walk, and
+  `IsListed` agrees with it on every path in the tree.
 
 ## WP-C — `vantage-check`: config, `index`, four rules
 
 | Path | Change |
 | :--- | :--- |
 | `packages/vantage-check/src/core/config.ts` | parse `root["planning"]` (`:123`) into `LoadedConfig.planning: PlanningConfig` |
-| `packages/vantage-check/src/core/candidates.ts` | new: the walk that mirrors `ListAllFiles` |
-| `packages/vantage-check/src/core/projectRoot.ts` | new: config dir, then git root, then cwd; takes `repositoryRoot` from `links.ts:341` |
+| `packages/vantage-check/src/core/candidates.ts` | new: the walk that mirrors `ListAllFiles`, and `isCandidate` for one path |
+| `packages/vantage-check/src/core/projectRoot.ts` | new: `repositoryRoot`, moved from `links.ts:341-350`; one root for both commands (Q16) |
+| `packages/vantage-check/src/rules/links.ts` | imports `repositoryRoot` from `projectRoot.ts`; behavior unchanged |
 | `packages/vantage-check/src/commands/index.ts` | new: `index` |
-| `packages/vantage-check/src/rules/planning.ts` | new: the post-pass |
+| `packages/vantage-check/src/rules/planning.ts` | new: the post-pass over a narrow index |
 | `packages/vantage-check/src/rules/registry.ts` | four `planning/*` entries |
-| `packages/vantage-check/src/commands/check.ts` | run the post-pass after the report (`:85-99`) |
+| `packages/vantage-check/src/commands/check.ts` | run the post-pass before the report renders (`:85-99`) |
 | `packages/vantage-check/src/cli.ts`, `help.ts` | `index` in `COMMANDS` (`cli.ts:19`), its parser, `USAGE` |
 
 **Reuse.** `loadConfig` and `findConfig` (`config.ts:46-99`); `ConfigError`, which maps to exit
-2; `loadDocument` with `scanParsedDocument`, so a file parses once; `displayPath`;
-`sortFindings` (`report/text.ts:127`); `Settings.severity`; `makeTree` (`test/helpers.ts:28`).
-Drive commands through `run(argv, io)` as `cli.test.ts` does.
+2; `scanPlanningDocument` over each re-read file; `displayPath`; `sortFindings`
+(`report/text.ts:127`); `Settings.severity`; `makeTree` (`test/helpers.ts:28`). Drive commands
+through `run(argv, io)` as `cli.test.ts` does.
 
 **Traps.**
 
 - **All four rules run in the post-pass**, `stage-vocabulary` and `depends-on-missing`
-  included. A worker gets only rule overrides (`ShardRequest`, `core/parallel.ts`); widening
-  that protocol costs more than re-parsing planning documents. Report only for files in the
-  run's list, with `file` from `displayPath`.
-- **Root the post-pass at `repositoryRoot(firstTarget)`, never at the config file.**
-  `_self-check` passes `--config "$(mktemp)"` (`Justfile:220-224`), so the config's directory
-  is `/tmp`. For `index`, follow
-  [§8](planning-index.md#8-vantage-check-index-and-the-planning-rules) literally.
+  included. A worker gets only rule overrides (`ShardRequest`, `core/parallel.ts`) and returns
+  only a `ShardReport`, so the post-pass parses each planning document a second time. Budget:
+  `loadDocument` averages 9.2 ms per file
+  ([`check-performance.md` §2](check-performance.md#2-where-the-time-went)), about 0.15 s over
+  this repository's planning documents. Record the measured cost in C's commit. Report only
+  for files in the run's list, with `file` from `displayPath`.
+- **`check` reads a narrow index, never the walk.** Every rule needs only a document and the
+  roadmap: three read the document alone, and `unrouted` reads the roadmap's links plus the
+  document's own questions. `derivePlanningSections` over the roadmap and the run's candidate
+  files gives each of them the membership the full index would. So a one-file
+  `uvx vantage-check x.md` costs one roadmap parse, and there is no count to refuse (Q7).
+- **One root, `repositoryRoot`, for both commands**: the nearest ancestor holding `.git` or
+  `.vantage.toml`. An explicit `--config` never moves it, because `_self-check` passes
+  `--config "$(mktemp)"` (`Justfile:220-224`), whose directory is `/tmp`. With no root,
+  `check` runs the per-document rules only, and `unrouted` finds no roadmap and reports
+  nothing, as the page hides Unrouted without one; `index` falls back to the cwd (Q16).
 - **`--jobs 1` and `--jobs 4` stay byte-identical** (`Justfile:223-229`). The post-pass runs
   once, in the main thread, after either path.
 - **The candidate walk is not `discover`**, which takes `.markdown`, descends into `dist/` and
   `build/`, and ignores `.vantageignore` (`core/discover.ts`). Mirror the server: `.md` only,
   case-insensitively; prune dot-directories, `DefaultExcludeDirs`
   (`internal/config/config.go:44-55`), linked worktrees (`internal/git/fswalk.go:22`) and
-  `.vantageignore` matches; skip symlinks. Per-reader settings are out of reach (Q9).
+  `.vantageignore` matches; skip symlinks. A directory is matched as `rel` and again as
+  `rel + "/"`, as `matchPath` does (`internal/ignore/ignore.go:297-310`), or directory-only
+  patterns never prune. Per-reader settings are out of reach (Q9).
 - **`index` becomes a command word.** `vantage-check index` used to check the path `./index`
   (`cli.ts:53`). Say so in the userguide.
 - **Two meanings of `version`.** `check`'s JSON holds the tool version there
@@ -490,44 +650,62 @@ Drive commands through `run(argv, io)` as `cli.test.ts` does.
 **Tests.** Prove with `npm run test -w vantage-check`, then `just cli` and
 `packages/vantage-check/dist/vantage-check index`.
 
-- config: `planning-config.json`; `shared-config.toml`. candidates: `planning-candidates.json`.
-- index: text golden; JSON shape with `version`; exit codes 0, 2 and 3; roots through the config
-  directory, the git root and cwd, with `--config` and `--no-config`. The `sections` object
-  deep-equals `derivePlanningSections` over the same tree.
+- config: `planning-config.json`; `shared-config.toml`. candidates: `planning-candidates.json`,
+  and `isCandidate` agrees with the walk on every path.
+- index: text golden; JSON shape with `version` and narrowed `links`; exit codes 0, 2 and 3;
+  roots through the config directory, the git root and cwd, with `--config` and
+  `--no-config`. The `sections` object deep-equals `derivePlanningSections` over the same
+  tree. Text and JSON each list Skipped and Could not read, and a refused tree prints
+  `PLANNING_NOTICES.refused` and exits 3.
+- root: `index` and `check` derive the same sections when `--config` points outside the tree;
+  a `.vantage.toml` above the git root does not move the root; a run with no root gives
+  per-document findings only.
 - rules: each fires, and stays quiet, on the
   [§4](planning-index.md#4-the-header-of-record-stage-next-depends-on) table's cases; `unrouted`
-  is off until configured; a finding in an unchecked file is not reported; the in-process
-  `runShard` gives the same findings at 1 and 4 jobs.
+  is off until configured, and quiet on a `done` document's open question; `depends-on-missing`
+  reports an out-of-repo target and a `#OQ-…` id found nowhere in its target (Q20); a finding
+  in an unchecked file is not reported; the in-process `runShard` gives the same findings at
+  1 and 4 jobs. For each fixture tree and each file, the narrow index's findings equal that
+  file's membership in the full index's sections.
 - cli: `index` parses; `index docs` is a usage error; `help` lists the command and the rules.
 
 ## WP-D — store, link badges, Referenced by, tree badges (frontend)
+
+Phase-1 slice, committed first: the store, the socket calls, link badges, and the `next` link.
+Phase 2: Referenced by and tree badges.
 
 | Path | Change |
 | :--- | :--- |
 | `frontend/src/stores/usePlanningStore.ts` | new: the store contract |
 | `frontend/src/components/PlanningBadge.tsx`, `ReferencedBy.tsx`, `PlanningTreeBadge.tsx` | new |
 | `frontend/src/hooks/usePlanningLinkBadges.ts` | new: a post-render pass in `useOpenQuestionButtons`' style |
-| `frontend/src/components/MarkdownViewer.tsx` | `a` (`:609`) stamps `data-vantage-link-target`; the hook; Referenced by below the card (`:702`); click bail (`:529`); two props; memo comparator (`:731-743`) |
-| `frontend/src/lib/reviewAnchor.ts` | the badge attribute in `REVIEW_UI_SELECTOR` (`:52`); the two moved helpers |
-| `frontend/src/hooks/useReviewHighlights.ts` | helpers moved out; drift publish (`:137-146`) off when embedded |
+| `frontend/src/components/MarkdownViewer.tsx` | `a` (`:609`) stamps `data-vantage-link-target`; the hook; Referenced by directly after `<FrontmatterDisplay>` (`:702`); click bail (`:529`); two props; memo comparator (`:731-743`) |
+| `frontend/src/lib/reviewAnchor.ts` | the badge attribute in `REVIEW_UI_SELECTOR` (`:52`); `indexBlocks` and the two moved helpers |
+| `frontend/src/hooks/useReviewHighlights.ts` | calls `indexBlocks`; no comments and no drift publish (`:137-146`) when embedded |
 | `frontend/src/hooks/useDocumentOutline.ts` | `headingText` (`:229`) and `questionLabel` (`:176`) strip badges |
 | `frontend/src/hooks/useDeltaFlash.ts` | snapshots (`:69`) strip badges |
-| `frontend/src/hooks/useWebSocket.ts` | `noteReviewChanged` (`:239`), `noteFilesChanged` (`:257`), `noteReconnect` (`:144`) |
+| `frontend/src/hooks/useWebSocket.ts` | `noteReviewChanged` (`:239`), `noteFilesChanged` with `removed_dirs` (`:257`), `noteReconnect` (`:307-324`); the `viewer` option |
 | `frontend/src/components/FileTree.tsx` | `PlanningTreeBadge` after the name (`:279-287`) |
-| `packages/vantage-md/src/FrontmatterDisplay.tsx` | optional `linkIds`: a bare OQ id in `next` becomes `#id` ([§4](planning-index.md#4-the-header-of-record-stage-next-depends-on)) |
-| `frontend/src/index.css` | badge styles, `user-select: none`, plain text in print |
-| `frontend/e2e/planning.spec.ts`, `frontend/e2e/fixtures/test_repo/planning/*`, `test_repo/.vantage.toml` | new |
+| `packages/vantage-md/src/FrontmatterDisplay.tsx` | optional `linkIds`: a bare OQ id in `next` becomes `#id` ([§4](planning-index.md#4-the-header-of-record-stage-next-depends-on)); phase 1 |
+| `frontend/src/index.css` | badge styles, spacing as margin, the warning tone, `user-select: none`, plain text in print |
+| `frontend/e2e/planning.spec.ts`, `frontend/e2e/fixtures/test_repo/plans/*`, `test_repo/planning/notes.md`, `test_repo/.vantage.toml` | new; `planning/notes.md` is a plain document under a top-level `planning/` directory (Q13) |
 
 **Reuse.** Badge chips use `DOC_STATUS_TONES` and `.vantage-chip--<tone>`
 (`packages/vantage-md/src/DocumentStatusChip.tsx`), so a badge's chip is the status chip. The
 hook takes `useOpenQuestionButtons`' shape (`:252-370`): sweep its own nodes first, re-run on
 content and on the index `version`, leave no trace on unmount. A private `getApiBase` per store
-is house style (`useRepoStore.ts:63`).
+is house style (`useRepoStore.ts:63`). `linkIds` is the ids of
+`findDocument(index, path).questions`: "declares that id" means a question carrying it, never
+a bare token in `ids`, which would link a compacted id to a dead anchor. Until the index is
+ready, `next` renders as plain text.
 
 **Traps.**
 
 - **A badge missing from `REVIEW_UI_SELECTOR` moves every anchor** on its block when a count
   changes: [§13](planning-index.md#13-risks)'s first risk.
+- **Badge spacing is a CSS margin inside the badge element.** A space text node beside it
+  survives the strip, and `x.` becomes `x .`: a comment filed before the index was ready then
+  hashes differently once badges appear.
 - **A badge click in review mode opens the comment popover** unless the handler
   (`MarkdownViewer.tsx:529`) bails on it; [§5.3](planning-index.md#53-how-a-badge-behaves) says
   clicking does nothing.
@@ -536,50 +714,88 @@ is house style (`useRepoStore.ts:63`).
   `resolveRepoLink(currentPath, href)` as `data-vantage-link-target` and read that.
 - **`files_changed` carries `repo` only in daemon mode** (`omitempty`, `watcher.go:417`), and
   `processBatch` never filters by it. Key by `message.repo ?? ""`.
-- **Sequencing covers the batch.** A batch sent before a per-file refresh but answered after it
-  must not overwrite that file: number the batch too, and apply its entry for a path only if no
-  newer request for that path was sent
-  ([§3.4](planning-index.md#34-when-it-is-built-and-how-it-stays-fresh)).
-- **`/content` enforces no size limit.** Compare `TextEncoder` bytes, not `.length`, with
-  `maxFileBytes`. `encoding: "binary"` is unreadable; `400 {"detail":"Not a file"}` is a
-  delete. A new path joins only if `candidateMatcher(index.config)` accepts it.
+- **Every per-file refresh is the single-path mode, never `/content`.** A path joins only when
+  the server answers `file`, which carries the listing rules, the size limit and UTF-8. No
+  client-side matcher, no `TextEncoder` check. `removed_dirs` calls `withoutDirectory`.
+- **Sequencing** ([§3.4](planning-index.md#34-when-it-is-built-and-how-it-stays-fresh)). Number
+  the batch too, and apply its entry for a path only if no newer request for that path was
+  sent. A push during `loading` sends its per-file request at once; the response is held and
+  applied on top of the batch. A batch superseded by a later rescan is discarded whole,
+  config, count and refusal included. A failed per-file request keeps the previous entry and
+  is retried on the next push for that path.
+- **Rescan only on a genuine reconnect.** `socket.onopen` calls `refreshAfterReconnect` on
+  every connection, the first of each mount included (`useWebSocket.ts:307-324`), and the hook
+  remounts with each page. Call `noteReconnect` only when `connectNum > 1` within the mount:
+  that covers a dropped socket and the forced reconnect after 30 s hidden (`:415-427`), and
+  skips every page's first connect. `rescan` keeps the ready index shown (`rescanning: true`)
+  until its batch lands, so the page never flashes `loading` where E restores scroll (Q14).
+- **`useWebSocket` refreshes the viewer's world.** It is mounted only by `ViewerPage` (`:268`),
+  and on every push and reconnect it reloads the current document, its status and review, the
+  tree and the recents. With `{ viewer: false }` it runs only the planning-store calls, the
+  starred, file-picker and repos refreshes, and the version check. E mounts it that way.
+- **Static exports serve HTML for the batch.** This repository's docs site answers a missing
+  path with `index.html` at 200 (`docs-wrangler.toml`, `not_found_handling`), and
+  `staticMode.ts` rewrites the batch URL to `./api/planning/sources.json`. `ensure` and
+  `rescan` give `error` at once under `isStaticMode()`, and `parsePlanningSources` rejects any
+  other shape (Q3).
+- **`ensure` waits for the repo store**, as `refreshAfterReconnect` does (`useWebSocket.ts:155-159`):
+  a no-op until `reposLoaded`, and in daemon mode until a current repo, re-run when that
+  flips. Existing suites that render the app's `MarkdownViewer` or `FileTree` then start
+  issuing `GET …/planning/sources`: `MarkdownViewer.test.tsx`, `ViewerPage.test.tsx` (sets
+  `reposLoaded: true`, counts `/files` GETs at `:240`), `FileTree.test.tsx`,
+  `pipelineAgreement.test.tsx` and A's `planningAgreement.test.tsx`. Mock `usePlanningStore`
+  in them rather than loosening their assertions.
 - **The `.vantage.toml` push exists only once B lands.** Test with a synthetic message.
-- **`useWebSocket` is mounted only by `ViewerPage`** (`:268`). Put the store calls inside the
-  hook, so E's page gets them by mounting it.
 - **Referenced by sits inside the prose container:** no `h1`–`h6` (`collectOutline` would list
-  it) and no `[data-vantage-oq]`.
-- **An embedded viewer must not publish drift.** `useReviewHighlights` writes
-  `commentsDrifted` on every pass, so a card on E's page would clear the real document's flag.
+  it) and no `[data-vantage-oq]`. `FrontmatterDisplay` renders nothing without frontmatter
+  (`FrontmatterDisplay.tsx:120`), and `roadmap.md` has none, so its slot is directly after that
+  element, not "below the card".
+- **An embedded viewer shows no comments and publishes no drift.** The review store holds the
+  last-viewed document's comments, which an embedded highlighter would paint onto a card, and
+  `useReviewHighlights` writes `commentsDrifted` on every pass, so a card would clear the real
+  document's flag.
 - **Scan off the critical path.** Yield between documents with `setTimeout(0)`. No Worker: it
   needs a second bundle entry, and the corpus is 55 files. Log the time to ready once, for
   [§15](planning-index.md#15-what-done-looks-like).
-- **Rescan on reconnect** (`refreshAfterReconnect`, `useWebSocket.ts:144`): pushes missed while
-  the socket was down leave the index stale.
 
 **Tests.** Prove with `npm run test -w frontend` and `just e2e`.
 
 - store ([§3.4](planning-index.md#34-when-it-is-built-and-how-it-stays-fresh)): the batch fills
-  the index; a changed candidate, a new matching file, a new excluded file, a delete, a
-  `.vantage.toml` rescan, another repo's push ignored, and the ordering race both ways; a size
-  overrun goes to skipped. [§3.6](planning-index.md#36-failure): a failed batch gives `error`,
-  and `MarkdownViewer`'s output is unchanged.
-- badges: a sibling after the link; none for a self-link, a non-planning target or an external
-  link. **[§13](planning-index.md#13-risks)'s test:** comment on a badged block, change the
-  count, and `hashBlockText(blockVisibleText(block))` is unchanged. A click is inert in review
-  mode; outline text excludes badges; a badge-only change does not flash.
-- Referenced by: below the card, absent when empty, absent from the outline. Tree badge: the
-  stage (the chip without one) and `💬 N`.
+  the index; a changed candidate; a new file answered `file` joins; a pushed `.github/x.md`
+  with `status:` is answered `absent` and never joins; a delete; `removed_dirs` drops its
+  documents; a `.vantage.toml` rescan keeps the ready index until the batch lands; another
+  repo's push ignored; the ordering race both ways; a push during `loading` lands on top of the
+  batch; a superseded batch is discarded whole; a failed per-file refresh keeps the entry; a
+  `skipped` answer goes to skipped. `noteReconnect` does nothing for idle and loading; a
+  mount's first connect does not call it, its second does. Static mode and an HTML body each
+  give `error`, the first with no request. [§3.6](planning-index.md#36-failure): a failed batch
+  gives `error`, and `MarkdownViewer`'s output is unchanged.
+- badges: a sibling after the link; none for a self-link, a non-planning target, a target with
+  nothing to show or an external link. **[§13](planning-index.md#13-risks)'s test:** comment
+  on a badged block, change the count, and `hashBlockText(blockVisibleText(block))` is
+  unchanged. It is also equal with no badge and with one for `[x](y.md).`, a link followed
+  directly by punctuation. A click is inert in review mode; outline text excludes badges; a
+  badge-only change does not flash. `getByRole("img", { name: badgeSpeech(badge) })` finds the
+  badge, and an off-vocabulary stage carries the warning-tone class.
+- `next`: a declared id renders `<a href="#OQ-X">`; an id no question carries, undeclared or
+  compacted, stays text; an id that is only part of a longer token stays text.
+- Referenced by: directly below the card; first in the prose container for a planning
+  document with no frontmatter; absent when empty, and absent from the outline. Tree badge:
+  the stage (the chip without one) and `💬 N`.
 - e2e `planning.spec.ts`: the roadmap shows badges. For
   [§15](planning-index.md#15-what-done-looks-like)'s first bullet, remove a question's
   directive the way `livereload.spec.ts` edits a file, and without a reload the badge reads
-  `✅ ruled`. Restore the file afterwards.
+  `✅ ruled`. Restore the file afterwards. `/planning/notes.md` opens that document. Select
+  across a badged line and copy: the clipboard holds no badge text. If `user-select: none`
+  fails that in Chromium, add a `copy` listener that strips `[data-vantage-planning-badge]`.
+- **Manual check**, since no test reaches print: print preview shows each badge as plain text.
 
 ## WP-E — the planning page (frontend)
 
 | Path | Change |
 | :--- | :--- |
-| `frontend/src/App.tsx` | `/planning/*` beside `/recent/*` (`:9-11`) |
-| `frontend/src/pages/PlanningPage.tsx` | new: sections, notices, Retry, Copy answers, scroll restore; mounts `useWebSocket` |
+| `frontend/src/App.tsx` | `/.vantage/planning/*` beside `/recent/*` (`:9-11`); Q13 |
+| `frontend/src/pages/PlanningPage.tsx` | new: sections, notices, Retry, Copy answers, scroll restore; mounts `useWebSocket({ viewer: false })` |
 | `frontend/src/components/PlanningQuestionCard.tsx` | new: an embedded `MarkdownViewer` over `questionCardSource`; Take, Answer…, Open document; comments |
 | `frontend/src/hooks/usePlanningReviews.ts` | new: `GET /review?path=` per listed document, refetched on `reviewEpoch` |
 | `frontend/src/hooks/useKeyboardShortcuts.ts` | `g p` beside `g h` and `g r` (`:83-106`) |
@@ -589,14 +805,19 @@ is house style (`useRepoStore.ts:63`).
 | `frontend/src/hooks/useOpenQuestionButtons.ts` | export the comment-text helper (`:291-294`) |
 | `frontend/e2e/planning_page.spec.ts` | new |
 
-**Reuse.** The anchor comes from `answerableOpenQuestions` then `buildWholeBlockAnchor`
-(`reviewAnchor.ts:163-178`), run on the rendered card. A question's comments are those whose
-anchor resolves inside the card through `blockAtLine` then `findHashNeighbor(…,
-NEIGHBOR_RADIUS)`, the highlighter's own rule; `isPendingForAgent` marks them waiting.
-Answer… reuses `ReviewCommentPopover`. The page shell copies `RecentsPage.tsx`.
+**Reuse.** The page shell copies `RecentsPage.tsx`. Answer… reuses `ReviewCommentPopover`.
+`isPendingForAgent` marks a comment waiting.
 
 **Traps.**
 
+- **The card holds its siblings.** It renders the whole root-level block, and
+  [`agent-bootstrap.md`](agent-bootstrap.md)'s five open questions are items of one loose
+  `<ol>` (`:436-527`), so every card's DOM holds all five. Run `answerableOpenQuestions` on the
+  card and take the host whose anchor block's `data-source-line` equals `question.line`, then
+  `buildWholeBlockAnchor` (`reviewAnchor.ts:163-178`). A comment belongs to the card only if
+  `blockAtLine`, then `findHashNeighbor(…, NEIGHBOR_RADIUS)`, over `indexBlocks(card)` resolves
+  it inside the unit. Build Copy answers from `usePlanningReviews`' data, never by
+  concatenating cards, so each comment appears once.
 - **`runCommand` posts only for the store's current `filePath`**
   (`useReviewStore.ts:443-446`). Build the body with the helper `addComment` uses (`:508-538`),
   a fresh `id` and `created_at` included, and POST to `{base}/review/comments?path=<doc>`. The
@@ -605,8 +826,11 @@ Answer… reuses `ReviewCommentPopover`. The page shell copies `RecentsPage.tsx`
 - **Slice the root-level block, not the list item.** A root-level block re-parses the same in
   isolation; an item cut out of a nested list or a blockquote does not. Render
   `questionCardSource` with `sourceLineOffset` and `embedded`, then hide everything outside the
-  element at `unitLine`. Query within the card, never with `getElementById`: two documents can
-  share an id.
+  unit. Query within the card, never with `getElementById`: two documents can share an id.
+- **Hiding renumbers ordered lists.** A `display: none` item does not increment the list
+  counter, so [`OQ-B3`](agent-bootstrap.md#OQ-B3)'s card would read `1.` where the document
+  reads `3.`. Before hiding, set `value` on the unit `<li>` and on each ancestor `<li>` to its
+  position in the document.
 - **Take this leaning shows only when `leaning` is non-null**
   ([§6.3](planning-index.md#63-a-question-on-the-page)); the in-page button shows without one.
   Its text still comes from the shared helper over the rendered card, never from
@@ -615,47 +839,66 @@ Answer… reuses `ReviewCommentPopover`. The page shell copies `RecentsPage.tsx`
   `location.key`, and restore after the cards render, once more after Mermaid and KaTeX settle.
 - **Open document is a bare path, no hash.** `loadReview` auto-enables review mode for any
   document with comments (`useReviewStore.ts:407`), so a document answered from the page opens
-  in review mode by that existing rule. Add no toggle either way.
+  in review mode by that existing rule. The page neither sets nor clears the persisted
+  per-document preference (`readReviewModePref`, `:46`).
 - **Single-document Copy stays byte-identical.** `copyAllToClipboard`'s tests
-  (`useReviewStore.test.ts:874-990`) stay unmodified. `respondingInstructions` names one path
-  in two places (`:938`, `:950`), so it takes a list, and one path renders exactly as today.
+  (`useReviewStore.test.ts:874-990`) stay unmodified. `respondingInstructions` uses the path in
+  three places: the inbox file stem (`:938`), the `uvx vantage-check` line (`:950`) and the
+  example JSONL's `"path"` (`:956`). A list names every path on the check line, gives one
+  example line per path, and uses a fixed stem, since the filename is advisory (`:933-936`).
+  One path renders exactly as today.
 - **Filing does not reorder.** Order comes from `derivePlanningSections` alone.
+- **The route sits under `.vantage`** because viewer URLs are `/<path>` and `/<repo>/<path>`,
+  so `/planning/*` would shadow a top-level `planning/` directory and a repository named
+  `planning`. `pathsafe.Resolve` refuses a `.vantage` path (`pathsafe.go:73-79`), and a
+  source-dir scan never discovers a dot-named repository (`config.go:488`), so no servable
+  document has this URL. Both servers fall back to `index.html` for it (`spa.go:32-61`).
 - **Static exports** get no Take or Answer (`isStaticMode`, `useOpenQuestionButtons.ts:283`).
-  The batch fails there too (Q3).
+  The store gives `error` there, so the page shows the
+  [§3.6](planning-index.md#36-failure) error (Q3).
 
 **Tests.** Prove with `npm run test -w frontend` and `just e2e`.
 
 - [§15](planning-index.md#15-what-done-looks-like)'s third bullet and
   [§13](planning-index.md#13-risks)'s last risk: for each question in
-  [`agent-bootstrap.md`](agent-bootstrap.md) and each gallery shape, file from the card and from
-  the in-page button over the whole document, and assert equal `anchor`, `comment` and
-  `fallback_text`. Answer… files the typed text on the same anchor.
+  [`agent-bootstrap.md`](agent-bootstrap.md) and each gallery shape
+  ([`OQ-1`](../gallery/open-questions.md#OQ-1) to [`OQ-7`](../gallery/open-questions.md#OQ-7):
+  list items, bare paragraph, blockquote, heading, no leaning), plus fixtures whose block uses
+  a reference-style link and a footnote, file from the card and from the in-page button over
+  the whole document, and assert equal `anchor`, `comment` and `fallback_text`. Answer… files
+  the typed text on the same anchor.
+- scoping: file on [`OQ-B3`](agent-bootstrap.md#OQ-B3) from its card; no other card lists the
+  comment, Copy answers includes it once, and the card shows `3.`.
+- card: it lists the question's existing comments, pending ones marked *waiting on the agent*,
+  and names its document with that document's badge. Filing from the second card leaves the
+  card order unchanged. Open document neither sets nor clears the persisted review-mode
+  preference. The toolbar entry navigates to the page.
 - sections: each rendered, each hidden when empty; the notices; the refused message; the error
   with Retry; Skipped and Could not read.
 - Copy answers: the count, disabled with nothing pending, the grouping, other comments left
   out, one instructions block.
 - keys: `g p` navigates; `KeyboardShortcuts.test.tsx` finds the row.
-- e2e `planning_page.spec.ts`: `g p` opens the page; the fixture's unrouted question is listed;
-  take a leaning, and Open document shows the same comment. For
-  [§15](planning-index.md#15-what-done-looks-like)'s fourth bullet, Open document lands at the
-  top, and Back restores the scroll position.
+- e2e `planning_page.spec.ts`: `g p` opens the page, and `/.vantage/planning` loads by URL; the
+  fixture's unrouted question is listed; take a leaning, and Open document shows the same
+  comment. For [§15](planning-index.md#15-what-done-looks-like)'s fourth bullet, Open document
+  lands at the top, and Back restores the scroll position. Viewer, then `g p`, then Back
+  issues exactly one batch request (count `/planning/sources` requests without `?path=`).
 
-## WP-F — docs and this repository's corpus
+## WP-F1 — phase-1 docs and this repository's corpus
 
 | Path | Change |
 | :--- | :--- |
 | `packages/vantage-md/src/styleGuide.ts` | `stage`, `next`, `depends-on`, `[planning]`; frontmatter as the stage's one home |
-| `userguide/guides/planning.md` | new: the page, badges, Referenced by, tree badges, config |
+| `userguide/guides/planning.md` | new: badges, the `next` link, `[planning]` |
 | `userguide/README.md` | a Guides row |
 | `userguide/reference/configuration.md` | `[planning]` beside `[starred]` |
-| `userguide/reference/keyboard-shortcuts.md` | `g p` |
 | `userguide/guides/vantage-check.md` | `index`, the four rules, the command-word and exit-2 notes |
 | `userguide/reference/style-guide.md` | a pointer for planning frontmatter ([§10](planning-index.md#10-what-the-conventions-change)) |
-| `docs/reference/inline-markup.md` | "The one-click Open Question answer": the page files the same comment |
-| `.vantage.toml` | new: `[planning]` excluding the gallery, the [§9](planning-index.md#9-configuration) stages, and `"planning/unrouted" = "warning"` (Q4) |
+| `.vantage.toml` | new: `[planning]` excluding `docs/gallery/**` and `frontend/e2e/fixtures/**`, the [§9](planning-index.md#9-configuration) stages, and `"planning/unrouted" = "warning"` (Q4) |
+| `packages/vantage-check/test/repositoryConfig.test.ts` | new: this repository's `.vantage.toml` rejects a fixture path and a gallery path |
 | `docs/**` frontmatter | `stage:` per the table below |
 | `roadmap.md` | ordered link lists ([§6.1](planning-index.md#61-the-roadmap)), every item kept (Q10) |
-| `CHANGELOG.md` | `## [Unreleased]` (Q8) |
+| `CHANGELOG.md` | `## [Unreleased]` (Q8), phase-1 lines |
 
 **Traps.**
 
@@ -665,7 +908,10 @@ Answer… reuses `ReviewCommentPopover`. The page shell copies `RecentsPage.tsx`
 - **Style-guide examples are checked.** `directives.test.ts:118-146` runs every `yaml` fence
   carrying `vantage:` through the checker. A `depends-on:` there names a file the temp tree
   lacks, so give planning keys their own example.
-- **After C and F, the gate lists planning findings.** At `warning` it stays green and shows
+- **The e2e fixtures are candidates here.** `ListAllFiles` does not apply `.gitignore`, and
+  `frontend/e2e/fixtures/test_repo/` is neither hidden nor a default-excluded directory, so D's
+  and E's planning fixtures would land on this repository's page and in its `index`.
+- **After C and F1, the gate lists planning findings.** At `warning` it stays green and shows
   [`agent-bootstrap.md`](agent-bootstrap.md)'s five, which is
   [§15](planning-index.md#15-what-done-looks-like)'s second bullet. At `error`
   the roadmap must route them first.
@@ -673,7 +919,8 @@ Answer… reuses `ReviewCommentPopover`. The page shell copies `RecentsPage.tsx`
   in the gate's path list (`Justfile:203-204`).
 
 Proposed stages, for the coordinator to confirm (Q10). A `BUILT` document with no live question
-lands under *Graduate*, which is the intended signal.
+lands under *Graduate*, which is the intended signal. A `done` stage takes the document off the
+page's sections.
 
 | Document | Prose status now | Stage |
 | :--- | :--- | :--- |
@@ -690,18 +937,28 @@ lands under *Graduate*, which is the intended signal.
 The design docs without frontmatter ([`review-mode.md`](review-mode.md) and three others) are
 not planning documents; leave them.
 
+## WP-F2 — phase-2 docs (after E)
+
+| Path | Change |
+| :--- | :--- |
+| `userguide/guides/planning.md` | the page and its URL, Copy answers, Referenced by, tree badges; that `/recent/*` and `/history/*` still shadow top-level directories of those names (Q13) |
+| `userguide/reference/keyboard-shortcuts.md` | `g p` |
+| `docs/reference/inline-markup.md` | "The one-click Open Question answer": the page files the same comment |
+| `CHANGELOG.md` | phase-2 lines under `## [Unreleased]` |
+
 ## Ships with
 
-- **Docs describing the old behavior:** the style guide's 🔒 sentence, the userguide's rule
-  list and `inline-markup.md`'s button section (F), and the checker's `USAGE` (C). Check
+- **Docs describing the old behavior:** the style guide's 🔒 sentence and the userguide's rule
+  list (F1), `inline-markup.md`'s button section (F2), and the checker's `USAGE` (C). Check
   `docs/reference/inline-markup.md`'s claims, not just its links.
 - **Surfaces:** the five `[planning]` keys and defaults, the two limit messages, the four rule
-  ids and summaries, the `index` JSON `version`, `data-vantage-planning-badge`,
+  ids and summaries, the `index` JSON `version`, the single-path mode and its four kinds,
+  `removed_dirs`, the `/.vantage/planning` route, `data-vantage-planning-badge`,
   `data-vantage-link-target`.
 - **Norms:** every commit passes `just check-ci`, which the pre-commit hook runs. A manifest
   change lands with `package-lock.json`; none is expected.
-- **When all six have landed:** delete this plan, move traps that proved real into a system doc
-  (the `system-doc` skill), and take the roadmap item out. That commit records what the
+- **When all seven have landed:** delete this plan, move traps that proved real into a system
+  doc (the `system-doc` skill), and take the roadmap item out. That commit records what the
   implementers had to rediscover and what they never needed.
 
 ## Don't
@@ -712,6 +969,7 @@ not planning documents; leave them.
 - **Add npm `ignore`**, unless Q1 rules for git semantics. The checker and the server would
   disagree on every pattern.
 - **Add a total-bytes cap, or take `.markdown` as a candidate.** Neither is in the design.
+- **Walk the tree in `check`.** No rule needs more than the document and the roadmap.
 - **Render cards from `question.title`** or any other summary:
   [§6.3](planning-index.md#63-a-question-on-the-page) requires the viewer pipeline.
 - **Touch `web/dist`, the static builder or `docs/gallery/`** (the builder is Q3).
@@ -719,28 +977,45 @@ not planning documents; leave them.
 ## Questions for the coordinator
 
 Each is **stop and ask** before its default ships in a release. Parallel work proceeds on the
-default. A ruling goes into the design's [Decision Ledger](planning-index.md#decision-ledger),
-and its line here is deleted.
+default.
 
-| # | Question the tree forces | Default the plan builds | Blocks |
-| :--- | :--- | :--- | :--- |
-| Q1 | The server's matcher is not git's: `?` is literal and an inner-slash pattern is unanchored. Keep its quirks on both sides, or move both to git semantics? The second changes `[starred] promote` too. | Port the Go quirks to TS; one fixture pins both | A, B, C |
-| Q2 | Is a `roadmap` that `include` or `exclude` rules out still read? "Always a planning document" does not say. | Yes, whenever it exists | A, B, D |
-| Q3 | `vantage build` exports have no batch endpoint. Should badges and the page exist there? | No: the [§3.6](planning-index.md#36-failure) failure path, with the page's error shown | B, E |
-| Q4 | This repository's `planning/unrouted` severity: at `error` the gate fails until the roadmap routes [`agent-bootstrap.md`](agent-bootstrap.md). | `warning` | F |
-| Q5 | Is an `oq` with no `id=`, or a duplicate id, a question? The column counts it; [§3.3](planning-index.md#33-a-question) identifies questions by (path, id). And once 🔒 questions carry directives, review mode offers Take this leaning on them: should the button and the column skip 🔒 and ✅? | Counted with `id: null`; buttons unchanged | A, E |
-| Q6 | What is a live question (Graduate; routing a whole document)? Does `depends-on: x.md#id` also wait while the question is 🔒? | Every held question is live; waiting only while 💬 | A |
-| Q7 | Past `max-candidates`, does `index` exit 3 or 0? | 3: it did not run | C |
-| Q8 | `CHANGELOG.md` has no unreleased section; the precedent writes notes at release (`197d658`). | Keep a Changelog's `## [Unreleased]`, renamed by the release commit | F |
-| Q9 | Per-reader settings (`exclude_dirs`, the user ignore file) shape the server's list but are invisible to the checker. | The checker mirrors repository-level rules only | C |
-| Q10 | Roadmap items carry facts with no other home, such as TypeScript 7's unblock condition, which the [§6.1](planning-index.md#61-the-roadmap) list form would drop. Also confirm the stage table. | Each item becomes a link plus a reason, its prose kept beneath | F |
+**The first ruling is where these live.** The fifteen marked *design* change observable
+behavior: they are holes the design's completeness pass missed, so its *Needs your ruling:
+None* and the roadmap's 📦 are not yet true. Rule each into the section it governs with a
+[Decision Ledger](planning-index.md#decision-ledger) row, or open them in the design as
+`OQ-PL` questions numbered from 5, with these defaults as leanings. Either way this table
+becomes pointers, and a ruled line is deleted. The five marked *local* are this repository's
+or the build's own choices.
+
+| # | Kind | Question the tree forces | Default the plan builds | Blocks |
+| :--- | :--- | :--- | :--- | :--- |
+| Q1 | design | The server's matcher is not git's: `?` is literal, an inner-slash pattern is unanchored, and its regex dialect is RE2. Keep its quirks on both sides, or move both to git semantics? The second changes `[starred] promote` too. | Port the Go quirks and dialect to TS; one fixture pins both | A, B, C |
+| Q2 | design | Is a `roadmap` that `include` or `exclude` rules out still read? "Always a planning document" does not say. | Yes, whenever it exists | A, B, D |
+| Q3 | design | `vantage build` exports have no batch endpoint, and this repository's docs site answers the batch URL with `index.html`. Should badges and the page exist there? | No: the [§3.6](planning-index.md#36-failure) failure path, with the page's error shown | B, D, E |
+| Q4 | local | This repository's `planning/unrouted` severity: at `error` the gate fails until the roadmap routes [`agent-bootstrap.md`](agent-bootstrap.md). | `warning` | F1 |
+| Q5 | design | Is an `oq` with no `id=`, or a duplicate id, a question? The column counts it; [§3.3](planning-index.md#33-a-question) identifies questions by (path, id). And once 🔒 questions carry directives, review mode offers Take this leaning on them: should the button and the column skip 🔒 and ✅? | Counted with `id: null`; buttons unchanged | A, E |
+| Q6 | design | What is a live question (Graduate; routing a whole document)? Does `depends-on: x.md#id` also wait while the question is 🔒? | Every held question is live; waiting only while 💬 | A |
+| Q7 | design | Past `max-candidates`, does `index` exit 3 or 0? And `check`, which reads a narrow index and counts nothing, keeps reporting planning findings while the page shows only the refusal. | `index` exits 3; `check` is unaffected | C |
+| Q8 | local | `CHANGELOG.md` has no unreleased section; the precedent writes notes at release (`197d658`). | Keep a Changelog's `## [Unreleased]`, renamed by the release commit | F1, F2 |
+| Q9 | design | Per-reader settings (`exclude_dirs`, the user ignore file) shape the server's list but are invisible to the checker. | The checker mirrors repository-level rules only | C |
+| Q10 | local | Roadmap items carry facts with no other home, such as TypeScript 7's unblock condition, which the [§6.1](planning-index.md#61-the-roadmap) list form would drop. Also confirm the stage table. | Each item becomes a link plus a reason, its prose kept beneath | F1 |
+| Q11 | design | [§4](planning-index.md#4-the-header-of-record-stage-next-depends-on) leaves a `done` document off the page. Does a `depends-on` on one make its dependent wait? | No. A `done` document contributes nothing to any section | A, C |
+| Q12 | design | [§6.1](planning-index.md#61-the-roadmap) routes a document link's live questions. Is `x.md#some-heading` a document link, as [§5.2](planning-index.md#52-what-a-badge-says) says for badges? `roadmap.md:16` cites [`OQ-CT1`](color-themes.md#decision-ledger) through the ledger's heading anchor, which would then route the unrelated open [`OQ-CT6`](color-themes.md#OQ-CT6), and every compacted citation points at `#decision-ledger`. | Only a bare document link and a `#OQ-…` link route | A, C |
+| Q13 | design | Viewer URLs are `/<path>` and `/<repo>/<path>`, so `/planning/*` would hide every document under a top-level `planning/` and a repository named `planning`. `/recent/*` and `/history/*` already do (`App.tsx:9-10`). Which URL, and do those two move? | `/.vantage/planning`, and `/.vantage/planning/<repo>` in daemon mode; the other two stay, and F2 documents their collision | E, F2 |
+| Q14 | design | [§3.4](planning-index.md#34-when-it-is-built-and-how-it-stays-fresh) says nothing about pushes missed while the socket is down. | Rescan the current repository's ready index on a genuine reconnect within a page's mount, keeping it shown; a push lost during a page switch is not recovered. Write the rule into [§3.4](planning-index.md#34-when-it-is-built-and-how-it-stays-fresh) | D |
+| Q15 | local | [§3.4](planning-index.md#34-when-it-is-built-and-how-it-stays-fresh) says per-file refreshes use the existing content endpoint, which skips the listing rules, has no size guard, and answers missing and unreadable alike. | The planning endpoint's single-path mode; amend that section's transport line | B, D |
+| Q16 | design | [§8](planning-index.md#8-vantage-check-index-and-the-planning-rules) roots `index` at the config's directory, then the git root. `--config /tmp/x.toml` then scans `/tmp` while `check` scans the repository, and a `.vantage.toml` above the git root outranks the git root. | One root for both, the nearest ancestor holding `.git` or `.vantage.toml` (`links.ts:341-350`); `--config` never moves it; the cwd for `index` when there is none | C |
+| Q17 | design | An `oq` inside a raw HTML block stamps its inner `<p>`, so the column lists it, but the scan sees one `html` node. [§3.3](planning-index.md#33-a-question) requires agreement. | Not a question to the index; the agreement test pins that one divergence | A |
+| Q18 | design | [§13](planning-index.md#13-risks)'s mitigation for a foreign top-level `stage` key does not hold: `stage` alone makes a document planning ([§3.1](planning-index.md#31-which-files-it-reads)), so a site's `stage: production` badges every link to that page and its tree row. | Behavior as designed; `exclude` is the remedy, and the risk row should say so | A, D |
+| Q19 | local | vantage-md is published. Exporting ~30 planning symbols from its main entry makes them semver API, and `typetest/consumer.ts` checks none. | Internal: `vantage-md/planning` by alias, with no `exports` entry. `FrontmatterDisplay`'s optional `linkIds` is the one public addition | A, D |
+| Q20 | design | Silences the contract fills: (a) a frontmatter `problem` makes the file unreadable, `oq` directives and all; (b) a non-string or empty `stage` and a non-string or multi-line `next` are `null`, a scalar `depends-on` is a one-entry list, a non-string entry is dropped; (c) stage matching is exact and case-sensitive; (d) an empty `[planning.stages]` is undeclared; (e) a `depends-on` outside the repository, or whose `#OQ-…` id appears nowhere in its target, is a `depends-on-missing` finding; (f) a skipped or unreadable roadmap routes as missing; (g) a document badge that would read empty, with only ✅ questions and no status or stage, is not drawn; (h) `next` links an id only when a question carries it. | As listed | A, B, C, D |
 
 ## Done — mirrors [§15](planning-index.md#15-what-done-looks-like)
 
 - [ ] `roadmap.md` shows a badge on every link to a planning doc or question, and a compacted
   answer turns its badge to `✅ ruled` without a reload (D's e2e).
 - [ ] `g p` opens the page, and on this repository it lists
-  [`agent-bootstrap.md`](agent-bootstrap.md)'s questions under *Unrouted* (E, F).
+  [`agent-bootstrap.md`](agent-bootstrap.md)'s questions under *Unrouted* (E, F1).
 - [ ] Taking a leaning from the page gives a comment identical to the in-page button's (E's
   anchor test).
 - [ ] **Open document** lands at the top, and Back restores the scroll position (E's e2e).
