@@ -1,7 +1,15 @@
 # Roadmap
 
-**Status:** 3 ready · 1 blocked
-**Updated:** 2026-09-22
+**Status:** 1 needs you · 3 ready · 1 blocked
+**Updated:** 2026-09-28
+
+---
+
+## 💬 Needs You
+
+### 💬 The planning index — four rulings before phase 1
+
+[`planning-index.md`](docs/design/planning-index.md) designs link badges, a planning page and `vantage-check index` over the repository's design docs. [`OQ-PL1`](docs/design/planning-index.md#OQ-PL1) is the gate: whether `stage:` replaces the word in the prose status line, which changes every design doc and the `design-doc` skill. [`OQ-PL2`](docs/design/planning-index.md#OQ-PL2), [`OQ-PL3`](docs/design/planning-index.md#OQ-PL3) and [`OQ-PL4`](docs/design/planning-index.md#OQ-PL4) follow.
 
 ---
 
