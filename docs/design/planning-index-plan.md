@@ -12,11 +12,10 @@ summary: "Build hand-off for the whole planning-index design, phases 1 and 2: se
 # The planning index — implementation plan
 
 **Design:** [`planning-index.md`](planning-index.md) · **Status:** promoted from sketch on
-2026-09-28 and revised after review the same day; build-ready for phases 1 and 2 on the
-defaults below. Twenty questions for the coordinator remain, each with a default the work can
-proceed on ([below](#questions-for-the-coordinator)). Fifteen of them change observable
-behavior, so the design's *Needs your ruling: None* is not yet true. Written against
-`4948138`; revised against `dc400f6`, 2026-09-28.
+2026-09-28 and revised after review the same day; build-ready for phases 1 and 2. Its twenty
+questions for the coordinator were ruled the same day
+([below](#the-coordinators-rulings)). Written against `4948138`; revised against `dc400f6`,
+2026-09-28.
 
 **Precedence.** The design wins on behavior. The tree wins on fact: when a file has moved or a
 helper is gone, follow the tree and say so in the commit. This plan is advice, and it is the
@@ -28,14 +27,16 @@ rules' run in `check`'s main thread after the per-file workers finish. A *narrow
 (coined here) is the index `check` builds from the roadmap plus the run's own files, with no
 walk of the tree. The *single-path mode* (coined here) is the planning endpoint answering for
 one `?path=`. A question's *unit* (coined here) is the element at its `unitLine`: the `<li>`,
-or the host block outside a list. A *live question* (the plan's reading, Q6) is any question
-the index holds, whatever its state. A compacted question has lost its directive, so the
-index no longer holds it. An *agreement test* runs two implementations over one corpus and
-asserts equal answers, as `frontend/src/lib/pipelineAgreement.test.tsx` does. The rest are
-the design's terms: [planning index](planning-index.md#3-the-planning-index),
+or the host block outside a list. An *agreement test* runs two implementations over one corpus
+and asserts equal answers, as `frontend/src/lib/pipelineAgreement.test.tsx` does. *Q1* to *Q20*
+are the questions this plan raised for the coordinator, each ruled into a design ledger row
+named *Plan Q1* and so on ([below](#the-coordinators-rulings)). The rest are the design's
+terms: [planning index](planning-index.md#3-the-planning-index),
 [candidate and planning document](planning-index.md#31-which-files-it-reads),
+[live question](planning-index.md#33-a-question),
 [stage role](planning-index.md#4-the-header-of-record-stage-next-depends-on),
-[routed](planning-index.md#61-the-roadmap).
+[routed](planning-index.md#61-the-roadmap),
+[project root](planning-index.md#8-vantage-check-index-and-the-planning-rules).
 
 ## Order of work
 
@@ -227,8 +228,8 @@ Rules the types cannot carry. A tests each one.
 - **The `done` role contributes nothing to any section.** Its questions are not routed, not in
   Needs you, Unrouted or Waiting, and do not count against `nothingNeedsYou`. Badges,
   Referenced by and tree badges are unaffected
-  ([§4](planning-index.md#4-the-header-of-record-stage-next-depends-on), "left off the page").
-  A `depends-on` whose target has the `done` role never waits (Q11).
+  ([§4](planning-index.md#4-the-header-of-record-stage-next-depends-on)). A `depends-on` whose
+  target has the `done` role never waits (Q11).
 - **Routing.** A bare document link and a `#OQ-…` link route; a heading link routes nothing
   (Q12).
 - **`nothingNeedsYou`** can be true while Needs you holds ✅ answered questions; the page then
@@ -424,7 +425,7 @@ export const useWebSocket: (options?: { viewer?: boolean }) => void;
   directives on one block are one question. An `oq` above a list, fence or table yields none.
 - **A directive inside a raw HTML block** stamps the inner `<p>`, which the column lists, while
   the mdast scan sees one `html` node and `nextBlock` answers `"unknown"`
-  (`directives.ts:364-368`, `:481-483`). The index does not count it, pending Q17.
+  (`directives.ts:364-368`, `:481-483`). The index does not count it (Q17).
 - **Directives merge per run** (`rehypeVantageDirectives.ts:361-392`), last key wins.
   `collectOqIds` (`packages/vantage-check/src/core/openQuestions.ts:33`) does not merge, so
   don't build on it.
@@ -443,7 +444,7 @@ export const useWebSocket: (options?: { viewer?: boolean }) => void;
   dev dependency of `typescript-eslint`) follows git; the server's `sabhiram/go-gitignore` does
   not. It treats `?` as a literal and leaves an inner-slash pattern unanchored, so
   `docs/gallery/**` also matches `x/docs/gallery/a.md`. Port `getPatternFromLine` and
-  `MatchesPathHow` (last match wins; `!` clears only a prior match). Q1 may change this.
+  `MatchesPathHow` (last match wins; `!` clears only a prior match), as Q1 ruled.
 - **The port needs a dialect step.** `getPatternFromLine` passes `[`, `(`, `\`, `{` and `+`
   through into an RE2 expression, and JS `RegExp` is not RE2: `[[:upper:]]*.md` matches
   `README.md` in Go and not in JS, and `(?=b)` compiles in JS while Go drops the line. Translate
@@ -796,13 +797,14 @@ ready, `next` renders as plain text.
 | :--- | :--- |
 | `frontend/src/App.tsx` | `/.vantage/planning/*` beside `/recent/*` (`:9-11`); Q13 |
 | `frontend/src/pages/PlanningPage.tsx` | new: sections, notices, Retry, Copy answers, scroll restore; mounts `useWebSocket({ viewer: false })` |
-| `frontend/src/components/PlanningQuestionCard.tsx` | new: an embedded `MarkdownViewer` over `questionCardSource`; Take, Answer…, Open document; comments |
+| `frontend/src/components/PlanningQuestionCard.tsx` | new: an embedded `MarkdownViewer` over `questionCardSource`; Take, Answer… and Open document as the question's state allows (Q5); comments |
 | `frontend/src/hooks/usePlanningReviews.ts` | new: `GET /review?path=` per listed document, refetched on `reviewEpoch` |
 | `frontend/src/hooks/useKeyboardShortcuts.ts` | `g p` beside `g h` and `g r` (`:83-106`) |
 | `frontend/src/components/KeyboardShortcuts.tsx` | a help row (`:30-31`) |
 | `frontend/src/pages/ViewerPage.tsx` | a toolbar entry in the sidebar header (`:845-895`) |
 | `frontend/src/stores/useReviewStore.ts` | export the comment-body builder, `postCommentTo(path, …)`, the per-document group block, multi-path instructions |
-| `frontend/src/hooks/useOpenQuestionButtons.ts` | export the comment-text helper (`:291-294`) |
+| `frontend/src/hooks/useOpenQuestionButtons.ts` | export the comment-text helper (`:291-294`); no row and no count for a 🔒 or ✅ question (Q5) |
+| `frontend/src/hooks/useOpenQuestionButtons.test.ts`, `frontend/src/components/TableOfContents.test.tsx` | gain the Q5 cases below; the second's existing ✅ and 🔒 assertions stay unmodified |
 | `frontend/e2e/planning_page.spec.ts` | new |
 
 **Reuse.** The page shell copies `RecentsPage.tsx`. Answer… reuses `ReviewCommentPopover`.
@@ -831,10 +833,27 @@ ready, `next` renders as plain text.
   counter, so [`OQ-B3`](agent-bootstrap.md#OQ-B3)'s card would read `1.` where the document
   reads `3.`. Before hiding, set `value` on the unit `<li>` and on each ancestor `<li>` to its
   position in the document.
-- **Take this leaning shows only when `leaning` is non-null**
-  ([§6.3](planning-index.md#63-a-question-on-the-page)); the in-page button shows without one.
-  Its text still comes from the shared helper over the rendered card, never from
-  `question.leaning`, so both paths file the same bytes.
+- **Take this leaning shows only on an open question with a non-null `leaning`**
+  ([§6.3](planning-index.md#63-a-question-on-the-page)); the in-page button shows on an open
+  question without one. Its text still comes from the shared helper over the rendered card,
+  never from `question.leaning`, so both paths file the same bytes.
+- **Controls follow state on the page (Q5).** An open card offers Take, Answer… and Open
+  document; an ✅ card offers Answer… and Open document; a 🔒 card, which only *Waiting* lists,
+  offers Open document alone. Take the state from `question.state`, which A's agreement test
+  holds equal to the column's.
+- **The in-page button skips 🔒 and ✅ (Q5), and the column must not.** `answerableOpenQuestions`
+  (`useOpenQuestionButtons.ts:216`) is the set both the button pass and the contents column
+  list (`useDocumentOutline.ts:91`), so filter what the pass gets back from it (`:269`), never
+  inside it: the column keeps listing every state, and `TableOfContents.test.tsx` already
+  asserts it does. Read the state with the column's own rule, `questionLabel(stamped)` then
+  `vantageOqStatus(marker) ?? vantageOqStatus(text)` (`useDocumentOutline.ts:133`, `:176`),
+  never a second reading. Importing `questionLabel` makes the two hooks import each other;
+  both export only functions, so the cycle is inert, and moving the helper would put D's file
+  in E's set. A skipped question gets **no row at all**: no Take, no taken chip, no Undo.
+- **The count follows the buttons, not the column.** `onCount` (`:276`) feeds the Review
+  toggle's "N open questions here can be answered in one click" (`ViewerPage.tsx:320-328`), so
+  it counts only the questions that get a row. It is reported before the review-mode gate, so
+  the filter comes before the count, not inside the loop.
 - **No scroll restoration exists:** `BrowserRouter` has none (`main.tsx:22`). Save `scrollY` by
   `location.key`, and restore after the cards render, once more after Mermaid and KaTeX settle.
 - **Open document is a bare path, no hash.** `loadReview` auto-enables review mode for any
@@ -878,6 +897,14 @@ ready, `next` renders as plain text.
 - Copy answers: the count, disabled with nothing pending, the grouping, other comments left
   out, one instructions block.
 - keys: `g p` navigates; `KeyboardShortcuts.test.tsx` finds the row.
+- Q5, in-page: over [`docs/gallery/status.md`](../gallery/status.md)'s three questions, review
+  mode renders a Take this leaning row for 💬 [`OQ-1`](../gallery/status.md#OQ-1) only, none
+  for ✅ [`OQ-2`](../gallery/status.md#OQ-2) or 🔒 [`OQ-3`](../gallery/status.md#OQ-3); the
+  count reported is 1; the contents column still lists all three with their states. A ✅
+  question with an existing take shows no taken chip and no Undo. A question with no marker
+  still gets its row.
+- Q5, page: a 🔒 card under *Waiting* has Open document and no Take or Answer…; an ✅ card
+  under *Needs you* has Answer… and Open document and no Take.
 - e2e `planning_page.spec.ts`: `g p` opens the page, and `/.vantage/planning` loads by URL; the
   fixture's unrouted question is listed; take a leaning, and Open document shows the same
   comment. For [§15](planning-index.md#15-what-done-looks-like)'s fourth bullet, Open document
@@ -897,14 +924,14 @@ ready, `next` renders as plain text.
 | `.vantage.toml` | new: `[planning]` excluding `docs/gallery/**` and `frontend/e2e/fixtures/**`, the [§9](planning-index.md#9-configuration) stages, and `"planning/unrouted" = "warning"` (Q4) |
 | `packages/vantage-check/test/repositoryConfig.test.ts` | new: this repository's `.vantage.toml` rejects a fixture path and a gallery path |
 | `docs/**` frontmatter | `stage:` per the table below |
-| `roadmap.md` | ordered link lists ([§6.1](planning-index.md#61-the-roadmap)), every item kept (Q10) |
-| `CHANGELOG.md` | `## [Unreleased]` (Q8), phase-1 lines |
+| `roadmap.md` | ordered link lists ([§6.1](planning-index.md#61-the-roadmap)), every item kept, its prose beneath (Q10) |
 
 **Traps.**
 
 - **The style guide contradicts [§3.3](planning-index.md#33-a-question) today.** Its
   `oq-missing` bullet says a 🔒 or ✅ question "needs no directive", but the index cannot see a
-  🔒 question without one. Rewrite that sentence (and see Q5).
+  🔒 question without one. Rewrite that sentence. Say nothing there about Take this leaning
+  skipping 🔒 and ✅ (Q5): E ships that and F2 documents it, so phase 1's docs describe phase 1.
 - **Style-guide examples are checked.** `directives.test.ts:118-146` runs every `yaml` fence
   carrying `vantage:` through the checker. A `depends-on:` there names a file the temp tree
   lacks, so give planning keys their own example.
@@ -918,9 +945,9 @@ ready, `next` renders as plain text.
 - **Run `packages/vantage-check/dist/vantage-check` on every edited file.** `roadmap.md` is not
   in the gate's path list (`Justfile:203-204`).
 
-Proposed stages, for the coordinator to confirm (Q10). A `BUILT` document with no live question
-lands under *Graduate*, which is the intended signal. A `done` stage takes the document off the
-page's sections.
+Stages, as Q10 confirmed them. A `BUILT` document with no live question lands under
+*Graduate*, which is the intended signal. A `done` stage takes the document off the page's
+sections.
 
 | Document | Prose status now | Stage |
 | :--- | :--- | :--- |
@@ -943,14 +970,19 @@ not planning documents; leave them.
 | :--- | :--- |
 | `userguide/guides/planning.md` | the page and its URL, Copy answers, Referenced by, tree badges; that `/recent/*` and `/history/*` still shadow top-level directories of those names (Q13) |
 | `userguide/reference/keyboard-shortcuts.md` | `g p` |
-| `docs/reference/inline-markup.md` | "The one-click Open Question answer": the page files the same comment |
-| `CHANGELOG.md` | phase-2 lines under `## [Unreleased]` |
+| `docs/reference/inline-markup.md` | "The one-click Open Question answer": the page files the same comment; the button's fourth condition, an open question, and the column that now lists more questions than there are buttons (Q5) |
+| `userguide/features.md` | the Contents paragraph (`:171-175`): the column lists every question, and review mode's button and the Review toggle's count cover open ones only (Q5) |
 
 ## Ships with
 
 - **Docs describing the old behavior:** the style guide's 🔒 sentence and the userguide's rule
-  list (F1), `inline-markup.md`'s button section (F2), and the checker's `USAGE` (C). Check
-  `docs/reference/inline-markup.md`'s claims, not just its links.
+  list (F1), `inline-markup.md`'s button section and `userguide/features.md`'s "the same set the
+  Review toggle counts" (F2, for Q5), and the checker's `USAGE` (C). Check
+  `docs/reference/inline-markup.md`'s claims, not just its links. The comment in
+  `useDocumentOutline.ts` (`:102-107`) that calls the column and the buttons "the same set by
+  construction" is E's to correct.
+- **No changelog entry** (Q8). Release notes are written at release time, from the tree, as
+  every release's are.
 - **Surfaces:** the five `[planning]` keys and defaults, the two limit messages, the four rule
   ids and summaries, the `index` JSON `version`, the single-path mode and its four kinds,
   `removed_dirs`, the `/.vantage/planning` route, `data-vantage-planning-badge`,
@@ -966,49 +998,31 @@ not planning documents; leave them.
 - **Parse Markdown in Go** (P4). The server lists, filters and reads.
 - **Store anything for the page:** no snooze, no read state
   ([§6](planning-index.md#6-the-planning-page)). Comments already live in the review store.
-- **Add npm `ignore`**, unless Q1 rules for git semantics. The checker and the server would
-  disagree on every pattern.
+- **Add npm `ignore`.** Q1 ruled for the server's matcher, and with git's semantics the
+  checker and the server would disagree on every pattern.
 - **Add a total-bytes cap, or take `.markdown` as a candidate.** Neither is in the design.
 - **Walk the tree in `check`.** No rule needs more than the document and the roadmap.
 - **Render cards from `question.title`** or any other summary:
   [§6.3](planning-index.md#63-a-question-on-the-page) requires the viewer pipeline.
-- **Touch `web/dist`, the static builder or `docs/gallery/`** (the builder is Q3).
+- **Touch `web/dist`, the static builder or `docs/gallery/`.** Q3 ruled that a static export
+  shows the failed-fetch error, which needs nothing from the builder.
+- **Touch `CHANGELOG.md`** (Q8).
 
-## Questions for the coordinator
+## The coordinator's rulings
 
-Each is **stop and ask** before its default ships in a release. Parallel work proceeds on the
-default.
+All twenty questions this plan raised were ruled on 2026-09-28, each into the section of the
+design it governs and a row of its [Decision Ledger](planning-index.md#decision-ledger) named
+*Plan Q1* to *Plan Q20*. That ledger is where the numbers this plan cites resolve.
 
-**The first ruling is where these live.** The fifteen marked *design* change observable
-behavior: they are holes the design's completeness pass missed, so its *Needs your ruling:
-None* and the roadmap's 📦 are not yet true. Rule each into the section it governs with a
-[Decision Ledger](planning-index.md#decision-ledger) row, or open them in the design as
-`OQ-PL` questions numbered from 5, with these defaults as leanings. Either way this table
-becomes pointers, and a ruled line is deleted. The five marked *local* are this repository's
-or the build's own choices.
+Eighteen rulings took the plan's default. Two did not, and the work packages above already
+reflect them:
 
-| # | Kind | Question the tree forces | Default the plan builds | Blocks |
-| :--- | :--- | :--- | :--- | :--- |
-| Q1 | design | The server's matcher is not git's: `?` is literal, an inner-slash pattern is unanchored, and its regex dialect is RE2. Keep its quirks on both sides, or move both to git semantics? The second changes `[starred] promote` too. | Port the Go quirks and dialect to TS; one fixture pins both | A, B, C |
-| Q2 | design | Is a `roadmap` that `include` or `exclude` rules out still read? "Always a planning document" does not say. | Yes, whenever it exists | A, B, D |
-| Q3 | design | `vantage build` exports have no batch endpoint, and this repository's docs site answers the batch URL with `index.html`. Should badges and the page exist there? | No: the [§3.6](planning-index.md#36-failure) failure path, with the page's error shown | B, D, E |
-| Q4 | local | This repository's `planning/unrouted` severity: at `error` the gate fails until the roadmap routes [`agent-bootstrap.md`](agent-bootstrap.md). | `warning` | F1 |
-| Q5 | design | Is an `oq` with no `id=`, or a duplicate id, a question? The column counts it; [§3.3](planning-index.md#33-a-question) identifies questions by (path, id). And once 🔒 questions carry directives, review mode offers Take this leaning on them: should the button and the column skip 🔒 and ✅? | Counted with `id: null`; buttons unchanged | A, E |
-| Q6 | design | What is a live question (Graduate; routing a whole document)? Does `depends-on: x.md#id` also wait while the question is 🔒? | Every held question is live; waiting only while 💬 | A |
-| Q7 | design | Past `max-candidates`, does `index` exit 3 or 0? And `check`, which reads a narrow index and counts nothing, keeps reporting planning findings while the page shows only the refusal. | `index` exits 3; `check` is unaffected | C |
-| Q8 | local | `CHANGELOG.md` has no unreleased section; the precedent writes notes at release (`197d658`). | Keep a Changelog's `## [Unreleased]`, renamed by the release commit | F1, F2 |
-| Q9 | design | Per-reader settings (`exclude_dirs`, the user ignore file) shape the server's list but are invisible to the checker. | The checker mirrors repository-level rules only | C |
-| Q10 | local | Roadmap items carry facts with no other home, such as TypeScript 7's unblock condition, which the [§6.1](planning-index.md#61-the-roadmap) list form would drop. Also confirm the stage table. | Each item becomes a link plus a reason, its prose kept beneath | F1 |
-| Q11 | design | [§4](planning-index.md#4-the-header-of-record-stage-next-depends-on) leaves a `done` document off the page. Does a `depends-on` on one make its dependent wait? | No. A `done` document contributes nothing to any section | A, C |
-| Q12 | design | [§6.1](planning-index.md#61-the-roadmap) routes a document link's live questions. Is `x.md#some-heading` a document link, as [§5.2](planning-index.md#52-what-a-badge-says) says for badges? `roadmap.md:16` cites [`OQ-CT1`](color-themes.md#decision-ledger) through the ledger's heading anchor, which would then route the unrelated open [`OQ-CT6`](color-themes.md#OQ-CT6), and every compacted citation points at `#decision-ledger`. | Only a bare document link and a `#OQ-…` link route | A, C |
-| Q13 | design | Viewer URLs are `/<path>` and `/<repo>/<path>`, so `/planning/*` would hide every document under a top-level `planning/` and a repository named `planning`. `/recent/*` and `/history/*` already do (`App.tsx:9-10`). Which URL, and do those two move? | `/.vantage/planning`, and `/.vantage/planning/<repo>` in daemon mode; the other two stay, and F2 documents their collision | E, F2 |
-| Q14 | design | [§3.4](planning-index.md#34-when-it-is-built-and-how-it-stays-fresh) says nothing about pushes missed while the socket is down. | Rescan the current repository's ready index on a genuine reconnect within a page's mount, keeping it shown; a push lost during a page switch is not recovered. Write the rule into [§3.4](planning-index.md#34-when-it-is-built-and-how-it-stays-fresh) | D |
-| Q15 | local | [§3.4](planning-index.md#34-when-it-is-built-and-how-it-stays-fresh) says per-file refreshes use the existing content endpoint, which skips the listing rules, has no size guard, and answers missing and unreadable alike. | The planning endpoint's single-path mode; amend that section's transport line | B, D |
-| Q16 | design | [§8](planning-index.md#8-vantage-check-index-and-the-planning-rules) roots `index` at the config's directory, then the git root. `--config /tmp/x.toml` then scans `/tmp` while `check` scans the repository, and a `.vantage.toml` above the git root outranks the git root. | One root for both, the nearest ancestor holding `.git` or `.vantage.toml` (`links.ts:341-350`); `--config` never moves it; the cwd for `index` when there is none | C |
-| Q17 | design | An `oq` inside a raw HTML block stamps its inner `<p>`, so the column lists it, but the scan sees one `html` node. [§3.3](planning-index.md#33-a-question) requires agreement. | Not a question to the index; the agreement test pins that one divergence | A |
-| Q18 | design | [§13](planning-index.md#13-risks)'s mitigation for a foreign top-level `stage` key does not hold: `stage` alone makes a document planning ([§3.1](planning-index.md#31-which-files-it-reads)), so a site's `stage: production` badges every link to that page and its tree row. | Behavior as designed; `exclude` is the remedy, and the risk row should say so | A, D |
-| Q19 | local | vantage-md is published. Exporting ~30 planning symbols from its main entry makes them semver API, and `typetest/consumer.ts` checks none. | Internal: `vantage-md/planning` by alias, with no `exports` entry. `FrontmatterDisplay`'s optional `linkIds` is the one public addition | A, D |
-| Q20 | design | Silences the contract fills: (a) a frontmatter `problem` makes the file unreadable, `oq` directives and all; (b) a non-string or empty `stage` and a non-string or multi-line `next` are `null`, a scalar `depends-on` is a one-entry list, a non-string entry is dropped; (c) stage matching is exact and case-sensitive; (d) an empty `[planning.stages]` is undeclared; (e) a `depends-on` outside the repository, or whose `#OQ-…` id appears nowhere in its target, is a `depends-on-missing` finding; (f) a skipped or unreadable roadmap routes as missing; (g) a document badge that would read empty, with only ✅ questions and no status or stage, is not drawn; (h) `next` links an id only when a question carries it. | As listed | A, B, C, D |
+- **Q5.** An `oq` with no id, or a repeated one, is still counted with `id: null`, as the
+  default had it. But **Take this leaning** is not offered on 🔒 or ✅ questions, neither in the
+  viewer's review mode nor on the planning page, where a 🔒 question sits under *Waiting* with
+  no Take or Answer… control. The contents column still lists them. WP-E builds and tests it.
+- **Q8.** No `## [Unreleased]` section: F1 and F2 do not touch `CHANGELOG.md`, and release
+  notes are written at release time, as today.
 
 ## Done — mirrors [§15](planning-index.md#15-what-done-looks-like)
 
