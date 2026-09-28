@@ -14,6 +14,18 @@ import {
   VANTAGE_STYLE_TARGETS,
   vantageOqStatus,
 } from "../../../vantage-md/src/vantageDirectives.js";
+// Where a directive lands, predicted from mdast. Shared with the planning
+// index's scan, which has to reach the same answer about which `oq` yields a
+// button (D5).
+import {
+  BLOCK_PARENTS,
+  PHRASING_PARENTS,
+  isCommentOnly,
+  listIsLoose,
+  nextBlock,
+  nextContentInNode,
+  targetTag,
+} from "../../../vantage-md/src/directiveTargets.js";
 import { scanComments } from "../core/comments.js";
 import { collectOqIds } from "../core/openQuestions.js";
 import type { DeclaredOq } from "../core/openQuestions.js";
@@ -270,26 +282,6 @@ function swallowedTail(
  * Placement: R3's orphan, and A6's split list
  * ------------------------------------------------------------------ */
 
-/** mdast parents whose children become sibling *blocks* in hast. */
-const BLOCK_PARENTS = new Set([
-  "root",
-  "blockquote",
-  "listItem",
-  "footnoteDefinition",
-]);
-
-/** mdast parents whose children are inline, where nothing is ever stamped. */
-const PHRASING_PARENTS = new Set([
-  "paragraph",
-  "heading",
-  "tableCell",
-  "emphasis",
-  "strong",
-  "delete",
-  "link",
-  "linkReference",
-]);
-
 /**
  * `VANTAGE_STYLE_TARGETS` plus `span`, which is display math and nothing else —
  * `targetTag` maps only `math` onto it.
@@ -436,58 +428,6 @@ function orphanReason(
 }
 
 /**
- * What comes after the last directive *inside its own html node*.
- *
- * `"end"` — nothing but whitespace and other comments, so the run continues
- * into the node's mdast siblings. `"text"` — literal text, which the plugin
- * stops at (measured: `<!-- vantage: block tone=note --> trailing` stamps
- * nothing). `"markup"` — a tag we cannot resolve from mdast; say nothing.
- */
-function nextContentInNode(
-  segments: Segment[],
-  lastDirective: number,
-): "end" | "text" | "markup" {
-  for (let i = lastDirective + 1; i < segments.length; i++) {
-    const segment = segments[i];
-    if (segment === undefined || segment.kind === "comment") continue;
-    const rest = segment.value.trim();
-    if (rest === "") continue;
-    return rest.startsWith("<") ? "markup" : "text";
-  }
-  return "end";
-}
-
-/**
- * The sibling a directive attaches to, `undefined` for none, `"unknown"` when
- * the tree does not settle it.
- *
- * Two node types are skipped because `remark-rehype` does not leave them where
- * they were, both verified by running the real chain: a `definition`
- * (`[ref]: ./x.md`) produces no HTML at all, and a `footnoteDefinition` is
- * hoisted into a `<section>` at the end of the document. A comment-only `html`
- * sibling is skipped too — consecutive directives merge onto one target, and an
- * editorial `<!-- TODO -->` between a directive and its block must not change
- * what the directive means, because no reader can see it.
- */
-function nextBlock(
-  children: RootContent[],
-  index: number,
-): RootContent | undefined | "unknown" {
-  for (let i = index + 1; i < children.length; i++) {
-    const sibling = children[i];
-    if (sibling === undefined) return undefined;
-    if (sibling.type === "definition") continue;
-    if (sibling.type === "footnoteDefinition") continue;
-    if (sibling.type === "html") {
-      if (isCommentOnly(sibling.value)) continue;
-      return "unknown";
-    }
-    return sibling;
-  }
-  return undefined;
-}
-
-/**
  * Is this html node the first of its run — the one that reports placement?
  *
  * A directive merges with the directives before it, so a node preceded by
@@ -565,71 +505,6 @@ function directivesIn(raw: string): ParsedDirective[] {
     directives.push(parsed);
   }
   return directives;
-}
-
-/** Nothing but comments and whitespace, so hast sees no element here. */
-function isCommentOnly(raw: string): boolean {
-  const segments = scanComments(raw);
-  let comments = 0;
-  for (const segment of segments) {
-    if (segment.kind === "comment") {
-      comments++;
-      continue;
-    }
-    if (segment.value.trim() !== "") return false;
-  }
-  return comments > 0;
-}
-
-/**
- * The hast tag an mdast block becomes, or `undefined` when it is not worth
- * predicting.
- *
- * `math` is the interesting one: with math enabled — which is what both viewers
- * and this checker's own parser do — a `$$…$$` block renders as
- * `<span class="katex-display">`. That span *is* stamped (see `STYLE_TARGETS`),
- * so predicting it is not about reporting an orphan any more; it is about naming
- * the shape in the `oq` message, where a formula is still no host for a button.
- * Measured, not assumed.
- */
-function targetTag(node: RootContent): string | undefined {
-  switch (node.type) {
-    case "paragraph":
-      return "p";
-    case "heading":
-      return `h${Math.min(Math.max(node.depth, 1), 6)}`;
-    case "blockquote":
-      return "blockquote";
-    case "code":
-      return "pre";
-    case "list":
-      return node.ordered === true ? "ol" : "ul";
-    case "table":
-      return "table";
-    case "thematicBreak":
-      return "hr";
-    case "math":
-      return "span";
-    default:
-      return undefined;
-  }
-}
-
-/**
- * Is this list loose? `mdast-util-to-hast`'s own rule, copied deliberately.
- *
- * In a *tight* list the `<p>` wrapper around every item's paragraphs is
- * removed, so a directive inside a tight item has no paragraph to stamp. One
- * loose item makes the whole list loose, which is why this cannot be answered
- * from the item alone.
- */
-function listIsLoose(list: List): boolean {
-  if (list.spread === true) return true;
-  return list.children.some((item) =>
-    item.spread === null || item.spread === undefined
-      ? item.children.length > 1
-      : item.spread,
-  );
 }
 
 /**
