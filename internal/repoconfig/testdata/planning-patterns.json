@@ -1,0 +1,642 @@
+{
+  "description": [
+    "The server's answer to: is this listed path a planning candidate under these [planning] lines?",
+    "`candidate` is CompileIgnoreLines(include...).MatchesPath(path) && !CompileIgnoreLines(exclude...).MatchesPath(path), from sabhiram/go-gitignore under Go's regexp. Every value was produced by running that code, never written by hand.",
+    "The roadmap rule (the roadmap is a candidate whatever include and exclude say) is not part of these cases: test it separately.",
+    "Read by vantage-md's port (frontend/src/lib/planningPatterns.test.ts) and by the server's internal/planning test."
+  ],
+  "cases": [
+    {
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [],
+      "path": "roadmap.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [],
+      "path": "docs/design/planning-index.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [],
+      "path": "docs/notes.markdown",
+      "candidate": false
+    },
+    {
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [],
+      "path": "docs/NOTES.MD",
+      "candidate": false
+    },
+    {
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [
+        "docs/gallery/**"
+      ],
+      "path": "docs/gallery/open-questions.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [
+        "docs/gallery/**"
+      ],
+      "path": "x/docs/gallery/a.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [
+        "docs/gallery/**"
+      ],
+      "path": "docs/galleryx/a.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [
+        "docs/gallery/**"
+      ],
+      "path": "docs/gallery.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [
+        "docs/gallery/**",
+        "frontend/e2e/fixtures/**"
+      ],
+      "path": "frontend/e2e/fixtures/test_repo/plans/a.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [
+        "docs/gallery/**",
+        "frontend/e2e/fixtures/**"
+      ],
+      "path": "frontend/e2e/planning.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [
+        "*.skip.md"
+      ],
+      "path": "docs/a.skip.md",
+      "candidate": false
+    },
+    {
+      "include": [],
+      "exclude": [],
+      "path": "roadmap.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "a?.md"
+      ],
+      "exclude": [],
+      "path": "ab.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "a?.md"
+      ],
+      "exclude": [],
+      "path": "a?.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "dir/"
+      ],
+      "exclude": [],
+      "path": "dir/a.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "dir/"
+      ],
+      "exclude": [],
+      "path": "dir",
+      "candidate": false
+    },
+    {
+      "include": [
+        "dir/"
+      ],
+      "exclude": [],
+      "path": "x/dir/a.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "/docs/*.md"
+      ],
+      "exclude": [],
+      "path": "docs/a.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "/docs/*.md"
+      ],
+      "exclude": [],
+      "path": "x/docs/a.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "/docs/*.md"
+      ],
+      "exclude": [],
+      "path": "docs/sub/a.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "docs/*.md"
+      ],
+      "exclude": [],
+      "path": "docs/a.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "docs/*.md"
+      ],
+      "exclude": [],
+      "path": "x/docs/a.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "docs/gallery"
+      ],
+      "exclude": [],
+      "path": "x/docs/gallery/a.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "*.md"
+      ],
+      "exclude": [],
+      "path": "a/b/c.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "**"
+      ],
+      "exclude": [],
+      "path": "a/b.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "a/**/b.md"
+      ],
+      "exclude": [],
+      "path": "a/b.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "a/**/b.md"
+      ],
+      "exclude": [],
+      "path": "a/x/y/b.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "a/**/b.md"
+      ],
+      "exclude": [],
+      "path": "ab.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "**/docs"
+      ],
+      "exclude": [],
+      "path": "x/docs/a.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "**/*.md",
+        "!docs/**"
+      ],
+      "exclude": [],
+      "path": "docs/a.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "**/*.md",
+        "!docs/**"
+      ],
+      "exclude": [],
+      "path": "a.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "!a.md",
+        "a.md"
+      ],
+      "exclude": [],
+      "path": "a.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "a.md",
+        "!a.md"
+      ],
+      "exclude": [],
+      "path": "a.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "!a.md"
+      ],
+      "exclude": [],
+      "path": "a.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "!a.md",
+        "*.md"
+      ],
+      "exclude": [],
+      "path": "a.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "#x.md"
+      ],
+      "exclude": [],
+      "path": "#x.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        " #x.md"
+      ],
+      "exclude": [],
+      "path": "x.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "a.md   "
+      ],
+      "exclude": [],
+      "path": "a.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "",
+        "   ",
+        "# comment"
+      ],
+      "exclude": [],
+      "path": "a.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "[[:upper:]]*.md"
+      ],
+      "exclude": [],
+      "path": "README.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "[[:upper:]]*.md"
+      ],
+      "exclude": [],
+      "path": "readme.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "[[:^upper:]]*.md"
+      ],
+      "exclude": [],
+      "path": "readme.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "[[:foo:]]*.md"
+      ],
+      "exclude": [],
+      "path": "readme.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "(?=x)"
+      ],
+      "exclude": [],
+      "path": "?=x",
+      "candidate": true
+    },
+    {
+      "include": [
+        "(?=x)"
+      ],
+      "exclude": [],
+      "path": "x",
+      "candidate": false
+    },
+    {
+      "include": [
+        "a+b.md"
+      ],
+      "exclude": [],
+      "path": "a+b.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "a+b.md"
+      ],
+      "exclude": [],
+      "path": "ab.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "a+b.md"
+      ],
+      "exclude": [],
+      "path": "aab.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "{a,b}.md"
+      ],
+      "exclude": [],
+      "path": "{a,b}.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "{a,b}.md"
+      ],
+      "exclude": [],
+      "path": "a.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "a{2}.md"
+      ],
+      "exclude": [],
+      "path": "aa.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "a{2}.md"
+      ],
+      "exclude": [],
+      "path": "a.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "a{01}.md"
+      ],
+      "exclude": [],
+      "path": "a{01}.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "x{1001}.md",
+        "*.txt"
+      ],
+      "exclude": [],
+      "path": "x.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "x{1001}.md",
+        "*.txt"
+      ],
+      "exclude": [],
+      "path": "a.txt",
+      "candidate": true
+    },
+    {
+      "include": [
+        "[z-a].md",
+        "*.txt"
+      ],
+      "exclude": [],
+      "path": "z.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "\\q.md"
+      ],
+      "exclude": [],
+      "path": "q.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "\\1.md"
+      ],
+      "exclude": [],
+      "path": "1.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "docs/\\d*.md"
+      ],
+      "exclude": [],
+      "path": "docs/1a.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "docs/\\d*.md"
+      ],
+      "exclude": [],
+      "path": "docs/a.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "\\x41.md"
+      ],
+      "exclude": [],
+      "path": "A.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "[]a].md"
+      ],
+      "exclude": [],
+      "path": "].md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "(a|b).md"
+      ],
+      "exclude": [],
+      "path": "a.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "(a|b).md"
+      ],
+      "exclude": [],
+      "path": "c.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "a|b.md"
+      ],
+      "exclude": [],
+      "path": "abc/x.txt",
+      "candidate": true
+    },
+    {
+      "include": [
+        "a|b.md"
+      ],
+      "exclude": [],
+      "path": "xb.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "a|b.md"
+      ],
+      "exclude": [],
+      "path": "c.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "^a.md"
+      ],
+      "exclude": [],
+      "path": "a.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "^a.md"
+      ],
+      "exclude": [],
+      "path": "x/a.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "a$"
+      ],
+      "exclude": [],
+      "path": "x/a",
+      "candidate": true
+    },
+    {
+      "include": [
+        "a$"
+      ],
+      "exclude": [],
+      "path": "a/b.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "\\pL.md"
+      ],
+      "exclude": [],
+      "path": "é.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "\\pL.md"
+      ],
+      "exclude": [],
+      "path": "1.md",
+      "candidate": false
+    },
+    {
+      "include": [
+        "é*.md"
+      ],
+      "exclude": [],
+      "path": "docs/é1.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "[a-c]*.md"
+      ],
+      "exclude": [],
+      "path": "b1.md",
+      "candidate": true
+    },
+    {
+      "include": [
+        "[^a]*.md"
+      ],
+      "exclude": [],
+      "path": "a1.md",
+      "candidate": false
+    }
+  ]
+}

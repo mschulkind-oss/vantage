@@ -1,0 +1,25 @@
+/**
+ * The planning index — a model of a repository's planning documents, rebuilt
+ * from the files and never stored (`docs/design/planning-index.md`).
+ *
+ * Internal to vantage-md, and deliberately so (P4, Plan Q19): nothing here is
+ * exported from the published entry `src/index.ts`, so it is not semver API.
+ * The viewer reaches it as `vantage-md/planning` through the frontend's source
+ * alias, and `vantage-check` imports it by relative path, as both already
+ * consume the rest of this package. One scan, and every surface — link badges,
+ * the planning page, Referenced by, the file tree, `vantage-check index` and its
+ * rules — is a view of it.
+ *
+ * Everything is a pure function of JSON-serializable data: no `Map`, no `Set`,
+ * no class instance crosses this boundary, so a result can be posted between
+ * threads or printed as JSON without a translation step.
+ */
+
+export {
+  DEFAULT_PLANNING_CONFIG,
+  STAGE_ROLES,
+  candidateMatcher,
+  isStageRole,
+} from "./config.js";
+export type { PlanningConfig, StageRole } from "./config.js";
+export { compileIgnorePatterns } from "./patterns.js";

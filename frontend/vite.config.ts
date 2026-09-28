@@ -75,6 +75,16 @@ export default defineConfig(({ mode }) => {
       // the package is picked up instantly with HMR and no separate build
       // step. dist/ is only produced at `npm publish` time (prepublishOnly).
       alias: [
+        // The planning index, which is internal to vantage-md: it is not in the
+        // package's exports and never reaches its dist/, so this alias is the only
+        // way in (docs/design/planning-index.md, P4).
+        {
+          find: /^vantage-md\/planning$/,
+          replacement: path.resolve(
+            import.meta.dirname,
+            "../packages/vantage-md/src/planning/index.ts",
+          ),
+        },
         {
           find: /^vantage-md\/react$/,
           replacement: path.resolve(
