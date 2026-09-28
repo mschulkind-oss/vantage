@@ -9,7 +9,7 @@
 
 ### 📦 The planning index
 
-[`planning-index.md`](docs/design/planning-index.md) is decided, and [`planning-index-plan.md`](docs/design/planning-index-plan.md) is the build-ready hand-off for both phases ([§14](docs/design/planning-index.md#14-sequencing)). Start with its WP-A, which every other work package codes against. Its [coordinator questions](docs/design/planning-index-plan.md#questions-for-the-coordinator) carry defaults, so none blocks the start.
+[`planning-index.md`](docs/design/planning-index.md) is decided, and [`planning-index-plan.md`](docs/design/planning-index-plan.md) is the build-ready hand-off for both phases ([§14](docs/design/planning-index.md#14-sequencing)). Start with its WP-A, which every other work package codes against. Its twenty [coordinator questions](docs/design/planning-index-plan.md#the-coordinators-rulings) were ruled on 2026-09-28 into the design's [Decision Ledger](docs/design/planning-index.md#decision-ledger), so nothing blocks the start.
 
 ### 📦 A semantic-token vocabulary, before any component moves
 
