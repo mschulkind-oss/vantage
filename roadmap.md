@@ -7,9 +7,9 @@
 
 ## 📦 Up Next
 
-### 📦 The planning index, phase 1
+### 📦 The planning index
 
-[`planning-index.md`](docs/design/planning-index.md) is decided: every question is ruled. The first step is completing [`planning-index-plan.md`](docs/design/planning-index-plan.md) against the tree, since it is still a sketch. Phase 1 is the shared scan, the `[planning]` config, the `stage`/`next`/`depends-on` keys, link badges and `vantage-check index` ([§14](docs/design/planning-index.md#14-sequencing)).
+[`planning-index.md`](docs/design/planning-index.md) is decided, and [`planning-index-plan.md`](docs/design/planning-index-plan.md) is the build-ready hand-off for both phases ([§14](docs/design/planning-index.md#14-sequencing)). Start with its WP-A, which every other work package codes against. Its [coordinator questions](docs/design/planning-index-plan.md#questions-for-the-coordinator) carry defaults, so none blocks the start.
 
 ### 📦 A semantic-token vocabulary, before any component moves
 

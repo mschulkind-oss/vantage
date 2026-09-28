@@ -33,8 +33,8 @@ planning conventions built on it change what they write ([§10](#10-what-the-con
 
 **Needs your ruling:** None.
 
-**Reads with:** [`planning-index-plan.md`](planning-index-plan.md) (the implementation sketch; it
-becomes the hand-off once completed against the tree) and [the brainstorm](../brainstorm/planning-index.md)
+**Reads with:** [`planning-index-plan.md`](planning-index-plan.md) (the implementation plan,
+completed against the tree on 2026-09-28) and [the brainstorm](../brainstorm/planning-index.md)
 (the ideas this chose between, and the ones it retired).
 
 ---
