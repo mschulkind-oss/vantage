@@ -186,6 +186,84 @@ export const SAFE_STYLE = new RegExp(
 const COLLAPSE_GROUP_ID = /^[0-9]+$/;
 
 /**
+ * Inline SVG, admitted as static drawing and nothing else.
+ *
+ * The allowlist is shapes, text and grouping. Everything in SVG that can run
+ * code, fetch, or reach outside the element is refused by omission: `script`,
+ * `foreignObject`, `use` and `image` (both take an `href`), `a` with
+ * `xlink:href`, the `animate`/`set` family (which can rewrite an `href` after
+ * the sanitizer has looked), `style` elements, and every attribute that takes
+ * a `url(…)` reference — `filter`, `mask`, `clip-path`, `marker-*`, `cursor`.
+ *
+ * Gradients, patterns and `<defs>` are out for a second reason: they are only
+ * reachable through `url(#id)`, and the sanitizer prefixes every `id` with
+ * `user-content-`, so the reference would dangle even if it were allowed.
+ *
+ * Every child requires an `svg` ancestor, so `<title>` in particular cannot
+ * appear in HTML flow, where React would hoist it into the page's `<head>`.
+ */
+const SVG_CHILD_TAGS = [
+  "g",
+  "path",
+  "rect",
+  "circle",
+  "ellipse",
+  "line",
+  "polyline",
+  "polygon",
+  "text",
+  "tspan",
+  "title",
+  "desc",
+];
+
+/**
+ * A paint value: a keyword, a named color, or a hex color. No parentheses, for
+ * the same reason `SAFE_STYLE` refuses them — `fill="url(https://…)"` is a
+ * render-time fetch, and `rgb()` is the price of closing it.
+ */
+const SVG_PAINT = /^(?:#[0-9a-f]{3,8}|[a-z]+)$/i;
+
+/** Attributes any SVG element may carry, drawing and typography alike. */
+const SVG_ATTRIBUTES: NonNullable<Schema["attributes"]>[string] = [
+  ["fill", SVG_PAINT],
+  ["stroke", SVG_PAINT],
+  "fillOpacity",
+  "fillRule",
+  "strokeOpacity",
+  "strokeWidth",
+  "strokeLinecap",
+  "strokeLinejoin",
+  "strokeDasharray",
+  "strokeDashoffset",
+  "opacity",
+  "transform",
+  "fontFamily",
+  "fontSize",
+  "fontWeight",
+  "fontStyle",
+  "letterSpacing",
+  "textAnchor",
+  "dominantBaseline",
+  // Geometry. Names are shared across shapes, so one list serves them all.
+  "x",
+  "y",
+  "x1",
+  "y1",
+  "x2",
+  "y2",
+  "cx",
+  "cy",
+  "r",
+  "rx",
+  "ry",
+  "dx",
+  "dy",
+  "d",
+  "points",
+];
+
+/**
  * Never set `allowComments` here.
  *
  * `hast-util-sanitize` drops comment nodes because that boolean defaults to
@@ -226,7 +304,13 @@ export const sanitizeSchema: Schema = {
     "figcaption",
     "summary",
     "details",
+    "svg",
+    ...SVG_CHILD_TAGS,
   ],
+  ancestors: {
+    ...defaultSchema.ancestors,
+    ...Object.fromEntries(SVG_CHILD_TAGS.map((tag) => [tag, ["svg"]])),
+  },
   attributes: {
     ...defaultSchema.attributes,
     "*": [
@@ -293,5 +377,14 @@ export const sanitizeSchema: Schema = {
     img: [...(defaultSchema.attributes?.img || []), "loading"],
     td: [...(defaultSchema.attributes?.td || []), ["style", SAFE_STYLE]],
     th: [...(defaultSchema.attributes?.th || []), ["style", SAFE_STYLE]],
+    svg: [
+      ...SVG_ATTRIBUTES,
+      "xmlns",
+      "viewBox",
+      "preserveAspectRatio",
+      "role",
+      "ariaLabel",
+    ],
+    ...Object.fromEntries(SVG_CHILD_TAGS.map((tag) => [tag, SVG_ATTRIBUTES])),
   },
 };
