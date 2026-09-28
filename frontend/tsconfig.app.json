@@ -13,7 +13,8 @@
        the package's built dist/ type declarations. */
     "paths": {
       "vantage-md": ["../packages/vantage-md/src/index.ts"],
-      "vantage-md/react": ["../packages/vantage-md/src/react.ts"]
+      "vantage-md/react": ["../packages/vantage-md/src/react.ts"],
+      "vantage-md/planning": ["../packages/vantage-md/src/planning/index.ts"]
     },
 
     /* Bundler mode */
