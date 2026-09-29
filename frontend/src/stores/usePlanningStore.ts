@@ -420,6 +420,16 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
         return;
       }
       if (load.status === "error") return;
+      // Only a rescan changes a refused index, so one path's answer would be
+      // read and discarded; a rescan's batch in flight may not be refused,
+      // and it takes what is pushed meanwhile.
+      if (
+        load.status === "ready" &&
+        load.index.refused &&
+        !tracker.batchPending
+      ) {
+        return;
+      }
       for (const path of new Set(paths)) {
         if (isMarkdown(path)) refreshPath(repo, path);
       }
