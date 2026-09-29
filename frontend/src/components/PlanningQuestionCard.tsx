@@ -22,6 +22,13 @@
  * Answer… and Open document; a blocked one, which only Waiting lists, Open
  * document alone.
  *
+ * Every card keeps a fixed-width *N comments* count in its control row
+ * (`docs/design/planning-index-at-scale.md` §11.2), which toggles the list of
+ * comments on the question. Comments in hand when the page painted are listed
+ * at once; comments that came later go only into the count until the reader
+ * opens it, so their arrival moves nothing. A Mermaid diagram that was not
+ * drawn when the card painted draws into a fixed frame, scaled to fit.
+ *
  * A question whose block is too large to render unasked is a **preview card**
  * (`docs/design/planning-index-at-scale.md` §10.4): its file name and badge,
  * the question's marker, title, state and leaning, and Show question and Open
@@ -57,6 +64,7 @@ import {
   indexBlocks,
 } from "../lib/reviewAnchor";
 import { isStaticMode } from "../lib/staticMode";
+import { planningLimits } from "../planningScan/limits";
 import {
   commandErrorMessage,
   isPendingForAgent,
@@ -81,11 +89,11 @@ export const WAITING_LABEL = "waiting on the agent";
 interface PlanningQuestionCardProps {
   question: PlanningQuestion;
   /**
-   * The question's card block, from the scanner client: `undefined` while it
-   * is on its way, and `null` when the document no longer has it. A preview
-   * card has none until Show question fetches it.
+   * The question's card block, from the scanner client: `null` when the
+   * document no longer has it. A preview card has none until Show question
+   * fetches it.
    */
-  card: CardBlock | null | undefined;
+  card: CardBlock | null;
   /** The block is past the size a card renders unasked (§10.4). */
   preview?: boolean;
   /**
@@ -97,6 +105,11 @@ interface PlanningQuestionCardProps {
   badge: PlanningBadge | null;
   /** The document's review comments, or `undefined` until they load. */
   comments: readonly ReviewComment[] | undefined;
+  /**
+   * The comments were not in hand when the card painted, so they are listed
+   * only once the reader opens the count.
+   */
+  commentsLate?: boolean;
   /** The viewer URL of the document, without a fragment. */
   href: string;
   /** Called before Open document follows its link. */
@@ -212,6 +225,33 @@ const sameState = (a: CardState, b: CardState): boolean =>
   a.scoped.length === b.scoped.length &&
   a.scoped.every((id, i) => b.scoped[i] === id);
 
+/** Marks a Mermaid diagram that was not drawn when its card painted. */
+const LATE_DIAGRAM_ATTR = "data-planning-mermaid-frame";
+/** Marks one that was, so it keeps its own size. */
+const DRAWN_DIAGRAM_ATTR = "data-planning-mermaid-drawn";
+
+/**
+ * Mark each diagram in `root` the first time it is seen: drawn, or late. A
+ * late one is laid out in a fixed frame by the stylesheet, so what it draws
+ * into, or the error it becomes, moves nothing.
+ */
+function markDiagrams(root: HTMLElement): void {
+  for (const el of root.querySelectorAll<HTMLElement>(
+    '[data-testid="mermaid-container"]',
+  )) {
+    if (
+      el.hasAttribute(LATE_DIAGRAM_ATTR) ||
+      el.hasAttribute(DRAWN_DIAGRAM_ATTR)
+    ) {
+      continue;
+    }
+    el.setAttribute(
+      el.querySelector("svg") === null ? LATE_DIAGRAM_ATTR : DRAWN_DIAGRAM_ATTR,
+      "",
+    );
+  }
+}
+
 /** How a question's state reads on a preview card. */
 const STATE_LABEL: Record<PlanningQuestion["state"], string> = {
   open: "Open",
@@ -248,6 +288,7 @@ export const PlanningQuestionCard: React.FC<PlanningQuestionCardProps> = ({
   onShowQuestion,
   badge,
   comments,
+  commentsLate = false,
   href,
   onOpenDocument,
   onFile,
@@ -260,7 +301,11 @@ export const PlanningQuestionCard: React.FC<PlanningQuestionCardProps> = ({
   } | null>(null);
   const full = shown?.question === question ? shown.block : null;
   const previewing = preview && (full === null || full === "loading");
-  const card = preview ? (previewing ? undefined : (full as CardBlock)) : given;
+  const card: CardBlock | null | undefined = previewing
+    ? undefined
+    : preview
+      ? (full as CardBlock)
+      : given;
   const [showFailed, setShowFailed] = useState(false);
   const showQuestion = useCallback(() => {
     if (onShowQuestion === undefined) return;
@@ -288,6 +333,9 @@ export const PlanningQuestionCard: React.FC<PlanningQuestionCardProps> = ({
   } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The comment list is open unless its comments came late; the reader's own
+  // toggle, or an answer filed here, wins.
+  const [open, setOpen] = useState<boolean | null>(null);
 
   const markdown = card?.markdown ?? null;
 
@@ -334,6 +382,19 @@ export const PlanningQuestionCard: React.FC<PlanningQuestionCardProps> = ({
     setState((prev) => (sameState(prev, next) ? prev : next));
   }, [markdown, question, comments]);
 
+  // Every diagram as the card first painted it, and every one it becomes: a
+  // diagram MarkdownViewer draws late replaces its element's content, and one
+  // that cannot be drawn replaces the element itself.
+  useLayoutEffect(() => {
+    const root = bodyRef.current;
+    if (!root || markdown === null) return;
+    markDiagrams(root);
+    if (typeof MutationObserver === "undefined") return;
+    const observer = new MutationObserver(() => markDiagrams(root));
+    observer.observe(root, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [markdown]);
+
   // Reported from an effect of its own, so the page hears only real changes.
   const scopedKey = state.scoped.join("\n");
   const onScopedRef = useRef(onScoped);
@@ -366,6 +427,7 @@ export const PlanningQuestionCard: React.FC<PlanningQuestionCardProps> = ({
           question.path,
           newReviewComment(now.anchor, text(now.host), now.fallbackText),
         );
+        setOpen(true);
       } catch (e) {
         setError(commandErrorMessage(e, "Could not save the comment"));
       } finally {
@@ -382,6 +444,7 @@ export const PlanningQuestionCard: React.FC<PlanningQuestionCardProps> = ({
     writable && (question.state === "open" || question.state === "answered");
 
   const listed = (comments ?? []).filter((c) => state.scoped.includes(c.id));
+  const listOpen = open ?? !commentsLate;
 
   return (
     <article
@@ -402,7 +465,15 @@ export const PlanningQuestionCard: React.FC<PlanningQuestionCardProps> = ({
         {badge !== null && <PlanningBadgeChip badge={badge} />}
       </div>
 
-      <div ref={bodyRef} className="planning-card-body">
+      <div
+        ref={bodyRef}
+        className="planning-card-body"
+        style={
+          {
+            "--planning-mermaid-frame": `${planningLimits.mermaidFramePx}px`,
+          } as React.CSSProperties
+        }
+      >
         {previewing ? (
           <PreviewBody question={question} />
         ) : card === undefined ? null : card === null ? (
@@ -491,9 +562,27 @@ export const PlanningQuestionCard: React.FC<PlanningQuestionCardProps> = ({
             Could not load the question.
           </span>
         )}
+        {/* Always there, at a fixed width, so a count that arrives late
+            moves nothing (§11.2). */}
+        <span
+          data-planning-comment-slot
+          className="ml-auto inline-flex w-28 justify-end"
+        >
+          {listed.length > 0 && (
+            <button
+              type="button"
+              aria-expanded={listOpen}
+              data-planning-comment-count
+              onClick={() => setOpen(!listOpen)}
+              className="rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-600 tabular-nums transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
+            >
+              {listed.length === 1 ? "1 comment" : `${listed.length} comments`}
+            </button>
+          )}
+        </span>
       </div>
 
-      {listed.length > 0 && (
+      {listOpen && listed.length > 0 && (
         <ul
           aria-label="Comments on this question"
           className="mt-3 space-y-1.5 border-t border-slate-100 pt-2 text-[13px] dark:border-slate-700"

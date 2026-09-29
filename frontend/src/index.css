@@ -1909,6 +1909,24 @@ th.review-block-hovered {
 .planning-card-body [data-planning-card-unit] > :last-child {
   margin-bottom: 0;
 }
+/* A Mermaid diagram that was not drawn when its card painted
+   (planning-index-at-scale.md §10.3) draws later into a frame of fixed height,
+   scaled to fit, so its arrival moves nothing; so does the error box of one
+   that cannot be drawn. The card sets the height from the limits module. */
+.planning-card-body [data-planning-mermaid-frame] {
+  display: block;
+  height: var(--planning-mermaid-frame);
+  overflow: auto;
+}
+.planning-card-body [data-planning-mermaid-frame] > .mermaid {
+  height: 100%;
+  margin: 0;
+}
+.planning-card-body [data-planning-mermaid-frame] > .mermaid > svg {
+  height: 100%;
+  width: auto;
+  max-width: 100% !important;
+}
 
 /* ──────────────────────────────────────────
    Review stripe (scroll-position nav)

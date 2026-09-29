@@ -58,10 +58,17 @@ import { useWebSocket } from "../hooks/useWebSocket";
 import { usePlanningReviews } from "../hooks/usePlanningReviews";
 import { copyTextOrWarn } from "../lib/clipboard";
 import {
+  blockKey as pageBlockKey,
+  predrawDiagrams,
+  prefetchPlanningPage,
+  usePlanningPageInputs,
+} from "../hooks/usePlanningPageInputs";
+import {
   layoutPlanningPage,
   listedQuestions as listedQuestionsOf,
   pageSearch,
   readPageRequest,
+  requestWithPage,
   sectionsOf,
   withPage,
   type CardEntry,
@@ -71,7 +78,6 @@ import {
 } from "../lib/planningPages";
 import {
   planningScanner,
-  type CardWant,
   type QuoteWant,
   type Quotes,
 } from "../planningScan/client";
@@ -214,126 +220,6 @@ function builtOrDecided(index: PlanningIndex | null, path: string): string {
 
 /** A key for one question, stable across index versions. */
 const refKey = (ref: QuestionRef): string => `${ref.path}\n${ref.line}`;
-
-/** A key for one card block of one repository's document. */
-const blockKey = (repo: string, path: string, startLine: number): string =>
-  `${repo}\n${path}\n${startLine}`;
-
-interface HeldBlock {
-  /** The content hash of the document version the block was asked for. */
-  hash: string;
-  /** `null`: that version has no such block, or it could not be had. */
-  block: CardBlock | null;
-}
-
-/**
- * The blocks the page last held, kept past its unmount as `scrollPositions`
- * is: Back from a document the page opened then renders the same cards at
- * once, and the scroll position is restored over them.
- */
-let lastBlocks: ReadonlyMap<string, HeldBlock> = new Map();
-
-/**
- * The card block of every listed question, from the scanner client, which
- * cut it in the scan (`docs/design/planning-index-at-scale.md` §7.4): asked
- * for once per document version, by the content hash the index holds, and
- * kept on screen while the next version's is on its way. No document's text
- * reaches this thread (S2). A preview card's question is not asked about.
- *
- * `complete` says every listed question has its current version's answer.
- *
- * An interim for the planning page as it stands, which renders every card:
- * the paged page asks for the shown pages' blocks alone, as part of their
- * inputs, and keeps the last few sets of them (§10.3).
- */
-function useCardBlocks(
-  repo: string | null,
-  hashes: Readonly<Record<string, string>> | null,
-  questions: readonly PlanningQuestion[],
-): {
-  blockFor(question: PlanningQuestion): CardBlock | null | undefined;
-  complete: boolean;
-} {
-  const [held, setHeld] = useState(() => lastBlocks);
-  useEffect(() => {
-    lastBlocks = held;
-  }, [held]);
-
-  // Each block once, by the version of its document the index read.
-  const wanted = useMemo(() => {
-    const out = new Map<string, CardWant>();
-    if (repo === null || hashes === null) return out;
-    for (const q of questions) {
-      const hash = hashes[q.path];
-      if (hash === undefined) continue;
-      const { startLine } = q.block;
-      out.set(blockKey(repo, q.path, startLine), {
-        path: q.path,
-        hash,
-        startLine,
-      });
-    }
-    return out;
-  }, [repo, hashes, questions]);
-
-  useEffect(() => {
-    if (repo === null) return;
-    const missing = [...wanted].filter(
-      ([key, want]) => held.get(key)?.hash !== want.hash,
-    );
-    if (missing.length === 0) return;
-    let live = true;
-    const take = (answerOf: (at: number) => CardBlock | null) => {
-      if (!live) return;
-      setHeld((prev) => {
-        // Only the listed questions' blocks are kept.
-        const next = new Map<string, HeldBlock>();
-        for (const key of wanted.keys()) {
-          const had = prev.get(key);
-          if (had !== undefined) next.set(key, had);
-        }
-        missing.forEach(([key, want], at) => {
-          // A block from another version keeps the one on screen until a
-          // push refreshes the path (§10.3).
-          const block = answerOf(at) ?? prev.get(key)?.block ?? null;
-          next.set(key, { hash: want.hash, block });
-        });
-        return next;
-      });
-    };
-    planningScanner()
-      .cards(
-        repo,
-        missing.map(([, want]) => want),
-      )
-      .then(
-        (answers) =>
-          take((at) => {
-            const answer = answers[at];
-            return answer !== undefined && "block" in answer
-              ? answer.block
-              : null;
-          }),
-        () => take(() => null),
-      );
-    return () => {
-      live = false;
-    };
-  }, [repo, wanted, held]);
-
-  const blockFor = useCallback(
-    (question: PlanningQuestion) =>
-      repo === null
-        ? undefined
-        : held.get(blockKey(repo, question.path, question.block.startLine))
-            ?.block,
-    [repo, held],
-  );
-  const complete = [...wanted].every(
-    ([key, want]) => held.get(key)?.hash === want.hash,
-  );
-  return { blockFor, complete };
-}
 
 /**
  * The lines Copy answers quotes, for each pending group: each anchor line and
@@ -503,6 +389,37 @@ const Notice: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">{children}</p>
 );
 
+/** The line that stands where the section bar will be, while the index builds. */
+const ProgressLine: React.FC<{
+  progress: { done: number; total: number } | null;
+}> = ({ progress }) => (
+  <p role="status" className="text-sm text-slate-500 dark:text-slate-400">
+    {progress === null
+      ? "Reading planning documents…"
+      : `Scanning planning documents: ${progress.done.toLocaleString("en-US")} of ${progress.total.toLocaleString("en-US")}`}
+  </p>
+);
+
+/** The notices under the section bar (§6.2): each only when it applies. */
+const Notices: React.FC<{ sections: PlanningSections }> = ({ sections }) => (
+  <>
+    {sections.nothingNeedsYou && (
+      <p
+        data-testid="nothing-needs-you"
+        className="mb-6 text-base font-medium text-slate-700 dark:text-slate-200"
+      >
+        {PLANNING_NOTICES.nothingNeedsYou}
+      </p>
+    )}
+    {!sections.roadmap.present && (
+      <Notice>{PLANNING_NOTICES.noRoadmap(sections.roadmap.path)}</Notice>
+    )}
+    {!sections.stagesDeclared && <Notice>{PLANNING_NOTICES.noStages}</Notice>}
+  </>
+);
+
+const NO_SECTIONS: ReadonlySet<SectionId> = new Set();
+
 export const PlanningPage: React.FC = () => {
   const { "*": pathParam } = useParams();
   const location = useLocation();
@@ -592,9 +509,48 @@ export const PlanningPage: React.FC = () => {
     },
     [setSearch],
   );
+  // A pager the pointer or the focus reaches asks for the next page ahead.
+  const prefetch = useCallback<OnPrefetch>(
+    (id, page) => {
+      if (onThisRepo && repo !== null) {
+        prefetchPlanningPage(repo, requestWithPage(request, id, page));
+      }
+    },
+    [onThisRepo, repo, request],
+  );
 
-  // Every question with a card, on any page: what the reviews are for, and
-  // what Copy answers covers.
+  // The inputs of the pages shown (§10.3). The sections render only from a
+  // complete set, and keep the last one on screen until the next is complete.
+  const inputs = usePlanningPageInputs(onThisRepo ? repo : null, ready, layout);
+  const shown =
+    inputs.shown !== null && ready !== null && inputs.shown.inputs.repo === repo
+      ? inputs.shown
+      : null;
+  // The sections whose page is still on its way, once that is worth saying.
+  const busy = useMemo(() => {
+    if (!inputs.slow || shown === null || layout === null) return NO_SECTIONS;
+    const on = new Map(
+      shown.inputs.layout.sections.map((s) => [s.id, s.page] as const),
+    );
+    return new Set(
+      layout.sections.filter((s) => on.get(s.id) !== s.page).map((s) => s.id),
+    );
+  }, [inputs.slow, shown, layout]);
+
+  // Opened while the index was still building: the progress line stays until
+  // the section bar and the sections replace it in one commit (§10.6).
+  const [openedBuilding, setOpenedBuilding] = useState(false);
+  if (
+    !openedBuilding &&
+    onThisRepo &&
+    (load.status === "loading" || load.status === "idle")
+  ) {
+    setOpenedBuilding(true);
+  }
+  const frameReady =
+    index !== null && !index.refused && (!openedBuilding || shown !== null);
+
+  // Every question with a card, on any page: what Copy answers covers.
   const listedQuestions = useMemo(
     () =>
       index === null || sections === null
@@ -602,44 +558,19 @@ export const PlanningPage: React.FC = () => {
         : listedQuestionsOf(index, sections),
     [index, sections],
   );
-  // The questions of the pages shown whose blocks the cards render: not a
-  // preview card's.
-  const shownQuestions = useMemo(
-    () =>
-      (layout?.sections ?? []).flatMap((section) =>
-        section.kind === "cards"
-          ? section.items.flatMap((entry) =>
-              entry.kind === "question" && !entry.preview
-                ? [entry.question]
-                : [],
-            )
-          : [],
-      ),
-    [layout],
-  );
   const listedPaths = useMemo(
     () => [...new Set(listedQuestions.map((q) => q.path))],
     [listedQuestions],
   );
-  // Each visit reads every listed document's review afresh, in one request;
-  // what an earlier visit read is shown meanwhile.
+  // The shown pages' documents come with their inputs, and every other
+  // listed document in one more request once the sections have painted. Each
+  // visit reads them afresh; what an earlier visit read is shown meanwhile.
   const [visitStart] = useState(() => performance.now());
   const reviews = usePlanningReviews(onThisRepo ? repo : null, listedPaths, {
+    readRest: shown !== null,
     since: visitStart,
   });
   const hashes = ready?.hashes ?? null;
-  const blocks = useCardBlocks(
-    onThisRepo ? repo : null,
-    hashes,
-    shownQuestions,
-  );
-  // The sections wait for their cards the first time only; after that a new
-  // version's block replaces the one on screen when it lands.
-  const [shownFor, setShownFor] = useState<string | null>(null);
-  if (blocks.complete && ready !== null && repo !== null && shownFor !== repo) {
-    setShownFor(repo);
-  }
-  const cardsShown = shownFor !== null && shownFor === repo;
 
   // Which comments sit on a listed question: only a card, over its rendered
   // question, can say. Each reports its own, by question.
@@ -689,9 +620,11 @@ export const PlanningPage: React.FC = () => {
     [pendingGroups, linesOf],
   );
   const pendingCount = pending.reduce((n, g) => n + g.comments.length, 0);
+  // Exact only once every listed document's reviews are in (§10.5).
+  const countKnown = index !== null && reviews.known;
   const [copied, setCopied] = useState(false);
   const copyAnswers = useCallback(() => {
-    if (quotesLoading) return;
+    if (quotesLoading || !countKnown) return;
     const payload = answersPayload(pending);
     if (payload === null) return;
     void copyTextOrWarn(payload).then((ok) => {
@@ -699,7 +632,7 @@ export const PlanningPage: React.FC = () => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
-  }, [pending, quotesLoading]);
+  }, [pending, quotesLoading, countKnown]);
 
   const { adopt } = reviews;
   const fileComment = useCallback(
@@ -710,13 +643,9 @@ export const PlanningPage: React.FC = () => {
   );
 
   const rootRef = useRef<HTMLDivElement>(null);
-  const saveScroll = useScrollRestore(
-    location.key,
-    sections !== null && cardsShown,
-    rootRef,
-  );
+  const saveScroll = useScrollRestore(location.key, shown !== null, rootRef);
 
-  const shownPages = layout?.pages ?? null;
+  const shownPages = shown?.inputs.layout.pages ?? null;
   useLayoutEffect(() => {
     const id = scrollToRef.current;
     if (id === null || shownPages === null) return;
@@ -725,36 +654,43 @@ export const PlanningPage: React.FC = () => {
   }, [shownPages]);
 
   // Show question on a preview card: the whole block, which only a request
-  // naming it in full is answered with (§10.4).
+  // naming it in full is answered with (§10.4), with its diagrams drawn.
+  const shownHashes = shown?.inputs.hashes ?? null;
   const showQuestion = useCallback(
     async (question: PlanningQuestion): Promise<CardBlock | null> => {
-      const hash = hashes?.[question.path];
+      const hash = shownHashes?.[question.path];
       if (repo === null || hash === undefined) return null;
       const [answer] = await planningScanner().cards(
         repo,
         [{ path: question.path, hash, startLine: question.block.startLine }],
         { full: true },
       );
-      return answer !== undefined && "block" in answer ? answer.block : null;
+      if (answer === undefined || !("block" in answer)) return null;
+      await predrawDiagrams([answer.block.markdown]);
+      return answer.block;
     },
-    [repo, hashes],
+    [repo, shownHashes],
   );
 
+  const shownIndex = shown?.inputs.index ?? null;
   const card = (question: PlanningQuestion, preview: boolean) => {
     const key = refKey(question);
+    const at = pageBlockKey(question.path, question.block.startLine);
+    const asPreview = preview || shown?.inputs.previews.has(at) === true;
     return (
       <PlanningQuestionCard
         key={key}
         question={question}
-        card={preview ? undefined : blocks.blockFor(question)}
-        preview={preview}
+        card={asPreview ? null : (shown?.inputs.blocks.get(at) ?? null)}
+        preview={asPreview}
         onShowQuestion={showQuestion}
         badge={
-          index === null
+          shownIndex === null
             ? null
-            : badgeFor(index, "", { path: question.path, fragment: null })
+            : badgeFor(shownIndex, "", { path: question.path, fragment: null })
         }
         comments={reviews.byPath[question.path]}
+        commentsLate={shown?.reviewed.has(question.path) !== true}
         href={buildPath(question.path)}
         onOpenDocument={saveScroll}
         onFile={fileComment}
@@ -767,7 +703,7 @@ export const PlanningPage: React.FC = () => {
     <DocumentRow
       key={path}
       path={path}
-      index={index!}
+      index={shownIndex!}
       href={buildPath(path)}
       onOpen={saveScroll}
     >
@@ -805,11 +741,13 @@ export const PlanningPage: React.FC = () => {
           <button
             type="button"
             onClick={copyAnswers}
-            disabled={pendingCount === 0 || quotesLoading}
+            disabled={!countKnown || pendingCount === 0 || quotesLoading}
             title={
-              pendingCount === 0
-                ? "No answers are waiting on the agent"
-                : "Copy every answer waiting on the agent, grouped by document, for one trip"
+              !countKnown
+                ? "The answers waiting on the agent are still being counted"
+                : pendingCount === 0
+                  ? "No answers are waiting on the agent"
+                  : "Copy every answer waiting on the agent, grouped by document, for one trip"
             }
             className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
           >
@@ -819,11 +757,13 @@ export const PlanningPage: React.FC = () => {
               <ClipboardCopy size={14} aria-hidden="true" />
             )}
             {copied ? "Copied" : "Copy answers"}
+            {/* Room for four digits, so the count arriving moves nothing. */}
             <span
               data-testid="pending-answers"
-              className="tabular-nums text-slate-500 dark:text-slate-400"
+              className="inline-block text-right tabular-nums text-slate-500 dark:text-slate-400"
+              style={{ minWidth: `${planningLimits.pendingCountDigits}ch` }}
             >
-              {pendingCount}
+              {countKnown ? pendingCount : "–"}
             </span>
           </button>
         </div>
@@ -861,32 +801,72 @@ export const PlanningPage: React.FC = () => {
               Retry
             </button>
           </div>
-        ) : index === null || (sections !== null && !cardsShown) ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2
-              size={32}
-              className="animate-spin text-blue-600"
-              aria-label="Scanning the planning documents"
-            />
-          </div>
-        ) : index.refused ? (
+        ) : index?.refused ? (
           <Notice>
             {PLANNING_NOTICES.refused(
               index.candidateCount,
               index.config.maxCandidates,
             )}
           </Notice>
-        ) : sections !== null && layout !== null ? (
-          <Sections
-            sections={sections}
-            layout={layout}
-            index={index}
-            card={card}
-            documentRow={documentRow}
-            buildPath={buildPath}
-            onFlip={flip}
-          />
-        ) : null}
+        ) : (
+          <>
+            {/* The frame (§10.1): the section bar, or the progress line in
+                its place, then the notices. It paints first; the sections
+                fill the region below it in one later commit. */}
+            <div className="mb-6 flex min-h-7 items-center">
+              {frameReady && layout !== null ? (
+                <SectionBar layout={layout} />
+              ) : (
+                <ProgressLine
+                  progress={
+                    load.status === "loading"
+                      ? load.progress
+                      : index !== null
+                        ? {
+                            done: index.candidateCount,
+                            total: index.candidateCount,
+                          }
+                        : null
+                  }
+                />
+              )}
+            </div>
+            {frameReady && sections !== null && <Notices sections={sections} />}
+            <div data-planning-sections>
+              {shown !== null && frameReady ? (
+                <>
+                  {shown.inputs.reviewsFailed && (
+                    <p
+                      role="alert"
+                      className="mb-6 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400"
+                    >
+                      <AlertCircle size={14} className="shrink-0" />
+                      Comments could not be loaded.
+                    </p>
+                  )}
+                  <Sections
+                    layout={shown.inputs.layout}
+                    index={shown.inputs.index}
+                    card={card}
+                    documentRow={documentRow}
+                    buildPath={buildPath}
+                    onFlip={flip}
+                    onPrefetch={prefetch}
+                    busy={busy}
+                  />
+                </>
+              ) : inputs.slow ? (
+                <div className="flex items-center justify-center py-20">
+                  <Loader2
+                    size={32}
+                    className="animate-spin text-blue-600"
+                    aria-label="Loading this page's cards"
+                  />
+                </div>
+              ) : null}
+            </div>
+          </>
+        )}
       </main>
     </div>
   );
@@ -961,7 +941,6 @@ const WaitingOn: React.FC<{
 
 /** The sections, top to bottom (§6.2); an empty one is not shown. */
 const Sections: React.FC<{
-  sections: PlanningSections;
   layout: PlanningLayout;
   index: PlanningIndex;
   card: (question: PlanningQuestion, preview: boolean) => React.ReactNode;
@@ -969,8 +948,8 @@ const Sections: React.FC<{
   buildPath: (path: string) => string;
   onFlip: OnFlip;
   onPrefetch?: OnPrefetch;
+  busy: ReadonlySet<SectionId>;
 }> = ({
-  sections,
   layout,
   index,
   card,
@@ -978,6 +957,7 @@ const Sections: React.FC<{
   buildPath,
   onFlip,
   onPrefetch,
+  busy,
 }) => {
   const entry = (item: CardEntry) =>
     item.kind === "question" ? (
@@ -999,28 +979,13 @@ const Sections: React.FC<{
     );
   return (
     <>
-      <div className="mb-6">
-        <SectionBar layout={layout} />
-      </div>
-      {sections.nothingNeedsYou && (
-        <p
-          data-testid="nothing-needs-you"
-          className="mb-6 text-base font-medium text-slate-700 dark:text-slate-200"
-        >
-          {PLANNING_NOTICES.nothingNeedsYou}
-        </p>
-      )}
-      {!sections.roadmap.present && (
-        <Notice>{PLANNING_NOTICES.noRoadmap(sections.roadmap.path)}</Notice>
-      )}
-      {!sections.stagesDeclared && <Notice>{PLANNING_NOTICES.noStages}</Notice>}
-
       {layout.sections.map((section) => (
         <Section
           key={section.id}
           section={section}
           onFlip={onFlip}
           onPrefetch={onPrefetch}
+          busy={busy.has(section.id)}
         >
           {section.kind === "cards" ? (
             section.items.map(entry)
