@@ -14,11 +14,17 @@
  *
  * **Unlike its siblings this file IS layered, in `components`, and that is the
  * point.** The rules reach every `svg` inside prose, including the icons a
- * viewer draws there itself, and those are sized with utility classes. A layered
- * rule loses to every utility (Tailwind v4 puts them in the later `utilities`
- * layer) and to any unlayered rule a consumer writes, so an icon keeps the size
- * it asked for and only an unstyled drawing picks these up. Unlayered, this
- * would outrank all of them regardless of specificity.
+ * viewer draws there itself. A layered rule loses to every utility (Tailwind v4
+ * puts them in the later `utilities` layer) and to any unlayered rule a
+ * consumer writes. Unlayered, this would outrank all of them regardless of
+ * specificity.
+ *
+ * **It loses only on the properties the icon sets, though.** An icon's size
+ * utilities keep its size, and nothing keeps its display: the rule for an svg
+ * in a sentence made the Mermaid toolbar icons `inline-block` for a diagram in
+ * a list item, and their buttons grew. So an icon drawn inside prose states its
+ * display (`block`, in `MermaidDiagram.tsx`), and `inline_svg.spec.ts` deletes
+ * every rule in this file and requires that no icon or button moves.
  */
 
 @layer components {

@@ -15,7 +15,15 @@ import {
   currentMermaidPalette,
 } from "./mermaidTheme.js";
 
-// Inline SVG icons to avoid lucide-react dependency
+// Inline SVG icons to avoid lucide-react dependency.
+//
+// Each one states `block`. They are drawn inside the prose container, where
+// `styles/inline-svg.css` makes an svg in a paragraph, list item or cell
+// `inline-block` so that a document's icon stays in its sentence. That rule is
+// layered, so it loses to any utility an icon carries — but only for the
+// properties the icon sets. The size utilities kept the size, but without
+// `block` a diagram in a list item had its Maximize button, and the buttons in
+// its maximized view, grow nearly 4px taller with the icon 2px lower.
 const AlertTriangleIcon = () => (
   <svg
     width="16"
@@ -26,7 +34,7 @@ const AlertTriangleIcon = () => (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
-    className="w-4 h-4 shrink-0"
+    className="block w-4 h-4 shrink-0"
   >
     <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
     <path d="M12 9v4" />
@@ -44,7 +52,7 @@ const ChevronDownIcon = () => (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
-    className="w-3 h-3"
+    className="block w-3 h-3"
   >
     <path d="m6 9 6 6 6-6" />
   </svg>
@@ -60,7 +68,7 @@ const ChevronUpIcon = () => (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
-    className="w-3 h-3"
+    className="block w-3 h-3"
   >
     <path d="m18 15-6-6-6 6" />
   </svg>
@@ -76,7 +84,7 @@ const MaximizeIcon = () => (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
-    className="w-4 h-4 text-gray-600 dark:text-slate-200"
+    className="block w-4 h-4 text-gray-600 dark:text-slate-200"
   >
     <polyline points="15 3 21 3 21 9" />
     <polyline points="9 21 3 21 3 15" />
@@ -95,7 +103,7 @@ const CloseIcon = () => (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
-    className="w-5 h-5"
+    className="block w-5 h-5"
   >
     <path d="M18 6 6 18" />
     <path d="m6 6 12 12" />
@@ -112,7 +120,7 @@ const PlusIcon = () => (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
-    className="w-4 h-4"
+    className="block w-4 h-4"
   >
     <path d="M5 12h14" />
     <path d="M12 5v14" />
@@ -129,7 +137,7 @@ const MinusIcon = () => (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
-    className="w-4 h-4"
+    className="block w-4 h-4"
   >
     <path d="M5 12h14" />
   </svg>
@@ -145,7 +153,7 @@ const ResetIcon = () => (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
-    className="w-4 h-4"
+    className="block w-4 h-4"
   >
     <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
     <path d="M3 3v5h5" />
