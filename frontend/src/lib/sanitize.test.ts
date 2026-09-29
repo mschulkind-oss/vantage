@@ -855,6 +855,43 @@ describe("inline SVG", () => {
     );
   });
 
+  /**
+   * The root's `role`, pinned to the values that describe a drawing. Any other
+   * lets a document present its picture to assistive technology as an alert,
+   * a button or a dialog, under a label it wrote itself — "Session expired:
+   * sign in again at …", announced the moment the page renders.
+   */
+  it.each(["img", "presentation", "none"])(
+    'keeps role="%s" on the root svg',
+    async (role) => {
+      const host = await parsed(
+        `<div>\n<svg viewBox="0 0 9 9" role="${role}" aria-label="Dot"><circle r="1"/></svg>\n</div>`,
+      );
+      expect(host.querySelector("svg")!.getAttribute("role")).toBe(role);
+    },
+  );
+
+  // `alert img` is a fallback list: a browser takes the first role it knows.
+  it.each([
+    "alert",
+    "button",
+    "link",
+    "heading",
+    "dialog",
+    "status",
+    "alert img",
+  ])('refuses role="%s" on the root svg', async (role) => {
+    const host = await parsed(
+      `<div>\n<svg viewBox="0 0 9 9" role="${role}" aria-label="Session expired: sign in again at evil.test"><circle r="1"/></svg>\n</div>`,
+    );
+    const svg = host.querySelector("svg")!;
+    expect(svg.hasAttribute("role")).toBe(false);
+    expect(Array.from(svg.attributes, (a) => a.name).sort()).toEqual([
+      "aria-label",
+      "viewBox",
+    ]);
+  });
+
   it("keeps every other SVG_ATTRIBUTES entry on the root svg", async () => {
     const written = SVG_ATTRIBUTE_SPELLINGS.map(
       ([name, value]) => `${name}="${value}"`,

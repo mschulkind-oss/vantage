@@ -400,7 +400,7 @@ const SVG_ATTRIBUTES: NonNullable<Schema["attributes"]>[string] = [
 
 /**
  * The root `<svg>`'s attributes: `SVG_ATTRIBUTES` less `transform`, plus the
- * viewport and the accessible name.
+ * viewport, a `role` from a closed list, and the accessible name.
  *
  * `transform` on the root is not an SVG transform at all. The root is an
  * in-flow CSS box, and the attribute becomes a CSS transform of that box, so
@@ -420,7 +420,11 @@ const SVG_ROOT_ATTRIBUTES: NonNullable<Schema["attributes"]>[string] = [
   "xmlns",
   "viewBox",
   "preserveAspectRatio",
-  "role",
+  // The roles that describe a drawing: a picture, or a decoration. Any other
+  // value let a document present its drawing to assistive technology as an
+  // alert, a button or a dialog, with a label it wrote itself. The default
+  // schema admits `role` nowhere, so this is the only place it gets through.
+  ["role", "img", "presentation", "none"],
   "ariaLabel",
 ];
 
