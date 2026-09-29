@@ -86,7 +86,7 @@ Auto-discovered repos use the directory name as their display name. If a repo is
 
 Only repos that auto-discovery added are retired this way. An explicit `[[repos]]` entry whose directory is missing stays in the list and keeps being served — you asserted it should exist, so Vantage lets its requests fail loudly rather than quietly dropping it.
 
-This feature is **off by default** — add `source_dirs` to your config to enable it, or let `vantage install-service --source-dir ~/code` add the entry and start the service for you ([CLI Reference](cli-reference.md#vantage-install-service)). Running `vantage ~/code` without the daemon serves the directory the same way, through the same discovery ([Getting Started](../getting-started.md#serve-a-directory-of-clones)).
+This feature is **off by default** — add `source_dirs` to your config to enable it, or let `vantage install-service --source-dir ~/code` add the entry and start the service for you ([CLI Reference](cli-reference.md#vantage-install-service)). Running `vantage ~/code` without the daemon serves the clones the same way, through the same discovery, and adds one project for any Markdown outside them, which the daemon does not serve ([Getting Started](../getting-started.md#serve-a-directory-of-clones)).
 
 ## Allowed Read Roots
 

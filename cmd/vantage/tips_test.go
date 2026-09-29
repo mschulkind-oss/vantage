@@ -78,6 +78,10 @@ func TestServiceTipWording(t *testing.T) {
 	running.OpenPath = "/"
 	require.Equal(t,
 		"A Vantage service is already running at http://localhost:8000. This directory's projects are open there: http://localhost:8000/",
+		running.tip(&clonesPlan{Dir: "/home/matt/code", Repos: 23}))
+	// The daemon never serves the loose project: only `serve` makes one.
+	require.Equal(t,
+		"A Vantage service is already running at http://localhost:8000. Its clones are open there, but not the Markdown outside them: http://localhost:8000/",
 		running.tip(plan))
 
 	windows := base

@@ -58,11 +58,11 @@ vantage ~/Documents/notes/intro.md # open a specific file
 
 The server starts, your default browser opens to the file (or directory root), and the sidebar focuses on the parent directory of what you opened. Pass `--no-open` to suppress the browser launch.
 
-Point it at the directory holding your git clones and each clone becomes its own project, exactly as the daemon's `source_dirs` would make them (`--one-project` keeps them together). To keep that directory served in the background:
+Point it at the directory holding your git clones and each clone becomes its own project, exactly as the daemon's `source_dirs` would make them, plus one project for any Markdown outside them (`--one-project` keeps them all together). To keep the clones served in the background:
 
 ```bash
 vantage ~/code                                   # one project per clone
-vantage install-service --source-dir ~/code      # the same, as a login service
+vantage install-service --source-dir ~/code      # the clones, as a login service
 ```
 
 ### Multiple Directories (Daemon Mode)

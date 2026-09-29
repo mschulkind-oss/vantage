@@ -188,7 +188,7 @@ off. The tip describes the state of the per-user service that
 | --- | --- |
 | clones directory, no service installed | `To keep them all in the background at http://localhost:8000: vantage install-service --source-dir ~/code` |
 | one project, no service installed | `Tip: vantage install-service runs Vantage in the background for all your projects.` |
-| service running | `A Vantage service is already running at http://localhost:<port>.`, followed by `This project is open there: http://localhost:<port>/<project>` when it serves this directory |
+| service running | `A Vantage service is already running at http://localhost:<port>.`, followed by `This project is open there: http://localhost:<port>/<project>` when it serves this directory. For a clones directory with a loose project, it is `Its clones are open there, but not the Markdown outside them: …`, because the daemon never serves a loose project |
 | installed, not running | `A Vantage service is installed but not running. Start it with: systemctl --user start vantage` (on macOS, the `launchctl bootstrap` line `install-service` prints) |
 | installed, a foreground `serve` at its address | `A Vantage service is installed, but a foreground vantage serve is answering at its address, http://localhost:8000. Stop that one, then start the service with: …` |
 
