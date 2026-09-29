@@ -1,6 +1,7 @@
 package repoconfig
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -267,4 +268,186 @@ func TestSharedFixtureIsReadableByThisReader(t *testing.T) {
 	s, err := Parse(data)
 	require.NoError(t, err, "the checker's own sections must not make this file unreadable")
 	require.Equal(t, []string{"roadmap.md", "docs/design/*.md"}, s.Starred.Promote)
+
+	// [planning] is the table both readers parse, so this half asserts all of
+	// it, not only the keys the server acts on.
+	require.Equal(t, Planning{
+		Roadmap:       "plans/ROADMAP.md",
+		Include:       []string{"docs/**", "plans/**"},
+		Exclude:       []string{"docs/gallery/**"},
+		MaxFileBytes:  65536,
+		MaxCandidates: 250,
+		Stages: map[string]string{
+			"DRAFTED": "open", "SETTLED": "ready", "SHIPPED": "built", "RETIRED": "done",
+		},
+	}, s.Planning.Resolved())
+}
+
+// planningConfigCase is one row of testdata/planning-config.json. `planning` is
+// vantage-md's PlanningConfig, camelCased, which is the checker's shape; the
+// server's own [Planning] carries the same values under snake_case names.
+type planningConfigCase struct {
+	Name     string `json:"name"`
+	TOML     string `json:"toml"`
+	OK       bool   `json:"ok"`
+	Planning *struct {
+		Roadmap       string            `json:"roadmap"`
+		Include       []string          `json:"include"`
+		Exclude       []string          `json:"exclude"`
+		MaxFileBytes  int64             `json:"maxFileBytes"`
+		MaxCandidates int               `json:"maxCandidates"`
+		Stages        map[string]string `json:"stages"`
+	} `json:"planning"`
+}
+
+// The Go half of the [planning] conformance check. vantage-check's config test
+// reads the same file, so the two readers accept and refuse exactly the same
+// tables and resolve an accepted one to the same values.
+func TestPlanningFixtureResolvesAsTheCheckerDoes(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("testdata", "planning-config.json"))
+	require.NoError(t, err)
+	var fixture struct {
+		Cases []planningConfigCase `json:"cases"`
+	}
+	require.NoError(t, json.Unmarshal(data, &fixture))
+	require.NotEmpty(t, fixture.Cases)
+
+	for _, tc := range fixture.Cases {
+		t.Run(tc.Name, func(t *testing.T) {
+			s, err := Parse([]byte(tc.TOML))
+			if !tc.OK {
+				require.Error(t, err)
+				require.True(t, s.IsZero(), "a rejected file must yield nothing, not half")
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, tc.Planning, "an accepted case must say what it resolves to")
+			require.Equal(t, Planning{
+				Roadmap:       tc.Planning.Roadmap,
+				Include:       tc.Planning.Include,
+				Exclude:       tc.Planning.Exclude,
+				MaxFileBytes:  tc.Planning.MaxFileBytes,
+				MaxCandidates: tc.Planning.MaxCandidates,
+				Stages:        tc.Planning.Stages,
+			}, s.Planning.Resolved())
+		})
+	}
+}
+
+// The fixture's rows that pin the edges this reader is most likely to get wrong
+// are asserted to be there, so trimming the fixture cannot quietly drop them.
+func TestPlanningFixtureKeepsItsEdgeCases(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("testdata", "planning-config.json"))
+	require.NoError(t, err)
+	var fixture struct {
+		Cases []planningConfigCase `json:"cases"`
+	}
+	require.NoError(t, json.Unmarshal(data, &fixture))
+	names := map[string]bool{}
+	for _, tc := range fixture.Cases {
+		names[tc.Name] = true
+	}
+	for _, want := range []string{
+		"an empty [planning.stages] table is no stages",
+		"an explicitly empty include is kept, not defaulted",
+		"stages that are not a table",
+		"an unknown key",
+		"a role outside the four",
+		"a limit of zero",
+	} {
+		require.True(t, names[want], "planning-config.json lost the case %q", want)
+	}
+}
+
+// A rejected [planning] table takes the rest of the file with it, [starred] and
+// `theme` included: whole-or-nothing is this file's discipline, and a planning
+// typo is no exception to it.
+func TestABadPlanningTableRejectsTheWholeFile(t *testing.T) {
+	s, err := Parse([]byte("theme = \"catppuccin\"\n\n[starred]\npromote = [\"a.md\"]\n\n[planning]\nmax-candidates = 0\n"))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "planning.max-candidates")
+	require.True(t, s.IsZero())
+	require.Equal(t, DefaultPlanning(), s.Planning.Resolved(),
+		"a refused file is served with the defaults")
+}
+
+// `stages` has to be a table whatever TOML spelling reaches it. The fixture pins
+// the array case, which the decoder accepts silently; an array of tables is the
+// other shape a guess could take, and an inline table is simply a table.
+func TestPlanningStagesMustBeATable(t *testing.T) {
+	for name, body := range map[string]string{
+		"array":           "[planning]\nstages = [\"DESIGN\"]\n",
+		"array of tables": "[[planning.stages]]\nDESIGN = \"open\"\n",
+		"empty array":     "[planning]\nstages = []\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Parse([]byte(body))
+			require.Error(t, err)
+		})
+	}
+
+	s, err := Parse([]byte("[planning]\nstages = { DESIGN = \"open\" }\n"))
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"DESIGN": "open"}, s.Planning.Resolved().Stages)
+}
+
+// A file that says only [planning] is a file the server acts on.
+func TestAPlanningTableAloneIsNotEmpty(t *testing.T) {
+	s, err := Parse([]byte("[planning]\nexclude = [\"docs/gallery/**\"]\n"))
+	require.NoError(t, err)
+	require.False(t, s.IsZero())
+
+	s, err = Parse([]byte("[planning]\n\n[planning.stages]\n"))
+	require.NoError(t, err)
+	require.True(t, s.IsZero(), "an empty table resolves to the defaults, so it said nothing")
+}
+
+// The endpoint marshals the resolved table directly, and its contract is that
+// lists are `[]` and never `null`, and that one caller cannot edit another's
+// defaults through the slices it was handed.
+func TestResolvedPlanningListsAreFreshAndNeverNil(t *testing.T) {
+	a := PlanningSettings{}.Resolved()
+	require.NotNil(t, a.Include)
+	require.NotNil(t, a.Exclude)
+	a.Include[0] = "edited"
+	require.Equal(t, []string{"**/*.md"}, PlanningSettings{}.Resolved().Include)
+
+	empty := []string{}
+	b := PlanningSettings{Include: &empty}.Resolved()
+	require.NotNil(t, b.Include)
+	require.Empty(t, b.Include)
+
+	body, err := json.Marshal(PlanningSettings{}.Resolved())
+	require.NoError(t, err)
+	require.JSONEq(t, `{"roadmap":"roadmap.md","include":["**/*.md"],"exclude":[],
+		"max_file_bytes":1048576,"max_candidates":5000,"stages":null}`, string(body))
+}
+
+// SettingsNow is for the caller answering a change to this very file, so it
+// must see an edit that Settings, inside its throttle window, does not.
+func TestSettingsNowSeesAnEditInsideTheThrottleWindow(t *testing.T) {
+	root := write(t, "[planning]\nroadmap = \"first.md\"\n")
+	c := New(root)
+	clock := time.Unix(1700000000, 0)
+	c.now = func() time.Time { return clock }
+
+	s, err := c.Settings()
+	require.NoError(t, err)
+	require.Equal(t, "first.md", s.Planning.Resolved().Roadmap)
+
+	require.NoError(t, os.WriteFile(filepath.Join(root, FileName),
+		[]byte("[planning]\nroadmap = \"second.md\"\n"), 0o644))
+
+	s, err = c.Settings()
+	require.NoError(t, err)
+	require.Equal(t, "first.md", s.Planning.Resolved().Roadmap, "Settings is still throttled")
+
+	s, err = c.SettingsNow()
+	require.NoError(t, err)
+	require.Equal(t, "second.md", s.Planning.Resolved().Roadmap)
+
+	s, err = c.Settings()
+	require.NoError(t, err)
+	require.Equal(t, "second.md", s.Planning.Resolved().Roadmap,
+		"and what it read is what Settings serves from then on")
 }
