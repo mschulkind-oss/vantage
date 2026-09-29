@@ -230,16 +230,28 @@ func (st serviceState) tip(plan *clonesPlan) string {
 		return line
 	case st.Installed && st.Foreground:
 		return fmt.Sprintf("A Vantage service is installed, but a foreground vantage serve is answering at its address, %s. "+
-			"Stop that one, then start the service with: %s", st.URL, tildeCommand(serviceStartCommand(st.GOOS, st.Home), st.Home))
+			"Stop that one, then start the service with: %s", st.URL, st.startHint())
 	case st.Installed:
-		return "A Vantage service is installed but not running. Start it with: " +
-			tildeCommand(serviceStartCommand(st.GOOS, st.Home), st.Home)
+		return "A Vantage service is installed but not running. Start it with: " + st.startHint()
 	case plan != nil:
 		return fmt.Sprintf("To keep them all in the background at %s: vantage install-service --source-dir %s",
 			st.URL, tildePath(plan.Dir, st.Home))
 	default:
 		return "Tip: vantage install-service runs Vantage in the background for all your projects."
 	}
+}
+
+// startHint is the command that starts the installed service when it is not
+// answering. On macOS that is kickstart first: the agent is usually loaded
+// and stopped — the daemon exited cleanly, or a login loaded it — and
+// bootstrap refuses an agent that is loaded, so bootstrap is the fallback for
+// one that is not.
+func (st serviceState) startHint() string {
+	start := tildeCommand(serviceStartCommand(st.GOOS, st.Home), st.Home)
+	if st.GOOS == "darwin" {
+		return fmt.Sprintf("launchctl kickstart gui/$(id -u)/%s (or, if it is not loaded, %s)", launchAgentLabel, start)
+	}
+	return start
 }
 
 // tildeCommand abbreviates the home directory in the path a start command

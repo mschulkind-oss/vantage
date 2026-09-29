@@ -64,8 +64,12 @@ func TestServiceTipWording(t *testing.T) {
 		installed.tip(nil))
 	mac := installed
 	mac.GOOS = "darwin"
+	// Installed but not answering is usually loaded and stopped — the daemon
+	// exited cleanly, or every login loads the agent — and bootstrap refuses a
+	// loaded agent, so kickstart comes first.
 	require.Equal(t,
-		"A Vantage service is installed but not running. Start it with: launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/io.github.mschulkind-oss.vantage.plist",
+		"A Vantage service is installed but not running. Start it with: launchctl kickstart gui/$(id -u)/io.github.mschulkind-oss.vantage "+
+			"(or, if it is not loaded, launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/io.github.mschulkind-oss.vantage.plist)",
 		mac.tip(plan))
 
 	running := installed
