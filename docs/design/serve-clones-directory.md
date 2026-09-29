@@ -121,9 +121,16 @@ the sidebar's sort orders.
 - **Its walks stop at every repository boundary.** The tree, the file picker,
   recents, the planning index, the has-Markdown probe and the watcher skip any
   directory that holds a `.git` directory or is a linked worktree, at any depth.
-  Requests for a path inside a boundary are refused the way a missing file is.
-  It never hands git work to a child repository, because each child is a
-  project of its own.
+  Requests for a path inside a boundary are refused the way a missing file is,
+  images included. It never hands git work to a child repository, because each
+  child is a project of its own.
+- **A link into a clone opens the clone's project.** A relative link or image
+  in a loose note that points into a clone, such as `[alpha](alpha/README.md)`
+  in `~/code/README.md`, names a path the loose project refuses. So the loose
+  project's entry in `/api/repos` carries `clones`: each directory directly
+  inside it that another project serves, a symlink to a clone included, mapped
+  to that project's name. The viewer sends such a link, and such an image, to
+  that project.
 - **The existence check is bounded.** It is the fs service's own has-Markdown
   walk: it stops at the first Markdown file, respects `walk_max_depth` and the
   exclude list, and skips boundaries. So it costs one short walk, not a count.

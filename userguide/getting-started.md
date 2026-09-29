@@ -95,8 +95,9 @@ entry:
   seconds, and a deleted one drops out.
 - Markdown that sits in the directory but in none of the clones (a `notes.md`
   beside them, say) is served as one more project, named after the directory
-  and listed first. It never shows the clones' files. With no such Markdown,
-  there is no extra project.
+  and listed first. It never shows the clones' files, and a link from one of
+  its notes into a clone opens the document in the clone's own project. With
+  no such Markdown, there is no extra project.
 - Linked worktrees are not served as projects, just as the daemon skips them.
 
 To serve the whole directory as a single project, the way Vantage did before,

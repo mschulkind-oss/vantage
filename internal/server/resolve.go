@@ -121,7 +121,7 @@ func (s *Server) handleReposMulti(w http.ResponseWriter, _ *http.Request) {
 			continue
 		}
 		// Cache not yet warmed for this repo: return the name with null activity.
-		out = append(out, model.RepoInfo{Name: name, Pinned: rs.loose})
+		out = append(out, s.repoInfo(rs, repos))
 	}
 	writeJSONOK(w, out)
 }
