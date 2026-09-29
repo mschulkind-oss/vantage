@@ -52,6 +52,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -167,6 +168,9 @@ type Server struct {
 	// [live.Watcher.SetWatchLimit]). Only tests set it, to reach the watch
 	// limit without a big tree.
 	watchLimit int
+	// watcherStart runs one watcher; nil means [live.Watcher.Start]. Only tests
+	// set it, to make a watcher fail to start without exhausting a real limit.
+	watcherStart func(*live.Watcher, context.Context) error
 }
 
 // NewServer assembles a Server from a resolved [config.Config]. It constructs
@@ -680,6 +684,7 @@ func (s *Server) startWatcher(ctx context.Context, rs *repoServices) {
 	w, err := live.NewWatcher(rs.root, rs.name, s.manager, s.reviews, s.cfg.UseIgnoreFiles, s.logger, s.cfg.WatcherIgnoreDefaults)
 	if err != nil {
 		s.logger.Warn("server: failed to start watcher", "repo", rs.name, "root", rs.root, "error", err)
+		s.watcherFailed(rs.name, err)
 		return
 	}
 	w.SetStopAtRepos(rs.loose)
@@ -691,15 +696,36 @@ func (s *Server) startWatcher(ctx context.Context, rs *repoServices) {
 	s.watchers[rs.name] = w
 	s.watchersMu.Unlock()
 
+	start := s.watcherStart
+	if start == nil {
+		start = (*live.Watcher).Start
+	}
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
 		// Start blocks until ctx is canceled; its ctx.Err() return is the
 		// expected shutdown path, not a failure worth logging.
-		if err := w.Start(ctx); err != nil && !errors.Is(err, ctx.Err()) {
+		if err := start(w, ctx); err != nil && !errors.Is(err, ctx.Err()) {
 			s.logger.Warn("server: watcher stopped with error", "repo", rs.name, "error", err)
+			s.watcherFailed(rs.name, err)
 		}
 	}()
+}
+
+// watcherFailed reports that repo's watcher stopped or never started, which
+// leaves the whole project without live reload. The usual cause is the
+// system's limit on inotify instances: a directory of clones takes one per
+// clone, and the kernel's default of 128 per user is shared with every other
+// program the user runs.
+func (s *Server) watcherFailed(repo string, err error) {
+	msg := "Live reload is off for this whole project: its file watcher could not start"
+	if errors.Is(err, syscall.EMFILE) || errors.Is(err, syscall.ENFILE) || strings.Contains(err.Error(), "too many open files") {
+		msg += ", because the system's limit on file watchers was reached. " +
+			"Raise it (on Linux, fs.inotify.max_user_instances), then restart Vantage."
+	} else {
+		msg += " (" + err.Error() + "). Restart Vantage once that is fixed."
+	}
+	s.reportDegraded(model.Degradation{Repo: repo, Kind: model.DegradationWatcherFailed, Path: ".", Message: msg})
 }
 
 // Shutdown closes the live watchers. It is idempotent and safe to call after Run
@@ -876,7 +902,9 @@ type degradedChangedMessage struct {
 // degraded_changed; later ones only update what the next fetch returns, so a
 // thousand refused watches are one push, not a thousand.
 func (s *Server) reportDegraded(d model.Degradation) {
-	d.Message = degradationMessage(d, s.cfg)
+	if d.Message == "" {
+		d.Message = degradationMessage(d, s.cfg)
+	}
 	s.degradedMu.Lock()
 	kinds := s.degraded[d.Repo]
 	if kinds == nil {
