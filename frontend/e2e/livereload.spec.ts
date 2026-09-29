@@ -11,97 +11,101 @@ test.describe("Live reload", () => {
   // under fullyParallel, one test's edit is another test's spurious reload.
   test.describe.configure({ mode: "serial" });
 
-  const testRepoPath = path.join(__dirname, "fixtures/test_repo");
-  const page1Path = path.join(testRepoPath, "page1.md");
-  const page2Path = path.join(testRepoPath, "page2.md");
-  let originalPage1: string;
-  let originalPage2: string;
+  // The files this spec rewrites are its own: fixtures/test_repo/livereload/
+  // is read by no other spec. It used to rewrite page1.md and page2.md, which
+  // half the suite reads, so a parallel run could catch "Success!" missing
+  // from page2.md or "Page 1 UPDATED" in page1.md, depending on which of these
+  // tests happened to be mid-edit. Keep it that way: a file written here must
+  // not be one another spec opens.
+  const dir = path.join(__dirname, "fixtures/test_repo/livereload");
+  const watchedPath = path.join(dir, "watched.md");
+  const otherPath = path.join(dir, "other.md");
+  let originalWatched: string;
+  let originalOther: string;
 
   test.beforeEach(() => {
     // Save original content; every test restores what it touched, so a
     // local run never leaves the tree dirty.
-    originalPage1 = fs.readFileSync(page1Path, "utf-8");
-    originalPage2 = fs.readFileSync(page2Path, "utf-8");
+    originalWatched = fs.readFileSync(watchedPath, "utf-8");
+    originalOther = fs.readFileSync(otherPath, "utf-8");
   });
 
   test.afterEach(() => {
-    fs.writeFileSync(page1Path, originalPage1);
-    fs.writeFileSync(page2Path, originalPage2);
+    fs.writeFileSync(watchedPath, originalWatched);
+    fs.writeFileSync(otherPath, originalOther);
   });
 
   test("updates content when file changes on disk", async ({ page }) => {
-    // Navigate to page1.md
-    await page.goto("/page1.md");
-
-    // Wait for the content to load
-    await expect(page.getByText("Link to Page 2")).toBeVisible({
+    await page.goto("/livereload/watched.md");
+    const heading = page.locator(".prose h1");
+    await expect(heading).toContainText("Live reload watched", {
       timeout: 10000,
     });
 
-    // Verify original content is visible
-    await expect(page.getByText("Page 1")).toBeVisible();
-
     // Now modify the file on disk
-    const newContent = originalPage1.replace("Page 1", "Page 1 UPDATED");
-    fs.writeFileSync(page1Path, newContent);
+    const marker = `e2e-live-reload-${Date.now()}`;
+    fs.writeFileSync(
+      watchedPath,
+      originalWatched.replace("Live reload watched", marker),
+    );
 
     // Wait for live reload to update the content
-    await expect(page.getByText("Page 1 UPDATED")).toBeVisible({
-      timeout: 15000,
-    });
+    await expect(heading).toContainText(marker, { timeout: 15000 });
   });
 
   test("maintains sidebar expansion state when live reload occurs", async ({
     page,
   }) => {
-    // Navigate to root
     await page.goto("/");
 
-    // Wait for sidebar
     const sidebar = page.locator('[data-testid="sidebar"]');
     await expect(sidebar).toBeVisible();
 
-    // Find subdir
-    const subdirRow = sidebar
-      // Tree rows are real links (anchors), not divs.
-      .locator("a.flex.items-center.cursor-pointer")
-      .filter({ hasText: "subdir" });
-    await expect(subdirRow).toBeVisible();
+    // Tree rows are real links (anchors), not divs; the recents section's
+    // rows carry no cursor-pointer, so these match the tree alone.
+    const dirRow = sidebar.locator('a.cursor-pointer[href="/livereload"]');
+    await expect(dirRow).toBeVisible();
+    const watchedRow = sidebar.locator(
+      'a.cursor-pointer[href="/livereload/watched.md"]',
+    );
+    await expect(watchedRow).toHaveCount(0);
 
-    // Expand subdir, and track the nested README by its own href: text
-    // counts also match the recents row and the hover-portal clone of a
-    // filename, which are not the tree's state.
-    const nestedReadme = sidebar.locator('a.cursor-pointer[href="/subdir/README.md"]');
-    await expect(nestedReadme).toHaveCount(0);
-    const arrow = subdirRow.locator("span").first();
-    await arrow.click();
-    await expect(nestedReadme).toBeVisible();
+    // Expand the directory holding the file about to change, so the refresh
+    // has to refetch the very listing it must keep open.
+    await dirRow.locator("span").first().click();
+    await expect(watchedRow).toBeVisible();
 
-    // Now modify a file to trigger live reload
-    const newContent = originalPage1.replace("Page 1", "Page 1 UPDATED");
-    fs.writeFileSync(page1Path, newContent);
+    // The push makes the tree refetch every expanded directory. Wait for that
+    // refetch rather than for a fixed time, so the check below is the tree
+    // after the refresh and not before it.
+    const refreshed = page.waitForResponse(
+      (r) =>
+        r.url().includes("/api/tree?") &&
+        new URL(r.url()).searchParams.get("path") === "livereload",
+    );
+    fs.writeFileSync(watchedPath, `${originalWatched}\nEdited.\n`);
+    await (await refreshed).finished();
 
-    // Wait for a reasonable amount of time for the WS message to be
-    // processed, then check the side effect the test exists for: the tree
-    // refreshed without losing its expansion state.
-    await page.waitForTimeout(2000);
-    // Verify the expansion survived the tree refresh: the nested README's
-    // link is still there.
-    await expect(nestedReadme).toBeVisible();
+    // The refetched listing is applied in one render after the response;
+    // let it land, then check the expansion survived it.
+    await page.waitForTimeout(500);
+    await expect(watchedRow).toBeVisible();
   });
 
   test("an edit to a different document does not disturb the open one", async ({
     page,
   }) => {
     const marker = `e2e-live-reload-other-${Date.now()}`;
-    await page.goto("/page1.md");
-    await expect(page.getByText("Link to Page 2")).toBeVisible();
+    await page.goto("/livereload/watched.md");
+    await expect(page.locator(".prose h1")).toContainText(
+      "Live reload watched",
+    );
 
     const bodyBefore = await page
       .locator("[data-content-scroll]")
       .innerText();
 
-    fs.writeFileSync(page2Path, `# Page 2\n\n${marker}\n`);
+    fs.writeFileSync(otherPath, `# Live reload other\n\n${marker}\n`);
 
     // Give any spurious reload or refetch time to land, then assert nothing
     // did: same text, and the other file's marker never appears here.
