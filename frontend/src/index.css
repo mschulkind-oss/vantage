@@ -134,6 +134,24 @@ code {
   display: none;
 }
 
+/* A label that changes on click ("Path" → "Copied!", "Review" → "End
+   review?") is always as wide as the longer of the two, which it names in
+   `data-reserve`: a zero-height, invisible, unannounced copy of it sets the
+   width. Otherwise, at the narrowest width that still shows labels, the click
+   itself took the `labels` step, the toolbar jumped, and the second click of a
+   two-step confirm landed on whatever had moved under the pointer. */
+.hdr-reserve {
+  display: inline-flex;
+  flex-direction: column;
+}
+.hdr-reserve::after {
+  content: attr(data-reserve);
+  content: attr(data-reserve) / "";
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
 /* 1. The subject is gone, and with it the toolbar's one flexible item. */
 .viewer-header[data-yield~="subject"] .hdr-subject {
   display: none;
