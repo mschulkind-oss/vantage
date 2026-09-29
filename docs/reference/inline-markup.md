@@ -657,6 +657,17 @@ and patterns are unsupported because they are reachable only through `url(#id)`,
 and the sanitizer prefixes every `id`. SVG child elements require an `svg`
 ancestor, so a stray `<title>` in prose cannot reach the page's `<head>`.
 
+A refused element is normally *unwrapped*: the tag goes and its children stay.
+The containers whose children are never meant to be painted where they stand —
+`defs`, `clipPath`, `mask`, `pattern`, `marker`, `symbol`, `linearGradient`,
+`radialGradient`, `filter`, `metadata` and `foreignObject` — are instead removed
+with everything inside them. Unwrapped, a Figma export's clip rectangle painted
+over the whole drawing, and the HTML inside a `foreignObject` escaped into the
+page. `switch` is kept, so a draw.io export draws each label's `<text>`
+fallback. The lowercase names are removed in prose as well, so a bare
+`<pattern>` written as a placeholder takes the rest of its paragraph with it:
+put tag names in a code span.
+
 Denial of service is otherwise not a concern: ten thousand directives is ten
 thousand comments, and the plugin is one linear pass over an unambiguous grammar.
 

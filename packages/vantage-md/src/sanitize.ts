@@ -189,15 +189,28 @@ const COLLAPSE_GROUP_ID = /^[0-9]+$/;
  * Inline SVG, admitted as static drawing and nothing else.
  *
  * The allowlist is shapes, text and grouping. Everything in SVG that can run
- * code, fetch, or reach outside the element is refused by omission: `script`,
- * `foreignObject`, `use` and `image` (both take an `href`), `a` with
- * `xlink:href`, the `animate`/`set` family (which can rewrite an `href` after
- * the sanitizer has looked), `style` elements, and every attribute that takes
- * a `url(…)` reference — `filter`, `mask`, `clip-path`, `marker-*`, `cursor`.
+ * code, fetch, or reach outside the element is refused: `script`,
+ * `foreignObject`, `use` and `image` (both take an `href`), `xlink:href` on
+ * `a`, the `animate`/`set` family (which can rewrite an `href` after the
+ * sanitizer has looked), `style` elements, and every attribute that takes a
+ * `url(…)` reference — `filter`, `mask`, `clip-path`, `marker-*`, `cursor`.
  *
  * Gradients, patterns and `<defs>` are out for a second reason: they are only
  * reachable through `url(#id)`, and the sanitizer prefixes every `id` with
  * `user-content-`, so the reference would dangle even if it were allowed.
+ *
+ * **Refusing an element is not the same as removing it.** `hast-util-sanitize`
+ * *unwraps* an element it does not allow — drops the tag and keeps its
+ * children — unless the tag is on `strip`. See `SVG_STRIPPED` for why that
+ * matters here.
+ *
+ * `switch` is admitted, as a plain container, because draw.io wraps every label
+ * in one: `<switch><foreignObject>…</foreignObject><text>…</text></switch>`. A
+ * `switch` renders only its first child whose conditions hold, and with the
+ * `foreignObject` removed and the conditional attributes (`requiredFeatures`,
+ * `systemLanguage`) refused, that is the `<text>` fallback. Unwrapped instead,
+ * it would render *every* branch — including the "Text is not SVG - cannot
+ * display" notice draw.io appends for viewers without `foreignObject`.
  *
  * Every child requires an `svg` ancestor, so `<title>` in particular cannot
  * appear in HTML flow, where React would hoist it into the page's `<head>`.
@@ -213,8 +226,45 @@ const SVG_CHILD_TAGS = [
   "polygon",
   "text",
   "tspan",
+  "switch",
   "title",
   "desc",
+];
+
+/**
+ * Refused SVG elements removed *with their contents*, rather than unwrapped.
+ *
+ * Each of these holds children that are never meant to be painted where they
+ * stand: a clip region, a mask, a gradient's stops, a marker's arrowhead, a
+ * symbol's body, a filter's primitives, an exporter's RDF, or — for
+ * `foreignObject` — HTML. Unwrapped, those children land in the drawing as
+ * ordinary shapes. A default Figma export ends in `<defs><clipPath><rect
+ * fill="white"/>`, and unwrapping it painted that white rect over the whole
+ * drawing; a `<marker>` arrowhead became a stray triangle at the origin. The
+ * HTML inside a `foreignObject` survived as descendants of `svg`, which React
+ * then created as invisible SVG-namespace `div`s and `p`s — the anchor an Open
+ * Question button looks for — and which a browser re-parsing `renderMarkdown`'s
+ * string output breaks out of the `svg` at, spilling the rest of the drawing
+ * into the page.
+ *
+ * The camel-cased names are the ones the HTML parser gives these elements in
+ * SVG, and the only spelling a hast tree carries. The rest are lowercase in any
+ * context, so they are stripped in prose too: a bare `<pattern>` written as a
+ * placeholder outside a code span takes the rest of its paragraph with it,
+ * where it used to lose only the tag. Code spans are unaffected.
+ */
+const SVG_STRIPPED = [
+  "foreignObject",
+  "defs",
+  "clipPath",
+  "mask",
+  "pattern",
+  "marker",
+  "symbol",
+  "linearGradient",
+  "radialGradient",
+  "filter",
+  "metadata",
 ];
 
 /**
@@ -277,6 +327,7 @@ const SVG_ATTRIBUTES: NonNullable<Schema["attributes"]>[string] = [
  */
 export const sanitizeSchema: Schema = {
   ...defaultSchema,
+  strip: [...(defaultSchema.strip || []), ...SVG_STRIPPED],
   tagNames: [
     ...(defaultSchema.tagNames || []),
     // KaTeX MathML elements
