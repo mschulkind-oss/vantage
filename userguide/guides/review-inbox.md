@@ -55,7 +55,10 @@ n=0; while [ -e "$f" ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
 
 Each line is one JSON object, newline-terminated. The random suffix keeps two
 deliveries for the same document from colliding, and the rename onto `.jsonl` is
-what tells Vantage the delivery is complete.
+what tells Vantage the delivery is complete. The part of the name taken from the
+document is only a suggestion, because each line names its own `path`: the
+planning page's [Copy answers](planning.md#copy-answers), which covers several
+documents at once, suggests `planning` in its place.
 
 **Why the command waits.** Consumption happens within a second of the rename and
 **deletes the file**, so the shell that just delivered it watches the path
