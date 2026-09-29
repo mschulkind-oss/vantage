@@ -987,10 +987,11 @@ func degradationMessage(d model.Degradation, cfg *config.Config) string {
 		default:
 			where = "below " + d.Path
 		}
-		// Past the root, nothing is watched anyway, so a count adds nothing.
-		if more := d.Count - 1; d.Path != "." && more == 1 {
+		// Past the root, nothing is watched anyway, so a count adds nothing;
+		// and with no folder named, there is none to count beyond.
+		if more := d.Count - 1; d.Path != "." && d.Path != "" && more == 1 {
 			where += " and 1 more folder"
-		} else if d.Path != "." && more > 1 {
+		} else if d.Path != "." && d.Path != "" && more > 1 {
 			where += fmt.Sprintf(" and %d more folders", more)
 		}
 		return "Live reload is off " + where + ": the system's limit on watched folders was reached. " +

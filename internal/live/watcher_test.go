@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -485,6 +487,27 @@ func TestWatchLimitErrorsFromTheKernelAreReported(t *testing.T) {
 	w2.addWatch = func(string) error { return errors.New("permission denied") }
 	w2.addRecursive(root)
 	require.Empty(t, reports)
+}
+
+// An event-queue overflow (IN_Q_OVERFLOW, governed by fs.inotify.max_queued_events)
+// drops some events, but every watch is still in place and live reload goes
+// on. It used to be taken for the watch limit, which put up a banner for the
+// life of the process saying live reload was off and naming the wrong
+// setting.
+func TestAnEventOverflowIsNotTheWatchLimit(t *testing.T) {
+	root := t.TempDir()
+	w, err := NewWatcher(root, "p", nil, nil, false, quietLogger(), []string{})
+	require.NoError(t, err)
+	var reports []model.Degradation
+	w.SetDegradedHandler(func(d model.Degradation) { reports = append(reports, d) })
+
+	w.handleError(fsnotify.ErrEventOverflow)
+	w.handleError(fmt.Errorf("read: %w", fsnotify.ErrEventOverflow))
+	require.Empty(t, reports)
+
+	// A refused watch that reaches the error channel is still the limit.
+	w.handleError(fmt.Errorf("add watch: %w", syscall.ENOSPC))
+	require.Equal(t, []model.Degradation{{Repo: "p", Kind: model.DegradationWatchLimit, Count: 1}}, reports)
 }
 
 // --- coalescer / debounce ---
