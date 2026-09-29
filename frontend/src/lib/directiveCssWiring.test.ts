@@ -314,6 +314,16 @@ describe("inline SVG sizing is one stylesheet, reached by every consumer", () =>
     expect(base).not.toContain("height");
   });
 
+  it("keeps an svg inside a sentence inline", () => {
+    // Preflight makes every svg a block. Only inside the blocks that hold
+    // phrasing content, so a drawing in a `<div>` of its own stays one;
+    // `inline_svg.spec.ts` measures both, and that Mermaid and KaTeX are
+    // untouched.
+    const selector = ":is(.prose, .vantage-prose) :where(p, li, td, th) svg";
+    expect(declaration(svgCss(), selector, "display")).toBe("inline-block");
+    expect(declaration(svgCss(), selector, "vertical-align")).toBe("middle");
+  });
+
   it("is layered, so an icon's size utilities still win", () => {
     const css = svgCss();
     const layer = css.indexOf("@layer components {");
