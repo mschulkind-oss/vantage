@@ -141,6 +141,23 @@ describe("the mermaid loader", () => {
     expect(config.themeVariables).not.toHaveProperty("primaryColor");
     expect(config.themeVariables).not.toHaveProperty("secondaryColor");
   });
+
+  it("keeps a diagram's source off the keys that write its stylesheet", async () => {
+    // Mermaid leaves a diagram's `@keyframes` names global, so a diagram that
+    // could write its stylesheet redefined the animations the app plays on
+    // its own elements. `frontend/e2e/mermaid.spec.ts` measures that in a
+    // browser; this is the part of it the unit suite can see.
+    await loader.getMermaid();
+
+    const { secure } = initialize.mock.calls[0][0] as { secure: string[] };
+    for (const key of ["themeCSS", "fontFamily", "altFontFamily"]) {
+      expect(secure).toContain(key);
+    }
+    // And still names Mermaid's own, rather than relying on a merge with them.
+    for (const key of ["secure", "securityLevel", "maxTextSize", "maxEdges"]) {
+      expect(secure).toContain(key);
+    }
+  });
 });
 
 /**

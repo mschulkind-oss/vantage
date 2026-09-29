@@ -118,6 +118,12 @@ Vantage supports flowcharts, sequence diagrams, class diagrams, state diagrams, 
 
 Click the **maximize button** on any diagram to view it in a full-screen modal.
 
+**A diagram cannot restyle the page.** Vantage ignores the `themeCSS`,
+`fontFamily` and `altFontFamily` settings in a diagram's `%%{init: …}%%`
+directive or its frontmatter `config:`, because Mermaid lets a stylesheet
+written there reach elements outside the diagram. A diagram's `theme` and
+`themeVariables` still apply.
+
 ## Live Reload
 
 When Vantage is running and you edit a Markdown file in your editor, the browser updates instantly — no manual refresh needed. This works through a WebSocket connection that watches the filesystem for changes.
