@@ -483,7 +483,7 @@ describe("empty and degenerate states", () => {
     expect(screen.queryAllByRole("region")).toHaveLength(0);
   });
 
-  it("shows a failed batch's error with Retry, which rescans", async () => {
+  it("shows a failed build's error with Retry, which rescans without the scan cache", async () => {
     const rescan = vi.fn();
     const real = usePlanningStore.getState().rescan;
     usePlanningStore.setState({ rescan });
@@ -492,7 +492,7 @@ describe("empty and degenerate states", () => {
       await renderPage();
       expect(screen.getByText("Could not load: boom")).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-      expect(rescan).toHaveBeenCalledWith("");
+      expect(rescan).toHaveBeenCalledWith("", { bypassCache: true });
     } finally {
       usePlanningStore.setState({ rescan: real });
     }
