@@ -701,6 +701,84 @@ describe("useWebSocket", () => {
       expect(mockNoteReconnect).toHaveBeenCalledTimes(1);
     });
 
+    // React's StrictMode, which the dev server runs, mounts every effect twice:
+    // it runs the connect effect, cleans it up, and runs it again on the same
+    // component, whose refs survive. The second run opens a second socket that
+    // is still the mount's first connection, and calling it a reconnect
+    // rescanned the planning index on every page the dev server showed.
+    it("does not call StrictMode's second connect a reconnect", () => {
+      renderHook(() => useWebSocket(), { reactStrictMode: true });
+      expect(global.WebSocket).toHaveBeenCalledTimes(2);
+      act(() => {
+        mockWebSocket.onopen!(new Event("open"));
+      });
+      expect(mockNoteReconnect).not.toHaveBeenCalled();
+    });
+
+    it("leaves a ready index unrescanned through StrictMode's double connect", () => {
+      // The real noteReconnect this time, over a ready index, so what is
+      // asserted is the rescan itself rather than the call that would cause it.
+      const rescan = vi.fn();
+      const before = usePlanningStore.getState();
+      usePlanningStore.setState({
+        noteReconnect: realPlanning.noteReconnect,
+        rescan,
+        byRepo: {
+          "": {
+            status: "ready",
+            index: {} as never,
+            version: 1,
+            rescanning: false,
+            sources: {},
+          },
+        },
+      });
+      try {
+        renderHook(() => useWebSocket({ viewer: false }), {
+          reactStrictMode: true,
+        });
+        act(() => {
+          mockWebSocket.onopen!(new Event("open"));
+        });
+        expect(rescan).not.toHaveBeenCalled();
+
+        act(() => {
+          mockWebSocket.onclose!(new Event("close"));
+        });
+        act(() => {
+          vi.advanceTimersByTime(1100);
+        });
+        act(() => {
+          mockWebSocket.onopen!(new Event("open"));
+        });
+        expect(rescan).toHaveBeenCalledWith("");
+      } finally {
+        usePlanningStore.setState({
+          rescan: before.rescan,
+          byRepo: before.byRepo,
+        });
+      }
+    });
+
+    it("still calls a genuine reconnect under StrictMode a reconnect", () => {
+      renderHook(() => useWebSocket({ viewer: false }), {
+        reactStrictMode: true,
+      });
+      act(() => {
+        mockWebSocket.onopen!(new Event("open"));
+      });
+      act(() => {
+        mockWebSocket.onclose!(new Event("close"));
+      });
+      act(() => {
+        vi.advanceTimersByTime(1100);
+      });
+      act(() => {
+        mockWebSocket.onopen!(new Event("open"));
+      });
+      expect(mockNoteReconnect).toHaveBeenCalledTimes(1);
+    });
+
     it("starts counting again in a new mount", () => {
       const first = renderHook(() => useWebSocket());
       act(() => {
