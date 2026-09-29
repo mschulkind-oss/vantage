@@ -17,7 +17,12 @@ import {
   VANTAGE_OQ_ID,
   VANTAGE_SENTINEL,
 } from "../../../vantage-md/src/vantageDirectives.js";
-import { Listing, isCandidate, readCandidate } from "../core/candidates.js";
+import {
+  Listing,
+  isCandidate,
+  matchesPatterns,
+  readCandidate,
+} from "../core/candidates.js";
 import { displayPath } from "../core/document.js";
 import { repositoryRoot } from "../core/projectRoot.js";
 import type { Settings } from "../core/settings.js";
@@ -170,7 +175,7 @@ class PlanningPass {
       if (rel === null || checked.has(rel)) continue;
       const candidate =
         listing === null
-          ? rel.toLowerCase().endsWith(".md")
+          ? this.candidateWithoutRoot(file, rel)
           : isCandidate(listing, config, rel);
       if (!candidate) continue;
       checked.set(rel, file);
@@ -361,6 +366,19 @@ class PlanningPass {
       doc.stageLine ?? 1,
       `Stage \`${doc.stage}\` says this document is ${role === "built" ? "built" : "decided"}, but ${open.length} question${one ? " is" : "s are"} still open${ids.length > 0 ? ` (${ids.join(", ")})` : ""}. Rule ${one ? "it" : "them"}, or set a stage that is still open.`,
     );
+  }
+
+  /**
+   * Whether a file with no project root is a candidate. There is no listing
+   * to consult, and no repository to anchor `include` and `exclude` to, so
+   * they are read against the working directory, the tree `index` scans when
+   * there is no root (§8). A file outside it is matched by its extension
+   * alone.
+   */
+  private candidateWithoutRoot(file: string, rel: string): boolean {
+    if (!rel.toLowerCase().endsWith(".md")) return false;
+    const fromCwd = relativeTo(this.cwd, file);
+    return fromCwd === null || matchesPatterns(this.config, fromCwd);
   }
 
   /**

@@ -192,6 +192,20 @@ describe("the [planning] table each file is judged by", () => {
 
     expect(JSON.stringify(payload.failures)).toContain("two/.vantage.toml");
   });
+
+  // With no root there is no repository to anchor the patterns to, so they
+  // are read against the working directory, as `index` scans it (§8).
+  it("applies include and exclude without a root, from the working directory", async () => {
+    const tree = makeTree({
+      "cfg/v.toml": `[planning]\nexclude = ["docs/**"]\n\n${STAGES_TOML}`,
+      "docs/a.md": doc("status: draft\nstage: Foo"),
+      "b.md": doc("status: draft\nstage: Foo"),
+    });
+
+    expect(
+      await planning(tree, "--config", "cfg/v.toml", "docs/a.md", "b.md"),
+    ).toEqual(["b.md:3 planning/stage-vocabulary"]);
+  });
 });
 
 describe("planning/depends-on-missing", () => {
