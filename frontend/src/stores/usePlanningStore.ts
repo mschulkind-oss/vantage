@@ -51,7 +51,22 @@ import { planningScanner, type BuildEvent } from "../planningScan/client";
 
 export type PlanningLoad =
   | { status: "idle" }
-  | { status: "loading" }
+  | {
+      status: "loading";
+      /**
+       * Whether the build under way is warm: the scan cache held at least one
+       * of this repository's results when it started (the scale design's §3).
+       * `false` until the scanner says so, and for a cold build. A document's
+       * first paint waits briefly only for a warm one (§11.3).
+       */
+      warm: boolean;
+      /**
+       * Candidates handled of the header's count, once the header has come:
+       * `null` before it (§10.6). As often as the scanner reports it, which is
+       * at most every `progressMs`.
+       */
+      progress: { done: number; total: number } | null;
+    }
   | {
       status: "ready";
       index: PlanningIndex;
@@ -102,6 +117,15 @@ interface PlanningStore {
 
 /** One stable value, so a selector falling back to it never re-renders. */
 export const PLANNING_IDLE: PlanningLoad = { status: "idle" };
+
+type Loading = Extract<PlanningLoad, { status: "loading" }>;
+
+/** A first build, before the scanner has said anything about it. */
+const LOADING: Loading = {
+  status: "loading",
+  warm: false,
+  progress: null,
+};
 
 /** The file whose change rescans the whole index (§3.4). */
 const CONFIG_FILE = ".vantage.toml";
@@ -299,9 +323,7 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
     const load = get().byRepo[repo];
     setLoad(
       repo,
-      load?.status === "ready"
-        ? { ...load, rescanning: true }
-        : { status: "loading" },
+      load?.status === "ready" ? { ...load, rescanning: true } : LOADING,
     );
 
     const superseded = () => tracker.batch !== seq;
@@ -310,6 +332,19 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
       setLoad(repo, { status: "error", message });
     };
     let gathering: Gathering | null = null;
+    /**
+     * What a first build says of itself while it runs. A rescan says nothing:
+     * the index it replaces stays shown, and its subscribers need not hear.
+     */
+    const loading = (next: Partial<Pick<Loading, "warm" | "progress">>) => {
+      const current = get().byRepo[repo];
+      if (current?.status !== "loading") return;
+      const warm = next.warm ?? current.warm;
+      const progress =
+        next.progress === undefined ? current.progress : next.progress;
+      if (warm === current.warm && progress === current.progress) return;
+      setLoad(repo, { status: "loading", warm, progress });
+    };
 
     const finish = (built: Gathering) => {
       let held: Held = { index: built.builder.finish(), hashes: built.hashes };
@@ -337,7 +372,11 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
     scanner.build({ repo, seq, bypassCache: false }, (event) => {
       if (superseded()) return;
       switch (event.type) {
+        case "started":
+          loading({ warm: event.warm });
+          return;
         case "header":
+          loading({ progress: { done: 0, total: event.candidateCount } });
           gathering = {
             builder: planningIndexBuilder({
               config: event.config,
@@ -361,8 +400,8 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
         case "failed":
           fail(event.shape ? SHAPE_MESSAGE : failedMessage(event.message));
           return;
-        case "started":
         case "progress":
+          loading({ progress: { done: event.done, total: event.total } });
           return;
       }
     });

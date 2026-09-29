@@ -378,7 +378,7 @@ describe("the build (§3.4, full scan; scale design §5.2)", () => {
     expect(readyLoad().hashes).toEqual(coldHashes);
   });
 
-  it("sets the store once at ready, however many chunks the documents come in", async () => {
+  it("sets the store at the header and at ready alone, however many chunks the documents come in", async () => {
     setPlanningLimitsForTests({ chunkEntries: 1, progressMs: 60_000 });
     const tree = Object.fromEntries(
       ["a", "b", "c", "d", "e", "f"].map((name) => [
@@ -396,8 +396,88 @@ describe("the build (§3.4, full scan; scale design §5.2)", () => {
     } finally {
       unsubscribe();
     }
-    expect(seen.map((s) => s.status)).toEqual(["loading", "ready"]);
+    expect(seen).toEqual([
+      { status: "loading", warm: false, progress: null },
+      { status: "loading", warm: false, progress: { done: 0, total: 6 } },
+      expect.objectContaining({ status: "ready" }),
+    ]);
     expect(paths()).toHaveLength(6);
+  });
+
+  it("says whether the build is warm while it loads", async () => {
+    store().ensure("");
+    expect(load()).toEqual({ status: "loading", warm: false, progress: null });
+    await flush();
+    // Cold: the scan cache holds nothing of this repository yet.
+    expect(load()).toMatchObject({ status: "loading", warm: false });
+    answerStream(take(STREAM));
+    await flush();
+    await client.idle();
+
+    // A new page load over the same tab's cache.
+    resetPlanningTrackers();
+    usePlanningStore.setState({ byRepo: {} });
+    store().ensure("");
+    expect(load()).toMatchObject({ status: "loading", warm: false });
+    await flush();
+    expect(load()).toMatchObject({ status: "loading", warm: true });
+    answerStream(take(STREAM));
+    await flush();
+    expect(load().status).toBe("ready");
+  });
+
+  it("carries the scanner's progress, no oftener than it reports it", async () => {
+    const progressOf = async (progressMs: number) => {
+      setPlanningLimitsForTests({ progressMs });
+      resetPlanningTrackers();
+      usePlanningStore.setState({ byRepo: {} });
+      // Each value the loading state's progress takes, in order.
+      const seen: unknown[] = [];
+      const unsubscribe = usePlanningStore.subscribe((state) => {
+        const current = state.byRepo[""];
+        if (current?.status !== "loading") return;
+        if (seen.length === 0 || current.progress !== seen.at(-1)) {
+          seen.push(current.progress);
+        }
+      });
+      try {
+        await readyWith();
+      } finally {
+        unsubscribe();
+      }
+      return seen;
+    };
+    const total = Object.keys(TREE).length;
+    // Reported after every candidate: each one reaches the store.
+    expect(await progressOf(0)).toEqual([
+      null,
+      { done: 0, total },
+      ...Object.keys(TREE).map((_, at) => ({ done: at + 1, total })),
+    ]);
+    // Reported once a minute at most: only the header's count does.
+    expect(await progressOf(60_000)).toEqual([null, { done: 0, total }]);
+  });
+
+  it("leaves a rescanned index's subscribers alone until the rescan lands", async () => {
+    setPlanningLimitsForTests({ progressMs: 0 });
+    await readyWith();
+    const seen: PlanningLoad[] = [];
+    const unsubscribe = usePlanningStore.subscribe((state) => {
+      const current = state.byRepo[""];
+      if (current !== undefined && current !== seen.at(-1)) seen.push(current);
+    });
+    try {
+      store().rescan("");
+      await flush();
+      answerStream(take(STREAM));
+      await flush();
+    } finally {
+      unsubscribe();
+    }
+    expect(seen).toEqual([
+      expect.objectContaining({ status: "ready", rescanning: true }),
+      expect.objectContaining({ status: "ready", rescanning: false }),
+    ]);
   });
 
   it("is started once, however often it is ensured", async () => {
