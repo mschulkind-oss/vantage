@@ -199,6 +199,68 @@ function newId(): string {
 }
 
 /**
+ * A comment the reviewer is about to file, with its client-side id and stamp:
+ * what the popover, the one-click take and the planning page each create, so a
+ * comment filed from any of them is indistinguishable from the others
+ * (`docs/design/planning-index.md` §6.3).
+ */
+export function newReviewComment(
+  anchor: CommentAnchor,
+  comment: string,
+  fallbackText: string,
+): ReviewComment {
+  return {
+    id: newId(),
+    anchor,
+    fallback_text: fallbackText,
+    reactions: [],
+    comment,
+    created_at: Date.now() / 1000,
+  };
+}
+
+/**
+ * The body `POST /review/comments` takes. A dedicated shape: the server owns
+ * `captured_block`, `reactions` and `resolved`, and captures the anchored
+ * block's text itself.
+ */
+function createCommentBody(c: ReviewComment) {
+  return {
+    id: c.id,
+    comment: c.comment,
+    anchor: c.anchor,
+    fallback_text: c.fallback_text,
+    created_at: c.created_at,
+  };
+}
+
+/**
+ * File `comment` on the document at `path`, which need not be the one on
+ * screen: the planning page answers questions in many documents from one page,
+ * where `runCommand` posts only for the store's own `filePath`. The same
+ * request `addComment` sends; the handler takes any path in the repository and
+ * broadcasts `review_changed` for it. Resolves to the review the server
+ * persisted, and rejects on failure and in a static export, which has no
+ * server to save to.
+ */
+export async function postCommentTo(
+  path: string,
+  comment: ReviewComment,
+): Promise<ReviewData | null> {
+  const base = getApiBase();
+  if (!base) throw new Error("no repository is selected");
+  if (isStaticMode()) {
+    throw new Error("this is a static export, with no server to save to");
+  }
+  const { data } = await axios.post<ReviewData | null>(
+    `${base}/review/comments`,
+    createCommentBody(comment),
+    { params: { path } },
+  );
+  return data ?? null;
+}
+
+/**
  * Monotonic counters that make the review round-trip safe against races.
  * `loadSeq` discards a GET whose response lost the race to a newer one;
  * `saveSeq` discards a GET that started before a local write, so a
@@ -510,14 +572,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     comment: string,
     fallbackText: string,
   ) => {
-    const newComment: ReviewComment = {
-      id: newId(),
-      anchor,
-      fallback_text: fallbackText,
-      reactions: [],
-      comment,
-      created_at: Date.now() / 1000,
-    };
+    const newComment = newReviewComment(anchor, comment, fallbackText);
     set((s) => ({
       comments: [...s.comments, newComment],
       pendingSelection: null,
@@ -527,13 +582,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       (base, path) =>
         axios.post<ReviewData | null>(
           `${base}/review/comments`,
-          {
-            id: newComment.id,
-            comment: newComment.comment,
-            anchor: newComment.anchor,
-            fallback_text: newComment.fallback_text,
-            created_at: newComment.created_at,
-          },
+          createCommentBody(newComment),
           { params: { path } },
         ),
       comment,
@@ -710,14 +759,13 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     const active = comments.filter(isPendingForAgent);
     if (!filePath || active.length === 0) return false;
 
-    const contentLines = (lastContent || "").split("\n");
-    const pathPrefix = clipboardPathPrefix(filePath);
-
-    const output = [`## Review Comments for \`${filePath}\``, ""];
-    for (const c of active) {
-      output.push(...commentBlock(c, contentLines, pathPrefix));
-    }
-    output.push(...respondingInstructions(filePath, active[0], active));
+    const output = reviewCommentsBlock(filePath, active, lastContent);
+    output.push(
+      ...respondingInstructions(
+        [{ path: filePath, example: active[0] }],
+        active,
+      ),
+    );
 
     return copyTextOrWarn(output.join("\n"));
   },
@@ -732,7 +780,9 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
 
     const output = [`## Review Comment for \`${filePath}\``, ""];
     output.push(...commentBlock(c, contentLines, pathPrefix));
-    output.push(...respondingInstructions(filePath, c, [c]));
+    output.push(
+      ...respondingInstructions([{ path: filePath, example: c }], [c]),
+    );
 
     return copyTextOrWarn(output.join("\n"));
   },
@@ -809,6 +859,58 @@ function clipboardPathPrefix(filePath: string): string {
   return isMultiRepo && currentRepo
     ? `/${currentRepo}/${filePath}`
     : `/${filePath}`;
+}
+
+/**
+ * One document's block of a clipboard payload: its heading, then each comment
+ * in `comments`, in order. It is what that document's own Copy puts before the
+ * instructions, so a payload built from several of these reads, per document,
+ * exactly as each document's Copy would.
+ */
+export function reviewCommentsBlock(
+  filePath: string,
+  comments: readonly ReviewComment[],
+  content: string | null,
+): string[] {
+  const contentLines = (content || "").split("\n");
+  const pathPrefix = clipboardPathPrefix(filePath);
+  const output = [`## Review Comments for \`${filePath}\``, ""];
+  for (const c of comments) {
+    output.push(...commentBlock(c, contentLines, pathPrefix));
+  }
+  return output;
+}
+
+/** One document's comments for a combined payload, and the text they quote. */
+export interface AnswerGroup {
+  path: string;
+  comments: readonly ReviewComment[];
+  /** The document's source, for the quoted context; `null` quotes none. */
+  content: string | null;
+}
+
+/**
+ * The planning page's Copy answers (`docs/design/planning-index.md` §6.3): one
+ * payload handing every group's comments to the agent in one trip. Each group
+ * is the block that document's own Copy produces, and one set of responding
+ * instructions, naming every document, closes it. With one group it is
+ * byte-identical to that document's Copy of the same comments. `null` when no
+ * group holds a comment.
+ */
+export function answersPayload(groups: readonly AnswerGroup[]): string | null {
+  const live = groups.filter((g) => g.comments.length > 0);
+  if (live.length === 0) return null;
+  const output: string[] = [];
+  for (const g of live) {
+    output.push(...reviewCommentsBlock(g.path, g.comments, g.content));
+  }
+  output.push(
+    ...respondingInstructions(
+      live.map((g) => ({ path: g.path, example: g.comments[0] })),
+      live.flatMap((g) => g.comments),
+    ),
+  );
+  return output.join("\n");
 }
 
 /** Human label for one turn in a comment thread, used in the clipboard payload. */
@@ -890,12 +992,42 @@ function hasTrueFollowUp(c: ReviewComment): boolean {
   );
 }
 
-/** The agent-facing delivery instructions appended after the comment(s). */
+/** A document the instructions deliver to, and a comment to show in its example. */
+interface DeliveryTarget {
+  path: string;
+  example?: ReviewComment;
+}
+
+/**
+ * The inbox file stem for a payload covering several documents. The filename
+ * is advisory — the consumer reads meaning only from each line's own `path` —
+ * so one fixed stem serves any set of them.
+ */
+const MULTI_DOCUMENT_STEM = "planning";
+
+/**
+ * The example nonce for the `i`th example line. Distinct per line, so an agent
+ * that copies the examples literally does not send one nonce twice, which the
+ * consumer would drop as a redelivery.
+ */
+const exampleNonce = (i: number): string =>
+  i === 0 ? "k7f29qd1x4" : `k7f29qd1x4-${i + 1}`;
+
+/**
+ * The agent-facing delivery instructions appended after the comment(s).
+ *
+ * Each path in `targets` appears three times: on the `uvx vantage-check`
+ * line, in an example line of its own, and — for one document — in the inbox
+ * file's stem. With one target the text is exactly what a document's own Copy
+ * has always said; with several, the check line names them all, each gets an
+ * example line, and the stem is fixed.
+ */
 function respondingInstructions(
-  filePath: string,
-  example?: ReviewComment,
-  batch: ReviewComment[] = [],
+  targets: readonly DeliveryTarget[],
+  batch: readonly ReviewComment[] = [],
 ): string[] {
+  const single = targets.length === 1;
+  const paths = targets.map((t) => t.path);
   // Two different reasons a thread can come back, and they need different
   // instructions. A "Follow-up" turn is a reviewer reaction that lands AFTER
   // the agent's last one — the same rule turnLabel uses to print that label, so
@@ -935,9 +1067,15 @@ function respondingInstructions(
   // each line's own `path`), so a per-delivery suffix keeps two turns for the
   // same document from ever colliding on the committed name.
   const inboxDir = ".vantage/inbox";
-  const fileStem = filePath.replace(/[/\\]/g, "__");
-  const exampleId = example?.id.slice(0, 8) ?? "<short-id>";
-  const exampleRound = example ? (example.reactions ?? []).length : 0;
+  const fileStem = single
+    ? paths[0].replace(/[/\\]/g, "__")
+    : MULTI_DOCUMENT_STEM;
+  const exampleLines = targets.map(({ path, example }, i) => {
+    const exampleId = example?.id.slice(0, 8) ?? "<short-id>";
+    const exampleRound = example ? (example.reactions ?? []).length : 0;
+    return `{"path":"${path}","id":"${exampleId}","round":${exampleRound},"summary":"Reworded the paragraph for clarity","nonce":"${exampleNonce(i)}"}`;
+  });
+  const fieldsPath = single ? paths[0] : "<the document's path>";
   return [
     "## Responding to Comments",
     "",
@@ -947,13 +1085,15 @@ function respondingInstructions(
     // turn, so it reaches whatever environment the agent has, needs no setup
     // from the user, and arrives at the one moment it is useful — just before
     // the work goes back.
-    `**Before delivering, check the document.** From the root of this repository run \`uvx vantage-check ${filePath}\` — no install, no server — and fix what it reports. A broken link or a diagram that does not parse is cheaper to find here than in the next review round. If \`uvx\` is not available, deliver anyway — this is a quality gate, not a delivery dependency.`,
+    `**Before delivering, check the ${single ? "document" : "documents"}.** From the root of this repository run \`uvx vantage-check ${paths.join(" ")}\` — no install, no server — and fix what it reports. A broken link or a diagram that does not parse is cheaper to find here than in the next review round. If \`uvx\` is not available, deliver anyway — this is a quality gate, not a delivery dependency.`,
     "",
-    "After addressing your comments: **save the document first**, then deliver your responses with a single command from the root of this document's repository:",
+    single
+      ? "After addressing your comments: **save the document first**, then deliver your responses with a single command from the root of this document's repository:"
+      : "After addressing your comments: **save the documents first**, then deliver your responses with a single command from the root of these documents' repository:",
     "",
     "```bash",
     `mkdir -p ${inboxDir} && f=${inboxDir}/${fileStem}.$RANDOM.jsonl && cat > "$f.writing" <<'EOF'`,
-    `{"path":"${filePath}","id":"${exampleId}","round":${exampleRound},"summary":"Reworded the paragraph for clarity","nonce":"k7f29qd1x4"}`,
+    ...exampleLines,
     "EOF",
     'mv "$f.writing" "$f"',
     "# Vantage consumes and deletes the file; its disappearance is the receipt.",
@@ -972,7 +1112,7 @@ function respondingInstructions(
     "One JSON object per line, one line per comment you acted on. The fields:",
     "",
     "```",
-    `{"path":"${filePath}","id":"<short-id>","round":<round>,"summary":"<one sentence: what you changed>","nonce":"<fresh random string>"}`,
+    `{"path":"${fieldsPath}","id":"<short-id>","round":<round>,"summary":"<one sentence: what you changed>","nonce":"<fresh random string>"}`,
     "```",
     "",
     "The command writes to a `.writing` scratch name, then `mv`s it onto the `.jsonl` name. That rename is the completion signal: Vantage ignores every non-`.jsonl` name, so it never reads the file until the whole delivery is in place. **Do not write directly to the `.jsonl` name** (`cat > x.jsonl`) — that creates the file empty before the write lands, and Vantage can consume the empty file and drop your response. (If your shell has no `$RANDOM`, substitute any unique token for the suffix. Never append line-by-line.)",
