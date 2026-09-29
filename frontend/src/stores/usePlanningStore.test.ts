@@ -50,10 +50,12 @@ import { streamLines } from "../test/planningStream";
  * A fake server: every request waits until the test answers it.
  * ------------------------------------------------------------------ */
 
-/** The stream's body, fed by the test one line at a time. */
+/** The stream's body, fed by the test. */
 interface Feed {
-  /** Each line a JSON value, or a raw string sent as it is. */
+  /** Each line a JSON value, or a raw string sent as it is, one per chunk. */
   send(...lines: unknown[]): void;
+  /** `text`'s UTF-8 bytes, `size` to a chunk, wherever that cuts. */
+  cut(text: string, size: number): void;
   close(): void;
 }
 
@@ -121,6 +123,13 @@ const fakeFetch: typeof fetch = (input, init) =>
               const text =
                 typeof line === "string" ? line : JSON.stringify(line);
               quietly(() => controller.enqueue(encoder.encode(`${text}\n`)));
+            }
+          },
+          cut: (text, size) => {
+            const bytes = encoder.encode(text);
+            for (let at = 0; at < bytes.length; at += size) {
+              const chunk = bytes.slice(at, at + size);
+              quietly(() => controller.enqueue(chunk));
             }
           },
           close: () => quietly(() => controller.close()),
@@ -350,6 +359,22 @@ describe("the build (§3.4, full scan; scale design §5.2)", () => {
       ),
     );
     expect(readyIndex()).toEqual(expected);
+  });
+
+  it("reads the stream however its bytes are cut", async () => {
+    store().ensure("");
+    await flush();
+    const feed = take(STREAM).open();
+    // Seven bytes at a time cuts lines, and the 💬 in DESIGN, anywhere.
+    feed.cut(
+      streamLines(TREE, {})
+        .map((line) => `${line}\n`)
+        .join(""),
+      7,
+    );
+    feed.close();
+    await flush();
+    expect(readyIndex()).toEqual(buildPlanningIndex(sourcesOf(TREE)));
   });
 
   it("builds the same index warm, from what the scan cache kept", async () => {
