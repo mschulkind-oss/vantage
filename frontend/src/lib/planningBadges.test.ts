@@ -46,6 +46,8 @@ const TREE = {
   "docs/design/current.md": "---\nstatus: current\n---\n\n# Reference\n",
   "docs/design/orphan.md":
     '# Orphan\n\n<!-- vantage: oq id=OQ-1 leaning="x" -->\n\n- A list, not a host.\n',
+  "docs/design/raw.md":
+    "# Raw\n\n<div>\n<!-- vantage: oq id=OQ-8 -->\n<p>💬 <strong>OQ-8: Raw?</strong></p>\n</div>\n",
   "docs/design/answered.md": `# Settled\n\n${questions("✅", "✅")}`,
   "docs/design/typo.md": "---\nstatus: accepted\nstage: DECIEDD\n---\n",
   "docs/design/graduated.md": `---\nstatus: accepted\nstage: GRADUATED\n---\n\n${questions("\u{1F4AC}")}`,
@@ -138,6 +140,22 @@ describe("what a badge says (§5.2)", () => {
     });
     expect(b && badgeText(b)).toBe("✅ ruled");
   });
+
+  // The directive is still there, so nothing compacted the question, but the
+  // index holds no question for it (§3.3, Plan Q17). `✅ ruled` would tell the
+  // reconciler (§10) to compact a question nobody ruled.
+  it.each([
+    ["an orphaned directive", "docs/design/orphan.md", "OQ-1"],
+    ["a directive inside raw HTML", "docs/design/raw.md", "OQ-8"],
+  ])(
+    "calls an id whose directive is no question's not a question: %s",
+    (_, path, id) => {
+      const b = badge(path, id);
+      expect(b).toEqual({ kind: "not-a-question", path, id });
+      expect(b && badgeText(b)).toBe("⚠ not a question");
+      expect(b && badgeSpeech(b)).toBe("not a question");
+    },
+  );
 
   it("calls an id found nowhere not found", () => {
     const b = badge("docs/design/bootstrap.md", "OQ-77");

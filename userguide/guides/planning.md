@@ -151,6 +151,7 @@ What the badge says depends on what the link names:
 | a document | its status chip, its `stage`, then `💬 N` open and `🔒 M` blocked questions, e.g. `in-review · DESIGN · 💬 5`. Zero counts are left out. |
 | a heading, `x.md#some-heading` | the same as a link to the document |
 | a question, `x.md#OQ-X`, whose directive is there | its state: `💬 open`, `🔒 blocked` or `✅ answered` |
+| an id whose directive is there, but is not a question: one above a table, say, or inside raw HTML | `⚠ not a question`. It was never compacted, so it is not ruled. `vantage-check` reports one above a table (`vantage/orphan`) |
 | a question whose directive is gone, but whose id is still in the text | `✅ ruled`: compacting a question keeps its id in the Decision Ledger, so Vantage never has to read the ledger |
 | a question whose id is nowhere in the document | `⚠ not found`. `vantage-check` reports the dead anchor too (`link/dead-section-anchor`) |
 

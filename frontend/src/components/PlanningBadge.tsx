@@ -59,7 +59,7 @@ function badgeMarkup(badge: PlanningBadge): BadgeMarkup {
     const tone =
       badge.kind === "question"
         ? `vantage-planning-badge__part--${badge.state}`
-        : badge.kind === "not-found"
+        : badge.kind === "not-found" || badge.kind === "not-a-question"
           ? WARNING
           : "vantage-planning-badge__part--answered";
     return { kind: badge.kind, label, parts: [part(badgeText(badge), tone)] };

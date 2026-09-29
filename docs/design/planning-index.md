@@ -130,6 +130,7 @@ wrote the config.
 | `questions[]` | every question, in document order | [§3.3](#33-a-question) says which `oq` directives are questions |
 | `links[]` | every Markdown link to another candidate, with the nearest heading above it | code blocks and HTML comments are not links |
 | `ids[]` | every `OQ-…` token anywhere in the text | only to tell *ruled* from *not found* ([§5.2](#52-what-a-badge-says)) |
+| `directiveIds[]` | every id a well-formed `oq` directive carries, whether or not it is a question's | only to tell *not a question* from *ruled* ([§5.2](#52-what-a-badge-says)) |
 
 ### 3.3 A question
 
@@ -278,6 +279,7 @@ A link gets a badge when all of the following hold:
 | --- | --- |
 | a document | its status chip, then `stage`, then `💬 N` for open questions and `🔒 M` for blocked ones. Zero counts are left out, and a badge left with nothing is not drawn ([§5.1](#51-which-links-get-a-badge)) |
 | `…#OQ-X`, and the directive is there | that question's state: `💬 open`, `🔒 blocked` or `✅ answered` |
+| `…#OQ-X`, and the directive is there but is no question's: an orphan, or one in raw HTML ([§3.3](#33-a-question)) | `⚠ not a question`. Nothing compacted it, so it is not ruled, and the reconciling pass ([§10](#10-what-the-conventions-change)) must not compact it |
 | `…#OQ-X`, no directive, but the id appears in the target's text | `✅ ruled`. The `design-doc` compaction rule keeps a compacted id in the Decision Ledger, so the ledger never has to be parsed (P3) |
 | `…#OQ-X`, and the id appears nowhere | `⚠ not found`. The checker's existing `link/dead-section-anchor` reports it too |
 | `…#some-heading` | the same as a link to the document |
