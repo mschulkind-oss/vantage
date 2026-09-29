@@ -116,8 +116,14 @@ interface PlanningQuestionCardProps {
   onOpenDocument?: () => void;
   /** File a comment on `path`; rejects when it could not be saved. */
   onFile: (path: string, comment: ReviewComment) => Promise<void>;
-  /** The ids of the document's comments that are on this question. */
-  onScoped?: (ids: readonly string[]) => void;
+  /** The card's key on its page, which `onScoped` reports it by. */
+  cardKey?: string;
+  /**
+   * The ids of the document's comments that are on this question, by the
+   * card's key. One callback for every card, so a card's props stay equal
+   * from one render of its page to the next.
+   */
+  onScoped?: (key: string, ids: readonly string[]) => void;
 }
 
 const lineOf = (el: Element): number =>
@@ -281,7 +287,13 @@ const PreviewBody: React.FC<{ question: PlanningQuestion }> = ({
   </div>
 );
 
-export const PlanningQuestionCard: React.FC<PlanningQuestionCardProps> = ({
+/**
+ * Memoized: a card renders again only when its own question, block, badge or
+ * document's comments change (§10.4), so a review answer for one document
+ * renders none of another's cards. Every prop its page passes is stable for
+ * that reason.
+ */
+export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   question,
   card: given,
   preview = false,
@@ -292,8 +304,9 @@ export const PlanningQuestionCard: React.FC<PlanningQuestionCardProps> = ({
   href,
   onOpenDocument,
   onFile,
+  cardKey = "",
   onScoped,
-}) => {
+}: PlanningQuestionCardProps) {
   // Show question's answer, for the question it was fetched for.
   const [shown, setShown] = useState<{
     question: PlanningQuestion;
@@ -398,13 +411,21 @@ export const PlanningQuestionCard: React.FC<PlanningQuestionCardProps> = ({
   // Reported from an effect of its own, so the page hears only real changes.
   const scopedKey = state.scoped.join("\n");
   const onScopedRef = useRef(onScoped);
+  const cardKeyRef = useRef(cardKey);
   useLayoutEffect(() => {
     onScopedRef.current = onScoped;
+    cardKeyRef.current = cardKey;
   });
   useLayoutEffect(() => {
-    onScopedRef.current?.(scopedKey === "" ? [] : scopedKey.split("\n"));
+    onScopedRef.current?.(
+      cardKeyRef.current,
+      scopedKey === "" ? [] : scopedKey.split("\n"),
+    );
   }, [scopedKey]);
-  useLayoutEffect(() => () => onScopedRef.current?.([]), []);
+  useLayoutEffect(
+    () => () => onScopedRef.current?.(cardKeyRef.current, []),
+    [],
+  );
 
   /** The anchor and fallback text the in-page button would send, from the card. */
   const anchorNow = useCallback(() => {
@@ -630,4 +651,4 @@ export const PlanningQuestionCard: React.FC<PlanningQuestionCardProps> = ({
       )}
     </article>
   );
-};
+});

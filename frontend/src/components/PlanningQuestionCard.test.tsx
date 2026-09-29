@@ -648,7 +648,11 @@ describe("the comments already filed on a question", () => {
       ],
     };
     const onScoped = vi.fn();
-    renderCard(byId("OQ-B3"), { comments: [onB3, answered], onScoped });
+    renderCard(byId("OQ-B3"), {
+      comments: [onB3, answered],
+      cardKey: "b3",
+      onScoped,
+    });
     const list = screen.getByRole("list", {
       name: "Comments on this question",
     });
@@ -659,7 +663,7 @@ describe("the comments already filed on a question", () => {
     expect(items[1]).toHaveTextContent("Answered already");
     expect(items[1]).not.toHaveTextContent(WAITING_LABEL);
     expect(items[1]).toHaveTextContent("Agent: Did it.");
-    expect(onScoped).toHaveBeenLastCalledWith([onB3.id, "answered"]);
+    expect(onScoped).toHaveBeenLastCalledWith("b3", [onB3.id, "answered"]);
     // And the take is shown as taken rather than offered twice.
     expect(screen.getByText("Leaning taken")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Take this leaning" })).toBe(
@@ -676,7 +680,7 @@ describe("the comments already filed on a question", () => {
         screen.queryByRole("list", { name: "Comments on this question" }),
         id,
       ).toBeNull();
-      expect(onScoped).not.toHaveBeenCalledWith([onB3.id]);
+      expect(onScoped).not.toHaveBeenCalledWith(expect.anything(), [onB3.id]);
       unmount();
     }
   });
