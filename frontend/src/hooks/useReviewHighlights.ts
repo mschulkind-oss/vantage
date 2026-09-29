@@ -3,10 +3,10 @@ import type { ReviewComment } from "../types";
 import { renderCommentMarkdown } from "../lib/commentMarkdown";
 import {
   NEIGHBOR_RADIUS,
-  ANCHORABLE_BLOCK_SELECTOR,
-  blockVisibleText,
+  blockAtLine,
   commentCardHost,
-  hashBlockText,
+  findHashNeighbor,
+  indexBlocks,
   rangeFromCanonicalOffsets,
 } from "../lib/reviewAnchor";
 import { revealCollapsedBlock } from "../lib/collapseSections";
@@ -165,25 +165,7 @@ export function useReviewHighlights(
 
     // Tag every block once with data-block-hash so the neighbor walk
     // can do synchronous lookups.  Skips containers we never anchor on.
-    const allBlocks = el.querySelectorAll<HTMLElement>(
-      ANCHORABLE_BLOCK_SELECTOR,
-    );
-    const blocksByLine = new Map<number, HTMLElement[]>();
-    const blocksByHash = new Map<string, HTMLElement[]>();
-    for (const block of allBlocks) {
-      const lineAttr = block.getAttribute("data-source-line");
-      if (!lineAttr) continue;
-      const line = Number.parseInt(lineAttr, 10);
-      if (!Number.isFinite(line)) continue;
-      const hash = hashBlockText(blockVisibleText(block));
-      block.setAttribute("data-block-hash", hash);
-      const atLine = blocksByLine.get(line) ?? [];
-      atLine.push(block);
-      blocksByLine.set(line, atLine);
-      const list = blocksByHash.get(hash) ?? [];
-      list.push(block);
-      blocksByHash.set(hash, list);
-    }
+    const blocks = indexBlocks(el);
 
     for (const comment of active) {
       const anchor = comment.anchor;
@@ -202,7 +184,7 @@ export function useReviewHighlights(
       }
 
       let block = blockAtLine(
-        blocksByLine,
+        blocks,
         anchor.source_line,
         anchor.block_text_hash,
       );
@@ -228,14 +210,14 @@ export function useReviewHighlights(
           "[review] comment %s: no block found at source_line=%d (blocksByLine has %d lines)",
           comment.id.slice(0, 8),
           anchor.source_line,
-          blocksByLine.size,
+          blocks.byLine.size,
         );
       }
 
       if (!block || (divergent && !matchedByHash)) {
         // Hash didn't match at the recorded line — try neighbor walk.
         const neighbor = findHashNeighbor(
-          blocksByHash,
+          blocks,
           anchor.block_text_hash,
           anchor.source_line,
           NEIGHBOR_RADIUS,
@@ -261,7 +243,7 @@ export function useReviewHighlights(
           el,
           comment,
           actions,
-          findClosestPriorBlock(blocksByLine, anchor.source_line),
+          findClosestPriorBlock(blocks.byLine, anchor.source_line),
         );
         continue;
       }
@@ -320,75 +302,6 @@ export function useReviewHighlights(
     publishDrift();
     restoreDrafts(el, drafts);
   }, [containerRef, comments, currentContent, actions]);
-}
-
-/**
- * The block at `line` an anchor carrying `hash` means.
- *
- * A source line used to name at most one anchorable block, so the index could be
- * a plain line→block map and the tie between a container and its first child (a
- * `blockquote` and its `<p>`, an `<li>` and its `<p>` — both stamped with the
- * same line) was settled by last-write-wins in document order, the inner one.
- * Table cells broke that: every cell in a row carries the *row's* line, and they
- * are siblings rather than nested, so document order alone picks the last cell in
- * the row and there is no sense in which that is "the" block for the line.
- *
- * So the hash decides first and document order only breaks what the hash cannot.
- * The fallback is still the last candidate, which keeps the container/child
- * tie-break exactly as it was — and as `anchorBlockWithin` documents and relies
- * on when it captures an anchor.
- *
- * Residual, in two parts, both from the same root — a cell's line does not
- * identify it, so when the hash cannot either, nothing can:
- *
- * - Two cells in one row holding the *same* text are indistinguishable, and a
- *   comment on the first renders on the last. They read identically, so the
- *   misplacement is invisible in every way but position.
- * - Once a commented cell is *rewritten*, its hash is gone from the row, and the
- *   fallback tints whichever cell came last rather than the one that changed.
- *   The comment is still correctly reported as drifted; only which cell of the
- *   row wears the faint tint is arbitrary.
- *
- * Closing either means putting a column index in the anchor — a schema change
- * shared with the Go side and the stored comments, for a cosmetic gain.
- */
-function blockAtLine(
-  blocksByLine: Map<number, HTMLElement[]>,
-  line: number,
-  hash: string,
-): HTMLElement | null {
-  const candidates = blocksByLine.get(line);
-  if (!candidates || candidates.length === 0) return null;
-  for (const candidate of candidates) {
-    if (candidate.getAttribute("data-block-hash") === hash) return candidate;
-  }
-  return candidates[candidates.length - 1];
-}
-
-/** Walk neighbors by source line, find one whose hash matches. */
-function findHashNeighbor(
-  blocksByHash: Map<string, HTMLElement[]>,
-  targetHash: string,
-  centerLine: number,
-  radius: number,
-): HTMLElement | null {
-  const candidates = blocksByHash.get(targetHash);
-  if (!candidates) return null;
-  let best: HTMLElement | null = null;
-  let bestDist = Infinity;
-  for (const cand of candidates) {
-    const lineAttr = cand.getAttribute("data-source-line");
-    if (!lineAttr) continue;
-    const line = Number.parseInt(lineAttr, 10);
-    if (!Number.isFinite(line)) continue;
-    const dist = Math.abs(line - centerLine);
-    if (dist > radius) continue;
-    if (dist < bestDist) {
-      bestDist = dist;
-      best = cand;
-    }
-  }
-  return best;
 }
 
 /** Closest block whose source-line ≤ target — anchor for outdated rendering. */
