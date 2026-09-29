@@ -1022,6 +1022,18 @@ const exampleNonce = (i: number): string =>
  * has always said; with several, the check line names them all, each gets an
  * example line, and the stem is fixed.
  */
+/**
+ * `word` as one shell word. A path is whatever the repository's file names
+ * are, and the payload is a shell block an agent runs as written, so a name
+ * holding `$(…)`, a backtick or a space must reach the command as the literal
+ * name. A name of only ordinary characters is left as it is, so the text for
+ * every ordinary path is unchanged.
+ */
+function shellWord(word: string): string {
+  if (/^[A-Za-z0-9._/@%+=:,-]+$/.test(word)) return word;
+  return `'${word.replace(/'/g, `'\\''`)}'`;
+}
+
 function respondingInstructions(
   targets: readonly DeliveryTarget[],
   batch: readonly ReviewComment[] = [],
@@ -1067,13 +1079,17 @@ function respondingInstructions(
   // each line's own `path`), so a per-delivery suffix keeps two turns for the
   // same document from ever colliding on the committed name.
   const inboxDir = ".vantage/inbox";
+  // The stem is unquoted in the command, so anything outside a plain file
+  // name's characters becomes `_`: the name is advisory, and no path may run.
   const fileStem = single
-    ? paths[0].replace(/[/\\]/g, "__")
+    ? paths[0].replace(/[/\\]/g, "__").replace(/[^A-Za-z0-9._-]/g, "_")
     : MULTI_DOCUMENT_STEM;
   const exampleLines = targets.map(({ path, example }, i) => {
     const exampleId = example?.id.slice(0, 8) ?? "<short-id>";
     const exampleRound = example ? (example.reactions ?? []).length : 0;
-    return `{"path":"${path}","id":"${exampleId}","round":${exampleRound},"summary":"Reworded the paragraph for clarity","nonce":"${exampleNonce(i)}"}`;
+    // JSON.stringify, so a quote or a newline in a path stays inside its
+    // string: a raw newline would let a line reading `EOF` end the heredoc.
+    return `{"path":${JSON.stringify(path)},"id":"${exampleId}","round":${exampleRound},"summary":"Reworded the paragraph for clarity","nonce":"${exampleNonce(i)}"}`;
   });
   const fieldsPath = single ? paths[0] : "<the document's path>";
   return [
@@ -1085,7 +1101,7 @@ function respondingInstructions(
     // turn, so it reaches whatever environment the agent has, needs no setup
     // from the user, and arrives at the one moment it is useful — just before
     // the work goes back.
-    `**Before delivering, check the ${single ? "document" : "documents"}.** From the root of this repository run \`uvx vantage-check ${paths.join(" ")}\` — no install, no server — and fix what it reports. A broken link or a diagram that does not parse is cheaper to find here than in the next review round. If \`uvx\` is not available, deliver anyway — this is a quality gate, not a delivery dependency.`,
+    `**Before delivering, check the ${single ? "document" : "documents"}.** From the root of this repository run \`uvx vantage-check ${paths.map(shellWord).join(" ")}\` — no install, no server — and fix what it reports. A broken link or a diagram that does not parse is cheaper to find here than in the next review round. If \`uvx\` is not available, deliver anyway — this is a quality gate, not a delivery dependency.`,
     "",
     single
       ? "After addressing your comments: **save the document first**, then deliver your responses with a single command from the root of this document's repository:"
@@ -1112,7 +1128,7 @@ function respondingInstructions(
     "One JSON object per line, one line per comment you acted on. The fields:",
     "",
     "```",
-    `{"path":"${fieldsPath}","id":"<short-id>","round":<round>,"summary":"<one sentence: what you changed>","nonce":"<fresh random string>"}`,
+    `{"path":${JSON.stringify(fieldsPath)},"id":"<short-id>","round":<round>,"summary":"<one sentence: what you changed>","nonce":"<fresh random string>"}`,
     "```",
     "",
     "The command writes to a `.writing` scratch name, then `mv`s it onto the `.jsonl` name. That rename is the completion signal: Vantage ignores every non-`.jsonl` name, so it never reads the file until the whole delivery is in place. **Do not write directly to the `.jsonl` name** (`cat > x.jsonl`) — that creates the file empty before the write lands, and Vantage can consume the empty file and drop your response. (If your shell has no `$RANDOM`, substitute any unique token for the suffix. Never append line-by-line.)",
