@@ -190,13 +190,20 @@ off. The tip describes the state of the per-user service that
 | one project, no service installed | `Tip: vantage install-service runs Vantage in the background for all your projects.` |
 | service running | `A Vantage service is already running at http://localhost:<port>.`, followed by `This project is open there: http://localhost:<port>/<project>` when it serves this directory |
 | installed, not running | `A Vantage service is installed but not running. Start it with: systemctl --user start vantage` (on macOS, the `launchctl bootstrap` line `install-service` prints) |
+| installed, a foreground `serve` at its address | `A Vantage service is installed, but a foreground vantage serve is answering at its address, http://localhost:8000. Stop that one, then start the service with: …` |
 
 - **Installed** means the unit file or property list that `install-service`
   writes exists, at the same path. Both commands use one path function.
 - **Running** means one `GET /api/repos` to the configured host and port, which
   `config.toml` sets and which default to `127.0.0.1:8000`, with a 200 ms
-  timeout. The check runs before `serve` binds its own port, so it cannot find
-  itself, and it runs only when a tip will be printed.
+  timeout, answered by `vantage daemon`. Every API response says which kind of
+  server sent it in an `X-Vantage-Mode` header, `daemon` or `serve`, because a
+  split `serve` lists project names just as the daemon does. So `vantage ~/code`
+  in one terminal is not taken for the service by `vantage ~/notes` in
+  another. A server too old to send the header is judged by its answer: a
+  single-project `serve` lists one project with no name. The check runs before
+  `serve` binds its own port, so it cannot find itself, and it runs only when
+  a tip will be printed.
 - **This project is open there** is decided from the service's own config. The
   served directory is compared with each configured and discovered repository
   path, or with a `source_dirs` entry when the directory is a clones directory,

@@ -368,6 +368,29 @@ func TestABrowserLoadingAPageUnderTheAPIPrefixGetsTheViewer(t *testing.T) {
 	require.Contains(t, navigate("/api/repos").Header().Get("Content-Type"), "application/json")
 }
 
+// A split `vantage serve` answers /repos with real project names, just as the
+// daemon does, so the names cannot tell `serve`'s startup tip whether the
+// server on the service's port is the background service or someone's
+// foreground serve. Every API response says which it is.
+func TestAPIResponsesSayWhetherTheServerIsTheDaemon(t *testing.T) {
+	single, _ := singleRepoServer(t)
+	require.Equal(t, "serve", doGET(t, single.Handler(), "/api/repos").Header().Get("X-Vantage-Mode"))
+
+	split, _ := daemonServer(t) // a multi-project config not read from a file: serve's split
+	require.Equal(t, "serve", doGET(t, split.Handler(), "/api/repos").Header().Get("X-Vantage-Mode"))
+
+	isolateUserDirs(t)
+	root := initRepo(t, map[string]string{"a.md": "# A\n"})
+	file := filepath.Join(t.TempDir(), "config.toml")
+	require.NoError(t, os.WriteFile(file, []byte("[[repos]]\nname = \"alpha\"\npath = \""+root+"\"\n"), 0o644))
+	cfg, err := config.LoadDaemonFile(file)
+	require.NoError(t, err)
+	daemon, err := NewServer(cfg)
+	require.NoError(t, err)
+	require.Equal(t, "daemon", doGET(t, daemon.Handler(), "/api/repos").Header().Get("X-Vantage-Mode"))
+	require.Equal(t, "daemon", doGET(t, daemon.Handler(), "/api/health").Header().Get("X-Vantage-Mode"))
+}
+
 func TestSecurityHeaders(t *testing.T) {
 	srv, _ := singleRepoServer(t)
 	rec := doGET(t, srv.Handler(), "/api/health")
