@@ -9,10 +9,10 @@
 //
 //   - [RepoServices] plus [WithRepoServices] / [RepoServicesFromContext] carry
 //     the resolved [git.GitService], [fs.FileSystemService] and
-//     [repoconfig.Config] for the current request. The server's resolve middleware populates the context; handlers
-//     read it. Routes that need a repo but find none in the context respond 400
-//     (multi-repo mode requires a {repo}) — that resolution is the server's job,
-//     not this package's.
+//     [repoconfig.Config] for the current request. The server's resolve
+//     middleware populates the context; handlers read it. Routes that need a
+//     repo but find none in the context respond 400 (multi-repo mode requires a
+//     {repo}) — that resolution is the server's job, not this package's.
 //   - [Deps] and [NewHandlers] inject the process-wide singletons (review store,
 //     perf store, config).
 //   - [Handlers.Routes] returns a flat [Route] table the server mounts. Each
