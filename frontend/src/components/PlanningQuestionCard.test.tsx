@@ -753,6 +753,48 @@ describe("the comments already filed on a question", () => {
     ).toBeTruthy();
   });
 
+  // planning-index-at-scale.md §10.5: a card with no rendered question has
+  // nothing exact to report, so its page places the comments by line.
+  it("reports nothing exact without a rendered question, and nothing once it is gone", async () => {
+    const onB3 = await takenOn(byId("OQ-B3"));
+    const onScoped = vi.fn();
+    const preview = renderCard(byId("OQ-B3"), {
+      card: null,
+      preview: true,
+      comments: [onB3],
+      cardKey: "b3",
+      onScoped,
+    });
+    expect(onScoped).toHaveBeenCalledWith("b3", null);
+    expect(onScoped.mock.calls.every(([, ids]) => ids === null)).toBe(true);
+    preview.unmount();
+
+    onScoped.mockClear();
+    const rendered = renderCard(byId("OQ-B3"), {
+      comments: [onB3],
+      cardKey: "b3",
+      onScoped,
+    });
+    expect(onScoped).toHaveBeenLastCalledWith("b3", [onB3.id]);
+    rendered.unmount();
+    expect(onScoped).toHaveBeenLastCalledWith("b3", null);
+
+    // A block without the question's host in it says nothing exact either.
+    const hostless = {
+      ...blockOf(byId("OQ-B3"))!,
+      markdown: "Nothing here.\n",
+    };
+    onScoped.mockClear();
+    renderCard(byId("OQ-B3"), {
+      card: hostless,
+      comments: [onB3],
+      cardKey: "b3",
+      onScoped,
+    });
+    expect(onScoped).toHaveBeenCalledWith("b3", null);
+    expect(onScoped.mock.calls.every(([, ids]) => ids === null)).toBe(true);
+  });
+
   it("says so when the comment could not be saved", async () => {
     const onFile = vi.fn(async () => {
       throw { response: { data: { error: "Document not found" } } };

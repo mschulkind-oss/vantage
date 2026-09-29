@@ -120,10 +120,13 @@ interface PlanningQuestionCardProps {
   cardKey?: string;
   /**
    * The ids of the document's comments that are on this question, by the
-   * card's key. One callback for every card, so a card's props stay equal
-   * from one render of its page to the next.
+   * card's key, read from the rendered question; `null` while the card has
+   * no rendered question to read them from (a preview, a block without its
+   * host, a card no longer on the page), so the page places them by line
+   * instead (§10.5). One callback for every card, so a card's props stay
+   * equal from one render of its page to the next.
    */
-  onScoped?: (key: string, ids: readonly string[]) => void;
+  onScoped?: (key: string, ids: readonly string[] | null) => void;
 }
 
 const lineOf = (el: Element): number =>
@@ -409,7 +412,8 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   }, [markdown]);
 
   // Reported from an effect of its own, so the page hears only real changes.
-  const scopedKey = state.scoped.join("\n");
+  // Without a rendered host the card has nothing exact to say.
+  const reportKey = previewing || !state.found ? null : state.scoped.join("\n");
   const onScopedRef = useRef(onScoped);
   const cardKeyRef = useRef(cardKey);
   useLayoutEffect(() => {
@@ -419,11 +423,11 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   useLayoutEffect(() => {
     onScopedRef.current?.(
       cardKeyRef.current,
-      scopedKey === "" ? [] : scopedKey.split("\n"),
+      reportKey === null ? null : reportKey === "" ? [] : reportKey.split("\n"),
     );
-  }, [scopedKey]);
+  }, [reportKey]);
   useLayoutEffect(
-    () => () => onScopedRef.current?.(cardKeyRef.current, []),
+    () => () => onScopedRef.current?.(cardKeyRef.current, null),
     [],
   );
 
