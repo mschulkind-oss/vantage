@@ -76,6 +76,50 @@ const DIRECTIVE_FIXTURE = [
 ].join("\n");
 
 /**
+ * Inline SVG, kept separate for the same reason. The first drawing is shaped
+ * like a draw.io export — every label is a `switch` holding HTML in a
+ * `foreignObject` and a `<text>` fallback — which is the shape where the string
+ * output and the React viewers used to disagree: re-parsing `renderMarkdown`'s
+ * HTML broke out of the svg at the first `div`, leaving one rect and no text in
+ * the drawing and the rest of it loose in the page. The second is a small
+ * drawing inline in a sentence, with a `desc` that holds HTML.
+ *
+ * draw.io wraps its closing "Text is not SVG" notice in an `<a>`. That link is
+ * left out here because the package viewer renders *every* `<a>` differently —
+ * its link override spreads react-markdown's `node` prop onto the element and
+ * gives an `<a>` with no `href` an empty one — which is a disagreement about
+ * links, not about SVG.
+ */
+const SVG_FIXTURE = [
+  "## Drawing", // 1
+  "", // 2
+  "<div>", // 3
+  '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="241px" height="61px" viewBox="-0.5 -0.5 241 61"><defs/><g><rect x="0" y="0" width="120" height="60" rx="9" ry="9" fill="#dae8fc" stroke="#6c8ebf" pointer-events="all"/><g transform="translate(-0.5 -0.5)"><switch><foreignObject pointer-events="none" width="100%" height="100%" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility" style="overflow: visible; text-align: left;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: flex; width: 118px;"><div style="box-sizing: border-box; text-align: center;"><div style="display: inline-block; font-size: 12px;"><p>Start</p></div></div></div></foreignObject><text x="60" y="34" fill="rgb(0, 0, 0)" font-family="Helvetica" font-size="12px" text-anchor="middle">Start</text></switch></g><rect x="120" y="0" width="120" height="60" fill="#d5e8d4" stroke="#82b366" pointer-events="all"/></g><switch><g requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"/><text text-anchor="middle" font-size="10px" x="50%" y="100%">Text is not SVG - cannot display</text></switch></svg>', // 4
+  "</div>", // 5
+  "", // 6
+  'An icon <svg width="16" height="16" viewBox="0 0 16 16" role="img" aria-label="dot"><desc><p>Dot</p></desc><circle cx="8" cy="8" r="6" fill="currentColor"/></svg> in a sentence.', // 7
+  "", // 8
+].join("\n");
+
+/** Every svg in `root`, as its tag, attributes and children, recursively. */
+function describeSvgs(root: HTMLElement): string[] {
+  const describe = (el: Element): string => {
+    const attributes = Array.from(el.attributes, (a) => `${a.name}=${a.value}`)
+      .sort()
+      .join(" ");
+    const children = Array.from(el.childNodes, (node) =>
+      node.nodeType === Node.ELEMENT_NODE
+        ? describe(node as Element)
+        : JSON.stringify(node.textContent),
+    ).join(",");
+    return `${el.namespaceURI === SVG_NS ? "" : "(not SVG)"}${el.tagName}[${attributes}](${children})`;
+  };
+  return Array.from(root.querySelectorAll("svg"), describe);
+}
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/**
  * Markers a post-render pass sets at runtime, which no renderer's HTML carries.
  *
  * `collapse-armed` belongs here for the same reason `collapse-ready` does: it
@@ -144,25 +188,36 @@ function describeTree(root: HTMLElement): Rendered {
 
 afterEach(cleanup);
 
-async function throughRenderMarkdown(content = FIXTURE): Promise<Rendered> {
+/** `renderMarkdown`'s string output, parsed the way a browser would. */
+async function renderedHost(content: string): Promise<HTMLElement> {
   const { html } = await renderMarkdown(content);
   const host = document.createElement("div");
   host.innerHTML = html;
-  return describeTree(host);
+  return host;
 }
 
-function throughPackageViewer(content = FIXTURE): Rendered {
-  const { container } = render(<PackageMarkdownViewer content={content} />);
-  return describeTree(container);
+function packageViewerHost(content: string): HTMLElement {
+  return render(<PackageMarkdownViewer content={content} />).container;
 }
 
-function throughAppViewer(content = FIXTURE): Rendered {
-  const { container } = render(
+function appViewerHost(content: string): HTMLElement {
+  return render(
     <BrowserRouter>
       <AppMarkdownViewer content={content} currentPath="t.md" />
     </BrowserRouter>,
-  );
-  return describeTree(container);
+  ).container;
+}
+
+async function throughRenderMarkdown(content = FIXTURE): Promise<Rendered> {
+  return describeTree(await renderedHost(content));
+}
+
+function throughPackageViewer(content = FIXTURE): Rendered {
+  return describeTree(packageViewerHost(content));
+}
+
+function throughAppViewer(content = FIXTURE): Rendered {
+  return describeTree(appViewerHost(content));
 }
 
 describe("every renderer runs the same chain", () => {
@@ -257,6 +312,24 @@ describe("every renderer runs the same chain", () => {
       expected,
     );
     expect(throughAppViewer(DIRECTIVE_FIXTURE).directives).toEqual(expected);
+  });
+
+  it("agrees on an inline SVG, element for element", async () => {
+    const viaRenderMarkdown = describeSvgs(await renderedHost(SVG_FIXTURE));
+    // Both drawings, whole: the draw.io one with both rects and its label's
+    // text fallback inside the svg, and nothing from the refused containers.
+    expect(viaRenderMarkdown).toHaveLength(2);
+    expect(viaRenderMarkdown[0]).toContain('"Start"');
+    expect(viaRenderMarkdown[0].match(/rect\[/g)).toHaveLength(2);
+    for (const drawing of viaRenderMarkdown) {
+      expect(drawing).not.toContain("(not SVG)");
+      expect(drawing).not.toMatch(/foreignObject|desc|defs|\bdiv\b|\bp\[/);
+    }
+
+    expect(describeSvgs(packageViewerHost(SVG_FIXTURE))).toEqual(
+      viaRenderMarkdown,
+    );
+    expect(describeSvgs(appViewerHost(SVG_FIXTURE))).toEqual(viaRenderMarkdown);
   });
 
   it("agrees on the rendered prose text", async () => {
