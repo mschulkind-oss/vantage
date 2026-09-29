@@ -500,7 +500,8 @@ server.
 or `.vantage.toml`, or the current directory itself when there is none. `check` finds its
 roadmap from the same kind of root, looking up from each file it checks, so the two commands
 agree on the project; with no root, `check` finds no roadmap and `planning/unrouted` reports
-nothing. `--config` chooses which config is read, never which project is scanned, so a config
+nothing, and it reads `include` and `exclude` against the current directory, the tree `index`
+scans then. `--config` chooses which config is read, never which project is scanned, so a config
 file kept outside the tree, such as a temporary one, does not move the scan with it.
 
 Without `--config` or `--no-config`, both commands read `[planning]` from the project root's
