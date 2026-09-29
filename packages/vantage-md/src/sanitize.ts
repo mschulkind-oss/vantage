@@ -248,10 +248,11 @@ const SVG_CHILD_TAGS = [
  * Each of these holds children that are never meant to be painted where they
  * stand: a clip region, a mask, a gradient's stops, a marker's arrowhead, a
  * symbol's body, a filter's primitives, an exporter's RDF, the text of a
- * `title` or `desc` (see `SVG_CHILD_TAGS`), or — for `foreignObject` — HTML. Unwrapped, those children land in the drawing as
- * ordinary shapes. A default Figma export ends in `<defs><clipPath><rect
- * fill="white"/>`, and unwrapping it painted that white rect over the whole
- * drawing; a `<marker>` arrowhead became a stray triangle at the origin. The
+ * `title` or `desc` (see `SVG_CHILD_TAGS`), or — for `foreignObject` — HTML.
+ * Unwrapped, those children land in the drawing as ordinary shapes. A default
+ * Figma export ends in `<defs><clipPath><rect fill="white"/>`, and unwrapping
+ * it painted that white rect over the whole drawing; a `<marker>` arrowhead
+ * became a stray triangle at the origin. The
  * HTML inside a `foreignObject` survived as descendants of `svg`, which React
  * then created as invisible SVG-namespace `div`s and `p`s — the anchor an Open
  * Question button looks for — and which a browser re-parsing `renderMarkdown`'s
