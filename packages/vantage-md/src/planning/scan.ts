@@ -148,10 +148,12 @@ const OQ_TITLE = /^OQ-[A-Za-z0-9]*\d/;
 
 /**
  * An `OQ-…` token in prose, shaped as `VANTAGE_OQ_ID` shapes an id. Bounded by
- * lookarounds rather than `\b`, so `_OQ-4_` (an id in italics) still counts.
+ * what may not touch it rather than by `\b`, so `_OQ-4_` (an id in italics)
+ * still counts. The leading bound is a group rather than a lookbehind, which
+ * Safari parses only since 16.4 and which nothing else in the viewer needs.
  */
 const OQ_TOKEN =
-  /(?<![A-Za-z0-9])OQ-(?:[A-Z][A-Z0-9]{0,5})?[0-9]+(?![A-Za-z0-9])/g;
+  /(?:^|[^A-Za-z0-9])(OQ-(?:[A-Z][A-Z0-9]{0,5})?[0-9]+)(?![A-Za-z0-9])/g;
 
 const OQ_HOST_TAGS = new Set<string>(VANTAGE_OQ_HOST_TARGETS);
 
@@ -619,7 +621,9 @@ function linksOf(
 
 function idsOf(source: string): string[] {
   const seen = new Set<string>();
-  for (const match of source.matchAll(OQ_TOKEN)) seen.add(match[0]);
+  for (const match of source.matchAll(OQ_TOKEN)) {
+    if (match[1] !== undefined) seen.add(match[1]);
+  }
   return [...seen];
 }
 
