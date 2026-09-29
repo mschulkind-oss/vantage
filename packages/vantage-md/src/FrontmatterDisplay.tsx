@@ -187,10 +187,12 @@ const FrontmatterDisplayInner: React.FC<FrontmatterDisplayProps> = ({
                       {key}
                     </td>
                     <td className="py-2 text-slate-800 dark:text-slate-200 align-top">
-                      {/* The header of record's `next`, not a hoisted one. */}
+                      {/* The header of record's `next`, not a hoisted one,
+                          and only a one-line value, the only kind §4 reads. */}
                       {key === "next" &&
                       linkIds !== undefined &&
                       typeof value === "string" &&
+                      !/[\r\n]/.test(value.trim()) &&
                       value === frontmatter["next"] ? (
                         <LinkedIds text={value} ids={linkIds} />
                       ) : (

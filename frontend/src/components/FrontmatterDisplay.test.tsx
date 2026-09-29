@@ -177,6 +177,18 @@ describe("FrontmatterDisplay — `next` links its question ids", () => {
     expect(screen.getByText("Rule OQ-1")).toBeInTheDocument();
   });
 
+  // §4 ignores a `next` that is not one line, as the index does, so its ids
+  // are not the header's to link.
+  it("links nothing in a `next` that runs over several lines", () => {
+    render(
+      <FrontmatterDisplay
+        frontmatter={{ next: "Rule OQ-1\nthen OQ-2" }}
+        linkIds={["OQ-1", "OQ-2"]}
+      />,
+    );
+    expect(screen.queryByRole("link")).toBeNull();
+  });
+
   it("links nothing in any other key", () => {
     render(
       <FrontmatterDisplay
