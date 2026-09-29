@@ -70,17 +70,17 @@ func Resolve(root, path string) (string, error) {
 			return "", newError("Access to .git directory is not allowed")
 		}
 	}
-	// .vantage is vantage's own machine-to-machine state, hidden from every
-	// listing and search. Hiding it from listings but still serving it by direct
-	// path left it fetchable — and openable as a "document" to annotate — by
-	// anyone who typed the path.
-	if ignore.IsAlwaysIgnored(normalized) {
-		return "", newError("Access to .vantage directory is not allowed")
-	}
-
 	full := filepath.Clean(filepath.Join(root, normalized))
 	if !within(root, full) {
 		return "", newError("Path traversal detected")
+	}
+	// .vantage is vantage's own machine-to-machine state, hidden from every
+	// listing and search. Hiding it from listings but still serving it by direct
+	// path left it fetchable — and openable as a "document" to annotate — by
+	// anyone who typed the path. The test is on the cleaned path relative to
+	// root: on the raw one, "docs/../.vantage/x" did not start with ".vantage/".
+	if rel, err := filepath.Rel(root, full); err != nil || ignore.IsAlwaysIgnored(rel) {
+		return "", newError("Access to .vantage directory is not allowed")
 	}
 	if !containedAfterSymlinks(root, full) {
 		// Deliberately the same detail as the lexical rejection: the client
