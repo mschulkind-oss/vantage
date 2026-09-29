@@ -514,6 +514,20 @@ func isolateUserDirs(t *testing.T) {
 	t.Setenv("USERPROFILE", dir)
 }
 
+// linkedTempDir is a new, empty directory named by a symlink to it, which is
+// how every temp dir on macOS is named: /var is a link to /private/var. The
+// server compares paths resolved in different places — handing a retired clone
+// to the loose project compares the clone's path, resolved by the config, with
+// the loose project's root, resolved by its file service — and a directory
+// reached through a link is what makes Linux check that they agree, as a macOS
+// runner always does.
+func linkedTempDir(t *testing.T) string {
+	t.Helper()
+	link := filepath.Join(t.TempDir(), "link")
+	require.NoError(t, os.Symlink(t.TempDir(), link))
+	return link
+}
+
 func TestReviewCommandRoutesMountedPerRepo(t *testing.T) {
 	srv, _ := daemonServer(t)
 	h := srv.Handler()
@@ -704,10 +718,7 @@ func TestDiscoverReposAddsEachRepoOnce(t *testing.T) {
 // project — not a discovered repository — is never retired.
 func TestLooseProjectSharesTheRescanAndIsNeverRetired(t *testing.T) {
 	isolateUserDirs(t)
-	code := t.TempDir()
-	if resolved, err := filepath.EvalSymlinks(code); err == nil {
-		code = resolved
-	}
+	code := linkedTempDir(t)
 	initRepoAt(t, filepath.Join(code, "alpha"), map[string]string{"a.md": "# A\n"})
 	require.NoError(t, os.WriteFile(filepath.Join(code, "notes.md"), []byte("# notes\n"), 0o644))
 
@@ -745,10 +756,7 @@ func TestLooseProjectSharesTheRescanAndIsNeverRetired(t *testing.T) {
 // one, and keeps the loose project pinned.
 func TestLooseProjectNamesTheProjectBehindEachClone(t *testing.T) {
 	isolateUserDirs(t)
-	code := t.TempDir()
-	if resolved, err := filepath.EvalSymlinks(code); err == nil {
-		code = resolved
-	}
+	code := linkedTempDir(t)
 	initRepoAt(t, filepath.Join(code, "alpha"), map[string]string{"a.md": "# A\n"})
 	initRepoAt(t, filepath.Join(code, "beta"), map[string]string{"b.md": "# B\n"})
 	require.NoError(t, os.Symlink(filepath.Join(code, "alpha"), filepath.Join(code, "link")))
@@ -800,10 +808,7 @@ func TestLooseProjectNamesTheProjectBehindEachClone(t *testing.T) {
 // from the clone's project and never from the loose one.
 func TestTheLooseProjectsWatcherStaysOutOfItsClones(t *testing.T) {
 	isolateUserDirs(t)
-	code := t.TempDir()
-	if resolved, err := filepath.EvalSymlinks(code); err == nil {
-		code = resolved
-	}
+	code := linkedTempDir(t)
 	alpha := initRepoAt(t, filepath.Join(code, "alpha"), map[string]string{"docs/a.md": "# A\n"})
 	require.NoError(t, os.WriteFile(filepath.Join(code, "notes.md"), []byte("# notes\n"), 0o644))
 	cfg := config.Defaults()
@@ -862,10 +867,7 @@ func TestTheLooseProjectsWatcherStaysOutOfItsClones(t *testing.T) {
 // could tell it, so retiring the clone is what hands the folder over.
 func TestARetiredCloneIsWatchedByTheLooseProject(t *testing.T) {
 	isolateUserDirs(t)
-	code := t.TempDir()
-	if resolved, err := filepath.EvalSymlinks(code); err == nil {
-		code = resolved
-	}
+	code := linkedTempDir(t)
 	alpha := initRepoAt(t, filepath.Join(code, "alpha"), map[string]string{"a.md": "# A\n"})
 	require.NoError(t, os.WriteFile(filepath.Join(code, "notes.md"), []byte("# notes\n"), 0o644))
 	cfg := config.Defaults()
