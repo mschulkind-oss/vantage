@@ -34,6 +34,7 @@ describe("useGitStore", () => {
       diff: null,
       isDiffLoading: false,
       showDiff: false,
+      isRepoInfoLoading: false,
     });
     resetGitAnswers();
     useRepoStore.setState({ isMultiRepo: false, currentRepo: null });
@@ -229,6 +230,25 @@ describe("useGitStore", () => {
       expect(paths).not.toContain("doc-0.md");
       expect(paths).not.toContain("doc-2.md");
       expect(paths.slice(-2)).toEqual(["doc-1.md", "one-more.md"]);
+    });
+  });
+
+  describe("fetchRepoInfo", () => {
+    it("says it is loading until /info answers, either way", async () => {
+      const answer = deferred<{ data: unknown }>();
+      mockedAxios.get.mockReturnValueOnce(answer.promise);
+      const pending = useGitStore.getState().fetchRepoInfo();
+      expect(useGitStore.getState().isRepoInfoLoading).toBe(true);
+      answer.resolve({ data: { name: "repo", root_path: "/r" } });
+      await pending;
+      expect(useGitStore.getState()).toMatchObject({
+        isRepoInfoLoading: false,
+        repoRootPath: "/r",
+      });
+
+      mockedAxios.get.mockRejectedValueOnce(new Error("down"));
+      await useGitStore.getState().fetchRepoInfo();
+      expect(useGitStore.getState().isRepoInfoLoading).toBe(false);
     });
   });
 
