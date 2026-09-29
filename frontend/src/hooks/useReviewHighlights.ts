@@ -100,14 +100,16 @@ export function useReviewHighlights(
       armedDelete = null;
     }
 
-    // Clean up previous marks
+    // Clean up previous marks by unwrapping them. Not by replacing each with a
+    // text node of its `textContent`: a selection can span a whole link, and
+    // flattening it turned the link into plain text — and the planning badge
+    // beside it into words of the block, which changed the block's hash and
+    // drifted every comment on it (docs/design/planning-index.md §13).
     el.querySelectorAll(`mark[${MARK_ATTR}]`).forEach((mark) => {
       const parent = mark.parentNode;
       if (parent) {
-        parent.replaceChild(
-          document.createTextNode(mark.textContent || ""),
-          mark,
-        );
+        while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+        parent.removeChild(mark);
         parent.normalize();
       }
     });
