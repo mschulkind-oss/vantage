@@ -11,8 +11,8 @@
  * eight block types land on the same pixel". They did. Two of them landed there
  * invisibly.
  *
- * The two defects this pins, both of which read on screen as one section broken
- * into two:
+ * The defects this pins, every one of which reads on screen as one section
+ * broken into two:
  *
  *   1. `pre` (typography's `overflow-x: auto`) and `hr` (the UA sheet's
  *      `overflow: hidden`) are scroll/clip boxes, and `[data-vantage-tone] {
@@ -27,6 +27,14 @@
  *      by `VANTAGE_STYLE_TARGETS`, the list of tags a directive may *target*.
  *      Measured before the fix: a 44px hole for a one-line figure, against the
  *      40px a neighbor can bleed upward, and taller for a taller block.
+ *   4. On paper there was no rule at all. The host's print block zeroes the
+ *      content wrapper's padding, which put the rule outside the page area,
+ *      where Chrome clips: a PDF of this fixture drew nothing in the rule's print
+ *      gray on either page.
+ *
+ * All of it has to hold in light, in dark and in print (D5, D7), so the
+ * continuity test runs once in each: the accent changes with the theme, print
+ * swaps it for gray, and a slice that misses one of those reads as a gap here.
  *
  * `just e2e` runs this with the rest of the suite, and CI runs that on every
  * push and pull request; the commit gate does not. On its own it is `cd frontend
@@ -70,6 +78,41 @@ interface Scan {
  * screenshot — see `scanRuleColumn`.
  */
 const TALL_VIEWPORT = { width: 1280, height: 1600 };
+
+/** The three renderings the rule has to survive: two themes, and paper. */
+const RENDERINGS = ["light", "dark", "print"] as const;
+type Rendering = (typeof RENDERINGS)[number];
+
+/**
+ * Open the fixture in one rendering, and wait until the run is complete.
+ *
+ * Dark is the reader's stored preference, set before the app boots because the
+ * app applies it before its first paint. Print is the media type, emulated on
+ * screen at the viewport's width rather than a page's; a rule pushed past the
+ * content's left edge falls off the screenshot just as it falls off the page.
+ * The host's print block forces a light page whatever the mode, so print is
+ * measured from light only.
+ */
+async function openFixture(
+  page: import("@playwright/test").Page,
+  rendering: Rendering,
+) {
+  await page.setViewportSize(TALL_VIEWPORT);
+  if (rendering === "dark") {
+    await page.addInitScript(() =>
+      localStorage.setItem("vantage:theme", "dark"),
+    );
+  }
+  if (rendering === "print") await page.emulateMedia({ media: "print" });
+  await page.goto(FIXTURE);
+  const html = page.locator("html");
+  if (rendering === "dark") await expect(html).toHaveClass(/(^|\s)dark(\s|$)/);
+  else await expect(html).not.toHaveClass(/(^|\s)dark(\s|$)/);
+  await expect(page.locator("[data-vantage-tone]").first()).toBeVisible();
+  // KaTeX replaces the `$$` block, and the replacement is a run member: wait
+  // for it, or the scan can race a section that is still one block short.
+  await expect(page.locator(".katex-display")).toHaveCount(1);
+}
 
 async function scanRuleColumn(page: import("@playwright/test").Page) {
   // The app never scrolls the page: content lives in a `flex-1 overflow-y-auto`
@@ -165,76 +208,32 @@ async function scanRuleColumn(page: import("@playwright/test").Page) {
 
     // If the content panel had to scroll, the rows below the fold were never in
     // the image and every "gap" below them is an artifact. Report it as one.
+    // Print lays the panel out at full height and lets the page grow instead,
+    // so the last member leaving the viewport is the same failure there.
     const panel = stamped[0].closest<HTMLElement>(".overflow-y-auto");
     const overflowed =
-      panel !== null && panel.scrollHeight > panel.clientHeight + 1;
+      (panel !== null && panel.scrollHeight > panel.clientHeight + 1) ||
+      stamped[stamped.length - 1].getBoundingClientRect().bottom >
+        window.innerHeight;
 
     return { members, gaps, first, last, overflowed };
   }, `data:image/png;base64,${shot}`);
 }
 
 test.describe("a toned section's rule is one continuous line", () => {
-  test("paints every row of every member, with no gap between them", async ({
-    page,
-  }) => {
-    await page.setViewportSize(TALL_VIEWPORT);
-    await page.goto(FIXTURE);
-    await expect(page.locator("[data-vantage-tone]").first()).toBeVisible();
-    // KaTeX replaces the `$$` block, and the replacement is a run member: wait
-    // for it, or the scan can race a section that is still one block short.
-    await expect(page.locator(".katex-display")).toHaveCount(1);
-
-    const scan = await scanRuleColumn(page);
-    expect(scan.overflowed, "the fixture outgrew TALL_VIEWPORT").toBe(false);
-
-    // The whole point: no unpainted row anywhere inside the run.
-    expect(
-      scan.gaps.map(([from, to]) => `${from}-${to} (${to - from + 1}px)`),
-    ).toEqual([]);
-
-    // And per member, so a failure names the tag that stopped painting rather
-    // than a row number. `PRE` and `SPAN` are the two that used to read 0.
-    for (const member of scan.members) {
-      expect(
-        member.painted,
-        `${member.tag}[run=${member.run}] painted ${member.painted} of its ${member.height} rows`,
-      ).toBe(member.height);
-    }
-    // `FIGURE` is the one member the stampable-tag list would have skipped, so
-    // name it: a regression there paints nothing rather than painting wrongly,
-    // and the row scan above would blame whichever member follows it.
-    expect(
-      scan.members.some((member) => member.tag === "FIGURE"),
-      "the raw-HTML figure is not in the run at all",
-    ).toBe(true);
-
-    // The fixture is one run over every stampable block type.
-    expect(scan.members.map((member) => member.tag)).toEqual([
-      "H2",
-      "P",
-      "UL",
-      "PRE",
-      "P",
-      "FIGURE",
-      "SPAN",
-      "BLOCKQUOTE",
-      "TABLE",
-      "HR",
-      "P",
-    ]);
-    expect(scan.members.map((member) => member.run)).toEqual([
-      "start",
-      ...Array(9).fill("middle"),
-      "end",
-    ]);
-  });
+  for (const rendering of RENDERINGS) {
+    test(`paints every row of every member, with no gap between them (${rendering})`, async ({
+      page,
+    }) => {
+      await openFixture(page, rendering);
+      await expectOneContinuousRule(page);
+    });
+  }
 
   test("stops at the run, bleeding over nothing outside it", async ({
     page,
   }) => {
-    await page.setViewportSize(TALL_VIEWPORT);
-    await page.goto(FIXTURE);
-    await expect(page.locator(".katex-display")).toHaveCount(1);
+    await openFixture(page, "light");
 
     const scan = await scanRuleColumn(page);
     expect(scan.overflowed, "the fixture outgrew TALL_VIEWPORT").toBe(false);
@@ -277,3 +276,50 @@ test.describe("a toned section's rule is one continuous line", () => {
     expect(boxes.codeScrolled).toBeGreaterThan(0);
   });
 });
+
+/** The continuity assertions, shared by every rendering. */
+async function expectOneContinuousRule(page: import("@playwright/test").Page) {
+  const scan = await scanRuleColumn(page);
+  expect(scan.overflowed, "the fixture outgrew TALL_VIEWPORT").toBe(false);
+
+  // The whole point: no unpainted row anywhere inside the run.
+  expect(
+    scan.gaps.map(([from, to]) => `${from}-${to} (${to - from + 1}px)`),
+  ).toEqual([]);
+
+  // And per member, so a failure names the tag that stopped painting rather
+  // than a row number. `PRE` and `SPAN` are the two that used to read 0.
+  for (const member of scan.members) {
+    expect(
+      member.painted,
+      `${member.tag}[run=${member.run}] painted ${member.painted} of its ${member.height} rows`,
+    ).toBe(member.height);
+  }
+  // `FIGURE` is the one member the stampable-tag list would have skipped, so
+  // name it: a regression there paints nothing rather than painting wrongly,
+  // and the row scan above would blame whichever member follows it.
+  expect(
+    scan.members.some((member) => member.tag === "FIGURE"),
+    "the raw-HTML figure is not in the run at all",
+  ).toBe(true);
+
+  // The fixture is one run over every stampable block type.
+  expect(scan.members.map((member) => member.tag)).toEqual([
+    "H2",
+    "P",
+    "UL",
+    "PRE",
+    "P",
+    "FIGURE",
+    "SPAN",
+    "BLOCKQUOTE",
+    "TABLE",
+    "HR",
+    "P",
+  ]);
+  expect(scan.members.map((member) => member.run)).toEqual([
+    "start",
+    ...Array(9).fill("middle"),
+    "end",
+  ]);
+}
