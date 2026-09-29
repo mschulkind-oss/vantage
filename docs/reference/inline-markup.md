@@ -648,6 +648,50 @@ attribute, so an element renders unstyled rather than half-styled (**D6**).
 Denial of service is otherwise not a concern: ten thousand directives is ten
 thousand comments, and the plugin is one linear pass over an unambiguous grammar.
 
+### The `class` allowlist
+
+A document's `class` is kept only on the elements where the pipeline puts one
+itself, and only with the names it puts there: a fenced block's language, GFM
+task lists and footnotes, and an alert's title. [Current values](#current-values)
+lists them. Every other class a document writes is dropped, and the element
+stays.
+
+**A class is a style by another name.** The app's stylesheet carries the
+[Tailwind](https://tailwindcss.com/docs/styling-with-utility-classes) utility
+classes its own markup uses, and `class` used to be kept with any value on every
+element. So `<div class="fixed inset-0 z-50 bg-white">` laid a white sheet over
+the whole window, header and sidebar included. That is the overlay the `style`
+filter bans `position` to prevent, through an attribute the filter never reads.
+A document could also borrow a class the app's own code looks for, such as the
+one the outline strips from a heading's text. Comment bodies were never open to
+this: their sanitizer refuses `class` outright.
+
+- **The names are measured, not listed from memory.** A test records every
+  class on the tree on both sides of the sanitizer, over a document that uses
+  every feature that emits one. It fails if the sanitizer takes any of them but
+  the two `remark-math` names below, and if a plugin starts emitting a new one.
+- **A class added after the sanitizer needs no entry,** and that is most of what
+  the page styles: the highlighter's token classes, KaTeX's output, Mermaid's
+  diagrams, and everything the app's components add. A document that writes one
+  of those keeps nothing.
+- **`remark-math`'s `math-display` and `math-inline` are dropped, as they always
+  were.** KaTeX finds math by `language-math` alone, and tells a display formula
+  from an inline one by whether it sits in a `pre`.
+- **A document may still write the kept names on their own elements.** By the
+  time the sanitizer runs, a hand-written `<li class="task-list-item">` and the
+  one GFM emitted are the same node, and none of the names can lay an element
+  over anything else.
+
+> [!WARNING]
+> **The footnote label is visible in the app only because nothing Tailwind scans
+> spells its class.** Tailwind generates a utility for every class name it finds
+> in the files it scans, comments included, and it scans all of `frontend/` and
+> `packages/vantage-md/src`. The label's class, `sr-only`, is a Tailwind utility
+> that hides an element from sight. Written in either tree, it generates that
+> rule, and the label disappears as it does on GitHub. That is why `sanitize.ts`
+> reads the name from `rehype-sanitize`'s default schema and the tests spell it
+> in halves.
+
 ### Inline SVG
 
 Raw `<svg>` is admitted as static drawing: shapes, paths, text, groups and
@@ -852,6 +896,7 @@ table is the only place the values themselves are stated.
 | Collapse group id format | digits only | `COLLAPSE_GROUP_ID`, `sanitize.ts` |
 | Max `leaning` length carried to the DOM | 500 characters, whitespace-collapsed | `rehypeVantageDirectives.ts` |
 | Directive attribute names | `data-vantage-` + `tone`/`emphasis`/`badge`/`collapsed`/`collapse-group`/`collapse-toggle`/`run`/`oq`/`leaning` | `sanitize.ts` |
+| Classes a document may write | `code`: `language-*`; `ul` and `ol`: `contains-task-list`; `li`: `task-list-item`; `section`: `footnotes`; `h2`: `sr-only`; `a`: `data-footnote-backref`; `div`: `vantage-alert-title`; none on any other element | `PIPELINE_CLASSES`, `sanitize.ts` |
 
 ## Why it's this way
 
