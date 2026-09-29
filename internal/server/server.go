@@ -308,9 +308,7 @@ func (s *Server) newRepoServices(rc config.RepoConfig) *repoServices {
 		WalkMaxDepth:   s.cfg.WalkMaxDepth,
 		UseIgnoreFiles: s.cfg.UseIgnoreFiles,
 		StopAtRepos:    rc.Loose,
-		OnWalkTimeout: func() {
-			s.reportDegraded(model.Degradation{Repo: rc.Name, Kind: model.DegradationWalkTimeout})
-		},
+		OnWalk:         func(timedOut bool) { s.walkFinished(rc.Name, timedOut) },
 	})
 	fsSvc := fs.New(fs.Config{
 		RootPath:       rc.Path,
@@ -841,6 +839,23 @@ func (s *Server) reportDegraded(d model.Degradation) {
 	}
 	s.logger.Warn("server: project is degraded", "repo", d.Repo, "kind", d.Kind, "path", d.Path, "message", d.Message)
 	s.manager.Broadcast(degradedChangedMessage{Type: "degraded_changed", Repo: d.Repo})
+}
+
+// walkFinished records how repo's untracked-file walk ended: a timeout is
+// reported as a degradation, and a walk that finished clears one, pushing
+// degraded_changed so the banner goes away without a reload.
+func (s *Server) walkFinished(repo string, timedOut bool) {
+	if timedOut {
+		s.reportDegraded(model.Degradation{Repo: repo, Kind: model.DegradationWalkTimeout})
+		return
+	}
+	s.degradedMu.Lock()
+	_, had := s.degraded[repo][model.DegradationWalkTimeout]
+	delete(s.degraded[repo], model.DegradationWalkTimeout)
+	s.degradedMu.Unlock()
+	if had {
+		s.manager.Broadcast(degradedChangedMessage{Type: "degraded_changed", Repo: repo})
+	}
 }
 
 // degradedList returns every current degradation, ordered by repository and
