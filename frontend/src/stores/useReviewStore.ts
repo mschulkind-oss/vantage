@@ -775,11 +775,10 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     const c = comments.find((x) => x.id === id);
     if (!filePath || !c) return false;
 
-    const contentLines = (lastContent || "").split("\n");
     const pathPrefix = clipboardPathPrefix(filePath);
 
     const output = [`## Review Comment for \`${filePath}\``, ""];
-    output.push(...commentBlock(c, contentLines, pathPrefix));
+    output.push(...commentBlock(c, linesOfText(lastContent), pathPrefix));
     output.push(
       ...respondingInstructions([{ path: filePath, example: c }], [c]),
     );
@@ -872,21 +871,53 @@ export function reviewCommentsBlock(
   comments: readonly ReviewComment[],
   content: string | null,
 ): string[] {
-  const contentLines = (content || "").split("\n");
+  return commentsBlockOf(filePath, comments, linesOfText(content));
+}
+
+/** {@link reviewCommentsBlock}, quoting from a line lookup. */
+function commentsBlockOf(
+  filePath: string,
+  comments: readonly ReviewComment[],
+  lineAt: LineLookup,
+): string[] {
   const pathPrefix = clipboardPathPrefix(filePath);
   const output = [`## Review Comments for \`${filePath}\``, ""];
   for (const c of comments) {
-    output.push(...commentBlock(c, contentLines, pathPrefix));
+    output.push(...commentBlock(c, lineAt, pathPrefix));
   }
   return output;
 }
 
-/** One document's comments for a combined payload, and the text they quote. */
+/**
+ * A document's text, one line at a time: the text of 1-based line `line`, or
+ * `undefined` past the document's end. What a payload quotes a comment's
+ * context from — each anchor line and the lines either side of it — so a
+ * caller holding only those lines quotes exactly what the whole text would.
+ */
+export type LineLookup = (line: number) => string | undefined;
+
+/**
+ * The line lookup over a whole text. `null` reads as one empty line, as the
+ * single-document Copy always has for a document it holds no text of.
+ */
+export function linesOfText(content: string | null): LineLookup {
+  const lines = (content || "").split("\n");
+  return (line) => (line >= 1 ? lines[line - 1] : undefined);
+}
+
+/** A lookup that has no line at all, so nothing is quoted. */
+const NO_LINES: LineLookup = () => undefined;
+
+/** One document's comments for a combined payload, and the lines they quote. */
 export interface AnswerGroup {
   path: string;
   comments: readonly ReviewComment[];
-  /** The document's source, for the quoted context; `null` quotes none. */
-  content: string | null;
+  /**
+   * The document's lines, for the quoted context; `null` quotes none. The
+   * planning page holds no document's text (`planning-index-at-scale.md`
+   * §10.5), only the lines its pending comments quote.
+   */
+  lines: LineLookup | null;
 }
 
 /**
@@ -902,7 +933,7 @@ export function answersPayload(groups: readonly AnswerGroup[]): string | null {
   if (live.length === 0) return null;
   const output: string[] = [];
   for (const g of live) {
-    output.push(...reviewCommentsBlock(g.path, g.comments, g.content));
+    output.push(...commentsBlockOf(g.path, g.comments, g.lines ?? NO_LINES));
   }
   output.push(
     ...respondingInstructions(
@@ -924,13 +955,13 @@ function turnLabel(r: CommentReaction): string {
 /** Render one comment (heading, quote, comment, agent response, follow-ups). */
 function commentBlock(
   c: ReviewComment,
-  contentLines: string[],
+  lineAt: LineLookup,
   pathPrefix: string,
 ): string[] {
   const out: string[] = [];
   const shortId = c.id.slice(0, 8);
   const anchorLine = c.anchor?.source_line ?? null;
-  const quoted = quotedFor(c, contentLines);
+  const quoted = quotedFor(c, lineAt);
   // The round is this thread's turn count right now. The agent echoes it back
   // on its delivery so a follow-up the reviewer posts while the agent works is
   // not mistaken for something that answer addressed.
@@ -1158,24 +1189,26 @@ function respondingInstructions(
  */
 function quotedFor(
   c: ReviewComment,
-  contentLines: string[],
+  lineAt: LineLookup,
 ): { text: string; contextBlock: string } {
   const fallback = c.fallback_text || c.selected_text || "";
-  if (c.anchor?.source_line) {
-    const idx = c.anchor.source_line - 1;
-    if (idx >= 0 && idx < contentLines.length) {
-      const CONTEXT = 2;
-      const start = Math.max(0, idx - CONTEXT);
-      const end = Math.min(contentLines.length - 1, idx + CONTEXT);
-      const lines: string[] = [];
-      for (let i = start; i <= end; i++) {
-        const marker = i === idx ? ">" : " ";
-        lines.push(
-          `${marker} ${String(i + 1).padStart(4)} | ${contentLines[i]}`,
-        );
-      }
-      return { text: fallback, contextBlock: lines.join("\n") };
+  const anchorLine = c.anchor?.source_line;
+  if (anchorLine && lineAt(anchorLine) !== undefined) {
+    const CONTEXT = 2;
+    const lines: string[] = [];
+    // Past the document's end a line reads `undefined`, so the quote stops at
+    // the end of the text, as it always has.
+    for (
+      let n = Math.max(1, anchorLine - CONTEXT);
+      n <= anchorLine + CONTEXT;
+      n++
+    ) {
+      const text = lineAt(n);
+      if (text === undefined) continue;
+      const marker = n === anchorLine ? ">" : " ";
+      lines.push(`${marker} ${String(n).padStart(4)} | ${text}`);
     }
+    return { text: fallback, contextBlock: lines.join("\n") };
   }
   return { text: fallback, contextBlock: "" };
 }
