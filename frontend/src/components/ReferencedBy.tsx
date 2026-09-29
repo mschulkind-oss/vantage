@@ -153,7 +153,10 @@ interface SourceRowProps {
   hrefFor: (path: string) => string;
   expanded: boolean;
   onMore: () => void;
-  /** Called with the first heading "+M more" revealed, once it mounts. */
+  /**
+   * Called with the first heading past "+M more" on every render. It is always
+   * mounted, since print shows it, so the caller focuses it only after a press.
+   */
   revealedRef: (el: HTMLElement | null) => void;
 }
 
@@ -175,8 +178,8 @@ function SourceRow({
 }: SourceRowProps) {
   const href = hrefFor(source.from);
   const headed = source.references.filter((ref) => ref.heading !== null);
-  const shown = expanded ? headed : headed.slice(0, HEADINGS_SHOWN);
-  const more = headed.length - shown.length;
+  const shownCount = expanded ? headed.length : HEADINGS_SHOWN;
+  const more = Math.max(0, headed.length - shownCount);
   const first = source.references[0];
   return (
     <div
@@ -194,10 +197,13 @@ function SourceRow({
       >
         {name}
       </AppLink>
-      {shown.map((ref, i) => (
+      {headed.map((ref, i) => (
         <span
           key={ref.line}
           ref={i === HEADINGS_SHOWN ? revealedRef : undefined}
+          // Past "+M more" on screen, but paper has nothing to press, so
+          // every heading prints.
+          className={i >= shownCount ? "hidden print:inline" : undefined}
         >
           {" · "}
           <AppLink
@@ -209,7 +215,7 @@ function SourceRow({
         </span>
       ))}
       {more > 0 && (
-        <>
+        <span className="print:hidden">
           {" · "}
           <button
             type="button"
@@ -219,7 +225,7 @@ function SourceRow({
           >
             +{more} more
           </button>
-        </>
+        </span>
       )}
     </div>
   );

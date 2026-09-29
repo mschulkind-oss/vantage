@@ -62,10 +62,16 @@ const renderLine = (summary: ReferenceSummary) =>
 const surface = () =>
   document.querySelector<HTMLElement>(`[${REFERENCED_BY_ATTR}]`);
 const toggle = () => screen.getByRole("button", { name: /Referenced by/ });
+/**
+ * Each row's text as the screen shows it: without what Tailwind's `hidden`
+ * keeps off it, the headings past "+M more" that only print shows.
+ */
 const rows = () =>
-  screen
-    .getAllByRole("listitem")
-    .map((row) => row.textContent?.replace(/\s+/g, " ").trim());
+  screen.getAllByRole("listitem").map((row) => {
+    const shown = row.cloneNode(true) as HTMLElement;
+    shown.querySelectorAll(".hidden").forEach((el) => el.remove());
+    return shown.textContent?.replace(/\s+/g, " ").trim();
+  });
 
 describe("the line (§7)", () => {
   it("names the roadmap heading when the roadmap routes the document", () => {
