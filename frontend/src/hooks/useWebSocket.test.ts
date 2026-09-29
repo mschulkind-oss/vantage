@@ -57,8 +57,12 @@ describe("useWebSocket", () => {
     "noteFilesChanged" | "noteReviewChanged" | "noteReconnect"
   >;
 
+  // A viewer at rest: the document it was sent to has landed, so the requested
+  // path and the current one agree. useWebSocket.navigation.test.ts covers the
+  // window where they do not.
   const makeRepoStoreState = (overrides: Record<string, unknown> = {}) => ({
     currentPath: "test.md",
+    requestedPath: "test.md",
     loadFile: mockLoadFile,
     refreshExpandedTree: mockRefreshExpandedTree,
     viewDirectory: mockViewDirectory,
@@ -176,7 +180,10 @@ describe("useWebSocket", () => {
   });
 
   it("does not reload file when changed file is not the current one", () => {
-    const repoState = makeRepoStoreState({ currentPath: "other.md" });
+    const repoState = makeRepoStoreState({
+      currentPath: "other.md",
+      requestedPath: "other.md",
+    });
     const mockStore = (selector?: (state: typeof repoState) => unknown) => {
       if (typeof selector === "function") return selector(repoState);
       return repoState;
@@ -376,7 +383,10 @@ describe("useWebSocket", () => {
   });
 
   it("does not reload review data on reconnect for a non-markdown path", () => {
-    const repoState = makeRepoStoreState({ currentPath: "docs" });
+    const repoState = makeRepoStoreState({
+      currentPath: "docs",
+      requestedPath: "docs",
+    });
     const mockStore = (selector?: (state: typeof repoState) => unknown) => {
       if (typeof selector === "function") return selector(repoState);
       return repoState;
