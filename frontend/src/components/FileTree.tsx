@@ -13,6 +13,8 @@ import { useRepoStore } from "../stores/useRepoStore";
 import { cn } from "../lib/utils";
 import { useNavigate } from "react-router-dom";
 import { shouldHandleInternalNavigation } from "../lib/navigation";
+import { useEnsurePlanningIndex } from "../stores/usePlanningStore";
+import { PlanningTreeBadge } from "./PlanningTreeBadge";
 
 interface FileTreeProps {
   nodes: FileNode[];
@@ -285,6 +287,9 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
         >
           {node.name}
         </span>
+        {/* A planning document's stage and open questions (planning-index.md
+            §7). Files only: a directory is never a planning document. */}
+        {!node.is_dir && <PlanningTreeBadge path={node.path} />}
         {hasGitChange && !isSymlink && (
           <span
             className={cn(
@@ -357,6 +362,9 @@ const FileTreeNode = memo(FileTreeNodeInner, (prevProps, nextProps) => {
 });
 
 const FileTreeInner: React.FC<FileTreeProps> = ({ nodes }) => {
+  // The tree is one of the index's first needs (planning-index.md §3.4). Each
+  // nested list asks too, which is idempotent.
+  useEnsurePlanningIndex();
   return (
     <div className="flex flex-col space-y-0.5">
       {nodes.map((node) => (
