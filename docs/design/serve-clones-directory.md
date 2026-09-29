@@ -61,6 +61,17 @@ on the fixture, and the first grows with the number of clones:
    Once a directory holds more than 5,000 Markdown files, the planning index
    refuses to answer.
 
+Review found one literal 404, and it is not particular to either mode. A
+project's name is the first segment of its URLs, and `api` is a common name for
+a repository, so a project named `api`, or a folder `api/` served as one
+project, has its pages under the API's own `/api/` prefix. Loading one
+directly (a reload, a bookmark, a link) got the API's JSON 404 for a route it
+does not have. A browser loading a page there now gets the viewer, whose own
+requests go through `/api/r/api/…`, while any other request that misses every
+API route still gets the 404. Projects named `history` or `recent` have the
+same problem with the viewer's own pages of those names, and still open the
+wrong page on a direct load.
+
 The likeliest source of the reported 404s is the first condition together with
 the viewer's own error states. A request that times out, or a document the
 tree lists but the watcher never reports, shows as "not found" to someone who

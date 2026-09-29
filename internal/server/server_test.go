@@ -329,6 +329,45 @@ func TestUnknownAPIRoute404(t *testing.T) {
 	require.Contains(t, rec.Header().Get("Content-Type"), "application/json")
 }
 
+// A project's name is its URLs' first segment, and "api" is a common name for a
+// repository, so /api/README.md is at once the viewer's page for a project
+// called api and a path under the API's prefix — as is a folder named api/ in
+// a project served on its own. A browser loading it (a reload, a bookmark, the
+// startup tip's link) asks for HTML, and gets the viewer, which then reads the
+// file through /api/r/api/…. Anything else that misses every API route still
+// gets the JSON 404 that keeps a missing endpoint visible.
+func TestABrowserLoadingAPageUnderTheAPIPrefixGetsTheViewer(t *testing.T) {
+	isolateUserDirs(t)
+	root := initRepo(t, map[string]string{"README.md": "# api\n"})
+	cfg := config.Defaults()
+	cfg.MultiRepo = true
+	cfg.Repos = []config.RepoConfig{{Name: "api", Path: root}}
+	require.NoError(t, cfg.Resolve())
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+	h := srv.Handler()
+
+	navigate := func(target string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, target, nil)
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		return rec
+	}
+	for _, target := range []string{"/api/README.md", "/api", "/api/docs/"} {
+		rec := navigate(target)
+		require.Equal(t, http.StatusOK, rec.Code, target)
+		require.Contains(t, rec.Header().Get("Content-Type"), "text/html", target)
+	}
+
+	rec := doGET(t, h, "/api/README.md")
+	require.Equal(t, http.StatusNotFound, rec.Code, "not a navigation: the API's own 404")
+	require.Contains(t, rec.Header().Get("Content-Type"), "application/json")
+	require.Equal(t, http.StatusOK, doGET(t, h, "/api/r/api/content?path=README.md").Code)
+	require.Equal(t, http.StatusOK, navigate("/api/repos").Code, "a real route is still the route")
+	require.Contains(t, navigate("/api/repos").Header().Get("Content-Type"), "application/json")
+}
+
 func TestSecurityHeaders(t *testing.T) {
 	srv, _ := singleRepoServer(t)
 	rec := doGET(t, srv.Handler(), "/api/health")

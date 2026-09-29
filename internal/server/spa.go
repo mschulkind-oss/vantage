@@ -34,9 +34,12 @@ func (s *Server) spaHandler() http.HandlerFunc {
 	index := indexHTML(dist)
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		// /api paths reaching here did not match a real API route. Never serve
-		// the SPA for them; report a clean 404 so missing endpoints are visible.
-		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
+		// /api paths reaching here did not match a real API route. Report a
+		// clean 404 so missing endpoints are visible — unless a browser is
+		// loading a page. A project's name is its URLs' first segment, and a
+		// project (or, served alone, a folder) named "api" has its pages here:
+		// the viewer they load reads everything through /api/r/api/… anyway.
+		if (r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/")) && !isPageLoad(r) {
 			writeJSONError(w, http.StatusNotFound, "Not found")
 			return
 		}
@@ -59,6 +62,21 @@ func (s *Server) spaHandler() http.HandlerFunc {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write(index)
 	}
+}
+
+// isPageLoad reports whether r is a browser loading a page — a navigation,
+// which asks for HTML — rather than a fetch, an <img>, or a script, none of
+// which do.
+func isPageLoad(r *http.Request) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	for _, accept := range r.Header.Values("Accept") {
+		if strings.Contains(accept, "text/html") {
+			return true
+		}
+	}
+	return false
 }
 
 // serveStaticAsset serves rel from dist when it names an existing regular file,
