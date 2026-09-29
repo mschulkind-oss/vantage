@@ -3,13 +3,18 @@
  * candidates that could not be read (design §3).
  *
  * Built from one batch of sources — the server's planning endpoint, or the
- * checker's own walk — and kept fresh one path at a time (§3.4). Every function
- * here returns a new index and leaves its argument alone, so a viewer can hold
- * the previous one on screen while the next is computed.
+ * checker's own walk — or from files already scanned, and kept fresh one path
+ * at a time (§3.4). Every function here returns a new index and leaves its
+ * argument alone, so a viewer can hold the previous one on screen while the
+ * next is computed.
  */
 
 import { isStageRole, type PlanningConfig, type StageRole } from "./config.js";
-import { scanPlanningDocument, type PlanningDocument } from "./scan.js";
+import {
+  scanPlanningDocument,
+  type PlanningDocument,
+  type ScanResult,
+} from "./scan.js";
 
 /**
  * One batch of candidate sources: the endpoint's body, camelCased.
@@ -29,6 +34,19 @@ export interface PlanningSources {
 /** One path's answer, from the endpoint's single-path mode. */
 export type SourceEntry =
   | { kind: "file"; path: string; content: string }
+  | { kind: "skipped"; path: string; size: number }
+  | { kind: "unreadable"; path: string; reason: string }
+  /** Missing, or not a candidate. */
+  | { kind: "absent"; path: string };
+
+/**
+ * One path's answer with a file's text replaced by its scan result: what the
+ * scan worker answers a refresh with, having read and scanned the file off
+ * the main thread (`docs/design/planning-index-at-scale.md` §5.3). `hash` is
+ * the file's content hash, which the index itself never reads.
+ */
+export type ScannedEntry =
+  | { kind: "file"; path: string; hash: string; result: ScanResult }
   | { kind: "skipped"; path: string; size: number }
   | { kind: "unreadable"; path: string; reason: string }
   /** Missing, or not a candidate. */
@@ -194,6 +212,18 @@ function insertSorted<T extends { path: string }>(list: T[], item: T): T[] {
 }
 
 /**
+ * Scan one candidate as the index reads it: whether it is the roadmap is
+ * decided from `config`, so no caller decides it.
+ */
+export function scanCandidate(
+  config: PlanningConfig,
+  path: string,
+  content: string,
+): ScanResult {
+  return scanPlanningDocument(path, content, path === config.roadmap);
+}
+
+/**
  * Build the index from one batch.
  *
  * The refusal is decided here as well as by whoever produced the batch: a
@@ -212,15 +242,28 @@ export function buildPlanningIndex(sources: PlanningSources): PlanningIndex {
 export interface PlanningIndexBuilder {
   /** Scan one file, and return its document if it is a planning document. */
   add(file: { path: string; content: string }): PlanningDocument | null;
+  /**
+   * Take one file already scanned, as {@link scanCandidate} scans it, and
+   * return its document if it is a planning document.
+   */
+  addResult(path: string, result: ScanResult): PlanningDocument | null;
+  /**
+   * Take one path's scanned answer, whatever its kind: a `file` as
+   * {@link PlanningIndexBuilder.addResult} takes it, a `skipped` or
+   * `unreadable` one into its list, and an `absent` one nowhere.
+   */
+  addScanned(entry: ScannedEntry): PlanningDocument | null;
   finish(): PlanningIndex;
 }
 
 /**
  * {@link buildPlanningIndex} over `sources`, with its files added one at a
  * time instead of taken from `sources.files`, so a caller can yield between
- * them. The lists are sorted once, at `finish`, so a batch costs its files'
- * scans and one sort, where folding each file in with {@link applySource}
- * would copy every list once per file.
+ * them, or add files it scanned elsewhere. The lists are sorted once, at
+ * `finish`, so a batch costs its files' scans and one sort, where folding each
+ * file in with {@link applySource} would copy every list once per file.
+ *
+ * A refused builder takes nothing, whatever it is given.
  */
 export function planningIndexBuilder(
   sources: Omit<PlanningSources, "files">,
@@ -229,38 +272,74 @@ export function planningIndexBuilder(
   const refused =
     sources.refused || candidateCount > sources.config.maxCandidates;
   const documents: PlanningDocument[] = [];
+  const skipped = refused ? [] : [...sources.skipped];
   const unreadable = refused ? [] : [...sources.unreadable];
+  const addResult = (
+    path: string,
+    result: ScanResult,
+  ): PlanningDocument | null => {
+    if (refused) return null;
+    if (result.kind === "unreadable") {
+      unreadable.push({ path, reason: result.reason });
+    }
+    if (result.kind !== "planning") return null;
+    documents.push(result.document);
+    return result.document;
+  };
   return {
     add({ path, content }) {
       if (refused) return null;
-      const result = scanPlanningDocument(
-        path,
-        content,
-        path === config.roadmap,
-      );
-      if (result.kind === "unreadable") {
-        unreadable.push({ path, reason: result.reason });
+      return addResult(path, scanCandidate(config, path, content));
+    },
+    addResult,
+    addScanned(entry) {
+      if (refused) return null;
+      switch (entry.kind) {
+        case "file":
+          return addResult(entry.path, entry.result);
+        case "skipped":
+          skipped.push({ path: entry.path, size: entry.size });
+          return null;
+        case "unreadable":
+          unreadable.push({ path: entry.path, reason: entry.reason });
+          return null;
+        case "absent":
+          return null;
       }
-      if (result.kind !== "planning") return null;
-      documents.push(result.document);
-      return result.document;
     },
     finish: () => ({
       config,
       candidateCount,
       refused,
       documents: [...documents].sort(byPath),
-      skipped: refused ? [] : [...sources.skipped].sort(byPath),
+      skipped: [...skipped].sort(byPath),
       unreadable: [...unreadable].sort(byPath),
     }),
   };
 }
 
 /**
- * Apply one path's fresh answer.
+ * Apply one path's fresh answer: scan a `file`'s text, then
+ * {@link applyScanned}.
+ */
+export function applySource(
+  index: PlanningIndex,
+  entry: SourceEntry,
+): PlanningIndex {
+  if (index.refused) return index;
+  if (entry.kind !== "file") return applyScanned(index, entry);
+  const { path, content } = entry;
+  const result = scanCandidate(index.config, path, content);
+  // The index holds no hashes, so `applyScanned` never reads this one.
+  return applyScanned(index, { kind: "file", path, hash: "", result });
+}
+
+/**
+ * Apply one path's fresh answer, already scanned, as {@link scanCandidate}
+ * scans it.
  *
  * The path leaves every list first and then joins the one its answer names: a
- * `file` joins `documents` only if it scans as a planning document, or
+ * `file` joins `documents` only if it scanned as a planning document, or
  * `unreadable` if its frontmatter does not parse; `absent` joins nothing.
  *
  * A refused index is returned unchanged, and `candidateCount` and `refused`
@@ -268,9 +347,9 @@ export function planningIndexBuilder(
  * answer cannot tell a new candidate from a known one, and only a rescan can
  * say how many there are now.
  */
-export function applySource(
+export function applyScanned(
   index: PlanningIndex,
-  entry: SourceEntry,
+  entry: ScannedEntry,
 ): PlanningIndex {
   if (index.refused) return index;
   const { path } = entry;
@@ -288,11 +367,7 @@ export function applySource(
 
   switch (entry.kind) {
     case "file": {
-      const result = scanPlanningDocument(
-        path,
-        entry.content,
-        path === index.config.roadmap,
-      );
+      const { result } = entry;
       if (result.kind === "planning") {
         documents = insertSorted(documents, result.document);
       } else if (result.kind === "unreadable") {

@@ -6,15 +6,25 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PLANNING_CONFIG,
+  applyScanned,
   applySource,
   buildPlanningIndex,
   findDocument,
   parsePlanningSources,
   parseSourceEntry,
+  planningIndexBuilder,
   withoutDirectory,
   type PlanningIndex,
+  type PlanningSources,
 } from "vantage-md/planning";
-import { indexOf, planningConfig, sourcesOf } from "../test/planning";
+import {
+  contentHash,
+  indexOf,
+  planningConfig,
+  readRepoFile,
+  scannedOf,
+  sourcesOf,
+} from "../test/planning";
 
 const DRAFT = "---\nstatus: draft\n---\n\n# A\n";
 const PLAIN = "# Not planning\n";
@@ -228,6 +238,176 @@ describe("buildPlanningIndex", () => {
       skipped: [],
       unreadable: [],
     });
+  });
+});
+
+describe("planningIndexBuilder", () => {
+  /** A tree with every kind of file in it, the roadmap and real documents. */
+  const TREE = {
+    "b.md": DRAFT,
+    "plain.md": PLAIN,
+    "a.md": DRAFT,
+    "z-broken.md": BROKEN,
+    "roadmap.md": PLAIN,
+    "docs/gallery/open-questions.md": readRepoFile(
+      "docs/gallery/open-questions.md",
+    ),
+    "docs/design/agent-bootstrap.md": readRepoFile(
+      "docs/design/agent-bootstrap.md",
+    ),
+  };
+  const SERVER: Partial<PlanningSources> = {
+    skipped: [{ path: "huge.md", size: 3_000_000 }],
+    unreadable: [{ path: "m-latin1.md", reason: "not UTF-8" }],
+  };
+  /** The batch of `TREE` with no files in it: the builder is given those. */
+  const header = (overrides: Partial<PlanningSources> = {}) => ({
+    ...sourcesOf(TREE, { ...SERVER, ...overrides }),
+    files: [],
+  });
+
+  it("builds from results scanned elsewhere the index a batch builds", () => {
+    const builder = planningIndexBuilder(header());
+    // In any order: the lists are sorted once, at the end.
+    for (const { path, result } of scannedOf(TREE).entries.reverse()) {
+      builder.addResult(path, result);
+    }
+    expect(builder.finish()).toEqual(
+      buildPlanningIndex(sourcesOf(TREE, SERVER)),
+    );
+  });
+
+  it("returns the document of a planning result, and nothing for the rest", () => {
+    const builder = planningIndexBuilder(header());
+    const added = scannedOf(TREE).entries.map(({ path, result }) => [
+      path,
+      builder.addResult(path, result)?.path ?? null,
+    ]);
+    expect(added).toEqual([
+      ["a.md", "a.md"],
+      ["b.md", "b.md"],
+      ["docs/design/agent-bootstrap.md", "docs/design/agent-bootstrap.md"],
+      ["docs/gallery/open-questions.md", "docs/gallery/open-questions.md"],
+      ["plain.md", null],
+      ["roadmap.md", "roadmap.md"],
+      ["z-broken.md", null],
+    ]);
+  });
+
+  it("takes each kind of scanned answer into its own list", () => {
+    const builder = planningIndexBuilder(
+      header({ skipped: [], unreadable: [] }),
+    );
+    for (const entry of scannedOf(TREE).entries) builder.addScanned(entry);
+    builder.addScanned({
+      kind: "unreadable",
+      path: "m-latin1.md",
+      reason: "not UTF-8",
+    });
+    builder.addScanned({ kind: "skipped", path: "huge.md", size: 3_000_000 });
+    builder.addScanned({ kind: "absent", path: "gone.md" });
+    expect(builder.finish()).toEqual(
+      buildPlanningIndex(sourcesOf(TREE, SERVER)),
+    );
+  });
+
+  it("takes nothing once refused, whatever it is given", () => {
+    const builder = planningIndexBuilder(
+      header({ refused: true, candidateCount: 6000 }),
+    );
+    const [first] = scannedOf({ "a.md": DRAFT }).entries;
+    if (first === undefined) throw new Error("no entry");
+    expect(builder.addResult(first.path, first.result)).toBeNull();
+    expect(builder.addScanned(first)).toBeNull();
+    builder.addScanned({ kind: "skipped", path: "huge.md", size: 9 });
+    builder.addScanned({ kind: "unreadable", path: "x.md", reason: "no" });
+    expect(builder.finish()).toMatchObject({
+      refused: true,
+      documents: [],
+      skipped: [],
+      unreadable: [],
+    });
+  });
+});
+
+describe("applyScanned (§3.4)", () => {
+  const base = (): PlanningIndex =>
+    buildPlanningIndex(
+      sourcesOf(
+        { "a.md": DRAFT, "c.md": DRAFT },
+        {
+          candidateCount: 9,
+          skipped: [{ path: "big.md", size: 2_000_000 }],
+          unreadable: [{ path: "locked.md", reason: "permission denied" }],
+        },
+      ),
+    );
+
+  /** `path` holding `content`, scanned as the scan worker scans it. */
+  const scannedFile = (path: string, content: string) => {
+    const [entry] = scannedOf({ [path]: content }).entries;
+    if (entry === undefined) throw new Error("no entry");
+    return entry;
+  };
+
+  it.each([
+    ["a new planning document", "b.md", DRAFT],
+    ["a document that is no longer planning", "a.md", PLAIN],
+    ["a document whose header stops parsing", "a.md", BROKEN],
+    ["a skipped file that now reads", "big.md", DRAFT],
+    ["an unreadable file that now reads", "locked.md", DRAFT],
+    ["the roadmap, whatever it holds", "roadmap.md", PLAIN],
+  ])("applies %s as applySource applies its text", (_, path, content) => {
+    expect(applyScanned(base(), scannedFile(path, content))).toEqual(
+      applySource(base(), { kind: "file", path, content }),
+    );
+  });
+
+  it("files a skipped or unreadable answer where it belongs", () => {
+    let next = applyScanned(base(), { kind: "skipped", path: "a.md", size: 5 });
+    next = applyScanned(next, {
+      kind: "unreadable",
+      path: "c.md",
+      reason: "gone",
+    });
+    expect(next.documents).toEqual([]);
+    expect(next.skipped.map((s) => s.path)).toEqual(["a.md", "big.md"]);
+    expect(next.unreadable.map((u) => u.path)).toEqual(["c.md", "locked.md"]);
+  });
+
+  // The store's per-row selectors depend on it: every pushed Markdown path is
+  // asked about, and a save that changes nothing must not read as a new index.
+  it("returns the index itself when the answer changes nothing", () => {
+    const index = base();
+    expect(applyScanned(index, scannedFile("notes.md", PLAIN))).toBe(index);
+    expect(applyScanned(index, { kind: "absent", path: "gone.md" })).toBe(
+      index,
+    );
+  });
+
+  it("returns a refused index unchanged", () => {
+    const refused = buildPlanningIndex(
+      sourcesOf({}, { refused: true, candidateCount: 6000 }),
+    );
+    expect(applyScanned(refused, scannedFile("a.md", DRAFT))).toBe(refused);
+  });
+
+  it("reads nothing from the hash", () => {
+    const entry = scannedFile("b.md", DRAFT);
+    // SHA-256 of "test" opens 9f86d081…, cut to its first 128 bits.
+    expect(contentHash("test")).toBe("9f86d081884c7d659a2feaa0c55ad015");
+    expect(entry.hash).toBe(contentHash(DRAFT));
+    expect(applyScanned(base(), { ...entry, hash: "0".repeat(32) })).toEqual(
+      applyScanned(base(), entry),
+    );
+  });
+
+  it("leaves its argument alone", () => {
+    const index = base();
+    const before = JSON.stringify(index);
+    applyScanned(index, scannedFile("a.md", PLAIN));
+    applyScanned(index, { kind: "absent", path: "c.md" });
+    expect(JSON.stringify(index)).toBe(before);
   });
 });
 
