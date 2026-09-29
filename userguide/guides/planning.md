@@ -196,7 +196,9 @@ A planning document's row in the sidebar shows a small badge after its name:
   here.
 
 Hover the badge, or the file name, for the words: *in review, design, 4 open
-questions*. A screen reader hears the same words after the file name.
+questions*. A stage that is not declared is spelled there exactly as the
+document writes it, so a `design` that is not the declared `DESIGN` shows
+which it is. A screen reader hears these words after the file name.
 
 **The file name always comes first.** A badge only uses the room a name leaves
 over, so a name is exactly as wide as it would be with no badge, and a long
