@@ -3,6 +3,7 @@ title: "vantage-check performance — one parse per file, and six threads"
 author: "Matt Schulkind"
 date: 2026-09-20
 status: accepted
+stage: BUILT
 tags: [vantage-check, vantage-md, performance]
 summary: "Where a check run spends its time, the three duplicate parses that are now one, and why parallelism is worker threads capped at six rather than the core count."
 vantage:

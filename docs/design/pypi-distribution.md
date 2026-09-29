@@ -1,6 +1,7 @@
 ---
 title: "The PyPI half of Vantage ships software that no longer exists"
 status: accepted # draft | in-review | accepted | deprecated
+stage: BUILT
 date: 2026-09-01
 tags: [packaging, pypi, releases, cli, agents]
 summary: "PyPI `vantage-md` is the executable server's distribution — the twin of npm `vantage-md`, the library. It froze in April holding the retired FastAPI app, because the Go cutover deleted the Python packaging and never replaced it. Every question is settled and the repo side is built: the export is tracked so a bare build embeds a real frontend, our own wheel builder wraps the release's own binary, and the agent CLI gets its own project. What is left is owner action on pypi.org."

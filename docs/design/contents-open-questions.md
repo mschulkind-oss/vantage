@@ -3,6 +3,7 @@ title: "Open questions in the contents — telling a reader what a document stil
 author: "Matt Schulkind"
 date: 2026-09-20
 status: accepted
+stage: BUILT
 tags: [vantage-md, viewer, docs-conventions]
 summary: "The table of contents lists a document's tagged Open Questions beside its headings, each carrying the status emoji the author wrote, so a reader can see what needs a ruling without reading the page."
 vantage:

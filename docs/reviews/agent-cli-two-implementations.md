@@ -2,6 +2,7 @@
 title: "Two implementations of the same design — a comparison"
 date: 2026-08-25
 status: in-review # draft | in-review | accepted | deprecated
+stage: SUPERSEDED
 tags: [review, cli, agents, tooling, model-comparison]
 summary: "The same design doc, the same prompt, the same base commit, two models. What each spent, how each worked, and — measured against the real renderer — which one is right where they disagree."
 ---

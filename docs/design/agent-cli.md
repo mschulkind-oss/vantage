@@ -1,6 +1,7 @@
 ---
 title: "An agent-facing CLI for Vantage"
 status: accepted # draft | in-review | accepted | deprecated
+stage: BUILT
 date: 2026-08-24
 tags: [cli, agents, tooling, markdown, lint]
 summary: "Vantage and the agent writing its documents share nothing but a filesystem. A standalone compiled CLI is how Vantage's knowledge — the conventions and the correctness checks — reaches the agent without a human copy-pasting it."
