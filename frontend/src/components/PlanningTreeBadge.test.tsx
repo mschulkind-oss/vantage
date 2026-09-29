@@ -1,9 +1,9 @@
 /**
  * Planning state in the file tree (`docs/design/planning-index.md` §7), in the
  * tree's compact form: each planning document's row shows a dot in its status
- * chip's tone and `💬 N` for its open questions, and says every word of it in
- * the badge's accessible name and title and in the row's tooltip; every other
- * row is unchanged. Whether the badge fits is layout, which jsdom does not do:
+ * chip's tone and `💬 N` for its open questions, says every word of it once,
+ * in the badge's accessible name, and shows them as the tooltip of the row's
+ * name and badge; every other row is unchanged. Whether the badge fits is layout, which jsdom does not do:
  * `e2e/tree_badges.spec.ts` measures that.
  */
 import { act, render, screen } from "@testing-library/react";
@@ -119,10 +119,6 @@ describe("file-tree badges (§7)", () => {
     // Status, stage and open questions, as a link's badge says them; blocked
     // questions are not the tree's to count.
     expect(badge).toHaveAccessibleName("in review, design, 2 open questions");
-    expect(badge).toHaveAttribute(
-      "title",
-      "in review, design, 2 open questions",
-    );
     // The count is the only text: no status, no stage, no 🔒.
     expect(badge).toHaveTextContent(/^\u{1F4AC} 2$/u);
     expect(dotIn("docs/staged.md")).toHaveClass("vantage-chip--warning");
@@ -174,18 +170,49 @@ describe("file-tree badges (§7)", () => {
     expect(badge).toHaveAccessibleName("1 open question");
   });
 
-  it("gives the row the badge's words as its tooltip, and its name after the file's", () => {
+  it("says the badge's words once, after the file's name, and shows them on hover", () => {
     seedReady(indexOf(TREE, STAGES));
     renderTree();
-    // The words stay on the row when there is no room to draw the badge.
-    expect(row("docs/staged.md")).toHaveAttribute(
-      "title",
-      "in review, design, 2 open questions",
-    );
+    const r = row("docs/staged.md");
     // The space between the two is the slot's being a flex box, which jsdom
     // has no stylesheet to know; the browser suite reads the spaced name.
-    expect(row("docs/staged.md")).toHaveAccessibleName(
+    expect(r).toHaveAccessibleName(
       /^staged\.md ?in review, design, 2 open questions$/,
+    );
+    // Not a second time as a description: a `title` on the row, or on the
+    // badge, is one, and a screen reader reads it after the name.
+    expect(r).not.toHaveAccessibleDescription();
+    expect(badgeIn("docs/staged.md")).not.toHaveAccessibleDescription();
+    expect(r).not.toHaveAttribute("title");
+    // The tooltip is on what the pointer rests on instead: the name, which
+    // fills the row when there is no room to draw the badge, and the slot the
+    // badge is drawn in.
+    const words = "in review, design, 2 open questions";
+    expect(screen.getByText("staged.md")).toHaveAttribute("title", words);
+    expect(badgeIn("docs/staged.md")!.parentElement).toHaveAttribute(
+      "title",
+      words,
+    );
+    expect(badgeIn("docs/staged.md")).not.toHaveAttribute("title");
+  });
+
+  it("leaves a symlink's tooltip on the row's name", () => {
+    seedReady(indexOf(TREE, STAGES));
+    renderTree([
+      {
+        name: "staged.md",
+        path: "docs/staged.md",
+        is_dir: false,
+        is_symlink: true,
+        symlink_target: "elsewhere/staged.md",
+      },
+    ]);
+    const r = row("docs/staged.md");
+    expect(r).toHaveAttribute("title", "Symlink → elsewhere/staged.md");
+    expect(screen.getByText("staged.md")).not.toHaveAttribute("title");
+    expect(badgeIn("docs/staged.md")!.parentElement).toHaveAttribute(
+      "title",
+      "in review, design, 2 open questions",
     );
   });
 
@@ -198,6 +225,7 @@ describe("file-tree badges (§7)", () => {
       expect(badgeIn(path)).toBeNull();
       expect(row(path).querySelector(".vantage-tree-badge-slot")).toBeNull();
       expect(row(path)).not.toHaveAttribute("title");
+      expect(row(path).querySelector("[title]")).toBeNull();
     }
     expect(row("docs/plain.md")).toHaveAccessibleName("plain.md");
   });

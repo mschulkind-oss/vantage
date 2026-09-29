@@ -12,7 +12,7 @@ import * as fs from "fs";
  * 1. A name is exactly as wide as it is with the badge taken out of the row,
  *    and so is the row's height.
  * 2. A badge that is drawn is drawn whole, inside its row. One that would not
- *    fit is not drawn, and the row's tooltip says what it would have said.
+ *    fit is not drawn, and the name's tooltip says what it would have said.
  * 3. A badge is drawn whenever the room the name leaves is enough for it, so a
  *    wide sidebar shows them.
  * 4. A row with no planning badge has no badge and no tooltip.
@@ -79,8 +79,8 @@ interface Row {
   /** The row's height with the badge in the row, and without it. */
   heightWith: number;
   heightWithout: number;
-  /** The row's own tooltip. */
-  title: string | null;
+  /** The tooltips of the row itself, of its name, and of the badge's slot. */
+  title: { row: string | null; name: string | null; slot: string | null };
   /** The git-change dot, with the badge in the row and without it. */
   dotWith: Edges | null;
   dotWithout: Edges | null;
@@ -220,7 +220,11 @@ function measure(page: Page): Promise<Row[]> {
         nameWith: name.getBoundingClientRect().width,
         heightWith: row.getBoundingClientRect().height,
         dotWith: edges(dot),
-        title: row.getAttribute("title"),
+        title: {
+          row: row.getAttribute("title"),
+          name: name.getAttribute("title"),
+          slot: slot?.getAttribute("title") ?? null,
+        },
         badge:
           badge === null
             ? null
@@ -325,7 +329,9 @@ for (const mode of MODES) {
           expect
             .soft(PLAIN_ROWS, `${row.file} has no badge`)
             .toContain(row.file);
-          expect.soft(row.title, `${row.file}: tooltip`).toBeNull();
+          expect
+            .soft(row.title, `${row.file}: tooltip`)
+            .toEqual({ row: null, name: null, slot: null });
           continue;
         }
         expect.soft(PLANNING_ROWS).toContain(row.file);
@@ -341,7 +347,15 @@ for (const mode of MODES) {
           }
         }
         expect.soft(row.badge.label, `${row.file}: badge label`).toBeTruthy();
-        expect.soft(row.title, `${row.file}: tooltip`).toBe(row.badge.label);
+        // The words are on the name and the badge's slot, not on the row,
+        // where they would be read a second time, as its description.
+        expect
+          .soft(row.title, `${row.file}: tooltip`)
+          .toEqual({
+            row: null,
+            name: row.badge.label,
+            slot: row.badge.label,
+          });
         // 3: drawn whenever the room left over is enough for it. Within half a
         // pixel either way, rounding decides, and either answer is right.
         if (row.badge.room >= row.badge.need + 0.5) {
@@ -367,7 +381,7 @@ for (const mode of MODES) {
   }
 }
 
-test("a badge with no room is still in the row's tooltip and accessible name", async ({
+test("a badge with no room is still in the name's tooltip and the row's accessible name", async ({
   page,
 }) => {
   await openTree(page, 220, "light");
@@ -375,13 +389,18 @@ test("a badge with no room is still in the row's tooltip and accessible name", a
     .getByTestId("sidebar")
     .locator(`a[href="/${DIR}/agent-directory-contract.md"]`)
     .first();
+  const badge = row.locator("[data-vantage-planning-badge]");
   // The name fills the row at this width, so the badge is not drawn...
-  await expect(row.locator("[data-vantage-planning-badge]")).not.toBeInViewport(
-    { ratio: 0.01 },
-  );
-  // ...and its words are still the row's.
-  await expect(row).toHaveAttribute("title", "in review, 1 open question");
+  await expect(badge).not.toBeInViewport({ ratio: 0.01 });
+  // ...and its words are still the row's, once: in its name, and not again
+  // as its description, nor as the badge's.
   await expect(row).toHaveAccessibleName(
     "agent-directory-contract.md in review, 1 open question",
   );
+  await expect(row).toHaveAccessibleDescription("");
+  await expect(badge).toHaveAccessibleDescription("");
+  // Hovering the name, which is all of the row there is room for, says them.
+  await expect(
+    row.getByText("agent-directory-contract.md", { exact: true }),
+  ).toHaveAttribute("title", "in review, 1 open question");
 });
