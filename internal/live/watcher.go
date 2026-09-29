@@ -934,11 +934,14 @@ func (w *Watcher) reportWatchLimit(rel string) {
 	}
 }
 
-// isWatchLimitError reports whether err is the kernel refusing a watch because
-// the watch limit is reached: ENOSPC from inotify. An event-queue overflow is
-// not one (see [Watcher.handleError]).
+// isWatchLimitError reports whether err is the system refusing a watch because
+// its limit is reached: ENOSPC from inotify, or — from kqueue, on macOS and
+// the BSDs, which opens a file for every watched directory and every file in
+// it — EMFILE or ENFILE. An event-queue overflow is not one (see
+// [Watcher.handleError]).
 func isWatchLimitError(err error) bool {
-	return errors.Is(err, syscall.ENOSPC) || strings.Contains(err.Error(), "no space left")
+	return errors.Is(err, syscall.ENOSPC) || strings.Contains(err.Error(), "no space left") ||
+		errors.Is(err, syscall.EMFILE) || errors.Is(err, syscall.ENFILE)
 }
 
 // logHeartbeat emits and resets the interval stats so a stalled watcher is

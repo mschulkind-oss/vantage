@@ -293,7 +293,9 @@ A project too big to serve well now says so in the browser. This applies with
 or without the split. Three conditions are reported:
 
 - **Watch limit reached.** When registering a watch fails with the kernel's
-  watch-limit error, the watcher records a degradation (coined here: a named
+  watch-limit error (`ENOSPC` from inotify, or on macOS and the BSDs, where
+  kqueue holds a file open for every watched directory and file, `EMFILE`),
+  the watcher records a degradation (coined here: a named
   way a project is served worse than normal, with the path where it starts).
   The banner says: *Live reload is off below `docs/big` (and N more folders):
   the system's file-watch limit was reached.* It also names the setting to
