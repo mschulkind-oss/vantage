@@ -1089,6 +1089,18 @@ describe("vantage/oq-missing", () => {
     expect(report.findings[0]?.severity).toBe("error");
   });
 
+  it("tells an author who re-marks the question to keep its directive", async () => {
+    // The planning index reads a question from its directive alone
+    // (planning-index.md §3.3). The old message offered 🔒 and ✅ as ways out,
+    // "mark it 🔒 instead of 💬", and an author who took one and left the
+    // directive off had a question nothing counted, badged or listed.
+    const message = (await one(question("💬"))).findings[0]?.message ?? "";
+
+    expect(message).toContain("Keep the directive in either state");
+    expect(message).toContain("a 🔒 question needs no `leaning`");
+    expect(message).toContain("planning index");
+  });
+
   it("says nothing about a question blocked on something upstream", async () => {
     // 🔒 means it cannot be answered yet, so a one-click answer would be a lie.
     // This is the carve-out that matters most now the rule fails a build.
