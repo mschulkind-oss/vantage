@@ -120,10 +120,36 @@ function LineWords({ line }: { line: SummaryLine }) {
   );
 }
 
-const fileName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+/**
+ * The label for each of `paths`: its file name, or, when another path in the
+ * list has the same file name, the fewest trailing directories that tell it
+ * apart, the way an editor labels two tabs of the same name. Sorted by path,
+ * `docs/brainstorm/x.md` and `docs/design/x.md` would otherwise read as one
+ * name twice, in an order that looks unsorted.
+ */
+function sourceLabels(paths: readonly string[]): Map<string, string> {
+  const parts = new Map(paths.map((path) => [path, path.split("/")]));
+  const tail = (path: string, n: number) =>
+    parts.get(path)!.slice(-n).join("/");
+  const labels = new Map<string, string>();
+  for (const path of paths) {
+    const own = parts.get(path)!;
+    let n = 1;
+    while (
+      n < own.length &&
+      paths.some((other) => other !== path && tail(other, n) === tail(path, n))
+    ) {
+      n += 1;
+    }
+    labels.set(path, tail(path, n));
+  }
+  return labels;
+}
 
 interface SourceRowProps {
   source: ReferenceSource;
+  /** What the row calls the source; see `sourceLabels`. */
+  name: string;
   hrefFor: (path: string) => string;
   expanded: boolean;
   onMore: () => void;
@@ -139,6 +165,7 @@ interface SourceRowProps {
  */
 function SourceRow({
   source,
+  name,
   hrefFor,
   expanded,
   onMore,
@@ -148,7 +175,6 @@ function SourceRow({
   const headed = source.references.filter((ref) => ref.heading !== null);
   const shown = expanded ? headed : headed.slice(0, HEADINGS_SHOWN);
   const more = headed.length - shown.length;
-  const name = fileName(source.from);
   const first = source.references[0];
   return (
     <div
@@ -206,6 +232,7 @@ export function ReferencedBy({ summary, hrefFor }: ReferencedByProps) {
   const line = summaryLine(summary);
   if (line === null) return null;
   const text = textOf(line);
+  const labels = sourceLabels(summary.sources.map((source) => source.from));
 
   return (
     <div
@@ -248,6 +275,7 @@ export function ReferencedBy({ summary, hrefFor }: ReferencedByProps) {
                 <SourceRow
                   key={source.from}
                   source={source}
+                  name={labels.get(source.from)!}
                   hrefFor={hrefFor}
                   expanded={expandedRows.has(source.from)}
                   onMore={() => {

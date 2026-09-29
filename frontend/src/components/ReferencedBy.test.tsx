@@ -350,6 +350,31 @@ describe("the list behind it", () => {
     expect(name).toHaveAttribute("title", "docs/design/b.md");
   });
 
+  it("tells sources with the same file name apart by the shortest path that does", () => {
+    renderLine(
+      summaryOf({
+        [TARGET]: planning(""),
+        "docs/brainstorm/x.md": citing("../design/target.md", ["Ideas"]),
+        "docs/design/x.md": citing("target.md", ["Design"]),
+        "a/deep/y.md": citing("../../docs/design/target.md", ["A"]),
+        "b/deep/y.md": citing("../../docs/design/target.md", ["B"]),
+        "docs/design/z.md": citing("target.md", ["Alone"]),
+      }),
+    );
+    fireEvent.click(toggle());
+    expect(rows()).toEqual([
+      "a/deep/y.md · A",
+      "b/deep/y.md · B",
+      "brainstorm/x.md · Ideas",
+      "design/x.md · Design",
+      "z.md · Alone",
+    ]);
+    expect(screen.getByRole("link", { name: "design/x.md" })).toHaveAttribute(
+      "title",
+      "docs/design/x.md",
+    );
+  });
+
   it("links the file name to its first link, and each heading to the first link under it", () => {
     open();
     // b.md's first link sits above every heading, so it has no heading to show.
