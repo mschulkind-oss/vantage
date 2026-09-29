@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	iofs "io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"unicode/utf8"
@@ -109,7 +110,9 @@ func (r *reader) read(rel string) read {
 		return read{kind: KindSkipped, size: fi.Size()}
 	}
 
-	data, err := io.ReadAll(io.LimitReader(f, r.maxBytes+1))
+	// One byte past the limit shows a file that grew; at the largest limit
+	// the config accepts, that byte would overflow to a negative count.
+	data, err := io.ReadAll(io.LimitReader(f, min(r.maxBytes, math.MaxInt64-1)+1))
 	if err != nil {
 		return failed(err)
 	}

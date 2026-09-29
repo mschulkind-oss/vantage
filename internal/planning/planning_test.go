@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -340,6 +341,16 @@ func TestANameThatResolvesToAnotherFileIsNeverReadAsIt(t *testing.T) {
 
 	entry := Lookup(svc, repoconfig.DefaultPlanning(), decoy)
 	require.Equal(t, KindUnreadable, entry.Kind)
+}
+
+// The read is capped one byte past the limit, and at the largest limit the
+// config accepts that byte overflowed: LimitReader read nothing, and every
+// candidate was served as an empty file.
+func TestTheLargestLimitStillReadsTheFile(t *testing.T) {
+	_, root := repo(t, map[string]string{"a.md": "# A\n"})
+	got := newReader(root, math.MaxInt64).read("a.md")
+	require.Equal(t, KindFile, got.kind)
+	require.Equal(t, "# A\n", got.content)
 }
 
 // A candidate deleted between the listing and its read is left out, not
