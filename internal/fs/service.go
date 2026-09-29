@@ -23,6 +23,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -586,6 +587,10 @@ var errStopWalk = errors.New("stop walk")
 // slash-separated paths, sorted. It prunes excluded, hidden, and ignored
 // directories and skips symlinked files. Unreadable subtrees are skipped rather
 // than failing the whole walk.
+//
+// Its decisions are [FileSystemService.prunesListedDir] and [listsFile], which
+// [FileSystemService.IsListed] applies to one path, so the listing and a
+// question about one of its members cannot disagree about a rule.
 func (s *FileSystemService) ListAllFiles() []string {
 	defer perf.Default.Track(perf.CategoryFS, "list_all_files")()
 
@@ -604,31 +609,13 @@ func (s *FileSystemService) ListAllFiles() []string {
 			if p == s.rootPath {
 				return nil
 			}
-			name := d.Name()
-			if _, excluded := s.excludeDirs[name]; excluded {
+			if s.prunesListedDir(p, s.relPath(p), d.Name(), matcher) {
 				return fs.SkipDir
 			}
-			if strings.HasPrefix(name, ".") {
-				// Hidden dirs are pruned; ListAllFiles never shows hidden trees.
-				return fs.SkipDir
-			}
-			if git.IsWorktree(p) {
-				return fs.SkipDir
-			}
-			rel := s.relPath(p)
-			if matcher != nil && matcher.IsIgnored(rel, true) {
-				return fs.SkipDir
-			}
-			return nil
-		}
-		if d.Type()&os.ModeSymlink != 0 {
-			return nil
-		}
-		if !isMarkdown(d.Name()) {
 			return nil
 		}
 		rel := s.relPath(p)
-		if matcher != nil && matcher.IsIgnored(rel, false) {
+		if !listsFile(rel, d.Name(), d.Type(), matcher) {
 			return nil
 		}
 		results = append(results, rel)
@@ -637,6 +624,109 @@ func (s *FileSystemService) ListAllFiles() []string {
 
 	sort.Strings(results)
 	return results
+}
+
+// IsListed reports whether [FileSystemService.ListAllFiles] would list rel, a
+// repo-relative, slash-separated path, without walking the tree to find out.
+//
+// It is the listing's own rules applied to one path: every directory on the way
+// down must be a real directory (the walk never follows a symlinked one) that
+// the listing would descend into and could read, and the file itself must be
+// one the listing takes. A path that is not in the listing's own spelling — a
+// leading "./" or "/", a ".." segment, a doubled or trailing slash — is not
+// listed, because the listing never yields one.
+//
+// This exists for the planning endpoint's single-path mode, which has to answer
+// "is this a candidate" for a path the watcher pushed. The watcher is not a
+// source of that answer: it prunes less than the listing does, so an edit under
+// `.github/` is pushed although no listing ever shows the file.
+//
+// One case is knowingly out of reach: a directory that grants read but not
+// search permission. The walk lists the names directly inside it, and a stat
+// cannot, so this reports them unlisted. Nothing under such a directory can be
+// read anyway.
+func (s *FileSystemService) IsListed(rel string) bool {
+	if rel == "" || strings.HasPrefix(rel, "/") || path.Clean(rel) != rel || rel == "." {
+		return false
+	}
+	parts := strings.Split(rel, "/")
+	for _, part := range parts {
+		if part == ".." {
+			return false
+		}
+	}
+
+	matcher := s.matcher()
+	dir := s.rootPath
+	if !readableDir(dir) {
+		return false
+	}
+	for i, name := range parts[:len(parts)-1] {
+		full := filepath.Join(dir, name)
+		info, err := os.Lstat(full)
+		if err != nil || !info.IsDir() {
+			// Missing, a file, or a symlink: Lstat reports a symlinked directory
+			// as a symlink, and the walk does not descend through one either.
+			return false
+		}
+		if s.prunesListedDir(full, strings.Join(parts[:i+1], "/"), name, matcher) {
+			return false
+		}
+		if !readableDir(full) {
+			return false
+		}
+		dir = full
+	}
+
+	name := parts[len(parts)-1]
+	info, err := os.Lstat(filepath.Join(dir, name))
+	if err != nil || info.IsDir() {
+		return false
+	}
+	return listsFile(rel, name, info.Mode().Type(), matcher)
+}
+
+// prunesListedDir reports whether the listing skips the directory at full,
+// whose repo-relative path is rel and whose base name is name. The root itself
+// is never asked about: the listing always starts there.
+func (s *FileSystemService) prunesListedDir(full, rel, name string, matcher *ignore.Matcher) bool {
+	if _, excluded := s.excludeDirs[name]; excluded {
+		return true
+	}
+	if strings.HasPrefix(name, ".") {
+		// Hidden dirs are pruned; ListAllFiles never shows hidden trees.
+		return true
+	}
+	if git.IsWorktree(full) {
+		return true
+	}
+	return matcher != nil && matcher.IsIgnored(rel, true)
+}
+
+// listsFile reports whether the listing takes a non-directory entry: a
+// Markdown name that is not a symlink and is not ignored. Hidden files are
+// taken; only hidden directories are pruned.
+func listsFile(rel, name string, typ fs.FileMode, matcher *ignore.Matcher) bool {
+	if typ&os.ModeSymlink != 0 {
+		return false
+	}
+	if !isMarkdown(name) {
+		return false
+	}
+	return matcher == nil || !matcher.IsIgnored(rel, false)
+}
+
+// readableDir reports whether the walk could list dir's entries. It opens the
+// directory rather than stat'ing it, because read permission on a directory is
+// what listing it needs, and a mode says nothing to a process that is exempt
+// from modes.
+func readableDir(dir string) bool {
+	f, err := os.Open(dir)
+	if err != nil {
+		return false
+	}
+	_ = f.Close()
+	return true
 }
 
 // ReadFile reads path (relative to the root) and returns its content. When the
