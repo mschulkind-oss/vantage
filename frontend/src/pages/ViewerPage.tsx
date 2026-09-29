@@ -1269,7 +1269,10 @@ export const ViewerPage: React.FC = () => {
                       ) : (
                         <Copy size={14} />
                       )}
-                      <span className="hdr-label">
+                      <span
+                        className="hdr-label hdr-reserve"
+                        data-reserve="Copied!"
+                      >
                         {pathCopied ? "Copied!" : "Path"}
                       </span>
                     </button>
@@ -1289,7 +1292,10 @@ export const ViewerPage: React.FC = () => {
                       title={showRaw ? "View rendered" : "View raw markdown"}
                     >
                       <Code size={14} />
-                      <span className="hdr-label">
+                      <span
+                        className="hdr-label hdr-reserve"
+                        data-reserve="Rendered"
+                      >
                         {showRaw ? "Rendered" : "Raw"}
                       </span>
                     </button>
@@ -1314,7 +1320,10 @@ export const ViewerPage: React.FC = () => {
                           title={reviewToggleTitle}
                         >
                           <MessageSquarePlus size={14} />
-                          <span className="hdr-label">
+                          <span
+                            className="hdr-label hdr-reserve"
+                            data-reserve="End review?"
+                          >
                             {reviewExitConfirm ? "End review?" : "Review"}
                           </span>
                         </button>
@@ -1374,7 +1383,10 @@ export const ViewerPage: React.FC = () => {
                               ) : (
                                 <ClipboardCopy size={14} />
                               )}
-                              <span className="hdr-label">
+                              <span
+                                className="hdr-label hdr-reserve"
+                                data-reserve="Copied!"
+                              >
                                 {reviewCopied
                                   ? "Copied!"
                                   : `Copy ${pendingReviewCount}`}
@@ -1438,7 +1450,10 @@ export const ViewerPage: React.FC = () => {
                       ) : (
                         <Copy size={14} />
                       )}
-                      <span className="hdr-label">
+                      <span
+                        className="hdr-label hdr-reserve"
+                        data-reserve="Copied!"
+                      >
                         {pathCopied ? "Copied!" : "Path"}
                       </span>
                     </button>
@@ -1457,7 +1472,10 @@ export const ViewerPage: React.FC = () => {
                     title={showRaw ? "View rendered" : "View raw markdown"}
                   >
                     <Code size={14} />
-                    <span className="hdr-label">
+                    <span
+                      className="hdr-label hdr-reserve"
+                      data-reserve="Rendered"
+                    >
                       {showRaw ? "Rendered" : "Raw"}
                     </span>
                   </button>
@@ -1477,7 +1495,10 @@ export const ViewerPage: React.FC = () => {
                         title={reviewToggleTitle}
                       >
                         <MessageSquarePlus size={14} />
-                        <span className="hdr-label">
+                        <span
+                          className="hdr-label hdr-reserve"
+                          data-reserve="End review?"
+                        >
                           {reviewExitConfirm ? "End review?" : "Review"}
                         </span>
                       </button>
@@ -1528,7 +1549,10 @@ export const ViewerPage: React.FC = () => {
                             ) : (
                               <ClipboardCopy size={14} />
                             )}
-                            <span className="hdr-label">
+                            <span
+                              className="hdr-label hdr-reserve"
+                              data-reserve="Copied!"
+                            >
                               {reviewCopied
                                 ? "Copied!"
                                 : `Copy ${pendingReviewCount}`}
