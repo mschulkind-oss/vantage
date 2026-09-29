@@ -1876,6 +1876,34 @@ th.review-block-hovered {
 }
 
 /* ──────────────────────────────────────────
+   The planning page's question card (planning-index.md §6.3)
+   ────────────────────────────────────────── */
+/* A card renders the root-level block holding its question, which is usually
+   the whole Open Questions list, and then shows only the question: the card
+   marks its unit and every element between the unit and the card, and this
+   hides every other child of a marked element. A rule rather than an attribute
+   on each hidden sibling, so a node another pass adds later — a link badge —
+   is hidden or shown by where it sits. */
+.planning-card-body
+  [data-planning-card-path]
+  > :not([data-planning-card-path]):not([data-planning-card-unit]) {
+  display: none !important;
+}
+/* The block's own vertical margin would push the question away from the card's
+   header and controls. */
+.planning-card-body > .prose > [data-planning-card-path],
+.planning-card-body > .prose > [data-planning-card-unit] {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.planning-card-body [data-planning-card-unit] > :first-child {
+  margin-top: 0;
+}
+.planning-card-body [data-planning-card-unit] > :last-child {
+  margin-bottom: 0;
+}
+
+/* ──────────────────────────────────────────
    Review stripe (scroll-position nav)
    ────────────────────────────────────────── */
 .review-stripe {
