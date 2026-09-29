@@ -115,7 +115,9 @@ test.describe("table of contents", () => {
     // nowhere near the viewport's center, which is where a centered
     // column would put it on a window this wide.
     expect(headingBox.x).toBeLessThan(800);
-    expect(headingBox.x - (tocBox.x + tocBox.width)).toBeLessThanOrEqual(48 + 1);
+    expect(headingBox.x - (tocBox.x + tocBox.width)).toBeLessThanOrEqual(
+      48 + 1,
+    );
 
     // The measure assertions read the document column (the .min-w-0 child
     // of the band, the element that carries max-w-5xl), not the heading:
@@ -143,6 +145,86 @@ test.describe("table of contents", () => {
     await page.getByRole("button", { name: "Hide contents" }).click();
     const closedBox = (await column.boundingBox())!;
     expect(Math.abs(closedBox.width - 1024)).toBeLessThanOrEqual(1);
+  });
+
+  test("keeps the table of contents above the document", async ({ page }) => {
+    // The table of contents is app chrome inside the document's scroll
+    // container. A block of the document can reach over it with a negative
+    // margin, which the inline-style filter keeps, and a block that paints in
+    // the positioned layer then paints over it and takes its clicks: one with
+    // `opacity`, a toned block, any heading, or a link the document points
+    // where it likes. The fixture writes one of each after its headings.
+    const navigated: string[] = [];
+    page.on("request", (request) => {
+      if (new URL(request.url()).hostname.endsWith(".invalid")) {
+        navigated.push(request.url());
+      }
+    });
+    await page.goto("/toc-cover.md");
+    await expect(
+      page.getByText("Session expired. Sign in again."),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Show contents" }).click();
+    const entries = page.getByTestId("table-of-contents").locator("nav a");
+    await expect(entries.filter({ hasText: "Gamma" })).toBeVisible();
+
+    const hits = await entries.evaluateAll((links) =>
+      links.map((link) => {
+        const box = link.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          box.left + box.width / 2,
+          box.top + box.height / 2,
+        );
+        return {
+          entry: link.textContent,
+          wins: hit !== null && link.contains(hit),
+          hit: hit?.textContent?.slice(0, 40) ?? null,
+        };
+      }),
+    );
+    expect(hits.length).toBeGreaterThanOrEqual(3);
+    for (const hit of hits)
+      expect.soft(hit, hit.entry!).toMatchObject({ wins: true });
+
+    // And a click where the reader sees an entry is the entry's: it scrolls to
+    // the heading, and nothing is asked of the host the covering link names.
+    // A mouse click at the entry's center, not a locator click, which would
+    // wait out an element over the entry instead of clicking it.
+    const beta = (await entries.filter({ hasText: "Beta" }).boundingBox())!;
+    await page.mouse.click(beta.x + beta.width / 2, beta.y + beta.height / 2);
+    await expect(page).toHaveURL(/#beta$/);
+    expect(navigated).toEqual([]);
+  });
+
+  test("leaves a maximized diagram above the table of contents", async ({
+    page,
+  }) => {
+    // The other half of the contents' stacking: the maximized diagram is not a
+    // portal, so it sits inside the document column. Were that column its own
+    // stacking context, the contents would paint over the diagram's backdrop.
+    await page.goto("/mermaid-diagrams-test.md");
+    await page.getByRole("button", { name: "Show contents" }).click();
+    const entries = page.getByTestId("table-of-contents").locator("nav a");
+    await expect(entries.first()).toBeVisible();
+    await page
+      .locator('.prose button[aria-label="Maximize diagram"]')
+      .first()
+      .click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+
+    const covered = await entries.evaluateAll((links) =>
+      links.slice(0, 5).map((link) => {
+        const box = link.getBoundingClientRect();
+        const hit = document.elementFromPoint(
+          box.left + box.width / 2,
+          box.top + box.height / 2,
+        );
+        return hit !== null && !link.contains(hit);
+      }),
+    );
+    expect(covered.length).toBeGreaterThan(0);
+    expect(covered.every(Boolean)).toBe(true);
   });
 });
 test.describe("full width", () => {
