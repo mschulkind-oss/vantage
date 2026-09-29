@@ -771,9 +771,30 @@ func (s *Server) retireRepos() []string {
 		s.logger.Info("server: retired repository; its directory is gone",
 			"repo", rc.Name, "path", rc.Path)
 		s.unregister(rc.Name)
+		s.handToLooseProject(rc.Path)
 		names = append(names, rc.Name)
 	}
 	return names
+}
+
+// handToLooseProject has the loose project holding dir — a clone just
+// retired — watch it, in case it is still there as a plain folder, a clone
+// that lost its .git. The loose project lists such a folder's files at once,
+// but its watcher never entered the clone and heard nothing from inside it
+// (docs/design/serve-clones-directory.md §3). A directory that is gone is left
+// alone by the watcher.
+func (s *Server) handToLooseProject(dir string) {
+	for _, rs := range s.repoList() {
+		if !rs.loose || filepath.Dir(dir) != rs.root {
+			continue
+		}
+		s.watchersMu.Lock()
+		w := s.watchers[rs.name]
+		s.watchersMu.Unlock()
+		if w != nil {
+			w.Rescan(dir)
+		}
+	}
 }
 
 // unregister removes a repository's services and closes its watcher. The

@@ -643,6 +643,76 @@ func TestLooseProjectNamesTheProjectBehindEachClone(t *testing.T) {
 	}
 }
 
+// A clone that loses its .git is retired, and its folder is the loose
+// project's again: the loose project lists its files, so its watcher has to
+// hear them too. It never watched inside the clone, and nothing from in there
+// could tell it, so retiring the clone is what hands the folder over.
+func TestARetiredCloneIsWatchedByTheLooseProject(t *testing.T) {
+	isolateUserDirs(t)
+	code := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(code); err == nil {
+		code = resolved
+	}
+	alpha := initRepoAt(t, filepath.Join(code, "alpha"), map[string]string{"a.md": "# A\n"})
+	require.NoError(t, os.WriteFile(filepath.Join(code, "notes.md"), []byte("# notes\n"), 0o644))
+	cfg := config.Defaults()
+	cfg.TargetRepo = code
+	cfg.MultiRepo = true
+	cfg.SourceDirs = []string{code}
+	cfg.Repos = []config.RepoConfig{{Name: "code", Path: code, Loose: true}}
+	require.NoError(t, cfg.Resolve())
+	cfg.DiscoverReposFromSourceDirs()
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	runCtx, stop := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- srv.Run(runCtx) }()
+	defer func() {
+		stop()
+		<-done
+		require.NoError(t, srv.Shutdown(context.Background()))
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ws, _, err := websocket.Dial(ctx, "ws"+ts.URL[len("http"):]+"/api/ws", nil)
+	require.NoError(t, err)
+	defer ws.Close(websocket.StatusNormalClosure, "")
+	_, _, err = ws.Read(ctx) // hello
+	require.NoError(t, err)
+	waitFor(t, "both watchers to start", func() bool {
+		srv.watchersMu.Lock()
+		defer srv.watchersMu.Unlock()
+		return len(srv.watchers) == 2
+	})
+
+	// Reads frames until one is the loose project's files_changed naming path.
+	awaitLoose := func(path string) {
+		t.Helper()
+		for {
+			_, data, err := ws.Read(ctx)
+			require.NoError(t, err)
+			var msg struct {
+				Type  string   `json:"type"`
+				Repo  string   `json:"repo"`
+				Paths []string `json:"paths"`
+			}
+			require.NoError(t, json.Unmarshal(data, &msg))
+			if msg.Type == "files_changed" && msg.Repo == "code" && slices.Contains(msg.Paths, path) {
+				return
+			}
+		}
+	}
+
+	require.NoError(t, os.RemoveAll(filepath.Join(alpha, ".git")))
+	require.Equal(t, []string{"alpha"}, srv.retireRepos())
+	awaitLoose("alpha/a.md") // what was already there is reported
+	require.NoError(t, os.WriteFile(filepath.Join(alpha, "a.md"), []byte("# A, edited\n"), 0o644))
+	awaitLoose("alpha/a.md") // and what changes after is heard
+}
+
 func TestRetireReposDropsOnlyWhatIsGone(t *testing.T) {
 	srv, sourceDir := discoveryServer(t)
 	ctx, cancel := context.WithCancel(context.Background())

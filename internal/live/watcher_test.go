@@ -345,6 +345,106 @@ func TestHandleEventDropsADirectoryThatBecomesARepository(t *testing.T) {
 	require.ElementsMatch(t, []string{"clone", "clone/docs"}, removed)
 }
 
+// `git clone` or `git worktree add` can write .git between the walk's boundary
+// check and the moment the directory's watch exists, and a .git made then
+// sends no event the watcher can hear. So the check is made again once the
+// watch is registered, and a directory that became a repository in between is
+// dropped rather than watched for good.
+func TestWatchTreeDropsADirectoryThatBecameARepositoryWhileItWasRegistered(t *testing.T) {
+	root := t.TempDir()
+	clone := filepath.Join(root, "clone")
+	require.NoError(t, os.MkdirAll(filepath.Join(clone, "docs"), 0o755))
+	w, err := NewWatcher(root, "", nil, nil, false, quietLogger(), []string{})
+	require.NoError(t, err)
+	w.SetStopAtRepos(true)
+	var removed []string
+	w.addWatch = func(path string) error {
+		if path == clone {
+			// git gets there first.
+			require.NoError(t, os.MkdirAll(filepath.Join(clone, ".git"), 0o755))
+		}
+		return nil
+	}
+	w.removeWatch = func(path string) {
+		rel, _ := filepath.Rel(root, path)
+		removed = append(removed, filepath.ToSlash(rel))
+	}
+
+	w.addRecursive(root)
+	require.NotContains(t, w.dirs, "clone")
+	require.NotContains(t, w.dirs, "clone/docs", "nothing below a repository is watched")
+	require.Equal(t, []string{"clone"}, removed)
+}
+
+// `git worktree add` opens .git before it writes "gitdir:" into it, so the
+// Create event can find the file empty. The Write that follows is what says
+// the directory is a worktree.
+func TestHandleEventDropsAWorktreeOnceItsGitFileIsWritten(t *testing.T) {
+	root := t.TempDir()
+	w, err := NewWatcher(root, "", nil, nil, false, quietLogger(), []string{})
+	require.NoError(t, err)
+	w.SetStopAtRepos(true)
+	w.addWatch = func(string) error { return nil }
+	var removed []string
+	w.removeWatch = func(path string) {
+		rel, _ := filepath.Rel(root, path)
+		removed = append(removed, filepath.ToSlash(rel))
+	}
+	co := newCoalescer(time.Hour, time.Hour, func([]string) {})
+	defer co.stop()
+
+	wt := filepath.Join(root, "wt")
+	require.NoError(t, os.MkdirAll(filepath.Join(wt, "docs"), 0o755))
+	w.handleEvent(fsnotify.Event{Name: wt, Op: fsnotify.Create}, co)
+	require.Contains(t, w.dirs, "wt/docs")
+
+	gitFile := filepath.Join(wt, ".git")
+	require.NoError(t, os.WriteFile(gitFile, nil, 0o644))
+	w.handleEvent(fsnotify.Event{Name: gitFile, Op: fsnotify.Create}, co)
+	require.Contains(t, w.dirs, "wt", "an empty .git says nothing yet")
+
+	require.NoError(t, os.WriteFile(gitFile, []byte("gitdir: /main/.git/worktrees/wt\n"), 0o644))
+	w.handleEvent(fsnotify.Event{Name: gitFile, Op: fsnotify.Write}, co)
+	require.NotContains(t, w.dirs, "wt")
+	require.NotContains(t, w.dirs, "wt/docs")
+	require.ElementsMatch(t, []string{"wt", "wt/docs"}, removed)
+}
+
+// A clone that loses its .git is a plain folder of the loose project again, but
+// the loose watcher never watched it and hears nothing from inside it. Rescan
+// is how it is told: the directory is watched as though it had just appeared,
+// and the Markdown already in it is reported.
+func TestRescanWatchesADirectoryThatStoppedBeingARepository(t *testing.T) {
+	root := t.TempDir()
+	alpha := filepath.Join(root, "alpha")
+	require.NoError(t, os.MkdirAll(filepath.Join(alpha, ".git"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Join(alpha, "docs"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(alpha, "docs", "a.md"), []byte("# a\n"), 0o644))
+	w, err := NewWatcher(root, "", nil, nil, false, quietLogger(), []string{})
+	require.NoError(t, err)
+	w.SetStopAtRepos(true)
+	w.addWatch = func(string) error { return nil }
+	w.addRecursive(root)
+	require.NotContains(t, w.dirs, "alpha")
+
+	var reported []string
+
+	// Still a repository: nothing to do.
+	w.rescanDir(alpha, func(rel string) { reported = append(reported, rel) })
+	require.NotContains(t, w.dirs, "alpha")
+
+	require.NoError(t, os.RemoveAll(filepath.Join(alpha, ".git")))
+	w.rescanDir(alpha, func(rel string) { reported = append(reported, rel) })
+	require.Contains(t, w.dirs, "alpha")
+	require.Contains(t, w.dirs, "alpha/docs")
+	require.Equal(t, []string{"alpha/docs/a.md"}, reported)
+
+	// Outside the root, or gone: nothing.
+	w.rescanDir(filepath.Join(root, "missing"), func(rel string) { reported = append(reported, rel) })
+	w.rescanDir(t.TempDir(), func(rel string) { reported = append(reported, rel) })
+	require.Equal(t, []string{"alpha/docs/a.md"}, reported)
+}
+
 // A project too big to watch says so where the reader is, not only in the log.
 // The limit is configured down rather than reached: a budget of three watches
 // over a five-directory tree fails the last two exactly as ENOSPC would.
