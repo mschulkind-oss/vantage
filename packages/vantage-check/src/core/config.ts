@@ -69,14 +69,15 @@ function defaultPlanning(): PlanningConfig {
  * than inside `.vantage/`, which is transient state users are told to
  * gitignore — committed configuration inside a gitignored directory is a trap.
  */
-export function findConfig(from: string): string | undefined {
+export function findConfig(from: string, stopAt?: string): string | undefined {
   let current = directoryOf(resolve(from));
+  const last = stopAt === undefined ? undefined : resolve(stopAt);
 
   for (;;) {
     const candidate = join(current, CONFIG_FILENAME);
     if (existsSync(candidate)) return candidate;
     const parent = dirname(current);
-    if (parent === current) return undefined;
+    if (parent === current || current === last) return undefined;
     current = parent;
   }
 }
@@ -88,6 +89,8 @@ export interface LoadOptions {
   noConfig?: boolean;
   /** Where discovery starts — the first target, or the working directory. */
   from: string;
+  /** The last directory discovery looks in; by default it walks to `/`. */
+  stopAt?: string;
 }
 
 export function loadConfig(options: LoadOptions): LoadedConfig {
@@ -95,7 +98,7 @@ export function loadConfig(options: LoadOptions): LoadedConfig {
 
   const path = options.explicitPath
     ? resolve(options.explicitPath)
-    : findConfig(options.from);
+    : findConfig(options.from, options.stopAt);
 
   if (!path) return defaultConfig();
   if (options.explicitPath && !existsSync(path)) {
@@ -121,6 +124,30 @@ export function loadConfig(options: LoadOptions): LoadedConfig {
   }
 
   return { path, ...parseConfig(source, path) };
+}
+
+/**
+ * The `[planning]` table one project's planning is read under: the table the
+ * server reads for it, which is its root's own `.vantage.toml` and nothing
+ * above it (`docs/design/repo-config.md` §2.2). The run's `[check]` table is
+ * found by walking up from the first target, and may come from further up, or
+ * from another of the run's projects; its `[planning]` is this project's only
+ * when it is the root's own file. An explicit `--config` or `--no-config` is
+ * taken as given, and so is the run's config for a file with no root, which
+ * no file above it can have supplied.
+ *
+ * Throws `ConfigError` when the root's own file is malformed.
+ */
+export function planningConfigFor(
+  loaded: LoadedConfig,
+  explicit: boolean,
+  root: string | null,
+): PlanningConfig {
+  if (explicit || root === null) return loaded.planning;
+  if (loaded.path === join(resolve(root), CONFIG_FILENAME)) {
+    return loaded.planning;
+  }
+  return loadConfig({ from: root, stopAt: root }).planning;
 }
 
 /**

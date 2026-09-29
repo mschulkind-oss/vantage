@@ -1,5 +1,10 @@
 import { resolve } from "node:path";
-import { ConfigError, loadConfig, type CheckPolicy } from "../core/config.js";
+import {
+  ConfigError,
+  loadConfig,
+  planningConfigFor,
+  type CheckPolicy,
+} from "../core/config.js";
 import { discover } from "../core/discover.js";
 import {
   checkFilesInParallel,
@@ -96,11 +101,11 @@ export async function checkCommand(
   // keeps `--jobs 1` and `--jobs 4` byte-identical. Their findings join the
   // report after the files', and every renderer sorts, so when they ran
   // changes nothing in the output.
-  const planning = checkPlanning(
-    files,
-    io.cwd,
-    config.settings,
-    config.planning,
+  const loaded = config;
+  const explicit =
+    options.configPath !== undefined || options.noConfig === true;
+  const planning = checkPlanning(files, io.cwd, config.settings, (root) =>
+    planningConfigFor(loaded, explicit, root),
   );
   const perFile =
     parallel === null

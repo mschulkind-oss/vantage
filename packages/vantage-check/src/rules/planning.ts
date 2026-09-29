@@ -62,13 +62,14 @@ export interface PlanningReport {
 /**
  * Check the run's files against the planning rules. `files` are absolute, as
  * `discover` gives them; findings are reported for those files only, with
- * `file` as every other rule names it.
+ * `file` as every other rule names it. `planningFor` gives the `[planning]`
+ * table of a project root, or of the files with none (`planningConfigFor`).
  */
 export function checkPlanning(
   files: readonly string[],
   cwd: string,
   settings: Settings,
-  config: PlanningConfig,
+  planningFor: (root: string | null) => PlanningConfig,
 ): PlanningReport {
   if (!PLANNING_RULES.some((rule) => settings.enabled(rule))) {
     return { findings: [], failures: [] };
@@ -89,8 +90,9 @@ export function checkPlanning(
   const findings: Finding[] = [];
   const failures: EnvironmentFailure[] = [];
   for (const [base, { root, files: group }] of byBase) {
-    const pass = new PlanningPass(root, base, group, cwd, settings, config);
     try {
+      const config = planningFor(root);
+      const pass = new PlanningPass(root, base, group, cwd, settings, config);
       pass.run();
       findings.push(...pass.findings);
     } catch (error) {
