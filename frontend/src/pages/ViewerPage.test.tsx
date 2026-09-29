@@ -245,6 +245,33 @@ describe("ViewerPage", () => {
     });
   });
 
+  // docs/design/planning-index.md §6: reached from a toolbar entry as well as
+  // with `g p`.
+  describe("the planning page's toolbar entry", () => {
+    it("navigates to the planning page", () => {
+      renderPage();
+      const entry = screen.getByRole("link", { name: "Planning" });
+      expect(entry).toHaveAttribute("href", "/.vantage/planning");
+      fireEvent.click(entry);
+      expect(mockNavigate).toHaveBeenCalledWith("/.vantage/planning");
+    });
+
+    it("names the current repository in daemon mode", () => {
+      (useRepoStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+        ...useRepoStore(),
+        isMultiRepo: true,
+        currentRepo: "alpha",
+        repos: [{ name: "alpha" }],
+      });
+      mockUseParams.mockReturnValue({ "*": "alpha/path/to/file.md" });
+      renderPage();
+      expect(screen.getByRole("link", { name: "Planning" })).toHaveAttribute(
+        "href",
+        "/.vantage/planning/alpha",
+      );
+    });
+  });
+
   it("loads file when path ends with .md service call", () => {
     renderPage();
     expect(mockLoadFile).toHaveBeenCalledWith("path/to/file.md");

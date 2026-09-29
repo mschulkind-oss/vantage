@@ -123,6 +123,29 @@ describe("useKeyboardShortcuts", () => {
     expect(mockCallbacks.onNavigate).toHaveBeenCalledWith("/recent");
   });
 
+  // docs/design/planning-index.md §6: `g p`, beside `g h` and `g r`.
+  it("navigates to the planning page on g then p sequence", () => {
+    renderHook(() => useKeyboardShortcuts(mockCallbacks));
+    fireKey("g");
+    fireKey("p");
+    expect(mockCallbacks.onNavigate).toHaveBeenCalledWith("/.vantage/planning");
+  });
+
+  it("navigates to the current repository's planning page in daemon mode", () => {
+    renderHook(() =>
+      useKeyboardShortcuts({
+        ...mockCallbacks,
+        isMultiRepo: true,
+        currentRepo: "alpha",
+      }),
+    );
+    fireKey("g");
+    fireKey("p");
+    expect(mockCallbacks.onNavigate).toHaveBeenCalledWith(
+      "/.vantage/planning/alpha",
+    );
+  });
+
   it("ignores shortcuts when modifier keys are held", () => {
     renderHook(() => useKeyboardShortcuts(mockCallbacks));
     fireKey("b", { ctrlKey: true });

@@ -46,6 +46,13 @@ describe("KeyboardShortcutsModal", () => {
     expect(row("Go home (root)")).toContain("gthenh");
   });
 
+  it("lists g then p for the planning page", () => {
+    render(<KeyboardShortcutsModal isOpen={true} onClose={vi.fn()} />);
+    expect(
+      screen.getByText("Go to the planning page").parentElement!.textContent,
+    ).toContain("gthenp");
+  });
+
   it("lists opening a menu row in a new tab, under every menu it works in", () => {
     render(<KeyboardShortcutsModal isOpen={true} onClose={vi.fn()} />);
     const row = screen.getByText(
