@@ -253,6 +253,8 @@ describe("a question (§3.3)", () => {
       item("\u{1F512}", "OQ-B2"), // 15-20
     ].join("\n");
     const [first, second] = planning(source).questions;
+    // Both sit in the one list, lines 7–19, and its card is those lines.
+    const card = `${source.split("\n").slice(6, 19).join("\n")}\n`;
     // The wrapped leaning takes two lines in the directive and two in the
     // paragraph, so the first item runs 7–13, a blank line follows, and the
     // second runs 15–19.
@@ -268,13 +270,44 @@ describe("a question (§3.3)", () => {
       unitLine: 7,
       unitEndLine: 13,
       block: { startLine: 7, endLine: 19 },
+      cardChars: card.length,
     });
     expect(second).toMatchObject({
       id: "OQ-B2",
       line: 19,
       unitLine: 15,
       unitEndLine: 19,
+      cardChars: card.length,
     });
+  });
+
+  // Every card's own agreement with the old cut is `planningCard.test.ts`'s;
+  // this is the count the page pages by, beside the blocks it counts.
+  it("counts each question's card in characters, one block per root-level block", () => {
+    const source = [
+      "# X", // 1
+      "", // 2
+      item("\u{1F4AC}", "OQ-C1"), // 3-7
+      item("\u{1F4AC}", "OQ-C2"), // 9-13
+      '<!-- vantage: oq id=OQ-C3 leaning="Yes." -->', // 15
+      "", // 16
+      "\u{1F4AC} A root-level question.", // 17
+      "",
+    ].join("\n");
+    const result = scan(source);
+    if (result.kind !== "planning") throw new Error("not planning");
+    const lines = source.split("\n");
+    const slice = (from: number, to: number) =>
+      `${lines.slice(from - 1, to).join("\n")}\n`;
+    expect(result.cards).toEqual([
+      { startLine: 3, endLine: 13, markdown: slice(3, 13), lineOffset: 2 },
+      { startLine: 15, endLine: 17, markdown: slice(15, 17), lineOffset: 14 },
+    ]);
+    expect(result.document.questions.map((q) => [q.id, q.cardChars])).toEqual([
+      ["OQ-C1", slice(3, 13).length],
+      ["OQ-C2", slice(3, 13).length],
+      ["OQ-C3", slice(15, 17).length],
+    ]);
   });
 
   // No rendered element carries the line a unit ends on, so this is held to
