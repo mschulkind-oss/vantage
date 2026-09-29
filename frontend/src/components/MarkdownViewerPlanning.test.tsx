@@ -569,7 +569,9 @@ describe("the cost of the index to a document", () => {
     expect(first).toBeGreaterThan(0);
 
     act(() => {
-      usePlanningStore.setState({ byRepo: { "": { status: "loading" } } });
+      usePlanningStore.setState({
+        byRepo: { "": { status: "loading", warm: false, progress: null } },
+      });
     });
     seedReady(indexOf({ "docs/design.md": DOC }));
     seedReady(indexOf({ "docs/design.md": DOC, "docs/other.md": DOC }));

@@ -499,7 +499,7 @@ describe("empty and degenerate states", () => {
   });
 
   it("shows a spinner, not an empty page, while the first scan runs", async () => {
-    setLoad({ status: "loading" });
+    setLoad({ status: "loading", warm: false, progress: null });
     await renderPage();
     expect(
       screen.getByLabelText("Scanning the planning documents"),
