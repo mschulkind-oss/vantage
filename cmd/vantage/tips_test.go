@@ -172,6 +172,33 @@ func TestProbeServiceEscapesTheProjectInItsLink(t *testing.T) {
 	}
 }
 
+// A service bound to the IPv6 wildcard is asked at ::1, bracketed once: the
+// probe used to bracket an address that came back bracketed already, and
+// "http://[[::1]]:8000" does not parse, so a running service was reported as
+// not running.
+func TestProbeServiceAsksAnIPv6WildcardServiceAtItsLoopback(t *testing.T) {
+	home := isolateHome(t)
+	writeUserConfig(t, home, "host = \"::\"\nport = 9123\n")
+	lister := &fakeLister{names: []string{"notes"}}
+	st := probeService(context.Background(), "linux", home, "/x", nil, lister.list)
+	require.Equal(t, []string{"http://[::1]:9123/api/repos"}, lister.asked)
+	require.True(t, st.Running)
+	require.Equal(t, "http://localhost:9123", st.URL)
+}
+
+func TestBrowserURL(t *testing.T) {
+	for host, want := range map[string]string{
+		"":          "http://127.0.0.1:8000",
+		"0.0.0.0":   "http://127.0.0.1:8000",
+		"127.0.0.1": "http://127.0.0.1:8000",
+		"::":        "http://[::1]:8000",
+		"::1":       "http://[::1]:8000",
+		"myhost":    "http://myhost:8000",
+	} {
+		require.Equal(t, want, browserURL(host, 8000), host)
+	}
+}
+
 func TestProbeServiceFindsAClonesDirectoryAmongItsSourceDirs(t *testing.T) {
 	home := isolateHome(t)
 	code := clonesDir(t)

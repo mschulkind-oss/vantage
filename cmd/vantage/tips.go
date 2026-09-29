@@ -150,7 +150,7 @@ func probeService(ctx context.Context, goos, home, target string, plan *clonesPl
 
 	ctx, cancel := context.WithTimeout(ctx, serviceProbeTimeout)
 	defer cancel()
-	probeURL := "http://" + net.JoinHostPort(browserHost(host), strconv.Itoa(port)) + "/api/repos"
+	probeURL := browserURL(host, port) + "/api/repos"
 	answer, err := list(ctx, probeURL)
 	if err != nil {
 		return st
