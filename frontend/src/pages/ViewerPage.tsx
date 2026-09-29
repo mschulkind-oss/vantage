@@ -1157,8 +1157,22 @@ export const ViewerPage: React.FC = () => {
                         className="flex min-w-0 font-semibold text-slate-900 dark:text-slate-100"
                         title={currentPath ?? undefined}
                       >
-                        <span className="truncate">{leafStem}</span>
-                        {leafExt && <span className="shrink-0">{leafExt}</span>}
+                        {leafExt ? (
+                          <>
+                            {/* Two flex items are two words to assistive
+                                technology ("notes .md"), so it is given the
+                                name whole and the halves are only drawn. */}
+                            <span className="sr-only">{breadcrumbLeaf}</span>
+                            <span aria-hidden="true" className="truncate">
+                              {leafStem}
+                            </span>
+                            <span aria-hidden="true" className="shrink-0">
+                              {leafExt}
+                            </span>
+                          </>
+                        ) : (
+                          <span className="truncate">{leafStem}</span>
+                        )}
                       </span>
                     </>
                   )}
