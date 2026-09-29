@@ -197,6 +197,10 @@ config. The command then installs the service and starts it. Without
 - **A missing config is created** with a short header and the one key.
 - **What changed is printed:** which directories were added, which were already
   there, and the file that was written.
+- **A config that would not start the daemon stops the command** before
+  anything is installed. This happens when no repository is configured at all,
+  for example when the only source directory holds no clones. The daemon's own
+  validation gives the reason.
 - **Starting the service** on Linux runs `systemctl --user daemon-reload`,
   `enable vantage` and `restart vantage`. The command uses `restart` because a
   running daemon reads `source_dirs` only at startup. On macOS it runs
