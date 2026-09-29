@@ -97,6 +97,12 @@ func TestShouldPruneDir(t *testing.T) {
 		{"vantage inbox kept", ".vantage/inbox", false},
 		{"vantage other pruned", ".vantage/reviews", true},
 		{"vantage inbox subdir pruned", ".vantage/inbox/sub", true},
+		// A repository below the root owns its .git: its state files are not
+		// the served repository's, and its objects are hundreds of directories.
+		{"nested repo git dir pruned", "alpha/.git", true},
+		{"nested repo git objects pruned", "alpha/.git/objects", true},
+		{"deeply nested repo git dir pruned", "vendor/lib/.git", true},
+		{"nested repo work tree kept", "alpha/docs", false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -251,6 +257,29 @@ func TestAddRecursivePrunesWorktrees(t *testing.T) {
 	added := w.addRecursive(root)
 	require.Equal(t, 2, added, "should watch root and docs, but prune worktree and its children")
 	require.ElementsMatch(t, []string{".", "docs"}, watched)
+}
+
+// A directory of clones served as one project used to watch the inside of every
+// clone's .git — object directories, refs, logs — because only the root's .git
+// was pruned. Those watches are most of what a parent of many repositories
+// registers, and they are what runs the kernel's watch limit out.
+func TestAddRecursivePrunesNestedGitDirs(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{"alpha/docs", "alpha/.git/objects/ab", "alpha/.git/refs/heads", ".git/objects/cd"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(root, dir), 0o755))
+	}
+
+	w, err := NewWatcher(root, "repoX", nil, nil, false, quietLogger(), []string{})
+	require.NoError(t, err)
+	var watched []string
+	w.addWatch = func(path string) error {
+		rel, _ := filepath.Rel(root, path)
+		watched = append(watched, filepath.ToSlash(rel))
+		return nil
+	}
+
+	w.addRecursive(root)
+	require.ElementsMatch(t, []string{".", ".git", "alpha", "alpha/docs"}, watched)
 }
 
 // --- coalescer / debounce ---
