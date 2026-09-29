@@ -25,6 +25,17 @@ const FileTextIcon = () => (
 
 interface FrontmatterDisplayProps {
   frontmatter: Record<string, unknown>;
+  /**
+   * The Open Question ids this document's own questions carry. When given, a
+   * bare `OQ-…` id in the top-level `next` value that is one of them links to
+   * that question (`#OQ-…`); every other word of `next` stays plain text.
+   *
+   * Only ids a question carries, never every id in the text: a compacted id
+   * kept in a Decision Ledger names no question, and linking it would land on
+   * nothing. Omit it where no planning index is known, and `next` renders
+   * exactly as every other value does.
+   */
+  linkIds?: readonly string[];
 }
 
 function isStringArray(value: unknown): value is string[] {
@@ -68,6 +79,35 @@ function TagList({ items }: { items: string[] }) {
   );
 }
 
+/**
+ * An `OQ-…` token, shaped as `VANTAGE_OQ_ID` shapes an id and bounded as the
+ * planning scan bounds one: by what may not touch it, so an id inside a longer
+ * token (`OQ-B12x`, `xOQ-B1`) is not a token at all. The leading bound is a
+ * group rather than a lookbehind, which Safari parses only since 16.4.
+ */
+const OQ_TOKEN =
+  /(^|[^A-Za-z0-9])(OQ-(?:[A-Z][A-Z0-9]{0,5})?[0-9]+)(?![A-Za-z0-9])/g;
+
+/** `text`, with each token in `ids` as a link to its question. */
+function LinkedIds({ text, ids }: { text: string; ids: readonly string[] }) {
+  const out: React.ReactNode[] = [];
+  let last = 0;
+  for (const match of text.matchAll(OQ_TOKEN)) {
+    const id = match[2];
+    if (id === undefined || !ids.includes(id)) continue;
+    const start = match.index + match[1].length;
+    if (start > last) out.push(text.slice(last, start));
+    out.push(
+      <a key={start} href={`#${id}`}>
+        {id}
+      </a>,
+    );
+    last = start + id.length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return <span className="font-medium">{out}</span>;
+}
+
 function ValueCell({ value }: { value: unknown }) {
   if (isStringArray(value) && value.length > 0) {
     return <TagList items={value} />;
@@ -108,6 +148,7 @@ function flattenEntries(entries: [string, unknown][]): [string, unknown][] {
 
 const FrontmatterDisplayInner: React.FC<FrontmatterDisplayProps> = ({
   frontmatter,
+  linkIds,
 }) => {
   const entries = flattenEntries(Object.entries(frontmatter));
   // Only the value. `issues` is deliberately not read here: the viewer stays
@@ -146,7 +187,15 @@ const FrontmatterDisplayInner: React.FC<FrontmatterDisplayProps> = ({
                       {key}
                     </td>
                     <td className="py-2 text-slate-800 dark:text-slate-200 align-top">
-                      <ValueCell value={value} />
+                      {/* The header of record's `next`, not a hoisted one. */}
+                      {key === "next" &&
+                      linkIds !== undefined &&
+                      typeof value === "string" &&
+                      value === frontmatter["next"] ? (
+                        <LinkedIds text={value} ids={linkIds} />
+                      ) : (
+                        <ValueCell value={value} />
+                      )}
                     </td>
                   </tr>
                 ))}
