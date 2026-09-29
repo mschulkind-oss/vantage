@@ -1,6 +1,8 @@
 package planning
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"io"
 	iofs "io/fs"
@@ -34,9 +36,22 @@ const (
 // read is the outcome of reading one candidate.
 type read struct {
 	kind    string
-	content string
+	content string // KindFile only
+	hash    string // KindFile only: [contentHash] of content
 	size    int64  // KindSkipped only
 	reason  string // KindUnreadable only
+}
+
+// contentHash is the design's *content hash* of a file's bytes: the first 128
+// bits of SHA-256, as 32 lowercase hex digits. The browser keeps each file's
+// scan result under it and names it back in the stream's `have`, so the two
+// sides must spell it one way. Design: docs/design/planning-index-at-scale.md §3.
+//
+// Only a file read whole has one. A skipped file was never opened, and an
+// unreadable one has no text a scan could be kept for.
+func contentHash(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:16])
 }
 
 // openFile is os.Open, replaceable in tests so they can prove what was never
@@ -62,7 +77,9 @@ func newReader(root string, maxBytes int64) *reader {
 // this. Size is decided from that stat, so an oversized file is never opened.
 // After opening, the handle is stat'ed again, and the read is capped one byte
 // past the limit, so a file that grew in between is skipped rather than read
-// whole. Finally the bytes must be UTF-8, the test `ReadFile` applies.
+// whole. Finally the bytes must be UTF-8, the test `ReadFile` applies. A file
+// that passes comes back with its [contentHash], taken over exactly the bytes
+// returned.
 //
 // A file that no longer exists is KindAbsent. Anything else that goes wrong is
 // KindUnreadable: a file that exists and cannot be read is never "absent",
@@ -122,7 +139,7 @@ func (r *reader) read(rel string) read {
 	if !utf8.Valid(data) {
 		return read{kind: KindUnreadable, reason: reasonNotUTF8}
 	}
-	return read{kind: KindFile, content: string(data)}
+	return read{kind: KindFile, content: string(data), hash: contentHash(data)}
 }
 
 // failed maps a filesystem error to its answer: a missing file is absent, and
