@@ -24,6 +24,13 @@
 @layer components {
   :is(.prose, .vantage-prose) svg {
     max-width: 100%;
+  }
+
+  /* Only a drawing with a viewBox scales to its box, so only there may the
+     height follow the capped width. Without one, `height: auto` shrank the
+     viewport and left the drawing at full size inside it: a 1600x100 drawing
+     in a 928px column measured 58px tall, with everything below cut off. */
+  :is(.prose, .vantage-prose) svg[viewBox] {
     height: auto;
   }
 }
