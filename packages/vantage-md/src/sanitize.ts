@@ -1,8 +1,10 @@
 /**
  * Sanitization schema for the rendering pipeline.
- * Allows GFM, KaTeX MathML, syntax highlighting classes,
- * data-source-line attributes, a filtered inline `style`, and inline SVG as
- * static drawing (see `SVG_CHILD_TAGS`), while blocking XSS vectors.
+ * Allows GFM, KaTeX MathML, `data-source-line` attributes, a filtered inline
+ * `style`, a `class` that carries only the names the pipeline itself emits
+ * (see `PIPELINE_CLASSES`), and inline SVG as static drawing (see
+ * `SVG_CHILD_TAGS`), while blocking XSS vectors and anything that lays a
+ * document over the app.
  */
 
 import type { Element, Root } from "hast";
@@ -15,9 +17,114 @@ import {
   VANTAGE_TONES,
   VANTAGE_OQ_ID,
 } from "./vantageDirectives.js";
-import { VANTAGE_ALERTS } from "./rehypeVantageAlerts.js";
+import { ALERT_TITLE_CLASS, VANTAGE_ALERTS } from "./rehypeVantageAlerts.js";
 
 type Schema = typeof defaultSchema;
+type AttributeList = NonNullable<Schema["attributes"]>[string];
+type ClassValue = string | RegExp;
+
+/** Whether an attribute definition is for `className`. */
+const isClassName = (definition: AttributeList[number]) =>
+  (typeof definition === "string" ? definition : definition[0]) === "className";
+
+/**
+ * The value list the default schema gives `className` on `tag`, or an empty
+ * list if it gives none.
+ */
+function defaultClasses(tag: string): ClassValue[] {
+  const entry = defaultSchema.attributes?.[tag]?.find(isClassName);
+  return Array.isArray(entry) ? (entry.slice(1) as ClassValue[]) : [];
+}
+
+/**
+ * The only classes an element keeps: the ones the pipeline itself emits on it
+ * before `rehypeSanitize` runs. Every other element keeps none.
+ *
+ * **A class is a style by another name.** The app ships Tailwind's utility CSS
+ * for its own markup, so `<div class="fixed inset-0 z-50 bg-white">` in a
+ * document laid a white sheet over the whole Vantage window, header and
+ * sidebar included. That is the overlay `SAFE_STYLE` bans `position` to
+ * prevent, spelled as a class instead of a declaration, and `className` used
+ * to be admitted with any value on every element. A document could also
+ * borrow a class the app's own code looks for: `.overflow-y-auto` is how an
+ * anchor link finds the element to scroll when no `data-content-scroll` is in
+ * reach, and `.heading-anchor` is what the outline strips from a heading's
+ * text. The comment-body sanitizer (`frontend/src/lib/commentMarkdown.ts`)
+ * already refused `class` for the same reason.
+ *
+ * What each entry is for, and who emits it:
+ *
+ * - `code`: `language-*`, from a fence's info string (`mdast-util-to-hast`).
+ *   `rehype-highlight` reads it, `rehype-katex` keys on `language-math`, and
+ *   the viewers render `language-mermaid` as a diagram.
+ * - `ul`, `ol` and `li`: `contains-task-list` and `task-list-item`, from GFM
+ *   task lists. `styles/task-list.css` draws the checkbox from them.
+ * - `section`, `h2` and `a`: GFM footnotes (`mdast-util-to-hast`), on the
+ *   section, its label and each back-reference.
+ * - `div`: `ALERT_TITLE_CLASS`, on the title `rehypeVantageAlerts` injects.
+ *
+ * `remark-math` also emits `math-display` and `math-inline` on its `code`.
+ * They were never kept, because the default schema's `code` entry takes only
+ * `language-*`, and nothing needs them: `rehype-katex` keys on `language-math`
+ * and tells display from inline by whether the `code` sits in a `pre`.
+ *
+ * **A class added after the sanitizer needs no entry**, and that is most of
+ * the classes the page styles: `rehype-highlight`'s `hljs-*`, KaTeX's output,
+ * Mermaid's diagrams, and everything the app's components and hooks add. A
+ * document that writes one of those keeps nothing.
+ *
+ * A document may still write these names on these elements. By the time the
+ * sanitizer runs, a hand-written `<li class="task-list-item">` and the one GFM
+ * emitted are the same node, and none of the names can lay an element over
+ * anything else: `styles/task-list.css` gives `task-list-item` a
+ * `position: relative`, which moves nothing, and the footnote label's class,
+ * where a stylesheet defines it, clips its element to a single pixel.
+ *
+ * **The footnote label's class is read from the default schema, never
+ * spelled here, and the tests spell it in halves.** It is a Tailwind utility,
+ * and Tailwind generates a utility for every class name it finds in the files
+ * it scans, comments included — this directory and all of `frontend/`. The app
+ * renders the label as a visible heading only because nothing it scans spells
+ * that name. Spelled whole in a test, it generated the rule, and the label
+ * would have been hidden from sight as it is on GitHub: a change of rendering,
+ * not a sanitizer fix.
+ *
+ * The list is measured, not remembered. The test "takes no class from
+ * anything the pipeline emits" in `frontend/src/lib/sanitize.test.ts` records
+ * every class on the tree on both sides of `rehypeSanitize`, over a document
+ * that uses every feature that emits one, so a plugin that starts emitting a
+ * new class fails there instead of losing it in every renderer.
+ */
+const PIPELINE_CLASSES: Readonly<Record<string, readonly ClassValue[]>> = {
+  code: [/^language-./],
+  ul: ["contains-task-list"],
+  ol: ["contains-task-list"],
+  li: ["task-list-item"],
+  section: ["footnotes"],
+  // The footnote label. Read, not spelled: see above.
+  h2: defaultClasses("h2"),
+  a: ["data-footnote-backref"],
+  div: [ALERT_TITLE_CLASS],
+};
+
+/**
+ * `tag`'s attributes: the default schema's, less any `className`, then its
+ * `PIPELINE_CLASSES` entry, then `extra`.
+ *
+ * **Always a value list, never a bare `"className"`.** `hast-util-sanitize`
+ * reads a bare name, or a tuple holding no values, as "any value", and an
+ * element's own entry is consulted before `*`'s — the first match wins, and
+ * `*` is not consulted when that element's own entry filters a class list down
+ * to nothing. An element with no entry has none added.
+ */
+function withClasses(tag: string, ...extra: AttributeList): AttributeList {
+  const classes = PIPELINE_CLASSES[tag] ?? [];
+  const own: AttributeList = (defaultSchema.attributes?.[tag] ?? []).filter(
+    (definition) => !isClassName(definition),
+  );
+  if (classes.length > 0) own.push(["className", ...classes]);
+  return [...own, ...extra];
+}
 
 /**
  * CSS properties an inline `style` may set.
@@ -479,9 +586,9 @@ export const sanitizeSchema: Schema = {
   },
   attributes: {
     ...defaultSchema.attributes,
+    // No `className` here: see `PIPELINE_CLASSES`.
     "*": [
       ...(defaultSchema.attributes?.["*"] || []),
-      "className",
       ["style", SAFE_STYLE],
       "dataSourceLine",
       // What `rehypeVantageDirectives` compiles a `<!-- vantage: … -->` comment
@@ -526,18 +633,14 @@ export const sanitizeSchema: Schema = {
       // the design doc rather than a third layer implied here.
       "dataVantageLeaning",
     ],
-    code: [...(defaultSchema.attributes?.code || []), "className"],
-    span: [
-      ...(defaultSchema.attributes?.span || []),
-      "className",
-      ["style", SAFE_STYLE],
-    ],
-    div: [
-      ...(defaultSchema.attributes?.div || []),
-      "className",
-      ["style", SAFE_STYLE],
-    ],
-    a: [...(defaultSchema.attributes?.a || []), "id", "className"],
+    // Every element that keeps a class. `div` and `a` are built again below,
+    // by the same helper, with the attributes they take besides.
+    ...Object.fromEntries(
+      Object.keys(PIPELINE_CLASSES).map((tag) => [tag, withClasses(tag)]),
+    ),
+    span: [...(defaultSchema.attributes?.span || []), ["style", SAFE_STYLE]],
+    div: withClasses("div", ["style", SAFE_STYLE]),
+    a: withClasses("a", "id"),
     math: ["xmlns"],
     annotation: ["encoding"],
     img: [...(defaultSchema.attributes?.img || []), "loading"],

@@ -24,6 +24,12 @@
  *    true because math is outside its reach. Move `rehypeKatex` ahead of the
  *    sanitizer and that fails loudly, instead of math quietly losing its layout.
  *
+ * The "class allowlist" block is the same threat as the first by another
+ * attribute: the app ships Tailwind's utilities, so a class can lay a document
+ * over the window as well as a `style` could. A document's `class` keeps only
+ * the names the pipeline itself emits, and that list is measured on both sides
+ * of the sanitizer in the real chain rather than asserted from memory.
+ *
  * The "inline SVG" block is a fourth job: a drawing survives as drawing —
  * every allowlisted attribute in the spelling an author writes, on every
  * admitted element — and nothing survives that runs, fetches, references, or
@@ -33,10 +39,18 @@
  * covers the new entry. The few cases that only React can show (the SVG
  * namespace, `<title>` hoisting) render through `vantage-md/react`.
  */
+import type { Element, Root } from "hast";
 import { createElement } from "react";
+import ReactMarkdown from "react-markdown";
 import { cleanup, render } from "@testing-library/react";
+import type { PluggableList } from "unified";
 import { describe, it, expect } from "vitest";
-import { renderMarkdown, SAFE_STYLE, sanitizeSchema } from "vantage-md";
+import {
+  buildPipeline,
+  renderMarkdown,
+  SAFE_STYLE,
+  sanitizeSchema,
+} from "vantage-md";
 import { MarkdownViewer } from "vantage-md/react";
 
 const styled = async (html: string) => (await renderMarkdown(html + "\n")).html;
@@ -327,6 +341,268 @@ describe("the data-vantage-* allowlist", () => {
       leaning,
     );
     expect(host.querySelectorAll("img")).toHaveLength(0);
+  });
+});
+
+describe("the class allowlist", () => {
+  // Utilities the app's stylesheet ships because the app's own markup uses
+  // them. Written on one element of a document they are a full-window overlay,
+  // and `SAFE_STYLE`'s ban on `position` never sees them: a class is not a
+  // `style`.
+  const OVERLAY = "fixed inset-0 z-50 bg-white";
+  const OVERLAY_SELECTOR = OVERLAY.split(" ")
+    .map((name) => `.${name}`)
+    .join(", ");
+
+  // The class GFM puts on the footnote label, spelled in halves. It is a
+  // Tailwind utility, and Tailwind generates a utility for every class name it
+  // finds in the files it scans, this one included. Written whole here, it
+  // generated that utility, which hides the label in the app. See
+  // `PIPELINE_CLASSES`.
+  const FOOTNOTE_LABEL = ["sr", "only"].join("-");
+
+  /** `renderMarkdown`'s output, parsed the way a browser would. */
+  const parsed = async (markdown: string) => {
+    const host = document.createElement("div");
+    host.innerHTML = await styled(markdown);
+    return host;
+  };
+
+  /**
+   * Every element in `root` with a non-empty `class`, as `tag.class` with the
+   * attribute verbatim. An element whose own entry filtered every class away
+   * still serializes `class=""`, which is no class at all.
+   */
+  const classed = (root: ParentNode) =>
+    Array.from(root.querySelectorAll("[class]"))
+      .filter((el) => el.getAttribute("class")!.trim() !== "")
+      .map((el) => `${el.tagName.toLowerCase()}.${el.getAttribute("class")}`);
+
+  it.each([
+    ["div", `<div class="${OVERLAY}">x</div>`],
+    ["span", `<span class="${OVERLAY}">x</span>`],
+    ["a", `<a href="#x" class="${OVERLAY}">x</a>`],
+    ["code", `<code class="${OVERLAY}">x</code>`],
+    ["pre", `<pre class="${OVERLAY}"><code class="${OVERLAY}">x</code></pre>`],
+    ["p", `<p class="${OVERLAY}">x</p>`],
+    ["img", `<img src="x.png" alt="x" class="${OVERLAY}">`],
+    [
+      "svg",
+      `<svg class="${OVERLAY}" viewBox="0 0 1 1"><g class="${OVERLAY}"><rect class="${OVERLAY}" width="1" height="1"/></g></svg>`,
+    ],
+    ["h2", `<h2 class="${OVERLAY}">x</h2>`],
+    ["ul", `<ul class="${OVERLAY}"><li class="${OVERLAY}">x</li></ul>`],
+    ["ol", `<ol class="${OVERLAY}"><li>x</li></ol>`],
+    ["section", `<section class="${OVERLAY}">x</section>`],
+    ["blockquote", `<blockquote class="${OVERLAY}">x</blockquote>`],
+    [
+      "table",
+      `<table class="${OVERLAY}"><tr><td class="${OVERLAY}">x</td></tr></table>`,
+    ],
+    [
+      "details",
+      `<details class="${OVERLAY}"><summary class="${OVERLAY}">x</summary>y</details>`,
+    ],
+  ])("drops overlay utilities a document writes on %s", async (tag, markup) => {
+    const host = await parsed(markup);
+    // The element stays; only its class goes.
+    expect(host.querySelector(tag)).not.toBeNull();
+    expect(host.querySelector(OVERLAY_SELECTOR)).toBeNull();
+    expect(classed(host)).toEqual([]);
+  });
+
+  it.each([
+    // The pipeline's names, on an element the pipeline never puts them on.
+    `<span class="vantage-alert-title">x</span>`,
+    `<p class="task-list-item">x</p>`,
+    `<div class="contains-task-list">x</div>`,
+    `<div class="footnotes">x</div>`,
+    `<div class="${FOOTNOTE_LABEL}">x</div>`,
+    `<span class="data-footnote-backref">x</span>`,
+    `<span class="language-js">x</span>`,
+    // Classes the viewer's stylesheet selects on that are added *after* the
+    // sanitizer, by `rehype-highlight`, `rehype-katex` and the app's own
+    // components. They need no entry, so a document cannot borrow them.
+    `<span class="hljs-keyword">x</span>`,
+    `<span class="katex-display">x</span>`,
+    `<div class="mermaid">x</div>`,
+    `<span class="heading-anchor">x</span>`,
+    `<div class="review-inline-comment">x</div>`,
+  ])("drops %s", async (markup) => {
+    expect(classed(await parsed(markup))).toEqual([]);
+  });
+
+  it("keeps a pipeline name where the pipeline puts it, and nothing beside it", async () => {
+    // A document may write the pipeline's own names on the elements that carry
+    // them: by the time the sanitizer runs, a hand-written one and the
+    // pipeline's are the same node, and none of them can lay an element over
+    // anything else. What the document writes next to them goes.
+    const host = await parsed(
+      [
+        `<div class="vantage-alert-title ${OVERLAY}">Note</div>`,
+        "",
+        `<pre><code class="language-diff ${OVERLAY}">+ x</code></pre>`,
+        "",
+        `<h2 class="${FOOTNOTE_LABEL} ${OVERLAY}">Footnotes</h2>`,
+        "",
+        `<section class="footnotes ${OVERLAY}"><ol class="contains-task-list ${OVERLAY}"><li class="task-list-item ${OVERLAY}"><a href="#x" class="data-footnote-backref ${OVERLAY}">↩</a></li></ol></section>`,
+      ].join("\n"),
+    );
+    expect(host.querySelector(OVERLAY_SELECTOR)).toBeNull();
+    expect(classed(host)).toEqual([
+      "div.vantage-alert-title",
+      // `hljs` and the token spans are `rehype-highlight`'s, added after the
+      // sanitizer from the language the document named.
+      "code.hljs language-diff",
+      "span.hljs-addition",
+      `h2.${FOOTNOTE_LABEL}`,
+      "section.footnotes",
+      "ol.contains-task-list",
+      "li.task-list-item",
+      "a.data-footnote-backref",
+    ]);
+  });
+
+  it("takes no class from anything the pipeline emits, save the two nothing reads", () => {
+    // The allowlist is meant to be exactly what the pipeline itself writes
+    // before `rehypeSanitize`, so this measures both sides of the sanitizer in
+    // the real chain: every class on the tree going in, and every class coming
+    // out, over a document that uses every feature that emits one.
+    //
+    // The `before` list is pinned in full, so a plugin that starts emitting a
+    // new class fails here instead of losing it silently in every renderer.
+    // `math-display` and `math-inline` are `remark-math`'s, and the sanitizer
+    // has always dropped them: `rehype-katex` keys on `language-math` alone,
+    // and tells display from inline by whether the `code` sits in a `pre`.
+    const features = [
+      "```js",
+      "const x = 1;",
+      "```",
+      "",
+      "```mermaid",
+      "graph TD; A-->B",
+      "```",
+      "",
+      "```math",
+      "x^2",
+      "```",
+      "",
+      "$$",
+      "y^2",
+      "$$",
+      "",
+      "Inline $$z$$ math, and a claim.[^1]",
+      "",
+      "- [ ] open",
+      "- [x] done",
+      "",
+      "1. [ ] ordered",
+      "",
+      "> [!WARNING]",
+      "> Careful.",
+      "",
+      "<!-- vantage: block tone=warning -->",
+      "Toned.",
+      "",
+      "| a | b |",
+      "| :-: | --: |",
+      "| 1 | 2 |",
+      "",
+      "[^1]: The note.",
+      "",
+    ].join("\n");
+
+    const record = (into: Set<string>) => () => (tree: Root) => {
+      const walk = (parent: Root | Element) => {
+        for (const child of parent.children) {
+          if (child.type !== "element") continue;
+          const names = child.properties.className;
+          if (Array.isArray(names)) {
+            for (const name of names) into.add(`${child.tagName}.${name}`);
+          }
+          walk(child);
+        }
+      };
+      walk(tree);
+    };
+
+    const before = new Set<string>();
+    const after = new Set<string>();
+    const { remarkPlugins, rehypePlugins } = buildPipeline();
+    const at = rehypePlugins.findIndex(
+      (entry) => Array.isArray(entry) && entry[1] === sanitizeSchema,
+    );
+    expect(at).toBeGreaterThan(0);
+    const instrumented: PluggableList = [
+      ...rehypePlugins.slice(0, at),
+      record(before),
+      rehypePlugins[at],
+      record(after),
+      ...rehypePlugins.slice(at + 1),
+    ];
+    try {
+      render(
+        createElement(ReactMarkdown, {
+          remarkPlugins,
+          rehypePlugins: instrumented,
+          children: features,
+        }),
+      );
+    } finally {
+      cleanup();
+    }
+
+    expect([...before].sort()).toEqual([
+      "a.data-footnote-backref",
+      "code.language-js",
+      "code.language-math",
+      "code.language-mermaid",
+      "code.math-display",
+      "code.math-inline",
+      "div.vantage-alert-title",
+      `h2.${FOOTNOTE_LABEL}`,
+      "li.task-list-item",
+      "ol.contains-task-list",
+      "section.footnotes",
+      "ul.contains-task-list",
+    ]);
+    expect([...after].sort()).toEqual(
+      [...before].filter((name) => !name.startsWith("code.math-")).sort(),
+    );
+  });
+
+  it("admits a class on no element without a value list", () => {
+    // `hast-util-sanitize` reads a bare `"className"`, or a tuple with no
+    // values, as "any value at all", and it takes an element's own entry
+    // before `*`'s — so the rule has two halves. Nothing takes a class by
+    // default, and every element that does names what it takes.
+    const attributes = sanitizeSchema.attributes ?? {};
+    const classEntries = (tag: string) =>
+      (attributes[tag] ?? []).filter(
+        (definition) =>
+          (typeof definition === "string" ? definition : definition[0]) ===
+          "className",
+      );
+    expect(classEntries("*")).toEqual([]);
+    const tags = Object.keys(attributes).filter(
+      (tag) => classEntries(tag).length > 0,
+    );
+    expect(tags.sort()).toEqual([
+      "a",
+      "code",
+      "div",
+      "h2",
+      "li",
+      "ol",
+      "section",
+      "ul",
+    ]);
+    for (const tag of tags) {
+      const entries = classEntries(tag);
+      expect(entries, tag).toHaveLength(1);
+      expect(typeof entries[0], tag).not.toBe("string");
+      expect((entries[0] as unknown[]).length, tag).toBeGreaterThan(1);
+    }
   });
 });
 
