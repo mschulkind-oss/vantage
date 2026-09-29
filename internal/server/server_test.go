@@ -548,6 +548,44 @@ func TestDiscoverReposAddsEachRepoOnce(t *testing.T) {
 	require.Empty(t, srv.discoverRepos(ctx))
 }
 
+// The config `serve` builds for a directory of clones: the loose project first,
+// then the clones, with the directory as the one source dir. A clone made after
+// startup is discovered exactly as the daemon discovers one, and the loose
+// project — not a discovered repository — is never retired.
+func TestLooseProjectSharesTheRescanAndIsNeverRetired(t *testing.T) {
+	isolateUserDirs(t)
+	code := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(code); err == nil {
+		code = resolved
+	}
+	initRepoAt(t, filepath.Join(code, "alpha"), map[string]string{"a.md": "# A\n"})
+	require.NoError(t, os.WriteFile(filepath.Join(code, "notes.md"), []byte("# notes\n"), 0o644))
+
+	cfg := config.Defaults()
+	cfg.TargetRepo = code
+	cfg.MultiRepo = true
+	cfg.SourceDirs = []string{code}
+	cfg.Repos = []config.RepoConfig{{Name: "code", Path: code, Loose: true}}
+	require.NoError(t, cfg.Resolve())
+	require.Len(t, cfg.DiscoverReposFromSourceDirs(), 1)
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	initRepoAt(t, filepath.Join(code, "beta"), map[string]string{"b.md": "# B\n"})
+	require.Equal(t, []string{"beta"}, srv.discoverRepos(ctx))
+	require.Equal(t, []string{"code", "alpha", "beta"}, repoNames(t, srv.Handler()))
+
+	require.NoError(t, os.Remove(filepath.Join(code, "notes.md")))
+	require.Empty(t, srv.retireRepos())
+
+	// The new clone's files belong to it, not to the loose project.
+	rec := doGET(t, srv.Handler(), "/api/r/code/files")
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.JSONEq(t, `[]`, rec.Body.String())
+}
+
 func TestRetireReposDropsOnlyWhatIsGone(t *testing.T) {
 	srv, sourceDir := discoveryServer(t)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -557,7 +595,7 @@ func TestRetireReposDropsOnlyWhatIsGone(t *testing.T) {
 	// directory: the user asserted it should be served.
 	configured := initRepo(t, map[string]string{"c.md": "# C\n"})
 	srv.cfg.Repos = append(srv.cfg.Repos, config.RepoConfig{Name: "configured", Path: configured})
-	srv.register("configured", configured)
+	srv.register(config.RepoConfig{Name: "configured", Path: configured})
 
 	initRepoAt(t, filepath.Join(sourceDir, "beta"), map[string]string{"b.md": "# B\n"})
 	require.Equal(t, []string{"beta"}, srv.discoverRepos(ctx))

@@ -103,6 +103,12 @@ type RepoConfig struct {
 	// invented when the directory behind it goes away, which it must never do
 	// to a repository someone wrote down by hand.
 	Discovered bool `toml:"-"`
+	// Loose marks the project that holds the Markdown beside a directory of
+	// clones — the directory itself, served next to one project per clone
+	// (docs/design/serve-clones-directory.md §3). Its walks, git service and
+	// watcher stop at every repository below it, and the viewer lists it
+	// first. Like Discovered it is not a TOML key: only `serve` sets it.
+	Loose bool `toml:"-"`
 }
 
 // Config is the resolved configuration shared by both run modes.

@@ -1,6 +1,12 @@
 export interface RepoInfo {
   name: string;
   last_activity: string | null;
+  /**
+   * Listed ahead of every other project in both sort orders. Only the project
+   * holding the Markdown beside a directory of clones sets it; absent means
+   * false. See docs/design/serve-clones-directory.md §3.
+   */
+  pinned?: boolean;
 }
 
 export interface FileNode {

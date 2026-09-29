@@ -116,6 +116,10 @@ type RecentFile struct {
 type RepoInfo struct {
 	Name         string     `json:"name"`
 	LastActivity *time.Time `json:"last_activity"`
+	// Pinned asks the viewer to list this project ahead of the others in
+	// every sort order. Only the loose project of a directory of clones sets
+	// it (docs/design/serve-clones-directory.md §3); absent means false.
+	Pinned bool `json:"pinned,omitempty"`
 }
 
 // RepoFile is one entry of GET /files/all: a repo name paired with a
