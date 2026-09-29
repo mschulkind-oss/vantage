@@ -1,0 +1,7 @@
+{"kind":"header","config":{"roadmap":"roadmap.md","include":["**/*.md"],"exclude":["docs/gallery/**"],"max_file_bytes":96,"max_candidates":5000,"stages":{"DECIDED":"ready","DESIGN":"open"}},"candidate_count":5,"refused":false}
+{"kind":"same","path":"AGENTS.md","hash":"9f86d081884c7d659a2feaa0c55ad015"}
+{"kind":"unreadable","path":"docs/bad.md","reason":"not UTF-8"}
+{"kind":"skipped","path":"docs/big.md","size":100}
+{"kind":"file","path":"docs/design/a.md","hash":"aa51d12d454e8759ac86c3a46b321d4e","content":"---\nstatus: draft\n---\n\n# A & B\n\n> Café <b>\"quoted\"</b> → done\n"}
+{"kind":"file","path":"roadmap.md","hash":"278a04e4b3509d785c9dbdbabfa4bbea","content":"# Roadmap\n\n- [A](docs/design/a.md)\n"}
+{"kind":"end","candidates":5}

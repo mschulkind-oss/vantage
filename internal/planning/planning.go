@@ -1,6 +1,7 @@
 // Package planning serves the planning index its sources: which Markdown files
 // are candidates, and the text of each one, within the limits `[planning]`
-// sets. Design: docs/design/planning-index.md §3.
+// sets. Design: docs/design/planning-index.md §3, and for the stream and the
+// content hash docs/design/planning-index-at-scale.md §6.
 //
 // The server lists, filters and reads. It never parses Markdown: the planning
 // scan lives in vantage-md and runs in the viewer and in vantage-check, so that
@@ -21,16 +22,25 @@
 // Past `max-candidates` nothing is opened at all, and the answer says so
 // ("refused"), because a partial index would quietly under-report. A candidate
 // larger than `max-file-bytes` is stat'ed and never opened ("skipped"). Both are
-// decided before any read, and the batch is streamed one file at a time, since
-// 5,000 files of 1 MiB each is a valid config and a marshaled slice would hold
-// all of it at once.
+// decided before any read, and every answer for many files is written one file
+// at a time, since 5,000 files of 1 MiB each is a valid config and a marshaled
+// slice would hold all of it at once.
 //
-// # Two modes
+// # Content hash
 //
-// [WriteBatch] answers for every candidate. [Lookup] answers for one path, the
-// viewer's refresh after a change push, and applies the batch's own tests to it
-// so that a path joins the index only on the terms a full scan would have given
-// it.
+// A file read whole is named by its content hash: the first 128 bits of
+// SHA-256 over its bytes, as 32 lowercase hex digits. The browser keeps each
+// file's scan result under that hash, and tells the stream which ones it holds,
+// so a file it already scanned crosses the wire as its hash alone.
+//
+// # Three modes
+//
+// [WriteStream] answers for every candidate, one line each, sending the text
+// only of the files whose hash the browser does not hold. [WriteBatch], which
+// it replaces, answers for every candidate in one object, text and all.
+// [Lookup] answers for one path, the viewer's refresh after a change push, and
+// applies the same tests to it so that a path joins the index only on the terms
+// a full scan would have given it.
 package planning
 
 import (
