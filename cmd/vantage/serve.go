@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"syscall"
@@ -51,6 +52,7 @@ func newServeCmd() *cobra.Command {
 		walkDepth      int
 		walkTimeout    float64
 		noOpen         bool
+		oneProject     bool
 	)
 
 	cmd := &cobra.Command{
@@ -59,7 +61,13 @@ func newServeCmd() *cobra.Command {
 		Long: "Start the Vantage development server (default command).\n\n" +
 			"PATH may be a directory (served as the repo root) or a single Markdown\n" +
 			"file (its parent becomes the repo root). When omitted the current\n" +
-			"directory is served.",
+			"directory is served.\n\n" +
+			"A directory of clones - one that is not inside a git repository and\n" +
+			"has git repositories among its immediate children - is served the way\n" +
+			"the daemon serves a source_dirs entry: one project per repository,\n" +
+			"named after its directory, plus one project named after PATH for any\n" +
+			"Markdown outside them. Clones made while it runs appear within 30\n" +
+			"seconds. --one-project serves PATH as a single project instead.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := config.Defaults()
@@ -104,6 +112,10 @@ func newServeCmd() *cobra.Command {
 				return err
 			}
 
+			if plan := planServe(cfg, oneProject); plan != nil {
+				fmt.Fprintln(os.Stderr, plan.describe(displayHome()))
+			}
+
 			warnNonLocal(cfg.Host)
 
 			s, err := server.NewServer(cfg)
@@ -129,8 +141,36 @@ func newServeCmd() *cobra.Command {
 	f.IntVar(&walkDepth, "walk-max-depth", 0, "Maximum depth for untracked-file discovery (0 = unlimited)")
 	f.Float64Var(&walkTimeout, "walk-timeout", 30, "Timeout in seconds for untracked-file discovery")
 	f.BoolVar(&noOpen, "no-open", false, "Do not open the browser on start")
+	f.BoolVar(&oneProject, "one-project", false, "Serve PATH as one project even when it is a directory of git clones")
 
 	return cmd
+}
+
+// planServe applies the directory-of-clones split to a resolved serve config
+// unless oneProject asks for the single-project behavior, returning what it did
+// for the startup line, or nil when PATH is served as one project.
+func planServe(cfg *config.Config, oneProject bool) *clonesPlan {
+	if oneProject {
+		return nil
+	}
+	plan, ok := splitClonesDirectory(cfg)
+	if !ok {
+		return nil
+	}
+	return plan
+}
+
+// displayHome is the home directory paths are abbreviated against in startup
+// output, symlink-resolved like every path the config holds; "" when unknown.
+func displayHome() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	if resolved, err := filepath.EvalSymlinks(home); err == nil {
+		return resolved
+	}
+	return home
 }
 
 // runServers runs one http.Server per already-bound listener sharing the

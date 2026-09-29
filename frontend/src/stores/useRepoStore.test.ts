@@ -827,6 +827,34 @@ describe("useRepoStore", () => {
   // The daemon discovers repositories under its source dirs while the app is
   // open, so the list has to be refreshable mid-session — without unpicking
   // the session that is in progress.
+  describe("sortedRepos", () => {
+    const repos = [
+      { name: "beta", last_activity: "2026-09-02T00:00:00Z" },
+      { name: "code", last_activity: null, pinned: true },
+      { name: "alpha", last_activity: "2026-09-01T00:00:00Z" },
+    ];
+
+    it("lists a pinned project first in alphabetical order", () => {
+      useRepoStore.setState({ repos, repoSortMode: "alphabetical" });
+      expect(
+        useRepoStore
+          .getState()
+          .sortedRepos()
+          .map((r) => r.name),
+      ).toEqual(["code", "alpha", "beta"]);
+    });
+
+    it("lists a pinned project first in recent order, even with no activity", () => {
+      useRepoStore.setState({ repos, repoSortMode: "recent" });
+      expect(
+        useRepoStore
+          .getState()
+          .sortedRepos()
+          .map((r) => r.name),
+      ).toEqual(["code", "beta", "alpha"]);
+    });
+  });
+
   describe("refreshRepos", () => {
     const seedSession = () =>
       useRepoStore.setState({

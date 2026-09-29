@@ -83,6 +83,11 @@ type repoServices struct {
 	fs   *fs.FileSystemService
 	// root is the absolute repository root, used to start a watcher.
 	root string
+	// loose marks the project holding the Markdown beside a directory of
+	// clones (see [config.RepoConfig.Loose]): every walk, the git service and
+	// the watcher stop at the repositories below its root, and /repos lists it
+	// first.
+	loose bool
 	// cfg reads this repository's own .vantage.toml — the file vantage-check
 	// also reads. Attached here rather than in NewServer because
 	// newRepoServices is the only path a repository takes into s.repos, whether
@@ -237,23 +242,23 @@ func NewServer(cfg *config.Config) (*Server, error) {
 func (s *Server) buildRepoServices() error {
 	if s.cfg.MultiRepo {
 		for _, rc := range s.cfg.Repos {
-			s.register(rc.Name, rc.Path)
+			s.register(rc)
 		}
 		return nil
 	}
-	s.register("", s.cfg.TargetRepo)
+	s.register(config.RepoConfig{Name: "", Path: s.cfg.TargetRepo})
 	return nil
 }
 
 // register builds and records the services for one repository, returning them.
 // It is how every repository enters s.repos — the configured ones at
 // construction, the discovered ones from the refresh loop.
-func (s *Server) register(name, root string) *repoServices {
-	rs := s.newRepoServices(name, root)
+func (s *Server) register(rc config.RepoConfig) *repoServices {
+	rs := s.newRepoServices(rc)
 	s.reposMu.Lock()
 	defer s.reposMu.Unlock()
-	s.repos[name] = rs
-	s.order = append(s.order, name)
+	s.repos[rc.Name] = rs
+	s.order = append(s.order, rc.Name)
 	return rs
 }
 
@@ -279,27 +284,31 @@ func (s *Server) repoList() []*repoServices {
 	return out
 }
 
-// newRepoServices constructs the git and fs services for one repository root,
-// applying the config's exclude/walk/ignore options to both.
-func (s *Server) newRepoServices(name, root string) *repoServices {
-	gitSvc := git.NewService(root, git.Options{
+// newRepoServices constructs the git and fs services for one repository,
+// applying the config's exclude/walk/ignore options to both, and the
+// repository-boundary rule when rc is the loose project.
+func (s *Server) newRepoServices(rc config.RepoConfig) *repoServices {
+	gitSvc := git.NewService(rc.Path, git.Options{
 		ExcludeDirs:    s.cfg.ExcludeDirs,
 		WalkTimeout:    s.cfg.WalkTimeout,
 		WalkMaxDepth:   s.cfg.WalkMaxDepth,
 		UseIgnoreFiles: s.cfg.UseIgnoreFiles,
+		StopAtRepos:    rc.Loose,
 	})
 	fsSvc := fs.New(fs.Config{
-		RootPath:       root,
+		RootPath:       rc.Path,
 		ExcludeDirs:    s.cfg.ExcludeDirs,
 		UseIgnoreFiles: s.cfg.UseIgnoreFiles,
 		WalkMaxDepth:   s.cfg.WalkMaxDepth,
+		StopAtRepos:    rc.Loose,
 	})
 	return &repoServices{
-		name: name,
-		git:  gitSvc,
-		fs:   fsSvc,
-		root: fsSvc.RootPath(),
-		cfg:  repoconfig.New(fsSvc.RootPath()),
+		name:  rc.Name,
+		git:   gitSvc,
+		fs:    fsSvc,
+		root:  fsSvc.RootPath(),
+		loose: rc.Loose,
+		cfg:   repoconfig.New(fsSvc.RootPath()),
 	}
 }
 
@@ -628,6 +637,7 @@ func (s *Server) startWatcher(ctx context.Context, rs *repoServices) {
 		s.logger.Warn("server: failed to start watcher", "repo", rs.name, "root", rs.root, "error", err)
 		return
 	}
+	w.SetStopAtRepos(rs.loose)
 	s.watchersMu.Lock()
 	s.watchers[rs.name] = w
 	s.watchersMu.Unlock()
@@ -706,7 +716,7 @@ func (s *Server) discoverRepos(ctx context.Context) []string {
 	names := make([]string, 0, len(added))
 	for _, rc := range added {
 		s.logger.Info("server: discovered repository", "repo", rc.Name, "path", rc.Path)
-		s.startWatcher(ctx, s.register(rc.Name, rc.Path))
+		s.startWatcher(ctx, s.register(rc))
 		names = append(names, rc.Name)
 	}
 	return names
@@ -794,13 +804,12 @@ func (s *Server) warmActivity(_ context.Context) {
 	for i, rs := range repos {
 		name := rs.name
 		g.Go(func() error {
-			recents := rs.git.Recents(1, nil, true, true)
-			if len(recents) > 0 {
+			info := model.RepoInfo{Name: name, Pinned: rs.loose}
+			if recents := rs.git.Recents(1, nil, true, true); len(recents) > 0 {
 				t := recents[0].Date.UTC()
-				results[i] = result{name: name, info: model.RepoInfo{Name: name, LastActivity: &t}}
-			} else {
-				results[i] = result{name: name, info: model.RepoInfo{Name: name}}
+				info.LastActivity = &t
 			}
+			results[i] = result{name: name, info: info}
 			return nil
 		})
 	}
