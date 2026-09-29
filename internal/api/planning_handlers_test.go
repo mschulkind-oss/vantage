@@ -185,6 +185,9 @@ func TestPlanningSourcesWithNoConfigServesTheDefaults(t *testing.T) {
 	require.Equal(t, []string{"a.md"}, b.paths())
 }
 
+// A file's answer carries its content hash, the first 128 bits of SHA-256 in
+// hex (here of "---\nstatus: draft\n---\n"), so the result the viewer scans
+// from it is kept under the key the next stream will name.
 func TestPlanningSinglePathAnswersEachKind(t *testing.T) {
 	e := newPlanningEnv(t, map[string]string{
 		"docs/x.md":                        "---\nstatus: draft\n---\n",
@@ -194,7 +197,7 @@ func TestPlanningSinglePathAnswersEachKind(t *testing.T) {
 		".vantage.toml":                    "[planning]\nmax-file-bytes = 64\n",
 	})
 	for target, want := range map[string]string{
-		"/planning/sources?path=docs/x.md":                        `{"path":"docs/x.md","kind":"file","content":"---\nstatus: draft\n---\n"}`,
+		"/planning/sources?path=docs/x.md":                        `{"path":"docs/x.md","kind":"file","hash":"b55fe4e52335215e853f63ea6a91c8da","content":"---\nstatus: draft\n---\n"}`,
 		"/planning/sources?path=docs/huge.md":                     `{"path":"docs/huge.md","kind":"skipped","size":100}`,
 		"/planning/sources?path=docs/bad.md":                      `{"path":"docs/bad.md","kind":"unreadable","reason":"not UTF-8"}`,
 		"/planning/sources?path=.github/pull_request_template.md": `{"path":".github/pull_request_template.md","kind":"absent"}`,

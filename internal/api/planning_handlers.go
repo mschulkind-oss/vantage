@@ -19,8 +19,9 @@ import (
 //
 // With `?path=` it answers for that one path — the viewer's refresh after a
 // change push — as a single `file`, `skipped`, `unreadable` or `absent` entry,
-// under the batch's own tests. See [planning.Lookup]. An empty `path` is a
-// 400, like every other endpoint's.
+// under the batch's own tests, a `file` carrying its content hash beside its
+// text. See [planning.Lookup]. An empty `path` is a 400, like every other
+// endpoint's.
 //
 // The existing /content endpoint is deliberately not the per-file refresh. It
 // serves paths the listing never yields, has no size limit, and answers a
