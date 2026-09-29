@@ -6,6 +6,13 @@ import {
   isOpenNamespace,
   ruleNamespaces,
 } from "../rules/registry.js";
+import {
+  DEFAULT_PLANNING_CONFIG,
+  STAGE_ROLES,
+  isStageRole,
+  type PlanningConfig,
+  type StageRole,
+} from "../../../vantage-md/src/planning/index.js";
 import { Settings } from "./settings.js";
 import type { RuleSetting } from "./types.js";
 
@@ -22,6 +29,12 @@ export interface LoadedConfig {
   path?: string;
   settings: Settings;
   policy: CheckPolicy;
+  /**
+   * `[planning]`, resolved: defaults applied, `stages` null when the table is
+   * absent or empty. `index` and the planning rules read it
+   * (`docs/design/planning-index.md` §9).
+   */
+  planning: PlanningConfig;
 }
 
 /** A config file that cannot be trusted. Never silently ignored. */
@@ -32,7 +45,20 @@ export const CONFIG_FILENAME = ".vantage.toml";
 const DEFAULT_POLICY: CheckPolicy = { strict: false, exitCode: 1 };
 
 export function defaultConfig(): LoadedConfig {
-  return { settings: Settings.defaults(), policy: { ...DEFAULT_POLICY } };
+  return {
+    settings: Settings.defaults(),
+    policy: { ...DEFAULT_POLICY },
+    planning: defaultPlanning(),
+  };
+}
+
+/** A fresh copy: the frozen default's arrays are shared, and not frozen. */
+function defaultPlanning(): PlanningConfig {
+  return {
+    ...DEFAULT_PLANNING_CONFIG,
+    include: [...DEFAULT_PLANNING_CONFIG.include],
+    exclude: [...DEFAULT_PLANNING_CONFIG.exclude],
+  };
 }
 
 /**
@@ -161,7 +187,113 @@ export function parseConfig(
     }
   }
 
-  return { settings: new Settings(overrides), policy };
+  const planning =
+    root["planning"] === undefined
+      ? defaultPlanning()
+      : parsePlanning(asTable(root["planning"], path, "planning"), path);
+
+  return { settings: new Settings(overrides), policy, planning };
+}
+
+/**
+ * `[planning]`, the one table both readers of this file parse: the server for
+ * `include`, `exclude` and the two limits, the checker for all of it
+ * (`docs/design/planning-index.md` §9).
+ *
+ * Refused whole, as `[check]` is. A table the server reads one way and the
+ * checker another would let the page and the gate disagree about which files
+ * are planning documents, so the rules are pinned for both readers by
+ * `internal/repoconfig/testdata/planning-config.json`.
+ */
+function parsePlanning(
+  table: Record<string, unknown>,
+  path: string,
+): PlanningConfig {
+  const planning = defaultPlanning();
+  for (const [key, value] of Object.entries(table)) {
+    switch (key) {
+      case "roadmap":
+        planning.roadmap = asRoadmap(value, path);
+        break;
+      case "include":
+      case "exclude":
+        planning[key] = asPatterns(value, key, path);
+        break;
+      case "max-file-bytes":
+        planning.maxFileBytes = asLimit(value, key, path);
+        break;
+      case "max-candidates":
+        planning.maxCandidates = asLimit(value, key, path);
+        break;
+      case "stages":
+        planning.stages = asStages(value, path);
+        break;
+      default:
+        throw new ConfigError(
+          `${path}: unknown key planning.${key}. [planning] takes roadmap, include, exclude, max-file-bytes, max-candidates and a [planning.stages] table`,
+        );
+    }
+  }
+  return planning;
+}
+
+/**
+ * A repo-relative path: not empty, no leading `/`, no `..` segment. A leading
+ * `./` is dropped, so the value compares equal to the paths the index holds.
+ */
+function asRoadmap(value: unknown, path: string): string {
+  if (typeof value !== "string") {
+    throw new ConfigError(
+      `${path}: planning.roadmap must be a repo-relative path written as text`,
+    );
+  }
+  const roadmap = value.startsWith("./") ? value.slice(2) : value;
+  if (roadmap === "") {
+    throw new ConfigError(`${path}: planning.roadmap is empty`);
+  }
+  if (roadmap.startsWith("/") || roadmap.split("/").includes("..")) {
+    throw new ConfigError(
+      `${path}: planning.roadmap must be a path inside the repository, relative to its root, with no leading / and no .. (got ${JSON.stringify(value)})`,
+    );
+  }
+  return roadmap;
+}
+
+function asPatterns(value: unknown, key: string, path: string): string[] {
+  if (!Array.isArray(value) || !value.every((v) => typeof v === "string")) {
+    throw new ConfigError(
+      `${path}: planning.${key} must be a list of gitignore-style patterns, each written as text`,
+    );
+  }
+  return [...value];
+}
+
+function asLimit(value: unknown, key: string, path: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw new ConfigError(
+      `${path}: planning.${key} must be a whole number of 1 or more (got ${JSON.stringify(value)})`,
+    );
+  }
+  return value;
+}
+
+/** Stage word → role. An empty table is no table (design §9). */
+function asStages(
+  value: unknown,
+  path: string,
+): Record<string, StageRole> | null {
+  const table = asTable(value, path, "planning.stages");
+  let stages: Record<string, StageRole> | null = null;
+  for (const [word, role] of Object.entries(table)) {
+    if (!isStageRole(role)) {
+      throw new ConfigError(
+        `${path}: planning.stages.${JSON.stringify(word)} must be one of ${STAGE_ROLES.map((r) => `"${r}"`).join(", ")} (got ${JSON.stringify(role)})`,
+      );
+    }
+    stages ??= {};
+    stages[word] = role;
+  }
+  return stages;
 }
 
 function assertRuleId(id: string, path: string): void {
