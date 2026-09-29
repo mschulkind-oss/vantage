@@ -4,12 +4,18 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/mschulkind-oss/vantage/internal/config"
 )
 
 // serviceUnitTemplate is the systemd --user unit written by install-service.
@@ -88,10 +94,20 @@ const launchAgentTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 // on Linux, a launchd agent on macOS. Neither is activated for you; both print
 // the commands that do it. On every other platform it says so and exits 0.
 func newInstallServiceCmd() *cobra.Command {
-	return &cobra.Command{
+	var sourceDirs []string
+	cmd := &cobra.Command{
 		Use:   "install-service",
 		Short: "Install vantage as a per-user background service (Linux, macOS)",
-		Args:  cobra.NoArgs,
+		Long: "Install a per-user service that runs `vantage daemon` at login: a\n" +
+			"systemd --user unit on Linux, a launchd agent on macOS. On its own it\n" +
+			"writes the service and prints the commands that start it.\n\n" +
+			"--source-dir DIR (repeatable) also adds DIR to source_dirs in the user\n" +
+			"config (~/.config/vantage/config.toml), creating the file if there is\n" +
+			"none and keeping everything already in it, then installs, enables and\n" +
+			"(re)starts the service, so every git repository in DIR is served in the\n" +
+			"background. Relative paths and ~ are expanded; a directory already\n" +
+			"listed is skipped.",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			exe, err := os.Executable()
 			if err != nil {
@@ -106,9 +122,135 @@ func newInstallServiceCmd() *cobra.Command {
 				return fmt.Errorf("locating home dir: %w", err)
 			}
 
-			return installService(cmd.OutOrStdout(), runtime.GOOS, home, exe)
+			if len(sourceDirs) == 0 {
+				return installService(cmd.OutOrStdout(), runtime.GOOS, home, exe)
+			}
+			cfgPath, err := config.DefaultConfigPath()
+			if err != nil {
+				return err
+			}
+			return installServiceWithSourceDirs(cmd.OutOrStdout(), serviceInstall{
+				goos:       runtime.GOOS,
+				home:       home,
+				exe:        exe,
+				configPath: cfgPath,
+				uid:        os.Getuid(),
+				now:        time.Now(),
+				run:        execRunner,
+			}, sourceDirs)
 		},
 	}
+	cmd.Flags().StringArrayVar(&sourceDirs, "source-dir", nil,
+		"Add a directory of git clones to source_dirs in the user config, then install and start the service (repeatable)")
+	return cmd
+}
+
+// commandRunner runs one external command to completion. install-service
+// --source-dir starts the service through it, and tests replace it with one
+// that records the calls, so no test ever reaches a real systemctl or
+// launchctl.
+type commandRunner func(name string, args ...string) error
+
+// execRunner is the production [commandRunner].
+func execRunner(name string, args ...string) error {
+	out, err := exec.Command(name, args...).CombinedOutput()
+	if err != nil {
+		if msg := strings.TrimSpace(string(out)); msg != "" {
+			return fmt.Errorf("%w: %s", err, msg)
+		}
+		return err
+	}
+	return nil
+}
+
+// serviceInstall is everything installServiceWithSourceDirs would otherwise
+// look up, so every branch is reachable from a test on any host.
+type serviceInstall struct {
+	goos, home, exe, configPath string
+	uid                         int
+	now                         time.Time
+	run                         commandRunner
+}
+
+// installServiceWithSourceDirs adds dirs to the user config's source_dirs,
+// then writes the service definition and starts it — restarting it when it is
+// already running, since the daemon reads source_dirs only at startup. It
+// prints what it changed and what it ran.
+func installServiceWithSourceDirs(out io.Writer, in serviceInstall, dirs []string) error {
+	edit, err := config.AddSourceDirs(in.configPath, dirs, in.now)
+	if err != nil {
+		return err
+	}
+	shown := func(p string) string { return tildePath(p, in.home) }
+	switch {
+	case edit.Created:
+		fmt.Fprintf(out, "Created %s with source_dirs = [%s]\n", shown(edit.Path), strings.Join(edit.Added, ", "))
+	case len(edit.Added) > 0:
+		fmt.Fprintf(out, "Added to source_dirs in %s: %s\n", shown(edit.Path), strings.Join(edit.Added, ", "))
+	}
+	if len(edit.Present) > 0 {
+		fmt.Fprintf(out, "Already in source_dirs: %s\n", strings.Join(edit.Present, ", "))
+	}
+	if edit.Backup != "" {
+		fmt.Fprintf(out, "%s could not be edited in place, so the original is saved as %s\n"+
+			"and the file was rewritten from its settings. Its comments are only in the backup.\n",
+			shown(edit.Path), shown(edit.Backup))
+	}
+
+	cfg, err := config.LoadDaemonFile(in.configPath)
+	if err != nil {
+		return fmt.Errorf("reading the config back: %w", err)
+	}
+	if errs := cfg.Validate(); len(errs) > 0 {
+		return fmt.Errorf("the service was not started, because %s would not start the daemon: %s",
+			shown(in.configPath), strings.Join(errs, "; "))
+	}
+
+	switch in.goos {
+	case "linux":
+		unit, err := writeSystemdUnit(in.home, in.exe)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "Wrote %s\n", shown(unit))
+		for _, args := range [][]string{
+			{"--user", "daemon-reload"},
+			{"--user", "enable", "vantage"},
+			{"--user", "restart", "vantage"},
+		} {
+			if err := runLogged(out, in.run, "systemctl", args...); err != nil {
+				return fmt.Errorf("systemctl %s: %w", strings.Join(args, " "), err)
+			}
+		}
+	case "darwin":
+		plist, err := writeLaunchAgent(in.home, in.exe)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "Wrote %s\n", shown(plist))
+		// bootout fails when the agent is not loaded, which is the first-install
+		// case; bootstrap then loads the plist just written.
+		_ = in.run("launchctl", "bootout", fmt.Sprintf("gui/%d/%s", in.uid, launchAgentLabel))
+		if err := runLogged(out, in.run, "launchctl", "bootstrap", fmt.Sprintf("gui/%d", in.uid), plist); err != nil {
+			return fmt.Errorf("launchctl bootstrap: %w", err)
+		}
+	default:
+		return installService(out, in.goos, in.home, in.exe)
+	}
+
+	host := "127.0.0.1"
+	if len(cfg.Host) > 0 {
+		host = cfg.Host[0]
+	}
+	fmt.Fprintf(out, "Vantage is running in the background at http://%s, serving %d projects.\n",
+		net.JoinHostPort(displayServiceHost(host), strconv.Itoa(cfg.Port)), len(cfg.Repos))
+	return nil
+}
+
+// runLogged prints a command, then runs it.
+func runLogged(out io.Writer, run commandRunner, name string, args ...string) error {
+	fmt.Fprintf(out, "Ran: %s %s\n", name, strings.Join(args, " "))
+	return run(name, args...)
 }
 
 // installService writes the service definition goos uses and prints the
@@ -167,17 +309,26 @@ func serviceStartCommand(goos, home string) string {
 	}
 }
 
-// installSystemdUnit writes ~/.config/systemd/user/vantage.service.
-func installSystemdUnit(out io.Writer, home, exe string) error {
+// writeSystemdUnit writes ~/.config/systemd/user/vantage.service and returns
+// its path.
+func writeSystemdUnit(home, exe string) (string, error) {
 	serviceFile := systemdUnitPath(home)
-	serviceDir := filepath.Dir(serviceFile)
-	if err := os.MkdirAll(serviceDir, 0o755); err != nil {
-		return fmt.Errorf("creating service directory: %w", err)
+	if err := os.MkdirAll(filepath.Dir(serviceFile), 0o755); err != nil {
+		return "", fmt.Errorf("creating service directory: %w", err)
 	}
-
 	unit := fmt.Sprintf(serviceUnitTemplate, exe)
 	if err := os.WriteFile(serviceFile, []byte(unit), 0o644); err != nil {
-		return fmt.Errorf("writing service file: %w", err)
+		return "", fmt.Errorf("writing service file: %w", err)
+	}
+	return serviceFile, nil
+}
+
+// installSystemdUnit writes ~/.config/systemd/user/vantage.service and prints
+// the commands that start it.
+func installSystemdUnit(out io.Writer, home, exe string) error {
+	serviceFile, err := writeSystemdUnit(home, exe)
+	if err != nil {
+		return err
 	}
 
 	fmt.Fprintf(out, "Created systemd service: %s\n", serviceFile)
@@ -191,25 +342,40 @@ func installSystemdUnit(out io.Writer, home, exe string) error {
 	return nil
 }
 
-// installLaunchAgent writes ~/Library/LaunchAgents/<label>.plist and prints the
-// launchctl commands that load, inspect, restart and remove it.
-func installLaunchAgent(out io.Writer, home, exe string) error {
+// launchAgentLogPath is the file the agent's stdout and stderr go to.
+func launchAgentLogPath(home string) string {
+	return filepath.Join(home, "Library", "Logs", "vantage.log")
+}
+
+// writeLaunchAgent writes ~/Library/LaunchAgents/<label>.plist, and the log
+// directory it names, and returns the plist's path.
+func writeLaunchAgent(home, exe string) (string, error) {
 	plistPath := launchAgentPath(home)
-	agentDir := filepath.Dir(plistPath)
-	if err := os.MkdirAll(agentDir, 0o755); err != nil {
-		return fmt.Errorf("creating LaunchAgents directory: %w", err)
+	if err := os.MkdirAll(filepath.Dir(plistPath), 0o755); err != nil {
+		return "", fmt.Errorf("creating LaunchAgents directory: %w", err)
 	}
 
 	// launchd will not create the log file's parent, and a StandardOutPath it
 	// cannot open takes the whole job down with it.
-	logPath := filepath.Join(home, "Library", "Logs", "vantage.log")
+	logPath := launchAgentLogPath(home)
 	if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
-		return fmt.Errorf("creating log directory: %w", err)
+		return "", fmt.Errorf("creating log directory: %w", err)
 	}
 
 	if err := os.WriteFile(plistPath, []byte(launchAgentPlist(exe, home, logPath)), 0o644); err != nil {
-		return fmt.Errorf("writing launch agent: %w", err)
+		return "", fmt.Errorf("writing launch agent: %w", err)
 	}
+	return plistPath, nil
+}
+
+// installLaunchAgent writes ~/Library/LaunchAgents/<label>.plist and prints the
+// launchctl commands that load, inspect, restart and remove it.
+func installLaunchAgent(out io.Writer, home, exe string) error {
+	plistPath, err := writeLaunchAgent(home, exe)
+	if err != nil {
+		return err
+	}
+	logPath := launchAgentLogPath(home)
 
 	fmt.Fprintf(out, "Created launchd agent: %s\n", plistPath)
 	fmt.Fprintln(out, "\nTo start it now and at every login:")
