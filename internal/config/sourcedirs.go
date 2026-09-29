@@ -7,9 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/BurntSushi/toml"
 )
@@ -96,6 +96,9 @@ func AddSourceDirsChecked(path string, dirs []string, now time.Time, check func(
 		if info, err := os.Stat(abs); err != nil || !info.IsDir() {
 			return edit, fmt.Errorf("config: source dir %q is not a directory", d)
 		}
+		if !utf8.ValidString(abs) {
+			return edit, fmt.Errorf("config: source dir %q is not valid UTF-8, which a TOML file cannot hold", d)
+		}
 		wanted = append(wanted, abs)
 	}
 
@@ -162,6 +165,11 @@ func AddSourceDirsChecked(path string, dirs []string, now time.Time, check func(
 	var next []byte
 	if edit.Created {
 		next = []byte(sourceDirsHeader + createdPortLines + "source_dirs = " + tomlStringArray(edit.Added) + "\n")
+		// The same proof an edit gets: what was written reads back as meant.
+		created := map[string]any{"port": int64(Defaults().Port)}
+		if !sameApartFromSourceDirs(created, next, edit.Added) {
+			return edit, fmt.Errorf("config: the new %s would not read back as written", path)
+		}
 	} else {
 		next, err = editSourceDirsText(original, edit.Added)
 		if err == nil && !sameApartFromSourceDirs(before, next, append(existing, edit.Added...)) {
@@ -304,9 +312,43 @@ func homeRelative(p, home string) string {
 func tomlStringArray(ss []string) string {
 	quoted := make([]string, len(ss))
 	for i, s := range ss {
-		quoted[i] = strconv.Quote(s)
+		quoted[i] = tomlString(s)
 	}
 	return "[" + strings.Join(quoted, ", ") + "]"
+}
+
+// tomlString renders s, valid UTF-8, as a TOML basic string. Go's quoting is
+// not TOML's: it writes \a and \v, which TOML does not have, and \xHH, which
+// TOML reads as a code point rather than a byte.
+func tomlString(s string) string {
+	var b strings.Builder
+	b.WriteByte('"')
+	for _, r := range s {
+		switch r {
+		case '"':
+			b.WriteString(`\"`)
+		case '\\':
+			b.WriteString(`\\`)
+		case '\b':
+			b.WriteString(`\b`)
+		case '\t':
+			b.WriteString(`\t`)
+		case '\n':
+			b.WriteString(`\n`)
+		case '\f':
+			b.WriteString(`\f`)
+		case '\r':
+			b.WriteString(`\r`)
+		default:
+			if r < 0x20 || r == 0x7f {
+				fmt.Fprintf(&b, `\u%04X`, r)
+			} else {
+				b.WriteRune(r)
+			}
+		}
+	}
+	b.WriteByte('"')
+	return b.String()
 }
 
 // stageFile writes data to a new temp file beside path, with the existing
@@ -380,7 +422,7 @@ func appendSourceDirsText(text []byte, added []string) ([]byte, error) {
 			default:
 				out.WriteString(", ")
 			}
-			out.WriteString(strconv.Quote(a))
+			out.WriteString(tomlString(a))
 		}
 		out.Write(text[assign.close:])
 		return out.Bytes(), nil
@@ -402,7 +444,7 @@ func appendSourceDirsText(text []byte, added []string) ([]byte, error) {
 		out.Write(text[:lineStart])
 	}
 	for _, a := range added {
-		out.WriteString(indent + strconv.Quote(a) + ",\n")
+		out.WriteString(indent + tomlString(a) + ",\n")
 	}
 	out.Write(text[lineStart:])
 	return out.Bytes(), nil

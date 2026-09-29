@@ -339,6 +339,48 @@ func TestAddSourceDirsWritesNothingItsCheckRefuses(t *testing.T) {
 	require.Equal(t, []string{"~/work", "~/code"}, decodedSourceDirs(t, cfgPath))
 }
 
+// A directory's name can hold any byte but "/" and NUL. Go's quoting writes
+// \a and \v, which TOML does not have, so a created config with such a name
+// did not parse; an existing one fell back to a rewrite for nothing. Each is
+// now spelled the way TOML spells it, in the created file and in the edited
+// one alike.
+func TestAddSourceDirsWritesControlCharactersAsTOML(t *testing.T) {
+	home, cfgPath := sourceDirsFixture(t)
+	var names []string
+	for _, name := range []string{"vt\vhere", "bell\ahere", "tab\there", "del\x7fhere", `quote"back\slash`} {
+		require.NoError(t, os.MkdirAll(filepath.Join(home, name), 0o755))
+		names = append(names, filepath.Join(home, name))
+	}
+
+	edit, err := AddSourceDirs(cfgPath, names[:2], editTime)
+	require.NoError(t, err)
+	require.True(t, edit.Created)
+	cfg, err := LoadDaemonFile(cfgPath)
+	require.NoError(t, err, readString(t, cfgPath))
+	require.Equal(t, names[:2], cfg.SourceDirs)
+
+	for _, layout := range []string{"source_dirs = [\"~/code\"]\n", "source_dirs = [\n  \"~/code\",\n]\n", "# none yet\n"} {
+		require.NoError(t, os.WriteFile(cfgPath, []byte(layout), 0o644))
+		edit, err = AddSourceDirs(cfgPath, names, editTime)
+		require.NoError(t, err)
+		require.Empty(t, edit.Backup, "edited in place: %q", layout)
+		cfg, err = LoadDaemonFile(cfgPath)
+		require.NoError(t, err, readString(t, cfgPath))
+		require.Subset(t, cfg.SourceDirs, names, layout)
+	}
+}
+
+// A name that is not UTF-8 has no TOML spelling at all: TOML's \xHH is a code
+// point, not a byte, so writing one would name another directory.
+func TestAddSourceDirsRefusesANameTOMLCannotHold(t *testing.T) {
+	home, cfgPath := sourceDirsFixture(t)
+	bad := filepath.Join(home, "bad\xffbyte")
+	require.NoError(t, os.MkdirAll(bad, 0o755))
+	_, err := AddSourceDirs(cfgPath, []string{bad}, editTime)
+	require.ErrorContains(t, err, "not valid UTF-8")
+	require.NoFileExists(t, cfgPath)
+}
+
 func TestAddSourceDirsRefusesAMalformedConfig(t *testing.T) {
 	_, cfgPath := sourceDirsFixture(t)
 	require.NoError(t, os.MkdirAll(filepath.Dir(cfgPath), 0o755))
