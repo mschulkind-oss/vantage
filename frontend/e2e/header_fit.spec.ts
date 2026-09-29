@@ -543,6 +543,15 @@ test.describe("viewer header under width pressure", () => {
       await expect(header.getByRole("button", { name })).toBeVisible();
     }
     await expect(header.getByRole("link", { name: "2 commits" })).toBeVisible();
+    // A sighted reader has only the tooltip once the label is gone, so the
+    // count the label carried is in it too.
+    await expect(header.getByRole("link", { name: "2 commits" })).toHaveAttribute(
+      "title",
+      "View full history: 2 commits",
+    );
+    await expect(
+      header.getByRole("button", { name: "Dismiss 3 answered" }),
+    ).toHaveAttribute("title", "Dismiss the 3 comments the agent has answered");
   });
 });
 

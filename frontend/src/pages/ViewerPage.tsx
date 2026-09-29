@@ -80,6 +80,11 @@ import { ReviewStripe } from "../components/ReviewStripe";
 import { TableOfContents } from "../components/TableOfContents";
 
 /** Format an ISO date string as a short local datetime (e.g. "Mar 2, 2026 3:45 PM"). */
+/** `noun`, or its plural for any count but one: `plural(2, "comment")`. */
+function plural(count: number, noun: string): string {
+  return count === 1 ? noun : `${noun}s`;
+}
+
 function formatDateTime(dateStr: string): string {
   try {
     return new Date(dateStr).toLocaleString(undefined, {
@@ -1250,7 +1255,7 @@ export const ViewerPage: React.FC = () => {
                             : `/history/${currentPath}`
                         }
                         className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors no-underline"
-                        title="View full history"
+                        title={`View full history: ${history.length} ${plural(history.length, "commit")}`}
                       >
                         <History size={14} />
                         <span className="hdr-label">
@@ -1348,8 +1353,10 @@ export const ViewerPage: React.FC = () => {
                                 reviewDismissConfirm
                                   ? "Click again to dismiss all"
                                   : answeredReviewCount > 0
-                                    ? "Dismiss comments the agent has answered"
-                                    : "Dismiss all comments"
+                                    ? `Dismiss the ${answeredReviewCount} ${plural(answeredReviewCount, "comment")} the agent has answered`
+                                    : activeReviewCount === 1
+                                      ? "Dismiss 1 comment"
+                                      : `Dismiss all ${activeReviewCount} comments`
                               }
                             >
                               <Check size={14} />
@@ -1376,7 +1383,7 @@ export const ViewerPage: React.FC = () => {
                                 }
                               }}
                               className="flex items-center gap-1.5 text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg px-2 py-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors cursor-pointer"
-                              title="Copy all comments to clipboard"
+                              title={`Copy ${pendingReviewCount} ${plural(pendingReviewCount, "comment")} to clipboard`}
                             >
                               {reviewCopied ? (
                                 <Check size={14} />
@@ -1517,8 +1524,10 @@ export const ViewerPage: React.FC = () => {
                               reviewDismissConfirm
                                 ? "Click again to dismiss all"
                                 : answeredReviewCount > 0
-                                  ? "Dismiss comments the agent has answered"
-                                  : "Dismiss all comments"
+                                  ? `Dismiss the ${answeredReviewCount} ${plural(answeredReviewCount, "comment")} the agent has answered`
+                                  : activeReviewCount === 1
+                                    ? "Dismiss 1 comment"
+                                    : `Dismiss all ${activeReviewCount} comments`
                             }
                           >
                             <Check size={14} />
@@ -1542,7 +1551,7 @@ export const ViewerPage: React.FC = () => {
                               }
                             }}
                             className="flex items-center gap-1.5 text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg px-2 py-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors cursor-pointer"
-                            title="Copy all comments to clipboard"
+                            title={`Copy ${pendingReviewCount} ${plural(pendingReviewCount, "comment")} to clipboard`}
                           >
                             {reviewCopied ? (
                               <Check size={14} />

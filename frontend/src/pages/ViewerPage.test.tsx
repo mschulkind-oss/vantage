@@ -535,7 +535,21 @@ describe("ViewerPage", () => {
     };
 
     const copyButtons = () =>
-      screen.queryAllByTitle("Copy all comments to clipboard");
+      screen.queryAllByTitle(/^Copy \d+ comments? to clipboard$/);
+
+    // An icon-only button keeps its name for a screen reader, but a sighted
+    // reader has only the tooltip, and "Copy all comments" said nothing of
+    // how many the label had counted.
+    it("counts the comments in the review buttons' tooltips", () => {
+      seedReview([]);
+      renderPage();
+      expect(
+        screen.getAllByTitle("Copy 1 comment to clipboard").length,
+      ).toBeGreaterThan(0);
+      expect(screen.getAllByTitle("Dismiss 1 comment").length).toBeGreaterThan(
+        0,
+      );
+    });
 
     it("shows Copy when the agent has not responded yet", () => {
       seedReview([]);
