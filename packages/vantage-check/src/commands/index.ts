@@ -64,10 +64,18 @@ interface ScannedProject {
 }
 
 export function indexCommand(options: IndexOptions, io: Io): number {
+  // The config file never moves the project: `--config /tmp/x.toml` still
+  // scans the tree the command was run in (Plan Q16).
+  const root = repositoryRoot(io.cwd) ?? io.cwd;
+
+  // The root's own config and nothing above it, the one file the server
+  // reads for this repository (repo-config.md §2.2), so the page and this
+  // command read the same `[planning]` (P7).
   let loaded;
   try {
     loaded = loadConfig({
-      from: io.cwd,
+      from: root,
+      stopAt: root,
       ...(options.configPath === undefined
         ? {}
         : { explicitPath: resolve(io.cwd, options.configPath) }),
@@ -79,9 +87,6 @@ export function indexCommand(options: IndexOptions, io: Io): number {
     return EXIT_USAGE;
   }
 
-  // The config file never moves the project: `--config /tmp/x.toml` still
-  // scans the tree the command was run in (Plan Q16).
-  const root = repositoryRoot(io.cwd) ?? io.cwd;
   const project = scanProject(root, loaded.planning);
   const { index } = project;
   const sections = index.refused ? null : derivePlanningSections(index);
