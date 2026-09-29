@@ -6,14 +6,18 @@
  * shared fixtures and real documents from the repository, which this file
  * resolves from the repository root.
  */
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_PLANNING_CONFIG,
   buildPlanningIndex,
+  scanCandidate,
+  type CardBlock,
   type PlanningConfig,
   type PlanningIndex,
   type PlanningSources,
+  type ScannedEntry,
 } from "vantage-md/planning";
 
 /** This file's own URL, held in a variable so Vite does not rewrite it. */
@@ -77,4 +81,49 @@ export function indexOf(
   config: Partial<PlanningConfig> = {},
 ): PlanningIndex {
   return buildPlanningIndex(sourcesOf(tree, {}, config));
+}
+
+/**
+ * A file's content hash as the server computes it: the first 128 bits of
+ * SHA-256 over its UTF-8 bytes, in lowercase hex
+ * (`docs/design/planning-index-at-scale.md` §3).
+ */
+export function contentHash(content: string): string {
+  return createHash("sha256")
+    .update(content, "utf8")
+    .digest("hex")
+    .slice(0, 32);
+}
+
+/** One file of a tree, read and scanned. */
+export type ScannedFile = Extract<ScannedEntry, { kind: "file" }>;
+
+/**
+ * A tree of path → content as the scan worker holds it once it has read each
+ * file (`docs/design/planning-index-at-scale.md` §5.2): every file scanned,
+ * with its content hash, in path order as the stream lists them, and each
+ * planning document's card blocks by path. For the suites of the worker, the
+ * planning store and the planning page.
+ */
+export function scannedOf(
+  tree: Record<string, string>,
+  config: Partial<PlanningConfig> = {},
+): { entries: ScannedFile[]; blocks: Record<string, CardBlock[]> } {
+  const full = planningConfig(config);
+  const entries = Object.keys(tree)
+    .sort()
+    .map((path): ScannedFile => {
+      const content = tree[path] ?? "";
+      return {
+        kind: "file",
+        path,
+        hash: contentHash(content),
+        result: scanCandidate(full, path, content),
+      };
+    });
+  const blocks: Record<string, CardBlock[]> = {};
+  for (const { path, result } of entries) {
+    if (result.kind === "planning") blocks[path] = result.cards;
+  }
+  return { entries, blocks };
 }

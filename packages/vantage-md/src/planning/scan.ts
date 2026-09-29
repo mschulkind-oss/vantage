@@ -1028,8 +1028,9 @@ function problemReason(parsed: ParsedFrontmatter): string | undefined {
 }
 
 /**
- * Read one candidate. `isRoadmap` is decided by the index, from the config
- * (`buildPlanningIndex`, `applySource`); no other caller passes it.
+ * Read one candidate. `isRoadmap` is decided from the config by
+ * `scanCandidate`, which is how the index scans a file and how anything
+ * scanning for it should; no other caller passes it.
  *
  * Only a planning document contributes: one whose frontmatter has `status` or
  * `stage`, or that holds an `oq` directive, or the roadmap (design §3.1). A

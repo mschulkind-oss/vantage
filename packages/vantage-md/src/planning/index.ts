@@ -40,18 +40,21 @@ export {
   normalizeLeaning,
 } from "../vantageDirectives.js";
 export {
+  applyScanned,
   applySource,
   buildPlanningIndex,
   findDocument,
   parsePlanningSources,
   parseSourceEntry,
   planningIndexBuilder,
+  scanCandidate,
   withoutDirectory,
 } from "./model.js";
 export type {
   PlanningIndex,
   PlanningIndexBuilder,
   PlanningSources,
+  ScannedEntry,
   SourceEntry,
 } from "./model.js";
 export { badgeFor, badgeSpeech, badgeText } from "./badges.js";
