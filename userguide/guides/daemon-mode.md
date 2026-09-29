@@ -86,6 +86,13 @@ vantage install-service
 
 This creates `~/.config/systemd/user/vantage.service`.
 
+> [!TIP]
+> For a directory of clones, `vantage install-service --source-dir ~/code` does
+> every step on this page at once: it adds `~/code` to `source_dirs` in your
+> config (creating the file if needed, keeping everything already in it), then
+> installs, enables and restarts the service. The same flag works on macOS. See
+> the [CLI Reference](../reference/cli-reference.md#vantage-install-service).
+
 ### Enable and start
 
 ```bash

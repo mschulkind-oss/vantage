@@ -271,6 +271,8 @@ source_dirs = ["~/code", "~/projects"]
 
 Manually listed `[[repos]]` take precedence — duplicates are skipped. See [Configuration](reference/configuration.md#source-directory-auto-discovery) for details.
 
+`vantage ~/code` serves a directory of clones the same way without a config file: one project per clone, plus one for any Markdown outside them. See [Getting Started](getting-started.md#serve-a-directory-of-clones).
+
 ## Review Mode
 
 Vantage includes a built-in review mode for annotating documents:

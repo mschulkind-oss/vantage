@@ -58,6 +58,13 @@ vantage ~/Documents/notes/intro.md # open a specific file
 
 The server starts, your default browser opens to the file (or directory root), and the sidebar focuses on the parent directory of what you opened. Pass `--no-open` to suppress the browser launch.
 
+Point it at the directory holding your git clones and each clone becomes its own project, exactly as the daemon's `source_dirs` would make them (`--one-project` keeps them together). To keep that directory served in the background:
+
+```bash
+vantage ~/code                                   # one project per clone
+vantage install-service --source-dir ~/code      # the same, as a login service
+```
+
 ### Multiple Directories (Daemon Mode)
 
 To serve several directories at once, create a config and run the daemon:
@@ -247,6 +254,7 @@ vantage serve [PATH] [flags]        # Same as above, with explicit flags
 vantage daemon [-c config.toml]     # Serve multiple directories from config
 vantage init-config                 # Generate example config file
 vantage install-service             # Install a login service (systemd / launchd)
+vantage install-service --source-dir DIR  # Add DIR's clones to the config, install and start it
 vantage build PATH -o OUTPUT        # Build a static site
 vantage perf-report [--url]         # Performance diagnostics from a running instance
 ```
@@ -263,6 +271,7 @@ vantage perf-report [--url]         # Performance diagnostics from a running ins
 | `--use-ignore-files`  | Honor `.gitignore` and ignore files during walks     |
 | `--walk-max-depth`    | Max directory depth for untracked file discovery     |
 | `--walk-timeout`      | Timeout (seconds) for git ls-files subprocess        |
+| `--one-project`       | Serve a directory of git clones as one project, not one per clone |
 
 ---
 
@@ -312,6 +321,7 @@ In daemon mode, endpoints are prefixed with `/api/r/{repo}/`:
 | `POST /api/perf/reset`      | Reset performance counters              |
 | `GET /api/themes`           | User color themes + the defaults       |
 | `GET /api/themes/{id}`      | One user color theme's stylesheet      |
+| `GET /api/degraded`         | Projects too big for a limit (watches, walk timeout), for the viewer's banner |
 | `WS /ws`                    | WebSocket for live reload notifications |
 
 ---
