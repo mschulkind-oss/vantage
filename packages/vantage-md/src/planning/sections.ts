@@ -100,12 +100,15 @@ const isOpen = (q: PlanningQuestion): boolean => q.state === "open";
  * id; a link to a heading routes nothing, since a compacted question is cited
  * through its document's `#decision-ledger` heading and routing that would
  * route the document's unrelated open questions (Plan Q12). Links to
- * non-planning documents, and to `done` documents, route nothing.
+ * non-planning documents, and to `done` documents, route nothing, and neither
+ * do the roadmap's links to itself: a document's links are its links to
+ * another candidate (§3.2).
  */
 function routedBy(
   index: PlanningIndex,
   link: PlanningLink,
 ): PlanningQuestion[] | null {
+  if (link.target === index.config.roadmap) return null;
   const doc = findDocument(index, link.target);
   if (doc === undefined || !isLive(index, doc)) return null;
   if (link.fragment === null) return doc.questions;
