@@ -429,3 +429,46 @@ test("a drawn badge is part of the row's click target, and looks it", async ({
   await badge.click();
   await expect(page).toHaveURL(new RegExp(`/${DIR}/api-keys\\.md$`));
 });
+
+test("in forced colors every dot and ring is still drawn", async ({ page }) => {
+  // Windows High Contrast replaces every background with Canvas and drops
+  // box shadows, which would leave a gap where each status was.
+  await page.emulateMedia({ forcedColors: "active" });
+  await openTree(page, 360, "light");
+  const marks = await page
+    .getByTestId("sidebar")
+    .locator(".vantage-tree-badge__dot")
+    .evaluateAll((dots) => {
+      const canvas = getComputedStyle(
+        document.querySelector("[data-testid=sidebar]")!,
+      ).backgroundColor;
+      return dots.map((dot) => {
+        const s = getComputedStyle(dot);
+        const fill =
+          s.backgroundColor !== "rgba(0, 0, 0, 0)" &&
+          s.backgroundColor !== canvas;
+        const ring = parseFloat(s.borderTopWidth) > 0;
+        const ringDistinct = ring && s.borderTopColor !== canvas;
+        return {
+          file: dot.closest("a")!.getAttribute("href"),
+          undeclared: dot.classList.contains(
+            "vantage-tree-badge__dot--undeclared",
+          ),
+          fill,
+          ring: ringDistinct,
+        };
+      });
+    });
+  expect(marks.length).toBeGreaterThan(0);
+  for (const m of marks) {
+    // A ring stays a ring and a dot stays a dot, so the undeclared stage is
+    // still told apart from in-review.
+    expect
+      .soft(m, `${m.file}`)
+      .toEqual(
+        m.undeclared
+          ? { ...m, fill: false, ring: true }
+          : { ...m, fill: true, ring: false },
+      );
+  }
+});
