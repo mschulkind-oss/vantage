@@ -205,6 +205,22 @@ describe("the planning index and the contents column (§3.3)", () => {
       "No id at all.",
       "",
     ].join("\n"),
+    "a question in a footnote, whose unit is the footnote's <li>": [
+      "Text with a note.[^1]",
+      "",
+      "[^1]: The note.",
+      "",
+      '    <!-- vantage: oq id=OQ-FN1 leaning="Later." -->',
+      "",
+      "    \u{1F512} **OQ-FN1: Written in a footnote?**",
+      "",
+    ].join("\n"),
+    "a bold title on a heading": [
+      '<!-- vantage: oq id=OQ-H2 leaning="Heading." -->',
+      "",
+      "### \u{1F4AC} **OQ-H2: A question as a bold heading?**",
+      "",
+    ].join("\n"),
     "frontmatter shifting every line": [
       "---",
       "status: in-review",
