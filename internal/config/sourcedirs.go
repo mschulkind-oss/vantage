@@ -152,7 +152,7 @@ func AddSourceDirs(path string, dirs []string, now time.Time) (SourceDirsEdit, e
 	if edit.Created {
 		next = []byte(sourceDirsHeader + createdPortLines + "source_dirs = " + tomlStringArray(edit.Added) + "\n")
 	} else {
-		next, err = appendSourceDirsText(original, edit.Added)
+		next, err = editSourceDirsText(original, edit.Added)
 		if err == nil && !sameApartFromSourceDirs(before, next, append(existing, edit.Added...)) {
 			err = errors.New("the edited file does not decode to the same settings")
 		}
@@ -315,6 +315,10 @@ func writeFileAtomic(path string, data []byte) error {
 	return nil
 }
 
+// editSourceDirsText is the text edit AddSourceDirs makes, a variable so that a
+// test can hand it a bad one and see the round-trip check catch it.
+var editSourceDirsText = appendSourceDirsText
+
 // errNoInPlaceEdit is returned by appendSourceDirsText when the file's text
 // has no form of source_dirs it knows how to extend.
 var errNoInPlaceEdit = errors.New("source_dirs is written in a form that cannot be edited in place")
@@ -359,17 +363,9 @@ func appendSourceDirsText(text []byte, added []string) ([]byte, error) {
 	}
 
 	// Several lines: one line per new entry, before the closing bracket's line,
-	// indented like the first entry.
+	// indented like the first entry that starts a line of its own.
 	lineStart := bytes.LastIndexByte(text[:assign.close], '\n') + 1
-	indent := "  "
-	if hasItems {
-		first := assign.open + 1
-		for first < len(text) && (text[first] == ' ' || text[first] == '\t' || text[first] == '\n' || text[first] == '\r') {
-			first++
-		}
-		ls := bytes.LastIndexByte(text[:first], '\n') + 1
-		indent = string(text[ls:first])
-	}
+	indent := arrayItemIndent(text, assign.open, lineStart)
 	closingIsAlone := len(bytes.TrimSpace(text[lineStart:assign.close])) == 0
 	if !closingIsAlone {
 		return nil, errNoInPlaceEdit
@@ -386,6 +382,30 @@ func appendSourceDirsText(text []byte, added []string) ([]byte, error) {
 	}
 	out.Write(text[lineStart:])
 	return out.Bytes(), nil
+}
+
+// arrayItemIndent is the leading whitespace of the first line of a multi-line
+// array that starts with an item — the lines after the one holding its "[" at
+// open, up to the closing bracket's line at end — or two spaces when no item
+// starts a line. Everything before the first item cannot be the indent: a
+// comment can follow "[", and so can the first item.
+func arrayItemIndent(text []byte, open, end int) string {
+	nl := bytes.IndexByte(text[open:end], '\n')
+	if nl < 0 {
+		return "  "
+	}
+	for pos := open + nl + 1; pos < end; {
+		lineEnd := end
+		if i := bytes.IndexByte(text[pos:end], '\n'); i >= 0 {
+			lineEnd = pos + i
+		}
+		line := text[pos:lineEnd]
+		if item := bytes.TrimLeft(line, " \t"); len(bytes.TrimSpace(item)) > 0 && item[0] != '#' {
+			return string(line[:len(line)-len(item)])
+		}
+		pos = lineEnd + 1
+	}
+	return "  "
 }
 
 // insertBeforeTable inserts line before the first table header at offset

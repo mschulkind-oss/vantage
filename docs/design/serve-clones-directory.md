@@ -236,11 +236,15 @@ config. The command then installs the service and starts it. Without
   would leave the dotfile without the entry and move the path the daemon keys
   its bookmarks on. A file the user cannot write, such as one made read-only
   or a link into `/nix/store`, is refused with its name rather than replaced.
-- **When a safe in-place edit is impossible, the old file is kept.** That covers
-  an array containing comments, a key written as a dotted or quoted name, or a
-  failed round-trip check. The original is copied to
-  `config.toml.bak-<timestamp>` first, then rewritten from the decoded values,
-  and the command says that it made a backup and where.
+- **When a safe in-place edit is impossible, the old file is kept.** Comments
+  inside the array, or after its `[`, are no obstacle: a new entry goes on a
+  line of its own, indented like the first entry that starts a line. What the
+  edit cannot rewrite is a key written as a quoted name, a closing bracket that
+  shares its line with an entry, or text that fails the round-trip check. For
+  those, the original is copied to `config.toml.bak-<timestamp>` first, then
+  rewritten from the decoded values, and the command says that it made a
+  backup and where. A dotted key makes `source_dirs` a table, which is no list
+  of directories, so that file is refused.
 - **A missing config is created** with a short header, the key, and the
   default port written down. A daemon whose port is only the default moves to
   the next free one when it is busy, as it is while the `serve` that printed
