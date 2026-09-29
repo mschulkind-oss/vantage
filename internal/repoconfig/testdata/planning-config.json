@@ -1,0 +1,260 @@
+{
+  "description": [
+    "How a .vantage.toml resolves its [planning] table: `ok` says whether the whole file is accepted, and `planning` is the resolved table as vantage-md's PlanningConfig (camelCase, defaults applied, `stages` null when absent or empty).",
+    "A rejected file is rejected whole: the server logs it and serves the defaults, and vantage-check exits 2.",
+    "The rules the cases pin: only roadmap, include, exclude, max-file-bytes, max-candidates and the stages sub-table are keys; include and exclude are lists of strings, and an explicit empty list is kept; both limits are whole numbers of at least 1; each stage maps to open, ready, built or done, and the word is kept exactly as written; the roadmap is a non-empty repo-relative path with a leading ./ dropped, and no leading / and no .. segment.",
+    "No case writes an integral float such as 5000.0: TOML calls it a float, Go refuses it for an integer field, and JavaScript cannot tell it from 5000, so the two readers would split on it.",
+    "`stages = [\"DESIGN\"]` must be refused, but BurntSushi/toml decodes a TOML array into a Go map without an error and leaves the map empty, so the server has to check the value's type itself.",
+    "Read by the server's internal/repoconfig test and by vantage-check's config test."
+  ],
+  "cases": [
+    {
+      "name": "no [planning] table",
+      "toml": "[check]\nstrict = true\n",
+      "ok": true,
+      "planning": {
+        "roadmap": "roadmap.md",
+        "include": [
+          "**/*.md"
+        ],
+        "exclude": [],
+        "maxFileBytes": 1048576,
+        "maxCandidates": 5000,
+        "stages": null
+      }
+    },
+    {
+      "name": "an empty [planning] table",
+      "toml": "[planning]\n",
+      "ok": true,
+      "planning": {
+        "roadmap": "roadmap.md",
+        "include": [
+          "**/*.md"
+        ],
+        "exclude": [],
+        "maxFileBytes": 1048576,
+        "maxCandidates": 5000,
+        "stages": null
+      }
+    },
+    {
+      "name": "every key",
+      "toml": "[planning]\nroadmap = \"docs/ROADMAP.md\"\ninclude = [\"docs/**\", \"*.md\"]\nexclude = [\"docs/gallery/**\"]\nmax-file-bytes = 2048\nmax-candidates = 12\n\n[planning.stages]\nDESIGN = \"open\"\nDECIDED = \"ready\"\nBUILT = \"built\"\nGRADUATED = \"done\"\n",
+      "ok": true,
+      "planning": {
+        "roadmap": "docs/ROADMAP.md",
+        "include": [
+          "docs/**",
+          "*.md"
+        ],
+        "exclude": [
+          "docs/gallery/**"
+        ],
+        "maxFileBytes": 2048,
+        "maxCandidates": 12,
+        "stages": {
+          "DESIGN": "open",
+          "DECIDED": "ready",
+          "BUILT": "built",
+          "GRADUATED": "done"
+        }
+      }
+    },
+    {
+      "name": "an empty [planning.stages] table is no stages",
+      "toml": "[planning]\nexclude = [\"docs/gallery/**\"]\n\n[planning.stages]\n",
+      "ok": true,
+      "planning": {
+        "roadmap": "roadmap.md",
+        "include": [
+          "**/*.md"
+        ],
+        "exclude": [
+          "docs/gallery/**"
+        ],
+        "maxFileBytes": 1048576,
+        "maxCandidates": 5000,
+        "stages": null
+      }
+    },
+    {
+      "name": "this repository's own table",
+      "toml": "[planning]\nexclude = [\"docs/gallery/**\", \"frontend/e2e/fixtures/**\"]\n\n[planning.stages]\nSKETCH = \"open\"\nDESIGN = \"open\"\nDECIDED = \"ready\"\nBUILT = \"built\"\nGRADUATED = \"done\"\nSUPERSEDED = \"done\"\nCURRENT = \"done\"\n",
+      "ok": true,
+      "planning": {
+        "roadmap": "roadmap.md",
+        "include": [
+          "**/*.md"
+        ],
+        "exclude": [
+          "docs/gallery/**",
+          "frontend/e2e/fixtures/**"
+        ],
+        "maxFileBytes": 1048576,
+        "maxCandidates": 5000,
+        "stages": {
+          "SKETCH": "open",
+          "DESIGN": "open",
+          "DECIDED": "ready",
+          "BUILT": "built",
+          "GRADUATED": "done",
+          "SUPERSEDED": "done",
+          "CURRENT": "done"
+        }
+      }
+    },
+    {
+      "name": "an explicitly empty include is kept, not defaulted",
+      "toml": "[planning]\ninclude = []\n",
+      "ok": true,
+      "planning": {
+        "roadmap": "roadmap.md",
+        "include": [],
+        "exclude": [],
+        "maxFileBytes": 1048576,
+        "maxCandidates": 5000,
+        "stages": null
+      }
+    },
+    {
+      "name": "stage words are taken as written",
+      "toml": "[planning.stages]\nDECIDED = \"ready\"\nDecided = \"open\"\n\"Not decided\" = \"open\"\n",
+      "ok": true,
+      "planning": {
+        "roadmap": "roadmap.md",
+        "include": [
+          "**/*.md"
+        ],
+        "exclude": [],
+        "maxFileBytes": 1048576,
+        "maxCandidates": 5000,
+        "stages": {
+          "DECIDED": "ready",
+          "Decided": "open",
+          "Not decided": "open"
+        }
+      }
+    },
+    {
+      "name": "a leading ./ on the roadmap is dropped",
+      "toml": "[planning]\nroadmap = \"./plans/roadmap.md\"\n",
+      "ok": true,
+      "planning": {
+        "roadmap": "plans/roadmap.md",
+        "include": [
+          "**/*.md"
+        ],
+        "exclude": [],
+        "maxFileBytes": 1048576,
+        "maxCandidates": 5000,
+        "stages": null
+      }
+    },
+    {
+      "name": "a limit of one",
+      "toml": "[planning]\nmax-file-bytes = 1\nmax-candidates = 1\n",
+      "ok": true,
+      "planning": {
+        "roadmap": "roadmap.md",
+        "include": [
+          "**/*.md"
+        ],
+        "exclude": [],
+        "maxFileBytes": 1,
+        "maxCandidates": 1,
+        "stages": null
+      }
+    },
+    {
+      "name": "an unknown key",
+      "toml": "[planning]\nroadmaps = \"roadmap.md\"\n",
+      "ok": false
+    },
+    {
+      "name": "an unknown sub-table",
+      "toml": "[planning.roles]\nDESIGN = \"open\"\n",
+      "ok": false
+    },
+    {
+      "name": "a role outside the four",
+      "toml": "[planning.stages]\nDESIGN = \"open\"\nSHIPPED = \"shipped\"\n",
+      "ok": false
+    },
+    {
+      "name": "a role that is not a string",
+      "toml": "[planning.stages]\nDESIGN = 1\n",
+      "ok": false
+    },
+    {
+      "name": "stages that are not a table",
+      "toml": "[planning]\nstages = [\"DESIGN\"]\n",
+      "ok": false
+    },
+    {
+      "name": "a limit of zero",
+      "toml": "[planning]\nmax-file-bytes = 0\n",
+      "ok": false
+    },
+    {
+      "name": "a negative limit",
+      "toml": "[planning]\nmax-candidates = -1\n",
+      "ok": false
+    },
+    {
+      "name": "a fractional limit",
+      "toml": "[planning]\nmax-candidates = 1.5\n",
+      "ok": false
+    },
+    {
+      "name": "a limit written as text",
+      "toml": "[planning]\nmax-candidates = \"5000\"\n",
+      "ok": false
+    },
+    {
+      "name": "include that is not a list",
+      "toml": "[planning]\ninclude = \"**/*.md\"\n",
+      "ok": false
+    },
+    {
+      "name": "include holding a non-string",
+      "toml": "[planning]\ninclude = [\"**/*.md\", 3]\n",
+      "ok": false
+    },
+    {
+      "name": "a roadmap that is not a string",
+      "toml": "[planning]\nroadmap = 3\n",
+      "ok": false
+    },
+    {
+      "name": "an empty roadmap",
+      "toml": "[planning]\nroadmap = \"\"\n",
+      "ok": false
+    },
+    {
+      "name": "an absolute roadmap",
+      "toml": "[planning]\nroadmap = \"/roadmap.md\"\n",
+      "ok": false
+    },
+    {
+      "name": "a roadmap outside the repository",
+      "toml": "[planning]\nroadmap = \"../roadmap.md\"\n",
+      "ok": false
+    },
+    {
+      "name": "a roadmap that climbs out and back",
+      "toml": "[planning]\nroadmap = \"docs/../roadmap.md\"\n",
+      "ok": false
+    },
+    {
+      "name": "planning that is not a table",
+      "toml": "planning = 3\n",
+      "ok": false
+    },
+    {
+      "name": "a file that is not TOML",
+      "toml": "[planning\nroadmap = \"roadmap.md\"\n",
+      "ok": false
+    }
+  ]
+}
