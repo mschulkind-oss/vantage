@@ -413,6 +413,82 @@ describe("the card shows its question, and only its question", () => {
   });
 });
 
+describe("a preview card (planning-index-at-scale.md §10.4)", () => {
+  it("shows the question as the index knows it, and only Show question and Open document", () => {
+    const question = byId("OQ-B2");
+    renderCard(question, {
+      card: undefined,
+      preview: true,
+      onShowQuestion: async () => null,
+    });
+    const article = screen.getByRole("article");
+    const body = article.querySelector("[data-planning-preview]");
+    expect(body).not.toBeNull();
+    expect(body).toHaveTextContent(question.title);
+    expect(body).toHaveTextContent(`Open · Leaning: ${question.leaning}`);
+    expect(body).toHaveTextContent(
+      `${question.cardChars.toLocaleString("en-US")} characters`,
+    );
+    expect(article.querySelector("[data-planning-card-unit]")).toBeNull();
+    expect(
+      screen
+        .getAllByRole("button")
+        .map((b) => b.textContent)
+        .filter(Boolean),
+    ).toEqual(["Show question"]);
+    expect(screen.getByRole("link", { name: "Open document" })).toBeTruthy();
+  });
+
+  it("renders the whole card in place once Show question has its block", async () => {
+    const question = byId("OQ-B2");
+    let answer!: (block: CardBlock | null) => void;
+    const onShowQuestion = vi.fn(
+      () =>
+        new Promise<CardBlock | null>((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const { container } = renderCard(question, {
+      card: undefined,
+      preview: true,
+      onShowQuestion,
+    });
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "Show question" }));
+    });
+    expect(onShowQuestion).toHaveBeenCalledWith(question);
+    expect(
+      screen.getByRole("button", { name: "Show question" }),
+    ).toBeDisabled();
+    await act(async () => {
+      answer(blockOf(question));
+    });
+    const unit = container.querySelector("[data-planning-card-unit]");
+    expect(unit?.textContent).toContain("OQ-B2");
+    expect(container.querySelector("[data-planning-preview]")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Take this leaning" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Answer…" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Show question" })).toBeNull();
+  });
+
+  it("stays a preview, and says so, when the block cannot be had", async () => {
+    renderCard(byId("OQ-B2"), {
+      card: undefined,
+      preview: true,
+      onShowQuestion: async () => null,
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Show question" }));
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Could not load the question.",
+    );
+    expect(screen.getByRole("button", { name: "Show question" })).toBeEnabled();
+  });
+});
+
 describe("the card's controls follow the question's state (Plan Q5)", () => {
   const status = readRepoFile("docs/gallery/status.md");
   const statusQuestions = (() => {

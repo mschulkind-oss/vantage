@@ -236,9 +236,9 @@ let lastBlocks: ReadonlyMap<string, HeldBlock> = new Map();
 /**
  * The card block of every listed question, from the scanner client, which
  * cut it in the scan (`docs/design/planning-index-at-scale.md` §7.4): asked
- * for in full, once per document version, by the content hash the index
- * holds, and kept on screen while the next version's is on its way. No
- * document's text reaches this thread (S2).
+ * for once per document version, by the content hash the index holds, and
+ * kept on screen while the next version's is on its way. No document's text
+ * reaches this thread (S2). A preview card's question is not asked about.
  *
  * `complete` says every listed question has its current version's answer.
  *
@@ -305,7 +305,6 @@ function useCardBlocks(
       .cards(
         repo,
         missing.map(([, want]) => want),
-        { full: true },
       )
       .then(
         (answers) =>
@@ -603,13 +602,16 @@ export const PlanningPage: React.FC = () => {
         : listedQuestionsOf(index, sections),
     [index, sections],
   );
-  // The questions of the pages shown: the cards to render.
+  // The questions of the pages shown whose blocks the cards render: not a
+  // preview card's.
   const shownQuestions = useMemo(
     () =>
       (layout?.sections ?? []).flatMap((section) =>
         section.kind === "cards"
           ? section.items.flatMap((entry) =>
-              entry.kind === "question" ? [entry.question] : [],
+              entry.kind === "question" && !entry.preview
+                ? [entry.question]
+                : [],
             )
           : [],
       ),
@@ -722,13 +724,31 @@ export const PlanningPage: React.FC = () => {
     document.getElementById(id)?.scrollIntoView?.({ block: "start" });
   }, [shownPages]);
 
-  const card = (question: PlanningQuestion) => {
+  // Show question on a preview card: the whole block, which only a request
+  // naming it in full is answered with (§10.4).
+  const showQuestion = useCallback(
+    async (question: PlanningQuestion): Promise<CardBlock | null> => {
+      const hash = hashes?.[question.path];
+      if (repo === null || hash === undefined) return null;
+      const [answer] = await planningScanner().cards(
+        repo,
+        [{ path: question.path, hash, startLine: question.block.startLine }],
+        { full: true },
+      );
+      return answer !== undefined && "block" in answer ? answer.block : null;
+    },
+    [repo, hashes],
+  );
+
+  const card = (question: PlanningQuestion, preview: boolean) => {
     const key = refKey(question);
     return (
       <PlanningQuestionCard
         key={key}
         question={question}
-        card={blocks.blockFor(question)}
+        card={preview ? undefined : blocks.blockFor(question)}
+        preview={preview}
+        onShowQuestion={showQuestion}
         badge={
           index === null
             ? null
@@ -944,7 +964,7 @@ const Sections: React.FC<{
   sections: PlanningSections;
   layout: PlanningLayout;
   index: PlanningIndex;
-  card: (question: PlanningQuestion) => React.ReactNode;
+  card: (question: PlanningQuestion, preview: boolean) => React.ReactNode;
   documentRow: (path: string, extra?: React.ReactNode) => React.ReactNode;
   buildPath: (path: string) => string;
   onFlip: OnFlip;
@@ -962,7 +982,7 @@ const Sections: React.FC<{
   const entry = (item: CardEntry) =>
     item.kind === "question" ? (
       <React.Fragment key={`question\n${refKey(item.question)}`}>
-        {card(item.question)}
+        {card(item.question, item.preview)}
       </React.Fragment>
     ) : (
       <React.Fragment key={`doc\n${item.path}`}>

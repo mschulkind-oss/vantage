@@ -21,8 +21,16 @@
  * leaning (when it has a leaning), Answer… and Open document; an answered one
  * Answer… and Open document; a blocked one, which only Waiting lists, Open
  * document alone.
+ *
+ * A question whose block is too large to render unasked is a **preview card**
+ * (`docs/design/planning-index-at-scale.md` §10.4): its file name and badge,
+ * the question's marker, title, state and leaning, and Show question and Open
+ * document. Take this leaning and Answer… need the rendered host block for
+ * their anchor, so they appear once Show question has rendered the whole card
+ * in place — the reader's own action, so the page may grow.
  */
 import React, { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { Eye } from "lucide-react";
 import type {
   CardBlock,
   PlanningBadge,
@@ -74,9 +82,17 @@ interface PlanningQuestionCardProps {
   question: PlanningQuestion;
   /**
    * The question's card block, from the scanner client: `undefined` while it
-   * is on its way, and `null` when the document no longer has it.
+   * is on its way, and `null` when the document no longer has it. A preview
+   * card has none until Show question fetches it.
    */
   card: CardBlock | null | undefined;
+  /** The block is past the size a card renders unasked (§10.4). */
+  preview?: boolean;
+  /**
+   * Fetch the whole block of a preview card's question, for Show question;
+   * `null` when it could not be had.
+   */
+  onShowQuestion?: (question: PlanningQuestion) => Promise<CardBlock | null>;
   /** The document's own badge, or `null` when it has nothing to show. */
   badge: PlanningBadge | null;
   /** The document's review comments, or `undefined` until they load. */
@@ -196,9 +212,40 @@ const sameState = (a: CardState, b: CardState): boolean =>
   a.scoped.length === b.scoped.length &&
   a.scoped.every((id, i) => b.scoped[i] === id);
 
+/** How a question's state reads on a preview card. */
+const STATE_LABEL: Record<PlanningQuestion["state"], string> = {
+  open: "Open",
+  answered: "Answered",
+  blocked: "Blocked",
+};
+
+/** A preview card's body: the question as the index knows it, and no more. */
+const PreviewBody: React.FC<{ question: PlanningQuestion }> = ({
+  question,
+}) => (
+  <div data-planning-preview className="text-sm">
+    <p className="font-medium text-slate-800 dark:text-slate-100">
+      {question.marker !== "" && (
+        <span aria-hidden="true">{question.marker} </span>
+      )}
+      {question.title}
+    </p>
+    <p className="mt-0.5 text-[13px] text-slate-600 dark:text-slate-400">
+      {STATE_LABEL[question.state]}
+      {question.leaning !== null && <> · Leaning: {question.leaning}</>}
+    </p>
+    <p className="mt-1 text-[12px] text-slate-500 dark:text-slate-400">
+      Too long to show here unasked:{" "}
+      {question.cardChars.toLocaleString("en-US")} characters.
+    </p>
+  </div>
+);
+
 export const PlanningQuestionCard: React.FC<PlanningQuestionCardProps> = ({
   question,
-  card,
+  card: given,
+  preview = false,
+  onShowQuestion,
   badge,
   comments,
   href,
@@ -206,6 +253,33 @@ export const PlanningQuestionCard: React.FC<PlanningQuestionCardProps> = ({
   onFile,
   onScoped,
 }) => {
+  // Show question's answer, for the question it was fetched for.
+  const [shown, setShown] = useState<{
+    question: PlanningQuestion;
+    block: CardBlock | null | "loading";
+  } | null>(null);
+  const full = shown?.question === question ? shown.block : null;
+  const previewing = preview && (full === null || full === "loading");
+  const card = preview ? (previewing ? undefined : (full as CardBlock)) : given;
+  const [showFailed, setShowFailed] = useState(false);
+  const showQuestion = useCallback(() => {
+    if (onShowQuestion === undefined) return;
+    setShowFailed(false);
+    setShown({ question, block: "loading" });
+    void onShowQuestion(question).then(
+      (block) => {
+        setShown((prev) =>
+          prev?.question === question ? { question, block } : prev,
+        );
+        if (block === null) setShowFailed(true);
+      },
+      () => {
+        setShown(null);
+        setShowFailed(true);
+      },
+    );
+  }, [onShowQuestion, question]);
+
   const bodyRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<CardState>(EMPTY_STATE);
   const [answering, setAnswering] = useState<{
@@ -329,7 +403,9 @@ export const PlanningQuestionCard: React.FC<PlanningQuestionCardProps> = ({
       </div>
 
       <div ref={bodyRef} className="planning-card-body">
-        {card === undefined ? null : card === null ? (
+        {previewing ? (
+          <PreviewBody question={question} />
+        ) : card === undefined ? null : card === null ? (
           <p className="text-sm text-slate-500 dark:text-slate-400">
             This question's document is not in the planning index any more.
           </p>
@@ -344,6 +420,17 @@ export const PlanningQuestionCard: React.FC<PlanningQuestionCardProps> = ({
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
+        {previewing && onShowQuestion !== undefined && (
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 rounded border border-slate-300 px-2.5 py-0.5 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+            disabled={full === "loading"}
+            onClick={showQuestion}
+          >
+            <Eye size={12} aria-hidden="true" />
+            Show question
+          </button>
+        )}
         {canTake &&
           (state.takenId !== null ? (
             <span className="review-oq-taken">{OQ_TAKEN_LABEL}</span>
@@ -394,6 +481,14 @@ export const PlanningQuestionCard: React.FC<PlanningQuestionCardProps> = ({
             className="text-[11px] text-red-600 dark:text-red-400"
           >
             Not saved: {error}
+          </span>
+        )}
+        {showFailed && (
+          <span
+            role="alert"
+            className="text-[11px] text-red-600 dark:text-red-400"
+          >
+            Could not load the question.
           </span>
         )}
       </div>
