@@ -95,7 +95,8 @@ entry:
   seconds, and a deleted one drops out.
 - Markdown that sits in the directory but in none of the clones (a `notes.md`
   beside them, say) is served as one more project, named after the directory
-  and listed first. It never shows the clones' files, and a link from one of
+  and listed first. A clone that has the directory's name keeps it, and this
+  project becomes `code-2` instead. It never shows the clones' files, and a link from one of
   its notes into a clone opens the document in the clone's own project. With
   no such Markdown, there is no extra project.
 - Linked worktrees are not served as projects, just as the daemon skips them.

@@ -35,8 +35,10 @@ type clonesPlan struct {
 // daemon's own discovery, so the two modes cannot drift; and because
 // SourceDirs is set, the server's refresh loop picks up a clone made after
 // startup exactly as the daemon's does. The loose project, when there is one,
-// is registered first so that a clone sharing the directory's name takes the
-// "-2" suffix rather than the other way round.
+// is named after the clones are, so every clone gets the name the daemon would
+// give it and a link to one means the same project in both; a clone sharing
+// the directory's name leaves the loose project the "-2" suffix. It is still
+// listed first.
 func splitClonesDirectory(cfg *config.Config) (*clonesPlan, bool) {
 	dir := cfg.TargetRepo
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
@@ -56,19 +58,32 @@ func splitClonesDirectory(cfg *config.Config) (*clonesPlan, bool) {
 	cfg.Repos = nil
 
 	plan := &clonesPlan{Dir: dir}
-	loose := config.RepoConfig{Name: looseProjectName(dir), Path: dir, Loose: true}
-	if hasLooseMarkdown(cfg, dir) {
-		cfg.Repos = append(cfg.Repos, loose)
-		plan.Loose = loose.Name
-	}
+	wantLoose := hasLooseMarkdown(cfg, dir)
 	plan.Repos = len(cfg.DiscoverReposFromSourceDirs())
-	if len(cfg.Repos) == 0 {
-		// Every child is a linked worktree, which no mode serves. Serving
-		// nothing at all would be worse than serving what is beside them.
-		cfg.Repos = append(cfg.Repos, loose)
+	// With no clone to serve — every child is a linked worktree, which no
+	// mode serves — serving nothing at all would be worse than serving what is
+	// beside them.
+	if wantLoose || len(cfg.Repos) == 0 {
+		loose := config.RepoConfig{Name: freeRepoName(looseProjectName(dir), cfg.Repos), Path: dir, Loose: true}
+		cfg.Repos = append([]config.RepoConfig{loose}, cfg.Repos...)
 		plan.Loose = loose.Name
 	}
 	return plan, true
+}
+
+// freeRepoName is name, or — when one of repos already has it — name with the
+// first "-2", "-3", … suffix none of them has: the daemon's rule for a
+// collision.
+func freeRepoName(name string, repos []config.RepoConfig) string {
+	taken := make(map[string]bool, len(repos))
+	for _, r := range repos {
+		taken[r.Name] = true
+	}
+	candidate := name
+	for n := 2; taken[candidate]; n++ {
+		candidate = fmt.Sprintf("%s-%d", name, n)
+	}
+	return candidate
 }
 
 // holdsRepositories reports whether any immediate, non-hidden child of dir is a
