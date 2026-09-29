@@ -35,6 +35,13 @@ import { readRepoFile, repoPath } from "../test/planning";
 
 // Store writes fire command requests through axios; the viewer pulls the store in.
 vi.mock("axios");
+// The planning index is its own suites' subject (usePlanningStore.test.ts,
+// usePlanningLinkBadges.test.tsx). Here it stays idle, so rendering the viewer
+// issues no planning request and draws no badge.
+vi.mock("../stores/usePlanningStore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../stores/usePlanningStore")>()),
+  usePlanningIndex: () => ({ status: "idle" }),
+}));
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual("react-router-dom");
   return { ...actual, useNavigate: () => vi.fn() };

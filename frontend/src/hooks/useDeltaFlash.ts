@@ -45,6 +45,23 @@ export function applyDeltaFlash(
 }
 
 /**
+ * Nodes another pass hangs off a block that say nothing about the document:
+ * planning badges (`docs/design/planning-index.md` §5.3), whose text is the
+ * linked document's state. The badge pass runs after this one, so a snapshot
+ * taken with them would differ from its predecessor whenever an index update
+ * and a content change met, and flash a block whose text never changed.
+ */
+const NOT_CONTENT = "[data-vantage-planning-badge]";
+
+/** A block's markup without `NOT_CONTENT`, for the diff below. */
+export function snapshotOf(el: HTMLElement): string {
+  if (el.querySelector(NOT_CONTENT) === null) return el.outerHTML;
+  const clone = el.cloneNode(true) as HTMLElement;
+  for (const node of clone.querySelectorAll(NOT_CONTENT)) node.remove();
+  return clone.outerHTML;
+}
+
+/**
  * Hook that detects which rendered markdown blocks changed between updates
  * and applies a flash animation only to the changed elements.
  *
@@ -66,7 +83,7 @@ export function useDeltaFlash(
     if (!container) return;
 
     const children = Array.from(container.children) as HTMLElement[];
-    const newSnapshots = children.map((el) => el.outerHTML);
+    const newSnapshots = children.map(snapshotOf);
 
     const contentChanged = prevContentRef.current !== content;
     const sameFile = prevPathRef.current === path;

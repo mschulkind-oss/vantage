@@ -1548,6 +1548,54 @@ th.review-block-hovered {
 }
 
 /* ──────────────────────────────────────────
+   Planning badges (docs/design/planning-index.md §5)
+   ────────────────────────────────────────── */
+/* A badge sits after a link as its own element and says what the link's target
+   says about itself: its status chip, its stage and its open questions, or one
+   question's state. The space before it is this margin and never a text node:
+   the badge is stripped from every text a review anchor, the contents column or
+   a copy reads, and a space beside it would survive the strip.
+
+   `user-select: none` keeps it out of a copied selection, which is the other
+   place §5.3 says a badge's text must not reach. */
+.vantage-planning-badge {
+  display: inline-flex;
+  align-items: baseline;
+  margin-left: 0.4em;
+  font-size: 0.8em;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--vantage-tone-muted-ink);
+  white-space: nowrap;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+/* The separator is generated, like the chip's case, so it is never text. */
+.vantage-planning-badge__part + .vantage-planning-badge__part::before {
+  content: "·";
+  padding: 0 0.35em;
+  color: var(--vantage-tone-muted-ink);
+}
+/* The status chip's own geometry, sized to the badge rather than to 11px. */
+.vantage-planning-badge .vantage-chip {
+  --vantage-chip-size: 0.85em;
+  vertical-align: baseline;
+}
+.vantage-planning-badge__part--open,
+.vantage-planning-badge__part--blocked {
+  color: var(--vantage-tone-note-ink);
+}
+.vantage-planning-badge__part--answered {
+  color: var(--vantage-tone-tip-ink);
+}
+/* A stage outside the declared words (§4), and a question that is not there. */
+.vantage-planning-badge__part--warning {
+  color: var(--vantage-tone-warning-ink);
+  font-weight: 600;
+}
+
+/* ──────────────────────────────────────────
    Review stripe (scroll-position nav)
    ────────────────────────────────────────── */
 .review-stripe {
@@ -1890,6 +1938,17 @@ th.review-block-hovered {
   .review-oq-taken,
   .review-oq-undo {
     display: none !important;
+  }
+
+  /* A planning badge prints as plain text (planning-index.md §5.3): the chip's
+     box and wash are screen chrome, its words are the fact. */
+  .vantage-planning-badge .vantage-chip {
+    padding: 0;
+    border: 0;
+    background: none;
+    font-weight: inherit;
+    letter-spacing: normal;
+    text-transform: none;
   }
 
   /* Remove layout constraints so content flows naturally */

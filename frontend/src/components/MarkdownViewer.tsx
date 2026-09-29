@@ -16,6 +16,12 @@ import {
   type InlineReviewActions,
 } from "../hooks/useReviewHighlights";
 import { useOpenQuestionButtons } from "../hooks/useOpenQuestionButtons";
+import {
+  linkTargetAttributes,
+  usePlanningLinkBadges,
+} from "../hooks/usePlanningLinkBadges";
+import { usePlanningIndex } from "../stores/usePlanningStore";
+import { PLANNING_BADGE_ATTR } from "./PlanningBadge";
 import { useCollapseSections } from "../hooks/useCollapseSections";
 import { useReviewStore } from "../stores/useReviewStore";
 import { ReviewCommentPopover } from "./ReviewCommentPopover";
@@ -524,9 +530,11 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       // OQ affordance — the take button, the "Leaning taken" chip, and Undo —
       // sits in a row carrying `data-vantage-oq-button`, so the one selector
       // covers the chip, which is a <span> and would not be caught by `button`.
+      // A planning badge sits beside a link, not in it, and clicking one does
+      // nothing (planning-index.md §5.3) — least of all open a comment.
       if (
         target.closest(
-          "a, button, [data-review-inline-comment], [data-vantage-oq-button]",
+          `a, button, [data-review-inline-comment], [data-vantage-oq-button], [${PLANNING_BADGE_ATTR}]`,
         )
       )
         return;
@@ -615,11 +623,16 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
         children?: React.ReactNode;
       } & React.AnchorHTMLAttributes<HTMLAnchorElement>) {
         const resolvedHref = resolveHref(href);
+        // The link's repository path, stamped for the badge pass to read: the
+        // rendered `href` carries `/{repo}/` in daemon mode and keeps `..`
+        // unresolved, so it is never parsed back into a path. After `props`, so
+        // nothing a document writes can stand in for it.
         return (
           <a
             href={resolvedHref}
             onClick={(e) => href && handleLinkClick(e, href)}
             {...props}
+            {...linkTargetAttributes(currentPath, href)}
           >
             {children}
           </a>
@@ -644,7 +657,22 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
         );
       },
     }),
-    [handleLinkClick, resolveHref, headingWithAnchor],
+    [handleLinkClick, resolveHref, headingWithAnchor, currentPath],
+  );
+
+  // Link badges (docs/design/planning-index.md §5). Ungated like the collapse
+  // pass: a badge is how a link reads, not a review affordance. Until the index
+  // is ready, and whenever it failed, the pass only sweeps — so no first render
+  // waits on it, and a failed batch leaves the document as it renders today.
+  // After `markdownComponents`, because a new one remounts every link.
+  const planning = usePlanningIndex();
+  const planningIndex = planning.status === "ready" ? planning.index : null;
+  usePlanningLinkBadges(
+    containerRef,
+    planningIndex,
+    currentPath,
+    body,
+    markdownComponents,
   );
 
   return (

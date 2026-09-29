@@ -18,6 +18,13 @@ import type { CommentReaction, ReviewComment } from "../types";
 
 // Store writes (resolve, dismiss, reply, …) fire command requests via axios.
 vi.mock("axios");
+// The planning index is its own suites' subject (usePlanningStore.test.ts,
+// usePlanningLinkBadges.test.tsx). Here it stays idle, so rendering the viewer
+// issues no planning request and draws no badge.
+vi.mock("../stores/usePlanningStore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../stores/usePlanningStore")>()),
+  usePlanningIndex: () => ({ status: "idle" }),
+}));
 
 // Mock MermaidDiagram (imported from vantage-md/react by MarkdownViewer)
 vi.mock("vantage-md/react", async () => {
