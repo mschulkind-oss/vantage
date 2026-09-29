@@ -188,6 +188,8 @@ type Watcher struct {
 	// panel polling every second, an agent, a shell — reloads every open
 	// browser for nothing.
 	gitStateFP map[string]string
+	// rescan carries the directories [Watcher.Rescan] hands the event loop.
+	rescan chan string
 }
 
 // watcherStats are reset every heartbeat so they describe the most recent
@@ -227,7 +229,46 @@ func NewWatcher(root, repoName string, mgr *Manager, store *review.Store, useIgn
 		logger:     logger.With("component", "watcher", "repo", repoName),
 		gitStateFP: map[string]string{},
 		dirs:       map[string]struct{}{},
+		rescan:     make(chan string, 16),
 	}, nil
+}
+
+// Rescan asks the running watcher to watch dir, a directory below its root, as
+// though it had just been created, reporting the Markdown already inside it.
+// It is for a directory that has stopped being a repository while the loose
+// project's watcher, which never entered it, heard nothing from inside: the
+// server calls it when it retires a clone that lost its .git
+// (docs/design/serve-clones-directory.md §3). It does not block; a request the
+// loop has no room for is dropped and logged.
+func (w *Watcher) Rescan(dir string) {
+	select {
+	case w.rescan <- dir:
+	default:
+		w.logger.Warn("watcher: too many directories to rescan at once; skipping one", "path", dir)
+	}
+}
+
+// rescanDir is [Watcher.Rescan]'s work, run on the event loop: dir is watched
+// afresh, and found hears each content path already in it, unless dir is
+// outside the root, gone, pruned, already watched, or still a boundary.
+func (w *Watcher) rescanDir(dir string, found func(rel string)) {
+	rel, err := filepath.Rel(w.root, dir)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return
+	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return
+	}
+	if gitsvc.IsWorktree(dir) || (w.stopAtRepos && gitsvc.IsRepoBoundary(dir)) || shouldPruneDir(rel, w.matcher) {
+		return
+	}
+	w.mu.Lock()
+	_, watched := w.dirs[filepath.ToSlash(rel)]
+	w.mu.Unlock()
+	if watched {
+		return
+	}
+	w.watchTree(dir, found)
 }
 
 // SetStopAtRepos makes every repository below the root — a directory holding a
@@ -323,6 +364,14 @@ func (w *Watcher) Start(ctx context.Context) error {
 			}
 			w.handleError(err)
 
+		case dir := <-w.rescan:
+			w.rescanDir(dir, func(found string) {
+				w.mu.Lock()
+				w.stats.kept++
+				w.mu.Unlock()
+				co.add(found)
+			})
+
 		case <-heartbeat.C:
 			w.logHeartbeat()
 		}
@@ -395,6 +444,15 @@ func (w *Watcher) watchTree(dir string, found func(rel string)) int {
 			w.logAddWatchFailure(path, addErr)
 			return nil
 		}
+		// A .git that git wrote between the check above and the watch's
+		// registration sent no event this watch could hear, so the check is
+		// made again now that anything later will be heard.
+		if w.stopAtRepos && path != w.root && gitsvc.IsRepoBoundary(path) {
+			for _, gone := range w.forgetDir(filepath.ToSlash(rel)) {
+				w.unregisterWatch(filepath.Join(w.root, filepath.FromSlash(gone)))
+			}
+			return iofs.SkipDir
+		}
 		added++
 		return nil
 	})
@@ -411,8 +469,10 @@ func (w *Watcher) handleEvent(ev fsnotify.Event, co *coalescer) {
 
 	// A .git appearing is a directory becoming a repository — `git clone` or
 	// `git worktree add` into the tree. When repositories are boundaries, the
-	// watches registered under it before git got that far are dropped.
-	if ev.Has(fsnotify.Create) && w.stopAtRepos && filepath.Base(ev.Name) == ".git" {
+	// watches registered under it before git got that far are dropped. A
+	// worktree's .git is a file git opens before it writes "gitdir:" into it,
+	// so its Create can find it empty, and the Write after is what counts.
+	if (ev.Has(fsnotify.Create) || ev.Has(fsnotify.Write)) && w.stopAtRepos && filepath.Base(ev.Name) == ".git" {
 		parent := filepath.Dir(ev.Name)
 		if rel, relErr := filepath.Rel(w.root, parent); relErr == nil && rel != "." && gitsvc.IsRepoBoundary(parent) {
 			for _, dir := range w.forgetDir(filepath.ToSlash(rel)) {
