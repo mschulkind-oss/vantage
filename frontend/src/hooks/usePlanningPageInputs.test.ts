@@ -164,8 +164,10 @@ describe("one set of inputs", () => {
     await inputsOf(ready);
     // Needs you's first card, and Unrouted's.
     expect(asked[0]?.map((w) => w.path)).toEqual(["plans/a.md", "plans/b.md"]);
+    // Page 2 of Needs you, and Unrouted's page again, whose block the first
+    // set already holds.
     await inputsOf(ready, { "needs-you": "2" });
-    expect(asked[1]?.map((w) => w.path)).toEqual(["plans/a.md", "plans/b.md"]);
+    expect(asked[1]?.map((w) => w.path)).toEqual(["plans/a.md"]);
     expect(asked[1]?.[0]?.startLine).not.toBe(asked[0]?.[0]?.startLine);
   });
 
@@ -263,28 +265,58 @@ describe("one set of inputs", () => {
 describe("the cache of sets", () => {
   it("keeps the last pageInputsKept sets, least recently used first out", async () => {
     setPlanningLimitsForTests({ pageEntries: 1, pageInputsKept: 2 });
-    const asked = serve();
+    serve();
     const first = readyOf();
     const second = readyOf();
-    await inputsOf(first);
-    await inputsOf(first, { "needs-you": "2" });
+    const load = (
+      ready: Extract<PlanningLoad, { status: "ready" }>,
+      request = {},
+    ) => loadPageInputs("", ready, layoutOf(ready, request));
+    const one = load(first);
+    await one.promise;
+    const two = load(first, { "needs-you": "2" });
+    await two.promise;
     // Used again, so page 2's set is now the oldest.
-    await inputsOf(first);
-    expect(asked).toHaveLength(2);
+    expect(load(first)).toBe(one);
     // A third set pushes it out.
-    await inputsOf(second);
-    expect(asked).toHaveLength(3);
-    await inputsOf(first);
-    expect(asked).toHaveLength(3);
-    await inputsOf(first, { "needs-you": "2" });
-    expect(asked).toHaveLength(4);
+    await load(second).promise;
+    expect(load(first)).toBe(one);
+    expect(load(first, { "needs-you": "2" })).not.toBe(two);
   });
 
-  it("keeps sets of different index versions apart", async () => {
+  it("reuses, in a set of a new version, the blocks a cached set holds for the same content", async () => {
     const asked = serve();
+    const first = await inputsOf(readyOf());
+    const second = await inputsOf(readyOf());
+    expect(second.key).not.toBe(first.key);
+    expect(asked).toHaveLength(1);
+    for (const [key, block] of first.blocks) {
+      expect(second.blocks.get(key)).toBe(block);
+    }
+  });
+
+  it("asks again for a block whose document changed", async () => {
+    const asked = serve(() => ({
+      cards: async (_repo, want) =>
+        want.map((w) => ({
+          path: w.path,
+          block: {
+            startLine: w.startLine,
+            endLine: w.startLine,
+            markdown: `${w.path} at ${w.hash}`,
+            lineOffset: 0,
+          },
+        })),
+    }));
     await inputsOf(readyOf());
-    await inputsOf(readyOf());
+    const changed = readyOf();
+    const edited = {
+      ...changed,
+      hashes: { ...changed.hashes, "plans/b.md": "0".repeat(32) },
+    };
+    await inputsOf(edited);
     expect(asked).toHaveLength(2);
+    expect(asked[1]?.map((w) => w.path)).toEqual(["plans/b.md"]);
   });
 });
 
