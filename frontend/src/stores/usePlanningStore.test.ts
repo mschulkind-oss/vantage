@@ -1132,6 +1132,28 @@ describe("the store's own guards, whatever the scanner reports", () => {
     expect(load()).toBe(settled);
   });
 
+  it("ignores whatever a build reports once it is over", () => {
+    const hand = handScanner();
+    store().ensure("");
+    const [build] = hand.builds;
+    act(() => eventsOf(TREE).forEach((event) => build?.on(event)));
+    const settled = load();
+    expect(settled.status).toBe("ready");
+    act(() => {
+      build?.on({ type: "ready" });
+      build?.on({ type: "failed", message: "late", shape: false });
+    });
+    expect(load()).toBe(settled);
+
+    // And a failed one stays failed.
+    store().rescan("");
+    const retry = hand.builds[1];
+    act(() => retry?.on({ type: "failed", message: "boom", shape: false }));
+    const failed = load();
+    act(() => eventsOf(TREE).forEach((event) => retry?.on(event)));
+    expect(load()).toBe(failed);
+  });
+
   it("reads a ready with no header before it as no planning index", () => {
     const hand = handScanner();
     store().ensure("");
