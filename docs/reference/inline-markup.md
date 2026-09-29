@@ -348,6 +348,13 @@ positions. Members are joined by an upward bleed keyed off `data-vantage-run`
 > treatment. Computed-style assertions cannot catch this — the pseudo-element's
 > `left` was correct all along; it simply did not paint. Only a pixel test sees it.
 
+**On paper the rule is gray, and it needs its gutter there too.** The print
+block in `styles/directives.css` recolors it `#57606a`, and the host's print
+block zeroes the content wrapper's padding. Together those put the rule outside
+the page area, where Chrome clips, so until 2026-09-28 no toned document printed
+a rule at all. The host now gives the wrapper a left padding of
+`--vantage-tone-rule-offset`, and only when the page holds a toned block.
+
 ## GFM alerts
 
 `> [!WARNING]` and its four siblings are compiled by `rehypeVantageAlerts` into

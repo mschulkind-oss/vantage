@@ -258,6 +258,32 @@ describe("a member's own left border is compensated, so the rule stays straight"
   });
 });
 
+describe("print leaves the rule room on the page", () => {
+  /**
+   * The rule stands `--vantage-tone-rule-offset` left of the content edge, and
+   * the app's print block zeroes the content wrapper's padding. That put the
+   * rule outside the page area, where Chrome clips: a PDF of the tone-rule
+   * fixture drew no fill in the rule's print gray on either page. Only a pixel
+   * scan in print sees it (`e2e/directive_tone_rule.spec.ts`), and the commit
+   * gate runs no browser, so the padding that brings it back is pinned here.
+   */
+  const WRAPPER = "[data-content-scroll] > div:has([data-vantage-tone])";
+
+  it("pads the content wrapper by exactly the rule's offset", () => {
+    expect(declaration(appCss, WRAPPER, "padding-left")).toBe(
+      "var(--vantage-tone-rule-offset) !important",
+    );
+  });
+
+  it("does so in print only, and only where a toned block exists", () => {
+    const at = appCss.indexOf(`${WRAPPER} {`);
+    expect(at).toBeGreaterThan(0);
+    expect(appCss.lastIndexOf("@media", at)).toBe(
+      appCss.lastIndexOf("@media print {", at),
+    );
+  });
+});
+
 describe("the package ships the stylesheet too", () => {
   it("re-exports it from `styles/index.css`", () => {
     // Without this line `import "vantage-md/styles"` — the package's documented
