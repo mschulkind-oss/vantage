@@ -159,8 +159,8 @@ func (e Entry) MarshalJSON() ([]byte, error) {
 // exactly as [WriteBatch] reads it.
 //
 // The candidate limit is not applied. Whether a scan is refused is a property of
-// the whole batch, and the viewer never asks about one path of an index it was
-// refused.
+// the whole batch, and the viewer asks about one path of a refused index only
+// while a rescan's batch is out, whose answer may not be refused.
 func Lookup(listing Listing, cfg repoconfig.Planning, rel string) Entry {
 	absent := Entry{Path: rel, Kind: KindAbsent}
 	if !NewMatcher(cfg).IsCandidate(rel) || !listing.IsListed(rel) {
