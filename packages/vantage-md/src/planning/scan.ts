@@ -13,6 +13,7 @@
  */
 
 import type {
+  FootnoteDefinition,
   List,
   ListItem,
   Nodes,
@@ -65,7 +66,10 @@ export interface PlanningQuestion {
   leaning: string | null;
   /** File line of the block the in-page button anchors on. */
   line: number;
-  /** File line of the enclosing `<li>`; `line` when it is not in a list item. */
+  /**
+   * File line of the enclosing `<li>` — a list item, or the footnote a
+   * question is written in — and `line` when there is none.
+   */
   unitLine: number;
   /**
    * The root-level block holding it, in file lines. A root-level directive's
@@ -241,6 +245,11 @@ interface Context {
   listItem: ListItem | undefined;
   /** The list holding `listItem`. */
   itemList: List | undefined;
+  /**
+   * The nearest block that renders as an `<li>`: a list item, or a footnote
+   * definition, which the footnotes section renders as one. A question's unit.
+   */
+  unit: ListItem | FootnoteDefinition | undefined;
   /** The root-level block this all sits in; `undefined` at the root itself. */
   rootChild: RootContent | undefined;
 }
@@ -407,6 +416,7 @@ function walkBlocks(context: Context, state: ScanState): void {
           list: undefined,
           listItem: undefined,
           itemList: undefined,
+          unit: child,
           rootChild: context.rootChild ?? child,
         },
       });
@@ -422,7 +432,14 @@ function descend(node: RootContent, context: Context, state: ScanState): void {
   } else if (node.type === "list") {
     for (const item of node.children) {
       walkBlocks(
-        { parent: item, list: node, listItem: item, itemList: node, rootChild },
+        {
+          parent: item,
+          list: node,
+          listItem: item,
+          itemList: node,
+          unit: item,
+          rootChild,
+        },
         state,
       );
     }
@@ -472,9 +489,9 @@ function question(
   const offset = state.bodyLineOffset;
   const line = (target.position?.start.line ?? 1) + offset;
   const unitLine =
-    context.listItem === undefined
+    context.unit === undefined
       ? line
-      : (context.listItem.position?.start.line ?? 1) + offset;
+      : (context.unit.position?.start.line ?? 1) + offset;
   const root = context.rootChild;
   const block =
     root === undefined
@@ -487,8 +504,8 @@ function question(
           endLine: (root.position?.end.line ?? 1) + offset,
         };
 
-  // The contents column's reading: the nearest list item, else the target.
-  const scope: Nodes = context.listItem ?? target;
+  // The contents column's reading: the nearest `<li>`, else the target.
+  const scope: Nodes = context.unit ?? target;
   const found = titleStrong(scope, undefined);
   let marker: string;
   let title: string;
@@ -878,6 +895,7 @@ export function scanPlanningDocument(
       list: undefined,
       listItem: undefined,
       itemList: undefined,
+      unit: undefined,
       rootChild: undefined,
     },
     state,
