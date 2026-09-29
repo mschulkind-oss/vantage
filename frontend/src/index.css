@@ -1981,6 +1981,15 @@ th.review-block-hovered {
     padding: 0 !important;
     margin: 0 !important;
   }
+  /* Except for the room a toned section's rule needs. The rule stands
+     `--vantage-tone-rule-offset` left of the content edge, in a gutter the
+     screen layout keeps and the reset above takes away, and on paper that is
+     outside the page area, where Chrome clips. A PDF of a toned document drew
+     no fill in the rule's print gray on any page — 12 of them once this was
+     back. Only where a toned block exists, so no other printout moves. */
+  [data-content-scroll] > div:has([data-vantage-tone]) {
+    padding-left: var(--vantage-tone-rule-offset) !important;
+  }
 
   /* Reset backgrounds to white */
   body,
