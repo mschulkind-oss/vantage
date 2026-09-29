@@ -664,6 +664,15 @@ HTML, and requiring an `svg` ancestor did not keep a `<title>` out of the page's
 `title` out of, and `<svg><desc><title>` re-parses from `renderMarkdown`'s
 string output as an HTML `title`. Either one set the tab title.
 
+`transform` is accepted on the elements inside an `<svg>` and refused on the
+`<svg>` itself. There it is a CSS transform of an in-flow box, and
+`transform="translate(-300 -300) scale(80)"` painted a 10-pixel drawing as an
+800-pixel one over the paragraphs around it. Inside, it moves shapes within the
+drawing's viewport, which clips them. The residual is that clip: `style` may set
+`overflow: visible` on the `<svg>`, and then a large child `transform` overlaps
+the neighbors the same way. That is the negative-`margin` residual by another
+route: it stays in the flow and the scroll container clips it.
+
 `stroke-dasharray` is refused too, so a dashed line renders solid. It is the one
 presentation attribute whose paint cost a few bytes can make unbounded: the dash
 count is the path's length over the dash period, both in user units the document
