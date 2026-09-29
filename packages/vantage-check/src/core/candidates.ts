@@ -196,12 +196,27 @@ function readVantageIgnore(root: string): string[] {
   }
 }
 
+/**
+ * The patterns of one config, compiled once: `check` asks about every file in
+ * its run, and each compile translates every line into a regular expression.
+ */
+const matchers = new WeakMap<PlanningConfig, (path: string) => boolean>();
+
+function matcherFor(config: PlanningConfig): (path: string) => boolean {
+  let matcher = matchers.get(config);
+  if (matcher === undefined) {
+    matcher = candidateMatcher(config);
+    matchers.set(config, matcher);
+  }
+  return matcher;
+}
+
 /** Every candidate under `root`, sorted: the listing, through the patterns. */
 export function listCandidates(
   listing: Listing,
   config: PlanningConfig,
 ): string[] {
-  return listing.list().filter(candidateMatcher(config));
+  return listing.list().filter(matcherFor(config));
 }
 
 /** Whether one repo-relative path is a candidate, without walking the tree. */
@@ -210,7 +225,7 @@ export function isCandidate(
   config: PlanningConfig,
   rel: string,
 ): boolean {
-  return listing.isListed(rel) && candidateMatcher(config)(rel);
+  return listing.isListed(rel) && matcherFor(config)(rel);
 }
 
 const UTF8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
