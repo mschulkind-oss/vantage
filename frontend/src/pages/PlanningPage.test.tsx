@@ -37,6 +37,11 @@ import {
 import { PlanningPage } from "./PlanningPage";
 import { resetPlanningReviews } from "../hooks/usePlanningReviews";
 import {
+  prefetchPlanningPage,
+  resetPlanningPageInputs,
+} from "../hooks/usePlanningPageInputs";
+import { clearMermaidCache } from "../../../packages/vantage-md/src/mermaidCache";
+import {
   STATIC_MESSAGE,
   resetPlanningTrackers,
   usePlanningStore,
@@ -64,11 +69,33 @@ import type { ReviewComment, ReviewData } from "../types";
 
 vi.mock("axios");
 vi.mock("../hooks/useWebSocket", () => ({ useWebSocket: vi.fn() }));
+/**
+ * Mermaid itself stays out of the suite. The diagram stands in for the
+ * viewer's own: drawn from the SVG cache at once when it holds the diagram,
+ * and empty until then. The pre-draw fills that cache when `mermaid.draw`
+ * lets it, which a test holds back to see the page wait.
+ */
+const mermaid = vi.hoisted(() => ({
+  draw: (code: string): Promise<void> => Promise.resolve(void code),
+}));
 vi.mock("vantage-md/react", async () => {
   const actual = await vi.importActual("vantage-md/react");
+  const cache = await vi.importActual<
+    typeof import("../../../packages/vantage-md/src/mermaidCache")
+  >("../../../packages/vantage-md/src/mermaidCache");
   return {
     ...actual,
-    MermaidDiagram: ({ code }: { code: string }) => <pre>{code}</pre>,
+    MermaidDiagram: ({ code }: { code: string }) => (
+      <div data-testid="mermaid-container">
+        <div className="mermaid">
+          {cache.getCachedSvg(code) !== undefined && <svg data-code={code} />}
+        </div>
+      </div>
+    ),
+    prerenderMermaid: async (code: string) => {
+      await mermaid.draw(code);
+      cache.setCachedSvg(code, "<svg></svg>");
+    },
   };
 });
 
@@ -237,6 +264,9 @@ const writeText = vi.fn().mockResolvedValue(undefined);
 beforeEach(() => {
   resetPlanningTrackers();
   resetPlanningReviews();
+  resetPlanningPageInputs();
+  clearMermaidCache();
+  mermaid.draw = () => Promise.resolve();
   usePlanningStore.setState({ byRepo: {}, reviewEpoch: {} });
   useRepoStore.setState({
     reposLoaded: true,
@@ -552,13 +582,47 @@ describe("empty and degenerate states", () => {
     }
   });
 
-  it("shows a spinner, not an empty page, while the first scan runs", async () => {
+  it("shows a progress line where the section bar will be while the first scan runs", async () => {
     setLoad({ status: "loading", warm: false, progress: null });
     await renderPage();
-    expect(
-      screen.getByLabelText("Scanning the planning documents"),
-    ).toBeTruthy();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Reading planning documents…",
+    );
+    setLoad({
+      status: "loading",
+      warm: false,
+      progress: { done: 412, total: 1000 },
+    });
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Scanning planning documents: 412 of 1,000",
+    );
     expect(screen.queryAllByRole("region")).toHaveLength(0);
+    expect(screen.queryByRole("navigation", { name: "Sections" })).toBeNull();
+  });
+
+  it("replaces the progress line with the section bar and the sections in one commit", async () => {
+    setLoad({ status: "loading", warm: false, progress: null });
+    serveTree(TREE);
+    let release: () => void = () => {};
+    serveTree(TREE, "/api", (inline) => ({
+      cards: (repo, want, options) =>
+        new Promise<CardAnswer[]>((resolve) => {
+          release = () => resolve(inline.cards(repo, want, options));
+        }),
+    }));
+    await renderPage();
+    setLoad(readyOf(TREE));
+    await settle();
+    // The index is ready, and the sections are not: the line stays.
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Scanning planning documents",
+    );
+    expect(screen.queryByRole("navigation", { name: "Sections" })).toBeNull();
+    release();
+    await settle();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("navigation", { name: "Sections" })).toBeTruthy();
+    expect(cardsIn("Unrouted")).toHaveLength(2);
   });
 });
 
@@ -812,7 +876,7 @@ describe("the cards' blocks, from the scanner client (planning-index-at-scale.md
     ).toContain("OQ-U1: Question OQ-U1?");
   });
 
-  it("keeps the sections back until every card's block is in hand", async () => {
+  it("paints the frame first, and keeps the sections back until every card's block is in hand", async () => {
     const tree = edited("held back");
     let release: () => void = () => {};
     serveTree(tree, "/api", (inline) => ({
@@ -824,9 +888,13 @@ describe("the cards' blocks, from the scanner client (planning-index-at-scale.md
     setLoad(readyOf(tree));
     await renderPage();
     expect(screen.queryAllByRole("region")).toHaveLength(0);
+    // The frame: the header, and the section bar with its exact counts.
+    expect(screen.getByRole("heading", { name: "Planning" })).toBeTruthy();
     expect(
-      screen.getByLabelText("Scanning the planning documents"),
-    ).toBeTruthy();
+      screen.getByRole("navigation", { name: "Sections" }),
+    ).toHaveTextContent("Needs you 3");
+    // Not past spinnerMs yet, so no spinner either.
+    expect(screen.queryByLabelText("Loading this page's cards")).toBeNull();
     release();
     await settle();
     expect(cardsIn("Unrouted")).toEqual([
@@ -835,8 +903,8 @@ describe("the cards' blocks, from the scanner client (planning-index-at-scale.md
     ]);
   });
 
-  it("says a card's document no longer has its block when the version it asked for is gone", async () => {
-    // A document no other test shows, so no block of it is on screen already.
+  it("refreshes a stale block's path, and says its document no longer has it when nothing changes in time", async () => {
+    setPlanningLimitsForTests({ reviewsDeadlineMs: 10 });
     const tree = { "plans/stale.md": doc("stage: DESIGN", q("OQ-S1", OPEN)) };
     serveTree(tree, "/api", () => ({
       cards: async (_repo, want) =>
@@ -847,12 +915,58 @@ describe("the cards' blocks, from the scanner client (planning-index-at-scale.md
         })),
     }));
     setLoad(readyOf(tree));
-    await renderPage();
-    expect(
-      within(cardFor("OQ-S1")).getByText(
-        "This question's document is not in the planning index any more.",
-      ),
-    ).toBeTruthy();
+    const refreshed = vi.fn();
+    const real = usePlanningStore.getState().noteFilesChanged;
+    usePlanningStore.setState({ noteFilesChanged: refreshed });
+    try {
+      await renderPage();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      });
+      await settle();
+      expect(refreshed).toHaveBeenCalledWith("", ["plans/stale.md"], []);
+      expect(
+        within(cardFor("OQ-S1")).getByText(
+          "This question's document is not in the planning index any more.",
+        ),
+      ).toBeTruthy();
+    } finally {
+      usePlanningStore.setState({ noteFilesChanged: real });
+    }
+  });
+
+  it("keeps the page until a stale block's refresh lands, then asks again", async () => {
+    const tree = edited("stale then fresh");
+    let fresh = false;
+    serveTree(tree, "/api", (inline) => ({
+      cards: async (repo, want, options) =>
+        fresh
+          ? inline.cards(repo, want, options)
+          : want.map((w) => ({
+              path: w.path,
+              startLine: w.startLine,
+              stale: true as const,
+            })),
+    }));
+    setLoad(readyOf(tree));
+    const refreshed = vi.fn();
+    const real = usePlanningStore.getState().noteFilesChanged;
+    usePlanningStore.setState({ noteFilesChanged: refreshed });
+    try {
+      await renderPage();
+      expect(refreshed).toHaveBeenCalled();
+      expect(screen.queryAllByRole("region")).toHaveLength(0);
+      // The refresh lands: a new version of the index, whose blocks answer.
+      fresh = true;
+      setLoad(readyOf(tree));
+      await settle();
+      expect(
+        cardFor("OQ-U1").querySelector("[data-planning-card-unit]")
+          ?.textContent,
+      ).toContain("OQ-U1: Question OQ-U1?");
+    } finally {
+      usePlanningStore.setState({ noteFilesChanged: real });
+    }
   });
 });
 
@@ -864,20 +978,313 @@ describe("the reviews, in one request (planning-index-at-scale.md §6.3)", () =>
       .mocked(axios.post)
       .mock.calls.filter(([url]) => String(url).endsWith("/planning/reviews"));
 
-  it("reads every listed document's review in one POST, and none with a GET", async () => {
+  const pathsOf = (at: number) =>
+    (reviewRequests()[at]?.[1] as { paths: string[] }).paths;
+
+  it("reads the shown pages' documents with their inputs, in one POST, and none with a GET", async () => {
     await renderPage();
+    // Every section fits on its page, so the one request holds every listed
+    // document, and every row's.
     expect(reviewRequests()).toHaveLength(1);
-    expect(
-      new Set((reviewRequests()[0]?.[1] as { paths: string[] }).paths),
-    ).toEqual(
+    expect(new Set(pathsOf(0))).toEqual(
       new Set([
         "plans/design.md",
         "plans/answered.md",
         "plans/unrouted.md",
         "plans/disagrees.md",
+        "plans/deps.md",
+        "plans/ready.md",
+        "plans/built.md",
       ]),
     );
     expect(vi.mocked(axios.get)).not.toHaveBeenCalled();
+  });
+
+  it("reads every other listed document in one more POST once the sections have painted", async () => {
+    setPlanningLimitsForTests({ pageEntries: 1 });
+    await renderPage();
+    expect(reviewRequests()).toHaveLength(2);
+    const first = new Set(pathsOf(0));
+    const rest = pathsOf(1);
+    expect(rest.filter((path) => first.has(path))).toEqual([]);
+    expect(new Set([...first, ...rest])).toEqual(
+      new Set([
+        "plans/design.md",
+        "plans/answered.md",
+        "plans/unrouted.md",
+        "plans/disagrees.md",
+        "plans/deps.md",
+        "plans/ready.md",
+        "plans/built.md",
+      ]),
+    );
+    // And a flip asks nothing more: its documents are in hand.
+    await act(async () => {
+      fireEvent.click(
+        within(
+          screen.getByRole("navigation", { name: "Needs you pages" }),
+        ).getByRole("button", { name: "Next ›" }),
+      );
+    });
+    await settle();
+    expect(cardsIn("Needs you")).toEqual(["OQ-D3: Question OQ-D3?"]);
+    expect(reviewRequests()).toHaveLength(2);
+    expect(vi.mocked(axios.get)).not.toHaveBeenCalled();
+  });
+});
+
+describe("page inputs, and one commit (planning-index-at-scale.md §10.3)", () => {
+  beforeEach(() => seed());
+
+  /** The reviews request, held until `release` answers it. */
+  function holdReviews(): { release: () => void; fail: () => void } {
+    const real = vi.mocked(axios.post).getMockImplementation()!;
+    const held: { release: () => void; fail: () => void } = {
+      release: () => {},
+      fail: () => {},
+    };
+    vi.mocked(axios.post).mockImplementation((url, body, config) => {
+      if (!String(url).endsWith("/planning/reviews")) {
+        return real(url, body, config);
+      }
+      return new Promise((resolve, reject) => {
+        held.release = () => resolve(real(url, body, config));
+        held.fail = () => reject(new Error("down"));
+      });
+    });
+    return held;
+  }
+
+  /** A pending take on OQ-U1, filed from its own card, so its card lists it. */
+  async function fileOnU1(): Promise<void> {
+    await renderPage();
+    await act(async () => {
+      fireEvent.click(
+        within(cardFor("OQ-U1")).getByRole("button", {
+          name: "Take this leaning",
+        }),
+      );
+    });
+    cleanup();
+    resetPlanningReviews();
+    resetPlanningPageInputs();
+  }
+
+  const commentsOn = (id: string) =>
+    within(cardFor(id)).queryByRole("list", {
+      name: "Comments on this question",
+    });
+
+  it("keeps the sections back until their documents' reviews are in, then paints the comments with the cards", async () => {
+    await fileOnU1();
+    const held = holdReviews();
+    await renderPage();
+    expect(screen.queryAllByRole("region")).toHaveLength(0);
+    held.release();
+    await settle();
+    expect(commentsOn("OQ-U1")).toHaveTextContent("Yes.");
+  });
+
+  it("past the reviews deadline, paints without comments, and puts those that come later only in the card's count", async () => {
+    setPlanningLimitsForTests({ reviewsDeadlineMs: 10 });
+    await fileOnU1();
+    const held = holdReviews();
+    await renderPage();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    await settle();
+    expect(cardsIn("Unrouted")).toHaveLength(2);
+    expect(commentsOn("OQ-U1")).toBeNull();
+
+    held.release();
+    await settle();
+    const count = within(cardFor("OQ-U1")).getByRole("button", {
+      name: "1 comment",
+    });
+    expect(count).toHaveAttribute("aria-expanded", "false");
+    expect(commentsOn("OQ-U1")).toBeNull();
+    // The reader opens it.
+    fireEvent.click(count);
+    expect(commentsOn("OQ-U1")).toHaveTextContent("Yes.");
+  });
+
+  it("paints without comments, says so, and disables Copy answers when the reviews request fails", async () => {
+    const held = holdReviews();
+    await renderPage();
+    await act(async () => {
+      held.fail();
+    });
+    await settle();
+    const region = screen.getByRole("alert");
+    expect(region).toHaveTextContent("Comments could not be loaded.");
+    expect(cardsIn("Unrouted")).toHaveLength(2);
+    expect(screen.getByRole("button", { name: /Copy answers/ })).toBeDisabled();
+    expect(screen.getByTestId("pending-answers")).toHaveTextContent("–");
+  });
+
+  it("shows a spinner once the wait passes spinnerMs, and not before", async () => {
+    setPlanningLimitsForTests({ spinnerMs: 20 });
+    serveTree(TREE, "/api", () => ({
+      cards: () => new Promise<CardAnswer[]>(() => {}),
+    }));
+    await renderPage();
+    expect(screen.queryByLabelText("Loading this page's cards")).toBeNull();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    });
+    expect(screen.getByLabelText("Loading this page's cards")).toBeTruthy();
+  });
+
+  it("keeps the old page on a flip until the new page's inputs are ready", async () => {
+    setPlanningLimitsForTests({ pageEntries: 2, spinnerMs: 0 });
+    let hold = false;
+    let release: () => void = () => {};
+    serveTree(TREE, "/api", (inline) => ({
+      cards: (repo, want, options) =>
+        hold
+          ? new Promise<CardAnswer[]>((resolve) => {
+              release = () => resolve(inline.cards(repo, want, options));
+            })
+          : inline.cards(repo, want, options),
+    }));
+    await renderPage();
+    hold = true;
+    await act(async () => {
+      fireEvent.click(
+        within(
+          screen.getByRole("navigation", { name: "Needs you pages" }),
+        ).getByRole("button", { name: "Next ›" }),
+      );
+    });
+    await settle();
+    expect(router.location).toBe("/.vantage/planning?needs-you=2");
+    expect(cardsIn("Needs you")).toEqual([
+      "OQ-D1: Question OQ-D1?",
+      "OQ-D3: Question OQ-D3?",
+    ]);
+    // Its pager says it is on its way.
+    expect(
+      within(
+        screen.getByRole("navigation", { name: "Needs you pages" }),
+      ).getByLabelText("Loading the page"),
+    ).toBeTruthy();
+    release();
+    await settle();
+    expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
+  });
+
+  it("renders a returned-to page's frame and sections in one commit when its inputs are cached", async () => {
+    render(
+      <MemoryRouter initialEntries={[entry("/.vantage/planning")]}>
+        <RouterProbe />
+        <Routes>
+          <Route path="/.vantage/planning/*" element={<PlanningPage />} />
+          <Route path="/*" element={<div data-testid="viewer">viewer</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    await settle();
+    fireEvent.click(
+      within(cardFor("OQ-U1")).getByRole("link", { name: "Open document" }),
+    );
+    expect(screen.getByTestId("viewer")).toBeTruthy();
+    // No settling: what the first render commits.
+    act(() => router.navigate!(-1));
+    expect(cardsIn("Unrouted")).toHaveLength(2);
+  });
+
+  it("asks for page 1's inputs ahead of a visit, so the visit asks for nothing more", async () => {
+    const asked: CardWant[][] = [];
+    serveTree(TREE, "/api", (inline) => ({
+      cards: (repo, want, options) => {
+        asked.push(want);
+        return inline.cards(repo, want, options);
+      },
+    }));
+    prefetchPlanningPage("");
+    await settle();
+    expect(asked).toHaveLength(1);
+    const posts = vi.mocked(axios.post).mock.calls.length;
+    await renderPage();
+    expect(asked).toHaveLength(1);
+    // The visit's one more request reads again what an earlier moment read.
+    expect(vi.mocked(axios.post).mock.calls.length).toBeLessThanOrEqual(
+      posts + 1,
+    );
+    expect(cardsIn("Unrouted")).toHaveLength(2);
+  });
+
+  it("reserves the pending count four digits, and shows – until every listed document is counted", async () => {
+    const held = holdReviews();
+    setPlanningLimitsForTests({ reviewsDeadlineMs: 10 });
+    await renderPage();
+    const count = screen.getByTestId("pending-answers");
+    expect(count).toHaveTextContent("–");
+    expect(count.style.minWidth).toBe("4ch");
+    expect(count).toHaveClass("tabular-nums");
+    held.release();
+    await settle();
+    expect(screen.getByTestId("pending-answers")).toHaveTextContent("0");
+    expect(screen.getByTestId("pending-answers").style.minWidth).toBe("4ch");
+  });
+});
+
+describe("Mermaid, drawn before the cards commit (planning-index-at-scale.md §10.3)", () => {
+  const DIAGRAM = "graph LR\n  A --> B";
+  const tree = {
+    ...TREE,
+    "plans/unrouted.md": doc(
+      "stage: DESIGN",
+      q("OQ-U1", OPEN) +
+        ["", "   ```mermaid", "   graph LR", "     A --> B", "   ```", ""].join(
+          "\n",
+        ),
+    ),
+  };
+  beforeEach(() => seed(tree));
+
+  const diagram = () =>
+    cardFor("OQ-U1").querySelector<HTMLElement>(
+      '[data-testid="mermaid-container"]',
+    )!;
+
+  it("keeps the sections back until the diagrams are drawn, which then render at once", async () => {
+    let drawn: () => void = () => {};
+    const asked: string[] = [];
+    mermaid.draw = (code) => {
+      asked.push(code);
+      return new Promise<void>((resolve) => {
+        drawn = resolve;
+      });
+    };
+    await renderPage();
+    expect(asked).toEqual([DIAGRAM]);
+    expect(screen.queryAllByRole("region")).toHaveLength(0);
+    await act(async () => {
+      drawn();
+    });
+    await settle();
+    expect(diagram().querySelector("svg")).not.toBeNull();
+    expect(diagram()).not.toHaveAttribute("data-planning-mermaid-frame");
+  });
+
+  it("past the Mermaid deadline, paints the card and frames the diagram at a fixed height", async () => {
+    setPlanningLimitsForTests({ mermaidDeadlineMs: 10 });
+    mermaid.draw = () => new Promise<void>(() => {});
+    await renderPage();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    await settle();
+    expect(diagram().querySelector("svg")).toBeNull();
+    expect(diagram()).toHaveAttribute("data-planning-mermaid-frame");
+    const body = cardFor("OQ-U1").querySelector<HTMLElement>(
+      ".planning-card-body",
+    )!;
+    expect(body.style.getPropertyValue("--planning-mermaid-frame")).toBe(
+      "240px",
+    );
   });
 });
 
