@@ -44,9 +44,15 @@ export {
   findDocument,
   parsePlanningSources,
   parseSourceEntry,
+  planningIndexBuilder,
   withoutDirectory,
 } from "./model.js";
-export type { PlanningIndex, PlanningSources, SourceEntry } from "./model.js";
+export type {
+  PlanningIndex,
+  PlanningIndexBuilder,
+  PlanningSources,
+  SourceEntry,
+} from "./model.js";
 export { badgeFor, badgeSpeech, badgeText } from "./badges.js";
 export type { PlanningBadge } from "./badges.js";
 export {

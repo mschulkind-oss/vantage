@@ -29,10 +29,10 @@ import { create } from "zustand";
 import axios from "axios";
 import {
   applySource,
-  buildPlanningIndex,
   findDocument,
   parsePlanningSources,
   parseSourceEntry,
+  planningIndexBuilder,
   withoutDirectory,
   type PlanningDocument,
   type PlanningIndex,
@@ -217,27 +217,24 @@ const yieldToPage = (): Promise<void> =>
 /**
  * The batch's index, scanned off the critical path.
  *
- * `buildPlanningIndex` over the batch minus its files, then each file folded in
- * with `applySource`, which gives the same index. Between documents it yields
- * whenever a slice has run for `SLICE_MS`: a `setTimeout(0)` after every one
- * would cost the browser's 4 ms clamp per candidate, 20 s at the 5,000
- * candidates the default limit allows. No Worker, which would need a second
- * bundle entry for a corpus this size.
+ * `planningIndexBuilder`, the one `buildPlanningIndex` runs, with the files
+ * added one at a time. Between documents it yields whenever a slice has run for
+ * `SLICE_MS`: a `setTimeout(0)` after every one would cost the browser's 4 ms
+ * clamp per candidate, 20 s at the 5,000 candidates the default limit allows.
+ * No Worker, which would need a second bundle entry for a corpus this size.
  */
-async function scanBatch(sources: PlanningSources): Promise<Held> {
-  let held: Held = {
-    index: buildPlanningIndex({ ...sources, files: [] }),
-    sources: {},
-  };
+async function scanBatch(batch: PlanningSources): Promise<Held> {
+  const builder = planningIndexBuilder(batch);
+  const sources: Record<string, string> = {};
   let sliceStart = performance.now();
-  for (const file of sources.files) {
+  for (const file of batch.files) {
     if (performance.now() - sliceStart > SLICE_MS) {
       await yieldToPage();
       sliceStart = performance.now();
     }
-    held = applyChange(held, { kind: "file", ...file });
+    if (builder.add(file) !== null) sources[file.path] = file.content;
   }
-  return held;
+  return { index: builder.finish(), sources };
 }
 
 /* ------------------------------------------------------------------ *

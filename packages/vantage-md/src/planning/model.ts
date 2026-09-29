@@ -203,36 +203,56 @@ function insertSorted<T extends { path: string }>(list: T[], item: T): T[] {
  * caller passes it.
  */
 export function buildPlanningIndex(sources: PlanningSources): PlanningIndex {
+  const builder = planningIndexBuilder(sources);
+  for (const file of sources.files) builder.add(file);
+  return builder.finish();
+}
+
+/** {@link buildPlanningIndex} one file at a time; see {@link planningIndexBuilder}. */
+export interface PlanningIndexBuilder {
+  /** Scan one file, and return its document if it is a planning document. */
+  add(file: { path: string; content: string }): PlanningDocument | null;
+  finish(): PlanningIndex;
+}
+
+/**
+ * {@link buildPlanningIndex} over `sources`, with its files added one at a
+ * time instead of taken from `sources.files`, so a caller can yield between
+ * them. The lists are sorted once, at `finish`, so a batch costs its files'
+ * scans and one sort, where folding each file in with {@link applySource}
+ * would copy every list once per file.
+ */
+export function planningIndexBuilder(
+  sources: Omit<PlanningSources, "files">,
+): PlanningIndexBuilder {
   const { config, candidateCount } = sources;
   const refused =
     sources.refused || candidateCount > sources.config.maxCandidates;
-  if (refused) {
-    return {
+  const documents: PlanningDocument[] = [];
+  const unreadable = refused ? [] : [...sources.unreadable];
+  return {
+    add({ path, content }) {
+      if (refused) return null;
+      const result = scanPlanningDocument(
+        path,
+        content,
+        path === config.roadmap,
+      );
+      if (result.kind === "unreadable") {
+        unreadable.push({ path, reason: result.reason });
+      }
+      if (result.kind !== "planning") return null;
+      documents.push(result.document);
+      return result.document;
+    },
+    finish: () => ({
       config,
       candidateCount,
       refused,
-      documents: [],
-      skipped: [],
-      unreadable: [],
-    };
-  }
-
-  const documents: PlanningDocument[] = [];
-  const unreadable = [...sources.unreadable];
-  for (const { path, content } of sources.files) {
-    const result = scanPlanningDocument(path, content, path === config.roadmap);
-    if (result.kind === "planning") documents.push(result.document);
-    if (result.kind === "unreadable") {
-      unreadable.push({ path, reason: result.reason });
-    }
-  }
-  return {
-    config,
-    candidateCount,
-    refused,
-    documents: documents.sort(byPath),
-    skipped: [...sources.skipped].sort(byPath),
-    unreadable: unreadable.sort(byPath),
+      documents: [...documents].sort(byPath),
+      skipped: refused ? [] : [...sources.skipped].sort(byPath),
+      unreadable: [...unreadable].sort(byPath),
+    }),
   };
 }
 
