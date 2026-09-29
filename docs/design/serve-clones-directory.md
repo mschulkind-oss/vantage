@@ -207,8 +207,11 @@ off. The tip describes the state of the per-user service that
 - **This project is open there** is decided from the service's own config. The
   served directory is compared with each configured and discovered repository
   path, or with a `source_dirs` entry when the directory is a clones directory,
-  and the service must list the matching name in its `/api/repos`. For a clones
-  directory, the link goes to the service's root, where every clone is listed.
+  and the service must list the matching name in its `/api/repos`: for a
+  clones directory, a project discovered in it. A daemon reads `source_dirs`
+  only at startup, so an entry added by hand is not open there until it
+  restarts. For a clones directory, the link goes to the service's root, where
+  every clone is listed.
 - **The clones-directory tip starts at "To keep them all"**, because the line
   in [§4](#4-what-serve-prints) has already said what the directory holds. The brief's wording would
   have printed that fact twice.
