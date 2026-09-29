@@ -96,8 +96,15 @@ function parseConfig(value: unknown): PlanningConfig | null {
     if (!isRecord(stages)) return null;
     for (const [word, role] of Object.entries(stages)) {
       if (!isStageRole(role)) return null;
+      // Defined, not assigned: `roles["__proto__"] = role` sets the prototype
+      // and drops the word, which the server keeps.
       roles ??= {};
-      roles[word] = role;
+      Object.defineProperty(roles, word, {
+        value: role,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
     }
   }
   return {

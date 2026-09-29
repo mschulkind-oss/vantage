@@ -68,6 +68,21 @@ describe("parsePlanningSources", () => {
     }
   });
 
+  // The server keeps any word; assigning `__proto__` would drop it and leave
+  // a declared-but-empty table, which cannot exist (§9).
+  it("keeps a stage word spelled __proto__", () => {
+    const parsed = parsePlanningSources(
+      JSON.parse(
+        JSON.stringify({
+          ...ENDPOINT_EXAMPLE,
+          config: { ...ENDPOINT_EXAMPLE.config, stages: {} },
+        }).replace('"stages":{}', '"stages":{"__proto__":"open"}'),
+      ),
+    );
+    expect(Object.keys(parsed?.config.stages ?? {})).toEqual(["__proto__"]);
+    expect(Object.hasOwn(parsed?.config.stages ?? {}, "__proto__")).toBe(true);
+  });
+
   it.each([
     ["the static host's index.html", "<!doctype html><html></html>"],
     ["null", null],

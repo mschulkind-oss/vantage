@@ -137,6 +137,24 @@
       }
     },
     {
+      "name": "a stage word spelled like an object's own machinery is still a word",
+      "toml": "[planning.stages]\n\"__proto__\" = \"open\"\nconstructor = \"ready\"\n",
+      "ok": true,
+      "planning": {
+        "roadmap": "roadmap.md",
+        "include": [
+          "**/*.md"
+        ],
+        "exclude": [],
+        "maxFileBytes": 1048576,
+        "maxCandidates": 5000,
+        "stages": {
+          "__proto__": "open",
+          "constructor": "ready"
+        }
+      }
+    },
+    {
       "name": "a leading ./ on the roadmap is dropped",
       "toml": "[planning]\nroadmap = \"./plans/roadmap.md\"\n",
       "ok": true,
