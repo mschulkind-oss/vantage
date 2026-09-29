@@ -43,8 +43,12 @@
   /* An svg written inside a sentence stays in it. Tailwind's preflight makes
      every svg `display: block`, which put a 16px icon on a line of its own and
      split its paragraph into three. Only inside the blocks that hold phrasing
-     content, so a drawing in a `<div>` of its own is still a block. */
-  :is(.prose, .vantage-prose) :where(p, li, td, th) svg {
+     content, so a drawing in a `<div>` of its own is still a block — and so
+     is an icon in a `<div>` with text around it, which this cannot tell from
+     a drawing. `caption` is not listed because the sanitizer drops it. */
+  :is(.prose, .vantage-prose)
+    :where(p, li, td, th, h1, h2, h3, h4, h5, h6, summary, dt, dd, figcaption)
+    svg {
     display: inline-block;
     vertical-align: middle;
   }

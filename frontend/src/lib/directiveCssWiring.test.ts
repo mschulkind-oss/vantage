@@ -316,12 +316,15 @@ describe("inline SVG sizing is one stylesheet, reached by every consumer", () =>
 
   it("keeps an svg inside a sentence inline", () => {
     // Preflight makes every svg a block. Only inside the blocks that hold
-    // phrasing content, so a drawing in a `<div>` of its own stays one;
-    // `inline_svg.spec.ts` measures both, and that Mermaid and KaTeX are
-    // untouched.
-    const selector = ":is(.prose, .vantage-prose) :where(p, li, td, th) svg";
-    expect(declaration(svgCss(), selector, "display")).toBe("inline-block");
-    expect(declaration(svgCss(), selector, "vertical-align")).toBe("middle");
+    // phrasing content, so a drawing in a `<div>` of its own stays one.
+    // `inline_svg.spec.ts` measures an icon in each of these on its line, a
+    // drawing in a `<div>` as a block, and Mermaid, KaTeX and the diagram's
+    // buttons unmoved. The selector is wrapped by Prettier, hence the collapse.
+    const css = svgCss().replace(/\s+/g, " ");
+    const selector =
+      ":is(.prose, .vantage-prose) :where(p, li, td, th, h1, h2, h3, h4, h5, h6, summary, dt, dd, figcaption) svg";
+    expect(declaration(css, selector, "display")).toBe("inline-block");
+    expect(declaration(css, selector, "vertical-align")).toBe("middle");
   });
 
   it("is layered, so an icon's size utilities still win", () => {
