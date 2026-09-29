@@ -1632,6 +1632,7 @@ func TestWatchLimitReachesTheBrowser(t *testing.T) {
 	require.NoError(t, err)
 	srv.watchLimit = 3
 	srv.goos = "linux" // the wording checked below
+	slowWatcherStarts(srv)
 
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -1651,11 +1652,9 @@ func TestWatchLimitReachesTheBrowser(t *testing.T) {
 	defer ws.Close(websocket.StatusNormalClosure, "")
 	_, _, err = ws.Read(ctx) // hello
 	require.NoError(t, err)
-	waitFor(t, "the watcher to start", func() bool {
-		srv.watchersMu.Lock()
-		defer srv.watchersMu.Unlock()
-		return len(srv.watchers) == 1
-	})
+	// Made before the startup walk were over, big would take that walk's last
+	// watch, and docs, after it in the walk's order, would be the one refused.
+	awaitWatching(ctx, t, ws, map[string]string{"": root}, nil)
 	require.Empty(t, degradedList(t, srv.Handler()), "the budget covers the startup tree")
 
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "big"), 0o755))
