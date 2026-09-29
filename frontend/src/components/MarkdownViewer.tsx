@@ -20,6 +20,7 @@ import {
   linkTargetAttributes,
   usePlanningLinkBadges,
 } from "../hooks/usePlanningLinkBadges";
+import { findDocument } from "vantage-md/planning";
 import { usePlanningIndex } from "../stores/usePlanningStore";
 import { PLANNING_BADGE_ATTR } from "./PlanningBadge";
 import { useCollapseSections } from "../hooks/useCollapseSections";
@@ -675,9 +676,37 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     markdownComponents,
   );
 
+  // The ids `next` may link (planning-index.md §4): those this document's own
+  // questions carry, never a bare id found only in its text, which is how a
+  // compacted question is kept. Until the index is ready `next` is plain text.
+  const planningDocument = planningIndex
+    ? findDocument(planningIndex, currentPath)
+    : undefined;
+  const nextLinkIds = useMemo(
+    () =>
+      planningDocument?.questions.flatMap((q) => (q.id === null ? [] : [q.id])),
+    [planningDocument],
+  );
+
+  // A `#…` link React did not already handle — the header's `next` link, which
+  // `FrontmatterDisplay` draws as a plain anchor because it lives in the
+  // published package. Scrolled the way every in-document link is, so a
+  // question in a collapsed section opens first.
+  const handleUnhandledHashClick = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (e.defaultPrevented) return;
+      const link = (e.target as Element).closest?.("a[href^='#']");
+      if (!link || !e.currentTarget.contains(link)) return;
+      e.preventDefault();
+      scrollToAnchor(link.getAttribute("href")!.slice(1));
+    },
+    [],
+  );
+
   return (
     <div
       ref={containerRef}
+      onClick={handleUnhandledHashClick}
       className={cn(
         "prose prose-slate dark:prose-invert max-w-none",
         // Headings: GitHub-like sizing and spacing
@@ -727,7 +756,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
         "prose-td:px-3 prose-td:py-1.5 prose-td:border prose-td:border-slate-200 dark:prose-td:border-slate-700",
       )}
     >
-      <FrontmatterDisplay frontmatter={frontmatter} />
+      <FrontmatterDisplay frontmatter={frontmatter} linkIds={nextLinkIds} />
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
         rehypePlugins={rehypePlugins}
