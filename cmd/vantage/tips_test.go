@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -91,6 +92,52 @@ func TestServiceTipWording(t *testing.T) {
 	windows := base
 	windows.GOOS = "windows"
 	require.Equal(t, "", windows.tip(plan), "install-service does nothing there, so there is nothing to suggest")
+}
+
+// What serve prints before it binds: the startup line for a directory of
+// clones always, then the tip. The probe behind the tip costs up to its whole
+// timeout when something on the service's port is slow, so it runs only when
+// a tip can be printed — on a terminal, and on a platform install-service
+// supports.
+func TestAnnounceServe(t *testing.T) {
+	home := isolateHome(t)
+	t.Setenv("VANTAGE_NO_TIPS", "")
+	plan := &clonesPlan{Dir: filepath.Join(home, "code"), Repos: 2}
+
+	var out bytes.Buffer
+	lister := &fakeLister{err: errors.New("connection refused")}
+	announceServe(context.Background(), &out, "linux", home, true, plan.Dir, plan, lister.list)
+	require.Equal(t, plan.describe(home)+"\n"+
+		"To keep them all in the background at http://localhost:8000: vantage install-service --source-dir ~/code\n", out.String())
+	require.Len(t, lister.asked, 1)
+
+	for _, c := range []struct {
+		goos string
+		tty  bool
+	}{{"linux", false}, {"windows", true}} {
+		out.Reset()
+		lister = &fakeLister{err: errors.New("connection refused")}
+		announceServe(context.Background(), &out, c.goos, home, c.tty, plan.Dir, plan, lister.list)
+		require.Equal(t, plan.describe(home)+"\n", out.String(), c.goos)
+		require.Empty(t, lister.asked, "no tip to print, so no probe: %+v", c)
+	}
+
+	out.Reset()
+	announceServe(context.Background(), &out, "linux", home, false, "/x", nil, lister.list)
+	require.Empty(t, out.String(), "a single project has no startup line")
+}
+
+// `2>/dev/null` is how a script says it wants none of this, and /dev/null is a
+// character device just as a terminal is.
+func TestIsTerminalIsFalseForDevNull(t *testing.T) {
+	null, err := os.Open(os.DevNull)
+	require.NoError(t, err)
+	defer null.Close()
+	require.False(t, isTerminal(null))
+	file, err := os.Create(filepath.Join(t.TempDir(), "log"))
+	require.NoError(t, err)
+	defer file.Close()
+	require.False(t, isTerminal(file))
 }
 
 func TestTipsEnabled(t *testing.T) {

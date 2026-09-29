@@ -208,14 +208,20 @@ func latencyColor(p95 float64) string {
 	}
 }
 
-// isTerminal reports whether f is attached to a character device (a TTY),
-// gating color output without an external dependency.
+// isTerminal reports whether f is attached to a terminal, gating color output
+// and serve's startup tip without an external dependency. A terminal is a
+// character device; so is /dev/null, and `2>/dev/null` is how a script says it
+// wants no output at all, so that one is told apart. Other character devices
+// are rare enough as an output to count as terminals.
 func isTerminal(f *os.File) bool {
 	info, err := f.Stat()
-	if err != nil {
+	if err != nil || info.Mode()&os.ModeCharDevice == 0 {
 		return false
 	}
-	return info.Mode()&os.ModeCharDevice != 0
+	if null, err := os.Stat(os.DevNull); err == nil && os.SameFile(info, null) {
+		return false
+	}
+	return true
 }
 
 // sortedByP95 returns the keys of m ordered by descending p95 latency, ties
