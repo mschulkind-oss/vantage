@@ -62,11 +62,15 @@ test("a heavily cited document's Referenced by is one line above its body", asyn
   // Opened, it is one row per document, and the body moves down by the list.
   await toggle(page).click();
   const list = surface(page).getByRole("navigation", { name: "Referenced by" });
-  await expect(list.getByRole("listitem")).toHaveText([
-    "roadmap.md · Later",
-    /^hub-citations\.md · Citations of the hub · 1\. Section 1 · 2\. Section 2 · 3\. Section 3 · \+4 more$/,
-    "hub-neighbors.md · Lifecycle · Delivery · The neighbors",
-  ]);
+  // innerText: the headings past "+4 more" are in the row for print only.
+  await expect(list.getByRole("listitem")).toHaveText(
+    [
+      "roadmap.md · Later",
+      /^hub-citations\.md · Citations of the hub · 1\. Section 1 · 2\. Section 2 · 3\. Section 3 · \+4 more$/,
+      "hub-neighbors.md · Lifecycle · Delivery · The neighbors",
+    ],
+    { useInnerText: true },
+  );
   const opened = await bodyGap(page);
   const listBox = await list.boundingBox();
   expect(opened - collapsed).toBeGreaterThanOrEqual(listBox!.height);
@@ -147,6 +151,17 @@ test("the line prints, and the list prints only when open", async ({
   await expect(
     surface(page).getByRole("navigation", { name: "Referenced by" }),
   ).toBeVisible();
+  // Paper has no "+M more" to press, so every heading prints instead.
+  await expect(
+    surface(page).getByRole("button", { name: /more headings in/ }),
+  ).toBeHidden();
+  await expect(
+    surface(page).getByRole("link", { name: "7. Section 7" }),
+  ).toBeVisible();
+  await page.emulateMedia({ media: "screen" });
+  await expect(
+    surface(page).getByRole("link", { name: "7. Section 7" }),
+  ).toBeHidden();
 });
 
 test("a document nothing links to still counts its unrouted questions", async ({

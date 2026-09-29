@@ -274,7 +274,8 @@ as *brainstorm/x.md* and *design/x.md*. A row shows four headings, then *+M
 more* for the rest.
 
 The list is closed whenever you open a document, and nothing remembers that
-you opened it. It prints only when it is open; the line always prints.
+you opened it. It prints only when it is open, and then with
+every heading; the line always prints.
 
 ---
 
