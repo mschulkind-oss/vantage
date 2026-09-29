@@ -1,7 +1,8 @@
 /**
  * The viewer's planning surfaces other than link badges
  * (`docs/design/planning-index.md`): the `next` link in the document's header
- * (§4), and what the index costs a document's render. Badges have their own
+ * (§4), the embedded viewer the planning page renders each question card with
+ * (§6.3), and what the index costs a document's render. Badges have their own
  * suite, `usePlanningLinkBadges.test.tsx`.
  *
  * Renders the app's real `MarkdownViewer` against a planning store seeded with
@@ -17,8 +18,12 @@ import {
   usePlanningStore,
 } from "../stores/usePlanningStore";
 import { useRepoStore } from "../stores/useRepoStore";
+import { useReviewStore } from "../stores/useReviewStore";
+import { PLANNING_BADGE_ATTR } from "./PlanningBadge";
+import type { ReviewComment } from "../types";
 import { scrollToAnchor } from "../lib/anchorScroll";
 import { indexOf } from "../test/planning";
+import { layout } from "../test/layout";
 
 vi.mock("axios");
 vi.mock("../lib/anchorScroll", () => ({ scrollToAnchor: vi.fn() }));
@@ -146,6 +151,149 @@ describe("the `next` link (§4)", () => {
     fireEvent.click(screen.getByRole("link", { name: "Back up" }));
     expect(scrollToAnchor).toHaveBeenCalledTimes(1);
     expect(scrollToAnchor).toHaveBeenCalledWith("top");
+  });
+});
+
+describe("sourceLineOffset", () => {
+  it("adds to every source line, after the frontmatter's own offset", () => {
+    const { container } = render(
+      <BrowserRouter>
+        <MarkdownViewer
+          content={"---\ntitle: x\n---\n# Heading\n\nText.\n"}
+          currentPath="x.md"
+          sourceLineOffset={100}
+        />
+      </BrowserRouter>,
+    );
+    const lines = Array.from(
+      container.querySelectorAll("[data-source-line]"),
+      (el) => el.getAttribute("data-source-line"),
+    );
+    expect(lines).toEqual(["104", "106"]);
+  });
+
+  it("re-renders when it changes", () => {
+    const view = (offset: number) => (
+      <BrowserRouter>
+        <MarkdownViewer
+          content="Text.\n"
+          currentPath="x.md"
+          sourceLineOffset={offset}
+        />
+      </BrowserRouter>
+    );
+    const { container, rerender } = render(view(10));
+    rerender(view(20));
+    expect(container.querySelector("p")).toHaveAttribute(
+      "data-source-line",
+      "21",
+    );
+  });
+});
+
+describe("an embedded viewer (§6.3's question card)", () => {
+  const CARD = [
+    "---",
+    "status: in-review",
+    "---",
+    "",
+    "1. \u{1F4AC} **OQ-1: A question?** See [A](a.md).",
+    "",
+    '   <!-- vantage: oq id=OQ-1 leaning="Yes." -->',
+    "",
+    "   _Leaning:_ yes.",
+    "",
+  ].join("\n");
+
+  const comment = (line: number): ReviewComment => ({
+    id: "c1",
+    comment: "On the real document",
+    fallback_text: "leaning: yes.",
+    created_at: 0,
+    anchor: {
+      source_line: line,
+      block_text_hash: "00000000",
+      selection_offset: 0,
+      selection_length: 0,
+    },
+  });
+
+  const renderEmbedded = (content = CARD) =>
+    render(
+      <BrowserRouter>
+        <MarkdownViewer
+          content={content}
+          currentPath="docs/b.md"
+          isReviewMode
+          embedded
+        />
+      </BrowserRouter>,
+    );
+
+  beforeEach(() => {
+    useReviewStore.setState({
+      comments: [comment(9)],
+      pendingSelection: null,
+      commentsDrifted: true,
+    });
+  });
+
+  it("draws no frontmatter card and no status chip", () => {
+    renderEmbedded();
+    expect(screen.queryByText("Metadata")).toBeNull();
+    expect(document.querySelector("[data-vantage-status]")).toBeNull();
+  });
+
+  it("paints none of the review store's comments and leaves its drift flag alone", () => {
+    const { container } = renderEmbedded();
+    expect(container.querySelector("[data-review-inline-comment]")).toBeNull();
+    expect(container.querySelector(".review-highlight-block")).toBeNull();
+    // The page's own document set this; a card must not clear it.
+    expect(useReviewStore.getState().commentsDrifted).toBe(true);
+  });
+
+  it("offers no Open Question button, even asked for review mode", () => {
+    const { container } = renderEmbedded();
+    expect(container.querySelector("[data-vantage-oq]")).not.toBeNull();
+    expect(container.querySelector("[data-vantage-oq-button]")).toBeNull();
+  });
+
+  it("opens no comment popover on a click", () => {
+    const { container } = renderEmbedded();
+    layout(container, {
+      "p[data-source-line]": { top: 0, bottom: 20, left: 0, right: 600 },
+    });
+    const prose = container.querySelector<HTMLElement>(".prose")!;
+    act(() => {
+      fireEvent.mouseMove(prose, { clientX: 300, clientY: 10 });
+    });
+    act(() => {
+      fireEvent.click(container.querySelector("p")!, {
+        clientX: 300,
+        clientY: 10,
+      });
+    });
+    expect(useReviewStore.getState().pendingSelection).toBeNull();
+    expect(screen.queryByText("Add Comment")).toBeNull();
+  });
+
+  it("does not flash when its content changes", () => {
+    const view = (content: string) => (
+      <BrowserRouter>
+        <MarkdownViewer content={content} currentPath="docs/b.md" embedded />
+      </BrowserRouter>
+    );
+    const { container, rerender } = render(view("One.\n\nTwo.\n"));
+    rerender(view("One.\n\nTwo, changed.\n"));
+    expect(container.querySelector(".animate-flash-update")).toBeNull();
+  });
+
+  it("still draws link badges, which are how the text reads", () => {
+    seedReady(
+      indexOf({ "docs/a.md": "---\nstatus: draft\n---\n", "docs/b.md": CARD }),
+    );
+    const { container } = renderEmbedded();
+    expect(container.querySelector(`[${PLANNING_BADGE_ATTR}]`)).not.toBeNull();
   });
 });
 
