@@ -13,6 +13,15 @@
  * entries, with the page in the URL (`lib/planningPages.ts`). A flip replaces
  * the history entry, so Back from a document returns to the same pages.
  *
+ * Frame first (§10.1, §10.3): the route's first render is the header, the
+ * section bar and the notices, with no card in it. The sections fill the
+ * region below in one later commit, from a complete set of page inputs —
+ * blocks, reviews and diagrams (`hooks/usePlanningPageInputs.ts`) — and a set
+ * stays on screen until the next one is complete. Nothing that arrives after
+ * that moves what is painted: late comments go into each card's reserved
+ * count, a late diagram into a fixed frame, and the pending count into a slot
+ * kept for four digits (§11.2).
+ *
  * Its URL is `/.vantage/planning`, and `/.vantage/planning/<repo>` in daemon
  * mode. Viewer URLs are `/<path>` and `/<repo>/<path>`, and the server never
  * serves a `.vantage` path as a document, so this URL hides nothing (Plan Q13).
