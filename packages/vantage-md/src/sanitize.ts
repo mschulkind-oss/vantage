@@ -1,7 +1,8 @@
 /**
  * Sanitization schema for the rendering pipeline.
- * Allows GFM, KaTeX MathML, syntax highlighting classes, and
- * data-source-line attributes while blocking XSS vectors.
+ * Allows GFM, KaTeX MathML, syntax highlighting classes,
+ * data-source-line attributes, a filtered inline `style`, and inline SVG as
+ * static drawing (see `SVG_CHILD_TAGS`), while blocking XSS vectors.
  */
 
 import { defaultSchema } from "rehype-sanitize";
