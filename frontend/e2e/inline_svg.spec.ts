@@ -7,9 +7,14 @@
  * after anything that touches that file or the prose classes in
  * `MarkdownViewer.tsx`.
  */
+import { readFileSync } from "node:fs";
 import { test, expect, type Page } from "@playwright/test";
 
 const FIXTURE = "/inline-svg.md";
+const INLINE_SVG_CSS = new URL(
+  "../../packages/vantage-md/src/styles/inline-svg.css",
+  import.meta.url,
+);
 
 async function open(page: Page) {
   await page.goto(FIXTURE);
@@ -65,40 +70,89 @@ test.describe("inline SVG sizing", () => {
       2,
       { timeout: 15000 },
     );
-    // Every svg the document did not write: Mermaid's diagram and its toolbar
-    // icon, and KaTeX's radicals and arrows in a block, a paragraph, a list
-    // item and a table cell. Measured with the inline-SVG rules in place, then
-    // again with them deleted from the live stylesheet; the box each one draws
-    // may not move or change size. (Their computed `max-width` does change —
-    // the rule reaches them — but it caps nothing they were drawn at. They all
-    // come before the document's own drawings, which do move.)
+    // The maximized view of the one in the list item. It is not a portal: the
+    // dialog and its toolbar render inside the `li`, where the rule for an svg
+    // in a sentence reaches them.
+    await page
+      .locator('.prose li button[aria-label="Maximize diagram"]')
+      .click({ force: true });
+    await expect(page.locator('.prose [role="dialog"]')).toBeVisible();
+    // Every svg the document did not write — Mermaid's diagrams, the copy in
+    // the dialog, KaTeX's radicals and arrows in a block, a paragraph, a list
+    // item and a table cell, and the icons on the diagram's buttons — and
+    // every button those icons sit in. Measured with the inline-SVG rules in
+    // place, then again with them deleted from the live stylesheet; nothing
+    // may move or change size. (An svg's computed `max-width` does change —
+    // the rule reaches it — but it caps nothing it was drawn at. All of this
+    // comes before the document's own drawings, which do move.)
     const measure = () =>
-      page.evaluate(() =>
-        Array.from(document.querySelectorAll<SVGSVGElement>(".prose svg"))
+      page.evaluate(() => {
+        const boxOf = (el: Element) => {
+          const { x, y, width, height } = el.getBoundingClientRect();
+          return { x, y, width, height };
+        };
+        const svgs = Array.from(
+          document.querySelectorAll<SVGSVGElement>(".prose svg"),
+        )
           .filter((svg) => svg.getAttribute("role") !== "img")
           .map((svg) => {
-            const { x, y, width, height } = svg.getBoundingClientRect();
             const style = getComputedStyle(svg);
             return {
-              where: svg.closest(".katex") ? "katex" : "mermaid",
-              x,
-              y,
-              width,
-              height,
+              where: svg.closest(".katex")
+                ? "katex"
+                : svg.closest("button")
+                  ? "icon"
+                  : "mermaid",
+              ...boxOf(svg),
               display: style.display,
               verticalAlign: style.verticalAlign,
             };
+          });
+        const buttons = Array.from(
+          document.querySelectorAll(".prose button"),
+          (button) => ({
+            label:
+              button.getAttribute("aria-label") ?? button.getAttribute("title"),
+            ...boxOf(button),
           }),
-      );
+        );
+        return { svgs, buttons };
+      });
     const withRules = await measure();
-    expect(withRules.filter((m) => m.where === "katex").length).toBeGreaterThan(
-      4,
-    );
-    expect(
-      withRules.filter((m) => m.where === "mermaid").length,
-    ).toBeGreaterThan(3);
+    const count = (where: string) =>
+      withRules.svgs.filter((m) => m.where === where).length;
+    expect(count("katex")).toBeGreaterThan(4);
+    // Two diagrams and the dialog's copy.
+    expect(count("mermaid")).toBe(3);
+    // Two Maximize icons, and the dialog's Close, Zoom out, Zoom in and Reset.
+    expect(count("icon")).toBe(6);
+    expect(withRules.buttons.map((b) => b.label)).toEqual([
+      "Maximize diagram",
+      "Maximize diagram",
+      "Close modal",
+      "Zoom out",
+      "Reset zoom (or double-click)",
+      "Zoom in",
+      "Reset view",
+    ]);
 
-    const deleted = await page.evaluate(() => {
+    // The rules to delete are read from the file itself, so this deletes all
+    // of them however they are split up, and cannot pass by missing one.
+    const css = readFileSync(INLINE_SVG_CSS, "utf8");
+    const { declared, deleted } = await page.evaluate((text) => {
+      const key = (selector: string) =>
+        selector.replace(/\s+/g, "").toLowerCase();
+      const selectors = new Set<string>();
+      const collect = (list: CSSRuleList) => {
+        for (const rule of Array.from(list)) {
+          if (rule instanceof CSSStyleRule) selectors.add(key(rule.selectorText));
+          else if (rule instanceof CSSGroupingRule) collect(rule.cssRules);
+        }
+      };
+      const own = new CSSStyleSheet();
+      own.replaceSync(text);
+      collect(own.cssRules);
+
       let count = 0;
       const prune = (
         list: CSSRuleList,
@@ -107,7 +161,7 @@ test.describe("inline SVG sizing", () => {
         for (let i = list.length - 1; i >= 0; i--) {
           const rule = list[i];
           if (rule instanceof CSSStyleRule) {
-            if (rule.selectorText.includes(".vantage-prose) svg")) {
+            if (selectors.has(key(rule.selectorText))) {
               owner.deleteRule(i);
               count++;
             }
@@ -119,9 +173,10 @@ test.describe("inline SVG sizing", () => {
       for (const sheet of Array.from(document.styleSheets)) {
         prune(sheet.cssRules, sheet);
       }
-      return count;
-    });
-    expect(deleted).toBeGreaterThan(1);
+      return { declared: selectors.size, deleted: count };
+    }, css);
+    expect(declared).toBeGreaterThan(0);
+    expect(deleted).toBe(declared);
     expect(await measure()).toEqual(withRules);
   });
 
