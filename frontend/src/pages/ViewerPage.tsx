@@ -18,6 +18,7 @@ import { FilePicker } from "../components/FilePicker";
 import { useFilePickerStore } from "../stores/useFilePickerStore";
 import { ProjectPicker } from "../components/ProjectPicker";
 import { AppLink } from "../components/AppLink";
+import { CollapsedFolders } from "../components/CollapsedFolders";
 import { useWebSocket } from "../hooks/useWebSocket";
 import {
   Clock,
@@ -68,6 +69,8 @@ import {
 import { ReviewPanel } from "../components/ReviewPanel";
 import { MessageSquarePlus, ClipboardCopy } from "lucide-react";
 import { useLineAnchor } from "../hooks/useLineAnchor";
+import { useHeaderFit } from "../hooks/useHeaderFit";
+import { splitExtension } from "../lib/headerFit";
 import { usePersistentFlag } from "../hooks/usePersistentFlag";
 import { usePersistentValue } from "../hooks/usePersistentValue";
 import { StyleGuideModal } from "../components/StyleGuideModal";
@@ -777,6 +780,24 @@ export const ViewerPage: React.FC = () => {
 
   const breadcrumbs =
     currentPath && currentPath !== "." ? currentPath.split("/") : [];
+  const breadcrumbDirs = breadcrumbs.slice(0, -1);
+  const breadcrumbLeaf = breadcrumbs.at(-1);
+  // Only a file has an extension to keep; a folder's dot is part of its name.
+  const [leafStem, leafExt] =
+    breadcrumbLeaf && currentDirectory === null
+      ? splitExtension(breadcrumbLeaf)
+      : [breadcrumbLeaf ?? "", ""];
+  const breadcrumbDirHref = useCallback(
+    (depth: number) =>
+      buildPath(
+        (currentPath ?? "")
+          .split("/")
+          .slice(0, depth + 1)
+          .join("/") || ".",
+      ),
+    [buildPath, currentPath],
+  );
+  const headerRef = useHeaderFit();
 
   // Whether to show the sidebar (hide on repo picker page)
   const showSidebar = !(isMultiRepo && !currentRepo);
@@ -1018,8 +1039,16 @@ export const ViewerPage: React.FC = () => {
         <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-slate-900 min-w-0">
           {/* Header / Breadcrumbs - hidden on repo picker page */}
           {showSidebar ? (
-            <div className="h-14 border-b border-slate-200 dark:border-slate-700 flex items-center px-3 md:px-6 justify-between shrink-0 bg-white dark:bg-slate-800 gap-2">
-              <div className="flex items-center min-w-0 gap-2">
+            // The header gives up room in a fixed order as it narrows, the file
+            // name last: `headerRef` decides how many of those steps to take
+            // (lib/headerFit.ts) and the `hdr-*` classes are what each step
+            // acts on (index.css, "The viewer header's yield steps").
+            <div
+              ref={headerRef}
+              data-testid="viewer-header"
+              className="viewer-header h-14 border-b border-slate-200 dark:border-slate-700 flex items-center px-3 md:px-6 justify-between shrink-0 bg-white dark:bg-slate-800 gap-2"
+            >
+              <div className="hdr-lead flex items-center gap-2">
                 <button
                   className={cn(
                     "p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 shrink-0",
@@ -1070,44 +1099,64 @@ export const ViewerPage: React.FC = () => {
                     {fullWidth ? <Shrink size={18} /> : <Expand size={18} />}
                   </button>
                 )}
-                <nav className="flex items-center text-sm space-x-1 min-w-0 overflow-hidden">
+                <nav className="flex items-center text-sm gap-1 min-w-0 overflow-hidden">
                   <AppLink
                     to={isMultiRepo && currentRepo ? `/${currentRepo}` : "/"}
                     className="text-slate-500 dark:text-slate-400 hover:text-blue-600 font-medium transition-colors shrink-0 no-underline"
                   >
                     {isMultiRepo && currentRepo ? currentRepo : "root"}
                   </AppLink>
-                  {breadcrumbs.map((part, i) => (
-                    <React.Fragment key={i}>
+                  {breadcrumbDirs.length > 0 && (
+                    <>
+                      <span className="hdr-dirs items-center gap-1 shrink-0">
+                        {breadcrumbDirs.map((part, i) => (
+                          <React.Fragment key={i}>
+                            <ChevronRight
+                              size={14}
+                              className="text-slate-500 dark:text-slate-400 shrink-0"
+                            />
+                            <AppLink
+                              to={breadcrumbDirHref(i)}
+                              className="text-slate-500 dark:text-slate-400 hover:text-blue-600 transition-colors no-underline"
+                            >
+                              {part}
+                            </AppLink>
+                          </React.Fragment>
+                        ))}
+                      </span>
+                      <span className="hdr-dirs-collapsed items-center gap-1 shrink-0">
+                        <ChevronRight
+                          size={14}
+                          className="text-slate-500 dark:text-slate-400 shrink-0"
+                        />
+                        <CollapsedFolders
+                          dirs={breadcrumbDirs}
+                          hrefFor={breadcrumbDirHref}
+                        />
+                      </span>
+                    </>
+                  )}
+                  {breadcrumbLeaf && (
+                    <>
                       <ChevronRight
                         size={14}
                         className="text-slate-500 dark:text-slate-400 shrink-0"
                       />
-                      {i < breadcrumbs.length - 1 ? (
-                        <AppLink
-                          to={buildPath(
-                            currentPath
-                              ?.split("/")
-                              .slice(0, i + 1)
-                              .join("/") || ".",
-                          )}
-                          className="text-slate-500 dark:text-slate-400 hover:text-blue-600 transition-colors no-underline hidden sm:inline"
-                        >
-                          {part}
-                        </AppLink>
-                      ) : (
-                        // `truncate` is what puts the ellipsis there, and it
-                        // is the only place the full name is ever elided, so
-                        // the title is the only way to read it back.
-                        <span
-                          className="font-semibold text-slate-900 dark:text-slate-100 truncate"
-                          title={part}
-                        >
-                          {part}
-                        </span>
-                      )}
-                    </React.Fragment>
-                  ))}
+                      {/* The last thing in the header to give up room, and
+                          then it keeps its extension: only the stem truncates.
+                          The ellipsis is the only place any of the path is
+                          elided without a menu behind it, so the tooltip
+                          carries all of it. */}
+                      <span
+                        data-testid="breadcrumb-name"
+                        className="flex min-w-0 font-semibold text-slate-900 dark:text-slate-100"
+                        title={currentPath ?? undefined}
+                      >
+                        <span className="truncate">{leafStem}</span>
+                        {leafExt && <span className="shrink-0">{leafExt}</span>}
+                      </span>
+                    </>
+                  )}
                 </nav>
                 <StarButton
                   path={currentPath}
@@ -1117,15 +1166,15 @@ export const ViewerPage: React.FC = () => {
               </div>
 
               {latestCommit ? (
-                <div className="flex items-center space-x-2 shrink-0">
+                <div className="hdr-tools flex items-center gap-2">
                   {fileGitStatus && (
                     <button
                       onClick={handleCommitClick}
-                      className="flex items-center space-x-1.5 text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2 py-1.5 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors cursor-pointer"
+                      className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2 py-1.5 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors cursor-pointer"
                       title="View uncommitted changes"
                     >
                       <GitBranch size={12} />
-                      <span className="font-medium hidden sm:inline">
+                      <span className="hdr-label font-medium">
                         {fileGitStatus === "modified"
                           ? "Modified"
                           : fileGitStatus === "added"
@@ -1142,27 +1191,33 @@ export const ViewerPage: React.FC = () => {
                       currentPath &&
                       fetchDiff(currentPath, latestCommit.hexsha)
                     }
-                    className="hidden sm:flex items-center space-x-3 text-xs group cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 -mx-2 transition-colors"
-                    title={`${formatDateTime(latestCommit.date)} — click to view diff`}
+                    className="hdr-commit hidden sm:flex items-center gap-3 min-w-0 text-xs group cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 -mx-2 transition-colors"
+                    // The subject is the first thing the header gives up, so
+                    // the tooltip is where it can still be read in full.
+                    title={`${latestCommit.message}\n${formatDateTime(latestCommit.date)} — click to view diff`}
                   >
-                    <div className="flex items-center space-x-1.5 text-slate-500 dark:text-slate-400">
+                    <div className="flex items-center gap-1.5 shrink-0 text-slate-500 dark:text-slate-400">
                       <Clock size={14} />
-                      <span>
+                      <span data-testid="header-time" className="hdr-time">
                         <RelativeTime date={latestCommit.date} />
                       </span>
-                      <span className="text-slate-500 dark:text-slate-400">
-                        ·
-                      </span>
-                      <span className="text-slate-500 dark:text-slate-400">
-                        {formatDateTime(latestCommit.date)}
+                      <span
+                        data-testid="header-date"
+                        className="hdr-date items-center gap-1.5"
+                      >
+                        <span aria-hidden="true">·</span>
+                        <span>{formatDateTime(latestCommit.date)}</span>
                       </span>
                     </div>
-                    <div className="flex items-center space-x-1.5 bg-slate-100 dark:bg-slate-700 group-hover:bg-slate-200 dark:group-hover:bg-slate-600 px-2.5 py-1.5 rounded-md transition-colors">
+                    <div className="hdr-subject flex items-center gap-1.5 min-w-0 bg-slate-100 dark:bg-slate-700 group-hover:bg-slate-200 dark:group-hover:bg-slate-600 px-2.5 py-1.5 rounded-md transition-colors">
                       <MessageSquare
                         size={12}
-                        className="text-slate-500 dark:text-slate-400"
+                        className="shrink-0 text-slate-500 dark:text-slate-400"
                       />
-                      <span className="font-medium text-slate-700 dark:text-slate-200 truncate max-w-[200px]">
+                      <span
+                        data-testid="commit-subject"
+                        className="hdr-subject-text font-medium text-slate-700 dark:text-slate-200 truncate max-w-[200px]"
+                      >
                         {latestCommit.message}
                       </span>
                     </div>
@@ -1174,11 +1229,11 @@ export const ViewerPage: React.FC = () => {
                       currentPath &&
                       fetchDiff(currentPath, latestCommit.hexsha)
                     }
-                    className="sm:hidden flex items-center space-x-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors"
+                    className="sm:hidden flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors"
                     title="View diff"
                   >
                     <Clock size={14} />
-                    <span>
+                    <span className="hdr-time">
                       <RelativeTime
                         date={latestCommit.date}
                         addSuffix={false}
@@ -1194,11 +1249,11 @@ export const ViewerPage: React.FC = () => {
                             ? `/history/${currentRepo}/${currentPath}`
                             : `/history/${currentPath}`
                         }
-                        className="flex items-center space-x-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors no-underline"
+                        className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors no-underline"
                         title="View full history"
                       >
                         <History size={14} />
-                        <span className="hidden sm:inline">
+                        <span className="hdr-label">
                           {history.length} commits
                         </span>
                       </AppLink>
@@ -1206,7 +1261,7 @@ export const ViewerPage: React.FC = () => {
                   {currentPath && repoRootPath && (
                     <button
                       onClick={handleCopyPath}
-                      className="flex items-center space-x-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
+                      className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
                       title={`Copy absolute path: ${repoRootPath}/${currentPath}`}
                     >
                       {pathCopied ? (
@@ -1214,7 +1269,7 @@ export const ViewerPage: React.FC = () => {
                       ) : (
                         <Copy size={14} />
                       )}
-                      <span className="hidden sm:inline">
+                      <span className="hdr-label">
                         {pathCopied ? "Copied!" : "Path"}
                       </span>
                     </button>
@@ -1226,7 +1281,7 @@ export const ViewerPage: React.FC = () => {
                         setCopied(false);
                       }}
                       className={cn(
-                        "flex items-center space-x-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
+                        "flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
                         showRaw
                           ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30"
                           : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
@@ -1234,7 +1289,7 @@ export const ViewerPage: React.FC = () => {
                       title={showRaw ? "View rendered" : "View raw markdown"}
                     >
                       <Code size={14} />
-                      <span className="hidden sm:inline">
+                      <span className="hdr-label">
                         {showRaw ? "Rendered" : "Raw"}
                       </span>
                     </button>
@@ -1249,7 +1304,7 @@ export const ViewerPage: React.FC = () => {
                         <button
                           onClick={handleReviewToggle}
                           className={cn(
-                            "flex items-center space-x-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
+                            "flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
                             reviewExitConfirm
                               ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 ring-1 ring-red-300 dark:ring-red-700"
                               : isReviewMode
@@ -1259,7 +1314,7 @@ export const ViewerPage: React.FC = () => {
                           title={reviewToggleTitle}
                         >
                           <MessageSquarePlus size={14} />
-                          <span className="hidden sm:inline">
+                          <span className="hdr-label">
                             {reviewExitConfirm ? "End review?" : "Review"}
                           </span>
                         </button>
@@ -1275,7 +1330,7 @@ export const ViewerPage: React.FC = () => {
                           {activeReviewCount > 0 && (
                             <button
                               onClick={handleReviewDismiss}
-                              className={`flex items-center space-x-1.5 text-xs rounded-lg sm:min-w-[100px] px-2 py-1.5 transition-colors cursor-pointer ${
+                              className={`hdr-dismiss flex items-center gap-1.5 text-xs rounded-lg sm:min-w-[100px] px-2 py-1.5 transition-colors cursor-pointer ${
                                 reviewDismissConfirm
                                   ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50"
                                   : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600/50"
@@ -1289,7 +1344,7 @@ export const ViewerPage: React.FC = () => {
                               }
                             >
                               <Check size={14} />
-                              <span className="hidden sm:inline">
+                              <span className="hdr-label">
                                 {reviewDismissConfirm
                                   ? "Confirm?"
                                   : answeredReviewCount > 0
@@ -1311,7 +1366,7 @@ export const ViewerPage: React.FC = () => {
                                   );
                                 }
                               }}
-                              className="flex items-center space-x-1.5 text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg px-2 py-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors cursor-pointer"
+                              className="flex items-center gap-1.5 text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg px-2 py-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors cursor-pointer"
                               title="Copy all comments to clipboard"
                             >
                               {reviewCopied ? (
@@ -1319,7 +1374,7 @@ export const ViewerPage: React.FC = () => {
                               ) : (
                                 <ClipboardCopy size={14} />
                               )}
-                              <span className="hidden sm:inline">
+                              <span className="hdr-label">
                                 {reviewCopied
                                   ? "Copied!"
                                   : `Copy ${pendingReviewCount}`}
@@ -1328,7 +1383,7 @@ export const ViewerPage: React.FC = () => {
                           )}
                           <button
                             onClick={() => setReviewPanelOpen(true)}
-                            className="flex items-center space-x-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
+                            className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
                             title="Manage comments"
                           >
                             <MessageSquare size={14} />
@@ -1339,42 +1394,43 @@ export const ViewerPage: React.FC = () => {
                   )}
                 </div>
               ) : currentPath && currentPath.toLowerCase().endsWith(".md") ? (
-                <div className="flex items-center space-x-2 shrink-0">
+                <div className="hdr-tools flex items-center gap-2">
                   {!isStaticMode() && (
                     <button
                       onClick={() =>
                         currentPath && fetchWorkingDiff(currentPath)
                       }
-                      className="flex items-center space-x-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 sm:px-3 py-1.5 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors cursor-pointer"
+                      className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 sm:px-3 py-1.5 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors cursor-pointer"
                       title="View file content as diff"
                     >
                       <FileQuestion size={14} />
-                      <span className="font-medium hidden sm:inline">
+                      <span className="hdr-label font-medium">
                         Untracked file
                       </span>
                     </button>
                   )}
                   {fileMtime && (
                     <div
-                      className="hidden sm:flex items-center space-x-1.5 text-xs text-slate-500 dark:text-slate-400 px-2 py-1.5"
+                      className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 px-2 py-1.5"
                       title={formatDateTime(fileMtime)}
                     >
                       <Clock size={14} />
-                      <span>
+                      <span data-testid="header-time" className="hdr-time">
                         <RelativeTime date={fileMtime} />
                       </span>
-                      <span className="text-slate-500 dark:text-slate-400">
-                        ·
-                      </span>
-                      <span className="text-slate-500 dark:text-slate-400">
-                        {formatDateTime(fileMtime)}
+                      <span
+                        data-testid="header-date"
+                        className="hdr-date items-center gap-1.5"
+                      >
+                        <span aria-hidden="true">·</span>
+                        <span>{formatDateTime(fileMtime)}</span>
                       </span>
                     </div>
                   )}
                   {currentPath && repoRootPath && (
                     <button
                       onClick={handleCopyPath}
-                      className="flex items-center space-x-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
+                      className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
                       title={`Copy absolute path: ${repoRootPath}/${currentPath}`}
                     >
                       {pathCopied ? (
@@ -1382,7 +1438,7 @@ export const ViewerPage: React.FC = () => {
                       ) : (
                         <Copy size={14} />
                       )}
-                      <span className="hidden sm:inline">
+                      <span className="hdr-label">
                         {pathCopied ? "Copied!" : "Path"}
                       </span>
                     </button>
@@ -1393,7 +1449,7 @@ export const ViewerPage: React.FC = () => {
                       setCopied(false);
                     }}
                     className={cn(
-                      "flex items-center space-x-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
+                      "flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
                       showRaw
                         ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30"
                         : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
@@ -1401,7 +1457,7 @@ export const ViewerPage: React.FC = () => {
                     title={showRaw ? "View rendered" : "View raw markdown"}
                   >
                     <Code size={14} />
-                    <span className="hidden sm:inline">
+                    <span className="hdr-label">
                       {showRaw ? "Rendered" : "Raw"}
                     </span>
                   </button>
@@ -1411,7 +1467,7 @@ export const ViewerPage: React.FC = () => {
                       <button
                         onClick={handleReviewToggle}
                         className={cn(
-                          "flex items-center space-x-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
+                          "flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
                           reviewExitConfirm
                             ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 ring-1 ring-red-300 dark:ring-red-700"
                             : isReviewMode
@@ -1421,7 +1477,7 @@ export const ViewerPage: React.FC = () => {
                         title={reviewToggleTitle}
                       >
                         <MessageSquarePlus size={14} />
-                        <span className="hidden sm:inline">
+                        <span className="hdr-label">
                           {reviewExitConfirm ? "End review?" : "Review"}
                         </span>
                       </button>
@@ -1431,7 +1487,7 @@ export const ViewerPage: React.FC = () => {
                         {activeReviewCount > 0 && (
                           <button
                             onClick={handleReviewDismiss}
-                            className={`flex items-center space-x-1.5 text-xs rounded-lg sm:min-w-[100px] px-2 py-1.5 transition-colors cursor-pointer ${
+                            className={`hdr-dismiss flex items-center gap-1.5 text-xs rounded-lg sm:min-w-[100px] px-2 py-1.5 transition-colors cursor-pointer ${
                               reviewDismissConfirm
                                 ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50"
                                 : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600/50"
@@ -1445,7 +1501,7 @@ export const ViewerPage: React.FC = () => {
                             }
                           >
                             <Check size={14} />
-                            <span className="hidden sm:inline">
+                            <span className="hdr-label">
                               {reviewDismissConfirm
                                 ? "Confirm?"
                                 : answeredReviewCount > 0
@@ -1464,7 +1520,7 @@ export const ViewerPage: React.FC = () => {
                                 setTimeout(() => setReviewCopied(false), 2000);
                               }
                             }}
-                            className="flex items-center space-x-1.5 text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg px-2 py-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors cursor-pointer"
+                            className="flex items-center gap-1.5 text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg px-2 py-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors cursor-pointer"
                             title="Copy all comments to clipboard"
                           >
                             {reviewCopied ? (
@@ -1472,7 +1528,7 @@ export const ViewerPage: React.FC = () => {
                             ) : (
                               <ClipboardCopy size={14} />
                             )}
-                            <span className="hidden sm:inline">
+                            <span className="hdr-label">
                               {reviewCopied
                                 ? "Copied!"
                                 : `Copy ${pendingReviewCount}`}
@@ -1481,7 +1537,7 @@ export const ViewerPage: React.FC = () => {
                         )}
                         <button
                           onClick={() => setReviewPanelOpen(true)}
-                          className="flex items-center space-x-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
+                          className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
                           title="Manage comments"
                         >
                           <MessageSquare size={14} />
