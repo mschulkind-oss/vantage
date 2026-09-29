@@ -693,3 +693,15 @@ func TestHasMarkdownStopsAtRepositories(t *testing.T) {
 	capped := New(Config{RootPath: dir, StopAtRepos: true, WalkMaxDepth: &depth})
 	require.False(t, capped.HasMarkdown(), "the probe honors walk_max_depth")
 }
+
+// A repository with no Markdown — common among the clones of a directory served
+// project by project — lists [] rather than nothing: /api/files marshals this
+// slice directly, and null is not a list the file picker can filter.
+func TestListAllFilesEmptyIsNotNil(t *testing.T) {
+	t.Cleanup(ClearMarkdownDirCache)
+	dir := t.TempDir()
+	writeFile(t, dir, "main.go", "package main\n")
+	files := New(Config{RootPath: dir}).ListAllFiles()
+	require.NotNil(t, files)
+	require.Empty(t, files)
+}
