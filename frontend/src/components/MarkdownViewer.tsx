@@ -202,7 +202,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       // Anchor links within the same doc: scroll inside the content container.
       // `scrollToAnchor` opens any collapsed section around the target first —
       // measuring a `display: none` box scrolls the reader nowhere useful.
-      if (href.startsWith("#")) {
+      if (href.startsWith("#") && !embedded) {
         e.preventDefault();
         scrollToAnchor(href.slice(1));
         return;
@@ -216,6 +216,13 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       }
 
       e.preventDefault();
+
+      // Embedded, the page holds only a slice of the document, so a section
+      // of it is on the document's own page (see `resolveHref`).
+      if (href.startsWith("#")) {
+        navigate(buildPath(currentPath) + href);
+        return;
+      }
 
       // Handle cross-doc anchor links (e.g. other-doc.md#section)
       const [pathPart, hashPart] = href.split("#");
@@ -233,7 +240,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
         buildPath(resolvedPath) + (hashPart ? `#${hashPart}` : "");
       navigate(targetUrl);
     },
-    [currentPath, navigate, buildPath],
+    [currentPath, navigate, buildPath, embedded],
   );
 
   const transformImageUri = useCallback(
@@ -261,6 +268,10 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   const resolveHref = useCallback(
     (href: string | undefined): string => {
       if (!href) return "";
+      // An embedded viewer shows a slice of `currentPath` on another page,
+      // where the fragment's target is not, so it names the document.
+      if (href.startsWith("#") && embedded)
+        return buildPath(currentPath) + href;
       if (
         href.startsWith("http") ||
         href.startsWith("mailto:") ||
@@ -281,7 +292,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       const resolvedPath = dir ? `${dir}/${cleanHref}` : cleanHref;
       return buildPath(resolvedPath) + (hashPart ? `#${hashPart}` : "");
     },
-    [currentPath, buildPath],
+    [currentPath, buildPath, embedded],
   );
 
   // Delta flash: highlight only changed blocks on live updates

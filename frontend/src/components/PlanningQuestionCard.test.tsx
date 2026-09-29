@@ -50,9 +50,10 @@ vi.mock("vantage-md/react", async () => {
     MermaidDiagram: ({ code }: { code: string }) => <pre>{code}</pre>,
   };
 });
+const navigate = vi.hoisted(() => vi.fn());
 vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual("react-router-dom");
-  return { ...actual, useNavigate: () => vi.fn() };
+  return { ...actual, useNavigate: () => navigate };
 });
 
 afterEach(cleanup);
@@ -352,6 +353,22 @@ describe("the card shows its question, and only its question", () => {
       }),
     ).toBeTruthy();
     expect(article).toBeTruthy();
+  });
+
+  // The card holds a slice of its document on another page, so a link to a
+  // section of the document has to go there: the section is not on the page.
+  it("sends a same-document section link to its document", () => {
+    navigate.mockClear();
+    renderCard(byId("OQ-B2"));
+    const link = screen.getByRole("link", { name: "§3" });
+    expect(link).toHaveAttribute(
+      "href",
+      "/docs/design/agent-bootstrap.md#3-fixative-and-proactive",
+    );
+    fireEvent.click(link);
+    expect(navigate).toHaveBeenCalledWith(
+      "/docs/design/agent-bootstrap.md#3-fixative-and-proactive",
+    );
   });
 
   it("links Open document to the document itself, with no fragment", () => {
