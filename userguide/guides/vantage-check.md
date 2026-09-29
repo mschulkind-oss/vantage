@@ -405,8 +405,8 @@ planning rules.
 ## `vantage-check style-guide`
 
 Prints the canonical Vantage Markdown conventions: relative-link rules, line
-anchors, frontmatter, Mermaid label quoting, code and diff fences, callouts,
-tables, and the `$$...$$` math rule.
+anchors, frontmatter and the [planning](planning.md) keys, Mermaid label
+quoting, code and diff fences, callouts, tables, and the `$$...$$` math rule.
 
 ```bash
 uvx vantage-check style-guide >> AGENTS.md      # or pipe it anywhere you like

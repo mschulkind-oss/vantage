@@ -42,6 +42,15 @@ verify side of the same contract. See [vantage-check](../guides/vantage-check.md
 > the guide is a rule the checker can decide — it reports what *breaks*
 > rendering, and leaves matters of taste to you.
 
+## Planning documents
+
+The guide also covers the frontmatter Vantage reads a repository's plans
+from: `stage`, `next` and `depends-on` beside `status`, the rule that a stage is
+written in the frontmatter and nowhere else, how a roadmap is written, and the
+`[planning]` table in `.vantage.toml` that declares the stage words. What
+Vantage does with them, the badges on links and `vantage-check index`, is in
+[Planning Documents](../guides/planning.md).
+
 ## Related
 
 - [vantage-check](../guides/vantage-check.md) — the checker, its rules, and config
