@@ -164,14 +164,18 @@ function snapshot(page: Page, labels: string[], dirs: string[]) {
           overlaps.push(`${label(prev.el)} | ${label(cur.el)}`);
         }
       }
+      // An item's room ends at its margin box: the commit button's `-mx-2`
+      // bleeds its hover background into the header's padding on purpose.
+      const roomRight = (el: Element, r: DOMRect) =>
+        r.right + (parseFloat(getComputedStyle(el).marginRight) || 0);
       const escapes = items
         .filter(
-          ({ r }) =>
+          ({ el, r }) =>
             r.height > 40 ||
             r.top < h.top ||
             r.bottom > h.bottom ||
             r.left < h.left ||
-            r.right > contentRight + 0.5,
+            roomRight(el, r) > contentRight + 0.5,
         )
         .map(({ el }) => label(el));
 
@@ -239,7 +243,10 @@ function layoutWith(page: Page, count: number) {
           parseFloat(getComputedStyle(header).paddingRight);
         const [lead, tools] = [...header.children];
         const past = [lead, ...(tools ? tools.children : [])].filter(
-          (el) => el.getBoundingClientRect().right > edge + 0.5,
+          (el) =>
+            el.getBoundingClientRect().right +
+              (parseFloat(getComputedStyle(el).marginRight) || 0) >
+            edge + 0.5,
         );
         const subject = header.querySelector('[data-testid="commit-subject"]');
         // Drawn at all, however narrow: a display:none box has no rects.
@@ -293,7 +300,11 @@ function checkInvariants(s: Snapshot) {
   expect(s.escapes, "header items wrap or leave the header").toEqual([]);
   // Each step is all-or-nothing: no half the labels, no one folder of two.
   const labels = Object.values(s.labels);
-  expect(new Set(labels).size, `labels: ${JSON.stringify(s.labels)}`).toBe(1);
+  if (labels.length) {
+    expect(new Set(labels).size, `labels: ${JSON.stringify(s.labels)}`).toBe(
+      1,
+    );
+  }
   const dirs = Object.values(s.dirs);
   if (dirs.length) {
     expect(new Set(dirs).size, `dirs: ${JSON.stringify(s.dirs)}`).toBe(1);
@@ -453,6 +464,43 @@ test.describe("viewer header under width pressure", () => {
       await expect(header.getByRole("button", { name })).toBeVisible();
     }
     await expect(header.getByRole("link", { name: "2 commits" })).toBeVisible();
+  });
+});
+
+// A folder's toolbar is its commit button alone, so the button is the last item
+// in the row. Its `-mx-2` hover bleed puts its border box 8px past the room it
+// takes, which the fit once read as overflow: with nothing after the button to
+// hide that — no Path, because /api/info failed — the header took every step in
+// a 2400px window and hid the subject, the date and the folders for nothing.
+test.describe("a header whose toolbar ends at the commit button", () => {
+  test("takes no step it has the room not to", async ({ page }) => {
+    await page.route("**/api/info", (route) => route.fulfill({ status: 500 }));
+    await page.route(
+      (url) =>
+        url.pathname === "/api/git/status" &&
+        url.searchParams.get("path") === "docs/design",
+      (route) =>
+        route.fulfill({
+          json: {
+            last_commit: {
+              hexsha: "1".repeat(40),
+              author_name: "Vantage e2e",
+              author_email: "e2e@vantage.local",
+              date: new Date(Date.now() - 12 * MINUTE).toISOString(),
+              message: SUBJECT,
+            },
+            git_status: null,
+          },
+        }),
+    );
+    await page.setViewportSize({ width: 2400, height: 900 });
+    await page.goto("/docs/design");
+    const header = page.getByTestId("viewer-header");
+    await expect(header.getByTestId("commit-subject")).toHaveText(SUBJECT);
+    await expect(header).toHaveAttribute("data-yield", "");
+    const s = await snapshot(page, [], ["docs"]);
+    checkInvariants(s);
+    expect(s.subject.shown && s.date && s.time && s.dirs.docs).toBe(true);
   });
 });
 

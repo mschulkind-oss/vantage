@@ -67,6 +67,7 @@ function fakeHeader(
     tools: number;
     subject?: { shown: number; full: number };
   },
+  { lastToolMarginRight = 0 } = {},
 ) {
   const header = document.createElement("div");
   header.innerHTML =
@@ -75,6 +76,7 @@ function fakeHeader(
   const lead = header.querySelector(".hdr-lead")!;
   const subject = header.querySelector(".hdr-subject-text")!;
   const lastTool = header.querySelector("button")!;
+  lastTool.style.marginRight = `${lastToolMarginRight}px`;
   const now = () =>
     layout((header.dataset.yield ?? "").split(" ").filter(Boolean));
   const right = (r: number) => () => ({ right: r }) as DOMRect;
@@ -163,6 +165,27 @@ describe("fitHeader", () => {
       subject: { shown: 40, full: 40 },
     }));
     expect(fitHeader(header)).toBe(0);
+  });
+
+  // The commit button bleeds its hover background 8px past its text with
+  // `-mx-2`, so its border box ends 8px past the end of the room it takes up.
+  // When it is the toolbar's last item — a folder, a file with no Markdown
+  // actions, a server whose /api/info failed so there is no Path — that 8px
+  // read as overflow at any width, and the header took every step at 2400px.
+  it("measures an item by the room it takes, negative margin and all", () => {
+    const { header } = fakeHeader(1000, () => ({ lead: 400, tools: 1008 }), {
+      lastToolMarginRight: -8,
+    });
+    expect(fitHeader(header)).toBe(0);
+  });
+
+  it("still notices an item with a negative margin that does overflow", () => {
+    const { header } = fakeHeader(
+      1000,
+      (taken) => ({ lead: 400, tools: taken.length ? 1000 : 1020 }),
+      { lastToolMarginRight: -8 },
+    );
+    expect(fitHeader(header)).toBe(1);
   });
 
   it("gives steps back when the header widens", () => {
