@@ -217,6 +217,34 @@ export const RULES: readonly RuleMeta[] = [
       "A status chip with no `status:` to show, or one that disagrees with it",
     default: "warning",
   },
+  // `planning/*` — the planning index's rules (docs/design/planning-index.md
+  // §8). Each is a derivation the planning page also shows, run over the same
+  // scan, so the page and the gate cannot disagree. They run once, after every
+  // file, over the run's own documents and the roadmap (`rules/planning.ts`).
+  {
+    id: "planning/stage-vocabulary",
+    summary:
+      "A `stage` outside the words `[planning.stages]` declares — inert when none are declared",
+    default: "error",
+  },
+  {
+    id: "planning/depends-on-missing",
+    summary:
+      "A `depends-on` entry whose target does not exist or lies outside the repository, or never mentions its `#OQ-…` id",
+    default: "error",
+  },
+  {
+    id: "planning/stage-disagrees",
+    summary:
+      "A stage that says ready or built while the document still has open questions",
+    default: "warning",
+  },
+  {
+    id: "planning/unrouted",
+    summary:
+      "An open question the roadmap does not link, directly or through its document (off by default)",
+    default: "off",
+  },
   {
     id: "render/pipeline",
     summary:
