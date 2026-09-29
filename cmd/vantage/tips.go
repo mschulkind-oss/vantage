@@ -219,6 +219,9 @@ func (st serviceState) tip(plan *clonesPlan) string {
 	case st.Running:
 		line := fmt.Sprintf("A Vantage service is already running at %s.", st.URL)
 		switch {
+		case st.OpenPath == "/" && plan != nil && plan.Loose != "":
+			// The daemon never serves the loose project; only `serve` makes one.
+			line += fmt.Sprintf(" Its clones are open there, but not the Markdown outside them: %s/", st.URL)
 		case st.OpenPath == "/":
 			line += fmt.Sprintf(" This directory's projects are open there: %s/", st.URL)
 		case st.OpenPath != "":

@@ -85,21 +85,25 @@ vantage ~/code
 ```
 
 This happens when the directory is not itself inside a git repository and at
-least one of its immediate children is one. It is exactly what the daemon does
-with a [`source_dirs`](reference/configuration.md#source-directory-auto-discovery)
+least one of its immediate children is one. The clones are served exactly as
+the daemon serves a
+[`source_dirs`](reference/configuration.md#source-directory-auto-discovery)
 entry:
 
 - Each project is named after its directory, with `-2` added when two would
   share a name.
 - A clone made while Vantage runs appears in the project list within 30
   seconds, and a deleted one drops out.
-- Markdown that sits in the directory but in none of the clones (a `notes.md`
-  beside them, say) is served as one more project, named after the directory
-  and listed first. A clone that has the directory's name keeps it, and this
-  project becomes `code-2` instead. It never shows the clones' files, and a link from one of
-  its notes into a clone opens the document in the clone's own project. With
-  no such Markdown, there is no extra project.
 - Linked worktrees are not served as projects, just as the daemon skips them.
+
+One project is `serve`'s own, and the daemon does not make it. Markdown that
+sits in the directory but in none of the clones (a `notes.md` beside them, say)
+is served as one more project, named after the directory and listed first. A
+clone that has the directory's name keeps it, and this project becomes
+`code-2` instead. It never shows the clones' files, and a link from one of its
+notes into a clone opens the document in the clone's own project. With no such
+Markdown, there is no extra project. A background service set up with
+`install-service --source-dir` serves the clones only.
 
 To serve the whole directory as a single project, the way Vantage did before,
 pass `--one-project`.
