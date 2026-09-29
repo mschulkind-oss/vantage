@@ -635,8 +635,9 @@ than half-styled (**D6**).
 **An `input` keeps no `style` at all.** GFM emits one only as a task list's
 checkbox, and never with a style. The task-list stylesheet positions that
 checkbox itself, so a `style` on it could place and size a box over the page:
-measured in Chromium, a white 9000px square set by `top`, `left`, `width` and
-`height` covered the whole content pane. A document needed no class for it:
+measured in Chromium while the checkbox was positioned absolutely, a white
+9000px square set by `top`, `left`, `width` and `height` covered the whole
+content pane. A document needed no class for it:
 GFM gives a task's `li` the class that rule matches, and a checkbox typed into
 the task's text is a child of that `li` too. The schema therefore lists `style`
 on each element's own entry rather than on `*`. `rehype-sanitize` consults `*`
@@ -712,7 +713,15 @@ this: their sanitizer refuses `class` outright.
 - **A document may still write the kept names on their own elements.** By the
   time the sanitizer runs, a hand-written `<li class="task-list-item">` and the
   one GFM emitted are the same node, and none of the names can lay an element
-  over anything else.
+  over anything outside the document's scroll container. The task list's
+  checkbox took two fixes to get there. An `input` keeps no `style` (see
+  [The inline-`style` filter](#the-inline-style-filter)), and the stylesheet
+  floats the checkbox instead of positioning it absolutely. An absolutely
+  positioned box is placed against its nearest positioned ancestor, and an item
+  written with `display: contents` has no box to be one. So the checkbox was
+  placed against an ancestor outside the scroll container: with the item's
+  `font-size` at 600px, a 630px square over the content pane that stayed put
+  when the document scrolled.
 
 > [!WARNING]
 > **The footnote label is visible in the app only because nothing Tailwind scans

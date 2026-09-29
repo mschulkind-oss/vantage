@@ -283,9 +283,9 @@ describe("inline style filtering", () => {
   });
 
   it("keeps a document's style off a task-list checkbox", async () => {
-    // `styles/task-list.css` positions `.task-list-item > input` itself, so a
-    // `style` on the checkbox placed and sized a box the stylesheet had already
-    // taken out of the flow. Measured in Chromium at 1280x800, these
+    // `styles/task-list.css` positions `.task-list-item > input` itself, so
+    // `top` and `left` on the checkbox move a box the stylesheet placed.
+    // Measured in Chromium at 1280x800 while it was positioned absolutely, these
     // declarations covered the whole content pane in white, and the pane stayed
     // covered after scrolling to the end. GFM never writes a style on the
     // checkbox it emits, so an `input` keeps none. The second document writes no
@@ -492,7 +492,8 @@ describe("the class allowlist", () => {
     // A document may write the pipeline's own names on the elements that carry
     // them: by the time the sanitizer runs, a hand-written one and the
     // pipeline's are the same node, and none of them can lay an element over
-    // anything else. What the document writes next to them goes.
+    // anything outside the scroll container (`e2e/task_list.spec.ts` measures
+    // the one that could). What the document writes next to them goes.
     const host = await parsed(
       [
         `<div class="vantage-alert-title ${OVERLAY}">Note</div>`,
