@@ -72,8 +72,10 @@ const ANCHOR_GAP = 4;
  * overflow was *clipped* rather than merely offscreen — the menu lost its left
  * edge instead of hanging over the content.
  *
- * Right alignment is still the preference, because that is where these menus
- * have always sat and the trigger is usually at the right of its container. It
+ * Right alignment is still the default, because that is where these menus
+ * have always sat and the trigger is usually at the right of its container;
+ * `align: "start"` hangs the menu from the trigger's left edge instead, for a
+ * trigger that leads what it opens (a breadcrumb's collapsed folders). Either
  * is a preference rather than a rule: the result is clamped into the viewport,
  * flipped above the trigger when there is no room below, and given a maxHeight
  * so a menu taller than the screen scrolls instead of running off it.
@@ -87,11 +89,13 @@ export function anchoredMenuPosition(
   menuHeight: number,
   viewportWidth: number,
   viewportHeight: number,
+  align: "start" | "end" = "end",
 ): { top: number; left: number; maxHeight: number } {
   const width = Math.min(menuWidth, viewportWidth - MARGIN * 2);
   // max(MARGIN, …) keeps the limit sane when the menu fills the viewport.
   const rightLimit = Math.max(MARGIN, viewportWidth - width - MARGIN);
-  const left = Math.min(Math.max(MARGIN, anchor.right - width), rightLimit);
+  const preferred = align === "start" ? anchor.left : anchor.right - width;
+  const left = Math.min(Math.max(MARGIN, preferred), rightLimit);
 
   const roomBelow = viewportHeight - anchor.bottom - ANCHOR_GAP - MARGIN;
   const roomAbove = anchor.top - ANCHOR_GAP - MARGIN;
