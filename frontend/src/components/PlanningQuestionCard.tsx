@@ -21,7 +21,13 @@
  * Answer… and Open document; a blocked one, which only Waiting lists, Open
  * document alone.
  */
-import React, { useCallback, useLayoutEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   questionCardSource,
   type PlanningBadge,
@@ -211,8 +217,12 @@ export const PlanningQuestionCard: React.FC<PlanningQuestionCardProps> = ({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const card =
-    source === undefined ? null : questionCardSource(source, question);
+  // Parsed once per document text and question, not on every render: the
+  // slice parses its whole document, and the page re-renders as reviews load.
+  const card = useMemo(
+    () => (source === undefined ? null : questionCardSource(source, question)),
+    [source, question],
+  );
   const markdown = card?.markdown ?? null;
 
   // After the embedded viewer has rendered and its own passes have run — a
