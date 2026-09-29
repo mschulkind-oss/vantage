@@ -80,11 +80,13 @@ type Options struct {
 	// each clone is served as a project of its own (see
 	// docs/design/serve-clones-directory.md §3).
 	StopAtRepos bool
-	// OnWalkTimeout, when set, is called each time the untracked-file walk
-	// behind recent files is cut off by WalkTimeout — the one walk here whose
-	// cap silently drops results. The server turns it into a banner (see
+	// OnWalk, when set, hears how each untracked-file walk behind recent files
+	// ended: timedOut is true when WalkTimeout cut it off — the one walk here
+	// whose cap silently drops results — and false when it finished. A walk
+	// that failed some other way is not reported. The server turns a timeout
+	// into a banner and a finished walk into its removal (see
 	// docs/design/serve-clones-directory.md §7).
-	OnWalkTimeout func()
+	OnWalk func(timedOut bool)
 }
 
 func (o Options) walkTimeout() time.Duration {
@@ -1028,10 +1030,15 @@ func (s *GitService) recentsUntracked(extGlobs, excludeFrom []string, showGitign
 	args = append(args, "--")
 	args = append(args, extGlobs...)
 	out, err := s.run(s.workingDir, s.opts.walkTimeout(), args...)
-	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) && s.opts.OnWalkTimeout != nil {
-			s.opts.OnWalkTimeout()
+	if s.opts.OnWalk != nil {
+		switch {
+		case err == nil:
+			s.opts.OnWalk(false)
+		case errors.Is(err, context.DeadlineExceeded):
+			s.opts.OnWalk(true)
 		}
+	}
+	if err != nil {
 		return ""
 	}
 	return string(out)

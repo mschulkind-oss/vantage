@@ -220,7 +220,8 @@ or without the split. Two conditions are reported:
   the system's file-watch limit was reached.* It also names the setting to
   raise.
 - **The untracked-file walk hits `walk_timeout`.** Recents then lack every
-  untracked file, and the banner says so and names the setting.
+  untracked file, and the banner says so and names the setting. A later walk
+  that finishes in time takes the report back.
 
 Degradations are kept per project in memory and served at `GET
 /api/degraded`. The first degradation of each kind in each project also
