@@ -42,3 +42,21 @@ Inline icon <svg width="16" height="16" viewBox="0 0 16 16" role="img" aria-labe
 | Cell |
 | ---- |
 | Inline icon <svg width="16" height="16" viewBox="0 0 16 16" role="img" aria-label="Dot in a cell"><circle cx="8" cy="8" r="6" fill="currentColor"/></svg> in a cell. |
+
+## Inline icon <svg width="16" height="16" viewBox="0 0 16 16" role="img" aria-label="Dot in a heading"><circle cx="8" cy="8" r="6" fill="currentColor"/></svg> in a heading
+
+<details>
+<summary>Inline icon <svg width="16" height="16" viewBox="0 0 16 16" role="img" aria-label="Dot in a summary"><circle cx="8" cy="8" r="6" fill="currentColor"/></svg> in a summary.</summary>
+
+The details body.
+
+</details>
+
+<dl>
+<dt>Inline icon <svg width="16" height="16" viewBox="0 0 16 16" role="img" aria-label="Dot in a term"><circle cx="8" cy="8" r="6" fill="currentColor"/></svg> in a term.</dt>
+<dd>Inline icon <svg width="16" height="16" viewBox="0 0 16 16" role="img" aria-label="Dot in a definition"><circle cx="8" cy="8" r="6" fill="currentColor"/></svg> in a definition.</dd>
+</dl>
+
+<figure>
+<figcaption>Inline icon <svg width="16" height="16" viewBox="0 0 16 16" role="img" aria-label="Dot in a figure caption"><circle cx="8" cy="8" r="6" fill="currentColor"/></svg> in a caption.</figcaption>
+</figure>

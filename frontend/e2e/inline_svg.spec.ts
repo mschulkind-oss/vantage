@@ -180,7 +180,26 @@ test.describe("inline SVG sizing", () => {
     expect(await measure()).toEqual(withRules);
   });
 
-  for (const where of ["a paragraph", "a list item", "a cell"]) {
+  test("keeps a drawing in a div of its own a block", async ({ page }) => {
+    // The sentence rule is scoped to the blocks that hold phrasing content, so
+    // the recommended shape — a `<div>` around the `<svg>` — is untouched.
+    await open(page);
+    const display = await page
+      .locator('svg[aria-label="Wide with viewBox"]')
+      .evaluate((svg) => getComputedStyle(svg).display);
+    expect(display).toBe("block");
+  });
+
+  for (const where of [
+    "a paragraph",
+    "a list item",
+    "a cell",
+    "a heading",
+    "a summary",
+    "a term",
+    "a definition",
+    "a figure caption",
+  ]) {
     test(`keeps an icon in ${where} on its line of text`, async ({ page }) => {
       // Preflight's `svg { display: block }` put a 16px icon on a line of its
       // own: "Inline icon", the dot, "in text." rendered as three lines.
