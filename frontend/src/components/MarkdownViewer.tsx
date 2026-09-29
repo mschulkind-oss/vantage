@@ -20,9 +20,10 @@ import {
   linkTargetAttributes,
   usePlanningLinkBadges,
 } from "../hooks/usePlanningLinkBadges";
-import { findDocument } from "vantage-md/planning";
+import { findDocument, referencedBy } from "vantage-md/planning";
 import { usePlanningIndex } from "../stores/usePlanningStore";
 import { PLANNING_BADGE_ATTR } from "./PlanningBadge";
+import { ReferencedBy } from "./ReferencedBy";
 import { useCollapseSections } from "../hooks/useCollapseSections";
 import { useReviewStore } from "../stores/useReviewStore";
 import { ReviewCommentPopover } from "./ReviewCommentPopover";
@@ -730,6 +731,17 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     [planningDocument],
   );
 
+  // Referenced by (§7), for a planning document only: the design puts the list
+  // below a planning document's card, and a plain document has no card to be
+  // below in the index's sense.
+  const references = useMemo(
+    () =>
+      planningIndex !== null && planningDocument !== undefined
+        ? referencedBy(planningIndex, currentPath)
+        : [],
+    [planningIndex, planningDocument, currentPath],
+  );
+
   // A `#…` link React did not already handle — the header's `next` link, which
   // `FrontmatterDisplay` draws as a plain anchor because it lives in the
   // published package. Scrolled the way every in-document link is, so a
@@ -800,6 +812,11 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     >
       {!embedded && (
         <FrontmatterDisplay frontmatter={frontmatter} linkIds={nextLinkIds} />
+      )}
+      {/* Directly after the card, and first in the container when a document
+          has no frontmatter: the card then renders nothing at all. */}
+      {!embedded && (
+        <ReferencedBy references={references} hrefFor={buildPath} />
       )}
       {markdown}
       {/* Review mode: comment popover for new selections */}
