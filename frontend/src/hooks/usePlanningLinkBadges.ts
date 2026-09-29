@@ -83,6 +83,10 @@ export function usePlanningLinkBadges(
     for (const link of el.querySelectorAll<HTMLElement>(
       `a[${LINK_TARGET_ATTR}]`,
     )) {
+      // Inline SVG admits `<a href>`, and the `a` component stamps it as it
+      // stamps any link. A badge is an HTML `<span>`: inside an `<svg>` it
+      // draws nothing and would be a stray node in the drawing.
+      if (link.closest("svg")) continue;
       const path = link.getAttribute(LINK_TARGET_ATTR);
       if (!path) continue;
       const badge = badgeFor(index, currentPath, {
