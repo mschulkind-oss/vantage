@@ -261,6 +261,12 @@ config. The command then installs the service and starts it. Without
   its error is printed: if it meant something else, `bootstrap` fails next,
   and that error is what explains it. The commands go through a runner that
   tests replace, so no test starts a real service.
+- **The service reads the config the command wrote.** The config path follows
+  `XDG_CONFIG_HOME`, and a service manager hands its service none of the
+  shell's environment. So when the variable names somewhere other than
+  `~/.config`, the unit's `Environment=` or the plist's
+  `EnvironmentVariables` carries it, with or without `--source-dir`. Its
+  themes, bookmarks and ignore file follow the same variable.
 - **Running is what answers.** A start command succeeds as soon as the process
   forks, so the command then asks the service's address for up to three
   seconds. It says the service is running only when a daemon answers, and

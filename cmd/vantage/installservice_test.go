@@ -53,7 +53,7 @@ func plistStrings(t *testing.T, doc string) []string {
 }
 
 func TestLaunchAgentPlistNamesTheBinaryAndLabel(t *testing.T) {
-	doc := launchAgentPlist("/usr/local/bin/vantage", "/Users/matt", "/Users/matt/Library/Logs/vantage.log")
+	doc := launchAgentPlist("/usr/local/bin/vantage", "/Users/matt", "/Users/matt/Library/Logs/vantage.log", "")
 
 	strs := plistStrings(t, doc)
 	require.Contains(t, strs, launchAgentLabel)
@@ -71,7 +71,7 @@ func TestLaunchAgentPlistNamesTheBinaryAndLabel(t *testing.T) {
 // git is Homebrew's starts clean and then fails every request, which is the
 // least debuggable shape this bug has.
 func TestLaunchAgentPlistCarriesHomebrewOnPATH(t *testing.T) {
-	strs := plistStrings(t, launchAgentPlist("/opt/homebrew/bin/vantage", "/Users/matt", "/tmp/v.log"))
+	strs := plistStrings(t, launchAgentPlist("/opt/homebrew/bin/vantage", "/Users/matt", "/tmp/v.log", ""))
 	require.Contains(t, strs, launchAgentPATH)
 	require.Contains(t, launchAgentPATH, "/opt/homebrew/bin")
 	require.Contains(t, launchAgentPATH, "/usr/local/bin")
@@ -83,7 +83,7 @@ func TestLaunchAgentPlistCarriesHomebrewOnPATH(t *testing.T) {
 func TestLaunchAgentPlistEscapesPaths(t *testing.T) {
 	exe := "/Users/matt & co/bin/vantage"
 	logPath := "/Users/matt & co/Library/Logs/<vantage>.log"
-	doc := launchAgentPlist(exe, "/Users/matt & co", logPath)
+	doc := launchAgentPlist(exe, "/Users/matt & co", logPath, "")
 
 	require.NotContains(t, doc, "matt & co", "raw ampersand left in the plist")
 	require.Contains(t, doc, "&amp;")
@@ -141,6 +141,43 @@ func TestInstallSystemdUnitWritesUnitAndInstructions(t *testing.T) {
 
 	// Linux gets no launchd agent, whatever the home directory looks like.
 	require.NoDirExists(t, filepath.Join(home, "Library", "LaunchAgents"))
+}
+
+// install-service writes the config where the shell's XDG_CONFIG_HOME says,
+// and a service manager hands its service none of the shell's environment. A
+// service that looked in the default place instead would find no config and
+// restart every five seconds while the command reported success, so the
+// service is given the same XDG_CONFIG_HOME — which also moves its themes,
+// bookmarks and ignore file to where `serve` finds them. The default needs
+// nothing written.
+func TestServiceDefinitionsCarryAMovedConfigHome(t *testing.T) {
+	home := isolateHome(t)
+	moved := filepath.Join(home, "dot config", "100%")
+	t.Setenv("XDG_CONFIG_HOME", moved)
+
+	var out bytes.Buffer
+	require.NoError(t, installService(&out, "linux", home, "/opt/bin/vantage"))
+	unit, err := os.ReadFile(systemdUnitPath(home))
+	require.NoError(t, err)
+	// Quoted for the space, and % doubled: systemd reads %… as a specifier.
+	require.Contains(t, string(unit), "\nEnvironment=\"XDG_CONFIG_HOME="+strings.ReplaceAll(moved, "%", "%%")+"\"\n")
+
+	require.NoError(t, installService(&out, "darwin", home, "/opt/bin/vantage"))
+	plist, err := os.ReadFile(launchAgentPath(home))
+	require.NoError(t, err)
+	strs := plistStrings(t, string(plist))
+	require.Contains(t, strs, moved)
+	require.Contains(t, string(plist), "<key>XDG_CONFIG_HOME</key>")
+
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	require.NoError(t, installService(&out, "linux", home, "/opt/bin/vantage"))
+	unit, err = os.ReadFile(systemdUnitPath(home))
+	require.NoError(t, err)
+	require.NotContains(t, string(unit), "Environment=")
+	require.NoError(t, installService(&out, "darwin", home, "/opt/bin/vantage"))
+	plist, err = os.ReadFile(launchAgentPath(home))
+	require.NoError(t, err)
+	require.NotContains(t, string(plist), "XDG_CONFIG_HOME")
 }
 
 func TestInstallServiceOnUnsupportedPlatform(t *testing.T) {
