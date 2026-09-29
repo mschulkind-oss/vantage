@@ -20,7 +20,7 @@ import {
   linkTargetAttributes,
   usePlanningLinkBadges,
 } from "../hooks/usePlanningLinkBadges";
-import { findDocument, referencedBy } from "vantage-md/planning";
+import { findDocument, referenceSummary } from "vantage-md/planning";
 import { usePlanningIndex } from "../stores/usePlanningStore";
 import { PLANNING_BADGE_ATTR } from "./PlanningBadge";
 import { ReferencedBy } from "./ReferencedBy";
@@ -731,14 +731,14 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     [planningDocument],
   );
 
-  // Referenced by (§7), for a planning document only: the design puts the list
+  // Referenced by (§7), for a planning document only: the design puts the line
   // below a planning document's card, and a plain document has no card to be
   // below in the index's sense.
-  const references = useMemo(
+  const referenceSummaryHere = useMemo(
     () =>
       planningIndex !== null && planningDocument !== undefined
-        ? referencedBy(planningIndex, currentPath)
-        : [],
+        ? referenceSummary(planningIndex, currentPath)
+        : null,
     [planningIndex, planningDocument, currentPath],
   );
 
@@ -814,9 +814,14 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
         <FrontmatterDisplay frontmatter={frontmatter} linkIds={nextLinkIds} />
       )}
       {/* Directly after the card, and first in the container when a document
-          has no frontmatter: the card then renders nothing at all. */}
-      {!embedded && (
-        <ReferencedBy references={references} hrefFor={buildPath} />
+          has no frontmatter: the card then renders nothing at all. Keyed by
+          path, so every document loads with it collapsed (§7). */}
+      {!embedded && referenceSummaryHere !== null && (
+        <ReferencedBy
+          key={currentPath}
+          summary={referenceSummaryHere}
+          hrefFor={buildPath}
+        />
       )}
       {markdown}
       {/* Review mode: comment popover for new selections */}

@@ -8,7 +8,7 @@
  * Renders the app's real `MarkdownViewer` against a planning store seeded with
  * a ready index.
  */
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BrowserRouter } from "react-router-dom";
 import type { PlanningIndex } from "vantage-md/planning";
@@ -20,6 +20,7 @@ import {
 import { useRepoStore } from "../stores/useRepoStore";
 import { useReviewStore } from "../stores/useReviewStore";
 import { PLANNING_BADGE_ATTR } from "./PlanningBadge";
+import { REFERENCED_BY_ATTR } from "./ReferencedBy";
 import type { ReviewComment } from "../types";
 import { scrollToAnchor } from "../lib/anchorScroll";
 import { indexOf } from "../test/planning";
@@ -310,9 +311,24 @@ describe("Referenced by (§7)", () => {
     "   _Leaning:_ yes.",
     "",
   ].join("\n");
+  const FORGOTTEN = [
+    "---",
+    "status: draft",
+    "---",
+    "",
+    "# Forgotten",
+    "",
+    "1. \u{1F4AC} **OQ-4: Does anyone know about this?**",
+    "",
+    '   <!-- vantage: oq id=OQ-4 leaning="No." -->',
+    "",
+    "   _Leaning:_ no.",
+    "",
+  ].join("\n");
   const TREE = {
     "docs/design.md": TARGET,
     "docs/bare.md": BARE,
+    "docs/forgotten.md": FORGOTTEN,
     "docs/plain.md": "# Plain\n",
     "roadmap.md": [
       "# Roadmap",
@@ -339,33 +355,52 @@ describe("Referenced by (§7)", () => {
     ].join("\n"),
   };
 
-  const list = () =>
-    screen.queryByRole("navigation", { name: "Referenced by" });
+  const surface = () =>
+    document.querySelector<HTMLElement>(`[${REFERENCED_BY_ATTR}]`);
+  const toggle = () => screen.getByRole("button", { name: /Referenced by/ });
   const entries = () =>
-    Array.from(list()?.querySelectorAll('[role="listitem"]') ?? [], (e) =>
-      e.textContent?.trim(),
-    );
+    within(screen.getByRole("navigation", { name: "Referenced by" }))
+      .getAllByRole("listitem")
+      .map((e) => e.textContent?.replace(/\s+/g, " ").trim());
 
-  it("lists each linking document and heading, directly below the card", () => {
+  it("is one collapsed line, directly below the card", () => {
     seedReady(indexOf(TREE));
     const { container } = renderViewer(TARGET, "docs/design.md");
-    expect(entries()).toEqual([
-      "docs/notes.md",
-      "roadmap.md · Rule these first",
-      "roadmap.md · Later",
-    ]);
+    expect(toggle()).toHaveTextContent(
+      "Referenced by 2 documents · on the roadmap under Rule these first",
+    );
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByRole("navigation", { name: "Referenced by" }),
+    ).toBeNull();
     const card = screen.getByText("Metadata").closest("div.mb-8");
-    expect(list()?.previousElementSibling).toBe(card);
-    expect(container.querySelector(".prose")).toContainElement(list());
+    expect(surface()?.previousElementSibling).toBe(card);
+    expect(container.querySelector(".prose")).toContainElement(surface());
   });
 
-  it("links each entry to the line the link is on", () => {
+  it("opens to one row per linking document, the roadmap first", () => {
     seedReady(indexOf(TREE));
     renderViewer(TARGET, "docs/design.md");
-    const [link, later] = screen.getAllByRole("link", { name: "roadmap.md" });
-    expect(link).toHaveAttribute("href", "/roadmap.md#L5");
-    expect(later).toHaveAttribute("href", "/roadmap.md#L11");
-    fireEvent.click(link);
+    fireEvent.click(toggle());
+    expect(entries()).toEqual([
+      "roadmap.md · Rule these first · Later",
+      "notes.md",
+    ]);
+  });
+
+  it("links each heading to the first line under it that links here", () => {
+    seedReady(indexOf(TREE));
+    renderViewer(TARGET, "docs/design.md");
+    fireEvent.click(toggle());
+    expect(screen.getByRole("link", { name: "roadmap.md" })).toHaveAttribute(
+      "href",
+      "/roadmap.md#L5",
+    );
+    expect(screen.getByRole("link", { name: "Later" })).toHaveAttribute(
+      "href",
+      "/roadmap.md#L11",
+    );
+    fireEvent.click(screen.getByRole("link", { name: "Rule these first" }));
     expect(navigate).toHaveBeenCalledWith("/roadmap.md#L5");
   });
 
@@ -385,33 +420,48 @@ describe("Referenced by (§7)", () => {
       });
     });
     renderViewer(TARGET, "docs/design.md");
-    expect(
-      screen.getAllByRole("link", { name: "roadmap.md" })[0],
-    ).toHaveAttribute("href", "/alpha/roadmap.md#L5");
+    fireEvent.click(toggle());
+    expect(screen.getByRole("link", { name: "roadmap.md" })).toHaveAttribute(
+      "href",
+      "/alpha/roadmap.md#L5",
+    );
   });
 
   it("comes first in the prose container for a planning document with no frontmatter", () => {
     seedReady(indexOf(TREE));
     const { container } = renderViewer(BARE, "docs/bare.md");
-    expect(entries()).toEqual(["roadmap.md · Rule these first"]);
-    expect(container.querySelector(".prose")?.firstElementChild).toBe(list());
+    expect(toggle()).toHaveTextContent(
+      "Referenced by 1 document · on the roadmap under Rule these first",
+    );
+    expect(container.querySelector(".prose")?.firstElementChild).toBe(
+      surface(),
+    );
   });
 
-  it("is absent when nothing links to the document", () => {
+  it("says a document nothing links to is not on the roadmap, if it has open questions", () => {
+    seedReady(indexOf(TREE));
+    renderViewer(FORGOTTEN, "docs/forgotten.md");
+    expect(surface()).toHaveTextContent(
+      /^Not on the roadmap \(1 open question\)$/,
+    );
+    expect(screen.queryByRole("button", { name: /roadmap/ })).toBeNull();
+  });
+
+  it("is absent when nothing links to the document and nothing in it is unrouted", () => {
     seedReady(indexOf(TREE));
     renderViewer(TREE["docs/notes.md"], "docs/notes.md");
-    expect(list()).toBeNull();
+    expect(surface()).toBeNull();
   });
 
   it("is absent for a document that is not a planning document", () => {
     seedReady(indexOf(TREE));
     renderViewer(TREE["docs/plain.md"], "docs/plain.md");
-    expect(list()).toBeNull();
+    expect(surface()).toBeNull();
   });
 
   it("is absent until the index is ready, and in an embedded viewer", () => {
     const { unmount } = renderViewer(TARGET, "docs/design.md");
-    expect(list()).toBeNull();
+    expect(surface()).toBeNull();
     unmount();
     seedReady(indexOf(TREE));
     render(
@@ -423,20 +473,84 @@ describe("Referenced by (§7)", () => {
         />
       </BrowserRouter>,
     );
-    expect(list()).toBeNull();
+    expect(surface()).toBeNull();
   });
 
-  it("stays out of the contents column and offers no review anchor", () => {
+  it("stays open for the visit, and is collapsed again on the next document", () => {
+    seedReady(indexOf(TREE));
+    const { rerender } = renderViewer(TARGET, "docs/design.md");
+    fireEvent.click(toggle());
+    // A live reload of the same document is the same visit.
+    rerender(
+      <BrowserRouter>
+        <MarkdownViewer
+          content={`${TARGET}\nOne more line.\n`}
+          currentPath="docs/design.md"
+        />
+      </BrowserRouter>,
+    );
+    expect(toggle()).toHaveAttribute("aria-expanded", "true");
+    rerender(
+      <BrowserRouter>
+        <MarkdownViewer content={BARE} currentPath="docs/bare.md" />
+      </BrowserRouter>,
+    );
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
+    rerender(
+      <BrowserRouter>
+        <MarkdownViewer content={TARGET} currentPath="docs/design.md" />
+      </BrowserRouter>,
+    );
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("stays out of the contents column and offers no review anchor, open or not", () => {
     seedReady(indexOf(TREE));
     const { container } = renderViewer(TARGET, "docs/design.md");
     const prose = container.querySelector<HTMLElement>(".prose")!;
-    expect(
-      collectOutline(prose).some((e) => e.text.includes("Referenced by")),
-    ).toBe(false);
-    expect(list()?.querySelector("h1, h2, h3, h4, h5, h6, p, li")).toBeNull();
-    expect(
-      list()?.querySelector("[data-source-line], [data-vantage-oq]"),
-    ).toBeNull();
+    // Collapsed, then open.
+    for (let pass = 0; pass < 2; pass++) {
+      expect(
+        collectOutline(prose).some((e) => e.text.includes("Referenced by")),
+      ).toBe(false);
+      expect(
+        surface()?.querySelector("h1, h2, h3, h4, h5, h6, p, li"),
+      ).toBeNull();
+      expect(
+        surface()?.querySelector("[data-source-line], [data-vantage-oq]"),
+      ).toBeNull();
+      fireEvent.click(toggle());
+    }
+  });
+
+  it("opens without opening a comment in review mode", () => {
+    seedReady(indexOf(TREE));
+    useReviewStore.setState({ pendingSelection: null });
+    const { container } = render(
+      <BrowserRouter>
+        <MarkdownViewer
+          content={TARGET}
+          currentPath="docs/design.md"
+          isReviewMode
+        />
+      </BrowserRouter>,
+    );
+    // A block is under the pointer, so a click the handler does not step
+    // around would open the comment popover on it.
+    layout(container, {
+      "li[data-source-line]": { top: 0, bottom: 20, left: 0, right: 600 },
+    });
+    act(() => {
+      fireEvent.mouseMove(container.querySelector(".prose")!, {
+        clientX: 300,
+        clientY: 10,
+      });
+    });
+    act(() => {
+      fireEvent.click(toggle(), { clientX: 300, clientY: 10 });
+    });
+    expect(toggle()).toHaveAttribute("aria-expanded", "true");
+    expect(useReviewStore.getState().pendingSelection).toBeNull();
   });
 });
 

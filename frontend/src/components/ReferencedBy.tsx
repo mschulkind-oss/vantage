@@ -1,7 +1,22 @@
 /**
- * Referenced by: the planning documents that link to this one or to one of its
- * questions (`docs/design/planning-index.md` §7), one entry per linking
- * document and heading, as `referencedBy` derives them.
+ * Referenced by (`docs/design/planning-index.md` §7): one line under a planning
+ * document's frontmatter card saying whether the roadmap routes the document
+ * and how many documents link to it, and, behind that line, those documents.
+ *
+ * The line is the point. A list of every linking heading pushed a heavily cited
+ * document's body a screen down to answer two questions a reader asks of it:
+ * *is this on the roadmap?* and *who depends on it?* So the line answers the
+ * first in words and the second in a count, and the list waits to be asked for.
+ *
+ * - **A disclosure button**, not `<details>`: `aria-expanded` and
+ *   `aria-controls` on a real `<button>`, which is keyboard operable and which
+ *   review mode's click handler already steps around. The list is rendered
+ *   `hidden` while collapsed, so it neither reads out nor prints.
+ * - **Collapsed on every document load.** Nothing is stored: the state lives in
+ *   this component, and the viewer keys it by path, so expanding lasts for the
+ *   visit and a different document starts collapsed.
+ * - **With no document linking here** there is no list to open, so the line, if
+ *   it has anything to say, is plain text rather than a button.
  *
  * It sits inside the prose container, directly after the frontmatter card, so
  * it is built from elements nothing there reads as the document: no heading,
@@ -10,48 +25,229 @@
  * so no review anchor can land on it. `not-prose` keeps typography's list and
  * paragraph styles off it, as they are off the frontmatter card.
  */
-import type { Reference } from "vantage-md/planning";
+import { useId, useRef, useState } from "react";
+import { ChevronRight } from "lucide-react";
+import type { ReferenceSource, ReferenceSummary } from "vantage-md/planning";
 import { AppLink } from "./AppLink";
+import { cn } from "../lib/utils";
 
 interface ReferencedByProps {
-  references: readonly Reference[];
+  summary: ReferenceSummary;
   /** The viewer URL of a repository path, `/{repo}/…` in daemon mode. */
   hrefFor: (path: string) => string;
 }
 
-/** Marks the list, for tests and for any pass that must step around it. */
+/** Marks the whole surface, for tests and for any pass that must step around it. */
 export const REFERENCED_BY_ATTR = "data-vantage-referenced-by";
 
-export function ReferencedBy({ references, hrefFor }: ReferencedByProps) {
-  if (references.length === 0) return null;
+/** Headings a source's row shows before its "+M more". */
+export const HEADINGS_SHOWN = 4;
+
+const counted = (n: number, one: string, many: string) =>
+  `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
+
+/** What the line says: a count, a roadmap status, or both. */
+export interface SummaryLine {
+  /** `Referenced by N documents`; `null` when no document links here. */
+  count: string | null;
+  /** Where the roadmap stands on this document; `null` when it has nothing to say. */
+  status: string | null;
+  /** The status reports open questions the roadmap does not route. */
+  warning: boolean;
+}
+
+/**
+ * The line for `summary` (§7), or `null` when nothing links to the document and
+ * nothing in it is unrouted. Being on the roadmap outranks having unrouted
+ * questions: the line answers whether the document is on it at all.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- the component's own wording, exported for its tests
+export function summaryLine(summary: ReferenceSummary): SummaryLine | null {
+  const n = summary.sources.length;
+  const count =
+    n > 0 ? `Referenced by ${counted(n, "document", "documents")}` : null;
+  let status: string | null = null;
+  let warning = false;
+  if (summary.onRoadmap !== null) {
+    const { heading } = summary.onRoadmap;
+    status =
+      heading === null ? "on the roadmap" : `on the roadmap under ${heading}`;
+  } else if (summary.unrouted > 0) {
+    status = `not on the roadmap (${counted(summary.unrouted, "open question", "open questions")})`;
+    warning = true;
+  }
+  if (count === null && status === null) return null;
+  // Standing alone, the status starts the sentence.
+  if (count === null && status !== null) {
+    status = status.charAt(0).toUpperCase() + status.slice(1);
+  }
+  return { count, status, warning };
+}
+
+const textOf = (line: SummaryLine) =>
+  [line.count, line.status].filter((part) => part !== null).join(" · ");
+
+function LineWords({ line }: { line: SummaryLine }) {
   return (
-    <nav
-      aria-label="Referenced by"
+    <>
+      {line.count}
+      {line.count !== null && line.status !== null && " · "}
+      {line.status !== null && (
+        <span
+          className={cn(
+            line.warning &&
+              "font-medium text-[color:var(--vantage-tone-warning-ink)]",
+          )}
+        >
+          {line.status}
+        </span>
+      )}
+    </>
+  );
+}
+
+const fileName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+
+interface SourceRowProps {
+  source: ReferenceSource;
+  hrefFor: (path: string) => string;
+  expanded: boolean;
+  onMore: () => void;
+  /** Called with the first heading "+M more" revealed, once it mounts. */
+  revealedRef: (el: HTMLElement | null) => void;
+}
+
+/**
+ * One source: its file name, then the headings its links sit under, each a
+ * link to the first line under that heading that links here, which `#L…`
+ * scrolls to and marks. A link above every heading has no heading to show; the
+ * file name links to the source's first link, whichever that is.
+ */
+function SourceRow({
+  source,
+  hrefFor,
+  expanded,
+  onMore,
+  revealedRef,
+}: SourceRowProps) {
+  const href = hrefFor(source.from);
+  const headed = source.references.filter((ref) => ref.heading !== null);
+  const shown = expanded ? headed : headed.slice(0, HEADINGS_SHOWN);
+  const more = headed.length - shown.length;
+  const name = fileName(source.from);
+  const first = source.references[0];
+  return (
+    <div role="listitem">
+      <AppLink
+        to={first === undefined ? href : `${href}#L${first.line}`}
+        title={source.from}
+        className="font-medium text-blue-600 hover:underline dark:text-blue-400"
+      >
+        {name}
+      </AppLink>
+      {shown.map((ref, i) => (
+        <span
+          key={ref.line}
+          ref={i === HEADINGS_SHOWN ? revealedRef : undefined}
+        >
+          {" · "}
+          <AppLink
+            to={`${href}#L${ref.line}`}
+            className="text-[12px] text-slate-500 hover:text-blue-600 hover:underline dark:text-slate-400 dark:hover:text-blue-400"
+          >
+            {ref.heading}
+          </AppLink>
+        </span>
+      ))}
+      {more > 0 && (
+        <>
+          {" · "}
+          <button
+            type="button"
+            onClick={onMore}
+            aria-label={`+${more} more headings in ${name}`}
+            className="text-[12px] text-slate-500 hover:text-blue-600 hover:underline dark:text-slate-400 dark:hover:text-blue-400"
+          >
+            +{more} more
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+export function ReferencedBy({ summary, hrefFor }: ReferencedByProps) {
+  const [open, setOpen] = useState(false);
+  const [expandedRows, setExpandedRows] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  // The row whose "+M more" was just pressed. The button leaves with the
+  // press, so focus moves to the first heading it revealed rather than to
+  // the document body.
+  const focusRow = useRef<string | null>(null);
+  const listId = useId();
+  const line = summaryLine(summary);
+  if (line === null) return null;
+  const text = textOf(line);
+
+  return (
+    <div
       {...{ [REFERENCED_BY_ATTR]: "" }}
       className="not-prose mb-6 text-[13px] leading-relaxed text-slate-500 dark:text-slate-400"
     >
-      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider">
-        Referenced by
-      </div>
-      <div role="list" className="flex flex-col gap-0.5">
-        {references.map((ref) => (
-          <div role="listitem" key={`${ref.from}\n${ref.heading ?? ""}`}>
-            {/* To the linking line itself, which `#L…` scrolls to and marks. */}
-            <AppLink
-              to={`${hrefFor(ref.from)}#L${ref.line}`}
-              className="font-medium text-blue-600 hover:underline dark:text-blue-400"
-            >
-              {ref.from}
-            </AppLink>
-            {ref.heading !== null && (
-              <span className="text-slate-500 dark:text-slate-400">
-                {" · "}
-                {ref.heading}
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
-    </nav>
+      {summary.sources.length === 0 ? (
+        <div className="truncate" title={text}>
+          <LineWords line={line} />
+        </div>
+      ) : (
+        <>
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={listId}
+            onClick={() => setOpen((was) => !was)}
+            title={text}
+            className="-ml-0.5 flex max-w-full items-center gap-1 rounded px-0.5 text-left hover:text-slate-700 dark:hover:text-slate-200"
+          >
+            <ChevronRight
+              aria-hidden="true"
+              className={cn(
+                "size-3.5 shrink-0 transition-transform print:hidden",
+                open && "rotate-90",
+              )}
+            />
+            <span className="truncate">
+              <LineWords line={line} />
+            </span>
+          </button>
+          <nav
+            id={listId}
+            aria-label="Referenced by"
+            hidden={!open}
+            className="mt-1 pl-[18px]"
+          >
+            <div role="list" className="flex flex-col gap-0.5">
+              {summary.sources.map((source) => (
+                <SourceRow
+                  key={source.from}
+                  source={source}
+                  hrefFor={hrefFor}
+                  expanded={expandedRows.has(source.from)}
+                  onMore={() => {
+                    focusRow.current = source.from;
+                    setExpandedRows((rows) => new Set(rows).add(source.from));
+                  }}
+                  revealedRef={(el) => {
+                    if (el === null || focusRow.current !== source.from) return;
+                    focusRow.current = null;
+                    el.querySelector("a")?.focus();
+                  }}
+                />
+              ))}
+            </div>
+          </nav>
+        </>
+      )}
+    </div>
   );
 }
