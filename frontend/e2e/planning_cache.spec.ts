@@ -169,6 +169,22 @@ const hashes = (lines: Line[]) =>
   );
 
 test.describe("the planning scan cache", () => {
+  test("the scan worker starts at boot, and serves the tab's builds", async ({
+    page,
+  }) => {
+    const streams = await recordStreams(page);
+    await page.goto("/page1.md");
+    // Started beside the app's first requests (§7.1), asking nothing yet.
+    await expect.poll(() => page.workers().length).toBe(1);
+    expect(page.workers()[0]?.url()).toContain("/planningScan/worker");
+    expect(streams).toHaveLength(0);
+
+    await loadScanner(page);
+    expect((await build(page, 1)).at(-1)).toEqual({ type: "ready" });
+    expect(streams).toHaveLength(1);
+    expect(page.workers()).toHaveLength(1);
+  });
+
   test("a reload streams only the roadmap and what changed, and its cards come from the cache", async ({
     page,
   }) => {
