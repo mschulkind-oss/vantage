@@ -1,10 +1,10 @@
 /**
  * Sanitization schema for the rendering pipeline.
  * Allows GFM, KaTeX MathML, `data-source-line` attributes, a filtered inline
- * `style`, a `class` that carries only the names the pipeline itself emits
- * (see `PIPELINE_CLASSES`), and inline SVG as static drawing (see
- * `SVG_CHILD_TAGS`), while blocking XSS vectors and anything that lays a
- * document over the app.
+ * `style` on every element but `input` (see `UNSTYLED_TAGS`), a `class` that
+ * carries only the names the pipeline itself emits (see `PIPELINE_CLASSES`),
+ * and inline SVG as static drawing (see `SVG_CHILD_TAGS`), while blocking XSS
+ * vectors and anything that lays a document over the app.
  */
 
 import type { Element, Root } from "hast";
@@ -156,11 +156,15 @@ function withClasses(tag: string, ...extra: AttributeList): AttributeList {
  * `frontend/src/lib/sanitize.test.ts`.
  */
 const SAFE_STYLE_PROPERTIES = [
-  // Box metrics. `top`/`right`/`bottom`/`left` are inert now that `position` is
-  // banned, and they stay only because dropping them would fail the whole
-  // attribute for a document that writes one — the all-or-nothing rule below
-  // makes every removal a behavior change. They buy an attacker nothing that
-  // negative `margin` does not already buy.
+  // Box metrics. `top`/`right`/`bottom`/`left` do nothing on an element no
+  // stylesheet positions, and a document cannot position one, since `position`
+  // is banned. The app positions headings and toned blocks relatively, and on
+  // those they move the element no further than a negative `margin` would,
+  // inside the scroll container that clips it. The one other element a
+  // stylesheet positions, the task-list checkbox, takes no `style` at all (see
+  // `UNSTYLED_TAGS`). They stay only because dropping them would fail the
+  // whole attribute for a document that writes one — the all-or-nothing rule
+  // below makes every removal a behavior change.
   "height",
   "min-height",
   "max-height",
@@ -535,6 +539,74 @@ const SVG_ROOT_ATTRIBUTES: NonNullable<Schema["attributes"]>[string] = [
   "ariaLabel",
 ];
 
+/** Every element the sanitizer admits. */
+const TAG_NAMES = [
+  ...(defaultSchema.tagNames || []),
+  // KaTeX MathML elements
+  "math",
+  "semantics",
+  "mrow",
+  "mi",
+  "mo",
+  "mn",
+  "msup",
+  "msub",
+  "mfrac",
+  "mover",
+  "munder",
+  "msqrt",
+  "mroot",
+  "mtable",
+  "mtr",
+  "mtd",
+  "mtext",
+  "mspace",
+  "annotation",
+  // Other
+  "figure",
+  "figcaption",
+  "summary",
+  "details",
+  "svg",
+  ...SVG_CHILD_TAGS,
+];
+
+/**
+ * The admitted elements that take no `style`: only `input`, which GFM emits as
+ * a task list's checkbox, and never with a style.
+ *
+ * `styles/task-list.css` draws that checkbox and positions it, so on it `top`
+ * and `left` are not the no-ops they are on an element nothing positions, and
+ * with `width`, `height` and `background-color` beside them a document laid a
+ * box of its own over the page. Measured in Chromium at 1280x800,
+ * `top:-3000px;left:-3000px;width:9000px;height:9000px;background-color:white`
+ * on the checkbox covered the whole content pane. It needed no class written:
+ * GFM puts `task-list-item` on the item, and a checkbox typed into the item's
+ * text is a child of that item too.
+ *
+ * **This is why `style` is on each element's own entry, never on `*`.**
+ * `hast-util-sanitize` consults `*` whenever an element's own entry yields
+ * nothing, so no entry on `input` could refuse a value that `*` admits. An
+ * element takes `style` only by being in `TAG_NAMES` and not in this set.
+ */
+const UNSTYLED_TAGS: ReadonlySet<string> = new Set(["input"]);
+
+type Attributes = NonNullable<Schema["attributes"]>;
+
+/**
+ * `attributes`, with `["style", SAFE_STYLE]` added to the entry of every
+ * element in `TAG_NAMES` but the `UNSTYLED_TAGS`.
+ */
+function withStyle(attributes: Attributes): Attributes {
+  const styled: Attributes = { ...attributes };
+  for (const tag of new Set(TAG_NAMES)) {
+    if (!UNSTYLED_TAGS.has(tag)) {
+      styled[tag] = [...(styled[tag] ?? []), ["style", SAFE_STYLE]];
+    }
+  }
+  return styled;
+}
+
 /**
  * Never set `allowComments` here.
  *
@@ -550,46 +622,17 @@ const SVG_ROOT_ATTRIBUTES: NonNullable<Schema["attributes"]>[string] = [
 export const sanitizeSchema: Schema = {
   ...defaultSchema,
   strip: [...(defaultSchema.strip || []), ...SVG_STRIPPED_EVERYWHERE],
-  tagNames: [
-    ...(defaultSchema.tagNames || []),
-    // KaTeX MathML elements
-    "math",
-    "semantics",
-    "mrow",
-    "mi",
-    "mo",
-    "mn",
-    "msup",
-    "msub",
-    "mfrac",
-    "mover",
-    "munder",
-    "msqrt",
-    "mroot",
-    "mtable",
-    "mtr",
-    "mtd",
-    "mtext",
-    "mspace",
-    "annotation",
-    // Other
-    "figure",
-    "figcaption",
-    "summary",
-    "details",
-    "svg",
-    ...SVG_CHILD_TAGS,
-  ],
+  tagNames: TAG_NAMES,
   ancestors: {
     ...defaultSchema.ancestors,
     ...Object.fromEntries(SVG_CHILD_TAGS.map((tag) => [tag, ["svg"]])),
   },
-  attributes: {
+  attributes: withStyle({
     ...defaultSchema.attributes,
-    // No `className` here: see `PIPELINE_CLASSES`.
+    // No `className` here: see `PIPELINE_CLASSES`. No `style` either: see
+    // `UNSTYLED_TAGS`.
     "*": [
       ...(defaultSchema.attributes?.["*"] || []),
-      ["style", SAFE_STYLE],
       "dataSourceLine",
       // What `rehypeVantageDirectives` compiles a `<!-- vantage: … -->` comment
       // into, named individually — never by a `data-vantage-*` wildcard, which
@@ -633,20 +676,16 @@ export const sanitizeSchema: Schema = {
       // the design doc rather than a third layer implied here.
       "dataVantageLeaning",
     ],
-    // Every element that keeps a class. `div` and `a` are built again below,
-    // by the same helper, with the attributes they take besides.
+    // Every element that keeps a class. `a` is built again below, by the same
+    // helper, with the attribute it takes besides.
     ...Object.fromEntries(
       Object.keys(PIPELINE_CLASSES).map((tag) => [tag, withClasses(tag)]),
     ),
-    span: [...(defaultSchema.attributes?.span || []), ["style", SAFE_STYLE]],
-    div: withClasses("div", ["style", SAFE_STYLE]),
     a: withClasses("a", "id"),
     math: ["xmlns"],
     annotation: ["encoding"],
     img: [...(defaultSchema.attributes?.img || []), "loading"],
-    td: [...(defaultSchema.attributes?.td || []), ["style", SAFE_STYLE]],
-    th: [...(defaultSchema.attributes?.th || []), ["style", SAFE_STYLE]],
     svg: SVG_ROOT_ATTRIBUTES,
     ...Object.fromEntries(SVG_CHILD_TAGS.map((tag) => [tag, SVG_ATTRIBUTES])),
-  },
+  }),
 };

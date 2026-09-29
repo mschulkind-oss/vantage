@@ -625,11 +625,23 @@ content reached an XSS sink through one button click.
 
 ### The inline-`style` filter
 
-`style` is allowlisted on every element, and `SAFE_STYLE` is what makes that safe.
-It enforces a property allowlist, **no parentheses anywhere** (which closes
-`url(…)` and `expression(…)` in one stroke), and now bans `position` outright.
-Matching is **all-or-nothing**: one unrecognized declaration drops the whole
-attribute, so an element renders unstyled rather than half-styled (**D6**).
+`style` is allowlisted on every element but `input`, and `SAFE_STYLE` is what
+makes that safe. It enforces a property allowlist, **no parentheses anywhere**
+(which closes `url(…)` and `expression(…)` in one stroke), and now bans
+`position` outright. Matching is **all-or-nothing**: one unrecognized
+declaration drops the whole attribute, so an element renders unstyled rather
+than half-styled (**D6**).
+
+**An `input` keeps no `style` at all.** GFM emits one only as a task list's
+checkbox, and never with a style. The task-list stylesheet positions that
+checkbox itself, so a `style` on it could place and size a box over the page:
+measured in Chromium, a white 9000px square set by `top`, `left`, `width` and
+`height` covered the whole content pane. A document needed no class for it:
+GFM gives a task's `li` the class that rule matches, and a checkbox typed into
+the task's text is a child of that `li` too. The schema therefore lists `style`
+on each element's own entry rather than on `*`. `rehype-sanitize` consults `*`
+whenever an element's own entry yields nothing, so no entry on `input` could
+refuse what `*` admits.
 
 > [!IMPORTANT]
 > **KaTeX output never passes through this filter, and the filter's original
@@ -926,6 +938,7 @@ table is the only place the values themselves are stated.
 | Collapse group id format | digits only | `COLLAPSE_GROUP_ID`, `sanitize.ts` |
 | Max `leaning` length carried to the DOM | 500 characters, whitespace-collapsed | `rehypeVantageDirectives.ts` |
 | Directive attribute names | `data-vantage-` + `tone`/`emphasis`/`badge`/`collapsed`/`collapse-group`/`collapse-toggle`/`run`/`oq`/`leaning` | `sanitize.ts` |
+| Elements that keep no `style` | `input` | `UNSTYLED_TAGS`, `sanitize.ts` |
 | Classes a document may write | `code`: `language-*`; `ul` and `ol`: `contains-task-list`; `li`: `task-list-item`; `section`: `footnotes`; `h2`: `sr-only`; `a`: `data-footnote-backref`; `div`: `vantage-alert-title`; none on any other element | `PIPELINE_CLASSES`, `sanitize.ts` |
 
 ## Why it's this way
