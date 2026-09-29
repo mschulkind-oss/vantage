@@ -402,8 +402,31 @@ planning page at its previous scroll position.
   documents that link to this one or to one of its questions. Each entry names the heading the
   link sits under, for example *roadmap.md · Rule these first*. The document's links to itself
   are not listed. If nothing links to it, the list is not shown.
-- **File tree:** each planning document shows its `stage` (or its status chip when it has no
-  stage) and `💬 N` when it has open questions. Other files are unchanged.
+- **File tree:** a planning document's row shows a badge after its name. The file name has the
+  first claim on the row's width, and four rules follow from that:
+
+  1. **A name is never narrower than it would be with no badge.** It gets the width it had
+     before the tree had badges, and a name too long for its row truncates exactly as it did
+     then.
+  2. **The badge uses only the room the name leaves, and is drawn only when all of it fits
+     there.** It is never cut off. When it does not fit, it is not drawn, and the row's tooltip
+     and accessible name still say what it would have said.
+  3. **The badge is compact:** a dot in the color of the document's status chip, and `💬 N` in
+     small muted text when it has open questions.
+     - A stage outside the declared words
+       ([§4](#4-the-header-of-record-stage-next-depends-on)) draws the dot as a ring in the
+       warning tone, so it does not read as `in-review`, whose chip is the warning tone too.
+     - A declared stage with no status draws a muted dot.
+     - A document whose only state is its open questions shows the count alone.
+
+     The words are the badge's title and accessible name, phrased as a link's badge is
+     ([§5.3](#53-how-a-badge-behaves)): status, stage and open questions, for example
+     *in review, design, 4 open questions*. Blocked questions are not counted here. The full
+     status chip stays where there is room for it, beside links and in the document's header,
+     and the git-change dot keeps its place at the end of the row.
+  4. **A row with no badge is unchanged.** That is every file that is not a planning document,
+     every directory, and every planning document with nothing to show
+     ([§5.1](#51-which-links-get-a-badge)).
 
 Both come from the index ([§3](#3-the-planning-index)). Neither needs anything new from the
 server.
@@ -604,3 +627,4 @@ the plan proposed.
 | — | Plan Q18: a foreign top-level `stage` key makes a planning document, as designed; `[planning] exclude` is the remedy | 2026-09-28 | [§13](#13-risks) | — |
 | — | Plan Q19: the planning module is internal to `vantage-md`; `FrontmatterDisplay`'s optional `linkIds` is the one public addition | 2026-09-28 | [§1](#1-verdict-and-the-principles) (P4) | — |
 | — | Plan Q20: the plan's eight gap-fills. A header that does not parse makes its file unreadable; a non-string or empty `stage` and a non-string or multi-line `next` are ignored, a single `depends-on` path is a one-entry list, and a non-string entry is dropped; stage matching is exact and case-sensitive; an empty stages table is none; a `depends-on` target outside the repository, or whose `#OQ-…` id appears nowhere in it, is a finding; a skipped or unreadable roadmap counts as missing; an empty document badge is not drawn; `next` links only an id a question carries | 2026-09-28 | [§3.6](#36-failure), [§4](#4-the-header-of-record-stage-next-depends-on), [§5.1](#51-which-links-get-a-badge), [§6.2](#62-sections-top-to-bottom), [§9](#9-configuration) | — |
+| — | User ruling 2026-09-29: the file name wins. A tree badge takes no width from a file name: it uses only the room the name leaves, is drawn whole or not at all, and is a compact dot and `💬 N` whose words are its tooltip and accessible name. It replaced a full status chip that cut long names down to their first letter | 2026-09-29 | [§7](#7-referenced-by-and-status-in-the-file-tree) | — |
