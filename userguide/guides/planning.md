@@ -268,8 +268,10 @@ count alone.
 Click the line, or press Enter or Space on it, to see who links here: one row
 per document, the roadmap first, then by path. A row is the document's file
 name, with its full path on hover, then the headings its links sit under. Each
-heading links to the first line under it that links here. A row shows four
-headings, then *+M more* for the rest.
+heading links to the first line under it that links here. Two documents with
+the same file name each show as much of their folder as tells them apart, such
+as *brainstorm/x.md* and *design/x.md*. A row shows four headings, then *+M
+more* for the rest.
 
 The list is closed whenever you open a document, and nothing remembers that
 you opened it. It prints only when it is open; the line always prints.
