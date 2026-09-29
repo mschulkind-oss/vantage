@@ -292,6 +292,26 @@ describe("a question (§3.3)", () => {
     });
   });
 
+  // Several comments in one raw HTML node: each comment's line is counted
+  // from the previous one's, so the later ones must still land right.
+  it("starts the block at the directive's own line in a node of several comments", () => {
+    const source = [
+      "# X", // 1
+      "", // 2
+      "<!-- a plain comment -->", // 3
+      "<!-- another -->", // 4
+      "<!-- vantage: oq id=OQ-4 -->", // 5
+      "", // 6
+      "The question.", // 7
+      "",
+    ].join("\n");
+    expect(planning(source).questions[0]).toMatchObject({
+      id: "OQ-4",
+      line: 7,
+      block: { startLine: 5, endLine: 7 },
+    });
+  });
+
   it("hosts a question on a blockquote and on a heading", () => {
     const source = [
       '<!-- vantage: oq id=OQ-5 leaning="Quote." -->',
