@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -116,21 +117,13 @@ func newServeCmd() *cobra.Command {
 			}
 
 			plan := planServe(cfg, oneProject)
-			if plan != nil {
-				fmt.Fprintln(os.Stderr, plan.describe(displayHome()))
+			ctx := cmd.Context()
+			if ctx == nil {
+				ctx = context.Background()
 			}
 			// Before binding: the probe asks the configured service port, and
 			// must not find this process there.
-			if tipsEnabled(isTerminal(os.Stderr)) {
-				ctx := cmd.Context()
-				if ctx == nil {
-					ctx = context.Background()
-				}
-				st := probeService(ctx, runtime.GOOS, displayHome(), cfg.TargetRepo, plan, httpRepoLister)
-				if line := st.tip(plan); line != "" {
-					fmt.Fprintln(os.Stderr, line)
-				}
-			}
+			announceServe(ctx, os.Stderr, runtime.GOOS, displayHome(), isTerminal(os.Stderr), cfg.TargetRepo, plan, httpRepoLister)
 
 			warnNonLocal(cfg.Host)
 
@@ -160,6 +153,24 @@ func newServeCmd() *cobra.Command {
 	f.BoolVar(&oneProject, "one-project", false, "Serve PATH as one project even when it is a directory of git clones")
 
 	return cmd
+}
+
+// announceServe prints what `serve` says before it binds its port: the line
+// for a directory of clones (plan non-nil), always, and then the one service
+// tip when tips are on. The probe behind the tip runs only when a tip can be
+// printed — tty, on a platform install-service supports — because something
+// slow on the service's port costs it its whole timeout.
+func announceServe(ctx context.Context, w io.Writer, goos, home string, tty bool, target string, plan *clonesPlan, list repoLister) {
+	if plan != nil {
+		fmt.Fprintln(w, plan.describe(home))
+	}
+	if serviceDefinitionPath(goos, home) == "" || !tipsEnabled(tty) {
+		return
+	}
+	st := probeService(ctx, goos, home, target, plan, list)
+	if line := st.tip(plan); line != "" {
+		fmt.Fprintln(w, line)
+	}
 }
 
 // planServe applies the directory-of-clones split to a resolved serve config
