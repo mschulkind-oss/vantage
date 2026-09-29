@@ -13,6 +13,11 @@ test.describe("planning badges", () => {
   // One test edits a fixture the others read, so they run one at a time.
   test.describe.configure({ mode: "serial" });
 
+  // No other spec opens plans/design.md, because this one rewrites it: under
+  // fullyParallel, a spec reading it would see the edit whenever the two
+  // overlapped. referenced_by.spec.ts did, until its long-named document
+  // cited shipped.md instead. Keep it that way.
+
   const designPath = path.join(__dirname, "fixtures/test_repo/plans/design.md");
   let originalDesign: string;
 
