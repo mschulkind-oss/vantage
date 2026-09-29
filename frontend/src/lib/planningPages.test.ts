@@ -8,6 +8,7 @@ import type { PlanningConfig } from "vantage-md/planning";
 import {
   isPreview,
   layoutPlanningPage,
+  placeComment,
   listedQuestions,
   pageSearch,
   readPageRequest,
@@ -275,5 +276,48 @@ describe("rewriting the URL", () => {
     expect(withPage(search, "waiting", 4).toString()).toBe(
       "a=1&unrouted=3&waiting=4",
     );
+  });
+});
+
+describe("placement (planning-index-at-scale.md §10.5)", () => {
+  const NESTED = doc(
+    "stage: DESIGN",
+    [
+      `1. ${OPEN} **OQ-O1: The outer question?**`,
+      "",
+      '   <!-- vantage: oq id=OQ-O1 leaning="Yes." -->',
+      "",
+      "   _Leaning:_ yes.",
+      "",
+      `   1. ${OPEN} **OQ-I1: The inner question?**`,
+      "",
+      '      <!-- vantage: oq id=OQ-I1 leaning="No." -->',
+      "",
+      "      _Leaning:_ no.",
+      "",
+      "   And the outer one goes on.",
+      "",
+      "Not in any question.",
+      "",
+    ].join("\n"),
+  );
+  const index = indexOf({ ...ROADMAP, "a.md": NESTED }, { stages: STAGES });
+  const questions = listedQuestions(index, sectionsOf(index));
+  const outer = questions.find((q) => q.id === "OQ-O1")!;
+  const inner = questions.find((q) => q.id === "OQ-I1")!;
+
+  it("puts a comment on the innermost unit that holds its line", () => {
+    expect(inner.unitLine).toBeGreaterThan(outer.unitLine);
+    expect(inner.unitEndLine).toBeLessThan(outer.unitEndLine);
+    expect(placeComment(questions, inner.line)?.id).toBe("OQ-I1");
+    expect(placeComment(questions, inner.unitEndLine)?.id).toBe("OQ-I1");
+    expect(placeComment(questions, outer.line)?.id).toBe("OQ-O1");
+    expect(placeComment(questions, outer.unitEndLine)?.id).toBe("OQ-O1");
+  });
+
+  it("puts a comment outside every unit on none", () => {
+    expect(placeComment(questions, outer.unitEndLine + 2)).toBeUndefined();
+    expect(placeComment(questions, 1)).toBeUndefined();
+    expect(placeComment([inner], outer.line)).toBeUndefined();
   });
 });
