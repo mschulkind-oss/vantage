@@ -34,7 +34,11 @@ import {
   type PlanningLoad,
 } from "../stores/usePlanningStore";
 import { useRepoStore } from "../stores/useRepoStore";
-import { answersPayload, useReviewStore } from "../stores/useReviewStore";
+import {
+  answersPayload,
+  linesOfText,
+  useReviewStore,
+} from "../stores/useReviewStore";
 import { readPreference, reviewModePreferenceKey } from "../lib/preferences";
 import {
   inlineScannerClient,
@@ -805,7 +809,7 @@ describe("Copy answers (§6.3)", () => {
         {
           path: "plans/unrouted.md",
           comments,
-          content: TREE["plans/unrouted.md"] ?? null,
+          lines: linesOfText(TREE["plans/unrouted.md"] ?? null),
         },
       ]),
     );

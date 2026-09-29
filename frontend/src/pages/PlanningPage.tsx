@@ -70,6 +70,7 @@ import {
   answersPayload,
   isPendingForAgent,
   postCommentTo,
+  type LineLookup,
 } from "../stores/useReviewStore";
 import type { ReviewComment } from "../types";
 
@@ -298,24 +299,19 @@ function useCardBlocks(
 }
 
 /**
- * The text Copy answers quotes from, for each pending group, with only the
- * lines its comments quote in it: each anchor line and the context either
- * side, from the scanner client, which drops the rest of the document
- * (`docs/design/planning-index-at-scale.md` §10.5). Every other line reads as
- * empty, and none of them is ever quoted, so a group's payload is what its
- * document's whole text would give.
+ * The lines Copy answers quotes, for each pending group: each anchor line and
+ * the context either side, from the scanner client, which drops the rest of
+ * the document (`docs/design/planning-index-at-scale.md` §10.5). A group's
+ * payload is what its document's whole text would give.
  *
  * Asked for when the pending set changes, so a click copies at once; while
  * the lines are on their way, `loading` says so.
- *
- * An interim for the payload builder as it stands, which takes a text: the
- * paged page hands it a line lookup instead.
  */
 function useQuotedText(
   repo: string | null,
   hashes: Readonly<Record<string, string>> | null,
   groups: readonly { path: string; comments: readonly ReviewComment[] }[],
-): { textOf(path: string): string | null; loading: boolean } {
+): { linesOf(path: string): LineLookup | null; loading: boolean } {
   const asked = useMemo((): QuoteWant[] => {
     const context = planningLimits.quoteContextLines;
     return groups.flatMap(({ path, comments }) => {
@@ -364,19 +360,14 @@ function useQuotedText(
   }, [repo, want, wantKey]);
 
   const quotes = answered?.key === wantKey ? answered.quotes : null;
-  const textOf = useCallback(
-    (path: string): string | null => {
+  const linesOf = useCallback(
+    (path: string): LineLookup | null => {
       const lines = quotes?.[path];
-      if (lines === undefined) return null;
-      const numbers = Object.keys(lines).map(Number);
-      if (numbers.length === 0) return null;
-      const text = new Array<string>(Math.max(...numbers)).fill("");
-      for (const n of numbers) text[n - 1] = lines[n] ?? "";
-      return text.join("\n");
+      return lines === undefined ? null : (n) => lines[n];
     },
     [quotes],
   );
-  return { textOf, loading: want.length > 0 && quotes === null };
+  return { linesOf, loading: want.length > 0 && quotes === null };
 }
 
 /** A size in the units the limits are written in. */
@@ -539,7 +530,7 @@ export const PlanningPage: React.FC = () => {
       }))
       .filter((group) => group.comments.length > 0);
   }, [scoped, listedPaths, reviews.byPath]);
-  const { textOf, loading: quotesLoading } = useQuotedText(
+  const { linesOf, loading: quotesLoading } = useQuotedText(
     onThisRepo ? repo : null,
     hashes,
     pendingGroups,
@@ -548,9 +539,9 @@ export const PlanningPage: React.FC = () => {
     () =>
       pendingGroups.map((group) => ({
         ...group,
-        content: textOf(group.path),
+        lines: linesOf(group.path),
       })),
-    [pendingGroups, textOf],
+    [pendingGroups, linesOf],
   );
   const pendingCount = pending.reduce((n, g) => n + g.comments.length, 0);
   const [copied, setCopied] = useState(false);
