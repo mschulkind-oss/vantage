@@ -10,7 +10,13 @@ import { AnchoredMenu } from "./AnchoredMenu";
  * `onClose` is a spy rather than real state so a test can tell "asked to close"
  * apart from "closed", which is the distinction the trigger-click case turns on.
  */
-function Harness({ onClose }: { onClose: () => void }) {
+function Harness({
+  onClose,
+  align,
+}: {
+  onClose: () => void;
+  align?: "start" | "end";
+}) {
   const ref = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   return (
@@ -23,6 +29,7 @@ function Harness({ onClose }: { onClose: () => void }) {
         onClose={onClose}
         anchorRef={ref}
         width={224}
+        align={align}
         aria-label="Test menu"
       >
         <button>Item</button>
@@ -109,5 +116,15 @@ describe("AnchoredMenu", () => {
     expect(menu.style.left).toBe(`${928 - 224}px`);
     expect(menu.style.top).toBe("132px");
     expect(menu.style.visibility).toBe("visible");
+  });
+
+  it("lines up with the trigger's left edge when aligned to its start", () => {
+    render(<Harness onClose={vi.fn()} align="start" />);
+    const trigger = screen.getByText("Open");
+    trigger.getBoundingClientRect = () =>
+      ({ left: 400, right: 428, top: 100, bottom: 128 }) as DOMRect;
+
+    fireEvent.click(trigger);
+    expect(screen.getByRole("menu").style.left).toBe("400px");
   });
 });

@@ -13,6 +13,11 @@ interface AnchoredMenuProps {
   anchorRef: React.RefObject<HTMLElement | null>;
   /** Menu width in px. Clamped down on viewports narrower than it. */
   width: number;
+  /**
+   * Which of the trigger's edges the menu lines up with: its right (`"end"`,
+   * the default) or its left (`"start"`). See `anchoredMenuPosition`.
+   */
+  align?: "start" | "end";
   children: React.ReactNode;
   className?: string;
   /** Forwarded to the panel, e.g. "menu". */
@@ -46,6 +51,7 @@ export function AnchoredMenu({
   onClose,
   anchorRef,
   width,
+  align = "end",
   children,
   className,
   role = "menu",
@@ -67,12 +73,13 @@ export function AnchoredMenu({
       panel.scrollHeight,
       window.innerWidth,
       window.innerHeight,
+      align,
     );
     panel.style.top = `${top}px`;
     panel.style.left = `${left}px`;
     panel.style.maxHeight = `${maxHeight}px`;
     panel.style.visibility = "visible";
-  }, [anchorRef, width]);
+  }, [anchorRef, width, align]);
 
   // A callback ref, so the measure happens the moment the node exists — before
   // the browser paints it, and without an effect that would show it at 0,0 for
