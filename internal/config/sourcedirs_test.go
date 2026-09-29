@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
@@ -373,10 +374,20 @@ func TestAddSourceDirsWritesControlCharactersAsTOML(t *testing.T) {
 
 // A name that is not UTF-8 has no TOML spelling at all: TOML's \xHH is a code
 // point, not a byte, so writing one would name another directory.
+//
+// The name has to be a real directory to get as far as that check, and APFS
+// and HFS+, macOS's filesystems, refuse to create one that is not UTF-8 with
+// EILSEQ. Where no such directory can exist there is nothing to refuse, so the
+// test is skipped there; Linux's filesystems take any byte but "/" and NUL,
+// and it runs on those.
 func TestAddSourceDirsRefusesANameTOMLCannotHold(t *testing.T) {
 	home, cfgPath := sourceDirsFixture(t)
 	bad := filepath.Join(home, "bad\xffbyte")
-	require.NoError(t, os.MkdirAll(bad, 0o755))
+	if err := os.MkdirAll(bad, 0o755); errors.Is(err, syscall.EILSEQ) {
+		t.Skipf("this filesystem cannot hold a name that is not UTF-8: %v", err)
+	} else {
+		require.NoError(t, err)
+	}
 	_, err := AddSourceDirs(cfgPath, []string{bad}, editTime)
 	require.ErrorContains(t, err, "not valid UTF-8")
 	require.NoFileExists(t, cfgPath)
