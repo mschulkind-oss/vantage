@@ -18,6 +18,11 @@
  *   visit and a different document starts collapsed.
  * - **With no document linking here** there is no list to open, so the line, if
  *   it has anything to say, is plain text rather than a button.
+ * - **One line from `sm` up, wrapped below it.** Cut off at a phone's width,
+ *   the line lost its end, which is the roadmap's answer and the part the line
+ *   exists for, and a touch screen has no hover to show the title. Below `sm`
+ *   the line wraps, and a row wraps with a hanging indent and breaks a file
+ *   name with nowhere else to break rather than widen the page.
  *
  * It sits inside the prose container, directly after the frontmatter card, so
  * it is built from elements nothing there reads as the document: no heading,
@@ -146,7 +151,10 @@ function SourceRow({
   const name = fileName(source.from);
   const first = source.references[0];
   return (
-    <div role="listitem">
+    <div
+      role="listitem"
+      className="pl-4 -indent-4 [overflow-wrap:anywhere] sm:pl-0 sm:indent-0"
+    >
       <AppLink
         to={first === undefined ? href : `${href}#L${first.line}`}
         title={source.from}
@@ -205,7 +213,7 @@ export function ReferencedBy({ summary, hrefFor }: ReferencedByProps) {
       className="not-prose mb-6 text-[13px] leading-relaxed text-slate-500 dark:text-slate-400"
     >
       {summary.sources.length === 0 ? (
-        <div className="truncate" title={text}>
+        <div className="sm:truncate" title={text}>
           <LineWords line={line} />
         </div>
       ) : (
@@ -216,16 +224,16 @@ export function ReferencedBy({ summary, hrefFor }: ReferencedByProps) {
             aria-controls={listId}
             onClick={() => setOpen((was) => !was)}
             title={text}
-            className="-ml-0.5 flex max-w-full items-center gap-1 rounded px-0.5 text-left hover:text-slate-700 dark:hover:text-slate-200"
+            className="-ml-0.5 flex max-w-full items-start gap-1 rounded px-0.5 text-left hover:text-slate-700 dark:hover:text-slate-200"
           >
             <ChevronRight
               aria-hidden="true"
               className={cn(
-                "size-3.5 shrink-0 transition-transform print:hidden",
+                "mt-[3.5px] size-3.5 shrink-0 transition-transform print:hidden",
                 open && "rotate-90",
               )}
             />
-            <span className="truncate">
+            <span className="min-w-0 sm:truncate">
               <LineWords line={line} />
             </span>
           </button>
@@ -235,7 +243,7 @@ export function ReferencedBy({ summary, hrefFor }: ReferencedByProps) {
             hidden={!open}
             className="mt-1 pl-[18px]"
           >
-            <div role="list" className="flex flex-col gap-0.5">
+            <div role="list" className="flex flex-col gap-1 sm:gap-0.5">
               {summary.sources.map((source) => (
                 <SourceRow
                   key={source.from}

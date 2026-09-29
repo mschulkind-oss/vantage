@@ -45,7 +45,8 @@ test("a heavily cited document's Referenced by is one line above its body", asyn
   // One line: the line box is its own line-height tall, however long the
   // list behind it.
   const { height, lineHeight } = await toggle(page)
-    .locator("span.truncate")
+    .locator("span")
+    .first()
     .evaluate((el) => ({
       height: el.getBoundingClientRect().height,
       lineHeight: parseFloat(getComputedStyle(el).lineHeight),
@@ -156,4 +157,41 @@ test("a document nothing links to still counts its unrouted questions", async ({
     "1 open question not routed by the roadmap",
   );
   await expect(surface(page).getByRole("button")).toHaveCount(0);
+});
+
+test("on a narrow screen the line wraps rather than hide the roadmap's answer", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto("/plans/hub.md");
+  // The roadmap's part of the line is the point of it, so it is shown in
+  // full, not cut off at the edge with the rest in a hover title.
+  const status = toggle(page).getByText("on the roadmap under Later");
+  await expect(status).toBeVisible();
+  const clipped = await toggle(page)
+    .locator("span")
+    .first()
+    .evaluate((el) => el.scrollWidth > el.clientWidth);
+  expect(clipped).toBe(false);
+  const box = await status.boundingBox();
+  expect(box!.x + box!.width).toBeLessThanOrEqual(320);
+});
+
+test("on a narrow screen a long file name wraps inside its row", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto("/plans/design.md");
+  await toggle(page).click();
+  const name = surface(page).getByRole("link", {
+    name: "working_directory_diffs_and_review_state_architecture_notes.md",
+  });
+  await expect(name).toBeVisible();
+  const box = await name.boundingBox();
+  expect(box!.x + box!.width).toBeLessThanOrEqual(320);
+  const scroll = page.locator("[data-content-scroll]");
+  const overflow = await scroll.evaluate(
+    (el) => el.scrollWidth - el.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(0);
 });
