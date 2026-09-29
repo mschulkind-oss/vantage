@@ -782,7 +782,7 @@ ready, `next` renders as plain text.
   compacted, stays text; an id that is only part of a longer token stays text.
 - Referenced by: directly below the card; first in the prose container for a planning
   document with no frontmatter; absent when empty, and absent from the outline. Tree badge:
-  the stage (the chip without one) and `💬 N`. Superseded on 2026-09-29 by the compact badge
+  the stage (the chip without one) and `💬 N`. Superseded on 2026-09-28 by the compact badge
   of [§7](planning-index.md#7-referenced-by-and-status-in-the-file-tree), which takes no width
   from the file name.
 - e2e `planning.spec.ts`: the roadmap shows badges. For

@@ -205,7 +205,9 @@ over, so a name is exactly as wide as it would be with no badge, and a long
 name is cut short exactly where it always was. When the whole badge does not
 fit in what is left, it is not drawn at all rather than cut in half; widen the
 sidebar to see it, or hover the file name for its words. The dot that marks a file
-with uncommitted changes stays at the end of the row, as it always has.
+with uncommitted changes stays at the end of the row, as it always has, and is
+the smaller of the two, since the planning dot's amber and green are colors
+that dot uses too.
 
 Every other row, directories included, looks as it always did.
 
