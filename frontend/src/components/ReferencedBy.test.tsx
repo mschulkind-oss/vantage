@@ -375,7 +375,7 @@ describe("the list behind it", () => {
     );
   });
 
-  it("links the file name to its first link, and each heading to the first link under it", () => {
+  it("links each heading to the first link under it, and the file name to a link above them all or else to the document", () => {
     open();
     // b.md's first link sits above every heading, so it has no heading to show.
     expect(screen.getByRole("link", { name: "b.md" })).toHaveAttribute(
@@ -385,6 +385,17 @@ describe("the list behind it", () => {
     expect(screen.getByRole("link", { name: "Six" })).toHaveAttribute(
       "href",
       "/docs/design/b.md#L9",
+    );
+    // a.md's first link sits under Only, which already links there, so its
+    // file name goes to the document instead of adding a second stop to the
+    // same place.
+    expect(screen.getByRole("link", { name: "a.md" })).toHaveAttribute(
+      "href",
+      "/docs/design/a.md",
+    );
+    expect(screen.getByRole("link", { name: "Only" })).toHaveAttribute(
+      "href",
+      "/docs/design/a.md#L7",
     );
     fireEvent.click(screen.getByRole("link", { name: "Building" }));
     expect(navigate).toHaveBeenCalledWith("/roadmap.md#L5");
