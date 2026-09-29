@@ -8,6 +8,16 @@ import { FileNode } from "../types";
 // Mock useRepoStore
 vi.mock("../stores/useRepoStore");
 
+// The planning index is its own suites' subject (PlanningTreeBadge.test.tsx).
+// Here it stays unasked and empty, so the tree issues no planning request and
+// draws no badge.
+vi.mock("../stores/usePlanningStore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../stores/usePlanningStore")>()),
+  useEnsurePlanningIndex: () => null,
+  usePlanningDocument: () => undefined,
+  usePlanningStages: () => null,
+}));
+
 // Mock useNavigate
 const mockNavigate = vi.fn();
 vi.mock("react-router-dom", async () => {

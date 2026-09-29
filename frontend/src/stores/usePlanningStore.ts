@@ -34,6 +34,7 @@ import {
   parsePlanningSources,
   parseSourceEntry,
   withoutDirectory,
+  type PlanningDocument,
   type PlanningIndex,
   type PlanningSources,
   type SourceEntry,
@@ -452,17 +453,52 @@ export function usePlanningRepo(): string | null {
 }
 
 /**
- * The current repository's planning index, started on mount. Re-runs `ensure`
- * when the repository changes, and when the repo store first loads.
+ * Start the current repository's planning index on mount, for a surface that
+ * is one of its first needs (§3.4: a document, the planning page, the file
+ * tree). Re-runs `ensure` when the repository changes, and when the repo store
+ * first loads. Returns the repository, as `usePlanningRepo` does.
  */
-export function usePlanningIndex(): PlanningLoad {
+export function useEnsurePlanningIndex(): string | null {
   const repo = usePlanningRepo();
-  const load = usePlanningStore((state) =>
-    repo === null ? PLANNING_IDLE : (state.byRepo[repo] ?? PLANNING_IDLE),
-  );
   const ensure = usePlanningStore((state) => state.ensure);
   useEffect(() => {
     if (repo !== null) ensure(repo);
   }, [repo, ensure]);
-  return load;
+  return repo;
+}
+
+/** The current repository's planning index, started on mount. */
+export function usePlanningIndex(): PlanningLoad {
+  const repo = useEnsurePlanningIndex();
+  return usePlanningStore((state) =>
+    repo === null ? PLANNING_IDLE : (state.byRepo[repo] ?? PLANNING_IDLE),
+  );
+}
+
+/**
+ * One planning document of the current repository's ready index, or
+ * `undefined`. Starts nothing: a row of the file tree asks this, and hundreds
+ * of rows each subscribed to the whole index would all re-render on every
+ * change to any document. This re-renders only when its own document does,
+ * since the index keeps every other document's object as it was.
+ */
+export function usePlanningDocument(
+  path: string,
+): PlanningDocument | undefined {
+  const repo = usePlanningRepo();
+  return usePlanningStore((state) => {
+    const load = repo === null ? undefined : state.byRepo[repo];
+    return load?.status === "ready"
+      ? findDocument(load.index, path)
+      : undefined;
+  });
+}
+
+/** The stage vocabulary of the current repository's ready index. */
+export function usePlanningStages(): PlanningIndex["config"]["stages"] {
+  const repo = usePlanningRepo();
+  return usePlanningStore((state) => {
+    const load = repo === null ? undefined : state.byRepo[repo];
+    return load?.status === "ready" ? load.index.config.stages : null;
+  });
 }
