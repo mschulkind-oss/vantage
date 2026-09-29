@@ -447,7 +447,8 @@ planning page at its previous scroll position.
   When a document links here, the line is a button that says whether it is open, so it works
   from the keyboard and to a screen reader. **It is collapsed on every document load**, and
   nothing is stored: opening it lasts for that visit only. In print, the line prints, and the
-  list prints only when it is open.
+  list prints only when it is open, with every heading of every row, since paper has no *+M
+  more* to press.
 - **File tree:** a planning document's row shows a badge after its name. The file name has the
   first claim on the row's width, and four rules follow from that:
 
