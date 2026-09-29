@@ -203,6 +203,12 @@ _self-check: cli
     trap 'rm -f "$cfg" "$one" "$many" "$changelog"' EXIT
     "$bin" version
     test -n "$("$bin" style-guide)" || { echo "style-guide printed nothing"; exit 1; }
+    # A reader that stops early, as `index | head` does, closes the pipe, and
+    # the binary's next write fails with EPIPE. It must still exit with its own
+    # code. `true` reads nothing, so the pipe is closed before the first write,
+    # and pipefail makes the binary's status this line's. The unit tests prove
+    # the same under Node; this proves it under Bun, which is what ships.
+    "$bin" index | true
     "$bin" check "${paths[@]}"
     # CHANGELOG.md is here because publish.yml lifts a section out of it and
     # posts it as the GitHub release body, and a tag is never moved: a dead link

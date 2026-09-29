@@ -18,11 +18,40 @@ export interface Io {
 /** The real process-backed Io. */
 export function processIo(): Io {
   return {
-    out: (text) => process.stdout.write(text),
-    err: (text) => process.stderr.write(text),
+    out: streamWriter(process.stdout),
+    err: streamWriter(process.stderr),
     cwd: process.cwd(),
     isTty: Boolean(process.stdout.isTTY),
     env: process.env,
+  };
+}
+
+/**
+ * Write to `stream` until its reader goes away, and drop what comes after.
+ *
+ * `vantage-check index | head` is how an agent reads the first sections, and
+ * head closes the pipe once it has its lines. The next write fails with EPIPE,
+ * which a stream reports as an `error` event, and with nothing listening that
+ * event killed the process with a stack trace and exit 1: the code that means
+ * a check found problems, from a command that never exits 1. A reader that
+ * stops reading has not made the run fail, so an EPIPE ends this stream's
+ * output, every later write is dropped, and the command exits with the code it
+ * would have given a reader that read to the end.
+ *
+ * Any other write error, such as a full disk under `index > file`, still ends
+ * the process, as it always did: output that was lost for a reason nobody
+ * chose must not look as if it was written.
+ */
+export function streamWriter(
+  stream: NodeJS.WritableStream,
+): (text: string) => void {
+  let open = true;
+  stream.on("error", (error: NodeJS.ErrnoException) => {
+    if (error.code !== "EPIPE") throw error;
+    open = false;
+  });
+  return (text) => {
+    if (open) stream.write(text);
   };
 }
 
