@@ -1,9 +1,9 @@
 ---
 title: "The planning index at scale — page through it, and never hand the page the corpus"
 date: 2026-09-29
-status: in-review
-stage: DESIGN
-next: "Rule OQ-PS1 — whether the browser may keep derived facts decides how warm a reload is"
+status: accepted
+stage: DECIDED
+next: "Build it: the plan's WP-A and WP-B first, in parallel"
 depends-on:
   - planning-index.md
 tags: [planning, performance, viewer, worker, layout-stability]
@@ -12,8 +12,8 @@ summary: "The planning page renders one page of each section from card blocks th
 
 # The planning index at scale — page through it, and never hand the page the corpus
 
-**Status:** DESIGN, 2026-09-29. Nothing built. Evidence verified against the tree at
-`70a05b3`; the timings are the 2026-09-29 measurements summarized in
+**Status:** DECIDED, 2026-09-29. Both questions are ruled; nothing is built. Evidence verified
+against the tree at `70a05b3`; the timings are the 2026-09-29 measurements summarized in
 [§2](#2-what-the-measurements-say).
 
 > **In short.** `g p` is slow because the planning page renders every card before it paints,
@@ -31,17 +31,18 @@ stream endpoint that sends only what changed, and a planning page that paints it
 and then each section's current page in one commit.
 
 **Cost.** The batch endpoint, `ready.sources` and the card's second parse are deleted. A second
-JavaScript chunk ships (about 87 KB gzipped). [`planning-index.md`](planning-index.md) gets a
-dated pointer in each section this changes ([§14](#14-what-this-changes-in-the-planning-index-design)).
+JavaScript chunk ships (about 87 KB gzipped), and the browser keeps each file's derived facts and
+card text ([§8](#8-the-scan-cache)). [`planning-index.md`](planning-index.md) gets a dated
+pointer in each section this changes ([§14](#14-what-this-changes-in-the-planning-index-design)).
 
 **Start at [§4](#4-the-three-costs-and-what-removes-each)**, the three costs and what removes
 each. Everything else is how.
 
-**Needs your ruling:** [OQ-PS1](#OQ-PS1), [OQ-PS2](#OQ-PS2).
+**Needs your ruling:** None.
 
 **Reads with:** [`planning-index.md`](planning-index.md) (the design this amends) and
 [`planning-index-at-scale-plan.md`](planning-index-at-scale-plan.md) (the build plan, completed
-against the tree and held at sketch until both questions are ruled).
+against the tree and build-ready).
 
 ---
 
@@ -270,6 +271,10 @@ at the fastest level when the request accepts gzip.
 
 - **One line per candidate, in listing order**, which is path order. A candidate that vanished
   between the listing and its read is left out, as today; the watcher reports its removal.
+- **Every candidate is sent, whatever it holds.** The server never judges which files are
+  planning documents: the scan's early exit
+  ([`scan.ts:1005`](../../packages/vantage-md/src/planning/scan.ts#L1005)) does, in the worker,
+  where a file that is not one costs microseconds (S4).
 - **`same`** means the file was read within the limits, is UTF-8, and hashes to exactly what
   `have` gave for it. **The roadmap is never `same`**: it is always sent as `file`, so whether a
   file is the roadmap never has to be part of a cache key ([§8.1](#81-what-it-keeps-and-under-which-key)).
@@ -281,6 +286,18 @@ at the fastest level when the request accepts gzip.
 - **Flushed** after the header and every 64 KiB, so the first line reaches the worker at once.
 - **A client that goes away** stops the reading at the next write, as the batch does today.
 - **Go's JSON encoder escapes every newline**, so a newline in the body always ends a line.
+
+> [!NOTE]
+> **There is no byte sieve** ([OQ-PS2](#decision-ledger)). Sending only the roadmap and the files
+> that start with `---` or `+++` or contain `vantage:` looks like a free saving, and it is not
+> one. It is a Go copy of the scan's early exit, which makes Go a second judge of what a planning
+> document is, the thing S4 exists to prevent, and every new frontmatter form or sentinel would
+> have to be taught to it too. What it would save is bytes on a cold build, and only where most
+> files are not planning documents: here it passes 19 of 42 candidates, a third of the bytes, but
+> on a docs site whose pages carry frontmatter it passes nearly everything. With the cache, a
+> non-planning file already costs one `same` line per warm load. The ruling holds
+> only while the reader's experience does not degrade for it, so
+> [§19](#19-what-done-looks-like)'s D7 and D8 are measured with every candidate streamed.
 
 The old batch, `GET …/planning/sources` without `path`, answers `410 Gone` with the detail *The
 planning index moved to a stream; reload the page.* A tab loaded before the upgrade shows that
@@ -412,7 +429,8 @@ A cold build at 1,000 documents is about 8–12 s of scanning on one thread. Hel
 
 - **The same core** runs on the main thread: the stream reader, the scan and the cache, sliced
   at 8 ms as today.
-- **It serves** unit tests (jsdom has no `Worker`) and browsers where the worker cannot be
+- **It serves** unit tests (jsdom has no `Worker`, and no IndexedDB either:
+  [§8.1](#81-what-it-keeps-and-under-which-key)) and browsers where the worker cannot be
   created.
 - **It is not a fallback for a worker that crashed.** A crash on some file would crash the page
   the same way.
@@ -423,6 +441,21 @@ A cold build at 1,000 documents is about 8–12 s of scanning on one thread. Hel
 
 It is one IndexedDB database, `vantage-planning`, per origin. A daemon on `:8000` and a dev
 server on `:8201` each have their own.
+
+- **It keeps derived facts and card text** ([OQ-PS1](#decision-ledger)): each planning
+  document's titles, headings, link targets and question state, and each question's card block,
+  which is the document's own text. For a remote daemon that text sits in the browser profile on
+  the reader's machine. It is text the same reader can already open, it is cleared whenever the
+  scanner id changes ([§8.2](#82-the-scanner-id)), and it is never used without a matching hash.
+- **What is kept is per file, never the index.** The index is still assembled on every page
+  load, from the stream and these results. [planning-index.md §3](planning-index.md#3-the-planning-index)'s
+  "never stored" therefore no longer holds for a file's scan result
+  ([§14](#14-what-this-changes-in-the-planning-index-design)).
+- **Behind a storage interface.** The cache's code reads and writes through a small storage
+  interface, whose one production implementation is IndexedDB. Unit tests run the same code over
+  an in-memory implementation written in this repository, and the Chromium end-to-end tests run
+  it over real IndexedDB. The in-memory one is a test double only: a tab without IndexedDB
+  behaves as [§8.4](#84-without-it) says, not as a memory-backed cache.
 
 | Store | Key | Value | Read |
 | :--- | :--- | :--- | :--- |
@@ -473,8 +506,9 @@ server on `:8201` each have their own.
 
 ### 8.4 Without it
 
-If [OQ-PS1](#OQ-PS1) rules against keeping facts in the browser, the design is the same minus
-IndexedDB:
+A tab whose IndexedDB is missing, over quota or throwing
+([§8.3](#83-writes-eviction-and-failure)) runs without the cache, and the rest of the design
+stands:
 
 - `have` is always empty, so every full page load is a cold build, in the worker.
 - Moving between pages without a reload keeps the index, as today.
@@ -719,7 +753,7 @@ design is built.
 
 | Section | What changes |
 | :--- | :--- |
-| [§3](planning-index.md#3-the-planning-index) | "rebuilt from the files and never stored" holds only if [OQ-PS1](#OQ-PS1) rules against the scan cache. Otherwise: rebuilt from the files, with each file's derived facts kept in the browser under its content hash and never trusted without it |
+| [§3](planning-index.md#3-the-planning-index) | "rebuilt from the files and never stored" becomes: rebuilt from the files on every load, with each file's derived facts and card blocks kept in the browser under its content hash and never trusted without it ([§8.1](#81-what-it-keeps-and-under-which-key)) |
 | [§3.4](planning-index.md#34-when-it-is-built-and-how-it-stays-fresh) | *Full scan* and *Transport* are superseded by [§5.2](#52-a-build-step-by-step), [§6.1](#61-the-stream) and [§7](#7-the-scan-worker). *Incremental*, *Reconnect* and *Ordering* stand, through the worker ([§5.3](#53-a-change-push), [§5.4](#54-ordering)) |
 | [§3.5](planning-index.md#35-limits-and-what-happens-past-them) | no new candidate limit. The page adds two render budgets: 32 KiB of Markdown per section page, and 32,000 characters per card before a preview card ([§10.2](#102-pages), [§10.4](#104-cards)) |
 | [§5.3](planning-index.md#53-how-a-badge-behaves) | "First render never waits for them" is replaced by the hold and the never-seen-block rule ([§11](#11-late-data-never-moves-painted-content)) |
@@ -747,9 +781,12 @@ page's per-document `GET /review` fan-out.
 
 | Alternative | Verdict |
 | :--- | :--- |
-| **The stream-worker proposal**: a hashed manifest, then a second request for stale files, a scan worker, IndexedDB, per-section pagers | **Adopted in large part**: the worker and its client, the cache and its rules, memoized cards, blocks from the scan, the helper pool. **Rejected:** two round trips where one `have` request does (its manifest and then a separate request); a scanner id from the hashed chunk URL, which never lets the dev server persist; Copy answers narrowed to the shown pages, which reopens [planning-index.md §12](planning-index.md#12-alternatives-considered)'s rejected "three trips"; comments collapsed behind a count by default; sections revealed one commit at a time, which flashes an empty page before a revisit's scroll restore. Its byte sieve is [OQ-PS2](#OQ-PS2) |
+| **The stream-worker proposal**: a hashed manifest, then a second request for stale files, a scan worker, IndexedDB, per-section pagers | **Adopted in large part**: the worker and its client, the cache and its rules, memoized cards, blocks from the scan, the helper pool. **Rejected:** two round trips where one `have` request does (its manifest and then a separate request); a scanner id from the hashed chunk URL, which never lets the dev server persist; Copy answers narrowed to the shown pages, which reopens [planning-index.md §12](planning-index.md#12-alternatives-considered)'s rejected "three trips"; comments collapsed behind a count by default; sections revealed one commit at a time, which flashes an empty page before a revisit's scroll restore; and its byte sieve ([§6.1](#61-the-stream)'s note) |
 | **The server-index proposal**: a long-lived `vantage-check` sidecar spawned by the server, holding the index and answering pages | **Rejected for now.** Its Bun process measured 73 MB idle and 180–240 MB after one scan here, estimated at 250–600 MB for 1,000 documents, and JavaScriptCore does not give pages back. It is about 5,300 lines plus 2,300 of tests, keeps two modes correct, and needs a version handshake. A server-only install (`go install`, or the `vantage-md` wheel alone) would refuse planning past 8 MiB, so a 20 MB repository would lose its planning page. "Updated · Show" would replace live updates, and bookmarked page numbers would shift. Its per-page byte budget and block dedupe are adopted. The sidecar stays on file as a possible later accelerator for installs that ship both binaries, which would need a ruling on a server dependency on `vantage-check` |
-| **The paging-first proposal, as written** | **The winner; amended.** Its Go line slicer and slices endpoint are replaced by blocks cut in the worker, removing a second line-numbering implementation and a round trip per flip. Reviews for every listed document before paint become the shown pages' first and the rest after. NDJSON on the old route becomes a new route plus `410`. Its optional cache becomes core, pending [OQ-PS1](#OQ-PS1). The user agent joins its cache key |
+| **The paging-first proposal, as written** | **The winner; amended.** Its Go line slicer and slices endpoint are replaced by blocks cut in the worker, removing a second line-numbering implementation and a round trip per flip. Reviews for every listed document before paint become the shown pages' first and the rest after. NDJSON on the old route becomes a new route plus `410`. Its optional cache becomes core. The user agent joins its cache key |
+| Keeping facts in the browser, but no card text | **Rejected** ([OQ-PS1](#decision-ledger)). Warm reloads stay fast, but each shown page's cards are cut by fetching and scanning their documents in the worker, about 10–30 files and 0.2–0.6 s per page on a first visit, while titles, headings and link targets are stored anyway |
+| Keeping nothing in the browser | **Rejected** ([OQ-PS1](#decision-ledger)). Every page load is a cold build, 2.4–3.6 s at 300 documents and 8–12 s at 1,000, and badges wait that long. It survives only as the behavior of a tab without IndexedDB ([§8.4](#84-without-it)) |
+| A byte sieve in Go, pinned to the scan's early exit by a shared fixture | **Rejected** ([OQ-PS2](#decision-ledger)); why is [§6.1](#61-the-stream)'s note. A fixture catches a drift only once the new form has been added to it |
 | One global pager across all sections | **Rejected.** Answering *Needs you* would mean paging past *Unrouted* to reach *Waiting*. The section bar and per-section pagers keep every section one click away |
 | Windowing (a virtualized list) | **Rejected.** It is infinite scroll by another name |
 | Spawning `vantage-check index` per rescan | **Rejected.** Its listing cannot see per-reader settings, it has no incremental mode, and it starts cold every time |
@@ -768,10 +805,11 @@ page's per-document `GET /review` fan-out.
 | Ordering bugs across the worker boundary | the store's numbering stays on the main thread; store tests run against the inline client, with the same sequencing tests as today |
 | The scanner id misses a file the scan depends on, so a stale result is trusted | the production build fails if the worker's bundle holds a module outside the hashed roots; Retry bypasses the cache |
 | IndexedDB is unevenly reliable (Safari, private windows, quota) | memory-only for the tab; correctness never depends on the cache |
-| Browser storage now holds repository-derived text (titles, headings, question blocks), for a remote daemon on the reader's machine | [OQ-PS1](#OQ-PS1) |
+| Unit tests cannot see IndexedDB's own behavior, since they run over the in-memory store: a transaction that commits once a task ends with no request pending, structured cloning, key order | the IndexedDB implementation stays a thin adapter over the storage interface, and the Chromium end-to-end tests run the real one through a warm reload, a changed scanner id and a failed open. Other engines' IndexedDB runs in no test |
+| Browser storage now holds repository-derived text (titles, headings, question blocks), for a remote daemon on the reader's machine | ruled acceptable ([OQ-PS1](#decision-ledger)): it is text the same reader can already open, kept per origin, cleared when the scanner id changes, never used without a matching hash, and gone when the reader clears the site's data |
 | Placement misplaces a comment whose block moved | only for cards not rendered this visit, and only for inclusion in Copy answers, which groups by document; the count's slot is reserved, so a correction moves nothing |
 | Late link badges now wait for the next render when the index misses the hold | the hold makes that rare on warm loads; blocks never on screen still get theirs |
-| The worker chunk pulls in KaTeX or highlight.js through `pipeline.ts`'s imports | measured absent with `bun build`; the build's size check fails if Rollup keeps them, and the fix is a module holding only the remark plugins |
+| The worker chunk pulls in KaTeX or highlight.js through `pipeline.ts`'s imports | measured absent with `bun build`; the build's size check fails if Rolldown keeps them, and the fix is a module holding only the remark plugins |
 | One large file is one long task inside the worker | off the main thread; a refresh waits behind it at most once |
 | Heavy test rewrites (the store's 761-line test, the page's 830) | the inline client keeps the store tests' shape; the page tests are rewritten to the new behavior, not relaxed until green |
 | Facts dominate main-thread memory at the ceiling: 5,000 planning documents of a link-heavy mix is about 35 MB of JSON | bounded by `max-candidates`, and far below today's text; measured by [§19](#19-what-done-looks-like) |
@@ -822,6 +860,8 @@ And the behavior:
 - Copy answers on page 1 includes a pending comment filed on a page-2 question.
 - A card over the budget is a preview card, and Show question renders the whole card.
 - A tab built before the change sees the `410` message, and a reload fixes it.
+- A load whose IndexedDB cannot be opened still builds the index, cold, and the planning page
+  renders its cards.
 
 ## 20. Predictions
 
@@ -836,7 +876,7 @@ end to end; the figures come from the fits in [§2](#2-what-the-measurements-say
 | `g p` while the index builds | frame at 20–50; cards 60–110 ms after the index; no long task (today one of 58–72) | same | same |
 | Index ready, warm (the cache) | 20–50 ms after `ensure` | 70–130 ms | 100–180 ms |
 | Index ready, cold (off the main thread) | 300–450 ms | 2.4–3.6 s; 0.8–1.3 s with helpers | 8–12 s; 2.5–4 s with helpers |
-| Index ready without the cache ([OQ-PS1](#OQ-PS1) ruled no) | cold on every page load | 2.4–3.6 s, or 0.8–1.3 s, every load | 8–12 s, or 2.5–4 s, every load |
+| Index ready without the cache (no IndexedDB, [§8.4](#84-without-it)) | cold on every page load | 2.4–3.6 s, or 0.8–1.3 s, every load | 8–12 s, or 2.5–4 s, every load |
 | Direct cold load of the page | frame and progress at about 80 ms; cards 150–250 ms after the index; never frozen | same (today frozen 5.1 s) | same (today frozen 16.8 s) |
 | Main-thread heap after GC | 10–12 MB | 15–25 MB (today about 96) | 25–40 MB (today about 300) |
 | DOM elements on the page | about 1,500 | 2,000–3,000 (today about 67,000) | 2,000–3,000 (today about 223,000) |
@@ -844,61 +884,12 @@ end to end; the figures come from the fits in [§2](#2-what-the-measurements-say
 | Review requests per visit | 2 POSTs | 2 POSTs (today 300 GETs) | 2 POSTs (today 1,000 GETs) |
 | Server work per build | about 1 ms of reading and hashing | about 7 ms | 20–30 ms |
 
-## Open Questions
-
-1. 💬 **OQ-PS1: May the browser keep derived planning facts?** The scan cache stores, per file and
-   under its content hash, what the scan derived: titles, headings, link targets, question state
-   and each question's card block. It amends
-   [planning-index.md §3](planning-index.md#3-the-planning-index)'s "never stored". For a remote
-   daemon, that text lands in the reader's browser profile on the reader's machine. This decides
-   whether a reload is warm: without the cache, every page load rescans every candidate in the
-   worker, about 2.4–3.6 s at 300 documents and 8–12 s at 1,000, and badges wait that long.
-
-   - **A — Keep facts and card blocks.** Warm reloads in about 100–180 ms at 1,000 documents, and
-     cards come from the cache. Question blocks, which are document text, sit in the profile.
-   - **B — Keep facts only.** Warm reloads stay fast. Each shown page's cards are cut by fetching
-     and scanning their documents in the worker: about 10–30 files, 0.2–0.6 s per page on first
-     visit. Less document text is stored, though titles, headings and link targets still are.
-   - **C — Keep nothing.** Every page load is a cold build. Everything else in this design stands
-     ([§8.4](#84-without-it)).
-
-   <!-- vantage: oq id=OQ-PS1 leaning="A: keep facts and card blocks under the content hash, cleared whenever the scanner changes. A warm reload is the only thing that makes 1,000 documents cheap, and the stored text is what the reader could already read." -->
-
-   _Leaning:_ A. A warm reload is what makes a 1,000-document repository cheap on every visit
-   after the first, and what is stored is text the same reader can already open. The cache is
-   cleared whenever the scanner changes and is never trusted without a matching hash.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
-
-2. 💬 **OQ-PS2: Should the Go server filter candidates by two byte tests before sending them?** The
-   *sieve* (coined in the stream-worker proposal) would send a file only when it is the roadmap,
-   starts with `---` or `+++`, or contains `vantage:`. That restates the scan's own early exit
-   ([`scan.ts:1005`](../../packages/vantage-md/src/planning/scan.ts#L1005)) in Go, and one shared
-   fixture would hold the two to one answer. It never under-includes today. Here it passes 19 of 42
-   candidates, a third of the bytes. On a docs site where most pages carry frontmatter, it passes
-   nearly everything. This decides whether P4's "the server never parses Markdown" admits a Go copy
-   of the scan's first test.
-
-   - **A — No sieve.** The scan stays the only judge, and a new frontmatter format or sentinel
-     never has to be taught to Go. The cost is that a cold build streams every candidate, and
-     non-planning files exit the scan in microseconds anyway.
-   - **B — Sieve, pinned by a shared fixture.** Cold builds send fewer bytes, and the cache holds
-     fewer entries. Future changes to the early exit must update Go too, and the fixture catches a
-     drift only when the new form is added to it.
-
-   <!-- vantage: oq id=OQ-PS2 leaning="A: no sieve. The cache already makes a non-planning file cost one short line per load, and a Go copy of the scan's early exit is a second judge of what a planning document is." -->
-
-   _Leaning:_ A. With the cache, a non-planning file costs one `same` line per load after the
-   first, so what the sieve saves is mostly bytes on a cold build. A Go copy of the early exit is
-   a second judge of what a planning document is, which is exactly what P4 exists to prevent.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
-
 ## Decision Ledger
 
 | ID | Ruling / Decision | Date | Settled in | Built |
 | :--- | :--- | :--- | :--- | :--- |
 | — | User direction: the planning page is paged, not infinitely scrolled; every question stays reachable; the browser is never handed the whole corpus as one payload, and never holds it | 2026-09-29 | [§10.2](#102-pages), [§6.1](#61-the-stream) | — |
 | — | User rule: late data never moves painted content. It fills reserved or leftover space, or is ready before first paint, and a paint may be held briefly for it. It replaces "first render never waits" | 2026-09-29 | [§11](#11-late-data-never-moves-painted-content) | — |
+| OQ-PS1 | The browser keeps each file's derived facts and its card blocks in IndexedDB, under the file's content hash, cleared whenever the scanner id changes and never used without a matching hash. A warm reload is what makes a 1,000-document repository cheap after the first visit, and the stored text is text the same reader can already open | 2026-09-29 | [§8.1](#81-what-it-keeps-and-under-which-key), [§14](#14-what-this-changes-in-the-planning-index-design), [§16](#16-alternatives-considered) | — |
+| OQ-PS2 | No byte sieve in Go: every candidate is streamed, and the scan stays the only judge of what a planning document is. The user ruled it an implementation matter, on the condition that the reader's experience does not degrade for it | 2026-09-29 | [§6.1](#61-the-stream), [§16](#16-alternatives-considered) | — |
+| — | Coordinator ruling: this work adds no npm dependency. The scan cache sits behind a storage interface; unit tests run it over an in-memory implementation written in this repository, and the Chromium end-to-end tests over real IndexedDB | 2026-09-29 | [§8.1](#81-what-it-keeps-and-under-which-key), [§17](#17-risks) | — |
