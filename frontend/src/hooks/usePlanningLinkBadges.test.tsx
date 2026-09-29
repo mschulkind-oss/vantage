@@ -9,6 +9,7 @@
  */
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { StrictMode } from "react";
 import { BrowserRouter } from "react-router-dom";
 import axios from "axios";
 import {
@@ -539,6 +540,20 @@ describe("an index that lands after the first paint", () => {
 
     seed(readyLoad(indexOf(TREE, STAGES)));
     // 1000–1500 was on screen: paragraphs 10 to 14 stay as the reader saw them.
+    expect(badgedParagraphs()).toEqual([
+      ...range(5, 10),
+      ...range(15, PARAGRAPHS),
+    ]);
+  });
+
+  it("follows the reader's scrolls under StrictMode's rehearsed unmount too", () => {
+    seed({ status: "loading", warm: false, progress: null });
+    const { container } = render(<StrictMode>{tall()}</StrictMode>);
+    placeParagraphs(container);
+    scrollTo(container, 1000);
+    scrollTo(container, 0);
+
+    seed(readyLoad(indexOf(TREE, STAGES)));
     expect(badgedParagraphs()).toEqual([
       ...range(5, 10),
       ...range(15, PARAGRAPHS),
