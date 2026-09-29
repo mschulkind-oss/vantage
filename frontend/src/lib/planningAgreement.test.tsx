@@ -129,6 +129,11 @@ const corpus = (
   .sort();
 
 describe("the planning index and the contents column (§3.3)", () => {
+  // This scans every document under docs/ in one test, and as the file's
+  // first it also pays for warming the scanner up: about 0.6 s on an idle
+  // machine, 1.5 to 2.2 s on CI's runners, and once 6.3 s on a loaded one,
+  // where vitest's default 5 s timed it out with nothing wrong. Its cost grows
+  // with docs/, so it has room of its own.
   it("has a corpus with questions in it to agree on", () => {
     // An empty corpus would agree trivially. The gallery alone holds ten, in
     // every host shape it demonstrates.
@@ -138,7 +143,7 @@ describe("the planning index and the contents column (§3.3)", () => {
     );
     expect(corpus.length).toBeGreaterThan(20);
     expect(total).toBeGreaterThan(10);
-  });
+  }, 30_000);
 
   it.each(corpus)("agree on %s", (path) => {
     const content = readRepoFile(path);
