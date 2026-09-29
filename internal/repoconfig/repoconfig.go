@@ -89,10 +89,11 @@ type Settings struct {
 	// docs/design/planning-index.md §9.
 	//
 	// It is the one table both readers of this file parse in full. The server
-	// uses only include, exclude and the two limits, to decide what the planning
-	// endpoint serves, and hands the rest to the viewer untouched; the checker
-	// uses all of it. Each validates every key, so a table one of them would
-	// refuse is refused by both.
+	// uses the roadmap, include, exclude and the two limits, to decide what the
+	// planning endpoint serves — the roadmap because it is served whatever
+	// include and exclude say — and hands the stages to the viewer untouched;
+	// the checker uses all of it. Each validates every key, so a table one of
+	// them would refuse is refused by both.
 	Planning PlanningSettings `toml:"planning"`
 }
 
