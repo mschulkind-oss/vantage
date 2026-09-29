@@ -423,6 +423,24 @@ test.describe("viewer header under width pressure", () => {
     await expect(page).toHaveURL(/\/docs\/design$/);
   });
 
+  test("collapsed folders are reachable from the keyboard", async ({
+    page,
+  }) => {
+    await setHeaderWidth(page, 900);
+    const more = page
+      .getByTestId("viewer-header")
+      .getByRole("button", { name: /docs\/design/ });
+    await more.focus();
+    await page.keyboard.press("Enter");
+    const menu = page.getByRole("menu", { name: "Folders" });
+    await expect(menu.getByRole("menuitem", { name: "docs" })).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(menu.getByRole("menuitem", { name: "design" })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    await expect(more).toBeFocused();
+  });
+
   test("the name truncates only when nothing else is left, keeping its extension", async ({
     page,
   }) => {
