@@ -379,4 +379,4 @@ When running in single-directory mode (`vantage serve`), you can also configure 
 | `WALK_TIMEOUT`       | Timeout in seconds for the file-discovery subprocess |
 | `USE_IGNORE_FILES`   | Honor ignore files (`true`/`false`, default `true`)  |
 | `VANTAGE_LOG_LEVEL`  | Log verbosity (`DEBUG`/`INFO`/`WARNING`/`ERROR`)     |
-| `VANTAGE_NO_TIPS`    | Set to `1` to stop the one-line startup tip about the background service |
+| `VANTAGE_NO_TIPS`    | Set to `1` to stop the one-line startup tip about the background service (`0`, `false`, `no` and `off` keep it) |
