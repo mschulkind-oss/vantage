@@ -11,19 +11,30 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/mschulkind-oss/vantage/internal/server"
 )
 
 // fakeLister answers the service probe without a socket, recording the URL it
-// was asked for.
+// was asked for. mode is the server's X-Vantage-Mode; the zero value is
+// "daemon", the answer most tests want.
 type fakeLister struct {
 	names []string
+	mode  string
 	err   error
 	asked []string
 }
 
-func (f *fakeLister) list(_ context.Context, url string) ([]string, error) {
+func (f *fakeLister) list(_ context.Context, url string) (serviceAnswer, error) {
 	f.asked = append(f.asked, url)
-	return f.names, f.err
+	mode := f.mode
+	if mode == "" {
+		mode = "daemon"
+	}
+	if mode == "none" {
+		mode = ""
+	}
+	return serviceAnswer{Names: f.names, Mode: mode}, f.err
 }
 
 func writeUserConfig(t *testing.T, home, body string) {
@@ -141,10 +152,35 @@ func TestProbeServiceFindsAClonesDirectoryAmongItsSourceDirs(t *testing.T) {
 	require.Equal(t, "/", st.OpenPath)
 }
 
+// A foreground `vantage serve` on the service's port is not the service,
+// however it answers: a split one lists real project names, as the daemon
+// does, and only its X-Vantage-Mode tells the two apart. So `vantage ~/code` in
+// one terminal and `vantage ~/notes` in another is not "a service already
+// running", and the second still hears how to install one.
 func TestProbeServiceIgnoresAForegroundServe(t *testing.T) {
 	home := isolateHome(t)
-	st := probeService(context.Background(), "linux", home, "/x", nil, (&fakeLister{names: []string{""}}).list)
+	st := probeService(context.Background(), "linux", home, "/x", nil,
+		(&fakeLister{names: []string{"code", "alpha"}, mode: "serve"}).list)
+	require.False(t, st.Running)
+	require.True(t, st.Foreground)
+	require.Equal(t, "Tip: vantage install-service runs Vantage in the background for all your projects.", st.tip(nil))
+
+	// A version that predates the header: a single-project serve answers with
+	// the one-element sentinel, and anything else is taken for the service.
+	st = probeService(context.Background(), "linux", home, "/x", nil, (&fakeLister{names: []string{""}, mode: "none"}).list)
 	require.False(t, st.Running, "a single-project serve answers with the sentinel, and is not the service")
+	st = probeService(context.Background(), "linux", home, "/x", nil, (&fakeLister{names: []string{"notes"}, mode: "none"}).list)
+	require.True(t, st.Running)
+
+	// Installed, with a foreground serve holding its address: starting it is
+	// not what fixes that.
+	def := serviceDefinitionPath("linux", home)
+	require.NoError(t, os.MkdirAll(filepath.Dir(def), 0o755))
+	require.NoError(t, os.WriteFile(def, []byte("x"), 0o644))
+	st = probeService(context.Background(), "linux", home, "/x", nil,
+		(&fakeLister{names: []string{"code"}, mode: "serve"}).list)
+	require.Equal(t, "A Vantage service is installed, but a foreground vantage serve is answering at its address, "+
+		"http://localhost:8000. Stop that one, then start the service with: systemctl --user start vantage", st.tip(nil))
 }
 
 // Startup never waits longer than the probe's own timeout, however slow the
@@ -152,10 +188,10 @@ func TestProbeServiceIgnoresAForegroundServe(t *testing.T) {
 func TestProbeServiceIsBoundedByItsTimeout(t *testing.T) {
 	home := isolateHome(t)
 	var deadline time.Time
-	slow := func(ctx context.Context, _ string) ([]string, error) {
+	slow := func(ctx context.Context, _ string) (serviceAnswer, error) {
 		deadline, _ = ctx.Deadline()
 		<-ctx.Done()
-		return nil, ctx.Err()
+		return serviceAnswer{}, ctx.Err()
 	}
 	start := time.Now()
 	st := probeService(context.Background(), "linux", home, "/x", nil, slow)
@@ -167,12 +203,13 @@ func TestProbeServiceIsBoundedByItsTimeout(t *testing.T) {
 func TestHTTPRepoListerReadsTheRepoNames(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/api/repos", r.URL.Path)
+		w.Header().Set(server.ModeHeader, "serve")
 		_, _ = w.Write([]byte(`[{"name":"code","last_activity":null,"pinned":true},{"name":"alpha","last_activity":null}]`))
 	}))
 	defer srv.Close()
-	names, err := httpRepoLister(context.Background(), srv.URL+"/api/repos")
+	answer, err := httpRepoLister(context.Background(), srv.URL+"/api/repos")
 	require.NoError(t, err)
-	require.Equal(t, []string{"code", "alpha"}, names)
+	require.Equal(t, serviceAnswer{Names: []string{"code", "alpha"}, Mode: "serve"}, answer)
 
 	missing := httptest.NewServer(http.NotFoundHandler())
 	defer missing.Close()
