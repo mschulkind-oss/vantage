@@ -672,9 +672,11 @@ sanitizer sees any of it:
 
 ```html
 <div>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40" role="img" aria-label="Two boxes">
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="40" viewBox="0 0 120 40" role="img" aria-label="Two boxes, A and B">
   <rect x="1" y="1" width="50" height="38" fill="none" stroke="currentColor"/>
-  <text x="26" y="24" text-anchor="middle" fill="currentColor">A</text>
+  <text x="26" y="25" text-anchor="middle" fill="currentColor">A</text>
+  <rect x="69" y="1" width="50" height="38" fill="none" stroke="currentColor"/>
+  <text x="94" y="25" text-anchor="middle" fill="currentColor">B</text>
 </svg>
 </div>
 ```
@@ -696,13 +698,41 @@ sanitizer sees any of it:
 `vantage-check` reports none of these breakages; the rendered page is the only
 place they show.
 
+**Give a drawing a `width` and a `height` as well as a `viewBox`.** Without a
+size, a drawing is as wide as the column, however little it holds. A drawing
+wider than the column shrinks to fit only if it has a `viewBox`. Without one
+nothing scales it, and it is cropped at the column's edge. An `<svg>` in a
+sentence stays on its line in a paragraph, a list item, a table cell, a heading,
+a `<summary>`, a definition list or a `<figcaption>`. Inside a `<div>` it is a
+block, which is what makes the `<div>` the right wrapper for a drawing.
+
 `fill` and `stroke` take only a keyword, a color name or a hex color, for the
-reason `style` refuses parentheses, and **a refused paint renders black, not
-absent**. The attribute is dropped and SVG's initial fill is black, so
-`fill="rgb(219, 234, 254)"` and `fill="url(#g)"` both paint a black shape. Paint
-written in `style`, which is how Inkscape and matplotlib write it, is dropped
-whole because `SAFE_STYLE` has no `fill` or `stroke`, so
-`style="fill:none;stroke:#1f77b4"` turns an outline into a solid black shape.
+reason `style` refuses parentheses. **A refused paint is replaced by what the
+element inherits, which is rarely what was drawn.**
+
+- **A refused `fill` takes its parent's fill, and SVG's initial fill is
+  black.** So `fill="rgb(219, 234, 254)"` and `fill="url(#g)"` both paint a
+  black shape, unless an ancestor sets a fill. A Figma export sets
+  `fill="none"` on the `<svg>`, and there a shape whose paint was refused is not
+  drawn at all.
+- **A refused `stroke` draws no outline**, because SVG's initial stroke is
+  `none`.
+- **Paint written in `style` is dropped with the rest of the attribute,**
+  because `SAFE_STYLE` has no `fill` or `stroke`, and that is how Inkscape and
+  matplotlib write every color. `style="fill:none;stroke:#1f77b4"` turns an
+  outline into a solid black shape, so their drawings render as black
+  silhouettes. A matplotlib chart becomes one black rectangle: its text is black
+  on black, and under the default `svg.fonttype` there is no text at all,
+  because each glyph is drawn by a refused `<use>`. An Inkscape drawing also
+  loses its text size, which it writes in the same `style` as the paint. Embed
+  a drawing from either as `![alt](file.svg)` instead.
+- **A draw.io export depends on how it writes color.** One that writes every
+  color as `rgb(…)`, as older versions did, loses every outline and connector,
+  and its filled headers turn black over their black labels. One that writes
+  hex colors renders in the light theme, but its dark-theme colors are a
+  `light-dark()` in `style`, which is refused, so in dark mode its black lines
+  and text sit on the dark page.
+
 Black is also what disappears in dark mode, where text with no fill, or
 `fill="black"`, sits on the dark page at about 1.2:1. For anything that has to
 read in both themes, write `fill="currentColor"` or `stroke="currentColor"`: it
