@@ -824,9 +824,8 @@ describe("useRepoStore", () => {
     });
   });
 
-  // The daemon discovers repositories under its source dirs while the app is
-  // open, so the list has to be refreshable mid-session — without unpicking
-  // the session that is in progress.
+  // The loose project beside a directory of clones is listed first in both
+  // sort orders (docs/design/serve-clones-directory.md §3).
   describe("sortedRepos", () => {
     const repos = [
       { name: "beta", last_activity: "2026-09-02T00:00:00Z" },
@@ -855,6 +854,9 @@ describe("useRepoStore", () => {
     });
   });
 
+  // The daemon discovers repositories under its source dirs while the app is
+  // open, so the list has to be refreshable mid-session — without unpicking
+  // the session that is in progress.
   describe("refreshRepos", () => {
     const seedSession = () =>
       useRepoStore.setState({
