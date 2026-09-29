@@ -141,6 +141,52 @@ describe("MarkdownViewer", () => {
     expect(img).toHaveAttribute("src", "/api/content?path=folder%2Fimage.png");
   });
 
+  // The loose project refuses every path inside a clone, which is a project of
+  // its own (docs/design/serve-clones-directory.md §3), so an index note's
+  // relative link into a clone is sent to the clone's project. Links to the
+  // loose project's own files stay where they are.
+  it("sends a loose note's links and images into a clone to the clone's project", () => {
+    useRepoStore.setState({
+      isMultiRepo: true,
+      currentRepo: "code",
+      repos: [
+        {
+          name: "code",
+          last_activity: null,
+          pinned: true,
+          clones: { alpha: "alpha" },
+        },
+        { name: "alpha", last_activity: null },
+      ],
+    });
+    try {
+      const content =
+        "[into alpha](alpha/README.md) [an idea](drafts/idea.md)\n\n![pic](alpha/pic.png)";
+      renderWithRouter(
+        <MarkdownViewer content={content} currentPath="notes.md" />,
+      );
+
+      const link = screen.getByText("into alpha").closest("a")!;
+      expect(link).toHaveAttribute("href", "/alpha/README.md");
+      fireEvent.click(link);
+      expect(mockNavigate).toHaveBeenCalledWith("/alpha/README.md");
+      expect(screen.getByText("an idea").closest("a")).toHaveAttribute(
+        "href",
+        "/code/drafts/idea.md",
+      );
+      expect(screen.getByRole("img")).toHaveAttribute(
+        "src",
+        "/api/r/alpha/content?path=pic.png",
+      );
+    } finally {
+      useRepoStore.setState({
+        isMultiRepo: false,
+        currentRepo: null,
+        repos: [],
+      });
+    }
+  });
+
   /**
    * Badges are the case this exists for. A README writes them on adjacent
    * source lines, which is ONE paragraph joined by a soft break — GitHub lays

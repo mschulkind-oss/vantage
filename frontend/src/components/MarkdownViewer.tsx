@@ -7,6 +7,7 @@ import "katex/dist/katex.min.css";
 import { useNavigate } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { scrollToAnchor } from "../lib/anchorScroll";
+import { projectFor } from "../lib/cloneLinks";
 import { shouldHandleInternalNavigation } from "../lib/navigation";
 import { readPreference, writePreference } from "../lib/preferences";
 import { useRepoStore } from "../stores/useRepoStore";
@@ -166,25 +167,36 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const isMultiRepo = useRepoStore((state) => state.isMultiRepo);
   const currentRepo = useRepoStore((state) => state.currentRepo);
+  // Set only on the loose project beside a directory of clones: a path into
+  // one of them belongs to the clone's own project (see lib/cloneLinks.ts).
+  const clones = useRepoStore(
+    (state) => state.repos.find((r) => r.name === state.currentRepo)?.clones,
+  );
 
   // Build path with repo prefix in multi-repo mode
   const buildPath = useCallback(
     (filePath: string): string => {
       if (isMultiRepo && currentRepo) {
-        return `/${currentRepo}/${filePath}`;
+        const target = projectFor(currentRepo, filePath, clones);
+        return `/${target.repo}/${target.path}`;
       }
       return `/${filePath}`;
     },
-    [isMultiRepo, currentRepo],
+    [isMultiRepo, currentRepo, clones],
   );
 
-  // Get API base for content requests
-  const getApiBase = useCallback((): string => {
-    if (isMultiRepo && currentRepo) {
-      return `/api/r/${encodeURIComponent(currentRepo)}`;
-    }
-    return "/api";
-  }, [isMultiRepo, currentRepo]);
+  // The content URL for a repository-relative path, in whichever project
+  // serves it.
+  const contentUrl = useCallback(
+    (filePath: string): string => {
+      if (isMultiRepo && currentRepo) {
+        const target = projectFor(currentRepo, filePath, clones);
+        return `/api/r/${encodeURIComponent(target.repo)}/content?path=${encodeURIComponent(target.path)}`;
+      }
+      return `/api/content?path=${encodeURIComponent(filePath)}`;
+    },
+    [isMultiRepo, currentRepo, clones],
+  );
 
   // Parse frontmatter from content
   const { frontmatter, body, bodyLineOffset } = useMemo(() => {
@@ -271,11 +283,10 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       parts.pop(); // remove filename
       const dir = parts.join("/");
       const resolvedPath = dir ? `${dir}/${uri}` : uri;
-      const apiBase = getApiBase();
 
-      return `${apiBase}/content?path=${encodeURIComponent(resolvedPath)}`;
+      return contentUrl(resolvedPath);
     },
-    [currentPath, getApiBase],
+    [currentPath, contentUrl],
   );
 
   // Helper to resolve relative link paths to absolute paths

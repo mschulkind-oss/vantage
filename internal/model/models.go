@@ -120,6 +120,13 @@ type RepoInfo struct {
 	// every sort order. Only the loose project of a directory of clones sets
 	// it (docs/design/serve-clones-directory.md §3); absent means false.
 	Pinned bool `json:"pinned,omitempty"`
+	// Clones maps each directory directly inside the loose project's root that
+	// another project serves — a clone, or a symlink resolving to one — to
+	// that project's name. The loose project refuses every path inside a
+	// clone, so the viewer sends a link or image from a loose note into one to
+	// the clone's own project instead (docs/design/serve-clones-directory.md
+	// §3). Only the loose project sets it; absent means none.
+	Clones map[string]string `json:"clones,omitempty"`
 }
 
 // Degradation is one way a project is being served worse than normal because

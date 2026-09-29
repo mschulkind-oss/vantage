@@ -47,6 +47,8 @@ import (
 	"log/slog"
 	"maps"
 	"net/http"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -907,6 +909,51 @@ func degradationMessage(d model.Degradation, cfg *config.Config) string {
 	}
 }
 
+// repoInfo is rs's entry in /repos without its last activity: the name, and
+// for the loose project its pin and the project behind each clone directory
+// inside it (see [Server.cloneProjects]). repos is every served repository.
+func (s *Server) repoInfo(rs *repoServices, repos []*repoServices) model.RepoInfo {
+	info := model.RepoInfo{Name: rs.name, Pinned: rs.loose}
+	if rs.loose {
+		info.Clones = cloneProjects(rs, repos)
+	}
+	return info
+}
+
+// cloneProjects maps each directory directly inside the loose project's root
+// that another served project is rooted at — a clone, reached by its own name
+// or through a symlink that resolves to it — to that project's name, or nil when
+// there is none. The loose project refuses every path inside those
+// directories (docs/design/serve-clones-directory.md §3); this is what lets the
+// viewer send a loose note's link into a clone to the clone's own project. It
+// costs one directory listing, which the discovery rescan pays already.
+func cloneProjects(loose *repoServices, repos []*repoServices) map[string]string {
+	byRoot := make(map[string]string, len(repos))
+	for _, rs := range repos {
+		if rs != loose {
+			byRoot[rs.root] = rs.name
+		}
+	}
+	entries, err := os.ReadDir(loose.root)
+	if err != nil {
+		return nil
+	}
+	var out map[string]string
+	for _, e := range entries {
+		resolved, err := filepath.EvalSymlinks(filepath.Join(loose.root, e.Name()))
+		if err != nil {
+			continue
+		}
+		if name, ok := byRoot[resolved]; ok {
+			if out == nil {
+				out = map[string]string{}
+			}
+			out[e.Name()] = name
+		}
+	}
+	return out
+}
+
 // warmActivity recomputes last-activity for every repository concurrently and
 // swaps the cache atomically. A repo whose probe fails keeps a name-only
 // RepoInfo (last_activity null). It is a no-op in single-repo mode.
@@ -927,7 +974,7 @@ func (s *Server) warmActivity(_ context.Context) {
 	for i, rs := range repos {
 		name := rs.name
 		g.Go(func() error {
-			info := model.RepoInfo{Name: name, Pinned: rs.loose}
+			info := s.repoInfo(rs, repos)
 			if recents := rs.git.Recents(1, nil, true, true); len(recents) > 0 {
 				t := recents[0].Date.UTC()
 				info.LastActivity = &t

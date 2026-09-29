@@ -7,6 +7,14 @@ export interface RepoInfo {
    * false. See docs/design/serve-clones-directory.md §3.
    */
   pinned?: boolean;
+  /**
+   * The loose project's clones: each directory directly inside it that another
+   * project serves, by name, mapped to that project's name. The loose project
+   * refuses every path inside them, so a link or image from a loose note into
+   * one is sent to the clone's own project (see `lib/cloneLinks.ts`). Only the
+   * loose project sets it; absent means none.
+   */
+  clones?: Record<string, string>;
 }
 
 export interface FileNode {

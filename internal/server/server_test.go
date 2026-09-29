@@ -586,6 +586,63 @@ func TestLooseProjectSharesTheRescanAndIsNeverRetired(t *testing.T) {
 	require.JSONEq(t, `[]`, rec.Body.String())
 }
 
+// A relative link from a loose note into a clone — [alpha](alpha/README.md) in
+// ~/code/README.md — names a path the loose project refuses, since the clone is
+// a project of its own. The loose project's entry in /repos says which project
+// serves each directory directly inside it, so the viewer can send the link
+// there; a symlink to a clone names the clone's project too. The warmed entry,
+// which is what /repos serves once Run has started, says the same as the cold
+// one, and keeps the loose project pinned.
+func TestLooseProjectNamesTheProjectBehindEachClone(t *testing.T) {
+	isolateUserDirs(t)
+	code := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(code); err == nil {
+		code = resolved
+	}
+	initRepoAt(t, filepath.Join(code, "alpha"), map[string]string{"a.md": "# A\n"})
+	initRepoAt(t, filepath.Join(code, "beta"), map[string]string{"b.md": "# B\n"})
+	require.NoError(t, os.Symlink(filepath.Join(code, "alpha"), filepath.Join(code, "link")))
+	require.NoError(t, os.MkdirAll(filepath.Join(code, "drafts"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(code, "notes.md"), []byte("# notes\n"), 0o644))
+
+	cfg := config.Defaults()
+	cfg.TargetRepo = code
+	cfg.MultiRepo = true
+	cfg.SourceDirs = []string{code}
+	cfg.Repos = []config.RepoConfig{{Name: "code", Path: code, Loose: true}}
+	require.NoError(t, cfg.Resolve())
+	cfg.DiscoverReposFromSourceDirs()
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+
+	want := map[string]string{"alpha": "alpha", "beta": "beta", "link": "alpha"}
+	reposNow := func() []model.RepoInfo {
+		rec := doGET(t, srv.Handler(), "/api/repos")
+		require.Equal(t, http.StatusOK, rec.Code)
+		var infos []model.RepoInfo
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &infos))
+		return infos
+	}
+	cold := reposNow()
+	require.Equal(t, "code", cold[0].Name)
+	require.True(t, cold[0].Pinned)
+	require.Equal(t, want, cold[0].Clones)
+	for _, r := range cold[1:] {
+		require.Nil(t, r.Clones, r.Name)
+	}
+
+	srv.warmActivity(context.Background())
+	warm := reposNow()
+	require.Equal(t, "code", warm[0].Name)
+	require.True(t, warm[0].Pinned, "the warmed entry is the one /repos serves while running")
+	require.NotNil(t, warm[0].LastActivity)
+	require.Equal(t, want, warm[0].Clones)
+	for _, r := range warm[1:] {
+		require.False(t, r.Pinned, r.Name)
+		require.Nil(t, r.Clones, r.Name)
+	}
+}
+
 func TestRetireReposDropsOnlyWhatIsGone(t *testing.T) {
 	srv, sourceDir := discoveryServer(t)
 	ctx, cancel := context.WithCancel(context.Background())
