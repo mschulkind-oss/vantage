@@ -287,6 +287,13 @@ const SAFE_STYLE_PROPERTIES = [
  * margins, which prose actually uses. Containment in the stylesheet, not another
  * rule here, is what would close it. `overflow: visible` on an inline `<svg>` is
  * the same residual by another route — see `SVG_ROOT_ATTRIBUTES`.
+ *
+ * **The app's table of contents is inside that scroll container too**, beside
+ * the document column, so a block carried over it took its clicks whenever the
+ * block painted in the positioned layer: one with `opacity`, a toned block, a
+ * heading, or a link to anywhere. The contents sit at `z-10` for that
+ * (`frontend/src/components/TableOfContents.tsx`), and a document cannot climb
+ * back over them only because `z-index` is not on the property list.
  */
 const VALUE = `[^;:()"'\\\\]*`;
 // Wrapped in its own group, and the trailing `?` below applies to that group.
