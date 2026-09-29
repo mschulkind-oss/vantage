@@ -1,8 +1,14 @@
 package api
 
 import (
+	"compress/gzip"
+	"encoding/json"
+	"errors"
+	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/mschulkind-oss/vantage/internal/planning"
 	"github.com/mschulkind-oss/vantage/internal/repoconfig"
@@ -56,6 +62,163 @@ func (h *Handlers) PlanningSources(w http.ResponseWriter, r *http.Request) {
 		// stopped reading, and its parse of a truncated body is what fails.
 		slog.Debug("api: planning batch not delivered", "repo", svc.Repo, "error", err)
 	}
+}
+
+// streamBodyLimit caps the planning stream's request body. Its `have` costs
+// about 60 B a candidate, so the cap holds several times `max-candidates`'
+// default of 5,000. A variable so a test can lower it rather than send 4 MiB.
+var streamBodyLimit int64 = 4 << 20
+
+// PlanningStream handles POST /planning/stream (and
+// /r/{repo}/planning/stream): every planning candidate as one line of NDJSON,
+// with the text only of the files whose content hash the browser does not
+// already hold. Design: docs/design/planning-index-at-scale.md §6.1. The lines
+// are [planning.WriteStream]'s.
+//
+// The body is `{"have": {path: hash, …}}`, the hashes the browser keeps scan
+// results under. No body, `{}`, or an empty or null `have` asks for a cold
+// build: every text. A body past [streamBodyLimit] is a 413, and one that is
+// not exactly an object of that shape, alone, is a 400, both with the
+// {"detail":…} envelope and before a line is written.
+//
+// The answer is `application/x-ndjson`, never cached, and gzipped at the
+// fastest level when the request accepts gzip, since a cold build's body is
+// the whole corpus. It is flushed through the [http.ResponseController], which
+// reaches the connection past the perf middleware's wrapper, and the
+// compressor is flushed first each time, or a line would sit in it.
+//
+// No write deadline is set, and none should be: a browser that reads slowly,
+// because it scans each line before reading the next, holds the server back by
+// TCP, which is the design's backpressure.
+//
+// The config is read as [Handlers.PlanningSources] reads it, past the reload
+// throttle, because the build this most often answers is the one a
+// `.vantage.toml` push just caused.
+func (h *Handlers) PlanningStream(w http.ResponseWriter, r *http.Request) {
+	svc, ok := h.repoOr400(w, r)
+	if !ok {
+		return
+	}
+	var req *struct {
+		Have map[string]string `json:"have"`
+	}
+	switch err := decodeCapped(w, r, streamBodyLimit, &req); {
+	case errors.Is(err, io.EOF):
+		// No body at all: a cold build.
+	case isTooLarge(err):
+		writeDetail(w, http.StatusRequestEntityTooLarge,
+			"The planning stream's request is larger than "+strconv.FormatInt(streamBodyLimit, 10)+" bytes")
+		return
+	case err != nil || req == nil:
+		writeDetail(w, http.StatusBadRequest, `Invalid request body: expected {"have": {path: hash}}`)
+		return
+	}
+	var have map[string]string
+	if req != nil {
+		have = req.Have
+	}
+	cfg := planningConfig(svc)
+
+	header := w.Header()
+	header.Set("Content-Type", "application/x-ndjson")
+	header.Set("Cache-Control", "no-store")
+	header.Add("Vary", "Accept-Encoding")
+	out := &streamWriter{w: w, rc: http.NewResponseController(w)}
+	if acceptsGzip(r) {
+		header.Set("Content-Encoding", "gzip")
+		// BestSpeed is a valid level, so this cannot fail.
+		out.gz, _ = gzip.NewWriterLevel(w, gzip.BestSpeed)
+		out.w = out.gz
+	}
+	w.WriteHeader(http.StatusOK)
+
+	err := planning.WriteStream(out, svc.FS, cfg, have)
+	if err == nil && out.gz != nil {
+		err = out.gz.Close()
+	}
+	if err != nil {
+		// As for the batch: the status is gone, the client stopped reading,
+		// and its reader fails on a body without `end`.
+		slog.Debug("api: planning stream not delivered", "repo", svc.Repo, "error", err)
+	}
+}
+
+// streamWriter is the stream's [planning.Flusher] over a response: through a
+// gzip writer when the request accepts one, flushed compressor first.
+type streamWriter struct {
+	w  io.Writer
+	gz *gzip.Writer
+	rc *http.ResponseController
+}
+
+func (s *streamWriter) Write(p []byte) (int, error) { return s.w.Write(p) }
+
+func (s *streamWriter) Flush() error {
+	if s.gz != nil {
+		if err := s.gz.Flush(); err != nil {
+			return err
+		}
+	}
+	// A writer that cannot flush still delivers the body, only later.
+	if err := s.rc.Flush(); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		return err
+	}
+	return nil
+}
+
+// acceptsGzip reports whether the request's Accept-Encoding names gzip with a
+// nonzero quality. Every browser sends it; a client that does not gets the
+// lines uncompressed.
+func acceptsGzip(r *http.Request) bool {
+	for _, value := range r.Header.Values("Accept-Encoding") {
+		for _, part := range strings.Split(value, ",") {
+			coding, params, _ := strings.Cut(part, ";")
+			if !strings.EqualFold(strings.TrimSpace(coding), "gzip") {
+				continue
+			}
+			name, q, found := strings.Cut(strings.TrimSpace(params), "=")
+			if found && strings.EqualFold(strings.TrimSpace(name), "q") {
+				if v, err := strconv.ParseFloat(strings.TrimSpace(q), 64); err == nil && v == 0 {
+					return false
+				}
+			}
+			return true
+		}
+	}
+	return false
+}
+
+// decodeCapped decodes the request body, at most limit bytes of it, into v as
+// exactly one JSON value.
+//
+// It returns io.EOF for a body that is empty or only whitespace, an
+// [*http.MaxBytesError] (see [isTooLarge]) for one past the limit, and any
+// other error for one that is not a single JSON value of v's shape, a key v
+// does not have included: a misspelled field read as absent would pass for a
+// request that asked for nothing. [decodeBody] answers 400 for all three alike,
+// which is why the planning endpoints do not use it.
+func decodeCapped(w http.ResponseWriter, r *http.Request, limit int64, v any) error {
+	body := http.MaxBytesReader(w, r.Body, limit)
+	defer func() { _ = body.Close() }()
+	dec := json.NewDecoder(body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return err
+	}
+	switch _, err := dec.Token(); {
+	case errors.Is(err, io.EOF):
+		return nil
+	case err != nil:
+		return err
+	default:
+		return errors.New("more than one JSON value")
+	}
+}
+
+// isTooLarge reports whether err is a request body past its cap.
+func isTooLarge(err error) bool {
+	var tooLarge *http.MaxBytesError
+	return errors.As(err, &tooLarge)
 }
 
 // planningConfig is the repository's effective `[planning]` table: its own when
