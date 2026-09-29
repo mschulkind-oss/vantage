@@ -432,7 +432,8 @@ Prints the repository's [planning index](planning.md): the sections that say
 which questions need a ruling, which ones the roadmap has missed, what waits
 on what, and which documents are ready to build or to graduate, then the
 roadmap with each link's badge written inline. It is how an agent sees what a
-person sees in the viewer, with no server running. Design background:
+person sees on the [planning page](planning.md#the-planning-page), with no
+server running. Design background:
 [`planning-index.md` §8](../../docs/design/planning-index.md#8-vantage-check-index-and-the-planning-rules).
 
 | Option | Effect |
@@ -468,8 +469,8 @@ set, `index` can list a file that the viewer does not.
 ### Output
 
 The text form lists each non-empty section in order, one indented line per
-entry, with the notes the [Planning Documents](planning.md#reading-it-from-the-command-line)
-guide describes: no roadmap, no stages, or nothing that needs you. Then it
+entry, with the notes the [Planning Documents](planning.md#its-sections) guide
+describes: no roadmap, no stages, or nothing that needs you. Then it
 prints the roadmap's own source, with each link that has a badge followed by
 that badge in brackets, as in `[the plan](docs/design/x-plan.md) [in-review · DECIDED]`.
 *Skipped* and *Could not read* are listed in both forms.
