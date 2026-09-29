@@ -20,8 +20,8 @@ interface TableOfContentsProps {
 const MAX_INDENT = 3;
 
 /**
- * The document's outline — its headings, and the Open Questions still awaiting a
- * ruling — floating in the margin beside the content.
+ * The document's outline — its headings, and its Open Questions in every state,
+ * open, blocked or answered — floating in the margin beside the content.
  *
  * It is a column of the same flex row the document sits in, so it is always
  * adjacent to the text rather than pinned to the window — and it carries no
