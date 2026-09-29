@@ -318,7 +318,11 @@ func TestServedClonesDirectoryGivesEachCloneItsOwnProject(t *testing.T) {
 	var repos []model.RepoInfo
 	getJSON(t, h, "/api/repos", &repos)
 	require.Len(t, repos, 4)
-	require.Equal(t, model.RepoInfo{Name: "code", Pinned: true}, repos[0], "the loose project is listed first and pinned")
+	require.Equal(t, model.RepoInfo{
+		Name:   "code",
+		Pinned: true,
+		Clones: map[string]string{"alpha": "alpha", "beta": "beta", "gamma": "gamma"},
+	}, repos[0], "the loose project is listed first and pinned, and says which project serves each clone")
 	for _, r := range repos[1:] {
 		require.False(t, r.Pinned)
 	}
