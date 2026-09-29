@@ -415,7 +415,7 @@ interface ScanState {
   /** The merged `id=` of each question, before duplicates are resolved. */
   rawIds: (string | undefined)[];
   /** Footnote definitions, walked last because they render last. */
-  footnotes: { node: Parents; context: Context }[];
+  footnotes: Context[];
 }
 
 /**
@@ -460,17 +460,15 @@ function walkBlocks(context: Context, state: ScanState): void {
   // A footnote definition is skipped above, for it is not where it is written.
   for (const child of context.parent.children as RootContent[]) {
     if (child.type === "footnoteDefinition") {
+      // Hoisted into the footnotes section, so no list item encloses it; the
+      // section renders the definition itself as an `<li>`.
       state.footnotes.push({
-        node: child,
-        // Hoisted into the footnotes section, so no list item encloses it.
-        context: {
-          parent: child,
-          list: undefined,
-          listItem: undefined,
-          itemList: undefined,
-          unit: child,
-          rootChild: context.rootChild ?? child,
-        },
+        parent: child,
+        list: undefined,
+        listItem: undefined,
+        itemList: undefined,
+        unit: child,
+        rootChild: context.rootChild ?? child,
       });
     }
   }
@@ -953,9 +951,10 @@ export function scanPlanningDocument(
     },
     state,
   );
+  // Walking a footnote can find another inside it, so the list may grow.
   for (let i = 0; i < state.footnotes.length; i++) {
     const footnote = state.footnotes[i];
-    if (footnote !== undefined) walkBlocks(footnote.context, state);
+    if (footnote !== undefined) walkBlocks(footnote, state);
   }
 
   const seen = new Set<string>();
