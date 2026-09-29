@@ -244,6 +244,36 @@ those is the reason to run `vantage-check index`.
 
 ---
 
+## Referenced by
+
+Below a planning document's frontmatter card, or at the top of a document
+that has none, one line says whether the roadmap has the document and how many
+planning documents link to it:
+
+| The line | Means |
+| :--- | :--- |
+| *Referenced by 3 documents · on the roadmap under Building* | The roadmap [routes](#the-roadmap) this document or one of its questions. *Building* is the roadmap heading its first such link sits under |
+| *Referenced by 3 documents · not on the roadmap (2 open questions)* | Two of its open questions are unrouted: they need a ruling, and the roadmap has missed them. The second half is in the warning tone |
+| *Not on the roadmap (2 open questions)* | The same, for a document nothing links to. The line is then the only place the document shows it |
+| *Referenced by 3 documents* | Other documents link here, and the roadmap has nothing to add |
+
+The count is of documents, not links, and the roadmap is one of them when it
+links here. A document's links to itself do not count. When nothing links to a
+document and none of its questions is unrouted, there is no line. With no
+roadmap, or for a document whose stage has the `done` role, the line gives the
+count alone.
+
+Click the line, or press Enter or Space on it, to see who links here: one row
+per document, the roadmap first, then by path. A row is the document's file
+name, with its full path on hover, then the headings its links sit under. Each
+heading links to the first line under it that links here. A row shows four
+headings, then *+M more* for the rest.
+
+The list is closed whenever you open a document, and nothing remembers that
+you opened it. It prints only when it is open; the line always prints.
+
+---
+
 ## Reading it from the command line
 
 `vantage-check index` prints the planning index of the repository the current

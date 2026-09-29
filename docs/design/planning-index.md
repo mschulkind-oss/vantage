@@ -25,7 +25,7 @@ is a fact that had been copied by hand
 ([brainstorm, evidence table](../brainstorm/planning-index.md#why-this-keeps-turning-into-a-mess-measured-on-this-repository)).
 
 **The shape.** One scan (the *planning index*) and four surfaces that display it: badges on links,
-a planning page, Referenced-by lists plus file-tree badges, and `vantage-check index`.
+a planning page, a Referenced by line plus file-tree badges, and `vantage-check index`.
 
 **Cost.** Two new frontmatter keys and one `.vantage.toml` table. Vantage's style guide and any
 planning conventions built on it change what they write ([§10](#10-what-the-conventions-change)).
@@ -199,7 +199,7 @@ numbers are defaults in `[planning]`.
 
 ### 3.6 Failure
 
-- **The batch fetch fails:** no badges or Referenced-by lists. The planning page shows the error
+- **The batch fetch fails:** no badges and no Referenced by line. The planning page shows the error
   with a Retry button. Documents render exactly as they do today.
 - **One file cannot be read:** a file the server cannot read, or whose frontmatter does not
   parse (invalid YAML, an unterminated block, or not a mapping), is listed under *Could not
@@ -208,8 +208,8 @@ numbers are defaults in `[planning]`.
 - **Multi-repo mode:** one index per repository. A link from one repository into another is
   never decorated.
 - **A static export** ([`vantage build`](../../userguide/guides/static-sites.md)) has no
-  planning endpoint, so it behaves as a failed batch fetch: no badges and no Referenced-by
-  lists, and its planning page shows the error. A static host may answer the endpoint's URL
+  planning endpoint, so it behaves as a failed batch fetch: no badges and no Referenced by
+  line, and its planning page shows the error. A static host may answer the endpoint's URL
   with the site's `index.html`, so any answer that is not the batch's own shape counts as a
   failure.
 
@@ -398,10 +398,40 @@ planning page at its previous scroll position.
 
 ## 7. Referenced by, and status in the file tree
 
-- **Referenced by:** below a planning document's frontmatter card, a list of the planning
-  documents that link to this one or to one of its questions. Each entry names the heading the
-  link sits under, for example *roadmap.md · Rule these first*. The document's links to itself
-  are not listed. If nothing links to it, the list is not shown.
+- **Referenced by:** one line below a planning document's frontmatter card, or first in the
+  document when it has no card. It answers the two questions a reader asks of a document on its
+  own page, *is this on the roadmap?* and *who depends on it?*, and the list of who links to it
+  waits behind the line until someone asks for it. The roadmap's answer comes first: the first
+  row below that applies decides what the line says.
+
+  | When | The line reads |
+  | :--- | :--- |
+  | The roadmap routes the document or one of its questions ([§6.1](#61-the-roadmap)) | *Referenced by N documents · on the roadmap under Building*, naming the roadmap heading of the first link that routes it, or just *on the roadmap* when that link sits above every heading |
+  | The document has open questions the roadmap does not route, which the planning page lists under *Unrouted* ([§6.2](#62-sections-top-to-bottom)) | *Referenced by N documents · not on the roadmap (K open questions)*, the second half in the warning tone. When nothing links to the document the line is *Not on the roadmap (K open questions)* alone, because it is then the only place the document says so |
+  | Otherwise | *Referenced by N documents* |
+
+  N counts the planning documents that link to this one or to one of its questions, once each
+  however many links they hold. The roadmap counts as one when it links here. The document's
+  links to itself are not counted. When nothing links to it and nothing in it is unrouted,
+  there is no line.
+
+  Routing is read exactly as the planning page reads it, so the line and the page cannot
+  disagree. Only a bare link to the document and a link to one of its `#OQ-…` ids route it; a
+  heading link routes nothing. A document whose stage has the `done` role contributes nothing
+  ([§4](#4-the-header-of-record-stage-next-depends-on)), so its line is the count alone, and so
+  is every line when there is no roadmap. The roadmap is never on the roadmap itself.
+
+  **Opening the line** shows one row per linking document, the roadmap first and then by path.
+  A row is the document's file name, with its full path on hover, then the headings its links
+  sit under, in document order and each once, for example *roadmap.md · Rule these first ·
+  Later*. Each heading links to the first line under it that links here, and the file name to
+  the document's first such line. A link above every heading adds no heading. A row shows at
+  most four headings, then *+M more*, which opens that row.
+
+  The line is a button that says whether it is open, so it works from the keyboard and to a
+  screen reader. **It is collapsed on every document load**, and nothing is stored: opening it
+  lasts for that visit only. In print, the line prints, and the list prints only when it is
+  open.
 - **File tree:** a planning document's row shows a badge after its name. The file name has the
   first claim on the row's width, and four rules follow from that:
 
@@ -618,6 +648,7 @@ the plan proposed.
 | :--- | :--- | :--- | :--- | :--- |
 | — | Build it: a planning index in Vantage, following the brainstorm's direction ([`OQ-PI1`](../brainstorm/planning-index.md#decision-ledger)) | 2026-09-28 | [§1](#1-verdict-and-the-principles) | — |
 | — | **Open document** from the planning page lands at the top of the document, not at the question | 2026-09-28 | [§6.3](#63-a-question-on-the-page) | — |
+| — | User direction 2026-09-29: Referenced by is one motivated, collapsed line. It says whether the roadmap routes the document and how many documents link to it, and opens to one row per document. It replaces a list with one row per linking document and heading, always open, which pushed a heavily cited document's body a screen down | 2026-09-29 | [§7](#7-referenced-by-and-status-in-the-file-tree) | — |
 | OQ-PL1 | `stage:` is the stage's only home; a prose status line carries the date and the why. Decided on generic grounds, not to fit one set of conventions | 2026-09-28 | [§4](#4-the-header-of-record-stage-next-depends-on) | — |
 | OQ-PL2 | A planning document is any file with planning frontmatter or an `oq` directive; everything is included by default, with an exclude list | 2026-09-28 | [§3.1](#31-which-files-it-reads) | — |
 | OQ-PL3 | A roadmap fully readable only in Vantage is acceptable: GitHub keeps the order and reasons | 2026-09-28 | [§5.3](#53-how-a-badge-behaves) | — |
