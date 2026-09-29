@@ -324,6 +324,9 @@ describe("the data-vantage-* allowlist", () => {
 describe("inline SVG", () => {
   // Shaped like the diagrams people actually paste: a wrapping div, shapes,
   // text with a quoted font stack, and an accessible name.
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const HTML_NS = "http://www.w3.org/1999/xhtml";
+
   const diagram = `<div class="diagram">
 <svg xmlns="http://www.w3.org/2000/svg" width="282" height="152" viewBox="0 0 282 152" role="img" aria-label="A and B" font-family="system-ui, 'Segoe UI', sans-serif">
 <title>A and B</title>
@@ -337,8 +340,11 @@ describe("inline SVG", () => {
     const host = document.createElement("div");
     host.innerHTML = await styled(diagram);
     const svg = host.querySelector("svg")!;
-    expect(svg).not.toBeNull();
-    expect(svg.namespaceURI).toBe("http://www.w3.org/2000/svg");
+    expect(Array.from(svg.children, (el) => el.tagName)).toEqual([
+      "rect",
+      "path",
+      "text",
+    ]);
     expect(svg.getAttribute("viewBox")).toBe("0 0 282 152");
     expect(svg.getAttribute("role")).toBe("img");
     expect(svg.getAttribute("aria-label")).toBe("A and B");
@@ -357,6 +363,33 @@ describe("inline SVG", () => {
     expect(text.textContent).toBe("ALL");
     expect(text.getAttribute("text-anchor")).toBe("middle");
     expect(text.getAttribute("letter-spacing")).toBe("0.5");
+  });
+
+  it("creates the diagram in the SVG namespace through React", () => {
+    // The namespace is React's decision, not the parser's: `innerHTML` puts an
+    // `<svg>` in the SVG namespace whatever the sanitizer did, so only a React
+    // render says anything. Every element from the root down must be SVG, and
+    // the root must sit in the HTML `div` the document wrapped it in.
+    const { container } = render(
+      createElement(MarkdownViewer, { content: diagram + "\n" }),
+    );
+    try {
+      const svg = container.querySelector("svg")!;
+      const drawing = [svg, ...Array.from(svg.querySelectorAll("*"))];
+      expect(drawing.map((el) => el.tagName)).toEqual([
+        "svg",
+        "rect",
+        "path",
+        "text",
+      ]);
+      for (const el of drawing) {
+        expect(el.namespaceURI, el.tagName).toBe(SVG_NS);
+      }
+      expect(svg.parentElement!.namespaceURI).toBe(HTML_NS);
+      expect(svg.parentElement!.tagName).toBe("DIV");
+    } finally {
+      cleanup();
+    }
   });
 
   it("refuses everything in SVG that runs, fetches, or references", async () => {
@@ -386,7 +419,19 @@ describe("inline SVG", () => {
     ]) {
       expect(html, needle).not.toContain(needle);
     }
-    expect(html).toContain("<rect");
+    // And what is left is exactly the drawing, stripped of every attribute that
+    // was not geometry: the `a` unwrapped of its `xlink:href`, and two bare
+    // rects.
+    const host = document.createElement("div");
+    host.innerHTML = html;
+    const svg = host.querySelector("svg")!;
+    expect(
+      [svg, ...Array.from(svg.querySelectorAll("*"))].map((el) =>
+        [el.tagName, ...Array.from(el.attributes, (a) => a.name).sort()].join(
+          " ",
+        ),
+      ),
+    ).toEqual(["svg viewBox", "a", "rect height width", "rect height width"]);
   });
 
   /** Sanitize, then re-parse the string the way a browser would. */
@@ -569,6 +614,135 @@ describe("inline SVG", () => {
     },
   );
 
+  it("admits exactly these SVG children", () => {
+    // Pinned so that widening the allowlist is a change someone has to make to
+    // a test as well, and every table here that iterates the admitted children
+    // demonstrably covers the whole set.
+    expect([...SVG_CHILD_TAGS].sort()).toEqual([
+      "circle",
+      "ellipse",
+      "g",
+      "line",
+      "path",
+      "polygon",
+      "polyline",
+      "rect",
+      "switch",
+      "text",
+      "tspan",
+    ]);
+  });
+
+  const HANDLERS = `onload="alert(1)" onclick="alert(1)" onmouseover="alert(1)" onfocusin="alert(1)" onbegin="alert(1)" onerror="alert(1)"`;
+
+  it.each(["svg", ...SVG_CHILD_TAGS])(
+    "refuses every event handler on <%s>",
+    async (tag) => {
+      const markup =
+        tag === "svg"
+          ? `<svg viewBox="0 0 9 9" ${HANDLERS}></svg>`
+          : `<svg viewBox="0 0 9 9"><${tag} ${HANDLERS}></${tag}></svg>`;
+      const host = await parsed(`<div>\n${markup}\n</div>`);
+      const svg = host.querySelector("svg")!;
+      const element = tag === "svg" ? svg : svg.firstElementChild!;
+      expect(element.tagName).toBe(tag);
+      expect(Array.from(element.attributes, (a) => a.name)).toEqual(
+        tag === "svg" ? ["viewBox"] : [],
+      );
+    },
+  );
+
+  /**
+   * Attributes refused on a drawing element, each written on a `rect` that
+   * must otherwise survive intact. Most take a `url(…)` — a fetch, or a
+   * reference into the document — and the paint rows are the price of
+   * refusing parentheses: `rgb()` and `hsl()` go with `url()`.
+   */
+  it.each([
+    ["mask", `mask="url(#m)"`],
+    ["clip-path", `clip-path="url(#c)"`],
+    ["filter", `filter="url(#f)"`],
+    ["marker-start", `marker-start="url(#a)"`],
+    ["marker-mid", `marker-mid="url(#a)"`],
+    ["marker-end", `marker-end="url(#a)"`],
+    ["cursor", `cursor="url(https://attacker.example/c.png), auto"`],
+    ["fill", `fill="url(#g)"`],
+    ["stroke", `stroke="url(https://attacker.example/p)"`],
+    ["fill", `fill="rgb(219, 234, 254)"`],
+    ["fill", `fill="rgba(0, 0, 0, 0.5)"`],
+    ["stroke", `stroke="hsl(210 50% 50%)"`],
+    ["stroke", `stroke="hsla(210, 50%, 50%, 0.5)"`],
+    ["fill", `fill="red url(#g)"`],
+    ["fill", `fill="var(--brand)"`],
+    ["style", `style="fill:url(#g)"`],
+    ["href", `href="https://attacker.example/"`],
+    ["xlink:href", `xlink:href="https://attacker.example/"`],
+    [
+      "requiredFeatures",
+      `requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"`,
+    ],
+    ["systemLanguage", `systemLanguage="en"`],
+    ["stroke-dasharray", `stroke-dasharray="4 2"`],
+  ])("refuses %s (%s)", async (name, written) => {
+    const host = await parsed(
+      `<div>\n<svg viewBox="0 0 9 9"><rect width="9" height="9" ${written}/></svg>\n</div>`,
+    );
+    const rect = host.querySelector("rect")!;
+    expect(rect.hasAttribute(name)).toBe(false);
+    expect(Array.from(rect.attributes, (a) => a.name).sort()).toEqual([
+      "height",
+      "width",
+    ]);
+  });
+
+  /**
+   * Elements refused inside a drawing, each written beside a circle that must
+   * be all that survives. The animation family can rewrite any attribute after
+   * the sanitizer has looked; the rest fetch, or pull in markup from elsewhere.
+   */
+  it.each([
+    ["set", `<set attributeName="fill" to="red" begin="0s"/>`],
+    ["animate", `<animate attributeName="href" to="javascript:alert(1)"/>`],
+    [
+      "animateTransform",
+      `<animateTransform attributeName="transform" type="scale" to="80"/>`,
+    ],
+    [
+      "animateMotion",
+      `<animateMotion dur="1s" path="M0 0 H9"><mpath href="#p"/></animateMotion>`,
+    ],
+    [
+      "image",
+      `<image href="https://attacker.example/i.png" width="9" height="9"/>`,
+    ],
+    ["use", `<use href="https://attacker.example/s.svg#x"/>`],
+    ["feImage", `<feImage href="https://attacker.example/i.png"/>`],
+    ["iframe", `<iframe src="https://attacker.example/f"></iframe>`],
+    ["script", `<script>alert(1)</script>`],
+  ])("refuses <%s>", async (tag, written) => {
+    const html = await styled(
+      `<div>\n<svg viewBox="0 0 9 9"><circle r="1"/>${written}</svg>\n</div>`,
+    );
+    expect(html).not.toContain(`<${tag}`);
+    expect(html).not.toContain("attacker.example");
+    expect(html).not.toContain("alert(1)");
+    const host = document.createElement("div");
+    host.innerHTML = html;
+    const svg = host.querySelector("svg")!;
+    expect(Array.from(svg.querySelectorAll("*"), (el) => el.tagName)).toEqual([
+      "circle",
+    ]);
+  });
+
+  it("unwraps a textPath to its text, without the path it pointed at", async () => {
+    const host = await parsed(
+      `<div>\n<svg viewBox="0 0 9 9"><text x="1" y="5"><textPath href="#p">Along</textPath></text></svg>\n</div>`,
+    );
+    const text = host.querySelector("text")!;
+    expect(text.children).toHaveLength(0);
+    expect(text.textContent).toBe("Along");
+  });
+
   it("refuses stroke-dasharray, whose paint cost the document controls", async () => {
     // Dash count is path length over dash period, both in user units the
     // document picks. Fifty short paths with a 0.0011 dash took 21 s to paint
@@ -685,11 +859,11 @@ describe("inline SVG", () => {
     }
   });
 
-  it("does not admit SVG children, or a title, outside an svg", async () => {
-    const html = await styled(
-      `<div><title>Hijacked</title><rect width="9"/></div>`,
-    );
-    expect(html).not.toContain("<title");
-    expect(html).not.toContain("<rect");
-  });
+  it.each([...SVG_CHILD_TAGS, "title", "desc"])(
+    "does not admit <%s> outside an svg",
+    async (tag) => {
+      const html = await styled(`<div><${tag} x="1">In prose</${tag}></div>`);
+      expect(html).not.toContain(`<${tag}`);
+    },
+  );
 });
