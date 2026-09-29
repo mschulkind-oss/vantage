@@ -102,7 +102,15 @@ test("it is collapsed again on the next visit", async ({ page }) => {
   await toggle(page).click();
   await surface(page).getByRole("link", { name: "Lifecycle" }).click();
   await expect(page).toHaveURL(/\/plans\/hub-neighbors\.md#L10$/);
+  // Loaded, not just navigated to: until its content arrives the viewer is
+  // still showing the hub, and going back then is no second visit.
+  await expect(
+    prose(page).getByRole("heading", { name: "Neighbors of the hub" }),
+  ).toBeVisible();
   await page.goBack();
+  await expect(
+    prose(page).getByRole("heading", { name: "The hub", level: 1 }),
+  ).toBeVisible();
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
 });
 
