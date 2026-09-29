@@ -401,6 +401,9 @@ describe("every renderer runs the same chain", () => {
       "package viewer": packageViewerHost(OVERRIDE_FIXTURE),
       "app viewer": appViewerHost(OVERRIDE_FIXTURE),
     };
+    // Gathered for every renderer and compared once, so a failing run names
+    // each renderer that leaks rather than only the first.
+    const found: Record<string, unknown> = {};
     for (const [renderer, host] of Object.entries(hosts)) {
       // The fixture reached every override, or the rest proves nothing.
       for (const selector of [
@@ -427,17 +430,27 @@ describe("every renderer runs the same chain", () => {
           .filter((a) => a.name === "node" || a.value === "[object Object]")
           .map((a) => `${el.tagName.toLowerCase()} ${a.name}="${a.value}"`),
       );
-      expect(leaked, renderer).toEqual([]);
 
       const bare = Array.from(host.querySelectorAll("a")).find(
         (a) => a.textContent === "a bare anchor",
       );
       expect(bare, renderer).toBeTruthy();
-      expect(bare!.hasAttribute("href"), renderer).toBe(false);
-      expect(host.querySelector("svg a")!.hasAttribute("href"), renderer).toBe(
-        false,
-      );
+      found[renderer] = {
+        leaked,
+        bareAnchorHasHref: bare!.hasAttribute("href"),
+        svgAnchorHasHref: host.querySelector("svg a")!.hasAttribute("href"),
+      };
     }
+    const clean = {
+      leaked: [],
+      bareAnchorHasHref: false,
+      svgAnchorHasHref: false,
+    };
+    expect(found).toEqual({
+      renderMarkdown: clean,
+      "package viewer": clean,
+      "app viewer": clean,
+    });
   });
 
   it("agrees that a document's class carries only the pipeline's own names", async () => {
