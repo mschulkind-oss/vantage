@@ -196,7 +196,9 @@ test("on a narrow screen a long file name wraps inside its row", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 640 });
-  await page.goto("/plans/design.md");
+  // shipped.md, not design.md, which the long-named document used to cite:
+  // planning.spec.ts rewrites design.md while this runs beside it.
+  await page.goto("/plans/shipped.md");
   await toggle(page).click();
   const name = surface(page).getByRole("link", {
     name: "working_directory_diffs_and_review_state_architecture_notes.md",

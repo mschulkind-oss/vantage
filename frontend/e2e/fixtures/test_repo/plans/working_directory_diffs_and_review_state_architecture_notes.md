@@ -7,4 +7,4 @@ stage: DESIGN
 
 A planning document whose file name has no break points, so Referenced by has
 to wrap it rather than widen the page on a narrow screen. See
-[the fixture design](design.md).
+[the shipped plan](shipped.md).
