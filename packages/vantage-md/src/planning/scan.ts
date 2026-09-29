@@ -33,7 +33,7 @@ import {
 } from "../directiveTargets.js";
 import { parseFrontmatter, type ParsedFrontmatter } from "../frontmatter.js";
 import { scanComments } from "../htmlComments.js";
-import { buildRemarkPlugins } from "../pipeline.js";
+import { buildRemarkPlugins } from "../remarkPlugins.js";
 import {
   ALERT_MARKER,
   ALERT_TITLES,

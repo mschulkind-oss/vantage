@@ -32,8 +32,6 @@
  */
 
 import type { PluggableList } from "unified";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
 import rehypeHighlight from "rehype-highlight";
@@ -48,6 +46,9 @@ import {
   rehypeRestoreMathStamps,
 } from "./rehypeVantageMathStamps.js";
 import { rehypeStripSvgContainers, sanitizeSchema } from "./sanitize.js";
+import { buildRemarkPlugins } from "./remarkPlugins.js";
+
+export { buildRemarkPlugins };
 
 export interface PipelineOptions {
   /** GFM tables, strikethrough, task lists (default: true) */
@@ -72,26 +73,6 @@ export interface PipelineOptions {
 export interface Pipeline {
   remarkPlugins: PluggableList;
   rehypePlugins: PluggableList;
-}
-
-/**
- * The mdast half of the chain. Exported on its own because there is a real
- * mdast-only consumer: the CLI checker parses documents without ever running
- * rehype (`packages/vantage-check/src/core/document.ts`), and it has to parse
- * them exactly the way the viewer does.
- */
-export function buildRemarkPlugins(
-  options: PipelineOptions = {},
-): PluggableList {
-  const { gfm = true, math = true } = options;
-  const plugins: PluggableList = [];
-  // `singleTilde: false` — `~x~` is not strikethrough, so a lone tilde in
-  // prose survives. `singleDollarTextMath: false` — `$` is not a math
-  // delimiter, so `$HOME` and `$100` stay literal. Both are contracts the
-  // style guide and the user guide state, not preferences.
-  if (gfm) plugins.push([remarkGfm, { singleTilde: false }]);
-  if (math) plugins.push([remarkMath, { singleDollarTextMath: false }]);
-  return plugins;
 }
 
 /** The hast half. Deliberately not exported: see `buildPipeline`. */
