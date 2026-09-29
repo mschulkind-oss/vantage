@@ -355,11 +355,14 @@ positions. Members are joined by an upward bleed keyed off `data-vantage-run`
 > stopped beside each one: 84px beside a 92px image. They draw their slice as a
 > border image pushed out of the box instead. That slice is on the run's x only
 > if the box starts at the column's edge, so it is withheld from an image that is
-> floated, offset by `hspace` or a `margin`, or preceded by inline content on its
-> line. It is withheld too where the document drew a border, which a border
-> image would erase. Those keep the gap. A drawing inside a `<div>`, the form
-> [Inline SVG](#inline-svg) recommends, needs none of this, because the `<div>`
-> is the member.
+> floated, offset by a `margin` or by `hspace`, or preceded by inline content on
+> its line. It is withheld too where the document drew a border, which a border
+> image would erase. Those keep the gap. In the app `hspace` offsets nothing,
+> because Tailwind's preflight resets every element's margin, so an image
+> written with it keeps the gap without having moved. The condition is there for
+> the package's own viewer, where `hspace` does move the image. A drawing inside
+> a `<div>`, the form [Inline SVG](#inline-svg) recommends, needs none of this,
+> because the `<div>` is the member.
 
 **On paper the rule is gray, and it needs its gutter there too.** The print
 block in `styles/directives.css` recolors it `#57606a`, and the host's print

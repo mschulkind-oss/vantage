@@ -312,11 +312,16 @@ hr[data-vantage-tone]:is(
    Drawn from the member's own box, the slice is on the rule only if that box
    starts at the column's edge, and CSS cannot see where a line starts. So it is
    withheld wherever the box may not. That is an image floated by `align` or
-   `float`, or offset by `hspace` or a `margin`. It is also an image that comes
-   after inline content, which shares that content's line: in a row of images
-   written on consecutive lines that is every image but the first, whose slice
-   already covers the line. A gap is what these had before; a slice standing in
-   the middle of the column would be a new failure. The elements listed are the
+   `float`, or offset by a `margin` or by `hspace`. `hspace` offsets an image
+   only where no stylesheet resets its margin: in the package's own viewer
+   `hspace="30"` moves it 30px in, but in the app Tailwind's preflight gives
+   every element `margin: 0`, which outranks the attribute, so there the image
+   stays at the edge and loses its slice all the same. A selector cannot see
+   which of the two it is in. It is also an image that comes after inline
+   content, which shares that content's line: in a row of images written on
+   consecutive lines that is every image but the first, whose slice already
+   covers the line. A gap is what these had before; a slice standing in the
+   middle of the column would be a new failure. The elements listed are the
    inline ones the sanitizer admits, less `br`, which ends the line, and less
    `svg`, `picture` and `span.katex-display`, which Tailwind's preflight,
    typography and KaTeX each make a block in the app. And the slice is withheld
