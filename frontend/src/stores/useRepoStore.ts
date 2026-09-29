@@ -276,6 +276,10 @@ export const useRepoStore = create<RepoState>((set, get) => ({
     } else {
       sorted.sort((a, b) => a.name.localeCompare(b.name));
     }
+    // A pinned project — the Markdown beside a directory of clones, served
+    // under the directory's own name — leads in either order. Array sort is
+    // stable, so the order chosen above holds within each group.
+    sorted.sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned));
     return sorted;
   },
 
