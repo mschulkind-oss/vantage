@@ -1,7 +1,6 @@
 package planning
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"math"
@@ -163,47 +162,30 @@ func lockFile(t *testing.T, root, rel string) {
 	}
 }
 
-// batch is the decoded batch body.
-type batch struct {
-	Config         repoconfig.Planning `json:"config"`
-	CandidateCount int                 `json:"candidate_count"`
-	Refused        bool                `json:"refused"`
-	Files          []file              `json:"files"`
-	Skipped        []Skipped           `json:"skipped"`
-	Unreadable     []Unreadable        `json:"unreadable"`
-}
-
-func writeBatch(t *testing.T, listing Listing, cfg repoconfig.Planning) (batch, string) {
+// header is the stream's header line, decoded.
+func header(t *testing.T, s *streamLog) headerLine {
 	t.Helper()
-	var buf bytes.Buffer
-	require.NoError(t, WriteBatch(&buf, listing, cfg))
-	var b batch
-	require.NoError(t, json.Unmarshal(buf.Bytes(), &b), "body: %s", buf.String())
-	return b, buf.String()
+	first, _, _ := strings.Cut(s.buf.String(), "\n")
+	var h headerLine
+	require.NoError(t, json.Unmarshal([]byte(first), &h), "first line: %s", first)
+	return h
 }
 
-func paths(files []file) []string {
-	out := []string{}
-	for _, f := range files {
-		out = append(out, f.Path)
-	}
-	return out
-}
-
-func TestTheBatchHasTheContractsShape(t *testing.T) {
+// An empty repository's stream is its header and end, and nothing else. The
+// header's config is the effective table, spelled as the viewer reads it.
+func TestAnEmptyRepositorysStreamIsItsHeaderThenEnd(t *testing.T) {
 	svc, _ := repo(t, map[string]string{})
-	b, body := writeBatch(t, svc, repoconfig.DefaultPlanning())
+	s := writeStream(t, svc, repoconfig.DefaultPlanning(), nil)
 
-	require.JSONEq(t, `{
-		"config": {"roadmap": "roadmap.md", "include": ["**/*.md"], "exclude": [],
-			"max_file_bytes": 1048576, "max_candidates": 5000, "stages": null},
-		"candidate_count": 0, "refused": false,
-		"files": [], "skipped": [], "unreadable": []
-	}`, body, "every list is [] and never null")
-	require.Equal(t, repoconfig.DefaultPlanning(), b.Config)
+	require.Equal(t,
+		`{"kind":"header","config":{"roadmap":"roadmap.md","include":["**/*.md"],"exclude":[],`+
+			`"max_file_bytes":1048576,"max_candidates":5000,"stages":null},"candidate_count":0,"refused":false}`+"\n"+
+			`{"kind":"end","candidates":0}`+"\n",
+		s.buf.String())
+	require.Equal(t, repoconfig.DefaultPlanning(), header(t, s).Config)
 }
 
-func TestTheBatchServesEveryCandidateSortedAndNoOtherFile(t *testing.T) {
+func TestTheStreamSendsEveryCandidateSortedAndNoOtherFile(t *testing.T) {
 	svc, _ := repo(t, map[string]string{
 		"roadmap.md":             "# Roadmap\n",
 		"docs/b.md":              "---\nstatus: draft\n---\n",
@@ -217,44 +199,15 @@ func TestTheBatchServesEveryCandidateSortedAndNoOtherFile(t *testing.T) {
 	cfg.Exclude = []string{"docs/gallery/**", "roadmap.md"}
 	cfg.Stages = map[string]string{"DESIGN": "open"}
 
-	b, _ := writeBatch(t, svc, cfg)
-	require.Equal(t, cfg, b.Config, "config is the effective table, stages included")
-	require.Equal(t, 3, b.CandidateCount)
-	require.False(t, b.Refused)
-	require.Equal(t, []string{"docs/a.md", "docs/b.md", "roadmap.md"}, paths(b.Files),
+	s := writeStream(t, svc, cfg, nil)
+	lines := s.lines(t)
+	require.Equal(t, []string{"header", "file docs/a.md", "file docs/b.md", "file roadmap.md", "end"}, kinds(lines),
 		"sorted; the excluded roadmap is still a candidate")
-	require.Equal(t, "---\nstatus: draft\n---\n", b.Files[1].Content)
-}
-
-// Past the limit nothing is opened — not merely nothing returned. A locked
-// candidate proves it where modes are enforced, and counting opens proves it
-// everywhere.
-func TestPastMaxCandidatesNothingIsOpened(t *testing.T) {
-	svc, root := repo(t, map[string]string{"a.md": "# A\n", "b.md": "# B\n", "c.md": "# C\n"})
-	cfg := repoconfig.DefaultPlanning()
-	cfg.MaxCandidates = 2
-	opened := countOpens(t)
-	require.NoError(t, os.Chmod(filepath.Join(root, "c.md"), 0o000))
-	t.Cleanup(func() { _ = os.Chmod(filepath.Join(root, "c.md"), 0o644) })
-
-	b, _ := writeBatch(t, svc, cfg)
-	require.True(t, b.Refused)
-	require.Equal(t, 3, b.CandidateCount)
-	require.Empty(t, b.Files)
-	require.Empty(t, b.Skipped)
-	require.Empty(t, b.Unreadable, "the locked candidate was never opened, so it caused no error")
-	require.Empty(t, *opened)
-}
-
-func TestAtMaxCandidatesTheBatchIsServed(t *testing.T) {
-	svc, _ := repo(t, map[string]string{"a.md": "# A\n", "b.md": "# B\n"})
-	cfg := repoconfig.DefaultPlanning()
-	cfg.MaxCandidates = 2
-
-	b, _ := writeBatch(t, svc, cfg)
-	require.False(t, b.Refused)
-	require.Equal(t, 2, b.CandidateCount)
-	require.Equal(t, []string{"a.md", "b.md"}, paths(b.Files))
+	h := header(t, s)
+	require.Equal(t, cfg, h.Config, "config is the effective table, stages included")
+	require.Equal(t, 3, h.CandidateCount)
+	require.False(t, h.Refused)
+	require.Equal(t, "---\nstatus: draft\n---\n", lines[2]["content"])
 }
 
 // The limit counts candidates, not listed files: a file include rules out does
@@ -265,9 +218,10 @@ func TestMaxCandidatesCountsOnlyCandidates(t *testing.T) {
 	cfg.Include = []string{"docs/**"}
 	cfg.MaxCandidates = 1
 
-	b, _ := writeBatch(t, svc, cfg)
-	require.False(t, b.Refused)
-	require.Equal(t, 1, b.CandidateCount)
+	s := writeStream(t, svc, cfg, nil)
+	require.False(t, header(t, s).Refused)
+	require.Equal(t, 1, header(t, s).CandidateCount)
+	require.Equal(t, []string{"header", "file docs/a.md", "end"}, kinds(s.lines(t)))
 }
 
 func TestAnOversizedCandidateIsSkippedUnopened(t *testing.T) {
@@ -276,27 +230,28 @@ func TestAnOversizedCandidateIsSkippedUnopened(t *testing.T) {
 	cfg.MaxFileBytes = 10
 	opened := countOpens(t)
 
-	b, _ := writeBatch(t, svc, cfg)
-	require.Equal(t, []Skipped{{Path: "big.md", Size: 11}}, b.Skipped)
-	require.Equal(t, []string{"small.md"}, paths(b.Files), "exactly the limit is not over it")
+	lines := writeStream(t, svc, cfg, nil).lines(t)
+	require.Equal(t, []string{"header", "skipped big.md", "file small.md", "end"}, kinds(lines),
+		"exactly the limit is not over it")
+	require.Equal(t, 11.0, lines[1]["size"])
 	require.Equal(t, []string{filepath.Join(root, "small.md")}, *opened)
 }
 
 func TestACandidateThatIsNotUTF8IsUnreadable(t *testing.T) {
 	svc, _ := repo(t, map[string]string{"latin1.md": "caf\xe9\n", "ok.md": "café\n"})
 
-	b, _ := writeBatch(t, svc, repoconfig.DefaultPlanning())
-	require.Equal(t, []Unreadable{{Path: "latin1.md", Reason: "not UTF-8"}}, b.Unreadable)
-	require.Equal(t, []string{"ok.md"}, paths(b.Files))
+	lines := writeStream(t, svc, repoconfig.DefaultPlanning(), nil).lines(t)
+	require.Equal(t, []string{"header", "unreadable latin1.md", "file ok.md", "end"}, kinds(lines))
+	require.Equal(t, "not UTF-8", lines[1]["reason"])
 }
 
 func TestALockedCandidateIsUnreadable(t *testing.T) {
 	svc, root := repo(t, map[string]string{"locked.md": "# Locked\n", "ok.md": "# OK\n"})
 	lockFile(t, root, "locked.md")
 
-	b, _ := writeBatch(t, svc, repoconfig.DefaultPlanning())
-	require.Equal(t, []Unreadable{{Path: "locked.md", Reason: "permission denied"}}, b.Unreadable)
-	require.Equal(t, []string{"ok.md"}, paths(b.Files))
+	lines := writeStream(t, svc, repoconfig.DefaultPlanning(), nil).lines(t)
+	require.Equal(t, []string{"header", "unreadable locked.md", "file ok.md", "end"}, kinds(lines))
+	require.Equal(t, "permission denied", lines[1]["reason"])
 }
 
 // A named pipe is listed, since the listing looks only at the name and type, and
@@ -309,8 +264,9 @@ func TestANamedPipeIsUnreadableAndNeverOpened(t *testing.T) {
 	}
 	opened := countOpens(t)
 
-	b, _ := writeBatch(t, svc, repoconfig.DefaultPlanning())
-	require.Equal(t, []Unreadable{{Path: "pipe.md", Reason: "not a regular file"}}, b.Unreadable)
+	lines := writeStream(t, svc, repoconfig.DefaultPlanning(), nil).lines(t)
+	require.Equal(t, []string{"header", "file ok.md", "unreadable pipe.md", "end"}, kinds(lines))
+	require.Equal(t, "not a regular file", lines[2]["reason"])
 	require.Equal(t, []string{filepath.Join(root, "ok.md")}, *opened)
 }
 
@@ -324,9 +280,9 @@ func TestASymlinkOutOfTheRootIsNeverRead(t *testing.T) {
 	require.NoError(t, os.Symlink(filepath.Join(root, "ok.md"), filepath.Join(root, "inside.md")))
 	opened := countOpens(t)
 
-	b, body := writeBatch(t, svc, repoconfig.DefaultPlanning())
-	require.Equal(t, []string{"ok.md"}, paths(b.Files))
-	require.NotContains(t, body, "secret")
+	s := writeStream(t, svc, repoconfig.DefaultPlanning(), nil)
+	require.Equal(t, []string{"header", "file ok.md", "end"}, kinds(s.lines(t)))
+	require.NotContains(t, s.buf.String(), "secret")
 
 	r := newReader(root, 1<<20)
 	require.Equal(t, KindUnreadable, r.read("leak.md").kind)
@@ -337,8 +293,9 @@ func TestASymlinkOutOfTheRootIsNeverRead(t *testing.T) {
 // On POSIX a backslash is an ordinary character in a file name, so the listing
 // yields `x\..\.private\notes.md` as one root-level file. pathsafe reads a
 // backslash as a separator, and cleaning then resolved that name to
-// .private/notes.md: the batch served a hidden file's text under the decoy's
-// name. A name that resolves anywhere but itself is unreadable.
+// .private/notes.md: the planning endpoint once served a hidden file's text
+// under the decoy's name. A name that resolves anywhere but itself is
+// unreadable.
 func TestANameThatResolvesToAnotherFileIsNeverReadAsIt(t *testing.T) {
 	decoy := `x\..\.private\notes.md`
 	svc, root := repo(t, map[string]string{
@@ -348,10 +305,11 @@ func TestANameThatResolvesToAnotherFileIsNeverReadAsIt(t *testing.T) {
 	})
 	opened := countOpens(t)
 
-	b, body := writeBatch(t, svc, repoconfig.DefaultPlanning())
-	require.NotContains(t, body, "PRIVATE")
-	require.Equal(t, []string{"ok.md"}, paths(b.Files))
-	require.Equal(t, []Unreadable{{Path: decoy, Reason: "its name reads as a different path"}}, b.Unreadable)
+	s := writeStream(t, svc, repoconfig.DefaultPlanning(), nil)
+	require.NotContains(t, s.buf.String(), "PRIVATE")
+	lines := s.lines(t)
+	require.Equal(t, []string{"header", "file ok.md", "unreadable " + decoy, "end"}, kinds(lines))
+	require.Equal(t, "its name reads as a different path", lines[2]["reason"])
 	require.Equal(t, []string{filepath.Join(root, "ok.md")}, *opened)
 
 	entry := Lookup(svc, repoconfig.DefaultPlanning(), decoy)
@@ -401,18 +359,6 @@ func TestOnlyAFileReadWholeHasAHash(t *testing.T) {
 	require.Equal(t, read{kind: KindUnreadable, reason: "not UTF-8"}, r.read("latin1.md"))
 }
 
-// A candidate deleted between the listing and its read is left out, not
-// reported as unreadable: nothing is wrong with a file that is gone.
-func TestACandidateThatVanishesIsLeftOut(t *testing.T) {
-	svc, root := repo(t, map[string]string{"a.md": "# A\n", "gone.md": "# Gone\n"})
-	listing := vanishing{svc, filepath.Join(root, "gone.md")}
-
-	b, _ := writeBatch(t, listing, repoconfig.DefaultPlanning())
-	require.Equal(t, 2, b.CandidateCount)
-	require.Equal(t, []string{"a.md"}, paths(b.Files))
-	require.Empty(t, b.Unreadable)
-}
-
 // vanishing deletes one file right after listing it.
 type vanishing struct {
 	*fssvc.FileSystemService
@@ -423,45 +369,6 @@ func (v vanishing) ListAllFiles() []string {
 	out := v.FileSystemService.ListAllFiles()
 	_ = os.Remove(v.victim)
 	return out
-}
-
-// Streamed: each file is written on its own, so the body is never held whole.
-func TestTheBatchIsStreamedOneFileAtATime(t *testing.T) {
-	tree := map[string]string{}
-	for _, n := range []string{"a", "b", "c", "d"} {
-		tree[n+".md"] = strings.Repeat(n, 4096)
-	}
-	svc, _ := repo(t, tree)
-
-	var w recordingWriter
-	require.NoError(t, WriteBatch(&w, svc, repoconfig.DefaultPlanning()))
-	require.Less(t, w.largest, 2*4096, "no write carries more than one file")
-	var b batch
-	require.NoError(t, json.Unmarshal(w.buf.Bytes(), &b))
-	require.Len(t, b.Files, 4)
-}
-
-type recordingWriter struct {
-	buf     bytes.Buffer
-	largest int
-}
-
-func (w *recordingWriter) Write(p []byte) (int, error) {
-	w.largest = max(w.largest, len(p))
-	return w.buf.Write(p)
-}
-
-// A client that goes away stops the stream: the error is returned, and no
-// further file is read for nobody.
-func TestTheBatchStopsWhenTheClientGoesAway(t *testing.T) {
-	svc, root := repo(t, map[string]string{"a.md": "# A\n", "b.md": "# B\n", "c.md": "# C\n"})
-	opened := countOpens(t)
-
-	// The head and a.md are delivered; b.md is read and cannot be.
-	err := WriteBatch(&failingWriter{after: 2}, svc, repoconfig.DefaultPlanning())
-	require.Error(t, err)
-	require.Equal(t, []string{filepath.Join(root, "a.md"), filepath.Join(root, "b.md")}, *opened,
-		"the stream stopped at the first file it could not deliver")
 }
 
 // failingWriter accepts `after` writes and refuses every one after that.
