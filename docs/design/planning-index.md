@@ -423,6 +423,12 @@ planning page at its previous scroll position.
   links to itself are not counted. When nothing links to it and nothing in it is unrouted,
   there is no line.
 
+  From the `sm` width up the line is one line, cut off at its end when it does not fit, with
+  the whole of it on hover. Below that width it wraps instead: the end is the roadmap's
+  answer, the part the line exists for, and a touch screen has no hover to show it. A row of
+  the list wraps there too, with a hanging indent, and breaks a file name that has no other
+  break point rather than widen the page.
+
   Routing is read exactly as the planning page reads it, so the line and the page cannot
   disagree. Only a bare link to the document and a link to one of its `#OQ-…` ids route it; a
   heading link routes nothing. A document whose stage has the `done` role contributes nothing
