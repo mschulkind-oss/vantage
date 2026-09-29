@@ -709,16 +709,19 @@ read in both themes, write `fill="currentColor"` or `stroke="currentColor"`: it
 takes the prose text color, which follows the theme.
 
 A refused element is normally *unwrapped*: the tag goes and its children stay.
-The containers whose children are never meant to be painted where they stand
-are instead removed with everything inside them: `defs`, `clipPath`, `mask`,
-`pattern`, `marker`, `symbol`, `linearGradient`, `radialGradient`, `filter`,
-`metadata`, `foreignObject`, `title` and `desc`. Unwrapped, a Figma export's
-clip rectangle painted over the whole drawing, and the HTML inside a
-`foreignObject` escaped into the page. `switch` is kept, so a draw.io export
-draws each label's `<text>` fallback. The lowercase names are removed in prose
-as well, so a bare `<pattern>` written as a placeholder takes the rest of its
-paragraph with it, and a stray `<title>` takes its text: put tag names in a code
-span.
+Inside an `<svg>`, the containers whose children are never meant to be painted
+where they stand are instead removed with everything inside them: `defs`,
+`clipPath`, `mask`, `pattern`, `marker`, `symbol`, `linearGradient`,
+`radialGradient`, `filter`, `metadata`, `foreignObject`, `title` and `desc`.
+Unwrapped, a Figma export's clip rectangle painted over the whole drawing, and
+the HTML inside a `foreignObject` escaped into the page. `switch` is kept, so a
+draw.io export draws each label's `<text>` fallback.
+
+Outside a drawing those names are unwrapped like any other tag, because removing
+them there removed far more than the tag. A bare `<pattern>` on a line of its
+own is an HTML element that nothing closes, so every block after it is parsed
+into it, and removing it took the rest of the document. Unwrapped, it loses only
+the tag. The tag is still dropped, so put a tag name in a code span.
 
 `title` and `desc` are removed, and `aria-label` on the `<svg>` is the drawing's
 accessible name. Both are places where the parser reads HTML, and requiring an
