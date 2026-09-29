@@ -8,6 +8,11 @@
  * The order is `derivePlanningSections`' alone, so filing an answer never
  * reorders the page; the page changes only when the documents do.
  *
+ * Paged (`docs/design/planning-index-at-scale.md` §10.2): a section bar names
+ * every section with its exact count, and each section shows one page of its
+ * entries, with the page in the URL (`lib/planningPages.ts`). A flip replaces
+ * the history entry, so Back from a document returns to the same pages.
+ *
  * Its URL is `/.vantage/planning`, and `/.vantage/planning/<repo>` in daemon
  * mode. Viewer URLs are `/<path>` and `/<repo>/<path>`, and the server never
  * serves a `.vantage` path as a document, so this URL hides nothing (Plan Q13).
@@ -24,7 +29,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { useLocation, useParams } from "react-router-dom";
+import { useLocation, useParams, useSearchParams } from "react-router-dom";
 import {
   AlertCircle,
   ArrowLeft,
@@ -37,9 +42,7 @@ import {
 import {
   PLANNING_NOTICES,
   badgeFor,
-  derivePlanningSections,
   findDocument,
-  questionFor,
   type CardBlock,
   type DependsOn,
   type PlanningIndex,
@@ -49,10 +52,23 @@ import {
 } from "vantage-md/planning";
 import { AppLink } from "../components/AppLink";
 import { PlanningBadgeChip } from "../components/PlanningBadge";
+import { PlanningPager, type PagerPlace } from "../components/PlanningPager";
 import { PlanningQuestionCard } from "../components/PlanningQuestionCard";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { usePlanningReviews } from "../hooks/usePlanningReviews";
 import { copyTextOrWarn } from "../lib/clipboard";
+import {
+  layoutPlanningPage,
+  listedQuestions as listedQuestionsOf,
+  pageSearch,
+  readPageRequest,
+  sectionsOf,
+  withPage,
+  type CardEntry,
+  type LaidOutSection,
+  type PlanningLayout,
+  type SectionId,
+} from "../lib/planningPages";
 import {
   planningScanner,
   type CardWant,
@@ -95,6 +111,11 @@ const RESTORE_SETTLE_MS = 2000;
  * reader scrolls for themselves. While it restores, nothing it causes is
  * saved: a restore clamped by a page that is still short would otherwise
  * overwrite the position it is restoring.
+ *
+ * Once per visit: a flip replaces the history entry, and a replaced entry has
+ * a key of its own, so the position carries over to the new key rather than
+ * being restored there (`docs/design/planning-index-at-scale.md` §10.2). Back
+ * from a document opened after the flip then finds it.
  */
 function useScrollRestore(
   key: string,
@@ -102,6 +123,22 @@ function useScrollRestore(
   rootRef: React.RefObject<HTMLElement | null>,
 ): () => void {
   const restoringRef = useRef(false);
+  /** This visit has restored its position, or had none to restore. */
+  const restoredRef = useRef(false);
+  const keyRef = useRef(key);
+
+  useLayoutEffect(() => {
+    const previous = keyRef.current;
+    keyRef.current = key;
+    if (previous === key) return;
+    // Before the restore, what is carried is the position it will restore;
+    // after it, where the reader is.
+    const carried =
+      restoredRef.current && !restoringRef.current
+        ? window.scrollY
+        : scrollPositions.get(previous);
+    if (carried !== undefined) scrollPositions.set(key, carried);
+  }, [key]);
 
   const save = useCallback(() => {
     if (!restoringRef.current) scrollPositions.set(key, window.scrollY);
@@ -124,7 +161,8 @@ function useScrollRestore(
   }, [save]);
 
   useLayoutEffect(() => {
-    if (!ready) return;
+    if (!ready || restoredRef.current) return;
+    restoredRef.current = true;
     const target = scrollPositions.get(key);
     if (target === undefined) return;
     restoringRef.current = true;
@@ -377,24 +415,89 @@ function formatSize(bytes: number): string {
   return `${bytes} bytes`;
 }
 
+/** Flip a section to a page, from the pager at `place`. */
+type OnFlip = (id: SectionId, page: number, place: PagerPlace) => void;
+/** Ask for the inputs of a section's page ahead of a flip to it. */
+type OnPrefetch = (id: SectionId, page: number) => void;
+
 const Section: React.FC<{
-  id: string;
-  title: string;
-  count?: number;
+  section: LaidOutSection;
+  onFlip: OnFlip;
+  onPrefetch?: OnPrefetch;
+  /** A flip of this section is still waiting for its page. */
+  busy?: boolean;
   children: React.ReactNode;
-}> = ({ id, title, count, children }) => (
-  <section aria-labelledby={id} className="mb-10">
-    <h2
-      id={id}
-      className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
-    >
-      {title}
-      {count !== undefined && (
-        <span className="ml-2 font-normal tabular-nums">{count}</span>
-      )}
-    </h2>
-    <div className="space-y-3">{children}</div>
-  </section>
+}> = ({ section, onFlip, onPrefetch, busy, children }) => {
+  const { id, title, total, pageCount } = section;
+  const pager = (place: PagerPlace) =>
+    pageCount > 1 && (
+      <PlanningPager
+        title={title}
+        page={section.page}
+        pageCount={pageCount}
+        start={section.start}
+        end={section.end}
+        total={total}
+        place={place}
+        onFlip={(page, from) => onFlip(id, page, from)}
+        onPrefetch={onPrefetch && ((page) => onPrefetch(id, page))}
+        busy={busy}
+      />
+    );
+  return (
+    <section aria-labelledby={id} className="mb-10">
+      <h2
+        id={id}
+        className="mb-3 scroll-mt-4 text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
+      >
+        {title}
+        <span className="ml-2 font-normal tabular-nums">{total}</span>
+      </h2>
+      {pager("top")}
+      <div className="space-y-3">{children}</div>
+      {pager("bottom")}
+    </section>
+  );
+};
+
+/**
+ * One line naming each non-empty section with its exact count, from the index
+ * (`docs/design/planning-index-at-scale.md` §10.1). Each entry scrolls to its
+ * section, and adds no history entry.
+ */
+const SectionBar: React.FC<{ layout: PlanningLayout }> = ({ layout }) => (
+  <nav
+    aria-label="Sections"
+    className="flex flex-wrap items-center gap-x-2 text-sm text-slate-600 dark:text-slate-300"
+  >
+    {layout.sections.map((section, at) => (
+      <React.Fragment key={section.id}>
+        {at > 0 && (
+          <span
+            aria-hidden="true"
+            className="text-slate-500 dark:text-slate-400"
+          >
+            ·
+          </span>
+        )}
+        <a
+          href={`#${section.id}`}
+          onClick={(e) => {
+            e.preventDefault();
+            document.getElementById(section.id)?.scrollIntoView?.({
+              block: "start",
+            });
+          }}
+          className="text-blue-600 no-underline hover:underline dark:text-blue-400"
+        >
+          {section.title}{" "}
+          <span className="tabular-nums">
+            {section.total.toLocaleString("en-US")}
+          </span>
+        </a>
+      </React.Fragment>
+    ))}
+  </nav>
 );
 
 const Notice: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -457,26 +560,61 @@ export const PlanningPage: React.FC = () => {
   const ready = load.status === "ready" ? load : null;
   const index = ready?.index ?? null;
   const sections = useMemo(
-    () =>
-      index === null || index.refused ? null : derivePlanningSections(index),
+    () => (index === null || index.refused ? null : sectionsOf(index)),
     [index],
   );
 
-  // Every question with a card, in page order: what the reviews are for.
-  const listedQuestions = useMemo(() => {
-    if (index === null || sections === null) return [];
-    const refs: QuestionRef[] = [
-      ...sections.needsYou,
-      ...(sections.unrouted ?? []),
-      ...sections.waiting.flatMap((w) =>
-        w.kind === "question" ? [w.question] : [],
+  // The pages, from the URL (§10.2).
+  const [search, setSearch] = useSearchParams();
+  const request = useMemo(() => readPageRequest(search), [search]);
+  const layout = useMemo(
+    () =>
+      index === null || sections === null
+        ? null
+        : layoutPlanningPage(index, sections, request),
+    [index, sections, request],
+  );
+  // A page past a section's end, a malformed page and an explicit page 1 are
+  // rewritten in place.
+  useEffect(() => {
+    if (layout === null) return;
+    const canonical = pageSearch(search, layout);
+    if (canonical !== null) setSearch(canonical, { replace: true });
+  }, [layout, search, setSearch]);
+
+  /** A section to scroll to once its new page is on screen. */
+  const scrollToRef = useRef<SectionId | null>(null);
+  const flip = useCallback<OnFlip>(
+    (id, page, place) => {
+      // The bottom pager brings its section's heading back into view; the
+      // top one leaves the scroll alone.
+      scrollToRef.current = place === "bottom" ? id : null;
+      setSearch((prev) => withPage(prev, id, page), { replace: true });
+    },
+    [setSearch],
+  );
+
+  // Every question with a card, on any page: what the reviews are for, and
+  // what Copy answers covers.
+  const listedQuestions = useMemo(
+    () =>
+      index === null || sections === null
+        ? []
+        : listedQuestionsOf(index, sections),
+    [index, sections],
+  );
+  // The questions of the pages shown: the cards to render.
+  const shownQuestions = useMemo(
+    () =>
+      (layout?.sections ?? []).flatMap((section) =>
+        section.kind === "cards"
+          ? section.items.flatMap((entry) =>
+              entry.kind === "question" ? [entry.question] : [],
+            )
+          : [],
       ),
-    ];
-    return refs.flatMap((ref) => {
-      const q = questionFor(index, ref);
-      return q === undefined ? [] : [q];
-    });
-  }, [index, sections]);
+    [layout],
+  );
   const listedPaths = useMemo(
     () => [...new Set(listedQuestions.map((q) => q.path))],
     [listedQuestions],
@@ -491,7 +629,7 @@ export const PlanningPage: React.FC = () => {
   const blocks = useCardBlocks(
     onThisRepo ? repo : null,
     hashes,
-    listedQuestions,
+    shownQuestions,
   );
   // The sections wait for their cards the first time only; after that a new
   // version's block replaces the one on screen when it lands.
@@ -576,6 +714,14 @@ export const PlanningPage: React.FC = () => {
     rootRef,
   );
 
+  const shownPages = layout?.pages ?? null;
+  useLayoutEffect(() => {
+    const id = scrollToRef.current;
+    if (id === null || shownPages === null) return;
+    scrollToRef.current = null;
+    document.getElementById(id)?.scrollIntoView?.({ block: "start" });
+  }, [shownPages]);
+
   const card = (question: PlanningQuestion) => {
     const key = refKey(question);
     return (
@@ -596,14 +742,6 @@ export const PlanningPage: React.FC = () => {
       />
     );
   };
-
-  const cards = (refs: readonly QuestionRef[]) =>
-    index === null
-      ? null
-      : refs.map((ref) => {
-          const q = questionFor(index, ref);
-          return q === undefined ? null : card(q);
-        });
 
   const documentRow = (path: string, extra?: React.ReactNode) => (
     <DocumentRow
@@ -718,13 +856,15 @@ export const PlanningPage: React.FC = () => {
               index.config.maxCandidates,
             )}
           </Notice>
-        ) : sections !== null ? (
+        ) : sections !== null && layout !== null ? (
           <Sections
             sections={sections}
+            layout={layout}
             index={index}
-            cards={cards}
+            card={card}
             documentRow={documentRow}
             buildPath={buildPath}
+            onFlip={flip}
           />
         ) : null}
       </main>
@@ -802,23 +942,46 @@ const WaitingOn: React.FC<{
 /** The sections, top to bottom (§6.2); an empty one is not shown. */
 const Sections: React.FC<{
   sections: PlanningSections;
+  layout: PlanningLayout;
   index: PlanningIndex;
-  cards: (refs: readonly QuestionRef[]) => React.ReactNode;
+  card: (question: PlanningQuestion) => React.ReactNode;
   documentRow: (path: string, extra?: React.ReactNode) => React.ReactNode;
   buildPath: (path: string) => string;
-}> = ({ sections, index, cards, documentRow, buildPath }) => {
-  const {
-    needsYou,
-    unrouted,
-    waiting,
-    ready,
-    graduate,
-    disagrees,
-    skipped,
-    unreadable,
-  } = sections;
+  onFlip: OnFlip;
+  onPrefetch?: OnPrefetch;
+}> = ({
+  sections,
+  layout,
+  index,
+  card,
+  documentRow,
+  buildPath,
+  onFlip,
+  onPrefetch,
+}) => {
+  const entry = (item: CardEntry) =>
+    item.kind === "question" ? (
+      <React.Fragment key={`question\n${refKey(item.question)}`}>
+        {card(item.question)}
+      </React.Fragment>
+    ) : (
+      <React.Fragment key={`doc\n${item.path}`}>
+        {documentRow(
+          item.path,
+          <WaitingOn
+            from={item.path}
+            entries={item.waitingOn}
+            index={index}
+            buildPath={buildPath}
+          />,
+        )}
+      </React.Fragment>
+    );
   return (
     <>
+      <div className="mb-6">
+        <SectionBar layout={layout} />
+      </div>
       {sections.nothingNeedsYou && (
         <p
           data-testid="nothing-needs-you"
@@ -832,95 +995,53 @@ const Sections: React.FC<{
       )}
       {!sections.stagesDeclared && <Notice>{PLANNING_NOTICES.noStages}</Notice>}
 
-      {needsYou.length > 0 && (
-        <Section id="needs-you" title="Needs you" count={needsYou.length}>
-          {cards(needsYou)}
-        </Section>
-      )}
-      {unrouted !== null && unrouted.length > 0 && (
-        <Section id="unrouted" title="Unrouted" count={unrouted.length}>
-          {cards(unrouted)}
-        </Section>
-      )}
-      {waiting.length > 0 && (
-        <Section id="waiting" title="Waiting" count={waiting.length}>
-          {waiting.map((entry) =>
-            entry.kind === "question" ? (
-              <React.Fragment key={`question\n${refKey(entry.question)}`}>
-                {cards([entry.question])}
-              </React.Fragment>
-            ) : (
-              <React.Fragment key={`doc\n${entry.path}`}>
-                {documentRow(
-                  entry.path,
-                  <WaitingOn
-                    from={entry.path}
-                    entries={entry.waitingOn}
-                    index={index}
-                    buildPath={buildPath}
-                  />,
-                )}
-              </React.Fragment>
-            ),
-          )}
-        </Section>
-      )}
-      {ready !== null && ready.length > 0 && (
-        <Section id="ready" title="Ready" count={ready.length}>
-          {ready.map((path) => documentRow(path))}
-        </Section>
-      )}
-      {graduate !== null && graduate.length > 0 && (
-        <Section id="graduate" title="Graduate" count={graduate.length}>
-          {graduate.map((path) => documentRow(path))}
-        </Section>
-      )}
-      {disagrees !== null && disagrees.length > 0 && (
-        <Section id="disagrees" title="Disagrees" count={disagrees.length}>
-          {disagrees.map((path) =>
-            documentRow(
-              path,
-              <p className="mt-1 text-[13px] text-slate-600 dark:text-slate-400">
-                Its stage says it is {builtOrDecided(index, path)}, and it still
-                has open questions.
-              </p>,
-            ),
-          )}
-        </Section>
-      )}
-      {skipped.length > 0 && (
-        <Section id="skipped" title="Skipped" count={skipped.length}>
-          <ul className="space-y-1 text-sm">
-            {skipped.map(({ path, size }) => (
-              <li key={path}>
-                <code>{path}</code>{" "}
-                <span className="text-slate-500 dark:text-slate-400">
-                  {formatSize(size)}, over max-file-bytes (
-                  {formatSize(index.config.maxFileBytes)})
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Section>
-      )}
-      {unreadable.length > 0 && (
+      {layout.sections.map((section) => (
         <Section
-          id="could-not-read"
-          title="Could not read"
-          count={unreadable.length}
+          key={section.id}
+          section={section}
+          onFlip={onFlip}
+          onPrefetch={onPrefetch}
         >
-          <ul className="space-y-1 text-sm">
-            {unreadable.map(({ path, reason }) => (
-              <li key={path}>
-                <code>{path}</code>{" "}
-                <span className="text-slate-500 dark:text-slate-400">
-                  {reason}
-                </span>
-              </li>
-            ))}
-          </ul>
+          {section.kind === "cards" ? (
+            section.items.map(entry)
+          ) : section.kind === "rows" ? (
+            section.items.map((path) =>
+              documentRow(
+                path,
+                section.id === "disagrees" ? (
+                  <p className="mt-1 text-[13px] text-slate-600 dark:text-slate-400">
+                    Its stage says it is {builtOrDecided(index, path)}, and it
+                    still has open questions.
+                  </p>
+                ) : undefined,
+              ),
+            )
+          ) : section.kind === "skipped" ? (
+            <ul className="space-y-1 text-sm">
+              {section.items.map(({ path, size }) => (
+                <li key={path}>
+                  <code>{path}</code>{" "}
+                  <span className="text-slate-500 dark:text-slate-400">
+                    {formatSize(size)}, over max-file-bytes (
+                    {formatSize(index.config.maxFileBytes)})
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <ul className="space-y-1 text-sm">
+              {section.items.map(({ path, reason }) => (
+                <li key={path}>
+                  <code>{path}</code>{" "}
+                  <span className="text-slate-500 dark:text-slate-400">
+                    {reason}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </Section>
-      )}
+      ))}
     </>
   );
 };
