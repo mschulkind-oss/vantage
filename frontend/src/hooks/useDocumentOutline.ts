@@ -221,6 +221,8 @@ function markerBefore(strong: Element): string {
   let out = "";
   for (const node of strong.parentElement?.childNodes ?? []) {
     if (node === strong) break;
+    // A heading's hover anchor is the viewer's, not the author's marker.
+    if (node instanceof Element && node.matches(".heading-anchor")) continue;
     out += node.textContent ?? "";
   }
   return out.trim();
