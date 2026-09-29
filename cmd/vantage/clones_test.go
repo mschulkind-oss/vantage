@@ -225,6 +225,10 @@ func TestSplitClonesDirectoryCountsALinkedWorktreeWithoutServingIt(t *testing.T)
 	require.Equal(t, []string{"alpha"}, repoNamesOf(cfg))
 }
 
+// A clone keeps the name the daemon gives it — its directory's — so a link to
+// it means the same project in `serve` and in the service. When a clone is
+// named like the directory holding it, the loose project is the one that takes
+// the "-2" suffix, however many suffixes the clones already use.
 func TestSplitClonesDirectoryNamesACollidingCloneWithASuffix(t *testing.T) {
 	parent := t.TempDir()
 	if resolved, err := filepath.EvalSymlinks(parent); err == nil {
@@ -232,13 +236,21 @@ func TestSplitClonesDirectoryNamesACollidingCloneWithASuffix(t *testing.T) {
 	}
 	code := filepath.Join(parent, "code")
 	gitRepo(t, filepath.Join(code, "code"), map[string]string{"a.md": "# a\n"})
+	gitRepo(t, filepath.Join(code, "code-2"), map[string]string{"b.md": "# b\n"})
 	gitRepo(t, filepath.Join(code, "zeta"), map[string]string{"z.md": "# z\n"})
 	writeFiles(t, code, map[string]string{"notes.md": "# notes\n"})
 
+	daemon := resolvedServeConfig(t, code)
+	daemon.SourceDirs = []string{code}
+	daemon.DiscoverReposFromSourceDirs()
+
 	cfg := resolvedServeConfig(t, code)
-	_, ok := splitClonesDirectory(cfg)
+	plan, ok := splitClonesDirectory(cfg)
 	require.True(t, ok)
-	require.Equal(t, []string{"code", "code-2", "zeta"}, repoNamesOf(cfg))
+	require.Equal(t, "code-3", plan.Loose)
+	require.Equal(t, []string{"code-3", "code", "code-2", "zeta"}, repoNamesOf(cfg))
+	require.True(t, cfg.Repos[0].Loose, "the loose project still comes first")
+	require.Equal(t, repoNamesOf(daemon), repoNamesOf(cfg)[1:], "every clone is named as the daemon names it")
 }
 
 func repoNamesOf(cfg *config.Config) []string {

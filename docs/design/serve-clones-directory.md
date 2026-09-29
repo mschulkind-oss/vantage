@@ -88,7 +88,10 @@ startup, using these rules:
   along too. A clone made after startup appears within the loop's 30 seconds,
   and a deleted one is retired.
 - **Names are the directory names**, with the daemon's `-2`, `-3` suffix on a
-  collision.
+  collision. Every clone gets exactly the name the daemon gives it, so a link
+  to a clone means the same project in `serve` and in the service. When a clone
+  is named like the directory that holds it, the loose project
+  ([§3](#3-the-loose-project)) is the one that takes the suffix.
 - **`--one-project`** turns detection off and serves the directory as one
   project, the way `serve` always has.
 
@@ -114,7 +117,8 @@ is a worktree, the directory still splits, and only the loose project is served
 
 Markdown that sits in the directory but in none of its clones (a `notes.md`
 beside the clones, a `drafts/` folder) would vanish in a plain split. When such
-a file exists, one more project is served, named after the directory itself.
+a file exists, one more project is served, named after the directory itself,
+or with the `-2` suffix when a clone already has that name.
 This note coins the name *loose project* for it. It is listed first in both of
 the sidebar's sort orders.
 
