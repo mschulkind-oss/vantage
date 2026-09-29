@@ -206,7 +206,7 @@ func runServers(parent context.Context, s *server.Server, listeners []net.Listen
 	defer stop()
 
 	if open && len(hosts) > 0 {
-		url := fmt.Sprintf("http://%s:%d", browserHost(hosts[0]), port)
+		url := browserURL(hosts[0], port)
 		go func() {
 			// Give the listener a moment to come up before launching the browser.
 			time.Sleep(500 * time.Millisecond)
@@ -366,10 +366,16 @@ func browserHost(host string) string {
 	case "0.0.0.0", "":
 		return "127.0.0.1"
 	case "::":
-		return "[::1]"
+		return "::1"
 	default:
 		return host
 	}
+}
+
+// browserURL is the http:// address a local client reaches a server bound to
+// host and port at, an IPv6 address bracketed once.
+func browserURL(host string, port int) string {
+	return "http://" + net.JoinHostPort(browserHost(host), strconv.Itoa(port))
 }
 
 // openInBrowser launches the platform's default browser at url. It returns
