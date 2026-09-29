@@ -1,6 +1,15 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import axios from "axios";
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  vi,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  afterEach,
+} from "vitest";
 import { ViewerPage } from "./ViewerPage";
 import { useRepoStore } from "../stores/useRepoStore";
 import { useGitStore } from "../stores/useGitStore";
@@ -58,6 +67,29 @@ vi.mock("react-router-dom", async () => {
     useNavigate: () => mockNavigate,
     useParams: () => mockUseParams(),
   };
+});
+
+// No request this page makes is ever answered here unless a case answers it.
+//
+// Every mount asks for the bookmarks, the degradation banner's list and the
+// document's review, from stores this file leaves real, and there is no server
+// behind jsdom's origin. Sent for real, each one failed a few milliseconds
+// later — after the synchronous case that sent it had ended — and logged
+// "Failed to load bookmarks" into whichever case was running by then, or, after
+// the last one, into nothing: a log still in flight while the worker closed its
+// channel to the runner failed the whole run with EnvironmentTeardownError,
+// however green every case was. Held pending instead, a request can neither
+// land in a later case's store nor log after the file ends, and never reaches
+// the guard in src/test/setup.ts that fails a test for sending one. The cases
+// that need an answer spy on axios.get and pass the rest through to this.
+const unanswered = () => new Promise<never>(() => {});
+let realAdapter: typeof axios.defaults.adapter;
+beforeAll(() => {
+  realAdapter = axios.defaults.adapter;
+  axios.defaults.adapter = unanswered;
+});
+afterAll(() => {
+  axios.defaults.adapter = realAdapter;
 });
 
 describe("ViewerPage", () => {

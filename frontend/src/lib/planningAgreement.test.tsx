@@ -46,6 +46,18 @@ vi.mock("react-router-dom", async () => {
   const actual = await vi.importActual("react-router-dom");
   return { ...actual, useNavigate: () => vi.fn() };
 });
+// A Mermaid diagram stays a placeholder here. Drawn for real it can only fail
+// in jsdom, which has no getBBox to measure text with, and it fails after the
+// synchronous case that rendered it has ended: its "Mermaid render error" log
+// lands after the file's last case, while the worker is closing its channel to
+// the runner, and a log still in flight then fails the whole run with
+// EnvironmentTeardownError. No question can live inside a diagram, so the
+// column reads the same without one; e2e/mermaid.spec.ts draws them in a real
+// browser.
+vi.mock("vantage-md/react", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("vantage-md/react")>()),
+  MermaidDiagram: () => <div data-testid="mermaid-container" />,
+}));
 
 afterEach(cleanup);
 
