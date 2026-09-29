@@ -2,6 +2,7 @@ import type { Plugin } from "vite";
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import { planningScannerId } from "./src/planningScan/scannerId";
 
 /**
  * Drop legacy font formats (.ttf, .woff) from the build.
@@ -64,9 +65,19 @@ export default defineConfig(({ mode }) => {
   const envDir = path.resolve(import.meta.dirname, "..");
   const env = loadEnv(mode, envDir, "");
   const port = parseInt(env.VITE_PORT || "8201");
+  const repoRoot = path.resolve(import.meta.dirname, "..");
 
   return {
-    plugins: [react(), dropLegacyFonts()],
+    plugins: [react(), dropLegacyFonts(), planningScannerId({ repoRoot })],
+    // The planning scan worker (src/planningScan/worker.ts): a module worker,
+    // bundled with an instance of the scanner-id plugin of its own, which
+    // serves it the id and fails a build whose worker bundle holds code the id
+    // does not hash (docs/design/planning-index-at-scale.md §8.2). Rolldown
+    // takes the plugins as a function, one fresh set per worker bundle.
+    worker: {
+      format: "es",
+      plugins: () => [planningScannerId({ repoRoot, guard: true })],
+    },
     envDir: envDir,
     resolve: {
       dedupe: ["react", "react-dom"],
