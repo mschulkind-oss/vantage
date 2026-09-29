@@ -21,6 +21,7 @@ import (
 	"errors"
 	"log/slog"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -80,13 +81,27 @@ type Options struct {
 	// each clone is served as a project of its own (see
 	// docs/design/serve-clones-directory.md §3).
 	StopAtRepos bool
-	// OnWalk, when set, hears how each untracked-file walk behind recent files
-	// ended: timedOut is true when WalkTimeout cut it off — the one walk here
-	// whose cap silently drops results — and false when it finished. A walk
-	// that failed some other way is not reported. The server turns a timeout
-	// into a banner and a finished walk into its removal (see
-	// docs/design/serve-clones-directory.md §7).
-	OnWalk func(timedOut bool)
+	// OnWalk, when set, hears how each untracked-file walk behind a reader's
+	// recent files ended (see [WalkReport]) — the one walk here whose cap
+	// silently drops results. A walk that failed some other way is not
+	// reported, and neither is one for [GitService.RecentsUnreported]. The
+	// server turns a timeout into a banner and a later finished walk of the
+	// same kind into its removal (see docs/design/serve-clones-directory.md §7).
+	OnWalk func(WalkReport)
+}
+
+// WalkReport says how one untracked-file walk ended, and which walk it was: a
+// walk finishing can only take back its own timeout.
+type WalkReport struct {
+	// Dir is the directory walked, relative to the service's root: "" for the
+	// root's own walk, a child repository's name for one it delegated to.
+	Dir string
+	// Gitignored is whether the walk included gitignored files — the reader's
+	// "show gitignored" setting, which runs a walk of its own.
+	Gitignored bool
+	// TimedOut is true when WalkTimeout cut the walk off, and false when it
+	// finished.
+	TimedOut bool
 }
 
 func (o Options) walkTimeout() time.Duration {
@@ -829,6 +844,18 @@ func (s *GitService) ignoreExcludeFromArgs() []string {
 // roughly the slowest probe rather than their sum. A fourth probe (staged
 // names) runs afterward to catch staged-but-never-committed files.
 func (s *GitService) Recents(limit int, extensions []string, showHidden, showGitignored bool) []model.RecentFile {
+	return s.recents(limit, extensions, showHidden, showGitignored, true)
+}
+
+// RecentsUnreported is [GitService.Recents] without telling OnWalk how its walks
+// ended, for a caller that is no reader: the server's last-activity warm, whose
+// result nobody sees as a list of files.
+func (s *GitService) RecentsUnreported(limit int, extensions []string, showHidden, showGitignored bool) []model.RecentFile {
+	return s.recents(limit, extensions, showHidden, showGitignored, false)
+}
+
+// recents is Recents, reporting its walks to OnWalk only when report is set.
+func (s *GitService) recents(limit int, extensions []string, showHidden, showGitignored, report bool) []model.RecentFile {
 	defer perf.Default.Track(perf.CategoryGit, "get_recently_changed_files")()
 
 	if len(extensions) == 0 {
@@ -851,7 +878,7 @@ func (s *GitService) Recents(limit int, extensions []string, showHidden, showGit
 		return cached
 	}
 
-	result := s.computeRecents(limit, extLower, showHidden, showGitignored)
+	result := s.computeRecents(limit, extLower, showHidden, showGitignored, report)
 	recentFilesCache.set(key, result)
 	return result
 }
@@ -890,9 +917,9 @@ func (s *GitService) matchesExt(name string, extLower []string) bool {
 }
 
 // computeRecents does the uncached work of Recents.
-func (s *GitService) computeRecents(limit int, extLower []string, showHidden, showGitignored bool) []model.RecentFile {
+func (s *GitService) computeRecents(limit int, extLower []string, showHidden, showGitignored, report bool) []model.RecentFile {
 	if s.workingDir == "" {
-		return s.recentsNoRepo(limit, extLower, showHidden, showGitignored)
+		return s.recentsNoRepo(limit, extLower, showHidden, showGitignored, report)
 	}
 
 	m := s.matcher()
@@ -909,7 +936,7 @@ func (s *GitService) computeRecents(limit int, extLower []string, showHidden, sh
 		return nil
 	})
 	g.Go(func() error {
-		untrackedOut = s.recentsUntracked(extGlobs, excludeFrom, showGitignored)
+		untrackedOut = s.recentsUntracked(extGlobs, excludeFrom, showGitignored, report)
 		return nil
 	})
 	g.Go(func() error {
@@ -1021,7 +1048,7 @@ func (s *GitService) recentsLog() string {
 // recentsUntracked runs git ls-files --others to discover untracked files
 // matching the extension globs. It uses the configurable walk timeout because
 // this probe walks the whole working tree.
-func (s *GitService) recentsUntracked(extGlobs, excludeFrom []string, showGitignored bool) string {
+func (s *GitService) recentsUntracked(extGlobs, excludeFrom []string, showGitignored, report bool) string {
 	args := []string{"ls-files", "--others"}
 	if !showGitignored {
 		args = append(args, "--exclude-standard")
@@ -1030,12 +1057,12 @@ func (s *GitService) recentsUntracked(extGlobs, excludeFrom []string, showGitign
 	args = append(args, "--")
 	args = append(args, extGlobs...)
 	out, err := s.run(s.workingDir, s.opts.walkTimeout(), args...)
-	if s.opts.OnWalk != nil {
+	if s.opts.OnWalk != nil && report {
 		switch {
 		case err == nil:
-			s.opts.OnWalk(false)
+			s.opts.OnWalk(WalkReport{Gitignored: showGitignored})
 		case errors.Is(err, context.DeadlineExceeded):
-			s.opts.OnWalk(true)
+			s.opts.OnWalk(WalkReport{Gitignored: showGitignored, TimedOut: true})
 		}
 	}
 	if err != nil {
@@ -1185,7 +1212,7 @@ func (s *GitService) recentFileStat(rel string, untracked bool) (model.RecentFil
 // recentsNoRepo handles the recents query when repoPath is not itself a git
 // repo: it aggregates immediate child repositories' recents (prefixing their
 // paths) plus loose .md files at the top level and in non-git subdirectories.
-func (s *GitService) recentsNoRepo(limit int, extLower []string, showHidden, showGitignored bool) []model.RecentFile {
+func (s *GitService) recentsNoRepo(limit int, extLower []string, showHidden, showGitignored, report bool) []model.RecentFile {
 	m := s.matcher()
 	childRepos := s.discoverChildRepos()
 
@@ -1197,9 +1224,19 @@ func (s *GitService) recentsNoRepo(limit int, extLower []string, showHidden, sho
 			childNames[filepath.Base(c)] = struct{}{}
 		}
 		for _, childPath := range childRepos {
-			child := NewService(childPath, s.opts)
-			prefix := filepath.Base(childPath) + "/"
-			for _, rf := range child.Recents(limit, extLower, showHidden, showGitignored) {
+			name := filepath.Base(childPath)
+			childOpts := s.opts
+			if onWalk := s.opts.OnWalk; onWalk != nil {
+				// A child's walk is reported as the child's, so that another
+				// child finishing cannot take back its timeout.
+				childOpts.OnWalk = func(r WalkReport) {
+					r.Dir = path.Join(name, r.Dir)
+					onWalk(r)
+				}
+			}
+			child := NewService(childPath, childOpts)
+			prefix := name + "/"
+			for _, rf := range child.recents(limit, extLower, showHidden, showGitignored, report) {
 				rf.Path = prefix + rf.Path
 				results = append(results, rf)
 				seen[rf.Path] = struct{}{}
