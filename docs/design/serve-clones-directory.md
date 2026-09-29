@@ -299,8 +299,14 @@ or without the split. Two conditions are reported:
   the system's file-watch limit was reached.* It also names the setting to
   raise.
 - **The untracked-file walk hits `walk_timeout`.** Recents then lack every
-  untracked file, and the banner says so and names the setting. A later walk
-  that finishes in time takes the report back.
+  untracked file, and the banner says so and names the setting. A later run
+  of the same walk that finishes in time takes the report back, and the
+  report lasts while any walk's latest run timed out. Walks are told apart by
+  the directory they cover, which is a child repository's when a directory of
+  clones is served as one project, and by whether they include gitignored
+  files, since a reader who hides those runs a walk of their own. The server's
+  own last-activity walk reports nothing, because nobody reads its result as a
+  list of files.
 
 Degradations are kept per project in memory and served at `GET
 /api/degraded`. The first degradation of each kind in each project also

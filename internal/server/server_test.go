@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mschulkind-oss/vantage/internal/config"
+	"github.com/mschulkind-oss/vantage/internal/git"
 	"github.com/mschulkind-oss/vantage/internal/gitenv"
 	"github.com/mschulkind-oss/vantage/internal/model"
 	"github.com/mschulkind-oss/vantage/internal/repoconfig"
@@ -1554,15 +1555,85 @@ func TestWalkTimeoutReachesTheBrowser(t *testing.T) {
 }
 
 // A walk that later finishes in time — the tree shrank, or it was a slow
-// moment — takes its report back, and the browser hears that too.
+// moment — takes its report back, and the browser hears that too. Only the
+// same walk can: another child repository's walk, or the walk of a reader
+// who hides gitignored files, says nothing about the one that timed out.
 func TestAFinishedWalkClearsItsTimeout(t *testing.T) {
 	srv, _ := daemonServer(t)
-	srv.walkFinished("alpha", true)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ws, _, err := websocket.Dial(ctx, "ws"+ts.URL[len("http"):]+"/api/ws", nil)
+	require.NoError(t, err)
+	defer ws.Close(websocket.StatusNormalClosure, "")
+	_, _, err = ws.Read(ctx) // hello
+	require.NoError(t, err)
+	// pushes reads what the browser has been sent since the last call, until
+	// a probe frame (a starred_changed this test sends itself) comes back.
+	pushes := func() []string {
+		t.Helper()
+		srv.broadcastStarredChanged()
+		var got []string
+		for {
+			_, data, err := ws.Read(ctx)
+			require.NoError(t, err)
+			if strings.Contains(string(data), "starred_changed") {
+				return got
+			}
+			got = append(got, string(data))
+		}
+	}
+	degradedPush := `{"type":"degraded_changed","repo":"alpha"}`
+
+	big := git.WalkReport{Dir: "big", Gitignored: true}
+	small := git.WalkReport{Dir: "small", Gitignored: true}
+	timedOut := func(r git.WalkReport) git.WalkReport { r.TimedOut = true; return r }
+
+	srv.walkFinished("alpha", timedOut(big))
 	require.Len(t, degradedList(t, srv.Handler()), 1)
-	srv.walkFinished("alpha", false)
+	require.Equal(t, []string{degradedPush}, pushes())
+
+	srv.walkFinished("alpha", small)
+	srv.walkFinished("alpha", git.WalkReport{Dir: "big", Gitignored: false})
+	require.Len(t, degradedList(t, srv.Handler()), 1, "another walk finishing is not this one")
+	require.Empty(t, pushes())
+
+	srv.walkFinished("alpha", timedOut(small))
+	srv.walkFinished("alpha", big)
+	require.Len(t, degradedList(t, srv.Handler()), 1, "small still has not finished since it timed out")
+	require.Empty(t, pushes(), "still degraded: nothing new to fetch")
+
+	srv.walkFinished("alpha", small)
 	require.Empty(t, degradedList(t, srv.Handler()))
-	srv.walkFinished("alpha", false) // nothing to clear is fine
+	require.Equal(t, []string{degradedPush}, pushes(), "the banner goes without a reload")
+
+	srv.walkFinished("alpha", small) // nothing to clear is fine, and silent
 	require.Empty(t, degradedList(t, srv.Handler()))
+	require.Empty(t, pushes())
+}
+
+// The server's own last-activity warm walks with gitignored files included,
+// and nobody reads its result as a list, so its timeouts are no reader's; a
+// reader's own walk is what reports.
+func TestTheActivityWarmReportsNoWalkTimeout(t *testing.T) {
+	isolateUserDirs(t)
+	root := initRepo(t, map[string]string{"a.md": "# A\n"})
+	require.NoError(t, os.WriteFile(filepath.Join(root, "untracked.md"), []byte("# U\n"), 0o644))
+	cfg := config.Defaults()
+	cfg.MultiRepo = true
+	cfg.Repos = []config.RepoConfig{{Name: "alpha", Path: root}}
+	cfg.WalkTimeout = time.Nanosecond
+	require.NoError(t, cfg.Resolve())
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+	git.ClearRecentFilesCache()
+	t.Cleanup(git.ClearRecentFilesCache)
+
+	srv.warmActivity(context.Background())
+	require.Empty(t, degradedList(t, srv.Handler()))
+	require.Equal(t, http.StatusOK, doGET(t, srv.Handler(), "/api/r/alpha/git/recent?limit=5").Code)
+	require.Len(t, degradedList(t, srv.Handler()), 1)
 }
 
 func TestUnregisterForgetsARepositorysDegradations(t *testing.T) {
