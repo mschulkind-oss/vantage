@@ -16,8 +16,8 @@ import { COLLAPSED_ATTR } from "../lib/collapseSections";
 import { answerableOpenQuestions } from "./useOpenQuestionButtons";
 
 /**
- * One entry in the table of contents: a heading, or an Open Question awaiting a
- * ruling.
+ * One entry in the table of contents: a heading, or an Open Question in any
+ * state — open, blocked or answered.
  *
  * Both kinds live in one list because they are one outline. A reader opening a
  * design document asks two questions — what is in here, and is there anything
@@ -98,10 +98,11 @@ export function collectOutline(container: HTMLElement): OutlineEntry[] {
     "h1, h2, h3, h4, h5, h6, [data-vantage-oq]",
   )) {
     const depth = HEADING_LEVELS[el.tagName];
-    // A heading an `oq` directive stamped is a question first: it hosts the
-    // button, and `answerableOpenQuestions` counts it. Listed as a heading, the
-    // column fell one short of the buttons on any document that writes a
-    // question that way, and of the planning index, which counts it too.
+    // A heading an `oq` directive stamped is a question first:
+    // `answerableOpenQuestions` finds it, and it hosts the button while it is
+    // open. Listed as a heading, the column fell one question short on any
+    // document that writes one that way: short of the buttons, and of the
+    // planning index, which counts it too.
     if (depth !== undefined && !questions.has(el)) {
       // Headings with no id are skipped — there is nothing to link to. A
       // question with no id is not, because unlike a heading it is *the thing
@@ -124,9 +125,12 @@ export function collectOutline(container: HTMLElement): OutlineEntry[] {
       continue;
     }
 
-    // A stamped element the button pass would skip — a `pre` or a `table`, or
-    // the outer one of two directives resolving to a single block. Listing it
-    // would promise an action that is not on offer.
+    // A stamped element `answerableOpenQuestions` does not return: a `pre` or
+    // a `table`, which can host no button in any state and is no question to
+    // the planning index either, or one of two directives resolving to a
+    // single block, whose question the other already lists. The column's 🔒
+    // and ✅ entries are different: they are questions, listed although they
+    // offer no button (Plan Q5).
     if (!questions.has(el)) continue;
 
     const { marker, text } = questionLabel(el);
