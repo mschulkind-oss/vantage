@@ -1,0 +1,28 @@
+# This repository's own settings, read by the Vantage server and by
+# vantage-check. Every key is documented in userguide/reference/configuration.md
+# and userguide/guides/vantage-check.md.
+
+[check.rules]
+# An open question the roadmap does not route is listed, not failed: the gate
+# shows what roadmap.md has not placed yet without holding every commit to it
+# (docs/design/planning-index.md §8, Plan Q4).
+"planning/unrouted" = "warning"
+
+[planning]
+# docs/gallery/ is a set of specimen documents whose demo questions outnumber
+# the real ones, and frontend/e2e/fixtures/ holds the end-to-end tests' own
+# planning documents. Neither is this repository's plan, and neither is
+# ignored by the file listing the index reads from.
+exclude = ["docs/gallery/**", "frontend/e2e/fixtures/**"]
+
+# The design's vocabulary (docs/design/planning-index.md §9). The role is what
+# a word means to the planning index: open is being decided, ready is decided
+# and not built, built is built, and done is no longer a live proposal.
+[planning.stages]
+SKETCH = "open"
+DESIGN = "open"
+DECIDED = "ready"
+BUILT = "built"
+GRADUATED = "done"
+SUPERSEDED = "done"
+CURRENT = "done"
