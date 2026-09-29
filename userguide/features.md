@@ -17,7 +17,9 @@ Vantage supports the full [GitHub Flavored Markdown](https://github.github.com/g
 - Ordered and unordered lists
 - Horizontal rules
 - Images and links
-- HTML (sanitized)
+- HTML (sanitized), including [inline SVG](../docs/reference/inline-markup.md#inline-svg)
+  as static drawing, which is Vantage-only: GitHub drops it, so embed a drawing
+  as `![alt](file.svg)` in a document read there
 
 ### Math with KaTeX
 

@@ -106,6 +106,7 @@ flowchart TD
     client["Client (React SPA)"] -->|WebSocket| srv["Vantage Server (Go)"]
     srv --> git["Git CLI (git diff)"]
 \`\`\`
+- **Inline \`<svg>\` is Vantage-only**: GitHub drops the drawing and prints a \`<title>\` as text. For a document read on GitHub, commit the drawing as a file and embed it with \`![alt](diagram.svg)\`.
 
 ### Code blocks and diffs
 - Always tag fenced code blocks with language identifiers (\`ts\`, \`go\`, \`python\`, \`bash\`, \`json\`, \`yaml\`, \`diff\`, \`sql\`, etc.) for syntax highlighting.
