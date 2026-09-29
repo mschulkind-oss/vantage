@@ -1,11 +1,15 @@
 package server
 
 import (
+	"compress/gzip"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,26 +18,46 @@ import (
 	"github.com/mschulkind-oss/vantage/internal/config"
 )
 
-// planningFiles returns the paths a planning batch served and the exclude list
-// of the config it was served under.
+// planningFiles returns the paths a cold planning stream sent the text of and
+// the exclude list of the config it was served under. The request asks for
+// gzip, as every browser does, so the answer is read through the whole
+// middleware stack as a browser would get it.
 func planningFiles(t *testing.T, h http.Handler, target string) (paths, exclude []string) {
 	t.Helper()
-	rec := doGET(t, h, target)
+	req := httptest.NewRequest(http.MethodPost, target, strings.NewReader(`{}`))
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
-	var body struct {
-		Config struct {
-			Exclude []string `json:"exclude"`
-		} `json:"config"`
-		Files []struct {
-			Path string `json:"path"`
-		} `json:"files"`
-	}
-	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.Equal(t, "application/x-ndjson", rec.Header().Get("Content-Type"))
+	require.Equal(t, "gzip", rec.Header().Get("Content-Encoding"))
+
+	zr, err := gzip.NewReader(rec.Body)
+	require.NoError(t, err)
+	plain, err := io.ReadAll(zr)
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSuffix(string(plain), "\n"), "\n")
 	paths = []string{}
-	for _, f := range body.Files {
-		paths = append(paths, f.Path)
+	for i, raw := range lines {
+		var line struct {
+			Kind   string `json:"kind"`
+			Path   string `json:"path"`
+			Config struct {
+				Exclude []string `json:"exclude"`
+			} `json:"config"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(raw), &line), "line: %q", raw)
+		switch {
+		case i == 0:
+			require.Equal(t, "header", line.Kind)
+			exclude = line.Config.Exclude
+		case i == len(lines)-1:
+			require.Equal(t, "end", line.Kind)
+		case line.Kind == "file":
+			paths = append(paths, line.Path)
+		}
 	}
-	return paths, body.Config.Exclude
+	return paths, exclude
 }
 
 // planningKind returns the kind the single-path mode answers for target.
@@ -56,7 +80,7 @@ func isolatePlanningDirs(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 }
 
-// Single-repo mode serves the endpoint at the legacy path, under the
+// Single-repo mode serves the endpoints at the legacy paths, under the
 // repository's own `[planning]` table.
 func TestTheRepositoryServesItsPlanningSources(t *testing.T) {
 	isolatePlanningDirs(t)
@@ -74,7 +98,7 @@ func TestTheRepositoryServesItsPlanningSources(t *testing.T) {
 	require.NoError(t, err)
 	h := srv.Handler()
 
-	paths, exclude := planningFiles(t, h, "/api/planning/sources")
+	paths, exclude := planningFiles(t, h, "/api/planning/stream")
 	require.Equal(t, []string{"docs/design/a.md", "roadmap.md"}, paths)
 	require.Equal(t, []string{"docs/gallery/**"}, exclude)
 	require.Equal(t, "absent", planningKind(t, h, "/api/planning/sources?path=docs/gallery/status.md"))
@@ -99,15 +123,15 @@ func TestDaemonServesEachRepositorysPlanningSourcesUnderItsOwnTable(t *testing.T
 	require.NoError(t, err)
 	h := srv.Handler()
 
-	paths, _ := planningFiles(t, h, "/api/r/alpha/planning/sources")
+	paths, _ := planningFiles(t, h, "/api/r/alpha/planning/stream")
 	require.Equal(t, []string{"a.md"}, paths)
-	paths, _ = planningFiles(t, h, "/api/r/beta/planning/sources")
+	paths, _ = planningFiles(t, h, "/api/r/beta/planning/stream")
 	require.Equal(t, []string{"docs/y.md"}, paths)
 
 	require.Equal(t, "absent", planningKind(t, h, "/api/r/alpha/planning/sources?path=docs/x.md"))
 	require.Equal(t, "file", planningKind(t, h, "/api/r/beta/planning/sources?path=docs/y.md"))
 
-	require.Equal(t, http.StatusNotFound, doGET(t, h, "/api/planning/sources").Code,
+	require.Equal(t, http.StatusNotFound, doJSON(t, h, http.MethodPost, "/api/planning/stream", `{}`).Code,
 		"legacy repo routes are disabled in daemon mode")
 }
 
@@ -132,7 +156,7 @@ func TestADiscoveredRepositoryServesItsPlanningSourcesUnderItsOwnTable(t *testin
 	waitFor(t, "the new repository to be discovered", func() bool {
 		return slices.Contains(repoNames(t, h), "beta")
 	})
-	paths, exclude := planningFiles(t, h, "/api/r/beta/planning/sources")
+	paths, exclude := planningFiles(t, h, "/api/r/beta/planning/stream")
 	require.Equal(t, []string{"b.md"}, paths)
 	require.Equal(t, []string{"docs/**"}, exclude)
 
