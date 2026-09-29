@@ -170,11 +170,19 @@ decision from you says so before you read a word of it. A tally beside
 scrolls to the question itself, and the link it copies is the question's own
 `#OQ-…` anchor, which is what a reference from another document uses.
 
-Only questions carrying an [`oq` directive](reference/style-guide.md) appear,
-which by convention means exactly the ones that can be answered in one click —
-the same set the **Review** toggle counts in its tooltip. A question the author
-marked blocked or answered and left untagged is not an action, so it is not
-listed.
+Every question carrying an [`oq` directive](reference/style-guide.md) appears,
+in whatever state it is in: open, blocked or answered. A question written
+without one is not listed, and nothing else in Vantage counts it either
+([Planning Documents](guides/planning.md#what-vantage-reads)).
+
+Only the open ones can be answered in one click. Review mode's **Take this
+leaning** button appears on a 💬 question, or one with no marker, and never on
+a 🔒 blocked or ✅ answered one: a blocked question cannot be answered yet, and
+an answered one has been ruled. The **Review** toggle's tooltip, while review
+mode is off, counts those buttons and nothing else, so it can count fewer
+questions than the column lists. The tally's own tooltip says which is which,
+such as *3 questions here — 1 open, 1 answered, 1 blocked; 1 can be answered in
+one click*.
 
 The choice is remembered: turn it on once and it stays on as you move
 between documents and across restarts. It appears only for a rendered Markdown
