@@ -347,6 +347,17 @@ describe("planning/unrouted", () => {
     expect(await planning(huge, "docs/a.md")).toEqual([]);
   });
 
+  // The roadmap has no header and no directive, so no rule can report on it
+  // and the pass leaves it out of the index as one of the run's files; it
+  // still has to be read as the roadmap.
+  it("routes through a roadmap that is itself one of the run's files", async () => {
+    const root = tree("- [The first](docs/a.md#OQ-A1)");
+
+    expect(await planning(root, "roadmap.md", "docs/a.md")).toEqual([
+      "docs/a.md:14 planning/unrouted",
+    ]);
+  });
+
   it("reads another roadmap when [planning] names one", async () => {
     const root = repo({
       ".vantage.toml": `[planning]\nroadmap = "plans/next.md"\n\n${UNROUTED_ON}`,

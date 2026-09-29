@@ -143,7 +143,9 @@ class PlanningPass {
       skipped: [],
       unreadable: [],
     };
+    const added = new Set<string>();
     const add = (entry: SourceEntry) => {
+      added.add(entry.path);
       if (entry.kind === "file") {
         sources.files.push({ path: entry.path, content: entry.content });
         this.texts.set(join(this.base, entry.path), entry.content);
@@ -174,12 +176,13 @@ class PlanningPass {
     if (checked.size === 0) return;
 
     // Without a project there is no roadmap, and Unrouted is not shown
-    // without one (§6.2), so `unrouted` reports nothing.
-    const roadmapped = sources.files.some((f) => f.path === config.roadmap);
+    // without one (§6.2), so `unrouted` reports nothing. The roadmap may be
+    // one of the run's files already, read and left out only because no rule
+    // could report on it; routing still needs it.
     if (
       listing !== null &&
       this.settings.enabled("planning/unrouted") &&
-      !roadmapped &&
+      !added.has(config.roadmap) &&
       isCandidate(listing, config, config.roadmap)
     ) {
       add(readCandidate(this.base, config.roadmap, config.maxFileBytes));
