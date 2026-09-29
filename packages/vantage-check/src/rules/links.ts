@@ -5,6 +5,7 @@ import { visit } from "unist-util-visit";
 import { parseLineAnchor } from "../../../vantage-md/src/lineAnchor.js";
 import type { Collector } from "../core/collector.js";
 import { displayPath } from "../core/document.js";
+import { repositoryRoot } from "../core/projectRoot.js";
 import { nearestAnchor } from "../core/slugs.js";
 import { isMarkdown } from "../core/workspace.js";
 
@@ -330,21 +331,4 @@ function suggestRelative(documentPath: string, linkPath: string): string {
   let suggestion = relative(dirname(documentPath), target).split(sep).join("/");
   if (!suggestion.startsWith(".")) suggestion = `./${suggestion}`;
   return ` Write \`${suggestion}\`.`;
-}
-
-/**
- * The nearest ancestor that looks like a repository root.
- *
- * `.git` is checked as a plain directory entry rather than by asking git, so
- * this still works in a bare checkout with no git on PATH (P1).
- */
-function repositoryRoot(from: string): string | undefined {
-  let current = from;
-  for (;;) {
-    if (existsSync(join(current, ".git"))) return current;
-    if (existsSync(join(current, ".vantage.toml"))) return current;
-    const parent = dirname(current);
-    if (parent === current) return undefined;
-    current = parent;
-  }
 }
