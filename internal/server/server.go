@@ -480,6 +480,7 @@ func (s *Server) buildRouter(handlers *api.Handlers) chi.Router {
 
 	r.Route("/api", func(api chi.Router) {
 		api.Use(perf.Middleware(s.perf))
+		api.Use(s.modeHeader)
 
 		// WebSocket: mounted before the catch-all API routes. The live package
 		// owns this endpoint; warm is our cache-warm closure.
@@ -493,6 +494,27 @@ func (s *Server) buildRouter(handlers *api.Handlers) chi.Router {
 	r.MethodNotAllowed(s.spaHandler())
 
 	return r
+}
+
+// ModeHeader names the response header every API response carries to say
+// which kind of server answered: "daemon" for `vantage daemon`, the background
+// service install-service sets up, and "serve" for a foreground `vantage
+// serve`. A split serve lists real project names at /repos just as the daemon
+// does, so this is what lets `serve`'s startup tip tell the service from a
+// foreground server that happens to hold its port.
+const ModeHeader = "X-Vantage-Mode"
+
+// modeHeader sets [ModeHeader]. A config read from a file is the daemon's:
+// only `vantage daemon` loads one.
+func (s *Server) modeHeader(next http.Handler) http.Handler {
+	mode := "serve"
+	if s.cfg.ConfigPath != "" {
+		mode = "daemon"
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(ModeHeader, mode)
+		next.ServeHTTP(w, r)
+	})
 }
 
 // mountAPIRoutes mounts every [api.Route] onto the /api subrouter. ScopeGlobal

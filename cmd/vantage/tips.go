@@ -15,6 +15,7 @@ import (
 
 	"github.com/mschulkind-oss/vantage/internal/config"
 	"github.com/mschulkind-oss/vantage/internal/model"
+	"github.com/mschulkind-oss/vantage/internal/server"
 )
 
 // serviceProbeTimeout bounds the one request `serve` makes to find out whether
@@ -33,8 +34,12 @@ type serviceState struct {
 	// writes exists.
 	Installed bool
 	// Running reports whether the service's configured address answered GET
-	// /api/repos with a list of projects.
+	// /api/repos as the service: a `vantage daemon`.
 	Running bool
+	// Foreground reports whether that address answered as a foreground
+	// `vantage serve` instead — someone's other terminal holding the port the
+	// service would use.
+	Foreground bool
 	// URL is the service's address as a reader would type it, e.g.
 	// http://localhost:8000.
 	URL string
@@ -60,33 +65,58 @@ func tipsEnabled(tty bool) bool {
 	return on
 }
 
-// repoLister fetches the project names a running Vantage answers /api/repos
-// with. It is a parameter so tests never open a socket to a real service.
-type repoLister func(ctx context.Context, url string) ([]string, error)
+// serviceAnswer is what a running Vantage said to GET /api/repos.
+type serviceAnswer struct {
+	// Names are the projects it listed.
+	Names []string
+	// Mode is its [server.ModeHeader]: "daemon", "serve", or "" from a version
+	// that predates the header.
+	Mode string
+}
+
+// isDaemon reports whether a is the background service's answer. A version
+// without the mode header is judged by its names: a single-project `vantage
+// serve` answers with the one-element sentinel [""], and anything else was
+// the daemon, since only it listed projects by name before `serve` could
+// split a directory.
+func (a serviceAnswer) isDaemon() bool {
+	switch a.Mode {
+	case "daemon":
+		return true
+	case "":
+		return len(a.Names) > 0 && !(len(a.Names) == 1 && a.Names[0] == "")
+	default:
+		return false
+	}
+}
+
+// repoLister asks a running Vantage for /api/repos. It is a parameter so tests
+// never open a socket to a real service.
+type repoLister func(ctx context.Context, url string) (serviceAnswer, error)
 
 // httpRepoLister is the production [repoLister]: one GET, bounded by ctx.
-func httpRepoLister(ctx context.Context, url string) ([]string, error) {
+func httpRepoLister(ctx context.Context, url string) (serviceAnswer, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return serviceAnswer{}, err
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		return serviceAnswer{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("status %d", resp.StatusCode)
+		return serviceAnswer{}, fmt.Errorf("status %d", resp.StatusCode)
 	}
 	var repos []model.RepoInfo
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&repos); err != nil {
-		return nil, err
+		return serviceAnswer{}, err
 	}
 	names := make([]string, 0, len(repos))
 	for _, r := range repos {
 		names = append(names, r.Name)
 	}
-	return names, nil
+	return serviceAnswer{Names: names, Mode: resp.Header.Get(server.ModeHeader)}, nil
 }
 
 // probeService gathers [serviceState] for target, the resolved path `serve`
@@ -120,15 +150,18 @@ func probeService(ctx context.Context, goos, home, target string, plan *clonesPl
 	ctx, cancel := context.WithTimeout(ctx, serviceProbeTimeout)
 	defer cancel()
 	probeURL := "http://" + net.JoinHostPort(browserHost(host), strconv.Itoa(port)) + "/api/repos"
-	names, err := list(ctx, probeURL)
-	// A single-project `vantage serve` answers with the one-element sentinel
-	// [""]: that is somebody's foreground server, not the background service.
-	if err != nil || len(names) == 0 || (len(names) == 1 && names[0] == "") {
+	answer, err := list(ctx, probeURL)
+	if err != nil {
+		return st
+	}
+	if !answer.isDaemon() {
+		// Somebody's foreground server, not the background service.
+		st.Foreground = true
 		return st
 	}
 	st.Running = true
 	if daemon != nil {
-		st.OpenPath = openPathFor(daemon, target, plan, names)
+		st.OpenPath = openPathFor(daemon, target, plan, answer.Names)
 	}
 	return st
 }
@@ -180,6 +213,9 @@ func (st serviceState) tip(plan *clonesPlan) string {
 			line += fmt.Sprintf(" This project is open there: %s%s", st.URL, st.OpenPath)
 		}
 		return line
+	case st.Installed && st.Foreground:
+		return fmt.Sprintf("A Vantage service is installed, but a foreground vantage serve is answering at its address, %s. "+
+			"Stop that one, then start the service with: %s", st.URL, tildeCommand(serviceStartCommand(st.GOOS, st.Home), st.Home))
 	case st.Installed:
 		return "A Vantage service is installed but not running. Start it with: " +
 			tildeCommand(serviceStartCommand(st.GOOS, st.Home), st.Home)
