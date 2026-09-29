@@ -348,6 +348,26 @@ func (h *hostField) UnmarshalTOML(v any) error {
 	return nil
 }
 
+// DaemonAddress reads only the address the daemon config at path binds: its
+// hosts and port, with the daemon's defaults for whichever the file leaves
+// out. Unlike [LoadDaemonFile] it resolves no path and scans no source dir,
+// so it costs one small file read — what `serve` can afford before it knows
+// whether a service is running at all.
+func DaemonAddress(path string) (hosts []string, port int, err error) {
+	var df daemonFile
+	if _, err := toml.DecodeFile(path, &df); err != nil {
+		return nil, 0, err
+	}
+	c := Defaults()
+	if df.Host.set {
+		c.Host = df.Host.hosts
+	}
+	if df.Port != nil {
+		c.Port = *df.Port
+	}
+	return c.Host, c.Port, nil
+}
+
 // LoadDaemonFile reads a daemon TOML config from path, overlays it onto Config
 // defaults, discovers repos from any source_dirs, and marks MultiRepo. It does
 // not call Resolve or Validate; the caller applies flag overrides between this

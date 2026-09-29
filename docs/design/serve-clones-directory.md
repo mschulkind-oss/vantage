@@ -203,7 +203,9 @@ off. The tip describes the state of the per-user service that
   another. A server too old to send the header is judged by its answer: a
   single-project `serve` lists one project with no name. The check runs before
   `serve` binds its own port, so it cannot find itself, and it runs only when
-  a tip will be printed.
+  a tip will be printed. Before it, only the address is read from the config;
+  the rest, which resolves paths and scans source dirs, is read only once a
+  service has answered.
 - **This project is open there** is decided from the service's own config. The
   served directory is compared with each configured and discovered repository
   path, or with a `source_dirs` entry when the directory is a clones directory,
