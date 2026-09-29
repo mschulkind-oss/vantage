@@ -47,7 +47,7 @@ test.describe("inline SVG sizing", () => {
     page,
   }) => {
     // Without a viewBox nothing scales the drawing to its box, so `height:
-    // auto` only shrank the viewport: measured at 64px of a declared 100, with
+    // auto` only shrank the viewport: measured at 58px of a declared 100, with
     // the text at y=90 cut off below it.
     await open(page);
     const selector = 'svg[aria-label="Wide without viewBox"]';

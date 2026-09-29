@@ -27,10 +27,11 @@
  * The "inline SVG" block is a fourth job: a drawing survives as drawing —
  * every allowlisted attribute in the spelling an author writes, on every
  * admitted element — and nothing survives that runs, fetches, references, or
- * sets the page's title. Most of it is table-driven over the schema itself, so
- * an entry added to the allowlist is covered without touching the tables, and
- * the few cases that only React can show (the SVG namespace, `<title>`
- * hoisting) render through `vantage-md/react`.
+ * sets the page's title. Most of it is table-driven over the schema itself,
+ * and two tests pin the tables to it — the attribute table's length and the
+ * list of admitted children — so widening the allowlist fails until a table
+ * covers the new entry. The few cases that only React can show (the SVG
+ * namespace, `<title>` hoisting) render through `vantage-md/react`.
  */
 import { createElement } from "react";
 import { cleanup, render } from "@testing-library/react";
@@ -839,11 +840,12 @@ describe("inline SVG", () => {
   /**
    * Every shape that let a document's `<title>` become the page's title.
    *
-   * `title` and `desc` are stripped with their contents, so none of these has
-   * a title left to hoist or re-parse. The first is the React route: an `svg`
-   * under `math` keeps MathML context, and React hoists a `title` anywhere
-   * outside SVG context into `<head>`. The other three are the string route:
-   * each re-parses into an HTML-namespace `title`.
+   * `title` and `desc` are removed with their contents inside a drawing, and
+   * every route here is inside one, so none has a title left to hoist or
+   * re-parse. The first is the React route: an `svg` under `math` keeps MathML
+   * context, and React hoists a `title` anywhere outside SVG context into
+   * `<head>`. The other three are the string route: each re-parses into an
+   * HTML-namespace `title`.
    */
   const TITLE_ROUTES: [string, string][] = [
     ["math > svg > title", `<math><svg><title>Hijacked</title></svg></math>`],
