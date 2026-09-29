@@ -162,50 +162,61 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
     markPathsChanged,
   ]);
 
-  /** Do a full refresh after reconnecting (we may have missed changes). */
-  const refreshAfterReconnect = useCallback(() => {
-    // Bookmarks first, above the repo guards: /api/starred is global, so it
-    // neither needs a selected repo nor waits for one. A star added from
-    // another browser during the outage is only recoverable here.
-    void useStarredStore.getState().loadStarred();
-    // Likewise a picker left open across the outage: every change the watcher
-    // announced while the socket was down is only recoverable here.
-    void useFilePickerStore.getState().refresh();
-    void useAllRecentsStore.getState().refresh();
-    if (!viewer) return;
+  /**
+   * Do a full refresh after connecting (we may have missed changes).
+   *
+   * `initial` is a mount's first connection. It refreshes the stores but not
+   * the document: the route loads that, and `currentPath` still names the
+   * document the previous page showed until the route's load lands. Reloading
+   * it here superseded the route's load (`loadFile` keeps only its newest
+   * request), so the new URL kept showing the old document.
+   */
+  const refreshAfterReconnect = useCallback(
+    (initial: boolean) => {
+      // Bookmarks first, above the repo guards: /api/starred is global, so it
+      // neither needs a selected repo nor waits for one. A star added from
+      // another browser during the outage is only recoverable here.
+      void useStarredStore.getState().loadStarred();
+      // Likewise a picker left open across the outage: every change the watcher
+      // announced while the socket was down is only recoverable here.
+      void useFilePickerStore.getState().refresh();
+      void useAllRecentsStore.getState().refresh();
+      if (!viewer) return;
 
-    // Guard: don't fire API calls before the repo store is initialized.
-    // Before loadRepos() completes, isMultiRepo defaults to false and
-    // getApiBase() returns "/api", which 404s in multi-repo setups.
-    const { reposLoaded, isMultiRepo, currentRepo } = useRepoStore.getState();
-    if (!reposLoaded) return;
-    if (isMultiRepo && !currentRepo) return;
+      // Guard: don't fire API calls before the repo store is initialized.
+      // Before loadRepos() completes, isMultiRepo defaults to false and
+      // getApiBase() returns "/api", which 404s in multi-repo setups.
+      const { reposLoaded, isMultiRepo, currentRepo } = useRepoStore.getState();
+      if (!reposLoaded) return;
+      if (isMultiRepo && !currentRepo) return;
 
-    const path = currentPathRef.current;
-    wsLog.log("[ws] Refreshing after reconnect (path=%s)", path ?? "(none)");
+      const path = initial ? null : currentPathRef.current;
+      wsLog.log("[ws] Refreshing after reconnect (path=%s)", path ?? "(none)");
 
-    if (path) {
-      if (path.toLowerCase().endsWith(".md")) {
-        loadFile(path);
-        fetchStatus(path);
-        // Reactions delivered during the outage arrived as review_changed
-        // events we never received. Without this reload the client keeps a
-        // stale comments array until the next server push or manual refresh.
-        useReviewStore.getState().loadReview(path);
-      } else {
-        viewDirectory(path);
+      if (path) {
+        if (path.toLowerCase().endsWith(".md")) {
+          loadFile(path);
+          fetchStatus(path);
+          // Reactions delivered during the outage arrived as review_changed
+          // events we never received. Without this reload the client keeps a
+          // stale comments array until the next server push or manual refresh.
+          useReviewStore.getState().loadReview(path);
+        } else {
+          viewDirectory(path);
+        }
       }
-    }
-    refreshExpandedTree();
-    fetchRecentFiles();
-  }, [
-    viewer,
-    loadFile,
-    refreshExpandedTree,
-    fetchStatus,
-    viewDirectory,
-    fetchRecentFiles,
-  ]);
+      refreshExpandedTree();
+      fetchRecentFiles();
+    },
+    [
+      viewer,
+      loadFile,
+      refreshExpandedTree,
+      fetchStatus,
+      viewDirectory,
+      fetchRecentFiles,
+    ],
+  );
 
   const handleMessage = useCallback(
     (event: MessageEvent) => {
@@ -361,7 +372,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
       reconnectAttemptRef.current = 0;
       useConnectionStore.getState().setConnected(true);
       // Refresh everything since we may have missed changes while disconnected
-      refreshAfterReconnect();
+      refreshAfterReconnect(connectNum === 1);
       // A genuine reconnect only (Plan Q14). Every page mounts this hook, and
       // every mount's first connection is #1, so "reconnect" on #1 would rescan
       // the whole planning index on each navigation. The second and later
