@@ -282,3 +282,65 @@ export function referencedBy(index: PlanningIndex, path: string): Reference[] {
   }
   return references;
 }
+
+/** One document in a Referenced by list, with where its links sit (§7). */
+export interface ReferenceSource {
+  from: string;
+  /** `referencedBy`'s entries from `from`: one per heading, in document order. */
+  references: Reference[];
+}
+
+/** What a document's Referenced by line reports, and the list behind it (§7). */
+export interface ReferenceSummary {
+  /** The documents that link here, the roadmap first and then by path. */
+  sources: ReferenceSource[];
+  /**
+   * The roadmap heading of the first roadmap link that routes this document or
+   * one of its questions (§6.1), `heading` being `null` for a link above every
+   * heading. `null` when no link routes it, when there is no roadmap, and for
+   * the roadmap itself, which is not on itself.
+   */
+  onRoadmap: { heading: string | null } | null;
+  /**
+   * Its open questions the roadmap does not route: what the planning page lists
+   * for it under *Unrouted* (§6.2). `0` without a roadmap, where there is no
+   * such section, and for a `done` document, which contributes to none.
+   */
+  unrouted: number;
+}
+
+/**
+ * Who links to `path`, and whether the roadmap routes it: the two questions a
+ * Referenced by line answers. Routing and the unrouted count are the planning
+ * page's own derivations, applied to one document, so the line and the page
+ * cannot disagree (P7).
+ */
+export function referenceSummary(
+  index: PlanningIndex,
+  path: string,
+): ReferenceSummary {
+  const roadmapPath = index.config.roadmap;
+  const sources: ReferenceSource[] = [];
+  for (const ref of referencedBy(index, path)) {
+    const last = sources.at(-1);
+    if (last?.from === ref.from) last.references.push(ref);
+    else sources.push({ from: ref.from, references: [ref] });
+  }
+  const at = sources.findIndex((source) => source.from === roadmapPath);
+  if (at > 0) sources.unshift(...sources.splice(at, 1));
+
+  const roadmap = findDocument(index, roadmapPath);
+  const doc = findDocument(index, path);
+  let onRoadmap: ReferenceSummary["onRoadmap"] = null;
+  if (roadmap !== undefined && path !== roadmapPath) {
+    const link = roadmap.links.find(
+      (l) => l.target === path && routedBy(index, l) !== null,
+    );
+    if (link !== undefined) onRoadmap = { heading: link.heading };
+  }
+  const unrouted =
+    roadmap === undefined || doc === undefined || !isLive(index, doc)
+      ? 0
+      : unroutedIn([doc], routeQuestions(index)).length;
+  return { sources, onRoadmap, unrouted };
+}

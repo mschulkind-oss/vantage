@@ -1,6 +1,7 @@
 /**
  * The roadmap's routing and the planning page's sections
- * (`docs/design/planning-index.md` §6.1, §6.2), and Referenced by (§7).
+ * (`docs/design/planning-index.md` §6.1, §6.2), and Referenced by and its
+ * summary line (§7).
  *
  * These are the derivations the page, `vantage-check index` and the checker's
  * planning rules all share, so what is proved here is what all three show.
@@ -11,6 +12,7 @@ import {
   buildPlanningIndex,
   derivePlanningSections,
   questionFor,
+  referenceSummary,
   referencedBy,
   routeQuestions,
   type PlanningConfig,
@@ -374,5 +376,166 @@ describe("Referenced by (§7)", () => {
 
   it("is empty for a document nothing links to", () => {
     expect(referencedBy(indexOf(tree), "docs/b.md")).toEqual([]);
+  });
+});
+
+describe("the Referenced by summary (§7)", () => {
+  const summaryOf = (
+    tree: Record<string, string>,
+    path: string,
+    config: Partial<PlanningConfig> = {},
+  ) => referenceSummary(indexOf(tree, config), path);
+
+  // docs/a.md's links, as its sources write them: the roadmap under two
+  // headings, docs/b.md above every heading and then twice under one, and
+  // docs/c.md once.
+  const A = doc("status: draft", questions("A", OPEN, OPEN));
+  const tree = {
+    "docs/a.md": A,
+    "docs/b.md": [
+      "---",
+      "status: draft",
+      "---",
+      "",
+      "Before any heading, [a](a.md).",
+      "",
+      "## Uses",
+      "",
+      "[a](a.md) and [its question](a.md#OQ-A1).",
+      "",
+      "## Again",
+      "",
+      "[a](a.md)",
+      "",
+      "## Uses",
+      "",
+      "[a, under a repeated heading](a.md)",
+      "",
+    ].join("\n"),
+    "docs/c.md": doc("status: draft", "[a](a.md)"),
+    "roadmap.md": [
+      "# Roadmap",
+      "",
+      "## Compacted",
+      "",
+      "- [the ledger](docs/a.md#decision-ledger)",
+      "",
+      "## Building",
+      "",
+      "- [a](docs/a.md)",
+      "",
+    ].join("\n"),
+  };
+
+  it("groups the references by source, the roadmap first, then by path", () => {
+    const { sources } = summaryOf(tree, "docs/a.md");
+    expect(sources.map((s) => s.from)).toEqual([
+      "roadmap.md",
+      "docs/b.md",
+      "docs/c.md",
+    ]);
+    // Deduplicated by heading, in document order; before any heading is `null`.
+    expect(sources[1]).toEqual({
+      from: "docs/b.md",
+      references: [
+        { from: "docs/b.md", heading: null, line: 5 },
+        { from: "docs/b.md", heading: "Uses", line: 9 },
+        { from: "docs/b.md", heading: "Again", line: 13 },
+      ],
+    });
+    expect(sources[0]?.references.map((r) => r.heading)).toEqual([
+      "Compacted",
+      "Building",
+    ]);
+  });
+
+  it("names the heading of the first roadmap link that routes the document", () => {
+    // The ledger link comes first but routes nothing (§6.1, Plan Q12).
+    expect(summaryOf(tree, "docs/a.md").onRoadmap).toEqual({
+      heading: "Building",
+    });
+  });
+
+  it("is routed by a link to one of its questions", () => {
+    const roadmap =
+      "# Roadmap\n\n## Rule these first\n\n- [one](docs/a.md#OQ-A2)\n";
+    const summary = summaryOf({ ...tree, "roadmap.md": roadmap }, "docs/a.md");
+    expect(summary.onRoadmap).toEqual({ heading: "Rule these first" });
+    // OQ-A1 is still open and unrouted, and the count says so.
+    expect(summary.unrouted).toBe(1);
+  });
+
+  it("is routed by a bare link above every heading, with no heading to name", () => {
+    const summary = summaryOf(
+      { ...tree, "roadmap.md": "Start with [a](docs/a.md).\n" },
+      "docs/a.md",
+    );
+    expect(summary.onRoadmap).toEqual({ heading: null });
+    expect(summary.unrouted).toBe(0);
+  });
+
+  it("routes a document with no questions through a bare link", () => {
+    const summary = summaryOf(
+      { "docs/a.md": doc("status: draft"), "roadmap.md": "- [a](docs/a.md)\n" },
+      "docs/a.md",
+    );
+    expect(summary.onRoadmap).toEqual({ heading: null });
+  });
+
+  it("is not routed by a heading link, nor by a link to an id no question carries", () => {
+    const roadmap = [
+      "## Here",
+      "",
+      "- [ledger](docs/a.md#decision-ledger)",
+      "- [ruled](docs/a.md#OQ-A9)",
+      "",
+    ].join("\n");
+    const summary = summaryOf({ ...tree, "roadmap.md": roadmap }, "docs/a.md");
+    expect(summary.onRoadmap).toBeNull();
+    expect(summary.unrouted).toBe(2);
+    // The roadmap still links here, so it is still a source, and still first.
+    expect(summary.sources[0]?.from).toBe("roadmap.md");
+  });
+
+  it("counts open questions only as unrouted", () => {
+    const summary = summaryOf(
+      {
+        "docs/a.md": doc(
+          "status: draft",
+          questions("A", OPEN, BLOCKED, ANSWERED),
+        ),
+        "roadmap.md": "# Roadmap\n",
+      },
+      "docs/a.md",
+    );
+    expect(summary).toEqual({ sources: [], onRoadmap: null, unrouted: 1 });
+  });
+
+  it("reports nothing unrouted, and no routing, without a roadmap", () => {
+    const noRoadmap = Object.fromEntries(
+      Object.entries(tree).filter(([path]) => path !== "roadmap.md"),
+    );
+    expect(summaryOf(noRoadmap, "docs/a.md")).toMatchObject({
+      onRoadmap: null,
+      unrouted: 0,
+    });
+  });
+
+  it("takes nothing from a done document (Plan Q11)", () => {
+    const done = {
+      ...tree,
+      "docs/a.md": doc("stage: GRADUATED", questions("A", OPEN)),
+    };
+    const summary = summaryOf(done, "docs/a.md", STAGES);
+    expect(summary.onRoadmap).toBeNull();
+    expect(summary.unrouted).toBe(0);
+    expect(summary.sources).toHaveLength(3);
+  });
+
+  it("does not put the roadmap on itself", () => {
+    const roadmap = `# Roadmap\n\n## Mine\n\n- [mine](#OQ-R1)\n\n${questions("R", OPEN, OPEN)}`;
+    const summary = summaryOf({ "roadmap.md": roadmap }, "roadmap.md");
+    // Its own link routes OQ-R1, so only OQ-R2 is unrouted, as the page says.
+    expect(summary).toEqual({ sources: [], onRoadmap: null, unrouted: 1 });
   });
 });

@@ -53,6 +53,7 @@ export {
   PLANNING_NOTICES,
   derivePlanningSections,
   questionFor,
+  referenceSummary,
   referencedBy,
   routeQuestions,
 } from "./sections.js";
@@ -60,6 +61,8 @@ export type {
   PlanningSections,
   QuestionRef,
   Reference,
+  ReferenceSource,
+  ReferenceSummary,
   RoutedQuestion,
   WaitingEntry,
 } from "./sections.js";
