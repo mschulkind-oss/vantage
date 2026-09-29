@@ -1,0 +1,129 @@
+package planning
+
+import (
+	"errors"
+	"io"
+	iofs "io/fs"
+	"os"
+	"unicode/utf8"
+
+	"github.com/mschulkind-oss/vantage/internal/pathsafe"
+)
+
+// The kinds of answer for one path. They are also the single-path mode's `kind`
+// values, so the wire and this package spell them one way.
+const (
+	KindFile       = "file"
+	KindSkipped    = "skipped"
+	KindUnreadable = "unreadable"
+	KindAbsent     = "absent"
+)
+
+// Reasons a file could not be read. These reach the planning page's
+// *Could not read* list, so each says what is wrong with the file in words a
+// reader can act on, and none carries an absolute path.
+const (
+	reasonNotUTF8    = "not UTF-8"
+	reasonNotRegular = "not a regular file"
+	reasonOutside    = "outside the repository"
+)
+
+// read is the outcome of reading one candidate.
+type read struct {
+	kind    string
+	content string
+	size    int64  // KindSkipped only
+	reason  string // KindUnreadable only
+}
+
+// openFile is os.Open, replaceable in tests so they can prove what was never
+// opened — the refusal and the size limit both promise that — without relying
+// on permissions, which a test running as root does not have.
+var openFile = os.Open
+
+// reader reads candidates under one root, within one size limit.
+type reader struct {
+	root     string
+	maxBytes int64
+}
+
+func newReader(root string, maxBytes int64) *reader {
+	return &reader{root: root, maxBytes: maxBytes}
+}
+
+// read reads the candidate at rel, refusing what a planning source cannot be.
+//
+// Containment is proved by [pathsafe.Resolve], the rule `/content` uses. The
+// file must then be a regular file by Lstat, which refuses a symlink even to a
+// file inside the repository: the listing never yields one, so neither does
+// this. Size is decided from that stat, so an oversized file is never opened.
+// After opening, the handle is stat'ed again, and the read is capped one byte
+// past the limit, so a file that grew in between is skipped rather than read
+// whole. Finally the bytes must be UTF-8, the test `ReadFile` applies.
+//
+// A file that no longer exists is KindAbsent. Anything else that goes wrong is
+// KindUnreadable: a file that exists and cannot be read is never "absent",
+// because the planning page lists unreadable files and says nothing of absent
+// ones.
+func (r *reader) read(rel string) read {
+	full, err := pathsafe.Resolve(r.root, rel)
+	if err != nil {
+		return read{kind: KindUnreadable, reason: reasonOutside}
+	}
+
+	info, err := os.Lstat(full)
+	if err != nil {
+		return failed(err)
+	}
+	if !info.Mode().IsRegular() {
+		return read{kind: KindUnreadable, reason: reasonNotRegular}
+	}
+	if info.Size() > r.maxBytes {
+		return read{kind: KindSkipped, size: info.Size()}
+	}
+
+	f, err := openFile(full)
+	if err != nil {
+		return failed(err)
+	}
+	defer func() { _ = f.Close() }()
+
+	fi, err := f.Stat()
+	if err != nil {
+		return failed(err)
+	}
+	if !fi.Mode().IsRegular() {
+		return read{kind: KindUnreadable, reason: reasonNotRegular}
+	}
+	if fi.Size() > r.maxBytes {
+		return read{kind: KindSkipped, size: fi.Size()}
+	}
+
+	data, err := io.ReadAll(io.LimitReader(f, r.maxBytes+1))
+	if err != nil {
+		return failed(err)
+	}
+	if int64(len(data)) > r.maxBytes {
+		return read{kind: KindSkipped, size: max(fi.Size(), int64(len(data)))}
+	}
+	if !utf8.Valid(data) {
+		return read{kind: KindUnreadable, reason: reasonNotUTF8}
+	}
+	return read{kind: KindFile, content: string(data)}
+}
+
+// failed maps a filesystem error to its answer: a missing file is absent, and
+// anything else is unreadable with the error's own words and not its path.
+func failed(err error) read {
+	if errors.Is(err, iofs.ErrNotExist) {
+		return read{kind: KindAbsent}
+	}
+	if errors.Is(err, iofs.ErrPermission) {
+		return read{kind: KindUnreadable, reason: "permission denied"}
+	}
+	var pe *iofs.PathError
+	if errors.As(err, &pe) {
+		return read{kind: KindUnreadable, reason: pe.Err.Error()}
+	}
+	return read{kind: KindUnreadable, reason: err.Error()}
+}
