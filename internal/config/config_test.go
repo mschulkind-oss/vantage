@@ -910,3 +910,24 @@ func TestLoadUserTips(t *testing.T) {
 	require.Error(t, err)
 	require.True(t, on, "an unreadable setting leaves the default")
 }
+
+// DaemonAddress is what `serve` reads before its service probe: the address
+// alone, the daemon's defaults filling in, and no source dir scanned.
+func TestDaemonAddress(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.toml")
+	require.NoError(t, os.WriteFile(path, []byte("host = [\"::\", \"127.0.0.1\"]\nport = 9123\nsource_dirs = [\"/nowhere\"]\n"), 0o644))
+	hosts, port, err := DaemonAddress(path)
+	require.NoError(t, err)
+	require.Equal(t, []string{"::", "127.0.0.1"}, hosts)
+	require.Equal(t, 9123, port)
+
+	require.NoError(t, os.WriteFile(path, []byte("source_dirs = [\"/nowhere\"]\n"), 0o644))
+	hosts, port, err = DaemonAddress(path)
+	require.NoError(t, err)
+	require.Equal(t, Defaults().Host, hosts)
+	require.Equal(t, Defaults().Port, port)
+
+	_, _, err = DaemonAddress(filepath.Join(dir, "missing.toml"))
+	require.Error(t, err)
+}

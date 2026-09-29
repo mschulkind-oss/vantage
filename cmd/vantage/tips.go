@@ -139,25 +139,25 @@ func probeService(ctx context.Context, goos, home, target string, plan *clonesPl
 		}
 	}
 
+	// Only the address before the probe: the rest of the config — resolving
+	// its paths, scanning its source dirs — runs under no timeout, and is
+	// worth nothing unless a service answers.
 	host, port := "127.0.0.1", 8000
-	var daemon *config.Config
+	configPath := ""
 	if path, err := config.DefaultConfigPath(); err == nil {
-		if _, err := os.Stat(path); err == nil {
-			if cfg, err := config.LoadDaemonFile(path); err == nil {
-				daemon = cfg
-				if len(cfg.Host) > 0 {
-					host = cfg.Host[0]
-				}
-				port = cfg.Port
+		if hosts, p, err := config.DaemonAddress(path); err == nil {
+			configPath = path
+			if len(hosts) > 0 {
+				host = hosts[0]
 			}
+			port = p
 		}
 	}
 	st.URL = "http://" + net.JoinHostPort(displayServiceHost(host), strconv.Itoa(port))
 
-	ctx, cancel := context.WithTimeout(ctx, serviceProbeTimeout)
+	probeCtx, cancel := context.WithTimeout(ctx, serviceProbeTimeout)
 	defer cancel()
-	probeURL := browserURL(host, port) + "/api/repos"
-	answer, err := list(ctx, probeURL)
+	answer, err := list(probeCtx, browserURL(host, port)+"/api/repos")
 	if err != nil {
 		return st
 	}
@@ -167,8 +167,10 @@ func probeService(ctx context.Context, goos, home, target string, plan *clonesPl
 		return st
 	}
 	st.Running = true
-	if daemon != nil {
-		st.OpenPath = openPathFor(daemon, target, plan, answer.Names)
+	if configPath != "" {
+		if daemon, err := config.LoadDaemonFile(configPath); err == nil {
+			st.OpenPath = openPathFor(daemon, target, plan, answer.Names)
+		}
 	}
 	return st
 }
