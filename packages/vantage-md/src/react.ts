@@ -10,6 +10,7 @@ export type { MarkdownViewerProps } from "./MarkdownViewer.js";
 export { useLineAnchor } from "./useLineAnchor.js";
 
 export { MermaidDiagram } from "./MermaidDiagram.js";
+export { mermaidFences, prerenderMermaid } from "./renderMermaidBlocks.js";
 export { FrontmatterDisplay } from "./FrontmatterDisplay.js";
 export { DocumentStatusChip } from "./DocumentStatusChip.js";
 

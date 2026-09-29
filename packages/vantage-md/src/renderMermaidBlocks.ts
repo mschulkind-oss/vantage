@@ -5,11 +5,21 @@
  * `<pre><code class="language-mermaid">...</code></pre>`. This function
  * finds those blocks and replaces them with rendered SVG diagrams.
  *
+ * It also draws diagrams ahead of a render: `mermaidFences` reads them out of
+ * Markdown and `prerenderMermaid` puts each in the SVG cache, where the React
+ * `MermaidDiagram` finds it on mount.
+ *
  * Framework-agnostic — works in any browser environment.
  */
 
-import { getCachedSvg, setCachedSvg } from "./mermaidCache.js";
+import type { Code } from "mdast";
+import remarkParse from "remark-parse";
+import { unified } from "unified";
+import { visit } from "unist-util-visit";
+import { getCachedSvg, hasCachedSvg, setCachedSvg } from "./mermaidCache.js";
 import { getMermaid } from "./mermaidLoader.js";
+import { currentMermaidPalette } from "./mermaidTheme.js";
+import { buildRemarkPlugins } from "./remarkPlugins.js";
 
 export interface RenderMermaidOptions {
   /** CSS class to add to the SVG wrapper div (default: "mermaid") */
@@ -125,4 +135,72 @@ function replaceWithSvg(
   }
   wrapper.innerHTML = svg;
   preEl.replaceWith(wrapper);
+}
+
+/* ------------------------------------------------------------------ *
+ * Drawing ahead of a render
+ * ------------------------------------------------------------------ */
+
+/** The viewer's parser: the remark half of `buildPipeline`. */
+const fenceParser = unified().use(remarkParse).use(buildRemarkPlugins());
+
+/**
+ * The code of every Mermaid fence in `markdown`, in source order, exactly as
+ * a viewer's `MermaidDiagram` receives it: the fence's content, without its
+ * container's indentation or its closing newline.
+ *
+ * A fence is a diagram when its info string's first word begins with the word
+ * `mermaid`, which is the test the viewer applies to the `language-…` class
+ * the fence renders with (`/language-(\w+)/`). Text that never says
+ * `mermaid` is not parsed at all.
+ */
+export function mermaidFences(markdown: string): string[] {
+  if (!markdown.includes("mermaid")) return [];
+  const codes: string[] = [];
+  visit(fenceParser.parse(markdown), "code", (node: Code) => {
+    if (/^\w+/.exec(node.lang ?? "")?.[0] === "mermaid") codes.push(node.value);
+  });
+  return codes;
+}
+
+/** Draws under way, by palette and code, so asking twice draws once. */
+const drawing = new Map<string, Promise<void>>();
+let drawn = 0;
+
+/**
+ * Draw one diagram into the SVG cache that `MermaidDiagram` reads when it
+ * mounts, so a diagram rendered after this has settled is drawn at its full
+ * size on its first paint instead of growing into place once Mermaid answers.
+ * The planning page draws every diagram of the cards it is about to show this
+ * way, before it commits them.
+ *
+ * Mermaid is loaded through `getMermaid`, so the drawing is configured, and
+ * made safe, exactly as every other diagram of the page is. `theme` is the
+ * palette key (`currentMermaidPalette`) to draw for; when the page has moved
+ * to another palette by the time Mermaid is ready, nothing is cached, since
+ * Mermaid now draws for the page's palette and not for `theme`.
+ *
+ * Resolves once the diagram is in the cache, at once when it already was, and
+ * rejects when Mermaid cannot draw it.
+ */
+export function prerenderMermaid(
+  code: string,
+  theme: string = currentMermaidPalette(),
+): Promise<void> {
+  if (!code.trim() || hasCachedSvg(code, theme)) return Promise.resolve();
+  const key = `${theme}\u0000${code}`;
+  let pending = drawing.get(key);
+  if (pending === undefined) {
+    pending = (async () => {
+      const mermaid = await getMermaid();
+      if (currentMermaidPalette() !== theme) return;
+      const { svg } = await mermaid.render(
+        `mermaid-ahead-${(++drawn).toString(36)}`,
+        code,
+      );
+      setCachedSvg(code, svg, theme);
+    })().finally(() => drawing.delete(key));
+    drawing.set(key, pending);
+  }
+  return pending;
 }
