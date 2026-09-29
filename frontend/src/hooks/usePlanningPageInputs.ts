@@ -200,6 +200,18 @@ function versionMoves(
   });
 }
 
+/** The block a cached set holds for `want`'s path, line and content hash. */
+function heldBlock(repo: string, want: CardWant): CardBlock | undefined {
+  const at = blockKey(want.path, want.startLine);
+  for (const entry of cache.values()) {
+    const had = entry.result;
+    if (had?.repo !== repo || had.hashes[want.path] !== want.hash) continue;
+    const block = had.blocks.get(at);
+    if (block) return block;
+  }
+  return undefined;
+}
+
 async function gather(
   key: string,
   repo: string,
@@ -224,14 +236,23 @@ async function gather(
   const previews = new Set<string>();
   for (const k of unhashed) blocks.set(k, null);
   const stale: CardWant[] = [];
-  if (wants.length > 0) {
+  // A block a cached set already holds for the same content is that block: an
+  // index update that did not touch a shown document asks the scanner
+  // nothing for it, and its card's props stay equal, so it does not render.
+  const asked = wants.filter((want) => {
+    const held = heldBlock(repo, want);
+    if (held === undefined) return true;
+    blocks.set(blockKey(want.path, want.startLine), held);
+    return false;
+  });
+  if (asked.length > 0) {
     let answers: CardAnswer[] | null;
     try {
-      answers = await planningScanner().cards(repo, wants);
+      answers = await planningScanner().cards(repo, asked);
     } catch {
       answers = null;
     }
-    wants.forEach((want, at) => {
+    asked.forEach((want, at) => {
       const k = blockKey(want.path, want.startLine);
       const answer = answers?.[at];
       if (answer === undefined) blocks.set(k, null);
