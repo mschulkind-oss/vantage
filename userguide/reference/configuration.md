@@ -357,7 +357,7 @@ log:
 
 | What happened | What the banner says is off | What to change |
 | ------------- | --------------------------- | -------------- |
-| The live-reload watcher ran out of the system's watches | Live reload, below the first folder it could not watch | Raise the limit (on Linux, `fs.inotify.max_user_watches`), or list the biggest folders in `.vantageignore` or `watcher_ignore_defaults` |
+| The live-reload watcher ran out of the system's watches | Live reload, below the first folder it could not watch | Raise the limit (on Linux, `fs.inotify.max_user_watches`; on macOS, where every watched file holds an open file, `kern.maxfilesperproc`), or list the biggest folders in `.vantageignore` or `watcher_ignore_defaults` |
 | Finding untracked files took longer than `walk_timeout` | Recent files may be missing untracked documents | Raise `walk_timeout`, or list the biggest folders in `.vantageignore` |
 | The project's watcher could not start at all, usually because the system ran out of watcher instances (each project takes one) | Live reload, for the whole project | Raise the limit (on Linux, `fs.inotify.max_user_instances`), then restart Vantage |
 

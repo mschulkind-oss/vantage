@@ -49,6 +49,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -168,6 +169,9 @@ type Server struct {
 	// [live.Watcher.SetWatchLimit]). Only tests set it, to reach the watch
 	// limit without a big tree.
 	watchLimit int
+	// goos is the platform the banner's advice is for: runtime.GOOS, which
+	// tests replace to pin one platform's wording on any host.
+	goos string
 	// watcherStart runs one watcher; nil means [live.Watcher.Start]. Only tests
 	// set it, to make a watcher fail to start without exhausting a real limit.
 	watcherStart func(*live.Watcher, context.Context) error
@@ -202,6 +206,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		activity:        map[string]model.RepoInfo{},
 		degraded:        map[string]map[string]model.Degradation{},
 		timedOutWalks:   map[string]map[git.WalkReport]bool{},
+		goos:            runtime.GOOS,
 	}
 
 	if err := s.buildRepoServices(); err != nil {
@@ -903,7 +908,7 @@ type degradedChangedMessage struct {
 // thousand refused watches are one push, not a thousand.
 func (s *Server) reportDegraded(d model.Degradation) {
 	if d.Message == "" {
-		d.Message = degradationMessage(d, s.cfg)
+		d.Message = degradationMessageFor(s.goos, d, s.cfg)
 	}
 	s.degradedMu.Lock()
 	kinds := s.degraded[d.Repo]
@@ -974,9 +979,9 @@ func (s *Server) degradedList() []model.Degradation {
 	return out
 }
 
-// degradationMessage is the sentence the banner shows for d: what is degraded,
-// and the setting that fixes it.
-func degradationMessage(d model.Degradation, cfg *config.Config) string {
+// degradationMessageFor is the sentence the banner shows for d: what is
+// degraded, and the setting that fixes it on goos.
+func degradationMessageFor(goos string, d model.Degradation, cfg *config.Config) string {
 	switch d.Kind {
 	case model.DegradationWatchLimit:
 		where := "for part of this project"
@@ -994,8 +999,14 @@ func degradationMessage(d model.Degradation, cfg *config.Config) string {
 		} else if d.Path != "." && d.Path != "" && more > 1 {
 			where += fmt.Sprintf(" and %d more folders", more)
 		}
-		return "Live reload is off " + where + ": the system's limit on watched folders was reached. " +
-			"Raise it (on Linux, fs.inotify.max_user_watches), or list the biggest folders in .vantageignore."
+		if goos == "linux" {
+			return "Live reload is off " + where + ": the system's limit on watched folders was reached. " +
+				"Raise it (on Linux, fs.inotify.max_user_watches), or list the biggest folders in .vantageignore."
+		}
+		// kqueue, on macOS and the BSDs, holds a descriptor for every watched
+		// directory and every file in it: its limit is the open-file limit.
+		return "Live reload is off " + where + ": the system's limit on open files was reached, and every watched file takes one. " +
+			"Raise it (on macOS, sysctl kern.maxfilesperproc), or list the biggest folders in .vantageignore."
 	case model.DegradationWalkTimeout:
 		return fmt.Sprintf("Recent files may be missing untracked documents: finding them took longer than walk_timeout (%s). "+
 			"Raise walk_timeout, or list the biggest folders in .vantageignore.", cfg.WalkTimeout)
