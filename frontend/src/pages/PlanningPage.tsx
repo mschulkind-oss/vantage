@@ -45,6 +45,7 @@ import {
   findDocument,
   type CardBlock,
   type DependsOn,
+  type PlanningBadge,
   type PlanningIndex,
   type PlanningQuestion,
   type PlanningSections,
@@ -291,6 +292,26 @@ function useQuotedText(
     [quotes],
   );
   return { linesOf, loading: want.length > 0 && quotes === null };
+}
+
+/**
+ * A document's badge, drawn once per index version: the same object every
+ * render, so a memoized card that shows it renders again only when its index
+ * does (§10.4).
+ */
+const badges = new WeakMap<PlanningIndex, Map<string, PlanningBadge | null>>();
+function badgeOf(index: PlanningIndex, path: string): PlanningBadge | null {
+  let byPath = badges.get(index);
+  if (byPath === undefined) {
+    byPath = new Map();
+    badges.set(index, byPath);
+  }
+  let badge = byPath.get(path);
+  if (badge === undefined) {
+    badge = badgeFor(index, "", { path, fragment: null });
+    byPath.set(path, badge);
+  }
+  return badge;
 }
 
 /** A size in the units the limits are written in. */
@@ -684,17 +705,14 @@ export const PlanningPage: React.FC = () => {
         card={asPreview ? null : (shown?.inputs.blocks.get(at) ?? null)}
         preview={asPreview}
         onShowQuestion={showQuestion}
-        badge={
-          shownIndex === null
-            ? null
-            : badgeFor(shownIndex, "", { path: question.path, fragment: null })
-        }
+        badge={shownIndex === null ? null : badgeOf(shownIndex, question.path)}
         comments={reviews.byPath[question.path]}
         commentsLate={shown?.reviewed.has(question.path) !== true}
         href={buildPath(question.path)}
         onOpenDocument={saveScroll}
         onFile={fileComment}
-        onScoped={(ids) => reportScoped(key, ids)}
+        cardKey={key}
+        onScoped={reportScoped}
       />
     );
   };
