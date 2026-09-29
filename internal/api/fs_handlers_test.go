@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/mschulkind-oss/vantage/internal/fs"
 	"github.com/mschulkind-oss/vantage/internal/model"
 	"github.com/stretchr/testify/require"
 )
@@ -114,6 +115,30 @@ func TestContentImageMissingFile404(t *testing.T) {
 	var env map[string]string
 	decode(t, w, &env)
 	require.Contains(t, env, "error")
+}
+
+// The loose project beside a directory of clones refuses every path inside a
+// repository the way it refuses a missing file (docs/design/serve-clones-directory.md
+// §3), and the image branch answers with raw bytes, so it has to refuse too:
+// it used to serve a clone's pictures, and a linked worktree's, which no
+// project serves at all.
+func TestContentImageStopsAtRepositories(t *testing.T) {
+	e := newTestEnv(t, false)
+	writeFile(t, e.dir, "pic.png", "loose")
+	writeFile(t, e.dir, "alpha/.git/HEAD", "ref: refs/heads/main\n")
+	writeFile(t, e.dir, "alpha/pic.png", "in the clone")
+	writeFile(t, e.dir, "wt/.git", "gitdir: /elsewhere/.git/worktrees/wt\n")
+	writeFile(t, e.dir, "wt/docs/pic.png", "in the worktree")
+	e.fs = fs.New(fs.Config{RootPath: e.dir, StopAtRepos: true})
+
+	w := e.do(e.h.Content, http.MethodGet, "/content?path=pic.png", "", true)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "loose", w.Body.String())
+	for _, path := range []string{"alpha/pic.png", "wt/docs/pic.png"} {
+		w := e.do(e.h.Content, http.MethodGet, "/content?path="+path, "", true)
+		require.Equal(t, http.StatusNotFound, w.Code, path)
+		require.NotContains(t, w.Body.String(), "in the", path)
+	}
 }
 
 func TestTreeListsEntries(t *testing.T) {
