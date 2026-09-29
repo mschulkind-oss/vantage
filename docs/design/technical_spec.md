@@ -158,6 +158,13 @@ review store, perf store, and live Manager) are built once.
     all — whenever anything on the machine runs `git status`, so without the
     content check an editor's git panel polling in the background reloads every
     open browser once a second.
+  - Besides Markdown, `files_changed` names the root `.vantage.toml` when it
+    changes, so the viewer can rescan its planning index
+    ([planning-index.md §3.4](planning-index.md#34-when-it-is-built-and-how-it-stays-fresh)).
+    It also names the Markdown already inside a directory that appears, which
+    inotify never reports by itself. A watched directory renamed away or
+    removed is listed in `removed_dirs`, because its files leave without events
+    of their own.
 
 - **`review.Store`** — review-mode persistence (see [§2.5](#25-review-mode-internalreview-internalreviewanchor)).
 
