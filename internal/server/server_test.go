@@ -1364,6 +1364,18 @@ func TestWalkTimeoutReachesTheBrowser(t *testing.T) {
 	require.Contains(t, got[0].Message, "walk_timeout (1ns)")
 }
 
+// A walk that later finishes in time — the tree shrank, or it was a slow
+// moment — takes its report back, and the browser hears that too.
+func TestAFinishedWalkClearsItsTimeout(t *testing.T) {
+	srv, _ := daemonServer(t)
+	srv.walkFinished("alpha", true)
+	require.Len(t, degradedList(t, srv.Handler()), 1)
+	srv.walkFinished("alpha", false)
+	require.Empty(t, degradedList(t, srv.Handler()))
+	srv.walkFinished("alpha", false) // nothing to clear is fine
+	require.Empty(t, degradedList(t, srv.Handler()))
+}
+
 func TestUnregisterForgetsARepositorysDegradations(t *testing.T) {
 	srv, _ := daemonServer(t)
 	srv.reportDegraded(model.Degradation{Repo: "alpha", Kind: model.DegradationWatchLimit, Path: "docs/big", Count: 3})

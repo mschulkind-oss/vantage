@@ -597,15 +597,18 @@ func TestRecentsReportsAWalkCutOffByItsTimeout(t *testing.T) {
 	repo := initRepo(t)
 	writeFile(t, repo, "untracked.md", "# u\n")
 
-	calls := 0
-	svc := NewService(repo, Options{WalkTimeout: time.Nanosecond, OnWalkTimeout: func() { calls++ }})
+	var reports []bool
+	record := func(timedOut bool) { reports = append(reports, timedOut) }
+	svc := NewService(repo, Options{WalkTimeout: time.Nanosecond, OnWalk: record})
 	svc.Recents(10, nil, true, true)
-	require.Equal(t, 1, calls)
+	require.Equal(t, []bool{true}, reports)
 
+	// A walk that finishes says so too, which is what clears the banner once
+	// the tree has shrunk or the timeout has been raised.
 	ClearRecentFilesCache()
-	calls = 0
-	svc = NewService(repo, Options{WalkTimeout: 10 * time.Second, OnWalkTimeout: func() { calls++ }})
+	reports = nil
+	svc = NewService(repo, Options{WalkTimeout: 10 * time.Second, OnWalk: record})
 	got := svc.Recents(10, nil, true, true)
-	require.Zero(t, calls, "a walk that finishes is not reported")
+	require.Equal(t, []bool{false}, reports)
 	require.Len(t, got, 1)
 }
