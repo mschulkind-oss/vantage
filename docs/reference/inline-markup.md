@@ -811,15 +811,17 @@ this: their sanitizer refuses `class` outright.
   the page styles: the highlighter's token classes, KaTeX's output, Mermaid's
   diagrams, and everything the app's components add. A document that writes one
   of those on an element keeps nothing.
-- **Mermaid source is the one route left, and the diagram bounds it.** Mermaid
-  renders after the sanitizer, and it copies the class names a diagram's source
-  gives a node, with `:::name`, `class A name` or `classDef`, onto that node. So
-  a diagram can carry any of the app's utilities on its own nodes: measured,
-  `hidden` hid one and `animate-spin` spun one. None of it reaches past the
-  drawing. `position` does nothing on an SVG group, the diagram's `svg` clips
-  what is inside it, and a `classDef` that sets `position: fixed` on a label
-  leaves the label inside the `foreignObject` that holds it. An end-to-end test
-  measures that bound.
+- **Mermaid source is the one route left for a class, and the diagram bounds
+  it.** Mermaid renders after the sanitizer, and it copies the class names a
+  diagram's source gives a node, with `:::name`, `class A name` or `classDef`,
+  onto that node. So a diagram can carry any of the app's utilities on its own
+  nodes: measured, `hidden` hid one and `animate-spin` spun one. None of those
+  classes reaches past the drawing. `position` does nothing on an SVG group, the
+  diagram's `svg` clips what is inside it, and a `classDef` that sets
+  `position: fixed` on a label leaves the label inside the `foreignObject` that
+  holds it. An end-to-end test measures that bound. A diagram's source could
+  also write a stylesheet, and that did reach past the drawing: see
+  [A diagram's stylesheet](#a-diagrams-stylesheet).
 - **`remark-math`'s `math-display` and `math-inline` are dropped, as they always
   were.** KaTeX finds math by `language-math` alone, and tells a display formula
   from an inline one by whether it sits in a `pre`.
@@ -981,6 +983,46 @@ chooses. Fifty short paths with a `0.0011` dash took 21 seconds to paint in
 headless Chromium, and a floor on the dash length does not help, because scaling
 the user units by a thousand costs the same 15 seconds with a `1.1` dash.
 
+### A diagram's stylesheet
+
+Mermaid writes a `<style>` element into each diagram it draws, and three
+settings a diagram's own source may give feed it: `themeCSS`, `fontFamily` and
+`altFontFamily`. A diagram gives a setting in a `%%{init: …}%%` directive or
+under `config:` in its frontmatter. **Vantage refuses all three.** It adds them
+to Mermaid's `secure` setting, which lists the keys only the page's own call to
+`mermaid.initialize` may set; Mermaid deletes those keys from a diagram's
+settings at every depth, so `themeVariables.fontFamily` goes too. The list is in
+`packages/vantage-md/src/mermaidLoader.ts`, and both viewers load Mermaid
+through that module.
+
+- **Mermaid scopes a diagram's selectors, but not its animation names.** It
+  puts every selector of the stylesheet under the diagram's id, and leaves the
+  name of a `@keyframes` rule as written. A diagram that defined `flash-update`
+  therefore redefined the animation the viewer plays on a block that has just
+  changed. Measured in Chromium at 1280x800, with `position: fixed`, the size
+  of the window and `z-index: 99999` in those keyframes: the next flash laid the
+  changed block over the header and the sidebar, and a link in it took their
+  clicks. The sidebar's rows flash with the same animation, and the app's
+  spinners play `spin` and `pulse`.
+- **The stylesheet fetched, too.** A `url(…)` in it requested an image from
+  any host as the diagram rendered, which is what the inline-`style` filter
+  refuses parentheses to prevent.
+- **Mermaid's own checks do not cover these settings.** It checks `themeCSS`
+  only for braces that pair. It copies `fontFamily` into the theme variables
+  after its check on theme variables has run, and the value lands in the
+  stylesheet as a declaration's value, where a nested `@keyframes` block
+  becomes a rule of the page's. `altFontFamily` lands in a rule the browser
+  parses first, and that parse drops what does not belong there; it is refused
+  anyway, because nothing needs it.
+- **What it costs: a diagram cannot choose its font or add CSS.** Its `theme`
+  and `themeVariables` still apply. Mermaid admits only letters, digits, spaces
+  and `#%(),.;` in a theme variable, so a variable cannot open a rule, and with
+  no colon or slash a URL in one can only be relative, on Vantage's own server.
+
+`frontend/e2e/mermaid.spec.ts` renders each setting by both routes, and
+measures that no diagram redefines a `@keyframes` name the app defines, that a
+flashed block stays in the content pane, and that no image is fetched.
+
 ## Validation
 
 The `vantage/*` rule family in `vantage-check` validates directives with no
@@ -1065,6 +1107,7 @@ table is the only place the values themselves are stated.
 | Elements that keep no `style` | `input` | `UNSTYLED_TAGS`, `sanitize.ts` |
 | `display` values a `style` may set | `none`, `block`, `inline`, `inline-block`, `flow-root`, `flex`, `inline-flex`, `grid`, `inline-grid`, `table`, `inline-table`, `table-row`, `table-row-group`, `table-header-group`, `table-footer-group`, `table-cell`, `table-column`, `table-column-group`, `table-caption`, `list-item`; each may end in `!important` | `DISPLAY_VALUES`, `sanitize.ts` |
 | Classes a document may write | `code`: `language-*`; `ul` and `ol`: `contains-task-list`; `li`: `task-list-item`; `section`: `footnotes`; `h2`: `sr-only`; `a`: `data-footnote-backref`; `div`: `vantage-alert-title`; none on any other element | `PIPELINE_CLASSES`, `sanitize.ts` |
+| Mermaid settings a diagram may not set | Mermaid's default `secure` list (`secure`, `securityLevel`, `startOnLoad`, `maxTextSize`, `suppressErrorRendering`, `maxEdges`), plus `themeCSS`, `fontFamily` and `altFontFamily` | `MERMAID_SECURE_KEYS`, `mermaidLoader.ts` |
 
 ## Why it's this way
 

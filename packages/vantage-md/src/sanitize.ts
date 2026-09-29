@@ -78,7 +78,10 @@ function defaultClasses(tag: string): ClassValue[] {
  * (`:::name`, `class A name`, `classDef`) onto that node, so a diagram can
  * carry any of the app's utilities on its own nodes. The diagram bounds it:
  * `position` does nothing on an SVG group, and the diagram's `svg` clips what
- * is inside it. `frontend/e2e/mermaid.spec.ts` measures that bound.
+ * is inside it. `frontend/e2e/mermaid.spec.ts` measures that bound. The
+ * stylesheet a diagram's source could write did reach past the diagram, and
+ * `MERMAID_SECURE_KEYS` in `mermaidLoader.ts` refuses the settings that write
+ * it.
  *
  * A document may still write these names on these elements. By the time the
  * sanitizer runs, a hand-written `<li class="task-list-item">` and the one GFM
