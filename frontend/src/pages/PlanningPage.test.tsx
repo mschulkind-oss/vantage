@@ -17,8 +17,16 @@ import {
   screen,
   within,
 } from "@testing-library/react";
+import { useLayoutEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
+import {
+  MemoryRouter,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  type NavigateFunction,
+} from "react-router-dom";
 import axios from "axios";
 import {
   PLANNING_NOTICES,
@@ -49,6 +57,7 @@ import {
   type ScannerClient,
 } from "../planningScan/client";
 import { memoryScanStore } from "../planningScan/memoryStore";
+import { setPlanningLimitsForTests } from "../planningScan/limits";
 import { contentHash, readRepoFile, sourcesOf } from "../test/planning";
 import { fakePlanningServer } from "../test/planningStream";
 import type { ReviewComment, ReviewData } from "../types";
@@ -249,6 +258,7 @@ afterEach(() => {
   cleanup();
   localStorage.clear();
   setPlanningScannerForTests(null);
+  setPlanningLimitsForTests(null);
 });
 
 /** Let the reviews, the card blocks and the quoted lines all answer. */
@@ -265,11 +275,37 @@ async function settle(): Promise<void> {
  * position by entry key, and the router gives every first entry the same one.
  */
 let entries = 0;
-const entry = (pathname: string) => ({ pathname, key: `entry-${++entries}` });
+const entry = (url: string) => {
+  const [pathname, query] = url.split("?");
+  return {
+    pathname: pathname ?? url,
+    search: query === undefined ? "" : `?${query}`,
+    key: `entry-${++entries}`,
+  };
+};
 
-async function renderPage(url = "/.vantage/planning") {
+/** Where the router is, and a way to move it, from outside the routes. */
+const router: { location: string; navigate: NavigateFunction | null } = {
+  location: "",
+  navigate: null,
+};
+function RouterProbe() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  useLayoutEffect(() => {
+    router.location = `${location.pathname}${location.search}`;
+    router.navigate = navigate;
+  });
+  return null;
+}
+
+async function renderPage(url = "/.vantage/planning", before: string[] = []) {
   const view = render(
-    <MemoryRouter initialEntries={[entry(url)]}>
+    <MemoryRouter
+      initialEntries={[...before.map(entry), entry(url)]}
+      initialIndex={before.length}
+    >
+      <RouterProbe />
       <Routes>
         <Route path="/.vantage/planning/*" element={<PlanningPage />} />
         <Route path="/*" element={<div data-testid="viewer">viewer</div>} />
@@ -523,6 +559,215 @@ describe("empty and degenerate states", () => {
       screen.getByLabelText("Scanning the planning documents"),
     ).toBeTruthy();
     expect(screen.queryAllByRole("region")).toHaveLength(0);
+  });
+});
+
+describe("pages (planning-index-at-scale.md §10.2)", () => {
+  // Needs you holds three cards, and Unrouted two, so at two a page Needs you
+  // has two pages and Unrouted one.
+  beforeEach(() => {
+    setPlanningLimitsForTests({ pageEntries: 2 });
+    seed();
+  });
+
+  const pager = (name: string, place: "top" | "bottom" = "top") =>
+    screen.getByRole("navigation", {
+      name: place === "top" ? `${name} pages` : `${name} pages, below`,
+    });
+  const flip = async (label: "Next ›" | "‹ Previous", place?: "bottom") => {
+    await act(async () => {
+      fireEvent.click(
+        within(pager("Needs you", place)).getByRole("button", { name: label }),
+      );
+    });
+    await settle();
+  };
+
+  it("shows one page of a section, with its range above and below it", async () => {
+    await renderPage();
+    expect(cardsIn("Needs you")).toEqual([
+      "OQ-D1: Question OQ-D1?",
+      "OQ-D3: Question OQ-D3?",
+    ]);
+    for (const place of ["top", "bottom"] as const) {
+      const nav = pager("Needs you", place);
+      expect(nav).toHaveTextContent("1–2 of 3");
+      expect(
+        within(nav).getByRole("button", { name: "‹ Previous" }),
+      ).toBeDisabled();
+      expect(within(nav).getByRole("button", { name: "Next ›" })).toBeEnabled();
+    }
+    // The heading's count is the section's, not the page's.
+    expect(
+      within(section("Needs you")).getByRole("heading", { level: 2 }),
+    ).toHaveTextContent("Needs you3");
+  });
+
+  it("gives a section of one page no pager", async () => {
+    await renderPage();
+    expect(cardsIn("Unrouted")).toHaveLength(2);
+    expect(
+      screen.queryByRole("navigation", { name: /^Unrouted pages/ }),
+    ).toBeNull();
+  });
+
+  it("flips to the next page in place of the history entry", async () => {
+    await renderPage("/.vantage/planning", ["/plans/roadmap.md"]);
+    await flip("Next ›");
+    expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
+    expect(router.location).toBe("/.vantage/planning?needs-you=2");
+    const nav = pager("Needs you");
+    expect(nav).toHaveTextContent("3–3 of 3");
+    expect(within(nav).getByRole("button", { name: "Next ›" })).toBeDisabled();
+    // Back leaves the page rather than stepping back through its pages.
+    act(() => router.navigate!(-1));
+    expect(router.location).toBe("/plans/roadmap.md");
+  });
+
+  it("clamps a page past the end to the last, and rewrites the URL in place", async () => {
+    await renderPage("/.vantage/planning?needs-you=9&other=x");
+    expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
+    expect(router.location).toBe("/.vantage/planning?needs-you=2&other=x");
+  });
+
+  it.each(["abc", "0", "1"])(
+    "reads needs-you=%s as page 1, and leaves it out of the URL",
+    async (raw) => {
+      await renderPage(`/.vantage/planning?needs-you=${raw}`);
+      expect(cardsIn("Needs you")).toHaveLength(2);
+      expect(router.location).toBe("/.vantage/planning");
+    },
+  );
+
+  it("brings the section's heading into view from the bottom pager, and leaves the scroll alone from the top", async () => {
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    try {
+      await renderPage();
+      await flip("Next ›");
+      expect(scrolled).not.toHaveBeenCalled();
+      await flip("‹ Previous", "bottom");
+      expect(scrolled).toHaveBeenCalledTimes(1);
+      expect(scrolled.mock.contexts[0]).toBe(
+        within(section("Needs you")).getByRole("heading", { level: 2 }),
+      );
+    } finally {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
+  it("offers a page select in a long section", async () => {
+    setPlanningLimitsForTests({ pageEntries: 1, pageSelectFrom: 3 });
+    await renderPage();
+    const select = within(pager("Needs you")).getByRole("combobox", {
+      name: "Needs you page",
+    });
+    expect(
+      within(select)
+        .getAllByRole("option")
+        .map((o) => o.textContent),
+    ).toEqual(["Page 1", "Page 2", "Page 3"]);
+    await act(async () => {
+      fireEvent.change(select, { target: { value: "3" } });
+    });
+    await settle();
+    expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
+    // Unrouted has two pages, fewer than a select is offered from.
+    expect(within(pager("Unrouted")).queryByRole("combobox")).toBeNull();
+  });
+
+  it("returns from Open document to the same pages, at the same scroll", async () => {
+    await renderPage();
+    await flip("Next ›");
+    Object.defineProperty(window, "scrollY", {
+      value: 640,
+      configurable: true,
+    });
+    fireEvent.click(
+      within(cardFor("OQ-A1")).getByRole("link", { name: "Open document" }),
+    );
+    expect(screen.getByTestId("viewer")).toBeTruthy();
+    Object.defineProperty(window, "scrollY", { value: 0, configurable: true });
+    vi.mocked(window.scrollTo).mockClear();
+    act(() => router.navigate!(-1));
+    await settle();
+    expect(router.location).toBe("/.vantage/planning?needs-you=2");
+    expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
+    expect(window.scrollTo).toHaveBeenCalledWith(0, 640);
+  });
+});
+
+describe("a flip's scroll position", () => {
+  beforeEach(() => {
+    setPlanningLimitsForTests({ pageEntries: 2 });
+    seed();
+  });
+
+  // A replaced entry has a key of its own, so the position the reader flipped
+  // at goes with it: Back from any link on the new page returns there, not
+  // only from Open document, which saves as it leaves.
+  it("carries over to the replaced history entry", async () => {
+    await renderPage();
+    Object.defineProperty(window, "scrollY", {
+      value: 300,
+      configurable: true,
+    });
+    await act(async () => {
+      fireEvent.click(
+        within(
+          screen.getByRole("navigation", { name: "Needs you pages" }),
+        ).getByRole("button", { name: "Next ›" }),
+      );
+    });
+    await settle();
+    // A link that saves nothing on its way out.
+    fireEvent.click(
+      within(section("Waiting")).getByRole("link", { name: "design.md#OQ-D1" }),
+    );
+    expect(screen.getByTestId("viewer")).toBeTruthy();
+    Object.defineProperty(window, "scrollY", { value: 0, configurable: true });
+    vi.mocked(window.scrollTo).mockClear();
+    act(() => router.navigate!(-1));
+    await settle();
+    expect(window.scrollTo).toHaveBeenCalledWith(0, 300);
+  });
+});
+
+describe("the section bar (planning-index-at-scale.md §10.1)", () => {
+  beforeEach(() => seed());
+
+  const bar = () => screen.getByRole("navigation", { name: "Sections" });
+
+  it("names each non-empty section with its exact count, whatever the page", async () => {
+    setPlanningLimitsForTests({ pageEntries: 1 });
+    await renderPage();
+    expect(
+      within(bar())
+        .getAllByRole("link")
+        .map((a) => a.textContent),
+    ).toEqual([
+      "Needs you 3",
+      "Unrouted 2",
+      "Waiting 2",
+      "Ready 1",
+      "Graduate 1",
+      "Disagrees 1",
+    ]);
+  });
+
+  it("jumps to a section without adding a history entry", async () => {
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    try {
+      await renderPage();
+      fireEvent.click(within(bar()).getByRole("link", { name: /^Waiting/ }));
+      expect(scrolled.mock.contexts[0]).toBe(
+        within(section("Waiting")).getByRole("heading", { level: 2 }),
+      );
+      expect(router.location).toBe("/.vantage/planning");
+    } finally {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
   });
 });
 
