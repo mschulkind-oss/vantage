@@ -730,6 +730,11 @@ accessible name. Both are places where the parser reads HTML, and requiring an
 and `<svg><desc><title>` re-parses from `renderMarkdown`'s string output as an
 HTML `title`. Either one set the tab title.
 
+`role` on the `<svg>` is kept only as `img`, or as `presentation` or `none` for
+a decoration, and is dropped otherwise. Any other value let a document present
+its drawing to assistive technology as an alert, a button or a dialog, under a
+label the document wrote.
+
 `transform` is accepted on the elements inside an `<svg>` and refused on the
 `<svg>` itself. There it is a CSS transform of an in-flow box, and
 `transform="translate(-300 -300) scale(80)"` painted a 10-pixel drawing as an
