@@ -32,6 +32,13 @@ func IsWorktree(dir string) bool {
 	return strings.HasPrefix(strings.TrimSpace(string(data)), "gitdir:")
 }
 
+// IsRepoBoundary reports whether dir is the root of a repository other than the
+// one being served: it holds a .git directory, or it is a linked worktree. A
+// walk that stops at repositories never enters one.
+func IsRepoBoundary(dir string) bool {
+	return dirHasGit(dir) || IsWorktree(dir)
+}
+
 // isFile reports whether path exists and is a regular file.
 func isFile(path string) bool {
 	info, err := os.Stat(path)
@@ -100,6 +107,11 @@ func splitLinesNoTrailing(s string) []string {
 // git repositories, skipping hidden and excluded directories. It is used when
 // repoPath is not itself a git repo (e.g. ~/projects containing project_a/.git).
 func (s *GitService) discoverChildRepos() []string {
+	if s.opts.StopAtRepos {
+		// Each child repository is a project of its own; none of its files
+		// belong to this one.
+		return nil
+	}
 	entries, err := os.ReadDir(s.repoPath)
 	if err != nil {
 		slog.Debug("git: cannot scan for child repos", "path", s.repoPath, "error", err)
@@ -201,6 +213,11 @@ func (s *GitService) walkSubdir(root string, extLower []string, add func(rel str
 		if d.IsDir() {
 			name := d.Name()
 			if p != root && (strings.HasPrefix(name, ".") || s.isExcludedDir(name) || IsWorktree(p)) {
+				return fs.SkipDir
+			}
+			// Checked for root too: looseMarkdown hands each top-level
+			// directory in as a root of its own, and a clone is one of them.
+			if s.opts.StopAtRepos && dirHasGit(p) {
 				return fs.SkipDir
 			}
 			return nil

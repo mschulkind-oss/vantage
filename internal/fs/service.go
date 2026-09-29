@@ -141,6 +141,9 @@ type FileSystemService struct {
 	rootPath    string // absolute, cleaned
 	excludeDirs map[string]struct{}
 	useIgnore   bool
+	// stopAtRepos makes every repository below the root a boundary; see
+	// [Config.StopAtRepos].
+	stopAtRepos bool
 
 	gitOnce sync.Once
 	gitSvc  *git.GitService
@@ -161,6 +164,14 @@ type Config struct {
 	// WalkMaxDepth caps recursion depth for markdown discovery (number of path
 	// separators below the directory). Nil means unlimited.
 	WalkMaxDepth *int
+	// StopAtRepos makes every repository below the root — a directory holding
+	// a .git directory, at any depth — a boundary. Listings and walks never
+	// enter one, and a path inside one is refused like a missing file. It is
+	// set for the project holding the Markdown beside a directory of clones,
+	// whose clones are each served as a project of their own (see
+	// docs/design/serve-clones-directory.md §3). Linked worktrees are pruned
+	// whether or not it is set.
+	StopAtRepos bool
 }
 
 // New builds a FileSystemService for cfg. The root is resolved to an absolute
@@ -176,10 +187,12 @@ func New(cfg Config) *FileSystemService {
 		rootPath:    root,
 		excludeDirs: excl,
 		useIgnore:   cfg.UseIgnoreFiles,
+		stopAtRepos: cfg.StopAtRepos,
 		gitOpts: git.Options{
 			ExcludeDirs:    cfg.ExcludeDirs,
 			WalkMaxDepth:   cfg.WalkMaxDepth,
 			UseIgnoreFiles: cfg.UseIgnoreFiles,
+			StopAtRepos:    cfg.StopAtRepos,
 		},
 	}
 }
@@ -218,6 +231,34 @@ func (s *FileSystemService) validatePath(path string) (string, error) {
 	return pathsafe.Resolve(s.rootPath, path)
 }
 
+// isBoundary reports whether the directory at full is one this service's walks
+// never enter because it is another repository. It is always false unless
+// [Config.StopAtRepos] is set; linked worktrees are pruned separately, and
+// unconditionally.
+func (s *FileSystemService) isBoundary(full string) bool {
+	return s.stopAtRepos && git.IsRepoBoundary(full)
+}
+
+// withinBoundary reports whether full — a validated path under the root — is a
+// boundary or lies inside one, checking every directory from the root down.
+func (s *FileSystemService) withinBoundary(full string) bool {
+	if !s.stopAtRepos {
+		return false
+	}
+	rel, err := filepath.Rel(s.rootPath, full)
+	if err != nil || rel == "." {
+		return false
+	}
+	dir := s.rootPath
+	for _, part := range strings.Split(rel, string(os.PathSeparator)) {
+		dir = filepath.Join(dir, part)
+		if s.isBoundary(dir) {
+			return true
+		}
+	}
+	return false
+}
+
 // ListDirectory lists the entries of path (relative to the root), returning
 // dirs-first then case-sensitively by name. Directories report HasMarkdown;
 // symlinks carry the tri-state described on the package. With opts.IncludeGit it
@@ -235,7 +276,7 @@ func (s *FileSystemService) ListDirectory(path string, opts Options) ([]model.Fi
 		return nil, err
 	}
 	info, err := os.Stat(targetDir)
-	if err != nil || !info.IsDir() {
+	if err != nil || !info.IsDir() || s.withinBoundary(targetDir) {
 		return nil, newPathError("Not a directory")
 	}
 
@@ -330,7 +371,7 @@ func (s *FileSystemService) buildNode(
 		if _, excluded := s.excludeDirs[name]; excluded {
 			return node, false, false
 		}
-		if git.IsWorktree(full) {
+		if git.IsWorktree(full) || s.isBoundary(full) {
 			return node, false, false
 		}
 	}
@@ -558,7 +599,7 @@ func (s *FileSystemService) walkForMarkdown(dir string) bool {
 				if name == ".git" || name == ".vantage" {
 					return fs.SkipDir
 				}
-				if git.IsWorktree(p) {
+				if git.IsWorktree(p) || s.isBoundary(p) {
 					return fs.SkipDir
 				}
 				rel := s.relPath(p)
@@ -578,6 +619,15 @@ func (s *FileSystemService) walkForMarkdown(dir string) bool {
 		return nil
 	})
 	return found
+}
+
+// HasMarkdown reports whether the root holds any Markdown file the listing
+// would reach, stopping at the first one. It applies exactly the rules the
+// tree's has-Markdown probe does — walk_max_depth, the exclude list, ignore
+// files, and repository boundaries — and is uncached, since its caller asks
+// once, at startup.
+func (s *FileSystemService) HasMarkdown() bool {
+	return s.walkForMarkdown(s.rootPath)
 }
 
 // errStopWalk short-circuits a WalkDir once the first match is found.
@@ -697,7 +747,7 @@ func (s *FileSystemService) prunesListedDir(full, rel, name string, matcher *ign
 		// Hidden dirs are pruned; ListAllFiles never shows hidden trees.
 		return true
 	}
-	if git.IsWorktree(full) {
+	if git.IsWorktree(full) || s.isBoundary(full) {
 		return true
 	}
 	return matcher != nil && matcher.IsIgnored(rel, true)
@@ -741,7 +791,7 @@ func (s *FileSystemService) ReadFile(path string) (*model.FileContent, error) {
 		return nil, err
 	}
 	info, err := os.Stat(full)
-	if err != nil || !info.Mode().IsRegular() {
+	if err != nil || !info.Mode().IsRegular() || s.withinBoundary(full) {
 		return nil, newPathError("Not a file")
 	}
 

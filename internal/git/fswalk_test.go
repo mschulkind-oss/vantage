@@ -2,10 +2,13 @@ package git
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/mschulkind-oss/vantage/internal/model"
 )
 
 func TestIsWorktree(t *testing.T) {
@@ -95,4 +98,85 @@ func TestWalkSubdirSkipsWorktrees(t *testing.T) {
 	})
 
 	require.Equal(t, []string{"sub/normal.md"}, collected, "nested worktrees must be pruned from walkSubdir")
+}
+
+func TestIsRepoBoundary(t *testing.T) {
+	dir := t.TempDir()
+	repo := filepath.Join(dir, "repo")
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".git"), 0o755))
+	worktree := filepath.Join(dir, "worktree")
+	require.NoError(t, os.MkdirAll(worktree, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(worktree, ".git"), []byte("gitdir: /main/.git/worktrees/wt\n"), 0o644))
+	plain := filepath.Join(dir, "plain")
+	require.NoError(t, os.MkdirAll(plain, 0o755))
+
+	require.True(t, IsRepoBoundary(repo))
+	require.True(t, IsRepoBoundary(worktree))
+	require.False(t, IsRepoBoundary(plain))
+	require.False(t, IsRepoBoundary(filepath.Join(dir, "missing")))
+}
+
+// looseParent builds a directory that is not a repository and holds one
+// committed child repository, loose Markdown beside it, and a repository nested
+// two levels down inside a plain folder.
+func looseParent(t *testing.T) string {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary not available")
+	}
+	parent := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(parent); err == nil {
+		parent = resolved
+	}
+	alpha := filepath.Join(parent, "alpha")
+	require.NoError(t, os.MkdirAll(alpha, 0o755))
+	runGit(t, alpha, "-c", "init.defaultBranch=main", "init")
+	writeFile(t, alpha, "README.md", "# alpha\n")
+	runGit(t, alpha, "add", "README.md")
+	runGit(t, alpha, "commit", "-m", "alpha")
+
+	writeFile(t, parent, "notes.md", "# notes\n")
+	writeFile(t, parent, "drafts/idea.md", "# idea\n")
+	require.NoError(t, os.MkdirAll(filepath.Join(parent, "drafts", "old", ".git"), 0o755))
+	writeFile(t, parent, "drafts/old/inside.md", "# inside\n")
+	return parent
+}
+
+func recentPaths(rf []model.RecentFile) []string {
+	out := make([]string, 0, len(rf))
+	for _, r := range rf {
+		out = append(out, r.Path)
+	}
+	return out
+}
+
+// A service that stops at repositories is the one for the Markdown beside a set
+// of clones: each clone is a project of its own, so none of its files and none
+// of its history may leak into this one.
+func TestStopAtReposKeepsChildRepositoriesOut(t *testing.T) {
+	ClearRecentFilesCache()
+	t.Cleanup(ClearRecentFilesCache)
+	parent := looseParent(t)
+
+	delegating := NewService(parent, Options{})
+	require.Contains(t, recentPaths(delegating.Recents(50, nil, true, true)), "alpha/README.md",
+		"control: a plain parent delegates to its child repository")
+	require.NotEmpty(t, delegating.History("alpha/README.md", 5))
+
+	ClearRecentFilesCache()
+	svc := NewService(parent, Options{StopAtRepos: true})
+	require.False(t, svc.InWorkTree())
+	require.ElementsMatch(t, []string{"notes.md", "drafts/idea.md"}, recentPaths(svc.Recents(50, nil, true, true)))
+	require.Empty(t, svc.History("alpha/README.md", 5))
+	require.Nil(t, svc.LastCommit("alpha/README.md"))
+	require.Empty(t, svc.LastCommitsBatch([]string{"alpha/README.md"}))
+}
+
+func TestInWorkTree(t *testing.T) {
+	repo := initRepo(t)
+	require.True(t, NewService(repo, Options{}).InWorkTree())
+	sub := filepath.Join(repo, "docs")
+	require.NoError(t, os.MkdirAll(sub, 0o755))
+	require.True(t, NewService(sub, Options{}).InWorkTree(), "a subdirectory of a repository is inside its work tree")
+	require.False(t, NewService(t.TempDir(), Options{}).InWorkTree())
 }

@@ -282,6 +282,69 @@ func TestAddRecursivePrunesNestedGitDirs(t *testing.T) {
 	require.ElementsMatch(t, []string{".", ".git", "alpha", "alpha/docs"}, watched)
 }
 
+// The watcher for the Markdown beside a set of clones stops at every
+// repository: each clone has a watcher of its own, and a second one over the
+// same tree would double every watch and every push.
+func TestAddRecursiveStopsAtRepositoriesWhenAsked(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{"alpha/.git", "alpha/docs", "drafts/old/.git", "drafts/old/sub", "drafts/new"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(root, dir), 0o755))
+	}
+
+	record := func(w *Watcher) *[]string {
+		var watched []string
+		w.addWatch = func(path string) error {
+			rel, _ := filepath.Rel(root, path)
+			watched = append(watched, filepath.ToSlash(rel))
+			return nil
+		}
+		return &watched
+	}
+
+	control, err := NewWatcher(root, "", nil, nil, false, quietLogger(), []string{})
+	require.NoError(t, err)
+	all := record(control)
+	control.addRecursive(root)
+	require.Contains(t, *all, "alpha/docs", "control: by default a nested repository's work tree is watched")
+
+	w, err := NewWatcher(root, "", nil, nil, false, quietLogger(), []string{})
+	require.NoError(t, err)
+	w.SetStopAtRepos(true)
+	watched := record(w)
+	w.addRecursive(root)
+	require.ElementsMatch(t, []string{".", "drafts", "drafts/new"}, *watched)
+}
+
+// A clone made inside the loose project's tree after startup is watched from
+// the moment its directory appears, before git has written .git into it. The
+// .git arriving is what says the directory is a repository, so that is when
+// its watches are dropped.
+func TestHandleEventDropsADirectoryThatBecomesARepository(t *testing.T) {
+	root := t.TempDir()
+	w, err := NewWatcher(root, "", nil, nil, false, quietLogger(), []string{})
+	require.NoError(t, err)
+	w.SetStopAtRepos(true)
+	var removed []string
+	w.addWatch = func(string) error { return nil }
+	w.removeWatch = func(path string) {
+		rel, _ := filepath.Rel(root, path)
+		removed = append(removed, filepath.ToSlash(rel))
+	}
+	co := newCoalescer(time.Hour, time.Hour, func([]string) {})
+	defer co.stop()
+
+	clone := filepath.Join(root, "clone")
+	require.NoError(t, os.MkdirAll(filepath.Join(clone, "docs"), 0o755))
+	w.handleEvent(fsnotify.Event{Name: clone, Op: fsnotify.Create}, co)
+	require.Contains(t, w.dirs, "clone/docs")
+
+	require.NoError(t, os.MkdirAll(filepath.Join(clone, ".git"), 0o755))
+	w.handleEvent(fsnotify.Event{Name: filepath.Join(clone, ".git"), Op: fsnotify.Create}, co)
+	require.NotContains(t, w.dirs, "clone")
+	require.NotContains(t, w.dirs, "clone/docs")
+	require.ElementsMatch(t, []string{"clone", "clone/docs"}, removed)
+}
+
 // --- coalescer / debounce ---
 
 func TestDebounceReady(t *testing.T) {
