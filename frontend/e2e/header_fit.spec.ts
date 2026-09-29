@@ -17,6 +17,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // header shows about it is not. Its commit, its history and its review are
 // routed here, because the fixture repository commits only page1.md and a
 // review with answered comments can only be written by an agent's delivery.
+//
+// Every pixel constant here assumes the browser's default font size, 16px,
+// which is what CI's Chromium runs with. The header's height (`h-14`, 56px) and
+// the md breakpoint (48rem, 768px) are both in rem, and the pinned widths and
+// narrowInto's `floor` were chosen against them, so under a larger default the
+// header is taller and the window reaches the tablet layout sooner, and the
+// spec fails on its own constants rather than on anything the header did.
 
 const DIRS = ["docs", "design"];
 const NAME = "durable-agent-storage-classes.md";
@@ -395,7 +402,9 @@ async function setHeaderWidth(page: Page, width: number) {
  * one, which holds because steps are only taken as the header narrows (the
  * second test below pins that); the narrowest in 10px strides on from there, to
  * the width that takes the next step or to `floor`, below which the window
- * would reach the tablet layout. The middle of the two is where a pixel of text
+ * would reach the tablet layout: 500px beside the 288px sidebar these tests
+ * leave in place is a 788px window, 20px wide of the md breakpoint at a 16px
+ * default font size. The middle of the two is where a pixel of text
  * drawn a little differently cannot carry the header across either edge.
  */
 async function narrowInto(page: Page, step: Step, floor = 500) {
