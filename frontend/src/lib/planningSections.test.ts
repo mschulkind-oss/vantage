@@ -356,6 +356,15 @@ describe("the notices", () => {
     expect(PLANNING_NOTICES.nothingNeedsYou).toBe("Nothing needs you.");
   });
 
+  // A roadmap that exists but that the file list leaves out is read as missing
+  // (§3.1), and "missing" alone sends its author looking for a file that is
+  // there.
+  it("name the file list as a reason there is no roadmap", () => {
+    const text = PLANNING_NOTICES.noRoadmap(".github/ROADMAP.md");
+    expect(text).toContain("hidden");
+    expect(text).toContain(".vantageignore");
+  });
+
   it("say how many files there are and to narrow include (§3.5)", () => {
     const text = PLANNING_NOTICES.refused(5001, 5000);
     expect(text).toContain("5,001");

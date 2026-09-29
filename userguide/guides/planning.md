@@ -329,7 +329,8 @@ Clicking a document's name opens it, as **Open document** does
 Two cases change the sections:
 
 - **With no roadmap,** because the file is missing, too large or unreadable,
-  *Needs you* lists every open question by document, *Unrouted* is not shown,
+  or is not in the file list Vantage shows (a hidden or excluded directory, a
+  `.vantageignore` match, or a file not named `.md`), *Needs you* lists every open question by document, *Unrouted* is not shown,
   and a line names the file that would be read as the roadmap.
 - **With no stages declared,** *Ready*, *Graduate* and *Disagrees* are not
   shown, and a line says how to declare them.
