@@ -281,6 +281,62 @@ describe("inline style filtering", () => {
     expect(html).toMatch(/<th align="center"[^>]*>/);
     expect(html).toMatch(/<th align="right"[^>]*>/);
   });
+
+  it("keeps a document's style off a task-list checkbox", async () => {
+    // `styles/task-list.css` positions `.task-list-item > input` itself, so a
+    // `style` on the checkbox placed and sized a box the stylesheet had already
+    // taken out of the flow. Measured in Chromium at 1280x800, these
+    // declarations covered the whole content pane in white, and the pane stayed
+    // covered after scrolling to the end. GFM never writes a style on the
+    // checkbox it emits, so an `input` keeps none. The second document writes no
+    // class at all: GFM puts `task-list-item` on the item, and the checkbox
+    // typed into its text is a child of that item too.
+    const cover =
+      "top:-3000px;left:-3000px;width:9000px;height:9000px;background-color:white";
+    for (const markdown of [
+      `<ul class="contains-task-list" style="color:red"><li class="task-list-item" style="color:red"><input type="checkbox" disabled style="${cover}">covered</li></ul>`,
+      `- [ ] <input type="checkbox" style="${cover}"> a task`,
+    ]) {
+      const host = document.createElement("div");
+      host.innerHTML = await styled(markdown);
+      const inputs = Array.from(
+        host.querySelectorAll("li.task-list-item > input"),
+      );
+      expect(inputs.length, markdown).toBeGreaterThan(0);
+      for (const input of inputs) {
+        expect(input.getAttribute("style"), markdown).toBeNull();
+      }
+    }
+    // The list and its item around the checkbox keep theirs: only `input` lost
+    // the attribute.
+    const html = await styled(
+      `<ul style="color:red"><li class="task-list-item" style="color:red"><input type="checkbox" style="color:red">x</li></ul>`,
+    );
+    expect(html).toContain(`<ul style="color:red"`);
+    expect(html).toContain(`<li class="task-list-item" style="color:red"`);
+    expect(html).toMatch(/<input(?![^>]*style=)[^>]*>/);
+  });
+
+  it("lets every admitted element but input take a filtered style", () => {
+    // `style` is listed on each element rather than on `*`. `hast-util-sanitize`
+    // consults `*` whenever an element's own entry yields nothing, so an entry
+    // on `input` could never refuse what an entry on `*` admits.
+    const attributes = sanitizeSchema.attributes ?? {};
+    const styleEntries = (tag: string) =>
+      (attributes[tag] ?? []).filter(
+        (definition) =>
+          (typeof definition === "string" ? definition : definition[0]) ===
+          "style",
+      );
+    expect(styleEntries("*")).toEqual([]);
+    expect(styleEntries("input")).toEqual([]);
+    const tags = new Set(sanitizeSchema.tagNames ?? []);
+    expect(tags.has("input")).toBe(true);
+    for (const tag of tags) {
+      if (tag === "input") continue;
+      expect(styleEntries(tag), tag).toEqual([["style", SAFE_STYLE]]);
+    }
+  });
 });
 
 describe("the data-vantage-* allowlist", () => {
@@ -876,10 +932,13 @@ describe("inline SVG", () => {
     .map(([tag]) => tag);
 
   it("spells out every SVG_ATTRIBUTES entry", () => {
-    // `rect` carries exactly `SVG_ATTRIBUTES`, as every admitted child does.
-    expect(SVG_ATTRIBUTE_SPELLINGS).toHaveLength(
-      sanitizeSchema.attributes!.rect!.length,
+    // `rect` carries exactly `SVG_ATTRIBUTES`, as every admitted child does,
+    // plus the `style` entry every admitted element but `input` has.
+    const own = sanitizeSchema.attributes!.rect!.filter(
+      (definition) => !(Array.isArray(definition) && definition[0] === "style"),
     );
+    expect(own).toHaveLength(sanitizeSchema.attributes!.rect!.length - 1);
+    expect(SVG_ATTRIBUTE_SPELLINGS).toHaveLength(own.length);
   });
 
   it.each(SVG_CHILD_TAGS)(
