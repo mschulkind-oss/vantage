@@ -153,6 +153,47 @@ describe("planning/stage-vocabulary", () => {
   });
 });
 
+// The planning rules read the [planning] table the server would for the
+// file's project: its root's own .vantage.toml, or an explicit --config.
+describe("the [planning] table each file is judged by", () => {
+  it("is its root's own, not one above the root", async () => {
+    const outer = makeTree({
+      ".vantage.toml": STAGES_TOML,
+      "repo/.git/HEAD": "ref: refs/heads/main\n",
+      "repo/docs/a.md": doc("status: draft\nstage: Foo"),
+    });
+
+    expect(await planning(join(outer, "repo"), "docs/a.md")).toEqual([]);
+  });
+
+  it("is the root's own for each root a run spans", async () => {
+    const outer = makeTree({
+      "one/.git/HEAD": "ref: refs/heads/main\n",
+      "one/.vantage.toml": STAGES_TOML,
+      "one/a.md": doc("status: draft\nstage: Foo"),
+      "two/.git/HEAD": "ref: refs/heads/main\n",
+      "two/b.md": doc("status: draft\nstage: Foo"),
+    });
+
+    expect(await planning(outer, "one/a.md", "two/b.md")).toEqual([
+      "one/a.md:3 planning/stage-vocabulary",
+    ]);
+  });
+
+  it("says it could not run for a root whose own config is malformed", async () => {
+    const outer = makeTree({
+      "one/.git/HEAD": "ref: refs/heads/main\n",
+      "one/a.md": doc("status: draft\nstage: Foo"),
+      "two/.git/HEAD": "ref: refs/heads/main\n",
+      "two/.vantage.toml": "[planning]\nroadmap = 3\n",
+      "two/b.md": doc("status: draft\nstage: Foo"),
+    });
+    const { payload } = await check(outer, "one/a.md", "two/b.md");
+
+    expect(JSON.stringify(payload.failures)).toContain("two/.vantage.toml");
+  });
+});
+
 describe("planning/depends-on-missing", () => {
   const target = doc(
     "status: accepted",

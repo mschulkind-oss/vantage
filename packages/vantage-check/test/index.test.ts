@@ -479,6 +479,23 @@ describe("the project index scans", () => {
     expect(paths(payload)).toEqual(["a.md"]);
   });
 
+  // The server reads only the repository's own .vantage.toml, so a table
+  // above the root rules nothing on the planning page, and must not here.
+  it("reads the root's own config, never one further up", async () => {
+    const outer = makeTree({
+      ".vantage.toml":
+        '[planning]\nexclude = ["docs/**"]\n\n[planning.stages]\nDESIGN = "open"\n',
+      "repo/.git/HEAD": "",
+      "repo/docs/a.md": planning("a"),
+    });
+    const { code, payload } = await indexJson(join(outer, "repo"));
+
+    expect(code).toBe(EXIT_OK);
+    expect(payload.index.config.exclude).toEqual([]);
+    expect(payload.index.config.stages).toBeNull();
+    expect(paths(payload)).toEqual(["docs/a.md"]);
+  });
+
   it("reads this repository's own planning documents", async () => {
     const repo = join(import.meta.dirname, "..", "..", "..");
     const { code, payload } = await indexJson(join(repo, "docs"));

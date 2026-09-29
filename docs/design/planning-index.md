@@ -503,6 +503,12 @@ agree on the project; with no root, `check` finds no roadmap and `planning/unrou
 nothing. `--config` chooses which config is read, never which project is scanned, so a config
 file kept outside the tree, such as a temporary one, does not move the scan with it.
 
+Without `--config` or `--no-config`, both commands read `[planning]` from the project root's
+own `.vantage.toml`, the one file the server reads for the repository
+([`repo-config.md` §2.2](repo-config.md#22-the-repository-root-only--no-upward-walk)). `check`
+still finds its own `[check]` table by walking up from its first target, and a file found that
+way above the root, or at another project's root, rules nothing about this project's planning.
+
 `index` prints the planning page's sections as text, followed by the roadmap with each link's
 badge written inline in brackets. With `--format json` it prints the whole index plus those
 sections, with a `version` field so the format can change later. It exits `0` when it ran, `2`
