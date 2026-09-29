@@ -23,6 +23,7 @@ Vantage supports keyboard shortcuts for fast navigation. Press `?` at any time t
 | `Shift+G` | Scroll to the bottom of the page                              |
 | `g h`     | Go to the home page (root directory)                          |
 | `g r`     | Go to recent files page                                       |
+| `g p`     | Go to the [planning page](../guides/planning.md#the-planning-page) |
 | `Escape`  | Close any open modal (file picker, diff viewer, diagram zoom) |
 
 Two-key sequences (like `g g`) have an 800ms timeout — press both keys in quick succession.
