@@ -53,6 +53,11 @@ export interface WebSocketMessage {
    */
   added?: string[];
   removed?: string[];
+  /**
+   * files_changed: watched directories removed or renamed away, which name no
+   * file of their own. Sent only when there are some.
+   */
+  removed_dirs?: string[];
   version?: string;
 }
 
