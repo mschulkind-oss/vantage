@@ -423,7 +423,10 @@ planning page at its previous scroll position.
      which a screen reader hears once, after the file name, and not again as a description. They
      are phrased as a link's badge is
      ([§5.3](#53-how-a-badge-behaves)): status, stage and open questions, for example
-     *in review, design, 4 open questions*. Blocked questions are not counted here. The full
+     *in review, design, 4 open questions*. The tooltip, the only text the tree shows of them,
+     spells a stage outside the declared words as it is written, *stage “design” is not a declared
+     stage*, because matching is exact and a lowercased word would hide why. Blocked questions are
+     not counted here. The full
      status chip stays where there is room for it, beside links and in the document's header,
      and the git-change dot keeps its place at the end of the row.
   4. **A row with no badge is unchanged.** That is every file that is not a planning document,

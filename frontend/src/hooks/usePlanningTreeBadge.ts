@@ -8,12 +8,13 @@
  * the file name has the first claim on all of it. A full chip took enough of it
  * to cut a long name down to its first letter; a dot and a count need a few
  * characters' worth, and whatever they cannot show, `label` still says, in the
- * badge's accessible name and in the name's tooltip.
+ * badge's accessible name and in the name's tooltip (`title`).
  */
 import { useMemo } from "react";
 import { DOC_STATUS_TONES, VANTAGE_TONES } from "vantage-md";
 import {
   badgeSpeech,
+  type PlanningBadge,
   type PlanningDocument,
   type PlanningIndex,
 } from "vantage-md/planning";
@@ -36,9 +37,17 @@ export interface TreeBadge {
   /**
    * Everything the row knows, phrased as a link's badge says it to a screen
    * reader: `in review, design, 4 open questions`. The badge's accessible
-   * name, and the tooltip of the row's name and of the badge's slot.
+   * name.
    */
   label: string;
+  /**
+   * The same words for the eye: the tooltip of the row's name and of the
+   * badge's slot, which is the only text the tree shows of them. It is `label`
+   * except that a stage outside the declared words keeps its own spelling,
+   * because matching is exact (Plan Q20) and a lowercased `design` would hide
+   * why it is not the declared `DESIGN`.
+   */
+  title: string;
 }
 
 /**
@@ -64,20 +73,34 @@ export function treeBadgeOf(
         : doc.stage !== null
           ? "muted"
           : null;
-  return {
-    tone,
-    undeclaredStage: !stageInVocabulary,
-    open,
-    label: badgeSpeech({
+  const speak = (part: Partial<PlanningBadge & { kind: "document" }>) =>
+    badgeSpeech({
       kind: "document",
       path: doc.path,
-      status: doc.status,
-      stage: doc.stage,
-      stageInVocabulary,
-      open,
+      status: null,
+      stage: null,
+      stageInVocabulary: true,
+      open: 0,
       blocked: 0,
-    }),
-  };
+      ...part,
+    });
+  const label = speak({
+    status: doc.status,
+    stage: doc.stage,
+    stageInVocabulary,
+    open,
+  });
+  const title =
+    doc.stage === null || stageInVocabulary
+      ? label
+      : [
+          speak({ status: doc.status }),
+          `stage \u201c${doc.stage}\u201d is not a declared stage`,
+          speak({ open }),
+        ]
+          .filter((part) => part !== "")
+          .join(", ");
+  return { tone, undeclaredStage: !stageInVocabulary, open, label, title };
 }
 
 /**

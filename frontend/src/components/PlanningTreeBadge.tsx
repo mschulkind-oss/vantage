@@ -21,7 +21,7 @@ export function PlanningTreeBadge({ badge }: { badge: TreeBadge }) {
   return (
     // The tooltip is the slot's, not the badge's: on the badge it would be
     // the image's accessible description, repeating its name.
-    <span className="vantage-tree-badge-slot" title={badge.label}>
+    <span className="vantage-tree-badge-slot" title={badge.title}>
       <span
         {...{ [PLANNING_BADGE_ATTR]: "document" }}
         role="img"
