@@ -274,7 +274,25 @@ const SVG_STRIPPED = [
  */
 const SVG_PAINT = /^(?:#[0-9a-f]{3,8}|[a-z]+)$/i;
 
-/** Attributes any SVG element may carry, drawing and typography alike. */
+/**
+ * Attributes any SVG element may carry, drawing and typography alike.
+ *
+ * **Each entry is a hast property name, which is not always the camel case of
+ * the attribute.** `property-information` decides the spelling, and it has
+ * `strokeLineCap` for `stroke-linecap` — a naive `strokeLinecap` matches
+ * nothing, and the attribute is dropped in every renderer without a word. The
+ * table-driven test in `frontend/src/lib/sanitize.test.ts` renders every entry
+ * in its written spelling, so a misspelled one fails there.
+ *
+ * `stroke-dasharray` (and with it `stroke-dashoffset`, which does nothing
+ * alone) is refused, because it lets a few bytes buy an unbounded paint. The
+ * number of dashes is the path's length over the dash period, both in user
+ * units the document chooses. Measured in headless Chromium, fifty 90-byte
+ * paths with a 0.0011 dash took 21 s to paint and a hundred took 37 s. A value
+ * grammar cannot bound it: refusing sub-unit dashes is undone by scaling the
+ * user units, and the same fifty paths with `stroke-dasharray="1.1"` under a
+ * `viewBox` a thousand times larger still took 15 s.
+ */
 const SVG_ATTRIBUTES: NonNullable<Schema["attributes"]>[string] = [
   ["fill", SVG_PAINT],
   ["stroke", SVG_PAINT],
@@ -282,10 +300,8 @@ const SVG_ATTRIBUTES: NonNullable<Schema["attributes"]>[string] = [
   "fillRule",
   "strokeOpacity",
   "strokeWidth",
-  "strokeLinecap",
-  "strokeLinejoin",
-  "strokeDasharray",
-  "strokeDashoffset",
+  "strokeLineCap",
+  "strokeLineJoin",
   "opacity",
   "transform",
   "fontFamily",

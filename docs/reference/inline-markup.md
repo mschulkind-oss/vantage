@@ -657,6 +657,13 @@ and patterns are unsupported because they are reachable only through `url(#id)`,
 and the sanitizer prefixes every `id`. SVG child elements require an `svg`
 ancestor, so a stray `<title>` in prose cannot reach the page's `<head>`.
 
+`stroke-dasharray` is refused too, so a dashed line renders solid. It is the one
+presentation attribute whose paint cost a few bytes can make unbounded: the dash
+count is the path's length over the dash period, both in user units the document
+chooses. Fifty short paths with a `0.0011` dash took 21 seconds to paint in
+headless Chromium, and a floor on the dash length does not help, because scaling
+the user units by a thousand costs the same 15 seconds with a `1.1` dash.
+
 A refused element is normally *unwrapped*: the tag goes and its children stay.
 The containers whose children are never meant to be painted where they stand —
 `defs`, `clipPath`, `mask`, `pattern`, `marker`, `symbol`, `linearGradient`,
