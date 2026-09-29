@@ -7,6 +7,13 @@
  * resolves from the repository root.
  */
 import { readFileSync } from "node:fs";
+import {
+  DEFAULT_PLANNING_CONFIG,
+  buildPlanningIndex,
+  type PlanningConfig,
+  type PlanningIndex,
+  type PlanningSources,
+} from "vantage-md/planning";
 
 /** This file's own URL, held in a variable so Vite does not rewrite it. */
 const here = import.meta.url;
@@ -24,4 +31,43 @@ export function readRepoFile(rel: string): string {
 /** A shared planning fixture from `internal/repoconfig/testdata/`. */
 export function planningFixture<T>(name: string): T {
   return JSON.parse(readRepoFile(`internal/repoconfig/testdata/${name}`)) as T;
+}
+
+/** The default config, with `overrides` on top. */
+export function planningConfig(
+  overrides: Partial<PlanningConfig> = {},
+): PlanningConfig {
+  return { ...DEFAULT_PLANNING_CONFIG, ...overrides };
+}
+
+/**
+ * A batch of sources from a tree of path → content, counted as the server
+ * would count it: every file is a candidate.
+ */
+export function sourcesOf(
+  tree: Record<string, string>,
+  overrides: Partial<PlanningSources> = {},
+  config: Partial<PlanningConfig> = {},
+): PlanningSources {
+  const files = Object.entries(tree).map(([path, content]) => ({
+    path,
+    content,
+  }));
+  return {
+    config: planningConfig(config),
+    candidateCount: files.length,
+    refused: false,
+    files,
+    skipped: [],
+    unreadable: [],
+    ...overrides,
+  };
+}
+
+/** The index of a tree, as `sourcesOf` would batch it. */
+export function indexOf(
+  tree: Record<string, string>,
+  config: Partial<PlanningConfig> = {},
+): PlanningIndex {
+  return buildPlanningIndex(sourcesOf(tree, {}, config));
 }
