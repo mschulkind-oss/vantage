@@ -304,6 +304,10 @@ func treeNames(t *testing.T, h http.Handler, target string) []string {
 func TestServedClonesDirectoryGivesEachCloneItsOwnProject(t *testing.T) {
 	isolateHome(t)
 	code := clonesDir(t)
+	// A linked worktree right beside the clones is a boundary too; nothing in
+	// it may reach the loose project's recents, which could not open it.
+	runGit(t, filepath.Join(code, "alpha"), "worktree", "add", "-q", "-b", "wt", filepath.Join(code, "wt"))
+	writeFiles(t, code, map[string]string{"wt/wtonly.md": "# only in the worktree\n"})
 	cfg := resolvedServeConfig(t, code)
 	require.NotNil(t, planServe(cfg, false))
 
@@ -329,6 +333,25 @@ func TestServedClonesDirectoryGivesEachCloneItsOwnProject(t *testing.T) {
 	}
 	require.Equal(t, []string{"notes.md"}, byRepo["code"])
 	require.ElementsMatch(t, []string{"README.md", "docs/guide.md", "generated/out.md"}, byRepo["alpha"])
+
+	// Recents list what the tree lists, and nothing the project refuses.
+	var recent []model.RecentFile
+	getJSON(t, h, "/api/r/code/git/recent?limit=50", &recent)
+	recentPaths := make([]string, 0, len(recent))
+	for _, r := range recent {
+		recentPaths = append(recentPaths, r.Path)
+	}
+	require.Equal(t, []string{"notes.md"}, recentPaths)
+	var all []struct {
+		Repo string `json:"repo"`
+		Path string `json:"path"`
+	}
+	getJSON(t, h, "/api/recent/all?limit=50", &all)
+	for _, item := range all {
+		if item.Repo == "code" {
+			require.Equal(t, "notes.md", item.Path)
+		}
+	}
 
 	// A clone's own .gitignore applies again, now that it is a repository root.
 	require.ElementsMatch(t, []string{"docs", "README.md"}, treeNames(t, h, "/api/r/alpha/tree?path=.&show_gitignored=false"))
