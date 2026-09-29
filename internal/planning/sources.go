@@ -46,7 +46,7 @@ type file struct {
 func WriteBatch(w io.Writer, listing Listing, cfg repoconfig.Planning) error {
 	defer perf.Default.Track(perf.CategoryFS, "planning_batch")()
 
-	candidates := Candidates(listing.ListAllFiles(), NewMatcher(cfg))
+	candidates := Candidates(listing.ListAllFiles(), matcherFor(cfg))
 	refused := len(candidates) > cfg.MaxCandidates
 
 	config, err := json.Marshal(cfg)
@@ -163,7 +163,7 @@ func (e Entry) MarshalJSON() ([]byte, error) {
 // while a rescan's batch is out, whose answer may not be refused.
 func Lookup(listing Listing, cfg repoconfig.Planning, rel string) Entry {
 	absent := Entry{Path: rel, Kind: KindAbsent}
-	if !NewMatcher(cfg).IsCandidate(rel) || !listing.IsListed(rel) {
+	if !matcherFor(cfg).IsCandidate(rel) || !listing.IsListed(rel) {
 		return absent
 	}
 	got := newReader(listing.RootPath(), cfg.MaxFileBytes).read(rel)

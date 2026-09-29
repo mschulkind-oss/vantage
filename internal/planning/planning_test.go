@@ -91,6 +91,21 @@ func TestALiteralLineIsMatchedAsAPattern(t *testing.T) {
 	require.True(t, m.IsCandidate("docs/notes.md"))
 }
 
+// The single-path mode answers every pushed Markdown path, so it must not
+// compile the table's lines again for each one.
+func TestOneTableIsCompiledOnce(t *testing.T) {
+	cfg := repoconfig.Planning{Roadmap: "roadmap.md", Include: []string{"docs/**"}, Exclude: []string{"docs/x/**"}}
+	same := cfg
+	same.Include = append([]string(nil), cfg.Include...)
+	require.Same(t, matcherFor(cfg), matcherFor(same))
+
+	other := cfg
+	other.Exclude = []string{"docs/y/**"}
+	require.NotSame(t, matcherFor(cfg), matcherFor(other))
+	require.False(t, matcherFor(other).IsCandidate("docs/y/a.md"))
+	require.True(t, matcherFor(other).IsCandidate("docs/x/a.md"))
+}
+
 func TestCandidatesKeepsTheListingsOrder(t *testing.T) {
 	m := NewMatcher(repoconfig.Planning{Roadmap: "roadmap.md", Include: []string{"docs/**"}})
 	require.Equal(t,
