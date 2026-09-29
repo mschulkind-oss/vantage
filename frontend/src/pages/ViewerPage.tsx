@@ -73,6 +73,8 @@ import { ReviewPanel } from "../components/ReviewPanel";
 import { MessageSquarePlus, ClipboardCopy } from "lucide-react";
 import { useLineAnchor } from "../hooks/useLineAnchor";
 import { useHeaderFit } from "../hooks/useHeaderFit";
+import { useFirstPaintHold } from "../hooks/useFirstPaintHold";
+import { usePlanningStore } from "../stores/usePlanningStore";
 import { splitExtension } from "../lib/headerFit";
 import { usePersistentFlag } from "../hooks/usePersistentFlag";
 import { usePersistentValue } from "../hooks/usePersistentValue";
@@ -132,10 +134,13 @@ function parseSidebarWidth(raw: string | null): number {
 export const ViewerPage: React.FC = () => {
   const {
     fileTree,
-    fileContent,
-    currentDirectory,
-    currentPath,
-    error,
+    // What the store has loaded. What the page draws is what the first
+    // paint's hold lets through, below.
+    fileContent: loadedContent,
+    currentDirectory: loadedDirectory,
+    currentPath: loadedPath,
+    error: loadedError,
+    isLoading: loadedIsLoading,
     refreshTree,
     refreshExpandedTree,
     viewDirectory,
@@ -180,8 +185,44 @@ export const ViewerPage: React.FC = () => {
     repoName,
     repoRootPath,
     fetchRepoInfo,
+    isRepoInfoLoading,
     fetchHistory,
   } = useGitStore();
+
+  // Whether this repository's planning index is being built warm, from the
+  // scan cache (planning-index-at-scale.md §3): the one build a document's
+  // first paint waits for. A cold one can take seconds, and is never waited on.
+  const planningRepo = isMultiRepo ? currentRepo : "";
+  const warmBuild = usePlanningStore((state) => {
+    const load = planningRepo === null ? undefined : state.byRepo[planningRepo];
+    return load?.status === "loading" && load.warm;
+  });
+  // The hold (§11.3): a document that has just arrived waits, at most
+  // `holdMs`, for what its first paint shows that is already on its way — its
+  // header's git facts, asked for with its content, the index of a warm
+  // build, and on a first load the recent-files list the header takes an
+  // untracked file's date from and the Path button's root. The previous
+  // document, or the shell, stays up meanwhile.
+  const firstPaintWaiting =
+    loadedPath !== null &&
+    (statusByPath[loadedPath] === undefined ||
+      (loadedPath.toLowerCase().endsWith(".md") &&
+        historyByPath[loadedPath] === undefined) ||
+      warmBuild ||
+      (isRecentLoading && recentFiles.length === 0) ||
+      isRepoInfoLoading);
+  const { fileContent, currentDirectory, currentPath, error, isLoading } =
+    useFirstPaintHold(
+      {
+        fileContent: loadedContent,
+        currentDirectory: loadedDirectory,
+        currentPath: loadedPath,
+        error: loadedError,
+        isLoading: loadedIsLoading,
+      },
+      firstPaintWaiting,
+    );
+
   // The git facts the header shows are the shown path's own, and there are
   // none until git has answered for it: an unknown status is not an untracked
   // file (docs/design/planning-index-at-scale.md §11.1, L3). They are asked for
@@ -281,7 +322,6 @@ export const ViewerPage: React.FC = () => {
   const [pathCopied, setPathCopied] = useState(false);
   const [keyboardShortcutsEnabled, setKeyboardShortcutsEnabled] =
     usePersistentFlag("vantage:shortcuts-enabled", true);
-  const { isLoading } = useRepoStore();
   const recentlyChangedPaths = useRepoStore((s) => s.recentlyChangedPaths);
 
   // Fallback modification date from recent files when git has said the file

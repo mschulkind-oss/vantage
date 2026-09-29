@@ -67,6 +67,12 @@ interface GitState {
   recentFilesError: boolean;
   repoName: string | null;
   repoRootPath: string | null;
+  /**
+   * Whether `/info` has been asked for and has not answered yet: the header's
+   * Path button is on its way, which a document's first paint waits for
+   * briefly (`docs/design/planning-index-at-scale.md` §11.3).
+   */
+  isRepoInfoLoading: boolean;
 
   fetchHistory: (path: string) => Promise<void>;
   fetchStatus: (path: string) => Promise<void>;
@@ -154,6 +160,7 @@ export const useGitStore = create<GitState>((set, get) => ({
   recentFilesError: false,
   repoName: null,
   repoRootPath: null,
+  isRepoInfoLoading: false,
 
   fetchHistory: async (path) => {
     const apiBase = getApiBase();
@@ -275,6 +282,7 @@ export const useGitStore = create<GitState>((set, get) => ({
   fetchRepoInfo: async () => {
     const apiBase = getApiBase();
     if (!apiBase) return;
+    set({ isRepoInfoLoading: true });
     try {
       const response = await axios.get<{ name: string; root_path: string }>(
         `${apiBase}/info`,
@@ -282,9 +290,10 @@ export const useGitStore = create<GitState>((set, get) => ({
       set({
         repoName: response.data.name,
         repoRootPath: response.data.root_path,
+        isRepoInfoLoading: false,
       });
     } catch {
-      set({ repoName: null, repoRootPath: null });
+      set({ repoName: null, repoRootPath: null, isRepoInfoLoading: false });
     }
   },
 }));
