@@ -10,7 +10,6 @@ import (
 
 	"github.com/mschulkind-oss/vantage/internal/fs"
 	"github.com/mschulkind-oss/vantage/internal/model"
-	"github.com/mschulkind-oss/vantage/internal/pathsafe"
 )
 
 // imageExtensions are the file suffixes the /content endpoint serves as raw
@@ -122,20 +121,20 @@ func (h *Handlers) Content(w http.ResponseWriter, r *http.Request) {
 }
 
 // serveRawImage streams an image file's bytes with the given content type. It
-// resolves the requested path through [pathsafe.Resolve] — the same rule the fs
-// service applies, called directly because the service exposes its root but not
-// its validator. That shared call is load-bearing here: this branch answers with
-// raw bytes and a 200, so a path that escapes the root discloses any readable
-// file whatever its type, while the JSON branch at least blanks non-UTF-8
-// content. Validation failures map to a 400 {"detail":…}; a non-file or
-// unreadable path after validation is a 404.
+// resolves the requested path through [fs.FileSystemService.ResolveFile] — the
+// same rule the JSON branch's ReadFile applies. That shared call is
+// load-bearing here: this branch answers with raw bytes and a 200, so a path
+// that escapes the root discloses any readable file whatever its type, and one
+// inside a repository boundary would serve what the project's listing leaves
+// out. Validation failures map to a 400 {"detail":…}; no file to serve after
+// validation — missing, not regular, inside a boundary, or unreadable — is a
+// 404.
 func (h *Handlers) serveRawImage(w http.ResponseWriter, svc *fs.FileSystemService, path, mime string) {
-	abs, err := pathsafe.Resolve(svc.RootPath(), path)
+	abs, ok, err := svc.ResolveFile(path)
 	if writePathError(w, err) {
 		return
 	}
-	info, err := os.Stat(abs)
-	if err != nil || !info.Mode().IsRegular() {
+	if !ok {
 		writeError(w, http.StatusNotFound, "Not a file")
 		return
 	}
