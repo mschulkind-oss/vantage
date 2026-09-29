@@ -160,7 +160,8 @@ const SAFE_STYLE_PROPERTIES = [
  * an element overlap its neighbors *inside the flow*. That one scrolls with the
  * content and is clipped by the scroll container, and closing it means giving up
  * margins, which prose actually uses. Containment in the stylesheet, not another
- * rule here, is what would close it.
+ * rule here, is what would close it. `overflow: visible` on an inline `<svg>` is
+ * the same residual by another route — see `SVG_ROOT_ATTRIBUTES`.
  */
 const VALUE = `[^;:()"'\\\\]*`;
 // Wrapped in its own group, and the trailing `?` below applies to that group.
@@ -342,6 +343,32 @@ const SVG_ATTRIBUTES: NonNullable<Schema["attributes"]>[string] = [
 ];
 
 /**
+ * The root `<svg>`'s attributes: `SVG_ATTRIBUTES` less `transform`, plus the
+ * viewport and the accessible name.
+ *
+ * `transform` on the root is not an SVG transform at all. The root is an
+ * in-flow CSS box, and the attribute becomes a CSS transform of that box, so
+ * `<svg width="10" height="10" transform="translate(-300 -300) scale(80)">`
+ * laid out as a 10px box and painted as an 800px one over the paragraphs
+ * around it. On a child it moves shapes inside the viewport, which clips them.
+ *
+ * Residual: that clip is the root's `overflow`, which `SAFE_STYLE` lets a
+ * document set. `style="overflow:visible"` on the root lets a child with a
+ * large `transform` or large coordinates paint over its neighbors — measured in
+ * Chromium, the same overlap. It is the negative-`margin` residual described at
+ * `SAFE_STYLE` by another route: it stays in the flow, scrolls with the content,
+ * and the scroll container clips it.
+ */
+const SVG_ROOT_ATTRIBUTES: NonNullable<Schema["attributes"]>[string] = [
+  ...SVG_ATTRIBUTES.filter((attribute) => attribute !== "transform"),
+  "xmlns",
+  "viewBox",
+  "preserveAspectRatio",
+  "role",
+  "ariaLabel",
+];
+
+/**
  * Never set `allowComments` here.
  *
  * `hast-util-sanitize` drops comment nodes because that boolean defaults to
@@ -456,14 +483,7 @@ export const sanitizeSchema: Schema = {
     img: [...(defaultSchema.attributes?.img || []), "loading"],
     td: [...(defaultSchema.attributes?.td || []), ["style", SAFE_STYLE]],
     th: [...(defaultSchema.attributes?.th || []), ["style", SAFE_STYLE]],
-    svg: [
-      ...SVG_ATTRIBUTES,
-      "xmlns",
-      "viewBox",
-      "preserveAspectRatio",
-      "role",
-      "ariaLabel",
-    ],
+    svg: SVG_ROOT_ATTRIBUTES,
     ...Object.fromEntries(SVG_CHILD_TAGS.map((tag) => [tag, SVG_ATTRIBUTES])),
   },
 };

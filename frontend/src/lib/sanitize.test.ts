@@ -656,6 +656,35 @@ describe("inline SVG", () => {
     expect(svg.textContent).toBe("");
   });
 
+  it("keeps transform off the root svg, and on its children", async () => {
+    // On the root, `transform` is a CSS transform of an in-flow box: this one
+    // lays out at 10px and paints at 800px over the paragraphs around it.
+    const host = await parsed(`<div>
+<svg width="10" height="10" viewBox="0 0 10 10" transform="translate(-300 -300) scale(80)"><g transform="rotate(45 5 5)"><rect width="10" height="10" transform="scale(0.5)"/></g></svg>
+</div>`);
+    const svg = host.querySelector("svg")!;
+    expect(svg.hasAttribute("transform")).toBe(false);
+    expect(svg.getAttribute("viewBox")).toBe("0 0 10 10");
+    expect(svg.querySelector("g")!.getAttribute("transform")).toBe(
+      "rotate(45 5 5)",
+    );
+    expect(svg.querySelector("rect")!.getAttribute("transform")).toBe(
+      "scale(0.5)",
+    );
+  });
+
+  it("keeps every other SVG_ATTRIBUTES entry on the root svg", async () => {
+    const written = SVG_ATTRIBUTE_SPELLINGS.map(
+      ([name, value]) => `${name}="${value}"`,
+    ).join(" ");
+    const host = await parsed(`<div>\n<svg ${written}></svg>\n</div>`);
+    const svg = host.querySelector("svg")!;
+    for (const [name, value] of SVG_ATTRIBUTE_SPELLINGS) {
+      if (name === "transform") continue;
+      expect(svg.getAttribute(name), name).toBe(value);
+    }
+  });
+
   it("does not admit SVG children, or a title, outside an svg", async () => {
     const html = await styled(
       `<div><title>Hijacked</title><rect width="9"/></div>`,
