@@ -5,6 +5,7 @@ import (
 	"io"
 	iofs "io/fs"
 	"os"
+	"path/filepath"
 	"unicode/utf8"
 
 	"github.com/mschulkind-oss/vantage/internal/pathsafe"
@@ -26,6 +27,7 @@ const (
 	reasonNotUTF8    = "not UTF-8"
 	reasonNotRegular = "not a regular file"
 	reasonOutside    = "outside the repository"
+	reasonOtherPath  = "its name reads as a different path"
 )
 
 // read is the outcome of reading one candidate.
@@ -69,6 +71,14 @@ func (r *reader) read(rel string) read {
 	full, err := pathsafe.Resolve(r.root, rel)
 	if err != nil {
 		return read{kind: KindUnreadable, reason: reasonOutside}
+	}
+	// pathsafe reads a backslash as a separator and cleans the result, so on
+	// POSIX, where a backslash is an ordinary file-name character, a listed
+	// name like `x\..\.private\notes.md` resolves to a different file. The
+	// file read must be the file listed, or a name could serve any other
+	// file's text, one the listing hides included, as its own.
+	if got, err := filepath.Rel(r.root, full); err != nil || filepath.ToSlash(got) != rel {
+		return read{kind: KindUnreadable, reason: reasonOtherPath}
 	}
 
 	info, err := os.Lstat(full)
