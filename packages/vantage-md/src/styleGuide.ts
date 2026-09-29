@@ -64,6 +64,40 @@ vantage:
 - **Prefer \`status-chip: true\`**, which shows the document's own \`status:\` and therefore cannot disagree with it. A literal \`status-chip: accepted\` is accepted too, but it is a second value that goes stale on its own — \`vantage-check\` reports the disagreement.
 - The chip's vocabulary is \`status\`'s, exactly: \`draft | in-review | accepted | deprecated\`, lowercase. \`Draft\` renders no chip at all, silently.
 
+### Planning documents: \`stage\`, \`next\`, \`depends-on\`
+- **Vantage reads a repository's plans as a set.** A document whose frontmatter has \`status\` or \`stage\`, or that carries an \`oq\` directive, is a *planning document*, and Vantage shows its state (status, stage, open questions) in a badge beside every link to it. So write each fact once, in the document it belongs to, and link to it everywhere else: a copied status or count is the one that goes stale.
+- Three top-level keys beside \`status\` hold the rest of a document's planning state. They are facts about the file, so they sit at the top level, never under \`vantage:\`:
+\`\`\`yaml
+---
+title: "Payload bootstrap"
+status: in-review
+stage: DESIGN
+next: "Rule OQ-B2 \u2014 the install step waits on it"
+depends-on:
+  - pypi-distribution.md
+  - ../plans/rollout.md#OQ-R1
+---
+\`\`\`
+- **\`stage\` is one word from the repository's own vocabulary**, the words \`[planning.stages]\` declares (below), spelled exactly as declared: matching is case-sensitive, so \`Decided\` is not \`DECIDED\`. \`vantage-check\` reports a word outside them as \`planning/stage-vocabulary\`.
+- **Frontmatter is the stage's one home.** Do not repeat the word in a prose \`**Status:**\` line: that is a second copy, and no tool can read or check it. Keep the prose line, where a document has one, for the date and the why.
+- **\`next\` is the next step, on one line of plain text.** A bare \`OQ-\` id in it links to this document's question of that id, so name the question rather than paraphrasing it.
+- **\`depends-on\` lists what the document waits on**: relative paths, resolved like links, each optionally ending in \`#OQ-\u2026\` to name one question. A single path may stand on its own. A target that does not exist, lies outside the repository, or does not contain the id is an error (\`planning/depends-on-missing\`).
+- **Never a \`priority\` key.** A priority only means something relative to the others, so it lives in one ordered list, the roadmap, and not in each document.
+- **The roadmap is ordered links.** Each entry is a link to a document or a question, then a one-clause reason for its place; the badge beside the link carries the rest, so never copy a status, a stage or a count into it. Prose beneath an entry holds only what has no other home, such as what would unblock it. A bare link to a document *routes* every question in it into the roadmap's order, and a link to one question's \`#OQ-\u2026\` anchor routes that question; a link to any other heading routes nothing. With \`planning/unrouted\` turned on, \`vantage-check\` reports an open question no roadmap link reaches.
+- **\`[planning]\` in \`.vantage.toml\`** names the roadmap, which files are read, and what each stage word means. Every key is optional:
+\`\`\`toml
+[planning]
+roadmap = "roadmap.md"          # the default
+exclude = ["docs/gallery/**"]   # gitignore syntax; every .md is included by default
+
+[planning.stages]               # each word maps to open | ready | built | done
+DESIGN = "open"
+DECIDED = "ready"
+BUILT = "built"
+SUPERSEDED = "done"
+\`\`\`
+- **Each stage word maps to one of four roles**, which is what the word means to Vantage: \`open\` is still being decided, \`ready\` is decided and not built, \`built\` is built, and \`done\` is no longer a live proposal, so its questions leave every list of what needs a ruling. \`vantage-check index\` prints those lists.
+
 ### Mermaid diagrams
 - Use \`\`\`mermaid code blocks for flowcharts, sequence diagrams, and architecture diagrams. Vantage provides interactive zoom, pan, dark/light theme adaptation, and SVG export.
 - **Quote labels with special characters**: Always quote node labels containing parentheses, brackets, or colons to prevent syntax errors:
