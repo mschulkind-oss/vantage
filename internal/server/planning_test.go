@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mschulkind-oss/vantage/internal/config"
+	"github.com/mschulkind-oss/vantage/internal/model"
 )
 
 // planningFiles returns the paths a cold planning stream sent the text of and
@@ -168,4 +169,36 @@ func TestADiscoveredRepositoryServesItsPlanningSourcesUnderItsOwnTable(t *testin
 		t.Fatal("Run did not return after context cancel")
 	}
 	require.NoError(t, srv.Shutdown(context.Background()))
+}
+
+// The reviews request answers from each repository's own reviews: the store is
+// one directory for the whole daemon and keys every review by repository, so a
+// handler that took the name from anywhere but the resolved repository would
+// hand one repository's comments to another.
+func TestDaemonAnswersEachRepositorysReviews(t *testing.T) {
+	srv, _ := daemonServer(t)
+	h := srv.Handler()
+	require.NoError(t, srv.reviews.Save("a.md", "alpha", model.NewReviewData("a.md")))
+
+	reviewed := func(target string) []string {
+		t.Helper()
+		rec := doJSON(t, h, http.MethodPost, target, `{"paths":["a.md","b.md"]}`)
+		require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+		var body struct {
+			Reviews []struct {
+				Path string `json:"path"`
+			} `json:"reviews"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+		paths := []string{}
+		for _, r := range body.Reviews {
+			paths = append(paths, r.Path)
+		}
+		return paths
+	}
+	require.Equal(t, []string{"a.md"}, reviewed("/api/r/alpha/planning/reviews"))
+	require.Equal(t, []string{}, reviewed("/api/r/beta/planning/reviews"))
+	require.Equal(t, http.StatusNotFound,
+		doJSON(t, h, http.MethodPost, "/api/planning/reviews", `{"paths":["a.md"]}`).Code,
+		"legacy repo routes are disabled in daemon mode")
 }
