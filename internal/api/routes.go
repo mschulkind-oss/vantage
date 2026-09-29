@@ -65,6 +65,7 @@ func (h *Handlers) Routes() []Route {
 		// --- Repo-scoped: filesystem ---
 		{http.MethodGet, "/tree", h.Tree, ScopeRepo},
 		{http.MethodGet, "/content", h.Content, ScopeRepo},
+		{http.MethodGet, "/planning/sources", h.PlanningSources, ScopeRepo},
 
 		// --- Repo-scoped: git ---
 		{http.MethodGet, "/git/history", h.GitHistory, ScopeRepo},

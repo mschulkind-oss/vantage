@@ -182,6 +182,7 @@ Routes are declared in a single table (`routes.go`) with a `Scope`:
   right pair.
 
 Repo-scoped routes: `/version`, `/info`, `/files`, `/tree`, `/content`,
+`/planning/sources` ([planning-index.md §3.4](planning-index.md#34-when-it-is-built-and-how-it-stays-fresh)),
 `/git/history`, `/git/status`, `/git/diff`, `/git/diff/working`, `/git/recent`,
 and `/review` (GET/PUT/DELETE).
 
