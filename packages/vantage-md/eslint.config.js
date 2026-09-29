@@ -22,5 +22,15 @@ export default defineConfig([
       // pipeline, which the CLI runs outside a browser.
       globals: { ...globals.browser, ...globals.node },
     },
+    rules: {
+      // Destructuring a key beside a rest element is how a component drops a
+      // prop it must not forward: react-markdown's `node`, which the viewer's
+      // overrides take out so it never reaches the DOM as
+      // `node="[object Object]"`. The key is unused by design.
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { ignoreRestSiblings: true },
+      ],
+    },
   },
 ]);
