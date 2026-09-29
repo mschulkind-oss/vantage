@@ -1058,6 +1058,12 @@ describe("inline SVG", () => {
       `<p data-source-line="1">A stray x here.</p>`,
     ],
     [
+      // Nothing closes it, and removing it took the rest of the sentence.
+      "an unclosed title",
+      "Use the <title> element to name a page.",
+      `<p data-source-line="1">Use the  element to name a page.</p>`,
+    ],
+    [
       "tag names in code spans",
       "Write `<pattern>` and `<title>` in code.",
       `<p data-source-line="1">Write <code>&#x3C;pattern></code> and <code>&#x3C;title></code> in code.</p>`,
