@@ -69,6 +69,7 @@ whatever port Vantage printed on startup, if 8000 was taken.
 | `use_ignore_files`         | boolean          | `true`        | Honor `~/.config/vantage/ignore` and `.vantageignore` |
 | `watcher_ignore_defaults`  | array of strings | _(see below)_ | Live-reload watcher-only gitignore patterns |
 | `log_level`                | string           | `"INFO"`      | Log verbosity: `DEBUG`, `INFO`, `WARNING`, or `ERROR` |
+| `tips`                     | boolean          | `true`        | Let `vantage serve` print its one-line startup tip about the background service (only ever when its output is a terminal). Read by `serve` only |
 | `theme`                    | string           | `""` (built-in look) | Color theme a browser opens in until its reader picks another. Read only from `~/.config/vantage/config.toml`, at startup. A project can offer one below it — see [A Theme a Project Offers](#a-theme-a-project-offers) |
 
 ## Source Directory Auto-Discovery
@@ -85,7 +86,7 @@ Auto-discovered repos use the directory name as their display name. If a repo is
 
 Only repos that auto-discovery added are retired this way. An explicit `[[repos]]` entry whose directory is missing stays in the list and keeps being served — you asserted it should exist, so Vantage lets its requests fail loudly rather than quietly dropping it.
 
-This feature is **off by default** — add `source_dirs` to your config to enable it.
+This feature is **off by default** — add `source_dirs` to your config to enable it, or let `vantage install-service --source-dir ~/code` add the entry and start the service for you ([CLI Reference](cli-reference.md#vantage-install-service)). Running `vantage ~/code` without the daemon serves the directory the same way, through the same discovery ([Getting Started](../getting-started.md#serve-a-directory-of-clones)).
 
 ## Allowed Read Roots
 
@@ -348,6 +349,21 @@ walk_timeout = 30.0
 
 These settings only affect the discovery of files not tracked by Git. Tracked files are always shown regardless of depth. In most cases the defaults work fine — adjust these only if you notice slow response times in large repos.
 
+### When a project is too big to serve well
+
+Two limits make Vantage serve a project worse than normal, and when either one
+is hit, a banner at the bottom of the page says so instead of leaving it to the
+log:
+
+| What happened | What the banner says is off | What to change |
+| ------------- | --------------------------- | -------------- |
+| The live-reload watcher ran out of the system's watches | Live reload, below the first folder it could not watch | Raise the limit (on Linux, `fs.inotify.max_user_watches`), or list the biggest folders in `.vantageignore` or `watcher_ignore_defaults` |
+| Finding untracked files took longer than `walk_timeout` | Recent files may be missing untracked documents | Raise `walk_timeout`, or list the biggest folders in `.vantageignore` |
+
+The banner shows the open project's reports only, and the dismiss button hides it
+until the page is reloaded. Serving a directory of clones as one project with
+`--one-project` is the usual way to reach the first limit.
+
 ## Environment Variables
 
 When running in single-directory mode (`vantage serve`), you can also configure via environment variables:
@@ -363,3 +379,4 @@ When running in single-directory mode (`vantage serve`), you can also configure 
 | `WALK_TIMEOUT`       | Timeout in seconds for the file-discovery subprocess |
 | `USE_IGNORE_FILES`   | Honor ignore files (`true`/`false`, default `true`)  |
 | `VANTAGE_LOG_LEVEL`  | Log verbosity (`DEBUG`/`INFO`/`WARNING`/`ERROR`)     |
+| `VANTAGE_NO_TIPS`    | Set to `1` to stop the one-line startup tip about the background service |

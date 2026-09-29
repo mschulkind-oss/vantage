@@ -67,7 +67,10 @@ func newServeCmd() *cobra.Command {
 			"the daemon serves a source_dirs entry: one project per repository,\n" +
 			"named after its directory, plus one project named after PATH for any\n" +
 			"Markdown outside them. Clones made while it runs appear within 30\n" +
-			"seconds. --one-project serves PATH as a single project instead.",
+			"seconds. --one-project serves PATH as a single project instead.\n\n" +
+			"When stderr is a terminal, one line about the background service\n" +
+			"(see install-service) is printed at startup. VANTAGE_NO_TIPS=1, or\n" +
+			"tips = false in the user config, turns it off.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := config.Defaults()

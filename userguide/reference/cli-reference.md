@@ -10,10 +10,14 @@ Start the Vantage server for a single directory.
 vantage [PATH]
 vantage serve [PATH] [--host HOST] [--port PORT] [--no-open] [--show-hidden]
               [--exclude-dirs DIR,...] [--use-ignore-files] [--walk-max-depth N]
-              [--walk-timeout SECONDS]
+              [--walk-timeout SECONDS] [--one-project]
 ```
 
 `PATH` may be a directory (served as the repo root) or a single Markdown file (its parent becomes the repo root). When omitted, the current directory is served. Vantage opens your default browser automatically on startup.
+
+A directory of clones — one that is not inside a git repository and has git repositories among its immediate children — is served the way the daemon serves a `source_dirs` entry: one project per repository, plus one project named after `PATH` for any Markdown outside them. `--one-project` serves it as a single project instead. See [Serve a directory of clones](../getting-started.md#serve-a-directory-of-clones).
+
+When its output is a terminal, `serve` prints one line about the background service at startup. `VANTAGE_NO_TIPS=1` or `tips = false` in the config file turns it off.
 
 | Argument/Option       | Default                 | Description                                            |
 | --------------------- | ----------------------- | ------------------------------------------------------ |
@@ -26,6 +30,7 @@ vantage serve [PATH] [--host HOST] [--port PORT] [--no-open] [--show-hidden]
 | `--use-ignore-files`  | `true`                  | Honor `~/.config/vantage/ignore` and `.vantageignore` |
 | `--walk-max-depth`    | `0` (unlimited)         | Maximum depth for untracked-file discovery             |
 | `--walk-timeout`      | `30`                    | Timeout in seconds for untracked-file discovery        |
+| `--one-project`       |                         | Serve `PATH` as one project even when it is a directory of git clones |
 
 Running `vantage` with no subcommand is equivalent to `vantage serve .`.
 
@@ -88,10 +93,20 @@ See [Static Sites](../guides/static-sites.md) for a full guide on this workflow.
 Install Vantage as a per-user background service that starts on login.
 
 ```bash
-vantage install-service
+vantage install-service [--source-dir DIR]...
 ```
 
-It writes the service definition for the host platform and prints the commands that load it — it does not activate anything itself.
+On its own it writes the service definition for the host platform and prints the commands that load it — it does not activate anything itself.
+
+`--source-dir DIR`, which may be repeated, does the whole setup for a directory of clones. It adds `DIR` to `source_dirs` in `~/.config/vantage/config.toml`, then writes the service and starts it. On Linux that runs `systemctl --user daemon-reload`, `enable vantage` and `restart vantage`; on macOS, `launchctl bootout` and `bootstrap`.
+
+- `~` and relative paths are expanded, and a directory already listed is skipped.
+- A missing config file is created. An existing one keeps its comments and every other key: the command edits its text and then checks that nothing else changed. When it cannot edit the file that way, it saves the original as `config.toml.bak-<time>` first and says so.
+- The command prints what it changed and what it ran. If the resulting config would give the daemon nothing to serve, it stops before installing anything.
+
+```bash
+vantage install-service --source-dir ~/code --source-dir ~/work
+```
 
 | Platform | Writes | Full setup |
 | -------- | ------ | ---------- |
