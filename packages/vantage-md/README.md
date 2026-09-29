@@ -73,6 +73,31 @@ function Docs({ content, path }) {
 
 The React component includes mermaid diagram rendering (lazy-loaded), frontmatter display, and syntax highlighting out of the box.
 
+### Frontmatter card
+
+`MarkdownViewer` draws a document's frontmatter with `FrontmatterDisplay`, which
+is also exported on its own. It takes the parsed `frontmatter` and one optional
+prop, `linkIds`: the ids of the document's own open questions, as its
+`<!-- vantage: oq id=OQ-… -->` directives name them. When it is given, each of
+those ids that appears as a whole word in the top-level `next` key (a document's
+next step, one line of text) is drawn as a link to `#OQ-…`, the question's
+anchor. The rest of `next`, and every other value, stays plain text.
+
+```tsx
+import { FrontmatterDisplay } from "vantage-md/react";
+
+<FrontmatterDisplay
+  frontmatter={{ status: "in-review", next: "Rule OQ-B2 first" }}
+  linkIds={["OQ-B2"]}
+/>;
+// next renders as: Rule <a href="#OQ-B2">OQ-B2</a> first
+```
+
+Pass only ids a question in the document carries. An id that is left only in
+the text, such as one kept in a table of past decisions after its question was
+removed, has no anchor to land on. Without `linkIds`, `next` renders like any
+other value, which is what `MarkdownViewer` does: it never passes the prop.
+
 ### Your own processor, Vantage's chain
 
 `buildPipeline` returns the exact remark and rehype lists `renderMarkdown` and
