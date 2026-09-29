@@ -1715,6 +1715,146 @@ describe("Copy answers (§6.3)", () => {
   });
 });
 
+describe("Copy answers across pages (planning-index-at-scale.md §10.5)", () => {
+  const copyButton = () => screen.getByRole("button", { name: /Copy answers/ });
+  const pendingCount = () => screen.getByTestId("pending-answers").textContent;
+
+  /** A pending comment anchored at `line`, with `hash` as its block's. */
+  const pendingAt = (
+    id: string,
+    comment: string,
+    line: number,
+    hash = "00000000",
+  ): ReviewComment => ({
+    id,
+    comment,
+    created_at: 0,
+    reactions: [],
+    anchor: {
+      source_line: line,
+      block_text_hash: hash,
+      selection_offset: 0,
+      selection_length: 0,
+    },
+  });
+
+  const lineOf = (tree: Record<string, string>, id: string) =>
+    readyOf(tree)
+      .index.documents.flatMap((d) => d.questions)
+      .find((x) => x.id === id)!.line;
+
+  it("counts and copies a pending comment on a question no page shows", async () => {
+    setPlanningLimitsForTests({ pageEntries: 2 });
+    seed();
+    // OQ-A1 is on Needs you's second page, so its card never renders.
+    reviews["plans/answered.md"] = [
+      pendingAt("placed-0001", "Ruled on page two", lineOf(TREE, "OQ-A1")),
+    ];
+    await renderPage();
+    expect(screen.queryByRole("article", { name: /OQ-A1/ })).toBeNull();
+    expect(pendingCount()).toBe("1");
+    await act(async () => {
+      fireEvent.click(copyButton());
+    });
+    const payload = writeText.mock.calls[0][0] as string;
+    expect(payload).toContain("## Review Comments for `plans/answered.md`");
+    expect(payload).toContain("**Comment:** Ruled on page two");
+    // Quoted from the lines the scanner handed over, as the whole text would.
+    expect(payload).toBe(
+      answersPayload([
+        {
+          path: "plans/answered.md",
+          comments: reviews["plans/answered.md"],
+          lines: linesOfText(TREE["plans/answered.md"] ?? null),
+        },
+      ]),
+    );
+  });
+
+  // A comment filed on OQ-S1's line whose block text is the note beside it:
+  // the rendered card finds it on the note, outside the question, and
+  // placement, by line alone, would have put it on the question.
+  const SCOPED = {
+    ...TREE,
+    "plans/scoped.md": doc(
+      "stage: DESIGN",
+      [
+        `1. ${OPEN} **OQ-S1: Question OQ-S1?**`,
+        "",
+        '   <!-- vantage: oq id=OQ-S1 leaning="Yes." -->',
+        "",
+        "   _Leaning:_ Yes.",
+        "",
+        "2. A note beside it.",
+        "",
+      ].join("\n"),
+    ),
+  };
+
+  /** The note's block hash, as the card's own pass stamps it. */
+  async function noteHash(): Promise<string> {
+    seed(SCOPED);
+    await renderPage();
+    const note = Array.from(
+      cardFor("OQ-S1").querySelectorAll<HTMLElement>("[data-block-hash]"),
+    ).find((el) => el.textContent?.includes("A note beside it."));
+    const hash = note?.getAttribute("data-block-hash");
+    cleanup();
+    resetPlanningReviews();
+    resetPlanningPageInputs();
+    if (!hash) throw new Error("no note block");
+    return hash;
+  }
+
+  it("takes a rendered card's own scoping over placement", async () => {
+    const hash = await noteHash();
+    reviews["plans/scoped.md"] = [
+      pendingAt("moved-0001", "On the note", lineOf(SCOPED, "OQ-S1"), hash),
+    ];
+    seed(SCOPED);
+    await renderPage();
+    expect(cardFor("OQ-S1")).toBeTruthy();
+    expect(pendingCount()).toBe("0");
+  });
+
+  it("places the same comment by its line when the card is on a page not shown", async () => {
+    const hash = await noteHash();
+    reviews["plans/scoped.md"] = [
+      pendingAt("moved-0001", "On the note", lineOf(SCOPED, "OQ-S1"), hash),
+    ];
+    // Unrouted is OQ-X1, OQ-S1, OQ-U1: at one a page, OQ-S1 is on page 2.
+    setPlanningLimitsForTests({ pageEntries: 1 });
+    seed(SCOPED);
+    await renderPage();
+    expect(screen.queryByRole("article", { name: /OQ-S1/ })).toBeNull();
+    expect(pendingCount()).toBe("1");
+  });
+
+  it("goes back to placement for a card flipped off the page", async () => {
+    const hash = await noteHash();
+    reviews["plans/scoped.md"] = [
+      pendingAt("moved-0001", "On the note", lineOf(SCOPED, "OQ-S1"), hash),
+    ];
+    // Unrouted's first page is OQ-X1 and OQ-S1, its second OQ-U1.
+    setPlanningLimitsForTests({ pageEntries: 2 });
+    seed(SCOPED);
+    await renderPage();
+    expect(pendingCount()).toBe("0");
+    await act(async () => {
+      fireEvent.click(
+        within(
+          screen.getByRole("navigation", { name: "Unrouted pages" }),
+        ).getByRole("button", { name: "Next ›" }),
+      );
+    });
+    await settle();
+    // OQ-S1's card, which found the comment on the note, is gone; by its
+    // line the comment is OQ-S1's.
+    expect(screen.queryByRole("article", { name: /OQ-S1/ })).toBeNull();
+    expect(pendingCount()).toBe("1");
+  });
+});
+
 describe("Open document, then Back (§6.3, §15)", () => {
   beforeEach(() => seed());
 

@@ -68,6 +68,7 @@ import {
   layoutPlanningPage,
   listedQuestions as listedQuestionsOf,
   pageSearch,
+  placeComment,
   readPageRequest,
   requestWithPage,
   sectionsOf,
@@ -593,40 +594,72 @@ export const PlanningPage: React.FC = () => {
   });
   const hashes = ready?.hashes ?? null;
 
-  // Which comments sit on a listed question: only a card, over its rendered
-  // question, can say. Each reports its own, by question.
-  const [scoped, setScoped] = useState<Readonly<Record<string, string[]>>>({});
+  // Which comments sit on a listed question. A card rendered on the page
+  // reads it from its rendered question and reports it, by question; every
+  // other question places its document's comments by line (§10.5).
+  const [scoped, setScoped] = useState<
+    Readonly<Record<string, readonly string[]>>
+  >({});
   const reportScoped = useCallback(
-    (key: string, ids: readonly string[]) =>
+    (key: string, ids: readonly string[] | null) =>
       setScoped((prev) => {
-        const had = prev[key] ?? [];
-        if (had.length === ids.length && had.every((id, i) => ids[i] === id)) {
+        const had = prev[key];
+        if (ids === null) {
+          if (had === undefined) return prev;
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        }
+        if (
+          had !== undefined &&
+          had.length === ids.length &&
+          had.every((id, i) => ids[i] === id)
+        ) {
           return prev;
         }
-        const next = { ...prev };
-        if (ids.length === 0) delete next[key];
-        else next[key] = [...ids];
-        return next;
+        return { ...prev, [key]: [...ids] };
       }),
     [],
   );
 
-  // Copy answers (§6.3): every comment still pending for the agent on a
-  // question listed here, grouped by document — built from the reviews, never
-  // from the cards, so a comment two cards could both see appears once.
+  // Copy answers (§6.3, and §10.5 of the scale design): every comment still
+  // pending for the agent on a question listed on any page, grouped by
+  // document — built from the reviews, never from the cards, so a comment
+  // two cards could both see appears once. A card's own report decides for
+  // it; placement decides for a question with none, never both.
   const pendingGroups = useMemo(() => {
-    const onPage = new Set(Object.values(scoped).flat());
-    return listedPaths
-      .slice()
+    const byPath = new Map<string, PlanningQuestion[]>();
+    for (const question of listedQuestions) {
+      const list = byPath.get(question.path);
+      if (list === undefined) byPath.set(question.path, [question]);
+      else list.push(question);
+    }
+    return [...byPath.keys()]
       .sort()
-      .map((path) => ({
-        path,
-        comments: (reviews.byPath[path] ?? []).filter(
-          (c) => onPage.has(c.id) && isPendingForAgent(c),
-        ),
-      }))
+      .map((path) => {
+        const questions = byPath.get(path) ?? [];
+        const reported = new Set<string>();
+        const reports = new Set<string>();
+        for (const question of questions) {
+          const ids = scoped[refKey(question)];
+          if (ids === undefined) continue;
+          reported.add(refKey(question));
+          for (const id of ids) reports.add(id);
+        }
+        const placed = (c: ReviewComment): boolean => {
+          const line = c.anchor?.source_line;
+          const question = line ? placeComment(questions, line) : undefined;
+          return question !== undefined && !reported.has(refKey(question));
+        };
+        return {
+          path,
+          comments: (reviews.byPath[path] ?? []).filter(
+            (c) => isPendingForAgent(c) && (reports.has(c.id) || placed(c)),
+          ),
+        };
+      })
       .filter((group) => group.comments.length > 0);
-  }, [scoped, listedPaths, reviews.byPath]);
+  }, [scoped, listedQuestions, reviews.byPath]);
   const { linesOf, loading: quotesLoading } = useQuotedText(
     onThisRepo ? repo : null,
     hashes,

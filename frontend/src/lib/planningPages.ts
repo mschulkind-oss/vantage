@@ -336,3 +336,29 @@ export function listedQuestions(
     return question === undefined ? [] : [question];
   });
 }
+
+/**
+ * The listed question a comment anchored on file line `line` sits on, for a
+ * card that has not been rendered (`planning-index-at-scale.md` §10.5,
+ * *placement*): the innermost of `questions` whose unit, `unitLine` to
+ * `unitEndLine`, holds the line, or `undefined` when none does. Exact unless
+ * the comment's block has moved since it was filed.
+ */
+export function placeComment(
+  questions: readonly PlanningQuestion[],
+  line: number,
+): PlanningQuestion | undefined {
+  let best: PlanningQuestion | undefined;
+  for (const question of questions) {
+    if (line < question.unitLine || line > question.unitEndLine) continue;
+    if (
+      best === undefined ||
+      question.unitLine > best.unitLine ||
+      (question.unitLine === best.unitLine &&
+        question.unitEndLine < best.unitEndLine)
+    ) {
+      best = question;
+    }
+  }
+  return best;
+}
