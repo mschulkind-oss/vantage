@@ -302,6 +302,18 @@ describe("inline SVG sizing is one stylesheet, reached by every consumer", () =>
     expect(declaration(svgCss(), SELECTOR, "max-width")).toBe("100%");
   });
 
+  it("lets the height follow the width only for a drawing with a viewBox", () => {
+    // Without a viewBox the drawing does not scale to its box, so an auto
+    // height crops it. `inline_svg.spec.ts` measures it; this pins the scope.
+    const css = svgCss();
+    expect(declaration(css, `${SELECTOR}[viewBox]`, "height")).toBe("auto");
+    const base = css.slice(
+      css.indexOf(`${SELECTOR} {`),
+      css.indexOf("}", css.indexOf(`${SELECTOR} {`)),
+    );
+    expect(base).not.toContain("height");
+  });
+
   it("is layered, so an icon's size utilities still win", () => {
     const css = svgCss();
     const layer = css.indexOf("@layer components {");
