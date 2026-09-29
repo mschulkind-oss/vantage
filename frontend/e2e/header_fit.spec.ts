@@ -1,4 +1,9 @@
 import { test, expect, type Page } from "@playwright/test";
+import * as fs from "fs";
+import * as path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // The viewer header gives up room in a fixed order as it narrows, and the file
 // name is the last thing to give any: the commit subject shrinks and then
@@ -375,17 +380,71 @@ async function setHeaderWidth(page: Page, width: number) {
 }
 
 /**
- * A 700px sidebar, the widest there is, so the header can be made far
- * narrower than a phone's while the window stays a desktop one.
+ * Narrows the header into the middle of the widths at which `step` is the last
+ * step it has taken, and returns that width.
+ *
+ * Where a step falls depends on how wide the header's text is drawn, so it is
+ * found here, never assumed: a width names a step only for one set of fonts.
+ * The two collapsed-folder tests once opened the "…" at a 900px header. Drawn
+ * in DejaVu Sans the folders collapse from about 930px down, so there was a
+ * "…" to open; drawn in Liberation Sans they wait until about 890px, so there
+ * was none, and the tests failed wherever the browser had the narrower face,
+ * CI's Chromium among them.
+ *
+ * The widest such width is found in 50px strides and then by halving the last
+ * one, which holds because steps are only taken as the header narrows (the
+ * second test below pins that); the narrowest in 10px strides on from there, to
+ * the width that takes the next step or to `floor`, below which the window
+ * would reach the tablet layout. The middle of the two is where a pixel of text
+ * drawn a little differently cannot carry the header across either edge.
  */
-async function widenSidebar(page: Page) {
+async function narrowInto(page: Page, step: Step, floor = 500) {
+  const header = page.getByTestId("viewer-header");
+  const want = STEPS.indexOf(step) + 1;
+  const countAt = async (width: number) => {
+    await setHeaderWidth(page, width);
+    const taken = (await header.getAttribute("data-yield")) ?? "";
+    return taken.split(" ").filter(Boolean).length;
+  };
+
+  let wide = 2000;
+  expect(await countAt(wide), `${step} taken at ${wide}px`).toBeLessThan(want);
+  let narrow = wide - 50;
+  while ((await countAt(narrow)) < want) {
+    wide = narrow;
+    narrow -= 50;
+    expect(narrow, `${step} never taken`).toBeGreaterThanOrEqual(floor);
+  }
+  while (wide - narrow > 1) {
+    const mid = Math.floor((wide + narrow) / 2);
+    if ((await countAt(mid)) < want) wide = mid;
+    else narrow = mid;
+  }
+  expect(
+    await countAt(narrow),
+    `the step after ${step} taken with it, at ${narrow}px`,
+  ).toBe(want);
+
+  let end = narrow;
+  while (end - 10 >= floor && (await countAt(end - 10)) === want) end -= 10;
+  const width = Math.round((narrow + end) / 2);
+  expect(await countAt(width), `at ${width}px`).toBe(want);
+  return width;
+}
+
+/**
+ * A 700px sidebar, the widest there is, so the header can be made far
+ * narrower than a phone's while the window stays a desktop one. `loaded` is
+ * text the header shows once the reloaded page has everything it acts on.
+ */
+async function widenSidebar(page: Page, loaded = "Dismiss 3 answered") {
   await page.evaluate(() =>
     localStorage.setItem("vantage:sidebarWidth", "700"),
   );
   await page.reload();
-  await expect(
-    page.getByTestId("viewer-header").getByText("Dismiss 3 answered"),
-  ).toHaveCount(1);
+  await expect(page.getByTestId("viewer-header").getByText(loaded)).toHaveCount(
+    1,
+  );
 }
 
 /** The name's extension: its text, and whether it is drawn whole. */
@@ -477,10 +536,10 @@ test.describe("viewer header under width pressure", () => {
   });
 
   test("collapsed folders stay reachable from the …", async ({ page }) => {
-    await setHeaderWidth(page, 900);
+    const width = await narrowInto(page, "dirs");
     const header = page.getByTestId("viewer-header");
     const more = header.getByRole("button", { name: /docs\/design/ });
-    await expect(more).toBeVisible();
+    await expect(more, `no … at ${width}px`).toBeVisible();
     await expect(header.getByTestId("breadcrumb-name")).toHaveAttribute(
       "title",
       PATH,
@@ -495,7 +554,7 @@ test.describe("viewer header under width pressure", () => {
   test("collapsed folders are reachable from the keyboard", async ({
     page,
   }) => {
-    await setHeaderWidth(page, 900);
+    await narrowInto(page, "dirs");
     const more = page
       .getByTestId("viewer-header")
       .getByRole("button", { name: /docs\/design/ });
@@ -559,7 +618,7 @@ test.describe("viewer header under width pressure", () => {
   test("the folded toolbar actions open as a panel, from the pointer or the keyboard", async ({
     page,
   }) => {
-    await setHeaderWidth(page, 562);
+    await narrowInto(page, "actions");
     const header = page.getByTestId("viewer-header");
     await expect(header).toHaveAttribute("data-yield", /\bactions\b/);
     const more = header.getByRole("button", { name: "Toolbar actions" });
@@ -713,7 +772,7 @@ test.describe("viewer header under width pressure", () => {
   });
 
   test("icon-only buttons keep their names", async ({ page }) => {
-    await setHeaderWidth(page, 900);
+    await narrowInto(page, "labels");
     const s = await snapshot(page, LABELS, DIRS);
     expect(Object.values(s.labels)).toEqual(LABELS.map(() => false));
     const header = page.getByTestId("viewer-header");
@@ -773,28 +832,79 @@ test.describe("a header whose toolbar ends at the commit button", () => {
   });
 });
 
-// The fixture's page2.md is untracked, so its header has no commit: an amber
-// "Untracked file" button and the file's modification time instead. The same
-// steps govern it, less the ones it has nothing for.
+// An untracked file's header has no commit: an amber "Untracked file" button,
+// and the file's modification time instead. The same steps govern it, less the
+// ones it has nothing for.
+//
+// The file is this test's own, written before it and removed after it. It used
+// to be the fixture's page2.md, whose time the header takes from the recent
+// files list — which holds the 30 newest, and page2.md is not among them in a
+// fresh checkout, where most of the fixture is written after it — so there was
+// no time for the test to find, on CI and in a new clone alike. A file written
+// now is the newest there is, but the server keeps that list cached for up to
+// 30 seconds after a file appears, so the list the header reads is routed to
+// carry it.
 test.describe("an untracked file's header", () => {
+  const UNTRACKED = "header-fit-untracked.md";
+  const file = path.join(__dirname, "fixtures/test_repo", UNTRACKED);
+
+  test.beforeEach(async ({ page }) => {
+    fs.writeFileSync(
+      file,
+      "# Untracked\n\nWritten by header_fit.spec.ts, and removed after it.\n",
+    );
+    // Hours old, so the relative time reads the same for the whole test.
+    const mtime = new Date(Date.now() - 180 * MINUTE);
+    fs.utimesSync(file, mtime, mtime);
+    await page.route(
+      (url) => url.pathname === "/api/git/recent",
+      async (route) => {
+        const response = await route.fetch();
+        const recent = (await response.json()) as { path: string }[];
+        await route.fulfill({
+          response,
+          json: [
+            {
+              path: UNTRACKED,
+              date: mtime.toISOString(),
+              author_name: "",
+              message: "",
+              hexsha: "",
+              untracked: true,
+            },
+            ...recent.filter((f) => f.path !== UNTRACKED),
+          ],
+        });
+      },
+    );
+  });
+
+  test.afterEach(() => fs.rmSync(file, { force: true }));
+
   test("gives way in the same order, and keeps the name whole", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 1400, height: 900 });
-    await page.goto("/page2.md");
+    await page.setViewportSize({ width: 2400, height: 900 });
+    await page.goto(`/${UNTRACKED}`);
     const header = page.getByTestId("viewer-header");
     await expect(header.getByText("Untracked file")).toHaveCount(1);
+    await widenSidebar(page, "Untracked file");
     await expect(header.getByTestId("header-time")).toHaveCount(1);
 
+    // Narrowed until the relative time goes, wherever the fonts put that.
     let before = 0;
-    for (let width = 1000; width >= 500; width -= 20) {
+    for (let width = 1600; ; width -= 20) {
+      expect(width, "the relative time never went").toBeGreaterThan(200);
       await setHeaderWidth(page, width);
       const s = await snapshot(page, ["Untracked file", "Path", "Raw"], []);
       checkInvariants(s);
       const taken = level(s);
       expect(taken, `at ${width}px`).toBeGreaterThanOrEqual(before);
       before = taken;
-      expect(s.name.truncated, `page2.md truncated at ${width}px`).toBe(false);
+      expect(s.name.truncated, `${UNTRACKED} truncated at ${width}px`).toBe(
+        false,
+      );
+      if (s.time === false) break;
     }
     // Down to the clock alone, which is what kept the name whole: until the
     // relative time could go, a header this narrow elided the name entirely.
