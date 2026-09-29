@@ -174,9 +174,10 @@ describe("the line (§7)", () => {
   });
 
   it("does not put the roadmap on or off itself", () => {
-    // It is never "on the roadmap", and the question it does not route still
-    // counts, without the line claiming the roadmap is not on itself. OQ-R2 is
-    // routed by the roadmap's own link to it; OQ-R1 is not.
+    // It is never "on the roadmap", and the questions it does not route still
+    // count, without the line claiming the roadmap is not on itself. Its own
+    // link to OQ-R2 routes nothing, since a document's links are its links to
+    // another candidate (§3.2), so both of its questions are unrouted.
     const summary = summaryOf(
       {
         "roadmap.md": planning(
@@ -197,7 +198,7 @@ describe("the line (§7)", () => {
     expect(summaryLine(summary)).toEqual({
       count: "Referenced by 1 document",
       roadmap: null,
-      unrouted: "1 open question not routed by the roadmap",
+      unrouted: "2 open questions not routed by the roadmap",
     });
   });
 

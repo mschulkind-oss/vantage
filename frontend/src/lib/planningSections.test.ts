@@ -112,6 +112,26 @@ describe("routing (§6.1)", () => {
     expect(routeQuestions(index).map((q) => q.path)).not.toContain("docs/b.md");
   });
 
+  // §3.2: a document's links are links to another candidate. The index's
+  // JSON leaves a self-link out, so routing on one showed a routed question
+  // with no link routing it.
+  it("routes nothing through the roadmap's links to itself", () => {
+    const index = indexOf({
+      "roadmap.md": doc(
+        "status: draft",
+        [
+          "See [below](#OQ-R1) and [the top](roadmap.md).",
+          "",
+          questions("R", OPEN),
+        ].join("\n"),
+      ),
+    });
+    expect(routeQuestions(index)).toEqual([]);
+    expect(derivePlanningSections(index).unrouted).toEqual([
+      ref(index, "OQ-R1"),
+    ]);
+  });
+
   it("routes nothing without a roadmap", () => {
     const { "roadmap.md": _roadmap, ...rest } = tree;
     expect(_roadmap).toBeDefined();
@@ -535,7 +555,8 @@ describe("the Referenced by summary (§7)", () => {
   it("does not put the roadmap on itself", () => {
     const roadmap = `# Roadmap\n\n## Mine\n\n- [mine](#OQ-R1)\n\n${questions("R", OPEN, OPEN)}`;
     const summary = summaryOf({ "roadmap.md": roadmap }, "roadmap.md");
-    // Its own link routes OQ-R1, so only OQ-R2 is unrouted, as the page says.
-    expect(summary).toEqual({ sources: [], onRoadmap: null, unrouted: 1 });
+    // Its own link to OQ-R1 routes nothing (§3.2: a document's links are its
+    // links to another candidate), so both are unrouted, as the page says.
+    expect(summary).toEqual({ sources: [], onRoadmap: null, unrouted: 2 });
   });
 });
