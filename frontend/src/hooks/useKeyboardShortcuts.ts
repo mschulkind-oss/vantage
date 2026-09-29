@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { toggleColorMode } from "../lib/darkMode";
 import { planningPath } from "../lib/planningRoute";
+import { prefetchPlanningPage } from "./usePlanningPageInputs";
 
 /**
  * Hook that manages the keyboard shortcuts modal state and
@@ -118,6 +119,12 @@ export const useKeyboardShortcuts = ({
       if (key === "g") {
         pendingKeyRef.current = "g";
         pendingTimerRef.current = setTimeout(clearPending, 800);
+        // The planning page's first page, ahead of the `p` of `g p`: the
+        // usual gap between the two keys hides its requests
+        // (planning-index-at-scale.md §10.2). Nothing is asked before the
+        // index is ready.
+        const repo = isMultiRepo ? currentRepo : "";
+        if (repo !== null) prefetchPlanningPage(repo);
         return;
       }
 
