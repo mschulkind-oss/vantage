@@ -195,14 +195,14 @@ A planning document's row in the sidebar shows a small badge after its name:
 - **`💬 N`** when it has open questions. Blocked questions are not counted
   here.
 
-Hover the badge, or the row, for the words: *in review, design, 4 open
+Hover the badge, or the file name, for the words: *in review, design, 4 open
 questions*. A screen reader hears the same words after the file name.
 
 **The file name always comes first.** A badge only uses the room a name leaves
 over, so a name is exactly as wide as it would be with no badge, and a long
 name is cut short exactly where it always was. When the whole badge does not
 fit in what is left, it is not drawn at all rather than cut in half; widen the
-sidebar to see it, or hover the row for its words. The dot that marks a file
+sidebar to see it, or hover the file name for its words. The dot that marks a file
 with uncommitted changes stays at the end of the row, as it always has.
 
 Every other row, directories included, looks as it always did.

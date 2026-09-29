@@ -232,9 +232,7 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
             ? "Symlink target is outside this project or broken"
             : isSymlink
               ? `Symlink → ${node.symlink_target}`
-              : // The badge's words, which the row keeps saying when there
-                // is no room to draw the badge itself.
-                planningBadge?.label
+              : undefined
         }
       >
         {/* Arrow toggle — large click target with visible hover feedback */}
@@ -290,6 +288,11 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
             "truncate",
             isActive && !isSymlinkError ? undefined : nameColor,
           )}
+          // The badge's words, for a pointer resting on the name, which is
+          // all of the row there is when the badge has no room. Not on the
+          // row: a link's title is its accessible description, and the
+          // badge's accessible name already says them once.
+          title={isSymlink ? undefined : planningBadge?.label}
         >
           {node.name}
         </span>

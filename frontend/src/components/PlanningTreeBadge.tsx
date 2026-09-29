@@ -3,13 +3,13 @@
  * (`docs/design/planning-index.md` §7): a dot in its status chip's tone, or in
  * the warning tone, as a ring, when its stage is not a declared one, and
  * `💬 N` while it has open questions. The full phrasing is the badge's
- * accessible name and title; the full chip is for links and the document
+ * accessible name, said once, and the tooltip of its slot; the full chip is for links and the document
  * header, where there is room for it.
  *
  * It sits in a slot after the name that is laid out to take no width from it:
  * the name is exactly as wide as it would be with no badge, and the badge uses
  * only the room left over, whole or not at all. How is in `index.css`, under
- * `.vantage-tree-badge-slot`. When it is not drawn, the row's tooltip says what
+ * `.vantage-tree-badge-slot`. When it is not drawn, the name's tooltip says what
  * it would have (`FileTree`).
  */
 import { VANTAGE_OQ_STATUS } from "vantage-md";
@@ -19,12 +19,13 @@ import { PLANNING_BADGE_ATTR } from "./PlanningBadge";
 
 export function PlanningTreeBadge({ badge }: { badge: TreeBadge }) {
   return (
-    <span className="vantage-tree-badge-slot">
+    // The tooltip is the slot's, not the badge's: on the badge it would be
+    // the image's accessible description, repeating its name.
+    <span className="vantage-tree-badge-slot" title={badge.label}>
       <span
         {...{ [PLANNING_BADGE_ATTR]: "document" }}
         role="img"
         aria-label={badge.label}
-        title={badge.label}
         className="vantage-tree-badge"
       >
         {badge.tone !== null && (

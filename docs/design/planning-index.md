@@ -409,8 +409,8 @@ planning page at its previous scroll position.
      before the tree had badges, and a name too long for its row truncates exactly as it did
      then.
   2. **The badge uses only the room the name leaves, and is drawn only when all of it fits
-     there.** It is never cut off. When it does not fit, it is not drawn, and the row's tooltip
-     and accessible name still say what it would have said.
+     there.** It is never cut off. When it does not fit, it is not drawn, and the name's tooltip
+     and the row's accessible name still say what it would have said.
   3. **The badge is compact:** a dot in the color of the document's status chip, and `💬 N` in
      small muted text when it has open questions.
      - A stage outside the declared words
@@ -419,7 +419,9 @@ planning page at its previous scroll position.
      - A declared stage with no status draws a muted dot.
      - A document whose only state is its open questions shows the count alone.
 
-     The words are the badge's title and accessible name, phrased as a link's badge is
+     The words are the tooltip of the name and of the badge, and the badge's accessible name,
+     which a screen reader hears once, after the file name, and not again as a description. They
+     are phrased as a link's badge is
      ([§5.3](#53-how-a-badge-behaves)): status, stage and open questions, for example
      *in review, design, 4 open questions*. Blocked questions are not counted here. The full
      status chip stays where there is room for it, beside links and in the document's header,
