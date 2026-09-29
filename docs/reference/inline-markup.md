@@ -661,6 +661,36 @@ ordinary link, protocol-filtered like a Markdown link. Gradients and patterns
 are unsupported because they are reachable only through `url(#id)`, and the
 sanitizer prefixes every `id`. SVG child elements require an `svg` ancestor.
 
+**Write a drawing as a `<div>` on a line of its own around the `<svg>`, with no
+blank line anywhere inside it.** Markdown decides where raw HTML ends before the
+sanitizer sees any of it:
+
+```html
+<div>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40" role="img" aria-label="Two boxes">
+  <rect x="1" y="1" width="50" height="38" fill="none" stroke="currentColor"/>
+  <text x="26" y="24" text-anchor="middle" fill="currentColor">A</text>
+</svg>
+</div>
+```
+
+- **The `<div>` line opens an HTML block that runs to the next blank line.** So
+  everything inside reaches the sanitizer as markup, including an `<svg` start
+  tag spread over several lines, which is how Inkscape lays one out.
+- **Without the `<div>`, only a single-line start tag works.** A `<svg …>` start
+  tag complete on a line of its own opens the same kind of block. One spread
+  over several lines does not, and the drawing is read as a paragraph with tags
+  in it: `*adj*` inside a `<text>` became emphasis, which closed the `svg` there
+  and lost the rest of the drawing.
+- **A blank line ends either block.** The next indented line became a code
+  block, which printed the rest of the drawing as source.
+- **The `<div>` is also the drawing's anchor.** It carries the
+  `data-source-line` that a `#L` link and a review comment resolve against, and
+  the `svg` itself carries none.
+
+`vantage-check` reports none of these breakages; the rendered page is the only
+place they show.
+
 `fill` and `stroke` take only a keyword, a color name or a hex color, for the
 reason `style` refuses parentheses, and **a refused paint renders black, not
 absent**. The attribute is dropped and SVG's initial fill is black, so
