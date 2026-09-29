@@ -47,6 +47,23 @@ interface MarkdownViewerProps {
    * stable reference — it is in the reporting effect's dep array.
    */
   onOpenQuestionCount?: (count: number) => void;
+  /**
+   * Added to every `data-source-line`. For a slice of a document rendered on
+   * its own — the planning page's question card, from `questionCardSource` —
+   * so every line, and every review anchor built on one, is the document's.
+   * Default 0.
+   */
+  sourceLineOffset?: number;
+  /**
+   * A viewer inside another page rather than the page itself: no frontmatter
+   * card, no Referenced by, no review mode (so no comments, no Open Question
+   * buttons and no comment popover), no delta flash, and no drift published.
+   * The review store holds the document being viewed; an embedded viewer
+   * painting its comments onto a card, or clearing its `commentsDrifted`,
+   * would be reporting on a different document. Link badges and collapsed
+   * sections stay, because they are how the text reads.
+   */
+  embedded?: boolean;
 }
 
 /**
@@ -133,9 +150,14 @@ function resolveAnchorBlock(
 const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   content,
   currentPath,
-  isReviewMode = false,
+  isReviewMode: isReviewModeProp = false,
   onOpenQuestionCount,
+  sourceLineOffset = 0,
+  embedded = false,
 }) => {
+  // Review mode belongs to the page's own document, never to one embedded in
+  // another page (see `embedded`).
+  const isReviewMode = isReviewModeProp && !embedded;
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
   const isMultiRepo = useRepoStore((state) => state.isMultiRepo);
@@ -170,8 +192,8 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   // `data-source-line` count file lines — both `#L42` links and review comment
   // anchors are read against the whole file, not the body rendered here.
   const { remarkPlugins, rehypePlugins } = useMemo(
-    () => buildPipeline({ bodyLineOffset }),
-    [bodyLineOffset],
+    () => buildPipeline({ bodyLineOffset: bodyLineOffset + sourceLineOffset }),
+    [bodyLineOffset, sourceLineOffset],
   );
 
   const handleLinkClick = useCallback(
@@ -262,7 +284,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   );
 
   // Delta flash: highlight only changed blocks on live updates
-  useDeltaFlash(containerRef, content, currentPath);
+  useDeltaFlash(containerRef, content, currentPath, !embedded);
 
   // --- Review mode ---
   const comments = useReviewStore((s) => s.comments);
@@ -321,6 +343,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     isReviewMode ? comments : [],
     isReviewMode ? body : null,
     reviewActions,
+    !embedded,
   );
 
   // The one-click Open Question answer (design §5.2). A sibling pass rather than
@@ -775,7 +798,9 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
         "prose-td:px-3 prose-td:py-1.5 prose-td:border prose-td:border-slate-200 dark:prose-td:border-slate-700",
       )}
     >
-      <FrontmatterDisplay frontmatter={frontmatter} linkIds={nextLinkIds} />
+      {!embedded && (
+        <FrontmatterDisplay frontmatter={frontmatter} linkIds={nextLinkIds} />
+      )}
       {markdown}
       {/* Review mode: comment popover for new selections */}
       {isReviewMode && pendingSelection && (
@@ -807,7 +832,9 @@ export const MarkdownViewer = memo(
     return (
       prevProps.content === nextProps.content &&
       prevProps.currentPath === nextProps.currentPath &&
-      prevProps.isReviewMode === nextProps.isReviewMode
+      prevProps.isReviewMode === nextProps.isReviewMode &&
+      prevProps.sourceLineOffset === nextProps.sourceLineOffset &&
+      prevProps.embedded === nextProps.embedded
     );
   },
 );

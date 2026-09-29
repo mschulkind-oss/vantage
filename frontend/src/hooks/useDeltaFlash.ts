@@ -73,6 +73,7 @@ export function useDeltaFlash(
   containerRef: RefObject<HTMLElement | null>,
   content: string,
   path: string,
+  enabled = true,
 ): void {
   const prevSnapshotsRef = useRef<string[]>([]);
   const prevPathRef = useRef<string>(path);
@@ -80,7 +81,7 @@ export function useDeltaFlash(
 
   useLayoutEffect(() => {
     const container = containerRef.current;
-    if (!container) return;
+    if (!container || !enabled) return;
 
     const children = Array.from(container.children) as HTMLElement[];
     const newSnapshots = children.map(snapshotOf);
