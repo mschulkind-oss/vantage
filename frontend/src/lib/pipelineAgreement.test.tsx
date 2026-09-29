@@ -22,6 +22,13 @@ import { MarkdownViewer as AppMarkdownViewer } from "../components/MarkdownViewe
 
 // Store writes fire command requests via axios; the app viewer pulls the store in.
 vi.mock("axios");
+// The planning index is its own suites' subject (usePlanningStore.test.ts,
+// usePlanningLinkBadges.test.tsx). Here it stays idle, so rendering the viewer
+// issues no planning request and draws no badge.
+vi.mock("../stores/usePlanningStore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../stores/usePlanningStore")>()),
+  usePlanningIndex: () => ({ status: "idle" }),
+}));
 
 const mockNavigate = vi.fn();
 vi.mock("react-router-dom", async () => {

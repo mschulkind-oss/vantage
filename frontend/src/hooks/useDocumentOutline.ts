@@ -186,7 +186,7 @@ export function questionLabel(stamped: HTMLElement): {
 } {
   const scope = stamped.closest("li") ?? stamped;
   for (const strong of scope.querySelectorAll("strong")) {
-    const text = flatten(strong.textContent);
+    const text = flatten(documentText(strong));
     if (!OQ_TITLE.test(text)) continue;
     return { marker: markerBefore(strong), text };
   }
@@ -194,7 +194,7 @@ export function questionLabel(stamped: HTMLElement): {
   // as a heading is "#🔒 …" and its marker carries the `#`.
   const text = flatten(
     HEADING_LEVELS[scope.tagName] === undefined
-      ? scope.textContent
+      ? documentText(scope)
       : headingText(scope),
   );
   return { marker: leadingMarker(text), text };
@@ -223,7 +223,8 @@ function markerBefore(strong: Element): string {
     if (node === strong) break;
     // A heading's hover anchor is the viewer's, not the author's marker.
     if (node instanceof Element && node.matches(".heading-anchor")) continue;
-    out += node.textContent ?? "";
+    out +=
+      node instanceof Element ? documentText(node) : (node.textContent ?? "");
   }
   return out.trim();
 }
@@ -238,13 +239,26 @@ function leadingMarker(text: string): string {
 }
 
 /**
+ * Text the viewer adds beside what the document wrote: a planning badge after
+ * a link (`docs/design/planning-index.md` §5.3). An entry's label is the
+ * document's own words, and a badge's text is another document's state.
+ */
+const VIEWER_TEXT = "[data-vantage-planning-badge]";
+
+/** `el`'s text without anything matching `drop`, or `VIEWER_TEXT` by default. */
+function documentText(el: Element, drop: string = VIEWER_TEXT): string {
+  if (el.querySelector(drop) === null) return el.textContent ?? "";
+  const clone = el.cloneNode(true) as Element;
+  for (const node of clone.querySelectorAll(drop)) node.remove();
+  return clone.textContent ?? "";
+}
+
+/**
  * A heading's text without its hover anchor. `MarkdownViewer` renders a literal
  * `#` link inside every heading, so plain `textContent` yields "#Overview".
  */
 function headingText(el: HTMLElement): string {
-  const clone = el.cloneNode(true) as HTMLElement;
-  for (const a of clone.querySelectorAll(".heading-anchor")) a.remove();
-  return (clone.textContent ?? "").trim();
+  return documentText(el, `.heading-anchor, ${VIEWER_TEXT}`).trim();
 }
 
 /** One state, and how many of the document's questions are in it. */
