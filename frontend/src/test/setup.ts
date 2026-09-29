@@ -1,5 +1,7 @@
 import "@testing-library/jest-dom";
-import { afterEach } from "vitest";
+import { format } from "node:util";
+import { setTimeout as sleep } from "node:timers/promises";
+import { afterAll, afterEach, beforeEach } from "vitest";
 
 // jsdom does no layout, so Element.scrollIntoView does not exist at all — a
 // component that keeps its selection visible (both pickers, the contents panel)
@@ -34,5 +36,58 @@ afterEach(() => {
     `sent ${sent.length} request(s) that no server is here to answer: ` +
       `${sent.join(", ")}. Answer each one in the test — spy on axios, or ` +
       `swap the store action that sends it — or hold it pending.`,
+  );
+});
+
+// Whatever else a test leaves running can fail the run the same way once it
+// logs: a timer, a promise chain, a render that settles late. So the file's
+// last test is followed for a short while, and anything logged after it fails
+// the file, naming what was logged. What lands later than the wait is missed,
+// and how much of the rest arrives in time is up to the machine's load, so this
+// narrows the random red run rather than ruling it out. The wait is on Node's
+// own clock, which a test's vi.useFakeTimers() does not replace, so a file that
+// leaves fake timers on cannot stall it.
+//
+// "After the last test" relies on hook order: vitest runs after-hooks in the
+// reverse of the order they were registered (`sequence.hooks: "stack"`, its
+// default), and this file registers before any test file does, so the
+// afterEach below runs once every test file's own afterEach has, and the
+// afterAll once every afterAll has.
+const LATE_LOG_WAIT_MS = 50;
+const consoleMethods = [
+  "log",
+  "info",
+  "warn",
+  "error",
+  "debug",
+  "trace",
+] as const;
+const originalConsole = Object.fromEntries(
+  consoleMethods.map((method) => [method, console[method]]),
+) as Pick<Console, (typeof consoleMethods)[number]>;
+/** What was logged since the last test ended; `null` while a test runs. */
+let loggedSinceLastTest: string[] | null = null;
+for (const method of consoleMethods) {
+  console[method] = function (this: Console, ...args: unknown[]) {
+    loggedSinceLastTest?.push(`console.${method}: ${format(...args)}`);
+    return originalConsole[method].apply(this, args);
+  };
+}
+beforeEach(() => {
+  loggedSinceLastTest = null;
+});
+afterEach(() => {
+  loggedSinceLastTest = [];
+});
+afterAll(async () => {
+  await sleep(LATE_LOG_WAIT_MS);
+  const late = loggedSinceLastTest ?? [];
+  loggedSinceLastTest = null;
+  Object.assign(console, originalConsole);
+  if (late.length === 0) return;
+  throw new Error(
+    `logged ${late.length} time(s) after the last test had ended, from work ` +
+      `a test left running — settle it or cancel it before the test ends:\n` +
+      late.map((line) => `  ${line.slice(0, 300)}`).join("\n"),
   );
 });
