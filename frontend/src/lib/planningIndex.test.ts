@@ -12,6 +12,7 @@ import {
   findDocument,
   parsePlanningSources,
   parseSourceEntry,
+  parseStreamLine,
   planningIndexBuilder,
   withoutDirectory,
   type PlanningIndex,
@@ -149,13 +150,132 @@ describe("parseSourceEntry", () => {
     expect(parseSourceEntry(body)).toEqual(entry);
   });
 
+  it("reads the content hash a file's answer carries", () => {
+    const hash = "60303ae22b998861bce3b28f33eec1be";
+    expect(
+      parseSourceEntry({ path: "docs/x.md", kind: "file", content: "…", hash }),
+    ).toEqual({ kind: "file", path: "docs/x.md", content: "…", hash });
+  });
+
   it.each([
     ["an unknown kind", { path: "a.md", kind: "moved" }],
     ["a file without content", { path: "a.md", kind: "file" }],
+    [
+      "a file whose hash is not one",
+      { path: "a.md", kind: "file", content: "", hash: 7 },
+    ],
     ["no path", { kind: "absent" }],
     ["html", "<!doctype html>"],
   ])("refuses %s", (_, body) => {
     expect(parseSourceEntry(body)).toBeNull();
+  });
+});
+
+describe("parseStreamLine", () => {
+  const HASH = "9f86d081884c7d659a2feaa0c55ad015";
+  /** The stream's example lines, from the design's §6.1, one of each kind. */
+  const LINES = {
+    header:
+      '{"kind":"header","config":{"roadmap":"roadmap.md","include":["**/*.md"],"exclude":[],"max_file_bytes":1048576,"max_candidates":5000,"stages":null},"candidate_count":41,"refused":false}',
+    same: `{"kind":"same","path":"AGENTS.md","hash":"${HASH}"}`,
+    file: '{"kind":"file","path":"docs/design/a.md","hash":"60303ae22b998861bce3b28f33eec1be","content":"---\\nstatus: draft\\n---\\n"}',
+    skipped: '{"kind":"skipped","path":"docs/big.md","size":2097152}',
+    unreadable:
+      '{"kind":"unreadable","path":"docs/bad.md","reason":"not UTF-8"}',
+    end: '{"kind":"end","candidates":41}',
+  };
+  const line = (kind: keyof typeof LINES) =>
+    JSON.parse(LINES[kind]) as Record<string, unknown>;
+
+  it("reads every kind of line, camelCased", () => {
+    expect(
+      Object.keys(LINES).map((kind) =>
+        parseStreamLine(line(kind as keyof typeof LINES)),
+      ),
+    ).toEqual([
+      {
+        kind: "header",
+        config: planningConfig({ maxFileBytes: 1048576, maxCandidates: 5000 }),
+        candidateCount: 41,
+        refused: false,
+      },
+      { kind: "same", path: "AGENTS.md", hash: HASH },
+      {
+        kind: "file",
+        path: "docs/design/a.md",
+        hash: "60303ae22b998861bce3b28f33eec1be",
+        content: "---\nstatus: draft\n---\n",
+      },
+      { kind: "skipped", path: "docs/big.md", size: 2097152 },
+      { kind: "unreadable", path: "docs/bad.md", reason: "not UTF-8" },
+      { kind: "end", candidates: 41 },
+    ]);
+  });
+
+  it("reads a refused header and the stages it declares", () => {
+    const header = line("header");
+    expect(
+      parseStreamLine({
+        ...header,
+        config: {
+          ...(header["config"] as object),
+          stages: { DECIDED: "ready" },
+        },
+        candidate_count: 6000,
+        refused: true,
+      }),
+    ).toMatchObject({
+      kind: "header",
+      config: { stages: { DECIDED: "ready" } },
+      candidateCount: 6000,
+      refused: true,
+    });
+  });
+
+  it.each([
+    // Every field each kind has, missing in turn.
+    ...Object.entries(LINES).flatMap(([kind, text]) =>
+      Object.keys(JSON.parse(text) as object)
+        .filter((field) => field !== "kind")
+        .map((field): [string, unknown] => {
+          const body = JSON.parse(text) as Record<string, unknown>;
+          delete body[field];
+          return [`the ${kind} line without ${field}`, body];
+        }),
+    ),
+    [
+      "a header whose count is text",
+      { ...line("header"), candidate_count: "41" },
+    ],
+    ["a header whose refusal is text", { ...line("header"), refused: "false" }],
+    [
+      "a header whose config has no roadmap",
+      {
+        ...line("header"),
+        config: { ...(line("header")["config"] as object), roadmap: null },
+      },
+    ],
+    ["a same line whose path is a number", { ...line("same"), path: 7 }],
+    ["a same line whose hash is too short", { ...line("same"), hash: "9f86" }],
+    [
+      "a same line whose hash is in capitals",
+      { ...line("same"), hash: HASH.toUpperCase() },
+    ],
+    ["a file line whose content is null", { ...line("file"), content: null }],
+    ["a skipped line whose size is text", { ...line("skipped"), size: "big" }],
+    [
+      "an unreadable line whose reason is a list",
+      { ...line("unreadable"), reason: ["no"] },
+    ],
+    ["an end whose count is not finite", { kind: "end", candidates: Infinity }],
+    ["an unknown kind", { kind: "moved", path: "a.md" }],
+    ["a line with no kind", { path: "a.md", hash: HASH }],
+    ["the static host's index.html", "<!doctype html><html></html>"],
+    ["null", null],
+    ["a number", 41],
+    ["an array", [line("end")]],
+  ])("refuses %s", (_, json) => {
+    expect(parseStreamLine(json)).toBeNull();
   });
 });
 
