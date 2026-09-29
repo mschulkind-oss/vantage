@@ -290,6 +290,92 @@ hr[data-vantage-tone]:is(
   )::before {
   bottom: -3.5em;
 }
+/* An image or a drawing written as an HTML block of its own is a member like
+   any other — `styleRange` stamps every element in the span — but `img` and
+   `svg` are replaced elements, and a replaced element generates no `::before`
+   at all. So the rule simply stopped beside one. Measured in Chrome over the
+   real build: an 84px hole beside a 92px `<img>`, and 96px beside an 80px bare
+   `<svg>` and the row of images under it, against the 40px a neighbor bleeds.
+   The same drawing inside a `<div>` never had the problem, because there the
+   `<div>` is the member.
+
+   So these two draw their slice as a border image: one flat color, sliced so
+   that only the left edge region has any width, and pushed out of the box by
+   `border-image-outset`, which moves ink without moving layout. Both offsets
+   are the shared ones. They are measured from the border box, which for a
+   member with no border of its own is the padding box every `::before` is
+   measured from, so the slice lands on the same x as the rest of the run and
+   bleeds upward by the same amount. Not a `box-shadow` clipped to a strip: the
+   app rounds every image (`prose-img:rounded-lg`), and a shadow also fills the
+   corners outside the radius, which a clip that keeps the image cannot remove.
+
+   Drawn from the member's own box, the slice is on the rule only if that box
+   starts at the column's edge, and CSS cannot see where a line starts. So it is
+   withheld wherever the box may not. That is an image floated by `align` or
+   `float`, or offset by `hspace` or a `margin`. It is also an image that comes
+   after inline content, which shares that content's line: in a row of images
+   written on consecutive lines that is every image but the first, whose slice
+   already covers the line. A gap is what these had before; a slice standing in
+   the middle of the column would be a new failure. The elements listed are the
+   inline ones the sanitizer admits, less `br`, which ends the line, and less
+   `svg`, `picture` and `span.katex-display`, which Tailwind's preflight,
+   typography and KaTeX each make a block in the app. And the slice is withheld
+   where the document drew a border, because a border image replaces the border
+   styles on all four sides: it would erase that border, not join it.
+   `frontend/e2e/directive_tone_rule.spec.ts` scans the images, the drawings
+   and the row in pixels. */
+[data-vantage-tone]:is(img, svg) {
+  border-image-source: linear-gradient(
+    var(--vantage-tone-accent),
+    var(--vantage-tone-accent)
+  );
+  border-image-slice: 1;
+  border-image-width: 0 0 0 var(--vantage-tone-rule-width);
+  border-image-outset: 0 0 0 var(--vantage-tone-rule-offset);
+}
+[data-vantage-tone]:is(img, svg):is(
+    [data-vantage-run="middle"],
+    [data-vantage-run="end"]
+  ) {
+  border-image-outset: var(--vantage-tone-run-bleed) 0 0
+    var(--vantage-tone-rule-offset);
+}
+[data-vantage-tone]:is(img, svg):is(
+    [align="left" i],
+    [align="right" i],
+    [hspace],
+    [style*="float" i],
+    [style*="margin" i],
+    [style*="border" i],
+    [border]:not([border="0"])
+  ),
+:is(
+    a,
+    b,
+    code,
+    del,
+    em,
+    i,
+    img,
+    input,
+    ins,
+    kbd,
+    math,
+    q,
+    ruby,
+    s,
+    samp,
+    span:not(.katex-display),
+    strike,
+    strong,
+    sub,
+    sup,
+    tt,
+    var
+  )
+  + img[data-vantage-tone] {
+  border-image-source: none;
+}
 /* A lone block has no run to stripe, so it gets the wash — this is the
    `<!-- vantage: block tone=important -->` callout. `:where()` holds the
    selector at one-class specificity on purpose: the review and line-anchor
@@ -542,6 +628,11 @@ hr[data-vantage-tone]:is(
 @media print {
   [data-vantage-tone]::before {
     background-color: #57606a;
+  }
+  /* The same gray for the slice an image or a drawing draws itself. Less
+     specific than the rule that withholds the slice, which still wins here. */
+  [data-vantage-tone]:is(img, svg) {
+    border-image-source: linear-gradient(#57606a, #57606a);
   }
   [data-vantage-tone]:where([data-vantage-run="only"]) {
     background-color: transparent;

@@ -31,6 +31,11 @@
  *      content wrapper's padding, which put the rule outside the page area,
  *      where Chrome clips: a PDF of this fixture drew nothing in the rule's print
  *      gray on either page.
+ *   5. A raw `<img>` and a bare `<svg>` are stamped like any other member, but
+ *      they are replaced elements and generate no `::before` at all. Measured
+ *      before the fix: an 84px hole beside a 92px image, and 96px beside an
+ *      80px drawing and the row of images under it. The same drawing inside a
+ *      `<div>` was never affected, because the `<div>` is the member.
  *
  * All of it has to hold in light, in dark and in print (D5, D7), so the
  * continuity test runs once in each: the accent changes with the theme, print
@@ -62,8 +67,31 @@ interface Member {
   height: number;
 }
 
+/**
+ * An image or a drawing inside the run: the replaced elements, which draw no
+ * `::before` and so carry their slice some other way.
+ */
+interface Picture {
+  tag: string;
+  label: string;
+  top: number;
+  bottom: number;
+  height: number;
+  /** Rows beside this picture where the rule column is painted. */
+  painted: number;
+  /** Whether the picture's box starts at the column's content edge. */
+  atEdge: boolean;
+  /**
+   * Rows where the accent shows one rule offset left of the picture's own box,
+   * which is where a slice drawn from that box would land. Counted only for a
+   * picture that does not start at the edge, where such a slice is a stray.
+   */
+  stray: number;
+}
+
 interface Scan {
   members: Member[];
+  pictures: Picture[];
   /** Unpainted runs of rows strictly between the run's first and last paint. */
   gaps: [number, number][];
   first: number;
@@ -77,7 +105,7 @@ interface Scan {
  * The panel scrolls, not the page, so anything past the fold is missing from a
  * screenshot — see `scanRuleColumn`.
  */
-const TALL_VIEWPORT = { width: 1280, height: 1600 };
+const TALL_VIEWPORT = { width: 1280, height: 2000 };
 
 /** The three renderings the rule has to survive: two themes, and paper. */
 const RENDERINGS = ["light", "dark", "print"] as const;
@@ -146,10 +174,8 @@ async function scanRuleColumn(page: import("@playwright/test").Page) {
     // of slack for anti-aliasing on the rounded ends.
     const body = stamped.find((el) => !/^H[1-6]$/.test(el.tagName))!;
     const rule = getComputedStyle(body, "::before");
-    const columnLeft =
-      body.getBoundingClientRect().left +
-      window.scrollX +
-      parseFloat(rule.left);
+    const contentEdge = body.getBoundingClientRect().left + window.scrollX;
+    const columnLeft = contentEdge + parseFloat(rule.left);
     const target = (rule.backgroundColor.match(/\d+/g) ?? [])
       .slice(0, 3)
       .map(Number);
@@ -157,28 +183,28 @@ async function scanRuleColumn(page: import("@playwright/test").Page) {
       throw new Error(`no accent color: ${rule.backgroundColor}`);
     }
 
-    const xFrom = Math.round((columnLeft - 3) * scale);
-    const xTo = Math.round((columnLeft + 6) * scale);
     const rows = Math.min(
       Math.round(window.innerHeight),
       Math.floor(image.height / scale),
     );
-    const painted: boolean[] = [];
-    for (let y = 0; y < rows; y++) {
+    /** Whether the accent shows anywhere in one row of the band at `left`. */
+    const accentAt = (left: number, y: number) => {
+      const xFrom = Math.round((left - 3) * scale);
+      const xTo = Math.round((left + 6) * scale);
       const strip = context.getImageData(
         xFrom,
         Math.round(y * scale),
         Math.max(1, xTo - xFrom),
         1,
       ).data;
-      let hit = false;
-      for (let i = 0; i < strip.length && !hit; i += 4) {
-        hit = target.every(
-          (channel, c) => Math.abs(strip[i + c] - channel) < 45,
-        );
+      for (let i = 0; i < strip.length; i += 4) {
+        if (target.every((channel, c) => Math.abs(strip[i + c] - channel) < 45))
+          return true;
       }
-      painted.push(hit);
-    }
+      return false;
+    };
+    const painted: boolean[] = [];
+    for (let y = 0; y < rows; y++) painted.push(accentAt(columnLeft, y));
 
     const first = painted.indexOf(true);
     const last = painted.lastIndexOf(true);
@@ -206,6 +232,45 @@ async function scanRuleColumn(page: import("@playwright/test").Page) {
       };
     });
 
+    // Every image and drawing the run reaches, whether it is a member itself
+    // (a raw `<img>`, a bare `<svg>`) or inside one (the `<div>` around a
+    // drawing). KaTeX draws some glyphs as `<svg>`, and those are text.
+    const container = stamped[0].parentElement!;
+    const pictures: Picture[] = Array.from(
+      container.querySelectorAll<Element>("img, svg"),
+    )
+      .filter(
+        (element) =>
+          element.closest("[data-vantage-tone]") !== null &&
+          element.closest(".katex") === null,
+      )
+      .map((element) => {
+        const box = element.getBoundingClientRect();
+        const top = Math.round(box.top);
+        const bottom = Math.round(box.bottom);
+        const left = box.left + window.scrollX;
+        const atEdge = Math.abs(left - contentEdge) < 1;
+        let hits = 0;
+        let stray = 0;
+        for (let y = top; y < bottom; y++) {
+          if (painted[y]) hits++;
+          if (!atEdge && accentAt(left - (contentEdge - columnLeft), y)) {
+            stray++;
+          }
+        }
+        return {
+          tag: element.tagName,
+          label:
+            element.getAttribute("alt") ?? element.getAttribute("aria-label")!,
+          top,
+          bottom,
+          height: bottom - top,
+          painted: hits,
+          atEdge,
+          stray,
+        };
+      });
+
     // If the content panel had to scroll, the rows below the fold were never in
     // the image and every "gap" below them is an artifact. Report it as one.
     // Print lays the panel out at full height and lets the page grow instead,
@@ -216,7 +281,7 @@ async function scanRuleColumn(page: import("@playwright/test").Page) {
       stamped[stamped.length - 1].getBoundingClientRect().bottom >
         window.innerHeight;
 
-    return { members, gaps, first, last, overflowed };
+    return { members, pictures, gaps, first, last, overflowed };
   }, `data:image/png;base64,${shot}`);
 }
 
@@ -307,10 +372,16 @@ async function expectOneContinuousRule(page: import("@playwright/test").Page) {
   expect(scan.members.map((member) => member.tag)).toEqual([
     "H2",
     "P",
+    "IMG",
     "UL",
     "PRE",
     "P",
     "FIGURE",
+    "IMG",
+    "DIV",
+    "svg",
+    "IMG",
+    "IMG",
     "SPAN",
     "BLOCKQUOTE",
     "TABLE",
@@ -319,7 +390,46 @@ async function expectOneContinuousRule(page: import("@playwright/test").Page) {
   ]);
   expect(scan.members.map((member) => member.run)).toEqual([
     "start",
-    ...Array(9).fill("middle"),
+    ...Array(15).fill("middle"),
     "end",
   ]);
+
+  // The images and drawings, by name, because each is a way the rule broke
+  // that the member scan alone would blame on a neighbor. A raw `<img>` and a
+  // bare `<svg>` are replaced elements: they are stamped, but no `::before`
+  // is ever generated for them, so until they drew a slice of their own the
+  // rule stopped for their whole height, 84px beside a 92px image. The
+  // drawing inside a `<div>` is the control: the `<div>` is the member, and it
+  // always painted.
+  expect(
+    scan.pictures.map((picture) => `${picture.tag} ${picture.label}`),
+  ).toEqual([
+    "IMG r",
+    "IMG a raw image",
+    "svg A drawing inside a div",
+    "svg A bare drawing",
+    "IMG a",
+    "IMG b",
+  ]);
+  for (const picture of scan.pictures) {
+    expect(
+      picture.painted,
+      `the rule beside ${picture.tag} "${picture.label}" painted ${picture.painted} of its ${picture.height} rows`,
+    ).toBe(picture.height);
+  }
+  // Two pictures do not start at the column's edge, and a slice drawn from
+  // either one's own box would stand in the middle of the column instead of on
+  // the rule. The row of two images shares one line, so the second one's box
+  // starts beside the first, whose slice already covers the line; and an image
+  // floated right with `align` leaves the flow, so the members beside it cover
+  // its rows. Neither may draw anything. Asserted to exist first, or a fixture
+  // edit that moved them to the edge would make this pass vacuously.
+  const offEdge = scan.pictures.filter((picture) => !picture.atEdge);
+  expect(offEdge.map((picture) => picture.label)).toEqual(["r", "b"]);
+  for (const picture of offEdge) {
+    expect(
+      picture.stray,
+      `a slice beside ${picture.tag} "${picture.label}", mid-column`,
+    ).toBe(0);
+  }
 }
