@@ -780,19 +780,38 @@ func readableDir(dir string) bool {
 	return true
 }
 
-// ReadFile reads path (relative to the root) and returns its content. When the
-// bytes are valid UTF-8 the encoding is "utf-8" and Content is the text;
-// otherwise the encoding is "binary" and Content is empty. A path that fails
-// validation, or that is not a regular file, returns a *PathError (→ 400).
-func (s *FileSystemService) ReadFile(path string) (*model.FileContent, error) {
-	defer perf.Default.Track(perf.CategoryFS, "read_file")()
-
-	full, err := s.validatePath(path)
+// ResolveFile validates path (relative to the root) and returns the absolute
+// path of the regular file it names. ok is false when there is no file to serve
+// there: nothing exists, it is not a regular file, or it lies inside a
+// repository boundary ([Config.StopAtRepos]), which is refused exactly the way
+// a missing file is (docs/design/serve-clones-directory.md §3). A path that
+// fails validation returns a *PathError. Every read of a file's bytes goes
+// through it, so no branch can serve what the listing leaves out.
+func (s *FileSystemService) ResolveFile(path string) (full string, ok bool, err error) {
+	full, err = s.validatePath(path)
 	if err != nil {
-		return nil, err
+		return "", false, err
 	}
 	info, err := os.Stat(full)
 	if err != nil || !info.Mode().IsRegular() || s.withinBoundary(full) {
+		return full, false, nil
+	}
+	return full, true, nil
+}
+
+// ReadFile reads path (relative to the root) and returns its content. When the
+// bytes are valid UTF-8 the encoding is "utf-8" and Content is the text;
+// otherwise the encoding is "binary" and Content is empty. A path that fails
+// validation, or that [FileSystemService.ResolveFile] finds no file at, returns
+// a *PathError (→ 400).
+func (s *FileSystemService) ReadFile(path string) (*model.FileContent, error) {
+	defer perf.Default.Track(perf.CategoryFS, "read_file")()
+
+	full, ok, err := s.ResolveFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
 		return nil, newPathError("Not a file")
 	}
 
