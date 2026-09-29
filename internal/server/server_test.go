@@ -1491,6 +1491,7 @@ func TestWatchLimitReachesTheBrowser(t *testing.T) {
 	srv, err := NewServer(cfg)
 	require.NoError(t, err)
 	srv.watchLimit = 3
+	srv.goos = "linux" // the wording checked below
 
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -1672,13 +1673,26 @@ func TestTheActivityWarmReportsNoWalkTimeout(t *testing.T) {
 // A refused watch the kernel names no folder for has no folder to count
 // beyond: two of them are not "part of this project and 1 more folder".
 func TestAWatchLimitWithNoFolderCountsNone(t *testing.T) {
-	msg := degradationMessage(model.Degradation{Kind: model.DegradationWatchLimit, Count: 2}, config.Defaults())
+	msg := degradationMessageFor("linux", model.Degradation{Kind: model.DegradationWatchLimit, Count: 2}, config.Defaults())
 	require.Equal(t, "Live reload is off for part of this project: the system's limit on watched folders was reached. "+
 		"Raise it (on Linux, fs.inotify.max_user_watches), or list the biggest folders in .vantageignore.", msg)
 }
 
+// The setting to raise is the platform's: inotify's watch count on Linux, the
+// open-file limit on macOS, where every watched file takes a descriptor.
+func TestTheWatchLimitNamesThePlatformsSetting(t *testing.T) {
+	d := model.Degradation{Kind: model.DegradationWatchLimit, Path: "docs", Count: 1}
+	require.Equal(t, "Live reload is off below docs: the system's limit on watched folders was reached. "+
+		"Raise it (on Linux, fs.inotify.max_user_watches), or list the biggest folders in .vantageignore.",
+		degradationMessageFor("linux", d, config.Defaults()))
+	require.Equal(t, "Live reload is off below docs: the system's limit on open files was reached, and every watched file takes one. "+
+		"Raise it (on macOS, sysctl kern.maxfilesperproc), or list the biggest folders in .vantageignore.",
+		degradationMessageFor("darwin", d, config.Defaults()))
+}
+
 func TestUnregisterForgetsARepositorysDegradations(t *testing.T) {
 	srv, _ := daemonServer(t)
+	srv.goos = "linux" // the wording checked below
 	srv.reportDegraded(model.Degradation{Repo: "alpha", Kind: model.DegradationWatchLimit, Path: "docs/big", Count: 3})
 	srv.reportDegraded(model.Degradation{Repo: "beta", Kind: model.DegradationWalkTimeout})
 	got := degradedList(t, srv.Handler())

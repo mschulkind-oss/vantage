@@ -510,6 +510,20 @@ func TestAnEventOverflowIsNotTheWatchLimit(t *testing.T) {
 	require.Equal(t, []model.Degradation{{Repo: "p", Kind: model.DegradationWatchLimit, Count: 1}}, reports)
 }
 
+// On macOS and the BSDs, fsnotify's kqueue backend opens a file for every
+// watched directory and every file in it, so the watch limit shows up as
+// EMFILE rather than ENOSPC. It is the same limit, and reported the same way.
+func TestTooManyOpenFilesIsTheWatchLimitWhereEachWatchTakesAFile(t *testing.T) {
+	root := t.TempDir()
+	w, err := NewWatcher(root, "p", nil, nil, false, quietLogger(), []string{})
+	require.NoError(t, err)
+	var reports []model.Degradation
+	w.SetDegradedHandler(func(d model.Degradation) { reports = append(reports, d) })
+	w.addWatch = func(path string) error { return fmt.Errorf("%q: %w", path, syscall.EMFILE) }
+	w.addRecursive(root)
+	require.Equal(t, []model.Degradation{{Repo: "p", Kind: model.DegradationWatchLimit, Path: ".", Count: 1}}, reports)
+}
+
 // --- coalescer / debounce ---
 
 func TestDebounceReady(t *testing.T) {
