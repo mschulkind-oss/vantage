@@ -53,10 +53,15 @@ type serviceState struct {
 
 // tipsEnabled reports whether `serve` may print its startup tip: stderr is a
 // terminal (tty — passed in, so tests can say either), VANTAGE_NO_TIPS is unset
-// or "0", and the user config does not say `tips = false`.
+// or says no ("", "0", "false", "no" or "off", in any case), and the user
+// config does not say `tips = false`. Any other value turns tips off.
 func tipsEnabled(tty bool) bool {
-	if v, ok := os.LookupEnv("VANTAGE_NO_TIPS"); ok && v != "" && v != "0" {
-		return false
+	if v, ok := os.LookupEnv("VANTAGE_NO_TIPS"); ok {
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "", "0", "false", "no", "off":
+		default:
+			return false
+		}
 	}
 	if !tty {
 		return false

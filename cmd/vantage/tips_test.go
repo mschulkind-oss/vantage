@@ -103,6 +103,16 @@ func TestTipsEnabled(t *testing.T) {
 	require.False(t, tipsEnabled(true))
 	t.Setenv("VANTAGE_NO_TIPS", "0")
 	require.True(t, tipsEnabled(true))
+	// A variable named NO_TIPS set to false means tips, as the other boolean
+	// settings read false.
+	for _, keep := range []string{"false", "FALSE", "no", "off"} {
+		t.Setenv("VANTAGE_NO_TIPS", keep)
+		require.True(t, tipsEnabled(true), keep)
+	}
+	for _, off := range []string{"true", "yes", "anything"} {
+		t.Setenv("VANTAGE_NO_TIPS", off)
+		require.False(t, tipsEnabled(true), off)
+	}
 
 	writeUserConfig(t, home, "tips = false\n")
 	require.False(t, tipsEnabled(true))
