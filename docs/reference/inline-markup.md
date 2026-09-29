@@ -15,6 +15,7 @@ covers:
   - packages/vantage-check/src/rules/directives.ts
   - packages/vantage-check/src/rules/vantageFrontmatter.ts
   - frontend/src/hooks/useOpenQuestionButtons.ts
+  - frontend/src/components/PlanningQuestionCard.tsx
   - frontend/src/hooks/useCollapseSections.ts
   - frontend/src/lib/collapseSections.ts
   - frontend/src/lib/commentMarkdown.ts
@@ -449,10 +450,12 @@ helper is `anchorScroll.ts`; the callers are the `#L` line anchor, in-document
 
 ## The one-click Open Question answer
 
-An `oq` directive renders one button in review mode, labeled **"Take this
-leaning"**. Clicking it calls the same `addComment` the comment popover calls,
-with an anchor identical in shape to what click-and-type produces. The comment
-text is the `leaning` value, or a fixed default when absent.
+An `oq` directive on an open question renders one button in review mode,
+labeled **"Take this leaning"**. Clicking it calls the same `addComment` the
+comment popover calls, with an anchor identical in shape to what click-and-type
+produces. The comment text is the `leaning` value, or a fixed default when
+absent. A 🔒 blocked or ✅ answered question gets no button
+([below](#the-count-and-why-the-gate-needed-one)).
 
 **The affordance sits in its own row, inserted as the question block's next
 sibling** — never appended into the block. Appended, it landed after the
@@ -481,6 +484,41 @@ review endpoint, appears in the panel, reaches the agent in the ordinary clipboa
 payload, and is answered through the inbox. There is no new endpoint and no new
 inbox verb — per **P4** this is a *macro over an existing command*.
 
+### The same comment, from the planning page
+
+The [planning page](../../userguide/guides/planning.md#the-planning-page) lists
+questions from many documents, each on a card, and its **Take this leaning**
+files a comment indistinguishable from this button's: the same body, the same
+anchor and the same fallback text. The planning design requires that
+([`planning-index.md` §6.3](../design/planning-index.md#63-a-question-on-the-page)),
+and the card meets it by taking this button's route rather than a second one.
+It renders the question's block through the viewer's own pipeline, finds the
+question's host in it with `answerableOpenQuestions`, builds the anchor with
+`buildWholeBlockAnchor` over that host, and reads the body with
+`leaningComment` off the stamped element: the calls this pass makes, over the
+same rendered block. The request is the one `addComment` sends, posted for the
+card's document by `postCommentTo`, because `addComment` posts only for the
+document on screen. **Answer…** files typed text on the same anchor.
+
+> [!WARNING]
+> **Do not build a card's comment from the planning index.** The index's
+> `leaning` and the stamped attribute pass through the same normalization
+> today, but they are two readings of the directive, one from the Markdown tree
+> and one from the rendered page, and a take is recognized by its exact body:
+> `findTaken` compares it byte for byte. Were the two ever to differ, a take
+> filed from the card would read as untaken in the document, which would offer
+> its button again, and the agent would get the leaning twice. Read off the
+> rendered element, as the button reads it, the body is equal by construction.
+> The index's `leaning` only decides whether the card offers a take.
+
+The card differs from the button in two ways. It offers **Take this leaning**
+only when the question states a leaning, as the planning design specifies,
+where the button falls back to its default text. And it offers no Undo: a taken
+leaning shows as the chip alone, and Undo is in the document.
+`PlanningQuestionCard.test.tsx` files from the card and from the in-page button
+over the same documents and asserts the two comments equal, question by
+question.
+
 ### The count, and why the gate needed one
 
 The button renders only in review mode, which is correct and was also, on its
@@ -488,12 +526,12 @@ own, a dead end: a document carrying three `oq` directives with leanings
 rendered as three ordinary paragraphs, and **nothing anywhere said the affordance
 existed**. The reader had to already know.
 
-So the viewer reports how many answerable questions a document holds —
-before the gates, so the number is right whether or not review mode is on — and
-the Review toggle's **tooltip** carries it while review mode is off. Clicking
-the toggle is what makes the count actionable, which is why it lives there
-rather than in the document: the count is not a second control, it is a label on
-the control that already existed.
+So the viewer reports how many questions in a document offer the button —
+after the state filter below, and before the gates, so the number is right
+whether or not review mode is on — and the Review toggle's **tooltip** carries
+it while review mode is off. Clicking the toggle is what makes the count
+actionable, which is why it lives there rather than in the document: the count
+is not a second control, it is a label on the control that already existed.
 
 It is a tooltip and not a chip beside the label. A number rendered on the button
 reads as an unread badge on a toolbar that has no other notification, so it
@@ -506,16 +544,38 @@ would send the reader hunting for controls that were never there — and five is
 what a naive count of `[data-vantage-oq]` gives on a document that also stamps a
 `pre` and a `table`.
 
-There is now a third caller, and the argument holds one surface further on: the
-table of contents lists these questions and tallies them by state
-([`contents-open-questions.md`](../design/contents-open-questions.md)). A column
-listing five entries against three buttons is the same lie in a new place, so it
-derives the set from the same function rather than re-querying the attribute.
+The table of contents is a third caller, and it takes the list *before* the
+state filter: it lists every question the function finds and tallies them by
+state, 🔒 and ✅ included
+([`contents-open-questions.md`](../design/contents-open-questions.md)). So the
+column can list more questions than there are buttons, and that is deliberate:
+a blocked or answered question is still one a reader of the document wants to
+see. What the column must not do is promise an action the page does not offer,
+so its tally's tooltip says how many of its questions can be answered in one
+click, the number the Review toggle gives, rather than implying that all of them
+can. It still takes its list from `answerableOpenQuestions` rather than
+re-querying the attribute, so it never lists a stamped `pre` or `table`, which
+has no button in any state and is no question to the planning index either. The
+planning page's card is the fourth caller, finding its question's host
+([above](#the-same-comment-from-the-planning-page)).
 
-The button renders only when **all three** hold: review mode is on, the directive
-parsed, and static mode is off. The static gate is not optional — an exported site
-runs review mode with every write silently coerced into a GET, so an ungated
-button would look live and do nothing, which is worse than no button.
+The button renders only when **all four** hold: review mode is on, the directive
+parsed, static mode is off, and the question is open. The static gate is not
+optional — an exported site runs review mode with every write silently coerced
+into a GET, so an ungated button would look live and do nothing, which is worse
+than no button.
+
+**Open** means marked 💬, or carrying no marker, which counts as open. A 🔒
+question cannot be answered yet and a ✅ one has been ruled, so neither has a
+leaning left to take, and neither gets a row at all: no button, no taken chip
+and no Undo, even when an earlier take exists. The planning design ruled this
+for the page and the viewer alike (its Decision Ledger row *Plan Q5*,
+[`planning-index.md` §6.3](../design/planning-index.md#63-a-question-on-the-page)).
+The state is read as the table of contents reads it, from the question's title
+and then its marker (`questionLabel`), so the column's glyph and the button can
+never disagree about which state a question is in. The filter runs after
+`answerableOpenQuestions`, never inside it, because the column lists from that
+function.
 
 There is exactly one button and it is **affirmative only**. A rejection almost
 always needs a reason, which means typing anyway, so a Reject button would mostly
