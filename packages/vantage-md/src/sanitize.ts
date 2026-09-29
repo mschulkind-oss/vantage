@@ -76,9 +76,12 @@ function defaultClasses(tag: string): ClassValue[] {
  * A document may still write these names on these elements. By the time the
  * sanitizer runs, a hand-written `<li class="task-list-item">` and the one GFM
  * emitted are the same node, and none of the names can lay an element over
- * anything else: `styles/task-list.css` gives `task-list-item` a
- * `position: relative`, which moves nothing, and the footnote label's class,
- * where a stylesheet defines it, clips its element to a single pixel.
+ * anything outside the document's scroll container. `styles/task-list.css`
+ * floats the checkbox of a `task-list-item` instead of positioning it
+ * absolutely, so it stays in the document's flow whatever the item's own
+ * `style` does, and the checkbox takes no `style` itself (see
+ * `UNSTYLED_TAGS`). The footnote label's class, where a stylesheet defines it,
+ * clips its element to a single pixel.
  *
  * **The footnote label's class is read from the default schema, never
  * spelled here, and the tests spell it in halves.** It is a Tailwind utility,
@@ -578,9 +581,10 @@ const TAG_NAMES = [
  * `styles/task-list.css` draws that checkbox and positions it, so on it `top`
  * and `left` are not the no-ops they are on an element nothing positions, and
  * with `width`, `height` and `background-color` beside them a document laid a
- * box of its own over the page. Measured in Chromium at 1280x800,
+ * box of its own over the page. Measured in Chromium at 1280x800 while the
+ * checkbox was positioned absolutely,
  * `top:-3000px;left:-3000px;width:9000px;height:9000px;background-color:white`
- * on the checkbox covered the whole content pane. It needed no class written:
+ * on it covered the whole content pane. It needed no class written:
  * GFM puts `task-list-item` on the item, and a checkbox typed into the item's
  * text is a child of that item too.
  *
