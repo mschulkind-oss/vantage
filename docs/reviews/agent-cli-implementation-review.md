@@ -2,6 +2,7 @@
 title: "Implementation review — the vantage-check CLI"
 date: 2026-08-25
 status: in-review # draft | in-review | accepted | deprecated
+stage: SUPERSEDED
 tags: [review, cli, agents, tooling, release]
 summary: "Review of the nine commits implementing the agent-facing CLI design: what shipped, what the build session got stuck on, six defects found by running the code, and the prompts needed to reproduce the run."
 ---
@@ -349,7 +350,7 @@ root, which is why the primary flow works.
 | N5 | `--strict` ORs with config `strict`, so a config `strict = true` cannot be overridden; the userguide claims flags win | `src/check.ts` |
 | N6 | No regression test for the design's headline `link/*` trap (links inside inline code and fences) — behavior is correct, but untested; raw-HTML `<a href>` is not checked at all | `src/rules/links.test.ts` |
 | N7 | Inverted-range detection was dropped (correctly — [`parseLineAnchor`](../../packages/vantage-md/src/lineAnchor.ts#L15-L26) normalizes with min/max, and there is a test asserting it), but [§5.3](../design/agent-cli.md#53-what-we-write-ourselves) and the Decision Ledger still promise it | [`../design/agent-cli.md`](../design/agent-cli.md) |
-| N8 | The design doc's own `#L13-L97` anchor went stale when `7cafe4b` moved the style guide — it is the single finding the checker reports on this repo, so the tree fails its own checker | [`../design/agent-cli.md:68`](../design/agent-cli.md#L68) |
+| N8 | The design doc's own `#L13-L97` anchor went stale when `7cafe4b` moved the style guide — it is the single finding the checker reports on this repo, so the tree fails its own checker | [`../design/agent-cli.md:69`](../design/agent-cli.md#L69) |
 | N9 | R5 deserves its measurement on the record: 92 MB binary, 36 MB wheel, per platform, per release | — |
 
 ---

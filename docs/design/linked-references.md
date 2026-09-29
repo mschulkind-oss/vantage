@@ -3,6 +3,7 @@ title: "Linked references — making OQ ids, § refs and filenames clickable, an
 author: "Matt Schulkind"
 date: 2026-09-04
 status: accepted
+stage: BUILT
 tags: [vantage-check, vantage-md, docs-conventions]
 summary: "A `ref/*` rule family that errors when a reference is written as text instead of a link, plus the renderer change that gives an Open Question a real anchor to be linked to."
 vantage:

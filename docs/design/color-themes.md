@@ -3,6 +3,7 @@ title: "Color themes — a runtime palette over the colors the app already uses"
 author: "Paul Gaggl"
 date: 2026-09-21
 status: in-review # draft | in-review | accepted | deprecated
+stage: DESIGN
 tags: [frontend, theming, config, server]
 summary: "A color theme is one stylesheet of CSS variables on `:root` and `:root.dark`. It works with no component changes because Tailwind v4 already compiles every color utility to a variable, and with the built-in look selected nothing on the page changes."
 vantage:

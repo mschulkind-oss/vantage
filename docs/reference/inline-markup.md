@@ -1,6 +1,7 @@
 ---
 title: "Vantage directives"
 status: current
+stage: CURRENT
 verified: 2026-09-01
 verified_commit: 3134838
 covers:
