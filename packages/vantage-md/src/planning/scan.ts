@@ -139,6 +139,13 @@ export interface PlanningDocument {
   links: PlanningLink[];
   /** Unique `OQ-…`-shaped tokens anywhere in the text, first-seen order. */
   ids: string[];
+  /**
+   * The ids a well-formed `oq` directive carries, unique, in document order,
+   * whether or not the directive became a question: an orphan's, and one in
+   * raw HTML (Plan Q17), are here too. A link to such an id is to no question
+   * and to nothing compacted either (§5.2).
+   */
+  directiveIds: string[];
 }
 
 export type ScanResult =
@@ -1051,6 +1058,7 @@ export function scanPlanningDocument(
       questions,
       links: linksOf(root, path, parsed.bodyLineOffset, bodyOffset),
       ids: idsOf(source),
+      directiveIds: [...first.keys()],
     },
   };
 }

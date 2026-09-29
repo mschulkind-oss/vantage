@@ -28,6 +28,11 @@ export type PlanningBadge =
   | { kind: "question"; path: string; id: string; state: QuestionState }
   /** No directive carries the id, but the id is in the text: compacted. */
   | { kind: "ruled"; path: string; id: string }
+  /**
+   * A directive carries the id, but it is no question's: an orphan, or one in
+   * raw HTML. Nothing compacted it, so it is not ruled.
+   */
+  | { kind: "not-a-question"; path: string; id: string }
   /** The id is nowhere in the target. */
   | { kind: "not-found"; path: string; id: string };
 
@@ -63,6 +68,11 @@ export function badgeFor(
     const question = doc.questions.find((q) => q.id === id);
     if (question !== undefined) {
       return { kind: "question", path, id, state: question.state };
+    }
+    // Compaction deletes the directive (§3.3), so one still there has not
+    // been compacted, though it is no question the index holds.
+    if (doc.directiveIds.includes(id)) {
+      return { kind: "not-a-question", path, id };
     }
     // The `design-doc` compaction rule keeps a ruled id in the Decision
     // Ledger, so an id still in the text is ruled, and the ledger itself is
@@ -117,6 +127,8 @@ export function badgeText(badge: PlanningBadge): string {
       return `${QUESTION_GLYPH[badge.state]} ${badge.state}`;
     case "ruled":
       return `${VANTAGE_OQ_STATUS.settled} ruled`;
+    case "not-a-question":
+      return `${WARNING} not a question`;
     case "not-found":
       return `${WARNING} not found`;
   }
@@ -149,6 +161,8 @@ export function badgeSpeech(badge: PlanningBadge): string {
       return `${badge.state} question`;
     case "ruled":
       return "ruled";
+    case "not-a-question":
+      return "not a question";
     case "not-found":
       return "question not found";
   }
