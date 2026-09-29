@@ -904,8 +904,10 @@ type degradedChangedMessage struct {
 // current degradation of that kind, replacing any earlier report of it (a
 // watcher reports again with every refused watch, so the count grows). The
 // first report of a kind for a project is logged and pushed as
-// degraded_changed; later ones only update what the next fetch returns, so a
-// thousand refused watches are one push, not a thousand.
+// degraded_changed, and so is each report whose count has doubled since the
+// last push; the rest only update what the next fetch returns. A thousand
+// refused watches are eleven pushes, not a thousand, and the count a banner
+// shows is never behind by more than half.
 func (s *Server) reportDegraded(d model.Degradation) {
 	if d.Message == "" {
 		d.Message = degradationMessageFor(s.goos, d, s.cfg)
@@ -916,13 +918,17 @@ func (s *Server) reportDegraded(d model.Degradation) {
 		kinds = map[string]model.Degradation{}
 		s.degraded[d.Repo] = kinds
 	}
-	_, seen := kinds[d.Kind]
+	prev, seen := kinds[d.Kind]
 	kinds[d.Kind] = d
 	s.degradedMu.Unlock()
-	if seen {
+	switch {
+	case !seen:
+		s.logger.Warn("server: project is degraded", "repo", d.Repo, "kind", d.Kind, "path", d.Path, "message", d.Message)
+	case d.Count > prev.Count && d.Count&(d.Count-1) == 0:
+		// A power of two: the count has doubled since the last push.
+	default:
 		return
 	}
-	s.logger.Warn("server: project is degraded", "repo", d.Repo, "kind", d.Kind, "path", d.Path, "message", d.Message)
 	s.manager.Broadcast(degradedChangedMessage{Type: "degraded_changed", Repo: d.Repo})
 }
 

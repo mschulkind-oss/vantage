@@ -318,7 +318,10 @@ or without the split. Three conditions are reported:
 Degradations are kept per project in memory and served at `GET
 /api/degraded`. The first degradation of each kind in each project also
 pushes `degraded_changed` over the WebSocket, and the viewer fetches the list
-again when it arrives. The banner is fixed to the bottom of the viewport, so a
+again when it arrives. So does each report whose count has doubled since the
+last push: a watcher reports every refused watch, and a banner that fetched
+at the first one would otherwise keep that count, while a push for each would
+be one per directory. The banner is fixed to the bottom of the viewport, so a
 report that arrives late never moves content already on screen. The reader can
 dismiss it until the page is reloaded; a limit still hit after a reload is worth
 saying again. Tests trigger these conditions by
