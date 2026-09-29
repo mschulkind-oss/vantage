@@ -40,9 +40,9 @@ Options for index:
 A command's name is not a path: to check a file or directory called index,
 write ./index.
 
-index scans the project root: the nearest directory above the working
-directory holding .git or .vantage.toml, or the working directory when there
-is none. --config chooses the config, never the project.
+index scans the project root: the working directory, or the nearest directory
+above it, that holds .git or .vantage.toml, and the working directory itself
+when none does. --config chooses the config, never the project.
 
 Exit codes:
   0  nothing to fix; for index, it ran
