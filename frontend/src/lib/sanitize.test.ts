@@ -317,3 +317,78 @@ describe("the data-vantage-* allowlist", () => {
     expect(host.querySelectorAll("img")).toHaveLength(0);
   });
 });
+
+describe("inline SVG", () => {
+  // Shaped like the diagrams people actually paste: a wrapping div, shapes,
+  // text with a quoted font stack, and an accessible name.
+  const diagram = `<div class="diagram">
+<svg xmlns="http://www.w3.org/2000/svg" width="282" height="152" viewBox="0 0 282 152" role="img" aria-label="A and B" font-family="system-ui, 'Segoe UI', sans-serif">
+<title>A and B</title>
+<rect x="2" y="2" width="278" height="148" rx="12" fill="#EFF6FF" stroke="#BFDBFE"/>
+<path d="M26 33 V121" stroke="#2563EB" stroke-opacity="0.45" stroke-width="1.5" fill="none"/>
+<text x="33" y="26" font-size="12" font-weight="700" fill="#FFFFFF" text-anchor="middle" letter-spacing="0.5">ALL</text>
+</svg>
+</div>`;
+
+  it("keeps a static diagram intact", async () => {
+    const host = document.createElement("div");
+    host.innerHTML = await styled(diagram);
+    const svg = host.querySelector("svg")!;
+    expect(svg).not.toBeNull();
+    expect(svg.namespaceURI).toBe("http://www.w3.org/2000/svg");
+    expect(svg.getAttribute("viewBox")).toBe("0 0 282 152");
+    expect(svg.getAttribute("role")).toBe("img");
+    expect(svg.getAttribute("aria-label")).toBe("A and B");
+    expect(svg.getAttribute("font-family")).toBe(
+      "system-ui, 'Segoe UI', sans-serif",
+    );
+    expect(svg.querySelector("title")!.textContent).toBe("A and B");
+    expect(svg.querySelector("rect")!.getAttribute("fill")).toBe("#EFF6FF");
+    const path = svg.querySelector("path")!;
+    expect(path.getAttribute("d")).toBe("M26 33 V121");
+    expect(path.getAttribute("stroke-width")).toBe("1.5");
+    expect(path.getAttribute("stroke-opacity")).toBe("0.45");
+    const text = svg.querySelector("text")!;
+    expect(text.textContent).toBe("ALL");
+    expect(text.getAttribute("text-anchor")).toBe("middle");
+    expect(text.getAttribute("letter-spacing")).toBe("0.5");
+  });
+
+  it("refuses everything in SVG that runs, fetches, or references", async () => {
+    const html = await styled(`<svg viewBox="0 0 10 10" onload="alert(1)">
+<script>alert(1)</script>
+<foreignObject><iframe src="https://attacker.example/f"></iframe></foreignObject>
+<image href="https://attacker.example/i.png"/>
+<use href="https://attacker.example/s.svg#x"/>
+<a xlink:href="javascript:alert(1)"><rect width="1" height="1"/></a>
+<animate attributeName="href" to="javascript:alert(1)"/>
+<rect width="1" height="1" fill="url(https://attacker.example/p)" filter="url(#f)" onclick="alert(1)"/>
+</svg>`);
+    for (const needle of [
+      "onload",
+      "onclick",
+      "<script",
+      "alert(1)</script",
+      "foreignObject",
+      "iframe",
+      "<image",
+      "<use",
+      "animate",
+      "javascript:",
+      "attacker.example",
+      "filter=",
+      "url(",
+    ]) {
+      expect(html, needle).not.toContain(needle);
+    }
+    expect(html).toContain("<rect");
+  });
+
+  it("does not admit SVG children, or a title, outside an svg", async () => {
+    const html = await styled(
+      `<div><title>Hijacked</title><rect width="9"/></div>`,
+    );
+    expect(html).not.toContain("<title");
+    expect(html).not.toContain("<rect");
+  });
+});
