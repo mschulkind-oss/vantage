@@ -40,6 +40,7 @@ import {
   derivePlanningSections,
   findDocument,
   questionFor,
+  type CardBlock,
   type DependsOn,
   type PlanningIndex,
   type PlanningQuestion,
@@ -52,6 +53,13 @@ import { PlanningQuestionCard } from "../components/PlanningQuestionCard";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { usePlanningReviews } from "../hooks/usePlanningReviews";
 import { copyTextOrWarn } from "../lib/clipboard";
+import {
+  planningScanner,
+  type CardWant,
+  type QuoteWant,
+  type Quotes,
+} from "../planningScan/client";
+import { planningLimits } from "../planningScan/limits";
 import { useRepoStore } from "../stores/useRepoStore";
 import {
   usePlanningIndex,
@@ -168,6 +176,209 @@ function builtOrDecided(index: PlanningIndex | null, path: string): string {
 /** A key for one question, stable across index versions. */
 const refKey = (ref: QuestionRef): string => `${ref.path}\n${ref.line}`;
 
+/** A key for one card block of one repository's document. */
+const blockKey = (repo: string, path: string, startLine: number): string =>
+  `${repo}\n${path}\n${startLine}`;
+
+interface HeldBlock {
+  /** The content hash of the document version the block was asked for. */
+  hash: string;
+  /** `null`: that version has no such block, or it could not be had. */
+  block: CardBlock | null;
+}
+
+/**
+ * The blocks the page last held, kept past its unmount as `scrollPositions`
+ * is: Back from a document the page opened then renders the same cards at
+ * once, and the scroll position is restored over them.
+ */
+let lastBlocks: ReadonlyMap<string, HeldBlock> = new Map();
+
+/**
+ * The card block of every listed question, from the scanner client, which
+ * cut it in the scan (`docs/design/planning-index-at-scale.md` §7.4): asked
+ * for in full, once per document version, by the content hash the index
+ * holds, and kept on screen while the next version's is on its way. No
+ * document's text reaches this thread (S2).
+ *
+ * `complete` says every listed question has its current version's answer.
+ *
+ * An interim for the planning page as it stands, which renders every card:
+ * the paged page asks for the shown pages' blocks alone, as part of their
+ * inputs, and keeps the last few sets of them (§10.3).
+ */
+function useCardBlocks(
+  repo: string | null,
+  hashes: Readonly<Record<string, string>> | null,
+  questions: readonly PlanningQuestion[],
+): {
+  blockFor(question: PlanningQuestion): CardBlock | null | undefined;
+  complete: boolean;
+} {
+  const [held, setHeld] = useState(() => lastBlocks);
+  useEffect(() => {
+    lastBlocks = held;
+  }, [held]);
+
+  // Each block once, by the version of its document the index read.
+  const wanted = useMemo(() => {
+    const out = new Map<string, CardWant>();
+    if (repo === null || hashes === null) return out;
+    for (const q of questions) {
+      const hash = hashes[q.path];
+      if (hash === undefined) continue;
+      const { startLine } = q.block;
+      out.set(blockKey(repo, q.path, startLine), {
+        path: q.path,
+        hash,
+        startLine,
+      });
+    }
+    return out;
+  }, [repo, hashes, questions]);
+
+  useEffect(() => {
+    if (repo === null) return;
+    const missing = [...wanted].filter(
+      ([key, want]) => held.get(key)?.hash !== want.hash,
+    );
+    if (missing.length === 0) return;
+    let live = true;
+    const take = (answerOf: (at: number) => CardBlock | null) => {
+      if (!live) return;
+      setHeld((prev) => {
+        // Only the listed questions' blocks are kept.
+        const next = new Map<string, HeldBlock>();
+        for (const key of wanted.keys()) {
+          const had = prev.get(key);
+          if (had !== undefined) next.set(key, had);
+        }
+        missing.forEach(([key, want], at) => {
+          // A block from another version keeps the one on screen until a
+          // push refreshes the path (§10.3).
+          const block = answerOf(at) ?? prev.get(key)?.block ?? null;
+          next.set(key, { hash: want.hash, block });
+        });
+        return next;
+      });
+    };
+    planningScanner()
+      .cards(
+        repo,
+        missing.map(([, want]) => want),
+        { full: true },
+      )
+      .then(
+        (answers) =>
+          take((at) => {
+            const answer = answers[at];
+            return answer !== undefined && "block" in answer
+              ? answer.block
+              : null;
+          }),
+        () => take(() => null),
+      );
+    return () => {
+      live = false;
+    };
+  }, [repo, wanted, held]);
+
+  const blockFor = useCallback(
+    (question: PlanningQuestion) =>
+      repo === null
+        ? undefined
+        : held.get(blockKey(repo, question.path, question.block.startLine))
+            ?.block,
+    [repo, held],
+  );
+  const complete = [...wanted].every(
+    ([key, want]) => held.get(key)?.hash === want.hash,
+  );
+  return { blockFor, complete };
+}
+
+/**
+ * The text Copy answers quotes from, for each pending group, with only the
+ * lines its comments quote in it: each anchor line and the context either
+ * side, from the scanner client, which drops the rest of the document
+ * (`docs/design/planning-index-at-scale.md` §10.5). Every other line reads as
+ * empty, and none of them is ever quoted, so a group's payload is what its
+ * document's whole text would give.
+ *
+ * Asked for when the pending set changes, so a click copies at once; while
+ * the lines are on their way, `loading` says so.
+ *
+ * An interim for the payload builder as it stands, which takes a text: the
+ * paged page hands it a line lookup instead.
+ */
+function useQuotedText(
+  repo: string | null,
+  hashes: Readonly<Record<string, string>> | null,
+  groups: readonly { path: string; comments: readonly ReviewComment[] }[],
+): { textOf(path: string): string | null; loading: boolean } {
+  const asked = useMemo((): QuoteWant[] => {
+    const context = planningLimits.quoteContextLines;
+    return groups.flatMap(({ path, comments }) => {
+      const lines = new Set<number>();
+      for (const c of comments) {
+        const line = c.anchor?.source_line;
+        if (!line) continue;
+        for (let n = line - context; n <= line + context; n++) {
+          if (n >= 1) lines.add(n);
+        }
+      }
+      if (lines.size === 0) return [];
+      return [
+        {
+          path,
+          hash: hashes?.[path] ?? "",
+          lines: [...lines].sort((a, b) => a - b),
+        },
+      ];
+    });
+  }, [groups, hashes]);
+  // By value, so a new list of the same lines (the reviews answering again)
+  // asks nothing more.
+  const wantKey = repo === null ? "" : JSON.stringify([repo, asked]);
+  const want = useMemo(
+    () => (wantKey === "" ? [] : (JSON.parse(wantKey)[1] as QuoteWant[])),
+    [wantKey],
+  );
+  const [answered, setAnswered] = useState<{
+    key: string;
+    quotes: Quotes;
+  } | null>(null);
+
+  useEffect(() => {
+    if (repo === null || want.length === 0) return;
+    let live = true;
+    const take = (quotes: Quotes) => {
+      if (live) setAnswered({ key: wantKey, quotes });
+    };
+    planningScanner()
+      .quotes(repo, want)
+      .then(take, () => take({}));
+    return () => {
+      live = false;
+    };
+  }, [repo, want, wantKey]);
+
+  const quotes = answered?.key === wantKey ? answered.quotes : null;
+  const textOf = useCallback(
+    (path: string): string | null => {
+      const lines = quotes?.[path];
+      if (lines === undefined) return null;
+      const numbers = Object.keys(lines).map(Number);
+      if (numbers.length === 0) return null;
+      const text = new Array<string>(Math.max(...numbers)).fill("");
+      for (const n of numbers) text[n - 1] = lines[n] ?? "";
+      return text.join("\n");
+    },
+    [quotes],
+  );
+  return { textOf, loading: want.length > 0 && quotes === null };
+}
+
 /** A size in the units the limits are written in. */
 function formatSize(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
@@ -280,6 +491,19 @@ export const PlanningPage: React.FC = () => {
     [listedQuestions],
   );
   const reviews = usePlanningReviews(onThisRepo ? repo : null, listedPaths);
+  const hashes = ready?.hashes ?? null;
+  const blocks = useCardBlocks(
+    onThisRepo ? repo : null,
+    hashes,
+    listedQuestions,
+  );
+  // The sections wait for their cards the first time only; after that a new
+  // version's block replaces the one on screen when it lands.
+  const [shownFor, setShownFor] = useState<string | null>(null);
+  if (blocks.complete && ready !== null && repo !== null && shownFor !== repo) {
+    setShownFor(repo);
+  }
+  const cardsShown = shownFor !== null && shownFor === repo;
 
   // Which comments sit on a listed question: only a card, over its rendered
   // question, can say. Each reports its own, by question.
@@ -302,7 +526,7 @@ export const PlanningPage: React.FC = () => {
   // Copy answers (§6.3): every comment still pending for the agent on a
   // question listed here, grouped by document — built from the reviews, never
   // from the cards, so a comment two cards could both see appears once.
-  const pending = useMemo(() => {
+  const pendingGroups = useMemo(() => {
     const onPage = new Set(Object.values(scoped).flat());
     return listedPaths
       .slice()
@@ -312,13 +536,26 @@ export const PlanningPage: React.FC = () => {
         comments: (reviews.byPath[path] ?? []).filter(
           (c) => onPage.has(c.id) && isPendingForAgent(c),
         ),
-        content: ready?.sources[path] ?? null,
       }))
       .filter((group) => group.comments.length > 0);
-  }, [scoped, listedPaths, reviews.byPath, ready]);
+  }, [scoped, listedPaths, reviews.byPath]);
+  const { textOf, loading: quotesLoading } = useQuotedText(
+    onThisRepo ? repo : null,
+    hashes,
+    pendingGroups,
+  );
+  const pending = useMemo(
+    () =>
+      pendingGroups.map((group) => ({
+        ...group,
+        content: textOf(group.path),
+      })),
+    [pendingGroups, textOf],
+  );
   const pendingCount = pending.reduce((n, g) => n + g.comments.length, 0);
   const [copied, setCopied] = useState(false);
   const copyAnswers = useCallback(() => {
+    if (quotesLoading) return;
     const payload = answersPayload(pending);
     if (payload === null) return;
     void copyTextOrWarn(payload).then((ok) => {
@@ -326,7 +563,7 @@ export const PlanningPage: React.FC = () => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
-  }, [pending]);
+  }, [pending, quotesLoading]);
 
   const { adopt } = reviews;
   const fileComment = useCallback(
@@ -337,7 +574,11 @@ export const PlanningPage: React.FC = () => {
   );
 
   const rootRef = useRef<HTMLDivElement>(null);
-  const saveScroll = useScrollRestore(location.key, sections !== null, rootRef);
+  const saveScroll = useScrollRestore(
+    location.key,
+    sections !== null && cardsShown,
+    rootRef,
+  );
 
   const card = (question: PlanningQuestion) => {
     const key = refKey(question);
@@ -345,7 +586,7 @@ export const PlanningPage: React.FC = () => {
       <PlanningQuestionCard
         key={key}
         question={question}
-        source={ready?.sources[question.path]}
+        card={blocks.blockFor(question)}
         badge={
           index === null
             ? null
@@ -410,7 +651,7 @@ export const PlanningPage: React.FC = () => {
           <button
             type="button"
             onClick={copyAnswers}
-            disabled={pendingCount === 0}
+            disabled={pendingCount === 0 || quotesLoading}
             title={
               pendingCount === 0
                 ? "No answers are waiting on the agent"
@@ -464,7 +705,7 @@ export const PlanningPage: React.FC = () => {
               Retry
             </button>
           </div>
-        ) : index === null ? (
+        ) : index === null || (sections !== null && !cardsShown) ? (
           <div className="flex items-center justify-center py-20">
             <Loader2
               size={32}
