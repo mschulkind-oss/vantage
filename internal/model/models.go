@@ -159,6 +159,10 @@ const (
 	// DegradationWalkTimeout: the untracked-file walk behind recent files
 	// hit walk_timeout, so recents lack untracked documents.
 	DegradationWalkTimeout = "walk_timeout"
+	// DegradationWatcherFailed: the project's file watcher could not start
+	// at all — the system ran out of watcher instances, say — so live reload
+	// is off for the whole project.
+	DegradationWatcherFailed = "watcher_failed"
 )
 
 // RepoFile is one entry of GET /files/all: a repo name paired with a

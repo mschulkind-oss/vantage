@@ -351,14 +351,15 @@ These settings only affect the discovery of files not tracked by Git. Tracked fi
 
 ### When a project is too big to serve well
 
-Two limits make Vantage serve a project worse than normal, and when either one
-is hit, a banner at the bottom of the page says so instead of leaving it to the
+These limits make Vantage serve a project worse than normal, and when one is
+hit, a banner at the bottom of the page says so instead of leaving it to the
 log:
 
 | What happened | What the banner says is off | What to change |
 | ------------- | --------------------------- | -------------- |
 | The live-reload watcher ran out of the system's watches | Live reload, below the first folder it could not watch | Raise the limit (on Linux, `fs.inotify.max_user_watches`), or list the biggest folders in `.vantageignore` or `watcher_ignore_defaults` |
 | Finding untracked files took longer than `walk_timeout` | Recent files may be missing untracked documents | Raise `walk_timeout`, or list the biggest folders in `.vantageignore` |
+| The project's watcher could not start at all, usually because the system ran out of watcher instances (each project takes one) | Live reload, for the whole project | Raise the limit (on Linux, `fs.inotify.max_user_instances`), then restart Vantage |
 
 The banner shows the open project's reports only, and the dismiss button hides it
 until the page is reloaded. Serving a directory of clones as one project with

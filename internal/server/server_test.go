@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/mschulkind-oss/vantage/internal/config"
 	"github.com/mschulkind-oss/vantage/internal/git"
 	"github.com/mschulkind-oss/vantage/internal/gitenv"
+	"github.com/mschulkind-oss/vantage/internal/live"
 	"github.com/mschulkind-oss/vantage/internal/model"
 	"github.com/mschulkind-oss/vantage/internal/repoconfig"
 	"github.com/mschulkind-oss/vantage/web"
@@ -1611,6 +1613,37 @@ func TestAFinishedWalkClearsItsTimeout(t *testing.T) {
 	srv.walkFinished("alpha", small) // nothing to clear is fine, and silent
 	require.Empty(t, degradedList(t, srv.Handler()))
 	require.Empty(t, pushes())
+}
+
+// A watcher that cannot start at all leaves its project with no live reload.
+// Serving a directory of clones takes one inotify instance per clone, and the
+// kernel's default of 128 per user is shared with everything else the user
+// runs, so a big ~/code can run out: that is a degradation like any other,
+// reported where the reader is, not only logged. The failure is injected; no
+// test exhausts a real limit.
+func TestAWatcherThatCannotStartIsReported(t *testing.T) {
+	srv, _ := daemonServer(t)
+	srv.watcherStart = func(w *live.Watcher, _ context.Context) error {
+		if w.RepoName() == "beta" {
+			return fmt.Errorf("couldn't initialize inotify: %w", syscall.EMFILE)
+		}
+		return nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- srv.Run(ctx) }()
+	defer func() {
+		cancel()
+		<-done
+		require.NoError(t, srv.Shutdown(context.Background()))
+	}()
+
+	waitFor(t, "the failure to be reported", func() bool { return len(degradedList(t, srv.Handler())) == 1 })
+	got := degradedList(t, srv.Handler())[0]
+	require.Equal(t, "beta", got.Repo)
+	require.Equal(t, model.DegradationWatcherFailed, got.Kind)
+	require.Equal(t, "Live reload is off for this whole project: its file watcher could not start, because the system's "+
+		"limit on file watchers was reached. Raise it (on Linux, fs.inotify.max_user_instances), then restart Vantage.", got.Message)
 }
 
 // The server's own last-activity warm walks with gitignored files included,
