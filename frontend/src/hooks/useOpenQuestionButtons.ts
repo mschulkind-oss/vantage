@@ -17,7 +17,7 @@
  */
 
 import { useEffect, type RefObject } from "react";
-import { VANTAGE_OQ_HOST_TARGETS } from "vantage-md";
+import { VANTAGE_OQ_HOST_TARGETS, vantageOqStatus } from "vantage-md";
 import {
   NEIGHBOR_RADIUS,
   anchorBlockWithin,
@@ -25,6 +25,11 @@ import {
 } from "../lib/reviewAnchor";
 import { isStaticMode } from "../lib/staticMode";
 import type { CommentAnchor, ReviewComment } from "../types";
+// A cycle, and an inert one: the outline imports `answerableOpenQuestions` from
+// here, and both modules export only functions, which neither calls at load.
+// The column's reading of a question's state is the one this pass must share,
+// so it is imported rather than written a second time.
+import { questionLabel } from "./useDocumentOutline";
 
 /**
  * Marks every node this hook injects. Two jobs: the sweep at the top of each
@@ -123,7 +128,7 @@ function sweep(el: HTMLElement): void {
  * Undo is what re-arms it, and unlike the delete this used to point at, Undo is
  * beside the chip rather than at the top of the document.
  */
-function findTaken(
+export function findTaken(
   comments: ReviewComment[],
   anchor: CommentAnchor,
   text: string,
@@ -200,15 +205,19 @@ export interface AnswerableOpenQuestion {
 }
 
 /**
- * Every Open Question in `el` that can actually be answered in one click.
+ * Every Open Question in `el` whose block can host a button: each `oq`
+ * directive on a host the button can live in, one per block.
  *
- * Exported and shared, because two callers ask this question and they must not
- * answer it differently: the pass below renders one row per result, and the
- * viewer counts the results to say how many answerable questions a document
- * holds. A count that disagrees with the number of buttons is worse than no
- * count — it sends the reader looking for a control that was never there.
+ * Exported and shared, because three callers ask this question and they must
+ * not answer it differently. The contents column lists every result, in every
+ * state; the pass below renders a row for each result that `offersTake` (Plan
+ * Q5), and counts those rows for the Review toggle; and the planning page finds
+ * a question's host inside its card with it. A count that disagrees with the
+ * number of buttons is worse than no count — it sends the reader looking for a
+ * control that was never there — which is why the count is taken after the
+ * state filter and the column's list before it.
  *
- * Deliberately free of the review-mode and static gates. The gates decide
+ * Deliberately free of the review-mode and static gates, and of state. The gates decide
  * whether the *affordance* renders (D4); this decides what exists in the
  * document, which is true either way and is exactly what a reader with review
  * mode off needs told.
@@ -233,6 +242,41 @@ export function answerableOpenQuestions(
     found.push({ stamped, block });
   }
   return found;
+}
+
+/**
+ * The comment body a take files for a question: the directive's `leaning=`,
+ * read off the element it stamped, or `OQ_DEFAULT_LEANING` without one.
+ *
+ * Exported because a second surface files the same comment. The planning page
+ * takes a leaning from a card that renders the question through this same
+ * pipeline, and the comment it files must be indistinguishable from this
+ * pass's (`docs/design/planning-index.md` §6.3), so both read the text here,
+ * from the rendered element, and neither from the planning index.
+ */
+export function leaningComment(stamped: HTMLElement): string {
+  // Off the STAMPED element, not off the resolved block: they are different
+  // elements whenever the directive attached to a container. `?.trim()` plus
+  // `||` makes an absent and a whitespace-only attribute behave identically —
+  // a comment body of `""` is the "broken" D6 forbids.
+  const leaning = stamped.getAttribute("data-vantage-leaning")?.trim();
+  return leaning || OQ_DEFAULT_LEANING;
+}
+
+/**
+ * Whether a question offers Take this leaning: it is open, or carries no
+ * marker, which counts as open (Plan Q5, `docs/design/planning-index.md`
+ * §6.3). A 🔒 question cannot be answered yet and a ✅ one has been ruled, so
+ * neither has a leaning left to take.
+ *
+ * The state is read exactly as the contents column reads it (`questionLabel`,
+ * then the marker before the text), so the column's glyph and the button can
+ * never disagree about which state a question is in.
+ */
+export function offersTake(stamped: HTMLElement): boolean {
+  const { marker, text } = questionLabel(stamped);
+  const status = vantageOqStatus(marker) ?? vantageOqStatus(text);
+  return status === null || status === "open";
 }
 
 /**
@@ -266,7 +310,17 @@ export function useOpenQuestionButtons(
     // left behind (D4(a): no button and no trace of one).
     sweep(el);
 
-    const questions = answerableOpenQuestions(el);
+    // Every answerable question except the 🔒 and ✅ ones (Plan Q5). Filtered
+    // here and never inside `answerableOpenQuestions`, which the contents
+    // column lists from: the column keeps every state, and only the take is
+    // withheld. A skipped question gets no row at all — no button, no taken
+    // chip, no Undo.
+    const questions = answerableOpenQuestions(el).filter(({ stamped }) =>
+      offersTake(stamped),
+    );
+    // After the filter, because this count is the buttons': the Review toggle
+    // says how many questions here can be answered in one click.
+    //
     // Reported BEFORE the gates, and that is the point: with review mode off
     // there is no button and — until this existed — nothing anywhere saying a
     // one-click answer was on offer at all. A reader looked at three Open
@@ -286,12 +340,7 @@ export function useOpenQuestionButtons(
       const built = buildWholeBlockAnchor(block);
       if (!built) continue;
 
-      // Off the STAMPED element, not off the resolved block: they are different
-      // elements whenever the directive attached to a container.
-      const leaning = stamped.getAttribute("data-vantage-leaning")?.trim();
-      // `?.trim()` plus `||` makes an absent and a whitespace-only attribute
-      // behave identically — a comment body of `""` is the "broken" D6 forbids.
-      const text = leaning || OQ_DEFAULT_LEANING;
+      const text = leaningComment(stamped);
 
       const taken = findTaken(comments, built.anchor, text);
       const row = makeRow(block);
