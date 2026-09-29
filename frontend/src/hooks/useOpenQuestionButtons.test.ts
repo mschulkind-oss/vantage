@@ -9,6 +9,7 @@ import {
   OQ_TAKEN_LABEL,
   OQ_UNDO_LABEL,
   answerableOpenQuestions,
+  leaningComment,
   useOpenQuestionButtons,
   type TakeLeaning,
   type UndoLeaning,
@@ -17,12 +18,17 @@ import {
   useReviewHighlights,
   type InlineReviewActions,
 } from "./useReviewHighlights";
+import { collectOutline } from "./useDocumentOutline";
+import { renderMarkdown } from "vantage-md";
 import {
   NEIGHBOR_RADIUS,
+  anchorBlockWithin,
   blockVisibleText,
+  buildWholeBlockAnchor,
   hashBlockText,
   stripBlockText,
 } from "../lib/reviewAnchor";
+import { readRepoFile } from "../test/planning";
 import { useReviewStore } from "../stores/useReviewStore";
 import type { CommentAnchor, CommentReaction, ReviewComment } from "../types";
 
@@ -903,5 +909,119 @@ describe("answerableOpenQuestions — an inline SVG inside the question", () => 
     } finally {
       cleanup();
     }
+  });
+});
+
+/**
+ * Plan Q5 (`docs/design/planning-index.md` §6.3): review mode offers **Take
+ * this leaning** on open questions only. A 🔒 question cannot be answered yet
+ * and a ✅ one has been ruled, so neither gets a row — no button, no taken
+ * chip, no Undo — and the Review toggle's count follows the buttons. The
+ * contents column is not filtered: it still lists every question, in every
+ * state, which `TableOfContents.test.tsx` holds it to.
+ *
+ * Over the gallery's own status page, rendered through the real chain, so the
+ * state is read from the markers a document actually writes.
+ */
+describe("useOpenQuestionButtons — only open questions offer a take (Q5)", () => {
+  const renderStatusPage = async () => {
+    const source = readRepoFile("docs/gallery/status.md");
+    container.innerHTML = (await renderMarkdown(source)).html;
+  };
+
+  /** The row after the question whose directive carries `id`, if any. */
+  const rowFor = (id: string): HTMLElement | null => {
+    const stamped = container.querySelector<HTMLElement>(`#${id}`)!;
+    const block = anchorBlockWithin(stamped)!;
+    const next = block.nextElementSibling;
+    return next instanceof HTMLElement &&
+      next.classList.contains("review-oq-row")
+      ? next
+      : null;
+  };
+
+  it("renders a row for the 💬 question and none for the ✅ or 🔒 one", async () => {
+    await renderStatusPage();
+    const onCount = vi.fn();
+    const ref = { current: container };
+    renderHook(() =>
+      useOpenQuestionButtons(
+        ref,
+        [],
+        true,
+        "doc content",
+        onTake,
+        onUndo,
+        onCount,
+      ),
+    );
+
+    expect(rowFor("OQ-1")?.querySelector(".review-oq-take")).toHaveTextContent(
+      OQ_LABEL,
+    );
+    expect(rowFor("OQ-2")).toBeNull();
+    expect(rowFor("OQ-3")).toBeNull();
+    expect(takeButtons()).toHaveLength(1);
+    // The Review toggle's count is the buttons', not the column's.
+    expect(onCount).toHaveBeenLastCalledWith(1);
+    // And the column still lists all three, each in its own state.
+    expect(
+      collectOutline(container)
+        .filter((entry) => entry.kind === "question")
+        .map((entry) => [entry.id, entry.status]),
+    ).toEqual([
+      ["OQ-1", "open"],
+      ["OQ-2", "settled"],
+      ["OQ-3", "blocked"],
+    ]);
+  });
+
+  it("counts the same with review mode off", async () => {
+    await renderStatusPage();
+    const onCount = vi.fn();
+    const ref = { current: container };
+    renderHook(() =>
+      useOpenQuestionButtons(
+        ref,
+        [],
+        false,
+        "doc content",
+        onTake,
+        onUndo,
+        onCount,
+      ),
+    );
+    expect(onCount).toHaveBeenLastCalledWith(1);
+  });
+
+  it("shows no taken chip and no Undo on an answered question with a take on it", async () => {
+    await renderStatusPage();
+    const stamped = container.querySelector<HTMLElement>("#OQ-2")!;
+    const built = buildWholeBlockAnchor(anchorBlockWithin(stamped)!)!;
+    const taken: ReviewComment = {
+      id: "t2",
+      anchor: built.anchor,
+      comment: leaningComment(stamped),
+      fallback_text: built.fallbackText,
+      created_at: 0,
+      reactions: [],
+    };
+    renderOq([taken]);
+    expect(rowFor("OQ-2")).toBeNull();
+    expect(container.querySelector(".review-oq-taken")).toBeNull();
+    expect(container.querySelector(".review-oq-undo")).toBeNull();
+  });
+
+  it("still renders a row for a question with no marker at all", () => {
+    // The fixture's questions carry none, and a question with no marker is
+    // open (§3.3).
+    renderOq();
+    expect(takeAt(7)).not.toBeNull();
+    expect(takeAt(11)).not.toBeNull();
+  });
+
+  it("files the leaning a take would file, or the default without one", () => {
+    expect(leaningComment(blockAt(7))).toBe(LEANING);
+    expect(leaningComment(blockAt(11))).toBe(OQ_DEFAULT_LEANING);
   });
 });
