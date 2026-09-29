@@ -403,6 +403,19 @@ func TestInstallServiceWithSourceDirsWillNotStartADaemonWithNothingToServe(t *te
 	require.ErrorContains(t, err, "No repositories configured")
 	require.Empty(t, rec.calls)
 	require.NoFileExists(t, systemdUnitPath(in.home))
+	require.NoFileExists(t, in.configPath, "a refused edit is not written")
+
+	// An existing config the daemon already refuses is left byte for byte.
+	require.NoError(t, os.MkdirAll(filepath.Dir(in.configPath), 0o755))
+	original := "# mine\n[[repos]]\nname = \"gone\"\npath = \"/nonexistent/gone\"\n"
+	require.NoError(t, os.WriteFile(in.configPath, []byte(original), 0o644))
+	err = installServiceWithSourceDirs(&out, in, []string{"~/code"})
+	require.ErrorContains(t, err, "Repository path does not exist")
+	body, rerr := os.ReadFile(in.configPath)
+	require.NoError(t, rerr)
+	require.Equal(t, original, string(body))
+	require.NotContains(t, out.String(), "Added to source_dirs")
+	require.Empty(t, rec.calls)
 }
 
 func TestInstallServiceWithSourceDirsRejectsAMissingDirectory(t *testing.T) {

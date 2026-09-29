@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -302,6 +303,40 @@ func TestAddSourceDirsBacksUpWhenTheEditFailsItsRoundTrip(t *testing.T) {
 		require.NoError(t, os.WriteFile(cfgPath, []byte(original), 0o644))
 		require.NoError(t, os.Remove(edit.Backup))
 	}
+}
+
+// install-service checks that the edited config would start the daemon, and it
+// checks the candidate before it replaces anything: a refused edit leaves the
+// file exactly as it was, or absent when there was none, so a mistaken run
+// leaves no entry behind for the next one to keep without a word.
+func TestAddSourceDirsWritesNothingItsCheckRefuses(t *testing.T) {
+	_, cfgPath := sourceDirsFixture(t)
+	refuse := errors.New("would not start the daemon")
+	var checked []string
+	check := func(candidate string) error {
+		checked = append(checked, decodedSourceDirs(t, candidate)...)
+		return refuse
+	}
+
+	_, err := AddSourceDirsChecked(cfgPath, []string{"~/code"}, editTime, check)
+	require.ErrorIs(t, err, refuse)
+	require.Equal(t, []string{"~/code"}, checked, "the check reads the candidate")
+	require.NoFileExists(t, cfgPath, "no config is left behind")
+
+	original := "# mine\n\"source_dirs\" = [\"~/work\"]\n"
+	require.NoError(t, os.MkdirAll(filepath.Dir(cfgPath), 0o755))
+	require.NoError(t, os.WriteFile(cfgPath, []byte(original), 0o644))
+	_, err = AddSourceDirsChecked(cfgPath, []string{"~/code"}, editTime, check)
+	require.ErrorIs(t, err, refuse)
+	require.Equal(t, original, readString(t, cfgPath))
+	entries, err := os.ReadDir(filepath.Dir(cfgPath))
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "no backup, and no temp file, for an edit never made")
+
+	edit, err := AddSourceDirsChecked(cfgPath, []string{"~/code"}, editTime, func(string) error { return nil })
+	require.NoError(t, err)
+	require.NotEmpty(t, edit.Backup, "an accepted rewrite is backed up as before")
+	require.Equal(t, []string{"~/work", "~/code"}, decodedSourceDirs(t, cfgPath))
 }
 
 func TestAddSourceDirsRefusesAMalformedConfig(t *testing.T) {

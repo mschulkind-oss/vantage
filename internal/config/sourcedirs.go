@@ -70,6 +70,17 @@ var createdPortLines = fmt.Sprintf("# Written down, so that the service waits fo
 // fails), the original is first copied to "<path>.bak-<now>", the file is
 // rewritten from its decoded values, and Backup says where the copy went.
 func AddSourceDirs(path string, dirs []string, now time.Time) (SourceDirsEdit, error) {
+	return AddSourceDirsChecked(path, dirs, now, nil)
+}
+
+// AddSourceDirsChecked is [AddSourceDirs] that first hands check the path of
+// the edited file, written beside the config but not yet in its place, and
+// replaces the config — making any backup — only when check returns nil. A
+// refused edit changes nothing: an existing config stays byte for byte as it
+// was, and a missing one stays missing. install-service checks that the
+// result would start the daemon, so a mistaken run leaves no entry behind for
+// a later run to keep.
+func AddSourceDirsChecked(path string, dirs []string, now time.Time, check func(candidate string) error) (SourceDirsEdit, error) {
 	edit := SourceDirsEdit{Path: path}
 	home, _ := os.UserHomeDir()
 	if resolved, err := filepath.EvalSymlinks(home); err == nil {
@@ -158,9 +169,6 @@ func AddSourceDirs(path string, dirs []string, now time.Time) (SourceDirsEdit, e
 		}
 		if err != nil {
 			edit.Backup = fmt.Sprintf("%s.bak-%s", file, now.Format("20060102-150405"))
-			if werr := os.WriteFile(edit.Backup, original, 0o600); werr != nil {
-				return edit, fmt.Errorf("config: backing up %s: %w", file, werr)
-			}
 			before["source_dirs"] = append(existing, edit.Added...)
 			var buf bytes.Buffer
 			buf.WriteString("# Rewritten by `vantage install-service --source-dir`; the original,\n")
@@ -175,11 +183,27 @@ func AddSourceDirs(path string, dirs []string, now time.Time) (SourceDirsEdit, e
 	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
 		return edit, fmt.Errorf("config: creating %s: %w", filepath.Dir(file), err)
 	}
-	if err := writeFileAtomic(file, next); err != nil {
+	tmp, err := stageFile(file, next)
+	if err != nil {
 		if edit.Target != "" {
 			return edit, fmt.Errorf("%w; %s is a link to it, so add source_dirs there by hand", err, path)
 		}
 		return edit, err
+	}
+	defer os.Remove(tmp) // gone already once it is renamed into place
+	if check != nil {
+		if err := check(tmp); err != nil {
+			return edit, err
+		}
+	}
+	if edit.Backup != "" {
+		if err := os.WriteFile(edit.Backup, original, 0o600); err != nil {
+			return edit, fmt.Errorf("config: backing up %s: %w", file, err)
+		}
+	}
+	// A crash before this leaves the old config, never half of a new one.
+	if err := os.Rename(tmp, file); err != nil {
+		return edit, fmt.Errorf("config: writing %s: %w", file, err)
 	}
 	return edit, nil
 }
@@ -285,34 +309,34 @@ func tomlStringArray(ss []string) string {
 	return "[" + strings.Join(quoted, ", ") + "]"
 }
 
-// writeFileAtomic replaces path with data through a temp file in the same
-// directory, keeping the existing file's permissions, so a crash mid-write
-// leaves the old config rather than half of a new one.
-func writeFileAtomic(path string, data []byte) error {
+// stageFile writes data to a new temp file beside path, with the existing
+// file's permissions, and returns its name, for the caller to check and then
+// rename over path.
+func stageFile(path string, data []byte) (string, error) {
 	mode := os.FileMode(0o644)
 	if info, err := os.Stat(path); err == nil {
 		mode = info.Mode().Perm()
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".config.toml.*")
 	if err != nil {
-		return fmt.Errorf("config: writing %s: %w", path, err)
+		return "", fmt.Errorf("config: writing %s: %w", path, err)
 	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(data); err != nil {
+	fail := func(err error) (string, error) {
 		tmp.Close()
-		return fmt.Errorf("config: writing %s: %w", path, err)
+		os.Remove(tmp.Name())
+		return "", fmt.Errorf("config: writing %s: %w", path, err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		return fail(err)
 	}
 	if err := tmp.Chmod(mode); err != nil {
-		tmp.Close()
-		return fmt.Errorf("config: writing %s: %w", path, err)
+		return fail(err)
 	}
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("config: writing %s: %w", path, err)
+		os.Remove(tmp.Name())
+		return "", fmt.Errorf("config: writing %s: %w", path, err)
 	}
-	if err := os.Rename(tmp.Name(), path); err != nil {
-		return fmt.Errorf("config: writing %s: %w", path, err)
-	}
-	return nil
+	return tmp.Name(), nil
 }
 
 // editSourceDirsText is the text edit AddSourceDirs makes, a variable so that a

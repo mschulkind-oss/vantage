@@ -254,9 +254,12 @@ config. The command then installs the service and starts it. Without
 - **What changed is printed:** which directories were added, which were already
   there, and the file that was written.
 - **A config that would not start the daemon stops the command** before
-  anything is installed. This happens when no repository is configured at all,
-  for example when the only source directory holds no clones. The daemon's own
-  validation gives the reason.
+  anything is installed, and before the config itself changes: the edited file
+  is written beside the config and checked there, and replaces it only when
+  the daemon would start from it. So a refused run leaves an existing config
+  byte for byte as it was, and creates none. This happens when no repository
+  is configured at all, for example when the only source directory holds no
+  clones. The daemon's own validation gives the reason.
 - **Starting the service** on Linux runs `systemctl --user daemon-reload`,
   `enable vantage` and `restart vantage`. The command uses `restart` because a
   running daemon reads `source_dirs` only at startup. On macOS it runs
