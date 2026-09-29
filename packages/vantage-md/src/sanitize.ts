@@ -71,7 +71,14 @@ function defaultClasses(tag: string): ClassValue[] {
  * **A class added after the sanitizer needs no entry**, and that is most of
  * the classes the page styles: `rehype-highlight`'s `hljs-*`, KaTeX's output,
  * Mermaid's diagrams, and everything the app's components and hooks add. A
- * document that writes one of those keeps nothing.
+ * document that writes one of those on an element keeps nothing.
+ *
+ * **Mermaid source is the route this list cannot close.** Mermaid renders
+ * after the sanitizer and copies the names a diagram's source gives a node
+ * (`:::name`, `class A name`, `classDef`) onto that node, so a diagram can
+ * carry any of the app's utilities on its own nodes. The diagram bounds it:
+ * `position` does nothing on an SVG group, and the diagram's `svg` clips what
+ * is inside it. `frontend/e2e/mermaid.spec.ts` measures that bound.
  *
  * A document may still write these names on these elements. By the time the
  * sanitizer runs, a hand-written `<li class="task-list-item">` and the one GFM
