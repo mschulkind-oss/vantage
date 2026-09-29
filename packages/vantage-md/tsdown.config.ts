@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync } from "node:fs";
+import { copyFileSync, mkdirSync, readdirSync } from "node:fs";
 
 import { defineConfig } from "tsdown";
 
@@ -62,16 +62,21 @@ export default defineConfig([
         "katex",
       ],
     },
-    // The CSS ships as-is rather than through the bundler: it is plain CSS with
-    // no imports to resolve, and tsup's third config existed only to copy it.
+    // The CSS ships as-is rather than through the bundler, so every stylesheet
+    // in `src/styles/` is copied beside the others: `index.css`, published as
+    // `styles.css`, is made of relative `@import`s of its siblings. tsup ran
+    // the CSS through esbuild, which inlined them; the first tsdown build
+    // copied `index.css` alone, and `vantage-md/styles` shipped four imports
+    // of files that were not in the package. `scripts/check-published-css.mjs`
+    // follows every import in the built `dist/` and fails the gate on a
+    // missing one.
     hooks: {
       "build:done": () => {
         mkdirSync("dist", { recursive: true });
-        for (const [from, to] of [
-          ["src/styles/index.css", "dist/styles.css"],
-          ["src/styles/prose.css", "dist/prose.css"],
-        ]) {
-          copyFileSync(from, to);
+        for (const name of readdirSync("src/styles")) {
+          if (!name.endsWith(".css")) continue;
+          const published = name === "index.css" ? "styles.css" : name;
+          copyFileSync(`src/styles/${name}`, `dist/${published}`);
         }
       },
     },
