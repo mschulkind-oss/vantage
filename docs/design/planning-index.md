@@ -35,8 +35,12 @@ planning conventions built on it change what they write ([§10](#10-what-the-con
 **Needs your ruling:** None.
 
 **Reads with:** [`planning-index-plan.md`](planning-index-plan.md) (the implementation plan,
-completed against the tree on 2026-09-28) and [the brainstorm](../brainstorm/planning-index.md)
-(the ideas this chose between, and the ones it retired).
+completed against the tree on 2026-09-28), [the brainstorm](../brainstorm/planning-index.md)
+(the ideas this chose between, and the ones it retired), and
+[`planning-index-at-scale.md`](planning-index-at-scale.md) (the 2026-09-29 amendment for large
+repositories, which supersedes parts of [§3.4](#34-when-it-is-built-and-how-it-stays-fresh),
+[§3.5](#35-limits-and-what-happens-past-them), [§5.3](#53-how-a-badge-behaves),
+[§6](#6-the-planning-page) and [§7](#7-referenced-by-and-status-in-the-file-tree)).
 
 ---
 
@@ -93,6 +97,11 @@ Nothing today builds backlinks, a link graph, or a whole-project scan of Markdow
 
 The **planning index** *(coined in the brainstorm)* is a model of the repository's planning
 documents, rebuilt from the files and never stored.
+
+> [!NOTE]
+> **Amended 2026-09-29.** [`planning-index-at-scale.md`](planning-index-at-scale.md) proposes
+> keeping each file's derived facts in the browser under the file's content hash, which would end
+> "never stored"; [OQ-PS1](planning-index-at-scale.md#OQ-PS1) asks whether it may.
 
 ### 3.1 Which files it reads
 
@@ -167,6 +176,14 @@ exempts 🔒 questions from the directive, so it has to change
 
 ### 3.4 When it is built, and how it stays fresh
 
+> [!NOTE]
+> **Amended 2026-09-29.** *Full scan* and *Transport* below are superseded by
+> [`planning-index-at-scale.md` §5.2](planning-index-at-scale.md#52-a-build-step-by-step),
+> [§6.1](planning-index-at-scale.md#61-the-stream) and
+> [§7](planning-index-at-scale.md#7-the-scan-worker): the scan runs in a worker, fed by a stream
+> that carries only the files whose content changed. *Incremental*, *Reconnect* and *Ordering*
+> stand, through that worker. The text below is the design as ruled on 2026-09-28.
+
 - **Full scan:** once per project per browser session, on first need. First need is opening any
   document, the planning page, or the file tree. It runs in the background, and nothing waits
   on it.
@@ -190,6 +207,12 @@ exempts 🔒 questions from the directive, so it has to change
   alike.
 
 ### 3.5 Limits, and what happens past them
+
+> [!NOTE]
+> **Amended 2026-09-29.** No new candidate limit.
+> [`planning-index-at-scale.md` §10.2](planning-index-at-scale.md#102-pages) adds two render
+> budgets to the planning page: 32 KiB of card Markdown per section page, and 32,000 characters
+> per card before it is drawn as a preview card.
 
 | Limit | Default | Past it |
 | --- | --- | --- |
@@ -286,6 +309,12 @@ A link gets a badge when all of the following hold:
 
 ### 5.3 How a badge behaves
 
+> [!NOTE]
+> **Amended 2026-09-29.** "First render never waits for them" is superseded by
+> [`planning-index-at-scale.md` §11](planning-index-at-scale.md#11-late-data-never-moves-painted-content):
+> a document's first paint may hold up to 150 ms for a warm index, and a badge that arrives later
+> is drawn only in blocks that have not been on screen yet.
+
 - **It is appended after the link**, as a sibling element. It is not part of the link's text,
   and clicking it does nothing.
 - **Review comment anchors ignore badges.** A comment anchor hashes a block's visible text, so a
@@ -302,6 +331,14 @@ A link gets a badge when all of the following hold:
   "agent-bootstrap, in review, design, five open questions".
 
 ## 6. The planning page
+
+> [!NOTE]
+> **Amended 2026-09-29** by [`planning-index-at-scale.md` §10](planning-index-at-scale.md#10-the-planning-page-paged):
+> the page paints its header and a section bar first, and each section shows one page at a time,
+> with its page in the URL. The sections and their order ([§6.2](#62-sections-top-to-bottom)) are
+> unchanged. In [§6.3](#63-a-question-on-the-page), comments are ready when a card first paints,
+> a card too large to render unasked is a preview card, and Copy answers places comments on
+> questions not rendered this visit by their anchor line.
 
 A page for each project, reached from a toolbar entry and with `g p` (a free chord that matches
 `g h` and `g r`). It is built entirely from the index and **stores nothing** of its own: no
@@ -400,6 +437,12 @@ click away. Opening a document does not change its review mode. Going **Back** r
 planning page at its previous scroll position.
 
 ## 7. Referenced by, and status in the file tree
+
+> [!NOTE]
+> **Amended 2026-09-29.** When the index is not ready at first paint, a planning document reserves
+> Referenced by's one line
+> ([`planning-index-at-scale.md` §11.2](planning-index-at-scale.md#112-every-late-datum-and-where-its-space-comes-from)),
+> so the line never pushes the document down when it lands.
 
 - **Referenced by:** one line below a planning document's frontmatter card, or first in the
   document when it has no card. It answers the two questions a reader asks of a document on its
@@ -631,7 +674,7 @@ maintains them.
 | --- | --- |
 | A badge changes a block's visible text and moves comment anchors | Excluded from anchor text by rule ([§5.3](#53-how-a-badge-behaves)). A test files a comment, changes the count, and checks that the anchor still resolves |
 | The index and the contents column disagree on a question's state | One extraction, or an agreement test ([§3.3](#33-a-question)) |
-| Scan time on a large repository | Parse only planning documents, refuse past the candidate limit, and scan in the background. Measured by the done criteria in [§15](#15-what-done-looks-like) |
+| Scan time on a large repository | Parse only planning documents, refuse past the candidate limit, and scan in the background. Measured by the done criteria in [§15](#15-what-done-looks-like). At 300 documents and more this is not enough, as measured on 2026-09-29; [`planning-index-at-scale.md`](planning-index-at-scale.md) takes it over, with targets in its [§19](planning-index-at-scale.md#19-what-done-looks-like) |
 | Another tool already uses a top-level `stage` key, such as a site generator's `stage: production` | **Accepted.** A `stage` key alone makes a file a planning document ([§3.1](#31-which-files-it-reads)), so every link to it and its file-tree row show `production` as its stage. The checker holds `stage` to a vocabulary only when stages are declared, and a repository whose files use the key for something else lists them in `[planning] exclude`. A foreign `next` is read only in a file that is already a planning document |
 | An answer filed from the page gets a different anchor than the in-page button would give | The two paths are compared in a test that files from both |
 
@@ -664,7 +707,8 @@ phase writes its notes then, as every release does.
 - `vantage-check index` prints the same sections the page shows, and
   `planning/stage-vocabulary` fails on an off-vocabulary `stage`.
 - On this repository, the first page load has the index ready within 1 s. No document's first
-  render waits for it.
+  render waits for it. (Amended 2026-09-29: [`planning-index-at-scale.md` §19](planning-index-at-scale.md#19-what-done-looks-like)
+  sets the targets at scale, and a first render may now hold briefly for a warm index.)
 
 ## Decision Ledger
 
