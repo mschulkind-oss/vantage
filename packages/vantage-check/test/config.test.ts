@@ -3,10 +3,15 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   ConfigError,
+  defaultConfig,
   findConfig,
   loadConfig,
   parseConfig,
 } from "../src/core/config.js";
+import {
+  DEFAULT_PLANNING_CONFIG,
+  type PlanningConfig,
+} from "../../vantage-md/src/planning/index.js";
 import { Settings } from "../src/core/settings.js";
 import { run } from "../src/cli.js";
 import { bufferIo } from "../src/io.js";
@@ -119,6 +124,27 @@ describe("parseConfig", () => {
     expect(settings.severity("link/dead-section-anchor")).toBe("warning");
   });
 
+  // [planning] is the one table both readers parse, and the checker reads all
+  // of it. The server's suite asserts the half it reads out of the same bytes.
+  it("reads [planning] out of the shared conformance fixture", () => {
+    const fixture = testdata("shared-config.toml");
+    const { planning } = parseConfig(readFileSync(fixture, "utf8"), fixture);
+
+    expect(planning).toEqual({
+      roadmap: "plans/ROADMAP.md",
+      include: ["docs/**", "plans/**"],
+      exclude: ["docs/gallery/**"],
+      maxFileBytes: 65536,
+      maxCandidates: 250,
+      stages: {
+        DRAFTED: "open",
+        SETTLED: "ready",
+        SHIPPED: "built",
+        RETIRED: "done",
+      },
+    });
+  });
+
   // A mistyped --config is a bad argument, and it has to READ like one.
   //
   // `existsSync` is true for a directory, so this reached readFileSync and
@@ -172,6 +198,79 @@ describe("parseConfig", () => {
   ])("rejects %j", (source, fragment) => {
     expect(() => parseConfig(source)).toThrow(ConfigError);
     if (fragment) expect(() => parseConfig(source)).toThrow(fragment);
+  });
+});
+
+/** A file in the shared fixtures the server's suite also reads. */
+function testdata(name: string): string {
+  return join(
+    import.meta.dirname,
+    "..",
+    "..",
+    "..",
+    "internal",
+    "repoconfig",
+    "testdata",
+    name,
+  );
+}
+
+interface PlanningConfigCase {
+  name: string;
+  toml: string;
+  ok: boolean;
+  planning?: PlanningConfig;
+}
+
+// The server's internal/repoconfig test reads the same cases, so the two
+// readers of `[planning]` accept and refuse exactly the same files, and resolve
+// an accepted one to the same table (docs/design/planning-index.md §9).
+describe("[planning], as planning-config.json pins it for both readers", () => {
+  const { cases } = JSON.parse(
+    readFileSync(testdata("planning-config.json"), "utf8"),
+  ) as { cases: PlanningConfigCase[] };
+
+  it("holds cases of both kinds", () => {
+    expect(cases.some((c) => c.ok)).toBe(true);
+    expect(cases.some((c) => !c.ok)).toBe(true);
+  });
+
+  it.each(cases.filter((c) => c.ok).map((c) => [c.name, c] as const))(
+    "accepts %s",
+    (_name, c) => {
+      expect(parseConfig(c.toml).planning).toEqual(c.planning);
+    },
+  );
+
+  it.each(cases.filter((c) => !c.ok).map((c) => [c.name, c] as const))(
+    "refuses %s, whole",
+    (_name, c) => {
+      expect(() => parseConfig(c.toml)).toThrow(ConfigError);
+    },
+  );
+
+  it("resolves a file with no [planning] table to the defaults", () => {
+    expect(parseConfig("").planning).toEqual(DEFAULT_PLANNING_CONFIG);
+    expect(defaultConfig().planning).toEqual(DEFAULT_PLANNING_CONFIG);
+  });
+
+  it("never hands out the shared default's arrays", () => {
+    const first = defaultConfig().planning;
+    first.include.push("x/**");
+
+    expect(defaultConfig().planning.include).toEqual(["**/*.md"]);
+    expect(DEFAULT_PLANNING_CONFIG.include).toEqual(["**/*.md"]);
+  });
+
+  it.each([
+    ["[planning]\nroadmaps = 1\n", "unknown key planning.roadmaps"],
+    ['[planning.stages]\nX = "shipped"\n', '"open", "ready", "built", "done"'],
+    ["[planning]\nmax-candidates = 0\n", "whole number of 1 or more"],
+    ['[planning]\nroadmap = "../r.md"\n', "inside the repository"],
+    ['[planning]\ninclude = "**/*.md"\n', "list of gitignore-style patterns"],
+    ['[planning]\nstages = ["DESIGN"]\n', "planning.stages must be a table"],
+  ])("says what is wrong with %j", (source, fragment) => {
+    expect(() => parseConfig(source)).toThrow(fragment);
   });
 });
 
@@ -235,6 +334,22 @@ describe("check with configuration", () => {
 
     expect(await run(["check", "."], io)).toBe(EXIT_USAGE);
     expect(io.stderr).toContain("unknown rule");
+    expect(io.stdout).toBe("");
+  });
+
+  // The design wants a bad [planning] to fail loudly rather than be read as
+  // half a table, and the checker has only one way to say so: exit 2, for
+  // every command, `check` included (docs/design/planning-index.md §9).
+  it("refuses a check whose [planning] is bad, before checking anything", async () => {
+    const io = bufferIo(
+      makeTree({
+        ".vantage.toml": '[planning.stages]\nDESIGN = "shipped"\n',
+        "index.md": "# Title\n",
+      }),
+    );
+
+    expect(await run(["check", "."], io)).toBe(EXIT_USAGE);
+    expect(io.stderr).toContain("planning.stages");
     expect(io.stdout).toBe("");
   });
 
