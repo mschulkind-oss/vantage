@@ -23,7 +23,9 @@ import { BrowserRouter } from "react-router-dom";
 import axios from "axios";
 import {
   buildPlanningIndex,
+  cardBlockFor,
   scanPlanningDocument,
+  type CardBlock,
   type PlanningIndex,
   type PlanningQuestion,
 } from "vantage-md/planning";
@@ -117,6 +119,16 @@ function questionsOf(path: string): PlanningQuestion[] {
   return result.document.questions;
 }
 
+/** The question's card block, as the scan cut it from its document's text. */
+function blockOf(
+  question: PlanningQuestion,
+  source = CORPUS[question.path],
+): CardBlock | null {
+  const result = scanPlanningDocument(question.path, source, false);
+  if (result.kind !== "planning") return null;
+  return cardBlockFor(result.cards, question) ?? null;
+}
+
 const CASES = Object.keys(CORPUS)
   .filter((path) => path !== "plans/x.md")
   .flatMap((path) =>
@@ -149,7 +161,7 @@ beforeEach(() => {
         index: INDEX,
         version: 1,
         rescanning: false,
-        sources: CORPUS,
+        hashes: {},
       },
     },
     reviewEpoch: {},
@@ -213,7 +225,7 @@ function renderCard(
     <BrowserRouter>
       <PlanningQuestionCard
         question={question}
-        source={CORPUS[question.path]}
+        card={"card" in props ? props.card : blockOf(question)}
         badge={null}
         comments={[]}
         href={`/${question.path}`}
@@ -378,6 +390,27 @@ describe("the card shows its question, and only its question", () => {
       "/docs/design/agent-bootstrap.md",
     );
   });
+
+  it("renders nothing of its question while its block is on its way, and offers only Open document", () => {
+    const { container } = renderCard(byId("OQ-B2"), { card: undefined });
+    const article = screen.getByRole("article");
+    expect(
+      article.querySelector(".planning-card-body")?.childNodes,
+    ).toHaveLength(0);
+    expect(container.textContent).not.toContain("not in the planning index");
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getByRole("link", { name: "Open document" })).toBeTruthy();
+  });
+
+  it("says so when its document no longer has its block", () => {
+    renderCard(byId("OQ-B2"), { card: null });
+    expect(
+      screen.getByText(
+        "This question's document is not in the planning index any more.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
 });
 
 describe("the card's controls follow the question's state (Plan Q5)", () => {
@@ -390,7 +423,7 @@ describe("the card's controls follow the question's state (Plan Q5)", () => {
   const ofState = (state: PlanningQuestion["state"]) =>
     statusQuestions.find((q) => q.state === state)!;
   const renderStatus = (question: PlanningQuestion) =>
-    renderCard(question, { source: status });
+    renderCard(question, { card: blockOf(question, status) });
 
   it("offers Take, Answer… and Open document on an open question", () => {
     renderStatus(ofState("open"));

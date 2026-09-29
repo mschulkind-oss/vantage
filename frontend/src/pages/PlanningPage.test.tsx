@@ -5,7 +5,9 @@
  *
  * Rendered with the app's real cards over a planning store seeded with a
  * ready index, against a review endpoint simulated in memory, so a comment
- * filed from a card comes back through the page's own reviews.
+ * filed from a card comes back through the page's own reviews. The cards'
+ * blocks and Copy's quoted lines come from the real inline scanner client,
+ * over a fake planning server holding the same tree.
  */
 import {
   act,
@@ -32,9 +34,18 @@ import {
   type PlanningLoad,
 } from "../stores/usePlanningStore";
 import { useRepoStore } from "../stores/useRepoStore";
-import { useReviewStore } from "../stores/useReviewStore";
+import { answersPayload, useReviewStore } from "../stores/useReviewStore";
 import { readPreference, reviewModePreferenceKey } from "../lib/preferences";
-import { readRepoFile, sourcesOf } from "../test/planning";
+import {
+  inlineScannerClient,
+  setPlanningScannerForTests,
+  type CardAnswer,
+  type CardWant,
+  type ScannerClient,
+} from "../planningScan/client";
+import { memoryScanStore } from "../planningScan/memoryStore";
+import { contentHash, readRepoFile, sourcesOf } from "../test/planning";
+import { fakePlanningServer } from "../test/planningStream";
 import type { ReviewComment, ReviewData } from "../types";
 
 vi.mock("axios");
@@ -107,22 +118,50 @@ const STAGES: PlanningConfig["stages"] = {
 
 let version = 0;
 
+/**
+ * Serve `tree` to the page's scanner client, as the planning server would,
+ * under `apiBase`, with any of the client's calls replaced.
+ */
+function serveTree(
+  tree: Record<string, string>,
+  apiBase = "/api",
+  replaced: (inline: ScannerClient) => Partial<ScannerClient> = () => ({}),
+): void {
+  const server = fakePlanningServer(tree, { apiBase });
+  const inline = inlineScannerClient({
+    store: memoryScanStore(),
+    scannerId: "test",
+    fetch: server.fetch,
+  });
+  setPlanningScannerForTests({ ...inline, ...replaced(inline) });
+}
+
+/** A ready load of `tree`'s index, with each planning document's hash. */
+function readyOf(
+  tree: Record<string, string>,
+  config: Partial<PlanningConfig> = { stages: STAGES },
+  overrides: Partial<PlanningSources> = {},
+): PlanningLoad {
+  const index = buildPlanningIndex(sourcesOf(tree, overrides, config));
+  const hashes = Object.fromEntries(
+    index.documents.map((d) => [d.path, contentHash(tree[d.path] ?? "")]),
+  );
+  return {
+    status: "ready",
+    index,
+    version: ++version,
+    rescanning: false,
+    hashes,
+  };
+}
+
 function seed(
   tree: Record<string, string> = TREE,
   config: Partial<PlanningConfig> = { stages: STAGES },
   overrides: Partial<PlanningSources> = {},
 ): void {
-  const index = buildPlanningIndex(sourcesOf(tree, overrides, config));
-  const sources = Object.fromEntries(
-    index.documents.map((d) => [d.path, tree[d.path]]),
-  );
-  setLoad({
-    status: "ready",
-    index,
-    version: ++version,
-    rescanning: false,
-    sources,
-  });
+  serveTree(tree);
+  setLoad(readyOf(tree, config, overrides));
 }
 
 function setLoad(load: PlanningLoad, repo = ""): void {
@@ -191,7 +230,17 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  setPlanningScannerForTests(null);
 });
+
+/** Let the reviews, the card blocks and the quoted lines all answer. */
+async function settle(): Promise<void> {
+  for (let i = 0; i < 10; i++) {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+}
 
 /**
  * A history entry of its own for each render. The page saves its scroll
@@ -209,10 +258,7 @@ async function renderPage(url = "/.vantage/planning") {
       </Routes>
     </MemoryRouter>,
   );
-  // Let each document's review answer.
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
+  await settle();
   return view;
 }
 
@@ -462,6 +508,90 @@ describe("empty and degenerate states", () => {
   });
 });
 
+describe("the cards' blocks, from the scanner client (planning-index-at-scale.md §7.4)", () => {
+  /** The tree with every file changed, so nothing an earlier test held fits. */
+  const edited = (label: string) =>
+    Object.fromEntries(
+      Object.entries(TREE).map(([path, content]) => [
+        path,
+        `${content}\n<!-- ${label} -->\n`,
+      ]),
+    );
+
+  it("asks for every listed card in full, by the index's content hash", async () => {
+    const tree = edited("asked");
+    const asked: { want: CardWant[]; full: boolean | undefined }[] = [];
+    serveTree(tree, "/api", (inline) => ({
+      cards: (repo, want, options) => {
+        asked.push({ want, full: options?.full });
+        return inline.cards(repo, want, options);
+      },
+    }));
+    setLoad(readyOf(tree));
+    await renderPage();
+    expect(asked).toHaveLength(1);
+    expect(asked[0]?.full).toBe(true);
+    expect(new Set(asked[0]?.want.map((w) => w.path))).toEqual(
+      new Set([
+        "plans/design.md",
+        "plans/answered.md",
+        "plans/unrouted.md",
+        "plans/disagrees.md",
+      ]),
+    );
+    for (const want of asked[0]?.want ?? []) {
+      expect(want.hash).toBe(contentHash(tree[want.path] ?? ""));
+    }
+    // And the cards render what came back: the question's own unit.
+    expect(
+      cardFor("OQ-U1").querySelector("[data-planning-card-unit]")?.textContent,
+    ).toContain("OQ-U1: Question OQ-U1?");
+  });
+
+  it("keeps the sections back until every card's block is in hand", async () => {
+    const tree = edited("held back");
+    let release: () => void = () => {};
+    serveTree(tree, "/api", (inline) => ({
+      cards: (repo, want, options) =>
+        new Promise<CardAnswer[]>((resolve) => {
+          release = () => resolve(inline.cards(repo, want, options));
+        }),
+    }));
+    setLoad(readyOf(tree));
+    await renderPage();
+    expect(screen.queryAllByRole("region")).toHaveLength(0);
+    expect(
+      screen.getByLabelText("Scanning the planning documents"),
+    ).toBeTruthy();
+    release();
+    await settle();
+    expect(cardsIn("Unrouted")).toEqual([
+      "OQ-X1: Question OQ-X1?",
+      "OQ-U1: Question OQ-U1?",
+    ]);
+  });
+
+  it("says a card's document no longer has its block when the version it asked for is gone", async () => {
+    // A document no other test shows, so no block of it is on screen already.
+    const tree = { "plans/stale.md": doc("stage: DESIGN", q("OQ-S1", OPEN)) };
+    serveTree(tree, "/api", () => ({
+      cards: async (_repo, want) =>
+        want.map((w) => ({
+          path: w.path,
+          startLine: w.startLine,
+          stale: true,
+        })),
+    }));
+    setLoad(readyOf(tree));
+    await renderPage();
+    expect(
+      within(cardFor("OQ-S1")).getByText(
+        "This question's document is not in the planning index any more.",
+      ),
+    ).toBeTruthy();
+  });
+});
+
 describe("in daemon mode", () => {
   beforeEach(() => {
     useRepoStore.setState({
@@ -472,17 +602,8 @@ describe("in daemon mode", () => {
   });
 
   it("shows the repository in its URL, and links its documents under it", async () => {
-    const index = buildPlanningIndex(sourcesOf(TREE, {}, { stages: STAGES }));
-    setLoad(
-      {
-        status: "ready",
-        index,
-        version: ++version,
-        rescanning: false,
-        sources: TREE,
-      },
-      "alpha",
-    );
+    serveTree(TREE, "/api/r/alpha");
+    setLoad(readyOf(TREE), "alpha");
     await renderPage("/.vantage/planning/alpha");
     expect(
       within(cardFor("OQ-D1")).getByRole("link", { name: "Open document" }),
@@ -629,6 +750,8 @@ describe("Copy answers (§6.3)", () => {
         within(cardFor(id)).getByRole("button", { name: "Take this leaning" }),
       );
     });
+    // And the lines the new pending set quotes.
+    await settle();
   }
 
   it("is disabled with nothing pending, and counts what is", async () => {
@@ -666,6 +789,37 @@ describe("Copy answers (§6.3)", () => {
     );
     expect(design.match(/\*\*Comment:\*\* Yes\./g)).toHaveLength(2);
     expect(payload.match(/\*\*Comment:\*\* Yes\./g)).toHaveLength(3);
+  });
+
+  it("quotes each answer's lines exactly as its document's own Copy would", async () => {
+    await renderPage();
+    await take("OQ-U1");
+    await act(async () => {
+      fireEvent.click(copyButton());
+    });
+    const comments = reviews["plans/unrouted.md"] ?? [];
+    expect(comments).toHaveLength(1);
+    // The whole text gives the same payload as the lines the scanner quoted.
+    expect(writeText.mock.calls[0][0]).toBe(
+      answersPayload([
+        {
+          path: "plans/unrouted.md",
+          comments,
+          content: TREE["plans/unrouted.md"] ?? null,
+        },
+      ]),
+    );
+    expect(writeText.mock.calls[0][0]).toContain("   _Leaning:_ Yes.");
+  });
+
+  it("waits for the quoted lines before it copies", async () => {
+    serveTree(TREE, "/api", () => ({
+      quotes: () => new Promise(() => {}),
+    }));
+    await renderPage();
+    await take("OQ-U1");
+    expect(pendingCount()).toBe("1");
+    expect(copyButton()).toBeDisabled();
   });
 
   it("leaves out a comment on the same document that is not on a listed question", async () => {
@@ -746,9 +900,7 @@ describe("Open document, then Back (§6.3, §15)", () => {
         </Routes>
       </MemoryRouter>,
     );
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
+    await settle();
 
     // The reader scrolls down to a card, then opens its document.
     Object.defineProperty(window, "scrollY", {

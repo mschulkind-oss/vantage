@@ -1,46 +1,53 @@
 /**
  * The planning index, one per repository, as the viewer holds it
- * (`docs/design/planning-index.md` §3.4).
+ * (`docs/design/planning-index.md` §3.4, and §5 and §9 of
+ * `docs/design/planning-index-at-scale.md`, "the scale design" below).
  *
- * Built once per repository per page session, on first need, from one batch
- * request, and kept fresh from then on one path at a time as the change push
- * names files. Nothing waits on it: a document renders at once, and its link
- * badges appear when the index is ready.
+ * Built once per repository per page session, on first need, by the scanner
+ * client, which reads the planning stream and scans in the scan worker; and
+ * kept fresh from then on one path at a time as the change push names files.
+ * Nothing waits on it: a document renders at once, and its link badges appear
+ * when the index is ready.
  *
- * Every derivation lives in `vantage-md/planning` (P4); this file only fetches,
- * sequences and holds. Three rules it owns:
+ * Every derivation lives in `vantage-md/planning` (P4), and every scan in the
+ * scan worker; this file only asks, sequences and holds. It holds the facts
+ * and one content hash per planning document, never a document's text (S2):
+ * the planning page asks the scanner client for card blocks and quoted lines
+ * by those hashes. Three rules it owns:
  *
- * - **Per-file refreshes ask the planning endpoint's single-path mode**, never
- *   `/content` (Plan Q15). A path joins the index only when the server answers
- *   `file`, which carries the listing rules, the include and exclude patterns,
- *   the size limit and the UTF-8 test. So there is no matcher here.
- * - **Requests are numbered per repository** (§3.4, "Ordering"). A single-path
- *   answer is discarded when a newer request covering its path has been sent,
- *   and a batch is discarded whole — config, count and refusal included — when
- *   a later rescan has been sent. A single-path answer newer than a batch still
- *   in flight is held and applied on top of that batch when it lands.
+ * - **Per-file refreshes ask the scanner client**, which reads the planning
+ *   endpoint's single-path mode, never `/content` (Plan Q15). A path joins the
+ *   index only when the server answers `file`, which carries the listing
+ *   rules, the include and exclude patterns, the size limit and the UTF-8
+ *   test. So there is no matcher here.
+ * - **Requests are numbered per repository** (§3.4, "Ordering", and the scale
+ *   design's §5.4). The client makes no ordering decision, so the numbering
+ *   stays here, unchanged: a refreshed entry is discarded when a newer request
+ *   covering its path has been sent, and a build is discarded whole — config,
+ *   count and refusal included — when a later rescan has been sent. An entry
+ *   newer than a build still in flight is held and applied on top of that
+ *   build when it lands.
  * - **A ready index stays shown while it is rescanned** (`rescanning: true`), so
  *   the planning page never flashes a loading state where it restores its
- *   scroll position (Plan Q14).
+ *   scroll position (Plan Q14). A build's results are gathered outside the
+ *   store and set once, at `ready`, so no subscriber re-renders per chunk.
  */
 
 import { useEffect } from "react";
 import { create } from "zustand";
-import axios from "axios";
 import {
-  applySource,
+  applyScanned,
   findDocument,
-  parsePlanningSources,
-  parseSourceEntry,
   planningIndexBuilder,
   withoutDirectory,
   type PlanningDocument,
   type PlanningIndex,
-  type PlanningSources,
-  type SourceEntry,
+  type PlanningIndexBuilder,
+  type ScannedEntry,
 } from "vantage-md/planning";
 import { useRepoStore } from "./useRepoStore";
 import { isStaticMode } from "../lib/staticMode";
+import { planningScanner, type BuildEvent } from "../planningScan/client";
 
 export type PlanningLoad =
   | { status: "idle" }
@@ -52,8 +59,12 @@ export type PlanningLoad =
       version: number;
       /** A rescan is in flight; `index` is the previous one until it lands. */
       rescanning: boolean;
-      /** Each planning document's text, by path, for cards and Copy. */
-      sources: Readonly<Record<string, string>>;
+      /**
+       * Each planning document's content hash, by path: what a request for
+       * its card blocks or quoted lines names, so the scanner client answers
+       * from exactly the version this index read (scale design §9).
+       */
+      hashes: Readonly<Record<string, string>>;
     }
   | { status: "error"; message: string };
 
@@ -63,14 +74,14 @@ interface PlanningStore {
   /** By `${repo}\n${path}`: bumped on each `review_changed` for that document. */
   reviewEpoch: Readonly<Record<string, number>>;
   /**
-   * Start the batch for `repo` unless one has already been started. A no-op
+   * Start the build for `repo` unless one has already been started. A no-op
    * until the repo store has loaded, and in daemon mode for `""`. In a static
    * export it gives `error` at once, with no request (Plan Q3).
    */
   ensure(repo: string): void;
   /**
-   * Scan `repo` again from a fresh batch: Retry, and a `.vantage.toml` push. A
-   * ready index stays shown, with `rescanning: true`, until the batch lands.
+   * Build `repo` again: Retry, a `.vantage.toml` push, a reconnect. A ready
+   * index stays shown, with `rescanning: true`, until the build lands.
    */
   rescan(repo: string): void;
   /** A `files_changed` push for `repo`. */
@@ -103,14 +114,9 @@ export const STATIC_MESSAGE =
 export const SHAPE_MESSAGE =
   "The server's answer was not a planning index. A static host answers every missing path with its index page.";
 
-const failedMessage = (error: unknown): string =>
-  `Could not load the planning index: ${
-    error instanceof Error ? error.message : String(error)
-  }`;
-
-/** A repository's API base. A private copy per store is house style. */
-const getApiBase = (repo: string): string =>
-  repo === "" ? "/api" : `/api/r/${encodeURIComponent(repo)}`;
+/** What it shows when a build failed, from the scanner client's reason. */
+const failedMessage = (reason: string): string =>
+  `Could not load the planning index: ${reason}`;
 
 /** Whether a pushed path could be a candidate at all: `.md`, in any case. */
 const isMarkdown = (path: string): boolean =>
@@ -126,10 +132,10 @@ interface RemovedDir {
   dir: string;
 }
 
-/** One change newer than the batch in flight, to replay once it lands. */
+/** One change newer than the build in flight, to replay once it lands. */
 interface HeldChange {
   seq: number;
-  change: SourceEntry | RemovedDir;
+  change: ScannedEntry | RemovedDir;
 }
 
 /**
@@ -137,19 +143,19 @@ interface HeldChange {
  * nothing renders from it, and a write here must not re-render anything.
  */
 interface Tracker {
-  /** The number of the last request issued, batch or single-path. */
+  /** The number of the last request issued, build or single-path. */
   seq: number;
-  /** The number of the latest batch sent; 0 before the first. */
+  /** The number of the latest build sent; 0 before the first. */
   batch: number;
-  /** Whether that batch is still in flight. */
+  /** Whether that build is still in flight. */
   batchPending: boolean;
   /** Per path, the number of the latest single-path request sent. */
   sent: Map<string, number>;
   /** Directory removals, so a request sent before one cannot undo it. */
   removed: { dir: string; seq: number }[];
-  /** Changes newer than the batch in flight, in the order they were numbered. */
+  /** Changes newer than the build in flight, in the order they were numbered. */
   held: HeldChange[];
-  /** When the first batch was sent, for the one time-to-ready log line. */
+  /** When the first build was sent, for the one time-to-ready log line. */
   startedAt: number | null;
 }
 
@@ -187,54 +193,57 @@ export function resetPlanningTrackers(): void {
 
 interface Held {
   index: PlanningIndex;
-  sources: Record<string, string>;
+  hashes: Record<string, string>;
 }
 
-function applyChange(held: Held, change: SourceEntry | RemovedDir): Held {
-  const sources = { ...held.sources };
+function applyChange(held: Held, change: ScannedEntry | RemovedDir): Held {
+  const hashes = { ...held.hashes };
   if (change.kind === "removed-dir") {
     const prefix = `${change.dir.replace(/\/+$/, "")}/`;
-    for (const path of Object.keys(sources)) {
-      if (path.startsWith(prefix)) delete sources[path];
+    for (const path of Object.keys(hashes)) {
+      if (path.startsWith(prefix)) delete hashes[path];
     }
-    return { index: withoutDirectory(held.index, change.dir), sources };
+    return { index: withoutDirectory(held.index, change.dir), hashes };
   }
-  const index = applySource(held.index, change);
+  const index = applyScanned(held.index, change);
   if (change.kind === "file" && findDocument(index, change.path)) {
-    sources[change.path] = change.content;
+    hashes[change.path] = change.hash;
   } else {
-    delete sources[change.path];
+    delete hashes[change.path];
   }
-  return { index, sources };
+  return { index, hashes };
 }
 
-/** How long the scan may run before it lets the page paint. */
-const SLICE_MS = 8;
-
-const yieldToPage = (): Promise<void> =>
-  new Promise((resolve) => setTimeout(resolve, 0));
-
 /**
- * The batch's index, scanned off the critical path.
- *
- * `planningIndexBuilder`, the one `buildPlanningIndex` runs, with the files
- * added one at a time. Between documents it yields whenever a slice has run for
- * `SLICE_MS`: a `setTimeout(0)` after every one would cost the browser's 4 ms
- * clamp per candidate, 20 s at the 5,000 candidates the default limit allows.
- * No Worker, which would need a second bundle entry for a corpus this size.
+ * A build's results as they arrive, gathered outside the store: the builder
+ * the header starts, and each planning document's hash. `planningIndexBuilder`
+ * is the one `buildPlanningIndex` runs, so a build here and the checker's walk
+ * cannot disagree, and it sorts once, at `finish`.
  */
-async function scanBatch(batch: PlanningSources): Promise<Held> {
-  const builder = planningIndexBuilder(batch);
-  const sources: Record<string, string> = {};
-  let sliceStart = performance.now();
-  for (const file of batch.files) {
-    if (performance.now() - sliceStart > SLICE_MS) {
-      await yieldToPage();
-      sliceStart = performance.now();
-    }
-    if (builder.add(file) !== null) sources[file.path] = file.content;
+interface Gathering {
+  builder: PlanningIndexBuilder;
+  hashes: Record<string, string>;
+}
+
+function gather(
+  gathering: Gathering,
+  event: Extract<BuildEvent, { type: "documents" }>,
+): void {
+  const { builder, hashes } = gathering;
+  for (const { document, hash } of event.docs) {
+    const added = builder.addResult(document.path, {
+      kind: "planning",
+      document,
+      cards: [],
+    });
+    if (added !== null) hashes[document.path] = hash;
   }
-  return { index: builder.finish(), sources };
+  for (const { path, reason } of event.unreadable) {
+    builder.addScanned({ kind: "unreadable", path, reason });
+  }
+  for (const { path, size } of event.skipped) {
+    builder.addScanned({ kind: "skipped", path, size });
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -253,16 +262,17 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
     index: held.index,
     version: ++version,
     rescanning,
-    sources: held.sources,
+    hashes: held.hashes,
   });
 
   /** Apply one change to the index on screen, if there is one. */
-  const applyShown = (repo: string, change: SourceEntry | RemovedDir) => {
+  const applyShown = (repo: string, change: ScannedEntry | RemovedDir) => {
     const load = get().byRepo[repo];
     if (load?.status !== "ready") return;
     const next = applyChange(load, change);
-    // `applySource` answers with the index itself when nothing changed: a
+    // `applyScanned` answers with the index itself when nothing changed: a
     // refused index, or a path that is not a planning document and was not.
+    // Only a planning document has a hash, so none moved either.
     if (next.index === load.index) return;
     setLoad(repo, ready(next, load.rescanning));
   };
@@ -276,6 +286,10 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
 
   const startBatch = (repo: string) => {
     const tracker = trackerFor(repo);
+    const scanner = planningScanner();
+    // A build still out is superseded: its answer would be discarded whole,
+    // so the scanner stops reading it (scale design §5.2).
+    if (tracker.batchPending) scanner.cancel(repo, tracker.batch);
     const seq = ++tracker.seq;
     tracker.batch = seq;
     tracker.batchPending = true;
@@ -291,35 +305,20 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
     );
 
     const superseded = () => tracker.batch !== seq;
-    void (async () => {
-      let sources: PlanningSources | null;
-      try {
-        const response = await axios.get<unknown>(
-          `${getApiBase(repo)}/planning/sources`,
-        );
-        if (superseded()) return;
-        sources = parsePlanningSources(response?.data);
-      } catch (error) {
-        if (superseded()) return;
-        tracker.batchPending = false;
-        setLoad(repo, { status: "error", message: failedMessage(error) });
-        return;
-      }
-      if (sources === null) {
-        tracker.batchPending = false;
-        setLoad(repo, { status: "error", message: SHAPE_MESSAGE });
-        return;
-      }
+    const fail = (message: string) => {
+      tracker.batchPending = false;
+      setLoad(repo, { status: "error", message });
+    };
+    let gathering: Gathering | null = null;
 
-      let held = await scanBatch(sources);
-      if (superseded()) return;
-
-      // Everything noted since the batch was sent is newer than what it read.
+    const finish = (built: Gathering) => {
+      let held: Held = { index: built.builder.finish(), hashes: built.hashes };
+      // Everything noted since the build was sent is newer than what it read.
       for (const { change } of tracker.held) held = applyChange(held, change);
       tracker.held = [];
       tracker.batchPending = false;
-      // A removal the batch already reflects can no longer be undone by an
-      // answer to an older request: that answer is older than the batch too.
+      // A removal the build already reflects can no longer be undone by an
+      // answer to an older request: that answer is older than the build too.
       tracker.removed = tracker.removed.filter((r) => r.seq > seq);
 
       setLoad(repo, ready(held, false));
@@ -333,28 +332,59 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
           held.index.candidateCount,
         );
       }
-    })();
+    };
+
+    scanner.build({ repo, seq, bypassCache: false }, (event) => {
+      if (superseded()) return;
+      switch (event.type) {
+        case "header":
+          gathering = {
+            builder: planningIndexBuilder({
+              config: event.config,
+              candidateCount: event.candidateCount,
+              refused: event.refused,
+              skipped: [],
+              unreadable: [],
+            }),
+            hashes: {},
+          };
+          return;
+        case "documents":
+          if (gathering !== null) gather(gathering, event);
+          return;
+        case "ready":
+          // A build is ready only after its header; anything else is not
+          // the planning stream's shape.
+          if (gathering === null) fail(SHAPE_MESSAGE);
+          else finish(gathering);
+          return;
+        case "failed":
+          fail(event.shape ? SHAPE_MESSAGE : failedMessage(event.message));
+          return;
+        case "started":
+        case "progress":
+          return;
+      }
+    });
   };
 
-  /** Ask the single-path mode about one pushed path. */
+  /** Ask the scanner client about one pushed path. */
   const refreshPath = (repo: string, path: string) => {
     const tracker = trackerFor(repo);
     const seq = ++tracker.seq;
     tracker.sent.set(path, seq);
 
     void (async () => {
-      let entry: SourceEntry | null;
+      let entry: ScannedEntry | null;
       try {
-        const response = await axios.get<unknown>(
-          `${getApiBase(repo)}/planning/sources?path=${encodeURIComponent(path)}`,
-        );
-        entry = parseSourceEntry(response?.data);
+        entry = await planningScanner().refresh({ repo, seq, path });
       } catch {
-        // The previous entry stays; the next push for this path asks again.
-        return;
+        entry = null;
       }
+      // `null`: it could not be had. The previous entry stays; the next push
+      // for this path asks again.
       if (entry === null || entry.path !== path) return;
-      // A newer request covers this path: a later push for it, or a batch.
+      // A newer request covers this path: a later push for it, or a build.
       if (tracker.sent.get(path) !== seq || seq < tracker.batch) return;
       const prefix = (dir: string) => `${dir.replace(/\/+$/, "")}/`;
       if (
@@ -411,14 +441,14 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
       }
 
       // A config change can move every candidate in or out, so it rescans, and
-      // the batch it sends covers every other path in the same push.
+      // the build it sends covers every other path in the same push.
       if (paths.includes(CONFIG_FILE)) {
         get().rescan(repo);
         return;
       }
       if (load.status === "error") return;
       // Only a rescan changes a refused index, so one path's answer would be
-      // read and discarded; a rescan's batch in flight may not be refused,
+      // read and discarded; a rescan's build in flight may not be refused,
       // and it takes what is pushed meanwhile.
       if (
         load.status === "ready" &&

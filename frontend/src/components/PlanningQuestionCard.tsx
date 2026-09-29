@@ -2,8 +2,9 @@
  * One question on the planning page (`docs/design/planning-index.md` §6.3).
  *
  * The question is rendered exactly as the viewer renders it in its document:
- * an embedded `MarkdownViewer` over `questionCardSource`, the root-level block
- * that holds it, at the document's own source lines. That block usually holds
+ * an embedded `MarkdownViewer` over its card block, the root-level block that
+ * holds it as the scan cut it (`docs/design/planning-index-at-scale.md` §7.4),
+ * at the document's own source lines. That block usually holds
  * the question's siblings too — an Open Questions list is one block — so once
  * it renders, everything outside the question's own unit (its `<li>`, or its
  * host block outside a list) is hidden, and every list item on the way keeps
@@ -21,17 +22,11 @@
  * Answer… and Open document; a blocked one, which only Waiting lists, Open
  * document alone.
  */
-import React, {
-  useCallback,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import {
-  questionCardSource,
-  type PlanningBadge,
-  type PlanningQuestion,
+import React, { useCallback, useLayoutEffect, useRef, useState } from "react";
+import type {
+  CardBlock,
+  PlanningBadge,
+  PlanningQuestion,
 } from "vantage-md/planning";
 import { ExternalLink, MessageSquarePlus } from "lucide-react";
 import { MarkdownViewer } from "./MarkdownViewer";
@@ -77,8 +72,11 @@ export const WAITING_LABEL = "waiting on the agent";
 
 interface PlanningQuestionCardProps {
   question: PlanningQuestion;
-  /** The document's text, from the planning store; `undefined` if it has none. */
-  source: string | undefined;
+  /**
+   * The question's card block, from the scanner client: `undefined` while it
+   * is on its way, and `null` when the document no longer has it.
+   */
+  card: CardBlock | null | undefined;
   /** The document's own badge, or `null` when it has nothing to show. */
   badge: PlanningBadge | null;
   /** The document's review comments, or `undefined` until they load. */
@@ -200,7 +198,7 @@ const sameState = (a: CardState, b: CardState): boolean =>
 
 export const PlanningQuestionCard: React.FC<PlanningQuestionCardProps> = ({
   question,
-  source,
+  card,
   badge,
   comments,
   href,
@@ -217,12 +215,6 @@ export const PlanningQuestionCard: React.FC<PlanningQuestionCardProps> = ({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Parsed once per document text and question, not on every render: the
-  // slice parses its whole document, and the page re-renders as reviews load.
-  const card = useMemo(
-    () => (source === undefined ? null : questionCardSource(source, question)),
-    [source, question],
-  );
   const markdown = card?.markdown ?? null;
 
   // After the embedded viewer has rendered and its own passes have run — a
@@ -337,7 +329,7 @@ export const PlanningQuestionCard: React.FC<PlanningQuestionCardProps> = ({
       </div>
 
       <div ref={bodyRef} className="planning-card-body">
-        {card === null ? (
+        {card === undefined ? null : card === null ? (
           <p className="text-sm text-slate-500 dark:text-slate-400">
             This question's document is not in the planning index any more.
           </p>

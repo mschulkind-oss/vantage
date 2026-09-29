@@ -18,6 +18,10 @@ import {
   type PlanningIndex,
 } from "vantage-md/planning";
 import { MarkdownViewer } from "../components/MarkdownViewer";
+import {
+  inlineScannerClient,
+  setPlanningScannerForTests,
+} from "../planningScan/client";
 import { PLANNING_BADGE_ATTR } from "../components/PlanningBadge";
 import {
   PLANNING_IDLE,
@@ -127,7 +131,7 @@ function readyLoad(index: PlanningIndex): PlanningLoad {
     index,
     version: ++version,
     rescanning: false,
-    sources: {},
+    hashes: {},
   };
 }
 
@@ -183,6 +187,7 @@ beforeEach(() => {
 afterEach(() => {
   freshNavigate = false;
   vi.clearAllMocks();
+  setPlanningScannerForTests(null);
 });
 
 /* ------------------------------------------------------------------ *
@@ -353,18 +358,29 @@ describe("when the badges appear and change (§5.3)", () => {
     );
   });
 
-  it("leaves the document exactly as it renders today when the batch fails (§3.6)", async () => {
+  it("leaves the document exactly as it renders today when the build fails (§3.6)", async () => {
     const plain = renderViewer(ROADMAP);
     const today = plain.container.innerHTML;
     plain.unmount();
 
-    // The real store, against a failing endpoint.
+    // The real store and scanner, against a failing endpoint.
+    const asked: string[] = [];
+    setPlanningScannerForTests(
+      inlineScannerClient({
+        store: null,
+        scannerId: "",
+        fetch: async (input) => {
+          asked.push(String(input));
+          throw new Error("no network in this test");
+        },
+      }),
+    );
     usePlanningStore.setState({ byRepo: {} });
     const { container } = renderViewer(ROADMAP);
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
-    expect(axios.get).toHaveBeenCalledWith("/api/planning/sources");
+    expect(asked).toEqual(["/api/planning/stream"]);
     expect(usePlanningStore.getState().byRepo[""]?.status).toBe("error");
     expect(container.innerHTML).toBe(today);
   });

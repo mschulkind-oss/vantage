@@ -52,14 +52,12 @@ test.describe("the planning page", () => {
   test("opens with g p from the viewer, and Back costs no second scan", async ({
     page,
   }) => {
-    const batches: string[] = [];
+    // Each build is one planning stream, which the scan worker asks for; a
+    // dedicated worker's requests reach the page's own network events.
+    const builds: string[] = [];
     page.on("request", (request) => {
-      const url = new URL(request.url());
-      if (
-        url.pathname.endsWith("/planning/sources") &&
-        !url.searchParams.has("path")
-      ) {
-        batches.push(request.url());
+      if (new URL(request.url()).pathname.endsWith("/planning/stream")) {
+        builds.push(request.url());
       }
     });
 
@@ -84,7 +82,7 @@ test.describe("the planning page", () => {
     // Long enough for a socket each page opened, React's StrictMode double
     // included, to connect: none of them is a reconnect, so none rescans.
     await page.waitForTimeout(2000);
-    expect(batches).toHaveLength(1);
+    expect(builds).toHaveLength(1);
   });
 
   // The usual way onto the page is g p from a document. The viewer the card's
