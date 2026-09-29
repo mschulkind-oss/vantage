@@ -170,6 +170,27 @@ describe("index, as text", () => {
     );
     expect(stdout).not.toContain("Unrouted");
   });
+
+  // ✅ questions await compaction rather than a ruling, so the page can say
+  // both at once (design §6.2).
+  it("says nothing needs you above a Needs you holding only answered questions", async () => {
+    const root = makeTree({
+      ".git/HEAD": "",
+      "roadmap.md": "# Roadmap\n\n- [A](a.md)\n",
+      "a.md": doc("status: draft", questions("A", "✅")),
+    });
+    const { stdout } = await index(root);
+
+    const head = [
+      PLANNING_NOTICES.nothingNeedsYou,
+      "",
+      "Needs you (1)",
+      "  a.md:7  ✅ OQ-A1: Question A1?  (Roadmap)",
+      "",
+    ].join("\n");
+    expect(stdout.slice(0, head.length)).toBe(head);
+    expect(stdout).toContain("- [A](a.md) [draft]\n");
+  });
 });
 
 describe("index, as JSON", () => {
