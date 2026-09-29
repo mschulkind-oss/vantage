@@ -280,7 +280,7 @@ class PlanningPass {
     report(
       "planning/stage-vocabulary",
       doc.stageLine ?? 1,
-      `Stage \`${doc.stage}\` is not declared under [planning.stages], which declares ${list(declared.map((w) => `\`${w}\``))}. Matching is exact and case-sensitive${near === undefined ? "" : `: did you mean \`${near}\`?`}`,
+      `Stage \`${doc.stage}\` is not declared under [planning.stages], which declares ${list(declared.map((w) => `\`${w}\``))}. Matching is exact and case-sensitive${near === undefined ? "." : `: did you mean \`${near}\`?`}`,
     );
   }
 
