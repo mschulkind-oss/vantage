@@ -1659,8 +1659,22 @@ th.review-block-hovered {
 /* A stage outside the declared words (§4) takes the warning tone, and a ring
    rather than a dot, so it does not read as `in-review`, which is warning too. */
 .vantage-tree-badge__dot--undeclared {
+  box-sizing: border-box;
   background-color: transparent;
-  box-shadow: inset 0 0 0 1.5px var(--vantage-chip-ink);
+  border: 1.5px solid var(--vantage-chip-ink);
+}
+/* Forced colors (Windows High Contrast) paint every background Canvas, which
+   would erase each dot. Draw them in the text color instead, as the chip's
+   words would be, and keep the ring a ring. */
+@media (forced-colors: active) {
+  .vantage-tree-badge__dot {
+    forced-color-adjust: none;
+    background-color: CanvasText;
+  }
+  .vantage-tree-badge__dot--undeclared {
+    background-color: transparent;
+    border-color: CanvasText;
+  }
 }
 
 /* ──────────────────────────────────────────

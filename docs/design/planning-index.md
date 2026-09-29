@@ -418,6 +418,8 @@ planning page at its previous scroll position.
        warning tone, so it does not read as `in-review`, whose chip is the warning tone too.
      - A declared stage with no status draws a muted dot.
      - A document whose only state is its open questions shows the count alone.
+     - In forced colors (Windows High Contrast) every dot and ring is drawn in the text color:
+       the ring still marks an undeclared stage, and the status is in the words below.
 
      The words are the tooltip of the name and of the badge, and the badge's accessible name,
      which a screen reader hears once, after the file name, and not again as a description. They
