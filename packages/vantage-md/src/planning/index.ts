@@ -38,3 +38,12 @@ export {
   VANTAGE_OQ_PREFERENCE,
   normalizeLeaning,
 } from "../vantageDirectives.js";
+export {
+  applySource,
+  buildPlanningIndex,
+  findDocument,
+  parsePlanningSources,
+  parseSourceEntry,
+  withoutDirectory,
+} from "./model.js";
+export type { PlanningIndex, PlanningSources, SourceEntry } from "./model.js";
