@@ -1,11 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { MockInstance } from "vitest";
 import {
+  answersPayload,
   hasAgentReaction,
   isAnsweredByAgent,
   isAwaitingFirstResponse,
   isPendingForAgent,
   latestAgentReaction,
+  newReviewComment,
+  postCommentTo,
+  reviewCommentsBlock,
   useReviewStore,
 } from "./useReviewStore";
 import { useRepoStore } from "./useRepoStore";
@@ -1891,6 +1895,152 @@ describe("static export — review mode is unreachable", () => {
       const err = useReviewStore.getState().commandError;
       expect(err?.message).toMatch(/static export/i);
       expect(err?.draft).toBe("my answer");
+    });
+  });
+});
+
+/**
+ * What the planning page files and copies (`docs/design/planning-index.md`
+ * §6.3): a comment on a document that is not the one on screen, and one
+ * payload answering several documents, each group reading as that document's
+ * own Copy would.
+ */
+describe("the planning page's review writes and payload", () => {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+
+  beforeEach(() => {
+    resetStores();
+    writeText.mockClear();
+    Object.assign(navigator, { clipboard: { writeText } });
+    mockedAxios.post.mockReset();
+  });
+
+  describe("postCommentTo", () => {
+    it("sends addComment's own request, to the path it names", async () => {
+      mockedAxios.post.mockResolvedValue({ data: null });
+      useReviewStore.setState({ filePath: "on-screen.md" });
+      useReviewStore.getState().addComment(commentAnchor, "a note", "quoted");
+      const [url, viaStore] = mockedAxios.post.mock.calls[0];
+
+      const comment = newReviewComment(commentAnchor, "a note", "quoted");
+      await postCommentTo("docs/elsewhere.md", comment);
+      const [url2, direct, config] = mockedAxios.post.mock.calls[1];
+
+      expect(url2).toBe(url);
+      expect(Object.keys(direct as object).sort()).toEqual(
+        Object.keys(viaStore as object).sort(),
+      );
+      expect(direct).toEqual({
+        id: comment.id,
+        comment: "a note",
+        anchor: commentAnchor,
+        fallback_text: "quoted",
+        created_at: comment.created_at,
+      });
+      expect(config).toEqual({ params: { path: "docs/elsewhere.md" } });
+    });
+
+    it("posts under the repository in daemon mode, and returns what the server saved", async () => {
+      useRepoStore.setState({ isMultiRepo: true, currentRepo: "alpha" });
+      const saved: ReviewData = { file_path: "x.md", comments: [] };
+      mockedAxios.post.mockResolvedValue({ data: saved });
+      const result = await postCommentTo(
+        "x.md",
+        newReviewComment(commentAnchor, "n", "f"),
+      );
+      expect(mockedAxios.post.mock.calls[0][0]).toBe(
+        "/api/r/alpha/review/comments",
+      );
+      expect(result).toBe(saved);
+    });
+
+    it("refuses in a static export rather than posting", async () => {
+      window.__VANTAGE_STATIC__ = true;
+      try {
+        await expect(
+          postCommentTo("x.md", newReviewComment(commentAnchor, "n", "f")),
+        ).rejects.toThrow(/static export/);
+        expect(mockedAxios.post).not.toHaveBeenCalled();
+      } finally {
+        delete window.__VANTAGE_STATIC__;
+      }
+    });
+
+    it("gives each new comment its own id", () => {
+      const a = newReviewComment(commentAnchor, "n", "f");
+      const b = newReviewComment(commentAnchor, "n", "f");
+      expect(a.id).not.toBe(b.id);
+      expect(a.reactions).toEqual([]);
+    });
+  });
+
+  describe("answersPayload", () => {
+    const first = mkThreadComment("aaaaaaaa-0001", "first doc's answer", []);
+    const second = mkThreadComment("bbbbbbbb-0002", "second doc's answer", [
+      agentAddressed,
+      reviewerFollowup,
+    ]);
+    const content = "line one\nline two\n";
+
+    it("is byte-identical to a document's own Copy for one document", async () => {
+      useReviewStore.setState({
+        filePath: "docs/design/guide.md",
+        lastContent: content,
+        comments: [first],
+      });
+      await useReviewStore.getState().copyAllToClipboard();
+      expect(
+        answersPayload([
+          { path: "docs/design/guide.md", comments: [first], content },
+        ]),
+      ).toBe(writeText.mock.calls[0][0]);
+    });
+
+    it("groups by document, each group the block that document's Copy produces", () => {
+      const payload = answersPayload([
+        { path: "a.md", comments: [first], content },
+        { path: "docs/b.md", comments: [second], content },
+      ])!;
+      const blockA = reviewCommentsBlock("a.md", [first], content).join("\n");
+      const blockB = reviewCommentsBlock("docs/b.md", [second], content).join(
+        "\n",
+      );
+      expect(payload.startsWith(`${blockA}\n${blockB}\n`)).toBe(true);
+      expect(payload.indexOf(blockA)).toBeLessThan(payload.indexOf(blockB));
+    });
+
+    it("closes with one set of instructions naming every document", () => {
+      const payload = answersPayload([
+        { path: "a.md", comments: [first], content },
+        { path: "docs/b.md", comments: [second], content },
+      ])!;
+      expect(payload.match(/## Responding to Comments/g)).toHaveLength(1);
+      expect(payload).toContain("`uvx vantage-check a.md docs/b.md`");
+      // One example line per document, each with its own comment and nonce.
+      expect(payload).toContain(
+        '{"path":"a.md","id":"aaaaaaaa","round":0,"summary":"Reworded the paragraph for clarity","nonce":"k7f29qd1x4"}',
+      );
+      expect(payload).toContain(
+        '{"path":"docs/b.md","id":"bbbbbbbb","round":2,"summary":"Reworded the paragraph for clarity","nonce":"k7f29qd1x4-2"}',
+      );
+      // A fixed stem, since the filename is advisory.
+      expect(payload).toContain("f=.vantage/inbox/planning.$RANDOM.jsonl");
+      expect(payload).toContain('{"path":"<the document\'s path>"');
+      // The follow-up note covers the whole batch.
+      expect(payload).toContain("1 of these are");
+    });
+
+    it("leaves out a group with nothing in it, and is null when every group is empty", () => {
+      expect(
+        answersPayload([
+          { path: "a.md", comments: [], content },
+          { path: "b.md", comments: [first], content },
+        ]),
+      ).not.toContain("a.md");
+      expect(answersPayload([{ path: "a.md", comments: [], content }])).toBe(
+        null,
+      );
+      expect(answersPayload([])).toBe(null);
     });
   });
 });
