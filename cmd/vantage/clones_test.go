@@ -229,6 +229,36 @@ func TestSplitClonesDirectoryCountsALinkedWorktreeWithoutServingIt(t *testing.T)
 // it means the same project in `serve` and in the service. When a clone is
 // named like the directory holding it, the loose project is the one that takes
 // the "-2" suffix, however many suffixes the clones already use.
+// The startup line says what the children are, so the plan tells a linked
+// worktree — whose gitdir has the commondir file `git worktree add` writes —
+// from any other checkout whose .git is a file, and a loose project served with
+// no Markdown from one that has some.
+func TestSplitClonesDirectoryTellsWorktreesFromOtherGitfileCheckouts(t *testing.T) {
+	parent := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(parent); err == nil {
+		parent = resolved
+	}
+	main := filepath.Join(parent, "elsewhere", "main")
+	gitRepo(t, main, map[string]string{"README.md": "# main\n"})
+	trees := filepath.Join(parent, "trees")
+	require.NoError(t, os.MkdirAll(trees, 0o755))
+	runGit(t, main, "worktree", "add", "-q", "-b", "feature", filepath.Join(trees, "feature"))
+
+	cfg := resolvedServeConfig(t, trees)
+	plan, ok := splitClonesDirectory(cfg)
+	require.True(t, ok)
+	require.Equal(t, &clonesPlan{Dir: trees, Loose: "trees", LooseEmpty: true}, plan)
+
+	require.NoError(t, os.MkdirAll(filepath.Join(parent, "store"), 0o755))
+	runGit(t, parent, "-c", "init.defaultBranch=main", "init", "-q",
+		"--separate-git-dir="+filepath.Join(parent, "store", "sep.git"), filepath.Join(trees, "sep"))
+	writeFiles(t, trees, map[string]string{"notes.md": "# notes\n"})
+	cfg = resolvedServeConfig(t, trees)
+	plan, ok = splitClonesDirectory(cfg)
+	require.True(t, ok)
+	require.Equal(t, &clonesPlan{Dir: trees, Loose: "trees", OtherCheckouts: true}, plan)
+}
+
 func TestSplitClonesDirectoryNamesACollidingCloneWithASuffix(t *testing.T) {
 	parent := t.TempDir()
 	if resolved, err := filepath.EvalSymlinks(parent); err == nil {
@@ -282,6 +312,22 @@ func TestClonesPlanDescribe(t *testing.T) {
 		{
 			clonesPlan{Dir: "/home/matt/trees", Loose: "trees"},
 			`~/trees holds only linked worktrees, which Vantage does not serve as projects; serving the Markdown outside them as "trees". Use --one-project to serve it as a single project.`,
+		},
+		// One repository is "it", so the Markdown is outside it.
+		{
+			clonesPlan{Dir: "/home/matt/a", Repos: 1, Loose: "a"},
+			`~/a holds 1 git repository; serving it as its own project (plus "a" for the Markdown outside it). Use --one-project to serve it as a single project.`,
+		},
+		// Served only so that something is: there is no Markdown to speak of.
+		{
+			clonesPlan{Dir: "/home/matt/trees", Loose: "trees", LooseEmpty: true},
+			`~/trees holds only linked worktrees, which Vantage does not serve as projects; serving the directory as "trees", which has no Markdown outside them. Use --one-project to serve it as a single project.`,
+		},
+		// A .git file that is no linked worktree's: --separate-git-dir, or a
+		// moved submodule checkout. Not served either, but not a worktree.
+		{
+			clonesPlan{Dir: "/home/matt/cl", Loose: "cl", OtherCheckouts: true},
+			`~/cl holds only repositories whose .git is a file, such as linked worktrees, which Vantage does not serve as projects; serving the Markdown outside them as "cl". Use --one-project to serve it as a single project.`,
 		},
 	}
 	for _, c := range cases {

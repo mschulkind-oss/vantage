@@ -23,6 +23,15 @@ type clonesPlan struct {
 	// Loose is the name of the project serving the Markdown outside every
 	// clone, or "" when there is none.
 	Loose string
+	// LooseEmpty is true when the loose project is served only because there
+	// would otherwise be nothing to serve: it has no Markdown outside the
+	// children.
+	LooseEmpty bool
+	// OtherCheckouts is true when a child whose .git is a file is not a linked
+	// worktree — a repository made with --separate-git-dir, or a moved
+	// submodule checkout. No mode serves those either, but the startup line
+	// must not call them worktrees.
+	OtherCheckouts bool
 }
 
 // splitClonesDirectory turns cfg — a resolved serve-mode config — into the
@@ -67,7 +76,9 @@ func splitClonesDirectory(cfg *config.Config) (*clonesPlan, bool) {
 		loose := config.RepoConfig{Name: freeRepoName(looseProjectName(dir), cfg.Repos), Path: dir, Loose: true}
 		cfg.Repos = append([]config.RepoConfig{loose}, cfg.Repos...)
 		plan.Loose = loose.Name
+		plan.LooseEmpty = !wantLoose
 	}
+	plan.OtherCheckouts = holdsOtherGitfileCheckouts(dir)
 	return plan, true
 }
 
@@ -110,6 +121,47 @@ func holdsRepositories(dir string) bool {
 	return false
 }
 
+// holdsOtherGitfileCheckouts reports whether an immediate, non-hidden child of
+// dir has a .git file that does not make it a linked worktree (see
+// [isLinkedWorktree]).
+func holdsOtherGitfileCheckouts(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".") {
+			continue
+		}
+		full := filepath.Join(dir, e.Name())
+		if git.IsWorktree(full) && !isLinkedWorktree(full) {
+			return true
+		}
+	}
+	return false
+}
+
+// isLinkedWorktree reports whether dir is a linked worktree in git's own sense:
+// its .git file names a gitdir holding the commondir file `git worktree add`
+// writes. A repository made with --separate-git-dir, or a submodule checkout,
+// has a .git file too, and no commondir.
+func isLinkedWorktree(dir string) bool {
+	data, err := os.ReadFile(filepath.Join(dir, ".git"))
+	if err != nil {
+		return false
+	}
+	gitdir, ok := strings.CutPrefix(strings.TrimSpace(string(data)), "gitdir:")
+	if !ok {
+		return false
+	}
+	gitdir = strings.TrimSpace(gitdir)
+	if !filepath.IsAbs(gitdir) {
+		gitdir = filepath.Join(dir, gitdir)
+	}
+	_, err = os.Stat(filepath.Join(gitdir, "commondir"))
+	return err == nil
+}
+
 // hasLooseMarkdown reports whether dir holds a Markdown file outside every
 // repository below it. It is the tree's own has-Markdown walk with repository
 // boundaries on, so it stops at the first file found and honors
@@ -141,7 +193,16 @@ func (p *clonesPlan) describe(home string) string {
 	var b strings.Builder
 	switch p.Repos {
 	case 0:
-		fmt.Fprintf(&b, "%s holds only linked worktrees, which Vantage does not serve as projects; serving the Markdown outside them as %q.", shown, p.Loose)
+		children := "linked worktrees"
+		if p.OtherCheckouts {
+			children = "repositories whose .git is a file, such as linked worktrees"
+		}
+		fmt.Fprintf(&b, "%s holds only %s, which Vantage does not serve as projects; ", shown, children)
+		if p.LooseEmpty {
+			fmt.Fprintf(&b, "serving the directory as %q, which has no Markdown outside them.", p.Loose)
+		} else {
+			fmt.Fprintf(&b, "serving the Markdown outside them as %q.", p.Loose)
+		}
 	case 1:
 		fmt.Fprintf(&b, "%s holds 1 git repository; serving it as its own project", shown)
 	default:
@@ -149,7 +210,11 @@ func (p *clonesPlan) describe(home string) string {
 	}
 	if p.Repos > 0 {
 		if p.Loose != "" {
-			fmt.Fprintf(&b, " (plus %q for the Markdown outside them)", p.Loose)
+			outside := "them"
+			if p.Repos == 1 {
+				outside = "it"
+			}
+			fmt.Fprintf(&b, " (plus %q for the Markdown outside %s)", p.Loose, outside)
 		}
 		b.WriteString(".")
 	}
