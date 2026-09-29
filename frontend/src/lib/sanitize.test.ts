@@ -24,8 +24,11 @@
  *    true because math is outside its reach. Move `rehypeKatex` ahead of the
  *    sanitizer and that fails loudly, instead of math quietly losing its layout.
  */
+import { createElement } from "react";
+import { cleanup, render } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 import { renderMarkdown, SAFE_STYLE, sanitizeSchema } from "vantage-md";
+import { MarkdownViewer } from "vantage-md/react";
 
 const styled = async (html: string) => (await renderMarkdown(html + "\n")).html;
 
@@ -342,7 +345,9 @@ describe("inline SVG", () => {
     expect(svg.getAttribute("font-family")).toBe(
       "system-ui, 'Segoe UI', sans-serif",
     );
-    expect(svg.querySelector("title")!.textContent).toBe("A and B");
+    // The `<title>` is stripped; `aria-label` is the accessible name.
+    expect(svg.querySelector("title")).toBeNull();
+    expect(svg.textContent).not.toContain("A and B");
     expect(svg.querySelector("rect")!.getAttribute("fill")).toBe("#EFF6FF");
     const path = svg.querySelector("path")!;
     expect(path.getAttribute("d")).toBe("M26 33 V121");
@@ -576,6 +581,79 @@ describe("inline SVG", () => {
     expect(path.getAttribute("stroke-width")).toBe("50");
     expect(path.hasAttribute("stroke-dasharray")).toBe(false);
     expect(path.hasAttribute("stroke-dashoffset")).toBe(false);
+  });
+
+  /**
+   * Every shape that let a document's `<title>` become the page's title.
+   *
+   * `title` and `desc` are stripped with their contents, so none of these has
+   * a title left to hoist or re-parse. The first is the React route: an `svg`
+   * under `math` keeps MathML context, and React hoists a `title` anywhere
+   * outside SVG context into `<head>`. The other three are the string route:
+   * each re-parses into an HTML-namespace `title`.
+   */
+  const TITLE_ROUTES: [string, string][] = [
+    ["math > svg > title", `<math><svg><title>Hijacked</title></svg></math>`],
+    [
+      "svg > desc > title",
+      `<div>\n<svg><desc><title>Hijacked</title></desc></svg>\n</div>`,
+    ],
+    [
+      "svg > foreignObject > div > title",
+      `<div>\n<svg><foreignObject><div><title>Hijacked</title></div></foreignObject></svg>\n</div>`,
+    ],
+    [
+      "svg > title > title",
+      `<div>\n<svg><title><title>Hijacked</title></title></svg>\n</div>`,
+    ],
+  ];
+
+  it.each(TITLE_ROUTES)(
+    "leaves %s no title in the string output",
+    async (_, markup) => {
+      const html = await styled(markup);
+      expect(html).not.toContain("<title");
+      expect(html).not.toContain("Hijacked");
+      // Inserted into a page with no title of its own, the way a `{@html}`
+      // consumer of `renderMarkdown` would.
+      const host = document.createElement("div");
+      host.innerHTML = html;
+      document.body.append(host);
+      try {
+        expect(document.title).toBe("");
+      } finally {
+        host.remove();
+      }
+    },
+  );
+
+  it.each(TITLE_ROUTES)(
+    "leaves %s nothing for React to hoist into <head>",
+    (_, markup) => {
+      document.title = "Vantage";
+      try {
+        render(createElement(MarkdownViewer, { content: markup + "\n" }));
+        expect(document.title).toBe("Vantage");
+        // Not merely outranked by the page's own: no second title anywhere.
+        expect(
+          Array.from(document.querySelectorAll("title"), (t) => t.textContent),
+        ).toEqual(["Vantage"]);
+      } finally {
+        cleanup();
+        document.head.querySelectorAll("title").forEach((t) => t.remove());
+      }
+    },
+  );
+
+  it("strips desc with its contents", async () => {
+    // `desc` is an HTML integration point like `title`: whatever HTML it holds
+    // would otherwise survive inside the svg.
+    const host = await parsed(
+      `<div>\n<svg viewBox="0 0 9 9"><desc><p>Start</p>A drawing</desc><rect width="9" height="9"/></svg>\n</div>`,
+    );
+    const svg = host.querySelector("svg")!;
+    expect(Array.from(svg.children, (el) => el.tagName)).toEqual(["rect"]);
+    expect(svg.textContent).toBe("");
   });
 
   it("does not admit SVG children, or a title, outside an svg", async () => {
