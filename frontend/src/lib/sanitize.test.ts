@@ -683,6 +683,10 @@ describe("inline SVG", () => {
     ["fill", `fill="red url(#g)"`],
     ["fill", `fill="var(--brand)"`],
     ["style", `style="fill:url(#g)"`],
+    // Refused for its property list alone, with no parenthesis to trip on:
+    // `SAFE_STYLE` has no `fill` or `stroke`. This is how Inkscape and
+    // matplotlib write paint.
+    ["style", `style="fill:none;stroke:#1f77b4"`],
     ["href", `href="https://attacker.example/"`],
     ["xlink:href", `xlink:href="https://attacker.example/"`],
     [
@@ -740,6 +744,73 @@ describe("inline SVG", () => {
     expect(Array.from(svg.querySelectorAll("*"), (el) => el.tagName)).toEqual([
       "circle",
     ]);
+  });
+
+  it("keeps a link inside a drawing, protocol-filtered like any link", async () => {
+    const host = await parsed(`<div>
+<svg viewBox="0 0 9 9"><a href="https://example.com/x"><rect width="9" height="9"/></a><a href="javascript:alert(1)"><circle r="1"/></a></svg>
+</div>`);
+    const [kept, filtered] = Array.from(host.querySelectorAll("svg > a"));
+    expect(kept.getAttribute("href")).toBe("https://example.com/x");
+    expect(kept.firstElementChild!.tagName).toBe("rect");
+    expect(Array.from(filtered.attributes)).toEqual([]);
+    expect(filtered.firstElementChild!.tagName).toBe("circle");
+  });
+
+  it("keeps currentColor paint, on the root and on a child", async () => {
+    // What the reference tells an author to write for a drawing that has to
+    // read in both themes.
+    const host = await parsed(`<div>
+<svg viewBox="0 0 9 9" fill="currentColor" stroke="currentColor"><rect width="9" height="9" fill="currentColor" stroke="currentColor"/></svg>
+</div>`);
+    for (const element of [
+      host.querySelector("svg")!,
+      host.querySelector("rect")!,
+    ]) {
+      expect(element.getAttribute("fill"), element.tagName).toBe(
+        "currentColor",
+      );
+      expect(element.getAttribute("stroke"), element.tagName).toBe(
+        "currentColor",
+      );
+    }
+  });
+
+  /**
+   * The shape the reference recommends, and the one it says works without a
+   * wrapper: whether a drawing reaches the sanitizer whole is decided by
+   * Markdown's HTML-block rules before any of this code runs. `*adj*` is the
+   * witness — read as a paragraph instead, it became emphasis and closed the
+   * `svg` there.
+   */
+  it.each([
+    [
+      "a div around a multi-line start tag",
+      `<div>
+<svg
+   xmlns="http://www.w3.org/2000/svg"
+   viewBox="0 0 80 40"
+   role="img"
+   aria-label="p-value">
+  <text x="4" y="20">p_value *adj*</text>
+</svg>
+</div>`,
+    ],
+    [
+      "a single-line start tag with no div",
+      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 40" role="img" aria-label="p-value">
+  <text x="4" y="20">p_value *adj*</text>
+</svg>`,
+    ],
+  ])("keeps a drawing whole when written as %s", async (_, markup) => {
+    const host = await parsed(markup);
+    expect(host.querySelectorAll("svg")).toHaveLength(1);
+    const svg = host.querySelector("svg")!;
+    expect(svg.getAttribute("viewBox")).toBe("0 0 80 40");
+    expect(svg.getAttribute("aria-label")).toBe("p-value");
+    expect(svg.querySelector("em")).toBeNull();
+    expect(svg.querySelector("text")!.textContent).toBe("p_value *adj*");
+    expect(host.querySelector("p")).toBeNull();
   });
 
   it("unwraps a textPath to its text, without the path it pointed at", async () => {
