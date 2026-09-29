@@ -113,3 +113,77 @@ describe("FrontmatterDisplay", () => {
     expect(screen.getByText("hand-rolled")).toBeInTheDocument();
   });
 });
+
+describe("FrontmatterDisplay — `next` links its question ids", () => {
+  // docs/design/planning-index.md §4: a bare `OQ-…` id in `next` links to this
+  // document's question when one of its questions carries that id.
+  const nextCell = () =>
+    screen.getByText("next").closest("tr")!.querySelectorAll("td")[1];
+
+  it("links a declared id to its question", () => {
+    render(
+      <FrontmatterDisplay
+        frontmatter={{
+          next: "Rule OQ-B2 — the payload's install step waits on it",
+        }}
+        linkIds={["OQ-B1", "OQ-B2"]}
+      />,
+    );
+    const link = screen.getByRole("link", { name: "OQ-B2" });
+    expect(link).toHaveAttribute("href", "#OQ-B2");
+    expect(nextCell()).toHaveTextContent(
+      "Rule OQ-B2 — the payload's install step waits on it",
+    );
+  });
+
+  it("links every declared id, and keeps the words around them", () => {
+    render(
+      <FrontmatterDisplay
+        frontmatter={{ next: "OQ-1, then OQ-2." }}
+        linkIds={["OQ-1", "OQ-2"]}
+      />,
+    );
+    expect(
+      screen.getAllByRole("link").map((a) => a.getAttribute("href")),
+    ).toEqual(["#OQ-1", "#OQ-2"]);
+    expect(nextCell()).toHaveTextContent("OQ-1, then OQ-2.");
+  });
+
+  it("leaves an id no question carries as text: undeclared, or compacted into the ledger", () => {
+    render(
+      <FrontmatterDisplay
+        frontmatter={{ next: "Compact OQ-9 and rule OQ-1" }}
+        linkIds={["OQ-1"]}
+      />,
+    );
+    expect(screen.queryByRole("link", { name: "OQ-9" })).toBeNull();
+    expect(screen.getByRole("link", { name: "OQ-1" })).toBeInTheDocument();
+  });
+
+  it("leaves an id that is only part of a longer token as text", () => {
+    render(
+      <FrontmatterDisplay
+        frontmatter={{ next: "See xOQ-1, OQ-12 and OQ-1a" }}
+        linkIds={["OQ-1"]}
+      />,
+    );
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(nextCell()).toHaveTextContent("See xOQ-1, OQ-12 and OQ-1a");
+  });
+
+  it("renders `next` as plain text without ids, as before the index is ready", () => {
+    render(<FrontmatterDisplay frontmatter={{ next: "Rule OQ-1" }} />);
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByText("Rule OQ-1")).toBeInTheDocument();
+  });
+
+  it("links nothing in any other key", () => {
+    render(
+      <FrontmatterDisplay
+        frontmatter={{ summary: "About OQ-1", extra: { next: "OQ-1 too" } }}
+        linkIds={["OQ-1"]}
+      />,
+    );
+    expect(screen.queryByRole("link")).toBeNull();
+  });
+});
