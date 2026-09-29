@@ -197,14 +197,28 @@ _self-check: cli
     #!/usr/bin/env bash
     set -euo pipefail
     bin=./packages/vantage-check/dist/vantage-check
-    # CHANGELOG.md is here because publish.yml lifts a section out of it and
-    # posts it as the GitHub release body, and a tag is never moved: a dead link
-    # in a release that has shipped cannot be fixed, only apologized for.
-    paths=(docs userguide README.md AGENTS.md CHANGELOG.md
+    paths=(docs userguide README.md AGENTS.md
            packages/vantage-check/README.md packages/vantage-md/README.md)
+    cfg=$(mktemp) one=$(mktemp) many=$(mktemp) changelog=$(mktemp)
+    trap 'rm -f "$cfg" "$one" "$many" "$changelog"' EXIT
     "$bin" version
     test -n "$("$bin" style-guide)" || { echo "style-guide printed nothing"; exit 1; }
     "$bin" check "${paths[@]}"
+    # CHANGELOG.md is here because publish.yml lifts a section out of it and
+    # posts it as the GitHub release body, and a tag is never moved: a dead link
+    # in a release that has shipped cannot be fixed, only apologized for.
+    #
+    # It runs on its own with ref/unlinked-file off. That rule asks for a link
+    # wherever prose names a file that exists beside the document, and beside
+    # CHANGELOG.md is the repository root. So "reads per-project settings from
+    # `.vantage.toml`", which names the reader's file, became a demand to link
+    # this repository's own the day that file was added. The link would be wrong
+    # where it lands, too: changelog-section.sh --link-base pins each section's
+    # links to its own tag, and v0.7.0's tree has no .vantage.toml. Every link
+    # rule still runs.
+    printf '[check.rules]\n"ref/unlinked-file" = "off"\n' > "$changelog"
+    "$bin" check --config "$changelog" CHANGELOG.md
+    paths+=(CHANGELOG.md)
     # And the same run in one thread, byte for byte. A parallel check exists to
     # produce the sequential report sooner, never a different one — and the
     # worker-thread half of it can only be proved here: a worker runs the
@@ -217,8 +231,6 @@ _self-check: cli
     # ordered. This config turns those warnings into a dozen-odd findings spread
     # across several files, which is what makes the diff an assertion about
     # ordering rather than about emptiness.
-    cfg=$(mktemp) one=$(mktemp) many=$(mktemp)
-    trap 'rm -f "$cfg" "$one" "$many"' EXIT
     printf '[check]\nexit-code = 0\n\n[check.rules]\n"markdown/hygiene" = "warning"\n' > "$cfg"
     "$bin" check --config "$cfg" --format json --jobs 1 "${paths[@]}" > "$one"
     "$bin" check --config "$cfg" --format json --jobs 4 "${paths[@]}" > "$many"
