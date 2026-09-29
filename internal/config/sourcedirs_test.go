@@ -57,6 +57,11 @@ func TestAddSourceDirsCreatesAMissingConfig(t *testing.T) {
 	cfg, err := LoadDaemonFile(cfgPath)
 	require.NoError(t, err)
 	require.Equal(t, []string{filepath.Join(home, "code"), filepath.Join(home, "work")}, cfg.SourceDirs)
+	// The port is written down: a daemon whose port is only the default moves
+	// to the next free one when it is busy, and a service that moves is one
+	// neither `serve`'s tip nor install-service finds again.
+	require.True(t, cfg.PortExplicit)
+	require.Equal(t, Defaults().Port, cfg.Port)
 }
 
 func TestAddSourceDirsResolvesRelativePathsAndRejectsMissingOnes(t *testing.T) {

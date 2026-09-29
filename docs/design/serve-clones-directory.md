@@ -235,7 +235,12 @@ config. The command then installs the service and starts it. Without
   failed round-trip check. The original is copied to
   `config.toml.bak-<timestamp>` first, then rewritten from the decoded values,
   and the command says that it made a backup and where.
-- **A missing config is created** with a short header and the one key.
+- **A missing config is created** with a short header, the key, and the
+  default port written down. A daemon whose port is only the default moves to
+  the next free one when it is busy, as it is while the `serve` that printed
+  the tip still runs, and a service that moved is one nothing looks for. With
+  the port written down, the daemon exits instead, and the service manager
+  starts it again until the port is free.
 - **What changed is printed:** which directories were added, which were already
   there, and the file that was written.
 - **A config that would not start the daemon stops the command** before
@@ -248,6 +253,11 @@ config. The command then installs the service and starts it. Without
   `launchctl bootout` (a failure is ignored, since it means the agent was not
   loaded) and then `launchctl bootstrap`. The commands go through a runner that
   tests replace, so no test starts a real service.
+- **Running is what answers.** A start command succeeds as soon as the process
+  forks, so the command then asks the service's address for up to three
+  seconds. It says the service is running only when a daemon answers, and
+  otherwise says what does: a foreground `serve` holding the port, or nothing,
+  with the command that shows the service's log.
 
 ## 7. Too big to serve well: a banner in the browser
 

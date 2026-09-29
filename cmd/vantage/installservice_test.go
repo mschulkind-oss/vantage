@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/xml"
 	"errors"
 	"io"
@@ -160,6 +161,8 @@ func TestInstallServiceOnUnsupportedPlatform(t *testing.T) {
 type recordingRunner struct {
 	calls []string
 	fail  map[string]error
+	// asked records every URL the service lister was asked.
+	asked []string
 }
 
 func (r *recordingRunner) run(name string, args ...string) error {
@@ -169,7 +172,9 @@ func (r *recordingRunner) run(name string, args ...string) error {
 }
 
 // sourceDirInstall sets up an isolated home holding a directory of two clones
-// and returns the inputs install-service --source-dir would gather.
+// and returns the inputs install-service --source-dir would gather. The
+// service it "starts" answers as a daemon serving both clones, once the
+// runner has run its start command; set in.list to say otherwise.
 func sourceDirInstall(t *testing.T, goos string) (serviceInstall, *recordingRunner, string) {
 	t.Helper()
 	home := isolateHome(t)
@@ -185,7 +190,23 @@ func sourceDirInstall(t *testing.T, goos string) (serviceInstall, *recordingRunn
 		uid:        501,
 		now:        time.Date(2026, 9, 29, 1, 2, 3, 0, time.UTC),
 		run:        rec.run,
+		list:       rec.service([]string{"alpha", "beta"}),
+		wait:       50 * time.Millisecond,
 	}, rec, code
+}
+
+// service is a lister for the service rec starts: nothing answers until a
+// start command has run, and then a daemon serving names does.
+func (r *recordingRunner) service(names []string) repoLister {
+	return func(_ context.Context, url string) (serviceAnswer, error) {
+		r.asked = append(r.asked, url)
+		for _, call := range r.calls {
+			if strings.Contains(call, "restart vantage") || strings.Contains(call, "bootstrap") {
+				return serviceAnswer{Names: names, Mode: "daemon"}, nil
+			}
+		}
+		return serviceAnswer{}, errors.New("connection refused")
+	}
 }
 
 func TestInstallServiceWithSourceDirsOnLinux(t *testing.T) {
@@ -196,6 +217,9 @@ func TestInstallServiceWithSourceDirsOnLinux(t *testing.T) {
 	body, err := os.ReadFile(in.configPath)
 	require.NoError(t, err)
 	require.Contains(t, string(body), `source_dirs = ["~/code"]`)
+	// Fixed, so that a service whose port is busy waits for it rather than
+	// moving somewhere no tip will look.
+	require.Contains(t, string(body), "\nport = 8000\n")
 	unit, err := os.ReadFile(systemdUnitPath(in.home))
 	require.NoError(t, err)
 	require.Contains(t, string(unit), "ExecStart=/opt/bin/vantage daemon")
@@ -210,7 +234,56 @@ func TestInstallServiceWithSourceDirsOnLinux(t *testing.T) {
 	require.Contains(t, printed, "Created ~/.config/vantage/config.toml with source_dirs = [~/code]")
 	require.Contains(t, printed, "Wrote ~/.config/systemd/user/vantage.service")
 	require.Contains(t, printed, "Ran: systemctl --user restart vantage")
-	require.Contains(t, printed, "Vantage is running in the background at http://localhost:8000, serving 2 projects.")
+	require.True(t, strings.HasSuffix(printed, "Vantage is running in the background at http://localhost:8000, serving 2 projects.\n"), printed)
+	require.Equal(t, "http://127.0.0.1:8000/api/repos", rec.asked[len(rec.asked)-1], "said only once the service answered")
+}
+
+// "Running" is what the service answered, not what the config says: a start
+// command succeeds as soon as the process forks, whatever the daemon does next.
+func TestInstallServiceWithSourceDirsReportsWhatAnswers(t *testing.T) {
+	t.Run("nothing answers", func(t *testing.T) {
+		in, _, _ := sourceDirInstall(t, "linux")
+		in.list = (&fakeLister{err: errors.New("connection refused")}).list
+		var out bytes.Buffer
+		require.NoError(t, installServiceWithSourceDirs(&out, in, []string{"~/code"}))
+		require.NotContains(t, out.String(), "is running")
+		require.Contains(t, out.String(), "The service was started, but nothing answers at http://localhost:8000 yet. "+
+			"Its log says why: journalctl --user -u vantage")
+	})
+	t.Run("nothing answers on macOS", func(t *testing.T) {
+		in, _, _ := sourceDirInstall(t, "darwin")
+		in.list = (&fakeLister{err: errors.New("connection refused")}).list
+		var out bytes.Buffer
+		require.NoError(t, installServiceWithSourceDirs(&out, in, []string{"~/code"}))
+		require.Contains(t, out.String(), "Its log says why: tail ~/Library/Logs/vantage.log")
+	})
+	t.Run("a foreground serve holds the port", func(t *testing.T) {
+		in, _, _ := sourceDirInstall(t, "linux")
+		in.list = (&fakeLister{names: []string{"code", "alpha"}, mode: "serve"}).list
+		var out bytes.Buffer
+		require.NoError(t, installServiceWithSourceDirs(&out, in, []string{"~/code"}))
+		printed := out.String()
+		require.NotContains(t, printed, "is running")
+		require.Contains(t, printed, "A foreground vantage serve is answering at http://localhost:8000, the service's address. "+
+			"The service starts serving there once that one stops.")
+	})
+	t.Run("a foreground serve holds a port the config leaves to the default", func(t *testing.T) {
+		in, _, _ := sourceDirInstall(t, "linux")
+		require.NoError(t, os.MkdirAll(filepath.Dir(in.configPath), 0o755))
+		require.NoError(t, os.WriteFile(in.configPath, []byte("# mine\n"), 0o644))
+		in.list = (&fakeLister{names: []string{"code"}, mode: "serve"}).list
+		var out bytes.Buffer
+		require.NoError(t, installServiceWithSourceDirs(&out, in, []string{"~/code"}))
+		require.Contains(t, out.String(), "A foreground vantage serve is answering at http://localhost:8000, the service's address, "+
+			"so the service may have moved to another port. Stop that one, then run: systemctl --user restart vantage")
+	})
+	t.Run("one project", func(t *testing.T) {
+		in, rec, _ := sourceDirInstall(t, "linux")
+		in.list = rec.service([]string{"alpha"})
+		var out bytes.Buffer
+		require.NoError(t, installServiceWithSourceDirs(&out, in, []string{"~/code"}))
+		require.Contains(t, out.String(), "serving 1 project.\n")
+	})
 }
 
 func TestInstallServiceWithSourceDirsOnMacOS(t *testing.T) {
