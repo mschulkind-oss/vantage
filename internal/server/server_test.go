@@ -1269,3 +1269,112 @@ func TestAnUnusableRepositoryThemeIsDropped(t *testing.T) {
 		})
 	}
 }
+
+// degradedList decodes GET /api/degraded.
+func degradedList(t *testing.T, h http.Handler) []model.Degradation {
+	t.Helper()
+	rec := doGET(t, h, "/api/degraded")
+	require.Equal(t, http.StatusOK, rec.Code)
+	var out []model.Degradation
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out))
+	return out
+}
+
+func TestDegradedIsEmptyByDefault(t *testing.T) {
+	srv, _ := singleRepoServer(t)
+	rec := doGET(t, srv.Handler(), "/api/degraded")
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.JSONEq(t, `[]`, rec.Body.String())
+}
+
+// The watch limit is reached by configuring it down: three watches cover the
+// fixture's root, .git and docs, so the next directory is the first one
+// refused — and the browser hears about it.
+func TestWatchLimitReachesTheBrowser(t *testing.T) {
+	isolateUserDirs(t)
+	root := initRepo(t, map[string]string{"docs/a.md": "# A\n"})
+	cfg := config.Defaults()
+	cfg.TargetRepo = root
+	require.NoError(t, cfg.Resolve())
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+	srv.watchLimit = 3
+
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	runCtx, stop := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- srv.Run(runCtx) }()
+	defer func() {
+		stop()
+		<-done
+		require.NoError(t, srv.Shutdown(context.Background()))
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ws, _, err := websocket.Dial(ctx, "ws"+ts.URL[len("http"):]+"/api/ws", nil)
+	require.NoError(t, err)
+	defer ws.Close(websocket.StatusNormalClosure, "")
+	_, _, err = ws.Read(ctx) // hello
+	require.NoError(t, err)
+	waitFor(t, "the watcher to start", func() bool {
+		srv.watchersMu.Lock()
+		defer srv.watchersMu.Unlock()
+		return len(srv.watchers) == 1
+	})
+	require.Empty(t, degradedList(t, srv.Handler()), "the budget covers the startup tree")
+
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "big"), 0o755))
+	for {
+		_, data, err := ws.Read(ctx)
+		require.NoError(t, err)
+		var msg map[string]any
+		require.NoError(t, json.Unmarshal(data, &msg))
+		if msg["type"] == "degraded_changed" {
+			require.JSONEq(t, `{"type":"degraded_changed","repo":""}`, string(data))
+			break
+		}
+	}
+
+	got := degradedList(t, srv.Handler())
+	require.Len(t, got, 1)
+	require.Equal(t, model.DegradationWatchLimit, got[0].Kind)
+	require.Equal(t, "big", got[0].Path)
+	require.Equal(t, "Live reload is off below big: the system's limit on watched folders was reached. "+
+		"Raise it (on Linux, fs.inotify.max_user_watches), or list the biggest folders in .vantageignore.", got[0].Message)
+}
+
+func TestWalkTimeoutReachesTheBrowser(t *testing.T) {
+	isolateUserDirs(t)
+	root := initRepo(t, map[string]string{"a.md": "# A\n"})
+	require.NoError(t, os.WriteFile(filepath.Join(root, "untracked.md"), []byte("# U\n"), 0o644))
+	cfg := config.Defaults()
+	cfg.TargetRepo = root
+	cfg.WalkTimeout = time.Nanosecond
+	require.NoError(t, cfg.Resolve())
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+
+	require.Equal(t, http.StatusOK, doGET(t, srv.Handler(), "/api/git/recent?limit=5").Code)
+	got := degradedList(t, srv.Handler())
+	require.Len(t, got, 1)
+	require.Equal(t, model.DegradationWalkTimeout, got[0].Kind)
+	require.Equal(t, "", got[0].Repo)
+	require.Contains(t, got[0].Message, "walk_timeout (1ns)")
+}
+
+func TestUnregisterForgetsARepositorysDegradations(t *testing.T) {
+	srv, _ := daemonServer(t)
+	srv.reportDegraded(model.Degradation{Repo: "alpha", Kind: model.DegradationWatchLimit, Path: "docs/big", Count: 3})
+	srv.reportDegraded(model.Degradation{Repo: "beta", Kind: model.DegradationWalkTimeout})
+	got := degradedList(t, srv.Handler())
+	require.Len(t, got, 2)
+	require.Equal(t, "Live reload is off below docs/big and 2 more folders: the system's limit on watched folders was reached. "+
+		"Raise it (on Linux, fs.inotify.max_user_watches), or list the biggest folders in .vantageignore.", got[0].Message)
+
+	srv.unregister("alpha")
+	got = degradedList(t, srv.Handler())
+	require.Len(t, got, 1)
+	require.Equal(t, "beta", got[0].Repo)
+}

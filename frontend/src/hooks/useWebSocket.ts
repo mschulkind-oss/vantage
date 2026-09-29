@@ -4,6 +4,7 @@ import { useGitStore } from "../stores/useGitStore";
 import { useConnectionStore } from "../stores/useConnectionStore";
 import { useReviewStore } from "../stores/useReviewStore";
 import { useStarredStore } from "../stores/useStarredStore";
+import { useDegradedStore } from "../stores/useDegradedStore";
 import { useFilePickerStore } from "../stores/useFilePickerStore";
 import { useAllRecentsStore } from "../stores/useAllRecentsStore";
 import { usePlanningStore } from "../stores/usePlanningStore";
@@ -195,6 +196,8 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
       // neither needs a selected repo nor waits for one. A star added from
       // another browser during the outage is only recoverable here.
       void useStarredStore.getState().loadStarred();
+      // A limit hit during the outage announced itself to nobody.
+      void useDegradedStore.getState().load();
       // Likewise a picker left open across the outage: every change the watcher
       // announced while the socket was down is only recoverable here.
       void useFilePickerStore.getState().refresh();
@@ -286,6 +289,14 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
         // nobody has.
         wsLog.log("[ws] starred_changed");
         void useStarredStore.getState().loadStarred();
+        return;
+      }
+
+      if (message.type === "degraded_changed") {
+        // A project just hit a limit it is too big for. Ungated like
+        // starred_changed: the list is global and the banner filters it.
+        wsLog.log("[ws] degraded_changed: %s", message.repo ?? "");
+        void useDegradedStore.getState().load();
         return;
       }
 

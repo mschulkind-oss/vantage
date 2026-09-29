@@ -43,6 +43,7 @@ import (
 	"github.com/mschulkind-oss/vantage/internal/config"
 	"github.com/mschulkind-oss/vantage/internal/fs"
 	"github.com/mschulkind-oss/vantage/internal/git"
+	"github.com/mschulkind-oss/vantage/internal/model"
 	"github.com/mschulkind-oss/vantage/internal/perf"
 	"github.com/mschulkind-oss/vantage/internal/repoconfig"
 	"github.com/mschulkind-oss/vantage/internal/review"
@@ -147,6 +148,11 @@ type Deps struct {
 	// answer has to change when a repository edits its config rather than being
 	// frozen at startup.
 	ThemeDefaults func() map[string]string
+	// Degraded, when non-nil, returns every current [model.Degradation]: the
+	// ways a project is being served worse than normal because it is too big
+	// for a limit. The server keeps them, since watchers and git services
+	// report them from outside any request. Nil means none.
+	Degraded func() []model.Degradation
 }
 
 // Handlers holds the dependency-injected state for every API handler. Construct
