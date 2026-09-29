@@ -45,6 +45,15 @@ describe("the style guide's blocked question", () => {
   it("no longer says a blocked or answered question needs no directive", () => {
     expect(STYLE_GUIDE).not.toMatch(/needs no directive/);
   });
+
+  it("says a blocked or answered question gets no one-click answer", () => {
+    // Review mode offers Take this leaning on open questions only (Plan Q5,
+    // planning-index.md §6.3). An agent told to keep a directive that renders
+    // no button needs telling that is expected, not a mistake to fix.
+    expect(STYLE_GUIDE).toContain(
+      "Neither state gets the one-click button in review mode",
+    );
+  });
 });
 
 /** The guide's frontmatter example for the planning keys. */
