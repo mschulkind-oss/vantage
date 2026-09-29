@@ -90,7 +90,7 @@ check: format
     staticcheck ./cmd/... ./internal/... ./web/...
     go test ./cmd/... ./internal/... ./web/...
     npm run lint -w vantage-md && npm run typecheck -w vantage-md
-    just _published-types
+    just _published-package
     npm run lint -w vantage-check && npm run typecheck -w vantage-check && npm run test -w vantage-check
     npm run lint -w frontend && npx tsc --build frontend && npm run test -w frontend
     sh scripts/test-commit-messages.sh
@@ -121,7 +121,7 @@ check-ci: _deps-match
     # it runs the package standalone under its own TypeScript (~6.0.3), where
     # frontend/'s --build reads the same files under ~5.9.3.
     ( npm run format:check -w vantage-md && npm run lint -w vantage-md && npm run typecheck -w vantage-md )
-    just _published-types
+    just _published-package
     ( npm run format:check -w vantage-check && npm run lint -w vantage-check && npm run typecheck -w vantage-check && npm run test -w vantage-check )
     ( npm run format:check -w frontend && npm run lint -w frontend && npx tsc --build frontend && npm run test -w frontend )
     # The commit-message policy is a script the hooks and CI share, so its own
@@ -324,19 +324,22 @@ release version:
     git push origin "v{{version}}"
     echo "pushed v{{version}} — publish.yml takes it from here"
 
-# Build vantage-md and check a consumer of the result under every TypeScript
-# version we support.
+# Build vantage-md and check what a consumer of the result gets: its types
+# under every TypeScript version we support, and stylesheets whose every
+# relative `@import` is in the package.
 #
 # Everything in this repo imports vantage-md's SOURCE, so nothing else would
-# notice if the emitted declarations were wrong — and `dist/` is what npm
-# consumers get. Building here is the point, not overhead: the check is
-# meaningless against a stale dist.
+# notice if the emitted declarations were wrong, or if `vantage-md/styles`
+# imported files the build never copied — and `dist/` is what npm consumers
+# get. Building here is the point, not overhead: the checks are meaningless
+# against a stale dist.
 [private]
-_published-types:
+_published-package:
     #!/usr/bin/env bash
     set -euo pipefail
     npm run build --workspace vantage-md >/dev/null
     npm run typecheck:published --workspace vantage-md
+    node packages/vantage-md/scripts/check-published-css.mjs
 
 # Point git at the tracked hooks dir. Idempotent.
 [private]
