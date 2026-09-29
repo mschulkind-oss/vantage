@@ -23,3 +23,18 @@ export {
 } from "./config.js";
 export type { PlanningConfig, StageRole } from "./config.js";
 export { compileIgnorePatterns } from "./patterns.js";
+export { resolveRepoLink } from "./links.js";
+export { scanPlanningDocument } from "./scan.js";
+export type {
+  DependsOn,
+  HeaderProblem,
+  PlanningDocument,
+  PlanningLink,
+  PlanningQuestion,
+  QuestionState,
+  ScanResult,
+} from "./scan.js";
+export {
+  VANTAGE_OQ_PREFERENCE,
+  normalizeLeaning,
+} from "../vantageDirectives.js";

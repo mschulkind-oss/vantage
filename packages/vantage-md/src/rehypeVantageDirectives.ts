@@ -22,6 +22,7 @@ import type { Element, Parents, Properties, RootContent, Root } from "hast";
 import type { Plugin } from "unified";
 import {
   DIRECTIVE_VOCABULARY,
+  normalizeLeaning,
   parseVantageDirective,
   VANTAGE_ANCHOR_TARGETS,
   VANTAGE_STYLE_TARGETS,
@@ -121,9 +122,6 @@ const OQ_ID_PROPERTY = "dataVantageOqId";
 const COLLAPSED_PROPERTY = "dataVantageCollapsed";
 const COLLAPSE_GROUP_PROPERTY = "dataVantageCollapseGroup";
 const COLLAPSE_TOGGLE_PROPERTY = "dataVantageCollapseToggle";
-
-/** A review-comment body, not prose. Bounds the attribute; 500 is generous. */
-const MAX_LEANING = 500;
 
 /**
  * Per-tree state. Group ids are `1`, `2`, `3`… in the document order of the
@@ -344,8 +342,9 @@ function stampOq(target: Element, pairs: Map<string, string>) {
   const leaning = pairs.get("leaning");
   if (leaning === undefined) return;
   // A wrapped directive puts newlines and indentation in the value, and this is
-  // about to become the body of a review comment, so collapse and cap it.
-  const text = leaning.replace(/\s+/g, " ").trim().slice(0, MAX_LEANING);
+  // about to become the body of a review comment, so collapse and cap it — the
+  // same normalization the planning index reports a question's leaning with.
+  const text = normalizeLeaning(leaning);
   if (text !== "") setProperty(target, LEANING_PROPERTY, text);
 }
 
