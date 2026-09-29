@@ -41,15 +41,30 @@ import {
 } from "../stores/usePlanningStore";
 import { useRepoStore } from "../stores/useRepoStore";
 import { useReviewStore } from "../stores/useReviewStore";
+import {
+  clearMermaidCache,
+  setCachedSvg,
+} from "../../../packages/vantage-md/src/mermaidCache";
 import { readRepoFile, sourcesOf } from "../test/planning";
 import type { CommentAnchor, ReviewComment } from "../types";
 
 vi.mock("axios");
+// The viewer's diagram, drawn from the SVG cache when it holds the diagram
+// and empty until then; Mermaid itself stays out of the suite.
 vi.mock("vantage-md/react", async () => {
   const actual = await vi.importActual("vantage-md/react");
+  const cache = await vi.importActual<
+    typeof import("../../../packages/vantage-md/src/mermaidCache")
+  >("../../../packages/vantage-md/src/mermaidCache");
   return {
     ...actual,
-    MermaidDiagram: ({ code }: { code: string }) => <pre>{code}</pre>,
+    MermaidDiagram: ({ code }: { code: string }) => (
+      <div data-testid="mermaid-container">
+        <div className="mermaid">
+          {cache.getCachedSvg(code) !== undefined && <svg data-code={code} />}
+        </div>
+      </div>
+    ),
   };
 });
 const navigate = vi.hoisted(() => vi.fn());
@@ -391,17 +406,6 @@ describe("the card shows its question, and only its question", () => {
     );
   });
 
-  it("renders nothing of its question while its block is on its way, and offers only Open document", () => {
-    const { container } = renderCard(byId("OQ-B2"), { card: undefined });
-    const article = screen.getByRole("article");
-    expect(
-      article.querySelector(".planning-card-body")?.childNodes,
-    ).toHaveLength(0);
-    expect(container.textContent).not.toContain("not in the planning index");
-    expect(screen.queryByRole("button")).toBeNull();
-    expect(screen.getByRole("link", { name: "Open document" })).toBeTruthy();
-  });
-
   it("says so when its document no longer has its block", () => {
     renderCard(byId("OQ-B2"), { card: null });
     expect(
@@ -413,11 +417,71 @@ describe("the card shows its question, and only its question", () => {
   });
 });
 
+describe("a diagram not drawn when the card painted (planning-index-at-scale.md §10.3)", () => {
+  const DRAWN = "graph LR\n  A --> B";
+  const source = [
+    "# Diagrams",
+    "",
+    "1. \u{1F4AC} **OQ-M1: Which shape?**",
+    "",
+    '   <!-- vantage: oq id=OQ-M1 leaning="This one." -->',
+    "",
+    "   _Leaning:_ this one.",
+    "",
+    "   ```mermaid",
+    "   graph LR",
+    "     A --> B",
+    "   ```",
+    "",
+    "   ```mermaid",
+    "   graph LR",
+    "     C --> D",
+    "   ```",
+    "",
+  ].join("\n");
+  const question = (() => {
+    const r = scanPlanningDocument("docs/diagrams.md", source, false);
+    if (r.kind !== "planning") throw new Error("diagrams.md");
+    return r.document.questions[0]!;
+  })();
+
+  afterEach(() => clearMermaidCache());
+
+  it("frames it at a fixed height, and leaves a drawn one at its own size", () => {
+    setCachedSvg(DRAWN, "<svg></svg>");
+    renderCard(question, { card: blockOf(question, source) });
+    const [drawn, late] = screen.getAllByTestId("mermaid-container");
+    expect(drawn).toHaveAttribute("data-planning-mermaid-drawn");
+    expect(drawn).not.toHaveAttribute("data-planning-mermaid-frame");
+    expect(late).toHaveAttribute("data-planning-mermaid-frame");
+    expect(
+      screen
+        .getByRole("article")
+        .querySelector<HTMLElement>(".planning-card-body")!
+        .style.getPropertyValue("--planning-mermaid-frame"),
+    ).toBe("240px");
+  });
+
+  it("frames what a late diagram becomes, as its error box replaces it", async () => {
+    renderCard(question, { card: blockOf(question, source) });
+    const late = screen.getAllByTestId("mermaid-container")[1]!;
+    // MermaidDiagram draws a diagram it cannot parse as another element.
+    const box = document.createElement("div");
+    box.setAttribute("data-testid", "mermaid-container");
+    box.textContent = "Diagram syntax error";
+    await act(async () => {
+      late.replaceWith(box);
+      await Promise.resolve();
+    });
+    expect(box).toHaveAttribute("data-planning-mermaid-frame");
+  });
+});
+
 describe("a preview card (planning-index-at-scale.md §10.4)", () => {
   it("shows the question as the index knows it, and only Show question and Open document", () => {
     const question = byId("OQ-B2");
     renderCard(question, {
-      card: undefined,
+      card: null,
       preview: true,
       onShowQuestion: async () => null,
     });
@@ -449,7 +513,7 @@ describe("a preview card (planning-index-at-scale.md §10.4)", () => {
         }),
     );
     const { container } = renderCard(question, {
-      card: undefined,
+      card: null,
       preview: true,
       onShowQuestion,
     });
@@ -475,7 +539,7 @@ describe("a preview card (planning-index-at-scale.md §10.4)", () => {
 
   it("stays a preview, and says so, when the block cannot be had", async () => {
     renderCard(byId("OQ-B2"), {
-      card: undefined,
+      card: null,
       preview: true,
       onShowQuestion: async () => null,
     });
@@ -615,6 +679,74 @@ describe("the comments already filed on a question", () => {
       expect(onScoped).not.toHaveBeenCalledWith([onB3.id]);
       unmount();
     }
+  });
+
+  it("keeps a count of them in its control row, which folds their list away", async () => {
+    const onB3 = await takenOn(byId("OQ-B3"));
+    renderCard(byId("OQ-B3"), { comments: [onB3] });
+    const count = screen.getByRole("button", { name: "1 comment" });
+    expect(count).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.getByRole("list", { name: "Comments on this question" }),
+    ).toBeTruthy();
+    fireEvent.click(count);
+    expect(count).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByRole("list", { name: "Comments on this question" }),
+    ).toBeNull();
+  });
+
+  // planning-index-at-scale.md §11.2: comments that reach a painted card go
+  // into a slot that was always there, and nothing inline.
+  it("lists comments that came late only once the reader opens the count", async () => {
+    const onB3 = await takenOn(byId("OQ-B3"));
+    renderCard(byId("OQ-B3"), { comments: [onB3], commentsLate: true });
+    expect(
+      screen.queryByRole("list", { name: "Comments on this question" }),
+    ).toBeNull();
+    const count = screen.getByRole("button", { name: "1 comment" });
+    expect(count).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(count);
+    expect(
+      screen.getByRole("list", { name: "Comments on this question" }),
+    ).toHaveTextContent(onB3.comment);
+  });
+
+  it("keeps the count's slot, at its width, before there is anything to count", () => {
+    renderCard(byId("OQ-B3"), { comments: undefined, commentsLate: true });
+    const slot = screen.getByRole("article").querySelector("span.w-28.ml-auto");
+    expect(slot).not.toBeNull();
+    expect(slot!.childNodes).toHaveLength(0);
+  });
+
+  it("opens the list for an answer filed from the card itself", async () => {
+    const onB3 = await takenOn(byId("OQ-B3"));
+    const { rerender, onFile } = renderCard(byId("OQ-B3"), {
+      comments: [],
+      commentsLate: true,
+    });
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Take this leaning" }),
+      );
+    });
+    expect(onFile).toHaveBeenCalled();
+    rerender(
+      <BrowserRouter>
+        <PlanningQuestionCard
+          question={byId("OQ-B3")}
+          card={blockOf(byId("OQ-B3"))}
+          badge={null}
+          comments={[onB3]}
+          commentsLate
+          href="/x"
+          onFile={onFile}
+        />
+      </BrowserRouter>,
+    );
+    expect(
+      screen.getByRole("list", { name: "Comments on this question" }),
+    ).toBeTruthy();
   });
 
   it("says so when the comment could not be saved", async () => {
