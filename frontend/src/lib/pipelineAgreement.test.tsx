@@ -101,6 +101,28 @@ const SVG_FIXTURE = [
   "", // 8
 ].join("\n");
 
+/**
+ * Classes a document writes, kept separate for the same reason. Tailwind
+ * utilities the app's stylesheet ships, on a block, in a sentence and on a
+ * drawing, beside two features that keep a class of their own: an alert's
+ * title and a fence's language.
+ */
+const CLASS_FIXTURE = [
+  "## Classes", // 1
+  "", // 2
+  '<div class="fixed inset-0 z-50 bg-white">Overlay</div>', // 3
+  "", // 4
+  'A <span class="fixed inset-0">word</span> and a <svg class="fixed inset-0" width="8" height="8" viewBox="0 0 8 8" role="img" aria-label="dot"><circle cx="4" cy="4" r="3"/></svg>.', // 5
+  "", // 6
+  "> [!NOTE]", // 7
+  "> Noted.", // 8
+  "", // 9
+  "```js", // 10
+  "const x = 1;", // 11
+  "```", // 12
+  "", // 13
+].join("\n");
+
 /** Every svg in `root`, as its tag, attributes and children, recursively. */
 function describeSvgs(root: HTMLElement): string[] {
   const describe = (el: Element): string => {
@@ -330,6 +352,36 @@ describe("every renderer runs the same chain", () => {
       viaRenderMarkdown,
     );
     expect(describeSvgs(appViewerHost(SVG_FIXTURE))).toEqual(viaRenderMarkdown);
+  });
+
+  it("agrees that a document's class carries only the pipeline's own names", async () => {
+    // The overlay is the React viewers' problem first: the app ships the
+    // utilities, and `fixed inset-0 z-50` on a document's div covered the
+    // whole window, header and sidebar included. So all three renderers must
+    // drop what the document wrote, and keep the classes the pipeline emits.
+    for (const host of [
+      await renderedHost(CLASS_FIXTURE),
+      packageViewerHost(CLASS_FIXTURE),
+      appViewerHost(CLASS_FIXTURE),
+    ]) {
+      const byText = (selector: string, text: string) =>
+        Array.from(host.querySelectorAll(selector)).find(
+          (el) => el.textContent === text,
+        );
+      const written = [
+        byText("div", "Overlay"),
+        byText("span", "word"),
+        host.querySelector('svg[aria-label="dot"]'),
+      ];
+      for (const el of written) {
+        expect(el).toBeTruthy();
+        expect(el!.getAttribute("class") ?? "").toBe("");
+      }
+      expect(host.querySelector(".vantage-alert-title")?.textContent).toBe(
+        "Note",
+      );
+      expect(host.querySelector("pre code.language-js")).not.toBeNull();
+    }
   });
 
   it("agrees that a bare <pattern> in prose loses nothing after it", async () => {

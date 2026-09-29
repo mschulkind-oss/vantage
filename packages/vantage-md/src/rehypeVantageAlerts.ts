@@ -53,6 +53,13 @@ export const VANTAGE_ALERTS = [
 
 export type VantageAlert = (typeof VANTAGE_ALERTS)[number];
 
+/**
+ * The class on the title element this plugin injects, which
+ * `styles/directives.css` styles. Exported because the sanitizer runs after
+ * this plugin and admits a `div`'s class only when it is this one.
+ */
+export const ALERT_TITLE_CLASS = "vantage-alert-title";
+
 /** The visible label per kind. Title case, as GitHub renders it. */
 export const ALERT_TITLES: Readonly<Record<VantageAlert, string>> = {
   note: "Note",
@@ -130,7 +137,7 @@ export function rehypeVantageAlerts() {
       node.children.unshift({
         type: "element",
         tagName: "div",
-        properties: { className: ["vantage-alert-title"] },
+        properties: { className: [ALERT_TITLE_CLASS] },
         children: [{ type: "text", value: ALERT_TITLES[kind] } as Text],
       } as Element);
     });
