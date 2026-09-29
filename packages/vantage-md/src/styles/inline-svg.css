@@ -1,0 +1,29 @@
+/* vantage-md/styles/inline-svg.css
+ *
+ * Sizing for an `<svg>` a document writes inline (see "Inline SVG" in
+ * `docs/reference/inline-markup.md`). Without it a `width="2400"` drawing
+ * overflows the column instead of shrinking to it.
+ *
+ * It lives in the package, not the app, so that every renderer sizes a drawing
+ * the same way (D5): the app imports this file by relative source path, and
+ * `styles/index.css` re-exports it for the package's own <MarkdownViewer> and
+ * any other consumer of `vantage-md/styles`. It targets both container classes,
+ * Tailwind typography's `.prose` (the app, and the package viewer) and
+ * `.vantage-prose` (the package's `prose.css`), for the reason `task-list.css`
+ * gives.
+ *
+ * **Unlike its siblings this file IS layered, in `components`, and that is the
+ * point.** The rules reach every `svg` inside prose, including the icons a
+ * viewer draws there itself, and those are sized with utility classes. A layered
+ * rule loses to every utility (Tailwind v4 puts them in the later `utilities`
+ * layer) and to any unlayered rule a consumer writes, so an icon keeps the size
+ * it asked for and only an unstyled drawing picks these up. Unlayered, this
+ * would outrank all of them regardless of specificity.
+ */
+
+@layer components {
+  :is(.prose, .vantage-prose) svg {
+    max-width: 100%;
+    height: auto;
+  }
+}
