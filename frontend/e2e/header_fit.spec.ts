@@ -891,10 +891,13 @@ test.describe("an untracked file's header", () => {
     await widenSidebar(page, "Untracked file");
     await expect(header.getByTestId("header-time")).toHaveCount(1);
 
-    // Narrowed until the relative time goes, wherever the fonts put that.
+    // Narrowed until the toolbar's actions fold, the last step before the
+    // name, wherever the fonts put that: every step this header has is taken
+    // on the way, in order, and the name stays whole through all of them.
     let before = 0;
+    let timeWent: number | null = null;
     for (let width = 1600; ; width -= 20) {
-      expect(width, "the relative time never went").toBeGreaterThan(200);
+      expect(width, "the toolbar's actions never folded").toBeGreaterThan(200);
       await setHeaderWidth(page, width);
       const s = await snapshot(page, ["Untracked file", "Path", "Raw"], []);
       checkInvariants(s);
@@ -904,12 +907,24 @@ test.describe("an untracked file's header", () => {
       expect(s.name.truncated, `${UNTRACKED} truncated at ${width}px`).toBe(
         false,
       );
-      if (s.time === false) break;
+      if (s.time === false && timeWent === null) {
+        timeWent = width;
+        // Down to the clock alone, which is what kept the name whole: until
+        // the relative time could go, a header this narrow elided the name
+        // entirely.
+        expect(
+          await header.getByTestId("header-time").boundingBox(),
+          `the relative time at ${width}px`,
+        ).toMatchObject({ width: 1 });
+      }
+      const said = (await header.getAttribute("data-yield")) ?? "";
+      if (said.split(" ").includes("actions")) {
+        expect(s.more, `the ⋯ at ${width}px`).toBe(true);
+        break;
+      }
     }
-    // Down to the clock alone, which is what kept the name whole: until the
-    // relative time could go, a header this narrow elided the name entirely.
-    expect(await header.getByTestId("header-time").boundingBox()).toMatchObject(
-      { width: 1 },
-    );
+    // Implied by the order check, and said so the clock's check above is
+    // known to have run.
+    expect(timeWent, "the relative time never went").not.toBeNull();
   });
 });
