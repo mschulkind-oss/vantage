@@ -33,4 +33,13 @@
   :is(.prose, .vantage-prose) svg[viewBox] {
     height: auto;
   }
+
+  /* An svg written inside a sentence stays in it. Tailwind's preflight makes
+     every svg `display: block`, which put a 16px icon on a line of its own and
+     split its paragraph into three. Only inside the blocks that hold phrasing
+     content, so a drawing in a `<div>` of its own is still a block. */
+  :is(.prose, .vantage-prose) :where(p, li, td, th) svg {
+    display: inline-block;
+    vertical-align: middle;
+  }
 }
