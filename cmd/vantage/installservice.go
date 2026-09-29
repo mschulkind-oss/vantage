@@ -29,7 +29,7 @@ After=network.target
 [Service]
 Type=simple
 ExecStart=%s daemon
-Restart=on-failure
+%sRestart=on-failure
 RestartSec=5
 
 # Optional: Increase file descriptor limits for watching many files
@@ -78,7 +78,7 @@ const launchAgentTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 	<key>EnvironmentVariables</key>
 	<dict>
 		<key>PATH</key>
-		<string>%[3]s</string>
+		<string>%[3]s</string>%[6]s
 	</dict>
 	<key>WorkingDirectory</key>
 	<string>%[4]s</string>
@@ -413,7 +413,11 @@ func writeSystemdUnit(home, exe string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(serviceFile), 0o755); err != nil {
 		return "", fmt.Errorf("creating service directory: %w", err)
 	}
-	unit := fmt.Sprintf(serviceUnitTemplate, exe)
+	env := ""
+	if v := configHomeEnv(home); v != "" {
+		env = systemdEnvironment("XDG_CONFIG_HOME", v)
+	}
+	unit := fmt.Sprintf(serviceUnitTemplate, exe, env)
 	if err := os.WriteFile(serviceFile, []byte(unit), 0o644); err != nil {
 		return "", fmt.Errorf("writing service file: %w", err)
 	}
@@ -459,7 +463,7 @@ func writeLaunchAgent(home, exe string) (string, error) {
 		return "", fmt.Errorf("creating log directory: %w", err)
 	}
 
-	if err := os.WriteFile(plistPath, []byte(launchAgentPlist(exe, home, logPath)), 0o644); err != nil {
+	if err := os.WriteFile(plistPath, []byte(launchAgentPlist(exe, home, logPath, configHomeEnv(home))), 0o644); err != nil {
 		return "", fmt.Errorf("writing launch agent: %w", err)
 	}
 	return plistPath, nil
@@ -493,14 +497,47 @@ func installLaunchAgent(out io.Writer, home, exe string) error {
 }
 
 // launchAgentPlist renders the LaunchAgent property list for the binary at exe.
-func launchAgentPlist(exe, workingDir, logPath string) string {
+// configHome, when not "", is given to the agent as XDG_CONFIG_HOME (see
+// [configHomeEnv]).
+func launchAgentPlist(exe, workingDir, logPath, configHome string) string {
+	env := ""
+	if configHome != "" {
+		env = "\n\t\t<key>XDG_CONFIG_HOME</key>\n\t\t<string>" + xmlString(configHome) + "</string>"
+	}
 	return fmt.Sprintf(launchAgentTemplate,
 		xmlString(launchAgentLabel),
 		xmlString(exe),
 		xmlString(launchAgentPATH),
 		xmlString(workingDir),
 		xmlString(logPath),
+		env,
 	)
+}
+
+// configHomeEnv is the XDG_CONFIG_HOME the service must be given to read the
+// config this process reads: the caller's, when it is set, absolute, and not
+// the default home/.config it would find anyway; "" otherwise. A service
+// manager hands its service none of the shell's environment, so a
+// XDG_CONFIG_HOME set only in a shell's startup files would otherwise leave the
+// service looking for its config — and its themes, bookmarks and ignore file —
+// where install-service did not write it.
+func configHomeEnv(home string) string {
+	v := os.Getenv("XDG_CONFIG_HOME")
+	if !filepath.IsAbs(v) || strings.ContainsAny(v, "\r\n") {
+		return ""
+	}
+	if v = filepath.Clean(v); v == filepath.Join(home, ".config") {
+		return ""
+	}
+	return v
+}
+
+// systemdEnvironment renders an Environment= line setting key to value, quoted
+// so a space survives, with the backslash, quote and % escaped as systemd
+// reads them (% begins a specifier).
+func systemdEnvironment(key, value string) string {
+	value = strings.NewReplacer(`\`, `\\`, `"`, `\"`, "%", "%%").Replace(value)
+	return fmt.Sprintf("Environment=\"%s=%s\"\n", key, value)
 }
 
 // xmlString escapes s for use as the text of a plist <string> element. Home

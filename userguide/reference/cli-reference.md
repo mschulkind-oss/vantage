@@ -102,6 +102,7 @@ On its own it writes the service definition for the host platform and prints the
 
 - `~` and relative paths are expanded, and a directory already listed is skipped.
 - A missing config file is created, with the default port written down so that the service waits for that port when it is busy rather than moving to another. An existing one keeps its comments and every other key: the command edits its text and then checks that nothing else changed. When it cannot edit the file that way, it saves the original as `config.toml.bak-<time>` first and says so. A config that is a symlink, into a dotfiles repository say, is edited where it points, and the link is left in place.
+- When `XDG_CONFIG_HOME` points somewhere other than `~/.config`, the service is given it too, since a login service does not inherit your shell's environment. This holds without `--source-dir` as well.
 - The command prints what it changed and what it ran. If the resulting config would give the daemon nothing to serve, it stops before installing anything.
 - It then waits a few seconds for the service to answer, and says it is running only if it does. Otherwise it says what is answering at the service's address instead, such as a `vantage serve` still running in another terminal, or where the service's log is.
 
