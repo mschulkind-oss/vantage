@@ -702,11 +702,11 @@ absent**. The attribute is dropped and SVG's initial fill is black, so
 `fill="rgb(219, 234, 254)"` and `fill="url(#g)"` both paint a black shape. Paint
 written in `style`, which is how Inkscape and matplotlib write it, is dropped
 whole because `SAFE_STYLE` has no `fill` or `stroke`, so
-`style="fill:none;stroke:#1f77b4"` turns an outline into a solid black shape. Black is also what
-disappears in dark mode, where text with no fill, or `fill="black"`, sits on the
-dark page at about 1.2:1. For anything that has to read in both themes, write
-`fill="currentColor"` or `stroke="currentColor"`: it takes the prose text color,
-which follows the theme.
+`style="fill:none;stroke:#1f77b4"` turns an outline into a solid black shape.
+Black is also what disappears in dark mode, where text with no fill, or
+`fill="black"`, sits on the dark page at about 1.2:1. For anything that has to
+read in both themes, write `fill="currentColor"` or `stroke="currentColor"`: it
+takes the prose text color, which follows the theme.
 
 A refused element is normally *unwrapped*: the tag goes and its children stay.
 The containers whose children are never meant to be painted where they stand
