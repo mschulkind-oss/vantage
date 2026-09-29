@@ -157,6 +157,11 @@ type Server struct {
 	// from their own goroutines; GET /api/degraded reads it.
 	degradedMu sync.Mutex
 	degraded   map[string]map[string]model.Degradation
+	// timedOutWalks holds, by repository name, the walks whose latest run hit
+	// walk_timeout — each by its directory and its gitignored setting (see
+	// [git.WalkReport]). A repository's walk_timeout degradation lasts while
+	// any is here. Guarded by degradedMu.
+	timedOutWalks map[string]map[git.WalkReport]bool
 
 	// watchLimit, when positive, caps every watcher's watches (see
 	// [live.Watcher.SetWatchLimit]). Only tests set it, to reach the watch
@@ -192,6 +197,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		watchers:        map[string]*live.Watcher{},
 		activity:        map[string]model.RepoInfo{},
 		degraded:        map[string]map[string]model.Degradation{},
+		timedOutWalks:   map[string]map[git.WalkReport]bool{},
 	}
 
 	if err := s.buildRepoServices(); err != nil {
@@ -310,7 +316,7 @@ func (s *Server) newRepoServices(rc config.RepoConfig) *repoServices {
 		WalkMaxDepth:   s.cfg.WalkMaxDepth,
 		UseIgnoreFiles: s.cfg.UseIgnoreFiles,
 		StopAtRepos:    rc.Loose,
-		OnWalk:         func(timedOut bool) { s.walkFinished(rc.Name, timedOut) },
+		OnWalk:         func(r git.WalkReport) { s.walkFinished(rc.Name, r) },
 	})
 	fsSvc := fs.New(fs.Config{
 		RootPath:       rc.Path,
@@ -843,6 +849,7 @@ func (s *Server) unregister(name string) {
 	// returns reports afresh.
 	s.degradedMu.Lock()
 	delete(s.degraded, name)
+	delete(s.timedOutWalks, name)
 	s.degradedMu.Unlock()
 
 	// Copy-on-write, per the invariant on the field: readers are holding this
@@ -886,19 +893,35 @@ func (s *Server) reportDegraded(d model.Degradation) {
 	s.manager.Broadcast(degradedChangedMessage{Type: "degraded_changed", Repo: d.Repo})
 }
 
-// walkFinished records how repo's untracked-file walk ended: a timeout is
-// reported as a degradation, and a walk that finished clears one, pushing
-// degraded_changed so the banner goes away without a reload.
-func (s *Server) walkFinished(repo string, timedOut bool) {
-	if timedOut {
+// walkFinished records how one of repo's untracked-file walks ended. A
+// timeout is reported as a degradation. A walk that finished takes back its
+// own earlier timeout, and once no walk of repo's is left timed out, the
+// degradation goes, with a degraded_changed push so the banner goes without a
+// reload. Walks are told apart by directory and by gitignored setting (see
+// [git.WalkReport]), so another child repository's walk finishing, or that of
+// a reader who hides gitignored files, clears nothing.
+func (s *Server) walkFinished(repo string, r git.WalkReport) {
+	walk := r
+	walk.TimedOut = false
+	if r.TimedOut {
+		s.degradedMu.Lock()
+		if s.timedOutWalks[repo] == nil {
+			s.timedOutWalks[repo] = map[git.WalkReport]bool{}
+		}
+		s.timedOutWalks[repo][walk] = true
+		s.degradedMu.Unlock()
 		s.reportDegraded(model.Degradation{Repo: repo, Kind: model.DegradationWalkTimeout})
 		return
 	}
 	s.degradedMu.Lock()
-	_, had := s.degraded[repo][model.DegradationWalkTimeout]
-	delete(s.degraded[repo], model.DegradationWalkTimeout)
+	delete(s.timedOutWalks[repo], walk)
+	cleared := false
+	if len(s.timedOutWalks[repo]) == 0 {
+		_, cleared = s.degraded[repo][model.DegradationWalkTimeout]
+		delete(s.degraded[repo], model.DegradationWalkTimeout)
+	}
 	s.degradedMu.Unlock()
-	if had {
+	if cleared {
 		s.manager.Broadcast(degradedChangedMessage{Type: "degraded_changed", Repo: repo})
 	}
 }
@@ -1018,7 +1041,9 @@ func (s *Server) warmActivity(_ context.Context) {
 		name := rs.name
 		g.Go(func() error {
 			info := s.repoInfo(rs, repos)
-			if recents := rs.git.Recents(1, nil, true, true); len(recents) > 0 {
+			// Unreported: this walk's result is nobody's list of files, so its
+			// timeout is no reader's (see TestTheActivityWarmReportsNoWalkTimeout).
+			if recents := rs.git.RecentsUnreported(1, nil, true, true); len(recents) > 0 {
 				t := recents[0].Date.UTC()
 				info.LastActivity = &t
 			}

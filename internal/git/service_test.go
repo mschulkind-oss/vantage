@@ -597,11 +597,11 @@ func TestRecentsReportsAWalkCutOffByItsTimeout(t *testing.T) {
 	repo := initRepo(t)
 	writeFile(t, repo, "untracked.md", "# u\n")
 
-	var reports []bool
-	record := func(timedOut bool) { reports = append(reports, timedOut) }
+	var reports []WalkReport
+	record := func(r WalkReport) { reports = append(reports, r) }
 	svc := NewService(repo, Options{WalkTimeout: time.Nanosecond, OnWalk: record})
 	svc.Recents(10, nil, true, true)
-	require.Equal(t, []bool{true}, reports)
+	require.Equal(t, []WalkReport{{Gitignored: true, TimedOut: true}}, reports)
 
 	// A walk that finishes says so too, which is what clears the banner once
 	// the tree has shrunk or the timeout has been raised.
@@ -609,6 +609,52 @@ func TestRecentsReportsAWalkCutOffByItsTimeout(t *testing.T) {
 	reports = nil
 	svc = NewService(repo, Options{WalkTimeout: 10 * time.Second, OnWalk: record})
 	got := svc.Recents(10, nil, true, true)
-	require.Equal(t, []bool{false}, reports)
+	require.Equal(t, []WalkReport{{Gitignored: true}}, reports)
 	require.Len(t, got, 1)
+}
+
+// Each walk says which it was, so that one finishing can only take back its
+// own timeout: a reader who hides gitignored files runs a walk of their own
+// (--exclude-standard), and a parent of several repositories served as one
+// project runs one per child. Before, any walk that finished cleared a
+// timeout another had hit.
+func TestRecentsSaysWhichWalkEachReportIsFor(t *testing.T) {
+	ClearRecentFilesCache()
+	t.Cleanup(ClearRecentFilesCache)
+	var reports []WalkReport
+	record := func(r WalkReport) { reports = append(reports, r) }
+
+	repo := initRepo(t)
+	svc := NewService(repo, Options{OnWalk: record})
+	svc.Recents(10, nil, true, false)
+	require.Equal(t, []WalkReport{{Gitignored: false}}, reports)
+
+	parent := t.TempDir()
+	for _, name := range []string{"alpha", "beta"} {
+		runGit(t, parent, "-c", "init.defaultBranch=main", "init", "-q", name)
+	}
+	reports = nil
+	NewService(parent, Options{OnWalk: record}).Recents(10, nil, true, true)
+	require.ElementsMatch(t, []WalkReport{{Dir: "alpha", Gitignored: true}, {Dir: "beta", Gitignored: true}}, reports)
+}
+
+// Only a reader's walk is reported. The server's own last-activity warm walks
+// too, always with gitignored files, and nobody sees its result as a list: its
+// timeouts told a reader who hides gitignored files, whose own walk had
+// finished, that their recents were missing documents.
+func TestRecentsUnreportedTellsNoOne(t *testing.T) {
+	ClearRecentFilesCache()
+	t.Cleanup(ClearRecentFilesCache)
+	repo := initRepo(t)
+	writeFile(t, repo, "untracked.md", "# u\n")
+	var reports []WalkReport
+	svc := NewService(repo, Options{WalkTimeout: time.Nanosecond, OnWalk: func(r WalkReport) { reports = append(reports, r) }})
+	svc.RecentsUnreported(1, nil, true, true)
+	require.Empty(t, reports)
+
+	parent := t.TempDir()
+	runGit(t, parent, "-c", "init.defaultBranch=main", "init", "-q", "alpha")
+	NewService(parent, Options{WalkTimeout: time.Nanosecond, OnWalk: func(r WalkReport) { reports = append(reports, r) }}).
+		RecentsUnreported(1, nil, true, true)
+	require.Empty(t, reports, "nor a child's walk, delegated to")
 }
