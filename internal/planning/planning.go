@@ -34,6 +34,9 @@
 package planning
 
 import (
+	"encoding/json"
+	"sync"
+
 	gitignore "github.com/sabhiram/go-gitignore"
 
 	"github.com/mschulkind-oss/vantage/internal/repoconfig"
@@ -75,6 +78,36 @@ func NewMatcher(cfg repoconfig.Planning) *Matcher {
 		include: gitignore.CompileIgnoreLines(cfg.Include...),
 		exclude: gitignore.CompileIgnoreLines(cfg.Exclude...),
 	}
+}
+
+// matchers holds the Matcher of each config compiled lately, by its lines. The
+// single-path mode answers every pushed Markdown path, and compiling runs every
+// include and exclude line through a regular-expression compile, so a large
+// table would cost that on each save. Bounded, since a daemon serves several
+// repositories and each edit of a table is a new key.
+var matchers = struct {
+	sync.Mutex
+	byKey map[string]*Matcher
+}{byKey: map[string]*Matcher{}}
+
+const matchersKept = 16
+
+// matcherFor is [NewMatcher], compiled once per distinct cfg.
+func matcherFor(cfg repoconfig.Planning) *Matcher {
+	// JSON, so no choice of separator can make two tables one key.
+	raw, _ := json.Marshal([]any{cfg.Roadmap, cfg.Include, cfg.Exclude})
+	key := string(raw)
+	matchers.Lock()
+	defer matchers.Unlock()
+	if m, ok := matchers.byKey[key]; ok {
+		return m
+	}
+	if len(matchers.byKey) >= matchersKept {
+		clear(matchers.byKey)
+	}
+	m := NewMatcher(cfg)
+	matchers.byKey[key] = m
+	return m
 }
 
 // IsCandidate reports whether a listed path is a candidate: the roadmap, or
