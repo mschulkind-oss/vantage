@@ -1,0 +1,6 @@
+---
+status: draft
+---
+
+# Agent bootstrap
+

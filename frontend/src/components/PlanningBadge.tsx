@@ -3,10 +3,11 @@
  * (`docs/design/planning-index.md` §5).
  *
  * Two renderings of one markup. `PlanningBadgeChip` is the React element, for
- * surfaces React draws (the planning page, the file tree); `planningBadgeElement`
- * is the same markup as a detached DOM node, for the post-render pass that hangs
- * a badge after a rendered link, where React does not own the insertion point.
- * Both read `badgeMarkup`, so the two cannot drift apart.
+ * surfaces React draws (the planning page); `planningBadgeElement` is the same
+ * markup as a detached DOM node, for the post-render pass that hangs a badge
+ * after a rendered link, where React does not own the insertion point. Both read
+ * `badgeMarkup`, so the two cannot drift apart. The file tree has no room for
+ * this chip and draws a compact form of its own (`PlanningTreeBadge`, §7).
  *
  * What the markup promises, each for a reason in §5.3:
  *

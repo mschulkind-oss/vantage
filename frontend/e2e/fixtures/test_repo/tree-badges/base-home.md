@@ -1,0 +1,6 @@
+---
+status: accepted
+---
+
+# Base home
+

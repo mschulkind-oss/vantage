@@ -1,0 +1,6 @@
+---
+status: deprecated
+---
+
+# Deprecated flow
+
