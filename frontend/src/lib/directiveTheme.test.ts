@@ -267,6 +267,54 @@ describe("the mechanisms the treatment rests on", () => {
     );
   });
 
+  it("gives an image and a drawing a slice of their own, since neither has a `::before`", () => {
+    // `img` and `svg` are replaced elements, which generate no pseudo-elements,
+    // so a raw `<img>` or a bare `<svg>` in a toned section stopped the rule
+    // for its whole height: measured in Chrome, 84px beside a 92px image. They
+    // draw their slice as a border image pushed out of the box, on the shared
+    // offset and width, and bleed upward by the shared bleed like any other
+    // middle or end member. Like the pseudo, the accent has no fallback (D2).
+    const slice = blockOf("[data-vantage-tone]:is(img, svg)");
+    expect(slice).toMatch(
+      /border-image-source: linear-gradient\(\s*var\(--vantage-tone-accent\),\s*var\(--vantage-tone-accent\)\s*\);/,
+    );
+    expect(slice).toContain(
+      "border-image-width: 0 0 0 var(--vantage-tone-rule-width);",
+    );
+    expect(slice).toContain(
+      "border-image-outset: 0 0 0 var(--vantage-tone-rule-offset);",
+    );
+    expect(css).toMatch(
+      /\[data-vantage-tone\]:is\(img, svg\):is\(\s*\[data-vantage-run="middle"\],\s*\[data-vantage-run="end"\]\s*\) \{\s*border-image-outset: var\(--vantage-tone-run-bleed\) 0 0\s+var\(--vantage-tone-rule-offset\);/,
+    );
+    // Withheld wherever the box may not start at the column's edge, and where
+    // the document drew a border the border image would replace — a slice in
+    // the middle of the column, or an erased border, would be worse than the
+    // gap. The pixel spec holds the image row; this holds the list's presence.
+    const withheld = css.match(
+      /\[data-vantage-tone\]:is\(img, svg\):is\(([^{]*)\)\s*\+ img\[data-vantage-tone\] \{\s*border-image-source: none;/,
+    );
+    expect(withheld, "no rule withholds the slice").not.toBeNull();
+    for (const condition of [
+      '[align="left" i]',
+      '[align="right" i]',
+      "[hspace]",
+      '[style*="float" i]',
+      '[style*="margin" i]',
+      '[style*="border" i]',
+      '[border]:not([border="0"])',
+      "span:not(.katex-display)",
+    ]) {
+      expect(withheld![1]).toContain(condition);
+    }
+    // And print recolors it with the pseudo, at lower specificity than the
+    // rule that withholds it, which therefore still wins on paper.
+    const print = css.slice(css.lastIndexOf("@media print"));
+    expect(print).toMatch(
+      /\[data-vantage-tone\]:is\(img, svg\) \{\s*border-image-source: linear-gradient\(#57606a, #57606a\);/,
+    );
+  });
+
   it("holds the lone-block wash at one-class specificity", () => {
     // A tie with `.line-anchor-highlight`, `.review-highlight-block` and
     // `.review-block-hovered`, all of which are declared later in the host
