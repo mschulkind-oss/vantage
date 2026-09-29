@@ -3,6 +3,7 @@ title: "One repository config file, two readers — and the starred documents it
 author: "Matt Schulkind"
 date: 2026-09-20
 status: accepted
+stage: BUILT
 tags: [config, starred, vantage-check, server]
 summary: "The server becomes a second reader of the checker's `.vantage.toml`, and the first thing it reads there is a list of documents the repository promotes into Starred — alongside a list the user promotes for themselves."
 vantage:

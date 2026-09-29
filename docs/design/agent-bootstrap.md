@@ -1,6 +1,7 @@
 ---
 title: "Bootstrapping an agent: the one channel we get"
 status: in-review # draft | in-review | accepted | deprecated
+stage: DESIGN
 date: 2026-08-31
 tags: [agents, cli, onboarding, review, packaging]
 summary: "Vantage cannot initiate contact with an agent. The review payload is not a late channel — it is the first channel, and today it spends its one shot on a fix for the document already written. It should also install the conventions where the next document will see them."

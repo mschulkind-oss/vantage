@@ -3,6 +3,7 @@ title: "Brainstorm — a planning index: write each fact once, and let Vantage s
 author: "Matt Schulkind"
 date: 2026-09-25
 status: accepted
+stage: SUPERSEDED
 tags: [brainstorm, planning, roadmap, vantage-check, viewer]
 summary: "Every planning fact gets one home: a document's own frontmatter, its `oq` directives, or an ordered list of links. Vantage decorates links with the current state of what they point at, and builds index pages from them, so nobody hand-copies state and no agent has to re-gather it."
 ---
