@@ -128,6 +128,13 @@ the sidebar's sort orders.
   Requests for a path inside a boundary are refused the way a missing file is,
   images included. It never hands git work to a child repository, because each
   child is a project of its own.
+- **Boundaries can change while it runs.** A directory that becomes a
+  repository is dropped from the watcher, whether git writes its `.git` before
+  or after the directory's watch exists. A clone that loses its `.git` is
+  retired by the next rescan, and the loose project's watcher then watches it
+  as a plain folder. A repository deeper down that loses its `.git` is listed
+  at once but not watched until the next start, because nothing from inside it
+  reaches the watcher.
 - **A link into a clone opens the clone's project.** A relative link or image
   in a loose note that points into a clone, such as `[alpha](alpha/README.md)`
   in `~/code/README.md`, names a path the loose project refuses. So the loose
