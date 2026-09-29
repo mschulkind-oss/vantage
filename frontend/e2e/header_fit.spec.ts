@@ -837,13 +837,16 @@ test.describe("a header whose toolbar ends at the commit button", () => {
 // ones it has nothing for.
 //
 // The file is this test's own, written before it and removed after it. It used
-// to be the fixture's page2.md, whose time the header takes from the recent
-// files list — which holds the 30 newest, and page2.md is not among them in a
-// fresh checkout, where most of the fixture is written after it — so there was
-// no time for the test to find, on CI and in a new clone alike. A file written
-// now is the newest there is, but the server keeps that list cached for up to
-// 30 seconds after a file appears, so the list the header reads is routed to
-// carry it.
+// to be the fixture's page2.md. The header takes an untracked file's time from
+// the recent files list, which holds only the 30 newest files, and in a fresh
+// checkout, on CI and in a new clone alike, page2.md is not among them, so
+// there was no time for the test to find. Neither is this file: it is
+// backdated three hours so that its relative time reads the same for the whole
+// run, which makes it older than every file a fresh checkout wrote. So the list
+// the header reads is routed to carry it, and the route has to stay however the
+// server caches that list: it does cache it for up to 30 seconds, and a new
+// Markdown file does not clear that, but no cache of any length would bring a
+// file this old back into it.
 test.describe("an untracked file's header", () => {
   const UNTRACKED = "header-fit-untracked.md";
   const file = path.join(__dirname, "fixtures/test_repo", UNTRACKED);
