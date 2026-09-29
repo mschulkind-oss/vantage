@@ -1,21 +1,42 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { useGitStore } from "./useGitStore";
+import { GIT_PATHS_KEPT, resetGitAnswers, useGitStore } from "./useGitStore";
+import { useRepoStore } from "./useRepoStore";
 import axios from "axios";
 
 vi.mock("axios");
 const mockedAxios = vi.mocked(axios, true);
+
+/** A promise and the functions that settle it, for answers out of order. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+const commit = (message: string) => ({
+  hexsha: "abc123",
+  author_name: "Test Author",
+  author_email: "test@example.com",
+  date: "2024-01-01T00:00:00Z",
+  message,
+});
 
 describe("useGitStore", () => {
   beforeEach(() => {
     // Reset store state before each test
     useGitStore.setState({
       history: [],
-      latestCommit: null,
       isLoading: false,
       diff: null,
       isDiffLoading: false,
       showDiff: false,
     });
+    resetGitAnswers();
+    useRepoStore.setState({ isMultiRepo: false, currentRepo: null });
     vi.clearAllMocks();
   });
 
@@ -49,39 +70,165 @@ describe("useGitStore", () => {
       expect(useGitStore.getState().history).toEqual([]);
       expect(useGitStore.getState().isLoading).toBe(false);
     });
+
+    it("keeps each path's history under its path, a failure as none", async () => {
+      const mockHistory = [commit("Test commit")];
+      mockedAxios.get.mockResolvedValueOnce({ data: mockHistory });
+      await useGitStore.getState().fetchHistory("a.md");
+      mockedAxios.get.mockRejectedValueOnce(new Error("Network error"));
+      await useGitStore.getState().fetchHistory("b.md");
+
+      expect(useGitStore.getState().historyByPath).toEqual({
+        "a.md": mockHistory,
+        "b.md": [],
+      });
+    });
   });
 
+  // The viewer asks for a document's status together with its content, while
+  // the previous document is still on screen, and its header must neither show
+  // the next document's commit nor lose its own
+  // (docs/design/planning-index-at-scale.md §11.2).
   describe("fetchStatus", () => {
-    it("fetches and stores latest commit and git status", async () => {
-      const mockCommit = {
-        hexsha: "abc123",
-        author_name: "Test Author",
-        author_email: "test@example.com",
-        date: "2024-01-01T00:00:00Z",
-        message: "Test commit",
-      };
-      const mockResponse = {
-        last_commit: mockCommit,
-        git_status: "modified",
-      };
-      mockedAxios.get.mockResolvedValueOnce({ data: mockResponse });
+    it("keeps the answer under its path", async () => {
+      const mockCommit = commit("Test commit");
+      mockedAxios.get.mockResolvedValueOnce({
+        data: { last_commit: mockCommit, git_status: "modified" },
+      });
 
       await useGitStore.getState().fetchStatus("test.md");
 
       expect(mockedAxios.get).toHaveBeenCalledWith(
         "/api/git/status?path=test.md",
       );
-      expect(useGitStore.getState().latestCommit).toEqual(mockCommit);
-      expect(useGitStore.getState().fileGitStatus).toBe("modified");
+      expect(useGitStore.getState().statusByPath).toEqual({
+        "test.md": { lastCommit: mockCommit, gitStatus: "modified" },
+      });
     });
 
-    it("handles fetch error by setting latestCommit to null", async () => {
+    it("knows nothing of a path until the server answers for it", async () => {
+      const answer = deferred<{ data: unknown }>();
+      mockedAxios.get.mockReturnValueOnce(answer.promise);
+
+      const pending = useGitStore.getState().fetchStatus("untracked.md");
+      expect(useGitStore.getState().statusByPath["untracked.md"]).toBe(
+        undefined,
+      );
+
+      answer.resolve({ data: { last_commit: null, git_status: "untracked" } });
+      await pending;
+      expect(useGitStore.getState().statusByPath["untracked.md"]).toEqual({
+        lastCommit: null,
+        gitStatus: "untracked",
+      });
+    });
+
+    it("answers a failed request with no commit", async () => {
       mockedAxios.get.mockRejectedValueOnce(new Error("Not found"));
 
       await useGitStore.getState().fetchStatus("test.md");
 
-      expect(useGitStore.getState().latestCommit).toBeNull();
-      expect(useGitStore.getState().fileGitStatus).toBeNull();
+      expect(useGitStore.getState().statusByPath["test.md"]).toEqual({
+        lastCommit: null,
+        gitStatus: null,
+      });
+    });
+
+    it("leaves the previous path's answer while the next one's is asked", async () => {
+      mockedAxios.get.mockResolvedValueOnce({
+        data: { last_commit: commit("On a"), git_status: null },
+      });
+      await useGitStore.getState().fetchStatus("a.md");
+
+      const answer = deferred<{ data: unknown }>();
+      mockedAxios.get.mockReturnValueOnce(answer.promise);
+      const pending = useGitStore.getState().fetchStatus("b.md");
+      expect(
+        useGitStore.getState().statusByPath["a.md"]?.lastCommit?.message,
+      ).toBe("On a");
+
+      answer.resolve({
+        data: { last_commit: commit("On b"), git_status: null },
+      });
+      await pending;
+      const { statusByPath } = useGitStore.getState();
+      expect(statusByPath["a.md"]?.lastCommit?.message).toBe("On a");
+      expect(statusByPath["b.md"]?.lastCommit?.message).toBe("On b");
+    });
+
+    it("drops an older answer for a path that lands after a newer one", async () => {
+      const older = deferred<{ data: unknown }>();
+      const newer = deferred<{ data: unknown }>();
+      mockedAxios.get
+        .mockReturnValueOnce(older.promise)
+        .mockReturnValueOnce(newer.promise);
+
+      const first = useGitStore.getState().fetchStatus("a.md");
+      const second = useGitStore.getState().fetchStatus("a.md");
+      newer.resolve({
+        data: { last_commit: commit("Newer"), git_status: null },
+      });
+      await second;
+      older.resolve({
+        data: { last_commit: commit("Older"), git_status: null },
+      });
+      await first;
+
+      expect(
+        useGitStore.getState().statusByPath["a.md"]?.lastCommit?.message,
+      ).toBe("Newer");
+    });
+
+    it("forgets one repository's answers at the first request for another", async () => {
+      useRepoStore.setState({ isMultiRepo: true, currentRepo: "alpha" });
+      mockedAxios.get.mockResolvedValueOnce({
+        data: { last_commit: commit("In alpha"), git_status: null },
+      });
+      await useGitStore.getState().fetchStatus("README.md");
+
+      // Alpha's late answer for another path lands after the switch.
+      const late = deferred<{ data: unknown }>();
+      mockedAxios.get.mockReturnValueOnce(late.promise);
+      const lateAnswer = useGitStore.getState().fetchStatus("notes.md");
+
+      useRepoStore.setState({ currentRepo: "beta" });
+      const beta = deferred<{ data: unknown }>();
+      mockedAxios.get.mockReturnValueOnce(beta.promise);
+      const betaAnswer = useGitStore.getState().fetchStatus("README.md");
+      expect(mockedAxios.get).toHaveBeenLastCalledWith(
+        "/api/r/beta/git/status?path=README.md",
+      );
+      // Beta's README is another file: until beta answers, it is not known.
+      expect(useGitStore.getState().statusByPath).toEqual({});
+
+      late.resolve({
+        data: { last_commit: commit("In alpha"), git_status: null },
+      });
+      await lateAnswer;
+      beta.resolve({ data: { last_commit: null, git_status: "untracked" } });
+      await betaAnswer;
+      expect(useGitStore.getState().statusByPath).toEqual({
+        "README.md": { lastCommit: null, gitStatus: "untracked" },
+      });
+    });
+
+    it(`keeps the ${GIT_PATHS_KEPT} paths answered last`, async () => {
+      mockedAxios.get.mockResolvedValue({
+        data: { last_commit: null, git_status: null },
+      });
+      for (let i = 0; i <= GIT_PATHS_KEPT; i++) {
+        await useGitStore.getState().fetchStatus(`doc-${i}.md`);
+      }
+      // doc-0 was answered first, so it went. doc-1, answered again, is the
+      // newest now, so the next path to arrive pushes out doc-2 instead.
+      await useGitStore.getState().fetchStatus("doc-1.md");
+      await useGitStore.getState().fetchStatus("one-more.md");
+
+      const paths = Object.keys(useGitStore.getState().statusByPath);
+      expect(paths).toHaveLength(GIT_PATHS_KEPT);
+      expect(paths).not.toContain("doc-0.md");
+      expect(paths).not.toContain("doc-2.md");
+      expect(paths.slice(-2)).toEqual(["doc-1.md", "one-more.md"]);
     });
   });
 
