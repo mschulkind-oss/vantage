@@ -495,8 +495,12 @@ const MermaidDiagramInner: React.FC<MermaidDiagramProps> = ({ code }) => {
           setRendered({ key, svg: renderedSvg });
         }
       } catch (err) {
+        // Both reports are for a reader of this render, and one that fails
+        // after the diagram unmounted, or after its fence or theme changed,
+        // has none: a later render reports for itself.
+        if (!mounted) return;
         console.error("Mermaid render error:", err);
-        if (mounted) setFailure({ key, message: extractErrorMessage(err) });
+        setFailure({ key, message: extractErrorMessage(err) });
       }
     };
 
