@@ -21,10 +21,12 @@ refused.
   the chart's words and axes, the star map — is drawn in `currentColor`, the
   prose text color, and must follow the toggle. Read the page twice.
 - **The beam is translucent.** It is a wide polygon filled at 13% opacity with
-  a narrow one at 18% inside it, and nothing else. The stars behind it must
-  still show through, fainter against the light, and the core, where both
-  polygons paint, must be brighter than the edges. It is not drawn with dashes,
-  because `stroke-dasharray` is refused and a dashed line renders solid.
+  a narrow one at 18% inside it, and a short third one at 13% on the lamp's
+  right, where the beam leaves the far side of the lamp. The stars behind it
+  must still show through, fainter against the light, and the core, where the
+  two long polygons both paint, must be brighter than the edges. It is not drawn
+  with dashes, because `stroke-dasharray` is refused and a dashed line renders
+  solid.
 - **The icon stays on its line.** The lighthouse in the
   [sentence below](#an-icon-in-a-sentence) is a drawing inside a paragraph. It
   must sit on the text line at the height of a letter, not break the paragraph
