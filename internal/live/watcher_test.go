@@ -345,6 +345,48 @@ func TestHandleEventDropsADirectoryThatBecomesARepository(t *testing.T) {
 	require.ElementsMatch(t, []string{"clone", "clone/docs"}, removed)
 }
 
+// A project too big to watch says so where the reader is, not only in the log.
+// The limit is configured down rather than reached: a budget of three watches
+// over a five-directory tree fails the last two exactly as ENOSPC would.
+func TestWatchLimitIsReportedAsADegradation(t *testing.T) {
+	root := t.TempDir()
+	for _, dir := range []string{"a", "b", "c", "d"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(root, dir), 0o755))
+	}
+	w, err := NewWatcher(root, "big", nil, nil, false, quietLogger(), []string{})
+	require.NoError(t, err)
+	var reports []model.Degradation
+	w.SetDegradedHandler(func(d model.Degradation) { reports = append(reports, d) })
+	w.SetWatchLimit(3)
+	w.addWatch = func(string) error { return nil }
+
+	require.Equal(t, 3, w.addRecursive(root))
+	require.Equal(t, []model.Degradation{
+		{Repo: "big", Kind: model.DegradationWatchLimit, Path: "c", Count: 1},
+		{Repo: "big", Kind: model.DegradationWatchLimit, Path: "c", Count: 2},
+	}, reports, "the first folder that failed, and how many have so far")
+}
+
+func TestWatchLimitErrorsFromTheKernelAreReported(t *testing.T) {
+	root := t.TempDir()
+	w, err := NewWatcher(root, "", nil, nil, false, quietLogger(), []string{})
+	require.NoError(t, err)
+	var reports []model.Degradation
+	w.SetDegradedHandler(func(d model.Degradation) { reports = append(reports, d) })
+	w.addWatch = func(string) error { return errors.New("no space left on device") }
+	w.addRecursive(root)
+	require.Equal(t, []model.Degradation{{Kind: model.DegradationWatchLimit, Path: ".", Count: 1}}, reports)
+
+	// Other failures — a permission error — are not a size problem.
+	reports = nil
+	w2, err := NewWatcher(root, "", nil, nil, false, quietLogger(), []string{})
+	require.NoError(t, err)
+	w2.SetDegradedHandler(func(d model.Degradation) { reports = append(reports, d) })
+	w2.addWatch = func(string) error { return errors.New("permission denied") }
+	w2.addRecursive(root)
+	require.Empty(t, reports)
+}
+
 // --- coalescer / debounce ---
 
 func TestDebounceReady(t *testing.T) {

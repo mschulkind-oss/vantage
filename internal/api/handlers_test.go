@@ -153,6 +153,8 @@ func TestRoutesTableShapes(t *testing.T) {
 	// global: the stylesheet URL must not depend on which repository is open.
 	require.Equal(t, ScopeGlobal, scopeOf("/themes", http.MethodGet))
 	require.Equal(t, ScopeGlobal, scopeOf("/themes/{id}", http.MethodGet))
+	// Degradations are listed across every project; the banner filters them.
+	require.Equal(t, ScopeGlobal, scopeOf("/degraded", http.MethodGet))
 	require.Equal(t, ScopeRepo, scopeOf("/git/history", http.MethodGet))
 	require.Equal(t, ScopeRepo, scopeOf("/tree", http.MethodGet))
 	require.Equal(t, ScopeRepo, scopeOf("/review", http.MethodGet))

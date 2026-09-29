@@ -122,6 +122,38 @@ type RepoInfo struct {
 	Pinned bool `json:"pinned,omitempty"`
 }
 
+// Degradation is one way a project is being served worse than normal because
+// it is too big for a limit — the term docs/design/serve-clones-directory.md §7
+// coins. GET /api/degraded lists every current one, and the viewer shows them
+// in a banner instead of leaving the reader to find a log line.
+type Degradation struct {
+	// Repo is the project's name ("" in single-repo mode). Strict: the
+	// frontend matches it against the project it has open.
+	Repo string `json:"repo"`
+	// Kind names the limit: [DegradationWatchLimit] or
+	// [DegradationWalkTimeout].
+	Kind string `json:"kind"`
+	// Path is the repo-relative folder where the degradation starts, when
+	// there is one ("." for the project root).
+	Path string `json:"path,omitempty"`
+	// Count is how many folders are affected, for kinds that count.
+	Count int `json:"count,omitempty"`
+	// Message is the sentence the banner shows: what is degraded and which
+	// setting to change.
+	Message string `json:"message"`
+}
+
+// The kinds of [Degradation].
+const (
+	// DegradationWatchLimit: the file watcher could not register a watch
+	// because the system's watch limit was reached, so live reload misses
+	// changes below Path.
+	DegradationWatchLimit = "watch_limit"
+	// DegradationWalkTimeout: the untracked-file walk behind recent files
+	// hit walk_timeout, so recents lack untracked documents.
+	DegradationWalkTimeout = "walk_timeout"
+)
+
 // RepoFile is one entry of GET /files/all: a repo name paired with a
 // repo-relative file path. Both fields are strict.
 type RepoFile struct {

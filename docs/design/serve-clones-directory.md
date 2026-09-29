@@ -226,8 +226,9 @@ Degradations are kept per project in memory and served at `GET
 /api/degraded`. The first degradation of each kind in each project also
 pushes `degraded_changed` over the WebSocket, and the viewer fetches the list
 again when it arrives. The banner is fixed to the bottom of the viewport, so a
-report that arrives late never moves content already on screen, and the reader
-can dismiss it for the rest of the session. Tests trigger these conditions by
+report that arrives late never moves content already on screen. The reader can
+dismiss it until the page is reloaded; a limit still hit after a reload is worth
+saying again. Tests trigger these conditions by
 setting the limits low, a watch budget of a few directories or a walk timeout
 of a nanosecond, and never by building a large tree.
 

@@ -8,6 +8,7 @@ import { useStarredStore } from "../stores/useStarredStore";
 import { useFilePickerStore } from "../stores/useFilePickerStore";
 import { useAllRecentsStore } from "../stores/useAllRecentsStore";
 import { usePlanningStore } from "../stores/usePlanningStore";
+import { useDegradedStore } from "../stores/useDegradedStore";
 
 vi.mock("../stores/useRepoStore");
 vi.mock("../stores/useGitStore");
@@ -619,6 +620,37 @@ describe("useWebSocket", () => {
 
       // Socket appeared healthy and hidden time < 30s — no extra reconnect
       expect(global.WebSocket).toHaveBeenCalledTimes(initialCalls);
+    });
+  });
+
+  describe("degraded_changed", () => {
+    // A project hitting a limit is announced once; the banner's list is the
+    // server's answer to a refetch.
+    it("refetches the degradation list, whatever the repo store holds", () => {
+      const realLoad = useDegradedStore.getState().load;
+      const mockLoad = vi.fn();
+      useDegradedStore.setState({ load: mockLoad });
+      try {
+        (useRepoStore as unknown as { getState: () => unknown }).getState =
+          () => ({ ...makeRepoStoreState({ reposLoaded: false }) });
+        renderHook(() => useWebSocket());
+        mockLoad.mockClear();
+
+        act(() => {
+          mockWebSocket.onmessage!({
+            data: JSON.stringify({ type: "degraded_changed", repo: "big" }),
+          } as MessageEvent);
+        });
+        expect(mockLoad).toHaveBeenCalledTimes(1);
+
+        mockLoad.mockClear();
+        act(() => {
+          mockWebSocket.onopen!(new Event("open"));
+        });
+        expect(mockLoad).toHaveBeenCalled();
+      } finally {
+        useDegradedStore.setState({ load: realLoad });
+      }
     });
   });
 

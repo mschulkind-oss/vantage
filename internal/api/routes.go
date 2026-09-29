@@ -57,6 +57,10 @@ func (h *Handlers) Routes() []Route {
 		{http.MethodGet, "/themes", h.ThemesList, ScopeGlobal},
 		{http.MethodGet, "/themes/{id}", h.ThemeCSS, ScopeGlobal},
 
+		// Degradations span every project, and the banner that shows them
+		// filters by the one open, so one global list serves both modes.
+		{http.MethodGet, "/degraded", h.Degraded, ScopeGlobal},
+
 		// --- Repo-scoped: info/version ---
 		{http.MethodGet, "/version", h.Version, ScopeRepo},
 		{http.MethodGet, "/info", h.Info, ScopeRepo},
