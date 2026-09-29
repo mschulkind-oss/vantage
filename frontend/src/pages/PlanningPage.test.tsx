@@ -781,7 +781,7 @@ describe("the cards' blocks, from the scanner client (planning-index-at-scale.md
       ]),
     );
 
-  it("asks for every listed card in full, by the index's content hash", async () => {
+  it("asks for every shown card's block, by the index's content hash", async () => {
     const tree = edited("asked");
     const asked: { want: CardWant[]; full: boolean | undefined }[] = [];
     serveTree(tree, "/api", (inline) => ({
@@ -793,7 +793,8 @@ describe("the cards' blocks, from the scanner client (planning-index-at-scale.md
     setLoad(readyOf(tree));
     await renderPage();
     expect(asked).toHaveLength(1);
-    expect(asked[0]?.full).toBe(true);
+    // Within the size a card renders unasked, so not in full.
+    expect(asked[0]?.full).toBeFalsy();
     expect(new Set(asked[0]?.want.map((w) => w.path))).toEqual(
       new Set([
         "plans/design.md",
@@ -877,6 +878,91 @@ describe("the reviews, in one request (planning-index-at-scale.md §6.3)", () =>
       ]),
     );
     expect(vi.mocked(axios.get)).not.toHaveBeenCalled();
+  });
+});
+
+describe("a preview card (planning-index-at-scale.md §10.4)", () => {
+  // OQ-U1's card, 150-odd characters, is past a limit configured down to
+  // 100; every other card of the tree is within it.
+  const tree = {
+    ...TREE,
+    "plans/unrouted.md": doc(
+      "stage: DESIGN",
+      q("OQ-U1", OPEN).replace(
+        "_Leaning:_ Yes.",
+        "_Leaning:_ Yes, with a long enough reason to pass the limit.",
+      ),
+    ),
+  };
+
+  beforeEach(() => {
+    setPlanningLimitsForTests({ cardChars: 100 });
+    seed(tree);
+  });
+
+  it("draws a question past the size limit from the index alone, and asks for no block", async () => {
+    const asked: CardWant[][] = [];
+    serveTree(tree, "/api", (inline) => ({
+      cards: (repo, want, options) => {
+        asked.push(want);
+        return inline.cards(repo, want, options);
+      },
+    }));
+    await renderPage();
+    const card = cardFor("OQ-U1");
+    expect(card.querySelector("[data-planning-preview]")).not.toBeNull();
+    expect(card).toHaveTextContent("OQ-U1: Question OQ-U1?");
+    expect(card).toHaveTextContent("Open · Leaning: Yes.");
+    expect(card.querySelector("[data-planning-card-unit]")).toBeNull();
+    expect(
+      within(card).getByRole("button", { name: "Show question" }),
+    ).toBeTruthy();
+    expect(
+      within(card).getByRole("link", { name: "Open document" }),
+    ).toBeTruthy();
+    // Both need the rendered host for their anchor.
+    expect(
+      within(card).queryByRole("button", { name: "Take this leaning" }),
+    ).toBeNull();
+    expect(within(card).queryByRole("button", { name: "Answer…" })).toBeNull();
+    expect(asked.flat().some((want) => want.path === "plans/unrouted.md")).toBe(
+      false,
+    );
+  });
+
+  it("renders the whole card in place on Show question, asked for in full", async () => {
+    const asked: { want: CardWant[]; full: boolean | undefined }[] = [];
+    serveTree(tree, "/api", (inline) => ({
+      cards: (repo, want, options) => {
+        asked.push({ want, full: options?.full });
+        return inline.cards(repo, want, options);
+      },
+    }));
+    await renderPage();
+    await act(async () => {
+      fireEvent.click(
+        within(cardFor("OQ-U1")).getByRole("button", { name: "Show question" }),
+      );
+    });
+    await settle();
+    const card = cardFor("OQ-U1");
+    expect(card.querySelector("[data-planning-preview]")).toBeNull();
+    expect(
+      card.querySelector("[data-planning-card-unit]")?.textContent,
+    ).toContain("a long enough reason to pass the limit");
+    expect(
+      within(card).getByRole("button", { name: "Take this leaning" }),
+    ).toBeTruthy();
+    expect(asked.at(-1)).toEqual({
+      want: [
+        {
+          path: "plans/unrouted.md",
+          hash: contentHash(tree["plans/unrouted.md"]),
+          startLine: expect.any(Number),
+        },
+      ],
+      full: true,
+    });
   });
 });
 
