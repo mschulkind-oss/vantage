@@ -1,0 +1,257 @@
+/**
+ * The planning page's sections and the roadmap's routing (design §6), and the
+ * Referenced by list (§7).
+ *
+ * The page, `vantage-check index` and the checker's planning rules all derive
+ * from these functions, so the page and the gate cannot disagree (P7). Nothing
+ * here is stored: every section is recomputed from the index, and nothing a
+ * reader does on the page changes the order.
+ */
+
+import { VANTAGE_OQ_ID } from "../vantageDirectives.js";
+import type { StageRole } from "./config.js";
+import { findDocument, type PlanningIndex } from "./model.js";
+import type { DependsOn, PlanningDocument, PlanningQuestion } from "./scan.js";
+
+/** A question, by document and line; `id` too, so a stale reference misses. */
+export interface QuestionRef {
+  path: string;
+  id: string | null;
+  line: number;
+}
+
+/** A question the roadmap routes, with the roadmap heading its link sits under. */
+export interface RoutedQuestion extends QuestionRef {
+  heading: string | null;
+}
+
+export type WaitingEntry =
+  | { kind: "question"; question: QuestionRef }
+  | { kind: "document"; path: string; waitingOn: DependsOn[] };
+
+export interface PlanningSections {
+  /** `present` is false when the roadmap is missing, skipped or unreadable. */
+  roadmap: { path: string; present: boolean };
+  stagesDeclared: boolean;
+  /** No open question in any document outside the `done` role. */
+  nothingNeedsYou: boolean;
+  /** Without a roadmap: every open question, by path, then line. */
+  needsYou: RoutedQuestion[];
+  /** `null` when there is no roadmap. */
+  unrouted: QuestionRef[] | null;
+  waiting: WaitingEntry[];
+  /** The three stage sections are `null` when no stages are declared. */
+  ready: string[] | null;
+  graduate: string[] | null;
+  disagrees: string[] | null;
+  skipped: PlanningIndex["skipped"];
+  unreadable: PlanningIndex["unreadable"];
+}
+
+/** One wording for the page and the CLI (P7). */
+export const PLANNING_NOTICES: {
+  nothingNeedsYou: string;
+  noRoadmap(path: string): string;
+  noStages: string;
+  refused(candidateCount: number, maxCandidates: number): string;
+} = {
+  nothingNeedsYou: "Nothing needs you.",
+  noRoadmap: (path) =>
+    `No roadmap: ${path} is missing, too large or unreadable, so Needs you lists every open question by document. Set roadmap under [planning] in .vantage.toml to read another file.`,
+  noStages:
+    "No stages are declared, so Ready, Graduate and Disagrees are not shown. Declare them under [planning.stages] in .vantage.toml.",
+  refused: (candidateCount, maxCandidates) =>
+    `This repository has ${candidateCount.toLocaleString("en-US")} candidate files, more than max-candidates (${maxCandidates.toLocaleString("en-US")}), so nothing was scanned. Narrow include under [planning] in .vantage.toml, or raise max-candidates.`,
+};
+
+/** A document's stage role, or `null` without a stage or declared stages. */
+function roleOf(index: PlanningIndex, doc: PlanningDocument): StageRole | null {
+  const stages = index.config.stages;
+  if (stages === null || doc.stage === null) return null;
+  return Object.hasOwn(stages, doc.stage) ? (stages[doc.stage] ?? null) : null;
+}
+
+/** A `done` document is not a live proposal and contributes to no section. */
+const isLive = (index: PlanningIndex, doc: PlanningDocument): boolean =>
+  roleOf(index, doc) !== "done";
+
+const refOf = (q: PlanningQuestion): QuestionRef => ({
+  path: q.path,
+  id: q.id,
+  line: q.line,
+});
+
+const keyOf = (ref: QuestionRef): string => `${ref.path}\n${ref.line}`;
+
+const isOpen = (q: PlanningQuestion): boolean => q.state === "open";
+
+/**
+ * The questions the roadmap routes, in the order its links reach them (§6.1).
+ *
+ * A bare link to a document routes every question in it, at that position; a
+ * link to `#OQ-…` routes that one question; a link to a heading routes
+ * nothing, since a compacted question is cited through its document's
+ * `#decision-ledger` heading and routing that would route the document's
+ * unrelated open questions (Plan Q12). A question reached twice keeps its first
+ * position. Links to non-planning documents, and to `done` documents, route
+ * nothing.
+ */
+export function routeQuestions(index: PlanningIndex): RoutedQuestion[] {
+  const roadmap = findDocument(index, index.config.roadmap);
+  if (roadmap === undefined) return [];
+  const routed: RoutedQuestion[] = [];
+  const seen = new Set<string>();
+  for (const link of roadmap.links) {
+    const doc = findDocument(index, link.target);
+    if (doc === undefined || !isLive(index, doc)) continue;
+    let reached: PlanningQuestion[];
+    if (link.fragment === null) {
+      reached = doc.questions;
+    } else if (VANTAGE_OQ_ID.test(link.fragment)) {
+      reached = doc.questions.filter((q) => q.id === link.fragment);
+    } else {
+      continue;
+    }
+    for (const question of reached) {
+      const ref = refOf(question);
+      if (seen.has(keyOf(ref))) continue;
+      seen.add(keyOf(ref));
+      routed.push({ ...ref, heading: link.heading });
+    }
+  }
+  return routed;
+}
+
+/**
+ * Whether one `depends-on` entry still waits (§6.2): an entry naming a question
+ * waits while that question is open, and one naming a document waits while
+ * that document has an open question (Plan Q6). A target outside the
+ * repository, outside the index, or with the `done` role never waits
+ * (Plan Q11).
+ */
+function waits(index: PlanningIndex, entry: DependsOn): boolean {
+  if (entry.target === null) return false;
+  const doc = findDocument(index, entry.target);
+  if (doc === undefined || !isLive(index, doc)) return false;
+  if (entry.fragment !== null && VANTAGE_OQ_ID.test(entry.fragment)) {
+    return doc.questions.some((q) => q.id === entry.fragment && isOpen(q));
+  }
+  return doc.questions.some(isOpen);
+}
+
+/** Every section of the planning page, top to bottom (§6.2). */
+export function derivePlanningSections(index: PlanningIndex): PlanningSections {
+  const { config } = index;
+  const present = findDocument(index, config.roadmap) !== undefined;
+  const live = index.documents.filter((doc) => isLive(index, doc));
+  const stagesDeclared = config.stages !== null;
+
+  const byKey = new Map<string, PlanningQuestion>();
+  for (const doc of live) {
+    for (const q of doc.questions) byKey.set(keyOf(refOf(q)), q);
+  }
+
+  let needsYou: RoutedQuestion[];
+  let unrouted: QuestionRef[] | null;
+  if (present) {
+    const routed = routeQuestions(index);
+    needsYou = routed.filter((ref) => {
+      const state = byKey.get(keyOf(ref))?.state;
+      return state === "open" || state === "answered";
+    });
+    const routedKeys = new Set(routed.map(keyOf));
+    unrouted = live.flatMap((doc) =>
+      doc.questions
+        .filter((q) => isOpen(q) && !routedKeys.has(keyOf(refOf(q))))
+        .map(refOf),
+    );
+  } else {
+    needsYou = live.flatMap((doc) =>
+      doc.questions.filter(isOpen).map((q) => ({ ...refOf(q), heading: null })),
+    );
+    unrouted = null;
+  }
+
+  const waiting: WaitingEntry[] = [];
+  for (const doc of live) {
+    const waitingOn = doc.dependsOn.filter((entry) => waits(index, entry));
+    if (waitingOn.length > 0) {
+      waiting.push({ kind: "document", path: doc.path, waitingOn });
+    }
+    for (const q of doc.questions) {
+      if (q.state === "blocked") {
+        waiting.push({ kind: "question", question: refOf(q) });
+      }
+    }
+  }
+
+  const stageSection = (
+    keep: (role: StageRole | null, doc: PlanningDocument) => boolean,
+  ): string[] | null =>
+    stagesDeclared
+      ? live.filter((doc) => keep(roleOf(index, doc), doc)).map((d) => d.path)
+      : null;
+  const hasOpen = (doc: PlanningDocument) => doc.questions.some(isOpen);
+
+  return {
+    roadmap: { path: config.roadmap, present },
+    stagesDeclared,
+    nothingNeedsYou: !live.some(hasOpen),
+    needsYou,
+    unrouted,
+    waiting,
+    ready: stageSection((role, doc) => role === "ready" && !hasOpen(doc)),
+    // Every question the index holds is live, so "no live questions" is none.
+    graduate: stageSection(
+      (role, doc) => role === "built" && doc.questions.length === 0,
+    ),
+    disagrees: stageSection(
+      (role, doc) => (role === "ready" || role === "built") && hasOpen(doc),
+    ),
+    skipped: index.skipped,
+    unreadable: index.unreadable,
+  };
+}
+
+/** The question a reference names, or `undefined` if the index moved on. */
+export function questionFor(
+  index: PlanningIndex,
+  ref: QuestionRef,
+): PlanningQuestion | undefined {
+  return findDocument(index, ref.path)?.questions.find(
+    (q) => q.line === ref.line && q.id === ref.id,
+  );
+}
+
+/** One entry of a document's Referenced by list (§7). */
+export interface Reference {
+  from: string;
+  /** The heading the link sits under in `from`; `null` before any heading. */
+  heading: string | null;
+  line: number;
+}
+
+/**
+ * The planning documents that link to `path` or to one of its questions: one
+ * entry per linking document and heading, the first link under that heading
+ * standing for the rest, in order of document then line. A document's links to
+ * itself are not listed, and neither is a document outside the index, which by
+ * definition is not a planning document.
+ */
+export function referencedBy(index: PlanningIndex, path: string): Reference[] {
+  const references: Reference[] = [];
+  for (const doc of index.documents) {
+    if (doc.path === path) continue;
+    const headings = new Set<string | null>();
+    for (const link of doc.links) {
+      if (link.target !== path || headings.has(link.heading)) continue;
+      headings.add(link.heading);
+      references.push({
+        from: doc.path,
+        heading: link.heading,
+        line: link.line,
+      });
+    }
+  }
+  return references;
+}
