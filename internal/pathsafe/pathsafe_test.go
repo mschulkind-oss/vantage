@@ -36,6 +36,12 @@ func TestResolveLexicalRejections(t *testing.T) {
 		{"nested dot-git", "docs/.git/config", "Access to .git directory is not allowed"},
 		{"backslash dot-git", `docs\.git\config`, "Access to .git directory is not allowed"},
 		{"dot-vantage", ".vantage/state.json", "Access to .vantage directory is not allowed"},
+		// The .vantage test used to look at the path before it was cleaned, and
+		// only for a leading ".vantage/", so a detour through any directory
+		// reached it.
+		{"dot-vantage after a detour", "docs/../.vantage/state.json", "Access to .vantage directory is not allowed"},
+		{"dot-vantage through backslashes", `x\..\.vantage\state.json`, "Access to .vantage directory is not allowed"},
+		{"dot-vantage itself after a detour", "docs/../.vantage", "Access to .vantage directory is not allowed"},
 		{"traversal", "../secret.md", "Path traversal detected"},
 		{"traversal mid-path", "docs/../../secret.md", "Path traversal detected"},
 	}
