@@ -272,6 +272,26 @@ describe("which links get a badge (§5.1)", () => {
     expect(linkNamed("Other repo")).not.toHaveAttribute(LINK_TARGET_ATTR);
     expect(document.querySelector(`[${PLANNING_BADGE_ATTR}]`)).toBeNull();
   });
+
+  // Inline SVG admits `<a href>`, and the viewer's `a` stamps it like any
+  // other link. A badge is an HTML `<span>`, which draws nothing inside an
+  // `<svg>` and is not part of the drawing, so a link there gets none.
+  it("gives none to a link inside an inline SVG", () => {
+    const { container } = renderViewer(
+      [
+        '<svg viewBox="0 0 100 20"><a href="docs/design/a.md"><text x="0" y="10">A in a drawing</text></a></svg>',
+        "",
+        "And [A](docs/design/a.md) in prose.",
+        "",
+      ].join("\n"),
+    );
+    const svg = container.querySelector("svg")!;
+    const drawn = svg.querySelector("a")!;
+    expect(drawn).toHaveAttribute(LINK_TARGET_ATTR, "docs/design/a.md");
+    expect(svg.querySelector(`[${PLANNING_BADGE_ATTR}]`)).toBeNull();
+    expect(drawn.nextSibling).toBeNull();
+    expect(badgeAfter(linkNamed("A"))).not.toBeNull();
+  });
 });
 
 describe("in daemon mode", () => {
