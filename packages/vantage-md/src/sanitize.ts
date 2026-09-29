@@ -212,8 +212,19 @@ const COLLAPSE_GROUP_ID = /^[0-9]+$/;
  * it would render *every* branch — including the "Text is not SVG - cannot
  * display" notice draw.io appends for viewers without `foreignObject`.
  *
- * Every child requires an `svg` ancestor, so `<title>` in particular cannot
- * appear in HTML flow, where React would hoist it into the page's `<head>`.
+ * Every child requires an `svg` ancestor, so no shape or text element is
+ * admitted into HTML flow on its own.
+ *
+ * `title` and `desc` are not children at all: they are stripped, with their
+ * contents, and `aria-label` on the root is the drawing's accessible name. Both
+ * are HTML integration points — the parser reads what is inside them as HTML —
+ * and an `svg` ancestor turned out not to be enough to keep a `<title>` in SVG
+ * context. `<math><svg><title>` keeps MathML context, and React hoists any
+ * `title` outside SVG context into the page's `<head>`, so the document set the
+ * tab title. In `renderMarkdown`'s string output, `<svg><desc><title>`,
+ * `<svg><title><title>` and a `title` inside a `foreignObject` all re-parse into
+ * an HTML `title`, which is what `document.title` reads on a page that has none
+ * of its own.
  */
 const SVG_CHILD_TAGS = [
   "g",
@@ -227,8 +238,6 @@ const SVG_CHILD_TAGS = [
   "text",
   "tspan",
   "switch",
-  "title",
-  "desc",
 ];
 
 /**
@@ -236,8 +245,8 @@ const SVG_CHILD_TAGS = [
  *
  * Each of these holds children that are never meant to be painted where they
  * stand: a clip region, a mask, a gradient's stops, a marker's arrowhead, a
- * symbol's body, a filter's primitives, an exporter's RDF, or — for
- * `foreignObject` — HTML. Unwrapped, those children land in the drawing as
+ * symbol's body, a filter's primitives, an exporter's RDF, the text of a
+ * `title` or `desc` (see `SVG_CHILD_TAGS`), or — for `foreignObject` — HTML. Unwrapped, those children land in the drawing as
  * ordinary shapes. A default Figma export ends in `<defs><clipPath><rect
  * fill="white"/>`, and unwrapping it painted that white rect over the whole
  * drawing; a `<marker>` arrowhead became a stray triangle at the origin. The
@@ -251,7 +260,8 @@ const SVG_CHILD_TAGS = [
  * SVG, and the only spelling a hast tree carries. The rest are lowercase in any
  * context, so they are stripped in prose too: a bare `<pattern>` written as a
  * placeholder outside a code span takes the rest of its paragraph with it,
- * where it used to lose only the tag. Code spans are unaffected.
+ * where it used to lose only the tag, and a stray `<title>x</title>` loses its
+ * text. Code spans are unaffected.
  */
 const SVG_STRIPPED = [
   "foreignObject",
@@ -265,6 +275,8 @@ const SVG_STRIPPED = [
   "radialGradient",
   "filter",
   "metadata",
+  "title",
+  "desc",
 ];
 
 /**

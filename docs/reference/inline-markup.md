@@ -647,15 +647,22 @@ attribute, so an element renders unstyled rather than half-styled (**D6**).
 
 ### Inline SVG
 
-Raw `<svg>` is admitted as static drawing: shapes, paths, text, groups, `title`
-and `desc`, with geometry, stroke, fill and font attributes. Everything that can
+Raw `<svg>` is admitted as static drawing: shapes, paths, text and groups, with
+geometry, stroke, fill and font attributes. Everything that can
 run, fetch or point elsewhere is dropped by omission: `script`, `foreignObject`,
 `image`, `use`, `animate` and `set`, event handlers, and every attribute that
 takes a `url(…)` reference. `fill` and `stroke` take only a keyword, a color name
 or a hex color, so `rgb(…)` goes the same way as it does in `style`. Gradients
 and patterns are unsupported because they are reachable only through `url(#id)`,
 and the sanitizer prefixes every `id`. SVG child elements require an `svg`
-ancestor, so a stray `<title>` in prose cannot reach the page's `<head>`.
+ancestor.
+
+`title` and `desc` are removed with their contents, and `aria-label` on the
+`<svg>` is the drawing's accessible name. Both are places where the parser reads
+HTML, and requiring an `svg` ancestor did not keep a `<title>` out of the page's
+`<head>`: under `<math>` the `svg` keeps MathML context, which React hoists a
+`title` out of, and `<svg><desc><title>` re-parses from `renderMarkdown`'s
+string output as an HTML `title`. Either one set the tab title.
 
 `stroke-dasharray` is refused too, so a dashed line renders solid. It is the one
 presentation attribute whose paint cost a few bytes can make unbounded: the dash
@@ -667,13 +674,13 @@ the user units by a thousand costs the same 15 seconds with a `1.1` dash.
 A refused element is normally *unwrapped*: the tag goes and its children stay.
 The containers whose children are never meant to be painted where they stand —
 `defs`, `clipPath`, `mask`, `pattern`, `marker`, `symbol`, `linearGradient`,
-`radialGradient`, `filter`, `metadata` and `foreignObject` — are instead removed
-with everything inside them. Unwrapped, a Figma export's clip rectangle painted
+`radialGradient`, `filter`, `metadata`, `foreignObject`, `title` and `desc` — are
+instead removed with everything inside them. Unwrapped, a Figma export's clip rectangle painted
 over the whole drawing, and the HTML inside a `foreignObject` escaped into the
 page. `switch` is kept, so a draw.io export draws each label's `<text>`
 fallback. The lowercase names are removed in prose as well, so a bare
-`<pattern>` written as a placeholder takes the rest of its paragraph with it:
-put tag names in a code span.
+`<pattern>` written as a placeholder takes the rest of its paragraph with it,
+and a stray `<title>` takes its text: put tag names in a code span.
 
 Denial of service is otherwise not a concern: ten thousand directives is ten
 thousand comments, and the plugin is one linear pass over an unambiguous grammar.
