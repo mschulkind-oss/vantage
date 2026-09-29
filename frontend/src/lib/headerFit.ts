@@ -89,13 +89,26 @@ export function splitExtension(name: string): [stem: string, ext: string] {
 }
 
 /**
- * Whether the header, laid out as it is now, fits: no item reaches past its
- * content box, and the subject (while it is still shown) is not below its
+ * Where an item's room in the row ends: its margin box's right edge, which is
+ * what flex layout packs against the header's content edge. The border box is
+ * not it — the commit button's `-mx-2` bleeds its hover background 8px past
+ * the room it takes, so its border box ends 8px past a row that fits exactly.
+ */
+function roomRight(item: Element): number {
+  return (
+    item.getBoundingClientRect().right +
+    (parseFloat(getComputedStyle(item).marginRight) || 0)
+  );
+}
+
+/**
+ * Whether the header, laid out as it is now, fits: no item's room reaches past
+ * its content box, and the subject (while it is still shown) is not below its
  * floor. `taken` is how many steps are currently taken.
  *
  * Every toolbar item but the commit button is rigid, and the leading half is
  * rigid until the last step, so anything that does not fit shows up as an item
- * whose right edge passes the header's content edge.
+ * whose room passes the header's content edge.
  */
 function fitsNow(header: HTMLElement, taken: number): boolean {
   const lead = header.querySelector(".hdr-lead");
@@ -105,7 +118,7 @@ function fitsNow(header: HTMLElement, taken: number): boolean {
     (parseFloat(getComputedStyle(header).paddingRight) || 0);
   const items = [lead, ...(tools ? Array.from(tools.children) : [])];
   for (const item of items) {
-    if (item && item.getBoundingClientRect().right > edge + 0.5) return false;
+    if (item && roomRight(item) > edge + 0.5) return false;
   }
   if (taken === 0) {
     const subject = header.querySelector(".hdr-subject-text");
