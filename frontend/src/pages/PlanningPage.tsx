@@ -481,7 +481,12 @@ export const PlanningPage: React.FC = () => {
     () => [...new Set(listedQuestions.map((q) => q.path))],
     [listedQuestions],
   );
-  const reviews = usePlanningReviews(onThisRepo ? repo : null, listedPaths);
+  // Each visit reads every listed document's review afresh, in one request;
+  // what an earlier visit read is shown meanwhile.
+  const [visitStart] = useState(() => performance.now());
+  const reviews = usePlanningReviews(onThisRepo ? repo : null, listedPaths, {
+    since: visitStart,
+  });
   const hashes = ready?.hashes ?? null;
   const blocks = useCardBlocks(
     onThisRepo ? repo : null,
