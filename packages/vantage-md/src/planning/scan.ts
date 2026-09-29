@@ -339,6 +339,10 @@ function tokensOf(children: RootContent[]): Token[] {
       continue;
     }
     const start = child.position?.start.line ?? 1;
+    // Newlines are counted from the previous comment on, not from the node's
+    // start, so a node of many comments costs its length and not its square.
+    let counted = 0;
+    let newlines = 0;
     for (const segment of scanComments(child.value)) {
       if (segment.kind === "text") {
         const rest = segment.value.trim();
@@ -348,9 +352,11 @@ function tokensOf(children: RootContent[]): Token[] {
         tokens.push({ kind: rest.startsWith("<") ? "raw" : "text" });
         continue;
       }
-      const line =
-        start +
-        (child.value.slice(0, segment.offset).match(/\n/g)?.length ?? 0);
+      for (let k = counted; k < segment.offset; k++) {
+        if (child.value.charCodeAt(k) === 10) newlines++;
+      }
+      counted = segment.offset;
+      const line = start + newlines;
       const parsed =
         segment.terminator === null
           ? undefined
