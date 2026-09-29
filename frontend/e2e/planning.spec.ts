@@ -107,8 +107,14 @@ test.describe("planning badges", () => {
     await page.keyboard.press("ControlOrMeta+c");
     const copied = await page.evaluate(() => navigator.clipboard.readText());
 
-    expect(copied).toContain("The fixture design");
-    expect(copied).toContain("Which way it goes");
+    // Nor any break where a badge sat: a badge laid out as its own box reads
+    // as a line of its own to a copy.
+    expect(copied).toContain(
+      "The fixture design — its questions need rulings first.",
+    );
+    expect(copied).toContain(
+      "Which way it goes — the ruling everything else waits on.",
+    );
     expect(copied).not.toContain("in-review");
     expect(copied).not.toContain("DESIGN");
     expect(copied).not.toContain("💬");
