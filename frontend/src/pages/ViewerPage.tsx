@@ -19,6 +19,7 @@ import { useFilePickerStore } from "../stores/useFilePickerStore";
 import { ProjectPicker } from "../components/ProjectPicker";
 import { AppLink } from "../components/AppLink";
 import { CollapsedFolders } from "../components/CollapsedFolders";
+import { HeaderOverflow } from "../components/HeaderOverflow";
 import { useWebSocket } from "../hooks/useWebSocket";
 import {
   Clock,
@@ -792,6 +793,13 @@ export const ViewerPage: React.FC = () => {
     breadcrumbLeaf && currentDirectory === null
       ? splitExtension(breadcrumbLeaf)
       : [breadcrumbLeaf ?? "", ""];
+  const crumbRoot = useMemo(
+    () =>
+      isMultiRepo && currentRepo
+        ? { label: currentRepo, href: `/${currentRepo}` }
+        : { label: "root", href: "/" },
+    [isMultiRepo, currentRepo],
+  );
   const breadcrumbDirHref = useCallback(
     (depth: number) =>
       buildPath(
@@ -815,6 +823,41 @@ export const ViewerPage: React.FC = () => {
     !!fileContent &&
     fileContent.encoding !== "binary" &&
     !!currentPath?.toLowerCase().endsWith(".md");
+
+  // The header's TOC and full-width toggles, as they appear in the toolbar's
+  // "⋯" panel once the `actions` step folds them in (lib/headerFit.ts). Only
+  // rendered while that panel is open, so the header never holds two of each.
+  // Desktop-only, as the toggles themselves are.
+  const panelButton =
+    "hidden md:flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer";
+  const panelToggle = (on: boolean) =>
+    on
+      ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30"
+      : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50";
+  const headerViewExtras = (
+    <>
+      {tocAvailable && (
+        <button
+          type="button"
+          onClick={handleToggleToc}
+          className={cn(panelButton, panelToggle(tocOpen))}
+          aria-pressed={tocOpen}
+        >
+          <List size={14} />
+          <span>{tocOpen ? "Hide contents" : "Show contents"}</span>
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={handleToggleFullWidth}
+        className={cn(panelButton, panelToggle(fullWidth))}
+        aria-pressed={fullWidth}
+      >
+        {fullWidth ? <Shrink size={14} /> : <Expand size={14} />}
+        <span>{fullWidth ? "Use fixed width" : "Use full width"}</span>
+      </button>
+    </>
+  );
 
   // Show a minimal loading state until repos metadata is loaded.
   // This prevents flashing the single-repo sidebar before multi-repo
@@ -1074,7 +1117,7 @@ export const ViewerPage: React.FC = () => {
                   <button
                     onClick={handleToggleToc}
                     className={cn(
-                      "hidden md:block p-1.5 rounded-md shrink-0 transition-colors cursor-pointer",
+                      "hdr-view hidden md:block p-1.5 rounded-md shrink-0 transition-colors cursor-pointer",
                       tocOpen
                         ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30"
                         : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700",
@@ -1090,7 +1133,7 @@ export const ViewerPage: React.FC = () => {
                   <button
                     onClick={handleToggleFullWidth}
                     className={cn(
-                      "hidden md:block p-1.5 rounded-md shrink-0 transition-colors cursor-pointer",
+                      "hdr-view hidden md:block p-1.5 rounded-md shrink-0 transition-colors cursor-pointer",
                       fullWidth
                         ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30"
                         : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700",
@@ -1104,43 +1147,51 @@ export const ViewerPage: React.FC = () => {
                     {fullWidth ? <Shrink size={18} /> : <Expand size={18} />}
                   </button>
                 )}
-                <nav className="flex items-center text-sm gap-1 min-w-0 overflow-hidden">
+                <nav className="hdr-crumbs flex items-center text-sm gap-1 min-w-0 overflow-hidden">
                   <AppLink
-                    to={isMultiRepo && currentRepo ? `/${currentRepo}` : "/"}
-                    className="text-slate-500 dark:text-slate-400 hover:text-blue-600 font-medium transition-colors shrink-0 no-underline"
+                    to={crumbRoot.href}
+                    className="hdr-repo text-slate-500 dark:text-slate-400 hover:text-blue-600 font-medium transition-colors shrink-0 no-underline"
                   >
-                    {isMultiRepo && currentRepo ? currentRepo : "root"}
+                    {crumbRoot.label}
                   </AppLink>
                   {breadcrumbDirs.length > 0 && (
-                    <>
-                      <span className="hdr-dirs items-center gap-1 shrink-0">
-                        {breadcrumbDirs.map((part, i) => (
-                          <React.Fragment key={i}>
-                            <ChevronRight
-                              size={14}
-                              className="text-slate-500 dark:text-slate-400 shrink-0"
-                            />
-                            <AppLink
-                              to={breadcrumbDirHref(i)}
-                              className="text-slate-500 dark:text-slate-400 hover:text-blue-600 transition-colors no-underline"
-                            >
-                              {part}
-                            </AppLink>
-                          </React.Fragment>
-                        ))}
-                      </span>
-                      <span className="hdr-dirs-collapsed items-center gap-1 shrink-0">
-                        <ChevronRight
-                          size={14}
-                          className="text-slate-500 dark:text-slate-400 shrink-0"
-                        />
-                        <CollapsedFolders
-                          dirs={breadcrumbDirs}
-                          hrefFor={breadcrumbDirHref}
-                        />
-                      </span>
-                    </>
+                    <span className="hdr-dirs items-center gap-1 shrink-0">
+                      {breadcrumbDirs.map((part, i) => (
+                        <React.Fragment key={i}>
+                          <ChevronRight
+                            size={14}
+                            className="text-slate-500 dark:text-slate-400 shrink-0"
+                          />
+                          <AppLink
+                            to={breadcrumbDirHref(i)}
+                            className="text-slate-500 dark:text-slate-400 hover:text-blue-600 transition-colors no-underline"
+                          >
+                            {part}
+                          </AppLink>
+                        </React.Fragment>
+                      ))}
+                    </span>
                   )}
+                  {/* The folders' "…", and at the `repo` step the
+                      repository's too — which is why it is here even at the
+                      root, where there are no folders for it to stand for
+                      until then. */}
+                  <span
+                    className={cn(
+                      "hdr-dirs-collapsed items-center gap-1 shrink-0",
+                      breadcrumbDirs.length === 0 && "hdr-no-dirs",
+                    )}
+                  >
+                    <ChevronRight
+                      size={14}
+                      className="hdr-sep text-slate-500 dark:text-slate-400 shrink-0"
+                    />
+                    <CollapsedFolders
+                      root={crumbRoot}
+                      dirs={breadcrumbDirs}
+                      hrefFor={breadcrumbDirHref}
+                    />
+                  </span>
                   {breadcrumbLeaf && (
                     <>
                       <ChevronRight
@@ -1154,7 +1205,10 @@ export const ViewerPage: React.FC = () => {
                           carries all of it. */}
                       <span
                         data-testid="breadcrumb-name"
-                        className="flex min-w-0 font-semibold text-slate-900 dark:text-slate-100"
+                        className={cn(
+                          "hdr-name flex min-w-0 font-semibold text-slate-900 dark:text-slate-100",
+                          leafStem.length >= 3 && "hdr-stem-floor",
+                        )}
                         title={currentPath ?? undefined}
                       >
                         {leafExt ? (
@@ -1259,44 +1313,236 @@ export const ViewerPage: React.FC = () => {
                       />
                     </span>
                   </button>
-                  {currentPath &&
-                    currentPath.toLowerCase().endsWith(".md") &&
-                    history.length >= 1 && (
-                      <AppLink
-                        to={
-                          isMultiRepo && currentRepo
-                            ? `/history/${currentRepo}/${currentPath}`
-                            : `/history/${currentPath}`
-                        }
-                        className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors no-underline"
-                        title={`View full history: ${history.length} ${plural(history.length, "commit")}`}
-                      >
-                        <History size={14} />
-                        <span className="hdr-label">
-                          {history.length} commits
-                        </span>
-                      </AppLink>
-                    )}
-                  {currentPath && repoRootPath && (
-                    <button
-                      onClick={handleCopyPath}
-                      className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
-                      title={`Copy absolute path: ${repoRootPath}/${currentPath}`}
-                    >
-                      {pathCopied ? (
-                        <Check size={14} className="text-green-500" />
-                      ) : (
-                        <Copy size={14} />
+                  <HeaderOverflow extra={headerViewExtras}>
+                    {currentPath &&
+                      currentPath.toLowerCase().endsWith(".md") &&
+                      history.length >= 1 && (
+                        <AppLink
+                          to={
+                            isMultiRepo && currentRepo
+                              ? `/history/${currentRepo}/${currentPath}`
+                              : `/history/${currentPath}`
+                          }
+                          className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors no-underline"
+                          title={`View full history: ${history.length} ${plural(history.length, "commit")}`}
+                        >
+                          <History size={14} />
+                          <span className="hdr-label">
+                            {history.length} commits
+                          </span>
+                        </AppLink>
                       )}
-                      <span
-                        className="hdr-label hdr-reserve"
-                        data-reserve="Copied!"
+                    {currentPath && repoRootPath && (
+                      <button
+                        onClick={handleCopyPath}
+                        className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
+                        title={`Copy absolute path: ${repoRootPath}/${currentPath}`}
                       >
-                        {pathCopied ? "Copied!" : "Path"}
+                        {pathCopied ? (
+                          <Check size={14} className="text-green-500" />
+                        ) : (
+                          <Copy size={14} />
+                        )}
+                        <span
+                          className="hdr-label hdr-reserve"
+                          data-reserve="Copied!"
+                        >
+                          {pathCopied ? "Copied!" : "Path"}
+                        </span>
+                      </button>
+                    )}
+                    {currentPath &&
+                      currentPath.toLowerCase().endsWith(".md") && (
+                        <button
+                          onClick={() => {
+                            setShowRaw((v) => !v);
+                            setCopied(false);
+                          }}
+                          className={cn(
+                            "flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
+                            showRaw
+                              ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30"
+                              : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
+                          )}
+                          title={
+                            showRaw ? "View rendered" : "View raw markdown"
+                          }
+                        >
+                          <Code size={14} />
+                          <span
+                            className="hdr-label hdr-reserve"
+                            data-reserve="Rendered"
+                          >
+                            {showRaw ? "Rendered" : "Raw"}
+                          </span>
+                        </button>
+                      )}
+                    {/* Raw view can't host inline highlights, but the review
+                      controls must stay reachable: hiding them stranded a
+                      reviewer with pending comments and no way to copy,
+                      dismiss, or open the panel without switching back. */}
+                    {currentPath &&
+                      currentPath.toLowerCase().endsWith(".md") && (
+                        <>
+                          {reviewToggleVisible && (
+                            <button
+                              onClick={handleReviewToggle}
+                              className={cn(
+                                "flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
+                                reviewExitConfirm
+                                  ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 ring-1 ring-red-300 dark:ring-red-700"
+                                  : isReviewMode
+                                    ? "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 ring-1 ring-purple-300 dark:ring-purple-700"
+                                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
+                              )}
+                              title={reviewToggleTitle}
+                            >
+                              <MessageSquarePlus size={14} />
+                              <span
+                                className="hdr-label hdr-reserve"
+                                data-reserve="End review?"
+                              >
+                                {reviewExitConfirm ? "End review?" : "Review"}
+                              </span>
+                            </button>
+                          )}
+                          {isReviewMode && (
+                            <>
+                              {/* The min-width reserves room for the longest label
+                              so arming the confirm doesn't resize the button
+                              under the reviewer's finger. It is sm:-only
+                              because the label is: below that it reserved
+                              100px of blank pill beside a 14px icon, on the
+                              screen with the least room to spare. */}
+                              {activeReviewCount > 0 && (
+                                <button
+                                  onClick={handleReviewDismiss}
+                                  className={`hdr-dismiss flex items-center gap-1.5 text-xs rounded-lg sm:min-w-[100px] px-2 py-1.5 transition-colors cursor-pointer ${
+                                    reviewDismissConfirm
+                                      ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50"
+                                      : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600/50"
+                                  }`}
+                                  title={
+                                    reviewDismissConfirm
+                                      ? "Click again to dismiss all"
+                                      : answeredReviewCount > 0
+                                        ? `Dismiss the ${answeredReviewCount} ${plural(answeredReviewCount, "comment")} the agent has answered`
+                                        : activeReviewCount === 1
+                                          ? "Dismiss 1 comment"
+                                          : `Dismiss all ${activeReviewCount} comments`
+                                  }
+                                >
+                                  <Check size={14} />
+                                  <span className="hdr-label">
+                                    {reviewDismissConfirm
+                                      ? "Confirm?"
+                                      : answeredReviewCount > 0
+                                        ? `Dismiss ${answeredReviewCount} answered`
+                                        : `Dismiss ${activeReviewCount}`}
+                                  </span>
+                                </button>
+                              )}
+                              {commentsDrifted && <CommentsDriftedIndicator />}
+                              {pendingReviewCount > 0 && (
+                                <button
+                                  onClick={async () => {
+                                    const ok = await copyAllReviewComments();
+                                    if (ok) {
+                                      setReviewCopied(true);
+                                      setTimeout(
+                                        () => setReviewCopied(false),
+                                        2000,
+                                      );
+                                    }
+                                  }}
+                                  className="flex items-center gap-1.5 text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg px-2 py-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors cursor-pointer"
+                                  title={`Copy ${pendingReviewCount} ${plural(pendingReviewCount, "comment")} to clipboard`}
+                                >
+                                  {reviewCopied ? (
+                                    <Check size={14} />
+                                  ) : (
+                                    <ClipboardCopy size={14} />
+                                  )}
+                                  <span
+                                    className="hdr-label hdr-reserve"
+                                    data-reserve="Copied!"
+                                  >
+                                    {reviewCopied
+                                      ? "Copied!"
+                                      : `Copy ${pendingReviewCount}`}
+                                  </span>
+                                </button>
+                              )}
+                              <button
+                                onClick={() => setReviewPanelOpen(true)}
+                                className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
+                                title="Manage comments"
+                              >
+                                <MessageSquare size={14} />
+                                <span className="hdr-panel-only">
+                                  Manage comments
+                                </span>
+                              </button>
+                            </>
+                          )}
+                        </>
+                      )}
+                  </HeaderOverflow>
+                </div>
+              ) : currentPath && currentPath.toLowerCase().endsWith(".md") ? (
+                <div className="hdr-tools flex items-center gap-2">
+                  {!isStaticMode() && (
+                    <button
+                      onClick={() =>
+                        currentPath && fetchWorkingDiff(currentPath)
+                      }
+                      className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 sm:px-3 py-1.5 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors cursor-pointer"
+                      title="View file content as diff"
+                    >
+                      <FileQuestion size={14} />
+                      <span className="hdr-label font-medium">
+                        Untracked file
                       </span>
                     </button>
                   )}
-                  {currentPath && currentPath.toLowerCase().endsWith(".md") && (
+                  {fileMtime && (
+                    <div
+                      className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 px-2 py-1.5"
+                      title={formatDateTime(fileMtime)}
+                    >
+                      <Clock size={14} />
+                      <span data-testid="header-time" className="hdr-time">
+                        <RelativeTime date={fileMtime} />
+                      </span>
+                      <span
+                        data-testid="header-date"
+                        className="hdr-date items-center gap-1.5"
+                      >
+                        <span aria-hidden="true">·</span>
+                        <span>{formatDateTime(fileMtime)}</span>
+                      </span>
+                    </div>
+                  )}
+                  <HeaderOverflow extra={headerViewExtras}>
+                    {currentPath && repoRootPath && (
+                      <button
+                        onClick={handleCopyPath}
+                        className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
+                        title={`Copy absolute path: ${repoRootPath}/${currentPath}`}
+                      >
+                        {pathCopied ? (
+                          <Check size={14} className="text-green-500" />
+                        ) : (
+                          <Copy size={14} />
+                        )}
+                        <span
+                          className="hdr-label hdr-reserve"
+                          data-reserve="Copied!"
+                        >
+                          {pathCopied ? "Copied!" : "Path"}
+                        </span>
+                      </button>
+                    )}
                     <button
                       onClick={() => {
                         setShowRaw((v) => !v);
@@ -1318,12 +1564,7 @@ export const ViewerPage: React.FC = () => {
                         {showRaw ? "Rendered" : "Raw"}
                       </span>
                     </button>
-                  )}
-                  {/* Raw view can't host inline highlights, but the review
-                      controls must stay reachable: hiding them stranded a
-                      reviewer with pending comments and no way to copy,
-                      dismiss, or open the panel without switching back. */}
-                  {currentPath && currentPath.toLowerCase().endsWith(".md") && (
+                    {/* Same as the wide toolbar: review controls survive raw view. */}
                     <>
                       {reviewToggleVisible && (
                         <button
@@ -1349,12 +1590,6 @@ export const ViewerPage: React.FC = () => {
                       )}
                       {isReviewMode && (
                         <>
-                          {/* The min-width reserves room for the longest label
-                              so arming the confirm doesn't resize the button
-                              under the reviewer's finger. It is sm:-only
-                              because the label is: below that it reserved
-                              100px of blank pill beside a 14px icon, on the
-                              screen with the least room to spare. */}
                           {activeReviewCount > 0 && (
                             <button
                               onClick={handleReviewDismiss}
@@ -1420,178 +1655,14 @@ export const ViewerPage: React.FC = () => {
                             title="Manage comments"
                           >
                             <MessageSquare size={14} />
+                            <span className="hdr-panel-only">
+                              Manage comments
+                            </span>
                           </button>
                         </>
                       )}
                     </>
-                  )}
-                </div>
-              ) : currentPath && currentPath.toLowerCase().endsWith(".md") ? (
-                <div className="hdr-tools flex items-center gap-2">
-                  {!isStaticMode() && (
-                    <button
-                      onClick={() =>
-                        currentPath && fetchWorkingDiff(currentPath)
-                      }
-                      className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 sm:px-3 py-1.5 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors cursor-pointer"
-                      title="View file content as diff"
-                    >
-                      <FileQuestion size={14} />
-                      <span className="hdr-label font-medium">
-                        Untracked file
-                      </span>
-                    </button>
-                  )}
-                  {fileMtime && (
-                    <div
-                      className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 px-2 py-1.5"
-                      title={formatDateTime(fileMtime)}
-                    >
-                      <Clock size={14} />
-                      <span data-testid="header-time" className="hdr-time">
-                        <RelativeTime date={fileMtime} />
-                      </span>
-                      <span
-                        data-testid="header-date"
-                        className="hdr-date items-center gap-1.5"
-                      >
-                        <span aria-hidden="true">·</span>
-                        <span>{formatDateTime(fileMtime)}</span>
-                      </span>
-                    </div>
-                  )}
-                  {currentPath && repoRootPath && (
-                    <button
-                      onClick={handleCopyPath}
-                      className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
-                      title={`Copy absolute path: ${repoRootPath}/${currentPath}`}
-                    >
-                      {pathCopied ? (
-                        <Check size={14} className="text-green-500" />
-                      ) : (
-                        <Copy size={14} />
-                      )}
-                      <span
-                        className="hdr-label hdr-reserve"
-                        data-reserve="Copied!"
-                      >
-                        {pathCopied ? "Copied!" : "Path"}
-                      </span>
-                    </button>
-                  )}
-                  <button
-                    onClick={() => {
-                      setShowRaw((v) => !v);
-                      setCopied(false);
-                    }}
-                    className={cn(
-                      "flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
-                      showRaw
-                        ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30"
-                        : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
-                    )}
-                    title={showRaw ? "View rendered" : "View raw markdown"}
-                  >
-                    <Code size={14} />
-                    <span
-                      className="hdr-label hdr-reserve"
-                      data-reserve="Rendered"
-                    >
-                      {showRaw ? "Rendered" : "Raw"}
-                    </span>
-                  </button>
-                  {/* Same as the wide toolbar: review controls survive raw view. */}
-                  <>
-                    {reviewToggleVisible && (
-                      <button
-                        onClick={handleReviewToggle}
-                        className={cn(
-                          "flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
-                          reviewExitConfirm
-                            ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 ring-1 ring-red-300 dark:ring-red-700"
-                            : isReviewMode
-                              ? "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 ring-1 ring-purple-300 dark:ring-purple-700"
-                              : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
-                        )}
-                        title={reviewToggleTitle}
-                      >
-                        <MessageSquarePlus size={14} />
-                        <span
-                          className="hdr-label hdr-reserve"
-                          data-reserve="End review?"
-                        >
-                          {reviewExitConfirm ? "End review?" : "Review"}
-                        </span>
-                      </button>
-                    )}
-                    {isReviewMode && (
-                      <>
-                        {activeReviewCount > 0 && (
-                          <button
-                            onClick={handleReviewDismiss}
-                            className={`hdr-dismiss flex items-center gap-1.5 text-xs rounded-lg sm:min-w-[100px] px-2 py-1.5 transition-colors cursor-pointer ${
-                              reviewDismissConfirm
-                                ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50"
-                                : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600/50"
-                            }`}
-                            title={
-                              reviewDismissConfirm
-                                ? "Click again to dismiss all"
-                                : answeredReviewCount > 0
-                                  ? `Dismiss the ${answeredReviewCount} ${plural(answeredReviewCount, "comment")} the agent has answered`
-                                  : activeReviewCount === 1
-                                    ? "Dismiss 1 comment"
-                                    : `Dismiss all ${activeReviewCount} comments`
-                            }
-                          >
-                            <Check size={14} />
-                            <span className="hdr-label">
-                              {reviewDismissConfirm
-                                ? "Confirm?"
-                                : answeredReviewCount > 0
-                                  ? `Dismiss ${answeredReviewCount} answered`
-                                  : `Dismiss ${activeReviewCount}`}
-                            </span>
-                          </button>
-                        )}
-                        {commentsDrifted && <CommentsDriftedIndicator />}
-                        {pendingReviewCount > 0 && (
-                          <button
-                            onClick={async () => {
-                              const ok = await copyAllReviewComments();
-                              if (ok) {
-                                setReviewCopied(true);
-                                setTimeout(() => setReviewCopied(false), 2000);
-                              }
-                            }}
-                            className="flex items-center gap-1.5 text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg px-2 py-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors cursor-pointer"
-                            title={`Copy ${pendingReviewCount} ${plural(pendingReviewCount, "comment")} to clipboard`}
-                          >
-                            {reviewCopied ? (
-                              <Check size={14} />
-                            ) : (
-                              <ClipboardCopy size={14} />
-                            )}
-                            <span
-                              className="hdr-label hdr-reserve"
-                              data-reserve="Copied!"
-                            >
-                              {reviewCopied
-                                ? "Copied!"
-                                : `Copy ${pendingReviewCount}`}
-                            </span>
-                          </button>
-                        )}
-                        <button
-                          onClick={() => setReviewPanelOpen(true)}
-                          className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
-                          title="Manage comments"
-                        >
-                          <MessageSquare size={14} />
-                        </button>
-                      </>
-                    )}
-                  </>
+                  </HeaderOverflow>
                 </div>
               ) : null}
             </div>

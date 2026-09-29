@@ -3,7 +3,8 @@ import { test, expect, type Page } from "@playwright/test";
 // The viewer header gives up room in a fixed order as it narrows, and the file
 // name is the last thing to give any: the commit subject shrinks and then
 // hides, then the absolute date, then the toolbar's text labels, then the
-// breadcrumb's folders, then the relative time, and only then does the name
+// breadcrumb's folders, then the relative time, then the repository's name,
+// then the toolbar's actions fold into a "⋯", and only then does the name
 // truncate. Before this the name was the only box in the row allowed to shrink
 // at all, so at a 2000px window it was already "dur…" while every label stayed.
 //
@@ -90,6 +91,10 @@ interface Snapshot {
   dirs: Record<string, boolean>;
   /** The "…" that stands for collapsed folders. */
   collapsed: boolean;
+  /** The repository's name at the head of the breadcrumb, drawn. */
+  repo: boolean;
+  /** The "⋯" the toolbar's actions fold into: drawn, or no toolbar (null). */
+  more: boolean | null;
   /** Pairs of drawn header items whose boxes overlap, by their text. */
   overlaps: string[];
   /** Drawn items taller than one line, or poking out of the header. */
@@ -221,6 +226,10 @@ function snapshot(page: Page, labels: string[], dirs: string[]) {
             (el) => el.textContent?.trim() === "…",
           ),
         ),
+        repo: shown(nav.querySelector(".hdr-repo")),
+        more: header.querySelector(".hdr-more")
+          ? shown(header.querySelector(".hdr-more"))
+          : null,
         overlaps,
         escapes,
       };
@@ -230,7 +239,16 @@ function snapshot(page: Page, labels: string[], dirs: string[]) {
 }
 
 /** The yield steps, first to be taken first. */
-const STEPS = ["subject", "date", "labels", "dirs", "time", "name"] as const;
+const STEPS = [
+  "subject",
+  "date",
+  "labels",
+  "dirs",
+  "time",
+  "repo",
+  "actions",
+  "name",
+] as const;
 
 /**
  * Whether the header would fit with only the first `count` steps taken: laid
@@ -284,6 +302,8 @@ function yielded(s: Snapshot): Partial<Record<Step, boolean>> {
   if (labels.length) out.labels = labels.every((v) => !v);
   if (dirs.length) out.dirs = dirs.every((v) => !v) && s.collapsed;
   if (s.time !== null) out.time = !s.time;
+  out.repo = !s.repo;
+  if (s.more !== null) out.actions = s.more;
   out.name = s.name.truncated;
   return out;
 }
@@ -310,9 +330,7 @@ function checkInvariants(s: Snapshot) {
   // Each step is all-or-nothing: no half the labels, no one folder of two.
   const labels = Object.values(s.labels);
   if (labels.length) {
-    expect(new Set(labels).size, `labels: ${JSON.stringify(s.labels)}`).toBe(
-      1,
-    );
+    expect(new Set(labels).size, `labels: ${JSON.stringify(s.labels)}`).toBe(1);
   }
   const dirs = Object.values(s.dirs);
   if (dirs.length) {
@@ -324,8 +342,12 @@ function checkInvariants(s: Snapshot) {
       true,
     );
   } else {
-    expect(s.collapsed, "a … with no folders behind it").toBe(false);
+    // At the root the "…" stands for the repository, once it has folded.
+    expect(s.collapsed, "a … with nothing behind it").toBe(!s.repo);
   }
+  expect(s.repo || s.collapsed, "the repository neither drawn nor folded").toBe(
+    true,
+  );
   // The subject shrinks before anything else yields at all.
   if (s.subject.truncated && s.subject.shown) {
     expect(level(s), "something yielded while the subject still showed").toBe(
@@ -350,6 +372,44 @@ async function setHeaderWidth(page: Page, width: number) {
       new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
   );
   expect(Math.abs((await header.boundingBox())!.width - width)).toBeLessThan(1);
+}
+
+/**
+ * A 700px sidebar, the widest there is, so the header can be made far
+ * narrower than a phone's while the window stays a desktop one.
+ */
+async function widenSidebar(page: Page) {
+  await page.evaluate(() =>
+    localStorage.setItem("vantage:sidebarWidth", "700"),
+  );
+  await page.reload();
+  await expect(
+    page.getByTestId("viewer-header").getByText("Dismiss 3 answered"),
+  ).toHaveCount(1);
+}
+
+/** The name's extension: its text, and whether it is drawn whole. */
+function extension(page: Page) {
+  return page.evaluate(() => {
+    const name = document.querySelector('[data-testid="breadcrumb-name"]')!;
+    const ext = name.lastElementChild!;
+    const nav = name.closest("nav")!.getBoundingClientRect();
+    const r = ext.getBoundingClientRect();
+    const more = name
+      .closest("nav")!
+      .querySelector(".hdr-dirs-collapsed")!
+      .getBoundingClientRect();
+    return {
+      text: ext.textContent,
+      whole:
+        r.width > 0 && r.left >= nav.left - 0.5 && r.right <= nav.right + 0.5,
+      width: r.width,
+      nav: nav.width,
+      stem: (name.children[1] as HTMLElement).getBoundingClientRect().width,
+      /** The "…" starts left of the breadcrumb, cut off. */
+      moreClipped: more.width > 0 && more.left < nav.left - 0.5,
+    };
+  });
 }
 
 test.describe("viewer header under width pressure", () => {
@@ -442,9 +502,9 @@ test.describe("viewer header under width pressure", () => {
     await more.focus();
     await page.keyboard.press("Enter");
     const menu = page.getByRole("menu", { name: "Folders" });
-    await expect(menu.getByRole("menuitem", { name: "docs" })).toBeFocused();
+    await expect(menu.getByRole("menuitem", { name: "root" })).toBeFocused();
     await page.keyboard.press("ArrowDown");
-    await expect(menu.getByRole("menuitem", { name: "design" })).toBeFocused();
+    await expect(menu.getByRole("menuitem", { name: "docs" })).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(menu).toHaveCount(0);
     await expect(more).toBeFocused();
@@ -453,10 +513,13 @@ test.describe("viewer header under width pressure", () => {
   test("the name truncates only when nothing else is left, keeping its extension", async ({
     page,
   }) => {
+    // A 700px sidebar, so the header can narrow far past where the name
+    // stops fitting without the window dropping below the phone breakpoint.
+    await widenSidebar(page);
     // Narrow until the name is the only thing left to give; where that is
     // depends on the fonts, so it is found rather than assumed.
     let s: Snapshot | undefined;
-    for (let width = 900; width >= 500; width -= 10) {
+    for (let width = 700; width >= 300; width -= 10) {
       await setHeaderWidth(page, width);
       s = await snapshot(page, LABELS, DIRS);
       if (s.name.truncated) break;
@@ -464,22 +527,128 @@ test.describe("viewer header under width pressure", () => {
     expect(s!.name.truncated, "the name never had to truncate").toBe(true);
     checkInvariants(s!);
     expect(level(s!)).toBe(STEPS.length);
-
-    const ext = await page.evaluate(() => {
-      const name = document.querySelector('[data-testid="breadcrumb-name"]')!;
-      const ext = name.lastElementChild!;
-      const nav = name.closest("nav")!.getBoundingClientRect();
-      const r = ext.getBoundingClientRect();
-      return {
-        text: ext.textContent,
-        whole: r.width > 0 && r.left >= nav.left && r.right <= nav.right + 0.5,
-      };
-    });
-    expect(ext).toEqual({ text: ".md", whole: true });
+    // Nothing is left but what the row cannot do without, and the name itself
+    // is wider than the room those leave it.
+    expect(s!.name.full, "truncated with room to spare").toBeGreaterThan(
+      s!.name.rendered,
+    );
+    expect(await extension(page)).toMatchObject({ text: ".md", whole: true });
     await expect(page.getByTestId("breadcrumb-name")).toHaveAttribute(
       "title",
       PATH,
     );
+  });
+
+  // With the steps past the relative time it once lacked, the name was elided
+  // with a dozen icons and the repository still at full width: at a 1050px
+  // window with the sidebar open (a 762px header) it lost a fifth, and at an
+  // 850px one (562px) all of it but ".m".
+  test("at a laptop width with the sidebar open, the name keeps all of its width", async ({
+    page,
+  }) => {
+    for (const width of [762, 562]) {
+      await setHeaderWidth(page, width);
+      const s = await snapshot(page, LABELS, DIRS);
+      console.log(`header ${width}px: ${JSON.stringify(s)}`);
+      checkInvariants(s);
+      expect(s.name.truncated, `name truncated at ${width}px`).toBe(false);
+      expect(s.name.rendered).toBeGreaterThanOrEqual(s.name.full - 1);
+    }
+  });
+
+  test("the folded toolbar actions open as a panel, from the pointer or the keyboard", async ({
+    page,
+  }) => {
+    await setHeaderWidth(page, 562);
+    const header = page.getByTestId("viewer-header");
+    await expect(header).toHaveAttribute("data-yield", /\bactions\b/);
+    const more = header.getByRole("button", { name: "Toolbar actions" });
+    await expect(more).toHaveAttribute("aria-expanded", "false");
+    for (const name of ["Path", "Raw", "Review", "Dismiss 3 answered"]) {
+      await expect(header.getByRole("button", { name })).toBeHidden();
+    }
+    await expect(header.getByRole("button", { name: /contents/ })).toBeHidden();
+
+    await more.focus();
+    await page.keyboard.press("Enter");
+    await expect(more).toHaveAttribute("aria-expanded", "true");
+    // Every action, and the view toggles folded in with them, labels drawn.
+    const starts: number[] = [];
+    const panel = header.locator(".hdr-actions");
+    const toc = panel.getByRole("button", { name: "Show contents" });
+    await expect(toc).toBeFocused();
+    for (const name of [
+      "Use full width",
+      "2 commits",
+      "Path",
+      "Raw",
+      "Review",
+      "Dismiss 3 answered",
+      "Manage comments",
+    ]) {
+      const label = panel.getByText(name, { exact: true });
+      await expect(label).toBeVisible();
+      const box = (await label.boundingBox())!;
+      expect(box.width, name).toBeGreaterThan(8);
+      // Where the text itself starts, which a centered label in a wider box
+      // would not share with its box.
+      starts.push(
+        await label.evaluate((el) => {
+          const text = [...el.childNodes].find((n) => n.nodeType === 3)!;
+          const range = document.createRange();
+          range.selectNodeContents(text);
+          return Math.round(range.getBoundingClientRect().x);
+        }),
+      );
+    }
+    // One column: a label reserving room for a longer one ("Path" for
+    // "Copied!") starts where the rest do, rather than centered in its room.
+    expect(new Set(starts).size, `label starts: ${starts}`).toBe(1);
+    // Opening it moves nothing in the row.
+    await expect(header).toHaveAttribute("data-yield", /\bactions\b/);
+    const s = await snapshot(page, [], DIRS);
+    expect(s.headerHeight).toBe(56);
+
+    await page.keyboard.press("ArrowDown");
+    await expect(
+      panel.getByRole("button", { name: "Use full width" }),
+    ).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(more).toHaveAttribute("aria-expanded", "false");
+    await expect(more).toBeFocused();
+    await expect(panel.getByRole("button", { name: "Path" })).toBeHidden();
+
+    // A click opens it too, and one outside closes it.
+    await more.click();
+    await expect(panel.getByRole("button", { name: "Raw" })).toBeVisible();
+    await page
+      .getByRole("heading", { name: "Durable agent storage classes" })
+      .click();
+    await expect(more).toHaveAttribute("aria-expanded", "false");
+  });
+
+  // The phone-sized end of it: one fixed icon too many and the name was 0px
+  // wide, and at 400px the star itself was clipped.
+  test("the extension is the last of the name to go", async ({ page }) => {
+    await widenSidebar(page);
+    // From a stem cut to its floor down to a breadcrumb with no room at all:
+    // whenever the breadcrumb has the extension's width, the extension is
+    // what it draws, and what it clips first is the "…" at its start.
+    let clippedFirst = false;
+    for (let width = 320; width >= 150; width -= 10) {
+      await setHeaderWidth(page, width);
+      const s = await snapshot(page, LABELS, DIRS);
+      expect(level(s), `at ${width}px`).toBe(STEPS.length);
+      const e = await extension(page);
+      expect(e.text).toBe(".md");
+      if (e.nav >= e.width) {
+        expect(e.whole, `at ${width}px: ${JSON.stringify(e)}`).toBe(true);
+      }
+      // The "…" cut off while the stem still keeps its floor of a character
+      // or two and an ellipsis: the name is drawn, not just its extension.
+      if (e.moreClipped && e.stem > 10 && e.whole) clippedFirst = true;
+    }
+    expect(clippedFirst, "never clipped the … before the name").toBe(true);
   });
 
   // A click that lengthens a label ("Review" → "End review?", "Path" →
@@ -558,10 +727,9 @@ test.describe("viewer header under width pressure", () => {
     expect(nav).toContain(NAME);
     // A sighted reader has only the tooltip once the label is gone, so the
     // count the label carried is in it too.
-    await expect(header.getByRole("link", { name: "2 commits" })).toHaveAttribute(
-      "title",
-      "View full history: 2 commits",
-    );
+    await expect(
+      header.getByRole("link", { name: "2 commits" }),
+    ).toHaveAttribute("title", "View full history: 2 commits");
     await expect(
       header.getByRole("button", { name: "Dismiss 3 answered" }),
     ).toHaveAttribute("title", "Dismiss the 3 comments the agent has answered");

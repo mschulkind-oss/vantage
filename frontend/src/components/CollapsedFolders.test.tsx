@@ -12,6 +12,7 @@ function renderFolders() {
   return render(
     <MemoryRouter initialEntries={["/docs/design/notes.md"]}>
       <CollapsedFolders
+        root={{ label: "root", href: "/" }}
         dirs={["docs", "design"]}
         hrefFor={(depth) =>
           "/" + ["docs", "design"].slice(0, depth + 1).join("/")
@@ -34,13 +35,14 @@ describe("CollapsedFolders", () => {
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
-  it("opens a menu with a link to every folder, outermost first", () => {
+  it("opens a menu with a link to the repository and every folder, outermost first", () => {
     renderFolders();
     fireEvent.click(screen.getByRole("button", { name: /Folders/ }));
 
     const items = screen.getAllByRole("menuitem");
-    expect(items.map((a) => a.textContent)).toEqual(["docs", "design"]);
+    expect(items.map((a) => a.textContent)).toEqual(["root", "docs", "design"]);
     expect(items.map((a) => a.getAttribute("href"))).toEqual([
+      "/",
       "/docs",
       "/docs/design",
     ]);
@@ -74,26 +76,28 @@ describe("CollapsedFolders from the keyboard", () => {
   const key = (k: string, init: KeyboardEventInit = {}) =>
     fireEvent.keyDown(document.activeElement!, { key: k, ...init });
 
-  it("puts focus on the first folder when it opens", () => {
+  it("puts focus on the first item when it opens", () => {
     renderFolders();
     open();
     expect(document.activeElement).toBe(
-      screen.getByRole("menuitem", { name: "docs" }),
+      screen.getByRole("menuitem", { name: "root" }),
     );
   });
 
   it("moves between the folders with the arrow keys, Home and End", () => {
     renderFolders();
     open();
-    const [docs, design] = screen.getAllByRole("menuitem");
-    key("ArrowDown");
-    expect(document.activeElement).toBe(design);
+    const [root, docs, design] = screen.getAllByRole("menuitem");
+    expect(document.activeElement).toBe(root);
     key("ArrowDown");
     expect(document.activeElement).toBe(docs);
+    key("ArrowDown");
+    key("ArrowDown");
+    expect(document.activeElement).toBe(root);
     key("ArrowUp");
     expect(document.activeElement).toBe(design);
     key("Home");
-    expect(document.activeElement).toBe(docs);
+    expect(document.activeElement).toBe(root);
     key("End");
     expect(document.activeElement).toBe(design);
   });
@@ -112,5 +116,31 @@ describe("CollapsedFolders from the keyboard", () => {
     key("Tab");
     expect(screen.queryByRole("menu")).toBeNull();
     expect(document.activeElement).toBe(more);
+  });
+});
+
+// At the repository root there are no folders to collapse, but the header's
+// `repo` step still folds the repository's name in behind a "…".
+describe("CollapsedFolders at the repository root", () => {
+  it("stands for the repository alone", () => {
+    render(
+      <MemoryRouter>
+        <CollapsedFolders
+          root={{
+            label: "a-long-repository-name",
+            href: "/a-long-repository-name",
+          }}
+          dirs={[]}
+          hrefFor={() => "/"}
+        />
+      </MemoryRouter>,
+    );
+    const more = screen.getByRole("button", {
+      name: "Folders: a-long-repository-name",
+    });
+    fireEvent.click(more);
+    expect(
+      screen.getAllByRole("menuitem").map((a) => a.getAttribute("href")),
+    ).toEqual(["/a-long-repository-name"]);
   });
 });

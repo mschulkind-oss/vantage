@@ -28,8 +28,24 @@
  *    is the last thing to give up room. Without this step a narrow header
  *    (a phone, or a laptop with the sidebar open) spent a hundred pixels on
  *    "28 minutes ago" while the name had none.
- * 6. `name` — the file name itself, which then truncates, keeping its
- *    extension, with the full path in its tooltip.
+ * 7. `repo` — the repository's name at the head of the breadcrumb, which
+ *    joins the folders behind the "…" (a "…" appears for it even at the
+ *    repository root). A daemon's repository can be named at any length, and
+ *    while it kept its full width it could leave the file name 3px.
+ * 8. `actions` — every toolbar action (history, Path, Raw, and the review
+ *    controls), together with the TOC and full-width toggles, folds into one
+ *    "⋯" that opens them as a panel, labels and all. What stays in the row is
+ *    what says something about this file (its git status and its commit's
+ *    clock), the star, and the ways to the sidebar and the "…". These went
+ *    last among the rest because they are the header's working controls:
+ *    after the other steps, roughly a dozen fixed-width icons still stood
+ *    between the name and the room it needed, and at an ordinary laptop width
+ *    with the sidebar open they squeezed it to nothing.
+ * 9. `name` — the file name itself, which then truncates, keeping its
+ *    extension, with the full path in its tooltip. Its stem keeps a floor of
+ *    a couple of characters and an ellipsis, and past that the breadcrumb
+ *    clips from its start rather than its end, so the extension is the last
+ *    of the header to go.
  *
  * The steps are discrete and their thresholds depend on what the header holds
  * — a longer name or subject needs the next step sooner — so no container
@@ -43,6 +59,8 @@ export const YIELD_STEPS = [
   "labels",
   "dirs",
   "time",
+  "repo",
+  "actions",
   "name",
 ] as const;
 

@@ -205,14 +205,23 @@ describe("ViewerPage", () => {
       );
       const items = screen.getAllByRole("menuitem");
       expect(items.map((a) => a.getAttribute("href"))).toEqual([
+        "/",
         "/docs",
         "/docs/design",
       ]);
     });
 
-    it("offers no folder menu for a file at the repository root", () => {
+    // A root-level file has no folders to collapse, but the `repo` step folds
+    // the repository's name in behind a "…" all the same; until that step the
+    // stylesheet keeps this "…" hidden (hdr-no-dirs).
+    it("offers the repository alone behind a file at the root's …", () => {
       openFile("notes.md");
-      expect(screen.queryByRole("button", { name: /^Folders:/ })).toBeNull();
+      const more = screen.getByRole("button", { name: "Folders: root" });
+      expect(more.closest(".hdr-dirs-collapsed")).toHaveClass("hdr-no-dirs");
+      fireEvent.click(more);
+      expect(
+        screen.getAllByRole("menuitem").map((a) => a.getAttribute("href")),
+      ).toEqual(["/"]);
     });
 
     // The subject shrinks and then hides before anything else gives way, so

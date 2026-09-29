@@ -108,7 +108,8 @@ code {
    the subject is its only flexible item); after the last discrete step, the
    file name, and nothing else. An item added to the toolbar is rigid for
    free (`> *`); giving its text `hdr-label` makes that text part of the
-   `labels` step. */
+   `labels` step, and putting it inside `HeaderOverflow` makes it part of the
+   `actions` step. */
 .viewer-header {
   white-space: nowrap;
 }
@@ -143,6 +144,9 @@ code {
 .hdr-reserve {
   display: inline-flex;
   flex-direction: column;
+  /* A button centers its text, which would float the shorter label in the
+     middle of the room reserved for the longer one. */
+  text-align: start;
 }
 .hdr-reserve::after {
   content: attr(data-reserve);
@@ -188,18 +192,100 @@ code {
 .viewer-header[data-yield~="dirs"] .hdr-dirs {
   display: none;
 }
-.viewer-header[data-yield~="dirs"] .hdr-dirs-collapsed {
+.viewer-header[data-yield~="dirs"] .hdr-dirs-collapsed:not(.hdr-no-dirs) {
   display: flex;
 }
 
-/* 6. Only now may the leading half shrink, and in it only the name can. It
+/* 7. The repository's name joins the folders behind the "…", which shows
+   now even at the root, and loses the separator that followed the name. */
+.viewer-header[data-yield~="repo"] .hdr-repo,
+.viewer-header[data-yield~="repo"] .hdr-dirs-collapsed > .hdr-sep {
+  display: none;
+}
+.viewer-header[data-yield~="repo"] .hdr-dirs-collapsed {
+  display: flex;
+}
+
+/* 8. The toolbar's actions fold into the "⋯", and the TOC and full-width
+   toggles with them — when there is a "⋯" to fold into: a header with no
+   toolbar keeps them where they are. Opened, the actions are a panel hanging
+   under the "⋯" with every label drawn, whatever the steps before took. */
+.hdr-more,
+.hdr-panel-only {
+  display: none;
+}
+.viewer-header[data-yield~="actions"] .hdr-more {
+  display: flex;
+}
+.viewer-header[data-yield~="actions"]:has(.hdr-overflow) .hdr-view,
+.viewer-header[data-yield~="actions"]
+  .hdr-overflow:not([data-open])
+  .hdr-actions {
+  display: none;
+}
+.viewer-header[data-yield~="actions"] .hdr-overflow[data-open] .hdr-actions {
+  position: absolute;
+  top: calc(100% + 14px);
+  right: 0;
+  z-index: 50;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 13rem;
+  padding: 4px;
+  border: 1px solid var(--color-slate-200);
+  border-radius: 0.5rem;
+  background: var(--color-white);
+  box-shadow:
+    0 10px 15px -3px rgb(0 0 0 / 0.1),
+    0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+.dark
+  .viewer-header[data-yield~="actions"]
+  .hdr-overflow[data-open]
+  .hdr-actions {
+  border-color: var(--color-slate-700);
+  background: var(--color-slate-800);
+}
+.viewer-header[data-yield~="actions"] .hdr-overflow[data-open] .hdr-label {
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0;
+  overflow: visible;
+  clip-path: none;
+}
+.viewer-header[data-yield~="actions"] .hdr-overflow[data-open] .hdr-panel-only {
+  display: inline;
+}
+
+/* 9. Only now may the leading half shrink, and in it only the name can. It
    clips rather than draws over the toolbar if even that is not enough, with
-   room left for a focus ring at its edge. */
+   room left for a focus ring at its edge.
+
+   The name's stem keeps a floor of an ellipsis and a character or two, and
+   the name box will not go below that plus its extension: as a grid, its
+   min-content width is the stem's track floor plus the extension, which a
+   flex row of the two could not say — the stem's min-content is all of it.
+   Past that floor the breadcrumb overflows from its start — `flex-end` sends
+   a flex line's overflow to the start side, where the nav clips it — so the
+   "…" goes before the extension, which is the last of the name drawn. */
 .viewer-header[data-yield~="name"] .hdr-lead {
   flex-shrink: 1;
   min-width: 0;
   overflow: clip;
   overflow-clip-margin: 4px;
+}
+.viewer-header[data-yield~="name"] .hdr-crumbs {
+  justify-content: flex-end;
+}
+.viewer-header[data-yield~="name"] .hdr-name {
+  display: grid;
+  grid-template-columns: minmax(0, auto) auto;
+  min-width: auto;
+}
+.viewer-header[data-yield~="name"] .hdr-name.hdr-stem-floor {
+  grid-template-columns: minmax(3ch, auto) auto;
 }
 
 /* ── Color themes ─────────────────────────────────────────────────────────

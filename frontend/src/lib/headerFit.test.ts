@@ -14,7 +14,7 @@ describe("yieldAttribute", () => {
     expect(yieldAttribute(0)).toBe("");
     expect(yieldAttribute(2)).toBe("subject date");
     expect(yieldAttribute(YIELD_STEPS.length)).toBe(
-      "subject date labels dirs time name",
+      "subject date labels dirs time repo actions name",
     );
   });
 });
@@ -28,7 +28,7 @@ describe("fewestSteps", () => {
   it("ends at the name when nothing short of it fits, without trying it", () => {
     const fits = vi.fn(() => false);
     expect(fewestSteps(fits)).toBe(YIELD_STEPS.length);
-    expect(fits.mock.calls.map(([n]) => n)).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(fits.mock.calls.map(([n]) => n)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
   });
 });
 
@@ -101,6 +101,8 @@ const SAVES = {
   labels: 300,
   dirs: 80,
   time: 90,
+  repo: 40,
+  actions: 250,
   name: 0,
 };
 
@@ -132,9 +134,22 @@ describe("fitHeader", () => {
   });
 
   it("lets the name go only when every other step is not enough", () => {
-    const { header } = fakeHeader(500, needing(1400));
+    const { header } = fakeHeader(500, needing(1600));
     expect(fitHeader(header)).toBe(YIELD_STEPS.length);
-    expect(header.dataset.yield).toBe("subject date labels dirs time name");
+    expect(header.dataset.yield).toBe(
+      "subject date labels dirs time repo actions name",
+    );
+  });
+
+  // After the time, a dozen fixed-width icons and the repository's name still
+  // stood between the name and its room: at a 1050px window with the sidebar
+  // open the name was elided with all of them at full width.
+  it("folds the repository and the toolbar's actions away before the name", () => {
+    const { header } = fakeHeader(500, needing(1400));
+    expect(fitHeader(header)).toBe(7);
+    expect(header.dataset.yield).toBe(
+      "subject date labels dirs time repo actions",
+    );
   });
 
   it("notices the leading half overflowing as much as the toolbar", () => {
