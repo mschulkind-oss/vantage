@@ -292,7 +292,7 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
           // all of the row there is when the badge has no room. Not on the
           // row: a link's title is its accessible description, and the
           // badge's accessible name already says them once.
-          title={isSymlink ? undefined : planningBadge?.label}
+          title={isSymlink ? undefined : planningBadge?.title}
         >
           {node.name}
         </span>

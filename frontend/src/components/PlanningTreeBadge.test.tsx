@@ -40,6 +40,8 @@ const TREE: Record<string, string> = {
   "docs/deprecated.md": `---\nstatus: deprecated\n---\n`,
   "docs/stage-only.md": "---\nstage: DECIDED\n---\n",
   "docs/typo.md": "---\nstatus: accepted\nstage: DECIEDD\n---\n",
+  // Stage matching is exact (Plan Q20), so this is not the declared DESIGN.
+  "docs/lowercase.md": `---\nstatus: in-review\nstage: design\n---\n\n${question("OQ-1", "\u{1F4AC}")}`,
   "docs/asks.md": `# Asks\n\n${question("OQ-1", "\u{1F4AC}")}`,
   "docs/settled.md": `# Settled\n\n${question("OQ-1", "✅")}`,
   "docs/plain.md": "# Plain\n",
@@ -151,6 +153,34 @@ describe("file-tree badges (§7)", () => {
     );
     expect(dotIn("docs/staged.md")).not.toHaveClass(
       "vantage-tree-badge__dot--undeclared",
+    );
+  });
+
+  it("shows an undeclared stage as it is written, where the tooltip is the only text", () => {
+    seedReady(indexOf(TREE, STAGES));
+    renderTree();
+    // `design` is not the declared `DESIGN`. Lowercased, as it is spoken, the
+    // tooltip would say "design, not a declared stage" of a word that looks
+    // declared, and nothing else in the row shows which it is.
+    const words =
+      "in review, stage \u201cdesign\u201d is not a declared stage, 1 open question";
+    expect(screen.getByText("lowercase.md")).toHaveAttribute("title", words);
+    expect(badgeIn("docs/lowercase.md")!.parentElement).toHaveAttribute(
+      "title",
+      words,
+    );
+    expect(badgeIn("docs/typo.md")!.parentElement).toHaveAttribute(
+      "title",
+      "accepted, stage \u201cDECIEDD\u201d is not a declared stage",
+    );
+    // What a screen reader hears is unchanged, and a declared stage's
+    // tooltip is its spoken words.
+    expect(badgeIn("docs/lowercase.md")).toHaveAccessibleName(
+      "in review, design, not a declared stage, 1 open question",
+    );
+    expect(screen.getByText("staged.md")).toHaveAttribute(
+      "title",
+      "in review, design, 2 open questions",
     );
   });
 

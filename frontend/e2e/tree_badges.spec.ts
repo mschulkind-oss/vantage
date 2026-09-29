@@ -56,6 +56,14 @@ const PLAIN_ROWS = [
 ];
 
 /**
+ * Rows whose tooltip is not their spoken words: an undeclared stage keeps its
+ * own spelling there, where it is the only text the row shows of it.
+ */
+const TITLE_UNLIKE_LABEL: Record<string, string> = {
+  "csv.md": "stage \u201cDECIEDD\u201d is not a declared stage",
+};
+
+/**
  * Git changes the tree is told about. The fixture's files have none the tree
  * shows, so the directory's listing is answered with these added: a long
  * planning name, a short one, and a row with no badge.
@@ -349,13 +357,10 @@ for (const mode of MODES) {
         expect.soft(row.badge.label, `${row.file}: badge label`).toBeTruthy();
         // The words are on the name and the badge's slot, not on the row,
         // where they would be read a second time, as its description.
+        const words = TITLE_UNLIKE_LABEL[row.file] ?? row.badge.label;
         expect
           .soft(row.title, `${row.file}: tooltip`)
-          .toEqual({
-            row: null,
-            name: row.badge.label,
-            slot: row.badge.label,
-          });
+          .toEqual({ row: null, name: words, slot: words });
         // 3: drawn whenever the room left over is enough for it. Within half a
         // pixel either way, rounding decides, and either answer is right.
         if (row.badge.room >= row.badge.need + 0.5) {
