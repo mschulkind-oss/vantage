@@ -7,6 +7,7 @@ import {
   isAwaitingFirstResponse,
   isPendingForAgent,
   latestAgentReaction,
+  linesOfText,
   newReviewComment,
   postCommentTo,
   reviewCommentsBlock,
@@ -1985,6 +1986,7 @@ describe("the planning page's review writes and payload", () => {
       reviewerFollowup,
     ]);
     const content = "line one\nline two\n";
+    const lines = linesOfText(content);
 
     it("is byte-identical to a document's own Copy for one document", async () => {
       useReviewStore.setState({
@@ -1995,15 +1997,15 @@ describe("the planning page's review writes and payload", () => {
       await useReviewStore.getState().copyAllToClipboard();
       expect(
         answersPayload([
-          { path: "docs/design/guide.md", comments: [first], content },
+          { path: "docs/design/guide.md", comments: [first], lines },
         ]),
       ).toBe(writeText.mock.calls[0][0]);
     });
 
     it("groups by document, each group the block that document's Copy produces", () => {
       const payload = answersPayload([
-        { path: "a.md", comments: [first], content },
-        { path: "docs/b.md", comments: [second], content },
+        { path: "a.md", comments: [first], lines },
+        { path: "docs/b.md", comments: [second], lines },
       ])!;
       const blockA = reviewCommentsBlock("a.md", [first], content).join("\n");
       const blockB = reviewCommentsBlock("docs/b.md", [second], content).join(
@@ -2015,8 +2017,8 @@ describe("the planning page's review writes and payload", () => {
 
     it("closes with one set of instructions naming every document", () => {
       const payload = answersPayload([
-        { path: "a.md", comments: [first], content },
-        { path: "docs/b.md", comments: [second], content },
+        { path: "a.md", comments: [first], lines },
+        { path: "docs/b.md", comments: [second], lines },
       ])!;
       expect(payload.match(/## Responding to Comments/g)).toHaveLength(1);
       expect(payload).toContain("`uvx vantage-check a.md docs/b.md`");
@@ -2047,7 +2049,7 @@ describe("the planning page's review writes and payload", () => {
       ];
       for (const paths of [[hostile[0]], [hostile[1]], hostile]) {
         const payload = answersPayload(
-          paths.map((path) => ({ path, comments: [first], content })),
+          paths.map((path) => ({ path, comments: [first], lines })),
         )!;
         const block = payload.split("```bash\n")[1].split("\n```")[0];
         // Everything up to the wait loop: the write and the rename.
@@ -2079,7 +2081,7 @@ describe("the planning page's review writes and payload", () => {
 
     it("leaves an ordinary path exactly as it is", () => {
       const payload = answersPayload([
-        { path: "docs/a-b_c.md", comments: [first], content },
+        { path: "docs/a-b_c.md", comments: [first], lines },
       ])!;
       expect(payload).toContain("`uvx vantage-check docs/a-b_c.md`");
       expect(payload).toContain(
@@ -2087,14 +2089,67 @@ describe("the planning page's review writes and payload", () => {
       );
     });
 
+    // The planning page holds no document's text: only the lines its pending
+    // comments quote, each anchor line and two either side, come from the scan
+    // worker (planning-index-at-scale.md §10.5).
+    it("quotes from only the lines each comment needs as from the whole text", () => {
+      const text = Array.from({ length: 12 }, (_, i) => `line ${i + 1}`).join(
+        "\n",
+      );
+      const at = (id: string, line: number): ReviewComment => ({
+        ...mkThreadComment(id, `on line ${line}`, []),
+        anchor: {
+          source_line: line,
+          block_text_hash: "00000000",
+          selection_offset: 0,
+          selection_length: 0,
+        },
+      });
+      // Near the start, in the middle, at the last line, and past the end.
+      const comments = [
+        at("aaaa0001", 1),
+        at("bbbb0002", 6),
+        at("cccc0003", 12),
+        at("dddd0004", 14),
+      ];
+      const held = new Map<number, string>();
+      const whole = text.split("\n");
+      for (const line of [1, 6, 12, 14]) {
+        for (let n = line - 2; n <= line + 2; n++) {
+          const had = whole[n - 1];
+          if (n >= 1 && had !== undefined) held.set(n, had);
+        }
+      }
+      const payload = answersPayload([
+        { path: "a.md", comments, lines: (n) => held.get(n) },
+      ]);
+      expect(payload).toBe(
+        answersPayload([{ path: "a.md", comments, lines: linesOfText(text) }]),
+      );
+      expect(payload).toContain(">   12 | line 12");
+      expect(payload).not.toContain("line 9");
+    });
+
+    it("quotes nothing without the lines", () => {
+      const payload = answersPayload([
+        { path: "a.md", comments: [first], lines: null },
+      ])!;
+      expect(payload).not.toContain("| line");
+      expect(payload).toContain("**Comment:** first doc's answer");
+      // The whole text quotes the anchor's line.
+      expect(
+        answersPayload([{ path: "a.md", comments: [first], lines }]),
+      ).toContain("| line two");
+    });
+
     it("leaves out a group with nothing in it, and is null when every group is empty", () => {
       expect(
         answersPayload([
-          { path: "a.md", comments: [], content },
-          { path: "b.md", comments: [first], content },
+          { path: "a.md", comments: [], lines },
+          { path: "b.md", comments: [first], lines },
         ]),
       ).not.toContain("a.md");
-      expect(answersPayload([{ path: "a.md", comments: [], content }])).toBe(
+      expect(answersPayload([{ path: "a.md", comments: [], lines }])).toBe(
         null,
       );
       expect(answersPayload([])).toBe(null);
