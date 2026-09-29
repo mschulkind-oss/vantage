@@ -301,6 +301,12 @@ func TestInstallServiceWithSourceDirsOnMacOS(t *testing.T) {
 		"launchctl bootstrap gui/501 " + plist,
 	}, rec.calls, "a failed bootout means the agent was not loaded yet, which is fine")
 	require.NoDirExists(t, filepath.Join(in.home, ".config", "systemd"))
+
+	// It prints what it ran, bootout included, and why its failure is no error.
+	printed := out.String()
+	require.Contains(t, printed, "Ran: launchctl bootout gui/501/"+launchAgentLabel+"\n"+
+		"  (it failed, as it does when the agent is not loaded yet: not loaded)\n"+
+		"Ran: launchctl bootstrap gui/501 "+plist+"\n")
 }
 
 func TestInstallServiceWithSourceDirsKeepsAnExistingConfig(t *testing.T) {
