@@ -35,6 +35,7 @@ const DEFAULT_REHYPE = [
   "rehypeSourceLines",
   "rehypeVantageAlerts",
   "rehypeVantageDirectives",
+  "rehypeStripSvgContainers",
   "rehypeSanitize",
   "rehypeVantageAnchors",
   "rehypeSlug",
@@ -85,6 +86,22 @@ describe("buildPipeline order", () => {
     );
     expect(order.indexOf("rehypeSanitize")).toBeGreaterThan(
       order.indexOf("rehypeVantageDirectives"),
+    );
+  });
+
+  it("removes SVG containers immediately before the sanitizer", () => {
+    // After `rehypeRaw`, which is what turns a drawing's markup into elements.
+    // Before `rehypeSanitize`, which would otherwise have unwrapped them first,
+    // leaving a clip rect or a `foreignObject`'s HTML in the drawing and
+    // nothing for this pass to find. Adjacent, so the two read as the one step
+    // they are.
+    const order = names(buildPipeline().rehypePlugins);
+
+    expect(order.indexOf("rehypeStripSvgContainers")).toBeGreaterThan(
+      order.indexOf("rehypeRaw"),
+    );
+    expect(order.indexOf("rehypeStripSvgContainers")).toBe(
+      order.indexOf("rehypeSanitize") - 1,
     );
   });
 
@@ -183,6 +200,7 @@ describe("buildPipeline toggles", () => {
       "rehypeSourceLines",
       "rehypeVantageAlerts",
       "rehypeVantageDirectives",
+      "rehypeStripSvgContainers",
       "rehypeSanitize",
       "rehypeVantageAnchors",
       "rehypeSlug",
@@ -208,6 +226,7 @@ describe("buildPipeline toggles", () => {
       "rehypeSourceLines",
       "rehypeVantageAlerts",
       "rehypeVantageDirectives",
+      "rehypeStripSvgContainers",
       "rehypeSanitize",
       "rehypeVantageAnchors",
       "rehypeSlug",
@@ -224,6 +243,7 @@ describe("buildPipeline toggles", () => {
       "rehypeRaw",
       "rehypeVantageAlerts",
       "rehypeVantageDirectives",
+      "rehypeStripSvgContainers",
       "rehypeSanitize",
       "rehypeVantageAnchors",
       "rehypeSlug",
@@ -234,7 +254,10 @@ describe("buildPipeline toggles", () => {
     ]);
   });
 
-  it("drops only rehypeSanitize for sanitize: false", () => {
+  it("drops rehypeSanitize and the SVG container pass for sanitize: false", () => {
+    // The pass is half of what the sanitizer does to a drawing, not a plugin of
+    // its own: with the sanitizer off, `defs` and `clipPath` work as SVG
+    // defines them.
     const { rehypePlugins } = buildPipeline({ sanitize: false });
 
     expect(names(rehypePlugins)).toEqual([

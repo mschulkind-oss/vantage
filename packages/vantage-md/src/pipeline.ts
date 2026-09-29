@@ -47,7 +47,7 @@ import {
   rehypeCaptureMathStamps,
   rehypeRestoreMathStamps,
 } from "./rehypeVantageMathStamps.js";
-import { sanitizeSchema } from "./sanitize.js";
+import { rehypeStripSvgContainers, sanitizeSchema } from "./sanitize.js";
 
 export interface PipelineOptions {
   /** GFM tables, strikethrough, task lists (default: true) */
@@ -122,7 +122,13 @@ function buildRehypePlugins(options: PipelineOptions = {}): PluggableList {
   // document means.
   plugins.push(rehypeVantageAlerts);
   plugins.push(rehypeVantageDirectives);
-  if (sanitize) plugins.push([rehypeSanitize, sanitizeSchema]);
+  // The SVG containers that must go with their contents go only inside a
+  // drawing; the schema's `strip` would take them out of prose as well, and a
+  // bare `<pattern>` there took the rest of the document with it. See
+  // `SVG_STRIPPED`.
+  if (sanitize) {
+    plugins.push(rehypeStripSvgContainers, [rehypeSanitize, sanitizeSchema]);
+  }
   // ── The id slot ───────────────────────────────────────────────────────
   // Both of these write `id`, and both are here rather than earlier for the
   // same reason: the sanitizer clobbers `id` with `user-content-`, so anything

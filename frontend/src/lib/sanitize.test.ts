@@ -874,4 +874,85 @@ describe("inline SVG", () => {
       expect(html).not.toContain(`<${tag}`);
     },
   );
+
+  /**
+   * What the containers removed inside a drawing do in prose: they are
+   * unwrapped there, like any other tag the schema does not know.
+   *
+   * Removing them in prose too lost the rest of the document. A bare
+   * `<pattern>` on a line of its own is an HTML element nothing closes, so
+   * every Markdown block after it was parsed into it and went with it — in all
+   * three renderers, with `vantage-check` silent. Inside an `<svg>` the same
+   * container is bounded by the drawing, because a Markdown paragraph or
+   * heading breaks out of SVG.
+   */
+  const STRIPPED_IN_SVG = [
+    "defs",
+    "clipPath",
+    "mask",
+    "pattern",
+    "marker",
+    "symbol",
+    "linearGradient",
+    "radialGradient",
+    "filter",
+    "metadata",
+    "foreignObject",
+    "title",
+    "desc",
+  ];
+
+  it.each(STRIPPED_IN_SVG)(
+    "keeps every block after a bare <%s> on a line of its own",
+    async (tag) => {
+      const html = await styled(
+        `Intro\n\n<${tag}>\n\nPara one.\n\n## Later\n\n- item\n\nEnd.`,
+      );
+      expect(html).not.toContain(`<${tag}`);
+      const host = document.createElement("div");
+      host.innerHTML = html;
+      expect(host.querySelector("h2")?.textContent).toBe("Later");
+      expect(host.querySelector("li")?.textContent).toBe("item");
+      expect(host.textContent).toContain("Para one.");
+      expect(host.textContent).toContain("End.");
+    },
+  );
+
+  it("keeps the section a link points at when a bare <pattern> precedes it", async () => {
+    const html = await styled(
+      "# Probe\n\nSee [the later section](#later-heading).\n\nSearch with this form:\n\n<pattern>\n\nPara one.\n\n## Later heading\n\nPara two.",
+    );
+    expect(html).toBe(
+      [
+        `<h1 data-source-line="1" id="probe">Probe</h1>`,
+        `<p data-source-line="3">See <a href="#later-heading">the later section</a>.</p>`,
+        `<p data-source-line="5">Search with this form:</p>`,
+        // Where the `<pattern>` stood: the tag goes, its newline stays.
+        ``,
+        `<p data-source-line="9">Para one.</p>`,
+        `<h2 data-source-line="11" id="later-heading">Later heading</h2>`,
+        `<p data-source-line="13">Para two.</p>`,
+      ].join("\n"),
+    );
+  });
+
+  it.each([
+    [
+      "a placeholder in a sentence",
+      "Replace <pattern> with a regex, and <filter> too.",
+      `<p data-source-line="1">Replace  with a regex, and  too.</p>`,
+    ],
+    [
+      "a title with its text",
+      "A stray <title>x</title> here.",
+      `<p data-source-line="1">A stray x here.</p>`,
+    ],
+    [
+      "tag names in code spans",
+      "Write `<pattern>` and `<title>` in code.",
+      `<p data-source-line="1">Write <code>&#x3C;pattern></code> and <code>&#x3C;title></code> in code.</p>`,
+    ],
+  ])("loses only the tag of %s in prose", async (_, markdown, expected) => {
+    expect(await styled(markdown)).toBe(expected);
+  });
 });
