@@ -254,9 +254,17 @@ export function applySource(
 ): PlanningIndex {
   if (index.refused) return index;
   const { path } = entry;
-  let documents = index.documents.filter((d) => d.path !== path);
-  let skipped = index.skipped.filter((s) => s.path !== path);
-  let unreadable = index.unreadable.filter((u) => u.path !== path);
+  // A list the path is not in is kept as it is, so an answer that changes
+  // nothing returns `index` itself: every pushed Markdown path is asked about,
+  // and a save of a file that is not a planning document must not read as a
+  // new index.
+  const without = <T extends { path: string }>(list: T[]): T[] =>
+    list.some((item) => item.path === path)
+      ? list.filter((item) => item.path !== path)
+      : list;
+  let documents = without(index.documents);
+  let skipped = without(index.skipped);
+  let unreadable = without(index.unreadable);
 
   switch (entry.kind) {
     case "file": {
@@ -280,6 +288,13 @@ export function applySource(
       break;
     case "absent":
       break;
+  }
+  if (
+    documents === index.documents &&
+    skipped === index.skipped &&
+    unreadable === index.unreadable
+  ) {
+    return index;
   }
   return { ...index, documents, skipped, unreadable };
 }

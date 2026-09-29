@@ -264,7 +264,8 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
     const load = get().byRepo[repo];
     if (load?.status !== "ready") return;
     const next = applyChange(load, change);
-    // `applySource` answers a refused index with itself; nothing changed.
+    // `applySource` answers with the index itself when nothing changed: a
+    // refused index, or a path that is not a planning document and was not.
     if (next.index === load.index) return;
     setLoad(repo, ready(next, load.rescanning));
   };

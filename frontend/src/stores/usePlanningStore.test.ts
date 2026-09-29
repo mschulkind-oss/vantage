@@ -334,6 +334,19 @@ describe("a pushed path (§3.4, incremental)", () => {
     expect(after.version).toBeGreaterThan(before.version);
   });
 
+  it("keeps the load, version included, when a save changes nothing", async () => {
+    await readyWith();
+    const before = load();
+    store().noteFilesChanged("", ["docs/notes.md"], []);
+    take(one("docs/notes.md")).answer({
+      path: "docs/notes.md",
+      kind: "file",
+      content: "# Just notes\n",
+    });
+    await flush();
+    expect(load()).toBe(before);
+  });
+
   it("adds a new file the server answers as a file", async () => {
     await readyWith();
     store().noteFilesChanged("", ["docs/new.md"], []);

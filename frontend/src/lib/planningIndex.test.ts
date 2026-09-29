@@ -350,6 +350,27 @@ describe("applySource (§3.4)", () => {
     expect(other.documents).toEqual([]);
   });
 
+  // Every pushed Markdown path is asked about, planning or not, so an answer
+  // that changes nothing must say so, or every save re-renders the page.
+  it("returns the index itself when the answer changes nothing", () => {
+    const index = base();
+    expect(
+      applySource(index, { kind: "file", path: "notes.md", content: PLAIN }),
+    ).toBe(index);
+    expect(applySource(index, { kind: "absent", path: "gone.md" })).toBe(index);
+  });
+
+  it("keeps the lists the answer does not touch", () => {
+    const index = base();
+    const next = applySource(index, {
+      kind: "file",
+      path: "b.md",
+      content: DRAFT,
+    });
+    expect(next.skipped).toBe(index.skipped);
+    expect(next.unreadable).toBe(index.unreadable);
+  });
+
   it("leaves its argument alone", () => {
     const index = base();
     const before = JSON.stringify(index);
