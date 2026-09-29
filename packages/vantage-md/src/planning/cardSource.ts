@@ -54,37 +54,86 @@ export function questionCardSource(
   source: string,
   question: PlanningQuestion,
 ): { markdown: string; lineOffset: number } {
-  const parsed = parseFrontmatter(source);
-  const root: Root = parseBody(parsed.body);
-  const offset = parsed.bodyLineOffset;
+  const { blocks, definitions } = outlineOf(source);
   const { startLine, endLine } = question.block;
-  const inSlice = (node: Nodes): boolean => {
-    const from = (node.position?.start.line ?? 0) + offset;
-    const to = (node.position?.end.line ?? 0) + offset;
-    return from <= endLine && to >= startLine;
-  };
+  const inSlice = (span: Span): boolean =>
+    span.from <= endLine && span.to >= startLine;
 
-  if (root.children.some((child) => inSlice(child) && holdsFootnote(child))) {
+  if (blocks.some((block) => inSlice(block) && block.footnote)) {
     return { markdown: source, lineOffset: 0 };
   }
 
-  const definitions: string[] = [];
-  const collect = (node: Nodes): void => {
-    if (node.type === "definition") {
-      if (!inSlice(node)) definitions.push(definitionText(node));
-      return;
-    }
-    if ("children" in node) (node.children as Nodes[]).forEach(collect);
-  };
-  collect(root);
-
+  const outside = definitions
+    .filter((definition) => !inSlice(definition))
+    .map((definition) => definition.text);
   const slice = source
     .split("\n")
     .slice(startLine - 1, endLine)
     .join("\n");
   const markdown =
-    definitions.length === 0
-      ? `${slice}\n`
-      : `${slice}\n\n${definitions.join("\n")}\n`;
+    outside.length === 0 ? `${slice}\n` : `${slice}\n\n${outside.join("\n")}\n`;
   return { markdown, lineOffset: startLine - 1 };
+}
+
+/** File lines, first and last, both inclusive. */
+interface Span {
+  from: number;
+  to: number;
+}
+
+/** What a card needs of its document's parse: small, so it can be kept. */
+interface Outline {
+  /** The root-level blocks, and whether each holds a footnote. */
+  blocks: (Span & { footnote: boolean })[];
+  /** Every link reference definition, written back out. */
+  definitions: (Span & { text: string })[];
+}
+
+/**
+ * Outlines of the documents parsed most recently, by text. A document with k
+ * questions has k cards, and each card would otherwise parse the whole
+ * document again; the page renders them all at once.
+ */
+const outlines = new Map<string, Outline>();
+const OUTLINES_KEPT = 32;
+
+function outlineOf(source: string): Outline {
+  const kept = outlines.get(source);
+  if (kept !== undefined) {
+    // Most recently used last, so the oldest is the first to go.
+    outlines.delete(source);
+    outlines.set(source, kept);
+    return kept;
+  }
+  const parsed = parseFrontmatter(source);
+  const root: Root = parseBody(parsed.body);
+  const offset = parsed.bodyLineOffset;
+  const span = (node: Nodes): Span => ({
+    from: (node.position?.start.line ?? 0) + offset,
+    to: (node.position?.end.line ?? 0) + offset,
+  });
+
+  const definitions: Outline["definitions"] = [];
+  const collect = (node: Nodes): void => {
+    if (node.type === "definition") {
+      definitions.push({ ...span(node), text: definitionText(node) });
+      return;
+    }
+    if ("children" in node) (node.children as Nodes[]).forEach(collect);
+  };
+  collect(root);
+  const outline: Outline = {
+    blocks: root.children.map((child) => ({
+      ...span(child),
+      footnote: holdsFootnote(child),
+    })),
+    definitions,
+  };
+
+  outlines.set(source, outline);
+  if (outlines.size > OUTLINES_KEPT) {
+    const oldest = outlines.keys().next();
+    if (oldest.done !== true) outlines.delete(oldest.value);
+  }
+  return outline;
 }
