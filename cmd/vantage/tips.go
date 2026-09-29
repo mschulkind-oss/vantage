@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"slices"
 	"strconv"
@@ -178,7 +179,8 @@ func openPathFor(daemon *config.Config, target string, plan *clonesPlan, names [
 	}
 	for _, r := range daemon.Repos {
 		if r.Path == target && slices.Contains(names, r.Name) {
-			return "/" + r.Name
+			// A name is a directory name, and may hold a space, "#" or "?".
+			return "/" + url.PathEscape(r.Name)
 		}
 	}
 	return ""

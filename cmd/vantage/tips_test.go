@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -139,6 +141,35 @@ func TestProbeServiceFindsThisProjectInTheRunningService(t *testing.T) {
 	st = probeService(context.Background(), "linux", home, project, nil, lister.list)
 	require.True(t, st.Running)
 	require.Equal(t, "", st.OpenPath)
+}
+
+// A project's name is a directory name, and may hold a space, "#", "?" or
+// "%". Unescaped, the link opens the wrong page: a terminal ends it at the
+// space, and a browser reads "#" as the start of a fragment.
+func TestProbeServiceEscapesTheProjectInItsLink(t *testing.T) {
+	home := isolateHome(t)
+	parent := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(parent); err == nil {
+		parent = resolved
+	}
+	cases := []struct{ name, want string }{
+		{"my notes", "/my%20notes"},
+		{"c#", "/c%23"},
+		{"a?b", "/a%3Fb"},
+		{"100%", "/100%25"},
+	}
+	var body strings.Builder
+	for _, c := range cases {
+		dir := filepath.Join(parent, c.name)
+		require.NoError(t, os.MkdirAll(dir, 0o755))
+		fmt.Fprintf(&body, "[[repos]]\nname = %q\npath = %q\n\n", c.name, dir)
+	}
+	writeUserConfig(t, home, body.String())
+	for _, c := range cases {
+		st := probeService(context.Background(), "linux", home, filepath.Join(parent, c.name), nil,
+			(&fakeLister{names: []string{c.name}}).list)
+		require.Equal(t, c.want, st.OpenPath, c.name)
+	}
 }
 
 func TestProbeServiceFindsAClonesDirectoryAmongItsSourceDirs(t *testing.T) {
