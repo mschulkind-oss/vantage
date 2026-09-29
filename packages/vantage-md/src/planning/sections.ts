@@ -11,7 +11,12 @@
 import { VANTAGE_OQ_ID } from "../vantageDirectives.js";
 import type { StageRole } from "./config.js";
 import { findDocument, type PlanningIndex } from "./model.js";
-import type { DependsOn, PlanningDocument, PlanningQuestion } from "./scan.js";
+import type {
+  DependsOn,
+  PlanningDocument,
+  PlanningLink,
+  PlanningQuestion,
+} from "./scan.js";
 
 /** A question, by document and line; `id` too, so a stale reference misses. */
 export interface QuestionRef {
@@ -86,15 +91,33 @@ const keyOf = (ref: QuestionRef): string => `${ref.path}\n${ref.line}`;
 const isOpen = (q: PlanningQuestion): boolean => q.state === "open";
 
 /**
- * The questions the roadmap routes, in the order its links reach them (§6.1).
+ * The questions one roadmap link routes (§6.1), or `null` when it routes
+ * nothing at all.
  *
- * A bare link to a document routes every question in it, at that position; a
- * link to `#OQ-…` routes that one question; a link to a heading routes
- * nothing, since a compacted question is cited through its document's
- * `#decision-ledger` heading and routing that would route the document's
- * unrelated open questions (Plan Q12). A question reached twice keeps its first
- * position. Links to non-planning documents, and to `done` documents, route
- * nothing.
+ * A bare link to a document routes every question in it, and routes the
+ * document even when it has none, so the list can be empty; a link to
+ * `#OQ-…` routes that one question, and nothing when no question carries the
+ * id; a link to a heading routes nothing, since a compacted question is cited
+ * through its document's `#decision-ledger` heading and routing that would
+ * route the document's unrelated open questions (Plan Q12). Links to
+ * non-planning documents, and to `done` documents, route nothing.
+ */
+function routedBy(
+  index: PlanningIndex,
+  link: PlanningLink,
+): PlanningQuestion[] | null {
+  const doc = findDocument(index, link.target);
+  if (doc === undefined || !isLive(index, doc)) return null;
+  if (link.fragment === null) return doc.questions;
+  if (!VANTAGE_OQ_ID.test(link.fragment)) return null;
+  const reached = doc.questions.filter((q) => q.id === link.fragment);
+  return reached.length > 0 ? reached : null;
+}
+
+/**
+ * The questions the roadmap routes, in the order its links reach them (§6.1),
+ * each link read by `routedBy`. A question reached twice keeps its first
+ * position.
  */
 export function routeQuestions(index: PlanningIndex): RoutedQuestion[] {
   const roadmap = findDocument(index, index.config.roadmap);
@@ -102,16 +125,8 @@ export function routeQuestions(index: PlanningIndex): RoutedQuestion[] {
   const routed: RoutedQuestion[] = [];
   const seen = new Set<string>();
   for (const link of roadmap.links) {
-    const doc = findDocument(index, link.target);
-    if (doc === undefined || !isLive(index, doc)) continue;
-    let reached: PlanningQuestion[];
-    if (link.fragment === null) {
-      reached = doc.questions;
-    } else if (VANTAGE_OQ_ID.test(link.fragment)) {
-      reached = doc.questions.filter((q) => q.id === link.fragment);
-    } else {
-      continue;
-    }
+    const reached = routedBy(index, link);
+    if (reached === null) continue;
     for (const question of reached) {
       const ref = refOf(question);
       if (seen.has(keyOf(ref))) continue;
@@ -120,6 +135,23 @@ export function routeQuestions(index: PlanningIndex): RoutedQuestion[] {
     }
   }
   return routed;
+}
+
+/**
+ * The open questions of `docs` that `routed` does not hold (§6.2 *Unrouted*),
+ * by document, then line. `docs` are live documents: a `done` one has no
+ * questions to leave unrouted.
+ */
+function unroutedIn(
+  docs: readonly PlanningDocument[],
+  routed: readonly RoutedQuestion[],
+): QuestionRef[] {
+  const routedKeys = new Set(routed.map(keyOf));
+  return docs.flatMap((doc) =>
+    doc.questions
+      .filter((q) => isOpen(q) && !routedKeys.has(keyOf(refOf(q))))
+      .map(refOf),
+  );
 }
 
 /**
@@ -159,12 +191,7 @@ export function derivePlanningSections(index: PlanningIndex): PlanningSections {
       const state = byKey.get(keyOf(ref))?.state;
       return state === "open" || state === "answered";
     });
-    const routedKeys = new Set(routed.map(keyOf));
-    unrouted = live.flatMap((doc) =>
-      doc.questions
-        .filter((q) => isOpen(q) && !routedKeys.has(keyOf(refOf(q))))
-        .map(refOf),
-    );
+    unrouted = unroutedIn(live, routed);
   } else {
     needsYou = live.flatMap((doc) =>
       doc.questions.filter(isOpen).map((q) => ({ ...refOf(q), heading: null })),
