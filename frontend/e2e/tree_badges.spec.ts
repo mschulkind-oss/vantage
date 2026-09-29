@@ -404,3 +404,23 @@ test("a badge with no room is still in the name's tooltip and the row's accessib
     row.getByText("agent-directory-contract.md", { exact: true }),
   ).toHaveAttribute("title", "in review, 1 open question");
 });
+
+test("a drawn badge is part of the row's click target, and looks it", async ({
+  page,
+}) => {
+  await openTree(page, 360, "light");
+  const row = page
+    .getByTestId("sidebar")
+    .locator(`a[href="/${DIR}/api-keys.md"]`)
+    .first();
+  const badge = row.locator("[data-vantage-planning-badge]");
+  await expect(badge).toBeInViewport();
+  // The badge is inside the row's link, so the pointer over it says what
+  // clicking does: open the file, as anywhere else on the row.
+  const cursor = (l: typeof row) =>
+    l.evaluate((el) => getComputedStyle(el).cursor);
+  expect(await cursor(row)).toBe("pointer");
+  expect(await cursor(badge)).toBe("pointer");
+  await badge.click();
+  await expect(page).toHaveURL(new RegExp(`/${DIR}/api-keys\\.md$`));
+});

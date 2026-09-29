@@ -1646,7 +1646,8 @@ th.review-block-hovered {
   white-space: nowrap;
   user-select: none;
   -webkit-user-select: none;
-  cursor: default;
+  /* No cursor of its own: unlike a link's badge (§5.3), this one is inside
+     the row's link, and clicking it opens the file like the rest of the row. */
 }
 /* The status chip's own ink, through the chip's tone modifier on the dot. */
 .vantage-tree-badge__dot {
