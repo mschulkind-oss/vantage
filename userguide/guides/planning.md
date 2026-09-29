@@ -245,8 +245,9 @@ answered questions: those await compaction, not a ruling.
 
 After the sections comes the roadmap itself, with each link's badge written
 inline in brackets. The options, the JSON form and the exit codes are in the
-[vantage-check guide](vantage-check.md), with the four `planning/*` rules
-`check` gains from the same index.
+vantage-check guide's [`index` section](vantage-check.md#vantage-check-index),
+and the four `planning/*` rules that `check` runs over the same scan are in
+[What it checks](vantage-check.md#what-it-checks).
 
 ---
 
