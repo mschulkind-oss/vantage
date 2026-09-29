@@ -10,6 +10,7 @@ the second one never reached it at all, because nothing checked the result.
 ```console
 $ uvx vantage-check docs/            # check that documents really render
 $ uvx vantage-check style-guide      # print the conventions Vantage expects
+$ uvx vantage-check index            # list what the planning documents still owe
 ```
 
 It is a single compiled file with its own runtime inside it: no Node, no npm,
@@ -153,7 +154,7 @@ one list.
 
 ## What it checks
 
-Three groups, and the difference between them is the whole idea.
+Four groups, and the difference between them is the whole idea.
 
 **Our rules** need *this repository on disk* and Vantage's routing semantics. No
 general-purpose Markdown linter can answer them, which is why they are written
@@ -326,6 +327,37 @@ does.
 > time in the viewer, and a diagram that parses cleanly can still lay out badly.
 > Everything else is checked against the code the viewer runs.
 
+**The planning rules** are the fourth group. They read a repository's plans
+rather than one page's rendering: each document's `stage` and `depends-on`
+frontmatter, its `oq` directives, and the roadmap's links, all as the
+[planning index](planning.md) reads them. The viewer's badges come from the same
+scan, so the gate and the page cannot disagree.
+
+| Rule | Catches | Default |
+| :--- | :--- | :--- |
+| `planning/stage-vocabulary` | A `stage` outside the words `[planning.stages]` declares | error, once stages are declared |
+| `planning/depends-on-missing` | A `depends-on` entry whose target does not exist or lies outside the repository, or whose `#OQ-…` id appears nowhere in it | error |
+| `planning/stage-disagrees` | A document whose stage has the `ready` or `built` role while it still has open questions | warning |
+| `planning/unrouted` | An open question the roadmap does not [route](planning.md#the-roadmap), directly or through its document | **off** |
+
+They run once, after every document in the run has been checked, and each one
+needs only the document it reports on and the roadmap. So `check` never walks
+the tree for them: a one-file run costs one extra read of the roadmap, and
+nothing is counted, so the `max-candidates` limit that stops `index` never
+stops `check`. A finding is reported only against a file the run was asked to
+check.
+
+- **`planning/stage-vocabulary` does nothing without `[planning.stages]`**,
+  whatever its severity: with no vocabulary declared, every word is allowed.
+- **`planning/unrouted` is off until you turn it on.** It asks whether the
+  roadmap has placed a question at all, which is only worth asking of a
+  repository that keeps a roadmap. Set it to `"warning"` to have `check` list
+  those questions without failing on them. A question in a document whose
+  stage has the `done` role is never reported.
+- **The roadmap is found from the file's [project root](#vantage-check-index)**,
+  the same root `index` scans. With no root, the per-document rules still run,
+  and `planning/unrouted` finds no roadmap and reports nothing.
+
 ---
 
 ## Configuration
@@ -361,6 +393,13 @@ clean answer.
 > typo that silently disables nothing is the kind of quiet wrongness a checker
 > cannot afford.
 
+The same file's `[planning]` table
+([Configuration](../reference/configuration.md#planning-documents)) is read by
+the planning rules and by `index`, and it is held to the same standard: an
+unknown key, a role outside the four, or a limit that is not a whole number of
+at least 1 **fails every run with exit `2`**, `check` included, not only the
+planning rules.
+
 ---
 
 ## `vantage-check style-guide`
@@ -380,6 +419,98 @@ can never disagree. See [Style Guide for Agents](../reference/style-guide.md).
 
 Nothing writes to your `AGENTS.md`, `CLAUDE.md` or `.gitignore` on your behalf.
 If you want the guide in an agent's system prompt, put it there yourself.
+
+---
+
+## `vantage-check index`
+
+```bash
+vantage-check index [--format text|json] [--config <path> | --no-config]
+```
+
+Prints the repository's [planning index](planning.md): the sections that say
+which questions need a ruling, which ones the roadmap has missed, what waits
+on what, and which documents are ready to build or to graduate, then the
+roadmap with each link's badge written inline. It is how an agent sees what a
+person sees in the viewer, with no server running. Design background:
+[`planning-index.md` §8](../../docs/design/planning-index.md#8-vantage-check-index-and-the-planning-rules).
+
+| Option | Effect |
+| :--- | :--- |
+| `--format text\|json` | Output format. Default `text`. |
+| `--config <path>` | Read this `.vantage.toml`. It never changes which project is scanned. |
+| `--no-config` | Ignore `.vantage.toml` and use the built-in defaults. |
+
+It takes no paths. It scans the **project root**, which is the nearest
+directory at or above the current one holding `.git` or `.vantage.toml`, or the
+current directory itself when there is none. `--config` chooses which config is
+read, never which project is scanned, so a config file kept outside the tree,
+such as a temporary one, does not move the scan with it. `check` finds the
+roadmap from the same kind of root, looking up from each file it checks, so the
+two commands agree on the project.
+
+> [!NOTE]
+> **`index` is a command word.** `vantage-check index` used to check a file or
+> directory named `index`, because a first argument that is not a command is a
+> path. To check one now, write it as a path: `vantage-check ./index`.
+
+### What it reads
+
+Candidates are found the way the server finds them, from the repository's own
+rules: `.md` files, skipping hidden directories, the default excluded
+directories such as `node_modules` and `dist`, linked worktrees, `.vantageignore`
+matches and symbolic links; then `[planning]`'s `include` and `exclude`. The
+server's list is also shaped by two settings that belong to one reader rather
+than to the repository, its `exclude_dirs` and the user ignore file
+(`~/.config/vantage/ignore`). The checker cannot see those, so where they are
+set, `index` can list a file that the viewer does not.
+
+### Output
+
+The text form lists each non-empty section in order, one indented line per
+entry, with the notes the [Planning Documents](planning.md#reading-it-from-the-command-line)
+guide describes: no roadmap, no stages, or nothing that needs you. Then it
+prints the roadmap's own source, with each link that has a badge followed by
+that badge in brackets, as in `[the plan](docs/design/x-plan.md) [in-review · DECIDED]`.
+*Skipped* and *Could not read* are listed in both forms.
+
+`--format json` prints the whole index as one object, shown here with its
+three large fields emptied:
+
+```json
+{
+  "tool": "vantage-check",
+  "toolVersion": "0.1.0",
+  "version": 1,
+  "root": "/home/me/project",
+  "index": {},
+  "sections": {},
+  "roadmap": []
+}
+```
+
+- **`version`** is the version of this output format, so a consumer can tell
+  when it changes. It is not the tool's version: that is `toolVersion` here,
+  and `check`'s JSON calls it `version`.
+- **`root`** is the project root that was scanned.
+- **`index`** holds the effective `[planning]` config, the candidate count, and
+  every planning document with its header, its questions and its links, the
+  links narrowed to those that point at another candidate. *Skipped* and
+  *Could not read* are here too.
+- **`sections`** holds the same lists the text form prints.
+- **`roadmap`** holds one entry per link in the roadmap, with its line, its
+  target and the badge it gets.
+
+### Exit codes
+
+| Code | Meaning |
+| :--- | :--- |
+| `0` | It ran. |
+| `2` | Bad arguments, or a config file that cannot be trusted. |
+| `3` | It could not run, which includes a project with more candidates than `max-candidates`. It prints how many there are, and nothing is scanned. |
+
+It never exits `1`: `index` reports and does not judge. Failing a build on what
+the index finds is `check`'s job, through the planning rules above.
 
 ---
 
