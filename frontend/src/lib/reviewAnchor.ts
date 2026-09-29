@@ -155,6 +155,115 @@ export function anchorBlockWithin(scope: HTMLElement): HTMLElement | null {
 }
 
 /**
+ * Every anchorable block under a root, by source line and by hash.
+ *
+ * Built once per pass and read many times: the highlighter resolves each
+ * comment against it, and the planning page asks it whether a comment lands
+ * inside one question's card. Both must resolve an anchor to the same block, so
+ * both build the index here rather than each keeping a loop of its own.
+ */
+export interface BlockIndex {
+  /** Every block at a source line, in document order. */
+  byLine: Map<number, HTMLElement[]>;
+  /** Every block with a hash, in document order. */
+  byHash: Map<string, HTMLElement[]>;
+}
+
+/**
+ * Index every anchorable block under `root`, stamping each with the
+ * `data-block-hash` that `blockAtLine` compares against. Skips the container
+ * tags no comment anchors on (`ANCHORABLE_BLOCK_SELECTOR`).
+ */
+export function indexBlocks(root: HTMLElement): BlockIndex {
+  const byLine = new Map<number, HTMLElement[]>();
+  const byHash = new Map<string, HTMLElement[]>();
+  for (const block of root.querySelectorAll<HTMLElement>(
+    ANCHORABLE_BLOCK_SELECTOR,
+  )) {
+    const line = lineOf(block);
+    if (!Number.isFinite(line)) continue;
+    const hash = hashBlockText(blockVisibleText(block));
+    block.setAttribute("data-block-hash", hash);
+    const atLine = byLine.get(line) ?? [];
+    atLine.push(block);
+    byLine.set(line, atLine);
+    const withHash = byHash.get(hash) ?? [];
+    withHash.push(block);
+    byHash.set(hash, withHash);
+  }
+  return { byLine, byHash };
+}
+
+/**
+ * The block at `line` an anchor carrying `hash` means.
+ *
+ * A source line used to name at most one anchorable block, so the index could be
+ * a plain line→block map and the tie between a container and its first child (a
+ * `blockquote` and its `<p>`, an `<li>` and its `<p>` — both stamped with the
+ * same line) was settled by last-write-wins in document order, the inner one.
+ * Table cells broke that: every cell in a row carries the *row's* line, and they
+ * are siblings rather than nested, so document order alone picks the last cell in
+ * the row and there is no sense in which that is "the" block for the line.
+ *
+ * So the hash decides first and document order only breaks what the hash cannot.
+ * The fallback is still the last candidate, which keeps the container/child
+ * tie-break exactly as it was — and as `anchorBlockWithin` documents and relies
+ * on when it captures an anchor.
+ *
+ * Residual, in two parts, both from the same root — a cell's line does not
+ * identify it, so when the hash cannot either, nothing can:
+ *
+ * - Two cells in one row holding the *same* text are indistinguishable, and a
+ *   comment on the first renders on the last. They read identically, so the
+ *   misplacement is invisible in every way but position.
+ * - Once a commented cell is *rewritten*, its hash is gone from the row, and the
+ *   fallback tints whichever cell came last rather than the one that changed.
+ *   The comment is still correctly reported as drifted; only which cell of the
+ *   row wears the faint tint is arbitrary.
+ *
+ * Closing either means putting a column index in the anchor — a schema change
+ * shared with the Go side and the stored comments, for a cosmetic gain.
+ */
+export function blockAtLine(
+  index: BlockIndex,
+  line: number,
+  hash: string,
+): HTMLElement | null {
+  const candidates = index.byLine.get(line);
+  if (!candidates || candidates.length === 0) return null;
+  for (const candidate of candidates) {
+    if (candidate.getAttribute("data-block-hash") === hash) return candidate;
+  }
+  return candidates[candidates.length - 1];
+}
+
+/** Walk neighbors by source line, find one whose hash matches. */
+export function findHashNeighbor(
+  index: BlockIndex,
+  targetHash: string,
+  centerLine: number,
+  radius: number,
+): HTMLElement | null {
+  const candidates = index.byHash.get(targetHash);
+  if (!candidates) return null;
+  let best: HTMLElement | null = null;
+  let bestDist = Infinity;
+  for (const cand of candidates) {
+    const lineAttr = cand.getAttribute("data-source-line");
+    if (!lineAttr) continue;
+    const line = Number.parseInt(lineAttr, 10);
+    if (!Number.isFinite(line)) continue;
+    const dist = Math.abs(line - centerLine);
+    if (dist > radius) continue;
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = cand;
+    }
+  }
+  return best;
+}
+
+/**
  * The whole-block anchor for `block`, identical in shape to what a click on it
  * in review mode produces — `MarkdownViewer`'s `buildCapturedSelection` with no
  * selection: offset 0, length 0, and the canonicalized block text as the
