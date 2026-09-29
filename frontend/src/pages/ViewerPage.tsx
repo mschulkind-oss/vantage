@@ -74,6 +74,7 @@ import { MessageSquarePlus, ClipboardCopy } from "lucide-react";
 import { useLineAnchor } from "../hooks/useLineAnchor";
 import { useHeaderFit } from "../hooks/useHeaderFit";
 import { useFirstPaintHold } from "../hooks/useFirstPaintHold";
+import { prefetchPlanningPage } from "../hooks/usePlanningPageInputs";
 import { usePlanningStore } from "../stores/usePlanningStore";
 import { splitExtension } from "../lib/headerFit";
 import { usePersistentFlag } from "../hooks/usePersistentFlag";
@@ -197,6 +198,13 @@ export const ViewerPage: React.FC = () => {
     const load = planningRepo === null ? undefined : state.byRepo[planningRepo];
     return load?.status === "loading" && load.warm;
   });
+  // Page 1 of the planning page, asked for when the pointer or focus reaches
+  // the toolbar's planning entry (planning-index-at-scale.md §10.2), so the
+  // click finds its inputs in hand. Nothing is asked before the index is
+  // ready, nor in daemon mode with no repository open.
+  const prefetchPlanning = useCallback(() => {
+    if (planningRepo !== null) prefetchPlanningPage(planningRepo);
+  }, [planningRepo]);
   // The hold (§11.3): a document that has just arrived waits, at most
   // `holdMs`, for what its first paint shows that is already on its way — its
   // header's git facts, asked for with its content, the index of a warm
@@ -1001,6 +1009,8 @@ export const ViewerPage: React.FC = () => {
                   className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                   aria-label="Planning"
                   title="Planning (g p)"
+                  onPointerEnter={prefetchPlanning}
+                  onFocus={prefetchPlanning}
                 >
                   <ListChecks size={16} />
                 </AppLink>
