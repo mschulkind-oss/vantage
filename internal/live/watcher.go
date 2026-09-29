@@ -890,6 +890,18 @@ func (w *Watcher) logAddWatchFailure(path string, err error) {
 // watch-exhaustion case (ENOSPC) which otherwise manifests as live reload
 // silently failing for some files.
 func (w *Watcher) handleError(err error) {
+	if errors.Is(err, fsnotify.ErrEventOverflow) {
+		// Too many events queued at once (inotify's IN_Q_OVERFLOW): some were
+		// dropped, but every watch is still in place and live reload goes on.
+		// What the dropped ones said is unknown, so every cache one of them
+		// could have invalidated is dropped, and the next fetch reads afresh.
+		gitsvc.ClearStatusCache()
+		gitsvc.ClearRecentFilesCache()
+		fssvc.ClearMarkdownDirCache()
+		w.logger.Warn("watcher: too many changes at once; some events were dropped, so a page may be stale until its next change or reload. "+
+			"On Linux, fs.inotify.max_queued_events sets how many can queue", "error", err)
+		return
+	}
 	if isWatchLimitError(err) {
 		w.reportWatchLimit("")
 		w.logger.Error("watcher: inotify watch limit reached — live reload will miss some changes; "+
@@ -922,8 +934,11 @@ func (w *Watcher) reportWatchLimit(rel string) {
 	}
 }
 
+// isWatchLimitError reports whether err is the kernel refusing a watch because
+// the watch limit is reached: ENOSPC from inotify. An event-queue overflow is
+// not one (see [Watcher.handleError]).
 func isWatchLimitError(err error) bool {
-	return errors.Is(err, fsnotify.ErrEventOverflow) || strings.Contains(err.Error(), "no space left")
+	return errors.Is(err, syscall.ENOSPC) || strings.Contains(err.Error(), "no space left")
 }
 
 // logHeartbeat emits and resets the interval stats so a stalled watcher is

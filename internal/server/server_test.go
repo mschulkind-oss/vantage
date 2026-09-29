@@ -1669,6 +1669,14 @@ func TestTheActivityWarmReportsNoWalkTimeout(t *testing.T) {
 	require.Len(t, degradedList(t, srv.Handler()), 1)
 }
 
+// A refused watch the kernel names no folder for has no folder to count
+// beyond: two of them are not "part of this project and 1 more folder".
+func TestAWatchLimitWithNoFolderCountsNone(t *testing.T) {
+	msg := degradationMessage(model.Degradation{Kind: model.DegradationWatchLimit, Count: 2}, config.Defaults())
+	require.Equal(t, "Live reload is off for part of this project: the system's limit on watched folders was reached. "+
+		"Raise it (on Linux, fs.inotify.max_user_watches), or list the biggest folders in .vantageignore.", msg)
+}
+
 func TestUnregisterForgetsARepositorysDegradations(t *testing.T) {
 	srv, _ := daemonServer(t)
 	srv.reportDegraded(model.Degradation{Repo: "alpha", Kind: model.DegradationWatchLimit, Path: "docs/big", Count: 3})
