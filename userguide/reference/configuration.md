@@ -272,8 +272,8 @@ list at `/` has no project and so no offer to apply.
 
 The `[planning]` table in `.vantage.toml` says which files Vantage reads as the
 repository's plans, which one is the roadmap, and what the repository's stage
-words mean. What Vantage does with them (badges on links, and
-`vantage-check index`) is in the [Planning Documents](../guides/planning.md)
+words mean. What Vantage does with them (badges on links, the planning page,
+and `vantage-check index`) is in the [Planning Documents](../guides/planning.md)
 guide. The table is optional, and every key has a default:
 
 ```toml

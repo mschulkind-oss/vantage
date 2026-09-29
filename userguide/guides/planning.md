@@ -8,8 +8,10 @@ still open. The copies go stale, and nothing notices.
 
 Vantage reads those files as a set instead. Each fact is written once, in the
 document it belongs to, and everywhere else a plain Markdown link is enough:
-Vantage shows the fact's current value in a **badge** beside the link.
-Vantage never writes into a document.
+Vantage shows the fact's current value in a **badge** beside the link, lists
+under each document what links to it, and gathers every question still waiting
+on someone onto one [planning page](#the-planning-page). Vantage never writes
+into a document.
 
 The terms this page defines (*planning document*, *stage role*, *routed* and
 the rest) are Vantage's own, from its
@@ -121,9 +123,11 @@ repository maps its own words onto them in `[planning.stages]`
 | `built` | built |
 | `done` | not a live proposal: graduated, superseded, or reference material |
 
-A document whose stage has the `done` role still gets its badge, but its
-questions are left out of every list `vantage-check index` prints, and a
-`depends-on` naming it never makes anything wait. A document with no stage, or
+A document whose stage has the `done` role still gets its badge, its
+[Referenced by](#referenced-by) line and its [file-tree badge](#in-the-file-tree),
+but it appears in no section of the [planning page](#the-planning-page) or of
+`vantage-check index`, its questions included, and a `depends-on` naming it
+never makes anything wait. A document with no stage, or
 in a repository that declares none, has no role, and every surface that needs
 only questions and links still works for it.
 
@@ -169,7 +173,8 @@ Some places get no badges at all:
   their reasons, and each document's frontmatter table is one click away.
 - **A static export** from [`vantage build`](static-sites.md), which has no
   server to read the files from. Its documents render exactly as they did
-  before badges existed.
+  before badges existed, with no Referenced by line and no file-tree badges
+  either.
 - **A link into another repository** in [daemon mode](daemon-mode.md). Each
   repository has an index of its own.
 
@@ -239,8 +244,8 @@ roadmap reaches:
   route nothing.
 
 An open question the roadmap does not route is **unrouted**: it needs a
-ruling, and the one list that says what to do next has missed it. Finding
-those is the reason to run `vantage-check index`.
+ruling, and the one list that says what to do next has missed it. The planning
+page lists those under *Unrouted*, and so does `vantage-check index`.
 
 ---
 
@@ -279,22 +284,47 @@ every heading; the line always prints.
 
 ---
 
-## Reading it from the command line
+## The planning page
 
-`vantage-check index` prints the planning index of the repository the current
-directory is in, so an agent sees what a person sees, with no server running.
-It lists these sections, and leaves out any that are empty:
+The planning page gathers, for one repository, every question that is waiting
+on someone and every document whose stage calls for a next step. Press **`g p`**
+while viewing a document or a folder to open it, or click the checklist icon
+beside **Vantage** at the top of the sidebar. It is built from the index every time and stores nothing of its
+own: no snooze, no assignment, no read state. It changes when the documents do,
+without a reload.
 
-| Section | Holds |
-| :--- | :--- |
-| **Needs you** | Routed questions that are open or answered, in roadmap order |
-| **Unrouted** | Open questions the roadmap does not route, by path |
-| **Waiting** | Blocked questions, and documents with a `depends-on` entry that still waits: one naming a question waits while it is open (💬), and one naming a document waits while that document has an open question |
-| **Ready** | Documents whose stage has the `ready` role and no open questions |
-| **Graduate** | Documents whose stage has the `built` role and no questions left |
-| **Disagrees** | Documents whose stage says `ready` or `built` while they still have open questions |
-| **Skipped** | Candidates over the size limit ([below](#limits)) |
-| **Could not read** | Candidates that could not be read, or whose frontmatter does not parse |
+Its address is `/.vantage/planning`, or `/.vantage/planning/<repo>` in
+[daemon mode](daemon-mode.md). A document's own address is its path, `/<path>`
+or `/<repo>/<path>`, so a page at `/planning` would hide every document under a
+top-level `planning/` directory, and a whole repository named `planning`.
+Vantage never serves a `.vantage` path as a document, so this address hides
+nothing.
+
+> [!NOTE]
+> **The history and recent-files pages do hide something.** They are older, and
+> `/history/…` and `/recent/…` are theirs, so a document in a top-level
+> directory named `history` or `recent` cannot be opened in the viewer:
+> `/recent/notes.md` is the recent-files page, and `/history/notes.md` is the
+> commit history of a root-level `notes.md`. In daemon mode the same goes for a
+> whole repository named `history` or `recent`.
+
+### Its sections
+
+From top to bottom, leaving out any that are empty, each with its count:
+
+| Section | Holds | Each entry shows |
+| :--- | :--- | :--- |
+| **Needs you** | Routed questions that are open or answered, in roadmap order | the question's [card](#a-questions-card) |
+| **Unrouted** | Open questions the roadmap does not route, by path | the question's card |
+| **Waiting** | Blocked questions, and documents with a `depends-on` entry that still waits: one naming a question waits while it is open (💬), and one naming a document waits while that document has an open question | a blocked question's card; a document's name and badge, then each entry it waits on, with that entry's badge |
+| **Ready** | Documents whose stage has the `ready` role and no open questions | the document's name and badge |
+| **Graduate** | Documents whose stage has the `built` role and no questions left | the document's name and badge |
+| **Disagrees** | Documents whose stage says `ready` or `built` while they still have open questions | the document's name and badge |
+| **Skipped** | Candidates over the size limit ([below](#limits)) | the path, its size and the limit |
+| **Could not read** | Candidates that could not be read, or whose frontmatter does not parse | the path and why |
+
+Clicking a document's name opens it, as **Open document** does
+([below](#a-questions-card)).
 
 Two cases change the sections:
 
@@ -304,9 +334,81 @@ Two cases change the sections:
 - **With no stages declared,** *Ready*, *Graduate* and *Disagrees* are not
   shown, and a line says how to declare them.
 
-When no document has an open question, `done` documents aside, it says
+When no document has an open question, `done` documents aside, the page says
 **Nothing needs you**. That line can sit above a *Needs you* holding only ✅
 answered questions: those await compaction, not a ruling.
+
+Past the candidate limit ([below](#limits)) there are no sections at all, only a
+line saying how many candidates there are and to narrow `include`.
+
+### A question's card
+
+A card shows the question exactly as its document renders it: its list item,
+or its own block when it is not in a list, with the number it has there, its
+options, its context and its leaning.
+Nothing is summarized, so a question reads the same on the page as in its
+document. Above it, the card names the document, with that document's badge.
+
+What the card offers follows the question's state:
+
+| State | Take this leaning | Answer… | Open document |
+| :--- | :--- | :--- | :--- |
+| 💬 open, or no marker | when it has a leaning | yes | yes |
+| ✅ answered | no: it has been ruled | yes | yes |
+| 🔒 blocked, under *Waiting* | no | no: it cannot be answered yet | yes |
+
+- **Take this leaning** files the question's leaning as a review comment on
+  it: the same comment review mode's own **Take this leaning** button files in
+  the document, with the same text, anchored to the same place. Once it is
+  filed, the card says *Leaning taken*. To take it back, open the document,
+  where review mode offers Undo until someone replies.
+- **Answer…** opens the comment box, and what you type is filed on the
+  question the same way.
+- **Open document** opens the question's document at its top, not at the
+  question: a question you could not answer from its card usually needs the
+  rest of the document, and its table of contents lists the question one click
+  away. Opening it leaves the document's review mode as it was. **Back**
+  returns to the planning page at the same scroll position.
+
+A comment filed from a card is filed in the question's own document, exactly as
+if you had filed it there: that document's Review panel lists it, its own Copy
+includes it, and the agent answers it through the
+[review inbox](review-inbox.md) as usual. Filing never reorders the page.
+
+Below its buttons, a card lists the comments already filed on that question,
+and only on it. Each is marked *waiting on the agent* until the agent answers
+it, the agent's latest reply appears beneath it once there is one, and a
+dismissed comment says so.
+
+### Copy answers
+
+**Copy answers**, at the top of the page, hands every answer given on the page
+to the agent in one trip, rather than one trip per document. Beside it is the
+number of comments waiting on the agent on the questions the page lists: not
+dismissed, and not yet answered, or edited or replied to since the agent's last
+answer. With none, the button is disabled.
+
+It copies those comments grouped by document, each group exactly the block that
+document's own Copy produces, then one set of instructions for answering all of
+them. Each answer the agent delivers names the document it is about, so replies
+come back through the [review inbox](review-inbox.md) as any other reply does.
+With several documents the delivery file the instructions suggest is
+`.vantage/inbox/planning.<random>.jsonl`, because the name is only a
+suggestion: Vantage reads which document a line is about from the line itself.
+
+Only comments on questions the page lists are copied. A document's other
+comments, on its prose or on a question the page does not list, are left to
+that document's own Copy.
+
+---
+
+## Reading it from the command line
+
+`vantage-check index` prints the planning index of the repository the current
+directory is in, so an agent sees what a person sees, with no server running.
+It prints the [planning page's sections](#its-sections) as text, with the same
+notices, and leaves out any that are empty: a question as its path, line,
+marker and title rather than a card, and a document as its path.
 
 After the sections comes the roadmap itself, with each link's badge written
 inline in brackets. The options, the JSON form and the exit codes are in the
@@ -321,7 +423,7 @@ and the four `planning/*` rules that `check` runs over the same scan are in
 | Limit | Default | Past it |
 | :--- | :--- | :--- |
 | One file's size | 1 MiB | The file is skipped, and listed under *Skipped* |
-| Candidates in the repository | 5,000 | Nothing is scanned at all, and `vantage-check index` says how many candidates there are and to narrow `include`. A partial index would quietly under-count, so the refusal is always visible |
+| Candidates in the repository | 5,000 | Nothing is scanned at all, and the planning page and `vantage-check index` say how many candidates there are and to narrow `include`. A partial index would quietly under-count, so the refusal is always visible |
 
 Both are keys of `[planning]`
 ([Configuration](../reference/configuration.md#planning-documents)).
@@ -340,8 +442,12 @@ Both are keys of `[planning]`
 ## When something goes wrong
 
 - **The server cannot be reached,** or answers with anything but the index's
-  own shape: no badges, and every document renders exactly as it would without
-  them.
+  own shape: no badges, no Referenced by lines and no file-tree badges, and
+  every document renders exactly as it would without them. The planning page
+  shows the error, with a **Retry** button.
+- **A static export** from [`vantage build`](static-sites.md) is always in that
+  case, because it has no server to read the files from, and its planning page
+  says so.
 - **One file cannot be read,** or its frontmatter does not parse: it is listed
   under *Could not read* and contributes nothing, its questions included.
   Everything else is unaffected.
@@ -355,5 +461,6 @@ Both are keys of `[planning]`
 - [Configuration](../reference/configuration.md#planning-documents): every
   `[planning]` key
 - [vantage-check](vantage-check.md): `index`, and the `planning/*` rules
+- [Keyboard Shortcuts](../reference/keyboard-shortcuts.md): `g p`, and the rest
 - [Style Guide for Agents](../reference/style-guide.md): the frontmatter keys,
   as agents are told to write them
