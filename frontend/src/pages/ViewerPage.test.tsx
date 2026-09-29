@@ -153,22 +153,81 @@ describe("ViewerPage", () => {
     expect(screen.getByText("Vantage")).toBeInTheDocument();
   });
 
-  // The last breadcrumb segment is the only element in the header that
-  // truncates, so a long filename reaches the ellipsis with nowhere else to
-  // read it. The title attribute is that somewhere else.
-  it("gives the truncated breadcrumb filename a title with the full name", () => {
-    const name = "a-very-long-macos-launchd-and-config-paths-design.md";
-    (useRepoStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
-      ...useRepoStore(),
-      currentPath: `docs/design/${name}`,
+  describe("header", () => {
+    const openFile = (path: string, currentDirectory: unknown = null) => {
+      const repo = useRepoStore as unknown as ReturnType<typeof vi.fn>;
+      repo.mockReturnValue({
+        ...repo.getMockImplementation()!(),
+        currentPath: path,
+        currentDirectory,
+      });
+      mockUseParams.mockReturnValue({ "*": path });
+      renderPage();
+    };
+
+    // The file name is the last thing in the header to give up room, and
+    // when it does, only its stem is elided: the extension says what kind of
+    // file it is, and the tooltip is the one place the whole path is readable.
+    it("truncates only the file name's stem, with the full path in its tooltip", () => {
+      const name = "a-very-long-macos-launchd-and-config-paths-design.md";
+      openFile(`docs/design/${name}`);
+
+      const leaf = screen.getByTestId("breadcrumb-name");
+      expect(leaf).toHaveTextContent(name);
+      expect(leaf).toHaveAttribute("title", `docs/design/${name}`);
+      const [stem, ext] = Array.from(leaf.children);
+      expect(stem).toHaveTextContent(
+        "a-very-long-macos-launchd-and-config-paths-design",
+      );
+      expect(stem).toHaveClass("truncate");
+      expect(ext).toHaveTextContent(/^\.md$/);
+      expect(ext).toHaveClass("shrink-0");
     });
-    mockUseParams.mockReturnValue({ "*": `docs/design/${name}` });
 
-    renderPage();
+    it("keeps a folder's name whole, dot and all", () => {
+      openFile("docs/v1.2", []);
+      const leaf = screen.getByTestId("breadcrumb-name");
+      expect(leaf.children).toHaveLength(1);
+      expect(leaf).toHaveTextContent("v1.2");
+    });
 
-    const leaf = screen.getByText(name);
-    expect(leaf).toHaveClass("truncate");
-    expect(leaf).toHaveAttribute("title", name);
+    // Collapsing the folders into "…" must not take them out of reach.
+    it("keeps the collapsed folders one menu away", () => {
+      openFile("docs/design/notes.md");
+      fireEvent.click(
+        screen.getByRole("button", { name: "Folders: docs/design" }),
+      );
+      const items = screen.getAllByRole("menuitem");
+      expect(items.map((a) => a.getAttribute("href"))).toEqual([
+        "/docs",
+        "/docs/design",
+      ]);
+    });
+
+    it("offers no folder menu for a file at the repository root", () => {
+      openFile("notes.md");
+      expect(screen.queryByRole("button", { name: /^Folders:/ })).toBeNull();
+    });
+
+    // The subject shrinks and then hides before anything else gives way, so
+    // the commit button's tooltip is where the whole of it stays readable.
+    it("puts the whole commit subject in the commit button's tooltip", () => {
+      openFile("docs/design/notes.md");
+      const commit = screen.getByTitle(/click to view diff$/);
+      expect(commit.getAttribute("title")).toMatch(/^test commit\n/);
+    });
+
+    // Icon-only is a visual state: the label leaves the layout, not the
+    // accessibility tree, so each button still has the name its label gave it.
+    it("names the toolbar buttons by their labels", () => {
+      openFile("docs/design/notes.md");
+      expect(
+        screen.getAllByRole("button", { name: "Raw" }).length,
+      ).toBeGreaterThan(0);
+      for (const label of screen.getAllByText("Raw")) {
+        expect(label).toHaveClass("hdr-label");
+      }
+    });
   });
 
   it("loads file when path ends with .md service call", () => {

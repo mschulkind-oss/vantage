@@ -13,7 +13,7 @@ test.describe("Commit Info", () => {
     await expect(page.getByRole("heading", { name: "Page 1" })).toBeVisible();
 
     // The commit bar names the fixture commit. Its title is
-    // "<date> — click to view diff", so match on the stable part.
+    // "<subject>\n<date> — click to view diff", so match on the stable part.
     const commitButton = page.locator('button[title*="click to view diff"]');
     await expect(commitButton).toBeVisible({ timeout: 10_000 });
     await expect(commitButton).toContainText(COMMIT_MESSAGE);
