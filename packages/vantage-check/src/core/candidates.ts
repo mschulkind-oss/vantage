@@ -219,6 +219,11 @@ export function listCandidates(
   return listing.list().filter(matcherFor(config));
 }
 
+/** Whether `include` matches one path and `exclude` does not; not the listing. */
+export function matchesPatterns(config: PlanningConfig, rel: string): boolean {
+  return matcherFor(config)(rel);
+}
+
 /** Whether one repo-relative path is a candidate, without walking the tree. */
 export function isCandidate(
   listing: Listing,
