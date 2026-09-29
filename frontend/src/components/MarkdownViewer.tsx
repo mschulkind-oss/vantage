@@ -661,6 +661,25 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     [handleLinkClick, resolveHref, headingWithAnchor, currentPath],
   );
 
+  // The rendered document, as one element held across renders. The pipeline
+  // re-parses the whole body each time `<ReactMarkdown>` renders, and this
+  // component renders for reasons that leave the body alone — the planning
+  // index loading and changing with every push, a pending selection, a review
+  // store write. An element equal to the last one is not rendered again.
+  const markdown = useMemo(
+    () => (
+      <ReactMarkdown
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
+        urlTransform={transformImageUri}
+        components={markdownComponents}
+      >
+        {body}
+      </ReactMarkdown>
+    ),
+    [remarkPlugins, rehypePlugins, transformImageUri, markdownComponents, body],
+  );
+
   // Link badges (docs/design/planning-index.md §5). Ungated like the collapse
   // pass: a badge is how a link reads, not a review affordance. Until the index
   // is ready, and whenever it failed, the pass only sweeps — so no first render
@@ -757,14 +776,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       )}
     >
       <FrontmatterDisplay frontmatter={frontmatter} linkIds={nextLinkIds} />
-      <ReactMarkdown
-        remarkPlugins={remarkPlugins}
-        rehypePlugins={rehypePlugins}
-        urlTransform={transformImageUri}
-        components={markdownComponents}
-      >
-        {body}
-      </ReactMarkdown>
+      {markdown}
       {/* Review mode: comment popover for new selections */}
       {isReviewMode && pendingSelection && (
         <ReviewCommentPopover
