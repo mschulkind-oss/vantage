@@ -385,6 +385,57 @@ func TestInstallServiceWithSourceDirsNamesTheFileBehindALink(t *testing.T) {
 		"Added to source_dirs in ~/.config/vantage/config.toml (a link to ~/dotfiles/vantage.toml): ~/code\n")
 }
 
+// Re-running install-service is how a directory is added, and how an upgrade
+// points the service at the new binary, so the definition is rewritten every
+// time. Edits of the user's own — a raised LimitNOFILE, an Environment= line —
+// are kept in a backup the command names; a definition that differs only in
+// the binary it runs is simply rewritten.
+func TestInstallServiceKeepsHandEditsInABackup(t *testing.T) {
+	for _, goos := range []string{"linux", "darwin"} {
+		t.Run(goos, func(t *testing.T) {
+			in, _, _ := sourceDirInstall(t, goos)
+			def := serviceDefinitionPath(goos, in.home)
+			var out bytes.Buffer
+			require.NoError(t, installServiceWithSourceDirs(&out, in, []string{"~/code"}))
+
+			in.exe = "/opt/new/bin/vantage"
+			out.Reset()
+			require.NoError(t, installServiceWithSourceDirs(&out, in, []string{"~/code"}))
+			backups, _ := filepath.Glob(def + ".bak-*")
+			require.Empty(t, backups, "an upgrade's new binary is no edit of the user's")
+			require.NotContains(t, out.String(), "edits of its own")
+
+			body, err := os.ReadFile(def)
+			require.NoError(t, err)
+			edited := strings.Replace(string(body), "\n", "\n# mine\n", 1)
+			require.NoError(t, os.WriteFile(def, []byte(edited), 0o644))
+			out.Reset()
+			require.NoError(t, installServiceWithSourceDirs(&out, in, []string{"~/code"}))
+			backup := def + ".bak-20260929-010203"
+			kept, err := os.ReadFile(backup)
+			require.NoError(t, err)
+			require.Equal(t, edited, string(kept))
+			require.Contains(t, out.String(), tildePath(def, in.home)+" had edits of its own; they are kept in "+tildePath(backup, in.home)+"\n")
+			body, err = os.ReadFile(def)
+			require.NoError(t, err)
+			require.NotContains(t, string(body), "# mine")
+		})
+	}
+
+	// The plain command, which writes the definition without starting it, keeps
+	// them the same way.
+	home := isolateHome(t)
+	var out bytes.Buffer
+	require.NoError(t, installService(&out, "linux", home, "/opt/bin/vantage"))
+	unit := systemdUnitPath(home)
+	require.NoError(t, os.WriteFile(unit, []byte("[Service]\nExecStart=/opt/bin/vantage daemon -c /mine.toml\n"), 0o644))
+	out.Reset()
+	require.NoError(t, installService(&out, "linux", home, "/opt/bin/vantage"))
+	backups, _ := filepath.Glob(unit + ".bak-*")
+	require.Len(t, backups, 1)
+	require.Contains(t, out.String(), "had edits of its own")
+}
+
 func TestInstallServiceWithSourceDirsReportsAFailedStart(t *testing.T) {
 	in, rec, _ := sourceDirInstall(t, "linux")
 	rec.fail = map[string]error{"systemctl --user restart vantage": errors.New("exit status 1: Failed to connect to bus")}
