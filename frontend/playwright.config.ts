@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
@@ -15,8 +15,23 @@ import { defineConfig, devices } from "@playwright/test";
  * `XDG_CONFIG_HOME` is pinned too, because `config.UserFilePath` reads it
  * straight from the environment: a developer who exports it would otherwise keep
  * their real config directory in play while `$HOME` looked isolated.
+ *
+ * **Made by the runner alone, and removed when it exits.** Every Playwright
+ * process loads this file: the runner, and each worker again. Only the runner
+ * starts the servers, so only the runner needs the directory, and a worker is
+ * recognized by the `TEST_WORKER_INDEX` Playwright gives it before it loads
+ * this file. Created at module load with no such check, a run with 16 workers
+ * (the default on a 32-core machine) left 17 directories in the temp directory
+ * and removed none. The servers the runner started are stopped before it
+ * exits, so nothing is using the directory by then.
  */
-const runHome = mkdtempSync(join(tmpdir(), "vantage-e2e-home-"));
+const runHome =
+  process.env.TEST_WORKER_INDEX === undefined
+    ? mkdtempSync(join(tmpdir(), "vantage-e2e-home-"))
+    : "";
+if (runHome) {
+  process.on("exit", () => rmSync(runHome, { recursive: true, force: true }));
+}
 
 export default defineConfig({
   testDir: "./e2e",
