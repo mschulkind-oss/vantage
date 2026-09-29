@@ -13,6 +13,10 @@
 // a checker that policed the server's keys would turn a contributor's CI red for
 // a key that is not its business.
 //
+// `[planning]` is the one table both own. Each reader validates all of it, and
+// one fixture (testdata/planning-config.json) holds the two to the same answer
+// for every file, so a table one of them would refuse is refused by both.
+//
 // # The nesting trap
 //
 // The server's tables are top-level or they are a breaking change. The checker's
@@ -38,8 +42,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -77,6 +83,17 @@ type Settings struct {
 	// is reading. Top-level and spelled exactly as in the reader's own
 	// `config.toml`, so one word means one thing in both files.
 	Theme string `toml:"theme"`
+
+	// Planning is the `[planning]` table: which files the planning index reads,
+	// and the limits past which it reads fewer or none. Design:
+	// docs/design/planning-index.md §9.
+	//
+	// It is the one table both readers of this file parse in full. The server
+	// uses only include, exclude and the two limits, to decide what the planning
+	// endpoint serves, and hands the rest to the viewer untouched; the checker
+	// uses all of it. Each validates every key, so a table one of them would
+	// refuse is refused by both.
+	Planning PlanningSettings `toml:"planning"`
 }
 
 // StarredSettings is the `[starred]` table.
@@ -87,10 +104,177 @@ type StarredSettings struct {
 	Promote []string `toml:"promote"`
 }
 
+// PlanningSettings is the `[planning]` table as written.
+//
+// Every field is a pointer, or a map that may be nil, so a key that is absent
+// stays distinct from one set to its zero value: `include = []` is an author
+// asking for no candidates at all, which is not the same thing as leaving
+// `include` to its default. [PlanningSettings.Resolved] is where the defaults are
+// applied.
+type PlanningSettings struct {
+	// Roadmap is the repo-relative path of the file whose links set the order of
+	// the planning page. A leading "./" is dropped.
+	Roadmap *string `toml:"roadmap"`
+	// Include and Exclude are gitignore-syntax lines, matched the way
+	// `[starred] promote` matches its patterns. A candidate is a listed Markdown
+	// file matched by Include and not by Exclude.
+	Include *[]string `toml:"include"`
+	Exclude *[]string `toml:"exclude"`
+	// MaxFileBytes skips any candidate larger than it; MaxCandidates refuses the
+	// whole scan past it. Both are at least 1.
+	MaxFileBytes  *int64 `toml:"max-file-bytes"`
+	MaxCandidates *int   `toml:"max-candidates"`
+	// Stages maps a repository's stage words to one of the four [StageRoles].
+	// Nil or empty means no vocabulary is declared.
+	Stages map[string]string `toml:"stages"`
+}
+
+// IsZero reports whether the table resolves to the defaults because it said
+// nothing at all. An empty `[planning.stages]` table says nothing, because it
+// means the same as no table.
+func (p PlanningSettings) IsZero() bool {
+	return p.Roadmap == nil && p.Include == nil && p.Exclude == nil &&
+		p.MaxFileBytes == nil && p.MaxCandidates == nil && len(p.Stages) == 0
+}
+
+// The `[planning]` defaults (design §9). A repository that never wrote the table
+// still gets an index: everything Markdown is included and nothing is excluded.
+const (
+	DefaultRoadmap       = "roadmap.md"
+	DefaultMaxFileBytes  = int64(1 << 20) // 1 MiB
+	DefaultMaxCandidates = 5000
+)
+
+// StageRoles is the closed set of stage roles, in the order the design lists
+// them. A role is what a stage word means to the planning page; a repository
+// maps its own words onto these, and a role outside them rejects the file.
+var StageRoles = []string{"open", "ready", "built", "done"}
+
+// Planning is a resolved `[planning]` table: every key present, defaults
+// applied. It is also the "config" object of the planning endpoint, which is why
+// it carries JSON tags — the viewer reads its own copy of the rules from there
+// rather than parsing the file a second time.
+type Planning struct {
+	Roadmap       string   `json:"roadmap"`
+	Include       []string `json:"include"`
+	Exclude       []string `json:"exclude"`
+	MaxFileBytes  int64    `json:"max_file_bytes"`
+	MaxCandidates int      `json:"max_candidates"`
+	// Stages is null on the wire when no vocabulary is declared, so "no stages"
+	// has one spelling however the file expressed it.
+	Stages map[string]string `json:"stages"`
+}
+
+// DefaultPlanning is the effective table of a repository that wrote none, and
+// of one whose file was refused. Every call returns fresh slices, so a caller
+// cannot edit another's defaults.
+func DefaultPlanning() Planning {
+	return Planning{
+		Roadmap:       DefaultRoadmap,
+		Include:       []string{"**/*.md"},
+		Exclude:       []string{},
+		MaxFileBytes:  DefaultMaxFileBytes,
+		MaxCandidates: DefaultMaxCandidates,
+	}
+}
+
+// Resolved applies the defaults to whatever the table left out.
+//
+// It assumes the table passed [Parse]'s validation; it does not validate again.
+// The lists are copied and never nil, because they are marshaled straight onto
+// the wire, where the API's contract is `[]` and never `null`.
+func (p PlanningSettings) Resolved() Planning {
+	out := DefaultPlanning()
+	if p.Roadmap != nil {
+		out.Roadmap = strings.TrimPrefix(*p.Roadmap, "./")
+	}
+	if p.Include != nil {
+		out.Include = append([]string{}, (*p.Include)...)
+	}
+	if p.Exclude != nil {
+		out.Exclude = append([]string{}, (*p.Exclude)...)
+	}
+	if p.MaxFileBytes != nil {
+		out.MaxFileBytes = *p.MaxFileBytes
+	}
+	if p.MaxCandidates != nil {
+		out.MaxCandidates = *p.MaxCandidates
+	}
+	if len(p.Stages) > 0 {
+		out.Stages = maps.Clone(p.Stages)
+	}
+	return out
+}
+
+// validate holds the table to the rules the TOML decoder cannot express. The
+// rules are pinned, for both readers, by testdata/planning-config.json.
+func (p PlanningSettings) validate(meta toml.MetaData) error {
+	// BurntSushi/toml decodes a TOML array into a Go map without complaint and
+	// leaves the map empty, so `stages = ["DESIGN"]` would read as "no stages"
+	// rather than as the mistake it is. The value's own type has to be asked.
+	if t := meta.Type("planning", "stages"); t != "" && t != "Hash" {
+		return fmt.Errorf("%s: planning.stages must be a table of stage = role, not %s",
+			FileName, strings.ToLower(t))
+	}
+	for word, role := range p.Stages {
+		if !isStageRole(role) {
+			return fmt.Errorf("%s: planning.stages: %q maps to %q, which is not one of %s",
+				FileName, word, role, strings.Join(StageRoles, ", "))
+		}
+	}
+
+	if p.MaxFileBytes != nil && *p.MaxFileBytes < 1 {
+		return fmt.Errorf("%s: planning.max-file-bytes must be at least 1", FileName)
+	}
+	if p.MaxCandidates != nil && *p.MaxCandidates < 1 {
+		return fmt.Errorf("%s: planning.max-candidates must be at least 1", FileName)
+	}
+
+	if p.Roadmap != nil {
+		if err := validRoadmap(*p.Roadmap); err != nil {
+			return fmt.Errorf("%s: planning.roadmap: %w", FileName, err)
+		}
+	}
+	return nil
+}
+
+// validRoadmap reports why a roadmap path cannot name a file in the repository.
+//
+// The rule is lexical and deliberately small: one leading "./" is dropped, and
+// what is left must be non-empty, must not start with "/", and must hold no ".."
+// segment — not even one that climbs back in, since `docs/../roadmap.md` would be
+// a second spelling of a path the index identifies by its exact text.
+func validRoadmap(raw string) error {
+	p := strings.TrimPrefix(raw, "./")
+	switch {
+	case p == "":
+		return errors.New("must name a file")
+	case strings.HasPrefix(p, "/"):
+		return errors.New("must be relative to the repository root")
+	}
+	for _, seg := range strings.Split(p, "/") {
+		if seg == ".." {
+			return errors.New("must not leave the repository")
+		}
+	}
+	return nil
+}
+
+func isStageRole(role string) bool {
+	for _, r := range StageRoles {
+		if r == role {
+			return true
+		}
+	}
+	return false
+}
+
 // IsZero reports whether the file said nothing the server acts on. A repository
 // with only a `[check]` table is indistinguishable from one with no file at all,
 // which is the point.
-func (s Settings) IsZero() bool { return len(s.Starred.Promote) == 0 && s.Theme == "" }
+func (s Settings) IsZero() bool {
+	return len(s.Starred.Promote) == 0 && s.Theme == "" && s.Planning.IsZero()
+}
 
 // Parse decodes the server's settings from TOML.
 //
@@ -119,18 +303,22 @@ func Parse(data []byte) (Settings, error) {
 		}
 		return Settings{}, fmt.Errorf("%s: unknown key %q", FileName, key.String())
 	}
+	if err := s.Planning.validate(meta); err != nil {
+		return Settings{}, err
+	}
 	return s, nil
 }
 
 // ours reports whether a top-level table is one this package claims, and is
-// therefore one whose keys it will police.
+// therefore one whose keys it will police. `[planning]` is claimed although the
+// checker claims it too: it is shared, not someone else's.
 //
 // Only tables need claiming. The server's one top-level scalar, `theme`, is
 // decoded, so it never reaches the undecoded list; a guess at the wrong shape
 // (`[theme]`, or `theme.name = "…"`) is refused by the decoder's own type check
 // before this loop runs, which is the same whole-or-nothing outcome by another
 // route.
-func ours(table string) bool { return table == "starred" }
+func ours(table string) bool { return table == "starred" || table == "planning" }
 
 // Config is one repository's settings, reloaded lazily as the file changes.
 //
@@ -169,15 +357,31 @@ func (c *Config) Path() string { return c.path }
 func (c *Config) Settings() (Settings, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.maybeReload()
+	c.maybeReload(false)
 	return c.settings, c.err
 }
 
-// maybeReload re-stats at most once per [reloadInterval], re-parsing only when
-// the file looks different. Caller must hold c.mu.
-func (c *Config) maybeReload() {
+// SettingsNow is [Config.Settings] without the throttle: it re-stats the file
+// on every call, re-parsing only when the file looks different.
+//
+// For a caller that is answering a change to this very file. The watcher pushes
+// an edit to `.vantage.toml`, and the viewer's planning index rescans within
+// about a quarter of a second — usually inside the window that the `/starred`
+// read the same push caused has just opened. Through [Config.Settings] that
+// rescan would be served the config from before the edit, and nothing would ask
+// again until the next push.
+func (c *Config) SettingsNow() (Settings, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.maybeReload(true)
+	return c.settings, c.err
+}
+
+// maybeReload re-stats at most once per [reloadInterval] unless force is set,
+// re-parsing only when the file looks different. Caller must hold c.mu.
+func (c *Config) maybeReload(force bool) {
 	now := c.now()
-	if c.loaded && now.Sub(c.lastCheck) < reloadInterval {
+	if !force && c.loaded && now.Sub(c.lastCheck) < reloadInterval {
 		return
 	}
 	c.lastCheck = now
