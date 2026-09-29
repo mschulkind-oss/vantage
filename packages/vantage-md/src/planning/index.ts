@@ -49,3 +49,17 @@ export {
 export type { PlanningIndex, PlanningSources, SourceEntry } from "./model.js";
 export { badgeFor, badgeSpeech, badgeText } from "./badges.js";
 export type { PlanningBadge } from "./badges.js";
+export {
+  PLANNING_NOTICES,
+  derivePlanningSections,
+  questionFor,
+  referencedBy,
+  routeQuestions,
+} from "./sections.js";
+export type {
+  PlanningSections,
+  QuestionRef,
+  Reference,
+  RoutedQuestion,
+  WaitingEntry,
+} from "./sections.js";
