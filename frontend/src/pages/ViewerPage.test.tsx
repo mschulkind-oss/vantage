@@ -1,4 +1,10 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import {
+  act,
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+} from "@testing-library/react";
 import axios from "axios";
 import {
   describe,
@@ -19,6 +25,8 @@ import { useStarredStore } from "../stores/useStarredStore";
 import { useFilePickerStore } from "../stores/useFilePickerStore";
 import { useAllRecentsStore } from "../stores/useAllRecentsStore";
 import { useWebSocket } from "../hooks/useWebSocket";
+import { usePlanningStore } from "../stores/usePlanningStore";
+import { planningLimits } from "../planningScan/limits";
 import { BrowserRouter } from "react-router-dom";
 import type { CommentReaction, ReviewComment } from "../types";
 
@@ -412,6 +420,114 @@ describe("ViewerPage", () => {
         screen.getByTitle(/click to view diff$/).getAttribute("title"),
       ).toMatch(/^On a\n/);
       expect(screen.queryByText("Untracked file")).toBeNull();
+    });
+  });
+
+  // The hold (docs/design/planning-index-at-scale.md §11.3).
+  describe("a document's first paint", () => {
+    const repo = () => useRepoStore as unknown as ReturnType<typeof vi.fn>;
+    /** The store once `path`'s content has landed. */
+    const loaded = (path: string) => {
+      const state = {
+        ...repo()(),
+        currentPath: path,
+        currentDirectory: null,
+        fileContent: { path, content: `# ${path}\n`, encoding: "utf-8" },
+        isLoading: false,
+        recentlyChangedPaths: new Set<string>(),
+      };
+      repo().mockImplementation((select?: (s: typeof state) => unknown) =>
+        select ? select(state) : state,
+      );
+      mockUseParams.mockReturnValue({ "*": path });
+    };
+    const answered = (...paths: string[]) => {
+      gitStore.mockReturnValue({
+        ...gitStore(),
+        statusByPath: Object.fromEntries(paths.map((p) => [p, COMMITTED])),
+        historyByPath: Object.fromEntries(paths.map((p) => [p, []])),
+      });
+    };
+    const page = () => (
+      <BrowserRouter>
+        <ViewerPage />
+      </BrowserRouter>
+    );
+    const shownName = () =>
+      screen.getByTestId("breadcrumb-name").getAttribute("title");
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      usePlanningStore.setState({ byRepo: {} });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+      usePlanningStore.setState({ byRepo: {} });
+    });
+
+    it("keeps the previous document up until the next one's git facts are in", () => {
+      loaded("a.md");
+      answered("a.md");
+      const { rerender } = render(page());
+      expect(shownName()).toBe("a.md");
+
+      loaded("b.md");
+      rerender(page());
+      expect(shownName()).toBe("a.md");
+
+      answered("a.md", "b.md");
+      rerender(page());
+      expect(shownName()).toBe("b.md");
+    });
+
+    it("keeps it up no longer than the hold's deadline", () => {
+      loaded("a.md");
+      answered("a.md");
+      const { rerender } = render(page());
+      loaded("b.md");
+      rerender(page());
+      expect(shownName()).toBe("a.md");
+
+      act(() => vi.advanceTimersByTime(planningLimits.holdMs));
+      expect(shownName()).toBe("b.md");
+      // With nothing known about it yet, its header says nothing of git.
+      expect(screen.queryByTitle(/click to view diff$/)).toBeNull();
+      expect(screen.queryByText("Untracked file")).toBeNull();
+    });
+
+    it("waits for a warm build of the planning index, never a cold one", () => {
+      loaded("a.md");
+      answered("a.md", "b.md", "c.md");
+      const { rerender } = render(page());
+
+      act(() => {
+        usePlanningStore.setState({
+          byRepo: { "": { status: "loading", warm: true, progress: null } },
+        });
+      });
+      loaded("b.md");
+      rerender(page());
+      expect(shownName()).toBe("a.md");
+      act(() => vi.advanceTimersByTime(planningLimits.holdMs));
+      expect(shownName()).toBe("b.md");
+
+      act(() => {
+        usePlanningStore.setState({
+          byRepo: { "": { status: "loading", warm: false, progress: null } },
+        });
+      });
+      loaded("c.md");
+      rerender(page());
+      expect(shownName()).toBe("c.md");
+    });
+
+    it("waits for nothing when everything is in hand", () => {
+      loaded("a.md");
+      answered("a.md", "b.md");
+      const { rerender } = render(page());
+      loaded("b.md");
+      rerender(page());
+      expect(shownName()).toBe("b.md");
     });
   });
 
