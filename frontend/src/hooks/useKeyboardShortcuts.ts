@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { toggleColorMode } from "../lib/darkMode";
+import { planningPath } from "../lib/planningRoute";
 
 /**
  * Hook that manages the keyboard shortcuts modal state and
@@ -95,6 +96,12 @@ export const useKeyboardShortcuts = ({
             onNavigate(
               isMultiRepo && currentRepo ? `/recent/${currentRepo}` : "/recent",
             );
+            return;
+          }
+          if (key === "p") {
+            // The planning page (docs/design/planning-index.md §6).
+            e.preventDefault();
+            onNavigate(planningPath(isMultiRepo, currentRepo));
             return;
           }
           if (key === "g") {

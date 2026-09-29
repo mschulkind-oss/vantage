@@ -29,6 +29,7 @@ const shortcutGroups: ShortcutGroup[] = [
       { keys: ["Shift", "P"], description: "Switch project" },
       { keys: ["g", "h"], description: "Go home (root)" },
       { keys: ["g", "r"], description: "Go to recent files page" },
+      { keys: ["g", "p"], description: "Go to the planning page" },
       { keys: ["b"], description: "Toggle sidebar" },
       { keys: ["Esc"], description: "Close a dialog, or leave raw view" },
     ],
