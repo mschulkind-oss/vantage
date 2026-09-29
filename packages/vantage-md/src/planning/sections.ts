@@ -62,7 +62,7 @@ export const PLANNING_NOTICES: {
 } = {
   nothingNeedsYou: "Nothing needs you.",
   noRoadmap: (path) =>
-    `No roadmap: ${path} is missing, too large or unreadable, so Needs you lists every open question by document. Set roadmap under [planning] in .vantage.toml to read another file.`,
+    `No roadmap: ${path} is missing, too large or unreadable, or is not in Vantage's file list (it is not a .md file, or is in a hidden or excluded directory, or matches .vantageignore), so Needs you lists every open question by document. Set roadmap under [planning] in .vantage.toml to read another file.`,
   noStages:
     "No stages are declared, so Ready, Graduate and Disagrees are not shown. Declare them under [planning.stages] in .vantage.toml.",
   refused: (candidateCount, maxCandidates) =>

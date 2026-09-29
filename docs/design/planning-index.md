@@ -98,8 +98,9 @@ documents, rebuilt from the files and never stored.
 
 - **Candidate:** a Markdown file the server lists that is matched by `[planning] include`
   and not matched by `[planning] exclude` ([§9](#9-configuration)). The roadmap
-  ([§6.1](#61-the-roadmap)) is also a candidate whenever it exists, even when `include` or
-  `exclude` would rule it out.
+  ([§6.1](#61-the-roadmap)) is also a candidate whenever the server lists it, even when
+  `include` or `exclude` would rule it out. A roadmap the listing leaves out, in a hidden
+  directory or a `.vantageignore` match, is not read, and counts as missing.
 - **Patterns** use the gitignore-style matcher that `[starred] promote` already uses, quirks
   included, and the checker ports that matcher rather than using a library. It is not git's:
   `?` is a literal character, a pattern with a slash inside it is not anchored to the root (so
