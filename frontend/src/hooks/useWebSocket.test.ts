@@ -57,6 +57,13 @@ describe("useWebSocket", () => {
     ReturnType<typeof usePlanningStore.getState>,
     "noteFilesChanged" | "noteReviewChanged" | "noteReconnect"
   >;
+  // And for the degradation banner's list, which every connect refetches. Left
+  // real, that was a request to a server jsdom does not have, failing after
+  // the case that opened the socket had ended and logging into a later one —
+  // or, after the file's last case, into a worker already closing its channel
+  // to the runner, which fails the run (EnvironmentTeardownError).
+  const mockDegradedLoad = vi.fn();
+  let realDegradedLoad: ReturnType<typeof useDegradedStore.getState>["load"];
 
   // A viewer at rest: the document it was sent to has landed, so the requested
   // path and the current one agree. useWebSocket.navigation.test.ts covers the
@@ -103,6 +110,9 @@ describe("useWebSocket", () => {
       noteReconnect: mockNoteReconnect,
     });
 
+    realDegradedLoad = useDegradedStore.getState().load;
+    useDegradedStore.setState({ load: mockDegradedLoad });
+
     // Mock Stores - support both destructuring and selector patterns
     const repoState = makeRepoStoreState();
     const mockUseRepoStore = (
@@ -148,6 +158,7 @@ describe("useWebSocket", () => {
     useFilePickerStore.setState({ refresh: realPickerRefresh });
     useAllRecentsStore.setState({ refresh: realAllRecentsRefresh });
     usePlanningStore.setState(realPlanning);
+    useDegradedStore.setState({ load: realDegradedLoad });
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
@@ -627,30 +638,23 @@ describe("useWebSocket", () => {
     // A project hitting a limit is announced once; the banner's list is the
     // server's answer to a refetch.
     it("refetches the degradation list, whatever the repo store holds", () => {
-      const realLoad = useDegradedStore.getState().load;
-      const mockLoad = vi.fn();
-      useDegradedStore.setState({ load: mockLoad });
-      try {
-        (useRepoStore as unknown as { getState: () => unknown }).getState =
-          () => ({ ...makeRepoStoreState({ reposLoaded: false }) });
-        renderHook(() => useWebSocket());
-        mockLoad.mockClear();
+      (useRepoStore as unknown as { getState: () => unknown }).getState =
+        () => ({ ...makeRepoStoreState({ reposLoaded: false }) });
+      renderHook(() => useWebSocket());
+      mockDegradedLoad.mockClear();
 
-        act(() => {
-          mockWebSocket.onmessage!({
-            data: JSON.stringify({ type: "degraded_changed", repo: "big" }),
-          } as MessageEvent);
-        });
-        expect(mockLoad).toHaveBeenCalledTimes(1);
+      act(() => {
+        mockWebSocket.onmessage!({
+          data: JSON.stringify({ type: "degraded_changed", repo: "big" }),
+        } as MessageEvent);
+      });
+      expect(mockDegradedLoad).toHaveBeenCalledTimes(1);
 
-        mockLoad.mockClear();
-        act(() => {
-          mockWebSocket.onopen!(new Event("open"));
-        });
-        expect(mockLoad).toHaveBeenCalled();
-      } finally {
-        useDegradedStore.setState({ load: realLoad });
-      }
+      mockDegradedLoad.mockClear();
+      act(() => {
+        mockWebSocket.onopen!(new Event("open"));
+      });
+      expect(mockDegradedLoad).toHaveBeenCalled();
     });
   });
 
