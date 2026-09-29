@@ -25,7 +25,7 @@
  * is also the whole of §3.6's failure case — a failed build leaves the
  * document exactly as it renders today.
  */
-import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
+import { useLayoutEffect, useRef, type RefObject } from "react";
 import { badgeFor, resolveRepoLink } from "vantage-md/planning";
 import type { PlanningIndex } from "vantage-md/planning";
 import {
@@ -199,13 +199,16 @@ class Visit {
     this.container = container;
     this.scroller = container.closest<HTMLElement>("[data-content-scroll]");
     this.drawable = indexed ? "all" : null;
-    if (!indexed) {
-      // What the first paint will show, and every scroll after it.
-      this.observe();
-      (this.scroller ?? window).addEventListener("scroll", this.onScroll, {
-        passive: true,
-      });
-    }
+    // What the first paint will show; `track` adds every scroll after it.
+    if (!indexed) this.observe();
+  }
+
+  /** Follow the scroller until the index lands. Idempotent. */
+  track(): void {
+    if (this.drawable !== null) return;
+    (this.scroller ?? window).addEventListener("scroll", this.onScroll, {
+      passive: true,
+    });
   }
 
   /** The scroller's viewport, in client coordinates, and how far it scrolled. */
@@ -302,15 +305,22 @@ export function usePlanningLinkBadges(
       visit.path !== currentPath ||
       visit.content !== currentContent
     ) {
-      visit?.stop();
       visit = new Visit(el, currentPath, currentContent, index !== null);
       visitRef.current = visit;
     }
+    // Re-attached on every run, since every cleanup detaches it: one run's
+    // cleanup is how an unmount, or StrictMode's rehearsal of one, stops it.
+    const tracking = visit;
+    tracking.track();
+    const cleanup = () => {
+      sweep(el);
+      tracking.stop();
+    };
     sweep(el);
-    if (index === null) return;
+    if (index === null) return cleanup;
 
     const links = stampedLinks(el);
-    const badged = visit.badged(links);
+    const badged = tracking.badged(links);
     links.forEach((link, i) => {
       if (!badged(i)) return;
       const path = link.getAttribute(LINK_TARGET_ATTR);
@@ -324,8 +334,6 @@ export function usePlanningLinkBadges(
       if (badge !== null) link.after(planningBadgeElement(badge));
     });
 
-    return () => sweep(el);
+    return cleanup;
   }, [containerRef, index, currentPath, currentContent, renderedWith]);
-
-  useEffect(() => () => visitRef.current?.stop(), []);
 }
