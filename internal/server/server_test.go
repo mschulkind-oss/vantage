@@ -1557,24 +1557,21 @@ func TestWalkTimeoutReachesTheBrowser(t *testing.T) {
 	require.Contains(t, got[0].Message, "walk_timeout (1ns)")
 }
 
-// A walk that later finishes in time — the tree shrank, or it was a slow
-// moment — takes its report back, and the browser hears that too. Only the
-// same walk can: another child repository's walk, or the walk of a reader
-// who hides gitignored files, says nothing about the one that timed out.
-func TestAFinishedWalkClearsItsTimeout(t *testing.T) {
-	srv, _ := daemonServer(t)
+// pushReader dials srv's WebSocket as a browser would and returns a func that
+// reads everything pushed since its last call: it sends a probe frame (a
+// starred_changed) of its own and collects what arrives before it.
+func pushReader(t *testing.T, srv *Server) func() []string {
+	t.Helper()
 	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
+	t.Cleanup(ts.Close)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	t.Cleanup(cancel)
 	ws, _, err := websocket.Dial(ctx, "ws"+ts.URL[len("http"):]+"/api/ws", nil)
 	require.NoError(t, err)
-	defer ws.Close(websocket.StatusNormalClosure, "")
+	t.Cleanup(func() { ws.Close(websocket.StatusNormalClosure, "") })
 	_, _, err = ws.Read(ctx) // hello
 	require.NoError(t, err)
-	// pushes reads what the browser has been sent since the last call, until
-	// a probe frame (a starred_changed this test sends itself) comes back.
-	pushes := func() []string {
+	return func() []string {
 		t.Helper()
 		srv.broadcastStarredChanged()
 		var got []string
@@ -1587,6 +1584,36 @@ func TestAFinishedWalkClearsItsTimeout(t *testing.T) {
 			got = append(got, string(data))
 		}
 	}
+}
+
+// A watcher reports every refused watch, so the count grows long after the
+// banner has fetched. Pushing each one would be a push per directory; pushing
+// only the first left "and N more folders" as it was on the first fetch. A
+// push each time the count doubles keeps it within a factor of two for a
+// logarithmic number of pushes.
+func TestAGrowingWatchLimitIsPushedAsItDoubles(t *testing.T) {
+	srv, _ := daemonServer(t)
+	pushes := pushReader(t, srv)
+	push := `{"type":"degraded_changed","repo":"alpha"}`
+	var got []int
+	for n := 1; n <= 9; n++ {
+		srv.reportDegraded(model.Degradation{Repo: "alpha", Kind: model.DegradationWatchLimit, Path: "big", Count: n})
+		if p := pushes(); len(p) > 0 {
+			require.Equal(t, []string{push}, p)
+			got = append(got, n)
+		}
+	}
+	require.Equal(t, []int{1, 2, 4, 8}, got)
+	require.Equal(t, 9, degradedList(t, srv.Handler())[0].Count)
+}
+
+// A walk that later finishes in time — the tree shrank, or it was a slow
+// moment — takes its report back, and the browser hears that too. Only the
+// same walk can: another child repository's walk, or the walk of a reader
+// who hides gitignored files, says nothing about the one that timed out.
+func TestAFinishedWalkClearsItsTimeout(t *testing.T) {
+	srv, _ := daemonServer(t)
+	pushes := pushReader(t, srv)
 	degradedPush := `{"type":"degraded_changed","repo":"alpha"}`
 
 	big := git.WalkReport{Dir: "big", Gitignored: true}
