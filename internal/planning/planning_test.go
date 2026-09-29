@@ -368,6 +368,39 @@ func TestTheLargestLimitStillReadsTheFile(t *testing.T) {
 	require.Equal(t, "# A\n", got.content)
 }
 
+// Content hashes the tests spell out, each the first 32 hex digits of
+// `printf '…' | sha256sum`, so the expected values do not come from the code
+// under test.
+const (
+	emptyHash   = "e3b0c44298fc1c149afbf4c8996fb924" // ""
+	testHash    = "9f86d081884c7d659a2feaa0c55ad015" // "test"
+	draftHash   = "b55fe4e52335215e853f63ea6a91c8da" // "---\nstatus: draft\n---\n"
+	roadmapHash = "eae710439b6ab1e8e034479e4785fddf" // "# Roadmap\n"
+)
+
+// The content hash is the design's: the first 128 bits of SHA-256 over the
+// file's bytes, as 32 lowercase hex digits. The browser computes none of its
+// own, but it keys its scan cache by this string and sends it back as `have`,
+// so its spelling is a contract.
+func TestAFilesHashIsTheFirst128BitsOfItsSHA256(t *testing.T) {
+	_, root := repo(t, map[string]string{"test.md": "test", "empty.md": "", "draft.md": "---\nstatus: draft\n---\n"})
+	r := newReader(root, 1<<20)
+	for rel, want := range map[string]string{"test.md": testHash, "empty.md": emptyHash, "draft.md": draftHash} {
+		got := r.read(rel)
+		require.Equal(t, KindFile, got.kind, rel)
+		require.Equal(t, want, got.hash, rel)
+	}
+}
+
+// Only a file read whole has a hash: a skipped file was never opened, and an
+// unreadable one has no text to key a scan by.
+func TestOnlyAFileReadWholeHasAHash(t *testing.T) {
+	_, root := repo(t, map[string]string{"big.md": strings.Repeat("x", 11), "latin1.md": "caf\xe9\n"})
+	r := newReader(root, 10)
+	require.Equal(t, read{kind: KindSkipped, size: 11}, r.read("big.md"))
+	require.Equal(t, read{kind: KindUnreadable, reason: "not UTF-8"}, r.read("latin1.md"))
+}
+
 // A candidate deleted between the listing and its read is left out, not
 // reported as unreadable: nothing is wrong with a file that is gone.
 func TestACandidateThatVanishesIsLeftOut(t *testing.T) {
@@ -459,14 +492,14 @@ func TestLookupAnswersEachKind(t *testing.T) {
 	cfg.Exclude = []string{"docs/gallery/**", "roadmap.md"}
 
 	for rel, want := range map[string]Entry{
-		"docs/a.md":         {Path: "docs/a.md", Kind: KindFile, Content: "---\nstatus: draft\n---\n"},
-		"docs/empty.md":     {Path: "docs/empty.md", Kind: KindFile},
+		"docs/a.md":         {Path: "docs/a.md", Kind: KindFile, Hash: draftHash, Content: "---\nstatus: draft\n---\n"},
+		"docs/empty.md":     {Path: "docs/empty.md", Kind: KindFile, Hash: emptyHash},
 		"docs/big.md":       {Path: "docs/big.md", Kind: KindSkipped, Size: 64},
 		"docs/latin1.md":    {Path: "docs/latin1.md", Kind: KindUnreadable, Reason: "not UTF-8"},
 		"docs/gallery/g.md": {Path: "docs/gallery/g.md", Kind: KindAbsent},
 		".github/x.md":      {Path: ".github/x.md", Kind: KindAbsent},
 		"docs/missing.md":   {Path: "docs/missing.md", Kind: KindAbsent},
-		"roadmap.md":        {Path: "roadmap.md", Kind: KindFile, Content: "# Roadmap\n"},
+		"roadmap.md":        {Path: "roadmap.md", Kind: KindFile, Hash: roadmapHash, Content: "# Roadmap\n"},
 		"../escape.md":      {Path: "../escape.md", Kind: KindAbsent},
 		"./docs/a.md":       {Path: "./docs/a.md", Kind: KindAbsent},
 	} {
@@ -527,10 +560,10 @@ func TestLookupReportsALockedFileUnreadable(t *testing.T) {
 
 func TestEntryMarshalsOnlyItsKindsFields(t *testing.T) {
 	for want, e := range map[string]Entry{
-		`{"path":"a.md","kind":"file","content":""}`:               {Path: "a.md", Kind: KindFile},
-		`{"path":"a.md","kind":"skipped","size":2097152}`:          {Path: "a.md", Kind: KindSkipped, Size: 2097152},
-		`{"path":"a.md","kind":"unreadable","reason":"not UTF-8"}`: {Path: "a.md", Kind: KindUnreadable, Reason: "not UTF-8"},
-		`{"path":"a.md","kind":"absent"}`:                          {Path: "a.md", Kind: KindAbsent, Content: "ignored"},
+		`{"path":"a.md","kind":"file","hash":"` + emptyHash + `","content":""}`: {Path: "a.md", Kind: KindFile, Hash: emptyHash},
+		`{"path":"a.md","kind":"skipped","size":2097152}`:                       {Path: "a.md", Kind: KindSkipped, Size: 2097152, Hash: "ignored"},
+		`{"path":"a.md","kind":"unreadable","reason":"not UTF-8"}`:              {Path: "a.md", Kind: KindUnreadable, Reason: "not UTF-8"},
+		`{"path":"a.md","kind":"absent"}`:                                       {Path: "a.md", Kind: KindAbsent, Content: "ignored", Hash: "ignored"},
 	} {
 		body, err := json.Marshal(e)
 		require.NoError(t, err)

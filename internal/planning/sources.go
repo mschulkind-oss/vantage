@@ -109,16 +109,21 @@ func WriteBatch(w io.Writer, listing Listing, cfg repoconfig.Planning) error {
 
 // Entry is the single-path mode's answer for one path, one of four kinds:
 //
-//	{"path": …, "kind": "file", "content": …}
+//	{"path": …, "kind": "file", "hash": …, "content": …}
 //	{"path": …, "kind": "skipped", "size": N}
 //	{"path": …, "kind": "unreadable", "reason": …}
 //	{"path": …, "kind": "absent"}
 //
 // Absent covers a missing path and a path that is not a candidate alike, so the
 // answer never says whether a file the listing keeps out exists.
+//
+// A file's `hash` is its content hash, the key the viewer keeps the file's
+// scan result under, so a result kept from this answer is found again by the
+// next build that sees the same bytes.
 type Entry struct {
 	Path    string
 	Kind    string
+	Hash    string // KindFile
 	Content string // KindFile
 	Size    int64  // KindSkipped
 	Reason  string // KindUnreadable
@@ -132,8 +137,9 @@ func (e Entry) MarshalJSON() ([]byte, error) {
 		return json.Marshal(struct {
 			Path    string `json:"path"`
 			Kind    string `json:"kind"`
+			Hash    string `json:"hash"`
 			Content string `json:"content"`
-		}{e.Path, e.Kind, e.Content})
+		}{e.Path, e.Kind, e.Hash, e.Content})
 	case KindSkipped:
 		return json.Marshal(struct {
 			Path string `json:"path"`
@@ -169,7 +175,7 @@ func Lookup(listing Listing, cfg repoconfig.Planning, rel string) Entry {
 	got := newReader(listing.RootPath(), cfg.MaxFileBytes).read(rel)
 	switch got.kind {
 	case KindFile:
-		return Entry{Path: rel, Kind: KindFile, Content: got.content}
+		return Entry{Path: rel, Kind: KindFile, Hash: got.hash, Content: got.content}
 	case KindSkipped:
 		return Entry{Path: rel, Kind: KindSkipped, Size: got.size}
 	case KindUnreadable:
