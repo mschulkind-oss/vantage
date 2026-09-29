@@ -87,6 +87,35 @@ test.describe("the planning page", () => {
     expect(batches).toHaveLength(1);
   });
 
+  // The usual way onto the page is g p from a document. The viewer the card's
+  // link mounts used to reload the document the store still named on its
+  // socket's first connection, which superseded the route's load: the URL was
+  // right and the content was still the roadmap's.
+  test("Open document after g p from a document shows the card's document", async ({
+    page,
+  }) => {
+    const title = page.locator("[data-content-scroll] .prose h1");
+    await page.goto("/plans/roadmap.md");
+    await expect(title).toContainText("Roadmap");
+    await page.keyboard.press("g");
+    await page.keyboard.press("p");
+    await expect(page).toHaveURL(/\/\.vantage\/planning$/);
+    // Hold the document back until the new viewer's socket has connected,
+    // which is the order a slower document or a busy machine gives.
+    await page.route("**/api/content?path=plans%2Funrouted.md*", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await route.continue();
+    });
+    await card(page, "OQ-U1: Is anyone tracking this?")
+      .getByRole("link", { name: "Open document" })
+      .click();
+    await expect(page).toHaveURL(/\/plans\/unrouted\.md$/);
+    // Long enough for the held document, and a reload the socket triggered,
+    // to land.
+    await page.waitForTimeout(2000);
+    await expect(title).toContainText("A plan the roadmap does not mention");
+  });
+
   test("takes a leaning that Open document shows as the in-page button's own", async ({
     page,
   }) => {

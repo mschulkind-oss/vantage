@@ -323,12 +323,51 @@ describe("useWebSocket", () => {
     expect(mockFetchRecentFiles).toHaveBeenCalled();
   });
 
-  it("reloads review data on reconnect for a markdown file", () => {
+  // A genuine reconnect: the mount's first connection is not one, and must not
+  // reload anything (see the next test).
+  const reconnect = () => {
+    act(() => {
+      mockWebSocket.onopen?.(new Event("open"));
+    });
+    act(() => {
+      mockWebSocket.onclose?.(new Event("close"));
+    });
+    act(() => {
+      vi.advanceTimersByTime(1100);
+    });
+    mockLoadFile.mockClear();
+    act(() => {
+      mockWebSocket.onopen?.(new Event("open"));
+    });
+  };
+
+  // The route loads the document a new mount shows. currentPath still names
+  // the document the previous page showed, so reloading it on the first
+  // connection superseded the route's load, and the new URL kept showing the
+  // old document (g p from a document, then Open document on a card).
+  it("does not reload the previous document on a mount's first connection", () => {
     renderHook(() => useWebSocket());
 
     act(() => {
       mockWebSocket.onopen?.(new Event("open"));
     });
+
+    expect(mockLoadFile).not.toHaveBeenCalled();
+    expect(mockFetchStatus).not.toHaveBeenCalled();
+    expect(mockLoadReview).not.toHaveBeenCalled();
+    expect(mockViewDirectory).not.toHaveBeenCalled();
+  });
+
+  it("reloads the document on a genuine reconnect", () => {
+    renderHook(() => useWebSocket());
+    reconnect();
+    expect(mockLoadFile).toHaveBeenCalledWith("test.md");
+  });
+
+  it("reloads review data on reconnect for a markdown file", () => {
+    renderHook(() => useWebSocket());
+
+    reconnect();
 
     // Agent reactions written during the outage arrived as file-change events
     // we never received. Re-fetching the review keeps the client from PUTting
@@ -351,9 +390,7 @@ describe("useWebSocket", () => {
 
     renderHook(() => useWebSocket());
 
-    act(() => {
-      mockWebSocket.onopen?.(new Event("open"));
-    });
+    reconnect();
 
     // The directory branch ran...
     expect(mockViewDirectory).toHaveBeenCalledWith("docs");
