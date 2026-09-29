@@ -268,6 +268,72 @@ In daemon mode the project is resolved from the first segment of the URL, which
 every document page has (`/notes/README.md` is the `notes` project). The project
 list at `/` has no project and so no offer to apply.
 
+## Planning Documents
+
+The `[planning]` table in `.vantage.toml` says which files Vantage reads as the
+repository's plans, which one is the roadmap, and what the repository's stage
+words mean. What Vantage does with them (badges on links, and
+`vantage-check index`) is in the [Planning Documents](../guides/planning.md)
+guide. The table is optional, and every key has a default:
+
+```toml
+# .vantage.toml, committed at the repository root
+[planning]
+roadmap = "roadmap.md"        # the default
+include = ["**/*.md"]         # the default
+exclude = ["docs/gallery/**"] # the default is []
+max-file-bytes = 1048576      # the default: 1 MiB
+max-candidates = 5000         # the default
+
+[planning.stages]             # optional; with none, no stage has a role
+DESIGN = "open"
+DECIDED = "ready"
+BUILT = "built"
+SUPERSEDED = "done"
+```
+
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| `roadmap` | string | `"roadmap.md"` | The file whose links set the order. Relative to the repository root; a leading `./` is dropped, and an empty path, a leading `/` or a `..` segment is an error. Read whenever it exists, even if `include` or `exclude` would rule it out |
+| `include` | array of strings | `["**/*.md"]` | Patterns a candidate must match. An explicit `[]` is kept, and then only the roadmap is read |
+| `exclude` | array of strings | `[]` | Patterns that rule a candidate out, even when `include` matches it |
+| `max-file-bytes` | integer | `1048576` | A candidate larger than this is skipped, and listed as skipped. A whole number, at least 1 |
+| `max-candidates` | integer | `5000` | With more candidates than this, nothing is scanned at all. A whole number, at least 1 |
+| `[planning.stages]` | table of strings | none | Each stage word, mapped to one of four roles: `open`, `ready`, `built` or `done`. A word is kept exactly as written, case and spaces included. An empty table is the same as none |
+
+The patterns choose from Vantage's own list of the repository's `.md` files,
+which already leaves out hidden directories, the
+[excluded directories](#excluded-directories), linked worktrees, symbolic
+links, and paths matched by the [ignore files](#ignore-files-and-live-reload).
+None of those is ever read. `vantage-check` reads the same table and follows
+the same rules, except for two settings it cannot see, `exclude_dirs` and
+`~/.config/vantage/ignore`: they belong to one reader of the repository rather
+than to the repository itself, so where they are set, `vantage-check index` can
+list a file that your Vantage does not.
+
+The patterns use the same gitignore syntax as `[starred] promote`, and every
+line goes through that one matcher, a plain path included. It is not git's own
+matcher:
+
+- `?` is a literal character, not a wildcard;
+- a pattern with a slash inside it is not anchored to the root, so
+  `docs/gallery/**` also matches `x/docs/gallery/a.md`;
+- `[`, `(`, `\`, `{` and `+` keep their meaning in an
+  [RE2](https://github.com/google/re2/wiki/Syntax) regular expression, and a
+  line RE2 cannot compile is ignored.
+
+The table is checked as a whole, like the rest of the file. An unknown key in
+`[planning]`, a role outside the four, or a limit that is not a whole number of
+at least 1 makes the file untrustworthy:
+
+- **the server** logs a warning naming the file and serves the repository as
+  though the file were absent, so its `[starred]` list and `theme` are dropped
+  along with the table;
+- **`vantage-check`** exits `2` on every run, `check` included, as it does for a
+  bad `[check]` key.
+
+A change to the file applies at once: an open page rescans the repository.
+
 ## Performance Tuning
 
 For very large repositories with deep directory trees, two settings control how Vantage discovers untracked Markdown files:
