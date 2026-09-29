@@ -922,3 +922,36 @@ describe("useReviewHighlights — comments on table cells", () => {
     expect(blockFor("c1")!.previousElementSibling).toBe(table);
   });
 });
+
+describe("useReviewHighlights — a selection spanning a link", () => {
+  // A substring highlight is a <mark> wrapped around the selected range, and a
+  // range can hold a whole link. The pass removes its marks before each
+  // rebuild, and flattening a mark to its text took the link off the page.
+  const LINKED = `<p data-source-line="1">See <a href="x.md">the design</a> for the reasons.</p>`;
+
+  const spanningAnchor = (): CommentAnchor => ({
+    source_line: 1,
+    block_text_hash: hashBlockText(
+      blockVisibleText(container.querySelector<HTMLElement>("p")!),
+    ),
+    selection_offset: 0,
+    selection_length: "see the design for".length,
+  });
+
+  it("keeps the link through a rebuild", () => {
+    container.innerHTML = LINKED;
+    const anchor = spanningAnchor();
+    const { rerender } = renderInline([baseComment({ anchor })]);
+    expect(container.querySelector("mark a")).not.toBeNull();
+
+    // A store write re-runs the pass, which removes its marks first.
+    rerender({ cs: [baseComment({ anchor, comment: "edited" })] });
+
+    const block = container.querySelector<HTMLElement>("p")!;
+    expect(block.querySelector('a[href="x.md"]')?.textContent).toBe(
+      "the design",
+    );
+    expect(hashBlockText(blockVisibleText(block))).toBe(anchor.block_text_hash);
+    expect(container.querySelector("mark a")).not.toBeNull();
+  });
+});
