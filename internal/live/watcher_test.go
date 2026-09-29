@@ -65,6 +65,10 @@ func TestClassify(t *testing.T) {
 		{"git logs HEAD dropped (too deep)", ".git/logs/HEAD", false, false},
 		{"md under .git dropped", ".git/notes.md", false, false},
 		{"windows separators", `docs\guide.md`, true, false},
+		{"root repository config kept", ".vantage.toml", true, false},
+		{"nested repository config dropped", "docs/.vantage.toml", false, false},
+		{"config backup dropped", ".vantage.toml.bak", false, false},
+		{"other toml dropped", "pyproject.toml", false, false},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

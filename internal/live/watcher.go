@@ -21,6 +21,7 @@ import (
 	fssvc "github.com/mschulkind-oss/vantage/internal/fs"
 	gitsvc "github.com/mschulkind-oss/vantage/internal/git"
 	"github.com/mschulkind-oss/vantage/internal/ignore"
+	"github.com/mschulkind-oss/vantage/internal/repoconfig"
 	"github.com/mschulkind-oss/vantage/internal/review"
 )
 
@@ -47,9 +48,15 @@ var gitStateFiles = map[string]struct{}{
 }
 
 // classify decides whether a repo-relative path (slash-separated) is relevant
-// for live reload. It returns keep=true for Markdown files and for one-level
-// .git state files, and isGitState=true only for the latter. Ignore filtering
-// is applied separately by the Watcher (classify is pure for testability).
+// for live reload. It returns keep=true for Markdown files, for one-level .git
+// state files, and for the repository's own `.vantage.toml`, and
+// isGitState=true only for the .git state files. Ignore filtering is applied
+// separately by the Watcher (classify is pure for testability).
+//
+// `.vantage.toml` is kept at the root only, which is the one place anything
+// reads it: the viewer rescans its planning index when it changes. A copy
+// further down — `docs/.vantage.toml` — configures nothing, so it stays dropped.
+// Every consumer of the push sees the path; none clears a cache for it.
 func classify(rel string) (keep bool, isGitState bool) {
 	norm := filepath.ToSlash(rel)
 	parts := strings.Split(norm, "/")
@@ -59,6 +66,9 @@ func classify(rel string) (keep bool, isGitState bool) {
 	if len(parts) == 2 && parts[0] == ".git" {
 		_, ok := gitStateFiles[parts[1]]
 		return ok, ok
+	}
+	if norm == repoconfig.FileName {
+		return true, false
 	}
 	if strings.HasSuffix(strings.ToLower(norm), ".md") {
 		return true, false
@@ -124,6 +134,10 @@ type Watcher struct {
 	// in tests so failed registrations can be exercised without exhausting
 	// inotify.
 	addWatch func(string) error
+	// dirs is every directory with a registered watch, by repo-relative slash
+	// path, the root excepted. It is what lets a Rename or Remove event be told
+	// apart as a directory going away, which by then can no longer be stat'ed.
+	dirs map[string]struct{}
 	// closed records a Close that arrived before Start. Without it that Close
 	// found a nil fsw, did nothing, and left the watcher running for the life
 	// of the process — a repository retired in the same breath as it was
@@ -182,6 +196,7 @@ func NewWatcher(root, repoName string, mgr *Manager, store *review.Store, useIgn
 		matcher:    ignore.GetMatcherWithDefaults(abs, useIgnoreFiles, defaults),
 		logger:     logger.With("component", "watcher", "repo", repoName),
 		gitStateFP: map[string]string{},
+		dirs:       map[string]struct{}{},
 	}, nil
 }
 
@@ -265,6 +280,20 @@ func (w *Watcher) Close() error {
 // fsnotify is not recursive, so each directory is added individually. Returns
 // the number of directories added.
 func (w *Watcher) addRecursive(dir string) int {
+	return w.watchTree(dir, nil)
+}
+
+// watchTree is [Watcher.addRecursive], also handing found every kept content
+// path it walks past — the Markdown files already inside a directory that has
+// just appeared.
+//
+// Those files produce no event of their own. A directory moved into the tree
+// arrives whole, as a single Create, and a file written into a new directory
+// before its watch exists is never seen by inotify at all. So the walk that
+// registers the watches is the only thing that can report them. The watch on a
+// directory is registered before the walk reads its entries, so a file written
+// in between is found by one or the other, and the coalescer folds the two.
+func (w *Watcher) watchTree(dir string, found func(rel string)) int {
 	added := 0
 	_ = filepath.WalkDir(dir, func(path string, d iofs.DirEntry, err error) error {
 		if err != nil {
@@ -275,6 +304,13 @@ func (w *Watcher) addRecursive(dir string) int {
 			return nil
 		}
 		if !d.IsDir() {
+			if found != nil {
+				if rel, relErr := filepath.Rel(w.root, path); relErr == nil {
+					if rel = filepath.ToSlash(rel); w.isContent(rel) {
+						found(rel)
+					}
+				}
+			}
 			return nil
 		}
 		if path != w.root && gitsvc.IsWorktree(path) {
@@ -305,12 +341,18 @@ func (w *Watcher) handleEvent(ev fsnotify.Event, co *coalescer) {
 	w.stats.eventsTotal++
 	w.mu.Unlock()
 
-	// Newly created directories must be added to the (non-recursive) watch set.
+	// Newly created directories must be added to the (non-recursive) watch set,
+	// and the Markdown already inside one reported: nothing else will report it.
 	if ev.Has(fsnotify.Create) {
 		if info, err := os.Stat(ev.Name); err == nil && info.IsDir() {
 			rel, relErr := filepath.Rel(w.root, ev.Name)
 			if relErr == nil && !shouldPruneDir(rel, w.matcher) {
-				w.addRecursive(ev.Name)
+				w.watchTree(ev.Name, func(found string) {
+					w.mu.Lock()
+					w.stats.kept++
+					w.mu.Unlock()
+					co.add(found)
+				})
 				// A .vantage or inbox dir appearing after startup may already
 				// hold deliveries written before its watch existed.
 				if norm := filepath.ToSlash(rel); norm == ".vantage" || isInboxPath(norm) {
@@ -329,6 +371,36 @@ func (w *Watcher) handleEvent(ev fsnotify.Event, co *coalescer) {
 		return
 	}
 	rel = filepath.ToSlash(rel)
+
+	// A watched directory renamed away or removed yields no file paths at all:
+	// its files move or vanish without an event of their own. It is reported
+	// as a removed directory instead, so a consumer holding paths under it can
+	// drop them. The old name can no longer be stat'ed, so the watch set is
+	// what says it was a directory.
+	if ev.Has(fsnotify.Rename) || ev.Has(fsnotify.Remove) {
+		if gone := w.forgetDir(rel); len(gone) > 0 {
+			if ev.Has(fsnotify.Rename) {
+				// inotify watches follow the inode, and fsnotify names each event
+				// by the path it registered, so the watches below a renamed
+				// directory would go on reporting its old name. Dropping them
+				// lets the new name's Create register them afresh. A removed
+				// directory's watches are gone already.
+				for _, dir := range gone {
+					w.unregisterWatch(filepath.Join(w.root, filepath.FromSlash(dir)))
+				}
+			}
+			if top, _, _ := strings.Cut(rel, "/"); top == ".git" || top == ".vantage" {
+				// git's and Vantage's own state: no consumer holds a path there.
+				return
+			}
+			w.mu.Lock()
+			w.stats.kept++
+			w.mu.Unlock()
+			w.logger.Debug("watcher event kept: directory gone", "op", ev.Op.String(), "path", rel)
+			co.add(rel + removedDirSuffix)
+			return
+		}
+	}
 
 	// Inbox traffic is consumed immediately; it never enters the coalesced
 	// files_changed flow. Consumption's own renames and deletes re-trigger
@@ -358,9 +430,11 @@ func (w *Watcher) handleEvent(ev fsnotify.Event, co *coalescer) {
 		w.logger.Debug("watcher event dropped: git state file rewritten unchanged", "path", rel)
 		return
 	}
-	// Ignore filtering applies to .md content paths; .git state files are
-	// never user-ignored.
-	if w.matcher != nil && !strings.HasPrefix(rel, ".git/") && w.matcher.IsIgnored(rel, false) {
+	// Ignore filtering applies to .md content paths. The .git state files and
+	// the repository's own config are never user-ignored: they are not content,
+	// and a rule meant to hide documents must not stop the viewer hearing that
+	// its configuration changed.
+	if w.matcher != nil && !strings.HasPrefix(rel, ".git/") && rel != repoconfig.FileName && w.matcher.IsIgnored(rel, false) {
 		w.mu.Lock()
 		w.stats.droppedIgnore++
 		w.mu.Unlock()
@@ -376,14 +450,17 @@ func (w *Watcher) handleEvent(ev fsnotify.Event, co *coalescer) {
 
 // flush processes a coalesced change set: invalidate caches and broadcast
 // files_changed.
-func (w *Watcher) flush(paths []string) {
-	if len(paths) == 0 {
+func (w *Watcher) flush(batch []string) {
+	if len(batch) == 0 {
 		return
 	}
+	paths, removedDirs := splitBatch(batch)
 
 	gitsvc.ClearStatusCache()
 
-	hasMarkdown := false
+	// A directory that went away takes its Markdown with it, so which
+	// directories hold Markdown has changed although no .md path was pushed.
+	hasMarkdown := len(removedDirs) > 0
 	hasGitState := false
 	for _, p := range paths {
 		if strings.HasSuffix(strings.ToLower(p), ".md") {
@@ -401,21 +478,66 @@ func (w *Watcher) flush(paths []string) {
 		w.logger.Debug("cleared recent-files cache due to git state change")
 	}
 
-	sorted := append([]string(nil), paths...)
-	sort.Strings(sorted)
-	msg := filesChangedMessage{Type: "files_changed", Paths: sorted}
+	msg := filesChangedMessage{Type: "files_changed", Paths: paths, RemovedDirs: removedDirs}
 	if w.repoName != "" {
 		msg.Repo = w.repoName
 	}
-	w.logger.Info("files changed", "count", len(sorted))
+	w.logger.Info("files changed", "count", len(paths), "removed_dirs", len(removedDirs))
 	w.manager.Broadcast(msg)
 }
 
+// removedDirSuffix marks a removed directory in the coalescer's batch, whose
+// entries are plain strings. A file path never ends in "/", so the mark cannot
+// collide with one, and a directory that goes away twice inside one window is
+// folded like any repeated path.
+const removedDirSuffix = "/"
+
+// splitBatch separates a coalesced batch into its file paths and its removed
+// directories, each sorted and never nil. A removed directory inside another
+// removed directory is dropped: `rm -rf docs/old` removes `docs/old/sub` first,
+// and naming both says nothing the outer one does not.
+func splitBatch(batch []string) (paths, removedDirs []string) {
+	paths, removedDirs = []string{}, []string{}
+	for _, p := range batch {
+		if dir, ok := strings.CutSuffix(p, removedDirSuffix); ok {
+			removedDirs = append(removedDirs, dir)
+		} else {
+			paths = append(paths, p)
+		}
+	}
+	sort.Strings(paths)
+	sort.Strings(removedDirs)
+
+	outer := removedDirs[:0]
+	for _, dir := range removedDirs {
+		inside := false
+		for _, o := range outer {
+			if strings.HasPrefix(dir, o+"/") {
+				inside = true
+				break
+			}
+		}
+		if !inside {
+			outer = append(outer, dir)
+		}
+	}
+	return paths, outer
+}
+
 // filesChangedMessage is the broadcast payload for a coalesced change set.
+//
+// RemovedDirs names each watched directory that was renamed away or removed,
+// by the path it had: everything a consumer holds under it is gone, and no path
+// in Paths says so. It is omitted when empty, so the message older consumers
+// know is unchanged. A path in Paths may lie under a removed directory — a file
+// deleted along with it, or one written after the directory was replaced
+// within the window — so a consumer drops the directories first and then
+// refreshes each path, whose own answer says which it was.
 type filesChangedMessage struct {
-	Type  string   `json:"type"`
-	Repo  string   `json:"repo,omitempty"`
-	Paths []string `json:"paths"`
+	Type        string   `json:"type"`
+	Repo        string   `json:"repo,omitempty"`
+	Paths       []string `json:"paths"`
+	RemovedDirs []string `json:"removed_dirs,omitempty"`
 }
 
 // reviewChangedMessage mirrors the server's review_changed push so inbox
@@ -525,13 +647,67 @@ func (w *Watcher) fingerprint(rel string) string {
 }
 
 func (w *Watcher) registerWatch(path string) error {
-	if w.addWatch != nil {
-		return w.addWatch(path)
+	var err error
+	switch {
+	case w.addWatch != nil:
+		err = w.addWatch(path)
+	case w.fsw == nil:
+		err = errors.New("watcher is not started")
+	default:
+		err = w.fsw.Add(path)
 	}
-	if w.fsw == nil {
-		return errors.New("watcher is not started")
+	if err != nil {
+		return err
 	}
-	return w.fsw.Add(path)
+	if rel, relErr := filepath.Rel(w.root, path); relErr == nil && rel != "." {
+		w.mu.Lock()
+		w.dirs[filepath.ToSlash(rel)] = struct{}{}
+		w.mu.Unlock()
+	}
+	return nil
+}
+
+// unregisterWatch drops the watch on one directory, if there still is one. A
+// failure is not interesting: it means the kernel or fsnotify dropped it first.
+func (w *Watcher) unregisterWatch(path string) {
+	w.mu.Lock()
+	fsw := w.fsw
+	w.mu.Unlock()
+	if fsw != nil {
+		_ = fsw.Remove(path)
+	}
+}
+
+// forgetDir removes rel and every watched directory below it from the watch
+// set's record, returning what it removed — nothing when rel was not a watched
+// directory.
+func (w *Watcher) forgetDir(rel string) []string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if _, ok := w.dirs[rel]; !ok {
+		return nil
+	}
+	gone := []string{rel}
+	delete(w.dirs, rel)
+	for dir := range w.dirs {
+		if strings.HasPrefix(dir, rel+"/") {
+			gone = append(gone, dir)
+			delete(w.dirs, dir)
+		}
+	}
+	sort.Strings(gone)
+	return gone
+}
+
+// isContent reports whether a repo-relative slash path is one the watcher
+// pushes as changed content: kept by classify, not a .git state file, not
+// inbox traffic, and not ignored.
+func (w *Watcher) isContent(rel string) bool {
+	keep, isGitState := classify(rel)
+	if !keep || isGitState || isInboxPath(rel) {
+		return false
+	}
+	return rel == repoconfig.FileName || w.matcher == nil || !w.matcher.IsIgnored(rel, false)
 }
 
 func (w *Watcher) logAddWatchFailure(path string, err error) {
