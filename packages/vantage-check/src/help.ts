@@ -66,7 +66,7 @@ severities ("error", "warning", "off"), and check.strict / check.exit-code:
   "link/dead-section-anchor" = "warning"
 
 The same file's [planning] table says which files are planning documents and
-what their stages mean, for index:
+what their stages mean, for index and the planning/* rules:
 
   [planning]
   roadmap = "roadmap.md"

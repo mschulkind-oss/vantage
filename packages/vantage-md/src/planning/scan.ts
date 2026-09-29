@@ -686,7 +686,13 @@ function linksOf(
   return links;
 }
 
-function idsOf(source: string): string[] {
+/**
+ * Every `OQ-…`-shaped token in `source`, unique, in first-seen order: what a
+ * planning document's `ids` holds. Exported for the checker's
+ * `planning/depends-on-missing`, which asks whether an id appears anywhere in
+ * a target that need not be a planning document at all.
+ */
+export function idsOf(source: string): string[] {
   const seen = new Set<string>();
   for (const match of source.matchAll(OQ_TOKEN)) {
     if (match[1] !== undefined) seen.add(match[1]);

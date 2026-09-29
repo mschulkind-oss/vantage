@@ -9,6 +9,7 @@ import {
   type RunShard,
 } from "../core/parallel.js";
 import { checkFiles } from "../core/runner.js";
+import { checkPlanning } from "../rules/planning.js";
 import type { RunReport } from "../core/types.js";
 import {
   EXIT_ENVIRONMENT,
@@ -82,16 +83,34 @@ export async function checkCommand(
   }
 
   const jobs = resolveJobs(request, files.length);
-  const report =
+  // Started before the planning rules, so the threads check while this one
+  // runs those rules instead of waiting on the threads.
+  const parallel =
     jobs === 1
+      ? null
+      : checkFilesInParallel(files, io.cwd, config.settings, jobs, runShard);
+
+  // The planning rules run here, once, in this thread, whichever path checks
+  // the files: they need the roadmap and the [planning] table, neither of
+  // which a shard is handed, and running them once for both paths is what
+  // keeps `--jobs 1` and `--jobs 4` byte-identical. Their findings join the
+  // report after the files', and every renderer sorts, so when they ran
+  // changes nothing in the output.
+  const planning = checkPlanning(
+    files,
+    io.cwd,
+    config.settings,
+    config.planning,
+  );
+  const perFile =
+    parallel === null
       ? await checkFiles(files, io.cwd, config.settings)
-      : await checkFilesInParallel(
-          files,
-          io.cwd,
-          config.settings,
-          jobs,
-          runShard,
-        );
+      : await parallel;
+  const report: RunReport = {
+    filesChecked: perFile.filesChecked,
+    findings: [...perFile.findings, ...planning.findings],
+    failures: [...perFile.failures, ...planning.failures],
+  };
 
   if (options.format === "json") {
     io.out(renderJson(report));
