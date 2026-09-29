@@ -85,10 +85,10 @@ const DIRECTIVE_FIXTURE = [
  * drawing inline in a sentence, with a `desc` that holds HTML.
  *
  * draw.io wraps its closing "Text is not SVG" notice in an `<a>`. That link is
- * left out here because the package viewer renders *every* `<a>` differently —
- * its link override spreads react-markdown's `node` prop onto the element and
- * gives an `<a>` with no `href` an empty one — which is a disagreement about
- * links, not about SVG.
+ * left out here because both React viewers render *every* `<a>` differently
+ * from `renderMarkdown`: their link overrides spread react-markdown's `node`
+ * prop onto the element, as `node="[object Object]"`, and give an `<a>` with
+ * no `href` an empty one. That is a disagreement about links, not about SVG.
  */
 const SVG_FIXTURE = [
   "## Drawing", // 1
