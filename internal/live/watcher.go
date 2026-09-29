@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -79,6 +80,7 @@ func classify(rel string) (keep bool, isGitState bool) {
 // shouldPruneDir reports whether a directory (repo-relative, slash-separated)
 // should be excluded from the recursive watch set. The .git subtree is pruned
 // except for its immediate top level (so one-level state files remain watched);
+// a nested repository's .git is pruned whole;
 // .vantage is pruned except for its inbox (so review deliveries generate
 // events even though the dir is always-ignored elsewhere); ignored/excluded
 // directories are pruned via the ignore matcher.
@@ -92,6 +94,14 @@ func shouldPruneDir(rel string, matcher *ignore.Matcher) bool {
 	// anything deeper under .git (objects, refs, logs, …).
 	if parts[0] == ".git" {
 		return len(parts) > 1
+	}
+	// A .git anywhere below the root belongs to a repository nested inside this
+	// one — a clone in a directory of clones, a vendored checkout. Nothing reads
+	// its state files (classify keeps only the root's), and its objects, refs
+	// and logs are hundreds of directories per repository: watching them is
+	// what used to run a parent of many clones out of inotify watches.
+	if slices.Contains(parts[1:], ".git") {
+		return true
 	}
 	// Keep ".vantage" and its inbox — checked before the matcher, which
 	// always-ignores the dir. Anything deeper is vantage-owned state the
