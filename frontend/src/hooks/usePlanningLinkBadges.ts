@@ -52,6 +52,79 @@ export function linkTargetAttributes(
       };
 }
 
+/**
+ * Set by `rehypeMarkMarkdownLinks` on a link written in Markdown, and taken
+ * off again by `MarkdownViewer`'s `a`, which stamps only such a link. A raw
+ * HTML `<a href>` renders as the same element, but §5.1 badges a rendered
+ * Markdown link, and the index counts only those (§3.2): a raw anchor is in no
+ * Referenced by list and gets no bracketed badge from `vantage-check index`,
+ * so a badge on it would be the page alone saying something.
+ */
+export const MARKDOWN_LINK_ATTR = "data-vantage-markdown-link";
+
+interface HastLike {
+  type: string;
+  tagName?: string;
+  properties?: Record<string, unknown>;
+  position?: {
+    start: { offset?: number };
+    end: { offset?: number };
+  };
+  children?: HastLike[];
+}
+
+function eachAnchor(tree: HastLike, visit: (anchor: HastLike) => void): void {
+  const walk = (node: HastLike): void => {
+    if (node.type === "element" && node.tagName === "a") visit(node);
+    node.children?.forEach(walk);
+  };
+  walk(tree);
+}
+
+const spanOf = (node: HastLike): string | null => {
+  const from = node.position?.start.offset;
+  const to = node.position?.end.offset;
+  return from === undefined || to === undefined ? null : `${from}:${to}`;
+};
+
+const SPANS = "vantageMarkdownLinkSpans";
+
+/**
+ * First in the rehype chain, before `rehypeRaw`: every `<a>` there came from
+ * a Markdown link, since raw HTML is still unparsed. Records where each one
+ * sits in the source, for `rehypeMarkMarkdownLinks`.
+ */
+export function rehypeCollectMarkdownLinks() {
+  return (tree: HastLike, file: { data: Record<string, unknown> }): void => {
+    const spans = new Set<string>();
+    eachAnchor(tree, (anchor) => {
+      const span = spanOf(anchor);
+      if (span !== null) spans.add(span);
+    });
+    file.data[SPANS] = spans;
+  };
+}
+
+/**
+ * Last in the rehype chain, after the sanitizer, so nothing a document writes
+ * can set the mark: marks each `<a>` that sits where a Markdown link did.
+ */
+export function rehypeMarkMarkdownLinks() {
+  return (tree: HastLike, file: { data: Record<string, unknown> }): void => {
+    const spans = file.data[SPANS];
+    if (!(spans instanceof Set)) return;
+    eachAnchor(tree, (anchor) => {
+      const span = spanOf(anchor);
+      if (span !== null && spans.has(span)) {
+        anchor.properties = {
+          ...anchor.properties,
+          dataVantageMarkdownLink: "",
+        };
+      }
+    });
+  };
+}
+
 function sweep(el: HTMLElement): void {
   el.querySelectorAll(`[${PLANNING_BADGE_ATTR}]`).forEach((n) => n.remove());
 }
@@ -83,9 +156,9 @@ export function usePlanningLinkBadges(
     for (const link of el.querySelectorAll<HTMLElement>(
       `a[${LINK_TARGET_ATTR}]`,
     )) {
-      // Inline SVG admits `<a href>`, and the `a` component stamps it as it
-      // stamps any link. A badge is an HTML `<span>`: inside an `<svg>` it
-      // draws nothing and would be a stray node in the drawing.
+      // Inline SVG admits `<a href>`. It is raw HTML, so the `a` component
+      // does not stamp it, and a badge is an HTML `<span>` besides: inside an
+      // `<svg>` it draws nothing and would be a stray node in the drawing.
       if (link.closest("svg")) continue;
       const path = link.getAttribute(LINK_TARGET_ATTR);
       if (!path) continue;

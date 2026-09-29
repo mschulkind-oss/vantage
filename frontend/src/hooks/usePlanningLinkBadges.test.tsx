@@ -273,9 +273,29 @@ describe("which links get a badge (§5.1)", () => {
     expect(document.querySelector(`[${PLANNING_BADGE_ATTR}]`)).toBeNull();
   });
 
-  // Inline SVG admits `<a href>`, and the viewer's `a` stamps it like any
-  // other link. A badge is an HTML `<span>`, which draws nothing inside an
-  // `<svg>` and is not part of the drawing, so a link there gets none.
+  // §5.1 badges a rendered Markdown link, and the index counts only those
+  // (§3.2): a raw `<a href>` is in neither Referenced by nor the CLI's
+  // brackets, so a badge on it would be the page alone saying something.
+  it("gives none to a raw HTML anchor, only to the Markdown link beside it", () => {
+    renderViewer(
+      [
+        'See <a href="docs/design/a.md">raw A</a> and [A](docs/design/a.md).',
+        "",
+        '<p><a href="docs/design/a.md#OQ-1">raw question</a></p>',
+        "",
+      ].join("\n"),
+    );
+    for (const name of ["raw A", "raw question"]) {
+      expect(linkNamed(name)).not.toHaveAttribute(LINK_TARGET_ATTR);
+      expect(badgeAfter(linkNamed(name))).toBeNull();
+    }
+    expect(badgeAfter(linkNamed("A"))).not.toBeNull();
+    expect(linkNamed("A").className).toBe("");
+  });
+
+  // Inline SVG admits `<a href>`. A badge is an HTML `<span>`, which draws
+  // nothing inside an `<svg>` and is not part of the drawing, so a link there
+  // gets none; and an inline SVG is raw HTML, so its link is not stamped.
   it("gives none to a link inside an inline SVG", () => {
     const { container } = renderViewer(
       [
@@ -287,7 +307,7 @@ describe("which links get a badge (§5.1)", () => {
     );
     const svg = container.querySelector("svg")!;
     const drawn = svg.querySelector("a")!;
-    expect(drawn).toHaveAttribute(LINK_TARGET_ATTR, "docs/design/a.md");
+    expect(drawn).not.toHaveAttribute(LINK_TARGET_ATTR);
     expect(svg.querySelector(`[${PLANNING_BADGE_ATTR}]`)).toBeNull();
     expect(drawn.nextSibling).toBeNull();
     expect(badgeAfter(linkNamed("A"))).not.toBeNull();

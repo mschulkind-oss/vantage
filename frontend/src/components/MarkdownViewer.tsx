@@ -17,7 +17,10 @@ import {
 } from "../hooks/useReviewHighlights";
 import { useOpenQuestionButtons } from "../hooks/useOpenQuestionButtons";
 import {
+  MARKDOWN_LINK_ATTR,
   linkTargetAttributes,
+  rehypeCollectMarkdownLinks,
+  rehypeMarkMarkdownLinks,
   usePlanningLinkBadges,
 } from "../hooks/usePlanningLinkBadges";
 import { findDocument, referenceSummary } from "vantage-md/planning";
@@ -192,10 +195,21 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   // and the CLI checker cannot drift apart. `bodyLineOffset` makes
   // `data-source-line` count file lines — both `#L42` links and review comment
   // anchors are read against the whole file, not the body rendered here.
-  const { remarkPlugins, rehypePlugins } = useMemo(
-    () => buildPipeline({ bodyLineOffset: bodyLineOffset + sourceLineOffset }),
-    [bodyLineOffset, sourceLineOffset],
-  );
+  // The viewer adds only the pair that tells a Markdown link from a raw HTML
+  // one, around the whole chain (see `MARKDOWN_LINK_ATTR`).
+  const { remarkPlugins, rehypePlugins } = useMemo(() => {
+    const pipeline = buildPipeline({
+      bodyLineOffset: bodyLineOffset + sourceLineOffset,
+    });
+    return {
+      remarkPlugins: pipeline.remarkPlugins,
+      rehypePlugins: [
+        rehypeCollectMarkdownLinks,
+        ...pipeline.rehypePlugins,
+        rehypeMarkMarkdownLinks,
+      ],
+    };
+  }, [bodyLineOffset, sourceLineOffset]);
 
   const handleLinkClick = useCallback(
     (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
@@ -653,22 +667,27 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       a({
         href,
         children,
+        [MARKDOWN_LINK_ATTR]: markdownLink,
         ...props
       }: {
         href?: string;
         children?: React.ReactNode;
+        [MARKDOWN_LINK_ATTR]?: string;
       } & React.AnchorHTMLAttributes<HTMLAnchorElement>) {
         const resolvedHref = resolveHref(href);
         // The link's repository path, stamped for the badge pass to read: the
         // rendered `href` carries `/{repo}/` in daemon mode and keeps `..`
         // unresolved, so it is never parsed back into a path. After `props`, so
-        // nothing a document writes can stand in for it.
+        // nothing a document writes can stand in for it. Only on a link written
+        // in Markdown, the kind the index counts, and never on a raw HTML one.
         return (
           <a
             href={resolvedHref}
             onClick={(e) => href && handleLinkClick(e, href)}
             {...props}
-            {...linkTargetAttributes(currentPath, href)}
+            {...(markdownLink === undefined
+              ? {}
+              : linkTargetAttributes(currentPath, href))}
           >
             {children}
           </a>
