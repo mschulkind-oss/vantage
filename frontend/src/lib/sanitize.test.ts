@@ -25,7 +25,7 @@
  *    sanitizer and that fails loudly, instead of math quietly losing its layout.
  */
 import { describe, it, expect } from "vitest";
-import { renderMarkdown, SAFE_STYLE } from "vantage-md";
+import { renderMarkdown, SAFE_STYLE, sanitizeSchema } from "vantage-md";
 
 const styled = async (html: string) => (await renderMarkdown(html + "\n")).html;
 
@@ -488,6 +488,94 @@ describe("inline SVG", () => {
     ).toEqual(["circle"]);
     expect(svg.textContent).toBe("");
     expect(host.innerHTML).not.toContain(tag);
+  });
+
+  /**
+   * Every `SVG_ATTRIBUTES` entry, spelled the way an author writes it.
+   *
+   * The schema lists hast *property* names, and the only way to know one is
+   * right is to feed the sanitizer the attribute and see it come out. Four of
+   * the original entries (`strokeLinecap` and friends) were camel-cased by hand
+   * and matched nothing. None of these is also on the schema's `*` list, so each
+   * survives only through its own entry — which is why the length check below
+   * proves the table covers the whole list.
+   */
+  const SVG_ATTRIBUTE_SPELLINGS: [string, string][] = [
+    ["fill", "#2563eb"],
+    ["stroke", "red"],
+    ["fill-opacity", "0.5"],
+    ["fill-rule", "evenodd"],
+    ["stroke-opacity", "0.25"],
+    ["stroke-width", "2"],
+    ["stroke-linecap", "round"],
+    ["stroke-linejoin", "bevel"],
+    ["opacity", "0.9"],
+    ["transform", "rotate(10 5 5)"],
+    ["font-family", "Georgia, 'Times New Roman', serif"],
+    ["font-size", "12"],
+    ["font-weight", "700"],
+    ["font-style", "italic"],
+    ["letter-spacing", "0.5"],
+    ["text-anchor", "middle"],
+    ["dominant-baseline", "central"],
+    ["x", "1"],
+    ["y", "2"],
+    ["x1", "3"],
+    ["y1", "4"],
+    ["x2", "5"],
+    ["y2", "6"],
+    ["cx", "7"],
+    ["cy", "8"],
+    ["r", "9"],
+    ["rx", "10"],
+    ["ry", "11"],
+    ["dx", "12"],
+    ["dy", "13"],
+    ["d", "M0 0 L9 9"],
+    ["points", "0,0 9,9"],
+  ];
+
+  /** The admitted SVG children: every tag whose required ancestor is `svg`. */
+  const SVG_CHILD_TAGS = Object.entries(sanitizeSchema.ancestors ?? {})
+    .filter(([, required]) => required.includes("svg"))
+    .map(([tag]) => tag);
+
+  it("spells out every SVG_ATTRIBUTES entry", () => {
+    // `rect` carries exactly `SVG_ATTRIBUTES`, as every admitted child does.
+    expect(SVG_ATTRIBUTE_SPELLINGS).toHaveLength(
+      sanitizeSchema.attributes!.rect!.length,
+    );
+  });
+
+  it.each(SVG_CHILD_TAGS)(
+    "keeps every SVG_ATTRIBUTES entry on <%s>",
+    async (tag) => {
+      const written = SVG_ATTRIBUTE_SPELLINGS.map(
+        ([name, value]) => `${name}="${value}"`,
+      ).join(" ");
+      const host = await parsed(
+        `<div>\n<svg viewBox="0 0 9 9"><${tag} ${written}></${tag}></svg>\n</div>`,
+      );
+      const element = host.querySelector("svg")!.firstElementChild!;
+      expect(element.tagName).toBe(tag);
+      for (const [name, value] of SVG_ATTRIBUTE_SPELLINGS) {
+        expect(element.getAttribute(name), name).toBe(value);
+      }
+    },
+  );
+
+  it("refuses stroke-dasharray, whose paint cost the document controls", async () => {
+    // Dash count is path length over dash period, both in user units the
+    // document picks. Fifty short paths with a 0.0011 dash took 21 s to paint
+    // in headless Chromium, and scaling the user units defeats any floor on
+    // the dash length. See `SVG_ATTRIBUTES`.
+    const host = await parsed(`<div>
+<svg viewBox="0 0 1000 300"><path d="M0 1 H1000" stroke="red" stroke-width="50" stroke-dasharray="0.0011" stroke-dashoffset="1"/></svg>
+</div>`);
+    const path = host.querySelector("path")!;
+    expect(path.getAttribute("stroke-width")).toBe("50");
+    expect(path.hasAttribute("stroke-dasharray")).toBe(false);
+    expect(path.hasAttribute("stroke-dashoffset")).toBe(false);
   });
 
   it("does not admit SVG children, or a title, outside an svg", async () => {
