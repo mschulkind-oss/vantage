@@ -254,7 +254,8 @@ describe("a question (§3.3)", () => {
     ].join("\n");
     const [first, second] = planning(source).questions;
     // The wrapped leaning takes two lines in the directive and two in the
-    // paragraph, so the first item runs 7–14 and the second 15–19.
+    // paragraph, so the first item runs 7–13, a blank line follows, and the
+    // second runs 15–19.
     expect(first).toEqual({
       path: "docs/design/x.md",
       id: "OQ-B1",
@@ -265,9 +266,84 @@ describe("a question (§3.3)", () => {
       leaning: "Back of the queue.",
       line: 12,
       unitLine: 7,
+      unitEndLine: 13,
       block: { startLine: 7, endLine: 19 },
     });
-    expect(second).toMatchObject({ id: "OQ-B2", line: 19, unitLine: 15 });
+    expect(second).toMatchObject({
+      id: "OQ-B2",
+      line: 19,
+      unitLine: 15,
+      unitEndLine: 19,
+    });
+  });
+
+  // No rendered element carries the line a unit ends on, so this is held to
+  // mdast's own positions, written beside each line, rather than to the DOM
+  // `planningAgreement.test.tsx` reads.
+  it("ends each question's unit on the last line of its node", () => {
+    const source = [
+      "# X", // 1
+      "", // 2
+      "1. \u{1F4AC} **OQ-L1: A list item?**", // 3
+      "", // 4
+      '   <!-- vantage: oq id=OQ-L1 leaning="Yes." -->', // 5
+      "", // 6
+      "   _Leaning:_ yes,", // 7
+      "   over two lines.", // 8
+      "", // 9
+      "2. An outer item.", // 10
+      "", // 11
+      "   - \u{1F4AC} **OQ-N1: A nested item?**", // 12
+      "", // 13
+      '     <!-- vantage: oq id=OQ-N1 leaning="Yes." -->', // 14
+      "", // 15
+      "     _Leaning:_ yes.", // 16
+      "", // 17
+      "   - A sibling.", // 18
+      "", // 19
+      '<!-- vantage: oq id=OQ-P1 leaning="Yes." -->', // 20
+      "", // 21
+      "\u{1F4AC} A bare paragraph,", // 22
+      "over two lines.", // 23
+      "", // 24
+      '<!-- vantage: oq id=OQ-Q1 leaning="Yes." -->', // 25
+      "", // 26
+      "> \u{1F4AC} A question in a quote,", // 27
+      "> over two lines.", // 28
+      "", // 29
+      '<!-- vantage: oq id=OQ-H1 leaning="Yes." -->', // 30
+      "", // 31
+      "### \u{1F4AC} A question as a heading", // 32
+      "", // 33
+      "After.", // 34
+      "",
+    ].join("\n");
+    expect(
+      planning(source).questions.map((q) => [q.id, q.unitLine, q.unitEndLine]),
+    ).toEqual([
+      // A list item ends where its last block does, before the blank line.
+      ["OQ-L1", 3, 8],
+      // The nearest item is the unit, not the outer one it sits in.
+      ["OQ-N1", 12, 16],
+      // Outside a list the unit is the host block itself.
+      ["OQ-P1", 22, 23],
+      ["OQ-Q1", 27, 28],
+      ["OQ-H1", 32, 32],
+    ]);
+  });
+
+  it("offsets a unit's last line by the frontmatter, as its first", () => {
+    const source = [
+      "---", // 1
+      "status: draft", // 2
+      "---", // 3
+      "", // 4
+      item("\u{1F4AC}", "OQ-F1"), // 5-9
+    ].join("\n");
+    expect(planning(source).questions[0]).toMatchObject({
+      unitLine: 5,
+      unitEndLine: 9,
+    });
   });
 
   it("starts a root-level question's block at its directive", () => {

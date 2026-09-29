@@ -82,6 +82,13 @@ export interface PlanningQuestion {
    */
   unitLine: number;
   /**
+   * File line of the unit's last line: where that `<li>` ends, or the host
+   * block's last line when there is none. With `unitLine` it spans the
+   * question's unit, which is how a comment is placed on a question whose card
+   * has not been rendered (`docs/design/planning-index-at-scale.md` §10.5).
+   */
+  unitEndLine: number;
+  /**
    * The root-level block holding it, in file lines. A root-level directive's
    * block starts at its run's first comment, so the slice keeps the directive.
    */
@@ -581,6 +588,10 @@ function question(
     context.unit === undefined
       ? line
       : (context.unit.position?.start.line ?? 1) + offset;
+  const unitEndLine =
+    (context.unit === undefined
+      ? (target.position?.end.line ?? 1)
+      : (context.unit.position?.end.line ?? 1)) + offset;
   const root = context.rootChild;
   const block =
     root === undefined
@@ -615,6 +626,7 @@ function question(
     leaning: leaning === "" ? null : leaning,
     line,
     unitLine,
+    unitEndLine,
     block,
   });
   state.rawIds.push(keys.get("id"));
