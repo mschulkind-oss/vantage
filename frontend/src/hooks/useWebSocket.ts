@@ -6,6 +6,7 @@ import { useReviewStore } from "../stores/useReviewStore";
 import { useStarredStore } from "../stores/useStarredStore";
 import { useFilePickerStore } from "../stores/useFilePickerStore";
 import { useAllRecentsStore } from "../stores/useAllRecentsStore";
+import { usePlanningStore } from "../stores/usePlanningStore";
 import { WebSocketMessage } from "../types";
 import { isStaticMode } from "../lib/staticMode";
 import { wsLog, bindLoggerSocket } from "../lib/wsLogger";
@@ -18,7 +19,19 @@ const MAX_WAIT_MS = 500;
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30000;
 
-export const useWebSocket = () => {
+export interface UseWebSocketOptions {
+  /**
+   * Whether this page is the viewer. `false` skips everything that refreshes
+   * the viewer's world — the document, its git status and review, the tree and
+   * the sidebar's recent files — and keeps the planning index, the bookmarks,
+   * the file pickers, the repository list and the version check. The planning
+   * page passes it. Default `true`.
+   */
+  viewer?: boolean;
+}
+
+export const useWebSocket = (options: UseWebSocketOptions = {}) => {
+  const viewer = options.viewer ?? true;
   // No WebSocket in static mode — there's no backend to connect to
   const staticMode = isStaticMode();
 
@@ -93,6 +106,14 @@ export const useWebSocket = () => {
     // while it is closed.
     void useAllRecentsStore.getState().refresh();
 
+    // Everything below refreshes the viewer, which a page that is not the
+    // viewer has not got. Its planning index follows each push as it arrives,
+    // in handleMessage, rather than here.
+    if (!viewer) {
+      pendingPathsRef.current = new Set();
+      return;
+    }
+
     // Guard: don't fire API calls before the repo store is initialized
     const { reposLoaded, isMultiRepo, currentRepo } = useRepoStore.getState();
     if (!reposLoaded) return;
@@ -132,6 +153,7 @@ export const useWebSocket = () => {
       processingRef.current = false;
     });
   }, [
+    viewer,
     loadFile,
     refreshExpandedTree,
     fetchStatus,
@@ -150,6 +172,7 @@ export const useWebSocket = () => {
     // announced while the socket was down is only recoverable here.
     void useFilePickerStore.getState().refresh();
     void useAllRecentsStore.getState().refresh();
+    if (!viewer) return;
 
     // Guard: don't fire API calls before the repo store is initialized.
     // Before loadRepos() completes, isMultiRepo defaults to false and
@@ -176,6 +199,7 @@ export const useWebSocket = () => {
     refreshExpandedTree();
     fetchRecentFiles();
   }, [
+    viewer,
     loadFile,
     refreshExpandedTree,
     fetchStatus,
@@ -237,6 +261,13 @@ export const useWebSocket = () => {
       }
 
       if (message.type === "review_changed" && message.path) {
+        // Every document's, not only the one on screen: the planning page
+        // shows comments from many documents at once. `repo` is sent only in
+        // daemon mode, so its absence is the single repository.
+        usePlanningStore
+          .getState()
+          .noteReviewChanged(message.repo ?? "", message.path);
+        if (!viewer) return;
         // A review command or an inbox delivery changed this document's
         // review server-side. Reload it when it's the document on screen;
         // loadReview's staleness guards discard the response if the reviewer
@@ -254,11 +285,21 @@ export const useWebSocket = () => {
         return;
       }
 
-      if (message.type === "files_changed" && message.paths) {
+      if (message.type === "files_changed") {
+        const paths = message.paths ?? [];
+        const removedDirs = message.removed_dirs ?? [];
+        // Per message, not per batch: the batch below holds bare paths, and a
+        // path is only meaningful to the index with the repository it is in.
+        // `repo` is sent only in daemon mode, so its absence is the single
+        // repository.
+        usePlanningStore
+          .getState()
+          .noteFilesChanged(message.repo ?? "", paths, removedDirs);
+        if (paths.length === 0) return;
         wsLog.log(
           "[ws] files_changed: %d paths: %s",
-          message.paths.length,
-          message.paths.join(", "),
+          paths.length,
+          paths.join(", "),
         );
         // Note this handler draws no conclusion from the change itself. Whether
         // the document moved out from under the review is decided by comparing
@@ -267,7 +308,7 @@ export const useWebSocket = () => {
         // path changed and never says why — an agent answering, an agent doing
         // unrelated work, the reviewer's own editor, and a git checkout are
         // indistinguishable here, so nothing is inferred from arrival alone.
-        for (const p of message.paths) {
+        for (const p of paths) {
           pendingPathsRef.current.add(p);
         }
 
@@ -281,7 +322,7 @@ export const useWebSocket = () => {
         }
       }
     },
-    [processBatch],
+    [processBatch, viewer],
   );
 
   const connect = useCallback(() => {
@@ -321,6 +362,12 @@ export const useWebSocket = () => {
       useConnectionStore.getState().setConnected(true);
       // Refresh everything since we may have missed changes while disconnected
       refreshAfterReconnect();
+      // A genuine reconnect only (Plan Q14). Every page mounts this hook, and
+      // every mount's first connection is #1, so "reconnect" on #1 would rescan
+      // the whole planning index on each navigation. The second and later
+      // connections of a mount follow a dropped socket, or the forced
+      // reconnect after 30 s hidden, and in both some pushes may be lost.
+      if (connectNum > 1) usePlanningStore.getState().noteReconnect();
     };
 
     socket.onmessage = handleMessage;
