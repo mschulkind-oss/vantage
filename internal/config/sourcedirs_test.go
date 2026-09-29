@@ -101,6 +101,23 @@ func TestAddSourceDirsAppendsInPlaceKeepingEverythingElse(t *testing.T) {
 			after:  "source_dirs = [\n    \"~/code\", # clones\n    # \"~/old\",\n    '~/projects', # others\n    \"~/work\",\n]\nhost = \"127.0.0.1\"\n",
 		},
 		{
+			// The indent is the first item line's whitespace, not everything
+			// before the first thing after "[" — which here is a comment.
+			name:   "multi-line array with a comment after its bracket",
+			before: "source_dirs = [ # my clones\n  \"~/code\",\n]\nport = 8123 # keep\n",
+			after:  "source_dirs = [ # my clones\n  \"~/code\",\n  \"~/work\",\n]\nport = 8123 # keep\n",
+		},
+		{
+			name:   "multi-line array whose first item shares its bracket's line",
+			before: "source_dirs = [\"~/code\",\n    \"~/projects\",\n]\nport = 8123 # keep\n",
+			after:  "source_dirs = [\"~/code\",\n    \"~/projects\",\n    \"~/work\",\n]\nport = 8123 # keep\n",
+		},
+		{
+			name:   "multi-line array with every item on its bracket's line",
+			before: "source_dirs = [\"~/code\",\n]\n",
+			after:  "source_dirs = [\"~/code\",\n  \"~/work\",\n]\n",
+		},
+		{
 			name:   "no key: inserted above the first table and its comments",
 			before: "# Server settings\nport = 8000\n\n# Repositories to serve\n# (one per block)\n[[repos]]\nname = \"n\"\npath = \"/n\"\n",
 			after:  "# Server settings\nport = 8000\n\nsource_dirs = [\"~/work\"]\n\n# Repositories to serve\n# (one per block)\n[[repos]]\nname = \"n\"\npath = \"/n\"\n",
@@ -255,6 +272,36 @@ func TestAddSourceDirsRefusesAFileItCannotWrite(t *testing.T) {
 	info, err := os.Lstat(cfgPath)
 	require.NoError(t, err)
 	require.NotZero(t, info.Mode()&os.ModeSymlink)
+}
+
+// The round trip is the one check between a bad text edit and a corrupt
+// config: when the edited text does not decode to the same settings plus the
+// new entries, the edit is not written, the original is backed up, and the
+// file is rewritten from its decoded values instead.
+func TestAddSourceDirsBacksUpWhenTheEditFailsItsRoundTrip(t *testing.T) {
+	home, cfgPath := sourceDirsFixture(t)
+	require.NoError(t, os.MkdirAll(filepath.Dir(cfgPath), 0o755))
+	original := "# mine\nport = 8123\nsource_dirs = [\"~/code\"]\n"
+	require.NoError(t, os.WriteFile(cfgPath, []byte(original), 0o644))
+	for _, bad := range []string{
+		"# mine\nport = 8123\nsource_dirs = [\"~/code\",\nsource_dirs = [ \"~/work\",\n]\n", // does not parse
+		"# mine\nport = 9999\nsource_dirs = [\"~/code\", \"~/work\"]\n",                     // changes another key
+		"# mine\nport = 8123\nsource_dirs = [\"~/code\"]\n",                                 // loses the entry
+	} {
+		editText := editSourceDirsText
+		editSourceDirsText = func([]byte, []string) ([]byte, error) { return []byte(bad), nil }
+		edit, err := AddSourceDirs(cfgPath, []string{"~/work"}, editTime)
+		editSourceDirsText = editText
+		require.NoError(t, err, bad)
+		require.Equal(t, cfgPath+".bak-20260929-123456", edit.Backup, bad)
+		require.Equal(t, original, readString(t, edit.Backup), bad)
+		cfg, err := LoadDaemonFile(cfgPath)
+		require.NoError(t, err, bad)
+		require.Equal(t, 8123, cfg.Port, bad)
+		require.Equal(t, []string{filepath.Join(home, "code"), filepath.Join(home, "work")}, cfg.SourceDirs, bad)
+		require.NoError(t, os.WriteFile(cfgPath, []byte(original), 0o644))
+		require.NoError(t, os.Remove(edit.Backup))
+	}
 }
 
 func TestAddSourceDirsRefusesAMalformedConfig(t *testing.T) {
