@@ -334,6 +334,20 @@ func TestInstallServiceWithSourceDirsKeepsAnExistingConfig(t *testing.T) {
 	require.Len(t, rec.calls, 3)
 }
 
+func TestInstallServiceWithSourceDirsNamesTheFileBehindALink(t *testing.T) {
+	in, _, _ := sourceDirInstall(t, "linux")
+	real := filepath.Join(in.home, "dotfiles", "vantage.toml")
+	require.NoError(t, os.MkdirAll(filepath.Dir(real), 0o755))
+	require.NoError(t, os.WriteFile(real, []byte("# dotfile\n"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Dir(in.configPath), 0o755))
+	require.NoError(t, os.Symlink(real, in.configPath))
+
+	var out bytes.Buffer
+	require.NoError(t, installServiceWithSourceDirs(&out, in, []string{"~/code"}))
+	require.Contains(t, out.String(),
+		"Added to source_dirs in ~/.config/vantage/config.toml (a link to ~/dotfiles/vantage.toml): ~/code\n")
+}
+
 func TestInstallServiceWithSourceDirsReportsAFailedStart(t *testing.T) {
 	in, rec, _ := sourceDirInstall(t, "linux")
 	rec.fail = map[string]error{"systemctl --user restart vantage": errors.New("exit status 1: Failed to connect to bus")}

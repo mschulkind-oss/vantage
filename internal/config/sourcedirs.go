@@ -16,8 +16,13 @@ import (
 
 // SourceDirsEdit reports what [AddSourceDirs] did to a config file.
 type SourceDirsEdit struct {
-	// Path is the config file written (or, when nothing was added, left alone).
+	// Path is the config file written (or, when nothing was added, left alone),
+	// as the caller named it.
 	Path string
+	// Target is the file behind Path when Path is a symlink — a config kept in
+	// a dotfiles repository, say — which is the file actually edited, or ""
+	// when Path is the file itself.
+	Target string
 	// Created is true when there was no file and one was written.
 	Created bool
 	// Added are the entries appended to source_dirs, as written.
@@ -83,12 +88,31 @@ func AddSourceDirs(path string, dirs []string, now time.Time) (SourceDirsEdit, e
 		wanted = append(wanted, abs)
 	}
 
-	original, err := os.ReadFile(path)
+	// Edit the file behind a link, never the link: replacing a link into a
+	// dotfiles repository with a file would leave the dotfile without the
+	// entry, and change the path the daemon keys its bookmarks on.
+	file, err := followLinks(path)
+	if err != nil {
+		return edit, err
+	}
+	if file != path {
+		edit.Target = file
+	}
+	named := func() string {
+		if edit.Target != "" {
+			return fmt.Sprintf("%s, a link to %s,", path, file)
+		}
+		return path
+	}
+
+	original, err := os.ReadFile(file)
 	if errors.Is(err, os.ErrNotExist) {
 		edit.Created = true
 		original = nil
 	} else if err != nil {
-		return edit, fmt.Errorf("config: reading %s: %w", path, err)
+		return edit, fmt.Errorf("config: reading %s: %w", file, err)
+	} else if err := checkWritable(file); err != nil {
+		return edit, fmt.Errorf("config: %s cannot be written (%w); add source_dirs there by hand", named(), err)
 	}
 
 	before := map[string]any{}
@@ -133,9 +157,9 @@ func AddSourceDirs(path string, dirs []string, now time.Time) (SourceDirsEdit, e
 			err = errors.New("the edited file does not decode to the same settings")
 		}
 		if err != nil {
-			edit.Backup = fmt.Sprintf("%s.bak-%s", path, now.Format("20060102-150405"))
+			edit.Backup = fmt.Sprintf("%s.bak-%s", file, now.Format("20060102-150405"))
 			if werr := os.WriteFile(edit.Backup, original, 0o600); werr != nil {
-				return edit, fmt.Errorf("config: backing up %s: %w", path, werr)
+				return edit, fmt.Errorf("config: backing up %s: %w", file, werr)
 			}
 			before["source_dirs"] = append(existing, edit.Added...)
 			var buf bytes.Buffer
@@ -148,13 +172,53 @@ func AddSourceDirs(path string, dirs []string, now time.Time) (SourceDirsEdit, e
 		}
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return edit, fmt.Errorf("config: creating %s: %w", filepath.Dir(path), err)
+	if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+		return edit, fmt.Errorf("config: creating %s: %w", filepath.Dir(file), err)
 	}
-	if err := writeFileAtomic(path, next); err != nil {
+	if err := writeFileAtomic(file, next); err != nil {
+		if edit.Target != "" {
+			return edit, fmt.Errorf("%w; %s is a link to it, so add source_dirs there by hand", err, path)
+		}
 		return edit, err
 	}
 	return edit, nil
+}
+
+// followLinks returns the file path names once every symlink along the way is
+// followed — to where it points even when nothing is there yet, so that a link
+// to a file still to be written gets that file. A path with no link is
+// returned as it is.
+func followLinks(path string) (string, error) {
+	p := path
+	for hops := 0; ; hops++ {
+		info, err := os.Lstat(p)
+		if err != nil || info.Mode()&os.ModeSymlink == 0 {
+			return p, nil
+		}
+		if hops == 40 {
+			return "", fmt.Errorf("config: %s: too many levels of symbolic links", path)
+		}
+		dest, err := os.Readlink(p)
+		if err != nil {
+			return "", fmt.Errorf("config: reading the link %s: %w", p, err)
+		}
+		if !filepath.IsAbs(dest) {
+			dest = filepath.Join(filepath.Dir(p), dest)
+		}
+		p = dest
+	}
+}
+
+// checkWritable reports why the existing file at path cannot be written, or
+// nil. The edit replaces the file by renaming a new one over it, which only
+// the directory's permissions govern, so a file made read-only on purpose —
+// or one in a read-only store — would be replaced without this check.
+func checkWritable(path string) error {
+	f, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		return err
+	}
+	return f.Close()
 }
 
 // stringList reads a decoded TOML value as a list of strings; nil is empty.
