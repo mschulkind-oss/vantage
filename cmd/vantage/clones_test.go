@@ -345,3 +345,12 @@ func TestServedClonesDirectoryGivesEachCloneItsOwnProject(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/r/code/content?path=alpha/README.md", nil))
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
+
+func TestServeHelpDescribesTheSplitAndTheTip(t *testing.T) {
+	cmd, _, err := newRootCmd().Find([]string{"serve"})
+	require.NoError(t, err)
+	require.NotNil(t, cmd.Flags().Lookup("one-project"))
+	for _, want := range []string{"directory of clones", "--one-project", "VANTAGE_NO_TIPS=1", "tips = false"} {
+		require.Contains(t, cmd.Long, want)
+	}
+}
