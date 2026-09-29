@@ -50,6 +50,7 @@ import {
   type ParsedDirective,
 } from "../vantageDirectives.js";
 import { isDocStatus, type DocStatus } from "../vantageFrontmatter.js";
+import { cutCardBlocks, outlineOf } from "./cardSource.js";
 import { resolveRepoLink } from "./links.js";
 
 /** A question's state. `answered` is ✅: ruled, awaiting compaction. */
@@ -93,6 +94,34 @@ export interface PlanningQuestion {
    * block starts at its run's first comment, so the slice keeps the directive.
    */
   block: { startLine: number; endLine: number };
+  /**
+   * The length of the Markdown its card renders (`CardBlock.markdown`), as
+   * JavaScript counts a string's length. The planning page pages by it before
+   * any block is fetched (`docs/design/planning-index-at-scale.md` §10.2).
+   */
+  cardChars: number;
+}
+
+/**
+ * The Markdown a question's card renders, for one distinct `block` of its
+ * document: every question in that block shares it
+ * (`docs/design/planning-index-at-scale.md` §7.4).
+ *
+ * Not a fact of the index. A scan returns a document's blocks beside its
+ * document, for whoever keeps them to hand them to the planning page.
+ */
+export interface CardBlock {
+  /** The block's first file line, `PlanningQuestion.block.startLine`. */
+  startLine: number;
+  /** The block's last file line, `PlanningQuestion.block.endLine`. */
+  endLine: number;
+  /** What the card renders: the block and the document's link definitions. */
+  markdown: string;
+  /**
+   * The file lines before `markdown`'s first line: the viewer's source-line
+   * offset, so every `data-source-line` in the card is the document's own.
+   */
+  lineOffset: number;
 }
 
 /** A Markdown link to a path inside the repository. */
@@ -155,8 +184,13 @@ export interface PlanningDocument {
   directiveIds: string[];
 }
 
+/**
+ * What one candidate contributes. A planning document comes with `cards`: one
+ * card block per distinct block its questions sit in, in file order, whatever
+ * its size.
+ */
 export type ScanResult =
-  | { kind: "planning"; document: PlanningDocument }
+  | { kind: "planning"; document: PlanningDocument; cards: CardBlock[] }
   | { kind: "not-planning" }
   | { kind: "unreadable"; reason: string };
 
@@ -166,7 +200,7 @@ export type ScanResult =
  */
 const parser = unified().use(remarkParse).use(buildRemarkPlugins());
 
-/** A document body as the viewer parses it. Shared with `cardSource.ts`. */
+/** A document body as the viewer parses it. */
 export function parseBody(body: string): Root {
   return parser.parse(body) as Root;
 }
@@ -441,7 +475,7 @@ function anchorTagWithin(target: RootContent): string | "unknown" | undefined {
 
 interface ScanState {
   bodyLineOffset: number;
-  questions: Omit<PlanningQuestion, "path" | "id">[];
+  questions: Omit<PlanningQuestion, "path" | "id" | "cardChars">[];
   /** The merged `id=` of each question, before duplicates are resolved. */
   rawIds: (string | undefined)[];
   /** The comment whose `id=` that merged id is, by `commentKey`. */
@@ -1002,6 +1036,9 @@ function problemReason(parsed: ParsedFrontmatter): string | undefined {
  * file whose frontmatter does not parse is unreadable, since what it would
  * have said is unknown (§3.6). Anything else is dropped before its body is
  * parsed, which is what keeps a full scan cheap (§13, §15).
+ *
+ * A planning document comes with its questions' card blocks, cut from the same
+ * parse, so nothing has to parse a document a second time for its cards.
  */
 export function scanPlanningDocument(
   path: string,
@@ -1022,6 +1059,9 @@ export function scanPlanningDocument(
   if (!isRoadmap && !keyed && !hasOqDirective(root)) {
     return { kind: "not-planning" };
   }
+  // Before `readAlerts`, which rewrites blockquotes in place: the cards are
+  // cut from the tree as it was parsed.
+  const outline = outlineOf(root, parsed.bodyLineOffset);
   readAlerts(root);
 
   const state: ScanState = {
@@ -1048,6 +1088,18 @@ export function scanPlanningDocument(
     if (footnote !== undefined) walkBlocks(footnote, state);
   }
 
+  const cards = cutCardBlocks(
+    source,
+    outline,
+    state.questions.map((q) => q.block),
+  );
+  const chars = new Map(
+    cards.map((card) => [
+      `${card.startLine}:${card.endLine}`,
+      card.markdown.length,
+    ]),
+  );
+
   const first = firstOqIds(root);
   const questions: PlanningQuestion[] = state.questions.map((q, index) => {
     const raw = state.rawIds[index];
@@ -1056,7 +1108,8 @@ export function scanPlanningDocument(
       raw !== undefined && key !== undefined && first.get(raw) === key
         ? raw
         : null;
-    return { path, id, ...q };
+    const cardChars = chars.get(`${q.block.startLine}:${q.block.endLine}`) ?? 0;
+    return { path, id, ...q, cardChars };
   });
 
   const status = fm["status"];
@@ -1072,5 +1125,6 @@ export function scanPlanningDocument(
       ids: idsOf(source),
       directiveIds: [...first.keys()],
     },
+    cards,
   };
 }

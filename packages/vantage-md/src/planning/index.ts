@@ -26,6 +26,7 @@ export { compileIgnorePatterns } from "./patterns.js";
 export { resolveRepoLink } from "./links.js";
 export { idsOf, scanPlanningDocument } from "./scan.js";
 export type {
+  CardBlock,
   DependsOn,
   HeaderProblem,
   PlanningDocument,
@@ -72,4 +73,4 @@ export type {
   RoutedQuestion,
   WaitingEntry,
 } from "./sections.js";
-export { questionCardSource } from "./cardSource.js";
+export { cardBlockFor, questionCardSource } from "./cardSource.js";

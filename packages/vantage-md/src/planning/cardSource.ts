@@ -1,5 +1,7 @@
 /**
- * The Markdown a question's card on the planning page renders (design §6.3).
+ * The Markdown a question's card on the planning page renders (design §6.3),
+ * cut from the parse the scan has already made
+ * (`docs/design/planning-index-at-scale.md` §7.4).
  *
  * The card shows the question exactly as the viewer renders it in its
  * document, so it renders a slice of the document through the viewer's own
@@ -7,11 +9,20 @@
  * holding the question: a root-level block parses the same on its own as in
  * place, where an item cut out of a list or a quote would not. The page then
  * hides everything in the card outside the question's own unit.
+ *
+ * The scan takes an outline of its root before anything rewrites it, and cuts
+ * one card block for each distinct block its questions sit in, so a document
+ * is parsed once for its facts and its cards together.
  */
 
 import type { Nodes, Root } from "mdast";
 import { parseFrontmatter } from "../frontmatter.js";
-import { parseBody, type PlanningQuestion } from "./scan.js";
+import {
+  parseBody,
+  scanPlanningDocument,
+  type CardBlock,
+  type PlanningQuestion,
+} from "./scan.js";
 
 /** Backslash-escape what an angle-bracket destination or a title would read. */
 function escape(text: string, specials: RegExp): string {
@@ -36,53 +47,14 @@ function holdsFootnote(node: Nodes): boolean {
   return "children" in node && (node.children as Nodes[]).some(holdsFootnote);
 }
 
-/**
- * The card's Markdown, and the number of file lines before its first line —
- * pass that to the viewer as its source-line offset and every
- * `data-source-line` in the card is the document's own.
- *
- * The slice is `question.block`, which for a root-level directive starts at
- * the directive's comment, so the card stamps the same host the document does.
- * The document's link reference definitions follow it after one blank line: a
- * definition directly after a paragraph would be read as more of that
- * paragraph. A block holding a footnote gets the whole document instead, with
- * an offset of 0, because footnotes are numbered in document order: sliced out,
- * the second footnote would render as the first, and its text, and so the
- * comment anchor hashed from it, would differ.
- */
-export function questionCardSource(
-  source: string,
-  question: PlanningQuestion,
-): { markdown: string; lineOffset: number } {
-  const { blocks, definitions } = outlineOf(source);
-  const { startLine, endLine } = question.block;
-  const inSlice = (span: Span): boolean =>
-    span.from <= endLine && span.to >= startLine;
-
-  if (blocks.some((block) => inSlice(block) && block.footnote)) {
-    return { markdown: source, lineOffset: 0 };
-  }
-
-  const outside = definitions
-    .filter((definition) => !inSlice(definition))
-    .map((definition) => definition.text);
-  const slice = source
-    .split("\n")
-    .slice(startLine - 1, endLine)
-    .join("\n");
-  const markdown =
-    outside.length === 0 ? `${slice}\n` : `${slice}\n\n${outside.join("\n")}\n`;
-  return { markdown, lineOffset: startLine - 1 };
-}
-
 /** File lines, first and last, both inclusive. */
 interface Span {
   from: number;
   to: number;
 }
 
-/** What a card needs of its document's parse: small, so it can be kept. */
-interface Outline {
+/** What cutting a card needs of its document's parse. */
+export interface Outline {
   /** The root-level blocks, and whether each holds a footnote. */
   blocks: (Span & { footnote: boolean })[];
   /** Every link reference definition, written back out. */
@@ -90,27 +62,16 @@ interface Outline {
 }
 
 /**
- * Outlines of the documents parsed most recently, by text. A document with k
- * questions has k cards, and each card would otherwise parse the whole
- * document again; the page renders them all at once.
+ * The outline of a body already parsed. `bodyLineOffset` is the number of
+ * file lines before the body, so every span is in file lines.
+ *
+ * It reads only the root's own children and the `definition` nodes, so it
+ * parses nothing and keeps nothing.
  */
-const outlines = new Map<string, Outline>();
-const OUTLINES_KEPT = 32;
-
-function outlineOf(source: string): Outline {
-  const kept = outlines.get(source);
-  if (kept !== undefined) {
-    // Most recently used last, so the oldest is the first to go.
-    outlines.delete(source);
-    outlines.set(source, kept);
-    return kept;
-  }
-  const parsed = parseFrontmatter(source);
-  const root: Root = parseBody(parsed.body);
-  const offset = parsed.bodyLineOffset;
+export function outlineOf(root: Root, bodyLineOffset: number): Outline {
   const span = (node: Nodes): Span => ({
-    from: (node.position?.start.line ?? 0) + offset,
-    to: (node.position?.end.line ?? 0) + offset,
+    from: (node.position?.start.line ?? 0) + bodyLineOffset,
+    to: (node.position?.end.line ?? 0) + bodyLineOffset,
   });
 
   const definitions: Outline["definitions"] = [];
@@ -122,18 +83,127 @@ function outlineOf(source: string): Outline {
     if ("children" in node) (node.children as Nodes[]).forEach(collect);
   };
   collect(root);
-  const outline: Outline = {
+  return {
     blocks: root.children.map((child) => ({
       ...span(child),
       footnote: holdsFootnote(child),
     })),
     definitions,
   };
+}
 
-  outlines.set(source, outline);
-  if (outlines.size > OUTLINES_KEPT) {
-    const oldest = outlines.keys().next();
-    if (oldest.done !== true) outlines.delete(oldest.value);
+/**
+ * One card block for each distinct span in `spans`, in file order.
+ *
+ * A span is a question's `block`, which for a root-level directive starts at
+ * the directive's comment, so the card stamps the same host the document does.
+ * The document's link reference definitions follow the slice after one blank
+ * line: a definition directly after a paragraph would be read as more of that
+ * paragraph. A block holding a footnote gets the whole document instead, with
+ * an offset of 0, because footnotes are numbered in document order: sliced
+ * out, the second footnote would render as the first, and its text, and so the
+ * comment anchor hashed from it, would differ.
+ *
+ * No two distinct blocks of one document start on the same line. A block
+ * starts on the first line of the root-level node its questions sit in, or on
+ * the line of a root-level directive run's first comment, which sits in an
+ * HTML node holding no questions; no two root-level nodes share a line, and of
+ * the runs in one HTML node only the last can reach a host. So `startLine`
+ * alone names a block, which `planningCard.test.ts` holds over the corpus.
+ */
+export function cutCardBlocks(
+  source: string,
+  outline: Outline,
+  spans: readonly { startLine: number; endLine: number }[],
+): CardBlock[] {
+  const distinct = new Map<string, { startLine: number; endLine: number }>();
+  for (const { startLine, endLine } of spans) {
+    const key = `${startLine}:${endLine}`;
+    if (!distinct.has(key)) distinct.set(key, { startLine, endLine });
   }
-  return outline;
+  if (distinct.size === 0) return [];
+
+  const lines = source.split("\n");
+  return [...distinct.values()]
+    .sort((a, b) => a.startLine - b.startLine || a.endLine - b.endLine)
+    .map(({ startLine, endLine }) => {
+      const inSlice = (span: Span): boolean =>
+        span.from <= endLine && span.to >= startLine;
+      if (outline.blocks.some((block) => inSlice(block) && block.footnote)) {
+        return { startLine, endLine, markdown: source, lineOffset: 0 };
+      }
+      const outside = outline.definitions
+        .filter((definition) => !inSlice(definition))
+        .map((definition) => definition.text);
+      const slice = lines.slice(startLine - 1, endLine).join("\n");
+      const markdown =
+        outside.length === 0
+          ? `${slice}\n`
+          : `${slice}\n\n${outside.join("\n")}\n`;
+      return { startLine, endLine, markdown, lineOffset: startLine - 1 };
+    });
+}
+
+/** The card block `question` renders, from its document's scanned `cards`. */
+export function cardBlockFor(
+  cards: readonly CardBlock[],
+  question: Pick<PlanningQuestion, "block">,
+): CardBlock | undefined {
+  const { startLine, endLine } = question.block;
+  return cards.find(
+    (card) => card.startLine === startLine && card.endLine === endLine,
+  );
+}
+
+/**
+ * The cards of the documents scanned here most recently, by text. A document
+ * with k questions has k cards, and each would otherwise scan the whole
+ * document again; the page renders them all at once.
+ */
+const scanned = new Map<string, readonly CardBlock[]>();
+const SCANS_KEPT = 32;
+
+function cardsOf(path: string, source: string): readonly CardBlock[] {
+  const kept = scanned.get(source);
+  if (kept !== undefined) {
+    // Most recently used last, so the oldest is the first to go.
+    scanned.delete(source);
+    scanned.set(source, kept);
+    return kept;
+  }
+  const result = scanPlanningDocument(path, source, false);
+  const cards = result.kind === "planning" ? result.cards : [];
+  scanned.set(source, cards);
+  if (scanned.size > SCANS_KEPT) {
+    const oldest = scanned.keys().next();
+    if (oldest.done !== true) scanned.delete(oldest.value);
+  }
+  return cards;
+}
+
+/**
+ * The card's Markdown, and the number of file lines before its first line —
+ * pass that to the viewer as its source-line offset and every
+ * `data-source-line` in the card is the document's own.
+ *
+ * The scan's own block for `question`, from scanning `source`. It stands in
+ * for the page's card until the page is handed blocks with the index, and then
+ * goes (`docs/design/planning-index-at-scale.md` §7.4).
+ */
+export function questionCardSource(
+  source: string,
+  question: PlanningQuestion,
+): { markdown: string; lineOffset: number } {
+  let block = cardBlockFor(cardsOf(question.path, source), question);
+  if (block === undefined) {
+    // `question` was not read from `source`, or `source` no longer scans:
+    // cut its lines anyway, as the card always has.
+    const parsed = parseFrontmatter(source);
+    const outline = outlineOf(parseBody(parsed.body), parsed.bodyLineOffset);
+    [block] = cutCardBlocks(source, outline, [question.block]);
+  }
+  return {
+    markdown: block?.markdown ?? "",
+    lineOffset: block?.lineOffset ?? 0,
+  };
 }
