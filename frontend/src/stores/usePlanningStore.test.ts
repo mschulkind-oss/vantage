@@ -253,6 +253,39 @@ describe("the batch (§3.4, full scan)", () => {
   });
 });
 
+describe("a refused index (§3.5)", () => {
+  // Only a rescan can change a refused index, so one path's answer would be
+  // read and thrown away.
+  it("asks nothing about a pushed path", async () => {
+    store().ensure("");
+    take(BATCH).answer(
+      batchBody(
+        {},
+        { refused: true, candidate_count: 6000, files: [], skipped: [] },
+      ),
+    );
+    await flush();
+    store().noteFilesChanged("", ["docs/design.md"], []);
+    expect(requests).toEqual([]);
+  });
+
+  // The batch a rescan sends may not be refused, and what was pushed while it
+  // was out is newer than what it read.
+  it("still asks while a rescan's batch is out", async () => {
+    store().ensure("");
+    take(BATCH).answer(
+      batchBody(
+        {},
+        { refused: true, candidate_count: 6000, files: [], skipped: [] },
+      ),
+    );
+    await flush();
+    store().rescan("");
+    store().noteFilesChanged("", ["docs/design.md"], []);
+    expect(requests.map((r) => r.url)).toEqual([BATCH, one("docs/design.md")]);
+  });
+});
+
 describe("failure (§3.6)", () => {
   it("gives error when the batch fails", async () => {
     store().ensure("");
