@@ -178,7 +178,7 @@ refused.
     <circle cx="0" cy="-128" r="14" fill="#ffe8a3" opacity="0.3"/>
     <circle cx="0" cy="-128" r="26" fill="#ffe8a3" opacity="0.14"/>
   </g>
-  <text x="320" y="387" text-anchor="middle" fill="currentColor" font-size="15" font-family="Georgia, 'Times New Roman', serif">A <tspan font-style="italic">vantage point</tspan>, after dark<tspan fill-opacity="0.65" font-size="13"> — drawn with nothing the sanitizer refuses</tspan></text>
+  <text x="320" y="387" text-anchor="middle" fill="currentColor" font-size="15" font-family="Georgia, 'Times New Roman', serif">A <tspan font-style="italic">vantage point</tspan>, after dark<tspan fill-opacity="0.75" font-size="13"> — drawn with nothing the sanitizer refuses</tspan></text>
 </svg>
 </div>
 
@@ -204,7 +204,7 @@ have taken away:
 <div>
 <svg xmlns="http://www.w3.org/2000/svg" width="560" height="300" viewBox="0 0 560 300" role="img" aria-label="Bar chart of sea monsters sighted per week from the lamp room. Weeks 1 to 8: 2, 3, 1, 5, 4, 7, 13 and 6. Week 7 was a full moon.">
   <text x="0" y="18" fill="currentColor" font-size="15" font-weight="bold">Sea monsters sighted per week</text>
-  <text x="0" y="35" fill="currentColor" fill-opacity="0.7" font-size="11">sightings from the lamp room</text>
+  <text x="0" y="35" fill="currentColor" fill-opacity="0.75" font-size="11">sightings from the lamp room</text>
   <g fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
     <path d="M462 31 q6 -3 12 0 t12 0 t12 0 t12 0 t12 0 t12 0 t12 0" stroke="currentColor" stroke-width="1" stroke-opacity="0.35"/>
     <path d="M472 30 a7 7 0 0 1 14 0" stroke="#199e70"/>
@@ -247,7 +247,7 @@ have taken away:
     <text x="451" y="274">7</text>
     <text x="513" y="274">8</text>
   </g>
-  <text x="296" y="294" fill="currentColor" fill-opacity="0.7" font-size="11" text-anchor="middle">week</text>
+  <text x="296" y="294" fill="currentColor" fill-opacity="0.75" font-size="11" text-anchor="middle">week</text>
   <text x="451" y="74" fill="currentColor" font-size="12" text-anchor="middle"><tspan font-weight="bold">13</tspan> (full moon)</text>
 </svg>
 </div>
