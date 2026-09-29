@@ -75,6 +75,12 @@ port = 8000
 # startup — restart after changing it.  See userguide/guides/themes.md.
 # theme = "catppuccin"
 
+# Startup tip: `vantage serve` prints one line about this background service
+# when its output is a terminal — how to install it, how to start it, or where
+# the project is already open. Set tips = false (or VANTAGE_NO_TIPS=1) to stop
+# it.  Read by `serve` only; the daemon ignores it.
+# tips = true
+
 # Repositories to serve
 # Each repo needs a unique name (used in URLs) and a path to the directory.
 #
