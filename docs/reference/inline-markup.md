@@ -645,6 +645,18 @@ attribute, so an element renders unstyled rather than half-styled (**D6**).
 > shipped test is an ascending ladder that asserts on each rung and aborts before
 > the length that would hang.
 
+### Inline SVG
+
+Raw `<svg>` is admitted as static drawing: shapes, paths, text, groups, `title`
+and `desc`, with geometry, stroke, fill and font attributes. Everything that can
+run, fetch or point elsewhere is dropped by omission: `script`, `foreignObject`,
+`image`, `use`, `animate` and `set`, event handlers, and every attribute that
+takes a `url(…)` reference. `fill` and `stroke` take only a keyword, a color name
+or a hex color, so `rgb(…)` goes the same way as it does in `style`. Gradients
+and patterns are unsupported because they are reachable only through `url(#id)`,
+and the sanitizer prefixes every `id`. SVG child elements require an `svg`
+ancestor, so a stray `<title>` in prose cannot reach the page's `<head>`.
+
 Denial of service is otherwise not a concern: ten thousand directives is ten
 thousand comments, and the plugin is one linear pass over an unambiguous grammar.
 
