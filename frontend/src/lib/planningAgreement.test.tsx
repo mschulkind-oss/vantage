@@ -9,9 +9,9 @@
  * without rendering it. This test renders each document through the app's own
  * `MarkdownViewer`, runs the column's `collectOutline` over the result, scans the
  * same source, and asserts the same questions in the same order, each with the
- * same id, the same state, and the same lines — `line` is the block the in-page
- * button anchors on and `unitLine` the list item it belongs to, both of which the
- * planning page uses to find a question inside its card.
+ * same id, the same state, the same marker, and the same lines — `line` is the
+ * block the in-page button anchors on and `unitLine` the list item it belongs
+ * to, both of which the planning page uses to find a question inside its card.
  *
  * The corpus is every Markdown file under `docs/`, read from disk so a new
  * document is covered the day it lands, plus inline fixtures for the shapes the
@@ -47,6 +47,7 @@ interface Seen {
   state: "open" | "blocked" | "answered";
   line: number;
   unitLine: number;
+  marker: string;
 }
 
 const lineOf = (el: Element | null | undefined): number =>
@@ -77,6 +78,7 @@ function column(path: string, content: string): Seen[] {
       state: status === "settled" ? "answered" : status,
       line: lineOf(hosts[index]?.block),
       unitLine: lineOf(entry.element),
+      marker: entry.marker,
     };
   });
 }
@@ -85,12 +87,15 @@ function column(path: string, content: string): Seen[] {
 function index(path: string, content: string): Seen[] {
   const result = scanPlanningDocument(path, content, false);
   if (result.kind !== "planning") return [];
-  return result.document.questions.map(({ id, state, line, unitLine }) => ({
-    id,
-    state,
-    line,
-    unitLine,
-  }));
+  return result.document.questions.map(
+    ({ id, state, line, unitLine, marker }) => ({
+      id,
+      state,
+      line,
+      unitLine,
+      marker,
+    }),
+  );
 }
 
 const corpus = (
@@ -267,5 +272,5 @@ describe("the planning index and the contents column (§3.3)", () => {
  * `rehype-raw` built, with the line it gave the paragraph.
  */
 const RAW_HTML_COLUMN: Seen[] = [
-  { id: "OQ-H1", state: "open", line: 5, unitLine: 5 },
+  { id: "OQ-H1", state: "open", line: 5, unitLine: 5, marker: "\u{1F4AC}" },
 ];
