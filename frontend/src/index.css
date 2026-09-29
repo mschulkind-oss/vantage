@@ -1760,10 +1760,11 @@ th.review-block-hovered {
    a copy reads, and a space beside it would survive the strip.
 
    `user-select: none` keeps it out of a copied selection, which is the other
-   place §5.3 says a badge's text must not reach. */
+   place §5.3 says a badge's text must not reach. An inline block, not an
+   inline flex box: a copy reads a flex container as a block of its own, and
+   puts a line break where the badge sat. */
 .vantage-planning-badge {
-  display: inline-flex;
-  align-items: baseline;
+  display: inline-block;
   margin-left: 0.4em;
   font-size: 0.8em;
   font-weight: 500;
