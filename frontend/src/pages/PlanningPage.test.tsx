@@ -739,6 +739,36 @@ describe("pages (planning-index-at-scale.md §10.2)", () => {
     }
   });
 
+  it("asks for the next page's inputs when the pointer or the focus reaches a pager", async () => {
+    const asked: CardWant[][] = [];
+    serveTree(TREE, "/api", (inline) => ({
+      cards: (repo, want, options) => {
+        asked.push(want);
+        return inline.cards(repo, want, options);
+      },
+    }));
+    await renderPage();
+    const a1Asked = () =>
+      asked.some((want) => want.some((w) => w.path === "plans/answered.md"));
+    expect(a1Asked()).toBe(false);
+    fireEvent.pointerEnter(pager("Needs you"));
+    await settle();
+    expect(a1Asked()).toBe(true);
+    // The flip then has its page in hand, and asks nothing more.
+    const before = asked.length;
+    await flip("Next ›");
+    expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
+    expect(asked).toHaveLength(before);
+    // On the last page there is no next page to ask for.
+    fireEvent.focus(
+      within(pager("Needs you", "bottom")).getByRole("button", {
+        name: "‹ Previous",
+      }),
+    );
+    await settle();
+    expect(asked).toHaveLength(before);
+  });
+
   it("offers a page select in a long section", async () => {
     setPlanningLimitsForTests({ pageEntries: 1, pageSelectFrom: 3 });
     await renderPage();
