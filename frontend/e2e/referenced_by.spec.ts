@@ -114,6 +114,26 @@ test("it is collapsed again on the next visit", async ({ page }) => {
   await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
 });
 
+test("a heading link lands on the line that links here, a screen down", async ({
+  page,
+}) => {
+  await page.goto("/plans/hub.md");
+  await toggle(page).click();
+  await surface(page)
+    .getByRole("link", { name: "Citations of the hub" })
+    .click();
+  await expect(page).toHaveURL(/\/plans\/hub-citations\.md#L72$/);
+  // The line is marked in the document the link named, not in the hub that
+  // was still on screen when the URL changed, and it is scrolled into view.
+  const marked = prose(page).locator(".line-anchor-highlight");
+  await expect(marked).toHaveCount(1);
+  await expect(marked).toContainText("Before any section");
+  await expect(marked).toBeInViewport();
+  await expect(
+    prose(page).getByRole("heading", { name: "Citations of the hub" }),
+  ).not.toBeInViewport();
+});
+
 test("the line prints, and the list prints only when open", async ({
   page,
 }) => {

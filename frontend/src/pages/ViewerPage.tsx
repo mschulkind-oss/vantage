@@ -175,7 +175,7 @@ export const ViewerPage: React.FC = () => {
   const location = useLocation();
   const { "*": pathParam } = useParams();
   const contentRef = useRef<HTMLDivElement>(null);
-  useLineAnchor(contentRef);
+  useLineAnchor(contentRef, fileContent);
   const prevPathRef = useRef<string | null>(null);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   // Which recents modal is open: `r`'s current project, or `Shift+R`'s all.
