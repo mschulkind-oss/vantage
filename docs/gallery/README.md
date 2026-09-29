@@ -1,13 +1,14 @@
 ---
 title: "The directive gallery"
 status: accepted
-summary: "A set of specimen documents that render every Vantage directive, for reviewing how the markup actually looks."
+summary: "A set of specimen documents that render every Vantage directive, and inline SVG, for reviewing how the markup actually looks."
 ---
 
 # The directive gallery
 
-Seven specimen documents that render **every** Vantage directive, token and
-combination, with nothing else on the page. Their only job is to be looked at.
+Eight specimen documents: seven that render **every** Vantage directive, token
+and combination, with nothing else on the page, and one that draws with inline
+SVG. Their only job is to be looked at.
 
 They exist because the directive vocabulary is
 [semantic and never chromatic](../reference/inline-markup.md#the-token-vocabulary)
@@ -27,7 +28,7 @@ only shows what it looks like.
 > Everything here is a live specimen, not a screenshot or a code sample — the
 > markup in these files is doing the thing it describes. That is also why they
 > break the style guide's advice to use directives sparingly: a document where
-> everything is toned normally says nothing, and these six say exactly one
+> everything is toned normally says nothing, and these eight say exactly one
 > thing.
 
 ## Fire it up
@@ -67,6 +68,7 @@ Two switches change what these pages are showing you:
 | [Collapse](./collapse.md) | `collapsed=true`, nesting, the caret, the three gates | does the caret work by keyboard, and does everything print open? |
 | [Open questions](./open-questions.md) | `oq`, the one-click button, and where it will not appear | one affirmative button per question, and nothing when review mode is off? |
 | [Status at a glance](./status.md) | task lists, badges and chips together, in the shapes a roadmap uses | can you tell what still needs you *without reading*? |
+| [Inline SVG](./inline-svg.md) | a night scene, a chart, an icon in a sentence and a drawing in a toned section, in both themes and in print | did every shape the source draws reach the page, and does it read in both themes? |
 
 Each page opens with its own "what to look at" list. Those lists are the point —
 they are what turns "this looks a bit off" into a specific claim about a
@@ -105,12 +107,17 @@ stay **unlayered**, it must be imported by relative source path, the accent
 `var()` must have **no fallback**, and `emphasis=strong` must keep excluding
 headings, `pre` and `table`.
 
+[Inline SVG](./inline-svg.md) is the one page whose fix lives elsewhere. When a
+shape or an attribute goes missing, look in `packages/vantage-md/src/sanitize.ts`;
+when a drawing is the wrong size or leaves its line, in
+`packages/vantage-md/src/styles/inline-svg.css`.
+
 > [!WARNING]
 > **A computed-style test cannot see most of what this gallery shows.** The
 > code-fence bug is the standing example: the stripe's `left` was correct the
 > whole time and it simply did not paint, because the fence clipped its own
 > pseudo-element. Only a rendered page — or a pixel test — catches that class of
-> defect, which is the gap these six documents fill.
+> defect, which is the gap these eight documents fill.
 
 ## Findings from the first pass
 
