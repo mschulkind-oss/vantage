@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type ExtraProps } from "react-markdown";
 import { buildPipeline, parseFrontmatter } from "vantage-md";
 import { MermaidDiagram, FrontmatterDisplay } from "vantage-md/react";
 import "highlight.js/styles/github.css";
@@ -617,17 +617,23 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     return () => el.removeEventListener("click", onClick);
   }, [isReviewMode, setPendingSelection, buildCapturedSelection]);
 
-  // Factory for heading components with hover anchor links
+  // Factory for heading components with hover anchor links. Like every
+  // override below, it takes `node` out before it spreads the rest:
+  // react-markdown passes each one the hast element it renders, and that is not
+  // an attribute — spread onto the DOM element, it becomes
+  // `node="[object Object]"`.
   const headingWithAnchor = useCallback(
     (Tag: "h1" | "h2" | "h3" | "h4" | "h5" | "h6") => {
       const Component = ({
+        node,
         id,
         children,
         ...props
       }: {
         id?: string;
         children?: React.ReactNode;
-      } & React.HTMLAttributes<HTMLHeadingElement>) => (
+      } & React.HTMLAttributes<HTMLHeadingElement> &
+        ExtraProps) => (
         <Tag id={id} className="group relative" {...props}>
           {id && (
             <a
@@ -665,6 +671,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       h5: headingWithAnchor("h5"),
       h6: headingWithAnchor("h6"),
       a({
+        node,
         href,
         children,
         [MARKDOWN_LINK_ATTR]: markdownLink,
@@ -673,8 +680,8 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
         href?: string;
         children?: React.ReactNode;
         [MARKDOWN_LINK_ATTR]?: string;
-      } & React.AnchorHTMLAttributes<HTMLAnchorElement>) {
-        const resolvedHref = resolveHref(href);
+      } & React.AnchorHTMLAttributes<HTMLAnchorElement> &
+        ExtraProps) {
         // The link's repository path, stamped for the badge pass to read: the
         // rendered `href` carries `/{repo}/` in daemon mode and keeps `..`
         // unresolved, so it is never parsed back into a path. After `props`, so
@@ -682,7 +689,9 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
         // in Markdown, the kind the index counts, and never on a raw HTML one.
         return (
           <a
-            href={resolvedHref}
+            // An `<a>` the document wrote without an `href` keeps none. An
+            // empty one would make it a link to this page.
+            href={href === undefined ? undefined : resolveHref(href)}
             onClick={(e) => href && handleLinkClick(e, href)}
             {...props}
             {...(markdownLink === undefined
@@ -697,9 +706,10 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
         props: {
           children?: React.ReactNode;
           className?: string;
-        } & React.HTMLAttributes<HTMLElement>,
+        } & React.HTMLAttributes<HTMLElement> &
+          ExtraProps,
       ) {
-        const { children, className, ...rest } = props;
+        const { node, children, className, ...rest } = props;
         const match = /language-(\w+)/.exec(className || "");
         // Check if it's a block code (has newline at end usually) or explicit class
         if (match && match[1] === "mermaid") {
