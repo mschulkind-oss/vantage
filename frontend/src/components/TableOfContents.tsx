@@ -60,9 +60,19 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
       // space rather than the document's measure.
       className="hidden md:block w-64 shrink-0"
     >
+      {/*
+       * z-10: the contents are the app's, inside the document's scroll
+       * container. A document block carried over them by a negative margin,
+       * which the inline-style filter keeps, painted over them and took their
+       * clicks whenever it painted in the positioned layer: with `opacity`, as
+       * a toned block or a heading, or as a link to anywhere. The filter
+       * refuses `z-index`, so no document block outranks this. Not `isolate`
+       * on the document column: the maximized diagram is not a portal, and it
+       * would then sit under the contents (`e2e/toc.spec.ts`).
+       */}
       <nav
         aria-label="Table of contents"
-        className="sticky top-2 max-h-[calc(100vh-8rem)] overflow-y-auto pb-6"
+        className="sticky top-2 z-10 max-h-[calc(100vh-8rem)] overflow-y-auto pb-6"
       >
         <div className="mb-2 flex items-baseline justify-between gap-2">
           <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">

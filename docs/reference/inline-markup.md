@@ -748,6 +748,20 @@ refused too: each has a one-keyword spelling on the list.
 `frontend/e2e/boxless.spec.ts` measures that the rule and the anchor stay in
 the scroll container.
 
+**A negative `margin` still lets a block overlap what is beside it, the table
+of contents included.** The overlap stays in the flow: it scrolls with the
+document, and the scroll container clips it. But the table of contents is the
+app's own, and it sits inside that scroll container, beside the document
+column. A block carried over it painted over it, and took its clicks, whenever
+the block painted in the positioned layer: a block with `opacity`, a toned
+block, any heading, or a link written `display: block`. Measured in Chromium,
+a click on an entry followed a link the document pointed at another host. The
+table of contents now sits at `z-index: 10`, and this filter refuses `z-index`,
+so no block of a document outranks it. The document column is deliberately not
+a stacking context of its own: a maximized diagram is not a portal, so it sits
+inside that column, and it would then paint under the table of contents.
+`frontend/e2e/toc.spec.ts` measures both.
+
 > [!IMPORTANT]
 > **KaTeX output never passes through this filter, and the filter's original
 > rationale was wrong because of it.** `rehype-katex` runs *after*
