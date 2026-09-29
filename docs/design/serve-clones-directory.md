@@ -321,10 +321,16 @@ pushes `degraded_changed` over the WebSocket, and the viewer fetches the list
 again when it arrives. So does each report whose count has doubled since the
 last push: a watcher reports every refused watch, and a banner that fetched
 at the first one would otherwise keep that count, while a push for each would
-be one per directory. The banner is fixed to the bottom of the viewport, so a
-report that arrives late never moves content already on screen. The reader can
-dismiss it until the page is reloaded; a limit still hit after a reload is worth
-saying again. Tests trigger these conditions by
+be one per directory. The banner floats at the bottom of the viewer pane, so a
+report that arrives late never moves content already on screen, and it never
+covers the sidebar. The pane leaves room below its content as tall as the
+banner, which only lengthens what can be scrolled, so the end of a long
+document scrolls clear of it. The reader can dismiss it until the page is
+reloaded; a limit still hit after a reload is worth saying again. For a screen
+reader, the banner's live region is on the page, empty, from the start, since
+one inserted already filled is not reliably announced. It comes after the
+content in the tab order, as it does on screen, and each dismiss button names
+what it dismisses. Tests trigger these conditions by
 setting the limits low, a watch budget of a few directories or a walk timeout
 of a nanosecond, and never by building a large tree.
 
@@ -351,4 +357,4 @@ of a nanosecond, and never by building a large tree.
 | D5 | Where does the tip read service state? | The unit or plist path `install-service` writes, plus one 200 ms `GET /api/repos` before `serve` binds ([§5](#5-the-service-reminder)). |
 | D6 | How does `--source-dir` edit the config? | It rewrites only the text of the `source_dirs` value and checks the round trip. It backs the file up first whenever it cannot do that safely ([§6](#6-install-service---source-dir)). |
 | D7 | How does the service pick up a new `source_dirs`? | `install-service --source-dir` restarts it ([§6](#6-install-service---source-dir)). |
-| D8 | What reaches the browser? | The watch limit, the untracked-walk timeout, and a watcher that cannot start, through `/api/degraded` and a bottom-fixed banner ([§7](#7-too-big-to-serve-well-a-banner-in-the-browser)). |
+| D8 | What reaches the browser? | The watch limit, the untracked-walk timeout, and a watcher that cannot start, through `/api/degraded` and a banner floating at the bottom of the viewer pane ([§7](#7-too-big-to-serve-well-a-banner-in-the-browser)). |

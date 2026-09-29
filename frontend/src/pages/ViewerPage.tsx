@@ -187,6 +187,8 @@ export const ViewerPage: React.FC = () => {
   const location = useLocation();
   const { "*": pathParam } = useParams();
   const contentRef = useRef<HTMLDivElement>(null);
+  // How much of the viewer pane's bottom the degradation banner covers.
+  const [bannerSpace, setBannerSpace] = useState(0);
   useLineAnchor(contentRef, fileContent);
   const prevPathRef = useRef<string | null>(null);
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
@@ -880,7 +882,6 @@ export const ViewerPage: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-900 overflow-hidden text-slate-900 dark:text-slate-100">
       <ConnectionBanner />
-      <DegradedBanner />
       <div className="flex flex-1 overflow-hidden">
         {/* Mobile sidebar backdrop */}
         {showSidebar && sidebarOpen && (
@@ -1933,7 +1934,15 @@ export const ViewerPage: React.FC = () => {
                   )}
                 </div>
               </div>
+              {/* Room below the content for the degradation banner, which
+                  floats over the pane's bottom: it only lengthens what can be
+                  scrolled, so it moves nothing already painted, and it lets
+                  the last line scroll clear of the banner. */}
+              {bannerSpace > 0 && (
+                <div aria-hidden="true" style={{ height: bannerSpace }} />
+              )}
             </div>
+            <DegradedBanner onSpaceChange={setBannerSpace} />
           </div>
         </div>
 
