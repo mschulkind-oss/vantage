@@ -27,6 +27,7 @@ import { useAllRecentsStore } from "../stores/useAllRecentsStore";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { usePlanningStore } from "../stores/usePlanningStore";
 import { planningLimits } from "../planningScan/limits";
+import { prefetchPlanningPage } from "../hooks/usePlanningPageInputs";
 import { BrowserRouter } from "react-router-dom";
 import type { CommentReaction, ReviewComment } from "../types";
 
@@ -34,6 +35,12 @@ import type { CommentReaction, ReviewComment } from "../types";
 vi.mock("../stores/useRepoStore");
 vi.mock("../stores/useGitStore");
 vi.mock("../hooks/useWebSocket");
+// The toolbar's planning entry asks for the planning page's first page; what
+// that request does is usePlanningPageInputs.test.ts's business.
+vi.mock("../hooks/usePlanningPageInputs", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../hooks/usePlanningPageInputs")>()),
+  prefetchPlanningPage: vi.fn(),
+}));
 vi.mock("../components/FileTree", () => ({
   FileTree: () => <div data-testid="file-tree">FileTree</div>,
 }));
@@ -328,6 +335,35 @@ describe("ViewerPage", () => {
         "href",
         "/.vantage/planning/alpha",
       );
+    });
+
+    // planning-index-at-scale.md §10.2: page 1's inputs are asked for on
+    // hover or focus of the entry, so the click finds them in hand.
+    it("asks for the planning page's first page on hover and on focus", () => {
+      renderPage();
+      const entry = screen.getByRole("link", { name: "Planning" });
+      fireEvent.pointerEnter(entry);
+      expect(prefetchPlanningPage).toHaveBeenCalledTimes(1);
+      expect(prefetchPlanningPage).toHaveBeenLastCalledWith("");
+      fireEvent.focus(entry);
+      expect(prefetchPlanningPage).toHaveBeenCalledTimes(2);
+      expect(prefetchPlanningPage).toHaveBeenLastCalledWith("");
+    });
+
+    // With no repository open in daemon mode there is no sidebar, and so no
+    // entry to hover.
+    it("asks for the current repository's in daemon mode", () => {
+      (useRepoStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
+        ...useRepoStore(),
+        isMultiRepo: true,
+        currentRepo: "alpha",
+        repos: [{ name: "alpha" }],
+      });
+      mockUseParams.mockReturnValue({ "*": "alpha/path/to/file.md" });
+      renderPage();
+      fireEvent.focus(screen.getByRole("link", { name: "Planning" }));
+      expect(prefetchPlanningPage).toHaveBeenCalledTimes(1);
+      expect(prefetchPlanningPage).toHaveBeenCalledWith("alpha");
     });
   });
 
