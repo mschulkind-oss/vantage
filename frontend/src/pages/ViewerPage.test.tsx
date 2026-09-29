@@ -175,7 +175,13 @@ describe("ViewerPage", () => {
       const leaf = screen.getByTestId("breadcrumb-name");
       expect(leaf).toHaveTextContent(name);
       expect(leaf).toHaveAttribute("title", `docs/design/${name}`);
-      const [stem, ext] = Array.from(leaf.children);
+      const [whole, stem, ext] = Array.from(leaf.children);
+      // Two flex items read as two words ("…-design .md"), so assistive
+      // technology gets the name whole, and the halves are drawn only.
+      expect(whole).toHaveClass("sr-only");
+      expect(whole.textContent).toBe(name);
+      expect(stem).toHaveAttribute("aria-hidden", "true");
+      expect(ext).toHaveAttribute("aria-hidden", "true");
       expect(stem).toHaveTextContent(
         "a-very-long-macos-launchd-and-config-paths-design",
       );
