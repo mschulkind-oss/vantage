@@ -25,10 +25,20 @@ import type {
 import remarkParse from "remark-parse";
 import { unified } from "unified";
 import { isMap, isScalar, isSeq, parseDocument } from "yaml";
-import { BLOCK_PARENTS, listIsLoose, targetTag } from "../directiveTargets.js";
+import {
+  BLOCK_PARENTS,
+  isCommentOnly,
+  listIsLoose,
+  targetTag,
+} from "../directiveTargets.js";
 import { parseFrontmatter, type ParsedFrontmatter } from "../frontmatter.js";
 import { scanComments } from "../htmlComments.js";
 import { buildRemarkPlugins } from "../pipeline.js";
+import {
+  ALERT_MARKER,
+  ALERT_TITLES,
+  type VantageAlert,
+} from "../rehypeVantageAlerts.js";
 import {
   VANTAGE_OQ_HOST_TARGETS,
   VANTAGE_OQ_ID,
@@ -161,6 +171,46 @@ const OQ_TOKEN =
 
 const OQ_HOST_TAGS = new Set<string>(VANTAGE_OQ_HOST_TARGETS);
 
+/**
+ * The title `rehypeVantageAlerts` puts at the top of each GFM alert, by
+ * blockquote. Read by `textOf`, which is how an alert's text starts with
+ * "Warning" here as it does on the page.
+ */
+const alertTitles = new WeakMap<Nodes, string>();
+
+/**
+ * `rehypeVantageAlerts`, done to the mdast the scan reads: a blockquote whose
+ * first paragraph opens with `[!WARNING]` loses the marker, loses that
+ * paragraph if nothing else was in it, and gains the alert's title. The
+ * contents column reads the rendered alert, so a question in one is read here
+ * from the same text.
+ */
+function readAlerts(node: Nodes): void {
+  if (node.type === "blockquote") {
+    // The plugin reads the first element, past comments and whitespace.
+    const first = node.children.find(
+      (child) =>
+        child.type !== "definition" &&
+        !(child.type === "html" && isCommentOnly(child.value)),
+    );
+    const lead = first?.type === "paragraph" ? first.children[0] : undefined;
+    const match = lead?.type === "text" ? ALERT_MARKER.exec(lead.value) : null;
+    if (
+      first?.type === "paragraph" &&
+      lead?.type === "text" &&
+      match !== null
+    ) {
+      lead.value = lead.value.slice(match[0].length);
+      if (lead.value === "" && first.children.length === 1) {
+        node.children = node.children.filter((child) => child !== first);
+      }
+      const kind = (match[1] ?? "").toLowerCase() as VantageAlert;
+      alertTitles.set(node, ALERT_TITLES[kind]);
+    }
+  }
+  if ("children" in node) (node.children as Nodes[]).forEach(readAlerts);
+}
+
 /** One line of text from something written across several. */
 function flatten(text: string): string {
   return text.replace(/\s+/g, " ").trim();
@@ -201,6 +251,8 @@ function textOf(node: Nodes): string {
     node.type === "link" ||
     node.type === "linkReference";
   const parts = (node.children as Nodes[]).map(textOf);
+  const title = alertTitles.get(node);
+  if (title !== undefined) parts.unshift(title);
   return parts.join(phrasing ? "" : "\n");
 }
 
@@ -882,6 +934,7 @@ export function scanPlanningDocument(
   if (!isRoadmap && !keyed && !hasOqDirective(root)) {
     return { kind: "not-planning" };
   }
+  readAlerts(root);
 
   const state: ScanState = {
     bodyLineOffset: parsed.bodyLineOffset,

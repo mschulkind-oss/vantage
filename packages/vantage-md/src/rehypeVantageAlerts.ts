@@ -77,7 +77,8 @@ export const ALERT_TITLES: Readonly<Record<VantageAlert, string>> = {
  * anchored test on the first text node is enough, and the plugin does not have
  * to reassemble the marker across siblings.
  */
-const MARKER = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*(?:\r?\n|$)/;
+export const ALERT_MARKER =
+  /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*(?:\r?\n|$)/;
 
 /** The first child, if it is an element. */
 function firstElement(node: Element): Element | undefined {
@@ -111,7 +112,7 @@ export function rehypeVantageAlerts() {
       const lead = paragraph.children[0];
       if (lead === undefined || lead.type !== "text") return;
 
-      const match = MARKER.exec(lead.value);
+      const match = ALERT_MARKER.exec(lead.value);
       if (match === null) return;
 
       const kind = match[1].toLowerCase() as VantageAlert;
