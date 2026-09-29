@@ -38,6 +38,7 @@ import {
   PLANNING_NOTICES,
   badgeFor,
   derivePlanningSections,
+  findDocument,
   questionFor,
   type DependsOn,
   type PlanningIndex,
@@ -151,6 +152,18 @@ const USER_SCROLL_EVENTS = [
   "keydown",
   "mousedown",
 ] as const;
+
+/**
+ * What a Disagrees row's stage claims, in the checker's word for the same
+ * finding (`planning/stage-disagrees`): Disagrees holds both the `ready` and
+ * the `built` role (§6.2).
+ */
+function builtOrDecided(index: PlanningIndex | null, path: string): string {
+  const stages = index?.config.stages;
+  const stage = index ? findDocument(index, path)?.stage : undefined;
+  if (!stages || !stage || !Object.hasOwn(stages, stage)) return "decided";
+  return stages[stage] === "built" ? "built" : "decided";
+}
 
 /** A key for one question, stable across index versions. */
 const refKey = (ref: QuestionRef): string => `${ref.path}\n${ref.line}`;
@@ -629,7 +642,8 @@ const Sections: React.FC<{
             documentRow(
               path,
               <p className="mt-1 text-[13px] text-slate-600 dark:text-slate-400">
-                Its stage says it is decided, and it still has open questions.
+                Its stage says it is {builtOrDecided(index, path)}, and it still
+                has open questions.
               </p>,
             ),
           )}

@@ -273,6 +273,25 @@ describe("the sections, top to bottom (§6.2)", () => {
     ).toBeTruthy();
   });
 
+  // §6.2's Disagrees holds both roles, and the checker's matching finding
+  // tells them apart; the page said "decided" for both.
+  it("says a Disagrees row's stage is built or decided, by its role", async () => {
+    seed({
+      ...TREE,
+      "plans/built-open.md": doc("stage: BUILT", q("OQ-Y1", OPEN)),
+    });
+    await renderPage();
+    const rows = section("Disagrees");
+    const rowOf = (path: string) =>
+      rows.querySelector(`[data-planning-document="${path}"]`)!.textContent;
+    expect(rowOf("plans/built-open.md")).toContain(
+      "Its stage says it is built, and it still has open questions.",
+    );
+    expect(rowOf("plans/disagrees.md")).toContain(
+      "Its stage says it is decided, and it still has open questions.",
+    );
+  });
+
   it("lists Ready, Graduate and Disagrees by stage", async () => {
     await renderPage();
     expect(documentsIn("Ready")).toEqual(["plans/ready.md"]);
