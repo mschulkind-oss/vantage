@@ -290,8 +290,15 @@ function asStages(
         `${path}: planning.stages.${JSON.stringify(word)} must be one of ${STAGE_ROLES.map((r) => `"${r}"`).join(", ")} (got ${JSON.stringify(role)})`,
       );
     }
+    // Defined, not assigned: `stages["__proto__"] = role` sets the prototype
+    // and drops the word, which the server keeps.
     stages ??= {};
-    stages[word] = role;
+    Object.defineProperty(stages, word, {
+      value: role,
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
   }
   return stages;
 }
