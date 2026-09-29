@@ -153,6 +153,20 @@ describe("the build guard", () => {
     expect(problems[0]).toContain("never needs katex");
   });
 
+  it("fails a bundle holding a package's DOM build", () => {
+    expect(
+      workerBundleProblems(
+        [
+          ...SOUND,
+          "/repo/node_modules/decode-named-character-reference/index.dom.js",
+        ],
+        roots,
+      ),
+    ).toEqual([
+      "/repo/node_modules/decode-named-character-reference/index.dom.js: a package's DOM build, which needs a document the worker does not have",
+    ]);
+  });
+
   it("fails the worker's build, and not the app's", () => {
     const plugin = planningScannerId({ repoRoot: "/repo", guard: true });
     const bundle = {

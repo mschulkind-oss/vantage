@@ -20,7 +20,10 @@
  *   It fails it too when the bundle holds a package the scan never needs
  *   (KaTeX, highlight.js, React, Mermaid): `pipeline.ts` imports the first two
  *   beside the remark plugins the scan does use, and the design's worker
- *   carries none of them (§2).
+ *   carries none of them (§2). And when it holds a package's DOM build
+ *   (`*.dom.js`), which throws in a worker the moment it loads, as
+ *   `decode-named-character-reference`'s did until `vite.config.ts` pointed it
+ *   at its worker build.
  *
  * This file runs in Node, under `vite.config.ts`, and never in a browser, so
  * `tsconfig.node.json` checks it and `tsconfig.app.json` leaves it out:
@@ -135,6 +138,10 @@ export function workerBundleProblems(
         : scopeOrName;
       if (WORKER_FORBIDDEN_PACKAGES.includes(pkg)) {
         problems.push(`${raw}: the scan never needs ${pkg}`);
+      } else if (id.endsWith(".dom.js")) {
+        problems.push(
+          `${raw}: a package's DOM build, which needs a document the worker does not have`,
+        );
       }
       continue;
     }

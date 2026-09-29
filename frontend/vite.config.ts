@@ -1,6 +1,7 @@
 import type { Plugin } from "vite";
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
+import { createRequire } from "node:module";
 import path from "path";
 import { planningScannerId } from "./src/planningScan/scannerId";
 
@@ -108,6 +109,19 @@ export default defineConfig(({ mode }) => {
           replacement: path.resolve(
             import.meta.dirname,
             "../packages/vantage-md/src/index.ts",
+          ),
+        },
+        // micromark decodes character references with this package, whose
+        // "browser" build does it through `document` at import time. The
+        // planning scan worker has no `document`, and in dev it shares the
+        // page's pre-bundled dependencies, so one build has to serve both: the
+        // package's own "worker" and "default" one, a lookup table, which is
+        // what vantage-check already runs. So the worker, the viewer and the
+        // checker decode references alike (docs/design/planning-index-at-scale.md §7.1).
+        {
+          find: /^decode-named-character-reference$/,
+          replacement: createRequire(import.meta.url).resolve(
+            "decode-named-character-reference",
           ),
         },
       ],
