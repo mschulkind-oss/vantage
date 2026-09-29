@@ -213,7 +213,15 @@
    width, so each bordered case declares the compensation, and it is declared
    WHERE THE BORDER IS: this file for the alert's, the host stylesheet for the
    ones Tailwind gives `blockquote` and `pre`. Same arrangement as
-   `--vantage-tone-heading-gutter`, and a test pins each pair equal. */
+   `--vantage-tone-heading-gutter`, and a test pins each pair equal.
+
+   The member is the slice's containing block only while it has a box. A
+   member written with `display: contents` has none, and its slice was placed
+   against an ancestor outside the scroll container: measured at the content
+   pane's full height, not scrolling with the document, and on a heading moved
+   across the pane by the heading's font size. The sanitizer refuses that
+   value (`DISPLAY_VALUES` in `sanitize.ts`), and
+   `frontend/e2e/boxless.spec.ts` measures that the slice stays in. */
 [data-vantage-tone] {
   position: relative;
 }
@@ -581,8 +589,8 @@ hr[data-vantage-tone]:is(
    exist in the print stylesheet, so no third rule can defeat it. A collapsed
    section that printed closed would be content loss on paper (D7).
 
-   Residual, recorded honestly: `display` is in the sanitizer's
-   `SAFE_STYLE_PROPERTIES`, so a document can still hide its own block with
+   Residual, recorded honestly: `none` is one of the sanitizer's
+   `DISPLAY_VALUES`, so a document can still hide its own block with
    `style="display: none"`. That allowance, not this rule, is the boundary — what
    these gates guarantee is that nothing *this pipeline* stamps is hidden without
    a control that opens it. */
