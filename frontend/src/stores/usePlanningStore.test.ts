@@ -1157,6 +1157,25 @@ describe("rescans", () => {
     ]);
   });
 
+  it("rescans without the scan cache when asked to, as Retry does", async () => {
+    await readyWith();
+    await client.idle();
+    store().rescan("", { bypassCache: true });
+    await flush();
+    const retry = take(STREAM);
+    expect(retry.body).toEqual({});
+    answerStream(retry);
+    await flush();
+    expect(readyLoad().rescanning).toBe(false);
+    expect(paths()).toContain("docs/design.md");
+
+    // Every entry was written again, so the next rescan is warm again.
+    await client.idle();
+    store().rescan("");
+    await flush();
+    expect(Object.keys(haveOf(take(STREAM)))).toHaveLength(3);
+  });
+
   it("gives error when a rescan fails", async () => {
     await readyWith();
     store().rescan("");
@@ -1168,10 +1187,13 @@ describe("rescans", () => {
 
   it("noteReconnect rescans a ready index and keeps it shown", async () => {
     await readyWith();
+    await client.idle();
     store().noteReconnect();
     await flush();
     expect(requests.map((r) => r.url)).toEqual([STREAM]);
     expect(load()).toMatchObject({ status: "ready", rescanning: true });
+    // With the scan cache: only a lost push is being made up for.
+    expect(Object.keys(haveOf(take(STREAM)))).toHaveLength(3);
   });
 
   it("noteReconnect does nothing for an idle, loading or failed index", async () => {
