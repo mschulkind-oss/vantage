@@ -1,0 +1,12 @@
+# The planning index's end-to-end fixture (docs/design/planning-index.md §9):
+# the roadmap lives under plans/, and the stages below give plans/ a
+# vocabulary. planning/notes.md is deliberately not a planning document; it is
+# there to prove a top-level `planning/` directory is still served as documents.
+[planning]
+roadmap = "plans/roadmap.md"
+
+[planning.stages]
+DESIGN = "open"
+DECIDED = "ready"
+BUILT = "built"
+DONE = "done"
