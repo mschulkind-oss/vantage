@@ -99,6 +99,25 @@ vi.mock("vantage-md/react", async () => {
   };
 });
 
+/**
+ * How often each card's body rendered, by document: the viewer stands inside
+ * a wrapper that is not memoized, so it renders exactly when its card does.
+ */
+const viewerRenders = vi.hoisted(() => new Map<string, number>());
+vi.mock("../components/MarkdownViewer", async () => {
+  const actual = await vi.importActual<
+    typeof import("../components/MarkdownViewer")
+  >("../components/MarkdownViewer");
+  const Counted = (
+    props: React.ComponentProps<typeof actual.MarkdownViewer>,
+  ) => {
+    const path = props.currentPath ?? "";
+    viewerRenders.set(path, (viewerRenders.get(path) ?? 0) + 1);
+    return <actual.MarkdownViewer {...props} />;
+  };
+  return { ...actual, MarkdownViewer: Counted };
+});
+
 /* ------------------------------------------------------------------ *
  * The corpus: one of everything §6.2 sorts
  * ------------------------------------------------------------------ */
@@ -1285,6 +1304,41 @@ describe("Mermaid, drawn before the cards commit (planning-index-at-scale.md §1
     expect(body.style.getPropertyValue("--planning-mermaid-frame")).toBe(
       "240px",
     );
+  });
+});
+
+describe("memoized cards (planning-index-at-scale.md §10.4)", () => {
+  beforeEach(() => seed());
+
+  it("renders no card of another document when one document's reviews answer", async () => {
+    await renderPage();
+    const before = new Map(viewerRenders);
+    reviews["plans/unrouted.md"] = [
+      {
+        id: "elsewhere-0002",
+        comment: "About something else",
+        created_at: 0,
+        reactions: [],
+      },
+    ];
+    act(() =>
+      usePlanningStore.getState().noteReviewChanged("", "plans/unrouted.md"),
+    );
+    await settle();
+    expect(vi.mocked(axios.get)).toHaveBeenCalledWith("/api/review", {
+      params: { path: "plans/unrouted.md" },
+    });
+    // Its own card rendered again, and no card of any other document did.
+    expect(viewerRenders.get("plans/unrouted.md")).toBeGreaterThan(
+      before.get("plans/unrouted.md") ?? 0,
+    );
+    for (const path of [
+      "plans/design.md",
+      "plans/answered.md",
+      "plans/disagrees.md",
+    ]) {
+      expect(viewerRenders.get(path), path).toBe(before.get(path));
+    }
   });
 });
 
