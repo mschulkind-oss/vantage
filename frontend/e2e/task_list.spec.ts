@@ -80,47 +80,78 @@ test.describe("task-list checkbox", () => {
     // fixture's item keeps its box. This stays as the check that the two
     // fixes still agree, and that the item's written style reaches nothing.
     await open(page);
-    const checkbox = page.locator("#user-content-boxless input");
-    await expect(checkbox).toHaveCount(1);
-    const measure = () =>
-      page.evaluate(() => {
-        const scroller = document.querySelector("[data-content-scroll]")!;
-        const input = document.querySelector("#user-content-boxless input")!;
-        const pane = scroller.getBoundingClientRect();
-        // Every point of the viewport, on a 20px grid, that hits the checkbox.
-        const hits: [number, number][] = [];
-        for (let x = 0; x < innerWidth; x += 20) {
-          for (let y = 0; y < innerHeight; y += 20) {
-            if (document.elementFromPoint(x, y) === input) hits.push([x, y]);
-          }
-        }
-        return {
-          y: input.getBoundingClientRect().y,
-          pane: {
-            left: pane.left,
-            top: pane.top,
-            right: pane.right,
-            bottom: pane.bottom,
-          },
-          hits,
-        };
-      });
+    await expectContained(page);
+  });
 
-    await checkbox.scrollIntoViewIfNeeded();
-    const before = await measure();
-    for (const [x, y] of before.hits) {
-      expect(x).toBeGreaterThanOrEqual(before.pane.left);
-      expect(x).toBeLessThan(before.pane.right);
-      expect(y).toBeGreaterThanOrEqual(before.pane.top);
-      expect(y).toBeLessThan(before.pane.bottom);
-    }
-
-    // It scrolls with the document, as everything in the document does. The
-    // fixture's spacer leaves room below to scroll into.
-    await page.evaluate(() => {
-      document.querySelector("[data-content-scroll]")!.scrollTop += 100;
+  test("floats the checkbox, so an item with no box cannot carry it out", async ({
+    page,
+  }) => {
+    // The stylesheet's own guard, apart from the sanitizer's: the style the
+    // sanitizer refuses is set from a script, so the float is all that keeps
+    // the checkbox in the scroll container. A stylesheet that positioned the
+    // checkbox absolutely again would fail here, and the test above would
+    // still pass.
+    await open(page);
+    const item = page.locator("#user-content-boxless li");
+    await expect(item).not.toHaveAttribute("style");
+    await item.evaluate((li: HTMLElement) => {
+      li.style.display = "contents";
+      li.style.fontSize = "600px";
     });
-    const after = await measure();
-    expect(before.y - after.y).toBeCloseTo(100, 0);
+    const size = await page
+      .locator("#user-content-boxless input")
+      .evaluate((input) => input.getBoundingClientRect().width);
+    // 1.05em of the item's 600px: the item's style reaches the checkbox.
+    expect(size).toBeCloseTo(630, 0);
+    await expectContained(page);
   });
 });
+
+/**
+ * That the fixture's hand-written checkbox hits nothing outside the content
+ * pane, and scrolls with the document.
+ */
+async function expectContained(page: Page) {
+  const checkbox = page.locator("#user-content-boxless input");
+  await expect(checkbox).toHaveCount(1);
+  const measure = () =>
+    page.evaluate(() => {
+      const scroller = document.querySelector("[data-content-scroll]")!;
+      const input = document.querySelector("#user-content-boxless input")!;
+      const pane = scroller.getBoundingClientRect();
+      // Every point of the viewport, on a 20px grid, that hits the checkbox.
+      const hits: [number, number][] = [];
+      for (let x = 0; x < innerWidth; x += 20) {
+        for (let y = 0; y < innerHeight; y += 20) {
+          if (document.elementFromPoint(x, y) === input) hits.push([x, y]);
+        }
+      }
+      return {
+        y: input.getBoundingClientRect().y,
+        pane: {
+          left: pane.left,
+          top: pane.top,
+          right: pane.right,
+          bottom: pane.bottom,
+        },
+        hits,
+      };
+    });
+
+  await checkbox.scrollIntoViewIfNeeded();
+  const before = await measure();
+  for (const [x, y] of before.hits) {
+    expect(x).toBeGreaterThanOrEqual(before.pane.left);
+    expect(x).toBeLessThan(before.pane.right);
+    expect(y).toBeGreaterThanOrEqual(before.pane.top);
+    expect(y).toBeLessThan(before.pane.bottom);
+  }
+
+  // It scrolls with the document, as everything in the document does. The
+  // fixture's spacer leaves room below to scroll into.
+  await page.evaluate(() => {
+    document.querySelector("[data-content-scroll]")!.scrollTop += 100;
+  });
+  const after = await measure();
+  expect(before.y - after.y).toBeCloseTo(100, 0);
+}
