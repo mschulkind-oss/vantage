@@ -41,6 +41,16 @@ const sourceDirsHeader = `# Vantage daemon configuration, created by ` + "`vanta
 
 `
 
+// createdPortLines fix the port in a config AddSourceDirs creates. A daemon
+// whose port is only the default moves to the next free one when that is busy
+// — as it is when the `vantage serve` that printed the tip suggesting
+// install-service is still running — and a service that moved is one neither
+// serve's tip nor install-service looks for. A port written down makes the
+// daemon wait for it instead: it exits, and the service manager starts it
+// again until the port is free.
+var createdPortLines = fmt.Sprintf("# Written down, so that the service waits for this port when it is busy\n"+
+	"# instead of moving to another one.\nport = %d\n", Defaults().Port)
+
 // AddSourceDirs adds each of dirs to the top-level source_dirs of the TOML
 // config at path, creating the file when it does not exist. Each directory has
 // ~ and a relative path expanded and symlinks resolved, must exist, and is
@@ -116,7 +126,7 @@ func AddSourceDirs(path string, dirs []string, now time.Time) (SourceDirsEdit, e
 
 	var next []byte
 	if edit.Created {
-		next = []byte(sourceDirsHeader + "source_dirs = " + tomlStringArray(edit.Added) + "\n")
+		next = []byte(sourceDirsHeader + createdPortLines + "source_dirs = " + tomlStringArray(edit.Added) + "\n")
 	} else {
 		next, err = appendSourceDirsText(original, edit.Added)
 		if err == nil && !sameApartFromSourceDirs(before, next, append(existing, edit.Added...)) {
