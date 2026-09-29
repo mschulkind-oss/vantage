@@ -318,6 +318,30 @@ func TestASymlinkOutOfTheRootIsNeverRead(t *testing.T) {
 	require.Equal(t, []string{filepath.Join(root, "ok.md")}, *opened)
 }
 
+// On POSIX a backslash is an ordinary character in a file name, so the listing
+// yields `x\..\.private\notes.md` as one root-level file. pathsafe reads a
+// backslash as a separator, and cleaning then resolved that name to
+// .private/notes.md: the batch served a hidden file's text under the decoy's
+// name. A name that resolves anywhere but itself is unreadable.
+func TestANameThatResolvesToAnotherFileIsNeverReadAsIt(t *testing.T) {
+	decoy := `x\..\.private\notes.md`
+	svc, root := repo(t, map[string]string{
+		".private/notes.md": "# PRIVATE\n",
+		decoy:               "# decoy\n",
+		"ok.md":             "# OK\n",
+	})
+	opened := countOpens(t)
+
+	b, body := writeBatch(t, svc, repoconfig.DefaultPlanning())
+	require.NotContains(t, body, "PRIVATE")
+	require.Equal(t, []string{"ok.md"}, paths(b.Files))
+	require.Equal(t, []Unreadable{{Path: decoy, Reason: "its name reads as a different path"}}, b.Unreadable)
+	require.Equal(t, []string{filepath.Join(root, "ok.md")}, *opened)
+
+	entry := Lookup(svc, repoconfig.DefaultPlanning(), decoy)
+	require.Equal(t, KindUnreadable, entry.Kind)
+}
+
 // A candidate deleted between the listing and its read is left out, not
 // reported as unreadable: nothing is wrong with a file that is gone.
 func TestACandidateThatVanishesIsLeftOut(t *testing.T) {
