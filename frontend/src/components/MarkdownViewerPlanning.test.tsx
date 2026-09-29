@@ -392,9 +392,10 @@ describe("Referenced by (§7)", () => {
     seedReady(indexOf(TREE));
     renderViewer(TARGET, "docs/design.md");
     fireEvent.click(toggle());
+    // Its first link is Rule these first's, so the name opens the roadmap.
     expect(screen.getByRole("link", { name: "roadmap.md" })).toHaveAttribute(
       "href",
-      "/roadmap.md#L5",
+      "/roadmap.md",
     );
     expect(screen.getByRole("link", { name: "Later" })).toHaveAttribute(
       "href",
@@ -423,7 +424,11 @@ describe("Referenced by (§7)", () => {
     fireEvent.click(toggle());
     expect(screen.getByRole("link", { name: "roadmap.md" })).toHaveAttribute(
       "href",
-      "/alpha/roadmap.md#L5",
+      "/alpha/roadmap.md",
+    );
+    expect(screen.getByRole("link", { name: "Later" })).toHaveAttribute(
+      "href",
+      "/alpha/roadmap.md#L11",
     );
   });
 

@@ -160,8 +160,10 @@ interface SourceRowProps {
 /**
  * One source: its file name, then the headings its links sit under, each a
  * link to the first line under that heading that links here, which `#L…`
- * scrolls to and marks. A link above every heading has no heading to show; the
- * file name links to the source's first link, whichever that is.
+ * scrolls to and marks. A link above every heading has no heading to show, so
+ * the file name links to it. Otherwise the file name links to the document
+ * itself: its first link is its first heading's, and a second link to the same
+ * line was one more keyboard stop that went nowhere new.
  */
 function SourceRow({
   source,
@@ -182,7 +184,11 @@ function SourceRow({
       className="pl-4 -indent-4 [overflow-wrap:anywhere] sm:pl-0 sm:indent-0"
     >
       <AppLink
-        to={first === undefined ? href : `${href}#L${first.line}`}
+        to={
+          first === undefined || first.heading !== null
+            ? href
+            : `${href}#L${first.line}`
+        }
         title={source.from}
         className="font-medium text-blue-600 hover:underline dark:text-blue-400"
       >

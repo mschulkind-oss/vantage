@@ -440,14 +440,14 @@ planning page at its previous scroll position.
   name each show the fewest trailing directories that tell them apart, such as *brainstorm/x.md*
   and *design/x.md*), then the headings its links sit under, in document order and each once,
   for example *roadmap.md · Rule these first · Later*. Each heading links to the first line
-  under it that links here, and the file name to the document's first such line. A link above
-  every heading adds no heading. A row shows at most four headings, then *+M more*, which opens
-  that row.
+  under it that links here, and the file name to the link above every heading, if the document
+  has one, or else to the top of the document. A link above every heading adds no heading. A row
+  shows at most four headings, then *+M more*, which opens that row.
 
-  When a document links here, the line is a button that says whether it is open, so it works from the keyboard and to a
-  screen reader. **It is collapsed on every document load**, and nothing is stored: opening it
-  lasts for that visit only. In print, the line prints, and the list prints only when it is
-  open.
+  When a document links here, the line is a button that says whether it is open, so it works
+  from the keyboard and to a screen reader. **It is collapsed on every document load**, and
+  nothing is stored: opening it lasts for that visit only. In print, the line prints, and the
+  list prints only when it is open.
 - **File tree:** a planning document's row shows a badge after its name. The file name has the
   first claim on the row's width, and four rules follow from that:
 
