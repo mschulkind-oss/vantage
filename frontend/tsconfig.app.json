@@ -39,6 +39,7 @@
   },
   "include": ["src", "../packages/vantage-md/src"],
   "exclude": [
+    "src/planningScan/scannerId.ts",
     "src/**/*.test.ts",
     "src/**/*.test.tsx",
     "src/test",
