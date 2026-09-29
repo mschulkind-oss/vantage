@@ -319,6 +319,30 @@ func TestProbeServiceIgnoresAForegroundServe(t *testing.T) {
 		"http://localhost:8000. Stop that one, then start the service with: systemctl --user start vantage", st.tip(nil))
 }
 
+// The probe goes first. Only an answer from a daemon is worth the rest of the
+// service's config — resolving every path in it, scanning every source dir —
+// which runs before no timeout at all, so when nothing answers, the usual case
+// for someone new, startup pays for one bounded request and nothing more. A
+// clone made while the probe was out is therefore found by the scan after it.
+func TestProbeServiceReadsTheServiceConfigOnlyAfterAnAnswer(t *testing.T) {
+	home := isolateHome(t)
+	code := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(code); err == nil {
+		code = resolved
+	}
+	writeUserConfig(t, home, "port = 9123\nsource_dirs = [\""+code+"\"]\n")
+	late := filepath.Join(code, "late")
+	var asked []string
+	list := func(_ context.Context, url string) (serviceAnswer, error) {
+		asked = append(asked, url)
+		require.NoError(t, os.MkdirAll(filepath.Join(late, ".git"), 0o755))
+		return serviceAnswer{Names: []string{"late"}, Mode: "daemon"}, nil
+	}
+	st := probeService(context.Background(), "linux", home, late, nil, list)
+	require.Equal(t, []string{"http://127.0.0.1:9123/api/repos"}, asked)
+	require.Equal(t, "/late", st.OpenPath)
+}
+
 // Startup never waits longer than the probe's own timeout, however slow the
 // other end is.
 func TestProbeServiceIsBoundedByItsTimeout(t *testing.T) {
