@@ -5,6 +5,9 @@ import { defineConfig } from "vitest/config";
 // its cause named. They are fixtures, not tests: the suite's own `include`
 // matches `*.test.*`, never `*.fixture.*`, so only this config runs them.
 export default defineConfig({
+  // Vite's caches go beside the root by default, which would put a
+  // node_modules in src/; frontend's own is where they belong.
+  cacheDir: "../../../node_modules/.vite-guards",
   test: {
     root: import.meta.dirname,
     globals: true,

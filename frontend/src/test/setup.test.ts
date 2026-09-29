@@ -13,7 +13,7 @@
  * with nothing to report.
  */
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -108,5 +108,13 @@ describe("the late-log guard", () => {
       "passed",
       "passed",
     ]);
+  });
+});
+
+describe("the run over the fixtures", () => {
+  it("leaves nothing in the source tree", () => {
+    // Vite keeps its caches in a node_modules beside the root it is given, and
+    // that root is here, in src/.
+    expect(existsSync(join(guards, "node_modules"))).toBe(false);
   });
 });
