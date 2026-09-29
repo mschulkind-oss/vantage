@@ -26,6 +26,7 @@ import {
 } from "vantage-md/planning";
 import { PlanningPage } from "./PlanningPage";
 import {
+  STATIC_MESSAGE,
   resetPlanningTrackers,
   usePlanningStore,
   type PlanningLoad,
@@ -33,7 +34,7 @@ import {
 import { useRepoStore } from "../stores/useRepoStore";
 import { useReviewStore } from "../stores/useReviewStore";
 import { readPreference, reviewModePreferenceKey } from "../lib/preferences";
-import { sourcesOf } from "../test/planning";
+import { readRepoFile, sourcesOf } from "../test/planning";
 import type { ReviewComment, ReviewData } from "../types";
 
 vi.mock("axios");
@@ -751,5 +752,60 @@ describe("Open document, then Back (§6.3, §15)", () => {
     vi.mocked(window.scrollTo).mockClear();
     await renderPage();
     expect(window.scrollTo).not.toHaveBeenCalled();
+  });
+});
+
+describe("scoping a comment to its question, over agent-bootstrap.md", () => {
+  // Its five open questions are items of one loose list, so every card's DOM
+  // holds all five (the plan's first WP-E trap).
+  const PATH = "docs/design/agent-bootstrap.md";
+  beforeEach(() => seed({ [PATH]: readRepoFile(PATH) }, { stages: null }));
+
+  const bootstrapCard = (id: string) =>
+    screen
+      .getAllByRole("article")
+      .find((a) => a.getAttribute("aria-label")?.startsWith(`${id}:`))!;
+
+  it("files on OQ-B3 from its card: only its card lists it, Copy answers holds it once, and it reads 3.", async () => {
+    await renderPage();
+    const b3 = bootstrapCard("OQ-B3");
+    expect(
+      b3.querySelector("[data-planning-card-unit]")?.getAttribute("value"),
+    ).toBe("3");
+    await act(async () => {
+      fireEvent.click(
+        within(b3).getByRole("button", { name: "Take this leaning" }),
+      );
+    });
+
+    for (const id of ["OQ-B1", "OQ-B2", "OQ-B3", "OQ-B4", "OQ-B5"]) {
+      const list = within(bootstrapCard(id)).queryByRole("list", {
+        name: "Comments on this question",
+      });
+      if (id === "OQ-B3") expect(list, id).not.toBeNull();
+      else expect(list, id).toBeNull();
+    }
+
+    expect(screen.getByTestId("pending-answers")).toHaveTextContent("1");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Copy answers/ }));
+    });
+    const payload = writeText.mock.calls[0][0] as string;
+    expect(payload.match(/^\*\*Comment:\*\* /gm)).toHaveLength(1);
+    expect(payload).toContain("**Comment:** Both, and stop there.");
+  });
+});
+
+describe("in a static export (§3.6, Plan Q3)", () => {
+  afterEach(() => {
+    delete window.__VANTAGE_STATIC__;
+  });
+
+  it("shows the failed-fetch error, and asks for no review", async () => {
+    window.__VANTAGE_STATIC__ = true;
+    await renderPage();
+    expect(screen.getByText(STATIC_MESSAGE)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
+    expect(vi.mocked(axios.get)).not.toHaveBeenCalled();
   });
 });
