@@ -7,6 +7,7 @@ import { useReviewStore } from "../stores/useReviewStore";
 import { useStarredStore } from "../stores/useStarredStore";
 import { useFilePickerStore } from "../stores/useFilePickerStore";
 import { useAllRecentsStore } from "../stores/useAllRecentsStore";
+import { usePlanningStore } from "../stores/usePlanningStore";
 
 vi.mock("../stores/useRepoStore");
 vi.mock("../stores/useGitStore");
@@ -46,6 +47,15 @@ describe("useWebSocket", () => {
   let realLoadStarred: ReturnType<
     typeof useStarredStore.getState
   >["loadStarred"];
+  // And for the planning index, whose three socket calls are the whole of its
+  // freshness (docs/design/planning-index.md §3.4).
+  const mockNoteFilesChanged = vi.fn();
+  const mockNoteReviewChanged = vi.fn();
+  const mockNoteReconnect = vi.fn();
+  let realPlanning: Pick<
+    ReturnType<typeof usePlanningStore.getState>,
+    "noteFilesChanged" | "noteReviewChanged" | "noteReconnect"
+  >;
 
   const makeRepoStoreState = (overrides: Record<string, unknown> = {}) => ({
     currentPath: "test.md",
@@ -75,6 +85,18 @@ describe("useWebSocket", () => {
 
     realAllRecentsRefresh = useAllRecentsStore.getState().refresh;
     useAllRecentsStore.setState({ refresh: mockAllRecentsRefresh });
+
+    const planning = usePlanningStore.getState();
+    realPlanning = {
+      noteFilesChanged: planning.noteFilesChanged,
+      noteReviewChanged: planning.noteReviewChanged,
+      noteReconnect: planning.noteReconnect,
+    };
+    usePlanningStore.setState({
+      noteFilesChanged: mockNoteFilesChanged,
+      noteReviewChanged: mockNoteReviewChanged,
+      noteReconnect: mockNoteReconnect,
+    });
 
     // Mock Stores - support both destructuring and selector patterns
     const repoState = makeRepoStoreState();
@@ -120,6 +142,7 @@ describe("useWebSocket", () => {
     useStarredStore.setState({ loadStarred: realLoadStarred });
     useFilePickerStore.setState({ refresh: realPickerRefresh });
     useAllRecentsStore.setState({ refresh: realAllRecentsRefresh });
+    usePlanningStore.setState(realPlanning);
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
@@ -601,6 +624,154 @@ describe("useWebSocket", () => {
       });
 
       expect(mockLoadStarred).toHaveBeenCalled();
+    });
+  });
+  const send = (message: Record<string, unknown>) =>
+    act(() => {
+      mockWebSocket.onmessage!({
+        data: JSON.stringify(message),
+      } as MessageEvent);
+    });
+
+  describe("the planning index (docs/design/planning-index.md §3.4)", () => {
+    it("hands every files_changed push to the index at once, with its removed directories", () => {
+      renderHook(() => useWebSocket());
+      send({
+        type: "files_changed",
+        paths: ["docs/a.md", "other.md"],
+        removed_dirs: ["docs/old"],
+      });
+      // Not debounced: the index sequences its own requests.
+      expect(mockNoteFilesChanged).toHaveBeenCalledWith(
+        "",
+        ["docs/a.md", "other.md"],
+        ["docs/old"],
+      );
+    });
+
+    it("keys a daemon-mode push by the repository it names", () => {
+      renderHook(() => useWebSocket());
+      send({ type: "files_changed", paths: ["a.md"], repo: "beta" });
+      expect(mockNoteFilesChanged).toHaveBeenCalledWith("beta", ["a.md"], []);
+    });
+
+    it("hands on a push that names only removed directories, and refreshes nothing else", () => {
+      renderHook(() => useWebSocket());
+      send({ type: "files_changed", paths: [], removed_dirs: ["docs/old"] });
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+      expect(mockNoteFilesChanged).toHaveBeenCalledWith("", [], ["docs/old"]);
+      expect(mockRefreshExpandedTree).not.toHaveBeenCalled();
+    });
+
+    it("hands on every review_changed, not only the document on screen", () => {
+      renderHook(() => useWebSocket());
+      send({ type: "review_changed", path: "elsewhere.md" });
+      send({ type: "review_changed", path: "x.md", repo: "beta" });
+      expect(mockNoteReviewChanged).toHaveBeenCalledWith("", "elsewhere.md");
+      expect(mockNoteReviewChanged).toHaveBeenCalledWith("beta", "x.md");
+      expect(mockLoadReview).not.toHaveBeenCalled();
+    });
+
+    // Plan Q14. Every page mounts this hook, so a mount's first connection is
+    // not a reconnect, and rescanning on it would rescan on every navigation.
+    it("does not call a mount's first connection a reconnect", () => {
+      renderHook(() => useWebSocket());
+      act(() => {
+        mockWebSocket.onopen!(new Event("open"));
+      });
+      expect(mockNoteReconnect).not.toHaveBeenCalled();
+    });
+
+    it("calls the mount's second connection a reconnect", () => {
+      renderHook(() => useWebSocket());
+      act(() => {
+        mockWebSocket.onopen!(new Event("open"));
+      });
+      act(() => {
+        mockWebSocket.onclose!(new Event("close"));
+      });
+      act(() => {
+        vi.advanceTimersByTime(1100);
+      });
+      act(() => {
+        mockWebSocket.onopen!(new Event("open"));
+      });
+      expect(mockNoteReconnect).toHaveBeenCalledTimes(1);
+    });
+
+    it("starts counting again in a new mount", () => {
+      const first = renderHook(() => useWebSocket());
+      act(() => {
+        mockWebSocket.onopen!(new Event("open"));
+      });
+      first.unmount();
+      renderHook(() => useWebSocket());
+      act(() => {
+        mockWebSocket.onopen!(new Event("open"));
+      });
+      expect(mockNoteReconnect).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("{ viewer: false }", () => {
+    it("keeps the planning index fresh and refreshes none of the viewer", () => {
+      renderHook(() => useWebSocket({ viewer: false }));
+      send({ type: "files_changed", paths: ["test.md"] });
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+      expect(mockNoteFilesChanged).toHaveBeenCalledWith("", ["test.md"], []);
+      expect(mockPickerRefresh).toHaveBeenCalled();
+      expect(mockMarkPathsChanged).not.toHaveBeenCalled();
+      expect(mockLoadFile).not.toHaveBeenCalled();
+      expect(mockFetchStatus).not.toHaveBeenCalled();
+      expect(mockLoadReview).not.toHaveBeenCalled();
+      expect(mockRefreshExpandedTree).not.toHaveBeenCalled();
+      expect(mockFetchRecentFiles).not.toHaveBeenCalled();
+    });
+
+    it("hands on review_changed without reloading a review", () => {
+      renderHook(() => useWebSocket({ viewer: false }));
+      send({ type: "review_changed", path: "test.md" });
+      expect(mockNoteReviewChanged).toHaveBeenCalledWith("", "test.md");
+      expect(mockLoadReview).not.toHaveBeenCalled();
+    });
+
+    it("refreshes bookmarks and pickers on connect, and not the document", () => {
+      renderHook(() => useWebSocket({ viewer: false }));
+      act(() => {
+        mockWebSocket.onopen!(new Event("open"));
+      });
+      expect(mockLoadStarred).toHaveBeenCalled();
+      expect(mockPickerRefresh).toHaveBeenCalled();
+      expect(mockLoadFile).not.toHaveBeenCalled();
+      expect(mockRefreshExpandedTree).not.toHaveBeenCalled();
+      expect(mockFetchRecentFiles).not.toHaveBeenCalled();
+    });
+
+    it("still refetches the repository list", () => {
+      renderHook(() => useWebSocket({ viewer: false }));
+      send({ type: "repos_changed", added: ["x"] });
+      expect(mockRefreshRepos).toHaveBeenCalled();
+    });
+
+    it("still calls a genuine reconnect a reconnect", () => {
+      renderHook(() => useWebSocket({ viewer: false }));
+      act(() => {
+        mockWebSocket.onopen!(new Event("open"));
+      });
+      act(() => {
+        mockWebSocket.onclose!(new Event("close"));
+      });
+      act(() => {
+        vi.advanceTimersByTime(1100);
+      });
+      act(() => {
+        mockWebSocket.onopen!(new Event("open"));
+      });
+      expect(mockNoteReconnect).toHaveBeenCalledTimes(1);
     });
   });
 });
