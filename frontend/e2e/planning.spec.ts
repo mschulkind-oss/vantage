@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import * as fs from "fs";
+import { openWithIndex } from "./planningIndex";
 import * as path from "path";
 import { fileURLToPath } from "url";
 
@@ -9,6 +10,11 @@ const __dirname = path.dirname(__filename);
 // Link badges in a real browser, against the real planning endpoint
 // (docs/design/planning-index.md §5, §15). The fixture is
 // `fixtures/test_repo/plans/`, whose roadmap `.vantage.toml` names.
+//
+// Each test opens the roadmap with the index already built, as a reader who
+// arrives at it from another page does: an index that lands after a document
+// painted badges only what has not been on screen
+// (planning-index-at-scale.md §11.2), and the whole roadmap is.
 test.describe("planning badges", () => {
   // One test edits a fixture the others read, so they run one at a time.
   test.describe.configure({ mode: "serial" });
@@ -38,7 +44,7 @@ test.describe("planning badges", () => {
   test("the roadmap shows a badge on every link to a plan or question", async ({
     page,
   }) => {
-    await page.goto("/plans/roadmap.md");
+    await openWithIndex(page, "/plans/roadmap.md");
     await expect(badgeAfter(page, "The fixture design")).toHaveAccessibleName(
       "in review, design, 2 open questions",
     );
@@ -56,7 +62,7 @@ test.describe("planning badges", () => {
   test("a compacted question's badge turns to ruled without a reload", async ({
     page,
   }) => {
-    await page.goto("/plans/roadmap.md");
+    await openWithIndex(page, "/plans/roadmap.md");
     const badge = badgeAfter(page, "Which way it goes");
     await expect(badge).toHaveText("💬 open");
     const marker = `e2e-${Date.now()}`;
@@ -95,7 +101,7 @@ test.describe("planning badges", () => {
 
   test("a copied selection holds no badge text", async ({ page, context }) => {
     await context.grantPermissions(["clipboard-read", "clipboard-write"]);
-    await page.goto("/plans/roadmap.md");
+    await openWithIndex(page, "/plans/roadmap.md");
     const badge = badgeAfter(page, "The fixture design");
     await expect(badge).toBeVisible();
 

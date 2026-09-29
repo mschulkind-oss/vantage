@@ -416,6 +416,173 @@ describe("when the badges appear and change (§5.3)", () => {
 });
 
 /* ------------------------------------------------------------------ *
+ * A late index (planning-index-at-scale.md §11.2)
+ * ------------------------------------------------------------------ */
+
+describe("an index that lands after the first paint", () => {
+  // Twenty paragraphs, each with a link to a planning document: 50px tall,
+  // one every 100px, in a scroller whose screen is 500px tall.
+  const PARAGRAPHS = 20;
+  const TALL =
+    Array.from(
+      { length: PARAGRAPHS },
+      (_, i) => `Paragraph ${i}: [A](docs/design/a.md).`,
+    ).join("\n\n") + "\n";
+  const SCREEN = 500;
+  let scrolled = 0;
+  const scrollerOnly = (el: Element, value: number) =>
+    el.hasAttribute("data-content-scroll") ? value : 0;
+
+  beforeEach(() => {
+    scrolled = 0;
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return scrollerOnly(this, SCREEN);
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollTop", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return scrollerOnly(this, scrolled);
+      },
+    });
+  });
+
+  afterEach(() => {
+    // Back to jsdom's own, on Element.prototype.
+    delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+    delete (HTMLElement.prototype as { scrollTop?: number }).scrollTop;
+  });
+
+  const tall = (content = TALL, path = "roadmap.md") => (
+    <BrowserRouter>
+      <div data-content-scroll="">
+        <MarkdownViewer content={content} currentPath={path} />
+      </div>
+    </BrowserRouter>
+  );
+
+  /** Lay the paragraphs out where the scroll puts them. */
+  const placeParagraphs = (container: HTMLElement) => {
+    container.querySelectorAll("p").forEach((p, i) => {
+      place(p, i * 100 - scrolled, 50);
+    });
+  };
+  const place = (el: Element, top: number, height: number) => {
+    (el as HTMLElement).getBoundingClientRect = () =>
+      ({
+        top,
+        bottom: top + height,
+        left: 0,
+        right: 600,
+        width: 600,
+        height,
+        x: 0,
+        y: top,
+        toJSON: () => ({}),
+      }) as DOMRect;
+  };
+  const scrollTo = (container: HTMLElement, top: number) => {
+    scrolled = top;
+    placeParagraphs(container);
+    fireEvent.scroll(container.querySelector("[data-content-scroll]")!);
+  };
+  /** Which paragraphs have a badge after their link. */
+  const badgedParagraphs = () =>
+    screen
+      .getAllByRole("link", { name: "A" })
+      .flatMap((link, i) => (badgeAfter(link) ? [i] : []));
+  const range = (from: number, to: number) =>
+    Array.from({ length: to - from }, (_, i) => from + i);
+
+  it("draws badges only in blocks below the screen that have never been on it", () => {
+    seed({ status: "loading", warm: false, progress: null });
+    const { container } = render(tall());
+    placeParagraphs(container);
+    // The reader scrolls a little: paragraph 5 comes on screen.
+    scrollTo(container, 100);
+
+    seed(readyLoad(indexOf(TREE, STAGES)));
+    expect(badgedParagraphs()).toEqual(range(6, PARAGRAPHS));
+
+    // A push is a change of data: the badges drawn follow it, and a block
+    // that went without one still does, until the next visit.
+    seed(
+      readyLoad(
+        indexOf({ ...TREE, "docs/design/a.md": designDoc("✅") }, STAGES),
+      ),
+    );
+    expect(badgedParagraphs()).toEqual(range(6, PARAGRAPHS));
+    expect(
+      badgeAfter(screen.getAllByRole("link", { name: "A" })[6]!),
+    ).toHaveAccessibleName("in review, design, 1 blocked question");
+  });
+
+  it("leaves a block the reader jumped past alone, above the screen", () => {
+    seed({ status: "loading", warm: false, progress: null });
+    const { container } = render(tall());
+    placeParagraphs(container);
+    // An anchor jump: 500–800 was never on screen, but it is above it now.
+    scrollTo(container, 800);
+
+    seed(readyLoad(indexOf(TREE, STAGES)));
+    expect(badgedParagraphs()).toEqual(range(13, PARAGRAPHS));
+  });
+
+  it("leaves a block the reader has seen alone, once it is below the screen again", () => {
+    seed({ status: "loading", warm: false, progress: null });
+    const { container } = render(tall());
+    placeParagraphs(container);
+    scrollTo(container, 1000);
+    scrollTo(container, 0);
+
+    seed(readyLoad(indexOf(TREE, STAGES)));
+    // 1000–1500 was on screen: paragraphs 10 to 14 stay as the reader saw them.
+    expect(badgedParagraphs()).toEqual([
+      ...range(5, 10),
+      ...range(15, PARAGRAPHS),
+    ]);
+  });
+
+  it("draws one in a block that has no box yet, such as a collapsed section's", () => {
+    seed({ status: "loading", warm: false, progress: null });
+    const { container } = render(tall());
+    placeParagraphs(container);
+    (container.querySelectorAll("p")[0] as HTMLElement).getBoundingClientRect =
+      () => new DOMRect(0, 0, 0, 0);
+
+    seed(readyLoad(indexOf(TREE, STAGES)));
+    expect(badgedParagraphs()).toEqual([0, ...range(5, PARAGRAPHS)]);
+  });
+
+  it("draws every badge, on screen or not, when the index was ready first", () => {
+    seed(readyLoad(indexOf(TREE, STAGES)));
+    const { container } = render(tall());
+    placeParagraphs(container);
+    expect(badgedParagraphs()).toEqual(range(0, PARAGRAPHS));
+  });
+
+  it("starts over on the next visit, and on a live reload", () => {
+    seed({ status: "loading", warm: false, progress: null });
+    const { container, rerender } = render(tall());
+    placeParagraphs(container);
+    seed(readyLoad(indexOf(TREE, STAGES)));
+    expect(badgedParagraphs()).toEqual(range(5, PARAGRAPHS));
+
+    // Another document, with the index in hand: every badge at once.
+    rerender(tall("[A](design/a.md)\n", "docs/other.md"));
+    expect(badgedParagraphs()).toEqual([0]);
+
+    rerender(tall());
+    expect(badgedParagraphs()).toEqual(range(0, PARAGRAPHS));
+    // The same document changed on disk: a change of data, laid out afresh.
+    rerender(tall(`${TALL}\nOne more line.\n`));
+    expect(badgedParagraphs()).toEqual(range(0, PARAGRAPHS));
+  });
+});
+
+/* ------------------------------------------------------------------ *
  * What a badge must stay out of
  * ------------------------------------------------------------------ */
 
