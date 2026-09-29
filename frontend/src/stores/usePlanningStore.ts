@@ -97,8 +97,13 @@ interface PlanningStore {
   /**
    * Build `repo` again: Retry, a `.vantage.toml` push, a reconnect. A ready
    * index stays shown, with `rescanning: true`, until the build lands.
+   *
+   * `bypassCache` is Retry's: the build sends no `have`, so every file is
+   * read and scanned again, and every scan-cache entry of the repository is
+   * rewritten (the scale design's §8.3). No setting changes a scan result,
+   * so a config push rescans with the cache.
    */
-  rescan(repo: string): void;
+  rescan(repo: string, options?: { bypassCache?: boolean }): void;
   /** A `files_changed` push for `repo`. */
   noteFilesChanged(
     repo: string,
@@ -308,7 +313,7 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
     return !(isMultiRepo && repo === "");
   };
 
-  const startBatch = (repo: string) => {
+  const startBatch = (repo: string, bypassCache = false) => {
     const tracker = trackerFor(repo);
     const scanner = planningScanner();
     // A build still out is superseded: its answer would be discarded whole,
@@ -369,7 +374,7 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
       }
     };
 
-    scanner.build({ repo, seq, bypassCache: false }, (event) => {
+    scanner.build({ repo, seq, bypassCache }, (event) => {
       if (superseded()) return;
       switch (event.type) {
         case "started":
@@ -455,13 +460,13 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
       startBatch(repo);
     },
 
-    rescan: (repo) => {
+    rescan: (repo, options) => {
       if (isStaticMode()) {
         setLoad(repo, { status: "error", message: STATIC_MESSAGE });
         return;
       }
       if (!askable(repo)) return;
-      startBatch(repo);
+      startBatch(repo, options?.bypassCache ?? false);
     },
 
     noteFilesChanged: (repo, paths, removedDirs) => {

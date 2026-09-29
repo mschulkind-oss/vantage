@@ -697,7 +697,9 @@ export const PlanningPage: React.FC = () => {
             <button
               type="button"
               onClick={() => {
-                if (repo !== null) rescan(repo);
+                // Without the scan cache: Retry is how a reader gets past a
+                // result it no longer trusts.
+                if (repo !== null) rescan(repo, { bypassCache: true });
               }}
               className="flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium transition-colors hover:bg-amber-100 dark:hover:bg-amber-900/40"
             >
