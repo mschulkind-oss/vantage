@@ -3,7 +3,10 @@ import { test, expect, type Page } from "@playwright/test";
 // The planning page in a real browser, against the real planning endpoint and
 // the real review store (docs/design/planning-index.md §6, §15). The fixture
 // is `fixtures/test_repo/plans/`, whose roadmap `.vantage.toml` names: it
-// routes design.md's two questions, and unrouted.md's one it does not.
+// routes design.md's two questions and paged.md's twelve, so Needs you holds
+// more than its first page (planning-index-at-scale.md §10.2), and not
+// unrouted.md's one, or oversized.md's, whose card is past the size a card
+// renders unasked.
 test.describe("the planning page", () => {
   // Two tests file a comment on the same document and delete it afterwards.
   test.describe.configure({ mode: "serial" });
@@ -31,9 +34,10 @@ test.describe("the planning page", () => {
         name: "OQ-U1: Is anyone tracking this?",
       }),
     ).toBeVisible();
-    await expect(
-      section(page, "Needs you").getByRole("article"),
-    ).toHaveCount(2);
+    // One page of Needs you: ten of its fourteen.
+    await expect(section(page, "Needs you").getByRole("article")).toHaveCount(
+      10,
+    );
     await expect(
       section(page, "Graduate").getByRole("link", { name: "plans/shipped.md" }),
     ).toBeVisible();
@@ -64,20 +68,22 @@ test.describe("the planning page", () => {
     await page.goto("/plans/roadmap.md");
     // The index is ready once a badge is drawn.
     await expect(
-      page.locator("[data-content-scroll] [data-vantage-planning-badge]").first(),
+      page
+        .locator("[data-content-scroll] [data-vantage-planning-badge]")
+        .first(),
     ).toBeVisible();
 
     await page.keyboard.press("g");
     await page.keyboard.press("p");
     await expect(page).toHaveURL(/\/\.vantage\/planning$/);
-    await expect(
-      card(page, "OQ-U1: Is anyone tracking this?"),
-    ).toBeVisible();
+    await expect(card(page, "OQ-U1: Is anyone tracking this?")).toBeVisible();
 
     await page.goBack();
     await expect(page).toHaveURL(/\/plans\/roadmap\.md$/);
     await expect(
-      page.locator("[data-content-scroll] [data-vantage-planning-badge]").first(),
+      page
+        .locator("[data-content-scroll] [data-vantage-planning-badge]")
+        .first(),
     ).toBeVisible();
     // Long enough for a socket each page opened, React's StrictMode double
     // included, to connect: none of them is a reconnect, so none rescans.
@@ -100,10 +106,13 @@ test.describe("the planning page", () => {
     await expect(page).toHaveURL(/\/\.vantage\/planning$/);
     // Hold the document back until the new viewer's socket has connected,
     // which is the order a slower document or a busy machine gives.
-    await page.route("**/api/content?path=plans%2Funrouted.md*", async (route) => {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      await route.continue();
-    });
+    await page.route(
+      "**/api/content?path=plans%2Funrouted.md*",
+      async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await route.continue();
+      },
+    );
     await card(page, "OQ-U1: Is anyone tracking this?")
       .getByRole("link", { name: "Open document" })
       .click();
@@ -139,9 +148,9 @@ test.describe("the planning page", () => {
       }),
     ).toBeVisible();
     await expect(prose.locator(".review-highlight-block")).toHaveCount(1);
-    await expect(prose.locator(".review-highlight-block-divergent")).toHaveCount(
-      0,
-    );
+    await expect(
+      prose.locator(".review-highlight-block-divergent"),
+    ).toHaveCount(0);
     // And the in-page button recognizes it as its own take: the same anchor
     // and the same text, measured by this browser's layout.
     await expect(prose.locator(".review-oq-taken")).toHaveText("Leaning taken");
@@ -194,5 +203,144 @@ test.describe("the planning page", () => {
     await expect
       .poll(() => page.evaluate(() => window.scrollY))
       .toBeCloseTo(before, 0);
+  });
+
+  /** Every layout shift after the page's first paint, as it happens. */
+  async function watchShifts(page: Page): Promise<void> {
+    await page.addInitScript(() => {
+      const shifts: { value: number; sources: string[] }[] = [];
+      (window as unknown as { __shifts: typeof shifts }).__shifts = shifts;
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries() as (PerformanceEntry & {
+          value: number;
+          hadRecentInput: boolean;
+          sources?: { node?: Node | null }[];
+        })[]) {
+          if (entry.hadRecentInput) continue;
+          shifts.push({
+            value: entry.value,
+            sources: (entry.sources ?? []).map((source) => {
+              const node = source.node as HTMLElement | null | undefined;
+              return node
+                ? `${node.nodeName}.${String(node.className).slice(0, 60)}`
+                : "?";
+            }),
+          });
+        }
+      }).observe({ type: "layout-shift", buffered: true });
+    });
+  }
+  const shifted = (page: Page) =>
+    page.evaluate(
+      () =>
+        (
+          window as unknown as {
+            __shifts: { value: number; sources: string[] }[];
+          }
+        ).__shifts,
+    );
+
+  const pager = (page: Page, name: string) =>
+    page.getByRole("navigation", { name: `${name} pages`, exact: true });
+
+  test("pages Needs you in tens, and Back from a document returns to page 2 at the same scroll", async ({
+    page,
+  }) => {
+    // The page's review requests, and any one document's.
+    const reads: string[] = [];
+    page.on("request", (request) => {
+      const { pathname } = new URL(request.url());
+      if (pathname.endsWith("/planning/reviews")) reads.push("POST");
+      if (pathname.endsWith("/api/review")) reads.push(`GET ${pathname}`);
+    });
+    await watchShifts(page);
+    // Short enough that the page scrolls.
+    await page.setViewportSize({ width: 1280, height: 480 });
+    await page.goto("/.vantage/planning");
+    const needsYou = section(page, "Needs you");
+    await expect(needsYou.getByRole("article")).toHaveCount(10);
+    await expect(pager(page, "Needs you")).toContainText(/^1–10 of 1[34]/);
+    await expect(
+      page.getByRole("navigation", { name: "Sections" }),
+    ).toContainText("Needs you 1");
+
+    // A visit reads its reviews in two requests, and no document's alone.
+    await expect.poll(() => reads.length).toBe(2);
+    await page.waitForTimeout(500);
+    expect(reads).toEqual(["POST", "POST"]);
+
+    // D12: nothing painted moved.
+    const shifts = await shifted(page);
+    expect(shifts, JSON.stringify(shifts)).toEqual([]);
+
+    await pager(page, "Needs you")
+      .getByRole("button", { name: "Next ›" })
+      .click();
+    await expect(page).toHaveURL(/\?needs-you=2$/);
+    const last = card(page, "OQ-P12: Which way for part 12?");
+    await expect(last).toBeVisible();
+    await expect(
+      needsYou.getByRole("article", { name: "OQ-E2: How soon?" }),
+    ).toHaveCount(0);
+    // Flipping read nothing more, and nothing one document at a time.
+    await page.waitForTimeout(300);
+    expect(reads).toEqual(["POST", "POST"]);
+
+    // The reader scrolls, then opens a page-2 card's document where it stands.
+    await page.evaluate(() => window.scrollTo(0, 200));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(200);
+    // The page saves as the reader scrolls, one frame behind.
+    await page.waitForTimeout(100);
+    await last
+      .getByRole("link", { name: "Open document" })
+      .dispatchEvent("click");
+    await expect(page).toHaveURL(/\/plans\/paged\.md$/);
+    await expect(
+      page.getByRole("heading", { name: "The paged plan" }),
+    ).toBeVisible();
+
+    await page.goBack();
+    await expect(page).toHaveURL(/\/\.vantage\/planning\?needs-you=2$/);
+    await expect(last).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(200);
+
+    // And Back from the planning page leaves it, for what came before the
+    // visit, rather than stepping back to its first page: the flip replaced
+    // the entry it was on.
+    await page.goBack();
+    await expect(page).toHaveURL("about:blank");
+  });
+
+  test("draws a question past the size limit as a preview card, and Show question renders it whole", async ({
+    page,
+  }) => {
+    await page.goto("/.vantage/planning");
+    const oversized = card(page, "OQ-V1: Is the long question shown whole?");
+    await expect(oversized).toContainText("Open · Leaning: Only when asked.");
+    await expect(
+      oversized.getByRole("button", { name: "Take this leaning" }),
+    ).toHaveCount(0);
+    await oversized.getByRole("button", { name: "Show question" }).click();
+    await expect(oversized.getByText("The end of the question.")).toBeVisible();
+    await expect(
+      oversized.getByRole("button", { name: "Take this leaning" }),
+    ).toBeVisible();
+    await expect(
+      oversized.getByRole("button", { name: "Show question" }),
+    ).toHaveCount(0);
+  });
+
+  test("moves nothing painted on a load that has to build the index first", async ({
+    page,
+  }) => {
+    await watchShifts(page);
+    await page.goto("/.vantage/planning");
+    await expect(section(page, "Unrouted").getByRole("article")).toHaveCount(
+      10,
+    );
+    // Long enough for the second reviews request, and anything late.
+    await page.waitForTimeout(1500);
+    const shifts = await shifted(page);
+    expect(shifts, JSON.stringify(shifts)).toEqual([]);
   });
 });
