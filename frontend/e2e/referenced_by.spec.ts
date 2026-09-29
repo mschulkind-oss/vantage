@@ -148,12 +148,12 @@ test("the line prints, and the list prints only when open", async ({
   ).toBeVisible();
 });
 
-test("a document nothing links to says it is not on the roadmap", async ({
+test("a document nothing links to still counts its unrouted questions", async ({
   page,
 }) => {
   await page.goto("/plans/unrouted.md");
   await expect(surface(page)).toHaveText(
-    "Not on the roadmap (1 open question)",
+    "1 open question not routed by the roadmap",
   );
   await expect(surface(page).getByRole("button")).toHaveCount(0);
 });

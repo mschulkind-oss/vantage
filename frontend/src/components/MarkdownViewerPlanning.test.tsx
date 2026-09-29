@@ -438,11 +438,11 @@ describe("Referenced by (§7)", () => {
     );
   });
 
-  it("says a document nothing links to is not on the roadmap, if it has open questions", () => {
+  it("counts a document's unrouted questions when nothing links to it", () => {
     seedReady(indexOf(TREE));
     renderViewer(FORGOTTEN, "docs/forgotten.md");
     expect(surface()).toHaveTextContent(
-      /^Not on the roadmap \(1 open question\)$/,
+      /^1 open question not routed by the roadmap$/,
     );
     expect(screen.queryByRole("button", { name: /roadmap/ })).toBeNull();
   });
