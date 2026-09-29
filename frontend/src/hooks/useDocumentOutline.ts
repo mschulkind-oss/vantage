@@ -105,10 +105,11 @@ export function collectOutline(container: HTMLElement): OutlineEntry[] {
     if (depth !== undefined && !questions.has(el)) {
       // Headings with no id are skipped — there is nothing to link to. A
       // question with no id is not, because unlike a heading it is *the thing
-      // the reader is looking for*: the contents column and the review buttons
-      // are the same set by construction (see `answerableOpenQuestions`), and a
-      // column listing four questions against five buttons is the disagreement
-      // that shared function exists to prevent.
+      // the reader is looking for*. The column lists every question
+      // `answerableOpenQuestions` finds, in every state, and review mode's
+      // buttons are that same set less its 🔒 and ✅ questions (Plan Q5) — so a
+      // column dropping an id-less question would list fewer open questions
+      // than there are buttons, the disagreement the shared walk prevents.
       if (!el.id) continue;
       lastHeadingLevel = depth;
       out.push({
@@ -273,12 +274,12 @@ export interface QuestionTally {
 /**
  * How many questions are in each state, in the convention's own order.
  *
- * A single total over one 💬 would be a claim the document does not make. Every
- * listed question is answerable in one click — that is what being tagged means —
- * but a document may have *answered* one and kept its directive, and heading a
- * count of three with the open marker says all three are awaiting a ruling. The
- * breakdown is also the more useful answer to the question a reader is actually
- * asking: one open and two settled is a different document from three open.
+ * A single total over one 💬 would be a claim the document does not make. A
+ * document may have *answered* a question and kept its directive, or be blocked
+ * on one, and heading a count of three with the open marker says all three are
+ * awaiting a ruling. The breakdown is also the more useful answer to the
+ * question a reader is actually asking: one open and two settled is a different
+ * document from three open.
  *
  * States with no questions are omitted, so the common case — every question
  * open — renders as one group and looks like the simple count it is.
@@ -307,25 +308,38 @@ export function tallyQuestions(entries: OutlineEntry[]): QuestionTally[] {
 /**
  * The tally in words, for the header's tooltip and its accessible name.
  *
- * It leads with what every listed question has in common, because that is the
- * part a reader cannot see: the entries below are not merely questions, they are
- * the ones the reviewer can answer without typing.
+ * It says how many of the questions can be answered in one click, because that
+ * is the part a reader cannot see. Only the open ones can: review mode offers
+ * Take this leaning on an open or unmarked question and never on a 🔒 or ✅ one
+ * (Plan Q5), and the column, which lists every state, must not promise a button
+ * the document does not have — the same number the Review toggle's tooltip
+ * gives.
  */
 export function tallySentence(tallies: QuestionTally[]): string {
   const total = tallies.reduce((sum, t) => sum + t.count, 0);
-  const parts = tallies.map(
-    (t) =>
-      `${t.count} ${
-        t.status === null
-          ? "unmarked"
-          : VANTAGE_OQ_STATUS_LABEL[t.status]
-              .replace(" question", "")
-              .toLowerCase()
-      }`,
-  );
-  const head = `${total} question${total === 1 ? "" : "s"} here can be answered in one click`;
-  // A single group already says its own state in the glyph beside the number.
-  return tallies.length > 1 ? `${head} — ${parts.join(", ")}` : head;
+  const oneClick = tallies
+    .filter((t) => t.status === "open" || t.status === null)
+    .reduce((sum, t) => sum + t.count, 0);
+  const plural = (n: number) => (n === 1 ? "" : "s");
+  const stateWord = (status: VantageOqStatus | null) =>
+    status === null
+      ? "unmarked"
+      : VANTAGE_OQ_STATUS_LABEL[status].replace(" question", "").toLowerCase();
+
+  const parts = tallies.map((t) => `${t.count} ${stateWord(t.status)}`);
+  if (oneClick === total) {
+    const head = `${total} question${plural(total)} here can be answered in one click`;
+    // A single group already says its own state in the glyph beside the number.
+    return tallies.length > 1 ? `${head} — ${parts.join(", ")}` : head;
+  }
+  // One group that cannot be answered in one click names its state in words.
+  if (tallies.length === 1) {
+    return `${total} ${stateWord(tallies[0].status)} question${plural(total)} here`;
+  }
+  const head = `${total} questions here — ${parts.join(", ")}`;
+  return oneClick > 0
+    ? `${head}; ${oneClick} can be answered in one click`
+    : head;
 }
 
 /**

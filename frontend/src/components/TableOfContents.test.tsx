@@ -28,6 +28,9 @@ import {
   tallySentence,
   type OutlineEntry,
 } from "../hooks/useDocumentOutline";
+import { useOpenQuestionButtons } from "../hooks/useOpenQuestionButtons";
+import { renderMarkdown } from "vantage-md";
+import { readRepoFile } from "../test/planning";
 
 /** A rendered document, as `MarkdownViewer` leaves it in the DOM. */
 function documentHTML(): string {
@@ -406,14 +409,31 @@ describe("tallyQuestions", () => {
     expect(tallyQuestions([])).toEqual([]);
   });
 
-  it("says what every listed question has in common, then the split", () => {
-    // The shared part is the bit a reader cannot see: these are not merely
-    // questions, they are the ones answerable without typing.
+  it("says how many can be answered in one click, then the split", () => {
+    // The one-click part is the bit a reader cannot see: an open question is
+    // not merely listed, it can be answered without typing.
     expect(tallySentence(tallyQuestions([q("open")]))).toBe(
       "1 question here can be answered in one click",
     );
+    expect(tallySentence(tallyQuestions([q("open"), q(null)]))).toBe(
+      "2 questions here can be answered in one click — 1 open, 1 unmarked",
+    );
     expect(tallySentence(tallyQuestions([q("open"), q("settled")]))).toBe(
-      "2 questions here can be answered in one click — 1 open, 1 answered",
+      "2 questions here — 1 open, 1 answered; 1 can be answered in one click",
+    );
+  });
+
+  // Plan Q5: review mode offers no take on a ✅ or 🔒 question, so the column,
+  // which still lists them, must not claim they can be answered in one click.
+  it("claims one click only for the questions that offer it (Q5)", () => {
+    expect(tallySentence(tallyQuestions([q("settled")]))).toBe(
+      "1 answered question here",
+    );
+    expect(tallySentence(tallyQuestions([q("blocked"), q("blocked")]))).toBe(
+      "2 blocked questions here",
+    );
+    expect(tallySentence(tallyQuestions([q("settled"), q("blocked")]))).toBe(
+      "2 questions here — 1 answered, 1 blocked",
     );
   });
 });
@@ -734,7 +754,7 @@ describe("TableOfContents", () => {
     const tally = screen.getByTestId("toc-question-count");
     expect(tally.textContent?.replace(/\s+/g, " ")).toBe("💬 1✅ 1");
     expect(tally.getAttribute("title")).toBe(
-      "2 questions here can be answered in one click — 1 open, 1 answered",
+      "2 questions here — 1 open, 1 answered; 1 can be answered in one click",
     );
     unmount();
 
@@ -768,6 +788,53 @@ describe("TableOfContents", () => {
 
     await vi.waitFor(() =>
       expect(screen.queryAllByTestId("toc-question")).toHaveLength(1),
+    );
+  });
+});
+
+/**
+ * Plan Q5 (`docs/design/planning-index.md` §6.3): review mode offers Take this
+ * leaning on open questions only, and the column is not filtered with it. Over
+ * the gallery's status page, rendered through the real chain, with the button
+ * pass running on the same container as the column.
+ */
+describe("the column beside review mode's buttons (Q5)", () => {
+  function WithButtons({ html }: { html: string }) {
+    const ref = useRef<HTMLDivElement>(null);
+    useOpenQuestionButtons(ref, [], true, html, vi.fn(), vi.fn());
+    return (
+      <div>
+        <TableOfContents containerRef={ref} open />
+        <div ref={ref} dangerouslySetInnerHTML={{ __html: html }} />
+      </div>
+    );
+  }
+
+  it("lists all three questions with their states, where only the open one has a button", async () => {
+    const { html } = await renderMarkdown(
+      readRepoFile("docs/gallery/status.md"),
+    );
+    render(<WithButtons html={html} />);
+
+    const entries = await screen.findAllByTestId("toc-question");
+    expect(entries.map((entry) => entry.getAttribute("href"))).toEqual([
+      "#OQ-1",
+      "#OQ-2",
+      "#OQ-3",
+    ]);
+    expect(
+      screen.getByRole("link", {
+        name: "Answered question: OQ-2: Should an answered question look different from an open one?",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("link", {
+        name: "Blocked question: OQ-3: Is a blocked question distinguishable from a merely open one?",
+      }),
+    ).toBeTruthy();
+    expect(document.querySelectorAll(".review-oq-take")).toHaveLength(1);
+    expect(screen.getByTestId("toc-question-count").getAttribute("title")).toBe(
+      "3 questions here — 1 open, 1 answered, 1 blocked; 1 can be answered in one click",
     );
   });
 });
