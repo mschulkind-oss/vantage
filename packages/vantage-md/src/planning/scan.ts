@@ -138,6 +138,11 @@ export type ScanResult =
  */
 const parser = unified().use(remarkParse).use(buildRemarkPlugins());
 
+/** A document body as the viewer parses it. Shared with `cardSource.ts`. */
+export function parseBody(body: string): Root {
+  return parser.parse(body) as Root;
+}
+
 /** The contents column's title test: a bold run opening with the stable id. */
 const OQ_TITLE = /^OQ-[A-Za-z0-9]*\d/;
 
@@ -852,7 +857,7 @@ export function scanPlanningDocument(
     return { kind: "not-planning" };
   }
 
-  const root = parser.parse(parsed.body) as Root;
+  const root = parseBody(parsed.body);
   if (!isRoadmap && !keyed && !hasOqDirective(root)) {
     return { kind: "not-planning" };
   }
