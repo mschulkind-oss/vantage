@@ -109,6 +109,81 @@ describe("inline style filtering", () => {
     }
   });
 
+  it("refuses display: contents, the one value that takes an element's box away", async () => {
+    // An element with `display: contents` generates no box, so it is no
+    // containing block for what the stylesheets position inside it. A toned
+    // block's rule and a heading's link anchor were then placed against an
+    // ancestor outside the scroll container. Measured in Chromium at 1280x800:
+    // the rule was a bar the pane's full height that did not scroll, and the
+    // heading's font size moved it anywhere across the pane.
+    // `e2e/boxless.spec.ts` measures that in the app.
+    //
+    // The values are listed, not the one refused. A CSS comment is legal
+    // between the colon and the keyword, so a pattern that refused `contents`
+    // by name would keep `display:/**/contents`, and a CSS-wide keyword such as
+    // `inherit` names no value at all.
+    for (const value of [
+      "display:contents",
+      "display: contents",
+      "DISPLAY:CONTENTS",
+      "display:contents !important",
+      "display:/**/contents",
+      "display:contents/**/",
+      "display:inherit",
+      "display:unset",
+      "display:revert",
+      "display:block flow",
+      "color:red;display:contents",
+      "display:contents;color:red",
+    ]) {
+      expect(SAFE_STYLE.test(value), value).toBe(false);
+    }
+    const html = await styled(
+      `<p data-vantage-tone="note" style="display:contents;font-size:200px">x</p>`,
+    );
+    expect(html).not.toContain("style=");
+    // The tone is the directive's own vocabulary, and it stays: only the
+    // style that took the element's box went.
+    expect(html).toContain(`data-vantage-tone="note"`);
+  });
+
+  it("keeps every display value that leaves the element a box of its own", () => {
+    // Measured in Chromium over the app's stylesheet: on each of these a toned
+    // block's rule is as tall as the element, or, for `none` and the two
+    // column values, is not generated at all.
+    for (const keyword of [
+      "none",
+      "block",
+      "inline",
+      "inline-block",
+      "flow-root",
+      "flex",
+      "inline-flex",
+      "grid",
+      "inline-grid",
+      "table",
+      "inline-table",
+      "table-row",
+      "table-row-group",
+      "table-header-group",
+      "table-footer-group",
+      "table-cell",
+      "table-column",
+      "table-column-group",
+      "table-caption",
+      "list-item",
+    ]) {
+      for (const value of [
+        `display:${keyword}`,
+        `display : ${keyword.toUpperCase()} `,
+        `display:${keyword} !important`,
+        `color:red;display:${keyword};margin:0`,
+      ]) {
+        expect(SAFE_STYLE.test(value), value).toBe(true);
+      }
+    }
+  });
+
   it("keeps ordinary typographic styling", async () => {
     expect(await styled(`<span style="color: red">x</span>`)).toContain(
       `style="color: red"`,
@@ -177,6 +252,10 @@ describe("inline style filtering", () => {
       for (const payload of [
         "color:red ".repeat(n) + "(",
         "color: red; ".repeat(n) + "background:url(x)",
+        // `display` has a grammar of its own: its keywords, and an optional
+        // `!important`, in place of the free value class.
+        "display: inline ! important; ".repeat(n) + "display:contents",
+        "display:inline".repeat(n),
       ]) {
         const started = performance.now();
         const kept = SAFE_STYLE.test(payload);

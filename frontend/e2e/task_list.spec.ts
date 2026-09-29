@@ -75,7 +75,10 @@ test.describe("task-list checkbox", () => {
     // the checkbox absolutely, the checkbox was placed against an ancestor
     // outside the scroll container instead: measured at 1280x800, the
     // fixture's 600px font size made it a 630px green square over the content
-    // pane that stayed put when the document scrolled.
+    // pane that stayed put when the document scrolled. The sanitizer has since
+    // refused `display: contents` (`DISPLAY_VALUES` in `sanitize.ts`), so the
+    // fixture's item keeps its box. This stays as the check that the two
+    // fixes still agree, and that the item's written style reaches nothing.
     await open(page);
     const checkbox = page.locator("#user-content-boxless input");
     await expect(checkbox).toHaveCount(1);
