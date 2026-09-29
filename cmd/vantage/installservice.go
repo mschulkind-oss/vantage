@@ -193,11 +193,15 @@ func installServiceWithSourceDirs(out io.Writer, in serviceInstall, dirs []strin
 		return err
 	}
 	shown := func(p string) string { return tildePath(p, in.home) }
+	file := shown(edit.Path)
+	if edit.Target != "" {
+		file += " (a link to " + shown(edit.Target) + ")"
+	}
 	switch {
 	case edit.Created:
-		fmt.Fprintf(out, "Created %s with source_dirs = [%s]\n", shown(edit.Path), strings.Join(edit.Added, ", "))
+		fmt.Fprintf(out, "Created %s with source_dirs = [%s]\n", file, strings.Join(edit.Added, ", "))
 	case len(edit.Added) > 0:
-		fmt.Fprintf(out, "Added to source_dirs in %s: %s\n", shown(edit.Path), strings.Join(edit.Added, ", "))
+		fmt.Fprintf(out, "Added to source_dirs in %s: %s\n", file, strings.Join(edit.Added, ", "))
 	}
 	if len(edit.Present) > 0 {
 		fmt.Fprintf(out, "Already in source_dirs: %s\n", strings.Join(edit.Present, ", "))
@@ -205,7 +209,7 @@ func installServiceWithSourceDirs(out io.Writer, in serviceInstall, dirs []strin
 	if edit.Backup != "" {
 		fmt.Fprintf(out, "%s could not be edited in place, so the original is saved as %s\n"+
 			"and the file was rewritten from its settings. Its comments are only in the backup.\n",
-			shown(edit.Path), shown(edit.Backup))
+			file, shown(edit.Backup))
 	}
 
 	cfg, err := config.LoadDaemonFile(in.configPath)

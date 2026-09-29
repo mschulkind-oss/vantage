@@ -230,6 +230,12 @@ config. The command then installs the service and starts it. Without
   assignment. If there is none, it inserts one before the first table header.
   Duplicates of an existing entry are dropped. The command then decodes the new
   text and checks that every other key decodes as before.
+- **A config that is a link is edited behind it.** A `config.toml` kept in a
+  dotfiles repository is a symlink. The file it points to is the one edited,
+  with any backup beside it, and the link stays a link. Replacing the link
+  would leave the dotfile without the entry and move the path the daemon keys
+  its bookmarks on. A file the user cannot write, such as one made read-only
+  or a link into `/nix/store`, is refused with its name rather than replaced.
 - **When a safe in-place edit is impossible, the old file is kept.** That covers
   an array containing comments, a key written as a dotted or quoted name, or a
   failed round-trip check. The original is copied to
