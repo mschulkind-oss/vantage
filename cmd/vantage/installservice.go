@@ -129,13 +129,51 @@ func installService(out io.Writer, goos, home, exe string) error {
 	}
 }
 
+// systemdUnitPath is where install-service writes the systemd --user unit.
+// `serve`'s service tip reads the same path to tell whether one is installed.
+func systemdUnitPath(home string) string {
+	return filepath.Join(home, ".config", "systemd", "user", "vantage.service")
+}
+
+// launchAgentPath is where install-service writes the launchd agent on macOS,
+// and what `serve`'s service tip checks for.
+func launchAgentPath(home string) string {
+	return filepath.Join(home, "Library", "LaunchAgents", launchAgentLabel+".plist")
+}
+
+// serviceDefinitionPath is the file install-service writes on goos, or "" on a
+// platform it does not support.
+func serviceDefinitionPath(goos, home string) string {
+	switch goos {
+	case "linux":
+		return systemdUnitPath(home)
+	case "darwin":
+		return launchAgentPath(home)
+	default:
+		return ""
+	}
+}
+
+// serviceStartCommand is the one command that starts an installed service on
+// goos — the same line install-service prints — or "" where it has none.
+func serviceStartCommand(goos, home string) string {
+	switch goos {
+	case "linux":
+		return "systemctl --user start vantage"
+	case "darwin":
+		return "launchctl bootstrap gui/$(id -u) " + launchAgentPath(home)
+	default:
+		return ""
+	}
+}
+
 // installSystemdUnit writes ~/.config/systemd/user/vantage.service.
 func installSystemdUnit(out io.Writer, home, exe string) error {
-	serviceDir := filepath.Join(home, ".config", "systemd", "user")
+	serviceFile := systemdUnitPath(home)
+	serviceDir := filepath.Dir(serviceFile)
 	if err := os.MkdirAll(serviceDir, 0o755); err != nil {
 		return fmt.Errorf("creating service directory: %w", err)
 	}
-	serviceFile := filepath.Join(serviceDir, "vantage.service")
 
 	unit := fmt.Sprintf(serviceUnitTemplate, exe)
 	if err := os.WriteFile(serviceFile, []byte(unit), 0o644); err != nil {
@@ -146,7 +184,7 @@ func installSystemdUnit(out io.Writer, home, exe string) error {
 	fmt.Fprintln(out, "\nTo enable and start the service:")
 	fmt.Fprintln(out, "  systemctl --user daemon-reload")
 	fmt.Fprintln(out, "  systemctl --user enable vantage")
-	fmt.Fprintln(out, "  systemctl --user start vantage")
+	fmt.Fprintln(out, "  "+serviceStartCommand("linux", home))
 	fmt.Fprintln(out, "\nTo check status:")
 	fmt.Fprintln(out, "  systemctl --user status vantage")
 	fmt.Fprintln(out, "  journalctl --user -u vantage -f")
@@ -156,7 +194,8 @@ func installSystemdUnit(out io.Writer, home, exe string) error {
 // installLaunchAgent writes ~/Library/LaunchAgents/<label>.plist and prints the
 // launchctl commands that load, inspect, restart and remove it.
 func installLaunchAgent(out io.Writer, home, exe string) error {
-	agentDir := filepath.Join(home, "Library", "LaunchAgents")
+	plistPath := launchAgentPath(home)
+	agentDir := filepath.Dir(plistPath)
 	if err := os.MkdirAll(agentDir, 0o755); err != nil {
 		return fmt.Errorf("creating LaunchAgents directory: %w", err)
 	}
@@ -168,14 +207,13 @@ func installLaunchAgent(out io.Writer, home, exe string) error {
 		return fmt.Errorf("creating log directory: %w", err)
 	}
 
-	plistPath := filepath.Join(agentDir, launchAgentLabel+".plist")
 	if err := os.WriteFile(plistPath, []byte(launchAgentPlist(exe, home, logPath)), 0o644); err != nil {
 		return fmt.Errorf("writing launch agent: %w", err)
 	}
 
 	fmt.Fprintf(out, "Created launchd agent: %s\n", plistPath)
 	fmt.Fprintln(out, "\nTo start it now and at every login:")
-	fmt.Fprintf(out, "  launchctl bootstrap gui/$(id -u) %s\n", plistPath)
+	fmt.Fprintln(out, "  "+serviceStartCommand("darwin", home))
 	fmt.Fprintln(out, "\nTo check status:")
 	fmt.Fprintf(out, "  launchctl print gui/$(id -u)/%s\n", launchAgentLabel)
 	fmt.Fprintf(out, "  tail -f %s\n", logPath)
