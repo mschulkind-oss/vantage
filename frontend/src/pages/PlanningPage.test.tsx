@@ -27,6 +27,7 @@ import {
   type PlanningSources,
 } from "vantage-md/planning";
 import { PlanningPage } from "./PlanningPage";
+import { resetPlanningReviews } from "../hooks/usePlanningReviews";
 import {
   STATIC_MESSAGE,
   resetPlanningTrackers,
@@ -192,6 +193,18 @@ function serveReviews(): void {
     throw new Error(`unexpected GET ${url}`);
   });
   vi.mocked(axios.post).mockImplementation(async (url, body, config) => {
+    if (String(url).endsWith("/planning/reviews")) {
+      const { paths } = body as { paths: string[] };
+      return {
+        data: {
+          reviews: paths.flatMap((path) =>
+            reviews[path]
+              ? [{ path, review: { file_path: path, comments: reviews[path] } }]
+              : [],
+          ),
+        },
+      };
+    }
     if (String(url).endsWith("/review/comments")) {
       const path = (config?.params as { path: string }).path;
       const created = {
@@ -214,6 +227,7 @@ const writeText = vi.fn().mockResolvedValue(undefined);
 
 beforeEach(() => {
   resetPlanningTrackers();
+  resetPlanningReviews();
   usePlanningStore.setState({ byRepo: {}, reviewEpoch: {} });
   useRepoStore.setState({
     reposLoaded: true,
@@ -596,6 +610,31 @@ describe("the cards' blocks, from the scanner client (planning-index-at-scale.md
   });
 });
 
+describe("the reviews, in one request (planning-index-at-scale.md §6.3)", () => {
+  beforeEach(() => seed());
+
+  const reviewRequests = () =>
+    vi
+      .mocked(axios.post)
+      .mock.calls.filter(([url]) => String(url).endsWith("/planning/reviews"));
+
+  it("reads every listed document's review in one POST, and none with a GET", async () => {
+    await renderPage();
+    expect(reviewRequests()).toHaveLength(1);
+    expect(
+      new Set((reviewRequests()[0]?.[1] as { paths: string[] }).paths),
+    ).toEqual(
+      new Set([
+        "plans/design.md",
+        "plans/answered.md",
+        "plans/unrouted.md",
+        "plans/disagrees.md",
+      ]),
+    );
+    expect(vi.mocked(axios.get)).not.toHaveBeenCalled();
+  });
+});
+
 describe("in daemon mode", () => {
   beforeEach(() => {
     useRepoStore.setState({
@@ -612,9 +651,10 @@ describe("in daemon mode", () => {
     expect(
       within(cardFor("OQ-D1")).getByRole("link", { name: "Open document" }),
     ).toHaveAttribute("href", "/alpha/plans/design.md");
-    expect(vi.mocked(axios.get)).toHaveBeenCalledWith("/api/r/alpha/review", {
-      params: { path: "plans/design.md" },
-    });
+    expect(vi.mocked(axios.post)).toHaveBeenCalledWith(
+      "/api/r/alpha/planning/reviews",
+      { paths: expect.arrayContaining(["plans/design.md"]) },
+    );
   });
 
   it("says so for a repository it does not serve", async () => {
@@ -982,5 +1022,6 @@ describe("in a static export (§3.6, Plan Q3)", () => {
     expect(screen.getByText(STATIC_MESSAGE)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
     expect(vi.mocked(axios.get)).not.toHaveBeenCalled();
+    expect(vi.mocked(axios.post)).not.toHaveBeenCalled();
   });
 });
