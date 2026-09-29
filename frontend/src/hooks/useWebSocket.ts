@@ -508,6 +508,12 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
   useEffect(() => {
     if (staticMode) return;
     mountedRef.current = true;
+    // Connections are counted per run of this effect, not per component. In
+    // StrictMode (the dev server) React runs it, cleans it up and runs it
+    // again on the same component, whose refs survive, so a count kept across
+    // runs made the mount's first real connection #2 — and #2 is what calls
+    // the planning index's reconnect, which rescanned it on every page.
+    connectCountRef.current = 0;
     connect();
 
     return () => {
