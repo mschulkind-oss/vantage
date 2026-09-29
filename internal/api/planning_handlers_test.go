@@ -15,6 +15,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/mschulkind-oss/vantage/internal/model"
 	"github.com/mschulkind-oss/vantage/internal/perf"
 	"github.com/mschulkind-oss/vantage/internal/repoconfig"
 )
@@ -171,6 +172,7 @@ func TestThePlanningRoutesAreRepoScoped(t *testing.T) {
 	want := map[string]string{
 		"/planning/sources": http.MethodGet,
 		"/planning/stream":  http.MethodPost,
+		"/planning/reviews": http.MethodPost,
 	}
 	for _, rt := range e.h.Routes() {
 		if method, ok := want[rt.Pattern]; ok {
@@ -187,6 +189,8 @@ func TestThePlanningEndpointsWithoutARepoAre400(t *testing.T) {
 	w := e.do(e.h.PlanningSources, http.MethodGet, "/planning/sources", "", false)
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	w = e.do(e.h.PlanningStream, http.MethodPost, "/planning/stream", "{}", false)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	w = e.do(e.h.PlanningReviews, http.MethodPost, "/planning/reviews", `{"paths":["a.md"]}`, false)
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
@@ -554,4 +558,138 @@ func TestPlanningSinglePathReportsALockedFileUnreadable(t *testing.T) {
 
 	w := e.get("/planning/sources?path=locked.md")
 	require.JSONEq(t, `{"path":"locked.md","kind":"unreadable","reason":"permission denied"}`, w.Body.String())
+}
+
+// --- reviews in one request --------------------------------------------------
+
+func (e *planningEnv) reviews(body string) *httptest.ResponseRecorder {
+	r := e.withServices(httptest.NewRequest(http.MethodPost, "/planning/reviews", strings.NewReader(body)))
+	w := httptest.NewRecorder()
+	e.h.PlanningReviews(w, r)
+	return w
+}
+
+// saveReview stores a review of path holding one comment, id.
+func (e *planningEnv) saveReview(t *testing.T, path, id string) {
+	t.Helper()
+	rd := model.NewReviewData(path)
+	c := model.NewReviewComment(id, "comment on "+path, 1717000000)
+	c.Anchor = &model.CommentAnchor{SourceLine: 3, BlockTextHash: "d58b3fa7"}
+	rd.Comments = append(rd.Comments, c)
+	require.NoError(t, e.h.deps.Reviews.Save(path, e.repo, rd))
+}
+
+// reviewsAnswer is the reviews body, each review kept raw so it can be held to
+// GET /review's own bytes.
+type reviewsAnswer struct {
+	Reviews []struct {
+		Path   string          `json:"path"`
+		Review json.RawMessage `json:"review"`
+	} `json:"reviews"`
+}
+
+func (a reviewsAnswer) paths() []string {
+	out := []string{}
+	for _, r := range a.Reviews {
+		out = append(out, r.Path)
+	}
+	return out
+}
+
+// One entry for each distinct path with a stored review, in the order the
+// request named them, and each review exactly what GET /review answers. A path
+// with no review, the empty path GET /review would refuse, and a repeat are all
+// left out.
+func TestPlanningReviewsKeepsTheRequestsOrder(t *testing.T) {
+	e := newPlanningEnv(t, nil)
+	e.saveReview(t, "c.md", "c1")
+	e.saveReview(t, "a.md", "a1")
+	e.saveReview(t, "docs/b.md", "b1")
+
+	w := e.reviews(`{"paths":["docs/b.md","none.md","a.md","","c.md","a.md"]}`)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	require.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	var got reviewsAnswer
+	decode(t, w, &got)
+	require.Equal(t, []string{"docs/b.md", "a.md", "c.md"}, got.paths())
+	for _, r := range got.Reviews {
+		one := e.do(e.h.ReviewGet, http.MethodGet, "/review?path="+r.Path, "", true)
+		require.Equal(t, http.StatusOK, one.Code)
+		require.JSONEq(t, one.Body.String(), string(r.Review), r.Path)
+	}
+}
+
+// With nothing stored, or nothing asked, the list is [] and never null.
+func TestPlanningReviewsWithNoneIsAnEmptyList(t *testing.T) {
+	e := newPlanningEnv(t, nil)
+	for _, body := range []string{`{"paths":["a.md"]}`, `{"paths":[]}`, `{}`, `{"paths":null}`} {
+		w := e.reviews(body)
+		require.Equal(t, http.StatusOK, w.Code, body)
+		require.JSONEq(t, `{"reviews":[]}`, w.Body.String(), body)
+	}
+}
+
+// A review the store cannot read is left out with a warning, and the rest are
+// still answered: one bad file does not cost the page every comment.
+func TestPlanningReviewsLeavesOutAReviewItCannotRead(t *testing.T) {
+	e := newPlanningEnv(t, nil)
+	e.saveReview(t, "a.md", "a1")
+	// A directory where the review file would be reads as an I/O error, not
+	// as absent, whoever runs the test.
+	require.NoError(t, os.Mkdir(filepath.Join(e.h.deps.Reviews.Dir(), "broken.md.json"), 0o755))
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	w := e.reviews(`{"paths":["broken.md","a.md"]}`)
+	require.Equal(t, http.StatusOK, w.Code)
+	var got reviewsAnswer
+	decode(t, w, &got)
+	require.Equal(t, []string{"a.md"}, got.paths())
+	require.Contains(t, logs.String(), "broken.md")
+}
+
+// At most max-candidates paths, configured down here to 2: the page never lists
+// more documents than the index has candidates.
+func TestPlanningReviewsCapsItsPaths(t *testing.T) {
+	e := newPlanningEnv(t, map[string]string{".vantage.toml": "[planning]\nmax-candidates = 2\n"})
+	e.saveReview(t, "a.md", "a1")
+	w := e.reviews(`{"paths":["a.md","b.md"]}`)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	w = e.reviews(`{"paths":["a.md","b.md","c.md"]}`)
+	require.Equal(t, http.StatusRequestEntityTooLarge, w.Code)
+	require.Contains(t, w.Body.String(), `"detail"`)
+	require.Contains(t, w.Body.String(), "2 paths")
+}
+
+// The body cap, lowered to 128 bytes rather than proven with 1 MiB.
+func TestPlanningReviewsCapsItsBody(t *testing.T) {
+	prev := reviewsBodyLimit
+	reviewsBodyLimit = 128
+	t.Cleanup(func() { reviewsBodyLimit = prev })
+	e := newPlanningEnv(t, nil)
+	e.saveReview(t, "a.md", "a1")
+
+	body := `{"paths":["a.md"]}`
+	atCap := body + strings.Repeat(" ", 128-len(body))
+	w := e.reviews(atCap)
+	require.Equal(t, http.StatusOK, w.Code)
+	w = e.reviews(atCap + " ")
+	require.Equal(t, http.StatusRequestEntityTooLarge, w.Code)
+	require.Contains(t, w.Body.String(), `"detail"`)
+}
+
+// A body that is not exactly `{"paths": [path]}` is a 400, an empty one
+// included: unlike the stream's, no reviews request means "nothing".
+func TestPlanningReviewsRefusesAMalformedBody(t *testing.T) {
+	e := newPlanningEnv(t, nil)
+	for _, body := range []string{
+		"", `null`, `[]`, `{"paths":"a.md"}`, `{"paths":[1]}`, `{"path":["a.md"]}`, `{"paths":[]} {}`, `{`,
+	} {
+		w := e.reviews(body)
+		require.Equal(t, http.StatusBadRequest, w.Code, "body %q", body)
+		require.Contains(t, w.Body.String(), `"detail"`, "body %q", body)
+	}
 }

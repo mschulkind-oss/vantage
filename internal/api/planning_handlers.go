@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mschulkind-oss/vantage/internal/model"
 	"github.com/mschulkind-oss/vantage/internal/planning"
 	"github.com/mschulkind-oss/vantage/internal/repoconfig"
 )
@@ -186,6 +187,77 @@ func acceptsGzip(r *http.Request) bool {
 		}
 	}
 	return false
+}
+
+// reviewsBodyLimit caps the reviews request's body. A variable so a test can
+// lower it rather than send 1 MiB.
+var reviewsBodyLimit int64 = 1 << 20
+
+// planningReview is one entry of the reviews answer.
+type planningReview struct {
+	Path   string            `json:"path"`
+	Review *model.ReviewData `json:"review"`
+}
+
+// PlanningReviews handles POST /planning/reviews (and
+// /r/{repo}/planning/reviews): the stored reviews of many documents in one
+// request, where the planning page used to send one GET /review per listed
+// document. Design: docs/design/planning-index-at-scale.md §6.3.
+//
+// The body is `{"paths": [...]}`, and the answer is
+// `{"reviews": [{"path": …, "review": …}]}`: one entry for each distinct path
+// that has a stored review, in the order the request named them, each
+// `review` exactly what GET /review answers for that path. `reviews` is `[]`,
+// never null, when none has one.
+//
+// A path is validated as GET /review validates it, and one that fails, the
+// empty path, is left out. A store read error leaves its path out with a
+// warning, as GET /review degrades to null. The body is capped at
+// [reviewsBodyLimit] and at the repository's `max-candidates` paths, since the
+// page never lists more documents than that; past either cap it is a 413. A
+// body that is not exactly that shape, an empty one included, is a 400.
+func (h *Handlers) PlanningReviews(w http.ResponseWriter, r *http.Request) {
+	svc, ok := h.repoOr400(w, r)
+	if !ok {
+		return
+	}
+	var req *struct {
+		Paths []string `json:"paths"`
+	}
+	switch err := decodeCapped(w, r, reviewsBodyLimit, &req); {
+	case isTooLarge(err):
+		writeDetail(w, http.StatusRequestEntityTooLarge,
+			"The reviews request is larger than "+strconv.FormatInt(reviewsBodyLimit, 10)+" bytes")
+		return
+	case err != nil || req == nil:
+		writeDetail(w, http.StatusBadRequest, `Invalid request body: expected {"paths": [path]}`)
+		return
+	}
+	if limit := planningConfig(svc).MaxCandidates; len(req.Paths) > limit {
+		writeDetail(w, http.StatusRequestEntityTooLarge,
+			"The reviews request names more than "+strconv.Itoa(limit)+" paths, the planning index's max-candidates")
+		return
+	}
+
+	reviews := make([]planningReview, 0, len(req.Paths))
+	seen := make(map[string]bool, len(req.Paths))
+	for _, path := range req.Paths {
+		if path == "" || seen[path] {
+			continue
+		}
+		seen[path] = true
+		data, err := h.deps.Reviews.Get(path, svc.Repo)
+		if err != nil {
+			slog.Warn("api: review get failed; leaving it out of the reviews answer", "path", path, "error", err)
+			continue
+		}
+		if data != nil {
+			reviews = append(reviews, planningReview{Path: path, Review: data})
+		}
+	}
+	writeJSON(w, http.StatusOK, struct {
+		Reviews []planningReview `json:"reviews"`
+	}{reviews})
 }
 
 // decodeCapped decodes the request body, at most limit bytes of it, into v as
