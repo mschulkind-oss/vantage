@@ -313,6 +313,90 @@ test.describe("the planning scan cache", () => {
     ).toBeVisible();
   });
 
+  test("a build collects the records its stream no longer names", async ({
+    page,
+  }) => {
+    await page.goto("/page1.md");
+    await loadScanner(page);
+    expect((await build(page, 1)).at(-1)).toEqual({ type: "ready" });
+
+    // A record of a file the repository no longer has, as a deletion leaves.
+    const GONE = "gone/removed.md";
+    await page.evaluate(
+      (gone) =>
+        new Promise<void>((resolve, reject) => {
+          const opening = indexedDB.open("vantage-planning");
+          opening.onerror = () => reject(opening.error);
+          opening.onsuccess = () => {
+            const db = opening.result;
+            const tx = db.transaction(
+              ["stamps", "documents", "cards"],
+              "readwrite",
+            );
+            const key = ["", gone];
+            const hash = "0".repeat(32);
+            tx.objectStore("stamps").put(
+              { path: gone, hash, kind: "planning" },
+              key,
+            );
+            tx.objectStore("documents").put(
+              { hash, document: { path: gone } },
+              key,
+            );
+            tx.objectStore("cards").put({ hash, blocks: [] }, key);
+            tx.oncomplete = () => {
+              db.close();
+              resolve();
+            };
+            tx.onerror = () => reject(tx.error);
+          };
+        }),
+      GONE,
+    );
+
+    const keys = () =>
+      page.evaluate(
+        () =>
+          new Promise<Record<string, string[]>>((resolve, reject) => {
+            const opening = indexedDB.open("vantage-planning");
+            opening.onerror = () => reject(opening.error);
+            opening.onsuccess = () => {
+              const db = opening.result;
+              const names = ["stamps", "documents", "cards"];
+              const tx = db.transaction(names, "readonly");
+              const out: Record<string, string[]> = {};
+              for (const name of names) {
+                const read = tx.objectStore(name).getAllKeys();
+                read.onsuccess = () => {
+                  out[name] = (read.result as [string, string][]).map(
+                    ([, path]) => path,
+                  );
+                };
+              }
+              tx.oncomplete = () => {
+                db.close();
+                resolve(out);
+              };
+            };
+          }),
+      );
+    expect((await keys())["stamps"]).toContain(GONE);
+
+    expect((await build(page, 2)).at(-1)).toEqual({ type: "ready" });
+    // Collected from every store once the build is done; the rest kept.
+    await expect
+      .poll(async () => {
+        const held = await keys();
+        return Object.values(held).some((paths) => paths.includes(GONE));
+      })
+      .toBe(false);
+    const held = await keys();
+    for (const name of ["stamps", "documents", "cards"]) {
+      expect(held[name]).toContain("plans/unrouted.md");
+    }
+    expect(held["stamps"]).not.toContain(ROADMAP);
+  });
+
   test("a tab whose IndexedDB cannot be opened builds cold every time, and still has its cards", async ({
     page,
   }) => {
