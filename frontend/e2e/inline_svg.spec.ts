@@ -60,11 +60,11 @@ test.describe("inline SVG sizing", () => {
     page,
   }) => {
     await open(page);
-    await expect(
-      page.locator(".prose svg").filter({ hasText: "Start" }),
-    ).toBeVisible({
-      timeout: 15000,
-    });
+    // Both Mermaid diagrams, one at the top level and one in a list item.
+    await expect(page.locator(".prose svg[aria-roledescription]")).toHaveCount(
+      2,
+      { timeout: 15000 },
+    );
     // Every svg the document did not write: Mermaid's diagram and its toolbar
     // icon, and KaTeX's radicals and arrows in a block, a paragraph, a list
     // item and a table cell. Measured with the inline-SVG rules in place, then
@@ -96,7 +96,7 @@ test.describe("inline SVG sizing", () => {
     );
     expect(
       withRules.filter((m) => m.where === "mermaid").length,
-    ).toBeGreaterThan(1);
+    ).toBeGreaterThan(3);
 
     const deleted = await page.evaluate(() => {
       let count = 0;
@@ -124,4 +124,38 @@ test.describe("inline SVG sizing", () => {
     expect(deleted).toBeGreaterThan(1);
     expect(await measure()).toEqual(withRules);
   });
+
+  for (const where of ["a paragraph", "a list item", "a cell"]) {
+    test(`keeps an icon in ${where} on its line of text`, async ({ page }) => {
+      // Preflight's `svg { display: block }` put a 16px icon on a line of its
+      // own: "Inline icon", the dot, "in text." rendered as three lines.
+      await open(page);
+      const lines = await page.evaluate((label) => {
+        const svg = document.querySelector(
+          `svg[aria-label="Dot in ${label}"]`,
+        )!;
+        const rectOf = (node: Node) => {
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          return range.getBoundingClientRect();
+        };
+        const before = rectOf(svg.previousSibling!);
+        const after = rectOf(svg.nextSibling!);
+        const icon = svg.getBoundingClientRect();
+        return {
+          display: getComputedStyle(svg).display,
+          beforeTop: before.top,
+          afterTop: after.top,
+          iconMiddle: icon.top + icon.height / 2,
+          textTop: before.top,
+          textBottom: before.bottom,
+        };
+      }, where);
+      expect(lines.display).toBe("inline-block");
+      expect(Math.abs(lines.afterTop - lines.beforeTop)).toBeLessThan(1);
+      // `vertical-align: middle`: the icon sits within the text's line box.
+      expect(lines.iconMiddle).toBeGreaterThan(lines.textTop);
+      expect(lines.iconMiddle).toBeLessThan(lines.textBottom);
+    });
+  }
 });

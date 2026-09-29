@@ -20,6 +20,13 @@ A root $$\sqrt{2}$$ and an arrow $$\overrightarrow{AB}$$ in a paragraph.
 | -------------- |
 | $$\sqrt{5}$$   |
 
+- A diagram in a list item:
+
+  ```mermaid
+  flowchart LR
+      C[Listed] --> D[Item]
+  ```
+
 <div>
 <svg xmlns="http://www.w3.org/2000/svg" width="2400" height="300" viewBox="0 0 2400 300" role="img" aria-label="Wide with viewBox"><rect width="2400" height="300" fill="#dbeafe"/><text x="20" y="160" font-size="96" fill="#1e3a8a">Wide</text></svg>
 </div>
@@ -27,3 +34,11 @@ A root $$\sqrt{2}$$ and an arrow $$\overrightarrow{AB}$$ in a paragraph.
 <div>
 <svg xmlns="http://www.w3.org/2000/svg" width="1600" height="100" role="img" aria-label="Wide without viewBox"><rect width="1600" height="100" fill="#dcfce7"/><text x="10" y="90" font-size="16" fill="#14532d">Bottom line</text></svg>
 </div>
+
+Inline icon <svg width="16" height="16" viewBox="0 0 16 16" role="img" aria-label="Dot in a paragraph"><circle cx="8" cy="8" r="6" fill="currentColor"/></svg> in text.
+
+- Inline icon <svg width="16" height="16" viewBox="0 0 16 16" role="img" aria-label="Dot in a list item"><circle cx="8" cy="8" r="6" fill="currentColor"/></svg> in a list item.
+
+| Cell |
+| ---- |
+| Inline icon <svg width="16" height="16" viewBox="0 0 16 16" role="img" aria-label="Dot in a cell"><circle cx="8" cy="8" r="6" fill="currentColor"/></svg> in a cell. |
