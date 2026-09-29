@@ -45,7 +45,6 @@
 }
 
 .task-list-item {
-  position: relative;
   padding-left: 1.75em;
   list-style: none;
 }
@@ -64,18 +63,38 @@
    It stays `disabled`, as `remark-gfm` emits it: a document is not a form, and a
    clickable box that cannot persist anything is the "control that lies" D4
    forbids. `cursor: default` says so rather than leaving the platform's
-   not-allowed cursor to imply a fault. */
+   not-allowed cursor to imply a fault.
+
+   **Floated into the item's padding, never positioned absolutely.** An
+   absolutely positioned box is placed against its nearest positioned ancestor,
+   and a document decides which one that is: an item it writes with
+   `display: contents` generates no box, so it is no containing block. When
+   this box was `position: absolute` in a `position: relative` item, such an
+   item put its checkbox against an ancestor outside the scroll container, which
+   neither clips it nor scrolls it; with the item's `font-size` at 600px it was a
+   630px square over the content pane that stayed put when the document
+   scrolled. A float stays in the scroll container whatever the item does. The
+   negative margin takes it into the padding, and its margin box then ends left
+   of the text, so the text does not wrap around it and the next item's
+   checkbox is not pushed aside by it. Out of the inline flow, it also leaves
+   the space GFM writes after it at the start of the line, where it collapses.
+   `position: relative` offsets nothing; it makes the box the containing block
+   of the tick below. `frontend/e2e/task_list.spec.ts` measures where the box
+   lands and that it stays in the scroll container. */
 .task-list-item > input[type="checkbox"] {
   appearance: none;
   -webkit-appearance: none;
-  position: absolute;
-  left: 0;
-  /* Optically centered on the first line rather than aligned to its top: the box
-     is square and the line box is not. */
-  top: 0.2em;
+  float: left;
+  position: relative;
+  /* The item's, so that the margin below, in this box's em, matches the
+     item's padding, in the item's. Tailwind's preflight already does this in
+     the app; a host without it left the box at the UA's 13.33px. */
+  font-size: inherit;
   width: 1.05em;
   height: 1.05em;
-  margin: 0;
+  /* Optically centered on the first line rather than aligned to its top: the box
+     is square and the line box is not. */
+  margin: 0.2em 0 0 -1.75em;
   border: 2px solid var(--vantage-tone-muted-accent);
   border-radius: 4px;
   background-color: transparent;

@@ -196,6 +196,35 @@ describe("the task-list stylesheet is reached by both consumers", () => {
     expect(taskCss).not.toContain(".prose");
     expect(taskCss).not.toContain(".vantage-prose");
   });
+
+  it("floats the checkbox in the item's font size, never positioning it absolutely", () => {
+    // An absolutely positioned checkbox is placed against whichever positioned
+    // ancestor the document leaves it, and an item written `display: contents`
+    // left it one outside the scroll container. `e2e/task_list.spec.ts`
+    // measures that in the app. This pins the rule for the package's own
+    // viewer too, which no e2e test renders, and where only `font-size:
+    // inherit` makes the checkbox's negative margin, in its own em, match the
+    // item's padding, in the item's.
+    const taskCss = read(
+      "../../../packages/vantage-md/src/styles/task-list.css",
+    ).replace(/\/\*[\s\S]*?\*\//g, "");
+    const rule = (selector: string) =>
+      new RegExp(`(?:^|\\})\\s*${selector}\\s*\\{([^}]*)\\}`).exec(
+        taskCss,
+      )?.[1] ?? "";
+    const item = rule("\\.task-list-item");
+    const box = rule('\\.task-list-item > input\\[type="checkbox"\\]');
+    expect(item).toContain("padding-left: 1.75em");
+    expect(item).not.toContain("position");
+    expect(box).toContain("float: left");
+    expect(box).toContain("font-size: inherit");
+    expect(box).toContain("margin: 0.2em 0 0 -1.75em");
+    // Relative, so that the checkbox is the containing block of its tick,
+    // the one absolutely positioned box left in the file.
+    expect(box).toContain("position: relative");
+    expect(taskCss.match(/position: absolute/g)).toHaveLength(1);
+    expect(taskCss).toMatch(/:checked::after \{[^}]*position: absolute/);
+  });
 });
 
 describe("a member's own left border is compensated, so the rule stays straight", () => {
