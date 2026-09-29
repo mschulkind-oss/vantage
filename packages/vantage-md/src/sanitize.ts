@@ -231,8 +231,7 @@ const SAFE_STYLE_PROPERTIES = [
   "white-space",
   "vertical-align",
   "list-style-type",
-  // Flow.
-  "display",
+  // Flow. `display` is not here: it takes only the values in `DISPLAY_VALUES`.
   "float",
   "clear",
   "opacity",
@@ -292,7 +291,66 @@ const VALUE = `[^;:()"'\\\\]*`;
 // making the last declaration's value *lazy* instead of the whole declaration
 // optional — which rejects a trailing `;` (`color:red;`). The semicolon test in
 // `frontend/src/lib/sanitize.test.ts` is what catches that.
-const DECLARATION = `(?:(?:${SAFE_STYLE_PROPERTIES.join("|")})\\s*:${VALUE})`;
+/**
+ * The values `display` may take: every keyword that leaves the element a box of
+ * its own, and not `contents`, the one that takes it away.
+ *
+ * **An element with `display: contents` generates no box, so it is no
+ * containing block** for anything a stylesheet positions inside it, and the
+ * app positions two things inside a document's elements. A toned block's rule
+ * is a `::before` placed absolutely inside the block (`styles/directives.css`),
+ * and a heading's link anchor is placed absolutely inside the heading
+ * (`frontend/src/index.css`). Written on such an element, `display: contents`
+ * placed them against the nearest positioned ancestor instead, which is outside
+ * the scroll container, so neither was clipped by it nor scrolled with the
+ * document. Measured in Chromium at 1280x800: a hand-written
+ * `data-vantage-tone` on a paragraph drew its rule the full height of the
+ * content pane, and on a heading the heading's `font-size` moved that rule, and
+ * the anchor, which takes clicks, anywhere across the pane. The same held for
+ * the task-list checkbox until `styles/task-list.css` floated it.
+ *
+ * So the values are listed rather than `contents` refused, for two reasons. A
+ * CSS comment is legal between the colon and the keyword, and `VALUE` admits
+ * the `/` and `*` that spell one, so a pattern that refused the word would keep
+ * it behind an empty comment. And a CSS-wide keyword (`inherit`, `unset`,
+ * `revert`) names no value of its own. Measured in Chromium, every keyword
+ * below gives a toned block a rule as tall as the block, or, for `none` and
+ * the two column values, generates none. The multi-keyword forms (`block
+ * flow`) are refused along with them: nothing a prose document writes needs
+ * them, and each has a single-keyword spelling here.
+ *
+ * Ordered longest first within each prefix, which the match does not need —
+ * the `;`, `!` or end that must follow decides — but a reader checking the
+ * list does.
+ */
+const DISPLAY_VALUES = [
+  "none",
+  "block",
+  "inline-block",
+  "inline-flex",
+  "inline-grid",
+  "inline-table",
+  "inline",
+  "flow-root",
+  "flex",
+  "grid",
+  "table-row-group",
+  "table-row",
+  "table-header-group",
+  "table-footer-group",
+  "table-cell",
+  "table-column-group",
+  "table-column",
+  "table-caption",
+  "table",
+  "list-item",
+];
+// Its own alternative, never folded into `VALUE`: a keyword, then an optional
+// `!important`, each padded by whitespace that no neighbor can also claim, so
+// the grammar keeps its one parse of any input. No other property's name
+// begins with `display`, so the two alternatives never compete either.
+const DISPLAY_DECLARATION = `display\\s*:\\s*(?:${DISPLAY_VALUES.join("|")})\\s*(?:!\\s*important\\s*)?`;
+const DECLARATION = `(?:(?:${SAFE_STYLE_PROPERTIES.join("|")})\\s*:${VALUE}|${DISPLAY_DECLARATION})`;
 
 export const SAFE_STYLE = new RegExp(
   `^\\s*(?:${DECLARATION};\\s*)*${DECLARATION}?$`,

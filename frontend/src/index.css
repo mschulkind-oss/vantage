@@ -683,6 +683,12 @@ code {
 .prose pre[data-vantage-tone] {
   --vantage-tone-border-compensation: 1px;
 }
+/* Placed against its heading, which is a containing block only while it has a
+   box. A heading written with `display: contents` has none, and its anchor, a
+   link that takes clicks, was placed against an ancestor outside the scroll
+   container and did not scroll. The sanitizer refuses that value
+   (`DISPLAY_VALUES` in `vantage-md`'s `sanitize.ts`), and
+   `e2e/boxless.spec.ts` measures that the anchor stays in. */
 .heading-anchor {
   position: absolute;
   left: 0;

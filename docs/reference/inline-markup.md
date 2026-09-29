@@ -707,6 +707,47 @@ on each element's own entry rather than on `*`. `rehype-sanitize` consults `*`
 whenever an element's own entry yields nothing, so no entry on `input` could
 refuse what `*` admits.
 
+**`display` takes a listed keyword, and never `contents`.** An element with
+`display: contents` generates no box, so it is no containing block. The app
+places two things absolutely inside a document's elements: a toned block's rule
+is a `::before` inside the block, and a heading's link anchor sits inside the
+heading. A document may write `data-vantage-tone` by hand, because the
+sanitizer checks that attribute's value, not who wrote it. On an element written
+`display: contents`, both were placed against the nearest positioned ancestor,
+which is outside the scroll container, so the scroll container neither clipped
+them nor scrolled them. Measured in Chromium at 1280x800: a toned paragraph's
+rule was a bar the full height of the content pane. On a heading, the heading's
+font size moved that bar, and the anchor, which takes clicks, anywhere across
+the pane.
+
+Three fixes were open, and the one taken closes the most:
+
+- **Refusing the value closes the whole class.** A document cannot position an
+  element, because `position` is refused, so every containing block inside the
+  document is one a stylesheet made. Taking an element's box away is the only
+  way a document can remove one, and `display: contents` is the only value that
+  does it and keeps the element's contents on screen. Measured in Chromium, each
+  other value tried, which was every listed keyword and the ruby, two-keyword
+  and CSS-wide ones besides, leaves a toned block a rule as tall as the block,
+  or generates no rule at all (`none`, `table-column`, `table-column-group`). So the rule, the anchor and the
+  task-list checkbox are all covered by one refusal, and so is any positioned
+  box a stylesheet adds later.
+- **Refusing a hand-written tone** cannot be done. By the time the sanitizer
+  runs, the tone a directive stamped and the one a document wrote are the same
+  attribute, as with the kept class names below. It would also leave the heading
+  anchor open, since the anchor needs no tone.
+- **Containing the rule in its stylesheet**, as the checkbox's float does, fixes
+  one box at a time and leaves the next positioned rule open.
+
+The values are listed rather than `contents` refused, for two reasons. A CSS
+comment is legal between the colon and the keyword, so a filter that refused
+the word would keep `display:/**/contents`. And a CSS-wide keyword such as
+`inherit` names no value of its own. The two-keyword forms (`block flow`) are
+refused too: each has a one-keyword spelling on the list.
+[Current values](#current-values) lists the keywords, and
+`frontend/e2e/boxless.spec.ts` measures that the rule and the anchor stay in
+the scroll container.
+
 > [!IMPORTANT]
 > **KaTeX output never passes through this filter, and the filter's original
 > rationale was wrong because of it.** `rehype-katex` runs *after*
@@ -786,14 +827,16 @@ this: their sanitizer refuses `class` outright.
   time the sanitizer runs, a hand-written `<li class="task-list-item">` and the
   one GFM emitted are the same node, and none of the names can lay an element
   over anything outside the document's scroll container. The task list's
-  checkbox took two fixes to get there. An `input` keeps no `style` (see
+  checkbox took three fixes to get there. An `input` keeps no `style` (see
   [The inline-`style` filter](#the-inline-style-filter)), and the stylesheet
   floats the checkbox instead of positioning it absolutely. An absolutely
   positioned box is placed against its nearest positioned ancestor, and an item
   written with `display: contents` has no box to be one. So the checkbox was
   placed against an ancestor outside the scroll container: with the item's
   `font-size` at 600px, a 630px square over the content pane that stayed put
-  when the document scrolled.
+  when the document scrolled. The third fix is the style filter's refusal of
+  `display: contents`, which took the same escape away from the tone rule and
+  the heading anchor.
 
 > [!WARNING]
 > **The footnote label is visible in the app only because nothing Tailwind scans
@@ -1020,6 +1063,7 @@ table is the only place the values themselves are stated.
 | Max `leaning` length carried to the DOM | 500 characters, whitespace-collapsed | `rehypeVantageDirectives.ts` |
 | Directive attribute names | `data-vantage-` + `tone`/`emphasis`/`badge`/`collapsed`/`collapse-group`/`collapse-toggle`/`run`/`oq`/`leaning` | `sanitize.ts` |
 | Elements that keep no `style` | `input` | `UNSTYLED_TAGS`, `sanitize.ts` |
+| `display` values a `style` may set | `none`, `block`, `inline`, `inline-block`, `flow-root`, `flex`, `inline-flex`, `grid`, `inline-grid`, `table`, `inline-table`, `table-row`, `table-row-group`, `table-header-group`, `table-footer-group`, `table-cell`, `table-column`, `table-column-group`, `table-caption`, `list-item`; each may end in `!important` | `DISPLAY_VALUES`, `sanitize.ts` |
 | Classes a document may write | `code`: `language-*`; `ul` and `ol`: `contains-task-list`; `li`: `task-list-item`; `section`: `footnotes`; `h2`: `sr-only`; `a`: `data-footnote-backref`; `div`: `vantage-alert-title`; none on any other element | `PIPELINE_CLASSES`, `sanitize.ts` |
 
 ## Why it's this way
