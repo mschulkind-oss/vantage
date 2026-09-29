@@ -91,9 +91,10 @@ func (s *Server) resolveGlobal(next http.HandlerFunc) http.HandlerFunc {
 // it with [api.RepoServicesFromContext].
 func withRepo(ctx context.Context, rs *repoServices) context.Context {
 	return api.WithRepoServices(ctx, api.RepoServices{
-		Repo: rs.name,
-		Git:  rs.git,
-		FS:   rs.fs,
+		Repo:   rs.name,
+		Git:    rs.git,
+		FS:     rs.fs,
+		Config: rs.cfg,
 	})
 }
 

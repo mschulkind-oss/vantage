@@ -8,8 +8,8 @@
 // construction. It exposes a small, stable surface the server package wires up:
 //
 //   - [RepoServices] plus [WithRepoServices] / [RepoServicesFromContext] carry
-//     the resolved [git.GitService] and [fs.FileSystemService] for the current
-//     request. The server's resolve middleware populates the context; handlers
+//     the resolved [git.GitService], [fs.FileSystemService] and
+//     [repoconfig.Config] for the current request. The server's resolve middleware populates the context; handlers
 //     read it. Routes that need a repo but find none in the context respond 400
 //     (multi-repo mode requires a {repo}) — that resolution is the server's job,
 //     not this package's.
@@ -44,6 +44,7 @@ import (
 	"github.com/mschulkind-oss/vantage/internal/fs"
 	"github.com/mschulkind-oss/vantage/internal/git"
 	"github.com/mschulkind-oss/vantage/internal/perf"
+	"github.com/mschulkind-oss/vantage/internal/repoconfig"
 	"github.com/mschulkind-oss/vantage/internal/review"
 	"github.com/mschulkind-oss/vantage/internal/starred"
 )
@@ -63,6 +64,13 @@ type RepoServices struct {
 	Git *git.GitService
 	// FS answers file-tree and file-content queries for this repository.
 	FS *fs.FileSystemService
+	// Config reads this repository's own `.vantage.toml`. Nil means the
+	// repository has none to read, and every table takes its defaults.
+	//
+	// Per repository and per request, like Git and FS, because in daemon mode
+	// each repository configures itself: a handler that looked the file up
+	// from a root of its own would be one more place to get that wrong.
+	Config *repoconfig.Config
 }
 
 // repoServicesKey is the unexported context key under which RepoServices is
