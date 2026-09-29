@@ -136,6 +136,33 @@ func TestSplitClonesDirectoryOmitsTheLooseProjectWithoutLooseMarkdown(t *testing
 	}
 }
 
+// The loose project exists only for Markdown the loose project's tree would
+// show, so the check behind it honors what the tree honors: the exclude list
+// and walk_max_depth (docs/design/serve-clones-directory.md §3).
+func TestSplitClonesDirectoryLooksForLooseMarkdownAsTheTreeDoes(t *testing.T) {
+	code := clonesDir(t)
+	require.NoError(t, os.Remove(filepath.Join(code, "notes.md")))
+	writeFiles(t, code, map[string]string{"node_modules/pkg/README.md": "# pkg\n"})
+	cfg := resolvedServeConfig(t, code)
+	plan, ok := splitClonesDirectory(cfg)
+	require.True(t, ok)
+	require.Equal(t, "", plan.Loose, "node_modules is excluded")
+
+	require.NoError(t, os.RemoveAll(filepath.Join(code, "node_modules")))
+	writeFiles(t, code, map[string]string{"deep/er/idea.md": "# idea\n"})
+	cfg = resolvedServeConfig(t, code)
+	depth := 1
+	cfg.WalkMaxDepth = &depth
+	plan, ok = splitClonesDirectory(cfg)
+	require.True(t, ok)
+	require.Equal(t, "", plan.Loose, "below walk_max_depth")
+
+	cfg = resolvedServeConfig(t, code)
+	plan, ok = splitClonesDirectory(cfg)
+	require.True(t, ok)
+	require.Equal(t, "code", plan.Loose, "control: with no cap, it counts")
+}
+
 func TestSplitClonesDirectoryLeavesOtherPathsAsOneProject(t *testing.T) {
 	t.Run("a directory inside a repository", func(t *testing.T) {
 		outer := t.TempDir()
