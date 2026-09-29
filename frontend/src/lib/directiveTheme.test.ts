@@ -36,10 +36,10 @@
  * `hr` matched it exactly while painting nothing at all, clipped by their own
  * non-`visible` overflow, and every computed-style probe agreed they were fine.
  * Only a pixel read can tell those two apart, which is what
- * `frontend/e2e/directive_tone_rule.spec.ts` does — and only there, because the
- * `Justfile` never invokes playwright, so that spec documents rather than
- * guards. What can be held here is the *presence* of the escapes those pixels
- * forced; see "the mechanisms the treatment rests on" below.
+ * `frontend/e2e/directive_tone_rule.spec.ts` does — and only there. CI runs it
+ * with the rest of `just e2e`, but the commit gate does not, so what is held
+ * here too is the *presence* of the escapes those pixels forced; see "the
+ * mechanisms the treatment rests on" below.
  */
 
 import { readFileSync } from "node:fs";

@@ -28,10 +28,11 @@
  *      Measured before the fix: a 44px hole for a one-line figure, against the
  *      40px a neighbor can bleed upward, and taller for a taller block.
  *
- * The `Justfile` never invokes playwright, so this documents rather than guards —
- * run it by hand (`cd frontend && npx playwright test directive_tone_rule`) after
- * anything that touches `directives.css`, the prose classes in
- * `MarkdownViewer.tsx`, or the rehype order around `rehypeKatex`.
+ * `just e2e` runs this with the rest of the suite, and CI runs that on every
+ * push and pull request; the commit gate does not. On its own it is `cd frontend
+ * && npx playwright test directive_tone_rule`, worth running after anything that
+ * touches `directives.css`, the prose classes in `MarkdownViewer.tsx`, or the
+ * rehype order around `rehypeKatex`.
  *
  * Pixels come back through the browser rather than a PNG decoder: screenshot,
  * hand the bytes back as a data URL, and let the page draw them into a canvas it
@@ -95,7 +96,7 @@ async function scanRuleColumn(page: import("@playwright/test").Page) {
     );
     if (stamped.length === 0) throw new Error("nothing is stamped");
 
-    // The rule is one column for the whole run: 3px wide, `--vantage-tone-rule-
+    // The rule is one column for the whole run: 5px wide, `--vantage-tone-rule-
     // offset` (12px) left of the content edge, with toned headings shifted back
     // by the app's `--vantage-tone-heading-gutter` so every member shares it.
     // Read it off a member that is not a heading, then allow a couple of pixels
