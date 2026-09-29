@@ -1,9 +1,9 @@
 /**
  * The viewer's planning surfaces other than link badges
  * (`docs/design/planning-index.md`): the `next` link in the document's header
- * (§4), the embedded viewer the planning page renders each question card with
- * (§6.3), and what the index costs a document's render. Badges have their own
- * suite, `usePlanningLinkBadges.test.tsx`.
+ * (§4), Referenced by (§7), the embedded viewer the planning page renders each
+ * question card with (§6.3), and what the index costs a document's render.
+ * Badges have their own suite, `usePlanningLinkBadges.test.tsx`.
  *
  * Renders the app's real `MarkdownViewer` against a planning store seeded with
  * a ready index.
@@ -24,6 +24,7 @@ import type { ReviewComment } from "../types";
 import { scrollToAnchor } from "../lib/anchorScroll";
 import { indexOf } from "../test/planning";
 import { layout } from "../test/layout";
+import { collectOutline } from "../hooks/useDocumentOutline";
 
 vi.mock("axios");
 vi.mock("../lib/anchorScroll", () => ({ scrollToAnchor: vi.fn() }));
@@ -294,6 +295,148 @@ describe("an embedded viewer (§6.3's question card)", () => {
     );
     const { container } = renderEmbedded();
     expect(container.querySelector(`[${PLANNING_BADGE_ATTR}]`)).not.toBeNull();
+  });
+});
+
+describe("Referenced by (§7)", () => {
+  const TARGET = DOC; // docs/design.md: frontmatter, OQ-1, a ledger
+  const BARE = [
+    "# No header",
+    "",
+    "1. \u{1F4AC} **OQ-3: Still a planning document?**",
+    "",
+    '   <!-- vantage: oq id=OQ-3 leaning="Yes." -->',
+    "",
+    "   _Leaning:_ yes.",
+    "",
+  ].join("\n");
+  const TREE = {
+    "docs/design.md": TARGET,
+    "docs/bare.md": BARE,
+    "docs/plain.md": "# Plain\n",
+    "roadmap.md": [
+      "# Roadmap",
+      "",
+      "## Rule these first",
+      "",
+      "1. [The design](docs/design.md)",
+      "2. [Its question](docs/design.md#OQ-1)",
+      "3. [The bare one](docs/bare.md)",
+      "",
+      "## Later",
+      "",
+      "- [The design again](docs/design.md#decision-ledger)",
+      "- [Plain](docs/plain.md)",
+      "",
+    ].join("\n"),
+    "docs/notes.md": [
+      "---",
+      "status: draft",
+      "---",
+      "",
+      "Before any heading, [the design](design.md).",
+      "",
+    ].join("\n"),
+  };
+
+  const list = () =>
+    screen.queryByRole("navigation", { name: "Referenced by" });
+  const entries = () =>
+    Array.from(list()?.querySelectorAll('[role="listitem"]') ?? [], (e) =>
+      e.textContent?.trim(),
+    );
+
+  it("lists each linking document and heading, directly below the card", () => {
+    seedReady(indexOf(TREE));
+    const { container } = renderViewer(TARGET, "docs/design.md");
+    expect(entries()).toEqual([
+      "docs/notes.md",
+      "roadmap.md · Rule these first",
+      "roadmap.md · Later",
+    ]);
+    const card = screen.getByText("Metadata").closest("div.mb-8");
+    expect(list()?.previousElementSibling).toBe(card);
+    expect(container.querySelector(".prose")).toContainElement(list());
+  });
+
+  it("links each entry to the line the link is on", () => {
+    seedReady(indexOf(TREE));
+    renderViewer(TARGET, "docs/design.md");
+    const [link, later] = screen.getAllByRole("link", { name: "roadmap.md" });
+    expect(link).toHaveAttribute("href", "/roadmap.md#L5");
+    expect(later).toHaveAttribute("href", "/roadmap.md#L11");
+    fireEvent.click(link);
+    expect(navigate).toHaveBeenCalledWith("/roadmap.md#L5");
+  });
+
+  it("carries the repository in daemon mode", () => {
+    useRepoStore.setState({ isMultiRepo: true, currentRepo: "alpha" });
+    act(() => {
+      usePlanningStore.setState({
+        byRepo: {
+          alpha: {
+            status: "ready",
+            index: indexOf(TREE),
+            version: ++version,
+            rescanning: false,
+            sources: {},
+          },
+        },
+      });
+    });
+    renderViewer(TARGET, "docs/design.md");
+    expect(
+      screen.getAllByRole("link", { name: "roadmap.md" })[0],
+    ).toHaveAttribute("href", "/alpha/roadmap.md#L5");
+  });
+
+  it("comes first in the prose container for a planning document with no frontmatter", () => {
+    seedReady(indexOf(TREE));
+    const { container } = renderViewer(BARE, "docs/bare.md");
+    expect(entries()).toEqual(["roadmap.md · Rule these first"]);
+    expect(container.querySelector(".prose")?.firstElementChild).toBe(list());
+  });
+
+  it("is absent when nothing links to the document", () => {
+    seedReady(indexOf(TREE));
+    renderViewer(TREE["docs/notes.md"], "docs/notes.md");
+    expect(list()).toBeNull();
+  });
+
+  it("is absent for a document that is not a planning document", () => {
+    seedReady(indexOf(TREE));
+    renderViewer(TREE["docs/plain.md"], "docs/plain.md");
+    expect(list()).toBeNull();
+  });
+
+  it("is absent until the index is ready, and in an embedded viewer", () => {
+    const { unmount } = renderViewer(TARGET, "docs/design.md");
+    expect(list()).toBeNull();
+    unmount();
+    seedReady(indexOf(TREE));
+    render(
+      <BrowserRouter>
+        <MarkdownViewer
+          content={TARGET}
+          currentPath="docs/design.md"
+          embedded
+        />
+      </BrowserRouter>,
+    );
+    expect(list()).toBeNull();
+  });
+
+  it("stays out of the contents column and offers no review anchor", () => {
+    seedReady(indexOf(TREE));
+    const { container } = renderViewer(TARGET, "docs/design.md");
+    const prose = container.querySelector<HTMLElement>(".prose")!;
+    expect(
+      collectOutline(prose).some((e) => e.text.includes("Referenced by")),
+    ).toBe(false);
+    expect(list()?.querySelector("h1, h2, h3, h4, h5, h6, p, li")).toBeNull();
+    expect(
+      list()?.querySelector("[data-source-line], [data-vantage-oq]"),
+    ).toBeNull();
   });
 });
 
