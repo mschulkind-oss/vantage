@@ -879,3 +879,34 @@ func TestLoadUserTheme(t *testing.T) {
 		require.Equal(t, filepath.Join(legacy, "themes"), got)
 	})
 }
+
+func TestLoadUserTips(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	dir := filepath.Join(home, ".config", "vantage")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	write := func(body string) {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, "config.toml"), []byte(body), 0o644))
+	}
+
+	on, err := LoadUserTips()
+	require.NoError(t, err)
+	require.True(t, on, "no config file means tips are on")
+
+	write("port = 8000\nsource_dirs = [\"~/code\"]\n")
+	on, err = LoadUserTips()
+	require.NoError(t, err)
+	require.True(t, on, "a config without the key leaves them on")
+
+	write("tips = false\nport = 8000\n\n[[repos]]\nname = \"a\"\npath = \"/a\"\n")
+	on, err = LoadUserTips()
+	require.NoError(t, err)
+	require.False(t, on)
+
+	write("tips = \"no\"\n")
+	on, err = LoadUserTips()
+	require.Error(t, err)
+	require.True(t, on, "an unreadable setting leaves the default")
+}

@@ -112,8 +112,21 @@ func newServeCmd() *cobra.Command {
 				return err
 			}
 
-			if plan := planServe(cfg, oneProject); plan != nil {
+			plan := planServe(cfg, oneProject)
+			if plan != nil {
 				fmt.Fprintln(os.Stderr, plan.describe(displayHome()))
+			}
+			// Before binding: the probe asks the configured service port, and
+			// must not find this process there.
+			if tipsEnabled(isTerminal(os.Stderr)) {
+				ctx := cmd.Context()
+				if ctx == nil {
+					ctx = context.Background()
+				}
+				st := probeService(ctx, runtime.GOOS, displayHome(), cfg.TargetRepo, plan, httpRepoLister)
+				if line := st.tip(plan); line != "" {
+					fmt.Fprintln(os.Stderr, line)
+				}
 			}
 
 			warnNonLocal(cfg.Host)

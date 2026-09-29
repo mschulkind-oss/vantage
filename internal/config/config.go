@@ -773,6 +773,41 @@ func LoadUserTheme() (string, error) {
 	return f.Theme, nil
 }
 
+// userTipsFile is the narrow view of the user config [LoadUserTips] decodes.
+type userTipsFile struct {
+	Tips *bool `toml:"tips"`
+}
+
+// LoadUserTips reads only the top-level `tips` key from the user's config file:
+// whether `serve` may print its one-line startup tip about the background
+// service. Absent — no file, or no key — means yes; `tips = false` turns it
+// off, as the VANTAGE_NO_TIPS environment variable does.
+//
+// Narrow for the same reasons as [LoadUserStarred]: serve mode reads it, and
+// must not be turned into daemon mode by reading one key.
+func LoadUserTips() (bool, error) {
+	path, err := UserFilePath("config.toml")
+	if err != nil {
+		return true, err
+	}
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return true, nil
+	}
+	if err != nil {
+		return true, fmt.Errorf("config: reading %s: %w", path, err)
+	}
+
+	var f userTipsFile
+	if _, err := toml.Decode(string(data), &f); err != nil {
+		return true, fmt.Errorf("config: decoding %s: %w", path, err)
+	}
+	if f.Tips == nil {
+		return true, nil
+	}
+	return *f.Tips, nil
+}
+
 // UserThemesDir returns the directory user color themes are read from: a
 // "themes" folder beside the config.toml [UserFilePath] resolves.
 //
