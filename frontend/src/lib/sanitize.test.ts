@@ -384,6 +384,112 @@ describe("inline SVG", () => {
     expect(html).toContain("<rect");
   });
 
+  /** Sanitize, then re-parse the string the way a browser would. */
+  const parsed = async (html: string) => {
+    const host = document.createElement("div");
+    host.innerHTML = await styled(html);
+    return host;
+  };
+
+  /** Every `rect` in `root` as `x,y,width,height,fill`, in tree order. */
+  const rects = (root: ParentNode) =>
+    Array.from(root.querySelectorAll("rect")).map((rect) =>
+      ["x", "y", "width", "height", "fill"]
+        .map((name) => rect.getAttribute(name) ?? "")
+        .join(","),
+    );
+
+  it("removes a Figma export's clip path instead of painting it", async () => {
+    // Figma's default export: the drawing clipped to its frame, and the clip
+    // shape declared in `<defs>`. Unwrapped, that white clip rect was painted
+    // on top of everything before it and the drawing rendered as a blank box.
+    const host = await parsed(`<div>
+<svg width="200" height="100" viewBox="0 0 200 100" fill="none" xmlns="http://www.w3.org/2000/svg"><g clip-path="url(#clip0_1_2)"><rect width="200" height="100" rx="12" fill="#2563EB"/><text x="100" y="55" fill="white" text-anchor="middle">Diagram</text></g><defs><clipPath id="clip0_1_2"><rect width="200" height="100" fill="white"/></clipPath></defs></svg>
+</div>`);
+    const svg = host.querySelector("svg")!;
+    expect(rects(svg)).toEqual([",,200,100,#2563EB"]);
+    expect(svg.querySelector("text")!.textContent).toBe("Diagram");
+    expect(
+      Array.from(svg.children).map((el) => el.tagName.toLowerCase()),
+    ).toEqual(["g"]);
+  });
+
+  it("renders a draw.io export's fallback text, not its HTML labels", async () => {
+    // draw.io writes every label twice inside a `switch`: as HTML in a
+    // `foreignObject`, and as a `<text>` fallback. It then appends a second
+    // `switch` whose fallback branch is a "Text is not SVG" notice.
+    const host = await parsed(`<div>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="121px" height="61px" viewBox="-0.5 -0.5 121 61"><defs/><g><rect x="0" y="0" width="120" height="60" rx="9" ry="9" fill="#dae8fc" stroke="#6c8ebf" pointer-events="all"/><g transform="translate(-0.5 -0.5)"><switch><foreignObject pointer-events="none" width="100%" height="100%" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility" style="overflow: visible; text-align: left;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: flex; align-items: unsafe center; width: 118px; height: 1px; padding-top: 30px; margin-left: 1px;"><div style="box-sizing: border-box; font-size: 0px; text-align: center;"><div style="display: inline-block; font-size: 12px; font-family: Helvetica; color: rgb(0, 0, 0);"><p>Start</p></div></div></div></foreignObject><text x="60" y="34" fill="rgb(0, 0, 0)" font-family="Helvetica" font-size="12px" text-anchor="middle">Start</text></switch></g></g><switch><g requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"/><a transform="translate(0,-5)" xlink:href="https://www.drawio.com/doc/faq/svg-export-text-problems" target="_blank"><text text-anchor="middle" font-size="10px" x="50%" y="100%">Text is not SVG - cannot display</text></a></switch></svg>
+</div>`);
+    // Nothing escaped the svg: re-parsing an HTML `div` inside it used to break
+    // out of the drawing and spill the rest of it into the page.
+    expect(host.firstElementChild!.children).toHaveLength(1);
+    const svg = host.querySelector("svg")!;
+    expect(svg.querySelectorAll("div, p")).toHaveLength(0);
+    expect(svg.querySelector("foreignObject")).toBeNull();
+    expect(rects(svg)).toEqual(["0,0,120,60,#dae8fc"]);
+    // A `switch` renders its first child whose conditions hold. With the
+    // `foreignObject` gone and `requiredFeatures` refused, that is the label's
+    // `<text>` in the first, and the empty `g` — not the notice — in the second.
+    const [label, notice] = Array.from(svg.querySelectorAll("switch"));
+    expect(label.firstElementChild!.tagName).toBe("text");
+    expect(label.firstElementChild!.textContent).toBe("Start");
+    expect(notice.firstElementChild!.tagName).toBe("g");
+    expect(notice.firstElementChild!.hasAttribute("requiredFeatures")).toBe(
+      false,
+    );
+  });
+
+  it.each([
+    ["defs", `<defs><rect width="9" height="9"/></defs>`],
+    ["clipPath", `<clipPath id="c"><rect width="9" height="9"/></clipPath>`],
+    ["mask", `<mask id="m"><rect width="9" height="9" fill="white"/></mask>`],
+    [
+      "pattern",
+      `<pattern id="p" width="1" height="1"><rect width="9" height="9"/></pattern>`,
+    ],
+    [
+      "marker",
+      `<marker id="a" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto"><rect width="9" height="9"/></marker>`,
+    ],
+    [
+      "symbol",
+      `<symbol id="s" viewBox="0 0 9 9"><rect width="9" height="9"/></symbol>`,
+    ],
+    [
+      "linearGradient",
+      `<linearGradient id="g"><stop offset="0" stop-color="red"/><rect width="9" height="9"/></linearGradient>`,
+    ],
+    [
+      "radialGradient",
+      `<radialGradient id="r"><stop offset="1" stop-color="blue"/><rect width="9" height="9"/></radialGradient>`,
+    ],
+    [
+      "filter",
+      `<filter id="f"><feFlood flood-color="red"/><rect width="9" height="9"/></filter>`,
+    ],
+    [
+      "metadata",
+      `<metadata><rdf:RDF><cc:Work><dc:title>Drawing</dc:title></cc:Work></rdf:RDF><rect width="9" height="9"/></metadata>`,
+    ],
+    [
+      "foreignObject",
+      `<foreignObject width="9" height="9"><rect width="9" height="9"/></foreignObject>`,
+    ],
+  ])("removes a %s with its contents", async (tag, inner) => {
+    const host = await parsed(
+      `<div>\n<svg viewBox="0 0 9 9"><circle r="1"/>${inner}</svg>\n</div>`,
+    );
+    const svg = host.querySelector("svg")!;
+    // Only the circle drawn beside the container survives: no painted rect,
+    // no stop, no primitive, and no exporter text.
+    expect(
+      Array.from(svg.querySelectorAll("*")).map((el) => el.tagName),
+    ).toEqual(["circle"]);
+    expect(svg.textContent).toBe("");
+    expect(host.innerHTML).not.toContain(tag);
+  });
+
   it("does not admit SVG children, or a title, outside an svg", async () => {
     const html = await styled(
       `<div><title>Hijacked</title><rect width="9"/></div>`,
