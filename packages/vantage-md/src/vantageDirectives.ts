@@ -454,3 +454,36 @@ export function parseVantageDirective(comment: string): DirectiveParse {
 
   return { kind: "directive", name, nameOffset, pairs };
 }
+
+/**
+ * 🤷 — the second glyph of `💬 🤷`, which marks an open question the author
+ * flags as a matter of preference rather than a decision with stakes.
+ *
+ * Not a state: a question marked `💬 🤷` is open, and `vantageOqStatus` says so.
+ * The planning index records the flag beside the state, so this lives with the
+ * three state glyphs rather than in the index, where a second spelling of the
+ * convention's markers would start.
+ */
+export const VANTAGE_OQ_PREFERENCE = "\u{1F937}";
+
+/**
+ * The longest leaning an `oq` directive carries into the page, in characters.
+ *
+ * A leaning becomes the body of a review comment, not prose, so it is bounded;
+ * 500 is generous for the one sentence the convention asks for.
+ */
+export const MAX_LEANING = 500;
+
+/**
+ * An `oq` directive's `leaning=` value as the page carries it: whitespace runs
+ * collapsed to one space, trimmed, and capped at `MAX_LEANING`.
+ *
+ * A wrapped directive puts newlines and indentation into the value. Two readers
+ * need the result and must agree on it: `rehypeVantageDirectives`, which stamps
+ * it as `data-vantage-leaning` for the one-click answer, and the planning index,
+ * which reports the leaning a question carries. An empty result means the
+ * question states no leaning.
+ */
+export function normalizeLeaning(raw: string): string {
+  return raw.replace(/\s+/g, " ").trim().slice(0, MAX_LEANING);
+}
