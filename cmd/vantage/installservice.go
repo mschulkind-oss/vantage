@@ -188,7 +188,11 @@ const serviceStartWait = 3 * time.Second
 // already running, since the daemon reads source_dirs only at startup. It
 // prints what it changed and what it ran.
 func installServiceWithSourceDirs(out io.Writer, in serviceInstall, dirs []string) error {
-	edit, err := config.AddSourceDirs(in.configPath, dirs, in.now)
+	// The candidate is checked before it replaces anything, so a config the
+	// daemon would refuse is never left behind.
+	edit, err := config.AddSourceDirsChecked(in.configPath, dirs, in.now, func(candidate string) error {
+		return daemonWouldStart(candidate, tildePath(in.configPath, in.home), dirs)
+	})
 	if err != nil {
 		return err
 	}
@@ -285,6 +289,21 @@ func installServiceWithSourceDirs(out io.Writer, in serviceInstall, dirs []strin
 	default:
 		fmt.Fprintf(out, "The service was started, but nothing answers at %s yet. Its log says why: %s\n",
 			serviceURL, serviceLogCommand(in.goos, in.home))
+	}
+	return nil
+}
+
+// daemonWouldStart reports why the daemon would not start from the config at
+// candidate — the edited config for shown, with dirs added — or nil.
+func daemonWouldStart(candidate, shown string, dirs []string) error {
+	cfg, err := config.LoadDaemonFile(candidate)
+	if err != nil {
+		return fmt.Errorf("nothing was changed or started: %s with %s added would not load: %w",
+			shown, strings.Join(dirs, ", "), err)
+	}
+	if errs := cfg.Validate(); len(errs) > 0 {
+		return fmt.Errorf("nothing was changed or started, because %s with %s added would not start the daemon: %s",
+			shown, strings.Join(dirs, ", "), strings.Join(errs, "; "))
 	}
 	return nil
 }
