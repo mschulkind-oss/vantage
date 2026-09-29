@@ -1,5 +1,7 @@
-import { renderHook, fireEvent } from "@testing-library/react";
+import { createElement } from "react";
+import { cleanup, render, renderHook, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { MarkdownViewer } from "vantage-md/react";
 import {
   OQ_ANSWERED_TITLE,
   OQ_DEFAULT_LEANING,
@@ -861,5 +863,45 @@ describe("useOpenQuestionButtons — the answerable count", () => {
     expect(answerableOpenQuestions(container)).toHaveLength(
       takeButtons().length,
     );
+  });
+});
+
+describe("answerableOpenQuestions — an inline SVG inside the question", () => {
+  /**
+   * The HTML inside an SVG `desc`, `title` or `foreignObject` used to survive
+   * as a descendant of the `svg`, still carrying `data-source-line`. React
+   * creates every element under an `svg` in the SVG namespace (only a
+   * `foreignObject`'s children leave it), so the inner `p` came out as an SVG
+   * element with a lowercase `tagName`. `anchorBlockWithin` picked it — same
+   * line as the question, and last in document order — and `OQ_HOST_TAGS` did
+   * not recognize it, so the question had no button. The checker, which reads
+   * the Markdown, still called the directive fine.
+   *
+   * It has to go through React to show: parsing the same string with
+   * `innerHTML` puts the inner `p` in the HTML namespace and hides the bug.
+   */
+  it.each([
+    ["desc", `<desc><p>Start</p></desc>`],
+    ["title", `<title><p>Start</p></title>`],
+    [
+      "foreignObject",
+      `<foreignObject width="9" height="9"><div><span><p>Start</p></span></div></foreignObject>`,
+    ],
+  ])("still counts a question whose drawing has HTML in a %s", (_, inner) => {
+    const content = [
+      "<!-- vantage: oq -->",
+      "",
+      `Where does the flow start? <svg viewBox="0 0 9 9" role="img" aria-label="Flow">${inner}<rect width="9" height="9"/></svg>`,
+      "",
+    ].join("\n");
+    const { container } = render(createElement(MarkdownViewer, { content }));
+    try {
+      const questions = answerableOpenQuestions(container);
+      expect(questions).toHaveLength(1);
+      expect(questions[0].block.tagName).toBe("P");
+      expect(questions[0].block).toBe(questions[0].stamped);
+    } finally {
+      cleanup();
+    }
   });
 });
