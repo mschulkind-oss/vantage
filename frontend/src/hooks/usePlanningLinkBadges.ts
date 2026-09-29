@@ -8,12 +8,24 @@
  * unmount. A sweep first is what makes it idempotent, and it is also what turns
  * a badge whose target stopped being a planning document back into nothing.
  *
- * Badges appear once the index is ready and never delay the first render
- * (§5.3): until then, and whenever the index is not ready, the pass only
- * sweeps. That is also the whole of §3.6's failure case — a failed batch leaves
- * the document exactly as it renders today.
+ * When they appear is `docs/design/planning-index-at-scale.md` §11 (L1), since
+ * a badge widens its line and can wrap it:
+ *
+ * - **Index ready at the document's first paint:** every badge is in that
+ *   paint. The pass is a layout effect, so it runs before the browser paints,
+ *   and the hold (§11.3) makes this the usual case on a warm load.
+ * - **Index later:** badges are drawn only in blocks that have not been on
+ *   screen, and that lie below it, where a wider line moves nothing the reader
+ *   can see. A link in a block the reader has already seen waits for the next
+ *   render the reader causes, which for a document is the next visit.
+ * - **Index changing afterwards** (a push): a change of data, not late data
+ *   (L2). Whatever badges the visit draws follow it in place.
+ *
+ * Until the index is ready, and whenever it is not, the pass only sweeps. That
+ * is also the whole of §3.6's failure case — a failed build leaves the
+ * document exactly as it renders today.
  */
-import { useEffect, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 import { badgeFor, resolveRepoLink } from "vantage-md/planning";
 import type { PlanningIndex } from "vantage-md/planning";
 import {
@@ -129,16 +141,148 @@ function sweep(el: HTMLElement): void {
   el.querySelectorAll(`[${PLANNING_BADGE_ATTR}]`).forEach((n) => n.remove());
 }
 
+/** Every link the pass may badge, in document order. */
+function stampedLinks(el: HTMLElement): HTMLElement[] {
+  return Array.from(
+    el.querySelectorAll<HTMLElement>(`a[${LINK_TARGET_ATTR}]`),
+  ).filter(
+    // Inline SVG admits `<a href>`. It is raw HTML, so the `a` component
+    // does not stamp it, and a badge is an HTML `<span>` besides: inside an
+    // `<svg>` it draws nothing and would be a stray node in the drawing.
+    (link) => link.closest("svg") === null,
+  );
+}
+
+/**
+ * What a badge after `link` can move: the block the link sits in, whose line
+ * it may wrap. A table's cells share its columns, so a cell's badge can widen
+ * a column and move every row, and the table is the block.
+ */
+function blockOf(link: HTMLElement, container: HTMLElement): Element {
+  const block =
+    link.closest("table") ?? link.closest("[data-source-line]") ?? link;
+  return container.contains(block) ? block : link;
+}
+
+/** A span of the document, top and bottom, from the scroller's content top. */
+type Span = [top: number, bottom: number];
+
+/**
+ * One visit's link badges: a document at its path, with this content. A live
+ * reload is a change of data (L2), so it starts a visit of its own, laid out
+ * afresh either way.
+ *
+ * A visit whose first paint came before the index keeps track, until the index
+ * lands, of which spans of the document have been on screen. "On screen" is the
+ * document's scroll container, not the window, which never scrolls in the
+ * viewer; with no such container, as in an embedded viewer's page or a test,
+ * it is the window.
+ */
+class Visit {
+  readonly path: string;
+  readonly content: string;
+  /** The links, by their place in the document, that this visit badges. */
+  private drawable: ReadonlySet<number> | "all" | null;
+  private readonly seen: Span[] = [];
+  private readonly scroller: HTMLElement | null;
+  private readonly container: HTMLElement;
+  private readonly onScroll = () => this.observe();
+
+  constructor(
+    container: HTMLElement,
+    path: string,
+    content: string,
+    indexed: boolean,
+  ) {
+    this.path = path;
+    this.content = content;
+    this.container = container;
+    this.scroller = container.closest<HTMLElement>("[data-content-scroll]");
+    this.drawable = indexed ? "all" : null;
+    if (!indexed) {
+      // What the first paint will show, and every scroll after it.
+      this.observe();
+      (this.scroller ?? window).addEventListener("scroll", this.onScroll, {
+        passive: true,
+      });
+    }
+  }
+
+  /** The scroller's viewport, in client coordinates, and how far it scrolled. */
+  private viewport(): { top: number; height: number; offset: number } {
+    if (this.scroller === null) {
+      return { top: 0, height: window.innerHeight, offset: window.scrollY };
+    }
+    return {
+      top: this.scroller.getBoundingClientRect().top,
+      height: this.scroller.clientHeight,
+      offset: this.scroller.scrollTop,
+    };
+  }
+
+  /** Note the span on screen now. */
+  private observe(): void {
+    const { height, offset } = this.viewport();
+    if (height <= 0) return;
+    const next: Span = [offset, offset + height];
+    // Kept merged, so a long read down the document stays one span.
+    for (let i = this.seen.length - 1; i >= 0; i--) {
+      const [top, bottom] = this.seen[i]!;
+      if (top <= next[1] && next[0] <= bottom) {
+        next[0] = Math.min(next[0], top);
+        next[1] = Math.max(next[1], bottom);
+        this.seen.splice(i, 1);
+      }
+    }
+    this.seen.push(next);
+  }
+
+  /**
+   * The links to badge, deciding them the first time the index is here: all
+   * of them, or for a late index those whose block has never been on screen
+   * and starts below it now. A block with no box at all, inside a collapsed
+   * section, has never been drawn, so it qualifies wherever it sits.
+   */
+  badged(links: readonly HTMLElement[]): (i: number) => boolean {
+    if (this.drawable === null) {
+      this.observe();
+      this.stop();
+      const { top: clientTop, height, offset } = this.viewport();
+      const below = offset + height;
+      const drawable = new Set<number>();
+      links.forEach((link, i) => {
+        const box = blockOf(link, this.container).getBoundingClientRect();
+        if (box.width === 0 && box.height === 0) {
+          drawable.add(i);
+          return;
+        }
+        const top = box.top - clientTop + offset;
+        const bottom = box.bottom - clientTop + offset;
+        const seen = this.seen.some(([a, b]) => top < b && bottom > a);
+        if (!seen && top >= below) drawable.add(i);
+      });
+      this.drawable = drawable;
+    }
+    const drawable = this.drawable;
+    return drawable === "all" ? () => true : (i) => drawable.has(i);
+  }
+
+  stop(): void {
+    (this.scroller ?? window).removeEventListener("scroll", this.onScroll);
+  }
+}
+
 /**
  * Badge every stamped link in `containerRef` against `index`, or only sweep
- * when `index` is `null`.
+ * when `index` is `null`, under the rules at the top of this file.
  *
- * `currentContent` and `renderedWith` are unused in the body and load-bearing
- * in the dep array. A new body re-renders `<ReactMarkdown>`, which may discard
- * these foreign nodes, as it does for the button pass. And a new `components`
- * object remounts every link with the document unchanged: React inserts each
- * new `<a>` before the next node it owns, which is after the old badge, so the
- * badge would sit before its link until something else re-ran this pass.
+ * `currentContent` and `renderedWith` are load-bearing in the dep array. A new
+ * body re-renders `<ReactMarkdown>`, which may discard these foreign nodes, as
+ * it does for the button pass. And a new `components` object remounts every
+ * link with the document unchanged: React inserts each new `<a>` before the
+ * next node it owns, which is after the old badge, so the badge would sit
+ * before its link until something else re-ran this pass. A remount keeps the
+ * links' order, which is how a visit names them across one.
  */
 export function usePlanningLinkBadges(
   containerRef: RefObject<HTMLElement | null>,
@@ -147,21 +291,30 @@ export function usePlanningLinkBadges(
   currentContent: string,
   renderedWith?: unknown,
 ): void {
-  useEffect(() => {
+  const visitRef = useRef<Visit | null>(null);
+
+  useLayoutEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+    let visit = visitRef.current;
+    if (
+      visit === null ||
+      visit.path !== currentPath ||
+      visit.content !== currentContent
+    ) {
+      visit?.stop();
+      visit = new Visit(el, currentPath, currentContent, index !== null);
+      visitRef.current = visit;
+    }
     sweep(el);
     if (index === null) return;
 
-    for (const link of el.querySelectorAll<HTMLElement>(
-      `a[${LINK_TARGET_ATTR}]`,
-    )) {
-      // Inline SVG admits `<a href>`. It is raw HTML, so the `a` component
-      // does not stamp it, and a badge is an HTML `<span>` besides: inside an
-      // `<svg>` it draws nothing and would be a stray node in the drawing.
-      if (link.closest("svg")) continue;
+    const links = stampedLinks(el);
+    const badged = visit.badged(links);
+    links.forEach((link, i) => {
+      if (!badged(i)) return;
       const path = link.getAttribute(LINK_TARGET_ATTR);
-      if (!path) continue;
+      if (!path) return;
       const badge = badgeFor(index, currentPath, {
         path,
         fragment: link.getAttribute(LINK_FRAGMENT_ATTR),
@@ -169,8 +322,10 @@ export function usePlanningLinkBadges(
       // A sibling, never a child: the badge is not part of the link's text,
       // and a click on it must not follow the link (§5.3).
       if (badge !== null) link.after(planningBadgeElement(badge));
-    }
+    });
 
     return () => sweep(el);
   }, [containerRef, index, currentPath, currentContent, renderedWith]);
+
+  useEffect(() => () => visitRef.current?.stop(), []);
 }

@@ -764,9 +764,11 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
 
   // Link badges (docs/design/planning-index.md §5). Ungated like the collapse
   // pass: a badge is how a link reads, not a review affordance. Until the index
-  // is ready, and whenever it failed, the pass only sweeps — so no first render
-  // waits on it, and a failed batch leaves the document as it renders today.
-  // After `markdownComponents`, because a new one remounts every link.
+  // is ready, and whenever it failed, the pass only sweeps, so a failed build
+  // leaves the document as it renders today; an index that lands after the
+  // first paint badges only what has not been on screen (the hook's own
+  // comment, and planning-index-at-scale.md §11.2). After
+  // `markdownComponents`, because a new one remounts every link.
   const planning = usePlanningIndex();
   const planningIndex = planning.status === "ready" ? planning.index : null;
   usePlanningLinkBadges(
