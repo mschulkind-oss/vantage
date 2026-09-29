@@ -530,6 +530,16 @@ h6:hover > .heading-anchor,
   background: rgb(59 130 246 / 0.16);
 }
 
+/* Inline SVG written into a document: shrink to the column rather than overflow
+   it, keeping the aspect ratio its viewBox declares. In a layer so that the
+   size utilities on the app's own icons inside prose still win. */
+@layer components {
+  .prose svg {
+    max-width: 100%;
+    height: auto;
+  }
+}
+
 /* ──────────────────────────────────────────
    Maximized mermaid diagram (zoom/pan viewport)
    ────────────────────────────────────────── */
