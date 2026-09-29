@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -170,10 +171,19 @@ func probeService(ctx context.Context, goos, home, target string, plan *clonesPl
 // openPathFor finds where, in a service configured by daemon and currently
 // listing names, target is already open: the root for a directory of clones
 // the service scans, "/<name>" for a project it serves, "" otherwise.
+//
+// Either way the service has to list the project, not only be configured to:
+// a running daemon reads source_dirs only at startup, so a source dir added to
+// the file by hand is not served until it restarts.
 func openPathFor(daemon *config.Config, target string, plan *clonesPlan, names []string) string {
 	if plan != nil {
-		if slices.Contains(daemon.SourceDirs, target) {
-			return "/"
+		if !slices.Contains(daemon.SourceDirs, target) {
+			return ""
+		}
+		for _, r := range daemon.Repos {
+			if r.Discovered && filepath.Dir(r.Path) == target && slices.Contains(names, r.Name) {
+				return "/"
+			}
 		}
 		return ""
 	}

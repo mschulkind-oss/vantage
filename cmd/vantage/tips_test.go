@@ -208,6 +208,19 @@ func TestProbeServiceFindsAClonesDirectoryAmongItsSourceDirs(t *testing.T) {
 	st := probeService(context.Background(), "linux", home, code, plan, (&fakeLister{names: []string{"alpha", "beta", "gamma"}}).list)
 	require.True(t, st.Running)
 	require.Equal(t, "/", st.OpenPath)
+
+	// A running daemon reads source_dirs only at startup, so a config edited
+	// by hand since is not what it serves: the directory is open there only
+	// when the service lists a project discovery made from it.
+	st = probeService(context.Background(), "linux", home, code, plan, (&fakeLister{names: []string{"something-else"}}).list)
+	require.True(t, st.Running)
+	require.Equal(t, "", st.OpenPath)
+
+	// One clone of it, served on its own, is found among the discovered
+	// projects by its path.
+	st = probeService(context.Background(), "linux", home, filepath.Join(code, "beta"), nil,
+		(&fakeLister{names: []string{"alpha", "beta", "gamma"}}).list)
+	require.Equal(t, "/beta", st.OpenPath)
 }
 
 // A foreground `vantage serve` on the service's port is not the service,
