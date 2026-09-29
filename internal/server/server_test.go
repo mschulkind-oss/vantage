@@ -708,6 +708,79 @@ func TestLooseProjectNamesTheProjectBehindEachClone(t *testing.T) {
 	}
 }
 
+// The loose project's watcher stops at every clone, each of which has a
+// watcher of its own: a second watch set over every clone's working tree is the
+// cost splitting a directory of clones exists to remove. Its only trace is
+// what each watcher pushes, so that is what is read: a clone's change comes
+// from the clone's project and never from the loose one.
+func TestTheLooseProjectsWatcherStaysOutOfItsClones(t *testing.T) {
+	isolateUserDirs(t)
+	code := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(code); err == nil {
+		code = resolved
+	}
+	alpha := initRepoAt(t, filepath.Join(code, "alpha"), map[string]string{"docs/a.md": "# A\n"})
+	require.NoError(t, os.WriteFile(filepath.Join(code, "notes.md"), []byte("# notes\n"), 0o644))
+	cfg := config.Defaults()
+	cfg.TargetRepo = code
+	cfg.MultiRepo = true
+	cfg.SourceDirs = []string{code}
+	cfg.Repos = []config.RepoConfig{{Name: "code", Path: code, Loose: true}}
+	require.NoError(t, cfg.Resolve())
+	cfg.DiscoverReposFromSourceDirs()
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	runCtx, stop := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- srv.Run(runCtx) }()
+	defer func() {
+		stop()
+		<-done
+		require.NoError(t, srv.Shutdown(context.Background()))
+	}()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ws, _, err := websocket.Dial(ctx, "ws"+ts.URL[len("http"):]+"/api/ws", nil)
+	require.NoError(t, err)
+	defer ws.Close(websocket.StatusNormalClosure, "")
+	_, _, err = ws.Read(ctx) // hello
+	require.NoError(t, err)
+	waitFor(t, "both watchers to start", func() bool {
+		srv.watchersMu.Lock()
+		defer srv.watchersMu.Unlock()
+		return len(srv.watchers) == 2
+	})
+
+	require.NoError(t, os.WriteFile(filepath.Join(alpha, "docs", "a.md"), []byte("# A, edited\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(code, "notes.md"), []byte("# notes, edited\n"), 0o644))
+	var heardClone, heardLoose bool
+	for !heardClone || !heardLoose {
+		_, data, err := ws.Read(ctx)
+		require.NoError(t, err)
+		var msg struct {
+			Type  string   `json:"type"`
+			Repo  string   `json:"repo"`
+			Paths []string `json:"paths"`
+		}
+		require.NoError(t, json.Unmarshal(data, &msg))
+		if msg.Type != "files_changed" {
+			continue
+		}
+		switch msg.Repo {
+		case "alpha":
+			heardClone = heardClone || slices.Contains(msg.Paths, "docs/a.md")
+		case "code":
+			for _, p := range msg.Paths {
+				require.False(t, strings.HasPrefix(p, "alpha/"), "the loose project heard the clone's %s", p)
+			}
+			heardLoose = heardLoose || slices.Contains(msg.Paths, "notes.md")
+		}
+	}
+}
+
 // A clone that loses its .git is retired, and its folder is the loose
 // project's again: the loose project lists its files, so its watcher has to
 // hear them too. It never watched inside the clone, and nothing from in there
