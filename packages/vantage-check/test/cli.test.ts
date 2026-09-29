@@ -48,6 +48,61 @@ describe("parseArgs", () => {
   it("rejects an unknown option", () => {
     expect(parseArgs(["--frobnicate"])).toMatchObject({ kind: "usage-error" });
   });
+
+  it("parses index, which defaults to text", () => {
+    expect(parseArgs(["index"])).toEqual({
+      kind: "index",
+      options: { format: "text" },
+    });
+  });
+
+  it("parses index's options, inline values included", () => {
+    expect(
+      parseArgs([
+        "index",
+        "--format=json",
+        "--config",
+        "x.toml",
+        "--no-config",
+      ]),
+    ).toEqual({
+      kind: "index",
+      options: { format: "json", configPath: "x.toml", noConfig: true },
+    });
+  });
+
+  // `index` scans the project the working directory is in, so a path would
+  // be a second answer to a question the project root already settles.
+  it.each([[["index", "docs"]], [["index", "--", "docs"]]])(
+    "refuses a path after index: %j",
+    (argv) => {
+      expect(parseArgs(argv)).toMatchObject({
+        kind: "usage-error",
+        message: expect.stringContaining("index takes no paths"),
+      });
+    },
+  );
+
+  it("refuses check's own options on index", () => {
+    expect(parseArgs(["index", "--jobs", "2"])).toMatchObject({
+      kind: "usage-error",
+      message: "unknown option for index: --jobs",
+    });
+  });
+
+  // `index` is a command word now, so `vantage-check index` no longer checks a
+  // path called index. `./index` still does.
+  it("takes index as a command, and ./index as a path", () => {
+    expect(parseArgs(["index"]).kind).toBe("index");
+    expect(parseArgs(["./index"])).toMatchObject({
+      kind: "check",
+      options: { paths: ["./index"] },
+    });
+    expect(parseArgs(["check", "index"])).toMatchObject({
+      kind: "usage-error",
+      message: expect.stringContaining("is a command, not a path"),
+    });
+  });
 });
 
 describe("run", () => {
@@ -92,6 +147,27 @@ describe("run", () => {
     expect(code).toBe(EXIT_USAGE);
     expect(io.stdout).toBe("");
     expect(io.stderr).toContain("unknown option: --frobnicate");
+  });
+
+  it("lists index and its options in the help", async () => {
+    const io = bufferIo();
+    await run(["help"], io);
+
+    expect(io.stdout).toContain("vantage-check index ");
+    expect(io.stdout).toContain("Options for index:");
+    expect(io.stdout).toContain("write ./index");
+    expect(io.stdout).toContain("max-candidates");
+    expect(io.stdout).toContain("[planning.stages]");
+  });
+
+  it("keeps every rule id apart from its summary in the help", async () => {
+    const io = bufferIo();
+    await run(["help"], io);
+
+    const rules = io.stdout.split("Rules:\n")[1]?.split("\n\n")[0] ?? "";
+    for (const line of rules.split("\n")) {
+      expect(line, line).toMatch(/^ {2}\S+ {2,}\S/);
+    }
   });
 
   it("prints a version", async () => {

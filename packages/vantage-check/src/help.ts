@@ -1,8 +1,11 @@
 import { RULES } from "./rules/registry.js";
 import { VERSION } from "./version.js";
 
+/** The id column is as wide as the longest id, plus two spaces. */
+const RULE_WIDTH = Math.max(...RULES.map((rule) => rule.id.length)) + 2;
+
 const RULE_LIST = RULES.map(
-  (rule) => `  ${rule.id.padEnd(26)}${rule.summary}`,
+  (rule) => `  ${rule.id.padEnd(RULE_WIDTH)}${rule.summary}`,
 ).join("\n");
 
 export const USAGE = `vantage-check — Vantage's Markdown conventions, and a check that a document really renders
@@ -10,6 +13,9 @@ export const USAGE = `vantage-check — Vantage's Markdown conventions, and a ch
 Usage:
   vantage-check <path>...            check files and directories (the default command)
   vantage-check check <path>...      the same thing, said explicitly
+  vantage-check index                print the project's planning index: what
+                                     needs a ruling, what waits, and the roadmap
+                                     with each link's badge
   vantage-check style-guide          print the Vantage Markdown style guide
   vantage-check version              print the version
   vantage-check help                 print this message
@@ -26,12 +32,26 @@ Options for check:
                                      in this thread alone. VANTAGE_CHECK_JOBS
                                      sets the default for a machine.
 
+Options for index:
+  --format text|json                 output format (default: text)
+  --config <path>                    use this .vantage.toml
+  --no-config                        ignore .vantage.toml entirely
+
+A command's name is not a path: to check a file or directory called index,
+write ./index.
+
+index scans the project root: the nearest directory above the working
+directory holding .git or .vantage.toml, or the working directory when there
+is none. --config chooses the config, never the project.
+
 Exit codes:
-  0  nothing to fix
-  1  findings that fail the run
-  2  bad arguments, or a path that does not exist
+  0  nothing to fix; for index, it ran
+  1  findings that fail the run (never from index, which reports and does not
+     judge)
+  2  bad arguments, a bad .vantage.toml, or a path that does not exist
   3  a check could not run — the documents were not fully checked, so the
-     result is unknown rather than clean
+     result is unknown rather than clean. For index: the project has more
+     candidate files than [planning] max-candidates, so nothing was scanned
 
 Rules:
 ${RULE_LIST}
@@ -44,6 +64,19 @@ severities ("error", "warning", "off"), and check.strict / check.exit-code:
 
   [check.rules]
   "link/dead-section-anchor" = "warning"
+
+The same file's [planning] table says which files are planning documents and
+what their stages mean, for index:
+
+  [planning]
+  roadmap = "roadmap.md"
+  exclude = ["docs/gallery/**"]
+
+  [planning.stages]
+  DESIGN = "open"
+  DECIDED = "ready"
+  BUILT = "built"
+  SUPERSEDED = "done"
 
 Everything works offline against files on disk: no server, no port, no network.
 `;

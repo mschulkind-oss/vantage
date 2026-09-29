@@ -8,15 +8,17 @@ import {
   type CheckOptions,
 } from "./commands/check.js";
 import type { RunShard } from "./core/parallel.js";
+import { indexCommand, type IndexOptions } from "./commands/index.js";
 
 export type Invocation =
   | { kind: "check"; options: CheckOptions }
+  | { kind: "index"; options: IndexOptions }
   | { kind: "style-guide" }
   | { kind: "version" }
   | { kind: "help" }
   | { kind: "usage-error"; message: string };
 
-const COMMANDS = new Set(["check", "style-guide", "version", "help"]);
+const COMMANDS = new Set(["check", "index", "style-guide", "version", "help"]);
 
 /**
  * Turn argv (already stripped of node and the script path) into an invocation.
@@ -27,7 +29,9 @@ const COMMANDS = new Set(["check", "style-guide", "version", "help"]);
  * A first argument that is neither a command nor a flag is taken as a path to
  * check, so `vantage-check docs/` does the obvious thing. That is the form the
  * review payload tells agents to run, and making them remember a subcommand
- * first would be a way to lose them.
+ * first would be a way to lose them. The cost is that a command's name is not
+ * a path: `vantage-check index` runs `index`, and a file called `index` is
+ * checked as `vantage-check ./index`.
  */
 export function parseArgs(argv: string[]): Invocation {
   if (argv.length === 0) return { kind: "help" };
@@ -50,6 +54,7 @@ export function parseArgs(argv: string[]): Invocation {
     return { kind: "style-guide" };
   }
   if (first === "check") return parseCheck(argv.slice(1));
+  if (first === "index") return parseIndex(argv.slice(1));
   if (!first.startsWith("-")) return parseCheck(argv);
 
   return { kind: "usage-error", message: `unknown option: ${first}` };
@@ -148,6 +153,66 @@ function parseCheck(argv: string[]): Invocation {
   return { kind: "check", options };
 }
 
+/**
+ * `index [--format text|json] [--config <path> | --no-config]`. It takes no
+ * paths: it scans the project the working directory belongs to, so a path
+ * would be a second answer to a question the root already settles.
+ */
+function parseIndex(argv: string[]): Invocation {
+  const options: IndexOptions = { format: "text" };
+
+  for (let index = 0; index < argv.length; index++) {
+    const arg = argv[index] as string;
+    if (!arg.startsWith("-") || arg === "--") {
+      return {
+        kind: "usage-error",
+        message: `index takes no paths (got ${argv.slice(index).join(" ")}); it scans the project the working directory is in`,
+      };
+    }
+
+    const equals = arg.indexOf("=");
+    const name = equals === -1 ? arg : arg.slice(0, equals);
+    const inlineValue = equals === -1 ? undefined : arg.slice(equals + 1);
+    const takeValue = (): string | undefined => {
+      if (inlineValue !== undefined) return inlineValue;
+      index++;
+      return argv[index];
+    };
+
+    switch (name) {
+      case "--format": {
+        const value = takeValue();
+        if (value !== "text" && value !== "json") {
+          return {
+            kind: "usage-error",
+            message: `--format takes text or json (got ${value ?? "nothing"})`,
+          };
+        }
+        options.format = value;
+        break;
+      }
+      case "--config": {
+        const value = takeValue();
+        if (value === undefined) {
+          return { kind: "usage-error", message: "--config needs a path" };
+        }
+        options.configPath = value;
+        break;
+      }
+      case "--no-config":
+        options.noConfig = true;
+        break;
+      default:
+        return {
+          kind: "usage-error",
+          message: `unknown option for index: ${name}`,
+        };
+    }
+  }
+
+  return { kind: "index", options };
+}
+
 /** Run one invocation and return the process exit code. */
 export async function run(
   argv: string[],
@@ -166,6 +231,8 @@ export async function run(
       return EXIT_OK;
     case "style-guide":
       return styleGuideCommand(io);
+    case "index":
+      return indexCommand(invocation.options, io);
     case "check":
       return runShard === undefined
         ? checkCommand(invocation.options, io)
