@@ -99,9 +99,11 @@ The **planning index** *(coined in the brainstorm)* is a model of the repository
 documents, rebuilt from the files and never stored.
 
 > [!NOTE]
-> **Amended 2026-09-29.** [`planning-index-at-scale.md`](planning-index-at-scale.md) proposes
-> keeping each file's derived facts in the browser under the file's content hash, which would end
-> "never stored"; [OQ-PS1](planning-index-at-scale.md#OQ-PS1) asks whether it may.
+> **Amended 2026-09-29.** [`planning-index-at-scale.md` §8](planning-index-at-scale.md#8-the-scan-cache)
+> keeps each file's derived facts and card blocks in the browser under the file's content hash,
+> never trusted without it ([OQ-PS1](planning-index-at-scale.md#decision-ledger), ruled
+> 2026-09-29). Once that is built, "never stored" holds for the index but not for each file's scan
+> result.
 
 ### 3.1 Which files it reads
 

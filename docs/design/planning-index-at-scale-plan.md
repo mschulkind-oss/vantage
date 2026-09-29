@@ -1,21 +1,26 @@
 ---
 title: "The planning index at scale — implementation plan"
-status: draft
-stage: SKETCH
-next: "Held at sketch until OQ-PS1 is ruled; then WP-A and WP-B go first, in parallel"
+status: accepted
+stage: DECIDED
+next: "Build WP-A and WP-B first, in parallel; nothing else codes without WP-A's types"
 depends-on:
-  - planning-index-at-scale.md#OQ-PS1
+  - planning-index-at-scale.md
 tags: [planning, implementation-plan, performance]
 summary: "Build hand-off for the planning index at scale: seven work packages with disjoint file sets, the contracts between them, the tests that prove each behavior, and a test strategy that proves every limit by configuring it down."
 ---
 
 # The planning index at scale — implementation plan
 
-**Design:** [`planning-index-at-scale.md`](planning-index-at-scale.md) · **Status:** SKETCH,
-2026-09-29. It was completed against the tree at `70a05b3` and is held at sketch only because
-[OQ-PS1](planning-index-at-scale.md#OQ-PS1) and [OQ-PS2](planning-index-at-scale.md#OQ-PS2) are
-open. The entries that rest on them say so, and nothing is built from this file until both are
-ruled.
+**Status:** DECIDED, 2026-09-29: build-ready, and nothing blocks it. Promoted from sketch the same day, once
+[OQ-PS1](planning-index-at-scale.md#decision-ledger) (the browser keeps facts and card text),
+[OQ-PS2](planning-index-at-scale.md#decision-ledger) (no byte sieve) and the coordinator's
+no-new-dependency ruling were in the design's Decision Ledger. Written against `70a05b3`,
+2026-09-29, and re-checked there at promotion. `main` has moved 11 commits since, none of them in
+`internal/`, the planning module, the store or the planning page. Re-read WP-E's and WP-F's
+anchors after any rebase: `MarkdownViewer.tsx` shifts by about 10 lines past `:620`, and
+`ef626fe` changed `mermaidLoader.ts`.
+
+**Design:** [`planning-index-at-scale.md`](planning-index-at-scale.md).
 
 **Precedence.** The design wins on behavior. The tree wins on fact: when a file has moved or a
 helper is gone, follow the tree and say so in the commit. This plan is advice, and it is the first
@@ -24,8 +29,16 @@ thing to be wrong. Never twist the code to match it.
 **Terms.** A *work package* (WP) is a slice with its own file set, built in its own worktree
 under `/workspace/.worktrees/` and cherry-picked. The *limits module* (coined here) is
 `frontend/src/planningScan/limits.ts`: every number the design fixes, in one object that tests
-override. Every other term is the design's
+override. The *scan store* (coined here) is the storage interface the scan cache is written
+against ([§8.1](planning-index-at-scale.md#81-what-it-keeps-and-under-which-key)), with an
+IndexedDB implementation and an in-memory one for unit tests. Every other term is the design's
 ([§3](planning-index-at-scale.md#3-terms)).
+
+**No new dependencies, and no manifest edits** (coordinator ruling, in the design's
+[Decision Ledger](planning-index-at-scale.md#decision-ledger)). Every worktree symlinks
+`/workspace`'s `node_modules`, so an install would change it under every other job. No WP
+touches `package.json` or `package-lock.json`. A WP that finds it cannot finish without a
+package stops and reports it instead of installing one.
 
 ## Order of work
 
@@ -116,7 +129,7 @@ export function setPlanningScannerForTests(c: ScannerClient | null): void;
 | `packages/vantage-md/src/planning/scan.ts` | `unitEndLine` beside `unitLine` (`:580`); cut `cards` from `root` between `parseBody` (`:1009`) and `readAlerts` (`:1013`); `cardChars` per question |
 | `packages/vantage-md/src/planning/cardSource.ts` | `outlineOf(root, bodyLineOffset)` takes a parsed root: no parse, no cache. The cutter builds `CardBlock`s from it. `questionCardSource` stays as a scan-then-pick wrapper until A2 |
 | `packages/vantage-md/src/planning/model.ts` | `addResult`, `applyScanned`, `ScannedEntry`, `StreamLine`, `parseStreamLine` |
-| `packages/vantage-md/src/planning/index.ts` | the exports above |
+| `packages/vantage-md/src/planning/index.ts` | the exports above; the docblock's "rebuilt from the files and never stored" (`:2-3`) gains that the viewer keeps each file's scan result under its content hash ([§8.1](planning-index-at-scale.md#81-what-it-keeps-and-under-which-key)) |
 | `frontend/src/test/planning.ts` | `scannedOf(tree)`: the scanned entries and blocks of a tree, for C, D and E |
 | `frontend/src/lib/planningCard.test.ts` | rewritten: the agreement below, with today's parse-based outline moved in as the test's oracle |
 | `frontend/src/lib/planningScan.test.ts`, `planningIndex.test.ts` | the cases below |
@@ -154,7 +167,8 @@ builder's sort-once `finish` (`model.ts:225-257`) stays; `add` becomes `scan` pl
 - `parseStreamLine` refuses a missing field, a wrong type, an unknown kind and a non-object.
 
 **A2 (after E):** delete `questionCardSource`, the wrapper and `parsePlanningSources`, with their
-exports.
+exports, and reword the comments that still name the function (`PlanningQuestionCard.tsx:5`,
+`MarkdownViewer.tsx:56`).
 
 ## WP-B — the stream, one path's hash, reviews in one request (Go)
 
@@ -169,8 +183,8 @@ exports.
 | `internal/api/planning_handlers_test.go`, `internal/server/planning_test.go` | the cases below; the batch tests (`:86-140`) rewritten onto the stream |
 
 **Reuse.** `Candidates(listing.ListAllFiles(), matcherFor(cfg))` and `newReader` exactly as
-`WriteBatch` uses them. `planningConfig(svc)` for the config. `decodeBody`
-(`review_command_handlers.go:70`) behind a `MaxBytesReader`. `h.deps.Reviews.Get(path, repo)`
+`WriteBatch` uses them. `planningConfig(svc)` for the config. `http.MaxBytesReader` for both
+caps. `h.deps.Reviews.Get(path, repo)`
 for each review. `http.NewResponseController(w).Flush()`, which reaches the connection through
 `perf`'s `statusRecorder.Unwrap` (`internal/perf/middleware.go:38`).
 
@@ -178,6 +192,11 @@ for each review. `http.NewResponseController(w).Flush()`, which reaches the conn
 
 - **Gzip and flushing:** flush the `gzip.Writer` before the `ResponseController`, or the header
   line sits in the compressor.
+- **Do not decode the stream's body with `decodeBody`** (`review_command_handlers.go:71`). It
+  answers `400` for every decode error, which turns the design's two other answers wrong: an
+  empty body is `io.EOF` and must be a cold build, and a body past the cap is an
+  `*http.MaxBytesError` and must be `413`. Check for both with `errors.Is` and `errors.As`
+  before writing `400`.
 - **The roadmap is never `same`**, whatever `have` says.
 - **`end` is written after the loop, even when refused.**
 - **A write error means the client went away.** Stop, log at debug, as the batch does (`planning_handlers.go:53-57`).
@@ -193,7 +212,9 @@ for each review. `http.NewResponseController(w).Flush()`, which reaches the conn
 - Flushing: a recording writer asserts the header is flushed before the first file is read, and
   that no more than 64 KiB plus one line is written between flushes, with `max-file-bytes`
   configured down to 256 B ([D13](planning-index-at-scale.md#19-what-done-looks-like)).
-- A `have` body over the cap is `413`, and malformed is `400`. Gzip round-trips.
+- A `have` body over the cap is `413`, malformed is `400`, and an empty body or `{}` is a cold
+  build. Both caps are package vars the tests lower to a few hundred bytes; no test builds a
+  4 MiB body. Gzip round-trips.
 - Reviews: request order kept, paths without a review left out, the path cap.
 - `?path=` carries `hash`. B2: the batch answers `410`, with the detail text.
 
@@ -202,35 +223,90 @@ for each review. `http.NewResponseController(w).Flush()`, which reaches the conn
 | Path | Change |
 | :--- | :--- |
 | `frontend/src/planningScan/core.ts` | new: the stream reader (bytes in, decoded with `TextDecoder` and `stream: true`), the build and refresh algorithms, the cards and quotes answers, chunking and progress |
-| `frontend/src/planningScan/cache.ts` | new: the IndexedDB stores of [§8](planning-index-at-scale.md#8-the-scan-cache) (blocked on [OQ-PS1](planning-index-at-scale.md#OQ-PS1)'s option) |
+| `frontend/src/planningScan/cache.ts` | new: the scan cache of [§8](planning-index-at-scale.md#8-the-scan-cache) written against the scan store: stamps, documents, cards, the scanner-id check on open, collection after `end`, one write per record |
+| `frontend/src/planningScan/store.ts` | new: the `ScanStore` interface, and `idbScanStore()`, its IndexedDB implementation: a thin adapter and nothing else |
+| `frontend/src/planningScan/memoryStore.ts` | new: `memoryScanStore()`, the in-memory implementation, for unit tests only |
 | `frontend/src/planningScan/worker.ts` | new: a thin `onmessage` adapter over `core.ts` |
 | `frontend/src/planningScan/client.ts` | new: `ScannerClient` over the worker, and the inline client over `core.ts` |
 | `frontend/src/planningScan/limits.ts` | new: the limits module, holding E's and F's numbers too (page sizes, budgets, deadlines, the hold), so neither edits it |
-| `frontend/src/planningScan/scannerId.ts` | new: the Vite plugin serving `virtual:planning-scanner-id`, and the build guard |
+| `frontend/src/planningScan/scannerId.ts`, `scannerId.d.ts` | new: the Vite plugin serving `virtual:planning-scanner-id`, the build guard, and the module's type declaration |
 | `frontend/vite.config.ts` | the plugin in `plugins` and in `worker.plugins`; `worker.format: "es"` |
 | `frontend/src/main.tsx` | create the client after `initStaticMode()` (`:10`) unless static |
-| `frontend/package.json`, `package-lock.json` | `fake-indexeddb` as a devDependency, one commit with the lockfile |
+| `frontend/e2e/planning_cache.spec.ts` | new: real IndexedDB, below |
 
-**Reuse.** The store's `getApiBase` shape (`usePlanningStore.ts:112`). `parseSourceEntry` for the
-single-path answer. The 8 ms slicing (`:211-238`) moves into the inline client.
+**The scan store** is C's own interface, so its shape is C's. Advice, with the reasons: keep it
+to the six operations the cache needs, so the in-memory implementation stays a few dozen lines
+and the IndexedDB one stays thin enough that the e2e specs cover all of it.
+
+```ts
+type ScanRecord = { path: string; hash: string; kind: "planning" | "not-planning" | "unreadable";
+                    reason?: string; document?: PlanningDocument; blocks?: CardBlock[] };
+export interface ScanStore {
+  open(scannerId: string): Promise<void>;                    // a mismatch clears every store
+  stamps(repo: string): Promise<{ path: string; hash: string; kind: string; reason?: string }[]>;
+  documents(repo: string): Promise<{ path: string; document: PlanningDocument }[]>;
+  cards(repo: string, path: string): Promise<{ hash: string; blocks: CardBlock[] } | undefined>;
+  write(repo: string, records: ScanRecord[]): Promise<void>; // one transaction; a record's stamp, document and cards together
+  collect(repo: string, keep: ReadonlySet<string>): Promise<void>;
+}
+```
+
+**Reuse.** The store's `getApiBase` shape (`usePlanningStore.ts:112`). `parseSourceEntry`
+(`model.ts:156`) for the single-path answer. The 8 ms slicing (`usePlanningStore.ts:211-238`)
+moves into the inline client.
 
 **Traps.**
 
 - **Vite finds a worker only from `new Worker(new URL("./worker.ts", import.meta.url), { type: "module" })`**,
   written literally in `client.ts`.
+- **Vite is 8.3, which bundles with Rolldown.** `worker.plugins` is a function returning the
+  plugins, not an array, and `worker.rollupOptions` is a deprecated alias of `rolldownOptions`.
 - **No `WebWorker` lib.** `tsconfig.app.json` has `DOM`, and adding `WebWorker` clashes. Type
   `self` in `worker.ts` with a minimal local interface.
 - **Keep every worker-side module in `frontend/src/planningScan/`.** The scanner id hashes
   `packages/vantage-md/src/`, that directory and `package-lock.json`. The build guard fails a
   production build whose worker bundle holds any other module outside `node_modules`.
+- **`virtual:planning-scanner-id` exists only under `vite.config.ts`.** `vitest.config.ts` is a
+  separate config with its own plugins, so the virtual module does not resolve in a unit test.
+  `core.ts` and `cache.ts` take the scanner id as an argument; only `worker.ts` and `client.ts`
+  import it. Without `scannerId.d.ts`, `tsc --build` fails on the import.
+- **The in-memory store lives beside the interface, not in `src/test/`.** `tsconfig.app.json`
+  excludes `src/test` and every `*.test.ts`, so `tsc --build` would never check a test-side
+  store against `ScanStore`, and the two would drift silently. Nothing in either bundle imports
+  it, so it ships in neither.
+- **The in-memory store is a test double, never the fallback.** A tab without IndexedDB sends no
+  `have` ([§8.4](planning-index-at-scale.md#84-without-it)); a memory-backed cache would make its
+  rescans warm, which the design does not do.
+- **The in-memory store `structuredClone`s on every write and read**, so a unit test cannot pass
+  on a shared reference that IndexedDB would have copied.
+- **An IndexedDB transaction commits once a task ends with no request pending.** Awaiting
+  anything else inside one (a fetch, a scan, a message) ends it, and the next request throws
+  `TransactionInactiveError`. Gather a batch of up to 100 records, then write it in one
+  transaction with no other `await` inside. The in-memory store cannot show this; the e2e does.
+- **One repository's records:** keys are `[repo, path]`, and arrays sort after strings, so
+  `IDBKeyRange.bound([repo], [repo, []])` spans exactly one repository's paths.
 - **Check the worker chunk for KaTeX and highlight.js.** `pipeline.ts` imports both beside
-  `buildRemarkPlugins`. `bun build` shook them out (300 KB minified, 87 KB gzipped); if Rollup
+  `buildRemarkPlugins`. `bun build` shook them out (300 KB minified, 87 KB gzipped); if Rolldown
   keeps them, move `buildRemarkPlugins` into a module of its own. That is A's file set, so ask
   first.
 - **The dev server must invalidate the virtual module** when a hashed file changes, or a dev
   session keeps trusting results from the old code.
-- **jsdom has no `Worker`.** Unit tests drive `core.ts` and the inline client; only e2e runs
-  the worker.
+- **jsdom has neither `Worker` nor IndexedDB.** Unit tests drive `core.ts` and the inline client
+  over `memoryScanStore()`; only the e2e runs the worker and the real database. The unit
+  environment does have `Response`, `ReadableStream`, streaming `TextDecoder`, `AbortController`
+  and `structuredClone` (probed 2026-09-29, vitest 5.0.1), so a stream test is a `fetch` mock
+  answering a `Response` over a `ReadableStream` of hand-cut chunks.
+- **The e2e runs on the Vite dev server** (`playwright.config.ts`: `:5201`, proxying to Go on
+  `:8101`), so its worker is the dev build under the dev scanner id. The production build guard
+  is covered by its own unit test, not by the e2e.
+- **Each Playwright test gets a fresh browser context**, so IndexedDB starts empty. A warm case
+  is a `page.reload()` inside one test. In Chromium a dedicated worker's fetches reach the
+  page's network events (playwright-core 1.62.1 adds each worker's session to the page's network
+  manager), so `page.waitForResponse` on `/planning/stream` reads the lines.
+- **Specs run `fullyParallel` over one fixture tree**, and `planning.spec.ts`,
+  `livereload.spec.ts` and `tree_badges.spec.ts` rewrite files in it. Assert that every `file`
+  line of a reload is the roadmap or a path whose hash changed since the first load, never an
+  exact list.
 
 **Tests** (`npm run test -w frontend -- planningScan`):
 
@@ -240,16 +316,25 @@ single-path answer. The 8 ms slicing (`:211-238`) moves into the inline client.
 - A build over `scannedOf(tree)` served as fake lines: the `documents` chunks respect the limits
   module's chunk size (configured down to 2). `started.warm` is false on an empty cache and true
   after one build.
-- The cache (`fake-indexeddb/auto`): a second build sends every hash as `have`, and only the
+- The cache, over `memoryScanStore()`: a second build sends every hash as `have`, and only the
   roadmap comes back as `file`. A scanner-id change clears every store. Absent paths are collected
-  after `end`. Nothing is collected when refused. `bypassCache` sends no `have`. A cache that
-  throws leaves a memory-only build that still succeeds.
+  after `end`. Nothing is collected when refused. `bypassCache` sends no `have`. A store whose
+  every call throws (a wrapper over the memory store) leaves a memory-only build that still
+  succeeds, logs once, and sends no `have` on the next build.
 - Cards: served from the cache, `stale` on a hash mismatch, `full` fetching past the size limit
   (configured down to 50 characters). Quotes return only the asked lines.
 - Cancel: a superseded build posts nothing more and aborts its fetch.
 - The stream lines: every line of `stream-lines.ndjson` parses.
-- e2e `planning_cache.spec.ts`: a reload of the fixture issues a stream whose only `file` line is
-  the roadmap ([D8](planning-index-at-scale.md#19-what-done-looks-like)).
+- The build guard: its check fails over a module list holding one path outside the hashed roots,
+  and passes over one holding only those roots and `node_modules`.
+- e2e `planning_cache.spec.ts` (`npx playwright test planning_cache`), the real IndexedDB:
+  - a reload of the fixture issues a stream whose `file` lines are only the roadmap and paths
+    whose hash changed ([D8](planning-index-at-scale.md#19-what-done-looks-like)), and the
+    planning page then renders its cards with no `?path=` request, so they came from the cache;
+  - a different scanner id written into `vantage-planning`'s `meta` store by `page.evaluate`
+    makes the next load cold, every readable candidate a `file` line, and the page still right;
+  - an init script that makes `indexedDB.open` throw leaves a cold build whose planning page
+    renders its cards ([§19](planning-index-at-scale.md#19-what-done-looks-like)).
 
 **C2 (after E), helpers:** in `core.ts` and `client.ts`. The spawn threshold and the per-helper
 queue come from the limits module, so a test sets 1 KiB and two helpers over a six-file tree and
@@ -261,7 +346,7 @@ cancel.
 | Path | Change |
 | :--- | :--- |
 | `frontend/src/stores/usePlanningStore.ts` | `startBatch` calls `build`; `refreshPath` calls `refresh`; `ready` loses `sources` and gains `hashes`; `Held` loses `sources`; `scanBatch` and `SLICE_MS` go; `loading` gains `progress` and `warm` |
-| `frontend/src/stores/usePlanningStore.test.ts` | rewritten over a fake `ScannerClient`: every race keeps its test, now resolved through the fake |
+| `frontend/src/stores/usePlanningStore.test.ts` | rewritten over the inline client and `memoryScanStore()`, the network still mocked with one deferred answer per request (`:6`, `:135`), so every race keeps its test ([§17](planning-index-at-scale.md#17-risks)) |
 
 **Traps.**
 
@@ -273,8 +358,9 @@ cancel.
 - **Keep `applySource` answering the index itself** when nothing changed (`:264-266`).
   `applyScanned` keeps that contract, and the tree's per-row selectors depend on it.
 
-**Tests:** the existing 761 lines' cases, rewritten to the fake client and not relaxed until
-green. Plus: `hashes` follow a refresh; `progress` is throttled; `warm` reaches `loading`.
+**Tests:** the existing 761 lines' cases, rewritten to the inline client and not relaxed until
+green. The deferred answers become a `fetch` mock whose stream `Response` is fed chunk by chunk
+and the `?path=` answers, still resolved out of order by the test. Plus: `hashes` follow a refresh; `progress` is throttled; `warm` reaches `loading`.
 
 ## WP-E — the planning page, paged
 
@@ -309,6 +395,9 @@ green. Plus: `hashes` follow a refresh; `progress` is throttled; `warm` reaches 
 - **Keep the single-document Copy byte-identical.** `useReviewStore.test.ts:874-990` stays
   unmodified.
 - **The page sizes come from the limits module**, so tests set a page to 2 cards.
+- **Pre-draw Mermaid through `getMermaid()`** (`mermaidLoader.ts`), as `renderMermaidBlocks.ts:12`
+  does. On `main`, `ef626fe` put Mermaid's `secure` key list there; a pre-draw that imports
+  `mermaid` directly would let a diagram's `themeCSS` rewrite the page's own keyframes.
 
 **Tests:**
 
@@ -355,7 +444,7 @@ planning document, asserting 0.
 
 | Path | Change |
 | :--- | :--- |
-| `userguide/guides/planning.md` | "rebuilt… never stored" (`:25`) per the [OQ-PS1](planning-index-at-scale.md#OQ-PS1) ruling; paging; "How it stays current" (`:433-442`) |
+| `userguide/guides/planning.md` | "rebuilt from the files every time and never stored" (`:25`) becomes: rebuilt on every load, with each file's derived facts and card text kept in this browser under the file's content hash, and removed with the site's data; paging; "How it stays current" (`:433-442`): a warm reload, Retry scanning without the cache; "When something goes wrong": a browser without IndexedDB scans every load |
 | `README.md` | the API table rows (`:279-280`): the stream and the reviews request |
 | `docs/design/technical_spec.md` | its `planning/sources` mention |
 | `docs/design/planning-index.md` | the pointers already added by the design; once built, the bodies of [§3.4](planning-index.md#34-when-it-is-built-and-how-it-stays-fresh), [§6](planning-index.md#6-the-planning-page) and the rest move to the built behavior |
@@ -382,23 +471,21 @@ planning document, asserting 0.
 - **Tests that must change, rewritten and not relaxed:** the store's, the page's, the card's, the
   reviews hook's, the batch handler's, and the e2e "Back costs no second scan", which now counts
   stream requests.
-- **Norms:** every commit passes `just check-ci`, which the pre-commit hook runs. A manifest
-  change lands with `package-lock.json` (C only).
+- **Norms:** every commit passes `just check-ci`, which the pre-commit hook runs. No commit
+  changes a manifest or the lockfile.
 
 ## Don't
 
-- **Parse Markdown in Go, or add the sieve**, unless [OQ-PS2](planning-index-at-scale.md#OQ-PS2)
-  rules for it.
+- **Parse Markdown in Go, or add a byte sieve to the stream.** Ruled out
+  ([OQ-PS2](planning-index-at-scale.md#decision-ledger)): every candidate is streamed, and the
+  scan is the only judge of what a planning document is.
+- **Add `fake-indexeddb`, `idb` or any other package.** The scan store and
+  `memoryScanStore()` replace them (coordinator ruling, same ledger).
+- **Fall back to `memoryScanStore()` when IndexedDB fails.** It is a test double; the fallback
+  is [§8.4](planning-index-at-scale.md#84-without-it)'s, with no `have`.
 - **Hold any document text on the main thread**, not even "just for Copy". Quotes come from the
   worker.
 - **Show a partial index**, or let a stream without `end` count as one.
 - **Put a card on screen before its page's inputs are complete**, except past a deadline, into
   the reserved space the design names.
-- **Touch `web/dist`**, and build any scratch bundle into `/workspace/.worktrees/`.
-
-## Blockers
-
-- [OQ-PS1](planning-index-at-scale.md#OQ-PS1) shapes `cache.ts` and WP-G's user-guide sentence.
-  Option B drops the `cards` store, and option C drops the file.
-- [OQ-PS2](planning-index-at-scale.md#OQ-PS2) adds a sieve to `stream.go` and its fixture only if
-  ruled for.
+- **Touch `web/dist`.** Build any scratch bundle into `/workspace/.worktrees/` instead.
