@@ -115,6 +115,12 @@ describe("planning/stage-vocabulary", () => {
     expect(payload.findings[0]?.severity).toBe("error");
   });
 
+  it("says which words are declared", async () => {
+    expect(await messages(tree("DRAFT"), "a.md")).toEqual([
+      "Stage `DRAFT` is not declared under [planning.stages], which declares `DESIGN`, `DECIDED`, `BUILT` and `RETIRED`. Matching is exact and case-sensitive.",
+    ]);
+  });
+
   it("is exact and case-sensitive, and names the near miss", async () => {
     const [message] = await messages(tree("Decided"), "a.md");
 
