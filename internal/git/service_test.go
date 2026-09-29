@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -587,4 +588,24 @@ func TestReadsDoNotTouchTheIndex(t *testing.T) {
 		"reads must not replace .git/index — that is what made the watcher loop")
 	require.Equal(t, before.ModTime(), after.ModTime(),
 		"reads must not rewrite .git/index — that is what made the watcher loop")
+}
+
+// The walk timeout is reached by configuring it down, never by a big tree.
+func TestRecentsReportsAWalkCutOffByItsTimeout(t *testing.T) {
+	ClearRecentFilesCache()
+	t.Cleanup(ClearRecentFilesCache)
+	repo := initRepo(t)
+	writeFile(t, repo, "untracked.md", "# u\n")
+
+	calls := 0
+	svc := NewService(repo, Options{WalkTimeout: time.Nanosecond, OnWalkTimeout: func() { calls++ }})
+	svc.Recents(10, nil, true, true)
+	require.Equal(t, 1, calls)
+
+	ClearRecentFilesCache()
+	calls = 0
+	svc = NewService(repo, Options{WalkTimeout: 10 * time.Second, OnWalkTimeout: func() { calls++ }})
+	got := svc.Recents(10, nil, true, true)
+	require.Zero(t, calls, "a walk that finishes is not reported")
+	require.Len(t, got, 1)
 }

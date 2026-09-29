@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	iofs "io/fs"
 	"log/slog"
@@ -14,6 +15,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -22,6 +24,7 @@ import (
 	fssvc "github.com/mschulkind-oss/vantage/internal/fs"
 	gitsvc "github.com/mschulkind-oss/vantage/internal/git"
 	"github.com/mschulkind-oss/vantage/internal/ignore"
+	"github.com/mschulkind-oss/vantage/internal/model"
 	"github.com/mschulkind-oss/vantage/internal/repoconfig"
 	"github.com/mschulkind-oss/vantage/internal/review"
 )
@@ -150,6 +153,17 @@ type Watcher struct {
 	// stopAtRepos makes every repository below the root a boundary the watch
 	// set never enters; see [Watcher.SetStopAtRepos].
 	stopAtRepos bool
+	// onDegraded, when set, hears every watch the system's watch limit
+	// refused; see [Watcher.SetDegradedHandler].
+	onDegraded func(model.Degradation)
+	// watchLimit, when positive, caps how many watches this watcher registers;
+	// see [Watcher.SetWatchLimit]. watched counts the ones it has.
+	watchLimit int
+	watched    int
+	// limitFailures counts watches refused by the watch limit, and
+	// firstLimitPath is the repo-relative folder the first one was for.
+	limitFailures  int
+	firstLimitPath string
 	// dirs is every directory with a registered watch, by repo-relative slash
 	// path, the root excepted. It is what lets a Rename or Remove event be told
 	// apart as a directory going away, which by then can no longer be stat'ed.
@@ -227,6 +241,32 @@ func (w *Watcher) SetStopAtRepos(stop bool) {
 	defer w.mu.Unlock()
 	w.stopAtRepos = stop
 }
+
+// SetDegradedHandler registers fn to hear, as a [model.Degradation], every
+// watch the system's watch limit refuses — the case where live reload silently
+// misses changes, which used to reach only the log. Each call carries the first
+// folder refused and the count so far. Call it before Start.
+func (w *Watcher) SetDegradedHandler(fn func(model.Degradation)) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.onDegraded = fn
+}
+
+// SetWatchLimit caps the watches this watcher registers at n (0, the default,
+// means no cap of its own): the ones past it fail the way the kernel's
+// ENOSPC does, and are reported the same way. It is how a test reaches the
+// watch limit without building a tree big enough to exhaust the real one.
+// Call it before Start.
+func (w *Watcher) SetWatchLimit(n int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.watchLimit = n
+}
+
+// errWatchBudget is what a registration past [Watcher.SetWatchLimit] fails
+// with. It wraps ENOSPC — what inotify says when the real limit is reached —
+// so everything that recognizes one recognizes the other.
+var errWatchBudget = fmt.Errorf("watch budget spent: %w", syscall.ENOSPC)
 
 // Start begins watching. It adds the recursive watch set, then runs the event
 // loop until ctx is canceled or Close is called. Start blocks; run it in its
@@ -689,6 +729,12 @@ func (w *Watcher) fingerprint(rel string) string {
 }
 
 func (w *Watcher) registerWatch(path string) error {
+	w.mu.Lock()
+	overBudget := w.watchLimit > 0 && w.watched >= w.watchLimit
+	w.mu.Unlock()
+	if overBudget {
+		return errWatchBudget
+	}
 	var err error
 	switch {
 	case w.addWatch != nil:
@@ -701,6 +747,9 @@ func (w *Watcher) registerWatch(path string) error {
 	if err != nil {
 		return err
 	}
+	w.mu.Lock()
+	w.watched++
+	w.mu.Unlock()
 	if rel, relErr := filepath.Rel(w.root, path); relErr == nil && rel != "." {
 		w.mu.Lock()
 		w.dirs[filepath.ToSlash(rel)] = struct{}{}
@@ -761,6 +810,11 @@ func (w *Watcher) logAddWatchFailure(path string, err error) {
 	w.watchFailedDirs++
 	w.mu.Unlock()
 	if isWatchLimitError(err) {
+		rel := "."
+		if r, relErr := filepath.Rel(w.root, path); relErr == nil {
+			rel = filepath.ToSlash(r)
+		}
+		w.reportWatchLimit(rel)
 		w.logger.Error("watcher: failed to add watch; inotify watch limit may be reached — live reload will miss changes under this directory; "+
 			"raise fs.inotify.max_user_watches (e.g. sysctl fs.inotify.max_user_watches=524288)",
 			"path", path, "error", err)
@@ -774,12 +828,35 @@ func (w *Watcher) logAddWatchFailure(path string, err error) {
 // silently failing for some files.
 func (w *Watcher) handleError(err error) {
 	if isWatchLimitError(err) {
+		w.reportWatchLimit("")
 		w.logger.Error("watcher: inotify watch limit reached — live reload will miss some changes; "+
 			"raise fs.inotify.max_user_watches (e.g. sysctl fs.inotify.max_user_watches=524288)",
 			"error", err)
 		return
 	}
 	w.logger.Warn("watcher error", "error", err)
+}
+
+// reportWatchLimit counts one watch refused by the watch limit — for the
+// folder rel, or "" when the kernel did not say which — and tells the
+// degradation handler, if there is one.
+func (w *Watcher) reportWatchLimit(rel string) {
+	w.mu.Lock()
+	w.limitFailures++
+	if w.firstLimitPath == "" {
+		w.firstLimitPath = rel
+	}
+	d := model.Degradation{
+		Repo:  w.repoName,
+		Kind:  model.DegradationWatchLimit,
+		Path:  w.firstLimitPath,
+		Count: w.limitFailures,
+	}
+	fn := w.onDegraded
+	w.mu.Unlock()
+	if fn != nil {
+		fn(d)
+	}
 }
 
 func isWatchLimitError(err error) bool {

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/mschulkind-oss/vantage/internal/fs"
+	"github.com/mschulkind-oss/vantage/internal/model"
 	"github.com/mschulkind-oss/vantage/internal/pathsafe"
 )
 
@@ -62,6 +63,16 @@ func writePathError(w http.ResponseWriter, err error) bool {
 // consumer beyond uptime checks.
 func (h *Handlers) Health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// Degraded handles GET /degraded: every current [model.Degradation], across
+// every project, or [] when nothing is degraded.
+func (h *Handlers) Degraded(w http.ResponseWriter, _ *http.Request) {
+	out := []model.Degradation{}
+	if h.deps.Degraded != nil {
+		out = append(out, h.deps.Degraded()...)
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // Tree handles GET /tree (and /r/{repo}/tree). path defaults to ".". A

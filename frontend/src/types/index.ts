@@ -40,12 +40,28 @@ export interface FileContent {
   encoding: string;
 }
 
+/**
+ * One way a project is being served worse than normal because it is too big
+ * for a limit — GET /api/degraded. See docs/design/serve-clones-directory.md §7.
+ */
+export interface Degradation {
+  /** The project's name, "" in single-repo mode. */
+  repo: string;
+  kind: "watch_limit" | "walk_timeout" | (string & {});
+  /** The folder where it starts, "." for the root, when there is one. */
+  path?: string;
+  count?: number;
+  /** The sentence to show: what is degraded and what to change. */
+  message: string;
+}
+
 export interface WebSocketMessage {
   type:
     | "files_changed"
     | "review_changed"
     | "repos_changed"
     | "starred_changed"
+    | "degraded_changed"
     | "hello";
   paths?: string[];
   /** review_changed: the document whose review state changed server-side. */

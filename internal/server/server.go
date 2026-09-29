@@ -48,6 +48,7 @@ import (
 	"maps"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -148,6 +149,17 @@ type Server struct {
 	// wg tracks the goroutines Run starts — one per watcher plus the refresh
 	// loop — so Run does not return before they have stopped.
 	wg sync.WaitGroup
+
+	// degradedMu guards degraded: every current [model.Degradation], by
+	// repository name, then kind. Watchers and git services report into it
+	// from their own goroutines; GET /api/degraded reads it.
+	degradedMu sync.Mutex
+	degraded   map[string]map[string]model.Degradation
+
+	// watchLimit, when positive, caps every watcher's watches (see
+	// [live.Watcher.SetWatchLimit]). Only tests set it, to reach the watch
+	// limit without a big tree.
+	watchLimit int
 }
 
 // NewServer assembles a Server from a resolved [config.Config]. It constructs
@@ -177,6 +189,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		repos:           map[string]*repoServices{},
 		watchers:        map[string]*live.Watcher{},
 		activity:        map[string]model.RepoInfo{},
+		degraded:        map[string]map[string]model.Degradation{},
 	}
 
 	if err := s.buildRepoServices(); err != nil {
@@ -230,6 +243,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		ThemesDir:      themesDir,
 		DefaultTheme:   defaultTheme,
 		ThemeDefaults:  s.themeDefaults,
+		Degraded:       s.degradedList,
 	})
 
 	s.router = s.buildRouter(handlers)
@@ -294,6 +308,9 @@ func (s *Server) newRepoServices(rc config.RepoConfig) *repoServices {
 		WalkMaxDepth:   s.cfg.WalkMaxDepth,
 		UseIgnoreFiles: s.cfg.UseIgnoreFiles,
 		StopAtRepos:    rc.Loose,
+		OnWalkTimeout: func() {
+			s.reportDegraded(model.Degradation{Repo: rc.Name, Kind: model.DegradationWalkTimeout})
+		},
 	})
 	fsSvc := fs.New(fs.Config{
 		RootPath:       rc.Path,
@@ -638,6 +655,10 @@ func (s *Server) startWatcher(ctx context.Context, rs *repoServices) {
 		return
 	}
 	w.SetStopAtRepos(rs.loose)
+	w.SetDegradedHandler(s.reportDegraded)
+	if s.watchLimit > 0 {
+		w.SetWatchLimit(s.watchLimit)
+	}
 	s.watchersMu.Lock()
 	s.watchers[rs.name] = w
 	s.watchersMu.Unlock()
@@ -775,6 +796,12 @@ func (s *Server) unregister(name string) {
 	}
 	s.watchersMu.Unlock()
 
+	// A retired repository's limits are no longer anyone's concern; one that
+	// returns reports afresh.
+	s.degradedMu.Lock()
+	delete(s.degraded, name)
+	s.degradedMu.Unlock()
+
 	// Copy-on-write, per the invariant on the field: readers are holding this
 	// map without the lock.
 	s.activityMu.Lock()
@@ -782,6 +809,87 @@ func (s *Server) unregister(name string) {
 	delete(next, name)
 	s.activity = next
 	s.activityMu.Unlock()
+}
+
+// degradedChangedMessage is the push sent when a project first reports a
+// kind of [model.Degradation]; the browser refetches GET /api/degraded. Repo is
+// not omitempty, for the same reason as on reviewChangedMessage.
+type degradedChangedMessage struct {
+	Type string `json:"type"`
+	Repo string `json:"repo"`
+}
+
+// reportDegraded records d — adding the banner's sentence — as its project's
+// current degradation of that kind, replacing any earlier report of it (a
+// watcher reports again with every refused watch, so the count grows). The
+// first report of a kind for a project is logged and pushed as
+// degraded_changed; later ones only update what the next fetch returns, so a
+// thousand refused watches are one push, not a thousand.
+func (s *Server) reportDegraded(d model.Degradation) {
+	d.Message = degradationMessage(d, s.cfg)
+	s.degradedMu.Lock()
+	kinds := s.degraded[d.Repo]
+	if kinds == nil {
+		kinds = map[string]model.Degradation{}
+		s.degraded[d.Repo] = kinds
+	}
+	_, seen := kinds[d.Kind]
+	kinds[d.Kind] = d
+	s.degradedMu.Unlock()
+	if seen {
+		return
+	}
+	s.logger.Warn("server: project is degraded", "repo", d.Repo, "kind", d.Kind, "path", d.Path, "message", d.Message)
+	s.manager.Broadcast(degradedChangedMessage{Type: "degraded_changed", Repo: d.Repo})
+}
+
+// degradedList returns every current degradation, ordered by repository and
+// kind so the response is stable. It is api.Deps.Degraded.
+func (s *Server) degradedList() []model.Degradation {
+	s.degradedMu.Lock()
+	defer s.degradedMu.Unlock()
+	out := []model.Degradation{}
+	for _, kinds := range s.degraded {
+		for _, d := range kinds {
+			out = append(out, d)
+		}
+	}
+	slices.SortFunc(out, func(a, b model.Degradation) int {
+		if c := strings.Compare(a.Repo, b.Repo); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Kind, b.Kind)
+	})
+	return out
+}
+
+// degradationMessage is the sentence the banner shows for d: what is degraded,
+// and the setting that fixes it.
+func degradationMessage(d model.Degradation, cfg *config.Config) string {
+	switch d.Kind {
+	case model.DegradationWatchLimit:
+		where := "for part of this project"
+		switch d.Path {
+		case "":
+		case ".":
+			where = "for this whole project"
+		default:
+			where = "below " + d.Path
+		}
+		// Past the root, nothing is watched anyway, so a count adds nothing.
+		if more := d.Count - 1; d.Path != "." && more == 1 {
+			where += " and 1 more folder"
+		} else if d.Path != "." && more > 1 {
+			where += fmt.Sprintf(" and %d more folders", more)
+		}
+		return "Live reload is off " + where + ": the system's limit on watched folders was reached. " +
+			"Raise it (on Linux, fs.inotify.max_user_watches), or list the biggest folders in .vantageignore."
+	case model.DegradationWalkTimeout:
+		return fmt.Sprintf("Recent files may be missing untracked documents: finding them took longer than walk_timeout (%s). "+
+			"Raise walk_timeout, or list the biggest folders in .vantageignore.", cfg.WalkTimeout)
+	default:
+		return d.Kind
+	}
 }
 
 // warmActivity recomputes last-activity for every repository concurrently and

@@ -78,6 +78,7 @@ import { usePersistentFlag } from "../hooks/usePersistentFlag";
 import { usePersistentValue } from "../hooks/usePersistentValue";
 import { StyleGuideModal } from "../components/StyleGuideModal";
 import { ConnectionBanner } from "../components/ConnectionBanner";
+import { DegradedBanner } from "../components/DegradedBanner";
 import { useConnectionStore } from "../stores/useConnectionStore";
 import { ReviewStripe } from "../components/ReviewStripe";
 import { TableOfContents } from "../components/TableOfContents";
@@ -879,6 +880,7 @@ export const ViewerPage: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-900 overflow-hidden text-slate-900 dark:text-slate-100">
       <ConnectionBanner />
+      <DegradedBanner />
       <div className="flex flex-1 overflow-hidden">
         {/* Mobile sidebar backdrop */}
         {showSidebar && sidebarOpen && (
