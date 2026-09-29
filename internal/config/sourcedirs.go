@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -68,7 +70,9 @@ var createdPortLines = fmt.Sprintf("# Written down, so that the service waits fo
 // again to prove every other key still means what it meant. When that is not
 // possible (the key is spelled in a form the edit does not rewrite, or the proof
 // fails), the original is first copied to "<path>.bak-<now>", the file is
-// rewritten from its decoded values, and Backup says where the copy went.
+// rewritten from its decoded values, and Backup says where the copy went. The
+// rewrite has to pass the same proof — the encoder is not faithful to every
+// value — and one that does not is refused, with the file left as it was.
 func AddSourceDirs(path string, dirs []string, now time.Time) (SourceDirsEdit, error) {
 	return AddSourceDirsChecked(path, dirs, now, nil)
 }
@@ -181,10 +185,16 @@ func AddSourceDirsChecked(path string, dirs []string, now time.Time, check func(
 			var buf bytes.Buffer
 			buf.WriteString("# Rewritten by `vantage install-service --source-dir`; the original,\n")
 			buf.WriteString("# comments included, is " + filepath.Base(edit.Backup) + ".\n\n")
-			if eerr := toml.NewEncoder(&buf).Encode(before); eerr != nil {
+			if eerr := encodeSettings(&buf, before); eerr != nil {
 				return edit, fmt.Errorf("config: encoding %s: %w", path, eerr)
 			}
 			next = buf.Bytes()
+			// The rewrite gets the proof the edit did: the encoder moves a local
+			// time through the time zone, and nothing but the entries may change.
+			if !sameApartFromSourceDirs(before, next, append(existing, edit.Added...)) {
+				return edit, fmt.Errorf("config: %s cannot be rewritten without changing another of its settings, "+
+					"so add source_dirs to it by hand", named())
+			}
 		}
 	}
 
@@ -273,6 +283,12 @@ func stringList(v any) ([]string, error) {
 	return out, nil
 }
 
+// encodeSettings writes decoded settings as TOML: the rewrite a config falls
+// back to. A variable so that a test can hand the check an unfaithful one.
+var encodeSettings = func(w io.Writer, v map[string]any) error {
+	return toml.NewEncoder(w).Encode(v)
+}
+
 // sameApartFromSourceDirs decodes next and reports whether it holds exactly
 // the settings before did, with source_dirs equal to want.
 func sameApartFromSourceDirs(before map[string]any, next []byte, want []string) bool {
@@ -291,7 +307,53 @@ func sameApartFromSourceDirs(before map[string]any, next []byte, want []string) 
 			rest[k] = v
 		}
 	}
-	return reflect.DeepEqual(rest, after)
+	return sameValue(rest, after)
+}
+
+// sameValue is reflect.DeepEqual for decoded TOML, except that NaN equals NaN:
+// a file holding one must still be able to prove it is unchanged.
+func sameValue(a, b any) bool {
+	switch av := a.(type) {
+	case float64:
+		bv, ok := b.(float64)
+		return ok && (av == bv || (math.IsNaN(av) && math.IsNaN(bv)))
+	case map[string]any:
+		bv, ok := b.(map[string]any)
+		if !ok || len(av) != len(bv) {
+			return false
+		}
+		for k, v := range av {
+			w, ok := bv[k]
+			if !ok || !sameValue(v, w) {
+				return false
+			}
+		}
+		return true
+	case []map[string]any:
+		bv, ok := b.([]map[string]any)
+		if !ok || len(av) != len(bv) {
+			return false
+		}
+		for i := range av {
+			if !sameValue(av[i], bv[i]) {
+				return false
+			}
+		}
+		return true
+	case []any:
+		bv, ok := b.([]any)
+		if !ok || len(av) != len(bv) {
+			return false
+		}
+		for i := range av {
+			if !sameValue(av[i], bv[i]) {
+				return false
+			}
+		}
+		return true
+	default:
+		return reflect.DeepEqual(a, b)
+	}
 }
 
 // homeRelative spells p as ~/… when it lies under home.

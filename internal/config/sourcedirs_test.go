@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -379,6 +380,50 @@ func TestAddSourceDirsRefusesANameTOMLCannotHold(t *testing.T) {
 	_, err := AddSourceDirs(cfgPath, []string{bad}, editTime)
 	require.ErrorContains(t, err, "not valid UTF-8")
 	require.NoFileExists(t, cfgPath)
+}
+
+// A rewrite from decoded values is only as faithful as the encoder, and
+// BurntSushi's moves a local time through the time zone. So the rewrite is
+// proved the way an in-place edit is, and one that would change another
+// setting is refused, leaving the file as it was, rather than written.
+func TestAddSourceDirsRefusesARewriteThatChangesAnotherSetting(t *testing.T) {
+	_, cfgPath := sourceDirsFixture(t)
+	require.NoError(t, os.MkdirAll(filepath.Dir(cfgPath), 0o755))
+	original := "\"source_dirs\" = [\"~/code\"]\nport = 8123\n"
+	require.NoError(t, os.WriteFile(cfgPath, []byte(original), 0o644))
+
+	encode := encodeSettings
+	encodeSettings = func(w io.Writer, v map[string]any) error {
+		unfaithful := map[string]any{}
+		for k, val := range v {
+			unfaithful[k] = val
+		}
+		unfaithful["port"] = int64(9999)
+		return encode(w, unfaithful)
+	}
+	defer func() { encodeSettings = encode }()
+	_, err := AddSourceDirs(cfgPath, []string{"~/work"}, editTime)
+	require.ErrorContains(t, err, "add source_dirs to it by hand")
+	require.Equal(t, original, readString(t, cfgPath))
+	backups, _ := filepath.Glob(cfgPath + ".bak-*")
+	require.Empty(t, backups)
+}
+
+// NaN is not equal to itself, so a config holding one failed every round trip
+// and every edit of it fell back to a rewrite. Settings compare NaN as NaN.
+func TestAddSourceDirsComparesNaNAsItself(t *testing.T) {
+	_, cfgPath := sourceDirsFixture(t)
+	require.NoError(t, os.MkdirAll(filepath.Dir(cfgPath), 0o755))
+	require.NoError(t, os.WriteFile(cfgPath, []byte("x = nan\nsource_dirs = [\"~/code\"]\n"), 0o644))
+	edit, err := AddSourceDirs(cfgPath, []string{"~/work"}, editTime)
+	require.NoError(t, err)
+	require.Empty(t, edit.Backup, "edited in place")
+	require.Equal(t, "x = nan\nsource_dirs = [\"~/code\", \"~/work\"]\n", readString(t, cfgPath))
+
+	require.NoError(t, os.WriteFile(cfgPath, []byte("x = nan\n\"source_dirs\" = [\"~/code\"]\n"), 0o644))
+	edit, err = AddSourceDirs(cfgPath, []string{"~/work"}, editTime)
+	require.NoError(t, err, "a rewrite keeps the NaN, and is not refused for it")
+	require.NotEmpty(t, edit.Backup)
 }
 
 func TestAddSourceDirsRefusesAMalformedConfig(t *testing.T) {

@@ -243,7 +243,9 @@ config. The command then installs the service and starts it. Without
   shares its line with an entry, or text that fails the round-trip check. For
   those, the original is copied to `config.toml.bak-<timestamp>` first, then
   rewritten from the decoded values, and the command says that it made a
-  backup and where. A dotted key makes `source_dirs` a table, which is no list
+  backup and where. The rewrite must pass the same round-trip check, because
+  the TOML encoder moves a local time through the time zone, and one that
+  would change another setting is refused, with the file left alone. A dotted key makes `source_dirs` a table, which is no list
   of directories, so that file is refused.
 - **A missing config is created** with a short header, the key, and the
   default port written down. A daemon whose port is only the default moves to
