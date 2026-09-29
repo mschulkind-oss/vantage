@@ -84,17 +84,19 @@ const DIRECTIVE_FIXTURE = [
  * the drawing and the rest of it loose in the page. The second is a small
  * drawing inline in a sentence, with a `desc` that holds HTML.
  *
- * draw.io wraps its closing "Text is not SVG" notice in an `<a>`. That link is
- * left out here because both React viewers render *every* `<a>` differently
- * from `renderMarkdown`: their link overrides spread react-markdown's `node`
- * prop onto the element, as `node="[object Object]"`, and give an `<a>` with
- * no `href` an empty one. That is a disagreement about links, not about SVG.
+ * draw.io wraps its closing "Text is not SVG" notice in an `<a>` whose only
+ * link is an `xlink:href`, which the sanitizer refuses, so every renderer holds
+ * an `<a>` with no attributes there. That link was once left out of this
+ * fixture, because both React viewers' link overrides spread react-markdown's
+ * `node` prop onto the element, as `node="[object Object]"`, and gave an `<a>`
+ * with no `href` an empty one. `OVERRIDE_FIXTURE` below is that bug's own test;
+ * this one keeps the drawing whole.
  */
 const SVG_FIXTURE = [
   "## Drawing", // 1
   "", // 2
   "<div>", // 3
-  '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="241px" height="61px" viewBox="-0.5 -0.5 241 61"><defs/><g><rect x="0" y="0" width="120" height="60" rx="9" ry="9" fill="#dae8fc" stroke="#6c8ebf" pointer-events="all"/><g transform="translate(-0.5 -0.5)"><switch><foreignObject pointer-events="none" width="100%" height="100%" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility" style="overflow: visible; text-align: left;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: flex; width: 118px;"><div style="box-sizing: border-box; text-align: center;"><div style="display: inline-block; font-size: 12px;"><p>Start</p></div></div></div></foreignObject><text x="60" y="34" fill="rgb(0, 0, 0)" font-family="Helvetica" font-size="12px" text-anchor="middle">Start</text></switch></g><rect x="120" y="0" width="120" height="60" fill="#d5e8d4" stroke="#82b366" pointer-events="all"/></g><switch><g requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"/><text text-anchor="middle" font-size="10px" x="50%" y="100%">Text is not SVG - cannot display</text></switch></svg>', // 4
+  '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" width="241px" height="61px" viewBox="-0.5 -0.5 241 61"><defs/><g><rect x="0" y="0" width="120" height="60" rx="9" ry="9" fill="#dae8fc" stroke="#6c8ebf" pointer-events="all"/><g transform="translate(-0.5 -0.5)"><switch><foreignObject pointer-events="none" width="100%" height="100%" requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility" style="overflow: visible; text-align: left;"><div xmlns="http://www.w3.org/1999/xhtml" style="display: flex; width: 118px;"><div style="box-sizing: border-box; text-align: center;"><div style="display: inline-block; font-size: 12px;"><p>Start</p></div></div></div></foreignObject><text x="60" y="34" fill="rgb(0, 0, 0)" font-family="Helvetica" font-size="12px" text-anchor="middle">Start</text></switch></g><rect x="120" y="0" width="120" height="60" fill="#d5e8d4" stroke="#82b366" pointer-events="all"/></g><switch><g requiredFeatures="http://www.w3.org/TR/SVG11/feature#Extensibility"/><a transform="translate(0,-5)" xlink:href="https://www.drawio.com/doc/faq/svg-export-text-problems" target="_blank"><text text-anchor="middle" font-size="10px" x="50%" y="100%">Text is not SVG - cannot display</text></a></switch></svg>', // 4
   "</div>", // 5
   "", // 6
   'An icon <svg width="16" height="16" viewBox="0 0 16 16" role="img" aria-label="dot"><desc><p>Dot</p></desc><circle cx="8" cy="8" r="6" fill="currentColor"/></svg> in a sentence.', // 7
@@ -121,6 +123,40 @@ const CLASS_FIXTURE = [
   "const x = 1;", // 11
   "```", // 12
   "", // 13
+].join("\n");
+
+/**
+ * Every element a React viewer renders through a `components` override, kept
+ * separate for the same reason: the six headings (the app's `#` anchor), a
+ * Markdown link, a raw HTML link, an `<a>` with no `href`, a link inside a
+ * drawing, inline code and a fence (both viewers' `code`).
+ *
+ * The drawing's link is shaped the way draw.io writes one. The sanitizer
+ * refuses `xlink:href`, so it reaches every renderer as an `<a>` with no
+ * `href` at all.
+ */
+const OVERRIDE_FIXTURE = [
+  "# One", // 1
+  "", // 2
+  "## Two", // 3
+  "", // 4
+  "### Three", // 5
+  "", // 6
+  "#### Four", // 7
+  "", // 8
+  "##### Five", // 9
+  "", // 10
+  "###### Six", // 11
+  "", // 12
+  "A [Markdown link](https://example.com/md) and `inline code`,", // 13
+  '<a href="https://example.com/raw">a raw link</a> and <a>a bare anchor</a>.', // 14
+  "", // 15
+  '<svg width="8" height="8" viewBox="0 0 8 8" role="img" aria-label="linked"><a xlink:href="https://example.com/svg" target="_blank"><text x="0" y="8">t</text></a></svg>', // 16
+  "", // 17
+  "```js", // 18
+  "const x = 1;", // 19
+  "```", // 20
+  "", // 21
 ].join("\n");
 
 /** Every svg in `root`, as its tag, attributes and children, recursively. */
@@ -352,6 +388,56 @@ describe("every renderer runs the same chain", () => {
       viaRenderMarkdown,
     );
     expect(describeSvgs(appViewerHost(SVG_FIXTURE))).toEqual(viaRenderMarkdown);
+  });
+
+  it("agrees that an overridden element carries only the attributes the chain gave it", async () => {
+    // react-markdown hands every override the hast element it renders, as a
+    // `node` prop. Spread onto the DOM element with the rest, it became
+    // `node="[object Object]"` on every link, code and (in the app) heading,
+    // and each viewer's link override gave an `<a>` with no `href` an empty
+    // one — a link to the page itself, where `renderMarkdown` has none.
+    const hosts = {
+      renderMarkdown: await renderedHost(OVERRIDE_FIXTURE),
+      "package viewer": packageViewerHost(OVERRIDE_FIXTURE),
+      "app viewer": appViewerHost(OVERRIDE_FIXTURE),
+    };
+    for (const [renderer, host] of Object.entries(hosts)) {
+      // The fixture reached every override, or the rest proves nothing.
+      for (const selector of [
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        'a[href="https://example.com/md"]',
+        'a[href="https://example.com/raw"]',
+        "p > code",
+        "pre > code.language-js",
+        "svg a",
+      ]) {
+        expect(
+          host.querySelector(selector),
+          `${renderer}: ${selector}`,
+        ).not.toBeNull();
+      }
+
+      const leaked = Array.from(host.querySelectorAll("*")).flatMap((el) =>
+        Array.from(el.attributes)
+          .filter((a) => a.name === "node" || a.value === "[object Object]")
+          .map((a) => `${el.tagName.toLowerCase()} ${a.name}="${a.value}"`),
+      );
+      expect(leaked, renderer).toEqual([]);
+
+      const bare = Array.from(host.querySelectorAll("a")).find(
+        (a) => a.textContent === "a bare anchor",
+      );
+      expect(bare, renderer).toBeTruthy();
+      expect(bare!.hasAttribute("href"), renderer).toBe(false);
+      expect(host.querySelector("svg a")!.hasAttribute("href"), renderer).toBe(
+        false,
+      );
+    }
   });
 
   it("agrees that a document's class carries only the pipeline's own names", async () => {

@@ -22,6 +22,16 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // Destructuring a key beside a rest element is how a component drops a
+      // prop it must not forward: react-markdown's `node`, which the viewer's
+      // overrides take out so it never reaches the DOM as
+      // `node="[object Object]"`. The key is unused by design.
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { ignoreRestSiblings: true },
+      ],
+    },
   },
   {
     // The Vite entry wires up routing at the root; it is never a fast-refresh

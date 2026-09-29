@@ -9,7 +9,7 @@
  */
 
 import React, { memo, useCallback, useMemo, useRef } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type ExtraProps } from "react-markdown";
 import { buildPipeline } from "./pipeline.js";
 import { parseFrontmatter } from "./frontmatter.js";
 import { MermaidDiagram } from "./MermaidDiagram.js";
@@ -148,20 +148,26 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     [currentPath, baseUrl, imageApiBase],
   );
 
+  // Every override takes `node` out before it spreads the rest. react-markdown
+  // passes each one the hast element it renders, and that is not an attribute:
+  // spread onto the DOM element, it becomes `node="[object Object]"`.
   const markdownComponents = useMemo(
     () => ({
       a({
+        node,
         href,
         children,
         ...props
       }: {
         href?: string;
         children?: React.ReactNode;
-      } & React.AnchorHTMLAttributes<HTMLAnchorElement>) {
-        const resolvedHref = resolveHref(href);
+      } & React.AnchorHTMLAttributes<HTMLAnchorElement> &
+        ExtraProps) {
         return (
           <a
-            href={resolvedHref}
+            // An `<a>` the document wrote without an `href` keeps none. An
+            // empty one would make it a link to this page.
+            href={href === undefined ? undefined : resolveHref(href)}
             onClick={(e) => href && handleLinkClick(e, href)}
             {...props}
           >
@@ -173,9 +179,10 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
         props: {
           children?: React.ReactNode;
           className?: string;
-        } & React.HTMLAttributes<HTMLElement>,
+        } & React.HTMLAttributes<HTMLElement> &
+          ExtraProps,
       ) {
-        const { children, className: codeClassName, ...rest } = props;
+        const { node, children, className: codeClassName, ...rest } = props;
         const match = /language-(\w+)/.exec(codeClassName || "");
         if (match && match[1] === "mermaid") {
           return <MermaidDiagram code={String(children).replace(/\n$/, "")} />;
