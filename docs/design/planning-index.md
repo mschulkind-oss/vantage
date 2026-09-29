@@ -533,8 +533,10 @@ disagree (P7).
 
 ## 9. Configuration
 
-One new table in `.vantage.toml`. It is read by both the server (for include, exclude and the
-limits) and the checker (for everything):
+One new table in `.vantage.toml`. It is read by both the server (for the roadmap, include,
+exclude and the limits) and the checker (for everything). The server reads `roadmap` because the
+roadmap is a candidate whenever it exists, whatever include and exclude say
+([§3.1](#31-which-files-it-reads), Plan Q2):
 
 ```toml
 [planning]
