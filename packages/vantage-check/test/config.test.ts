@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   ConfigError,
+  MAX_CONFIG_BYTES,
   defaultConfig,
   findConfig,
   loadConfig,
@@ -162,6 +163,41 @@ describe("parseConfig", () => {
     expect(io.stderr).toContain("is a directory, not a config file");
     expect(io.stderr).not.toContain("internal error");
     expect(io.stderr).not.toContain("EISDIR");
+  });
+
+  // The server ignores a .vantage.toml past 200 KiB and serves the defaults
+  // (internal/repoconfig), so a checker that applied one would scan under a
+  // table the planning page never reads (P7). Refused as the server's other
+  // rejections are: exit 2.
+  it("refuses a config larger than the server reads, and takes one at the cap", async () => {
+    const padded = (size: number) => {
+      const table = '[planning]\nexclude = ["docs/**"]\n';
+      return `${table}#${"x".repeat(size - table.length - 2)}\n`;
+    };
+    const over = makeTree({ ".vantage.toml": padded(204801), "a.md": "# A\n" });
+    const io = bufferIo(over);
+    expect(await run(["index"], io)).toBe(EXIT_USAGE);
+    expect(io.stderr).toContain("larger than 204800 bytes");
+
+    const at = makeTree({ ".vantage.toml": padded(204800), "a.md": "# A\n" });
+    expect(await run(["index"], bufferIo(at))).toBe(0);
+  });
+
+  it("caps a config where the server does, read from its Go source", () => {
+    const go = readFileSync(
+      join(
+        import.meta.dirname,
+        "..",
+        "..",
+        "..",
+        "internal",
+        "repoconfig",
+        "repoconfig.go",
+      ),
+      "utf8",
+    );
+    const [, kib] = /const maxSize = (\d+) \* 1024\b/.exec(go) ?? [];
+    expect(Number(kib) * 1024).toBe(MAX_CONFIG_BYTES);
   });
 
   it("still reports a --config path that is not there", async () => {
