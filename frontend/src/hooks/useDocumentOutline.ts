@@ -98,7 +98,11 @@ export function collectOutline(container: HTMLElement): OutlineEntry[] {
     "h1, h2, h3, h4, h5, h6, [data-vantage-oq]",
   )) {
     const depth = HEADING_LEVELS[el.tagName];
-    if (depth !== undefined) {
+    // A heading an `oq` directive stamped is a question first: it hosts the
+    // button, and `answerableOpenQuestions` counts it. Listed as a heading, the
+    // column fell one short of the buttons on any document that writes a
+    // question that way, and of the planning index, which counts it too.
+    if (depth !== undefined && !questions.has(el)) {
       // Headings with no id are skipped — there is nothing to link to. A
       // question with no id is not, because unlike a heading it is *the thing
       // the reader is looking for*: the contents column and the review buttons
@@ -137,6 +141,9 @@ export function collectOutline(container: HTMLElement): OutlineEntry[] {
       level: lastHeadingLevel + 1,
       element: el.closest("li") ?? el,
     });
+    // A question written as a heading still opens a section, so what follows
+    // it nests beneath it as it would beneath any heading of that depth.
+    if (depth !== undefined) lastHeadingLevel = depth;
   }
   return out;
 }
@@ -183,7 +190,13 @@ export function questionLabel(stamped: HTMLElement): {
     if (!OQ_TITLE.test(text)) continue;
     return { marker: markerBefore(strong), text };
   }
-  const text = flatten(scope.textContent);
+  // A heading's own text, not its hover anchor: read raw, a question written
+  // as a heading is "#🔒 …" and its marker carries the `#`.
+  const text = flatten(
+    HEADING_LEVELS[scope.tagName] === undefined
+      ? scope.textContent
+      : headingText(scope),
+  );
   return { marker: leadingMarker(text), text };
 }
 

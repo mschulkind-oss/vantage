@@ -236,6 +236,37 @@ describe("collectOutline", () => {
     expect(collectOutline(container)).toEqual([]);
   });
 
+  it("lists a question written as a heading as a question, not as a heading", () => {
+    // `<!-- vantage: oq -->` above a heading stamps the heading, which hosts the
+    // button and takes the question's id. Listed as a heading, it was the one
+    // answerable question the column left out: the gallery's `OQ-6` rendered
+    // seven buttons against a column of six, and a planning index counting from
+    // source could not agree with it (design §3.3).
+    const container = document.createElement("div");
+    container.innerHTML = `
+      <h2 id="on-a-heading" class="group relative"><a href="#on-a-heading" class="heading-anchor">#</a>On a heading</h2>
+      <h3 id="OQ-6" class="group relative" data-source-line="7" data-vantage-oq="true" data-vantage-leaning="A leaning."><a href="#OQ-6" class="heading-anchor">#</a>A question as a heading</h3>
+      <p data-source-line="9">Its body.</p>
+    `;
+
+    expect(
+      collectOutline(container).map(({ kind, id, text, level }) => ({
+        kind,
+        id,
+        text,
+        level,
+      })),
+    ).toEqual([
+      { kind: "heading", id: "on-a-heading", text: "On a heading", level: 2 },
+      {
+        kind: "question",
+        id: "OQ-6",
+        text: "A question as a heading",
+        level: 3,
+      },
+    ]);
+  });
+
   it("counts one question when two directives resolve to one block", () => {
     const container = document.createElement("div");
     container.innerHTML = `
@@ -260,6 +291,19 @@ describe("questionLabel", () => {
     expect(questionLabel(stamped)).toEqual({
       marker: "💬",
       text: "💬 A question written as a bare paragraph.",
+    });
+  });
+
+  it("reads a heading's marker without the heading's hover anchor", () => {
+    // Every rendered heading opens with a literal `#` link, so its text read
+    // raw is "#🔒 …" and the marker would carry the `#`.
+    const container = document.createElement("div");
+    container.innerHTML = `<h3 id="OQ-9" data-source-line="1" data-vantage-oq="true"><a href="#OQ-9" class="heading-anchor">#</a>🔒 Blocked on the build</h3>`;
+    const stamped = container.querySelector<HTMLElement>("[data-vantage-oq]")!;
+
+    expect(questionLabel(stamped)).toEqual({
+      marker: "🔒",
+      text: "🔒 Blocked on the build",
     });
   });
 
