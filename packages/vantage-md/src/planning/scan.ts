@@ -315,7 +315,16 @@ type Token =
   | { kind: "element"; node: RootContent }
   | { kind: "raw" }
   | { kind: "text" }
-  | { kind: "comment"; directive: ParsedDirective | undefined; line: number };
+  | {
+      kind: "comment";
+      directive: ParsedDirective | undefined;
+      line: number;
+      key: string;
+    };
+
+/** One comment's identity in the tree: its node's offset, then its own. */
+const commentKey = (node: RootContent, offset: number): string =>
+  `${node.position?.start.offset ?? 0}:${offset}`;
 
 function tokensOf(children: RootContent[]): Token[] {
   const tokens: Token[] = [];
@@ -350,6 +359,7 @@ function tokensOf(children: RootContent[]): Token[] {
         kind: "comment",
         directive: parsed?.kind === "directive" ? parsed : undefined,
         line,
+        key: commentKey(child, segment.offset),
       });
     }
   }
@@ -414,6 +424,8 @@ interface ScanState {
   questions: Omit<PlanningQuestion, "path" | "id">[];
   /** The merged `id=` of each question, before duplicates are resolved. */
   rawIds: (string | undefined)[];
+  /** The comment whose `id=` that merged id is, by `commentKey`. */
+  idKeys: (string | undefined)[];
   /** Footnote definitions, walked last because they render last. */
   footnotes: Context[];
 }
@@ -439,7 +451,9 @@ function walkBlocks(context: Context, state: ScanState): void {
       continue;
     }
 
-    const run: ParsedDirective[] = [token.directive];
+    const run: KeyedDirective[] = [
+      { directive: token.directive, key: token.key },
+    ];
     const firstLine = token.line;
     let j = i + 1;
     let target: RootContent | undefined;
@@ -452,7 +466,9 @@ function walkBlocks(context: Context, state: ScanState): void {
         target = next.node;
         break;
       }
-      if (next.directive !== undefined) run.push(next.directive);
+      if (next.directive !== undefined) {
+        run.push({ directive: next.directive, key: next.key });
+      }
     }
     if (target !== undefined) question(target, run, firstLine, context, state);
     i = j;
@@ -496,10 +512,16 @@ function descend(node: RootContent, context: Context, state: ScanState): void {
   }
 }
 
+/** A directive of a run, with the comment it was read from. */
+interface KeyedDirective {
+  directive: ParsedDirective;
+  key: string;
+}
+
 /** Record `target` as a question when the run holds `oq` and it hosts a button. */
 function question(
   target: RootContent,
-  run: ParsedDirective[],
+  run: KeyedDirective[],
   firstLine: number,
   context: Context,
   state: ScanState,
@@ -507,10 +529,14 @@ function question(
   // Merged per run, last key wins, as `stampRun` merges them.
   let hasOq = false;
   const keys = new Map<string, string>();
-  for (const directive of run) {
+  let idKey: string | undefined;
+  for (const { directive, key } of run) {
     if (directive.name !== "oq") continue;
     hasOq = true;
-    for (const pair of directive.pairs) keys.set(pair.key, pair.value);
+    for (const pair of directive.pairs) {
+      keys.set(pair.key, pair.value);
+      if (pair.key === "id") idKey = key;
+    }
   }
   if (!hasOq) return;
   if (!BLOCK_PARENTS.has(context.parent.type)) return;
@@ -579,6 +605,7 @@ function question(
     block,
   });
   state.rawIds.push(keys.get("id"));
+  state.idKeys.push(idKey);
 }
 
 /**
@@ -610,6 +637,38 @@ function markerBefore(
     out += textOf(child);
   }
   return out;
+}
+
+/**
+ * Each well-formed id's first `oq` directive, by `commentKey`, in document
+ * order and counting every directive in raw HTML — orphans, inline ones and
+ * those inside a raw block too — as `vantage/oq-id-duplicate` counts them.
+ * Only the question read from that directive keeps the id (§3.3).
+ */
+function firstOqIds(root: Root): Map<string, string> {
+  const first = new Map<string, string>();
+  const walk = (node: Nodes): void => {
+    if (node.type === "html") {
+      if (!node.value.includes(VANTAGE_SENTINEL)) return;
+      for (const segment of scanComments(node.value)) {
+        if (segment.kind !== "comment" || segment.terminator === null) continue;
+        const parsed = parseVantageDirective(segment.value);
+        if (parsed?.kind !== "directive" || parsed.name !== "oq") continue;
+        let id: string | undefined;
+        for (const pair of parsed.pairs) if (pair.key === "id") id = pair.value;
+        if (id === undefined || !VANTAGE_OQ_ID.test(id) || first.has(id)) {
+          continue;
+        }
+        first.set(id, commentKey(node, segment.offset));
+      }
+      return;
+    }
+    if ("children" in node) {
+      for (const child of node.children as Nodes[]) walk(child);
+    }
+  };
+  walk(root);
+  return first;
 }
 
 /** Every `oq` directive anywhere in raw HTML, inline or not — orphans too. */
@@ -944,6 +1003,7 @@ export function scanPlanningDocument(
     bodyLineOffset: parsed.bodyLineOffset,
     questions: [],
     rawIds: [],
+    idKeys: [],
     footnotes: [],
   };
   walkBlocks(
@@ -963,14 +1023,14 @@ export function scanPlanningDocument(
     if (footnote !== undefined) walkBlocks(footnote, state);
   }
 
-  const seen = new Set<string>();
+  const first = firstOqIds(root);
   const questions: PlanningQuestion[] = state.questions.map((q, index) => {
     const raw = state.rawIds[index];
-    let id: string | null = null;
-    if (raw !== undefined && VANTAGE_OQ_ID.test(raw) && !seen.has(raw)) {
-      id = raw;
-      seen.add(raw);
-    }
+    const key = state.idKeys[index];
+    const id =
+      raw !== undefined && key !== undefined && first.get(raw) === key
+        ? raw
+        : null;
     return { path, id, ...q };
   });
 

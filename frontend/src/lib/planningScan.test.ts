@@ -390,6 +390,35 @@ describe("a question (§3.3)", () => {
     ]);
   });
 
+  // §3.3 names vantage/oq-id-duplicate for "used earlier", and that rule
+  // counts every oq directive, an orphan's included. The page anchors the
+  // orphan's table first, so `#OQ-1` lands there and the question cannot have
+  // it; the scan used to count only earlier questions' ids.
+  it("gives no id to a question whose id an earlier orphan directive used", () => {
+    const source = [
+      "# X",
+      "",
+      "<!-- vantage: oq id=OQ-1 -->",
+      "",
+      "| a |",
+      "| - |",
+      "| b |",
+      "",
+      "<!-- vantage: oq id=OQ-1 -->",
+      "",
+      "Real question?",
+      "",
+      "<!-- vantage: oq id=OQ-2 -->",
+      "",
+      "Its own.",
+      "",
+    ].join("\n");
+    expect(planning(source).questions.map((q) => [q.title, q.id])).toEqual([
+      ["Real question?", null],
+      ["Its own.", "OQ-2"],
+    ]);
+  });
+
   it("reads no leaning when the directive gives none, or an empty one", () => {
     const source = [
       "<!-- vantage: oq id=OQ-7 -->",
