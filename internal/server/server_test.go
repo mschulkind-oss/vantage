@@ -160,6 +160,91 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 	}
 }
 
+// filesChangedPush is a files_changed push as the viewer reads it.
+type filesChangedPush struct {
+	Type  string   `json:"type"`
+	Repo  string   `json:"repo"`
+	Paths []string `json:"paths"`
+}
+
+// readFilesChanged reads pushes from ws until one is a files_changed, and
+// returns that one.
+func readFilesChanged(ctx context.Context, t *testing.T, ws *websocket.Conn) filesChangedPush {
+	t.Helper()
+	for {
+		_, data, err := ws.Read(ctx)
+		require.NoError(t, err)
+		var msg filesChangedPush
+		require.NoError(t, json.Unmarshal(data, &msg))
+		if msg.Type == "files_changed" {
+			return msg
+		}
+	}
+}
+
+// slowWatcherStarts holds each of srv's watchers back for a moment before it
+// starts watching. A watcher is listed in srv.watchers as soon as Run creates
+// it, before its Start has registered a single watch, and on macOS that
+// registration is slow: kqueue opens every file in every directory it
+// watches. A test that changed a file the moment both watchers were listed
+// passed on Linux and timed out on a macOS runner, the change made before
+// anything was there to hear it. The delay makes Linux lose that race too, so a
+// test that relies on winning it fails everywhere, not only where the
+// registration happens to be slow.
+func slowWatcherStarts(srv *Server) {
+	srv.watcherStart = func(w *live.Watcher, ctx context.Context) error {
+		select {
+		case <-time.After(200 * time.Millisecond):
+		case <-ctx.Done():
+		}
+		return w.Start(ctx)
+	}
+}
+
+// awaitWatching returns once each project in roots, a project's name to its
+// root directory, has pushed the probe.md written into that root: the event
+// loop that pushes a change only runs once Start has registered the whole
+// startup watch set, so a change made after this is heard. The probes are
+// rewritten until each is heard, since one written before its watch existed
+// is never heard at all. seen, when set, is handed every files_changed read
+// on the way, so what a test asserts about the pushes covers these ones too.
+func awaitWatching(ctx context.Context, t *testing.T, ws *websocket.Conn, roots map[string]string, seen func(filesChangedPush)) {
+	t.Helper()
+	stop, stopped := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(stopped)
+		tick := time.NewTicker(150 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			for _, root := range roots {
+				if err := os.WriteFile(filepath.Join(root, "probe.md"), []byte(time.Now().String()), 0o644); err != nil {
+					t.Errorf("writing a probe: %v", err)
+					return
+				}
+			}
+			select {
+			case <-stop:
+				return
+			case <-tick.C:
+			}
+		}
+	}()
+	defer func() {
+		close(stop)
+		<-stopped
+	}()
+	heard := map[string]bool{}
+	for len(heard) < len(roots) {
+		msg := readFilesChanged(ctx, t, ws)
+		if seen != nil {
+			seen(msg)
+		}
+		if _, ok := roots[msg.Repo]; ok && slices.Contains(msg.Paths, "probe.md") {
+			heard[msg.Repo] = true
+		}
+	}
+}
+
 func doGET(t *testing.T, h http.Handler, target string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, target, nil)
@@ -730,6 +815,7 @@ func TestTheLooseProjectsWatcherStaysOutOfItsClones(t *testing.T) {
 	cfg.DiscoverReposFromSourceDirs()
 	srv, err := NewServer(cfg)
 	require.NoError(t, err)
+	slowWatcherStarts(srv)
 
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -748,27 +834,9 @@ func TestTheLooseProjectsWatcherStaysOutOfItsClones(t *testing.T) {
 	defer ws.Close(websocket.StatusNormalClosure, "")
 	_, _, err = ws.Read(ctx) // hello
 	require.NoError(t, err)
-	waitFor(t, "both watchers to start", func() bool {
-		srv.watchersMu.Lock()
-		defer srv.watchersMu.Unlock()
-		return len(srv.watchers) == 2
-	})
 
-	require.NoError(t, os.WriteFile(filepath.Join(alpha, "docs", "a.md"), []byte("# A, edited\n"), 0o644))
-	require.NoError(t, os.WriteFile(filepath.Join(code, "notes.md"), []byte("# notes, edited\n"), 0o644))
 	var heardClone, heardLoose bool
-	for !heardClone || !heardLoose {
-		_, data, err := ws.Read(ctx)
-		require.NoError(t, err)
-		var msg struct {
-			Type  string   `json:"type"`
-			Repo  string   `json:"repo"`
-			Paths []string `json:"paths"`
-		}
-		require.NoError(t, json.Unmarshal(data, &msg))
-		if msg.Type != "files_changed" {
-			continue
-		}
+	hear := func(msg filesChangedPush) {
 		switch msg.Repo {
 		case "alpha":
 			heardClone = heardClone || slices.Contains(msg.Paths, "docs/a.md")
@@ -778,6 +846,13 @@ func TestTheLooseProjectsWatcherStaysOutOfItsClones(t *testing.T) {
 			}
 			heardLoose = heardLoose || slices.Contains(msg.Paths, "notes.md")
 		}
+	}
+	awaitWatching(ctx, t, ws, map[string]string{"code": code, "alpha": alpha}, hear)
+
+	require.NoError(t, os.WriteFile(filepath.Join(alpha, "docs", "a.md"), []byte("# A, edited\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(code, "notes.md"), []byte("# notes, edited\n"), 0o644))
+	for !heardClone || !heardLoose {
+		hear(readFilesChanged(ctx, t, ws))
 	}
 }
 
@@ -802,6 +877,7 @@ func TestARetiredCloneIsWatchedByTheLooseProject(t *testing.T) {
 	cfg.DiscoverReposFromSourceDirs()
 	srv, err := NewServer(cfg)
 	require.NoError(t, err)
+	slowWatcherStarts(srv)
 
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
@@ -820,25 +896,14 @@ func TestARetiredCloneIsWatchedByTheLooseProject(t *testing.T) {
 	defer ws.Close(websocket.StatusNormalClosure, "")
 	_, _, err = ws.Read(ctx) // hello
 	require.NoError(t, err)
-	waitFor(t, "both watchers to start", func() bool {
-		srv.watchersMu.Lock()
-		defer srv.watchersMu.Unlock()
-		return len(srv.watchers) == 2
-	})
+	awaitWatching(ctx, t, ws, map[string]string{"code": code, "alpha": alpha}, nil)
 
-	// Reads frames until one is the loose project's files_changed naming path.
+	// Reads pushes until one from the loose project names path.
 	awaitLoose := func(path string) {
 		t.Helper()
 		for {
-			_, data, err := ws.Read(ctx)
-			require.NoError(t, err)
-			var msg struct {
-				Type  string   `json:"type"`
-				Repo  string   `json:"repo"`
-				Paths []string `json:"paths"`
-			}
-			require.NoError(t, json.Unmarshal(data, &msg))
-			if msg.Type == "files_changed" && msg.Repo == "code" && slices.Contains(msg.Paths, path) {
+			msg := readFilesChanged(ctx, t, ws)
+			if msg.Repo == "code" && slices.Contains(msg.Paths, path) {
 				return
 			}
 		}
