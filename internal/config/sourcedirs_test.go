@@ -179,6 +179,84 @@ func TestAddSourceDirsBacksUpBeforeARewrite(t *testing.T) {
 	require.Equal(t, "n", cfg.Repos[0].Name)
 }
 
+// A config kept in a dotfiles repository is a link to it. The edit goes to the
+// file behind the link, and the link stays one: replacing the link with a file
+// would leave the dotfile without the entry and, since the daemon keys its
+// bookmarks on the resolved path, hand it a new, empty bookmark list.
+func TestAddSourceDirsEditsTheFileBehindALink(t *testing.T) {
+	home, cfgPath := sourceDirsFixture(t)
+	dotfiles := filepath.Join(home, "dotfiles")
+	require.NoError(t, os.MkdirAll(dotfiles, 0o755))
+	real := filepath.Join(dotfiles, "vantage.toml")
+	require.NoError(t, os.WriteFile(real, []byte("# dotfile\nport = 8123\n"), 0o644))
+	require.NoError(t, os.MkdirAll(filepath.Dir(cfgPath), 0o755))
+	require.NoError(t, os.Symlink(real, cfgPath))
+	before, err := LoadDaemonFile(cfgPath)
+	require.NoError(t, err)
+
+	edit, err := AddSourceDirs(cfgPath, []string{"~/code"}, editTime)
+	require.NoError(t, err)
+	require.Equal(t, cfgPath, edit.Path)
+	require.Equal(t, real, edit.Target)
+	info, err := os.Lstat(cfgPath)
+	require.NoError(t, err)
+	require.NotZero(t, info.Mode()&os.ModeSymlink, "the link is still a link")
+	require.Equal(t, "# dotfile\nport = 8123\n\nsource_dirs = [\"~/code\"]\n", readString(t, real))
+	after, err := LoadDaemonFile(cfgPath)
+	require.NoError(t, err)
+	require.Equal(t, before.ConfigPath, after.ConfigPath, "the daemon's identity, and its bookmarks, stay put")
+	entries, err := os.ReadDir(filepath.Dir(cfgPath))
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "no temp file left beside the link")
+
+	// A rewrite's backup goes beside the file it copies.
+	require.NoError(t, os.WriteFile(real, []byte("\"source_dirs\" = [\"~/code\"]\n"), 0o644))
+	edit, err = AddSourceDirs(cfgPath, []string{"~/work"}, editTime)
+	require.NoError(t, err)
+	require.Equal(t, real+".bak-20260929-123456", edit.Backup)
+	info, err = os.Lstat(cfgPath)
+	require.NoError(t, err)
+	require.NotZero(t, info.Mode()&os.ModeSymlink)
+
+	// A link whose target does not exist yet has it created.
+	require.NoError(t, os.Remove(cfgPath))
+	pending := filepath.Join(dotfiles, "new.toml")
+	require.NoError(t, os.Symlink(pending, cfgPath))
+	edit, err = AddSourceDirs(cfgPath, []string{"~/code"}, editTime)
+	require.NoError(t, err)
+	require.True(t, edit.Created)
+	require.Equal(t, pending, edit.Target)
+	require.Equal(t, []string{"~/code"}, decodedSourceDirs(t, pending))
+	info, err = os.Lstat(cfgPath)
+	require.NoError(t, err)
+	require.NotZero(t, info.Mode()&os.ModeSymlink)
+}
+
+// A config the user cannot write — made read-only, or a link into a
+// read-only store such as /nix/store — is refused, naming the file, rather
+// than replaced: rename(2) asks only the directory, so replacing it would
+// have worked, and undone what they did on purpose.
+func TestAddSourceDirsRefusesAFileItCannotWrite(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes any file, so there is no unwritable config to refuse")
+	}
+	home, cfgPath := sourceDirsFixture(t)
+	store := filepath.Join(home, "store")
+	require.NoError(t, os.MkdirAll(store, 0o755))
+	real := filepath.Join(store, "vantage.toml")
+	require.NoError(t, os.WriteFile(real, []byte("port = 8123\n"), 0o444))
+	require.NoError(t, os.MkdirAll(filepath.Dir(cfgPath), 0o755))
+	require.NoError(t, os.Symlink(real, cfgPath))
+
+	_, err := AddSourceDirs(cfgPath, []string{"~/code"}, editTime)
+	require.ErrorContains(t, err, real)
+	require.ErrorContains(t, err, "add source_dirs there by hand")
+	require.Equal(t, "port = 8123\n", readString(t, real))
+	info, err := os.Lstat(cfgPath)
+	require.NoError(t, err)
+	require.NotZero(t, info.Mode()&os.ModeSymlink)
+}
+
 func TestAddSourceDirsRefusesAMalformedConfig(t *testing.T) {
 	_, cfgPath := sourceDirsFixture(t)
 	require.NoError(t, os.MkdirAll(filepath.Dir(cfgPath), 0o755))
