@@ -10,6 +10,7 @@ describe("useRepoStore", () => {
     // Reset store state before each test
     useRepoStore.setState({
       currentPath: null,
+      requestedPath: null,
       currentRepo: null,
       isMultiRepo: false,
       reposLoaded: false,
@@ -119,6 +120,27 @@ describe("useRepoStore", () => {
       expect(useRepoStore.getState().fileContent?.content).toBe("# New");
     });
 
+    // Live reload refreshes requestedPath, so it has to name the destination
+    // for the whole of the load, not just once it lands.
+    it("records the requested path before the response, and keeps it", async () => {
+      useRepoStore.setState({ currentPath: "previous.md" });
+      let resolve: (v: unknown) => void = () => {};
+      mockedAxios.get.mockReturnValueOnce(
+        new Promise((r) => {
+          resolve = r;
+        }),
+      );
+
+      const load = useRepoStore.getState().loadFile("next.md");
+      expect(useRepoStore.getState().requestedPath).toBe("next.md");
+      expect(useRepoStore.getState().currentPath).toBe("previous.md");
+
+      resolve({ data: { path: "next.md", content: "# N", encoding: "utf-8" } });
+      await load;
+      expect(useRepoStore.getState().requestedPath).toBe("next.md");
+      expect(useRepoStore.getState().currentPath).toBe("next.md");
+    });
+
     it("discards a failure that lost the race to a newer load", async () => {
       let rejectSlow: (e: unknown) => void = () => {};
       mockedAxios.get
@@ -178,6 +200,36 @@ describe("useRepoStore", () => {
 
       expect(useRepoStore.getState().currentPath).toBe("nonexistent");
     });
+
+    it("records the requested path before the response", async () => {
+      useRepoStore.setState({ currentPath: "previous.md" });
+      let resolve: (v: unknown) => void = () => {};
+      mockedAxios.get.mockReturnValueOnce(
+        new Promise((r) => {
+          resolve = r;
+        }),
+      );
+
+      const load = useRepoStore.getState().viewDirectory("docs");
+      expect(useRepoStore.getState().requestedPath).toBe("docs");
+      expect(useRepoStore.getState().currentPath).toBe("previous.md");
+
+      resolve({ data: [] });
+      await load;
+      expect(useRepoStore.getState().currentPath).toBe("docs");
+    });
+  });
+
+  // Switching repositories leaves the viewer nowhere until the new one's
+  // document loads, so a refresh in between must not reload the old repo's path.
+  it("setCurrentRepo forgets the requested path along with the current one", () => {
+    useRepoStore.setState({ currentPath: "a.md", requestedPath: "a.md" });
+    mockedAxios.get.mockResolvedValue({ data: [] });
+
+    useRepoStore.getState().setCurrentRepo("other");
+
+    expect(useRepoStore.getState().currentPath).toBeNull();
+    expect(useRepoStore.getState().requestedPath).toBeNull();
   });
 
   describe("refreshTree", () => {

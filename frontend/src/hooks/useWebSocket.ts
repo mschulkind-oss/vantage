@@ -19,6 +19,15 @@ const MAX_WAIT_MS = 500;
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30000;
 
+/**
+ * The path a refresh reloads: the one the viewer was last sent to, read at the
+ * moment of the refresh. Not `currentPath`, which lags a navigation until its
+ * response lands — a refresh of it in that window reloads the page being left,
+ * and as the newer load it wins, stranding the reader there. See
+ * `requestedPath` in useRepoStore.
+ */
+const viewerPath = () => useRepoStore.getState().requestedPath;
+
 export interface UseWebSocketOptions {
   /**
    * Whether this page is the viewer. `false` skips everything that refreshes
@@ -36,7 +45,6 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
   const staticMode = isStaticMode();
 
   const socketRef = useRef<WebSocket | null>(null);
-  const currentPathRef = useRef<string | null>(null);
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const maxWaitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingPathsRef = useRef<Set<string>>(new Set());
@@ -49,14 +57,9 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
   const disconnectedAtRef = useRef<number | null>(null);
   const connectCountRef = useRef(0);
 
-  const { currentPath, loadFile, refreshExpandedTree, viewDirectory } =
-    useRepoStore();
+  const { loadFile, refreshExpandedTree, viewDirectory } = useRepoStore();
   const { fetchStatus, fetchRecentFiles } = useGitStore();
   const markPathsChanged = useRepoStore((s) => s.markPathsChanged);
-
-  useEffect(() => {
-    currentPathRef.current = currentPath;
-  }, [currentPath]);
 
   const processBatch = useCallback(() => {
     const changedPaths = pendingPathsRef.current;
@@ -127,7 +130,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
     // Trigger flash animation for changed paths
     markPathsChanged(changedPaths);
 
-    const path = currentPathRef.current;
+    const path = viewerPath();
 
     // Fire all API calls in parallel rather than sequentially
     const promises: Promise<unknown>[] = [];
@@ -190,7 +193,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
       if (!reposLoaded) return;
       if (isMultiRepo && !currentRepo) return;
 
-      const path = initial ? null : currentPathRef.current;
+      const path = initial ? null : viewerPath();
       wsLog.log("[ws] Refreshing after reconnect (path=%s)", path ?? "(none)");
 
       if (path) {
@@ -289,7 +292,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
         if (isMultiRepo && (!currentRepo || message.repo !== currentRepo)) {
           return;
         }
-        if (message.path === currentPathRef.current) {
+        if (message.path === viewerPath()) {
           wsLog.log("[ws] review_changed: %s", message.path);
           useReviewStore.getState().loadReview(message.path);
         }

@@ -9,6 +9,15 @@ import { FileNode, FileContent, RepoInfo } from "../types";
 
 interface RepoState {
   currentPath: string | null;
+  /**
+   * The path the viewer was last sent to. loadFile and viewDirectory set it the
+   * moment they start, where `currentPath` waits for the response — so while a
+   * navigation is in flight the two differ, and this one is where the reader is
+   * going. Live reload refreshes this path, never `currentPath`: refreshing the
+   * page being left is itself a load, the newer one, so it would win the race
+   * against the navigation and send the reader back.
+   */
+  requestedPath: string | null;
   currentRepo: string | null; // Current repo name (null for single-repo mode)
   repos: RepoInfo[]; // Available repos (empty for single-repo mode)
   isMultiRepo: boolean; // Whether running in multi-repo mode
@@ -139,6 +148,7 @@ const parseDefaultOff = (raw: string | null): boolean => raw === "true";
 
 export const useRepoStore = create<RepoState>((set, get) => ({
   currentPath: null,
+  requestedPath: null,
   currentRepo: null,
   repos: [],
   isMultiRepo: false,
@@ -233,6 +243,7 @@ export const useRepoStore = create<RepoState>((set, get) => ({
       fileContent: null,
       currentDirectory: null,
       currentPath: null,
+      requestedPath: null,
       expandedDirs: {},
       isLoading: false,
       error: null,
@@ -266,7 +277,7 @@ export const useRepoStore = create<RepoState>((set, get) => ({
     return sorted;
   },
 
-  setCurrentPath: (path) => set({ currentPath: path }),
+  setCurrentPath: (path) => set({ currentPath: path, requestedPath: path }),
 
   toggleDir: (path) =>
     set((state) => {
@@ -386,7 +397,7 @@ export const useRepoStore = create<RepoState>((set, get) => ({
     const apiBase = getApiBase(currentRepo, isMultiRepo);
     if (!apiBase) return; // No repo selected in multi-repo mode
     // Don't clear existing content until new content arrives — avoids flash
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, error: null, requestedPath: path });
     try {
       const response = await axios.get<FileContent>(
         `${apiBase}/content?path=${encodeURIComponent(path)}`,
@@ -422,7 +433,7 @@ export const useRepoStore = create<RepoState>((set, get) => ({
     const apiBase = getApiBase(currentRepo, isMultiRepo);
     if (!apiBase) return; // No repo selected in multi-repo mode
     // Don't clear existing content until new content arrives — avoids flash
-    set({ isLoading: true, error: null });
+    set({ isLoading: true, error: null, requestedPath: path });
     try {
       // include_git=true because DirectoryViewer shows commit messages/dates
       const response = await axios.get<FileNode[]>(

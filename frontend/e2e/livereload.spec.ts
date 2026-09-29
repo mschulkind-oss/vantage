@@ -92,6 +92,61 @@ test.describe("Live reload", () => {
     await expect(watchedRow).toBeVisible();
   });
 
+  // A push refreshes what the viewer is on. While a click is still loading,
+  // that is the document clicked, not the directory it was clicked from: the
+  // directory's refresh would be the newer load, win, and leave the reader on
+  // the directory under the document's URL. navigation.spec and ui_behavior
+  // failed that way whenever any spec wrote a fixture during their click.
+  // This holds the click's response until a push has been handled, so the
+  // window is certain rather than a matter of luck.
+  test("a push while a click is still loading does not send the reader back", async ({
+    page,
+  }) => {
+    await page.goto("/livereload");
+    const table = page.locator("table");
+    const watchedLink = table.getByRole("link", {
+      name: "watched.md",
+      exact: true,
+    });
+    await expect(watchedLink).toBeVisible();
+
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route(
+      (url) =>
+        url.pathname === "/api/content" &&
+        url.searchParams.get("path") === "livereload/watched.md",
+      async (route) => {
+        await held;
+        await route.continue();
+      },
+    );
+
+    await watchedLink.click();
+    await expect(page).toHaveURL(/\/livereload\/watched\.md$/);
+
+    // The push's batch always refetches the root of the tree, after anything
+    // it reloads for the page itself, so that request means the batch ran.
+    const batchRan = page.waitForRequest((r) => {
+      const url = new URL(r.url());
+      return (
+        url.pathname === "/api/tree" &&
+        url.searchParams.get("path") === "." &&
+        !url.searchParams.has("include_git")
+      );
+    });
+    fs.writeFileSync(otherPath, `${originalOther}\nEdited.\n`);
+    await batchRan;
+    release();
+
+    await expect(page.locator(".prose h1")).toContainText(
+      "Live reload watched",
+    );
+    await expect(table).toHaveCount(0);
+  });
+
   test("an edit to a different document does not disturb the open one", async ({
     page,
   }) => {
