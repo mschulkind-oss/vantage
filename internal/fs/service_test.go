@@ -606,3 +606,90 @@ func TestReadFileAllowsSymlinkInsideRoot(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "real\n", fc.Content)
 }
+
+// looseRoot builds a directory that is not a repository: one clone, loose
+// Markdown beside it, and a plain folder holding a repository of its own.
+func looseRoot(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = resolved
+	}
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "alpha", ".git"), 0o755))
+	writeFile(t, dir, "alpha/README.md", "# alpha\n")
+	writeFile(t, dir, "notes.md", "# notes\n")
+	writeFile(t, dir, "drafts/idea.md", "# idea\n")
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "drafts", "old", ".git"), 0o755))
+	writeFile(t, dir, "drafts/old/inside.md", "# inside\n")
+	writeFile(t, dir, "archive/old/.git/x", "")
+	writeFile(t, dir, "archive/old/only.md", "# only\n")
+	return dir
+}
+
+func nodeNames(nodes []model.FileNode) []string {
+	out := make([]string, 0, len(nodes))
+	for _, n := range nodes {
+		out = append(out, n.Name)
+	}
+	return out
+}
+
+// The project that holds the Markdown beside a set of clones sees none of the
+// clones: each is served as a project of its own.
+func TestStopAtReposKeepsRepositoriesOutOfEveryWalk(t *testing.T) {
+	t.Cleanup(ClearMarkdownDirCache)
+	dir := looseRoot(t)
+
+	control := New(Config{RootPath: dir})
+	require.Contains(t, control.ListAllFiles(), "alpha/README.md", "control: a plain root lists its children's files")
+
+	ClearMarkdownDirCache()
+	svc := New(Config{RootPath: dir, StopAtRepos: true})
+
+	nodes, err := svc.ListDirectory(".", Options{ShowHidden: true})
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"archive", "drafts", "notes.md"}, nodeNames(nodes))
+	for _, n := range nodes {
+		if n.Name == "archive" {
+			require.False(t, n.HasMarkdown, "a folder whose only Markdown is inside a repository has none")
+		}
+	}
+
+	nodes, err = svc.ListDirectory("drafts", Options{ShowHidden: true})
+	require.NoError(t, err)
+	require.Equal(t, []string{"idea.md"}, nodeNames(nodes))
+
+	require.Equal(t, []string{"drafts/idea.md", "notes.md"}, svc.ListAllFiles())
+	require.True(t, svc.IsListed("notes.md"))
+	require.False(t, svc.IsListed("alpha/README.md"))
+	require.False(t, svc.IsListed("drafts/old/inside.md"))
+
+	_, err = svc.ReadFile("alpha/README.md")
+	require.ErrorIs(t, err, ErrInvalidPath, "a document inside a repository belongs to that repository's project")
+	_, err = svc.ReadFile("drafts/old/inside.md")
+	require.ErrorIs(t, err, ErrInvalidPath)
+	_, err = svc.ListDirectory("alpha", Options{})
+	require.ErrorIs(t, err, ErrInvalidPath)
+	got, err := svc.ReadFile("drafts/idea.md")
+	require.NoError(t, err)
+	require.Equal(t, "# idea\n", got.Content)
+}
+
+func TestHasMarkdownStopsAtRepositories(t *testing.T) {
+	t.Cleanup(ClearMarkdownDirCache)
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "alpha", ".git"), 0o755))
+	writeFile(t, dir, "alpha/README.md", "# alpha\n")
+	writeFile(t, dir, "plain/notes.txt", "not markdown\n")
+
+	require.True(t, New(Config{RootPath: dir}).HasMarkdown(), "control: without boundaries the clone's README counts")
+	svc := New(Config{RootPath: dir, StopAtRepos: true})
+	require.False(t, svc.HasMarkdown())
+
+	writeFile(t, dir, "plain/deep/er/idea.md", "# idea\n")
+	require.True(t, svc.HasMarkdown())
+
+	depth := 1
+	capped := New(Config{RootPath: dir, StopAtRepos: true, WalkMaxDepth: &depth})
+	require.False(t, capped.HasMarkdown(), "the probe honors walk_max_depth")
+}

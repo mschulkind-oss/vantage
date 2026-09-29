@@ -144,6 +144,12 @@ type Watcher struct {
 	// in tests so failed registrations can be exercised without exhausting
 	// inotify.
 	addWatch func(string) error
+	// removeWatch drops one directory's watch. Nil means fsw.Remove; tests
+	// replace it to observe which watches are dropped.
+	removeWatch func(string)
+	// stopAtRepos makes every repository below the root a boundary the watch
+	// set never enters; see [Watcher.SetStopAtRepos].
+	stopAtRepos bool
 	// dirs is every directory with a registered watch, by repo-relative slash
 	// path, the root excepted. It is what lets a Rename or Remove event be told
 	// apart as a directory going away, which by then can no longer be stat'ed.
@@ -208,6 +214,18 @@ func NewWatcher(root, repoName string, mgr *Manager, store *review.Store, useIgn
 		gitStateFP: map[string]string{},
 		dirs:       map[string]struct{}{},
 	}, nil
+}
+
+// SetStopAtRepos makes every repository below the root — a directory holding a
+// .git directory, or a linked worktree — a boundary the watch set never enters,
+// including one that becomes a repository while the watcher runs. It is set for
+// the project holding the Markdown beside a directory of clones, whose clones
+// each have a watcher of their own (docs/design/serve-clones-directory.md §3).
+// Call it before Start.
+func (w *Watcher) SetStopAtRepos(stop bool) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.stopAtRepos = stop
 }
 
 // Start begins watching. It adds the recursive watch set, then runs the event
@@ -323,7 +341,7 @@ func (w *Watcher) watchTree(dir string, found func(rel string)) int {
 			}
 			return nil
 		}
-		if path != w.root && gitsvc.IsWorktree(path) {
+		if path != w.root && (gitsvc.IsWorktree(path) || (w.stopAtRepos && gitsvc.IsRepoBoundary(path))) {
 			return iofs.SkipDir
 		}
 		rel, relErr := filepath.Rel(w.root, path)
@@ -350,6 +368,20 @@ func (w *Watcher) handleEvent(ev fsnotify.Event, co *coalescer) {
 	w.mu.Lock()
 	w.stats.eventsTotal++
 	w.mu.Unlock()
+
+	// A .git appearing is a directory becoming a repository — `git clone` or
+	// `git worktree add` into the tree. When repositories are boundaries, the
+	// watches registered under it before git got that far are dropped.
+	if ev.Has(fsnotify.Create) && w.stopAtRepos && filepath.Base(ev.Name) == ".git" {
+		parent := filepath.Dir(ev.Name)
+		if rel, relErr := filepath.Rel(w.root, parent); relErr == nil && rel != "." && gitsvc.IsRepoBoundary(parent) {
+			for _, dir := range w.forgetDir(filepath.ToSlash(rel)) {
+				w.unregisterWatch(filepath.Join(w.root, filepath.FromSlash(dir)))
+			}
+			w.logger.Debug("watcher: directory became a repository; no longer watched", "path", rel)
+			return
+		}
+	}
 
 	// Newly created directories must be added to the (non-recursive) watch set,
 	// and the Markdown already inside one reported: nothing else will report it.
@@ -681,8 +713,12 @@ func (w *Watcher) registerWatch(path string) error {
 // failure is not interesting: it means the kernel or fsnotify dropped it first.
 func (w *Watcher) unregisterWatch(path string) {
 	w.mu.Lock()
-	fsw := w.fsw
+	fsw, remove := w.fsw, w.removeWatch
 	w.mu.Unlock()
+	if remove != nil {
+		remove(path)
+		return
+	}
 	if fsw != nil {
 		_ = fsw.Remove(path)
 	}

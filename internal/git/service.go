@@ -74,6 +74,12 @@ type Options struct {
 	// UseIgnoreFiles layers the user and workspace .vantageignore files into
 	// recent-files discovery (both as git --exclude-from and as a post-filter).
 	UseIgnoreFiles bool
+	// StopAtRepos makes every repository below repoPath a boundary: its files
+	// are never walked and git work is never delegated to it. It is set for
+	// the project that holds the Markdown beside a directory of clones, where
+	// each clone is served as a project of its own (see
+	// docs/design/serve-clones-directory.md §3).
+	StopAtRepos bool
 }
 
 func (o Options) walkTimeout() time.Duration {
@@ -145,6 +151,12 @@ func (s *GitService) resolveWorkingDir() string {
 	return filepath.Clean(top)
 }
 
+// InWorkTree reports whether repoPath lies inside a git work tree — the
+// repository itself or any directory below its root.
+func (s *GitService) InWorkTree() bool {
+	return s.workingDir != ""
+}
+
 // RepoName returns the repository directory's base name.
 func (s *GitService) RepoName() string {
 	return filepath.Base(s.repoPath)
@@ -204,6 +216,9 @@ func (s *GitService) repoRelativePath(path string) string {
 // This lets a non-repo parent (e.g. ~/projects) transparently delegate git
 // operations to project_a/.git, project_b/.git, etc.
 func (s *GitService) resolveChildRepo(path string) (*GitService, string) {
+	if s.opts.StopAtRepos {
+		return nil, ""
+	}
 	parts := strings.Split(strings.ReplaceAll(path, "\\", "/"), "/")
 	if len(parts) < 2 {
 		return nil, ""
