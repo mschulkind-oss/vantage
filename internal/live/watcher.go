@@ -233,6 +233,9 @@ func NewWatcher(root, repoName string, mgr *Manager, store *review.Store, useIgn
 	}, nil
 }
 
+// RepoName is the project name the watcher reports under.
+func (w *Watcher) RepoName() string { return w.repoName }
+
 // Rescan asks the running watcher to watch dir, a directory below its root, as
 // though it had just been created, reporting the Markdown already inside it.
 // It is for a directory that has stopped being a repository while the loose

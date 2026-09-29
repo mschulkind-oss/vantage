@@ -290,7 +290,7 @@ config. The command then installs the service and starts it. Without
 ## 7. Too big to serve well: a banner in the browser
 
 A project too big to serve well now says so in the browser. This applies with
-or without the split. Two conditions are reported:
+or without the split. Three conditions are reported:
 
 - **Watch limit reached.** When registering a watch fails with the kernel's
   watch-limit error, the watcher records a degradation (coined here: a named
@@ -307,6 +307,11 @@ or without the split. Two conditions are reported:
   files, since a reader who hides those runs a walk of their own. The server's
   own last-activity walk reports nothing, because nobody reads its result as a
   list of files.
+- **A project's watcher cannot start at all.** Live reload is then off for the
+  whole project. Each project has a watcher of its own, and on Linux each one
+  takes an inotify instance, whose default limit of 128 per user is shared
+  with every other program. A directory of many clones can run out, and the
+  banner names `fs.inotify.max_user_instances` when it does.
 
 Degradations are kept per project in memory and served at `GET
 /api/degraded`. The first degradation of each kind in each project also
@@ -341,4 +346,4 @@ of a nanosecond, and never by building a large tree.
 | D5 | Where does the tip read service state? | The unit or plist path `install-service` writes, plus one 200 ms `GET /api/repos` before `serve` binds ([§5](#5-the-service-reminder)). |
 | D6 | How does `--source-dir` edit the config? | It rewrites only the text of the `source_dirs` value and checks the round trip. It backs the file up first whenever it cannot do that safely ([§6](#6-install-service---source-dir)). |
 | D7 | How does the service pick up a new `source_dirs`? | `install-service --source-dir` restarts it ([§6](#6-install-service---source-dir)). |
-| D8 | What reaches the browser? | The watch limit and the untracked-walk timeout, through `/api/degraded` and a bottom-fixed banner ([§7](#7-too-big-to-serve-well-a-banner-in-the-browser)). |
+| D8 | What reaches the browser? | The watch limit, the untracked-walk timeout, and a watcher that cannot start, through `/api/degraded` and a bottom-fixed banner ([§7](#7-too-big-to-serve-well-a-banner-in-the-browser)). |

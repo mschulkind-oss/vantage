@@ -55,7 +55,7 @@ export interface FileContent {
 export interface Degradation {
   /** The project's name, "" in single-repo mode. */
   repo: string;
-  kind: "watch_limit" | "walk_timeout" | (string & {});
+  kind: "watch_limit" | "walk_timeout" | "watcher_failed" | (string & {});
   /** The folder where it starts, "." for the root, when there is one. */
   path?: string;
   count?: number;
