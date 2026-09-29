@@ -1,43 +1,47 @@
 /**
- * A planning document's state in the file tree
- * (`docs/design/planning-index.md` §7): its stage, or its status chip when it
- * has no stage, and `💬 N` while it has open questions. Every other file's row is
- * unchanged, and so is a planning document with nothing of the three to show.
+ * A planning document's state in the file tree, in the tree's compact form
+ * (`docs/design/planning-index.md` §7): a dot in its status chip's tone, or in
+ * the warning tone, as a ring, when its stage is not a declared one, and
+ * `💬 N` while it has open questions. The full phrasing is the badge's
+ * accessible name and title; the full chip is for links and the document
+ * header, where there is room for it.
  *
- * Drawn with the link badge's own markup, so a stage outside the declared words
- * takes the same warning tone here as beside a link, and a screen reader hears
- * the same phrasing.
+ * It sits in a slot after the name that is laid out to take no width from it:
+ * the name is exactly as wide as it would be with no badge, and the badge uses
+ * only the room left over, whole or not at all. How is in `index.css`, under
+ * `.vantage-tree-badge-slot`. When it is not drawn, the row's tooltip says what
+ * it would have (`FileTree`).
  */
-import type { PlanningBadge } from "vantage-md/planning";
-import {
-  usePlanningDocument,
-  usePlanningStages,
-} from "../stores/usePlanningStore";
-import { PlanningBadgeChip } from "./PlanningBadge";
+import { VANTAGE_OQ_STATUS } from "vantage-md";
+import type { TreeBadge } from "../hooks/usePlanningTreeBadge";
+import { cn } from "../lib/utils";
+import { PLANNING_BADGE_ATTR } from "./PlanningBadge";
 
-export function PlanningTreeBadge({ path }: { path: string }) {
-  const doc = usePlanningDocument(path);
-  const stages = usePlanningStages();
-  if (doc === undefined) return null;
-
-  const open = doc.questions.filter((q) => q.state === "open").length;
-  // The stage when there is one; the status only in its absence.
-  const status = doc.stage === null ? doc.status : null;
-  if (doc.stage === null && status === null && open === 0) return null;
-
-  const badge: PlanningBadge = {
-    kind: "document",
-    path: doc.path,
-    status,
-    stage: doc.stage,
-    stageInVocabulary:
-      stages === null || doc.stage === null || Object.hasOwn(stages, doc.stage),
-    open,
-    blocked: 0,
-  };
+export function PlanningTreeBadge({ badge }: { badge: TreeBadge }) {
   return (
-    <span className="shrink-0 text-xs">
-      <PlanningBadgeChip badge={badge} />
+    <span className="vantage-tree-badge-slot">
+      <span
+        {...{ [PLANNING_BADGE_ATTR]: "document" }}
+        role="img"
+        aria-label={badge.label}
+        title={badge.label}
+        className="vantage-tree-badge"
+      >
+        {badge.tone !== null && (
+          <span
+            className={cn(
+              "vantage-tree-badge__dot",
+              `vantage-chip--${badge.tone}`,
+              badge.undeclaredStage && "vantage-tree-badge__dot--undeclared",
+            )}
+          />
+        )}
+        {badge.open > 0 && (
+          <span className="vantage-tree-badge__count">
+            {`${VANTAGE_OQ_STATUS.open} ${badge.open}`}
+          </span>
+        )}
+      </span>
     </span>
   );
 }

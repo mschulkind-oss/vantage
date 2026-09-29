@@ -14,6 +14,7 @@ import { cn } from "../lib/utils";
 import { useNavigate } from "react-router-dom";
 import { shouldHandleInternalNavigation } from "../lib/navigation";
 import { useEnsurePlanningIndex } from "../stores/usePlanningStore";
+import { usePlanningTreeBadge } from "../hooks/usePlanningTreeBadge";
 import { PlanningTreeBadge } from "./PlanningTreeBadge";
 
 interface FileTreeProps {
@@ -38,6 +39,9 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
   const isRecentlyChanged = useRepoStore((state) =>
     state.recentlyChangedPaths.has(node.path),
   );
+  // What the row shows of its planning document (planning-index.md §7).
+  // Files only: a directory is never a planning document.
+  const planningBadge = usePlanningTreeBadge(node.is_dir ? null : node.path);
   const navigate = useNavigate();
 
   // Build path with repo prefix in multi-repo mode
@@ -228,7 +232,9 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
             ? "Symlink target is outside this project or broken"
             : isSymlink
               ? `Symlink → ${node.symlink_target}`
-              : undefined
+              : // The badge's words, which the row keeps saying when there
+                // is no room to draw the badge itself.
+                planningBadge?.label
         }
       >
         {/* Arrow toggle — large click target with visible hover feedback */}
@@ -287,9 +293,9 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
         >
           {node.name}
         </span>
-        {/* A planning document's stage and open questions (planning-index.md
-            §7). Files only: a directory is never a planning document. */}
-        {!node.is_dir && <PlanningTreeBadge path={node.path} />}
+        {/* Takes no width from the name: only what is left over, and only
+            when the whole badge fits there (planning-index.md §7). */}
+        {planningBadge && <PlanningTreeBadge badge={planningBadge} />}
         {hasGitChange && !isSymlink && (
           <span
             className={cn(
