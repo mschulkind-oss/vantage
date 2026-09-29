@@ -661,6 +661,11 @@ ordinary link, protocol-filtered like a Markdown link. Gradients and patterns
 are unsupported because they are reachable only through `url(#id)`, and the
 sanitizer prefixes every `id`. SVG child elements require an `svg` ancestor.
 
+**Inline SVG is Vantage-only.** GitHub drops the drawing, leaves the words of
+its `<text>` elements as loose text, and prints a `<title>` as literal markup, so
+for a document read on GitHub, commit the drawing as a file and embed it with
+`![alt](file.svg)`.
+
 **Write a drawing as a `<div>` on a line of its own around the `<svg>`, with no
 blank line anywhere inside it.** Markdown decides where raw HTML ends before the
 sanitizer sees any of it:
