@@ -429,8 +429,16 @@ planning page at its previous scroll position.
      spells a stage outside the declared words as it is written, *stage “design” is not a declared
      stage*, because matching is exact and a lowercased word would hide why. Blocked questions are
      not counted here. The full
-     status chip stays where there is room for it, beside links and in the document's header,
-     and the git-change dot keeps its place at the end of the row.
+     status chip stays where there is room for it: beside links, and in the
+     document's header when it asks for one (`vantage: status-chip`).
+
+     The dot's only visual cue for the status is its color. Its words are the tooltip and the
+     accessible name, not something the row shows, so a keyboard or touch user who cannot tell
+     two colors apart does not see them either. And the dot takes the chip's tones, so amber
+     (`in-review`) and green (`accepted`) are the colors the tree also uses for a modified and an
+     untracked file. The git-change dot is the smaller one, and always the last thing in the row.
+     Both are accepted for now to keep the badge a few pixels wide. A shape for each status, or
+     the words on focus, would be a new ruling.
   4. **A row with no badge is unchanged.** That is every file that is not a planning document,
      every directory, and every planning document with nothing to show
      ([§5.1](#51-which-links-get-a-badge)).
@@ -634,4 +642,4 @@ the plan proposed.
 | — | Plan Q18: a foreign top-level `stage` key makes a planning document, as designed; `[planning] exclude` is the remedy | 2026-09-28 | [§13](#13-risks) | — |
 | — | Plan Q19: the planning module is internal to `vantage-md`; `FrontmatterDisplay`'s optional `linkIds` is the one public addition | 2026-09-28 | [§1](#1-verdict-and-the-principles) (P4) | — |
 | — | Plan Q20: the plan's eight gap-fills. A header that does not parse makes its file unreadable; a non-string or empty `stage` and a non-string or multi-line `next` are ignored, a single `depends-on` path is a one-entry list, and a non-string entry is dropped; stage matching is exact and case-sensitive; an empty stages table is none; a `depends-on` target outside the repository, or whose `#OQ-…` id appears nowhere in it, is a finding; a skipped or unreadable roadmap counts as missing; an empty document badge is not drawn; `next` links only an id a question carries | 2026-09-28 | [§3.6](#36-failure), [§4](#4-the-header-of-record-stage-next-depends-on), [§5.1](#51-which-links-get-a-badge), [§6.2](#62-sections-top-to-bottom), [§9](#9-configuration) | — |
-| — | User ruling 2026-09-29: the file name wins. A tree badge takes no width from a file name: it uses only the room the name leaves, is drawn whole or not at all, and is a compact dot and `💬 N` whose words are its tooltip and accessible name. It replaced a full status chip that cut long names down to their first letter | 2026-09-29 | [§7](#7-referenced-by-and-status-in-the-file-tree) | — |
+| — | User ruling 2026-09-28: the file name wins. A tree badge takes no width from a file name: it uses only the room the name leaves, is drawn whole or not at all, and is a compact dot and `💬 N` whose words are its tooltip and accessible name. It replaced a full status chip that cut long names down to their first letter | 2026-09-28 | [§7](#7-referenced-by-and-status-in-the-file-tree) | — |
