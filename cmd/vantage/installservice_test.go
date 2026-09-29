@@ -3,11 +3,13 @@ package main
 import (
 	"bytes"
 	"encoding/xml"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -151,4 +153,142 @@ func TestInstallServiceOnUnsupportedPlatform(t *testing.T) {
 	entries, err := os.ReadDir(home)
 	require.NoError(t, err)
 	require.Empty(t, entries, "unsupported platform wrote something into home")
+}
+
+// recordingRunner stands in for systemctl and launchctl: it records every
+// call and fails the ones named in fail.
+type recordingRunner struct {
+	calls []string
+	fail  map[string]error
+}
+
+func (r *recordingRunner) run(name string, args ...string) error {
+	call := strings.Join(append([]string{name}, args...), " ")
+	r.calls = append(r.calls, call)
+	return r.fail[call]
+}
+
+// sourceDirInstall sets up an isolated home holding a directory of two clones
+// and returns the inputs install-service --source-dir would gather.
+func sourceDirInstall(t *testing.T, goos string) (serviceInstall, *recordingRunner, string) {
+	t.Helper()
+	home := isolateHome(t)
+	code := filepath.Join(home, "code")
+	gitRepo(t, filepath.Join(code, "alpha"), map[string]string{"a.md": "# a\n"})
+	gitRepo(t, filepath.Join(code, "beta"), map[string]string{"b.md": "# b\n"})
+	rec := &recordingRunner{}
+	return serviceInstall{
+		goos:       goos,
+		home:       home,
+		exe:        "/opt/bin/vantage",
+		configPath: filepath.Join(home, ".config", "vantage", "config.toml"),
+		uid:        501,
+		now:        time.Date(2026, 9, 29, 1, 2, 3, 0, time.UTC),
+		run:        rec.run,
+	}, rec, code
+}
+
+func TestInstallServiceWithSourceDirsOnLinux(t *testing.T) {
+	in, rec, _ := sourceDirInstall(t, "linux")
+	var out bytes.Buffer
+	require.NoError(t, installServiceWithSourceDirs(&out, in, []string{"~/code"}))
+
+	body, err := os.ReadFile(in.configPath)
+	require.NoError(t, err)
+	require.Contains(t, string(body), `source_dirs = ["~/code"]`)
+	unit, err := os.ReadFile(systemdUnitPath(in.home))
+	require.NoError(t, err)
+	require.Contains(t, string(unit), "ExecStart=/opt/bin/vantage daemon")
+
+	require.Equal(t, []string{
+		"systemctl --user daemon-reload",
+		"systemctl --user enable vantage",
+		"systemctl --user restart vantage",
+	}, rec.calls, "restart, not start: a running daemon reads source_dirs only at startup")
+
+	printed := out.String()
+	require.Contains(t, printed, "Created ~/.config/vantage/config.toml with source_dirs = [~/code]")
+	require.Contains(t, printed, "Wrote ~/.config/systemd/user/vantage.service")
+	require.Contains(t, printed, "Ran: systemctl --user restart vantage")
+	require.Contains(t, printed, "Vantage is running in the background at http://localhost:8000, serving 2 projects.")
+}
+
+func TestInstallServiceWithSourceDirsOnMacOS(t *testing.T) {
+	in, rec, _ := sourceDirInstall(t, "darwin")
+	rec.fail = map[string]error{
+		"launchctl bootout gui/501/" + launchAgentLabel: errors.New("not loaded"),
+	}
+	var out bytes.Buffer
+	require.NoError(t, installServiceWithSourceDirs(&out, in, []string{"~/code"}))
+
+	plist := launchAgentPath(in.home)
+	require.FileExists(t, plist)
+	require.Equal(t, []string{
+		"launchctl bootout gui/501/" + launchAgentLabel,
+		"launchctl bootstrap gui/501 " + plist,
+	}, rec.calls, "a failed bootout means the agent was not loaded yet, which is fine")
+	require.NoDirExists(t, filepath.Join(in.home, ".config", "systemd"))
+}
+
+func TestInstallServiceWithSourceDirsKeepsAnExistingConfig(t *testing.T) {
+	in, rec, code := sourceDirInstall(t, "linux")
+	require.NoError(t, os.MkdirAll(filepath.Dir(in.configPath), 0o755))
+	original := "# mine\nport = 8123 # not the default\ntheme = \"catppuccin\"\n"
+	require.NoError(t, os.WriteFile(in.configPath, []byte(original), 0o644))
+
+	var out bytes.Buffer
+	require.NoError(t, installServiceWithSourceDirs(&out, in, []string{code, "~/code"}))
+	body, err := os.ReadFile(in.configPath)
+	require.NoError(t, err)
+	require.Equal(t, original+"\nsource_dirs = [\"~/code\"]\n", string(body))
+	require.Contains(t, out.String(), "Added to source_dirs in ~/.config/vantage/config.toml: ~/code")
+	require.Contains(t, out.String(), "http://localhost:8123")
+	require.Len(t, rec.calls, 3)
+
+	// Again: nothing to add, and the service is still (re)started, since the
+	// point of the command is a running service that serves this directory.
+	out.Reset()
+	rec.calls = nil
+	require.NoError(t, installServiceWithSourceDirs(&out, in, []string{"~/code"}))
+	require.Contains(t, out.String(), "Already in source_dirs: ~/code")
+	require.NotContains(t, out.String(), "Added")
+	require.Len(t, rec.calls, 3)
+}
+
+func TestInstallServiceWithSourceDirsReportsAFailedStart(t *testing.T) {
+	in, rec, _ := sourceDirInstall(t, "linux")
+	rec.fail = map[string]error{"systemctl --user restart vantage": errors.New("exit status 1: Failed to connect to bus")}
+	var out bytes.Buffer
+	err := installServiceWithSourceDirs(&out, in, []string{"~/code"})
+	require.ErrorContains(t, err, "systemctl --user restart vantage")
+	require.ErrorContains(t, err, "Failed to connect to bus")
+}
+
+func TestInstallServiceWithSourceDirsWillNotStartADaemonWithNothingToServe(t *testing.T) {
+	in, rec, _ := sourceDirInstall(t, "linux")
+	empty := filepath.Join(in.home, "empty")
+	require.NoError(t, os.MkdirAll(empty, 0o755))
+	var out bytes.Buffer
+	err := installServiceWithSourceDirs(&out, in, []string{empty})
+	require.ErrorContains(t, err, "No repositories configured")
+	require.Empty(t, rec.calls)
+	require.NoFileExists(t, systemdUnitPath(in.home))
+}
+
+func TestInstallServiceWithSourceDirsRejectsAMissingDirectory(t *testing.T) {
+	in, rec, _ := sourceDirInstall(t, "linux")
+	var out bytes.Buffer
+	err := installServiceWithSourceDirs(&out, in, []string{"~/nope"})
+	require.ErrorContains(t, err, "not a directory")
+	require.NoFileExists(t, in.configPath)
+	require.Empty(t, rec.calls)
+}
+
+func TestInstallServiceHasARepeatableSourceDirFlag(t *testing.T) {
+	cmd, _, err := newRootCmd().Find([]string{"install-service"})
+	require.NoError(t, err)
+	flag := cmd.Flags().Lookup("source-dir")
+	require.NotNil(t, flag)
+	require.Equal(t, "stringArray", flag.Value.Type())
+	require.Contains(t, cmd.Long, "--source-dir")
 }
