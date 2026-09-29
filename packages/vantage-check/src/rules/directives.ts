@@ -956,7 +956,7 @@ function nodeText(node: RootContent | ListItem): string {
  * `styleGuide.ts` and stopped there. This repo's own
  * `docs/design/agent-bootstrap.md` had the same gap in five places.
  *
- * Three conditions, and each one exists to keep the rule quiet:
+ * Four conditions, and each one exists to keep the rule quiet:
  *
  * - **A `_Leaning:_` paragraph.** The precise marker, and the exact thing
  *   `leaning=` mirrors — not a guess from a heading or a question mark.
@@ -974,8 +974,11 @@ function nodeText(node: RootContent | ListItem): string {
  * ruling, with a stated leaning and no way for the reviewer to file it. That is
  * the house rule's error criterion, not a judgment about taste. A document that
  * wants the question without the button says so with its marker — 🔒 if it is
- * blocked, ✅ once it is decided — and a repo that wants the whole rule advisory
- * sets `"vantage/oq-missing" = "warning"` under `[check.rules]`.
+ * blocked, ✅ once it is decided — and keeps the directive, which offers no
+ * button in either state (Plan Q5) and is the only thing the planning index
+ * reads a question from (`docs/design/planning-index.md` §3.3). A repo that
+ * wants the whole rule advisory sets `"vantage/oq-missing" = "warning"` under
+ * `[check.rules]`.
  */
 export function checkOpenQuestions(collector: Collector): void {
   if (!collector.enabled("vantage/oq-missing")) return;
@@ -1020,8 +1023,11 @@ export function checkOpenQuestions(collector: Collector): void {
         "reviewer has no way to file the leaning. Add " +
         '`<!-- vantage: oq id=\u2026 leaning="\u2026" -->` beside it, indented into ' +
         "the same list item, restating the leaning as the comment the agent will " +
-        "receive. If the question is not answerable yet, mark it \u{1F512} " +
-        "instead of \u{1F4AC}; if it is already decided, mark it \u2705.",
+        "receive. If the question cannot be answered yet, mark it \u{1F512}; " +
+        "once it is decided, mark it \u2705. Keep the directive in either " +
+        "state (a \u{1F512} question needs no `leaning`): Vantage's planning " +
+        "index reads a question only from its directive, so without one " +
+        "nothing counts it, badges it or lists it.",
     );
   });
 }
