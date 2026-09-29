@@ -503,6 +503,7 @@ export const ViewerPage: React.FC = () => {
           fileContent: null,
           currentDirectory: null,
           currentPath: fullPath,
+          requestedPath: fullPath,
           fileTree: [],
         });
         return;
