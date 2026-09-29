@@ -47,3 +47,5 @@ export {
   withoutDirectory,
 } from "./model.js";
 export type { PlanningIndex, PlanningSources, SourceEntry } from "./model.js";
+export { badgeFor, badgeSpeech, badgeText } from "./badges.js";
+export type { PlanningBadge } from "./badges.js";
