@@ -348,6 +348,19 @@ positions. Members are joined by an upward bleed keyed off `data-vantage-run`
 > treatment. Computed-style assertions cannot catch this — the pseudo-element's
 > `left` was correct all along; it simply did not paint. Only a pixel test sees it.
 
+> [!WARNING]
+> **An image or a drawing has no `::before` at all.** A raw `<img>` or a bare
+> `<svg>` written as an HTML block of its own is stamped like any other member,
+> but both are replaced elements, which generate no pseudo-elements, so the rule
+> stopped beside each one: 84px beside a 92px image. They draw their slice as a
+> border image pushed out of the box instead. That slice is on the run's x only
+> if the box starts at the column's edge, so it is withheld from an image that is
+> floated, offset by `hspace` or a `margin`, or preceded by inline content on its
+> line. It is withheld too where the document drew a border, which a border
+> image would erase. Those keep the gap. A drawing inside a `<div>`, the form
+> [Inline SVG](#inline-svg) recommends, needs none of this, because the `<div>`
+> is the member.
+
 **On paper the rule is gray, and it needs its gutter there too.** The print
 block in `styles/directives.css` recolors it `#57606a`, and the host's print
 block zeroes the content wrapper's padding. Together those put the rule outside
@@ -884,6 +897,16 @@ every example the style guide tells agents to copy.
   comment cards as siblings *inside* a stamped run, and those are stamped by
   `useReviewHighlights` rather than here. Anything else that splices a sibling
   into rendered prose has to do the same or it punches a hole in the rule.
+- **An inline element written as an HTML block of its own draws a short slice
+  in the wrong place.** A raw `<a>` or `<span>` alone on its lines is an inline
+  box. Its `::before` is one line of text tall however tall the image inside it,
+  and it starts at the element rather than at the column's edge, so a row of
+  linked badges written that way draws one short slice per badge, the second in
+  the middle of the column. Put such a row in a `<p>`.
+- **Without Tailwind's preflight an `<svg>` is inline.** The rule that keeps an
+  image from drawing mid-column assumes a drawing is a block, which it is in the
+  app. Under `vantage-md/prose` alone, a drawing that shares a line with an image
+  can draw its slice beside the image instead of on the rule.
 
 ## Current values
 
