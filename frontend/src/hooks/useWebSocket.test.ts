@@ -812,7 +812,7 @@ describe("useWebSocket", () => {
             index: {} as never,
             version: 1,
             rescanning: false,
-            sources: {},
+            hashes: {},
           },
         },
       });

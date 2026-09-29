@@ -86,7 +86,7 @@ function seedReady(index: PlanningIndex): void {
           index,
           version: ++version,
           rescanning: false,
-          sources: {},
+          hashes: {},
         },
       },
     });
@@ -415,7 +415,7 @@ describe("Referenced by (§7)", () => {
             index: indexOf(TREE),
             version: ++version,
             rescanning: false,
-            sources: {},
+            hashes: {},
           },
         },
       });

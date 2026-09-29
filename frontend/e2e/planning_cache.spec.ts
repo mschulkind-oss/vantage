@@ -4,19 +4,19 @@ import { test, expect, type Page } from "@playwright/test";
 // planning stream, and the scan cache over the real IndexedDB, which no unit
 // test can reach (docs/design/planning-index-at-scale.md §8, §19).
 //
-// The planning store does not ask the scanner for its index yet, so these
-// drive the tab's scanner client directly, through the dev server's module
-// graph: `/src/planningScan/client.ts` imported in the page is the module
-// the app itself imports. Each test gets a fresh browser context, so
-// IndexedDB starts empty, and a warm load is a reload inside one test.
+// Every build here is the app's own: the planning store asks the tab's
+// scanner client for the index as soon as a surface needs it. Each test gets a
+// fresh browser context, so IndexedDB starts empty, and a warm load is a
+// reload inside one test.
 //
 // Other specs rewrite files of the same fixture while this one runs, so no
 // assertion names an exact list of changed files.
 
-const CLIENT = "/src/planningScan/client.ts";
 const ROADMAP = "plans/roadmap.md";
 /** planning.spec.ts rewrites it, so its hash may move under this spec. */
 const REWRITTEN = "plans/design.md";
+/** The planning page's one unrouted question, whose card every test awaits. */
+const UNROUTED_CARD = "OQ-U1: Is anyone tracking this?";
 
 interface Line {
   kind: string;
@@ -25,55 +25,9 @@ interface Line {
   refused?: boolean;
 }
 
-interface Event {
-  type: string;
-  warm?: boolean;
-  docs?: {
-    hash: string;
-    document: {
-      path: string;
-      questions: { title: string; block: { startLine: number } }[];
-    };
-  }[];
-}
-
-/** Load the tab's scanner client into the page as `window.__scanner`. */
-async function loadScanner(page: Page): Promise<void> {
-  await page.evaluate(
-    `import(${JSON.stringify(CLIENT)}).then((m) => { window.__scanner = m; })`,
-  );
-}
-
-/** Run one build in the page, and settle with its events at ready or failed. */
-async function build(
-  page: Page,
-  seq: number,
-  bypassCache = false,
-): Promise<Event[]> {
-  return page.evaluate(
-    ({ seq, bypassCache }) =>
-      new Promise<Event[]>((resolve) => {
-        const events: Event[] = [];
-        const scanner = (
-          window as unknown as {
-            __scanner: {
-              planningScanner(): {
-                build(request: object, on: (event: Event) => void): void;
-              };
-            };
-          }
-        ).__scanner;
-        scanner
-          .planningScanner()
-          .build({ repo: "", seq, bypassCache }, (event) => {
-            events.push(event);
-            if (event.type === "ready" || event.type === "failed") {
-              resolve(events);
-            }
-          });
-      }),
-    { seq, bypassCache },
-  );
+interface Stream {
+  have: Record<string, string>;
+  lines: Line[];
 }
 
 /**
@@ -82,8 +36,8 @@ async function build(
  * back over the protocol, so the route fetches it, keeps a copy, and hands it
  * on whole.
  */
-async function recordStreams(page: Page) {
-  const streams: { have: Record<string, string>; lines: Line[] }[] = [];
+async function recordStreams(page: Page): Promise<Stream[]> {
+  const streams: Stream[] = [];
   await page.route("**/api/planning/stream", async (route) => {
     const response = await route.fetch();
     const body = await response.text();
@@ -102,50 +56,6 @@ async function recordStreams(page: Page) {
   return streams;
 }
 
-/** A build, with the `have` it sent and the lines it read. */
-async function streamedBuild(
-  page: Page,
-  streams: { have: Record<string, string>; lines: Line[] }[],
-  seq: number,
-  bypassCache = false,
-) {
-  const before = streams.length;
-  const events = await build(page, seq, bypassCache);
-  expect(streams).toHaveLength(before + 1);
-  const { have, lines } = streams[before] ?? { have: {}, lines: [] };
-  return { events, lines, have };
-}
-
-/** Ask for every card of the given documents, as the planning page will. */
-async function cards(page: Page, events: Event[], skip: string[] = []) {
-  const want = events
-    .flatMap((event) => event.docs ?? [])
-    .filter(({ document }) => !skip.includes(document.path))
-    .flatMap(({ document, hash }) =>
-      document.questions.map((q) => ({
-        path: document.path,
-        hash,
-        startLine: q.block.startLine,
-      })),
-    );
-  const answers = await page.evaluate(
-    (want) =>
-      (
-        window as unknown as {
-          __scanner: {
-            planningScanner(): {
-              cards(repo: string, want: object[]): Promise<object[]>;
-            };
-          };
-        }
-      ).__scanner
-        .planningScanner()
-        .cards("", want),
-    want,
-  );
-  return { want, answers };
-}
-
 /** Record every single-path request the page or its workers send. */
 function pathRequests(page: Page): string[] {
   const paths: string[] = [];
@@ -159,6 +69,28 @@ function pathRequests(page: Page): string[] {
   return paths;
 }
 
+/** Open the planning page, and wait for its cards: the index is built. */
+async function planningPage(page: Page, reload = false): Promise<void> {
+  if (reload) await page.reload();
+  else await page.goto("/.vantage/planning");
+  await expect(
+    page.getByRole("article", { name: UNROUTED_CARD }),
+  ).toBeVisible();
+}
+
+/** The documents whose cards the planning page shows. */
+const cardPaths = async (page: Page): Promise<Set<string>> =>
+  new Set(
+    await page
+      .locator("[data-planning-question]")
+      .evaluateAll((cards) =>
+        cards.map(
+          (card) =>
+            (card.getAttribute("data-planning-question") ?? "").split("#")[0],
+        ),
+      ),
+  );
+
 const hashes = (lines: Line[]) =>
   Object.fromEntries(
     lines.flatMap((line) =>
@@ -168,19 +100,49 @@ const hashes = (lines: Line[]) =>
     ),
   );
 
+/** The keys each of the scan cache's record stores holds, by path. */
+const storedPaths = (page: Page) =>
+  page.evaluate(
+    () =>
+      new Promise<Record<string, string[]>>((resolve, reject) => {
+        const opening = indexedDB.open("vantage-planning");
+        opening.onerror = () => reject(opening.error);
+        opening.onsuccess = () => {
+          const db = opening.result;
+          const names = ["stamps", "documents", "cards"];
+          const tx = db.transaction(names, "readonly");
+          const out: Record<string, string[]> = {};
+          for (const name of names) {
+            const read = tx.objectStore(name).getAllKeys();
+            read.onsuccess = () => {
+              out[name] = (read.result as [string, string][]).map(
+                ([, path]) => path,
+              );
+            };
+          }
+          tx.oncomplete = () => {
+            db.close();
+            resolve(out);
+          };
+        };
+      }),
+  );
+
 test.describe("the planning scan cache", () => {
-  test("the scan worker starts at boot, and serves the tab's builds", async ({
+  test("the scan worker starts at boot, and builds the index a document needs", async ({
     page,
   }) => {
     const streams = await recordStreams(page);
-    await page.goto("/page1.md");
-    // Started beside the app's first requests (§7.1), asking nothing yet.
+    await page.goto("/plans/roadmap.md");
+    // Started beside the app's first requests (§7.1).
     await expect.poll(() => page.workers().length).toBe(1);
     expect(page.workers()[0]?.url()).toContain("/planningScan/worker");
-    expect(streams).toHaveLength(0);
-
-    await loadScanner(page);
-    expect((await build(page, 1)).at(-1)).toEqual({ type: "ready" });
+    // The index is ready once a badge is drawn, and one stream built it.
+    await expect(
+      page
+        .locator("[data-content-scroll] [data-vantage-planning-badge]")
+        .first(),
+    ).toBeVisible();
     expect(streams).toHaveLength(1);
     expect(page.workers()).toHaveLength(1);
   });
@@ -189,20 +151,17 @@ test.describe("the planning scan cache", () => {
     page,
   }) => {
     const streams = await recordStreams(page);
-    await page.goto("/page1.md");
-    await loadScanner(page);
-    const cold = await streamedBuild(page, streams, 1);
-    expect(cold.events[0]).toEqual({ type: "started", warm: false });
-    expect(cold.events.at(-1)).toEqual({ type: "ready" });
+    await planningPage(page);
+    expect(streams).toHaveLength(1);
+    const cold = streams[0] ?? { have: {}, lines: [] };
     expect(cold.have).toEqual({});
     expect(cold.lines.filter((line) => line.kind === "same")).toEqual([]);
     const first = hashes(cold.lines);
 
-    await page.reload();
-    await loadScanner(page);
-    const warm = await streamedBuild(page, streams, 1);
-    expect(warm.events[0]).toEqual({ type: "started", warm: true });
-    expect(warm.events.at(-1)).toEqual({ type: "ready" });
+    const asked = pathRequests(page);
+    await planningPage(page, true);
+    expect(streams).toHaveLength(2);
+    const warm = streams[1] ?? { have: {}, lines: [] };
 
     // Every file the first load read went back as `have`, but the roadmap,
     // which is never stored (§8.1).
@@ -224,37 +183,20 @@ test.describe("the planning scan cache", () => {
       warm.lines.filter((line) => line.kind === "same").length,
     ).toBeGreaterThan(10);
 
-    // The warm build's documents are the cold build's.
-    const docsOf = (events: Event[]) =>
-      events
-        .flatMap((event) => event.docs ?? [])
-        .map(({ document }) => document.path)
-        .sort();
-    expect(docsOf(warm.events)).toEqual(docsOf(cold.events));
-    expect(docsOf(warm.events)).toContain("plans/unrouted.md");
-
-    // Every card of a document nobody rewrites comes from the cache, with no
+    // Every card of a document nobody rewrites came from the cache, with no
     // request for its file.
-    const asked = pathRequests(page);
-    const { want, answers } = await cards(page, warm.events, [REWRITTEN]);
-    expect(want.length).toBeGreaterThan(0);
-    for (const answer of answers) expect(answer).toHaveProperty("block");
-    const cardPaths = new Set(want.map((item) => item.path));
-    expect(asked.filter((path) => cardPaths.has(path))).toEqual([]);
-
-    await page.goto("/.vantage/planning");
-    await expect(
-      page.getByRole("article", { name: "OQ-U1: Is anyone tracking this?" }),
-    ).toBeVisible();
+    const shown = await cardPaths(page);
+    expect(shown).toContain("plans/unrouted.md");
+    expect(
+      asked.filter((path) => shown.has(path) && path !== REWRITTEN),
+    ).toEqual([]);
   });
 
   test("a different scanner id in the database makes the next load cold", async ({
     page,
   }) => {
     const streams = await recordStreams(page);
-    await page.goto("/page1.md");
-    await loadScanner(page);
-    expect((await build(page, 1)).at(-1)).toEqual({ type: "ready" });
+    await planningPage(page);
 
     await page.evaluate(
       () =>
@@ -274,11 +216,9 @@ test.describe("the planning scan cache", () => {
         }),
     );
 
-    await page.reload();
-    await loadScanner(page);
-    const cold = await streamedBuild(page, streams, 1);
-    expect(cold.events[0]).toEqual({ type: "started", warm: false });
-    expect(cold.events.at(-1)).toEqual({ type: "ready" });
+    await planningPage(page, true);
+    expect(streams).toHaveLength(2);
+    const cold = streams[1] ?? { have: {}, lines: [] };
     expect(cold.have).toEqual({});
     // Every readable candidate is sent whole.
     expect(cold.lines.filter((line) => line.kind === "same")).toEqual([]);
@@ -306,19 +246,12 @@ test.describe("the planning scan cache", () => {
         }),
     );
     expect(stored).not.toBe("a scanner of other code");
-
-    await page.goto("/.vantage/planning");
-    await expect(
-      page.getByRole("article", { name: "OQ-U1: Is anyone tracking this?" }),
-    ).toBeVisible();
   });
 
   test("a build collects the records its stream no longer names", async ({
     page,
   }) => {
-    await page.goto("/page1.md");
-    await loadScanner(page);
-    expect((await build(page, 1)).at(-1)).toEqual({ type: "ready" });
+    await planningPage(page);
 
     // A record of a file the repository no longer has, as a deletion leaves.
     const GONE = "gone/removed.md";
@@ -353,44 +286,17 @@ test.describe("the planning scan cache", () => {
         }),
       GONE,
     );
+    expect((await storedPaths(page))["stamps"]).toContain(GONE);
 
-    const keys = () =>
-      page.evaluate(
-        () =>
-          new Promise<Record<string, string[]>>((resolve, reject) => {
-            const opening = indexedDB.open("vantage-planning");
-            opening.onerror = () => reject(opening.error);
-            opening.onsuccess = () => {
-              const db = opening.result;
-              const names = ["stamps", "documents", "cards"];
-              const tx = db.transaction(names, "readonly");
-              const out: Record<string, string[]> = {};
-              for (const name of names) {
-                const read = tx.objectStore(name).getAllKeys();
-                read.onsuccess = () => {
-                  out[name] = (read.result as [string, string][]).map(
-                    ([, path]) => path,
-                  );
-                };
-              }
-              tx.oncomplete = () => {
-                db.close();
-                resolve(out);
-              };
-            };
-          }),
-      );
-    expect((await keys())["stamps"]).toContain(GONE);
-
-    expect((await build(page, 2)).at(-1)).toEqual({ type: "ready" });
-    // Collected from every store once the build is done; the rest kept.
+    // The next load's build collects it from every store; the rest is kept.
+    await planningPage(page, true);
     await expect
       .poll(async () => {
-        const held = await keys();
+        const held = await storedPaths(page);
         return Object.values(held).some((paths) => paths.includes(GONE));
       })
       .toBe(false);
-    const held = await keys();
+    const held = await storedPaths(page);
     for (const name of ["stamps", "documents", "cards"]) {
       expect(held[name]).toContain("plans/unrouted.md");
     }
@@ -415,34 +321,29 @@ test.describe("the planning scan cache", () => {
         });
     });
     const streams = await recordStreams(page);
-    await page.goto("/page1.md");
+    const asked = pathRequests(page);
+    await planningPage(page);
     expect(
       await page.evaluate(
         () => (window as unknown as { __refused: Promise<boolean> }).__refused,
       ),
     ).toBe(true);
-    await loadScanner(page);
+    expect(streams).toHaveLength(1);
+    expect(streams[0]?.have).toEqual({});
 
-    const first = await streamedBuild(page, streams, 1);
-    expect(first.events[0]).toEqual({ type: "started", warm: false });
-    expect(first.events.at(-1)).toEqual({ type: "ready" });
-    // Without a cache, a second build in the same tab is as cold.
-    const second = await streamedBuild(page, streams, 2);
-    expect(second.events[0]).toEqual({ type: "started", warm: false });
+    // The blocks of this tab's build are held in the worker's memory, so the
+    // cards needed no request for their files.
+    const shown = await cardPaths(page);
+    expect(shown).toContain("plans/unrouted.md");
+    expect(
+      asked.filter((path) => shown.has(path) && path !== REWRITTEN),
+    ).toEqual([]);
+
+    // Without a cache, the next load is as cold, and still has its cards.
+    await planningPage(page, true);
+    expect(streams).toHaveLength(2);
+    const second = streams[1] ?? { have: {}, lines: [] };
     expect(second.have).toEqual({});
     expect(second.lines.filter((line) => line.kind === "same")).toEqual([]);
-
-    // The blocks of this tab's builds are held in the worker's memory.
-    const asked = pathRequests(page);
-    const { want, answers } = await cards(page, second.events, [REWRITTEN]);
-    expect(want.length).toBeGreaterThan(0);
-    for (const answer of answers) expect(answer).toHaveProperty("block");
-    const cardPaths = new Set(want.map((item) => item.path));
-    expect(asked.filter((path) => cardPaths.has(path))).toEqual([]);
-
-    await page.goto("/.vantage/planning");
-    await expect(
-      page.getByRole("article", { name: "OQ-U1: Is anyone tracking this?" }),
-    ).toBeVisible();
   });
 });

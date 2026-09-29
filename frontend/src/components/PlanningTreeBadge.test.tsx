@@ -7,12 +7,16 @@
  * `e2e/tree_badges.spec.ts` measures that.
  */
 import { act, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BrowserRouter } from "react-router-dom";
 import axios from "axios";
 import type { PlanningConfig, PlanningIndex } from "vantage-md/planning";
 import { FileTree } from "./FileTree";
 import { PLANNING_BADGE_ATTR } from "./PlanningBadge";
+import {
+  setPlanningScannerForTests,
+  type ScannerClient,
+} from "../planningScan/client";
 import {
   resetPlanningTrackers,
   usePlanningStore,
@@ -77,7 +81,7 @@ function seedReady(index: PlanningIndex, repo = ""): void {
           index,
           version: ++version,
           rescanning: false,
-          sources: {},
+          hashes: {},
         },
       },
     });
@@ -111,7 +115,20 @@ beforeEach(() => {
   });
   vi.mocked(axios.get).mockReset();
   vi.mocked(axios.get).mockReturnValue(new Promise(() => {}));
+  // A scanner whose builds never land: every index here is seeded.
+  builds = [];
+  setPlanningScannerForTests({
+    build: (request) => builds.push(request),
+    cancel: () => {},
+    refresh: () => new Promise(() => {}),
+    cards: () => new Promise(() => {}),
+    quotes: () => new Promise(() => {}),
+  });
 });
+
+afterEach(() => setPlanningScannerForTests(null));
+
+let builds: Parameters<ScannerClient["build"]>[0][] = [];
 
 describe("file-tree badges (§7)", () => {
   it("draws a status as a dot and open questions as 💬 N, and says it all in words", () => {
@@ -306,7 +323,6 @@ describe("file-tree badges (§7)", () => {
 
   it("starts the index: the tree is one of its first needs (§3.4)", () => {
     renderTree();
-    expect(axios.get).toHaveBeenCalledWith("/api/planning/sources");
-    expect(axios.get).toHaveBeenCalledTimes(1);
+    expect(builds).toEqual([{ repo: "", seq: 1, bypassCache: false }]);
   });
 });
