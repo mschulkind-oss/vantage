@@ -268,6 +268,11 @@ config. The command then installs the service and starts it. Without
   its error is printed: if it meant something else, `bootstrap` fails next,
   and that error is what explains it. The commands go through a runner that
   tests replace, so no test starts a real service.
+- **The unit or plist is rewritten on every run**, since running the command
+  again is how a directory is added and how an upgrade points the service at
+  the new binary. One that differs in anything but the binary it names holds
+  edits of the user's own, such as a raised `LimitNOFILE`, and is first kept as
+  `<file>.bak-<timestamp>`, which the command names.
 - **The service reads the config the command wrote.** The config path follows
   `XDG_CONFIG_HOME`, and a service manager hands its service none of the
   shell's environment. So when the variable names somewhere other than

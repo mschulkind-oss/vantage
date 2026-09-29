@@ -237,7 +237,7 @@ func installServiceWithSourceDirs(out io.Writer, in serviceInstall, dirs []strin
 
 	switch in.goos {
 	case "linux":
-		unit, err := writeSystemdUnit(in.home, in.exe)
+		unit, err := writeSystemdUnit(out, in.home, in.exe, in.now)
 		if err != nil {
 			return err
 		}
@@ -252,7 +252,7 @@ func installServiceWithSourceDirs(out io.Writer, in serviceInstall, dirs []strin
 			}
 		}
 	case "darwin":
-		plist, err := writeLaunchAgent(in.home, in.exe)
+		plist, err := writeLaunchAgent(out, in.home, in.exe, in.now)
 		if err != nil {
 			return err
 		}
@@ -426,8 +426,9 @@ func serviceStartCommand(goos, home string) string {
 }
 
 // writeSystemdUnit writes ~/.config/systemd/user/vantage.service and returns
-// its path.
-func writeSystemdUnit(home, exe string) (string, error) {
+// its path, keeping any edits of the user's in a backup (see
+// [writeServiceDefinition]).
+func writeSystemdUnit(out io.Writer, home, exe string, now time.Time) (string, error) {
 	serviceFile := systemdUnitPath(home)
 	if err := os.MkdirAll(filepath.Dir(serviceFile), 0o755); err != nil {
 		return "", fmt.Errorf("creating service directory: %w", err)
@@ -437,16 +438,64 @@ func writeSystemdUnit(home, exe string) (string, error) {
 		env = systemdEnvironment("XDG_CONFIG_HOME", v)
 	}
 	unit := fmt.Sprintf(serviceUnitTemplate, exe, env)
-	if err := os.WriteFile(serviceFile, []byte(unit), 0o644); err != nil {
+	if err := writeServiceDefinition(out, serviceFile, unit, exe, home, now); err != nil {
 		return "", fmt.Errorf("writing service file: %w", err)
 	}
 	return serviceFile, nil
 }
 
+// writeServiceDefinition writes body to path, the unit or plist install-service
+// owns. Re-running install-service is how a directory is added and how an
+// upgrade points the service at a new binary, so the file is rewritten every
+// time; an existing one that differs from body in anything but the binary it
+// runs holds edits of the user's own, and is first kept in
+// "<path>.bak-<now>", which the command names. The backup's suffix is neither
+// ".service" nor ".plist", so neither service manager loads it.
+func writeServiceDefinition(out io.Writer, path, body, exe, home string, now time.Time) error {
+	if old, err := os.ReadFile(path); err == nil && handEdited(string(old), body, exe) {
+		backup := fmt.Sprintf("%s.bak-%s", path, now.Format("20060102-150405"))
+		if err := os.WriteFile(backup, old, 0o644); err != nil {
+			return fmt.Errorf("keeping the edited %s: %w", path, err)
+		}
+		fmt.Fprintf(out, "%s had edits of its own; they are kept in %s\n", tildePath(path, home), tildePath(backup, home))
+	}
+	return os.WriteFile(path, []byte(body), 0o644)
+}
+
+// handEdited reports whether old, a service definition on disk, differs from
+// next — the one about to be written for exe — in more than the binary it
+// runs: the single line where next names exe, which an upgrade changes, may
+// name another binary in old, with nothing else on it different.
+func handEdited(old, next, exe string) bool {
+	o, n := strings.Split(old, "\n"), strings.Split(next, "\n")
+	if len(o) != len(n) {
+		return true
+	}
+	for i := range o {
+		if o[i] != n[i] && !otherBinary(o[i], n[i], exe) {
+			return true
+		}
+	}
+	return false
+}
+
+// otherBinary reports whether line is next with exe, as next spells it
+// (plain, or escaped for a plist), replaced by some other path.
+func otherBinary(line, next, exe string) bool {
+	for _, spelled := range []string{exe, xmlString(exe)} {
+		before, after, ok := strings.Cut(next, spelled)
+		if ok && len(line) > len(before)+len(after) && strings.HasPrefix(line, before) && strings.HasSuffix(line, after) &&
+			!strings.ContainsAny(line[len(before):len(line)-len(after)], " \t") {
+			return true
+		}
+	}
+	return false
+}
+
 // installSystemdUnit writes ~/.config/systemd/user/vantage.service and prints
 // the commands that start it.
 func installSystemdUnit(out io.Writer, home, exe string) error {
-	serviceFile, err := writeSystemdUnit(home, exe)
+	serviceFile, err := writeSystemdUnit(out, home, exe, time.Now())
 	if err != nil {
 		return err
 	}
@@ -468,8 +517,9 @@ func launchAgentLogPath(home string) string {
 }
 
 // writeLaunchAgent writes ~/Library/LaunchAgents/<label>.plist, and the log
-// directory it names, and returns the plist's path.
-func writeLaunchAgent(home, exe string) (string, error) {
+// directory it names, and returns the plist's path, keeping any edits of the
+// user's in a backup (see [writeServiceDefinition]).
+func writeLaunchAgent(out io.Writer, home, exe string, now time.Time) (string, error) {
 	plistPath := launchAgentPath(home)
 	if err := os.MkdirAll(filepath.Dir(plistPath), 0o755); err != nil {
 		return "", fmt.Errorf("creating LaunchAgents directory: %w", err)
@@ -482,7 +532,7 @@ func writeLaunchAgent(home, exe string) (string, error) {
 		return "", fmt.Errorf("creating log directory: %w", err)
 	}
 
-	if err := os.WriteFile(plistPath, []byte(launchAgentPlist(exe, home, logPath, configHomeEnv(home))), 0o644); err != nil {
+	if err := writeServiceDefinition(out, plistPath, launchAgentPlist(exe, home, logPath, configHomeEnv(home)), exe, home, now); err != nil {
 		return "", fmt.Errorf("writing launch agent: %w", err)
 	}
 	return plistPath, nil
@@ -491,7 +541,7 @@ func writeLaunchAgent(home, exe string) (string, error) {
 // installLaunchAgent writes ~/Library/LaunchAgents/<label>.plist and prints the
 // launchctl commands that load, inspect, restart and remove it.
 func installLaunchAgent(out io.Writer, home, exe string) error {
-	plistPath, err := writeLaunchAgent(home, exe)
+	plistPath, err := writeLaunchAgent(out, home, exe, time.Now())
 	if err != nil {
 		return err
 	}
