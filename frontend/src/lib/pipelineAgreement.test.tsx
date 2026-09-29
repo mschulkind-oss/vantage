@@ -18,7 +18,10 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { BrowserRouter } from "react-router-dom";
 import { renderMarkdown } from "vantage-md";
 import { MarkdownViewer as PackageMarkdownViewer } from "vantage-md/react";
-import { MarkdownViewer as AppMarkdownViewer } from "../components/MarkdownViewer";
+import {
+  MarkdownViewer as AppMarkdownViewer,
+  REFERENCED_BY_RESERVED_ATTR,
+} from "../components/MarkdownViewer";
 
 // Store writes fire command requests via axios; the app viewer pulls the store in.
 vi.mock("axios");
@@ -222,6 +225,10 @@ function describeTree(root: HTMLElement): Rendered {
     // marker is what the hiding CSS is gated on, so the renderers *must* differ
     // there — and must agree on everything the plugin stamped.
     if (el.hasAttribute("data-vantage-collapse-caret")) continue;
+    // Likewise the line the app viewer reserves for Referenced by while the
+    // planning index is not in yet: its own chrome, not anything a directive
+    // compiled to.
+    if (el.hasAttribute(REFERENCED_BY_RESERVED_ATTR)) continue;
     for (const attribute of Array.from(el.attributes)) {
       if (JS_SET_MARKERS.has(attribute.name)) continue;
       if (attribute.name.startsWith("data-vantage-")) {

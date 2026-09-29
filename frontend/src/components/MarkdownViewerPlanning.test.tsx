@@ -12,7 +12,6 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BrowserRouter } from "react-router-dom";
 import type { PlanningIndex } from "vantage-md/planning";
-import { MarkdownViewer } from "./MarkdownViewer";
 import {
   resetPlanningTrackers,
   usePlanningStore,
@@ -21,6 +20,7 @@ import { useRepoStore } from "../stores/useRepoStore";
 import { useReviewStore } from "../stores/useReviewStore";
 import { PLANNING_BADGE_ATTR } from "./PlanningBadge";
 import { REFERENCED_BY_ATTR } from "./ReferencedBy";
+import { MarkdownViewer, REFERENCED_BY_RESERVED_ATTR } from "./MarkdownViewer";
 import type { ReviewComment } from "../types";
 import { scrollToAnchor } from "../lib/anchorScroll";
 import { indexOf } from "../test/planning";
@@ -479,6 +479,110 @@ describe("Referenced by (§7)", () => {
       </BrowserRouter>,
     );
     expect(surface()).toBeNull();
+  });
+
+  describe("when the index lands after the first paint (scale design §11.2)", () => {
+    const reserved = () =>
+      document.querySelector<HTMLElement>(`[${REFERENCED_BY_RESERVED_ATTR}]`);
+    const view = (content: string, path: string) => (
+      <BrowserRouter>
+        <MarkdownViewer content={content} currentPath={path} />
+      </BrowserRouter>
+    );
+    const loading = () =>
+      act(() => {
+        usePlanningStore.setState({
+          byRepo: { "": { status: "loading", warm: false, progress: null } },
+        });
+      });
+
+    it("reserves one line for a planning document by its frontmatter, and fills it", () => {
+      loading();
+      renderViewer(TARGET, "docs/design.md");
+      const card = screen.getByText("Metadata").closest("div.mb-8");
+      // Where the line goes, as tall as it, and nothing in it yet.
+      expect(reserved()?.previousElementSibling).toBe(card);
+      expect(reserved()).toHaveClass("mb-6", "text-[13px]", "leading-relaxed");
+      expect(reserved()).toHaveAttribute("aria-hidden", "true");
+      expect(reserved()?.textContent).toBe("\u00a0");
+      expect(surface()).toBeNull();
+
+      seedReady(indexOf(TREE));
+      expect(reserved()).toBeNull();
+      expect(surface()?.previousElementSibling).toBe(card);
+      expect(surface()).toHaveClass("mb-6", "text-[13px]", "leading-relaxed");
+      expect(toggle()).toHaveTextContent(
+        "Referenced by 2 documents · on the roadmap under Rule these first",
+      );
+    });
+
+    it("leaves the line empty when the index has nothing to say", () => {
+      loading();
+      renderViewer(TREE["docs/notes.md"], "docs/notes.md");
+      seedReady(indexOf(TREE));
+      expect(surface()).toBeNull();
+      expect(reserved()).not.toBeNull();
+    });
+
+    it("lets the stylesheet reserve it for a planning document by its directives alone", () => {
+      loading();
+      const { container } = renderViewer(BARE, "docs/bare.md");
+      const slot = reserved()?.parentElement;
+      // `hidden` unless the prose holds an `oq` directive, which this one does.
+      expect(slot).toHaveClass(
+        "hidden",
+        "group-has-[[data-vantage-oq]]/prose:contents",
+      );
+      expect(container.querySelector(".prose")).toHaveClass("group/prose");
+      expect(
+        slot?.closest(".prose")?.querySelector("[data-vantage-oq]"),
+      ).not.toBeNull();
+
+      seedReady(indexOf(TREE));
+      expect(surface()?.parentElement).toBe(slot);
+      expect(toggle()).toHaveTextContent(
+        "Referenced by 1 document · on the roadmap under Rule these first",
+      );
+    });
+
+    it("reserves nothing for a document with no sign of planning, and waits for the next visit", () => {
+      const cited = {
+        ...TREE,
+        "docs/cites.md":
+          "---\nstatus: draft\n---\n\n[The order](../roadmap.md)\n",
+      };
+      loading();
+      const { rerender } = render(view(TREE["roadmap.md"], "roadmap.md"));
+      expect(reserved()).toBeNull();
+      seedReady(indexOf(cited));
+      // The roadmap is a planning document, but nothing in its text said so
+      // before the index did, so no line was reserved and none is drawn.
+      expect(surface()).toBeNull();
+
+      rerender(view(TARGET, "docs/design.md"));
+      rerender(view(TREE["roadmap.md"], "roadmap.md"));
+      expect(toggle()).toHaveTextContent(/^Referenced by 1 document$/);
+    });
+
+    it("is drawn at once, reserving nothing, when the index is ready first", () => {
+      seedReady(indexOf(TREE));
+      renderViewer(TARGET, "docs/design.md");
+      expect(reserved()).toBeNull();
+      expect(surface()).not.toBeNull();
+    });
+
+    it("follows the index live once the first paint had it", () => {
+      seedReady(indexOf({ ...TREE, "roadmap.md": "# Roadmap\n" }));
+      renderViewer(TARGET, "docs/design.md");
+      expect(toggle()).toHaveTextContent(
+        /^Referenced by 1 document · 1 open question not routed by the roadmap$/,
+      );
+      // A push that changes what links here is a change of data (L2).
+      seedReady(indexOf(TREE));
+      expect(toggle()).toHaveTextContent(
+        "Referenced by 2 documents · on the roadmap under Rule these first",
+      );
+    });
   });
 
   it("stays open for the visit, and is collapsed again on the next document", () => {

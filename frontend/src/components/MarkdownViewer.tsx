@@ -1,6 +1,13 @@
-import React, { memo, useCallback, useEffect, useMemo, useRef } from "react";
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import ReactMarkdown, { type ExtraProps } from "react-markdown";
-import { buildPipeline, parseFrontmatter } from "vantage-md";
+import { VANTAGE_SENTINEL, buildPipeline, parseFrontmatter } from "vantage-md";
 import { MermaidDiagram, FrontmatterDisplay } from "vantage-md/react";
 import "highlight.js/styles/github.css";
 import "katex/dist/katex.min.css";
@@ -27,7 +34,7 @@ import {
 import { findDocument, referenceSummary } from "vantage-md/planning";
 import { usePlanningIndex } from "../stores/usePlanningStore";
 import { PLANNING_BADGE_ATTR } from "./PlanningBadge";
-import { ReferencedBy } from "./ReferencedBy";
+import { ReferencedBy, summaryLine } from "./ReferencedBy";
 import { useCollapseSections } from "../hooks/useCollapseSections";
 import { useReviewStore } from "../stores/useReviewStore";
 import { ReviewCommentPopover } from "./ReviewCommentPopover";
@@ -793,6 +800,33 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     [planningIndex, planningDocument, currentPath],
   );
 
+  // Whether this visit's first paint had the index: a document's path, since
+  // a live reload of it is the same visit, as Referenced by's own state is.
+  // Adjusted during render, React's documented pattern, so the render that
+  // meets a new path already answers for it.
+  const [visit, setVisit] = useState(() => ({
+    path: currentPath,
+    indexed: planningIndex !== null,
+  }));
+  if (visit.path !== currentPath) {
+    setVisit({ path: currentPath, indexed: planningIndex !== null });
+  }
+  const indexedAtFirstPaint =
+    visit.path === currentPath ? visit.indexed : planningIndex !== null;
+  // A planning document by its own frontmatter: known before the index is.
+  const plannedByFrontmatter =
+    Object.hasOwn(frontmatter, "status") || Object.hasOwn(frontmatter, "stage");
+  const referencedByLine =
+    referenceSummaryHere === null ? null : summaryLine(referenceSummaryHere);
+  const referencedBy =
+    referenceSummaryHere !== null && referencedByLine !== null ? (
+      <ReferencedBy
+        key={currentPath}
+        summary={referenceSummaryHere}
+        hrefFor={buildPath}
+      />
+    ) : null;
+
   // A `#…` link React did not already handle — the header's `next` link, which
   // `FrontmatterDisplay` draws as a plain anchor because it lives in the
   // published package. Scrolled the way every in-document link is, so a
@@ -813,7 +847,9 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       ref={containerRef}
       onClick={handleUnhandledHashClick}
       className={cn(
-        "prose prose-slate dark:prose-invert max-w-none",
+        // A named group, for Referenced by's reservation to ask what the
+        // prose holds; unnamed `group-*` variants inside never see it.
+        "group/prose prose prose-slate dark:prose-invert max-w-none",
         // Headings: GitHub-like sizing and spacing
         "prose-headings:font-semibold prose-headings:tracking-tight prose-headings:text-slate-900 dark:prose-headings:text-slate-100",
         "prose-h1:text-[2em] prose-h1:mb-3 prose-h1:pb-[0.3em] prose-h1:border-b prose-h1:border-slate-200 dark:prose-h1:border-slate-700",
@@ -867,13 +903,20 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       {/* Directly after the card, and first in the container when a document
           has no frontmatter: the card then renders nothing at all. Keyed by
           path, so every document loads with it collapsed (§7). */}
-      {!embedded && referenceSummaryHere !== null && (
-        <ReferencedBy
-          key={currentPath}
-          summary={referenceSummaryHere}
-          hrefFor={buildPath}
-        />
-      )}
+      {!embedded &&
+        (indexedAtFirstPaint ? (
+          referencedBy
+        ) : plannedByFrontmatter ? (
+          (referencedBy ?? <ReservedLine />)
+        ) : body.includes(VANTAGE_SENTINEL) ? (
+          // A planning document by its `oq` directives alone, which are
+          // known only once they have rendered: the stylesheet reserves the
+          // line when the prose holds one, so the first paint has it or not,
+          // and what fills it later is shown only where it was reserved.
+          <div className="hidden group-has-[[data-vantage-oq]]/prose:contents">
+            {referencedBy ?? <ReservedLine />}
+          </div>
+        ) : null)}
       {markdown}
       {/* Review mode: comment popover for new selections */}
       {isReviewMode && pendingSelection && (
@@ -893,6 +936,29 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     </div>
   );
 };
+
+/** Marks the line Referenced by reserved at first paint, while it is empty. */
+export const REFERENCED_BY_RESERVED_ATTR =
+  "data-vantage-referenced-by-reserved";
+
+/**
+ * The line Referenced by fills when the index lands after a document's first
+ * paint (`docs/design/planning-index-at-scale.md` §11.2): as tall as its one
+ * line and its margin, so filling it moves nothing, and left empty when the
+ * index has nothing to say. Built like the line, from nothing the document's
+ * passes read as the document.
+ */
+function ReservedLine() {
+  return (
+    <div
+      {...{ [REFERENCED_BY_RESERVED_ATTR]: "" }}
+      aria-hidden="true"
+      className="not-prose mb-6 text-[13px] leading-relaxed"
+    >
+      {"\u00a0"}
+    </div>
+  );
+}
 
 // Memoize to prevent re-renders when parent re-renders but content hasn't changed
 export const MarkdownViewer = memo(
