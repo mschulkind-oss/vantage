@@ -781,10 +781,11 @@ ready, `next` renders as plain text.
 - `next`: a declared id renders `<a href="#OQ-X">`; an id no question carries, undeclared or
   compacted, stays text; an id that is only part of a longer token stays text.
 - Referenced by: directly below the card; first in the prose container for a planning
-  document with no frontmatter; absent when empty, and absent from the outline. Tree badge:
-  the stage (the chip without one) and `💬 N`. Superseded on 2026-09-28 by the compact badge
-  of [§7](planning-index.md#7-referenced-by-and-status-in-the-file-tree), which takes no width
-  from the file name.
+  document with no frontmatter; absent when nothing links to it and nothing in it is unrouted
+  ([§7](planning-index.md#7-referenced-by-and-status-in-the-file-tree)), and absent from the
+  outline. Tree badge: the stage (the chip without one) and `💬 N`. Superseded on 2026-09-28
+  by the compact badge of [§7](planning-index.md#7-referenced-by-and-status-in-the-file-tree),
+  which takes no width from the file name.
 - e2e `planning.spec.ts`: the roadmap shows badges. For
   [§15](planning-index.md#15-what-done-looks-like)'s first bullet, remove a question's
   directive the way `livereload.spec.ts` edits a file, and without a reload the badge reads

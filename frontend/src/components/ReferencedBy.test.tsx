@@ -78,16 +78,16 @@ describe("the line (§7)", () => {
     // The roadmap links here, so it is one of the two documents.
     expect(summaryLine(summary)).toEqual({
       count: "Referenced by 2 documents",
-      status: "on the roadmap under Building",
-      warning: false,
+      roadmap: "on the roadmap under Building",
+      unrouted: null,
     });
     renderLine(summary);
     expect(toggle()).toHaveTextContent(
-      "Referenced by 2 documents · on the roadmap under Building",
+      /^Referenced by 2 documents · on the roadmap under Building$/,
     );
   });
 
-  it("says it is not on the roadmap, and how many questions, in the warning tone", () => {
+  it("counts the open questions the roadmap does not route, in the warning tone", () => {
     const summary = summaryOf({
       [TARGET]: planning(questions("T", 2)),
       "roadmap.md": "# Roadmap\n",
@@ -95,33 +95,104 @@ describe("the line (§7)", () => {
     });
     expect(summaryLine(summary)).toEqual({
       count: "Referenced by 1 document",
-      status: "not on the roadmap (2 open questions)",
-      warning: true,
+      roadmap: null,
+      unrouted: "2 open questions not routed by the roadmap",
     });
     renderLine(summary);
-    const status = screen.getByText("not on the roadmap (2 open questions)");
+    const status = screen.getByText(
+      "2 open questions not routed by the roadmap",
+    );
     expect(status.className).toContain("--vantage-tone-warning-ink");
     expect(
       screen.getByText(/Referenced by 1 document/).className,
     ).not.toContain("warning");
   });
 
-  it("still says so when nothing links to it, as plain text with nothing to open", () => {
+  it("still counts them when nothing links to it, as plain text with nothing to open", () => {
     const summary = summaryOf({
       [TARGET]: planning(questions("T", 1)),
       "roadmap.md": "# Roadmap\n",
     });
     expect(summaryLine(summary)).toEqual({
       count: null,
-      status: "Not on the roadmap (1 open question)",
-      warning: true,
+      roadmap: null,
+      unrouted: "1 open question not routed by the roadmap",
     });
     renderLine(summary);
     expect(surface()).toHaveTextContent(
-      /^Not on the roadmap \(1 open question\)$/,
+      /^1 open question not routed by the roadmap$/,
     );
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.queryByRole("list")).toBeNull();
+  });
+
+  it("says a partly routed document is on the roadmap and still counts what is not", () => {
+    // The roadmap routed OQ-T1, and OQ-T2 was written after it: the planning
+    // page lists OQ-T2 under Unrouted, and so does this line.
+    const summary = summaryOf({
+      [TARGET]: planning(questions("T", 2)),
+      "roadmap.md":
+        "# Roadmap\n\n## Now\n\n- [it](docs/design/target.md#OQ-T1)\n",
+    });
+    expect(summaryLine(summary)).toEqual({
+      count: "Referenced by 1 document",
+      roadmap: "on the roadmap under Now",
+      unrouted: "1 open question not routed by the roadmap",
+    });
+    renderLine(summary);
+    expect(toggle()).toHaveTextContent(
+      /^Referenced by 1 document · on the roadmap under Now · 1 open question not routed by the roadmap$/,
+    );
+    expect(
+      screen.getByText("on the roadmap under Now").className,
+    ).not.toContain("warning");
+    expect(
+      screen.getByText("1 open question not routed by the roadmap").className,
+    ).toContain("--vantage-tone-warning-ink");
+  });
+
+  it("does not say a document the roadmap links only by heading is off the roadmap", () => {
+    // A heading link routes nothing (§6.1), so the question is unrouted, but
+    // the roadmap does list the document, and the line must not deny it.
+    const summary = summaryOf({
+      [TARGET]: planning(`## Details\n\n${questions("T", 1)}`),
+      "roadmap.md":
+        "# Roadmap\n\n## Up Next\n\n- [it](docs/design/target.md#details)\n",
+    });
+    const line = summaryLine(summary);
+    expect(line).toEqual({
+      count: "Referenced by 1 document",
+      roadmap: null,
+      unrouted: "1 open question not routed by the roadmap",
+    });
+  });
+
+  it("does not put the roadmap on or off itself", () => {
+    // It is never "on the roadmap", and the question it does not route still
+    // counts, without the line claiming the roadmap is not on itself. OQ-R2 is
+    // routed by the roadmap's own link to it; OQ-R1 is not.
+    const summary = summaryOf(
+      {
+        "roadmap.md": planning(
+          [
+            "## Now",
+            "",
+            "- [the target](docs/design/target.md)",
+            "- [its own](#OQ-R2)",
+            "",
+            questions("R", 2),
+          ].join("\n"),
+        ),
+        [TARGET]: planning(""),
+        "docs/design/other.md": citing("../../roadmap.md", ["Uses"]),
+      },
+      "roadmap.md",
+    );
+    expect(summaryLine(summary)).toEqual({
+      count: "Referenced by 1 document",
+      roadmap: null,
+      unrouted: "1 open question not routed by the roadmap",
+    });
   });
 
   it("gives only the count when the roadmap has nothing to say", () => {
@@ -132,8 +203,8 @@ describe("the line (§7)", () => {
     });
     expect(summaryLine(summary)).toEqual({
       count: "Referenced by 1 document",
-      status: null,
-      warning: false,
+      roadmap: null,
+      unrouted: null,
     });
     renderLine(summary);
     expect(toggle()).toHaveTextContent(/^Referenced by 1 document$/);
@@ -166,7 +237,7 @@ describe("the line (§7)", () => {
     });
     expect(summaryLine(summary)?.count).toBe("Referenced by 2 documents");
     // The first routing link names the heading.
-    expect(summaryLine(summary)?.status).toBe("on the roadmap under Now");
+    expect(summaryLine(summary)?.roadmap).toBe("on the roadmap under Now");
   });
 
   it("names no heading for a roadmap link above every heading", () => {
@@ -176,7 +247,7 @@ describe("the line (§7)", () => {
     });
     expect(summaryLine(summary)).toMatchObject({
       count: "Referenced by 1 document",
-      status: "on the roadmap",
+      roadmap: "on the roadmap",
     });
   });
 });

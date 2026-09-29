@@ -1,7 +1,8 @@
 /**
  * Referenced by (`docs/design/planning-index.md` §7): one line under a planning
- * document's frontmatter card saying whether the roadmap routes the document
- * and how many documents link to it, and, behind that line, those documents.
+ * document's frontmatter card saying how many documents link to it, whether the
+ * roadmap routes it, and how many of its open questions the roadmap does not,
+ * and, behind that line, those documents.
  *
  * The line is the point. A list of every linking heading pushed a heavily cited
  * document's body a screen down to answer two questions a reader asks of it:
@@ -25,7 +26,7 @@
  * so no review anchor can land on it. `not-prose` keeps typography's list and
  * paragraph styles off it, as they are off the frontmatter card.
  */
-import { useId, useRef, useState } from "react";
+import { Fragment, useId, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import type { ReferenceSource, ReferenceSummary } from "vantage-md/planning";
 import { AppLink } from "./AppLink";
@@ -46,62 +47,70 @@ export const HEADINGS_SHOWN = 4;
 const counted = (n: number, one: string, many: string) =>
   `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
-/** What the line says: a count, a roadmap status, or both. */
+/** What the line says: up to three parts, joined by " · " in this order. */
 export interface SummaryLine {
   /** `Referenced by N documents`; `null` when no document links here. */
   count: string | null;
-  /** Where the roadmap stands on this document; `null` when it has nothing to say. */
-  status: string | null;
-  /** The status reports open questions the roadmap does not route. */
-  warning: boolean;
+  /** `on the roadmap under X` when the roadmap routes it, otherwise `null`. */
+  roadmap: string | null;
+  /**
+   * `K open questions not routed by the roadmap`, in the warning tone, or
+   * `null` when there are none. Worded so that it stays true of a document the
+   * roadmap links only by heading, which routes nothing (§6.1), and of the
+   * roadmap itself: it says what the roadmap leaves out, never that the
+   * document is off it.
+   */
+  unrouted: string | null;
 }
 
 /**
  * The line for `summary` (§7), or `null` when nothing links to the document and
- * nothing in it is unrouted. Being on the roadmap outranks having unrouted
- * questions: the line answers whether the document is on it at all.
+ * nothing in it is unrouted. The roadmap's answer comes before the unrouted
+ * count, and does not replace it: a document the roadmap routes one question
+ * of can still hold another it does not, which the planning page lists under
+ * *Unrouted*, and this line is where the document's own page says so.
  */
 // eslint-disable-next-line react-refresh/only-export-components -- the component's own wording, exported for its tests
 export function summaryLine(summary: ReferenceSummary): SummaryLine | null {
   const n = summary.sources.length;
   const count =
     n > 0 ? `Referenced by ${counted(n, "document", "documents")}` : null;
-  let status: string | null = null;
-  let warning = false;
+  let roadmap: string | null = null;
   if (summary.onRoadmap !== null) {
     const { heading } = summary.onRoadmap;
-    status =
+    roadmap =
       heading === null ? "on the roadmap" : `on the roadmap under ${heading}`;
-  } else if (summary.unrouted > 0) {
-    status = `not on the roadmap (${counted(summary.unrouted, "open question", "open questions")})`;
-    warning = true;
   }
-  if (count === null && status === null) return null;
-  // Standing alone, the status starts the sentence.
-  if (count === null && status !== null) {
-    status = status.charAt(0).toUpperCase() + status.slice(1);
-  }
-  return { count, status, warning };
+  const unrouted =
+    summary.unrouted > 0
+      ? `${counted(summary.unrouted, "open question", "open questions")} not routed by the roadmap`
+      : null;
+  if (count === null && roadmap === null && unrouted === null) return null;
+  return { count, roadmap, unrouted };
 }
 
-const textOf = (line: SummaryLine) =>
-  [line.count, line.status].filter((part) => part !== null).join(" · ");
+const partsOf = (line: SummaryLine) =>
+  [line.count, line.roadmap, line.unrouted].filter((part) => part !== null);
+
+const textOf = (line: SummaryLine) => partsOf(line).join(" · ");
 
 function LineWords({ line }: { line: SummaryLine }) {
   return (
     <>
-      {line.count}
-      {line.count !== null && line.status !== null && " · "}
-      {line.status !== null && (
-        <span
-          className={cn(
-            line.warning &&
-              "font-medium text-[color:var(--vantage-tone-warning-ink)]",
-          )}
-        >
-          {line.status}
-        </span>
-      )}
+      {partsOf(line).map((part, i) => (
+        <Fragment key={part}>
+          {i > 0 && " · "}
+          <span
+            className={
+              part === line.unrouted
+                ? "font-medium text-[color:var(--vantage-tone-warning-ink)]"
+                : undefined
+            }
+          >
+            {part}
+          </span>
+        </Fragment>
+      ))}
     </>
   );
 }

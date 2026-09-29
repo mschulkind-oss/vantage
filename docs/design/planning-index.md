@@ -401,14 +401,22 @@ planning page at its previous scroll position.
 - **Referenced by:** one line below a planning document's frontmatter card, or first in the
   document when it has no card. It answers the two questions a reader asks of a document on its
   own page, *is this on the roadmap?* and *who depends on it?*, and the list of who links to it
-  waits behind the line until someone asks for it. The roadmap's answer comes first: the first
-  row below that applies decides what the line says.
+  waits behind the line until someone asks for it. The line has up to three parts, joined by
+  *·* in this order, and each appears only when its row applies:
 
-  | When | The line reads |
-  | :--- | :--- |
-  | The roadmap routes the document or one of its questions ([§6.1](#61-the-roadmap)) | *Referenced by N documents · on the roadmap under Building*, naming the roadmap heading of the first link that routes it, or just *on the roadmap* when that link sits above every heading |
-  | The document has open questions the roadmap does not route, which the planning page lists under *Unrouted* ([§6.2](#62-sections-top-to-bottom)) | *Referenced by N documents · not on the roadmap (K open questions)*, the second half in the warning tone. When nothing links to the document the line is *Not on the roadmap (K open questions)* alone, because it is then the only place the document says so |
-  | Otherwise | *Referenced by N documents* |
+  | Part | When | It reads |
+  | :--- | :--- | :--- |
+  | Count | A planning document links here | *Referenced by N documents* |
+  | Roadmap | The roadmap routes the document or one of its questions ([§6.1](#61-the-roadmap)) | *on the roadmap under Building*, naming the roadmap heading of the first link that routes it, or just *on the roadmap* when that link sits above every heading |
+  | Unrouted | The document has open questions the roadmap does not route, which the planning page lists under *Unrouted* ([§6.2](#62-sections-top-to-bottom)) | *K open questions not routed by the roadmap*, in the warning tone |
+
+  So a document the roadmap routes one question of, holding another it does not, reads
+  *Referenced by 2 documents · on the roadmap under Now · 1 open question not routed by the
+  roadmap*. The unrouted part says what the roadmap leaves out rather than that the document
+  is off it, because both can be true at once: the roadmap may link the document only by
+  heading, which routes nothing, and the roadmap's own page holds questions the roadmap does
+  not route without the roadmap being off itself. When nothing links to the document the
+  unrouted part stands alone, because the line is then the only place the document says so.
 
   N counts the planning documents that link to this one or to one of its questions, once each
   however many links they hold. The roadmap counts as one when it links here. The document's
@@ -428,7 +436,7 @@ planning page at its previous scroll position.
   the document's first such line. A link above every heading adds no heading. A row shows at
   most four headings, then *+M more*, which opens that row.
 
-  The line is a button that says whether it is open, so it works from the keyboard and to a
+  When a document links here, the line is a button that says whether it is open, so it works from the keyboard and to a
   screen reader. **It is collapsed on every document load**, and nothing is stored: opening it
   lasts for that visit only. In print, the line prints, and the list prints only when it is
   open.
@@ -649,6 +657,7 @@ the plan proposed.
 | — | Build it: a planning index in Vantage, following the brainstorm's direction ([`OQ-PI1`](../brainstorm/planning-index.md#decision-ledger)) | 2026-09-28 | [§1](#1-verdict-and-the-principles) | — |
 | — | **Open document** from the planning page lands at the top of the document, not at the question | 2026-09-28 | [§6.3](#63-a-question-on-the-page) | — |
 | — | User direction 2026-09-29: Referenced by is one motivated, collapsed line. It says whether the roadmap routes the document and how many documents link to it, and opens to one row per document. It replaces a list with one row per linking document and heading, always open, which pushed a heavily cited document's body a screen down | 2026-09-29 | [§7](#7-referenced-by-and-status-in-the-file-tree) | — |
+| — | Referenced by always counts the open questions the roadmap does not route, as *K open questions not routed by the roadmap*, even when the roadmap routes another of the document's questions. It replaces *not on the roadmap (K open questions)*, shown only when nothing was routed, which hid a partly routed document's unrouted questions, read as false on a document the roadmap links only by heading, and on the roadmap's own page said the roadmap was not on itself. The user direction did not say which wins when both apply; this keeps both, and is open to the user's review | 2026-09-29 | [§7](#7-referenced-by-and-status-in-the-file-tree) | — |
 | OQ-PL1 | `stage:` is the stage's only home; a prose status line carries the date and the why. Decided on generic grounds, not to fit one set of conventions | 2026-09-28 | [§4](#4-the-header-of-record-stage-next-depends-on) | — |
 | OQ-PL2 | A planning document is any file with planning frontmatter or an `oq` directive; everything is included by default, with an exclude list | 2026-09-28 | [§3.1](#31-which-files-it-reads) | — |
 | OQ-PL3 | A roadmap fully readable only in Vantage is acceptable: GitHub keeps the order and reasons | 2026-09-28 | [§5.3](#53-how-a-badge-behaves) | — |
