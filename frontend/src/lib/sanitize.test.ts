@@ -1,5 +1,5 @@
 /**
- * What an inline `style` is allowed to do.
+ * What an inline `style` is allowed to do, and what an inline `<svg>` is.
  *
  * The code under test lives in `packages/vantage-md`, which has no test runner
  * of its own; the frontend resolves `vantage-md` to that package's TypeScript
@@ -23,6 +23,14 @@
  *    requires that values the filter *rejects* are on the page, which is only
  *    true because math is outside its reach. Move `rehypeKatex` ahead of the
  *    sanitizer and that fails loudly, instead of math quietly losing its layout.
+ *
+ * The "inline SVG" block is a fourth job: a drawing survives as drawing —
+ * every allowlisted attribute in the spelling an author writes, on every
+ * admitted element — and nothing survives that runs, fetches, references, or
+ * sets the page's title. Most of it is table-driven over the schema itself, so
+ * an entry added to the allowlist is covered without touching the tables, and
+ * the few cases that only React can show (the SVG namespace, `<title>`
+ * hoisting) render through `vantage-md/react`.
  */
 import { createElement } from "react";
 import { cleanup, render } from "@testing-library/react";
