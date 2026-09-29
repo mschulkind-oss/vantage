@@ -645,7 +645,8 @@ func (s *FileSystemService) ListAllFiles() []string {
 	defer perf.Default.Track(perf.CategoryFS, "list_all_files")()
 
 	matcher := s.matcher()
-	var results []string
+	// Non-nil, so a root with no Markdown marshals as [] rather than null.
+	results := []string{}
 
 	_ = filepath.WalkDir(s.rootPath, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
