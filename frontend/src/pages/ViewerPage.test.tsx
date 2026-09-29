@@ -423,6 +423,43 @@ describe("ViewerPage", () => {
     });
   });
 
+  // Added when the content landed, the contents toggle pushed the full-width
+  // toggle and the breadcrumb along on every document's first paint.
+  describe("the contents toggle", () => {
+    const repo = () => useRepoStore as unknown as ReturnType<typeof vi.fn>;
+    const route = (path: string, fileContent: unknown = null) => {
+      repo().mockReturnValue({
+        ...repo()(),
+        currentPath: null,
+        currentDirectory: null,
+        fileContent,
+      });
+      mockUseParams.mockReturnValue({ "*": path });
+    };
+
+    it("is in the header as soon as the route names a document", () => {
+      route("docs/next.md");
+      renderPage();
+      expect(screen.getByLabelText("Show contents")).toBeInTheDocument();
+    });
+
+    it("is not offered for a directory, or a document that is binary", () => {
+      route("docs");
+      const { unmount } = renderPage();
+      expect(screen.queryByLabelText("Show contents")).toBeNull();
+      unmount();
+
+      repo().mockReturnValue({
+        ...repo()(),
+        currentPath: "docs/blob.md",
+        fileContent: { path: "docs/blob.md", content: "", encoding: "binary" },
+      });
+      mockUseParams.mockReturnValue({ "*": "docs/blob.md" });
+      renderPage();
+      expect(screen.queryByLabelText("Show contents")).toBeNull();
+    });
+  });
+
   // The hold (docs/design/planning-index-at-scale.md §11.3).
   describe("a document's first paint", () => {
     const repo = () => useRepoStore as unknown as ReturnType<typeof vi.fn>;

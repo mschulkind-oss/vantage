@@ -877,6 +877,18 @@ export const ViewerPage: React.FC = () => {
     !!fileContent &&
     fileContent.encoding !== "binary" &&
     !!currentPath?.toLowerCase().endsWith(".md");
+  // The toggle for it, though, is in the header from the moment the route
+  // names a document, before its content arrives: added when the content
+  // landed, it pushed the full-width toggle and the breadcrumb along on every
+  // document's first paint (planning-index-at-scale.md §11.1, L1). Only a
+  // document that turns out to be binary takes it away again.
+  const routeFile =
+    (isMultiRepo ? pathParam?.split("/").slice(1).join("/") : pathParam) ?? "";
+  const tocOffered =
+    tocAvailable ||
+    (!showRaw &&
+      routeFile.toLowerCase().endsWith(".md") &&
+      !(fileContent?.encoding === "binary" && currentPath === routeFile));
 
   // The header's TOC and full-width toggles, as they appear in the toolbar's
   // "⋯" panel once the `actions` step folds them in (lib/headerFit.ts). Only
@@ -890,7 +902,7 @@ export const ViewerPage: React.FC = () => {
       : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50";
   const headerViewExtras = (
     <>
-      {tocAvailable && (
+      {tocOffered && (
         <button
           type="button"
           onClick={handleToggleToc}
@@ -1176,7 +1188,7 @@ export const ViewerPage: React.FC = () => {
                 >
                   <Menu size={20} />
                 </button>
-                {tocAvailable && (
+                {tocOffered && (
                   <button
                     onClick={handleToggleToc}
                     className={cn(
