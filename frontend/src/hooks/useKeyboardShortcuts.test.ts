@@ -1,7 +1,10 @@
 import { renderHook, act } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
+import { prefetchPlanningPage } from "./usePlanningPageInputs";
 import React from "react";
+
+vi.mock("./usePlanningPageInputs", () => ({ prefetchPlanningPage: vi.fn() }));
 
 describe("useKeyboardShortcuts", () => {
   const mockCallbacks = {
@@ -144,6 +147,36 @@ describe("useKeyboardShortcuts", () => {
     expect(mockCallbacks.onNavigate).toHaveBeenCalledWith(
       "/.vantage/planning/alpha",
     );
+  });
+
+  // planning-index-at-scale.md §10.2: page 1's inputs are asked for on the
+  // `g`, and the gap before the `p` hides the requests.
+  it("asks for the planning page's first page on the g of a chord", () => {
+    renderHook(() => useKeyboardShortcuts(mockCallbacks));
+    fireKey("g");
+    expect(prefetchPlanningPage).toHaveBeenCalledWith("");
+    fireKey("p");
+    expect(prefetchPlanningPage).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks for the current repository's in daemon mode, and nothing without one", () => {
+    const { unmount } = renderHook(() =>
+      useKeyboardShortcuts({
+        ...mockCallbacks,
+        isMultiRepo: true,
+        currentRepo: "alpha",
+      }),
+    );
+    fireKey("g");
+    expect(prefetchPlanningPage).toHaveBeenCalledWith("alpha");
+    fireKey("Escape");
+    unmount();
+    vi.mocked(prefetchPlanningPage).mockClear();
+    renderHook(() =>
+      useKeyboardShortcuts({ ...mockCallbacks, isMultiRepo: true }),
+    );
+    fireKey("g");
+    expect(prefetchPlanningPage).not.toHaveBeenCalled();
   });
 
   it("ignores shortcuts when modifier keys are held", () => {
