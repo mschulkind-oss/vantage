@@ -240,6 +240,9 @@ will ever tell you.
 | `vantage/list-split` | A directive between two list items, which ends the list and starts a second one | error |
 | `vantage/block-split` | A directive that restructures the document around it — a table losing its remaining rows, a paragraph cut in two, a setext heading losing its underline | error |
 | `vantage/duplicate-key` | The same key twice in one directive, or across a run of them, which merges the same way — the last one wins, so a warning | warning |
+| `vantage/oq-missing` | An open question (💬) in a list item, with an `OQ-…` id and a `_Leaning:_` line but no `oq` directive, so review mode offers no one-click answer for it | error |
+| `vantage/oq-id-format` | An `oq` id that is not `OQ-`, an optional uppercase prefix and digits, which the sanitizer refuses, so the question gets no anchor | error |
+| `vantage/oq-id-duplicate` | The same `oq` id twice in one document, so every `#OQ-…` link to it lands on the first | error |
 | `vantage/orphan` | A directive with no block it can attach to, so it styles nothing | warning |
 | `vantage/frontmatter-shape` | A `vantage:` frontmatter key that is not a table of keys, so it configures nothing | warning |
 | `vantage/frontmatter-key` | A key under `vantage:` this build does not know | warning |
