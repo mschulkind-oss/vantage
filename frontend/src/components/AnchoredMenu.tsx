@@ -25,6 +25,11 @@ interface AnchoredMenuProps {
   "aria-label"?: string;
 }
 
+/** The panel's menuitems, in document order. */
+function menuItems(panel: HTMLElement): HTMLElement[] {
+  return Array.from(panel.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+}
+
 /**
  * A menu positioned against its trigger and kept on screen.
  *
@@ -87,9 +92,46 @@ export function AnchoredMenu({
   const attach = useCallback(
     (node: HTMLDivElement | null) => {
       panelRef.current = node;
-      if (node) place();
+      if (!node) return;
+      place();
+      // A menu of menuitems is entered from the keyboard the moment it opens,
+      // as a menu button's menu is: left on the trigger, focus had to Tab
+      // through the whole page to reach a panel portaled to its end.
+      menuItems(node)[0]?.focus({ preventScroll: true });
     },
     [place],
+  );
+
+  // Arrow keys, Home and End move between the menuitems; Tab leaves the menu
+  // from its trigger, closing it, since the panel's own place at the end of
+  // the document is nowhere a reader tabbing through the page would expect.
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      const items = menuItems(e.currentTarget);
+      if (e.key === "Tab") {
+        onClose();
+        // No preventDefault: focusing the trigger first lets the browser's
+        // own Tab carry on from there, to whatever follows it.
+        anchorRef.current?.focus();
+        return;
+      }
+      if (!items.length) return;
+      const at = items.indexOf(document.activeElement as HTMLElement);
+      const next =
+        e.key === "ArrowDown"
+          ? (at + 1) % items.length
+          : e.key === "ArrowUp"
+            ? (at - 1 + items.length) % items.length
+            : e.key === "Home"
+              ? 0
+              : e.key === "End"
+                ? items.length - 1
+                : null;
+      if (next === null) return;
+      e.preventDefault();
+      items[next].focus();
+    },
+    [onClose, anchorRef],
   );
 
   useEffect(() => {
@@ -116,7 +158,12 @@ export function AnchoredMenu({
       onClose();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key !== "Escape") return;
+      // Focus inside the panel would otherwise fall to <body> as it unmounts.
+      if (panelRef.current?.contains(document.activeElement)) {
+        anchorRef.current?.focus();
+      }
+      onClose();
     };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
@@ -131,6 +178,7 @@ export function AnchoredMenu({
   return createPortal(
     <div
       ref={attach}
+      onKeyDown={onKeyDown}
       role={role}
       aria-label={ariaLabel}
       style={{

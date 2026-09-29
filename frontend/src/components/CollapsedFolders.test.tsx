@@ -59,3 +59,58 @@ describe("CollapsedFolders", () => {
     expect(screen.queryByRole("menu")).toBeNull();
   });
 });
+
+// Collapsing the folders put them behind this menu, so the keyboard has to be
+// able to get into it: a menu that opened with focus left on its trigger, and
+// that Escape closed by dropping focus on <body>, took forty-five Tab presses
+// to reach — the panel is portaled to the end of the document.
+describe("CollapsedFolders from the keyboard", () => {
+  const open = () => {
+    const more = screen.getByRole("button", { name: /Folders/ });
+    more.focus();
+    fireEvent.click(more);
+    return more;
+  };
+  const key = (k: string, init: KeyboardEventInit = {}) =>
+    fireEvent.keyDown(document.activeElement!, { key: k, ...init });
+
+  it("puts focus on the first folder when it opens", () => {
+    renderFolders();
+    open();
+    expect(document.activeElement).toBe(
+      screen.getByRole("menuitem", { name: "docs" }),
+    );
+  });
+
+  it("moves between the folders with the arrow keys, Home and End", () => {
+    renderFolders();
+    open();
+    const [docs, design] = screen.getAllByRole("menuitem");
+    key("ArrowDown");
+    expect(document.activeElement).toBe(design);
+    key("ArrowDown");
+    expect(document.activeElement).toBe(docs);
+    key("ArrowUp");
+    expect(document.activeElement).toBe(design);
+    key("Home");
+    expect(document.activeElement).toBe(docs);
+    key("End");
+    expect(document.activeElement).toBe(design);
+  });
+
+  it("gives focus back to the … when Escape closes it", () => {
+    renderFolders();
+    const more = open();
+    key("Escape");
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(more);
+  });
+
+  it("closes on Tab, from the … rather than from the end of the page", () => {
+    renderFolders();
+    const more = open();
+    key("Tab");
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(more);
+  });
+});
