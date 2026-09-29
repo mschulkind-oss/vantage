@@ -176,6 +176,53 @@ describe("the tone palette covers exactly the plugin's vocabulary", () => {
   });
 });
 
+/** WCAG 2 relative luminance of an sRGB triple. */
+function luminance([r, g, b]: number[]): number {
+  const channel = (c: number) => {
+    const v = c / 255;
+    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+}
+
+function contrast(a: number[], b: number[]): number {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/** `#rrggbb` or `rgb(r g b / a)`, as the palette writes them. */
+function color(value: string): { rgb: number[]; alpha: number } {
+  const hex = /^#([0-9a-f]{6})$/i.exec(value);
+  if (hex) {
+    const n = parseInt(hex[1], 16);
+    return { rgb: [n >> 16, (n >> 8) & 255, n & 255], alpha: 1 };
+  }
+  const rgb = /^rgb\((\d+) (\d+) (\d+) \/ ([\d.]+)\)$/.exec(value);
+  expect(rgb, `unreadable color \`${value}\``).not.toBeNull();
+  const [, r, g, b, a] = rgb!;
+  return { rgb: [Number(r), Number(g), Number(b)], alpha: Number(a) };
+}
+
+// A status chip is small text — 11px, or down to 10px in a heading's badge and
+// a link badge — so WCAG AA asks 4.5:1 of its ink over its fill, laid over the
+// light page's white.
+describe("every light chip reads at WCAG AA for small text", () => {
+  const light = blockOf(":root");
+  const token = (name: string) => {
+    const match = new RegExp(`--vantage-tone-${name}: ([^;]+);`).exec(light);
+    expect(match, `no --vantage-tone-${name}`).not.toBeNull();
+    return color(match![1].trim());
+  };
+  for (const tone of VANTAGE_TONES) {
+    it(`gives \`${tone}\` at least 4.5:1`, () => {
+      const ink = token(`${tone}-ink`);
+      const chip = token(`${tone}-chip`);
+      const fill = chip.rgb.map((c) => chip.alpha * c + (1 - chip.alpha) * 255);
+      expect(contrast(ink.rgb, fill)).toBeGreaterThanOrEqual(4.5);
+    });
+  }
+});
+
 describe("every styled attribute survives the sanitizer", () => {
   // The silent failure mode of the whole design: CSS that selects on an
   // attribute `rehype-sanitize` strips renders nothing, in the app, in the

@@ -27,7 +27,10 @@
   --vantage-tone-tip-accent: #15803d;
   --vantage-tone-tip-wash: rgb(22 163 74 / 0.1);
   --vantage-tone-tip-chip: rgb(22 163 74 / 0.12);
-  --vantage-tone-tip-ink: #15803d;
+  /* A shade past green-700, the other tones' step: green is so luminous
+     that green-700 over its own chip fill reads 4.39:1, under the 4.5:1 WCAG
+     AA asks of a chip's small text. This reads 5.0:1. */
+  --vantage-tone-tip-ink: #137638;
 
   --vantage-tone-important-accent: #7c3aed;
   --vantage-tone-important-wash: rgb(124 58 237 / 0.1);
