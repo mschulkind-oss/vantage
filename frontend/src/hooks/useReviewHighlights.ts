@@ -77,11 +77,18 @@ export interface InlineReviewActions {
   onCopy: (id: string) => Promise<boolean>;
 }
 
+/**
+ * `publishDrift` says whether this pass owns the review store's
+ * `commentsDrifted`. Only the page's own document does: an embedded viewer
+ * renders no comments, and publishing "none drifted" from it would clear the
+ * flag the real document's pass had set.
+ */
 export function useReviewHighlights(
   containerRef: RefObject<HTMLDivElement | null>,
   comments: ReviewComment[],
   currentContent: string | null,
   actions: InlineReviewActions,
+  publishDrift = true,
 ) {
   useEffect(() => {
     const el = containerRef.current;
@@ -136,7 +143,8 @@ export function useReviewHighlights(
     // waiting on the agent count: drift under an answered or dismissed comment is
     // nothing for the reviewer to act on.
     const drifted = new Set<string>();
-    const publishDrift = () => {
+    const reportDrift = () => {
+      if (!publishDrift) return;
       useReviewStore
         .getState()
         .setCommentsDrifted(
@@ -145,7 +153,7 @@ export function useReviewHighlights(
     };
 
     if (comments.length === 0) {
-      publishDrift();
+      reportDrift();
       return;
     }
 
@@ -160,7 +168,7 @@ export function useReviewHighlights(
     }
 
     if (active.length === 0) {
-      publishDrift();
+      reportDrift();
       restoreDrafts(el, drafts);
       return;
     }
@@ -301,9 +309,9 @@ export function useReviewHighlights(
       insertInlineCommentAfter(block, comment, actions, divergent);
     }
 
-    publishDrift();
+    reportDrift();
     restoreDrafts(el, drafts);
-  }, [containerRef, comments, currentContent, actions]);
+  }, [containerRef, comments, currentContent, actions, publishDrift]);
 }
 
 /** Closest block whose source-line ≤ target — anchor for outdated rendering. */
