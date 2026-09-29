@@ -222,6 +222,75 @@ func TestAddRecursiveWarnsAndCountsFailedWatchRegistrations(t *testing.T) {
 	require.EqualValues(t, 1, recordAttr(startup, "watch_failed_dirs"))
 }
 
+// kqueueEntryVanished is the error fsnotify's kqueue backend returns when an
+// entry of the directory it was asked to watch is deleted after the backend
+// listed the directory and before it opened the entry, word for word as a
+// macOS CI runner logged it.
+func kqueueEntryVanished(dir, entry string) error {
+	gone := filepath.Join(dir, entry)
+	return fmt.Errorf("%q: %w", gone, &os.PathError{Op: "lstat", Path: gone, Err: syscall.ENOENT})
+}
+
+// On macOS a directory's watch failed for good when a file inside it came and
+// went while the watch was being made: kqueue opens every entry in turn, and
+// gives up on the directory at the first one that has vanished, so edits to the
+// files it had not reached yet were never heard. The directory is watched
+// afresh instead, a bounded number of times, and one that is itself gone is
+// not asked about again.
+func TestRegisterWatchTriesAgainWhenAnEntryVanished(t *testing.T) {
+	root := t.TempDir()
+	docs := filepath.Join(root, "docs")
+	require.NoError(t, os.MkdirAll(docs, 0o755))
+	var calls []string
+	recording := func(fail func(path string) error) *Watcher {
+		calls = nil
+		w, err := NewWatcher(root, "", nil, nil, false, quietLogger(), []string{})
+		require.NoError(t, err)
+		w.addWatch = func(path string) error {
+			rel, _ := filepath.Rel(root, path)
+			calls = append(calls, "add "+filepath.ToSlash(rel))
+			return fail(path)
+		}
+		w.removeWatch = func(path string) {
+			rel, _ := filepath.Rel(root, path)
+			calls = append(calls, "remove "+filepath.ToSlash(rel))
+		}
+		return w
+	}
+
+	failures := 1
+	w := recording(func(path string) error {
+		if path == docs && failures > 0 {
+			failures--
+			return kqueueEntryVanished(docs, "index.lock")
+		}
+		return nil
+	})
+	require.Equal(t, 2, w.addRecursive(root))
+	require.Equal(t, []string{"add .", "add docs", "remove docs", "add docs"}, calls)
+	require.Zero(t, w.watchFailedDirs)
+
+	w = recording(func(path string) error {
+		if path == docs {
+			return kqueueEntryVanished(docs, "index.lock")
+		}
+		return nil
+	})
+	require.Equal(t, 1, w.addRecursive(root), "a directory whose entries never hold still is given up on")
+	require.Equal(t, []string{"add .", "add docs", "remove docs", "add docs", "remove docs", "add docs"}, calls)
+	require.Equal(t, 1, w.watchFailedDirs)
+
+	w = recording(func(path string) error {
+		if path == docs {
+			require.NoError(t, os.Remove(docs))
+			return fmt.Errorf("add %s: %w", docs, syscall.ENOENT)
+		}
+		return nil
+	})
+	require.Equal(t, 1, w.addRecursive(root))
+	require.Equal(t, []string{"add .", "add docs"}, calls, "the directory itself went, so there is nothing to ask again")
+}
+
 func TestAddRecursiveLogsWatchLimitFailuresAsActionableErrors(t *testing.T) {
 	root := t.TempDir()
 	var rec levelRecorder

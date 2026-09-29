@@ -791,6 +791,11 @@ func (w *Watcher) fingerprint(rel string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// addAttempts is how many times [Watcher.registerWatch] asks for one
+// directory's watch while the failures are only an entry inside it vanishing
+// (see [entryVanished]).
+const addAttempts = 3
+
 func (w *Watcher) registerWatch(path string) error {
 	w.mu.Lock()
 	overBudget := w.watchLimit > 0 && w.watched >= w.watchLimit
@@ -798,14 +803,15 @@ func (w *Watcher) registerWatch(path string) error {
 	if overBudget {
 		return errWatchBudget
 	}
-	var err error
-	switch {
-	case w.addWatch != nil:
-		err = w.addWatch(path)
-	case w.fsw == nil:
-		err = errors.New("watcher is not started")
-	default:
-		err = w.fsw.Add(path)
+	err := w.add(path)
+	for attempt := 1; attempt < addAttempts && entryVanished(path, err); attempt++ {
+		// kqueue had already registered the directory itself when the entry
+		// failed, and a second request for a directory it already holds does
+		// not list the entries again. So the half-made watch is dropped first,
+		// and the directory is watched afresh.
+		w.logger.Debug("watcher: an entry vanished while its directory was being watched; trying again", "path", path, "error", err)
+		w.unregisterWatch(path)
+		err = w.add(path)
 	}
 	if err != nil {
 		return err
@@ -819,6 +825,35 @@ func (w *Watcher) registerWatch(path string) error {
 		w.mu.Unlock()
 	}
 	return nil
+}
+
+// add asks for one directory's watch, once.
+func (w *Watcher) add(path string) error {
+	switch {
+	case w.addWatch != nil:
+		return w.addWatch(path)
+	case w.fsw == nil:
+		return errors.New("watcher is not started")
+	default:
+		return w.fsw.Add(path)
+	}
+}
+
+// entryVanished reports whether err, from asking to watch the directory at
+// path, says that something inside the directory went away rather than the
+// directory itself. kqueue, fsnotify's backend on macOS and the BSDs, lists a
+// directory it is asked to watch and opens every entry in it, and the whole
+// request fails when one is deleted between the listing and the open: git's
+// index.lock, an editor's temporary file, anything a tool writes and removes
+// while a watch is being made. The directory is still there and watchable.
+// inotify never lists the directory, so on Linux a missing path is the
+// directory's own, and it is gone.
+func entryVanished(path string, err error) bool {
+	if err == nil || !errors.Is(err, iofs.ErrNotExist) {
+		return false
+	}
+	info, statErr := os.Lstat(path)
+	return statErr == nil && info.IsDir()
 }
 
 // unregisterWatch drops the watch on one directory, if there still is one. A
