@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -137,6 +138,8 @@ func newInstallServiceCmd() *cobra.Command {
 				uid:        os.Getuid(),
 				now:        time.Now(),
 				run:        execRunner,
+				list:       httpRepoLister,
+				wait:       serviceStartWait,
 			}, sourceDirs)
 		},
 	}
@@ -170,7 +173,15 @@ type serviceInstall struct {
 	uid                         int
 	now                         time.Time
 	run                         commandRunner
+	// list asks the service's address what answers there, and wait is how
+	// long the service is given to start answering once it is started.
+	list repoLister
+	wait time.Duration
 }
+
+// serviceStartWait is how long install-service --source-dir waits for the
+// service it started to answer before saying it does not.
+const serviceStartWait = 3 * time.Second
 
 // installServiceWithSourceDirs adds dirs to the user config's source_dirs,
 // then writes the service definition and starts it — restarting it when it is
@@ -205,6 +216,16 @@ func installServiceWithSourceDirs(out io.Writer, in serviceInstall, dirs []strin
 		return fmt.Errorf("the service was not started, because %s would not start the daemon: %s",
 			shown(in.configPath), strings.Join(errs, "; "))
 	}
+	host := "127.0.0.1"
+	if len(cfg.Host) > 0 {
+		host = cfg.Host[0]
+	}
+	probeURL := browserURL(host, cfg.Port) + "/api/repos"
+	serviceURL := "http://" + net.JoinHostPort(displayServiceHost(host), strconv.Itoa(cfg.Port))
+	// Asked before the start as well: a foreground serve holding the port
+	// now — the one whose tip suggested this command, say — is what the
+	// service will find there.
+	_, heldByServe := askService(in.list, probeURL)
 
 	switch in.goos {
 	case "linux":
@@ -238,13 +259,81 @@ func installServiceWithSourceDirs(out io.Writer, in serviceInstall, dirs []strin
 		return installService(out, in.goos, in.home, in.exe)
 	}
 
-	host := "127.0.0.1"
-	if len(cfg.Host) > 0 {
-		host = cfg.Host[0]
+	// A start command succeeds as soon as the process forks, whatever the
+	// daemon does next, so "running" is only said of a daemon that answers.
+	answer, running, laterServe := awaitService(in.list, probeURL, in.wait)
+	switch {
+	case running:
+		fmt.Fprintf(out, "Vantage is running in the background at %s, serving %s.\n",
+			serviceURL, countOf(len(answer.Names), "project"))
+	case heldByServe || laterServe:
+		if cfg.PortExplicit {
+			fmt.Fprintf(out, "A foreground vantage serve is answering at %s, the service's address. "+
+				"The service starts serving there once that one stops.\n", serviceURL)
+		} else {
+			fmt.Fprintf(out, "A foreground vantage serve is answering at %s, the service's address, so the service "+
+				"may have moved to another port. Stop that one, then run: %s\n", serviceURL, serviceRestartCommand(in.goos))
+		}
+	default:
+		fmt.Fprintf(out, "The service was started, but nothing answers at %s yet. Its log says why: %s\n",
+			serviceURL, serviceLogCommand(in.goos, in.home))
 	}
-	fmt.Fprintf(out, "Vantage is running in the background at http://%s, serving %d projects.\n",
-		net.JoinHostPort(displayServiceHost(host), strconv.Itoa(cfg.Port)), len(cfg.Repos))
 	return nil
+}
+
+// askService asks url once, within the probe's timeout, whether the service
+// answers there: running when a daemon does, heldByServe when a foreground
+// `vantage serve` does instead.
+func askService(list repoLister, url string) (answer serviceAnswer, heldByServe bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), serviceProbeTimeout)
+	defer cancel()
+	a, err := list(ctx, url)
+	if err != nil {
+		return serviceAnswer{}, false
+	}
+	return a, !a.isDaemon()
+}
+
+// awaitService asks url until a daemon answers or wait has passed, reporting
+// the daemon's answer, whether one came, and whether a foreground serve
+// answered meanwhile.
+func awaitService(list repoLister, url string, wait time.Duration) (answer serviceAnswer, running, heldByServe bool) {
+	deadline := time.Now().Add(wait)
+	for {
+		a, serve := askService(list, url)
+		heldByServe = heldByServe || serve
+		if a.isDaemon() {
+			return a, true, heldByServe
+		}
+		if time.Now().After(deadline) {
+			return serviceAnswer{}, false, heldByServe
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// countOf spells n of noun, "1 project" or "2 projects".
+func countOf(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
+}
+
+// serviceRestartCommand restarts the running service on goos.
+func serviceRestartCommand(goos string) string {
+	if goos == "darwin" {
+		return "launchctl kickstart -k gui/$(id -u)/" + launchAgentLabel
+	}
+	return "systemctl --user restart vantage"
+}
+
+// serviceLogCommand shows the service's log on goos.
+func serviceLogCommand(goos, home string) string {
+	if goos == "darwin" {
+		return "tail " + tildePath(launchAgentLogPath(home), home)
+	}
+	return "journalctl --user -u vantage"
 }
 
 // runLogged prints a command, then runs it.
