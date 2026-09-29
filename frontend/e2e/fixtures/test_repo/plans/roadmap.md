@@ -10,3 +10,4 @@ the badge beside each link is the target's own state.
 ## Later
 
 - [The hub](hub.md) — everything else cites it.
+- [The paged plan](paged.md) — twelve questions, more than a page holds.
