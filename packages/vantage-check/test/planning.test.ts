@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
@@ -209,6 +209,38 @@ describe("planning/depends-on-missing", () => {
     expect(await messages(tree("\n  - target.md#OQ-T9"), "docs/a.md")).toEqual([
       "`depends-on` entry `target.md#OQ-T9` names OQ-T9, which appears nowhere in docs/target.md, not even in its Decision Ledger.",
     ]);
+  });
+
+  // The path is inside, but a symbolic link takes it out: the verdict would
+  // rest on a file the repository does not hold, and read a device whole.
+  it("reports a target a symbolic link takes outside the repository", async () => {
+    const outside = makeTree({ "elsewhere.md": "# Elsewhere\n\nOQ-T9\n" });
+    const root = tree("\n  - out.md#OQ-T9\n  - null.md");
+    symlinkSync(join(outside, "elsewhere.md"), join(root, "docs/out.md"));
+    symlinkSync("/dev/null", join(root, "docs/null.md"));
+
+    expect(await messages(root, "docs/a.md")).toEqual([
+      "`depends-on` entry `out.md#OQ-T9` names docs/out.md, which lies outside this repository through a symbolic link.",
+      "`depends-on` entry `null.md` names docs/null.md, which lies outside this repository through a symbolic link.",
+    ]);
+  });
+
+  it("follows a symbolic link that stays inside the repository", async () => {
+    const root = tree("\n  - alias.md#OQ-T1");
+    symlinkSync(join(root, "docs/target.md"), join(root, "docs/alias.md"));
+
+    expect(await planning(root, "docs/a.md")).toEqual([]);
+  });
+
+  // The endpoint never reads past max-file-bytes, and neither does the rule:
+  // a target it cannot read has settled nothing either way.
+  it("reads no target past max-file-bytes", async () => {
+    const root = tree("\n  - big.md#OQ-T9", {
+      ".vantage.toml": "[planning]\nmax-file-bytes = 64\n",
+      "docs/big.md": `# Big\n\n${"x".repeat(100)}\n`,
+    });
+
+    expect(await planning(root, "docs/a.md")).toEqual([]);
   });
 
   it("reports an entry that is not a path, which the scan drops", async () => {

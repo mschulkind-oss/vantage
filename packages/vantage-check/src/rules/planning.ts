@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from "node:fs";
+import { realpathSync, statSync } from "node:fs";
 import { dirname, join, parse, relative, sep } from "node:path";
 import {
   buildPlanningIndex,
@@ -115,6 +115,8 @@ function relativeTo(base: string, abs: string): string | null {
 class PlanningPass {
   readonly findings: Finding[] = [];
   private readonly texts = new Map<string, string | null>();
+  /** The project root with its links resolved, found on first need. */
+  private realRoot: string | undefined;
 
   constructor(
     private readonly root: string | null,
@@ -317,9 +319,19 @@ class PlanningPass {
         );
         continue;
       }
+      // The scan keeps the path inside the root as written; a symbolic link
+      // on the way can still take it out.
+      if (!this.holds(target)) {
+        report(
+          rule,
+          entry.line,
+          `${written} names ${entry.target}, which lies outside this repository through a symbolic link.`,
+        );
+        continue;
+      }
       const id = entry.fragment;
       if (id === null || !VANTAGE_OQ_ID.test(id)) continue;
-      const text = kind === "file" ? this.text(target) : "";
+      const text = kind === "directory" ? "" : this.text(entry.target);
       // A file that exists and cannot be read has not settled anything.
       if (text === null || idsOf(text).includes(id)) continue;
       report(
@@ -349,16 +361,32 @@ class PlanningPass {
     );
   }
 
-  /** A file's text, read once per run; `null` when it cannot be read. */
-  private text(abs: string): string | null {
+  /**
+   * Whether `abs`, links followed, is inside the project root. Without a root
+   * there is no repository to leave.
+   */
+  private holds(abs: string): boolean {
+    if (this.root === null) return true;
+    try {
+      const real = realpathSync(abs);
+      this.realRoot ??= realpathSync(this.root);
+      return real === this.realRoot || real.startsWith(this.realRoot + sep);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * A repo-relative file's text, read once per run as the endpoint reads a
+   * candidate: a regular file of at most `max-file-bytes`, in UTF-8. `null`
+   * when it is anything else, which has settled nothing.
+   */
+  private text(rel: string): string | null {
+    const abs = join(this.base, rel);
     const cached = this.texts.get(abs);
     if (cached !== undefined) return cached;
-    let text: string | null;
-    try {
-      text = readFileSync(abs, "utf8");
-    } catch {
-      text = null;
-    }
+    const entry = readCandidate(this.base, rel, this.config.maxFileBytes);
+    const text = entry.kind === "file" ? entry.content : null;
     this.texts.set(abs, text);
     return text;
   }
