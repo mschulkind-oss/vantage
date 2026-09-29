@@ -657,11 +657,21 @@ fetch is refused. That covers `script`, `image`, `use` and `feImage`, the
 `xlink:href` on the drawing's elements and every attribute that takes a `url(…)`
 reference: `filter`, `mask`, `clip-path`, `marker-*`, `cursor`, and a `url()`
 paint. An `<a href>` inside a drawing is the exception: it survives as an
-ordinary link, protocol-filtered like a Markdown link. `fill` and `stroke` take
-only a keyword, a color name or a hex color, so `rgb(…)` goes the same way as it
-does in `style`. Gradients and patterns are unsupported because they are
-reachable only through `url(#id)`, and the sanitizer prefixes every `id`. SVG
-child elements require an `svg` ancestor.
+ordinary link, protocol-filtered like a Markdown link. Gradients and patterns
+are unsupported because they are reachable only through `url(#id)`, and the
+sanitizer prefixes every `id`. SVG child elements require an `svg` ancestor.
+
+`fill` and `stroke` take only a keyword, a color name or a hex color, for the
+reason `style` refuses parentheses, and **a refused paint renders black, not
+absent**. The attribute is dropped and SVG's initial fill is black, so
+`fill="rgb(219, 234, 254)"` and `fill="url(#g)"` both paint a black shape. Paint
+written in `style`, which is how Inkscape and matplotlib write it, is dropped
+whole because `SAFE_STYLE` has no `fill` or `stroke`, so
+`style="fill:none;stroke:#1f77b4"` turns an outline into a solid black shape. Black is also what
+disappears in dark mode, where text with no fill, or `fill="black"`, sits on the
+dark page at about 1.2:1. For anything that has to read in both themes, write
+`fill="currentColor"` or `stroke="currentColor"`: it takes the prose text color,
+which follows the theme.
 
 A refused element is normally *unwrapped*: the tag goes and its children stay.
 The containers whose children are never meant to be painted where they stand
