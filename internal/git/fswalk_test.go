@@ -172,6 +172,35 @@ func TestStopAtReposKeepsChildRepositoriesOut(t *testing.T) {
 	require.Empty(t, svc.LastCommitsBatch([]string{"alpha/README.md"}))
 }
 
+// A checkout whose .git is a file — a linked worktree, or a repository made
+// with --separate-git-dir — sitting right beside the clones is a boundary as
+// much as a clone is. looseMarkdown hands each top-level directory to the walk
+// as a root of its own, so the root is where the check has to happen: missing
+// it listed every document inside the worktree in recents, and the same
+// project then refused to open them.
+func TestStopAtReposKeepsTopLevelWorktreesOut(t *testing.T) {
+	ClearRecentFilesCache()
+	t.Cleanup(ClearRecentFilesCache)
+	parent := looseParent(t)
+	runGit(t, filepath.Join(parent, "alpha"), "worktree", "add", "-q", "-b", "wt", filepath.Join(parent, "wt"))
+	writeFile(t, parent, "wt/inworktree.md", "# in the worktree\n")
+	sep := filepath.Join(parent, "sep")
+	runGit(t, parent, "-c", "init.defaultBranch=main", "init", "-q", "--separate-git-dir="+filepath.Join(t.TempDir(), "sep.git"), sep)
+	writeFile(t, parent, "sep/separate.md", "# separate\n")
+
+	svc := NewService(parent, Options{StopAtRepos: true})
+	require.ElementsMatch(t, []string{"notes.md", "drafts/idea.md"}, recentPaths(svc.Recents(50, nil, true, true)))
+
+	// Every mode skips linked worktrees (194e4f3), so a parent served as one
+	// project does not list them either — only the real clone is delegated to.
+	ClearRecentFilesCache()
+	got := recentPaths(NewService(parent, Options{}).Recents(50, nil, true, true))
+	require.Contains(t, got, "alpha/README.md")
+	require.NotContains(t, got, "wt/inworktree.md")
+	require.NotContains(t, got, "wt/README.md")
+	require.NotContains(t, got, "sep/separate.md")
+}
+
 func TestInWorkTree(t *testing.T) {
 	repo := initRepo(t)
 	require.True(t, NewService(repo, Options{}).InWorkTree())

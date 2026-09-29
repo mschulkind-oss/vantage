@@ -212,12 +212,15 @@ func (s *GitService) walkSubdir(root string, extLower []string, add func(rel str
 		}
 		if d.IsDir() {
 			name := d.Name()
-			if p != root && (strings.HasPrefix(name, ".") || s.isExcludedDir(name) || IsWorktree(p)) {
+			if p != root && (strings.HasPrefix(name, ".") || s.isExcludedDir(name)) {
 				return fs.SkipDir
 			}
 			// Checked for root too: looseMarkdown hands each top-level
-			// directory in as a root of its own, and a clone is one of them.
-			if s.opts.StopAtRepos && dirHasGit(p) {
+			// directory in as a root of its own, and a clone, a linked
+			// worktree or a checkout whose .git is a file can be one of them.
+			// Every mode skips a linked worktree; with StopAtRepos every
+			// repository is a boundary.
+			if IsWorktree(p) || (s.opts.StopAtRepos && IsRepoBoundary(p)) {
 				return fs.SkipDir
 			}
 			return nil
