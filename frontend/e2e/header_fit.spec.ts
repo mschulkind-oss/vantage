@@ -455,6 +455,67 @@ test.describe("viewer header under width pressure", () => {
     );
   });
 
+  // A click that lengthens a label ("Review" → "End review?", "Path" →
+  // "Copied!") must not change the fit. At the narrowest width that still
+  // showed labels it once did: every label vanished, the right-anchored
+  // toolbar jumped, and the click meant to confirm "End review?" landed on the
+  // commit button instead and opened the diff.
+  test("a label that lengthens on click moves nothing under the pointer", async ({
+    page,
+    context,
+  }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    const header = page.getByTestId("viewer-header");
+    // The narrowest width at which the labels still show, found rather than
+    // assumed because it depends on the fonts.
+    const iconsOnly = async (w: number) => {
+      await setHeaderWidth(page, w);
+      return (await header.getAttribute("data-yield"))!
+        .split(" ")
+        .includes("labels");
+    };
+    let width = 1700;
+    expect(await iconsOnly(width), "no labels at 1700px").toBe(false);
+    while (!(await iconsOnly(width - 20))) width -= 20;
+    while (!(await iconsOnly(width - 1))) width -= 1;
+    await setHeaderWidth(page, width);
+    await expect(header).toHaveAttribute("data-yield", "subject date");
+
+    for (const [name, after] of [
+      ["Path", "Copied!"],
+      ["Review", "End review?"],
+    ]) {
+      const button = (await header
+        .getByRole("button", { name, exact: true })
+        .elementHandle())!;
+      const box = (await button.boundingBox())!;
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      await page.mouse.click(x, y);
+      // Read at once: the longer label reverts after a couple of seconds, and
+      // so would any step it made the header take.
+      await expect(header.getByText(after, { exact: true })).toHaveCount(1);
+      const now = await page.evaluate(
+        ([x, y]) => ({
+          yield: document.querySelector<HTMLElement>(
+            '[data-testid="viewer-header"]',
+          )!.dataset.yield,
+          under: document.elementFromPoint(x, y)?.closest("button")
+            ?.textContent,
+        }),
+        [x, y],
+      );
+      expect(now, `after clicking ${name}`).toEqual({
+        yield: "subject date",
+        under: after,
+      });
+      expect((await button.boundingBox())!.x).toBeCloseTo(box.x, 0);
+      await expect(header.getByText(after, { exact: true })).toHaveCount(0, {
+        timeout: 10_000,
+      });
+    }
+  });
+
   test("icon-only buttons keep their names", async ({ page }) => {
     await setHeaderWidth(page, 900);
     const s = await snapshot(page, LABELS, DIRS);
