@@ -8,7 +8,7 @@
  * the file name has the first claim on all of it. A full chip took enough of it
  * to cut a long name down to its first letter; a dot and a count need a few
  * characters' worth, and whatever they cannot show, `label` still says, in the
- * badge's accessible name and in the row's tooltip.
+ * badge's accessible name and in the name's tooltip.
  */
 import { useMemo } from "react";
 import { DOC_STATUS_TONES, VANTAGE_TONES } from "vantage-md";
@@ -35,8 +35,8 @@ export interface TreeBadge {
   open: number;
   /**
    * Everything the row knows, phrased as a link's badge says it to a screen
-   * reader: `in review, design, 4 open questions`. The badge's accessible name
-   * and title, and the row's tooltip.
+   * reader: `in review, design, 4 open questions`. The badge's accessible
+   * name, and the tooltip of the row's name and of the badge's slot.
    */
   label: string;
 }
