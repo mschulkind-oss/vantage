@@ -332,6 +332,39 @@ describe("every renderer runs the same chain", () => {
     expect(describeSvgs(appViewerHost(SVG_FIXTURE))).toEqual(viaRenderMarkdown);
   });
 
+  it("agrees that a bare <pattern> in prose loses nothing after it", async () => {
+    // Stripping the SVG containers everywhere, rather than only inside a
+    // drawing, removed everything after this `<pattern>` in all three — the
+    // heading the link points at included.
+    const content = [
+      "## Before",
+      "",
+      "See [the later section](#later-heading). Search with this form:",
+      "",
+      "<pattern>",
+      "",
+      "Para one.",
+      "",
+      "## Later heading",
+      "",
+      "Para two.",
+      "",
+    ].join("\n");
+    for (const host of [
+      await renderedHost(content),
+      packageViewerHost(content),
+      appViewerHost(content),
+    ]) {
+      expect(Array.from(host.querySelectorAll("h2"), (h) => h.id)).toEqual([
+        "before",
+        "later-heading",
+      ]);
+      expect(host.textContent).toContain("Para one.");
+      expect(host.textContent).toContain("Para two.");
+      expect(host.querySelector("pattern")).toBeNull();
+    }
+  });
+
   it("agrees on the rendered prose text", async () => {
     // The app's viewer decorates headings with a hover `#` anchor link through
     // ReactMarkdown's `components` prop (`MarkdownViewer.tsx`'s heading

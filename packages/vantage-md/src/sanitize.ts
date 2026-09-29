@@ -5,6 +5,7 @@
  * static drawing (see `SVG_CHILD_TAGS`), while blocking XSS vectors.
  */
 
+import type { Element, Root } from "hast";
 import { defaultSchema } from "rehype-sanitize";
 import {
   VANTAGE_BADGES,
@@ -204,7 +205,7 @@ const COLLAPSE_GROUP_ID = /^[0-9]+$/;
  * **Refusing an element is not the same as removing it.** `hast-util-sanitize`
  * *unwraps* an element it does not allow — drops the tag and keeps its
  * children — unless the tag is on `strip`. See `SVG_STRIPPED` for why that
- * matters here.
+ * matters here, and for the pass that removes those containers instead.
  *
  * `switch` is admitted, as a plain container, because draw.io wraps every label
  * in one: `<switch><foreignObject>…</foreignObject><text>…</text></switch>`. A
@@ -217,10 +218,11 @@ const COLLAPSE_GROUP_ID = /^[0-9]+$/;
  * Every child requires an `svg` ancestor, so no shape or text element is
  * admitted into HTML flow on its own.
  *
- * `title` and `desc` are not children at all: they are stripped, with their
- * contents, and `aria-label` on the root is the drawing's accessible name. Both
- * are HTML integration points — the parser reads what is inside them as HTML —
- * and an `svg` ancestor turned out not to be enough to keep a `<title>` in SVG
+ * `title` and `desc` are not children at all. They are admitted nowhere, inside
+ * a drawing they are removed with their contents (see `SVG_STRIPPED`), and
+ * `aria-label` on the root is the drawing's accessible name. Both are HTML
+ * integration points — the parser reads what is inside them as HTML — and an
+ * `svg` ancestor turned out not to be enough to keep a `<title>` in SVG
  * context. `<math><svg><title>` keeps MathML context, and React hoists any
  * `title` outside SVG context into the page's `<head>`, so the document set the
  * tab title. In `renderMarkdown`'s string output, `<svg><desc><title>`,
@@ -243,7 +245,8 @@ const SVG_CHILD_TAGS = [
 ];
 
 /**
- * Refused SVG elements removed *with their contents*, rather than unwrapped.
+ * Refused SVG elements removed *with their contents* when they sit inside an
+ * `<svg>`, rather than unwrapped.
  *
  * Each of these holds children that are never meant to be painted where they
  * stand: a clip region, a mask, a gradient's stops, a marker's arrowhead, a
@@ -252,19 +255,26 @@ const SVG_CHILD_TAGS = [
  * Unwrapped, those children land in the drawing as ordinary shapes. A default
  * Figma export ends in `<defs><clipPath><rect fill="white"/>`, and unwrapping
  * it painted that white rect over the whole drawing; a `<marker>` arrowhead
- * became a stray triangle at the origin. The
- * HTML inside a `foreignObject` survived as descendants of `svg`, which React
- * then created as invisible SVG-namespace `div`s and `p`s — the anchor an Open
- * Question button looks for — and which a browser re-parsing `renderMarkdown`'s
- * string output breaks out of the `svg` at, spilling the rest of the drawing
- * into the page.
+ * became a stray triangle at the origin. The HTML inside a `foreignObject`
+ * survived as descendants of `svg`, which React then created as invisible
+ * SVG-namespace `div`s and `p`s — the anchor an Open Question button looks for
+ * — and which a browser re-parsing `renderMarkdown`'s string output breaks out
+ * of the `svg` at, spilling the rest of the drawing into the page.
  *
- * The camel-cased names are the ones the HTML parser gives these elements in
- * SVG, and the only spelling a hast tree carries. The rest are lowercase in any
- * context, so they are stripped in prose too: a bare `<pattern>` written as a
- * placeholder outside a code span takes the rest of its paragraph with it,
- * where it used to lose only the tag, and a stray `<title>x</title>` loses its
- * text. Code spans are unaffected.
+ * **Only inside an `<svg>`, which is why this is a pass and not the schema's
+ * `strip`.** `strip` removes a tag wherever it stands, and most of these names
+ * are lowercase in prose too. There a bare `<pattern>` on a line of its own is
+ * an HTML element nothing closes, so every Markdown block after it was parsed
+ * into it, and stripping it removed the rest of the document — in every
+ * renderer, with `vantage-check` silent. Inside a drawing the same container is
+ * bounded by the `svg`, because a Markdown paragraph or heading breaks out of
+ * SVG. Outside one the sanitizer unwraps these like any tag it does not know:
+ * `title` and `desc` are not admitted anywhere, so no `title` element survives
+ * to be hoisted, and what they held is text or ordinary sanitized HTML.
+ *
+ * Names compare case-insensitively. The camel-cased ones are how the HTML
+ * parser spells these elements in SVG, but under `<math><svg>` the parser stays
+ * in MathML and leaves them lowercase.
  */
 const SVG_STRIPPED = [
   "foreignObject",
@@ -281,6 +291,50 @@ const SVG_STRIPPED = [
   "title",
   "desc",
 ];
+
+const SVG_STRIPPED_NAMES = new Set(
+  SVG_STRIPPED.map((name) => name.toLowerCase()),
+);
+
+/**
+ * The camel-cased `SVG_STRIPPED` names, which the schema strips on its own.
+ *
+ * Only an SVG-namespace element carries one of these spellings, so stripping
+ * them everywhere costs prose nothing. It keeps the worst of the list — the
+ * HTML inside a `foreignObject` — out of a drawing for a consumer who hands
+ * `sanitizeSchema` to `rehype-sanitize` without the rest of `buildPipeline`.
+ */
+const SVG_STRIPPED_EVERYWHERE = SVG_STRIPPED.filter(
+  (name) => name !== name.toLowerCase(),
+);
+
+function stripSvgContainers(parent: Root | Element, inSvg: boolean): void {
+  if (inSvg) {
+    parent.children = parent.children.filter(
+      (child) =>
+        child.type !== "element" ||
+        !SVG_STRIPPED_NAMES.has(child.tagName.toLowerCase()),
+    );
+  }
+  for (const child of parent.children) {
+    if (child.type === "element") {
+      stripSvgContainers(child, inSvg || child.tagName.toLowerCase() === "svg");
+    }
+  }
+}
+
+/**
+ * Remove every `SVG_STRIPPED` element below an `svg`, with its contents.
+ *
+ * Runs immediately before `rehypeSanitize` (`pipeline.ts`), and only when the
+ * pipeline sanitizes: with the sanitizer off these elements are left to work
+ * as SVG defines them.
+ */
+export function rehypeStripSvgContainers() {
+  return (tree: Root) => {
+    stripSvgContainers(tree, false);
+  };
+}
 
 /**
  * A paint value: a keyword, a named color, or a hex color. No parentheses, for
@@ -384,7 +438,7 @@ const SVG_ROOT_ATTRIBUTES: NonNullable<Schema["attributes"]>[string] = [
  */
 export const sanitizeSchema: Schema = {
   ...defaultSchema,
-  strip: [...(defaultSchema.strip || []), ...SVG_STRIPPED],
+  strip: [...(defaultSchema.strip || []), ...SVG_STRIPPED_EVERYWHERE],
   tagNames: [
     ...(defaultSchema.tagNames || []),
     // KaTeX MathML elements
