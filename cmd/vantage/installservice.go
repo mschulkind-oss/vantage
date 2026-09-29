@@ -250,8 +250,12 @@ func installServiceWithSourceDirs(out io.Writer, in serviceInstall, dirs []strin
 		}
 		fmt.Fprintf(out, "Wrote %s\n", shown(plist))
 		// bootout fails when the agent is not loaded, which is the first-install
-		// case; bootstrap then loads the plist just written.
-		_ = in.run("launchctl", "bootout", fmt.Sprintf("gui/%d/%s", in.uid, launchAgentLabel))
+		// case; bootstrap then loads the plist just written. Its error is
+		// printed rather than returned: if it meant something else, bootstrap
+		// fails next, and this is what explains that failure.
+		if err := runLogged(out, in.run, "launchctl", "bootout", fmt.Sprintf("gui/%d/%s", in.uid, launchAgentLabel)); err != nil {
+			fmt.Fprintf(out, "  (it failed, as it does when the agent is not loaded yet: %v)\n", err)
+		}
 		if err := runLogged(out, in.run, "launchctl", "bootstrap", fmt.Sprintf("gui/%d", in.uid), plist); err != nil {
 			return fmt.Errorf("launchctl bootstrap: %w", err)
 		}
