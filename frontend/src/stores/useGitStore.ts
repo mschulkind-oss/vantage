@@ -25,10 +25,39 @@ const getApiBase = (): string | null => {
   return "/api";
 };
 
+/** One path's git status, as the server answered for it. */
+export interface PathGitStatus {
+  /** Its most recent commit, or `null` for a file with none (untracked). */
+  lastCommit: GitCommit | null;
+  /** `modified`, `added`, `deleted`, `untracked`, or `null` when clean. */
+  gitStatus: string | null;
+}
+
+/**
+ * How many paths' answers `statusByPath` and `historyByPath` keep, the least
+ * recently answered first out. The viewer reads one path at a time, and the
+ * one before it while a navigation is in flight; the rest is headroom.
+ */
+export const GIT_PATHS_KEPT = 32;
+
 interface GitState {
+  /** The last history asked for, whichever path it was: the history page's. */
   history: GitCommit[];
-  latestCommit: GitCommit | null;
-  fileGitStatus: string | null; // 'modified', 'added', 'deleted', 'untracked', or null
+  /**
+   * Each path's git status once the server has answered for it, by path, of
+   * the repository asked about last. A path that is absent has no answer yet:
+   * its status is not known, and the viewer's header shows nothing that
+   * depends on it — above all not *Untracked file*, which is what an absent
+   * commit used to read as (`docs/design/planning-index-at-scale.md` §11.1,
+   * L3). Kept per path rather than as one current answer so that asking about
+   * the next document, which the viewer does together with its content, leaves
+   * the header of the document still on screen alone.
+   *
+   * A request that fails still answers: with no commit and no status.
+   */
+  statusByPath: Readonly<Record<string, PathGitStatus>>;
+  /** Each path's history once answered, likewise; a failure answers `[]`. */
+  historyByPath: Readonly<Record<string, GitCommit[]>>;
   isLoading: boolean;
   diff: FileDiff | null;
   isDiffLoading: boolean;
@@ -52,10 +81,70 @@ interface GitState {
 // (e.g. multiple tabs or rapid WebSocket updates).
 let _recentFilesPromise: Promise<void> | null = null;
 
-export const useGitStore = create<GitState>((set) => ({
+/**
+ * The API base the per-path answers belong to. A path names a file only
+ * within one repository, so the first request for another one forgets them,
+ * and an answer for the one before is dropped when it lands.
+ */
+let answersBase: string | null = null;
+
+/**
+ * Per path, the number of the latest status and history request. An answer to
+ * an older one is dropped, so a slow first answer cannot land over a newer one
+ * (a document's load, then a push naming it).
+ */
+let requestSeq = 0;
+const statusSent = new Map<string, number>();
+const historySent = new Map<string, number>();
+
+/** `record` with `path` answered `value`, as its newest entry, capped. */
+function remember<T>(
+  record: Readonly<Record<string, T>>,
+  path: string,
+  value: T,
+): Record<string, T> {
+  const next: Record<string, T> = { ...record };
+  delete next[path];
+  next[path] = value;
+  const paths = Object.keys(next);
+  const over = Math.max(0, paths.length - GIT_PATHS_KEPT);
+  for (const old of paths.slice(0, over)) delete next[old];
+  return next;
+}
+
+/** Forget every per-path answer and request number. For tests. */
+export function resetGitAnswers(): void {
+  answersBase = null;
+  statusSent.clear();
+  historySent.clear();
+  useGitStore.setState({ statusByPath: {}, historyByPath: {} });
+}
+
+/**
+ * Number a request for `path`'s status or history, forgetting the previous
+ * repository's answers if this is the first for a new one. Answers whether the
+ * request is still the one to keep when it lands.
+ */
+function send(
+  sent: Map<string, number>,
+  apiBase: string,
+  path: string,
+): () => boolean {
+  if (apiBase !== answersBase) {
+    answersBase = apiBase;
+    statusSent.clear();
+    historySent.clear();
+    useGitStore.setState({ statusByPath: {}, historyByPath: {} });
+  }
+  const seq = ++requestSeq;
+  sent.set(path, seq);
+  return () => apiBase === answersBase && sent.get(path) === seq;
+}
+
+export const useGitStore = create<GitState>((set, get) => ({
   history: [],
-  latestCommit: null,
-  fileGitStatus: null,
+  statusByPath: {},
+  historyByPath: {},
   isLoading: false,
   diff: null,
   isDiffLoading: false,
@@ -69,30 +158,44 @@ export const useGitStore = create<GitState>((set) => ({
   fetchHistory: async (path) => {
     const apiBase = getApiBase();
     if (!apiBase) return;
+    const current = send(historySent, apiBase, path);
     set({ isLoading: true });
     try {
       const response = await axios.get<GitCommit[]>(
         `${apiBase}/git/history?path=${encodeURIComponent(path)}`,
       );
       set({ history: response.data, isLoading: false });
+      if (current()) {
+        set({
+          historyByPath: remember(get().historyByPath, path, response.data),
+        });
+      }
     } catch {
       set({ isLoading: false });
+      if (current()) {
+        set({ historyByPath: remember(get().historyByPath, path, []) });
+      }
     }
   },
 
   fetchStatus: async (path) => {
     const apiBase = getApiBase();
     if (!apiBase) return;
+    const current = send(statusSent, apiBase, path);
+    let answer: PathGitStatus;
     try {
       const response = await axios.get<FileStatus>(
         `${apiBase}/git/status?path=${encodeURIComponent(path)}`,
       );
-      set({
-        latestCommit: response.data.last_commit,
-        fileGitStatus: response.data.git_status,
-      });
+      answer = {
+        lastCommit: response.data.last_commit,
+        gitStatus: response.data.git_status,
+      };
     } catch {
-      set({ latestCommit: null, fileGitStatus: null });
+      answer = { lastCommit: null, gitStatus: null };
+    }
+    if (current()) {
+      set({ statusByPath: remember(get().statusByPath, path, answer) });
     }
   },
 

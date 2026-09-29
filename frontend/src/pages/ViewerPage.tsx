@@ -165,8 +165,8 @@ export const ViewerPage: React.FC = () => {
   const connected = useConnectionStore((s) => s.connected);
 
   const {
-    latestCommit,
-    fileGitStatus,
+    statusByPath,
+    historyByPath,
     fetchStatus,
     diff,
     showDiff,
@@ -180,9 +180,21 @@ export const ViewerPage: React.FC = () => {
     repoName,
     repoRootPath,
     fetchRepoInfo,
-    history,
     fetchHistory,
   } = useGitStore();
+  // The git facts the header shows are the shown path's own, and there are
+  // none until git has answered for it: an unknown status is not an untracked
+  // file (docs/design/planning-index-at-scale.md §11.1, L3). They are asked for
+  // with the content, so the next document's answer can land while this one
+  // is still on screen, and leaves this one's header as it was.
+  const pathGit = currentPath ? statusByPath[currentPath] : undefined;
+  const statusKnown = pathGit !== undefined;
+  const latestCommit = pathGit?.lastCommit ?? null;
+  const fileGitStatus = pathGit?.gitStatus ?? null;
+  const history = useMemo(
+    () => (currentPath ? historyByPath[currentPath] : undefined) ?? [],
+    [currentPath, historyByPath],
+  );
   const navigate = useNavigate();
   const location = useLocation();
   const { "*": pathParam } = useParams();
@@ -272,12 +284,14 @@ export const ViewerPage: React.FC = () => {
   const { isLoading } = useRepoStore();
   const recentlyChangedPaths = useRepoStore((s) => s.recentlyChangedPaths);
 
-  // Fallback modification date from recent files when no git commit exists
+  // Fallback modification date from recent files when git has said the file
+  // has no commit. Before it has said anything, the date could be about to
+  // give way to the commit's, so it waits too.
   const fileMtime = React.useMemo(() => {
-    if (latestCommit || !currentPath) return null;
+    if (!statusKnown || latestCommit || !currentPath) return null;
     const match = recentFiles.find((f) => f.path === currentPath);
     return match?.date ?? null;
-  }, [latestCommit, currentPath, recentFiles]);
+  }, [statusKnown, latestCommit, currentPath, recentFiles]);
 
   useWebSocket();
 
@@ -472,6 +486,19 @@ export const ViewerPage: React.FC = () => {
       return p;
     };
 
+    // The header's git facts are asked for with the content, not once it
+    // has rendered, so they are in hand when it paints, or all but
+    // (docs/design/planning-index-at-scale.md §11.2).
+    const load = (p: string) => {
+      if (p.toLowerCase().endsWith(".md")) {
+        loadFile(p);
+        fetchHistory(p);
+      } else {
+        viewDirectory(p);
+      }
+      fetchStatus(p);
+    };
+
     if (isMultiRepo) {
       // In multi-repo mode, the first segment is the repo name
       const segments = fullPath.split("/").filter(Boolean);
@@ -526,11 +553,7 @@ export const ViewerPage: React.FC = () => {
         loadPathDirectories(filePath);
       }
 
-      if (filePath.toLowerCase().endsWith(".md")) {
-        loadFile(filePath);
-      } else {
-        viewDirectory(filePath);
-      }
+      load(filePath);
     } else {
       // Single-repo mode - path is the file path directly
       const rawPath = fullPath || ".";
@@ -544,16 +567,14 @@ export const ViewerPage: React.FC = () => {
         loadPathDirectories(path);
       }
 
-      if (path.toLowerCase().endsWith(".md")) {
-        loadFile(path);
-      } else {
-        viewDirectory(path);
-      }
+      load(path);
     }
   }, [
     pathParam,
     loadFile,
     viewDirectory,
+    fetchStatus,
+    fetchHistory,
     expandToPath,
     loadPathDirectories,
     isMultiRepo,
@@ -562,12 +583,6 @@ export const ViewerPage: React.FC = () => {
     setCurrentRepo,
     reposLoaded,
   ]);
-
-  useEffect(() => {
-    if (currentPath) {
-      fetchStatus(currentPath);
-    }
-  }, [currentPath, fetchStatus]);
 
   // Scroll to top when navigating to a new file, or to anchor if hash is present.
   // When the *same* file updates (live reload), preserve scroll position.
@@ -622,13 +637,6 @@ export const ViewerPage: React.FC = () => {
     fetchRecentFiles();
     fetchRepoInfo();
   }, [fetchRecentFiles, fetchRepoInfo, reposLoaded, isMultiRepo, currentRepo]);
-
-  // Fetch file history when viewing a file
-  useEffect(() => {
-    if (currentPath && currentPath.toLowerCase().endsWith(".md")) {
-      fetchHistory(currentPath);
-    }
-  }, [currentPath, fetchHistory]);
 
   // Dynamic page title
   useEffect(() => {
@@ -1506,7 +1514,10 @@ export const ViewerPage: React.FC = () => {
                 </div>
               ) : currentPath && currentPath.toLowerCase().endsWith(".md") ? (
                 <div className="hdr-tools flex items-center gap-2">
-                  {!isStaticMode() && (
+                  {/* Only once git has said so: before it answers, a file
+                      with a commit would read as untracked for as long as
+                      the answer took (§11.1, L3). */}
+                  {statusKnown && !isStaticMode() && (
                     <button
                       onClick={() =>
                         currentPath && fetchWorkingDiff(currentPath)

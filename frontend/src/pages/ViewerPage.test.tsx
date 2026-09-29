@@ -102,6 +102,27 @@ describe("ViewerPage", () => {
   const mockLoadPathDirectories = vi.fn();
   const mockLoadRepos = vi.fn();
   const mockSetCurrentRepo = vi.fn();
+  const mockFetchHistory = vi.fn();
+
+  /** What git answers for a document with a commit. */
+  const COMMITTED = {
+    lastCommit: {
+      hexsha: "123",
+      message: "test commit",
+      author: "me",
+      date: new Date().toISOString(),
+    },
+    gitStatus: null,
+  };
+
+  // Read through the local alias, not through `useGitStore` itself: the mock
+  // is an ordinary function, but calling it under that name inside a named
+  // helper trips react-hooks/rules-of-hooks.
+  const gitStore = useGitStore as unknown as ReturnType<typeof vi.fn>;
+  /** Git's answers for these paths, and none for any other. */
+  const gitAnswers = (statusByPath: Record<string, unknown>) => {
+    gitStore.mockReturnValue({ ...gitStore(), statusByPath });
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -146,12 +167,9 @@ describe("ViewerPage", () => {
     });
 
     (useGitStore as unknown as ReturnType<typeof vi.fn>).mockReturnValue({
-      latestCommit: {
-        hexsha: "123",
-        message: "test commit",
-        author: "me",
-        date: new Date().toISOString(),
-      },
+      // Git has answered for the default document: it has a commit.
+      statusByPath: { "path/to/file.md": COMMITTED },
+      historyByPath: {},
       fetchStatus: mockFetchStatus,
       diff: null,
       showDiff: false,
@@ -163,7 +181,7 @@ describe("ViewerPage", () => {
       history: [],
       fetchRecentFiles: vi.fn(),
       fetchRepoInfo: vi.fn(),
-      fetchHistory: vi.fn(),
+      fetchHistory: mockFetchHistory,
     });
 
     (useWebSocket as unknown as ReturnType<typeof vi.fn>).mockImplementation(
@@ -193,6 +211,7 @@ describe("ViewerPage", () => {
         currentPath: path,
         currentDirectory,
       });
+      gitAnswers({ [path]: COMMITTED });
       mockUseParams.mockReturnValue({ "*": path });
       renderPage();
     };
@@ -301,6 +320,98 @@ describe("ViewerPage", () => {
         "href",
         "/.vantage/planning/alpha",
       );
+    });
+  });
+
+  // docs/design/planning-index-at-scale.md §11: the header's git facts are
+  // asked for with the content, and nothing is said before git has answered.
+  describe("the header's git facts", () => {
+    const repo = () => useRepoStore as unknown as ReturnType<typeof vi.fn>;
+    const showing = (path: string) => {
+      const state = {
+        ...repo()(),
+        currentPath: path,
+        currentDirectory: null,
+        fileContent: { path, content: "# Doc\n", encoding: "utf-8" },
+        recentlyChangedPaths: new Set<string>(),
+      };
+      // Selectors too, since the sidebar's recent list reads through one.
+      repo().mockImplementation((select?: (s: typeof state) => unknown) =>
+        select ? select(state) : state,
+      );
+      mockUseParams.mockReturnValue({ "*": path });
+    };
+
+    it("asks for a document's status and history with its content", () => {
+      // Nothing has arrived: the store still has no content and no path.
+      repo().mockReturnValue({
+        ...repo()(),
+        currentPath: null,
+        currentDirectory: null,
+      });
+      mockUseParams.mockReturnValue({ "*": "docs/next.md" });
+      renderPage();
+      expect(mockLoadFile).toHaveBeenCalledWith("docs/next.md");
+      expect(mockFetchStatus).toHaveBeenCalledWith("docs/next.md");
+      expect(mockFetchHistory).toHaveBeenCalledWith("docs/next.md");
+    });
+
+    it("asks a directory for its status and no history", () => {
+      mockUseParams.mockReturnValue({ "*": "docs/design" });
+      renderPage();
+      expect(mockViewDirectory).toHaveBeenCalledWith("docs/design");
+      expect(mockFetchStatus).toHaveBeenCalledWith("docs/design");
+      expect(mockFetchHistory).not.toHaveBeenCalled();
+    });
+
+    it("says nothing untracked before git answers, and says it once it has", () => {
+      showing("docs/new.md");
+      gitAnswers({});
+      gitStore.mockReturnValue({
+        ...gitStore(),
+        recentFiles: [
+          {
+            path: "docs/new.md",
+            date: new Date().toISOString(),
+            untracked: true,
+          },
+        ],
+      });
+      const { rerender } = renderPage();
+      expect(screen.queryByText("Untracked file")).toBeNull();
+      expect(screen.queryByTestId("header-time")).toBeNull();
+      expect(screen.queryByTitle(/click to view diff$/)).toBeNull();
+      // The toolbar's own actions do not wait on git.
+      expect(screen.getAllByTitle("View raw markdown").length).toBeGreaterThan(
+        0,
+      );
+
+      gitAnswers({
+        "docs/new.md": { lastCommit: null, gitStatus: "untracked" },
+      });
+      rerender(
+        <BrowserRouter>
+          <ViewerPage />
+        </BrowserRouter>,
+      );
+      expect(screen.getByText("Untracked file")).toBeInTheDocument();
+      expect(screen.getByTestId("header-time")).toBeInTheDocument();
+    });
+
+    it("shows the document on screen its own commit, whatever else has answered", () => {
+      showing("docs/a.md");
+      gitAnswers({
+        "docs/a.md": {
+          ...COMMITTED,
+          lastCommit: { ...COMMITTED.lastCommit, message: "On a" },
+        },
+        "docs/b.md": { lastCommit: null, gitStatus: "untracked" },
+      });
+      renderPage();
+      expect(
+        screen.getByTitle(/click to view diff$/).getAttribute("title"),
+      ).toMatch(/^On a\n/);
+      expect(screen.queryByText("Untracked file")).toBeNull();
     });
   });
 
@@ -811,13 +922,10 @@ describe("ViewerPage", () => {
     // The header has two toolbar variants — one for a file with git history and
     // one for an untracked file — and each carries its own copy of the toggle.
     // Asserting only the tracked case leaves the other half of the hole open.
-    //
-    // Read through the local alias, not through `useGitStore` itself: the mock
-    // is an ordinary function, but calling it under that name inside a named
-    // helper trips react-hooks/rules-of-hooks.
-    const gitStoreMock = useGitStore as unknown as ReturnType<typeof vi.fn>;
     const asUntracked = () => {
-      gitStoreMock.mockReturnValue({ ...gitStoreMock(), latestCommit: null });
+      gitAnswers({
+        "path/to/file.md": { lastCommit: null, gitStatus: "untracked" },
+      });
     };
 
     it("renders the toggle when a backend is present", () => {
