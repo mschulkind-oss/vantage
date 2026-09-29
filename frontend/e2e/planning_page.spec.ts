@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { planningIndexReady } from "./planningIndex";
 
 // The planning page in a real browser, against the real planning endpoint and
 // the real review store (docs/design/planning-index.md §6, §15). The fixture
@@ -66,12 +67,7 @@ test.describe("the planning page", () => {
     });
 
     await page.goto("/plans/roadmap.md");
-    // The index is ready once a badge is drawn.
-    await expect(
-      page
-        .locator("[data-content-scroll] [data-vantage-planning-badge]")
-        .first(),
-    ).toBeVisible();
+    await planningIndexReady(page);
 
     await page.keyboard.press("g");
     await page.keyboard.press("p");

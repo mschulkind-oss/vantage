@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { planningIndexReady } from "./planningIndex";
 
 // The scan worker and its cache in a real browser: the worker over the real
 // planning stream, and the scan cache over the real IndexedDB, which no unit
@@ -137,12 +138,9 @@ test.describe("the planning scan cache", () => {
     // Started beside the app's first requests (§7.1).
     await expect.poll(() => page.workers().length).toBe(1);
     expect(page.workers()[0]?.url()).toContain("/planningScan/worker");
-    // The index is ready once a badge is drawn, and one stream built it.
-    await expect(
-      page
-        .locator("[data-content-scroll] [data-vantage-planning-badge]")
-        .first(),
-    ).toBeVisible();
+    // One stream built the index. (A badge is no sign of it: the index lands
+    // after this short document painted, when every link is on screen.)
+    await planningIndexReady(page);
     expect(streams).toHaveLength(1);
     expect(page.workers()).toHaveLength(1);
   });
