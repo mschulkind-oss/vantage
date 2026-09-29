@@ -307,6 +307,17 @@ describe("questionLabel", () => {
     });
   });
 
+  it("reads a bold-titled heading's marker without the hover anchor", () => {
+    const container = document.createElement("div");
+    container.innerHTML = `<h3 id="OQ-H2" data-source-line="1" data-vantage-oq="true"><a href="#OQ-H2" class="heading-anchor">#</a>💬 <strong>OQ-H2: A bold heading?</strong></h3>`;
+    const stamped = container.querySelector<HTMLElement>("[data-vantage-oq]")!;
+
+    expect(questionLabel(stamped)).toEqual({
+      marker: "💬",
+      text: "OQ-H2: A bold heading?",
+    });
+  });
+
   it("keeps both markers of a deferred question", () => {
     const container = document.createElement("div");
     container.innerHTML = `
