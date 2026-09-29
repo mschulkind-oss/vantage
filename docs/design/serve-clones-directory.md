@@ -3,7 +3,7 @@ title: "Serving a directory of clones: `vantage ~/code` becomes one project per 
 author: "Matt Schulkind"
 date: 2026-09-29
 status: accepted
-stage: DECIDED
+stage: BUILT
 tags: [serve, daemon, config, install-service, watcher, onboarding]
 summary: "`serve` on a directory that holds git clones now serves it the way the daemon serves a `source_dirs` entry, with one extra project for Markdown that sits outside every clone. A startup reminder points at `install-service`, which gains `--source-dir`, and a browser banner reports when a project is too big to watch or walk."
 vantage:
@@ -12,7 +12,7 @@ vantage:
 
 # Serving a directory of clones
 
-**Status:** decided on 2026-09-29. The owner approved the defaults below in the
+**Status:** decided and built on 2026-09-29. The owner approved the defaults below in the
 brief for this change. Where the brief left a question open, this note gives the
 ruling and the reason, in the [Decision Ledger](#decision-ledger).
 
@@ -51,7 +51,9 @@ on the fixture, and the first grows with the number of clones:
 2. **No clone's `.gitignore` applies.** The listing asks `git check-ignore` from
    the served root, which is not a repository, so the call fails and nothing is
    hidden. `alpha/generated/out.md` stayed in the tree with *show gitignored*
-   turned off, and stayed in `/files/all` and the planning index too.
+   turned off. (`/files/all` and the planning index list gitignored files in
+   every mode, since they apply only Vantage's own ignore files, so this is not
+   one of their conditions, and the split leaves them as they were.)
 3. **Working-copy status is blank.** `GitService.Status` returns nothing when
    the root is not a work tree, and unlike history it does not hand the path to
    the child repository. A modified `alpha/README.md` reported
@@ -76,7 +78,8 @@ The likeliest source of the reported 404s is the first condition together with
 the viewer's own error states. A request that times out, or a document the
 tree lists but the watcher never reports, shows as "not found" to someone who
 does not read the log. That remains a guess, and this change does not depend on
-it: splitting the directory removes all four conditions, and the banner in
+it: splitting the directory removes all four conditions as they apply to the
+tree, the status and the walks, and the banner in
 [§7](#7-too-big-to-serve-well-a-banner-in-the-browser) makes the first one
 visible wherever it still happens.
 
@@ -297,9 +300,10 @@ or without the split. Three conditions are reported:
   kqueue holds a file open for every watched directory and file, `EMFILE`),
   the watcher records a degradation (coined here: a named
   way a project is served worse than normal, with the path where it starts).
-  The banner says: *Live reload is off below `docs/big` (and N more folders):
-  the system's file-watch limit was reached.* It also names the setting to
-  raise.
+  On Linux the banner says: *Live reload is off below docs/big and 2 more
+  folders: the system's limit on watched folders was reached. Raise it (on
+  Linux, fs.inotify.max_user_watches), or list the biggest folders in
+  .vantageignore.* On macOS it names the open-file limit instead.
 - **The untracked-file walk hits `walk_timeout`.** Recents then lack every
   untracked file, and the banner says so and names the setting. A later run
   of the same walk that finishes in time takes the report back, and the
@@ -345,6 +349,14 @@ of a nanosecond, and never by building a large tree.
   today's behavior, and the banner makes its worst case visible. Delegating
   status and `.gitignore` to children is possible, but only someone who asked
   for one project uses that path now.
+- **Carrying review comments across the split.** The review store keys a
+  document by its project's name and its path, and a directory served as one
+  project has no name. Comments left that way on Markdown inside a clone keep
+  their key, since the clone's project is named after its directory, but
+  comments on the loose Markdown do not: they show again under
+  `--one-project`, and nothing is deleted. Reading the nameless key as a
+  fallback would be wrong, because every directory served as one project
+  shares it.
 
 ## Decision Ledger
 
