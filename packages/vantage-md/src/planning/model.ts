@@ -33,7 +33,12 @@ export interface PlanningSources {
 
 /** One path's answer, from the endpoint's single-path mode. */
 export type SourceEntry =
-  | { kind: "file"; path: string; content: string }
+  /**
+   * `hash` is the file's content hash, which the server's answer carries
+   * (`docs/design/planning-index-at-scale.md` §6.2) and the checker's own walk
+   * does not.
+   */
+  | { kind: "file"; path: string; content: string; hash?: string }
   | { kind: "skipped"; path: string; size: number }
   | { kind: "unreadable"; path: string; reason: string }
   /** Missing, or not a candidate. */
@@ -51,6 +56,29 @@ export type ScannedEntry =
   | { kind: "unreadable"; path: string; reason: string }
   /** Missing, or not a candidate. */
   | { kind: "absent"; path: string };
+
+/**
+ * One line of the planning stream, `POST …/planning/stream`
+ * (`docs/design/planning-index-at-scale.md` §6.1), camelCased: a header, then
+ * one line per candidate in path order, then `end`.
+ *
+ * `same` says the file hashes to exactly what the request's `have` gave for
+ * it, so its stored scan result stands and its text is not sent. `end` is how
+ * a whole stream is told from a cut one, so a stream without it is a failed
+ * build and never a smaller index.
+ */
+export type StreamLine =
+  | {
+      kind: "header";
+      config: PlanningConfig;
+      candidateCount: number;
+      refused: boolean;
+    }
+  | { kind: "same"; path: string; hash: string }
+  | { kind: "file"; path: string; hash: string; content: string }
+  | { kind: "skipped"; path: string; size: number }
+  | { kind: "unreadable"; path: string; reason: string }
+  | { kind: "end"; candidates: number };
 
 export interface PlanningIndex {
   config: PlanningConfig;
@@ -82,6 +110,13 @@ function isRecord(value: unknown): value is Json {
 const isString = (value: unknown): value is string => typeof value === "string";
 const isNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
+
+/**
+ * A content hash: the first 128 bits of SHA-256 over a file's bytes, as 32
+ * lowercase hex digits (`docs/design/planning-index-at-scale.md` §3).
+ */
+const isHash = (value: unknown): value is string =>
+  isString(value) && /^[0-9a-f]{32}$/.test(value);
 
 function stringList(value: unknown): string[] | null {
   return Array.isArray(value) && value.every(isString) ? [...value] : null;
@@ -175,10 +210,12 @@ export function parseSourceEntry(json: unknown): SourceEntry | null {
   if (!isRecord(json) || !isString(json["path"])) return null;
   const path = json["path"];
   switch (json["kind"]) {
-    case "file":
-      return isString(json["content"])
-        ? { kind: "file", path, content: json["content"] }
-        : null;
+    case "file": {
+      const { content, hash } = json;
+      if (!isString(content)) return null;
+      if (hash === undefined) return { kind: "file", path, content };
+      return isHash(hash) ? { kind: "file", path, content, hash } : null;
+    }
     case "skipped":
       return isNumber(json["size"])
         ? { kind: "skipped", path, size: json["size"] }
@@ -189,6 +226,57 @@ export function parseSourceEntry(json: unknown): SourceEntry | null {
         : null;
     case "absent":
       return { kind: "absent", path };
+    default:
+      return null;
+  }
+}
+
+/**
+ * One line of the planning stream, parsed as JSON, or `null` for any other
+ * shape: a missing field, a field of the wrong type, a kind it does not know,
+ * or anything that is not an object.
+ *
+ * As strict as {@link parsePlanningSources}, and for the same reason: a static
+ * host may answer the stream's URL with the site's `index.html`, and a line
+ * that is not the stream's own shape has to fail the build, never shrink the
+ * index.
+ */
+export function parseStreamLine(json: unknown): StreamLine | null {
+  if (!isRecord(json)) return null;
+  const { path } = json;
+  switch (json["kind"]) {
+    case "header": {
+      const config = parseConfig(json["config"]);
+      const candidateCount = json["candidate_count"];
+      const refused = json["refused"];
+      if (config === null || !isNumber(candidateCount)) return null;
+      if (typeof refused !== "boolean") return null;
+      return { kind: "header", config, candidateCount, refused };
+    }
+    case "same": {
+      const { hash } = json;
+      return isString(path) && isHash(hash)
+        ? { kind: "same", path, hash }
+        : null;
+    }
+    case "file": {
+      const { hash, content } = json;
+      return isString(path) && isHash(hash) && isString(content)
+        ? { kind: "file", path, hash, content }
+        : null;
+    }
+    case "skipped": {
+      const entry = readSkipped(json);
+      return entry === null ? null : { kind: "skipped", ...entry };
+    }
+    case "unreadable": {
+      const entry = readUnreadable(json);
+      return entry === null ? null : { kind: "unreadable", ...entry };
+    }
+    case "end": {
+      const { candidates } = json;
+      return isNumber(candidates) ? { kind: "end", candidates } : null;
+    }
     default:
       return null;
   }
@@ -328,10 +416,10 @@ export function applySource(
 ): PlanningIndex {
   if (index.refused) return index;
   if (entry.kind !== "file") return applyScanned(index, entry);
-  const { path, content } = entry;
+  const { path, content, hash = "" } = entry;
   const result = scanCandidate(index.config, path, content);
   // The index holds no hashes, so `applyScanned` never reads this one.
-  return applyScanned(index, { kind: "file", path, hash: "", result });
+  return applyScanned(index, { kind: "file", path, hash, result });
 }
 
 /**
