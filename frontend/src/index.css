@@ -24,6 +24,11 @@
 /* Task lists, from the same package and by the same relative-source-path
    rule. After directives.css, whose tone palette it reads. */
 @import "../../packages/vantage-md/src/styles/task-list.css";
+/* Inline SVG sizing, by the same rule. It declares its own `@layer components`,
+   which is why it has to come after `@import "tailwindcss"`: that import is
+   what orders the layers, and a `components` block seen first would be ordered
+   below `base`, where preflight lives. */
+@import "../../packages/vantage-md/src/styles/inline-svg.css";
 @plugin "@tailwindcss/typography";
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -528,16 +533,6 @@ h6:hover > .heading-anchor,
 }
 .dark .line-anchor-highlight:hover {
   background: rgb(59 130 246 / 0.16);
-}
-
-/* Inline SVG written into a document: shrink to the column rather than overflow
-   it, keeping the aspect ratio its viewBox declares. In a layer so that the
-   size utilities on the app's own icons inside prose still win. */
-@layer components {
-  .prose svg {
-    max-width: 100%;
-    height: auto;
-  }
 }
 
 /* ──────────────────────────────────────────

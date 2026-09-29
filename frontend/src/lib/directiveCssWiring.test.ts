@@ -267,3 +267,49 @@ describe("the package ships the stylesheet too", () => {
     expect(packageCss).toContain('@import "./directives.css";');
   });
 });
+
+describe("inline SVG sizing is one stylesheet, reached by every consumer", () => {
+  /**
+   * An `<svg>` a document writes inline is sized by
+   * `packages/vantage-md/src/styles/inline-svg.css`. It used to be a rule in
+   * the app's own `index.css`, so the package's <MarkdownViewer> and every
+   * consumer of `vantage-md/styles` let a `width="2400"` drawing overflow the
+   * column while the app looked right (D5).
+   */
+  const SVG_IMPORT =
+    '@import "../../packages/vantage-md/src/styles/inline-svg.css";';
+  const svgCss = () =>
+    read("../../../packages/vantage-md/src/styles/inline-svg.css").replace(
+      /\/\*[\s\S]*?\*\//g,
+      "",
+    );
+  const SELECTOR = ":is(.prose, .vantage-prose) svg";
+
+  it("is imported by the app, after tailwindcss and before `@plugin`", () => {
+    // After `@import "tailwindcss"`, because that import declares the layer
+    // order the file's `@layer components` joins; before `@plugin`, or
+    // Tailwind's importer drops it silently (see the directives import above).
+    const at = appCss.indexOf(SVG_IMPORT);
+    expect(at).toBeGreaterThan(appCss.indexOf('@import "tailwindcss";'));
+    expect(at).toBeLessThan(appCss.indexOf("@plugin "));
+  });
+
+  it("is re-exported by the package", () => {
+    expect(packageCss).toContain('@import "./inline-svg.css";');
+  });
+
+  it("caps the width under both container classes", () => {
+    expect(declaration(svgCss(), SELECTOR, "max-width")).toBe("100%");
+  });
+
+  it("is layered, so an icon's size utilities still win", () => {
+    const css = svgCss();
+    const layer = css.indexOf("@layer components {");
+    expect(layer).toBeGreaterThanOrEqual(0);
+    expect(css.indexOf(SELECTOR)).toBeGreaterThan(layer);
+  });
+
+  it("leaves no second copy in the app", () => {
+    expect(appCss).not.toMatch(/\.prose svg\b/);
+  });
+});
