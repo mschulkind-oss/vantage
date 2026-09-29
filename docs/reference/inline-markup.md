@@ -706,7 +706,16 @@ this: their sanitizer refuses `class` outright.
 - **A class added after the sanitizer needs no entry,** and that is most of what
   the page styles: the highlighter's token classes, KaTeX's output, Mermaid's
   diagrams, and everything the app's components add. A document that writes one
-  of those keeps nothing.
+  of those on an element keeps nothing.
+- **Mermaid source is the one route left, and the diagram bounds it.** Mermaid
+  renders after the sanitizer, and it copies the class names a diagram's source
+  gives a node, with `:::name`, `class A name` or `classDef`, onto that node. So
+  a diagram can carry any of the app's utilities on its own nodes: measured,
+  `hidden` hid one and `animate-spin` spun one. None of it reaches past the
+  drawing. `position` does nothing on an SVG group, the diagram's `svg` clips
+  what is inside it, and a `classDef` that sets `position: fixed` on a label
+  leaves the label inside the `foreignObject` that holds it. An end-to-end test
+  measures that bound.
 - **`remark-math`'s `math-display` and `math-inline` are dropped, as they always
   were.** KaTeX finds math by `language-math` alone, and tells a display formula
   from an inline one by whether it sits in a `pre`.
