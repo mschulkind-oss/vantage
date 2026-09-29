@@ -332,7 +332,11 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
     );
 
     const superseded = () => tracker.batch !== seq;
+    // A client reports nothing after `ready` or `failed`; if one did, it
+    // would be about a build the store has already landed or given up on.
+    let over = false;
     const fail = (message: string) => {
+      over = true;
       tracker.batchPending = false;
       setLoad(repo, { status: "error", message });
     };
@@ -352,6 +356,7 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
     };
 
     const finish = (built: Gathering) => {
+      over = true;
       let held: Held = { index: built.builder.finish(), hashes: built.hashes };
       // Everything noted since the build was sent is newer than what it read.
       for (const { change } of tracker.held) held = applyChange(held, change);
@@ -375,7 +380,7 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
     };
 
     scanner.build({ repo, seq, bypassCache }, (event) => {
-      if (superseded()) return;
+      if (over || superseded()) return;
       switch (event.type) {
         case "started":
           loading({ warm: event.warm });
