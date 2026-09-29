@@ -1,0 +1,43 @@
+{
+  "description": [
+    "A repository tree (path to content) and the Markdown files the server lists in it: every .md file, case-insensitively; hidden directories, the default excluded directories, linked worktrees (a .git file starting gitdir:) and .vantageignore matches pruned; symlinks skipped (none here, since a JSON tree cannot hold one).",
+    "`listed` is what fs.ListAllFiles returned for this tree, sorted, with ExcludeDirs = config.DefaultExcludeDirs, UseIgnoreFiles = true, and the user ignore file isolated (XDG_CONFIG_HOME and HOME set to empty temporary directories). It was produced by running that code, never written by hand.",
+    "The [planning] patterns are not applied here: docs/gallery/status.md is listed although this repository's own config excludes it from planning.",
+    "Read by the server's ListAllFiles and single-path tests and by vantage-check's candidate walk test. Materialize it under a temporary directory."
+  ],
+  "tree": {
+    ".github/x.md": "---\nstatus: draft\n---\n\n# Hidden directory: pruned, so absent to the single-path mode too\n",
+    ".hidden.md": "# A hidden file at the root; only hidden directories are pruned\n",
+    ".vantage/state.md": "# Vantage's own state directory\n",
+    ".vantageignore": "ignored/\n*.skip.md\n!keep.skip.md\n",
+    "README.md": "# Readme\n",
+    "docs/NOTES.MD": "# Upper-case extension, still Markdown to the listing\n",
+    "docs/design/a.md": "---\nstatus: draft\nstage: DESIGN\n---\n\n# A\n",
+    "docs/dist/x.md": "---\nstatus: draft\n---\n\n# dist is a default-excluded directory at any depth\n",
+    "docs/gallery/status.md": "---\nstatus: accepted\n---\n\n# Listed: [planning] exclude is not a listing rule\n",
+    "docs/keep.skip.md": "# Ignored by *.skip.md, then restored by !keep.skip.md\n",
+    "docs/notes.markdown": "---\nstatus: draft\n---\n\n# Not .md, never listed\n",
+    "docs/y.skip.md": "# Ignored by .vantageignore\n",
+    "ignored/x.md": "---\nstatus: draft\n---\n\n# Pruned by a directory-only .vantageignore line\n",
+    "linked/.git": "gitdir: /elsewhere/.git/worktrees/linked\n",
+    "linked/doc.md": "---\nstatus: draft\n---\n\n# A linked worktree: pruned\n",
+    "nested/.git/HEAD": "ref: refs/heads/main\n",
+    "nested/doc.md": "# A nested repository with its own .git directory is still listed\n",
+    "node_modules/pkg/README.md": "---\nstatus: draft\n---\n\n# Default-excluded directory\n",
+    "odd.md/inner.md": "# A directory named like a file is still walked\n",
+    "packages/build/notes.md": "# build is a default-excluded directory\n",
+    "roadmap.md": "# Roadmap\n",
+    "worktrees/wt/doc.md": "# worktrees is a default-excluded directory\n"
+  },
+  "listed": [
+    ".hidden.md",
+    "README.md",
+    "docs/NOTES.MD",
+    "docs/design/a.md",
+    "docs/gallery/status.md",
+    "docs/keep.skip.md",
+    "nested/doc.md",
+    "odd.md/inner.md",
+    "roadmap.md"
+  ]
+}

@@ -9,6 +9,10 @@
 #   - internal/repoconfig (Go)            reads [starred], reads past [check]
 #   - packages/vantage-check/test (TS)    reads [check], reads past [starred]
 #
+# [planning] is the one table both read: the server for include, exclude and
+# the two limits, the checker for all of it. Each suite asserts the part it
+# reads, so a table the two parse differently turns one of them red.
+#
 # The invariant is narrow and it is the whole reason the file is shared: neither
 # reader rejects a file containing the other's sections, and each reads its own
 # keys correctly out of a file that holds both. If the two ever disagree, one of
@@ -26,6 +30,19 @@ exit-code = 3
 
 [starred]
 promote = ["roadmap.md", "docs/design/*.md"]
+
+[planning]
+roadmap = "plans/ROADMAP.md"
+include = ["docs/**", "plans/**"]
+exclude = ["docs/gallery/**"]
+max-file-bytes = 65536
+max-candidates = 250
+
+[planning.stages]
+DRAFTED = "open"
+SETTLED = "ready"
+SHIPPED = "built"
+RETIRED = "done"
 
 # A table belonging to neither, which both must step over.
 [tool.ruff]
