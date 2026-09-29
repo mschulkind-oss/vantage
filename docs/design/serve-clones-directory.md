@@ -250,8 +250,10 @@ config. The command then installs the service and starts it. Without
 - **Starting the service** on Linux runs `systemctl --user daemon-reload`,
   `enable vantage` and `restart vantage`. The command uses `restart` because a
   running daemon reads `source_dirs` only at startup. On macOS it runs
-  `launchctl bootout` (a failure is ignored, since it means the agent was not
-  loaded) and then `launchctl bootstrap`. The commands go through a runner that
+  `launchctl bootout` and then `launchctl bootstrap`. A failed `bootout`
+  usually means the agent was not loaded, so it does not stop the command, but
+  its error is printed: if it meant something else, `bootstrap` fails next,
+  and that error is what explains it. The commands go through a runner that
   tests replace, so no test starts a real service.
 - **Running is what answers.** A start command succeeds as soon as the process
   forks, so the command then asks the service's address for up to three
