@@ -35,6 +35,7 @@ const BADGES: PlanningBadge[] = [
   { kind: "question", path: "docs/a.md", id: "OQ-3", state: "answered" },
   { kind: "ruled", path: "docs/a.md", id: "OQ-4" },
   { kind: "not-found", path: "docs/a.md", id: "OQ-5" },
+  { kind: "not-a-question", path: "docs/a.md", id: "OQ-6" },
 ];
 
 /** The badge's words, joined as badgeText joins them. */
@@ -79,6 +80,30 @@ describe("PlanningBadgeChip", () => {
     expect(screen.getByText("DESIGN")).not.toHaveClass(
       "vantage-planning-badge__part--warning",
     );
+  });
+
+  // `stage` is one word by design (§4), but nothing bounds what a document
+  // writes there, and a badge does not wrap: a stage of thousands of
+  // characters would widen every page that links to its document.
+  it("shows a long stage cut short, whole in its tooltip", () => {
+    const stage = "X".repeat(200);
+    render(<PlanningBadgeChip badge={{ ...DOCUMENT, stage }} />);
+    const shown = screen.getByText(/^X+…$/);
+    expect(Array.from(shown.textContent ?? "").length).toBe(32);
+    expect(screen.getByRole("img").getAttribute("title")).toContain(
+      stage.toLowerCase(),
+    );
+  });
+
+  // A bidi override would draw the stored word as another, and only the badge
+  // would show it: the checker reads the characters as they are.
+  it("shows a stage without its bidi controls", () => {
+    render(
+      <PlanningBadgeChip
+        badge={{ ...DOCUMENT, stage: "\u202eNGISED\u202c" }}
+      />,
+    );
+    expect(screen.getByText("NGISED")).toBeTruthy();
   });
 
   it("leaves no text node beside its parts, so the spacing is CSS", () => {
