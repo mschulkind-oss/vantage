@@ -253,8 +253,10 @@ planning documents link to it:
 | The line | Means |
 | :--- | :--- |
 | *Referenced by 3 documents · on the roadmap under Building* | The roadmap [routes](#the-roadmap) this document or one of its questions. *Building* is the roadmap heading its first such link sits under |
-| *Referenced by 3 documents · not on the roadmap (2 open questions)* | Two of its open questions are unrouted: they need a ruling, and the roadmap has missed them. The second half is in the warning tone |
-| *Not on the roadmap (2 open questions)* | The same, for a document nothing links to. The line is then the only place the document shows it |
+| *Referenced by 3 documents · on the roadmap* | The same, when the roadmap's link sits above every heading |
+| *Referenced by 3 documents · 2 open questions not routed by the roadmap* | Two of its open questions are unrouted: they need a ruling, and the roadmap has missed them. That part is in the warning tone |
+| *Referenced by 3 documents · on the roadmap under Building · 1 open question not routed by the roadmap* | The roadmap routes one question and has missed another |
+| *2 open questions not routed by the roadmap* | Unrouted questions in a document nothing links to. The line is then the only place the document shows them, and there is nothing to open |
 | *Referenced by 3 documents* | Other documents link here, and the roadmap has nothing to add |
 
 The count is of documents, not links, and the roadmap is one of them when it
