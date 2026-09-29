@@ -90,6 +90,100 @@ code {
     "Courier New", monospace;
 }
 
+/* ── The viewer header's yield steps ─────────────────────────────────────
+   The header gives up room in a fixed order as it narrows, and the file name
+   is the last thing to give any. `lib/headerFit.ts` defines the steps ("yield
+   step" is its coinage) and measures how many to take; it writes them to the
+   header as `data-yield="subject date …"`, and this block is what each one
+   does. Unlayered on purpose: these must outrank the utilities on the same
+   elements (`sm:min-w-[100px]` on Dismiss, say) whatever their specificity.
+
+   The cause they replace: the toolbar was `shrink-0` and nothing in it could
+   shrink, while the file name — `truncate`, so its automatic minimum width
+   is zero — was the only box in the row that could. Every pixel the header
+   lacked came out of the name, at any width, before anything else moved.
+
+   So the row is rigid by default, and exactly one thing may shrink at a
+   time: first the commit subject, continuously (the toolbar may shrink, and
+   the subject is its only flexible item); after the last discrete step, the
+   file name, and nothing else. An item added to the toolbar is rigid for
+   free (`> *`); giving its text `hdr-label` makes that text part of the
+   `labels` step. */
+.viewer-header {
+  white-space: nowrap;
+}
+.hdr-lead {
+  flex-shrink: 0;
+}
+.hdr-tools {
+  min-width: 0;
+}
+.hdr-tools > * {
+  flex-shrink: 0;
+}
+.hdr-tools > .hdr-commit {
+  flex-shrink: 1;
+}
+.hdr-date {
+  display: inline-flex;
+}
+.hdr-dirs {
+  display: flex;
+}
+.hdr-dirs-collapsed {
+  display: none;
+}
+
+/* 1. The subject is gone, and with it the toolbar's one flexible item. */
+.viewer-header[data-yield~="subject"] .hdr-subject {
+  display: none;
+}
+.viewer-header[data-yield~="subject"] .hdr-tools {
+  flex-shrink: 0;
+}
+
+/* 2. The absolute date; the relative time beside it stays. */
+.viewer-header[data-yield~="date"] .hdr-date {
+  display: none;
+}
+
+/* 3. Icon-only buttons, and 5. the relative time: each leaves the layout but
+   not the accessibility tree, so every button keeps the name it had. The
+   reserve Dismiss holds for its longer confirm label has nothing left to
+   reserve. */
+.viewer-header[data-yield~="labels"] .hdr-label,
+.viewer-header[data-yield~="time"] .hdr-time {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  border: 0;
+}
+.viewer-header[data-yield~="labels"] .hdr-dismiss {
+  min-width: 0;
+}
+
+/* 4. The folders fold into the "…" that lists them. */
+.viewer-header[data-yield~="dirs"] .hdr-dirs {
+  display: none;
+}
+.viewer-header[data-yield~="dirs"] .hdr-dirs-collapsed {
+  display: flex;
+}
+
+/* 6. Only now may the leading half shrink, and in it only the name can. It
+   clips rather than draws over the toolbar if even that is not enough, with
+   room left for a focus ring at its edge. */
+.viewer-header[data-yield~="name"] .hdr-lead {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: clip;
+  overflow-clip-margin: 4px;
+}
+
 /* ── Color themes ─────────────────────────────────────────────────────────
    A color theme is a stylesheet that sets CSS variables on `:root` (light)
    and `:root.dark` (dark) — see userguide/guides/themes.md. Nearly everything already
