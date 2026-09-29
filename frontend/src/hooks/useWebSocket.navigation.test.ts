@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import axios from "axios";
 import { useWebSocket } from "./useWebSocket";
 import { useRepoStore } from "../stores/useRepoStore";
+import { useReviewStore } from "../stores/useReviewStore";
 
 // A live-reload refresh must never be a navigation back.
 //
@@ -52,6 +53,8 @@ describe("a live-reload refresh during a navigation", () => {
         });
         return pageResponse;
       }
+      // No document here has a saved review.
+      if (url === "/api/review") return Promise.resolve({ data: null });
       return Promise.resolve({ data: url.includes("/tree?") ? [] : {} });
     });
 
@@ -66,6 +69,12 @@ describe("a live-reload refresh during a navigation", () => {
       isLoading: false,
       error: null,
       expandedDirs: {},
+    });
+    useReviewStore.setState({
+      filePath: null,
+      comments: [],
+      isReviewMode: false,
+      pendingSelection: null,
     });
     // The reader is on the repository's root directory.
     await useRepoStore.getState().viewDirectory(".");
@@ -93,6 +102,15 @@ describe("a live-reload refresh during a navigation", () => {
   const settle = async () => {
     for (let i = 0; i < 10; i++) await Promise.resolve();
   };
+
+  /** The review requests made for `path` so far. */
+  const reviewRequests = (path: string) =>
+    mockedAxios.get.mock.calls.filter(
+      ([url, config]) =>
+        url === "/api/review" &&
+        (config as { params?: { path?: string } } | undefined)?.params?.path ===
+          path,
+    );
 
   const expectOnPage = () => {
     const state = useRepoStore.getState();
@@ -184,5 +202,91 @@ describe("a live-reload refresh during a navigation", () => {
     });
 
     expectOnPage();
+  });
+  // The review store follows the document on screen: the viewer loads a
+  // document's review when the document lands (ViewerPage's `currentPath`
+  // effect), and `loadReview` switches the store to the path it is given. A
+  // refresh that reloaded the destination's review while the page being left
+  // was still on screen anchored the destination's comments against that page,
+  // and an open-question button clicked then added to the destination's review.
+
+  it("a push about the destination leaves its review until it lands", async () => {
+    renderHook(() => useWebSocket());
+    const navigation = useRepoStore.getState().loadFile(PAGE);
+
+    const push = async () => {
+      await act(async () => {
+        socket.onmessage!({
+          data: JSON.stringify({ type: "files_changed", paths: [PAGE] }),
+        } as MessageEvent);
+        vi.advanceTimersByTime(600);
+        await settle();
+      });
+    };
+    await push();
+    expect(reviewRequests(PAGE)).toHaveLength(0);
+    expect(useReviewStore.getState().filePath).toBeNull();
+
+    await act(async () => {
+      landPage();
+      await navigation;
+      await settle();
+    });
+    expectOnPage();
+
+    // Once it has landed, a push about it reloads its review again.
+    await push();
+    expect(reviewRequests(PAGE)).toHaveLength(1);
+  });
+
+  it("a reconnect leaves the destination's review until it lands", async () => {
+    renderHook(() => useWebSocket());
+    // The mount's first connection refreshes no document; a reconnect does.
+    await act(async () => {
+      socket.onopen!(new Event("open"));
+      socket.onclose!(new Event("close"));
+      await settle();
+    });
+    const navigation = useRepoStore.getState().loadFile(PAGE);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1100);
+      socket.onopen!(new Event("open"));
+      await settle();
+    });
+    expect(reviewRequests(PAGE)).toHaveLength(0);
+    expect(useReviewStore.getState().filePath).toBeNull();
+
+    await act(async () => {
+      landPage();
+      await navigation;
+      await settle();
+    });
+    expectOnPage();
+  });
+
+  it("a review_changed about the destination waits for it to land", async () => {
+    renderHook(() => useWebSocket());
+    const navigation = useRepoStore.getState().loadFile(PAGE);
+
+    const reviewChanged = async () => {
+      await act(async () => {
+        socket.onmessage!({
+          data: JSON.stringify({ type: "review_changed", path: PAGE }),
+        } as MessageEvent);
+        await settle();
+      });
+    };
+    await reviewChanged();
+    expect(reviewRequests(PAGE)).toHaveLength(0);
+    expect(useReviewStore.getState().filePath).toBeNull();
+
+    await act(async () => {
+      landPage();
+      await navigation;
+      await settle();
+    });
+    await reviewChanged();
+    expect(reviewRequests(PAGE)).toHaveLength(1);
   });
 });

@@ -15,7 +15,9 @@ interface RepoState {
    * navigation is in flight the two differ, and this one is where the reader is
    * going. Live reload refreshes this path, never `currentPath`: refreshing the
    * page being left is itself a load, the newer one, so it would win the race
-   * against the navigation and send the reader back.
+   * against the navigation and send the reader back. A document's review is
+   * the exception: it follows the page on screen, so live reload reloads it
+   * only while the two paths agree (`reviewPath` in useWebSocket.ts).
    */
   requestedPath: string | null;
   currentRepo: string | null; // Current repo name (null for single-repo mode)
