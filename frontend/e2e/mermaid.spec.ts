@@ -106,6 +106,89 @@ test.describe("Mermaid Diagrams", () => {
     }
   });
 
+  test("keeps a diagram's source from writing the page's stylesheet", async ({
+    page,
+  }) => {
+    // Mermaid puts every selector of a diagram's CSS under the diagram's id,
+    // but leaves the names of its `@keyframes` global. So a diagram whose
+    // source wrote a stylesheet could redefine an animation the app plays on
+    // its own elements: a document block the viewer flashes, a sidebar row, a
+    // spinner. Given `position: fixed` at the size of the window, the next
+    // flash laid that block over the header and the sidebar and took their
+    // clicks. The same stylesheet fetched images from hosts the document
+    // picked. The fixture reaches it by all four routes Mermaid reads:
+    // `themeCSS` and `fontFamily`, each from an `init` directive and from
+    // frontmatter.
+    const fetched: string[] = [];
+    page.on("request", (request) => {
+      if (new URL(request.url()).hostname.endsWith(".invalid")) {
+        fetched.push(request.url());
+      }
+    });
+    await page.goto("/mermaid-stylesheet.md");
+    const diagrams = page.locator(".prose svg[aria-roledescription]");
+    await expect(diagrams).toHaveCount(4, { timeout: 15000 });
+    for (const label of [
+      "init theme",
+      "frontmatter theme",
+      "init font",
+      "frontmatter font",
+    ]) {
+      await expect(diagrams.filter({ hasText: label })).toBeVisible();
+    }
+
+    const measured = await page.evaluate(() => {
+      const isDiagramSheet = (sheet: CSSStyleSheet) =>
+        sheet.ownerNode instanceof Element &&
+        sheet.ownerNode.closest("svg") !== null;
+      const keyframes = (sheets: CSSStyleSheet[]) => {
+        const names = new Set<string>();
+        const walk = (rules: CSSRuleList) => {
+          for (const rule of Array.from(rules)) {
+            if (rule instanceof CSSKeyframesRule) names.add(rule.name);
+            else if ("cssRules" in rule) walk((rule as CSSGroupingRule).cssRules);
+          }
+        };
+        for (const sheet of sheets) walk(sheet.cssRules);
+        return names;
+      };
+      const sheets = Array.from(document.styleSheets);
+      const app = keyframes(sheets.filter((sheet) => !isDiagramSheet(sheet)));
+      const diagram = keyframes(sheets.filter(isDiagramSheet));
+
+      // What the viewer does to a block that just changed
+      // (`useDeltaFlash.ts`), measured mid-flash.
+      const block = Array.from(document.querySelectorAll(".prose p")).find(
+        (p) => p.textContent === "The block the test flashes.",
+      ) as HTMLElement;
+      block.classList.add("animate-flash-update");
+      const style = getComputedStyle(block);
+      const rect = block.getBoundingClientRect();
+      const pane = document
+        .querySelector("[data-content-scroll]")!
+        .getBoundingClientRect();
+      return {
+        appKeyframes: [...app],
+        redefined: [...diagram].filter((name) => app.has(name)),
+        flashing: style.animationName,
+        position: style.position,
+        inPane:
+          rect.left >= pane.left &&
+          rect.right <= pane.right &&
+          rect.width < pane.width,
+      };
+    });
+    // The page does define the animations the fixture aims at.
+    expect(measured.appKeyframes).toContain("flash-update");
+    expect(measured.appKeyframes).toContain("spin");
+    // Soft, so that one run names every route still open.
+    expect.soft(measured.redefined).toEqual([]);
+    expect.soft(measured.flashing).toBe("flash-update");
+    expect.soft(measured.position).toBe("static");
+    expect.soft(measured.inPane).toBe(true);
+    expect.soft(fetched).toEqual([]);
+  });
+
   test("handles mermaid diagram errors gracefully", async ({ page }) => {
     // Create a temporary file with invalid mermaid syntax
     // For this test, we'll use the existing test file but check that valid diagrams still render

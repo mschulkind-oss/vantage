@@ -13,6 +13,44 @@ let mermaidLoading: Promise<typeof mermaidAPI> | null = null;
  */
 let configuredTheme: string | null = null;
 
+/**
+ * The configuration keys a diagram's own source may not set, from an `init`
+ * directive or from frontmatter: Mermaid's default list, then the three
+ * that write a diagram's stylesheet.
+ *
+ * **A diagram's stylesheet reaches past the diagram.** Mermaid puts every
+ * selector of it under the diagram's id, but leaves the names of its
+ * `@keyframes` global, so a diagram that defined `flash-update` redefined the
+ * animation the viewer plays on a block that just changed. Given
+ * `position: fixed` at the size of the window, the next flash laid that block,
+ * and the link it held, over the header and the sidebar. The same stylesheet
+ * fetched images from any host, which is why `SAFE_STYLE` refuses parentheses.
+ *
+ * - `themeCSS` is a stylesheet, and Mermaid checks only that its braces pair.
+ * - `fontFamily` is copied into `themeVariables` *after* Mermaid's check on
+ *   theme variables has run, and lands in the stylesheet as a declaration's
+ *   value, where a nested block becomes a rule of its own.
+ * - `altFontFamily` lands in a rule the browser parses first, which drops
+ *   what does not belong. It is refused anyway: nothing needs it, and that
+ *   parse is all that stands in the way.
+ *
+ * Mermaid applies the list at every depth, so `themeVariables.fontFamily` in
+ * a diagram is refused too. The list is spelled whole rather than relying on
+ * Mermaid merging it with its default. `frontend/e2e/mermaid.spec.ts` measures
+ * all four routes; see "Mermaid" in `docs/reference/inline-markup.md`.
+ */
+const MERMAID_SECURE_KEYS = [
+  "secure",
+  "securityLevel",
+  "startOnLoad",
+  "maxTextSize",
+  "suppressErrorRendering",
+  "maxEdges",
+  "themeCSS",
+  "fontFamily",
+  "altFontFamily",
+];
+
 function configure(m: typeof mermaidAPI, palette: string) {
   const theme = mermaidThemeOf(palette);
   m.initialize({
@@ -21,6 +59,7 @@ function configure(m: typeof mermaidAPI, palette: string) {
     themeVariables: mermaidThemeVariables(theme),
     securityLevel: "strict",
     suppressErrorRendering: true,
+    secure: MERMAID_SECURE_KEYS,
   });
   configuredTheme = palette;
 }
