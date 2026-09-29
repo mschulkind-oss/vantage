@@ -14,6 +14,10 @@ import {
 } from "./useReviewStore";
 import { useRepoStore } from "./useRepoStore";
 import axios from "axios";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type {
   CommentReaction,
   ReactionActor,
@@ -2028,6 +2032,59 @@ describe("the planning page's review writes and payload", () => {
       expect(payload).toContain('{"path":"<the document\'s path>"');
       // The follow-up note covers the whole batch.
       expect(payload).toContain("1 of these are");
+    });
+
+    // The payload is a shell block the agent runs as written, and a path is
+    // whatever the repository's file names are. Run the delivery half of it in
+    // a scratch directory: a path must stay a word, never run as a command,
+    // and come back out of the heredoc as the path it is.
+    it("keeps a hostile path a word in every command it lands in", () => {
+      const hostile = [
+        "docs/$(touch pwned-a).md",
+        "docs/`touch pwned-b`.md",
+        "docs/q\"uote's.md",
+        "docs/x\nEOF\ntouch pwned-c\ncat <<'EOF'\n.md",
+      ];
+      for (const paths of [[hostile[0]], [hostile[1]], hostile]) {
+        const payload = answersPayload(
+          paths.map((path) => ({ path, comments: [first], content })),
+        )!;
+        const block = payload.split("```bash\n")[1].split("\n```")[0];
+        // Everything up to the wait loop: the write and the rename.
+        const deliver = block.split("\n# Vantage consumes")[0];
+        const dir = mkdtempSync(join(tmpdir(), "vantage-payload-"));
+        try {
+          execFileSync("bash", ["-c", deliver], { cwd: dir });
+          expect(readdirSync(dir).sort()).toEqual([".vantage"]);
+          const inbox = join(dir, ".vantage/inbox");
+          const files = readdirSync(inbox);
+          expect(files).toHaveLength(1);
+          const lines = readFileSync(join(inbox, files[0]), "utf8")
+            .trimEnd()
+            .split("\n");
+          expect(lines.map((l) => JSON.parse(l).path)).toEqual(paths);
+        } finally {
+          rmSync(dir, { recursive: true, force: true });
+        }
+        // The check line quotes each path as one shell word.
+        const check = payload.match(/`uvx vantage-check ([^`]*|[^]*?)` — no/)!;
+        const words = execFileSync(
+          "bash",
+          ["-c", `printf '%s\\0' ${check[1]}`],
+          { encoding: "utf8" },
+        );
+        expect(words.split("\0").slice(0, -1)).toEqual(paths);
+      }
+    });
+
+    it("leaves an ordinary path exactly as it is", () => {
+      const payload = answersPayload([
+        { path: "docs/a-b_c.md", comments: [first], content },
+      ])!;
+      expect(payload).toContain("`uvx vantage-check docs/a-b_c.md`");
+      expect(payload).toContain(
+        "f=.vantage/inbox/docs__a-b_c.md.$RANDOM.jsonl",
+      );
     });
 
     it("leaves out a group with nothing in it, and is null when every group is empty", () => {
