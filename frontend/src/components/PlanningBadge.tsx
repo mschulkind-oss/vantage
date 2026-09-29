@@ -53,6 +53,26 @@ const part = (text: string, ...classes: (string | false)[]) => ({
     .join(" "),
 });
 
+/** The most of a stage a badge draws, in characters. */
+const STAGE_SHOWN = 32;
+
+/** Bidi embeddings, overrides and isolates (U+202A–U+202E, U+2066–U+2069). */
+const BIDI_CONTROLS = /[\u202a-\u202e\u2066-\u2069]/g;
+
+/**
+ * A stage as a badge draws it. `stage` is one word by design (§4), but
+ * nothing bounds what a document writes, and a badge does not wrap, so a long
+ * one is cut short, whole in the badge's tooltip. A bidi control would draw
+ * the stored word as another, which only the badge would show, so it is left
+ * out. `badgeText` keeps the word as written, for the CLI and the checker.
+ */
+function shownStage(stage: string): string {
+  const chars = Array.from(stage.replace(BIDI_CONTROLS, ""));
+  return chars.length <= STAGE_SHOWN
+    ? chars.join("")
+    : `${chars.slice(0, STAGE_SHOWN - 1).join("")}…`;
+}
+
 function badgeMarkup(badge: PlanningBadge): BadgeMarkup {
   const label = badgeSpeech(badge);
   if (badge.kind !== "document") {
@@ -64,7 +84,8 @@ function badgeMarkup(badge: PlanningBadge): BadgeMarkup {
           : "vantage-planning-badge__part--answered";
     return { kind: badge.kind, label, parts: [part(badgeText(badge), tone)] };
   }
-  // Each part is one of badgeText's, so the badge reads as the CLI prints it.
+  // Each part is one of badgeText's, so the badge reads as the CLI prints it;
+  // only an overlong or bidi-laden stage is drawn otherwise (`shownStage`).
   const parts: BadgeMarkup["parts"] = [];
   if (badge.status !== null) {
     parts.push(
@@ -77,7 +98,9 @@ function badgeMarkup(badge: PlanningBadge): BadgeMarkup {
   }
   if (badge.stage !== null) {
     // A word outside the declared stages is drawn in the warning tone (§4).
-    parts.push(part(badge.stage, !badge.stageInVocabulary && WARNING));
+    parts.push(
+      part(shownStage(badge.stage), !badge.stageInVocabulary && WARNING),
+    );
   }
   if (badge.open > 0) {
     parts.push(part(`${VANTAGE_OQ_STATUS.open} ${badge.open}`));
