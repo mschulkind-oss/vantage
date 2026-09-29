@@ -109,15 +109,24 @@ function snapshot(page: Page, labels: string[], dirs: string[]) {
         !!el &&
         box(el).width > 1 &&
         getComputedStyle(el).visibility !== "hidden";
+      // What is drawn: the name's screen-reader copy is a 1px clipped box
+      // that always "overflows", and is not text anyone sees.
+      const drawn = (el: Element) => !el.classList.contains("sr-only");
       const overflows = (el: Element) =>
-        [el, ...el.querySelectorAll("*")].some(
-          (e) => e.scrollWidth > e.clientWidth + 0.5,
-        );
+        [el, ...el.querySelectorAll("*")]
+          .filter(drawn)
+          .some((e) => e.scrollWidth > e.clientWidth + 0.5);
       const textWidth = (el: HTMLElement) => {
         const ctx = document.createElement("canvas").getContext("2d")!;
         const cs = getComputedStyle(el);
         ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
-        return ctx.measureText(el.textContent ?? "").width;
+        const text = el.children.length
+          ? [...el.children]
+              .filter(drawn)
+              .map((c) => c.textContent)
+              .join("")
+          : el.textContent;
+        return ctx.measureText(text ?? "").width;
       };
       const byText = (text: string) =>
         [...header.querySelectorAll("span, a, button")].find(
@@ -543,6 +552,10 @@ test.describe("viewer header under width pressure", () => {
       await expect(header.getByRole("button", { name })).toBeVisible();
     }
     await expect(header.getByRole("link", { name: "2 commits" })).toBeVisible();
+    // The name is drawn as two flex items, stem and extension, which a
+    // screen reader would read as two words; it is given the name whole.
+    const nav = await header.locator("nav").ariaSnapshot();
+    expect(nav).toContain(NAME);
     // A sighted reader has only the tooltip once the label is gone, so the
     // count the label carried is in it too.
     await expect(header.getByRole("link", { name: "2 commits" })).toHaveAttribute(
