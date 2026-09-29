@@ -92,6 +92,33 @@ describe("anchoredMenuPosition", () => {
     expect(top).toBe(a.bottom + 4);
   });
 
+  // A breadcrumb's menu reads down from the crumb it came from, the way the
+  // path it lists reads from the left.
+  it("left-aligns to the trigger when asked to align to its start", () => {
+    const a = anchor(400, 60);
+    const { left } = anchoredMenuPosition(
+      a,
+      MENU_W,
+      MENU_H,
+      DESKTOP_W,
+      DESKTOP_H,
+      "start",
+    );
+    expect(left).toBe(a.left);
+  });
+
+  it("clamps a start-aligned menu back inside the viewport", () => {
+    const { left } = anchoredMenuPosition(
+      anchor(DESKTOP_W - 40, 60),
+      MENU_W,
+      MENU_H,
+      DESKTOP_W,
+      DESKTOP_H,
+      "start",
+    );
+    expect(left + MENU_W).toBeLessThanOrEqual(DESKTOP_W - 16);
+  });
+
   it("keeps the menu on screen when the trigger sits near the left edge", () => {
     // The bug: the settings gear in a 200px sidebar, right-aligned, put the
     // menu's left edge at roughly -40px — and an overflow-hidden ancestor
