@@ -28,6 +28,21 @@ const RECONNECT_MAX_MS = 30000;
  */
 const viewerPath = () => useRepoStore.getState().requestedPath;
 
+/**
+ * The document whose review a refresh reloads: the one on screen, and only once
+ * the navigation to it has landed, so `null` while one is loading. The review
+ * store follows the page on screen, because `loadReview` switches it to the
+ * path it is given, and highlights and open-question buttons read it against
+ * the page rendered now. A destination's review loaded early anchored its
+ * comments against the page being left, and a button clicked in that window
+ * added to the destination's review. ViewerPage loads the review when the
+ * document lands, which is also after any push that arrived meanwhile.
+ */
+const reviewPath = () => {
+  const { currentPath, requestedPath } = useRepoStore.getState();
+  return currentPath === requestedPath ? currentPath : null;
+};
+
 export interface UseWebSocketOptions {
   /**
    * Whether this page is the viewer. `false` skips everything that refreshes
@@ -140,7 +155,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
       promises.push(fetchStatus(path));
       // Re-fetch review data so server-written state (e.g. anchor-relevant
       // captures after an agent edit) stays fresh without a page reload.
-      if (path.toLowerCase().endsWith(".md")) {
+      if (path.toLowerCase().endsWith(".md") && path === reviewPath()) {
         promises.push(useReviewStore.getState().loadReview(path));
       }
     }
@@ -203,7 +218,7 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
           // Reactions delivered during the outage arrived as review_changed
           // events we never received. Without this reload the client keeps a
           // stale comments array until the next server push or manual refresh.
-          useReviewStore.getState().loadReview(path);
+          if (path === reviewPath()) useReviewStore.getState().loadReview(path);
         } else {
           viewDirectory(path);
         }
@@ -283,16 +298,16 @@ export const useWebSocket = (options: UseWebSocketOptions = {}) => {
           .noteReviewChanged(message.repo ?? "", message.path);
         if (!viewer) return;
         // A review command or an inbox delivery changed this document's
-        // review server-side. Reload it when it's the document on screen;
-        // loadReview's staleness guards discard the response if the reviewer
-        // writes or navigates while it's in flight.
+        // review server-side. Reload it when it's the document on screen and
+        // its navigation has landed; loadReview's staleness guards discard the
+        // response if the reviewer writes or navigates while it's in flight.
         const { reposLoaded, isMultiRepo, currentRepo } =
           useRepoStore.getState();
         if (!reposLoaded) return;
         if (isMultiRepo && (!currentRepo || message.repo !== currentRepo)) {
           return;
         }
-        if (message.path === viewerPath()) {
+        if (message.path === reviewPath()) {
           wsLog.log("[ws] review_changed: %s", message.path);
           useReviewStore.getState().loadReview(message.path);
         }
