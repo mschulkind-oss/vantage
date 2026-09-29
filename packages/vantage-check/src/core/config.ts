@@ -42,6 +42,9 @@ export class ConfigError extends Error {}
 
 export const CONFIG_FILENAME = ".vantage.toml";
 
+/** The largest config either reader takes: the server's `maxSize`. */
+export const MAX_CONFIG_BYTES = 200 * 1024;
+
 const DEFAULT_POLICY: CheckPolicy = { strict: false, exitCode: 1 };
 
 export function defaultConfig(): LoadedConfig {
@@ -112,6 +115,22 @@ export function loadConfig(options: LoadOptions): LoadedConfig {
   // `EISDIR: illegal operation on a directory` plus a stack trace into the
   // bundle — exit 3, "a check could not run", for what is a mistyped argument.
   // A permission error read the same way.
+  // The server's cap (`maxSize` in internal/repoconfig): past it the server
+  // reads nothing of the file and serves the defaults, so a table applied here
+  // would be one the planning page never reads.
+  let size = 0;
+  try {
+    const stats = statSync(path);
+    if (stats.isFile()) size = stats.size;
+  } catch {
+    // The read below says why.
+  }
+  if (size > MAX_CONFIG_BYTES) {
+    throw new ConfigError(
+      `${options.explicitPath ?? path}: larger than ${MAX_CONFIG_BYTES} bytes, more than the server reads`,
+    );
+  }
+
   let source: string;
   try {
     source = readFileSync(path, "utf8");
