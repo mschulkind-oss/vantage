@@ -1,4 +1,4 @@
-import { useEffect, useCallback, type RefObject } from "react";
+import { useEffect, useCallback, useState, type RefObject } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { revealCollapsedBlock } from "../lib/collapseSections";
 
@@ -29,14 +29,37 @@ function parseLineAnchor(hash: string): { start: number; end: number } | null {
  * - Finds block elements with matching `data-source-line` attributes
  * - Scrolls to and highlights them
  * - Dismisses on Escape or click on the highlight
+ *
+ * `rendered` is the document the container is showing; any value will do, so
+ * long as a newly loaded document is a new one. The viewer keeps the previous
+ * document on screen until the next one has loaded, so between a link to
+ * `other.md#L42` and its arrival the URL names a document the container is not
+ * showing. An anchor applied then highlighted and scrolled the old document,
+ * and the one it named arrived with neither. So a new path waits for a new
+ * `rendered`, and a new `rendered` on the same path, which is a live edit,
+ * leaves the reader where they are.
  */
 export function useLineAnchor(
   scrollContainerRef: RefObject<HTMLDivElement | null>,
+  rendered: unknown,
 ) {
   // The markdown content lives inside the scroll container
   const containerRef = scrollContainerRef;
   const location = useLocation();
   const navigate = useNavigate();
+
+  // The path `rendered` arrived under: a document arrives after the URL that
+  // asked for it, so that path is the one it belongs to.
+  const [arrival, setArrival] = useState({
+    rendered,
+    pathname: location.pathname,
+  });
+  let arrivedAt = arrival.pathname;
+  if (arrival.rendered !== rendered) {
+    arrivedAt = location.pathname;
+    setArrival({ rendered, pathname: arrivedAt });
+  }
+  const showing = arrivedAt === location.pathname;
 
   const clearHighlights = useCallback(() => {
     const el = containerRef.current;
@@ -162,6 +185,8 @@ export function useLineAnchor(
     clearHighlights();
 
     if (!parseLineAnchor(location.hash)) return;
+    // Still the previous document: this runs again when the next one arrives.
+    if (!showing) return;
 
     if (applyAnchor()) return;
 
@@ -173,8 +198,9 @@ export function useLineAnchor(
     observer.observe(document.body, { childList: true, subtree: true });
     return () => observer.disconnect();
     // `location.pathname` is a dependency because switching documents has to
-    // re-run this even when the hash string is unchanged.
-  }, [location.hash, location.pathname, applyAnchor, clearHighlights]);
+    // re-run this even when the hash string is unchanged, and `showing` because
+    // the document it names arrives later still.
+  }, [location.hash, location.pathname, showing, applyAnchor, clearHighlights]);
 
   // Dismiss on Escape
   useEffect(() => {
