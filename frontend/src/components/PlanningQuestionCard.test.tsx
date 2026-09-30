@@ -8,8 +8,10 @@
  * and once from its card — and holds the two comments equal: the same
  * `anchor`, the same `comment` and the same `fallback_text`. The corpus is
  * every question in `agent-bootstrap.md`, each host shape the gallery shows,
- * and fixtures whose block holds a reference-style link and a footnote, the
- * two things a slice of a document can render differently from the document.
+ * fixtures whose block holds a reference-style link and a footnote, the
+ * two things a slice of a document can render differently from the document,
+ * and a dense question of the kind the card lays out to be read: a paragraph
+ * of background around its title, badged links, and an empty Answer.
  */
 import {
   act,
@@ -26,10 +28,12 @@ import {
   cardBlockFor,
   scanPlanningDocument,
   type CardBlock,
+  type PlanningBadge,
   type PlanningIndex,
   type PlanningQuestion,
 } from "vantage-md/planning";
 import { MarkdownViewer } from "./MarkdownViewer";
+import { planningBadgeElement } from "./PlanningBadge";
 import { PlanningQuestionCard, WAITING_LABEL } from "./PlanningQuestionCard";
 import {
   OQ_DEFAULT_LEANING,
@@ -46,6 +50,13 @@ import {
   setCachedSvg,
 } from "../../../packages/vantage-md/src/mermaidCache";
 import { readRepoFile, sourcesOf } from "../test/planning";
+import { planningCardId } from "../lib/planningCardId";
+import { blockVisibleText, hashBlockText } from "../lib/reviewAnchor";
+import {
+  CARD_PART_ATTR,
+  flushClampMeasures,
+  type CardPart,
+} from "../lib/planningCardParts";
 import type { CommentAnchor, ReviewComment } from "../types";
 
 vi.mock("axios");
@@ -114,6 +125,58 @@ const FOOTNOTE = [
   "",
 ].join("\n");
 
+/**
+ * A question as a real repository writes one when it has been around a while
+ * (the yolo-jail example of 2026-09-30): its title opens one paragraph of
+ * background, cross-references and history, whose links carry an accepted
+ * document's and a ruled question's badges, then a leaning and an empty
+ * Answer. Then an answered question with its Answer filled in, and two
+ * questions outside a list, whose directive stamps the paragraph their title
+ * opens: one with a marker, one without.
+ */
+const DENSE = [
+  "# Jail credentials",
+  "",
+  "1. \u{1F4AC} **OQ-J1: Should the broker mint credentials per profile?** The",
+  "   broker hands every jail one session today, which",
+  "   [the auth design](accepted.md) settled for a single profile, and",
+  "   [OQ-J0](#OQ-J0) ruled how a refresh is serialized. Its history",
+  "   ([the incident log](accepted.md#history)) shows two jails racing one",
+  "   single-use token, and [the plan](../plans/x.md) defers the rest. It has",
+  "   come up three times since the first draft, each time deferred.",
+  "",
+  "   The options are one session per jail, or one per profile.",
+  "",
+  '   <!-- vantage: oq id=OQ-J1 leaning="Per profile, narrowed before it crosses." -->',
+  "",
+  "   _Leaning:_ per profile, narrowed before it crosses into the jail.",
+  "",
+  "   **Answer:**",
+  "",
+  "   > _(empty — fill in when decided)_",
+  "",
+  "2. \u2705 **OQ-J0: Serialize refreshes?**",
+  "",
+  '   <!-- vantage: oq id=OQ-J0 leaning="Yes." -->',
+  "",
+  "   _Leaning:_ yes.",
+  "",
+  "   **Answer:**",
+  "",
+  "   > Yes: one broker per host.",
+  "",
+  '<!-- vantage: oq id=OQ-J2 leaning="Keep it." -->',
+  "",
+  "\u{1F4AC} **OQ-J2: Is a question outside a list laid out too?** Its title",
+  "opens the block its directive stamps.",
+  "",
+  '<!-- vantage: oq id=OQ-J3 leaning="Keep it too." -->',
+  "",
+  "**OQ-J3: And one with no marker?** Its title opens the block its",
+  "directive stamps too.",
+  "",
+].join("\n");
+
 const CORPUS: Record<string, string> = {
   "docs/design/agent-bootstrap.md": readRepoFile(
     "docs/design/agent-bootstrap.md",
@@ -123,6 +186,9 @@ const CORPUS: Record<string, string> = {
   ),
   "docs/reference.md": REFERENCE_LINK,
   "docs/footnote.md": FOOTNOTE,
+  "docs/jail.md": DENSE,
+  "docs/accepted.md":
+    "---\nstatus: accepted\n---\n\n# Accepted\n\n## History\n",
   "plans/x.md": "---\nstatus: draft\n---\n\n# X\n",
 };
 
@@ -134,6 +200,12 @@ function questionsOf(path: string): PlanningQuestion[] {
   return result.document.questions;
 }
 
+/** The corpus's documents that hold questions. */
+const QUESTION_PATHS = Object.keys(CORPUS).filter((path) => {
+  const result = scanPlanningDocument(path, CORPUS[path], false);
+  return result.kind === "planning" && result.document.questions.length > 0;
+});
+
 /** The question's card block, as the scan cut it from its document's text. */
 function blockOf(
   question: PlanningQuestion,
@@ -144,14 +216,13 @@ function blockOf(
   return cardBlockFor(result.cards, question) ?? null;
 }
 
-const CASES = Object.keys(CORPUS)
-  .filter((path) => path !== "plans/x.md")
-  .flatMap((path) =>
-    questionsOf(path)
-      // A blocked question offers no answer from either place (Plan Q5).
-      .filter((q) => q.state !== "blocked")
-      .map((q) => [`${path} ${q.id ?? `line ${q.line}`}`, q] as const),
-  );
+const CASES = QUESTION_PATHS.flatMap((path) =>
+  questionsOf(path)
+    // The in-page button is offered on an open question alone (Plan Q5), and
+    // each case files with it.
+    .filter((q) => q.state === "open")
+    .map((q) => [`${path} ${q.id ?? `line ${q.line}`}`, q] as const),
+);
 
 /* ------------------------------------------------------------------ *
  * Filing each way
@@ -279,7 +350,7 @@ async function answerOnCard(
 
 describe("an answer from the card is the in-page button's (§13, §15)", () => {
   it("has a corpus holding every shape to compare", () => {
-    expect(CASES.length).toBeGreaterThanOrEqual(12);
+    expect(CASES.length).toBeGreaterThanOrEqual(15);
   });
 
   it.each(CASES)("takes the leaning on %s", async (_name, question) => {
@@ -346,8 +417,7 @@ describe("the card shows its question, and only its question", () => {
   });
 
   it("finds each question's unit on the line the index names", () => {
-    for (const path of Object.keys(CORPUS)) {
-      if (path === "plans/x.md") continue;
+    for (const path of QUESTION_PATHS) {
       for (const question of questionsOf(path)) {
         const { container, unmount } = renderCard(question);
         const unit = container.querySelector("[data-planning-card-unit]");
@@ -414,6 +484,337 @@ describe("the card shows its question, and only its question", () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByRole("button")).toBeNull();
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * The card, laid out to be read (user direction, 2026-09-30)
+ * ------------------------------------------------------------------ */
+
+const jail = questionsOf("docs/jail.md");
+const jailById = (id: string) => jail.find((q) => q.id === id)!;
+const gallery = questionsOf("docs/gallery/open-questions.md");
+const galleryById = (id: string) => gallery.find((q) => q.id === id)!;
+
+/** Every element in the card marked as `part`. */
+const partsIn = (container: HTMLElement, part: CardPart) =>
+  Array.from(container.querySelectorAll(`[${CARD_PART_ATTR}="${part}"]`));
+/** The card's own element for `question`'s unit. */
+const unitIn = (container: HTMLElement) =>
+  container.querySelector<HTMLElement>("[data-planning-card-unit]")!;
+const headline = () =>
+  screen.queryByRole("heading", { level: 3 })?.textContent ?? null;
+const foldButton = () =>
+  screen.queryByRole("button", { name: /^Show (full question|less)$/ });
+
+describe("the card is laid out to be read", () => {
+  it("leads with the question's bold title as its headline, and hides it in the question", () => {
+    const question = jailById("OQ-J1");
+    const { container } = renderCard(question);
+    expect(headline()).toBe(
+      "\u{1F4AC} OQ-J1: Should the broker mint credentials per profile?",
+    );
+    // The marker is the headline's, so a screen reader hears the title.
+    expect(screen.getByRole("heading", { level: 3 })).toHaveAccessibleName(
+      question.title,
+    );
+    const [title] = partsIn(container, "title");
+    expect(title?.tagName).toBe("STRONG");
+    expect(title).toHaveTextContent(question.title);
+    // The paragraph the title opens keeps its background, with no marker
+    // left dangling at its start.
+    const lede = title!.parentElement!;
+    expect(lede).toHaveAttribute(CARD_PART_ATTR, "clamp");
+    expect(lede.textContent!.trimStart()).toMatch(/^OQ-J1: /);
+    expect(container.querySelector(".planning-card-body")).toHaveAttribute(
+      "data-planning-card-headed",
+    );
+  });
+
+  it("hides the title's paragraph when the title was all it held", () => {
+    const question = jailById("OQ-J0");
+    const { container } = renderCard(question);
+    expect(headline()).toBe("\u2705 OQ-J0: Serialize refreshes?");
+    const [lede] = partsIn(container, "lede");
+    expect(lede?.tagName).toBe("P");
+    expect(lede).toHaveTextContent(question.title);
+    // What is left is the leaning and the answer: nothing to cut short.
+    expect(partsIn(container, "clamp")).toHaveLength(0);
+    expect(foldButton()).toBeNull();
+  });
+
+  it("draws the leaning as a block of its own, which folding never hides", () => {
+    const question = jailById("OQ-J1");
+    const { container } = renderCard(question);
+    const [leaning] = partsIn(container, "leaning");
+    expect(leaning).toHaveTextContent(
+      "Leaning: per profile, narrowed before it crosses into the jail.",
+    );
+    // The document's own leaning paragraph, which the in-page button hangs
+    // off: nothing is written in its place.
+    expect(leaning).toHaveAttribute("data-vantage-oq");
+    expect(
+      container.querySelector("[data-planning-card-leaning-aside]"),
+    ).toBeNull();
+  });
+
+  it("does not show an empty Answer, and keeps one that is filled in", () => {
+    const empty = renderCard(jailById("OQ-J1"));
+    const placeholder = partsIn(empty.container, "placeholder");
+    expect(placeholder.map((el) => el.tagName)).toEqual(["P", "BLOCKQUOTE"]);
+    expect(placeholder[0]).toHaveTextContent(/^Answer:$/);
+    expect(placeholder[1]).toHaveTextContent("(empty — fill in when decided)");
+    empty.unmount();
+
+    const filled = renderCard(jailById("OQ-J0"));
+    expect(partsIn(filled.container, "placeholder")).toHaveLength(0);
+    const answer = partsIn(filled.container, "answer");
+    expect(answer.map((el) => el.tagName)).toEqual(["P", "BLOCKQUOTE"]);
+    expect(answer[1]).toHaveTextContent("Yes: one broker per host.");
+  });
+
+  it("folds the rest of the question behind Show full question, which the reader opens and closes", () => {
+    const { container } = renderCard(jailById("OQ-J1"));
+    // The first block is cut to a few lines, and every later one is hidden
+    // until the card is unfolded.
+    expect(partsIn(container, "clamp")).toHaveLength(1);
+    expect(partsIn(container, "more").map((el) => el.textContent)).toEqual([
+      "The options are one session per jail, or one per profile.",
+    ]);
+    const body = container.querySelector(".planning-card-body")!;
+    expect(body).not.toHaveAttribute("data-planning-card-unfolded");
+    const fold = foldButton()!;
+    expect(fold).toHaveTextContent("Show full question");
+    expect(fold).toHaveAttribute("aria-expanded", "false");
+    expect(fold).toHaveAttribute("aria-controls", body.id);
+
+    fireEvent.click(fold);
+    expect(body).toHaveAttribute("data-planning-card-unfolded");
+    expect(fold).toHaveTextContent("Show less");
+    expect(fold).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(fold);
+    expect(body).not.toHaveAttribute("data-planning-card-unfolded");
+    expect(fold).toHaveTextContent("Show full question");
+  });
+
+  describe("with a layout to measure", () => {
+    /** Every cut-short block runs to `tall` px, of which the clamp shows 60. */
+    function measured(tall: number) {
+      const clamped = (el: HTMLElement) =>
+        el.getAttribute(CARD_PART_ATTR) === "clamp";
+      vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
+        function (this: HTMLElement) {
+          return clamped(this) ? tall : 0;
+        },
+      );
+      vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(
+        function (this: HTMLElement) {
+          return clamped(this) ? Math.min(tall, 60) : 0;
+        },
+      );
+    }
+    afterEach(() => vi.restoreAllMocks());
+
+    // The measurement waits for the end of the task (measureClampSoon),
+    // which a synchronous test brings forward.
+    const measureNow = () => act(() => flushClampMeasures());
+
+    it("offers Show full question when the first block runs past its lines, and fades it at the cut", () => {
+      measured(200);
+      const { container } = renderCard(byId("OQ-B4"));
+      measureNow();
+      expect(partsIn(container, "more")).toHaveLength(0);
+      const [clamp] = partsIn(container, "clamp");
+      expect(clamp).toHaveAttribute("data-planning-card-overflow");
+      expect(foldButton()).toHaveTextContent("Show full question");
+      // Unfolded, the block is whole, and has no fade to show.
+      fireEvent.click(foldButton()!);
+      measureNow();
+      expect(clamp).not.toHaveAttribute("data-planning-card-overflow");
+    });
+
+    // A page of cards is measured in one pass, every read before any write,
+    // so the page is laid out once and not once a card.
+    it("measures every card committed together in one pass, reads before writes", () => {
+      measured(200);
+      const order: string[] = [];
+      const height = vi
+        .spyOn(HTMLElement.prototype, "scrollHeight", "get")
+        .mockImplementation(function (this: HTMLElement) {
+          if (this.getAttribute(CARD_PART_ATTR) !== "clamp") return 0;
+          order.push("read");
+          return 200;
+        });
+      const toggle = vi.spyOn(Element.prototype, "toggleAttribute");
+      toggle.mockImplementation(function (
+        this: Element,
+        name: string,
+        force?: boolean,
+      ) {
+        if (name === "data-planning-card-overflow") order.push("write");
+        if (force) this.setAttribute(name, "");
+        else this.removeAttribute(name);
+        return force ?? false;
+      });
+      render(
+        <BrowserRouter>
+          {(["OQ-B4", "OQ-B4"] as const).map((id, i) => (
+            <PlanningQuestionCard
+              key={i}
+              question={byId(id)}
+              card={blockOf(byId(id))}
+              badge={null}
+              comments={[]}
+              href={`/${byId(id).path}`}
+              onFile={async () => {}}
+            />
+          ))}
+        </BrowserRouter>,
+      );
+      expect(order).toEqual([]);
+      measureNow();
+      expect(order).toEqual(["read", "read", "write", "write"]);
+      expect(
+        screen.getAllByRole("button", { name: "Show full question" }),
+      ).toHaveLength(2);
+      height.mockRestore();
+    });
+
+    it("offers nothing to unfold when the question fits its lines", () => {
+      measured(40);
+      const { container } = renderCard(byId("OQ-B4"));
+      measureNow();
+      const [clamp] = partsIn(container, "clamp");
+      expect(clamp).not.toHaveAttribute("data-planning-card-overflow");
+      expect(foldButton()).toBeNull();
+    });
+  });
+
+  it("keeps the fold's slot, at its width, when there is nothing to unfold", () => {
+    renderCard(byId("OQ-B3"));
+    expect(foldButton()).toBeNull();
+    const slot = screen
+      .getByRole("article")
+      .querySelector("[data-planning-fold-slot]");
+    expect(slot).toHaveClass("w-32");
+    expect(slot!.childNodes).toHaveLength(0);
+  });
+
+  it("drops the question's number, which the headline makes redundant, and keeps it in the DOM", () => {
+    const { container } = renderCard(byId("OQ-B3"));
+    // The stylesheet hides the marker of a headed card; the value is still
+    // the document's, for what reads it.
+    expect(unitIn(container)).toHaveAttribute("value", "3");
+    expect(container.querySelector(".planning-card-body")).toHaveAttribute(
+      "data-planning-card-headed",
+    );
+  });
+
+  it("lays out a question with no bold title as it renders, with the leaning it would file beside it", () => {
+    const { container, unmount } = renderCard(galleryById("OQ-4"));
+    expect(headline()).toBeNull();
+    expect(container.querySelector(".planning-card-body")).not.toHaveAttribute(
+      "data-planning-card-headed",
+    );
+    expect(unitIn(container)).toHaveAttribute(CARD_PART_ATTR, "clamp");
+    expect(
+      container.querySelector("[data-planning-card-leaning-aside]"),
+    ).toHaveTextContent(`Leaning: ${galleryById("OQ-4").leaning}`);
+    unmount();
+
+    // No leaning at all: nothing beside it.
+    const none = renderCard(galleryById("OQ-7"));
+    expect(
+      none.container.querySelector("[data-planning-card-leaning-aside]"),
+    ).toBeNull();
+  });
+
+  it("never empties a marker inside the block an answer anchors on", () => {
+    const marked = renderCard(jailById("OQ-J2"));
+    // The title opens the stamped paragraph and its marker is text of that
+    // paragraph, so it stays, and so does the title: no headline.
+    expect(headline()).toBeNull();
+    expect(unitIn(marked.container).textContent).toMatch(/^\u{1F4AC} OQ-J2/u);
+    expect(partsIn(marked.container, "title")).toHaveLength(0);
+    marked.unmount();
+
+    // Without a marker there is nothing to strand: the title is hidden by the
+    // stylesheet alone, which leaves the paragraph's text as it was.
+    const bare = renderCard(jailById("OQ-J3"));
+    expect(headline()).toBe("OQ-J3: And one with no marker?");
+    expect(partsIn(bare.container, "title")).toHaveLength(1);
+    expect(unitIn(bare.container).textContent).toMatch(/^OQ-J3: /);
+  });
+
+  // A comment on the question's list item is placed by the item's hash, which
+  // the card takes from its own DOM each time it lays the question out: with
+  // the marker it emptied last time still out, every such comment would read
+  // as drifted.
+  it("reads its question as the document has it each time it lays it out again", () => {
+    const question = jailById("OQ-J1");
+    const page = render(
+      <BrowserRouter>
+        <MarkdownViewer content={DENSE} currentPath="docs/jail.md" />
+      </BrowserRouter>,
+    );
+    const item = Array.from(page.container.querySelectorAll("li")).find(
+      (li) => lineOf(li) === question.unitLine,
+    )!;
+    const inPage = hashBlockText(blockVisibleText(item));
+    page.unmount();
+
+    const { container, rerender } = renderCard(question);
+    expect(unitIn(container)).toHaveAttribute("data-block-hash", inPage);
+    // New comments run the pass again, over the marks it left.
+    rerender(
+      <BrowserRouter>
+        <PlanningQuestionCard
+          question={question}
+          card={blockOf(question)}
+          badge={null}
+          comments={[]}
+          href="/x"
+          onFile={async () => {}}
+        />
+      </BrowserRouter>,
+    );
+    expect(unitIn(container)).toHaveAttribute("data-block-hash", inPage);
+    // And lays it out again after reading it.
+    expect(partsIn(container, "title")).toHaveLength(1);
+    expect(unitIn(container).textContent!.trimStart()).toMatch(/^OQ-J1: /);
+  });
+
+  it("carries its planningCardId as its id, with or without a question id", () => {
+    const question = byId("OQ-B2");
+    const { unmount } = renderCard(question);
+    expect(screen.getByRole("article")).toHaveAttribute(
+      "id",
+      planningCardId(question.path, question.id, question.unitLine),
+    );
+    expect(screen.getByRole("article").id).toBe(
+      "pq-docs%2Fdesign%2Fagent-bootstrap.md--OQ-B2",
+    );
+    unmount();
+
+    const unnamed = { ...galleryById("OQ-4"), id: null };
+    renderCard(unnamed, { card: blockOf(galleryById("OQ-4")) });
+    expect(screen.getByRole("article").id).toBe(
+      `pq-docs%2Fgallery%2Fopen-questions.md--L${unnamed.unitLine}`,
+    );
+  });
+
+  it("gives a preview card and a card whose document lost it the headline too", () => {
+    const question = byId("OQ-B2");
+    const { unmount } = renderCard(question, {
+      card: null,
+      preview: true,
+      onShowQuestion: async () => null,
+    });
+    expect(headline()).toBe(`\u{1F4AC} ${question.title}`);
+    unmount();
+    renderCard(question, { card: null });
+    expect(headline()).toBe(`\u{1F4AC} ${question.title}`);
   });
 });
 
@@ -486,9 +887,11 @@ describe("a preview card (planning-index-at-scale.md §10.4)", () => {
       onShowQuestion: async () => null,
     });
     const article = screen.getByRole("article");
+    expect(
+      screen.getByRole("heading", { level: 3, name: question.title }),
+    ).toBeTruthy();
     const body = article.querySelector("[data-planning-preview]");
     expect(body).not.toBeNull();
-    expect(body).toHaveTextContent(question.title);
     expect(body).toHaveTextContent(`Open · Leaning: ${question.leaning}`);
     expect(body).toHaveTextContent(
       `${question.cardChars.toLocaleString("en-US")} characters`,
@@ -544,6 +947,10 @@ describe("a preview card (planning-index-at-scale.md §10.4)", () => {
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Answer…" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Show question" })).toBeNull();
+    // Asked for whole, it arrives unfolded.
+    expect(container.querySelector(".planning-card-body")).toHaveAttribute(
+      "data-planning-card-unfolded",
+    );
   });
 
   it("stays a preview, and says so, when the block cannot be had", async () => {
@@ -733,8 +1140,10 @@ describe("the comments already filed on a question", () => {
 
   it("keeps the count's slot, at its width, before there is anything to count", () => {
     renderCard(byId("OQ-B3"), { comments: undefined, commentsLate: true });
-    const slot = screen.getByRole("article").querySelector("span.w-28.ml-auto");
-    expect(slot).not.toBeNull();
+    const slot = screen
+      .getByRole("article")
+      .querySelector("[data-planning-comment-slot]");
+    expect(slot).toHaveClass("w-28");
     expect(slot!.childNodes).toHaveLength(0);
   });
 
@@ -869,5 +1278,94 @@ describe("the comments already filed on a question", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Not saved: Document not found",
     );
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * The badges inside a question, toned down (user direction, 2026-09-30)
+ * ------------------------------------------------------------------ */
+
+// jsdom applies the real stylesheet's rules to computed style, though it
+// resolves no var(): the filter and the opacity are what can be read.
+describe("a badge inside a question", () => {
+  let style: HTMLStyleElement;
+  beforeEach(() => {
+    style = document.createElement("style");
+    style.textContent = readRepoFile("frontend/src/index.css");
+    document.head.appendChild(style);
+  });
+  afterEach(() => {
+    style.remove();
+    document.body.replaceChildren();
+  });
+
+  /** The parts of `badge`, drawn inside a card's question when `inCard`. */
+  const partsOf = (badge: PlanningBadge, inCard: boolean) => {
+    const host = document.createElement("p");
+    const element = planningBadgeElement(badge);
+    host.appendChild(element);
+    if (inCard) {
+      const body = document.createElement("div");
+      body.className = "planning-card-body";
+      body.appendChild(host);
+      document.body.appendChild(body);
+    } else {
+      document.body.appendChild(host);
+    }
+    return Array.from(element.children) as HTMLElement[];
+  };
+
+  it("draws a question's state gray and faded, glyph and all", () => {
+    const badges: PlanningBadge[] = [
+      ...(["answered", "open", "blocked"] as const).map(
+        (state): PlanningBadge => ({
+          kind: "question",
+          path: "a.md",
+          id: "OQ-1",
+          state,
+        }),
+      ),
+      // The "✅ ruled" of a compacted question.
+      { kind: "ruled", path: "a.md", id: "OQ-2" },
+    ];
+    for (const badge of badges) {
+      const [part] = partsOf(badge, true);
+      const computed = getComputedStyle(part!);
+      const label = part!.className;
+      expect(computed.filter, label).toBe("grayscale(1)");
+      expect(Number(computed.opacity), label).toBeLessThan(1);
+      // Faded no further than the 3:1 floor allows (index.css).
+      expect(Number(computed.opacity), label).toBeGreaterThanOrEqual(0.85);
+    }
+  });
+
+  it("tones a document's status chip the same way, and keeps a warning's", () => {
+    const parts = partsOf(
+      {
+        kind: "document",
+        path: "a.md",
+        status: "accepted",
+        stage: "BUILT",
+        stageInVocabulary: false,
+        open: 1,
+        blocked: 0,
+      },
+      true,
+    );
+    const [chip, stage, open] = parts;
+    expect(getComputedStyle(chip!).filter).toBe("grayscale(1)");
+    expect(getComputedStyle(open!).filter).toBe("grayscale(1)");
+    // A stage outside the vocabulary is a warning: it keeps its tone.
+    expect(stage!.className).toContain("vantage-planning-badge__part--warning");
+    expect(getComputedStyle(stage!).filter).not.toBe("grayscale(1)");
+    expect(getComputedStyle(stage!).opacity).not.toBe("0.85");
+  });
+
+  it("leaves a badge outside a card as it is", () => {
+    const [part] = partsOf(
+      { kind: "question", path: "a.md", id: "OQ-1", state: "answered" },
+      false,
+    );
+    expect(getComputedStyle(part!).filter).not.toBe("grayscale(1)");
   });
 });

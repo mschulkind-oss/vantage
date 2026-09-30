@@ -24,10 +24,12 @@ import {
   matchesPatterns,
   readCandidate,
 } from "../core/candidates.js";
-import { displayPath } from "../core/document.js";
+import { displayPath, parseMarkdown } from "../core/document.js";
 import { repositoryRoot } from "../core/projectRoot.js";
 import type { Settings } from "../core/settings.js";
+import { questionName } from "../core/text.js";
 import type { EnvironmentFailure, Finding } from "../core/types.js";
+import { questionWords } from "./questionLength.js";
 
 /**
  * The planning rules (`docs/design/planning-index.md` §8), run once in the
@@ -35,12 +37,14 @@ import type { EnvironmentFailure, Finding } from "../core/types.js";
  * implementation plan coined.
  *
  * Not per file, as every other rule is, for two reasons. A worker is handed
- * rule overrides and hands back findings, and nothing else crosses: the
+ * rule settings and hands back findings, and nothing else crosses: the
  * `[planning]` table does not, and `planning/unrouted` needs the roadmaps,
  * which are rarely among the files a shard was given. And running once after
  * both the sequential and the parallel path is what keeps `--jobs 1` and
  * `--jobs 4` byte-identical. The cost is a second parse of each planning
- * document the run checks.
+ * document the run checks, and a third of each one holding a question for
+ * `planning/question-length` to measure, which reads the questions the scan
+ * found, so it measures exactly the ones the page shows a card for.
  *
  * The rules read a *narrow index* (also the plan's term): the index built from
  * the roadmaps plus the run's own candidates. Every rule needs only a document
@@ -61,6 +65,7 @@ export const PLANNING_RULES = [
   "planning/depends-on-missing",
   "planning/stage-disagrees",
   "planning/unrouted",
+  "planning/question-length",
 ] as const;
 
 type PlanningRule = (typeof PLANNING_RULES)[number];
@@ -229,10 +234,11 @@ class PlanningPass {
       this.stageVocabulary(doc, report);
       this.dependsOnMissing(doc, report);
       this.stageDisagrees(doc, sections, report);
+      this.questionLength(doc, rel, report);
       for (const ref of sections.unrouted ?? []) {
         if (ref.path !== rel) continue;
         const question = questionFor(index, ref);
-        const name = ref.id ?? `“${question?.title ?? "untitled"}”`;
+        const name = questionName(ref.id, question?.title ?? "untitled");
         report(
           "planning/unrouted",
           question?.unitLine ?? ref.line,
@@ -248,13 +254,18 @@ class PlanningPass {
    * section (Plan Q11).
    */
   private mayBeUnrouted(doc: PlanningDocument): boolean {
+    return !this.isDone(doc) && doc.questions.some((q) => q.state === "open");
+  }
+
+  /** Whether the document's stage has the `done` role. */
+  private isDone(doc: PlanningDocument): boolean {
     const stages = this.config.stages;
-    const done =
+    return (
       stages !== null &&
       doc.stage !== null &&
       Object.hasOwn(stages, doc.stage) &&
-      stages[doc.stage] === "done";
-    return !done && doc.questions.some((q) => q.state === "open");
+      stages[doc.stage] === "done"
+    );
   }
 
   /**
@@ -276,7 +287,7 @@ class PlanningPass {
    * from its header and one substring test, before the document is parsed.
    *
    * The parse is nearly all of this pass's cost, and most documents in a run
-   * cannot be reported by any of the four rules: without `stage` or
+   * cannot be reported by any of the five rules: without `stage` or
    * `depends-on` in the header, and without an `oq` directive in the body,
    * none of them has anything to say. Leaving such a document out of the
    * narrow index changes nothing for the others, since each rule reads only
@@ -296,7 +307,8 @@ class PlanningPass {
       (has("depends-on") && enabled("planning/depends-on-missing")) ||
       (staged && enabled("planning/stage-vocabulary")) ||
       (staged && directives && enabled("planning/stage-disagrees")) ||
-      (directives && enabled("planning/unrouted"))
+      (directives && enabled("planning/unrouted")) ||
+      (directives && enabled("planning/question-length"))
     );
   }
 
@@ -417,6 +429,40 @@ class PlanningPass {
       doc.stageLine ?? 1,
       `Stage \`${doc.stage}\` says this document is ${role === "built" ? "built" : "decided"}, but ${open.length} question${one ? " is" : "s are"} still open${ids.length > 0 ? ` (${ids.join(", ")})` : ""}. Rule ${one ? "it" : "them"}, or set a stage that is still open.`,
     );
+  }
+
+  /**
+   * A question whose text runs past `max-words`, leaning and Answer aside
+   * (`rules/questionLength.ts`). Every question the page shows a card for is
+   * measured, whatever its state; a document whose stage has the `done` role
+   * shows none, so its questions are left alone, as `unrouted` leaves them.
+   *
+   * The scan's own tree is not kept, so the body is parsed once more, only
+   * for a document with a question to measure.
+   */
+  private questionLength(
+    doc: PlanningDocument,
+    rel: string,
+    report: Report,
+  ): void {
+    const rule = "planning/question-length";
+    if (!this.settings.enabled(rule) || doc.questions.length === 0) return;
+    if (this.isDone(doc)) return;
+    const text = this.texts.get(join(this.base, rel));
+    if (text === undefined || text === null) return;
+    const limit = this.settings.option(rule, "max-words");
+    const { body, bodyLineOffset } = parseFrontmatter(text);
+    const root = parseMarkdown(body);
+    for (const question of doc.questions) {
+      const words = questionWords(root, question, bodyLineOffset);
+      if (words === null || words <= limit) continue;
+      const name = questionName(question.id, question.title);
+      report(
+        rule,
+        question.unitLine,
+        `Question ${name} runs to ${words} words, not counting its leaning and its Answer, past the limit of ${limit}. Its card on the planning page leads with the bold title and shows only the first few lines of the rest, so put the question itself in the title and keep the text to what a ruling needs: move background, history and cross-references into the document's sections and link to them.`,
+      );
+    }
   }
 
   /**

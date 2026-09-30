@@ -1,5 +1,5 @@
-import { symlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { run } from "../src/cli.js";
 import { Listing } from "../src/core/candidates.js";
@@ -11,6 +11,7 @@ import { EXIT_FINDINGS, EXIT_OK } from "../src/exit.js";
 import { bufferIo } from "../src/io.js";
 import { RULES, ruleMeta } from "../src/rules/registry.js";
 import { PLANNING_RULES } from "../src/rules/planning.js";
+import { QUESTION_WORDS_DEFAULT } from "../src/rules/questionLength.js";
 import type { PlanningSections } from "../../vantage-md/src/planning/index.js";
 import { makeTree } from "./helpers.js";
 import {
@@ -25,7 +26,7 @@ import {
 } from "./planningTree.js";
 
 /**
- * The four planning rules (`docs/design/planning-index.md` §8). Each is a
+ * The planning rules (`docs/design/planning-index.md` §8). Each is a
  * derivation the planning page also shows, so beyond firing and staying quiet
  * on the cases §4 lists, the thing to prove is that the gate reads each file
  * the way the full index reads it, although it reads only that file and the
@@ -65,14 +66,15 @@ async function messages(cwd: string, ...args: string[]): Promise<string[]> {
 }
 
 describe("the registry", () => {
-  it("registers the four rules with the design's defaults", () => {
+  it("registers the five rules with their defaults", () => {
     expect(PLANNING_RULES.map((id) => [id, ruleMeta(id)?.default])).toEqual([
       ["planning/stage-vocabulary", "error"],
       ["planning/depends-on-missing", "error"],
       ["planning/stage-disagrees", "warning"],
       ["planning/unrouted", "off"],
+      ["planning/question-length", "warning"],
     ]);
-    expect(RULES.filter((r) => r.id.startsWith("planning/"))).toHaveLength(4);
+    expect(RULES.filter((r) => r.id.startsWith("planning/"))).toHaveLength(5);
   });
 
   // This repository's own .vantage.toml turns `planning/unrouted` up to a
@@ -87,6 +89,25 @@ describe("the registry", () => {
         "planning/depends-on-missing",
       ),
     ).toBe(false);
+  });
+
+  it("lists every rule in the user guide's table of them", () => {
+    const guide = readFileSync(
+      resolve(
+        import.meta.dirname,
+        "../../../userguide/guides/vantage-check.md",
+      ),
+      "utf8",
+    );
+    for (const id of PLANNING_RULES) {
+      expect(guide).toMatch(new RegExp(`^\\| \`${id}\` \\|`, "m"));
+    }
+    expect(guide).toMatch(
+      new RegExp(
+        `^\\| \`planning/question-length\` \\| .*${QUESTION_WORDS_DEFAULT} words \\| warning \\|$`,
+        "m",
+      ),
+    );
   });
 
   it("lists the rules in the help", async () => {
@@ -556,6 +577,192 @@ describe("planning/unrouted, with several roadmaps", () => {
 
 // Design §8: finding roadmaps by name costs check one walk of the listing,
 // and only when planning/unrouted is on and a checked document could fire it.
+describe("planning/question-length", () => {
+  /** `n` words of prose. */
+  const prose = (n: number) =>
+    Array.from({ length: n }, (_, i) => `w${i + 1}`).join(" ");
+
+  /**
+   * One question in the convention's shape whose text runs to `words` words:
+   * a title of three ("OQ-L1: Which wins?") and the rest below it, then its
+   * directive, a leaning of `leaning` words and the empty Answer.
+   */
+  const question = (id: string, words: number, leaning = 3, marker = OPEN) =>
+    [
+      `1. ${marker} **${id}: Which wins?**`,
+      "",
+      `   ${prose(words - 3)}`,
+      "",
+      `   <!-- vantage: oq id=${id} leaning="The last." -->`,
+      "",
+      `   _Leaning:_ ${prose(leaning)}`,
+      "",
+      "   **Answer:**",
+      "",
+      "   > _(empty \u2014 fill in when decided)_",
+      "",
+    ].join("\n");
+
+  const tree = (body: string, header = "status: draft", toml = "") =>
+    repo({
+      ".vantage.toml": `${STAGES_TOML}\n${toml}`,
+      "a.md": doc(header, body),
+    });
+
+  it("warns on a question past 120 words, at its item", async () => {
+    const root = tree(question("OQ-L1", 121));
+
+    expect(await planning(root, "a.md")).toEqual([
+      "a.md:7 planning/question-length",
+    ]);
+    const { code, payload } = await check(root, "a.md");
+    expect(code).toBe(EXIT_OK);
+    expect(payload.findings[0]?.severity).toBe("warning");
+  });
+
+  it("says how long the question is and what the limit is", async () => {
+    const [message] = await messages(tree(question("OQ-L1", 121)), "a.md");
+
+    expect(message).toMatch(
+      /^Question OQ-L1 runs to 121 words, not counting its leaning and its Answer, past the limit of 120\./,
+    );
+    expect(message).toContain("put the question itself in the title");
+  });
+
+  it("is quiet at the limit, whatever the leaning and the Answer hold", async () => {
+    expect(await planning(tree(question("OQ-L1", 120, 400)), "a.md")).toEqual(
+      [],
+    );
+  });
+
+  it("names a question with no id by its title", async () => {
+    const body = question("OQ-L1", 130).replace(" id=OQ-L1", "");
+
+    expect(await messages(tree(body), "a.md")).toEqual([
+      expect.stringMatching(
+        /^Question “OQ-L1: Which wins\?” runs to 130 words/,
+      ),
+    ]);
+  });
+
+  // A question with no bold title is titled by the whole text of its
+  // paragraph, which is the very question this rule reports: quoted whole,
+  // a finding ran to a line of a thousand characters and more.
+  it("names a question with no id or bold title by its first 100 characters", async () => {
+    const body = [
+      '<!-- vantage: oq leaning="A paragraph." -->',
+      "",
+      `A question written as a plain paragraph with no id, ${prose(150)}.`,
+      "",
+    ].join("\n");
+
+    const [message] = await messages(tree(body), "a.md");
+    const name = /^Question “([^”]*)” runs to (\d+) words/.exec(message ?? "");
+    expect(name).not.toBeNull();
+    expect(name![1]!.length).toBeLessThanOrEqual(100);
+    expect(name![1]!.length).toBeGreaterThan(90);
+    expect(
+      name![1]!.startsWith("A question written as a plain paragraph"),
+    ).toBe(true);
+    expect(name![1]!.endsWith("…")).toBe(true);
+    expect(Number(name![2])).toBeGreaterThan(150);
+    expect(message!.length).toBeLessThan(600);
+  });
+
+  it("measures every state a card is shown for", async () => {
+    const body = [
+      question("OQ-L1", 130, 3, BLOCKED),
+      question("OQ-L2", 130, 3, ANSWERED).replace("1. ", "2. "),
+    ].join("\n");
+
+    expect(await planning(tree(body), "a.md")).toEqual([
+      "a.md:7 planning/question-length",
+      "a.md:19 planning/question-length",
+    ]);
+  });
+
+  it("leaves a done document's questions alone", async () => {
+    const root = tree(question("OQ-L1", 400), "status: draft\nstage: RETIRED");
+
+    expect(await planning(root, "a.md")).toEqual([]);
+  });
+
+  it("takes its limit from max-words", async () => {
+    const lower =
+      '[check.rules]\n"planning/question-length" = { max-words = 20 }\n';
+    const higher =
+      '[check.rules]\n"planning/question-length" = { max-words = 500 }\n';
+
+    expect(
+      await planning(
+        tree(question("OQ-L1", 21), "status: draft", lower),
+        "a.md",
+      ),
+    ).toEqual(["a.md:7 planning/question-length"]);
+    expect(
+      await messages(
+        tree(question("OQ-L1", 21), "status: draft", lower),
+        "a.md",
+      ),
+    ).toEqual([expect.stringContaining("past the limit of 20.")]);
+    expect(
+      await planning(
+        tree(question("OQ-L1", 400), "status: draft", higher),
+        "a.md",
+      ),
+    ).toEqual([]);
+  });
+
+  it("takes a severity beside its limit", async () => {
+    const toml =
+      '[check.rules]\n"planning/question-length" = { severity = "error", max-words = 20 }\n';
+    const { code, payload } = await check(
+      tree(question("OQ-L1", 21), "status: draft", toml),
+      "a.md",
+    );
+
+    expect(code).toBe(EXIT_FINDINGS);
+    expect(payload.findings.map((f) => [f.rule, f.severity])).toEqual([
+      ["planning/question-length", "error"],
+    ]);
+  });
+
+  it("turns off, alone or with its family", async () => {
+    for (const setting of [
+      '"planning/question-length" = "off"',
+      '"planning/*" = "off"',
+      '"planning/question-length" = { severity = "off", max-words = 20 }',
+    ]) {
+      const root = tree(
+        question("OQ-L1", 400),
+        "status: draft",
+        `[check.rules]\n${setting}\n`,
+      );
+      expect(await planning(root, "a.md")).toEqual([]);
+    }
+  });
+
+  it("is quiet on a file that is not a candidate", async () => {
+    const root = tree(
+      question("OQ-L1", 400),
+      "status: draft",
+      '[planning]\nexclude = ["a.md"]\n',
+    );
+
+    expect(await planning(root, "a.md")).toEqual([]);
+  });
+
+  it("measures a question with no project root", async () => {
+    const root = makeTree({
+      "a.md": doc("status: draft", question("OQ-L1", 121)),
+    });
+
+    expect(await planning(root, "a.md")).toEqual([
+      "a.md:7 planning/question-length",
+    ]);
+  });
+});
+
 describe("the listing walk check makes for roadmaps", () => {
   afterEach(() => {
     vi.restoreAllMocks();

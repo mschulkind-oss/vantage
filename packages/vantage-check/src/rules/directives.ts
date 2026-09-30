@@ -5,6 +5,7 @@ import { visit } from "unist-util-visit";
 // renderer sooner or later, and the disagreement is invisible: both sides stay
 // silent by design (D5).
 import type { ParsedDirective } from "../../../vantage-md/src/vantageDirectives.js";
+import { LEANING_MARKER } from "../../../vantage-md/src/planning/leaning.js";
 import {
   DIRECTIVE_VOCABULARY,
   hasVantageSentinel,
@@ -884,16 +885,6 @@ export function orList(values: readonly string[]): string {
   if (quoted.length <= 1) return quoted.join("");
   return `${quoted.slice(0, -1).join(", ")} or ${quoted[quoted.length - 1]}`;
 }
-
-/**
- * The marker the Open Questions convention puts on a leaning.
- *
- * Matched against the paragraph's *rendered text*, so `_Leaning:_`,
- * `**Leaning:**` and a bare `Leaning:` all hit — the convention's own examples
- * use the first and real documents use all three. Anchored, because a paragraph
- * that merely mentions the word is prose about leanings rather than a leaning.
- */
-const LEANING_MARKER = /^\s*leaning\s*:/i;
 
 /**
  * Why this rule keys on the convention's status emoji at all.

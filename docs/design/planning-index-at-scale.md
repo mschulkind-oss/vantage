@@ -15,8 +15,10 @@ summary: "The planning page renders one page of each section from card blocks th
 **Status:** BUILT, 2026-09-30. Built 2026-09-29 (`f2fe17a`–`5d13a29`, on `planning-scale`);
 what several roadmaps change, every roadmap sent whole and never stored and the roadmap line on
 the page ([`planning-index.md` §6.4](planning-index.md#64-several-roadmaps-on-the-page)), was
-built by `4bef79d` on 2026-09-30. UNMEASURED: none of [§19](#19-what-done-looks-like)'s timing,
-heap or DOM targets has been run against the build; D8, D11, D12 and D13 are held by tests. The
+built by `4bef79d` on 2026-09-30. MOSTLY UNMEASURED: of [§19](#19-what-done-looks-like)'s
+timing, heap and DOM targets, only D1 and D2 have been run against the build, on this
+repository's own tree, after the page moved into the app shell (the
+[Decision Ledger](#decision-ledger) has the numbers); D8, D11, D12 and D13 are held by tests. The
 design was measured and its evidence verified against the tree at `70a05b3`, before any of it
 was built: *today*, here, means that tree, and every line-anchored link is pinned to it.
 
@@ -691,7 +693,11 @@ stands:
 ### 10.1 Frame first
 
 - **The route's first render is the frame and an empty sections region.** The frame is the
-  header (Back, title, repository, and Copy answers with its reserved count), the roadmap line
+  header, the app shell's since 2026-09-30
+  ([`planning-index.md` §6.5](planning-index.md#65-the-app-shell-and-the-planning-outline)):
+  the sidebar and view toggles, the breadcrumb ending in the page's name, and Copy answers
+  with its reserved count. Then, while the contents column is drawn, the planning outline with
+  the roadmap picker at its head, and otherwise the roadmap line
   when two or more roadmaps route
   ([`planning-index.md` §6.4](planning-index.md#64-several-roadmaps-on-the-page)), the section
   bar and the notices (*Nothing needs you*, no roadmap, a listed roadmap not read, no stages,
@@ -883,6 +889,8 @@ stands:
 | The roadmap line | planning page | ready at first paint, from the index and the remembered choice, which is read synchronously; it takes the progress line's place with the section bar |
 | Comments filed before the visit | cards | ready at first paint, through the gate |
 | Comments past the 1 s review deadline | cards | a fixed-width *N comments* count in the card's control row, which is always there, expanding on click; nothing inline |
+| The planning outline's head: its *Contents* label and the roadmap picker | planning page, contents column | drawn with the outline, which comes in the commit that draws the section bar; the column's width is held by its empty frame meanwhile |
+| Whether a question runs past its three lines | cards | measured before the card paints, and again when its width changes; *Show full question* has a fixed-width slot in the card's control row, always there, and the cut itself is on from the first paint |
 | The pending count | planning page header | a slot reserved for four digits |
 | Mermaid in a card | cards | drawn before the commit; past its deadline, a fixed 240 px frame |
 | KaTeX and highlighting | cards | synchronous, so never late |
@@ -1111,6 +1119,7 @@ end to end; the figures come from the fits in [§2](#2-what-the-measurements-say
 | — | Coordinator ruling: this work adds no npm dependency. The scan cache sits behind a storage interface; unit tests run it over an in-memory implementation written in this repository, and the Chromium end-to-end tests over real IndexedDB | 2026-09-29 | [§8.1](#81-what-it-keeps-and-under-which-key), [§17](#17-risks) | ✅ [`store.ts`](../../frontend/src/planningScan/store.ts), [`memoryStore.ts`](../../frontend/src/planningScan/memoryStore.ts) |
 | — | Security review: the scan cache's owner is the scanner id and a server id the server answers, and every read and write checks it. A different server answering at one origin clears the cache before anything is read or sent as `have`, and a tab whose database another tab cleared is refused rather than trusted | 2026-09-29 | [§6.5](#65-the-server-id), [§8.1](#81-what-it-keeps-and-under-which-key), [§8.2](#82-the-scanner-id) | ✅ [`planning_server_id.go`](../../internal/api/planning_server_id.go), [`store.ts`](../../frontend/src/planningScan/store.ts) |
 | — | Several roadmaps ([`planning-index.md`'s ruling of 2026-09-30](planning-index.md#decision-ledger)): every roadmap is sent whole and never stored; the header's `roadmaps` is the stream's only roadmap marking, the server and the worker apply one path test to it, and a `same` line for a roadmap is fetched rather than answered from the cache; the roadmap line joins the frame, `roadmap` joins the URL and the page-inputs key, and Copy answers covers every roadmap | 2026-09-30 | [§6.1](#61-the-stream), [§8.1](#81-what-it-keeps-and-under-which-key), [§10.1](#101-frame-first), [§10.2](#102-pages), [§10.3](#103-page-inputs-and-one-commit) | ✅ [`stream.go`](../../internal/planning/stream.go), [`core.ts`](../../frontend/src/planningScan/core.ts) |
+| — | Measured after the planning page moved into the app shell ([`planning-index.md` §6.5](planning-index.md#65-the-app-shell-and-the-planning-outline)), 2026-09-30: `g p` from [`roadmap.md`](../../roadmap.md) on this repository's own tree, the production bundle in headless Chromium at 1440×900, 12 runs a scenario interleaved with the build before the shell (`372fef3`), on one shared machine (load average 5 to 8 on 32 threads). D1, median: 13 ms warm and revisit, 25 cold (before: 11, 13 and 10). D2, median: 86 ms revisit, 87 warm, 104 cold (before: 70, 73 and 85), past its target in 2, 1 and 0 of the 12 runs. The shell's first build had D2 at 107, 110 and 121 (15 runs), past its target in 13, 7 and 4. Two changes closed most of that: the shell is one layout route for both pages, so `g p` no longer draws the sidebar again or asks for its tree, recent files, bookmarks and degradations (revisit 107 to 95 ms), and the cards measure whether their questions run past three lines in one pass once they have all committed, every read before any write, so a page of ten is laid out once rather than ten times (95 to 86). CLS was 0 and no long task was seen in every run | 2026-09-30 | [§10.1](#101-frame-first), [§19](#19-what-done-looks-like) | ✅ [`AppShell.tsx`](../../frontend/src/components/AppShell.tsx), [`planningCardParts.ts`](../../frontend/src/lib/planningCardParts.ts) |
 
 <!-- Evidence at 70a05b3, the tree this design was measured on. -->
 

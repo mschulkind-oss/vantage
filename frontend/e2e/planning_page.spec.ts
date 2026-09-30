@@ -24,6 +24,9 @@ test.describe("the planning page", () => {
     page.getByRole("article", { name: title });
   const section = (page: Page, name: string) =>
     page.getByRole("region", { name: new RegExp(`^${name}`) });
+  // The pane, which is what scrolls in the app shell.
+  const pane = (page: Page) => page.locator("[data-content-scroll]");
+  const paneTop = (page: Page) => pane(page).evaluate((el) => el.scrollTop);
 
   test("loads by its URL, listing the fixture's unrouted question under Unrouted", async ({
     page,
@@ -168,15 +171,11 @@ test.describe("the planning page", () => {
     ).toBeVisible();
 
     // The reader scrolls to the very bottom.
-    await page.evaluate(() =>
-      window.scrollTo(0, document.documentElement.scrollHeight),
-    );
-    await expect
-      .poll(() => page.evaluate(() => window.scrollY))
-      .toBeGreaterThan(100);
+    await pane(page).evaluate((el) => el.scrollTo(0, el.scrollHeight));
+    await expect.poll(() => paneTop(page)).toBeGreaterThan(100);
     // The page saves as the reader scrolls, one frame behind.
     await page.waitForTimeout(100);
-    const before = await page.evaluate(() => window.scrollY);
+    const before = await paneTop(page);
 
     // Followed where it stands: a real click would scroll the link into view
     // first, and the reader would then be returning somewhere else.
@@ -196,12 +195,15 @@ test.describe("the planning page", () => {
     await expect(
       last.getByRole("list", { name: "Comments on this question" }),
     ).toBeVisible();
-    await expect
-      .poll(() => page.evaluate(() => window.scrollY))
-      .toBeCloseTo(before, 0);
+    await expect.poll(() => paneTop(page)).toBeCloseTo(before, 0);
   });
 
-  /** Every layout shift after the page's first paint, as it happens. */
+  /**
+   * Every layout shift after the page's first paint, as it happens. Each
+   * source says whether it is in the app shell's sidebar, whose file tree
+   * filling a folder late is a layout-shift source of the shell's own
+   * (`stable_paint.spec.ts` records it and holds it to nothing either).
+   */
   async function watchShifts(page: Page): Promise<void> {
     await page.addInitScript(() => {
       const shifts: { value: number; sources: string[] }[] = [];
@@ -217,8 +219,13 @@ test.describe("the planning page", () => {
             value: entry.value,
             sources: (entry.sources ?? []).map((source) => {
               const node = source.node as HTMLElement | null | undefined;
+              const el =
+                node instanceof Element ? node : (node?.parentElement ?? null);
+              const where = el?.closest('[data-testid="sidebar"]')
+                ? "sidebar:"
+                : "";
               return node
-                ? `${node.nodeName}.${String(node.className).slice(0, 60)}`
+                ? `${where}${node.nodeName}.${String(node.className).slice(0, 60)}`
                 : "?";
             }),
           });
@@ -226,14 +233,18 @@ test.describe("the planning page", () => {
       }).observe({ type: "layout-shift", buffered: true });
     });
   }
+  /** The shifts with a source anywhere but the sidebar. */
   const shifted = (page: Page) =>
-    page.evaluate(
-      () =>
-        (
-          window as unknown as {
-            __shifts: { value: number; sources: string[] }[];
-          }
-        ).__shifts,
+    page.evaluate(() =>
+      (
+        window as unknown as {
+          __shifts: { value: number; sources: string[] }[];
+        }
+      ).__shifts.filter(
+        (shift) =>
+          shift.sources.length === 0 ||
+          shift.sources.some((source) => !source.startsWith("sidebar:")),
+      ),
     );
 
   const pager = (page: Page, name: string) =>
@@ -283,8 +294,8 @@ test.describe("the planning page", () => {
     expect(reads).toEqual(["POST", "POST"]);
 
     // The reader scrolls, then opens a page-2 card's document where it stands.
-    await page.evaluate(() => window.scrollTo(0, 200));
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(200);
+    await pane(page).evaluate((el) => el.scrollTo(0, 200));
+    await expect.poll(() => paneTop(page)).toBe(200);
     // The page saves as the reader scrolls, one frame behind.
     await page.waitForTimeout(100);
     await last
@@ -298,7 +309,7 @@ test.describe("the planning page", () => {
     await page.goBack();
     await expect(page).toHaveURL(/\/\.vantage\/planning\?needs-you=2$/);
     await expect(last).toBeVisible();
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(200);
+    await expect.poll(() => paneTop(page)).toBe(200);
 
     // And Back from the planning page leaves it, for what came before the
     // visit, rather than stepping back to its first page: the flip replaced

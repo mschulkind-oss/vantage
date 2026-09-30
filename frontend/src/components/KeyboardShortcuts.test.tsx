@@ -36,6 +36,29 @@ describe("KeyboardShortcutsModal", () => {
     expect(screen.getByText("Copy absolute file path")).toBeInTheDocument();
   });
 
+  // A page with no document (the planning page) wires none of the keys that
+  // act on one, so its help does not offer them.
+  it("leaves out the document keys where the page wires none", () => {
+    render(
+      <KeyboardShortcutsModal
+        isOpen={true}
+        onClose={vi.fn()}
+        documentKeys={false}
+      />,
+    );
+    expect(screen.queryByText("View latest diff")).toBeNull();
+    expect(screen.queryByText("View file history")).toBeNull();
+    expect(screen.queryByText("Copy absolute file path")).toBeNull();
+    expect(screen.queryByText("File Viewing")).toBeNull();
+    expect(screen.queryByText(/leave raw view/)).toBeNull();
+    // What the keys still do there.
+    expect(screen.getByText("Scrolling")).toBeInTheDocument();
+    expect(screen.getByText("Scroll down")).toBeInTheDocument();
+    expect(screen.getByText("Scroll to bottom")).toBeInTheDocument();
+    expect(screen.getByText("Close a dialog")).toBeInTheDocument();
+    expect(screen.getByText("Go to the planning page")).toBeInTheDocument();
+  });
+
   // Shift+T is one chord, not Shift pressed and released before T; only a real
   // sequence like `g h` reads "then".
   it("joins a modifier to its key with + and a sequence with then", () => {

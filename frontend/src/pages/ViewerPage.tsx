@@ -7,17 +7,18 @@ import React, {
 } from "react";
 import { useRepoStore } from "../stores/useRepoStore";
 import { useGitStore } from "../stores/useGitStore";
-import { FileTree } from "../components/FileTree";
 import { StarButton } from "../components/StarButton";
-import { StarredSection } from "../components/StarredSection";
 import { RemoveBookmarkButton } from "../components/RemoveBookmarkButton";
 import { MarkdownViewer } from "../components/MarkdownViewer";
 import { DirectoryViewer } from "../components/DirectoryViewer";
 import { DiffViewer } from "../components/DiffViewer";
-import { FilePicker } from "../components/FilePicker";
-import { useFilePickerStore } from "../stores/useFilePickerStore";
-import { ProjectPicker } from "../components/ProjectPicker";
 import { AppLink } from "../components/AppLink";
+import {
+  OpenSidebarButton,
+  ViewToggles,
+  ViewTogglesPanel,
+} from "../components/AppShell";
+import { useShellPage, type PageShortcuts } from "../hooks/useShellPage";
 import { CollapsedFolders } from "../components/CollapsedFolders";
 import { HeaderOverflow } from "../components/HeaderOverflow";
 import { useWebSocket } from "../hooks/useWebSocket";
@@ -28,22 +29,14 @@ import {
   ChevronRight,
   File,
   AlertCircle,
-  Database,
   History,
   FileQuestion,
   Loader2,
-  Menu,
-  X,
   Code,
   Copy,
   Check,
   ArrowDownAZ,
   FolderGit2,
-  PanelLeftClose,
-  List,
-  ListChecks,
-  Expand,
-  Shrink,
 } from "lucide-react";
 // History icon retained for the file-history link in the breadcrumb area.
 import { RelativeTime } from "../components/RelativeTime";
@@ -52,18 +45,8 @@ import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { cn } from "../lib/utils";
 import { scrollToAnchor } from "../lib/anchorScroll";
 import { isStaticMode } from "../lib/staticMode";
-import { planningPath } from "../lib/planningRoute";
 import { bookmarkTargetFromRoute } from "../lib/bookmarkTarget";
-import { useStarredStore } from "../stores/useStarredStore";
 import { copyTextOrWarn } from "../lib/clipboard";
-import { SettingsDropdown } from "../components/SettingsDropdown";
-import { RecentFilePopover } from "../components/RecentFilePopover";
-import {
-  KeyboardShortcutsModal,
-  KeyboardShortcutsButton,
-} from "../components/KeyboardShortcuts";
-import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
-import { RecentsModal, type RecentsScope } from "../components/RecentsModal";
 import {
   isAnsweredByAgent,
   isPendingForAgent,
@@ -74,14 +57,9 @@ import { MessageSquarePlus, ClipboardCopy } from "lucide-react";
 import { useLineAnchor } from "../hooks/useLineAnchor";
 import { useHeaderFit } from "../hooks/useHeaderFit";
 import { useFirstPaintHold } from "../hooks/useFirstPaintHold";
-import { prefetchPlanningPage } from "../hooks/usePlanningPageInputs";
 import { usePlanningStore } from "../stores/usePlanningStore";
 import { LATE_CLASS, splitExtension } from "../lib/headerFit";
 import { usePersistentFlag } from "../hooks/usePersistentFlag";
-import { usePersistentValue } from "../hooks/usePersistentValue";
-import { StyleGuideModal } from "../components/StyleGuideModal";
-import { ConnectionBanner } from "../components/ConnectionBanner";
-import { DegradedBanner } from "../components/DegradedBanner";
 import { useConnectionStore } from "../stores/useConnectionStore";
 import { ReviewStripe } from "../components/ReviewStripe";
 import { TableOfContents } from "../components/TableOfContents";
@@ -106,10 +84,6 @@ function formatDateTime(dateStr: string): string {
   }
 }
 
-const SIDEBAR_MIN_WIDTH = 200;
-const SIDEBAR_MAX_WIDTH = 800;
-const SIDEBAR_DEFAULT_WIDTH = 288;
-
 /**
  * How long a document or folder followed to its renamed directory's new name
  * may fail to load before the page says so. Renamed again in the meantime, it
@@ -118,31 +92,8 @@ const SIDEBAR_DEFAULT_WIDTH = 288;
  */
 const FOLLOW_GRACE_MS = 1500;
 
-/**
- * The remembered sidebar width, in px.
- *
- * Out-of-range and unparseable both mean the default rather than a clamp,
- * because a stored width outside these bounds is not a preference the reader
- * expressed — it is a value from a build with different bounds, or a
- * hand-edited one — and honoring it would leave a sidebar the drag handle
- * cannot get back to.
- *
- * Declared at module scope, not in the component: `usePersistentValue` follows
- * this preference for as long as this function's identity holds, and an
- * arrow rebuilt on every render would make it re-read storage on every render.
- */
-function parseSidebarWidth(raw: string | null): number {
-  const width = raw === null ? NaN : parseInt(raw, 10);
-  return Number.isFinite(width) &&
-    width >= SIDEBAR_MIN_WIDTH &&
-    width <= SIDEBAR_MAX_WIDTH
-    ? width
-    : SIDEBAR_DEFAULT_WIDTH;
-}
-
 export const ViewerPage: React.FC = () => {
   const {
-    fileTree,
     // What the store has loaded. What the page draws is what the first
     // paint's hold lets through, below.
     fileContent: loadedContent,
@@ -150,8 +101,6 @@ export const ViewerPage: React.FC = () => {
     currentPath: loadedPath,
     error: loadedError,
     isLoading: loadedIsLoading,
-    refreshTree,
-    refreshExpandedTree,
     viewDirectory,
     loadFile,
     expandToPath,
@@ -160,15 +109,7 @@ export const ViewerPage: React.FC = () => {
     isMultiRepo,
     currentRepo,
     setCurrentRepo,
-    loadRepos,
-    refreshRepos,
     reposLoaded,
-    showEmptyDirs,
-    setShowEmptyDirs,
-    showHidden,
-    setShowHidden,
-    showGitignored,
-    setShowGitignored,
     repoSortMode,
     setRepoSortMode,
     sortedRepos,
@@ -190,7 +131,6 @@ export const ViewerPage: React.FC = () => {
     closeDiff,
     recentFiles,
     isRecentLoading,
-    fetchRecentFiles,
     repoName,
     repoRootPath,
     fetchRepoInfo,
@@ -209,13 +149,6 @@ export const ViewerPage: React.FC = () => {
     const load = planningRepo === null ? undefined : state.byRepo[planningRepo];
     return load?.status === "loading" && load.warm !== false;
   });
-  // Page 1 of the planning page, asked for when the pointer or focus reaches
-  // the toolbar's planning entry (planning-index-at-scale.md §10.2), so the
-  // click finds its inputs in hand. Nothing is asked before the index is
-  // ready, nor in daemon mode with no repository open.
-  const prefetchPlanning = useCallback(() => {
-    if (planningRepo !== null) prefetchPlanningPage(planningRepo);
-  }, [planningRepo]);
   // The hold (§11.3): a document that has just arrived waits, at most
   // `holdMs`, for what its first paint shows that is already on its way — its
   // header's git facts, asked for with its content, the index of a build that
@@ -260,66 +193,8 @@ export const ViewerPage: React.FC = () => {
   const location = useLocation();
   const { "*": pathParam } = useParams();
   const contentRef = useRef<HTMLDivElement>(null);
-  // How much of the viewer pane's bottom the degradation banner covers.
-  const [bannerSpace, setBannerSpace] = useState(0);
   useLineAnchor(contentRef, fileContent);
   const prevPathRef = useRef<string | null>(null);
-  const [projectPickerOpen, setProjectPickerOpen] = useState(false);
-  // Which recents modal is open: `r`'s current project, or `Shift+R`'s all.
-  const [recentsScope, setRecentsScope] = useState<RecentsScope | null>(null);
-  // The file pickers' lists live in a store so the watcher can refresh them
-  // while they are on screen.
-  const {
-    open: filePickerMode,
-    files: allFiles,
-    globalFiles,
-    loading: filePickerLoading,
-    openLocal: openLocalFilePicker,
-    openGlobal: openGlobalFilePicker,
-    close: closeFilePicker,
-  } = useFilePickerStore();
-  // `sidebarOpen` is the mobile slide-out panel, which is a gesture rather than a
-  // preference and is deliberately not remembered. The two below are
-  // preferences, and they follow the reader between tabs: a reader who narrowed
-  // the sidebar or put it away meant it for the window, not for one tab of it.
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = usePersistentFlag(
-    "vantage:sidebarCollapsed",
-  );
-  const [sidebarWidth, setSidebarWidth] = usePersistentValue(
-    "vantage:sidebarWidth",
-    parseSidebarWidth,
-    String,
-  );
-  const [isResizingSidebar, setIsResizingSidebar] = useState(false);
-  const isResizingSidebarRef = useRef(false);
-  useEffect(() => {
-    const onMove = (e: PointerEvent) => {
-      if (!isResizingSidebarRef.current) return;
-      const w = Math.max(
-        SIDEBAR_MIN_WIDTH,
-        Math.min(SIDEBAR_MAX_WIDTH, e.clientX),
-      );
-      setSidebarWidth(w);
-    };
-    const onUp = () => {
-      if (!isResizingSidebarRef.current) return;
-      isResizingSidebarRef.current = false;
-      setIsResizingSidebar(false);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
-    return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
-    };
-    // The setter is stable — `usePersistentValue` memoizes it on the preference
-    // name — so naming it here does not cost the drag listeners a re-bind.
-  }, [setSidebarWidth]);
   const [showRaw, setShowRaw] = useState(false);
   // Remembered across documents, reloads and tabs: a reader who wants a table
   // of contents wants it for the next document too, and a second tab of the
@@ -340,9 +215,6 @@ export const ViewerPage: React.FC = () => {
   const [openQuestionCount, setOpenQuestionCount] = useState(0);
   const [copied, setCopied] = useState(false);
   const [pathCopied, setPathCopied] = useState(false);
-  const [keyboardShortcutsEnabled, setKeyboardShortcutsEnabled] =
-    usePersistentFlag("vantage:shortcuts-enabled", true);
-  const recentlyChangedPaths = useRepoStore((s) => s.recentlyChangedPaths);
 
   // Fallback modification date from recent files when git has said the file
   // has no commit. Before it has said anything, the date could be about to
@@ -487,9 +359,6 @@ export const ViewerPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileContent?.content, isReviewMode]);
 
-  // --- Style guide ---
-  const [styleGuideOpen, setStyleGuideOpen] = useState(false);
-
   // Build the proper URL path considering multi-repo mode
   const buildPath = useCallback(
     (filePath: string): string => {
@@ -551,17 +420,17 @@ export const ViewerPage: React.FC = () => {
   );
   useWebSocket({ onMoved: followMoved });
 
-  // Load repos on mount
-  useEffect(() => {
-    loadRepos();
-  }, [loadRepos]);
-
-  // Bookmarks are global rather than repo-scoped, so they load once on mount
-  // and do not wait for a repo to be selected.
-  const loadStarred = useStarredStore((s) => s.loadStarred);
-  useEffect(() => {
-    void loadStarred();
-  }, [loadStarred]);
+  // The route as the reader moves through it, which the shell closes the
+  // phone's slide-out on. It adjusts state during render (React's documented
+  // pattern) rather than from an effect. A follow of a renamed folder is not
+  // the reader going anywhere, so it leaves the key as it was.
+  const [readerMoves, setReaderMoves] = useState(0);
+  const [prevPathParam, setPrevPathParam] = useState(pathParam);
+  if (prevPathParam !== pathParam) {
+    setPrevPathParam(pathParam);
+    if (pathParam === followedParam) setFollowedParam(null);
+    else setReaderMoves((n) => n + 1);
+  }
 
   // What a bookmark for this route would be keyed by. Derived from the URL so
   // it still answers when the repo store cannot — see bookmarkTargetFromRoute.
@@ -569,39 +438,6 @@ export const ViewerPage: React.FC = () => {
     () => bookmarkTargetFromRoute(pathParam, isMultiRepo),
     [pathParam, isMultiRepo],
   );
-
-  // Close the mobile sidebar when the path changes. This adjusts state during
-  // render (React's documented pattern) rather than from an effect.
-  //
-  // Dropping the previous repository's file list used to live here too, for the
-  // same reason; useFilePickerStore now drops it as it opens, which cannot
-  // publish a render carrying the wrong repo's list at all.
-  const [prevPathParam, setPrevPathParam] = useState(pathParam);
-  if (prevPathParam !== pathParam) {
-    setPrevPathParam(pathParam);
-    // A follow of a renamed folder is not the reader going anywhere.
-    if (pathParam === followedParam) setFollowedParam(null);
-    else setSidebarOpen(false);
-  }
-
-  // Load initial tree structure (after repos are loaded, only for single-repo mode)
-  useEffect(() => {
-    if (!reposLoaded) return; // Wait for repos to be loaded first
-    if (!isMultiRepo) {
-      refreshTree();
-    }
-  }, [refreshTree, isMultiRepo, reposLoaded]);
-
-  // Re-fetch tree and recents when filter settings change
-  const filterSettingsInitialized = useRef(false);
-  useEffect(() => {
-    if (!filterSettingsInitialized.current) {
-      filterSettingsInitialized.current = true;
-      return;
-    }
-    refreshExpandedTree();
-    fetchRecentFiles(true);
-  }, [showHidden, showGitignored, refreshExpandedTree, fetchRecentFiles]);
 
   // Handle URL changes - parse repo and path from URL
   useEffect(() => {
@@ -784,13 +620,13 @@ export const ViewerPage: React.FC = () => {
     }
   }, [fileContent, location.hash]);
 
-  // Fetch recent files and repo info when repo is set (or on mount for single-repo)
+  // Fetch repo info when repo is set (or on mount for single-repo). The shell
+  // asks for the recent files at the same moment.
   useEffect(() => {
     if (!reposLoaded) return;
     if (isMultiRepo && !currentRepo) return;
-    fetchRecentFiles();
     fetchRepoInfo();
-  }, [fetchRecentFiles, fetchRepoInfo, reposLoaded, isMultiRepo, currentRepo]);
+  }, [fetchRepoInfo, reposLoaded, isMultiRepo, currentRepo]);
 
   // Dynamic page title
   useEffect(() => {
@@ -814,87 +650,12 @@ export const ViewerPage: React.FC = () => {
     }
   };
 
-  // File picker route and select handler. The picker renders each row as a
-  // link to `filePickerHref`, and selecting a row navigates to the same route.
-  const filePickerHref = useCallback(
-    (path: string, repo?: string): string =>
-      // Global mode names the repo; local mode is the current one
-      repo ? `/${repo}/${path}` : buildPath(path),
-    [buildPath],
-  );
-  const handleFilePickerSelect = useCallback(
-    (path: string, repo?: string) => {
-      navigate(filePickerHref(path, repo));
-    },
-    [navigate, filePickerHref],
-  );
-
-  // Keyboard shortcuts
-  //
-  // Opening a picker refetches its list, and the watcher's pushes keep it
-  // current while it is open (see useFilePickerStore). The list already on
-  // screen stays there until the answer arrives, so neither a reopen nor a live
-  // refresh is a spinner.
-  const handleOpenFilePicker = useCallback(() => {
-    const {
-      isMultiRepo: imr,
-      currentRepo: cr,
-      reposLoaded: rl,
-    } = useRepoStore.getState();
-    if (!rl) return;
-    // In multi-repo mode with no repo selected there is no local list to search
-    if (imr && !cr) {
-      void openGlobalFilePicker("all");
-      return;
-    }
-    void openLocalFilePicker();
-  }, [openLocalFilePicker, openGlobalFilePicker]);
-  const handleOpenGlobalFilePicker = useCallback(() => {
-    void openGlobalFilePicker("all");
-  }, [openGlobalFilePicker]);
-  const handleOpenProjectPicker = useCallback(() => {
-    setProjectPickerOpen(true);
-    // `repos` tracks `repos_changed` pushes, but only while the socket is up —
-    // a project discovered during a disconnect would otherwise be missing here
-    // until a reload.
-    refreshRepos();
-  }, [refreshRepos]);
-  const handleOpenRecentFiles = useCallback(() => {
-    setRecentsScope("project");
-  }, []);
-  const handleOpenGlobalRecentFiles = useCallback(() => {
-    setRecentsScope("all");
-  }, []);
-  const projectPickerHref = useCallback(
-    (repoName: string): string => `/${repoName}`,
-    [],
-  );
-  const handleProjectSelect = useCallback(
-    (repoName: string) => {
-      navigate(projectPickerHref(repoName));
-    },
-    [navigate, projectPickerHref],
-  );
-  const handleToggleSidebar = useCallback(() => {
-    // On mobile, toggle the slide-out panel; on desktop, collapse the sidebar
-    if (window.innerWidth < 768) {
-      setSidebarOpen((prev) => !prev);
-    } else {
-      setSidebarCollapsed((prev) => !prev);
-    }
-  }, [setSidebarCollapsed]);
   const handleToggleToc = useCallback(() => {
     setTocOpen((prev) => !prev);
   }, [setTocOpen]);
   const handleToggleFullWidth = useCallback(() => {
     setFullWidth((prev) => !prev);
   }, [setFullWidth]);
-  const handleShortcutNavigate = useCallback(
-    (path: string) => {
-      navigate(path);
-    },
-    [navigate],
-  );
   const handleViewDiff = useCallback(() => {
     if (latestCommit && currentPath) {
       fetchDiff(currentPath, latestCommit.hexsha);
@@ -934,23 +695,16 @@ export const ViewerPage: React.FC = () => {
     setShowRaw((raw) => (raw ? false : raw));
   }, []);
 
-  const { shortcutsOpen, setShortcutsOpen } = useKeyboardShortcuts({
-    onOpenFilePicker: handleOpenFilePicker,
-    onOpenGlobalFilePicker: handleOpenGlobalFilePicker,
-    onOpenProjectPicker: handleOpenProjectPicker,
-    onOpenRecentFiles: handleOpenRecentFiles,
-    onOpenGlobalRecentFiles: handleOpenGlobalRecentFiles,
-    onToggleSidebar: handleToggleSidebar,
-    onNavigate: handleShortcutNavigate,
-    onViewDiff: handleViewDiff,
-    onViewHistory: handleViewHistory,
-    onCopyPath: handleCopyPath,
-    onEscape: handleEscape,
-    contentScrollRef: contentRef,
-    isMultiRepo,
-    currentRepo,
-    enabled: keyboardShortcutsEnabled,
-  });
+  // The shortcuts that act on the document; the shell owns the rest.
+  const pageShortcuts = useMemo<PageShortcuts>(
+    () => ({
+      onViewDiff: handleViewDiff,
+      onViewHistory: handleViewHistory,
+      onCopyPath: handleCopyPath,
+      onEscape: handleEscape,
+    }),
+    [handleViewDiff, handleViewHistory, handleCopyPath, handleEscape],
+  );
 
   const breadcrumbs =
     currentPath && currentPath !== "." ? currentPath.split("/") : [];
@@ -1004,1234 +758,879 @@ export const ViewerPage: React.FC = () => {
       routeFile.toLowerCase().endsWith(".md") &&
       !(fileContent?.encoding === "binary" && currentPath === routeFile));
 
-  // The header's TOC and full-width toggles, as they appear in the toolbar's
-  // "⋯" panel once the `actions` step folds them in (lib/headerFit.ts). Only
-  // rendered while that panel is open, so the header never holds two of each.
-  // Desktop-only, as the toggles themselves are.
-  const panelButton =
-    "hidden md:flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer";
-  const panelToggle = (on: boolean) =>
-    on
-      ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30"
-      : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50";
+  // The header's two view toggles, as the page offers them: in the header's
+  // leading half, and in the toolbar's "⋯" panel once the `actions` step
+  // folds them in (lib/headerFit.ts).
+  const contentsToggle = tocOffered
+    ? { on: tocOpen, onToggle: handleToggleToc }
+    : null;
+  const fullWidthToggle = { on: fullWidth, onToggle: handleToggleFullWidth };
   const headerViewExtras = (
+    <ViewTogglesPanel contents={contentsToggle} fullWidth={fullWidthToggle} />
+  );
+
+  // The page's own dialogs: the diff, and the review panel.
+  const overlays = (
     <>
-      {tocOffered && (
-        <button
-          type="button"
-          onClick={handleToggleToc}
-          className={cn(panelButton, panelToggle(tocOpen))}
-          aria-pressed={tocOpen}
-        >
-          <List size={14} />
-          <span>{tocOpen ? "Hide contents" : "Show contents"}</span>
-        </button>
+      {/* Diff Viewer Modal */}
+      {showDiff &&
+        (isDiffLoading ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-8 flex flex-col items-center">
+              <div className="w-10 h-10 border-4 border-slate-200 dark:border-slate-600 border-t-blue-600 rounded-full animate-spin mb-4" />
+              <p className="text-slate-600 dark:text-slate-300 font-medium">
+                Loading diff...
+              </p>
+            </div>
+          </div>
+        ) : diff ? (
+          <DiffViewer diff={diff} onClose={closeDiff} />
+        ) : (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-8 flex flex-col items-center">
+              <p className="text-slate-600 dark:text-slate-300 font-medium mb-4">
+                Could not load diff
+              </p>
+              <button
+                onClick={closeDiff}
+                className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        ))}
+      {/* Review Panel — mounted only while open, so its local state (armed
+          destructive confirms, half-typed replies, copy flashes) cannot
+          survive a close and reappear when the reviewer opens it again. */}
+      {reviewPanelOpen && (
+        <ReviewPanel
+          isOpen={reviewPanelOpen}
+          onClose={() => setReviewPanelOpen(false)}
+        />
       )}
-      <button
-        type="button"
-        onClick={handleToggleFullWidth}
-        className={cn(panelButton, panelToggle(fullWidth))}
-        aria-pressed={fullWidth}
-      >
-        {fullWidth ? <Shrink size={14} /> : <Expand size={14} />}
-        <span>{fullWidth ? "Use fixed width" : "Use full width"}</span>
-      </button>
     </>
   );
 
-  // Show a minimal loading state until repos metadata is loaded.
-  // This prevents flashing the single-repo sidebar before multi-repo
-  // mode is detected.
-  if (!reposLoaded) {
-    return (
-      <div className="flex h-screen bg-slate-50 dark:bg-slate-900 items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 size={24} className="animate-spin text-blue-500" />
-          <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>
-        </div>
-      </div>
-    );
-  }
+  // Drawn in the app shell, which shows its loading state until the
+  // repositories are known, so this page never renders before they are.
+  const shell = useShellPage({
+    contentRef,
+    showSidebar,
+    routeKey: `viewer\n${readerMoves}`,
+    currentPath,
+    shortcuts: pageShortcuts,
+  });
 
   return (
-    <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-900 overflow-hidden text-slate-900 dark:text-slate-100">
-      <ConnectionBanner />
-      <div className="flex flex-1 overflow-hidden">
-        {/* Mobile sidebar backdrop */}
-        {showSidebar && sidebarOpen && (
-          <div
-            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
-
-        {/* Sidebar - hidden on repo picker page, collapsible on desktop */}
-        {showSidebar && (
-          <div
-            data-testid="sidebar"
-            style={{ width: `${sidebarWidth}px` }}
-            className={cn(
-              "flex-shrink-0 border-r border-slate-200 dark:border-slate-700 flex flex-col bg-white dark:bg-slate-800 shadow-sm relative",
-              "fixed inset-y-0 left-0 z-50 transition-transform duration-200 ease-in-out md:relative md:z-auto",
-              sidebarOpen ? "translate-x-0" : "-translate-x-full",
-              sidebarCollapsed
-                ? "md:-translate-x-full md:absolute"
-                : "md:translate-x-0",
-            )}
-          >
-            <div className="h-14 px-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
-                  <GitBranch size={18} className="text-white" />
-                </div>
-                <AppLink
-                  to="/"
-                  className="font-semibold text-lg tracking-tight hover:text-blue-600 transition-colors no-underline text-inherit dark:text-slate-100"
-                >
-                  Vantage
-                </AppLink>
-              </div>
-              <div className="flex items-center gap-1">
-                <a
-                  href="https://github.com/mschulkind-oss/vantage"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                  title="View on GitHub"
-                >
-                  <svg
-                    width={16}
-                    height={16}
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" />
-                  </svg>
-                </a>
-                {/* The planning page (planning-index.md §6), also `g p`. */}
-                <AppLink
-                  to={planningPath(isMultiRepo, currentRepo)}
-                  className="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                  aria-label="Planning"
-                  title="Planning (g p)"
-                  onPointerEnter={prefetchPlanning}
-                  onFocus={prefetchPlanning}
-                >
-                  <ListChecks size={16} />
-                </AppLink>
-                <KeyboardShortcutsButton
-                  onClick={() => setShortcutsOpen(true)}
-                />
-                <SettingsDropdown
-                  showEmptyDirs={showEmptyDirs}
-                  onShowEmptyDirsChange={setShowEmptyDirs}
-                  showHidden={showHidden}
-                  onShowHiddenChange={setShowHidden}
-                  showGitignored={showGitignored}
-                  onShowGitignoredChange={setShowGitignored}
-                  keyboardShortcutsEnabled={keyboardShortcutsEnabled}
-                  onKeyboardShortcutsEnabledChange={setKeyboardShortcutsEnabled}
-                  onOpenStyleGuide={() => setStyleGuideOpen(true)}
-                />
-                <button
-                  className="hidden md:block p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                  onClick={() => {
-                    setSidebarCollapsed(true);
-                  }}
-                  aria-label="Collapse sidebar"
-                  title="Collapse sidebar (b)"
-                >
-                  <PanelLeftClose size={16} />
-                </button>
-                <button
-                  className="md:hidden p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"
-                  onClick={() => setSidebarOpen(false)}
-                  aria-label="Close sidebar"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-            </div>
-            <div className="flex-1 overflow-y-auto py-2 px-2">
-              {/* File tree (sidebar only shows when a repo is selected) */}
-              <>
-                {/* Show current repo name with back button in multi-repo mode */}
-                {isMultiRepo && currentRepo && (
-                  <AppLink
-                    to="/"
-                    className="flex items-center py-2 px-2 mb-2 text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 border-b border-slate-100 dark:border-slate-700 no-underline"
-                  >
-                    <ChevronRight size={12} className="mr-1 rotate-180" />
-                    <Database size={12} className="mr-1" />
-                    <span className="font-medium">{currentRepo}</span>
-                  </AppLink>
-                )}
-                <StarredSection />
-                <FileTree nodes={fileTree} />
-              </>
-            </div>
-            {/* Recent Files Section - always visible, with spinner when loading */}
-            {(!isMultiRepo || currentRepo) && (
-              <div className="border-t border-slate-200 dark:border-slate-700 px-2 py-2 shrink-0">
-                <button
-                  onClick={() => setRecentsScope("project")}
-                  className="px-2 py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center space-x-1.5 hover:text-blue-600 dark:hover:text-blue-400 transition-colors w-full"
-                >
-                  <Clock size={12} />
-                  <span>Recent</span>
-                  {isRecentLoading && (
-                    <Loader2
-                      size={10}
-                      className="animate-spin text-slate-500 dark:text-slate-400"
-                    />
-                  )}
-                </button>
-                <div className="space-y-0.5 overflow-y-auto h-40">
-                  {isRecentLoading && recentFiles.length === 0 ? (
-                    <div className="flex flex-col space-y-2 px-2 py-1">
-                      {[1, 2, 3].map((i) => (
-                        <div
-                          key={i}
-                          className="flex items-center space-x-2 animate-pulse"
-                        >
-                          <div className="w-3 h-3 bg-slate-200 rounded shrink-0" />
-                          <div className="h-3 bg-slate-200 rounded flex-1" />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    recentFiles.map((file) => {
-                      const parts = file.path.split("/");
-                      const fileName = parts.pop() || "";
-                      const parentDir = parts.length > 0 ? parts.join("/") : "";
-                      return (
-                        <RecentFilePopover key={file.path} file={file}>
-                          <AppLink
-                            to={buildPath(file.path)}
-                            className={cn(
-                              "w-full flex items-start py-1.5 px-2 text-left rounded-md text-xs transition-all duration-150 no-underline",
-                              "hover:bg-slate-100 dark:hover:bg-slate-700",
-                              currentPath === file.path &&
-                                "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400",
-                              recentlyChangedPaths.has(file.path) &&
-                                "animate-flash-update",
-                            )}
-                          >
-                            <File
-                              size={13}
-                              className={cn(
-                                "mr-1.5 mt-0.5 shrink-0",
-                                file.untracked
-                                  ? "text-amber-400"
-                                  : "text-slate-500 dark:text-slate-400",
-                              )}
-                            />
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center justify-between gap-1">
-                                <span className="truncate text-slate-700 dark:text-slate-300 font-medium">
-                                  {fileName}
-                                </span>
-                                <span className="text-[10px] text-slate-500 dark:text-slate-400 whitespace-nowrap shrink-0">
-                                  <RelativeTime
-                                    date={file.date}
-                                    addSuffix={false}
-                                  />
-                                </span>
-                              </div>
-                              {parentDir && (
-                                <div className="truncate text-slate-500 dark:text-slate-400">
-                                  {parentDir}/
-                                </div>
-                              )}
-                            </div>
-                          </AppLink>
-                        </RecentFilePopover>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            )}
-            <div
-              data-testid="sidebar-resize-handle"
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Resize sidebar"
-              onPointerDown={(e) => {
-                e.preventDefault();
-                isResizingSidebarRef.current = true;
-                setIsResizingSidebar(true);
-                document.body.style.cursor = "col-resize";
-                document.body.style.userSelect = "none";
-              }}
-              className={cn(
-                "hidden md:block absolute top-0 right-0 h-full w-1 -mr-0.5 cursor-col-resize z-10 touch-none",
-                "hover:bg-blue-400/60 active:bg-blue-500/80 transition-colors",
-                isResizingSidebar && "bg-blue-500/80",
-              )}
+    <>
+      {overlays}
+      {/* Header / Breadcrumbs - hidden on repo picker page */}
+      {showSidebar ? (
+        // The header gives up room in a fixed order as it narrows, the file
+        // name last: `headerRef` decides how many of those steps to take
+        // (lib/headerFit.ts) and the `hdr-*` classes are what each step
+        // acts on (index.css, "The viewer header's yield steps").
+        <div
+          ref={headerRef}
+          data-testid="viewer-header"
+          className="viewer-header h-14 border-b border-slate-200 dark:border-slate-700 flex items-center px-3 md:px-6 justify-between shrink-0 bg-white dark:bg-slate-800 gap-2"
+        >
+          <div className="hdr-lead flex items-center gap-2">
+            <OpenSidebarButton shell={shell} />
+            {/* The full-width toggle is the header's whenever the
+                    header is, which is where the sidebar is. */}
+            <ViewToggles
+              contents={contentsToggle}
+              fullWidth={fullWidthToggle}
             />
-          </div>
-        )}
-
-        {/* Main Content */}
-        <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-slate-900 min-w-0">
-          {/* Header / Breadcrumbs - hidden on repo picker page */}
-          {showSidebar ? (
-            // The header gives up room in a fixed order as it narrows, the file
-            // name last: `headerRef` decides how many of those steps to take
-            // (lib/headerFit.ts) and the `hdr-*` classes are what each step
-            // acts on (index.css, "The viewer header's yield steps").
-            <div
-              ref={headerRef}
-              data-testid="viewer-header"
-              className="viewer-header h-14 border-b border-slate-200 dark:border-slate-700 flex items-center px-3 md:px-6 justify-between shrink-0 bg-white dark:bg-slate-800 gap-2"
-            >
-              <div className="hdr-lead flex items-center gap-2">
-                <button
-                  className={cn(
-                    "p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 shrink-0",
-                    sidebarCollapsed ? "" : "md:hidden",
-                  )}
-                  onClick={() => {
-                    if (window.innerWidth < 768) {
-                      setSidebarOpen(true);
-                    } else {
-                      setSidebarCollapsed(false);
-                    }
-                  }}
-                  aria-label="Open sidebar"
-                >
-                  <Menu size={20} />
-                </button>
-                {tocOffered && (
-                  <button
-                    onClick={handleToggleToc}
-                    className={cn(
-                      "hdr-view hidden md:block p-1.5 rounded-md shrink-0 transition-colors cursor-pointer",
-                      tocOpen
-                        ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30"
-                        : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700",
-                    )}
-                    aria-label={tocOpen ? "Hide contents" : "Show contents"}
-                    aria-pressed={tocOpen}
-                    title={tocOpen ? "Hide contents" : "Show contents"}
-                  >
-                    <List size={18} />
-                  </button>
-                )}
-                {showSidebar && (
-                  <button
-                    onClick={handleToggleFullWidth}
-                    className={cn(
-                      "hdr-view hidden md:block p-1.5 rounded-md shrink-0 transition-colors cursor-pointer",
-                      fullWidth
-                        ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30"
-                        : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700",
-                    )}
-                    aria-label={
-                      fullWidth ? "Use fixed width" : "Use full width"
-                    }
-                    aria-pressed={fullWidth}
-                    title={fullWidth ? "Use fixed width" : "Use full width"}
-                  >
-                    {fullWidth ? <Shrink size={18} /> : <Expand size={18} />}
-                  </button>
-                )}
-                <nav className="hdr-crumbs flex items-center text-sm gap-1 min-w-0 overflow-hidden">
-                  <AppLink
-                    to={crumbRoot.href}
-                    className="hdr-repo text-slate-500 dark:text-slate-400 hover:text-blue-600 font-medium transition-colors shrink-0 no-underline"
-                  >
-                    {crumbRoot.label}
-                  </AppLink>
-                  {breadcrumbDirs.length > 0 && (
-                    <span className="hdr-dirs items-center gap-1 shrink-0">
-                      {breadcrumbDirs.map((part, i) => (
-                        <React.Fragment key={i}>
-                          <ChevronRight
-                            size={14}
-                            className="text-slate-500 dark:text-slate-400 shrink-0"
-                          />
-                          <AppLink
-                            to={breadcrumbDirHref(i)}
-                            className="text-slate-500 dark:text-slate-400 hover:text-blue-600 transition-colors no-underline"
-                          >
-                            {part}
-                          </AppLink>
-                        </React.Fragment>
-                      ))}
-                    </span>
-                  )}
-                  {/* The folders' "…", and at the `repo` step the
-                      repository's too — which is why it is here even at the
-                      root, where there are no folders for it to stand for
-                      until then. */}
-                  <span
-                    className={cn(
-                      "hdr-dirs-collapsed items-center gap-1 shrink-0",
-                      breadcrumbDirs.length === 0 && "hdr-no-dirs",
-                    )}
-                  >
-                    <ChevronRight
-                      size={14}
-                      className="hdr-sep text-slate-500 dark:text-slate-400 shrink-0"
-                    />
-                    <CollapsedFolders
-                      root={crumbRoot}
-                      dirs={breadcrumbDirs}
-                      hrefFor={breadcrumbDirHref}
-                    />
-                  </span>
-                  {breadcrumbLeaf && (
-                    <>
+            <nav className="hdr-crumbs flex items-center text-sm gap-1 min-w-0 overflow-hidden">
+              <AppLink
+                to={crumbRoot.href}
+                className="hdr-repo text-slate-500 dark:text-slate-400 hover:text-blue-600 font-medium transition-colors shrink-0 no-underline"
+              >
+                {crumbRoot.label}
+              </AppLink>
+              {breadcrumbDirs.length > 0 && (
+                <span className="hdr-dirs items-center gap-1 shrink-0">
+                  {breadcrumbDirs.map((part, i) => (
+                    <React.Fragment key={i}>
                       <ChevronRight
                         size={14}
                         className="text-slate-500 dark:text-slate-400 shrink-0"
                       />
-                      {/* The last thing in the header to give up room, and
+                      <AppLink
+                        to={breadcrumbDirHref(i)}
+                        className="text-slate-500 dark:text-slate-400 hover:text-blue-600 transition-colors no-underline"
+                      >
+                        {part}
+                      </AppLink>
+                    </React.Fragment>
+                  ))}
+                </span>
+              )}
+              {/* The folders' "…", and at the `repo` step the
+                      repository's too — which is why it is here even at the
+                      root, where there are no folders for it to stand for
+                      until then. */}
+              <span
+                className={cn(
+                  "hdr-dirs-collapsed items-center gap-1 shrink-0",
+                  breadcrumbDirs.length === 0 && "hdr-no-dirs",
+                )}
+              >
+                <ChevronRight
+                  size={14}
+                  className="hdr-sep text-slate-500 dark:text-slate-400 shrink-0"
+                />
+                <CollapsedFolders
+                  root={crumbRoot}
+                  dirs={breadcrumbDirs}
+                  hrefFor={breadcrumbDirHref}
+                />
+              </span>
+              {breadcrumbLeaf && (
+                <>
+                  <ChevronRight
+                    size={14}
+                    className="text-slate-500 dark:text-slate-400 shrink-0"
+                  />
+                  {/* The last thing in the header to give up room, and
                           then it keeps its extension: only the stem truncates.
                           The ellipsis is the only place any of the path is
                           elided without a menu behind it, so the tooltip
                           carries all of it. */}
-                      <span
-                        data-testid="breadcrumb-name"
-                        className={cn(
-                          "hdr-name flex min-w-0 font-semibold text-slate-900 dark:text-slate-100",
-                          leafStem.length >= 3 && "hdr-stem-floor",
-                        )}
-                        title={currentPath ?? undefined}
-                      >
-                        {leafExt ? (
-                          <>
-                            {/* Two flex items are two words to assistive
+                  <span
+                    data-testid="breadcrumb-name"
+                    className={cn(
+                      "hdr-name flex min-w-0 font-semibold text-slate-900 dark:text-slate-100",
+                      leafStem.length >= 3 && "hdr-stem-floor",
+                    )}
+                    title={currentPath ?? undefined}
+                  >
+                    {leafExt ? (
+                      <>
+                        {/* Two flex items are two words to assistive
                                 technology ("notes .md"), so it is given the
                                 name whole and the halves are only drawn. */}
-                            <span className="sr-only">{breadcrumbLeaf}</span>
-                            <span aria-hidden="true" className="truncate">
-                              {leafStem}
-                            </span>
-                            <span aria-hidden="true" className="shrink-0">
-                              {leafExt}
-                            </span>
-                          </>
-                        ) : (
-                          <span className="truncate">{leafStem}</span>
-                        )}
-                      </span>
-                    </>
-                  )}
-                </nav>
-                <StarButton
-                  path={currentPath}
-                  repo={currentRepo}
-                  isDir={currentDirectory !== null}
-                />
-              </div>
+                        <span className="sr-only">{breadcrumbLeaf}</span>
+                        <span aria-hidden="true" className="truncate">
+                          {leafStem}
+                        </span>
+                        <span aria-hidden="true" className="shrink-0">
+                          {leafExt}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="truncate">{leafStem}</span>
+                    )}
+                  </span>
+                </>
+              )}
+            </nav>
+            <StarButton
+              path={currentPath}
+              repo={currentRepo}
+              isDir={currentDirectory !== null}
+            />
+          </div>
 
-              {latestCommit ? (
-                <div className="hdr-tools flex items-center gap-2">
-                  {fileGitStatus && (
-                    <button
-                      onClick={handleCommitClick}
-                      className={cn(
-                        "flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2 py-1.5 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors cursor-pointer",
-                        lateUnless(firstPaint.status),
-                      )}
-                      title="View uncommitted changes"
-                    >
-                      <GitBranch size={12} />
-                      <span className="hdr-label font-medium">
-                        {fileGitStatus === "modified"
-                          ? "Modified"
-                          : fileGitStatus === "added"
-                            ? "Added"
-                            : fileGitStatus === "deleted"
-                              ? "Deleted"
-                              : fileGitStatus}
-                      </span>
-                    </button>
+          {latestCommit ? (
+            <div className="hdr-tools flex items-center gap-2">
+              {fileGitStatus && (
+                <button
+                  onClick={handleCommitClick}
+                  className={cn(
+                    "flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2 py-1.5 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors cursor-pointer",
+                    lateUnless(firstPaint.status),
                   )}
-                  <button
-                    onClick={() =>
-                      latestCommit &&
-                      currentPath &&
-                      fetchDiff(currentPath, latestCommit.hexsha)
-                    }
-                    className={cn(
-                      "hdr-commit hidden sm:flex items-center gap-3 min-w-0 text-xs group cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 -mx-2 transition-colors",
-                      lateUnless(firstPaint.status),
-                    )}
-                    // The subject is the first thing the header gives up, so
-                    // the tooltip is where it can still be read in full.
-                    title={`${latestCommit.message}\n${formatDateTime(latestCommit.date)} — click to view diff`}
+                  title="View uncommitted changes"
+                >
+                  <GitBranch size={12} />
+                  <span className="hdr-label font-medium">
+                    {fileGitStatus === "modified"
+                      ? "Modified"
+                      : fileGitStatus === "added"
+                        ? "Added"
+                        : fileGitStatus === "deleted"
+                          ? "Deleted"
+                          : fileGitStatus}
+                  </span>
+                </button>
+              )}
+              <button
+                onClick={() =>
+                  latestCommit &&
+                  currentPath &&
+                  fetchDiff(currentPath, latestCommit.hexsha)
+                }
+                className={cn(
+                  "hdr-commit hidden sm:flex items-center gap-3 min-w-0 text-xs group cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 -mx-2 transition-colors",
+                  lateUnless(firstPaint.status),
+                )}
+                // The subject is the first thing the header gives up, so
+                // the tooltip is where it can still be read in full.
+                title={`${latestCommit.message}\n${formatDateTime(latestCommit.date)} — click to view diff`}
+              >
+                <div className="flex items-center gap-1.5 shrink-0 text-slate-500 dark:text-slate-400">
+                  <Clock size={14} />
+                  <span data-testid="header-time" className="hdr-time">
+                    <RelativeTime date={latestCommit.date} />
+                  </span>
+                  <span
+                    data-testid="header-date"
+                    className="hdr-date items-center gap-1.5"
                   >
-                    <div className="flex items-center gap-1.5 shrink-0 text-slate-500 dark:text-slate-400">
-                      <Clock size={14} />
-                      <span data-testid="header-time" className="hdr-time">
-                        <RelativeTime date={latestCommit.date} />
-                      </span>
-                      <span
-                        data-testid="header-date"
-                        className="hdr-date items-center gap-1.5"
-                      >
-                        <span aria-hidden="true">·</span>
-                        <span>{formatDateTime(latestCommit.date)}</span>
-                      </span>
-                    </div>
-                    <div className="hdr-subject flex items-center gap-1.5 min-w-0 bg-slate-100 dark:bg-slate-700 group-hover:bg-slate-200 dark:group-hover:bg-slate-600 px-2.5 py-1.5 rounded-md transition-colors">
-                      <MessageSquare
-                        size={12}
-                        className="shrink-0 text-slate-500 dark:text-slate-400"
-                      />
-                      <span
-                        data-testid="commit-subject"
-                        className="hdr-subject-text font-medium text-slate-700 dark:text-slate-200 truncate max-w-[200px]"
-                      >
-                        {latestCommit.message}
-                      </span>
-                    </div>
-                  </button>
-                  {/* Mobile: just show clock icon as commit button */}
-                  <button
-                    onClick={() =>
-                      latestCommit &&
-                      currentPath &&
-                      fetchDiff(currentPath, latestCommit.hexsha)
-                    }
-                    className={cn(
-                      "sm:hidden flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors",
-                      lateUnless(firstPaint.status),
-                    )}
-                    title="View diff"
+                    <span aria-hidden="true">·</span>
+                    <span>{formatDateTime(latestCommit.date)}</span>
+                  </span>
+                </div>
+                <div className="hdr-subject flex items-center gap-1.5 min-w-0 bg-slate-100 dark:bg-slate-700 group-hover:bg-slate-200 dark:group-hover:bg-slate-600 px-2.5 py-1.5 rounded-md transition-colors">
+                  <MessageSquare
+                    size={12}
+                    className="shrink-0 text-slate-500 dark:text-slate-400"
+                  />
+                  <span
+                    data-testid="commit-subject"
+                    className="hdr-subject-text font-medium text-slate-700 dark:text-slate-200 truncate max-w-[200px]"
                   >
-                    <Clock size={14} />
-                    <span className="hdr-time">
-                      <RelativeTime
-                        date={latestCommit.date}
-                        addSuffix={false}
-                      />
+                    {latestCommit.message}
+                  </span>
+                </div>
+              </button>
+              {/* Mobile: just show clock icon as commit button */}
+              <button
+                onClick={() =>
+                  latestCommit &&
+                  currentPath &&
+                  fetchDiff(currentPath, latestCommit.hexsha)
+                }
+                className={cn(
+                  "sm:hidden flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors",
+                  lateUnless(firstPaint.status),
+                )}
+                title="View diff"
+              >
+                <Clock size={14} />
+                <span className="hdr-time">
+                  <RelativeTime date={latestCommit.date} addSuffix={false} />
+                </span>
+              </button>
+              <HeaderOverflow extra={headerViewExtras}>
+                {currentPath &&
+                  currentPath.toLowerCase().endsWith(".md") &&
+                  history.length >= 1 && (
+                    <AppLink
+                      to={
+                        isMultiRepo && currentRepo
+                          ? `/history/${currentRepo}/${currentPath}`
+                          : `/history/${currentPath}`
+                      }
+                      className={cn(
+                        "flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors no-underline",
+                        lateUnless(firstPaint.history),
+                      )}
+                      title={`View full history: ${history.length} ${plural(history.length, "commit")}`}
+                    >
+                      <History size={14} />
+                      <span className="hdr-label">
+                        {history.length} commits
+                      </span>
+                    </AppLink>
+                  )}
+                {currentPath && repoRootPath && (
+                  <button
+                    onClick={handleCopyPath}
+                    className={cn(
+                      "flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
+                      lateUnless(firstPaint.root),
+                    )}
+                    title={`Copy absolute path: ${repoRootPath}/${currentPath}`}
+                  >
+                    {pathCopied ? (
+                      <Check size={14} className="text-green-500" />
+                    ) : (
+                      <Copy size={14} />
+                    )}
+                    <span
+                      className="hdr-label hdr-reserve"
+                      data-reserve="Copied!"
+                    >
+                      {pathCopied ? "Copied!" : "Path"}
                     </span>
                   </button>
-                  <HeaderOverflow extra={headerViewExtras}>
-                    {currentPath &&
-                      currentPath.toLowerCase().endsWith(".md") &&
-                      history.length >= 1 && (
-                        <AppLink
-                          to={
-                            isMultiRepo && currentRepo
-                              ? `/history/${currentRepo}/${currentPath}`
-                              : `/history/${currentPath}`
-                          }
-                          className={cn(
-                            "flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors no-underline",
-                            lateUnless(firstPaint.history),
-                          )}
-                          title={`View full history: ${history.length} ${plural(history.length, "commit")}`}
-                        >
-                          <History size={14} />
-                          <span className="hdr-label">
-                            {history.length} commits
-                          </span>
-                        </AppLink>
-                      )}
-                    {currentPath && repoRootPath && (
-                      <button
-                        onClick={handleCopyPath}
-                        className={cn(
-                          "flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
-                          lateUnless(firstPaint.root),
-                        )}
-                        title={`Copy absolute path: ${repoRootPath}/${currentPath}`}
-                      >
-                        {pathCopied ? (
-                          <Check size={14} className="text-green-500" />
-                        ) : (
-                          <Copy size={14} />
-                        )}
-                        <span
-                          className="hdr-label hdr-reserve"
-                          data-reserve="Copied!"
-                        >
-                          {pathCopied ? "Copied!" : "Path"}
-                        </span>
-                      </button>
+                )}
+                {currentPath && currentPath.toLowerCase().endsWith(".md") && (
+                  <button
+                    onClick={() => {
+                      setShowRaw((v) => !v);
+                      setCopied(false);
+                    }}
+                    className={cn(
+                      "flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
+                      showRaw
+                        ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30"
+                        : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
                     )}
-                    {currentPath &&
-                      currentPath.toLowerCase().endsWith(".md") && (
-                        <button
-                          onClick={() => {
-                            setShowRaw((v) => !v);
-                            setCopied(false);
-                          }}
-                          className={cn(
-                            "flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
-                            showRaw
-                              ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30"
-                              : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
-                          )}
-                          title={
-                            showRaw ? "View rendered" : "View raw markdown"
-                          }
-                        >
-                          <Code size={14} />
-                          <span
-                            className="hdr-label hdr-reserve"
-                            data-reserve="Rendered"
-                          >
-                            {showRaw ? "Rendered" : "Raw"}
-                          </span>
-                        </button>
-                      )}
-                    {/* Raw view can't host inline highlights, but the review
+                    title={showRaw ? "View rendered" : "View raw markdown"}
+                  >
+                    <Code size={14} />
+                    <span
+                      className="hdr-label hdr-reserve"
+                      data-reserve="Rendered"
+                    >
+                      {showRaw ? "Rendered" : "Raw"}
+                    </span>
+                  </button>
+                )}
+                {/* Raw view can't host inline highlights, but the review
                       controls must stay reachable: hiding them stranded a
                       reviewer with pending comments and no way to copy,
                       dismiss, or open the panel without switching back. */}
-                    {currentPath &&
-                      currentPath.toLowerCase().endsWith(".md") && (
-                        <>
-                          {reviewToggleVisible && (
-                            <button
-                              onClick={handleReviewToggle}
-                              className={cn(
-                                "flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
-                                reviewExitConfirm
-                                  ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 ring-1 ring-red-300 dark:ring-red-700"
-                                  : isReviewMode
-                                    ? "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 ring-1 ring-purple-300 dark:ring-purple-700"
-                                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
-                              )}
-                              title={reviewToggleTitle}
-                            >
-                              <MessageSquarePlus size={14} />
-                              <span
-                                className="hdr-label hdr-reserve"
-                                data-reserve="End review?"
-                              >
-                                {reviewExitConfirm ? "End review?" : "Review"}
-                              </span>
-                            </button>
-                          )}
-                          {isReviewMode && (
-                            <>
-                              {/* The min-width reserves room for the longest label
+                {currentPath && currentPath.toLowerCase().endsWith(".md") && (
+                  <>
+                    {reviewToggleVisible && (
+                      <button
+                        onClick={handleReviewToggle}
+                        className={cn(
+                          "flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
+                          reviewExitConfirm
+                            ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 ring-1 ring-red-300 dark:ring-red-700"
+                            : isReviewMode
+                              ? "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 ring-1 ring-purple-300 dark:ring-purple-700"
+                              : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
+                        )}
+                        title={reviewToggleTitle}
+                      >
+                        <MessageSquarePlus size={14} />
+                        <span
+                          className="hdr-label hdr-reserve"
+                          data-reserve="End review?"
+                        >
+                          {reviewExitConfirm ? "End review?" : "Review"}
+                        </span>
+                      </button>
+                    )}
+                    {isReviewMode && (
+                      <>
+                        {/* The min-width reserves room for the longest label
                               so arming the confirm doesn't resize the button
                               under the reviewer's finger. It is sm:-only
                               because the label is: below that it reserved
                               100px of blank pill beside a 14px icon, on the
                               screen with the least room to spare. */}
-                              {activeReviewCount > 0 && (
-                                <button
-                                  onClick={handleReviewDismiss}
-                                  className={`hdr-dismiss flex items-center gap-1.5 text-xs rounded-lg sm:min-w-[100px] px-2 py-1.5 transition-colors cursor-pointer ${
-                                    reviewDismissConfirm
-                                      ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50"
-                                      : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600/50"
-                                  }`}
-                                  title={
-                                    reviewDismissConfirm
-                                      ? "Click again to dismiss all"
-                                      : answeredReviewCount > 0
-                                        ? `Dismiss the ${answeredReviewCount} ${plural(answeredReviewCount, "comment")} the agent has answered`
-                                        : activeReviewCount === 1
-                                          ? "Dismiss 1 comment"
-                                          : `Dismiss all ${activeReviewCount} comments`
-                                  }
-                                >
-                                  <Check size={14} />
-                                  <span className="hdr-label">
-                                    {reviewDismissConfirm
-                                      ? "Confirm?"
-                                      : answeredReviewCount > 0
-                                        ? `Dismiss ${answeredReviewCount} answered`
-                                        : `Dismiss ${activeReviewCount}`}
-                                  </span>
-                                </button>
-                              )}
-                              {commentsDrifted && <CommentsDriftedIndicator />}
-                              {pendingReviewCount > 0 && (
-                                <button
-                                  onClick={async () => {
-                                    const ok = await copyAllReviewComments();
-                                    if (ok) {
-                                      setReviewCopied(true);
-                                      setTimeout(
-                                        () => setReviewCopied(false),
-                                        2000,
-                                      );
-                                    }
-                                  }}
-                                  className="flex items-center gap-1.5 text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg px-2 py-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors cursor-pointer"
-                                  title={`Copy ${pendingReviewCount} ${plural(pendingReviewCount, "comment")} to clipboard`}
-                                >
-                                  {reviewCopied ? (
-                                    <Check size={14} />
-                                  ) : (
-                                    <ClipboardCopy size={14} />
-                                  )}
-                                  <span
-                                    className="hdr-label hdr-reserve"
-                                    data-reserve="Copied!"
-                                  >
-                                    {reviewCopied
-                                      ? "Copied!"
-                                      : `Copy ${pendingReviewCount}`}
-                                  </span>
-                                </button>
-                              )}
-                              <button
-                                onClick={() => setReviewPanelOpen(true)}
-                                className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
-                                title="Manage comments"
-                              >
-                                <MessageSquare size={14} />
-                                <span className="hdr-panel-only">
-                                  Manage comments
-                                </span>
-                              </button>
-                            </>
-                          )}
-                        </>
-                      )}
-                  </HeaderOverflow>
-                </div>
-              ) : currentPath && currentPath.toLowerCase().endsWith(".md") ? (
-                <div className="hdr-tools flex items-center gap-2">
-                  {/* Only once git has said so: before it answers, a file
+                        {activeReviewCount > 0 && (
+                          <button
+                            onClick={handleReviewDismiss}
+                            className={`hdr-dismiss flex items-center gap-1.5 text-xs rounded-lg sm:min-w-[100px] px-2 py-1.5 transition-colors cursor-pointer ${
+                              reviewDismissConfirm
+                                ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50"
+                                : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600/50"
+                            }`}
+                            title={
+                              reviewDismissConfirm
+                                ? "Click again to dismiss all"
+                                : answeredReviewCount > 0
+                                  ? `Dismiss the ${answeredReviewCount} ${plural(answeredReviewCount, "comment")} the agent has answered`
+                                  : activeReviewCount === 1
+                                    ? "Dismiss 1 comment"
+                                    : `Dismiss all ${activeReviewCount} comments`
+                            }
+                          >
+                            <Check size={14} />
+                            <span className="hdr-label">
+                              {reviewDismissConfirm
+                                ? "Confirm?"
+                                : answeredReviewCount > 0
+                                  ? `Dismiss ${answeredReviewCount} answered`
+                                  : `Dismiss ${activeReviewCount}`}
+                            </span>
+                          </button>
+                        )}
+                        {commentsDrifted && <CommentsDriftedIndicator />}
+                        {pendingReviewCount > 0 && (
+                          <button
+                            onClick={async () => {
+                              const ok = await copyAllReviewComments();
+                              if (ok) {
+                                setReviewCopied(true);
+                                setTimeout(() => setReviewCopied(false), 2000);
+                              }
+                            }}
+                            className="flex items-center gap-1.5 text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg px-2 py-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors cursor-pointer"
+                            title={`Copy ${pendingReviewCount} ${plural(pendingReviewCount, "comment")} to clipboard`}
+                          >
+                            {reviewCopied ? (
+                              <Check size={14} />
+                            ) : (
+                              <ClipboardCopy size={14} />
+                            )}
+                            <span
+                              className="hdr-label hdr-reserve"
+                              data-reserve="Copied!"
+                            >
+                              {reviewCopied
+                                ? "Copied!"
+                                : `Copy ${pendingReviewCount}`}
+                            </span>
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setReviewPanelOpen(true)}
+                          className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
+                          title="Manage comments"
+                        >
+                          <MessageSquare size={14} />
+                          <span className="hdr-panel-only">
+                            Manage comments
+                          </span>
+                        </button>
+                      </>
+                    )}
+                  </>
+                )}
+              </HeaderOverflow>
+            </div>
+          ) : currentPath && currentPath.toLowerCase().endsWith(".md") ? (
+            <div className="hdr-tools flex items-center gap-2">
+              {/* Only once git has said so: before it answers, a file
                       with a commit would read as untracked for as long as
                       the answer took (§11.1, L3). */}
-                  {statusKnown && !isStaticMode() && (
-                    <button
-                      onClick={() =>
-                        currentPath && fetchWorkingDiff(currentPath)
-                      }
-                      className={cn(
-                        "flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 sm:px-3 py-1.5 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors cursor-pointer",
-                        lateUnless(firstPaint.status),
-                      )}
-                      title="View file content as diff"
-                    >
-                      <FileQuestion size={14} />
-                      <span className="hdr-label font-medium">
-                        Untracked file
-                      </span>
-                    </button>
+              {statusKnown && !isStaticMode() && (
+                <button
+                  onClick={() => currentPath && fetchWorkingDiff(currentPath)}
+                  className={cn(
+                    "flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 sm:px-3 py-1.5 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors cursor-pointer",
+                    lateUnless(firstPaint.status),
                   )}
-                  {fileMtime && (
-                    <div
-                      className={cn(
-                        "hidden sm:flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 px-2 py-1.5",
-                        lateUnless(firstPaint.mtime),
-                      )}
-                      title={formatDateTime(fileMtime)}
-                    >
-                      <Clock size={14} />
-                      <span data-testid="header-time" className="hdr-time">
-                        <RelativeTime date={fileMtime} />
-                      </span>
-                      <span
-                        data-testid="header-date"
-                        className="hdr-date items-center gap-1.5"
-                      >
-                        <span aria-hidden="true">·</span>
-                        <span>{formatDateTime(fileMtime)}</span>
-                      </span>
-                    </div>
+                  title="View file content as diff"
+                >
+                  <FileQuestion size={14} />
+                  <span className="hdr-label font-medium">Untracked file</span>
+                </button>
+              )}
+              {fileMtime && (
+                <div
+                  className={cn(
+                    "hidden sm:flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 px-2 py-1.5",
+                    lateUnless(firstPaint.mtime),
                   )}
-                  <HeaderOverflow extra={headerViewExtras}>
-                    {currentPath && repoRootPath && (
-                      <button
-                        onClick={handleCopyPath}
-                        className={cn(
-                          "flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
-                          lateUnless(firstPaint.root),
-                        )}
-                        title={`Copy absolute path: ${repoRootPath}/${currentPath}`}
-                      >
-                        {pathCopied ? (
-                          <Check size={14} className="text-green-500" />
-                        ) : (
-                          <Copy size={14} />
-                        )}
-                        <span
-                          className="hdr-label hdr-reserve"
-                          data-reserve="Copied!"
-                        >
-                          {pathCopied ? "Copied!" : "Path"}
-                        </span>
-                      </button>
+                  title={formatDateTime(fileMtime)}
+                >
+                  <Clock size={14} />
+                  <span data-testid="header-time" className="hdr-time">
+                    <RelativeTime date={fileMtime} />
+                  </span>
+                  <span
+                    data-testid="header-date"
+                    className="hdr-date items-center gap-1.5"
+                  >
+                    <span aria-hidden="true">·</span>
+                    <span>{formatDateTime(fileMtime)}</span>
+                  </span>
+                </div>
+              )}
+              <HeaderOverflow extra={headerViewExtras}>
+                {currentPath && repoRootPath && (
+                  <button
+                    onClick={handleCopyPath}
+                    className={cn(
+                      "flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
+                      lateUnless(firstPaint.root),
                     )}
+                    title={`Copy absolute path: ${repoRootPath}/${currentPath}`}
+                  >
+                    {pathCopied ? (
+                      <Check size={14} className="text-green-500" />
+                    ) : (
+                      <Copy size={14} />
+                    )}
+                    <span
+                      className="hdr-label hdr-reserve"
+                      data-reserve="Copied!"
+                    >
+                      {pathCopied ? "Copied!" : "Path"}
+                    </span>
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setShowRaw((v) => !v);
+                    setCopied(false);
+                  }}
+                  className={cn(
+                    "flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
+                    showRaw
+                      ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30"
+                      : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
+                  )}
+                  title={showRaw ? "View rendered" : "View raw markdown"}
+                >
+                  <Code size={14} />
+                  <span
+                    className="hdr-label hdr-reserve"
+                    data-reserve="Rendered"
+                  >
+                    {showRaw ? "Rendered" : "Raw"}
+                  </span>
+                </button>
+                {/* Same as the wide toolbar: review controls survive raw view. */}
+                <>
+                  {reviewToggleVisible && (
                     <button
-                      onClick={() => {
-                        setShowRaw((v) => !v);
-                        setCopied(false);
-                      }}
+                      onClick={handleReviewToggle}
                       className={cn(
                         "flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
-                        showRaw
-                          ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30"
-                          : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
+                        reviewExitConfirm
+                          ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 ring-1 ring-red-300 dark:ring-red-700"
+                          : isReviewMode
+                            ? "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 ring-1 ring-purple-300 dark:ring-purple-700"
+                            : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
                       )}
-                      title={showRaw ? "View rendered" : "View raw markdown"}
+                      title={reviewToggleTitle}
                     >
-                      <Code size={14} />
+                      <MessageSquarePlus size={14} />
                       <span
                         className="hdr-label hdr-reserve"
-                        data-reserve="Rendered"
+                        data-reserve="End review?"
                       >
-                        {showRaw ? "Rendered" : "Raw"}
+                        {reviewExitConfirm ? "End review?" : "Review"}
                       </span>
                     </button>
-                    {/* Same as the wide toolbar: review controls survive raw view. */}
+                  )}
+                  {isReviewMode && (
                     <>
-                      {reviewToggleVisible && (
+                      {activeReviewCount > 0 && (
                         <button
-                          onClick={handleReviewToggle}
-                          className={cn(
-                            "flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
-                            reviewExitConfirm
-                              ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 ring-1 ring-red-300 dark:ring-red-700"
-                              : isReviewMode
-                                ? "text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 ring-1 ring-purple-300 dark:ring-purple-700"
-                                : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50",
-                          )}
-                          title={reviewToggleTitle}
+                          onClick={handleReviewDismiss}
+                          className={`hdr-dismiss flex items-center gap-1.5 text-xs rounded-lg sm:min-w-[100px] px-2 py-1.5 transition-colors cursor-pointer ${
+                            reviewDismissConfirm
+                              ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50"
+                              : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600/50"
+                          }`}
+                          title={
+                            reviewDismissConfirm
+                              ? "Click again to dismiss all"
+                              : answeredReviewCount > 0
+                                ? `Dismiss the ${answeredReviewCount} ${plural(answeredReviewCount, "comment")} the agent has answered`
+                                : activeReviewCount === 1
+                                  ? "Dismiss 1 comment"
+                                  : `Dismiss all ${activeReviewCount} comments`
+                          }
                         >
-                          <MessageSquarePlus size={14} />
-                          <span
-                            className="hdr-label hdr-reserve"
-                            data-reserve="End review?"
-                          >
-                            {reviewExitConfirm ? "End review?" : "Review"}
+                          <Check size={14} />
+                          <span className="hdr-label">
+                            {reviewDismissConfirm
+                              ? "Confirm?"
+                              : answeredReviewCount > 0
+                                ? `Dismiss ${answeredReviewCount} answered`
+                                : `Dismiss ${activeReviewCount}`}
                           </span>
                         </button>
                       )}
-                      {isReviewMode && (
-                        <>
-                          {activeReviewCount > 0 && (
-                            <button
-                              onClick={handleReviewDismiss}
-                              className={`hdr-dismiss flex items-center gap-1.5 text-xs rounded-lg sm:min-w-[100px] px-2 py-1.5 transition-colors cursor-pointer ${
-                                reviewDismissConfirm
-                                  ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50"
-                                  : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600/50"
-                              }`}
-                              title={
-                                reviewDismissConfirm
-                                  ? "Click again to dismiss all"
-                                  : answeredReviewCount > 0
-                                    ? `Dismiss the ${answeredReviewCount} ${plural(answeredReviewCount, "comment")} the agent has answered`
-                                    : activeReviewCount === 1
-                                      ? "Dismiss 1 comment"
-                                      : `Dismiss all ${activeReviewCount} comments`
-                              }
-                            >
-                              <Check size={14} />
-                              <span className="hdr-label">
-                                {reviewDismissConfirm
-                                  ? "Confirm?"
-                                  : answeredReviewCount > 0
-                                    ? `Dismiss ${answeredReviewCount} answered`
-                                    : `Dismiss ${activeReviewCount}`}
-                              </span>
-                            </button>
+                      {commentsDrifted && <CommentsDriftedIndicator />}
+                      {pendingReviewCount > 0 && (
+                        <button
+                          onClick={async () => {
+                            const ok = await copyAllReviewComments();
+                            if (ok) {
+                              setReviewCopied(true);
+                              setTimeout(() => setReviewCopied(false), 2000);
+                            }
+                          }}
+                          className="flex items-center gap-1.5 text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg px-2 py-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors cursor-pointer"
+                          title={`Copy ${pendingReviewCount} ${plural(pendingReviewCount, "comment")} to clipboard`}
+                        >
+                          {reviewCopied ? (
+                            <Check size={14} />
+                          ) : (
+                            <ClipboardCopy size={14} />
                           )}
-                          {commentsDrifted && <CommentsDriftedIndicator />}
-                          {pendingReviewCount > 0 && (
-                            <button
-                              onClick={async () => {
-                                const ok = await copyAllReviewComments();
-                                if (ok) {
-                                  setReviewCopied(true);
-                                  setTimeout(
-                                    () => setReviewCopied(false),
-                                    2000,
-                                  );
-                                }
-                              }}
-                              className="flex items-center gap-1.5 text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg px-2 py-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors cursor-pointer"
-                              title={`Copy ${pendingReviewCount} ${plural(pendingReviewCount, "comment")} to clipboard`}
-                            >
-                              {reviewCopied ? (
-                                <Check size={14} />
-                              ) : (
-                                <ClipboardCopy size={14} />
-                              )}
-                              <span
-                                className="hdr-label hdr-reserve"
-                                data-reserve="Copied!"
-                              >
-                                {reviewCopied
-                                  ? "Copied!"
-                                  : `Copy ${pendingReviewCount}`}
-                              </span>
-                            </button>
-                          )}
-                          <button
-                            onClick={() => setReviewPanelOpen(true)}
-                            className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
-                            title="Manage comments"
+                          <span
+                            className="hdr-label hdr-reserve"
+                            data-reserve="Copied!"
                           >
-                            <MessageSquare size={14} />
-                            <span className="hdr-panel-only">
-                              Manage comments
-                            </span>
-                          </button>
-                        </>
+                            {reviewCopied
+                              ? "Copied!"
+                              : `Copy ${pendingReviewCount}`}
+                          </span>
+                        </button>
                       )}
+                      <button
+                        onClick={() => setReviewPanelOpen(true)}
+                        className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
+                        title="Manage comments"
+                      >
+                        <MessageSquare size={14} />
+                        <span className="hdr-panel-only">Manage comments</span>
+                      </button>
                     </>
-                  </HeaderOverflow>
-                </div>
-              ) : null}
+                  )}
+                </>
+              </HeaderOverflow>
             </div>
           ) : null}
+        </div>
+      ) : null}
 
-          {/* Review mode indicator bar */}
-          {isReviewMode && (
-            <div className="h-1 bg-gradient-to-r from-purple-500 via-purple-400 to-purple-500 shrink-0" />
+      {/* Review mode indicator bar */}
+      {isReviewMode && (
+        <div className="h-1 bg-gradient-to-r from-purple-500 via-purple-400 to-purple-500 shrink-0" />
+      )}
+
+      {/* Viewer */}
+      <div className="flex-1 flex min-h-0 relative">
+        {isReviewMode && (
+          <ReviewStripe scrollRef={contentRef} comments={reviewComments} />
+        )}
+        {/* Focusable, not in the tab order: the shell gives it the focus
+                as the page opens (useShellPage), so the browser's scrolling
+                keys scroll it. */}
+        <div
+          ref={contentRef}
+          data-content-scroll
+          tabIndex={-1}
+          className={cn(
+            "flex-1 overflow-y-auto bg-white dark:bg-slate-900 outline-none",
+            isReviewMode &&
+              "ring-1 ring-inset ring-purple-200 dark:ring-purple-800/50",
           )}
-
-          {/* Viewer */}
-          <div className="flex-1 flex min-h-0 relative">
-            {isReviewMode && (
-              <ReviewStripe scrollRef={contentRef} comments={reviewComments} />
+        >
+          <div
+            className={cn(
+              // The band holds the table of contents and the document side
+              // by side, glued to the left of the pane: file list, then
+              // contents, then text, with whatever window is left over
+              // gathered on the right rather than split around the text.
+              // Nothing is centered horizontally — the document column
+              // carries its own max width, so the prose keeps its measure
+              // while the table of contents may take a comfortable width
+              // without ever squeezing it.
+              //
+              // The gap is 3rem because every prose heading hangs 1.5em
+              // into its left margin to park the `#` anchor there, and at
+              // h1's 2em that is 48px of box reaching towards it.
+              "flex gap-12 py-4 px-4 sm:py-6 sm:px-8",
             )}
+          >
+            <TableOfContents
+              containerRef={contentRef}
+              open={tocOpen && tocAvailable}
+            />
             <div
-              ref={contentRef}
-              data-content-scroll
               className={cn(
-                "flex-1 overflow-y-auto bg-white dark:bg-slate-900",
-                isReviewMode &&
-                  "ring-1 ring-inset ring-purple-200 dark:ring-purple-800/50",
+                "min-w-0 flex-1",
+                fullWidth ? "max-w-none" : "max-w-5xl",
               )}
             >
-              <div
-                className={cn(
-                  // The band holds the table of contents and the document side
-                  // by side, glued to the left of the pane: file list, then
-                  // contents, then text, with whatever window is left over
-                  // gathered on the right rather than split around the text.
-                  // Nothing is centered horizontally — the document column
-                  // carries its own max width, so the prose keeps its measure
-                  // while the table of contents may take a comfortable width
-                  // without ever squeezing it.
-                  //
-                  // The gap is 3rem because every prose heading hangs 1.5em
-                  // into its left margin to park the `#` anchor there, and at
-                  // h1's 2em that is 48px of box reaching towards it.
-                  "flex gap-12 py-4 px-4 sm:py-6 sm:px-8",
-                )}
-              >
-                <TableOfContents
-                  containerRef={contentRef}
-                  open={tocOpen && tocAvailable}
-                />
-                <div
-                  className={cn(
-                    "min-w-0 flex-1",
-                    fullWidth ? "max-w-none" : "max-w-5xl",
-                  )}
-                >
-                  {error ? (
-                    <div className="flex flex-col items-center justify-center h-64 text-red-500">
-                      <div className="w-16 h-16 rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center mb-4">
-                        <AlertCircle size={32} className="text-red-400" />
-                      </div>
-                      {/* Stepped per mode, like every other red ink in the app
+              {error ? (
+                <div className="flex flex-col items-center justify-center h-64 text-red-500">
+                  <div className="w-16 h-16 rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center mb-4">
+                    <AlertCircle size={32} className="text-red-400" />
+                  </div>
+                  {/* Stepped per mode, like every other red ink in the app
                           (`DiffViewer`, `ReviewPanel`): `red-600` is 2.8:1 on
                           the dark content surface, and this is the sentence
                           that says what went wrong. */}
-                      <p className="text-lg font-medium text-red-600 dark:text-red-400">
-                        {error}
-                      </p>
-                      {currentPath && (
-                        <p className="text-sm text-red-400 mt-1 font-mono">
-                          {currentPath}
-                        </p>
-                      )}
-                      {connected && (
-                        // Both errors that land here — a document that is gone and
-                        // a repository the daemon has retired — are re-checked on
-                        // the live socket, so this page loads by itself the moment
-                        // the thing returns. Saying so stops the reader reaching
-                        // for a reload that does nothing extra.
-                        <p className="text-sm text-slate-500 dark:text-slate-400 mt-3">
-                          Waiting — this page loads it automatically if it comes
-                          back.
-                        </p>
-                      )}
-                      <div className="mt-4 flex items-center gap-2">
-                        <AppLink
-                          to="/"
-                          className="px-4 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-medium rounded-lg hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors no-underline inline-block"
-                        >
-                          Go to Home
-                        </AppLink>
-                        {connected && (
-                          // Only offered while the socket is up — the same
-                          // condition as the "it may come back" notice above.
-                          // A backend hiccup must not invite deleting a
-                          // bookmark whose target is fine.
-                          //
-                          // The target comes from the route, not the store: a
-                          // retired daemon repo clears currentRepo and leaves
-                          // the whole route in currentPath, which would never
-                          // match the (repo, path) the bookmark was stored
-                          // under.
-                          <RemoveBookmarkButton
-                            path={bookmarkTarget?.path ?? null}
-                            repo={bookmarkTarget?.repo ?? null}
-                          />
-                        )}
-                      </div>
-                    </div>
-                  ) : isLoading && !fileContent && !currentDirectory ? (
-                    <div className="flex flex-col items-center justify-center h-64 text-slate-500 dark:text-slate-400">
-                      <Loader2
-                        size={32}
-                        className="animate-spin text-blue-500 mb-4"
+                  <p className="text-lg font-medium text-red-600 dark:text-red-400">
+                    {error}
+                  </p>
+                  {currentPath && (
+                    <p className="text-sm text-red-400 mt-1 font-mono">
+                      {currentPath}
+                    </p>
+                  )}
+                  {connected && (
+                    // Both errors that land here — a document that is gone and
+                    // a repository the daemon has retired — are re-checked on
+                    // the live socket, so this page loads by itself the moment
+                    // the thing returns. Saying so stops the reader reaching
+                    // for a reload that does nothing extra.
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-3">
+                      Waiting — this page loads it automatically if it comes
+                      back.
+                    </p>
+                  )}
+                  <div className="mt-4 flex items-center gap-2">
+                    <AppLink
+                      to="/"
+                      className="px-4 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-medium rounded-lg hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors no-underline inline-block"
+                    >
+                      Go to Home
+                    </AppLink>
+                    {connected && (
+                      // Only offered while the socket is up — the same
+                      // condition as the "it may come back" notice above.
+                      // A backend hiccup must not invite deleting a
+                      // bookmark whose target is fine.
+                      //
+                      // The target comes from the route, not the store: a
+                      // retired daemon repo clears currentRepo and leaves
+                      // the whole route in currentPath, which would never
+                      // match the (repo, path) the bookmark was stored
+                      // under.
+                      <RemoveBookmarkButton
+                        path={bookmarkTarget?.path ?? null}
+                        repo={bookmarkTarget?.repo ?? null}
                       />
-                      <p className="text-sm text-slate-500 dark:text-slate-400">
-                        Loading...
-                      </p>
-                    </div>
-                  ) : fileContent ? (
-                    fileContent.encoding === "binary" ? (
-                      <div className="flex flex-col items-center justify-center h-64 text-slate-500 dark:text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800">
-                        <File size={48} className="mb-3" />
-                        <p className="text-sm">
-                          Binary file content cannot be displayed.
-                        </p>
+                    )}
+                  </div>
+                </div>
+              ) : isLoading && !fileContent && !currentDirectory ? (
+                <div className="flex flex-col items-center justify-center h-64 text-slate-500 dark:text-slate-400">
+                  <Loader2
+                    size={32}
+                    className="animate-spin text-blue-500 mb-4"
+                  />
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    Loading...
+                  </p>
+                </div>
+              ) : fileContent ? (
+                fileContent.encoding === "binary" ? (
+                  <div className="flex flex-col items-center justify-center h-64 text-slate-500 dark:text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800">
+                    <File size={48} className="mb-3" />
+                    <p className="text-sm">
+                      Binary file content cannot be displayed.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="pb-8">
+                    {showRaw ? (
+                      <div className="relative">
+                        <button
+                          onClick={() => {
+                            copyTextOrWarn(fileContent.content).then((ok) => {
+                              if (!ok) return;
+                              setCopied(true);
+                              setTimeout(() => setCopied(false), 2000);
+                            });
+                          }}
+                          className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-md transition-colors z-10"
+                          title="Copy to clipboard"
+                        >
+                          {copied ? <Check size={12} /> : <Copy size={12} />}
+                          {copied ? "Copied!" : "Copy"}
+                        </button>
+                        <pre className="p-4 pr-24 text-sm font-mono whitespace-pre-wrap break-words bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg overflow-auto max-h-[80vh] text-slate-700 dark:text-slate-300">
+                          {fileContent.content}
+                        </pre>
                       </div>
                     ) : (
-                      <div className="pb-8">
-                        {showRaw ? (
-                          <div className="relative">
-                            <button
-                              onClick={() => {
-                                copyTextOrWarn(fileContent.content).then(
-                                  (ok) => {
-                                    if (!ok) return;
-                                    setCopied(true);
-                                    setTimeout(() => setCopied(false), 2000);
-                                  },
-                                );
-                              }}
-                              className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-md transition-colors z-10"
-                              title="Copy to clipboard"
-                            >
-                              {copied ? (
-                                <Check size={12} />
-                              ) : (
-                                <Copy size={12} />
-                              )}
-                              {copied ? "Copied!" : "Copy"}
-                            </button>
-                            <pre className="p-4 pr-24 text-sm font-mono whitespace-pre-wrap break-words bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg overflow-auto max-h-[80vh] text-slate-700 dark:text-slate-300">
-                              {fileContent.content}
-                            </pre>
-                          </div>
-                        ) : (
-                          <MarkdownViewer
-                            content={fileContent.content}
-                            currentPath={fileContent.path}
-                            isReviewMode={isReviewMode}
-                            onOpenQuestionCount={setOpenQuestionCount}
-                          />
-                        )}
-                      </div>
-                    )
-                  ) : currentDirectory ? (
-                    <DirectoryViewer
-                      nodes={currentDirectory}
-                      currentPath={currentPath || "."}
-                    />
-                  ) : isMultiRepo && !currentRepo ? (
-                    <div className="max-w-2xl mx-auto w-full py-12 md:py-16">
-                      <div className="flex items-end justify-between mb-8">
-                        <div>
-                          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">
-                            Projects
-                          </h1>
-                          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                            {repos.length}{" "}
-                            {repos.length === 1 ? "repository" : "repositories"}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() =>
-                            setRepoSortMode(
-                              repoSortMode === "alphabetical"
-                                ? "recent"
-                                : "alphabetical",
-                            )
-                          }
-                          className={cn(
-                            "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
-                            "border border-slate-200 dark:border-slate-700",
-                            "text-slate-500 dark:text-slate-400",
-                            "hover:bg-slate-50 dark:hover:bg-slate-800",
-                          )}
-                          title={
-                            repoSortMode === "alphabetical"
-                              ? "Sort by recent activity"
-                              : "Sort alphabetically"
-                          }
-                        >
-                          {repoSortMode === "alphabetical" ? (
-                            <>
-                              <ArrowDownAZ size={14} />
-                              <span>A–Z</span>
-                            </>
-                          ) : (
-                            <>
-                              <Clock size={14} />
-                              <span>Recent</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                      <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-800/50 shadow-sm divide-y divide-slate-100 dark:divide-slate-700/50">
-                        {sortedRepos().map((repo) => (
-                          <AppLink
-                            key={repo.name}
-                            to={`/${repo.name}`}
-                            onBeforeNavigate={() => {
-                              setCurrentRepo(repo.name);
-                            }}
-                            className={cn(
-                              "flex items-center gap-3 px-5 py-4 no-underline transition-colors group",
-                              "hover:bg-blue-50/50 dark:hover:bg-slate-700/40",
-                            )}
-                          >
-                            <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center shrink-0 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/50 transition-colors">
-                              <FolderGit2
-                                size={18}
-                                className="text-blue-500 dark:text-blue-400"
-                              />
-                            </div>
-                            <span className="font-semibold text-slate-800 dark:text-slate-200 truncate text-[15px]">
-                              {repo.name}
-                            </span>
-                            {repo.last_activity && (
-                              <span className="ml-auto pl-4 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap shrink-0 tabular-nums">
-                                <RelativeTime date={repo.last_activity} />
-                              </span>
-                            )}
-                          </AppLink>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-64 text-slate-500 dark:text-slate-400">
-                      <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
-                        <GitBranch size={32} />
-                      </div>
-                      <p className="text-lg font-medium text-slate-500 dark:text-slate-400">
-                        Select a file or folder to browse
-                      </p>
+                      <MarkdownViewer
+                        content={fileContent.content}
+                        currentPath={fileContent.path}
+                        isReviewMode={isReviewMode}
+                        onOpenQuestionCount={setOpenQuestionCount}
+                      />
+                    )}
+                  </div>
+                )
+              ) : currentDirectory ? (
+                <DirectoryViewer
+                  nodes={currentDirectory}
+                  currentPath={currentPath || "."}
+                />
+              ) : isMultiRepo && !currentRepo ? (
+                <div className="max-w-2xl mx-auto w-full py-12 md:py-16">
+                  <div className="flex items-end justify-between mb-8">
+                    <div>
+                      <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">
+                        Projects
+                      </h1>
                       <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                        Vantage supports Markdown and Mermaid diagrams
+                        {repos.length}{" "}
+                        {repos.length === 1 ? "repository" : "repositories"}
                       </p>
                     </div>
-                  )}
+                    <button
+                      onClick={() =>
+                        setRepoSortMode(
+                          repoSortMode === "alphabetical"
+                            ? "recent"
+                            : "alphabetical",
+                        )
+                      }
+                      className={cn(
+                        "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                        "border border-slate-200 dark:border-slate-700",
+                        "text-slate-500 dark:text-slate-400",
+                        "hover:bg-slate-50 dark:hover:bg-slate-800",
+                      )}
+                      title={
+                        repoSortMode === "alphabetical"
+                          ? "Sort by recent activity"
+                          : "Sort alphabetically"
+                      }
+                    >
+                      {repoSortMode === "alphabetical" ? (
+                        <>
+                          <ArrowDownAZ size={14} />
+                          <span>A–Z</span>
+                        </>
+                      ) : (
+                        <>
+                          <Clock size={14} />
+                          <span>Recent</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <div className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-800/50 shadow-sm divide-y divide-slate-100 dark:divide-slate-700/50">
+                    {sortedRepos().map((repo) => (
+                      <AppLink
+                        key={repo.name}
+                        to={`/${repo.name}`}
+                        onBeforeNavigate={() => {
+                          setCurrentRepo(repo.name);
+                        }}
+                        className={cn(
+                          "flex items-center gap-3 px-5 py-4 no-underline transition-colors group",
+                          "hover:bg-blue-50/50 dark:hover:bg-slate-700/40",
+                        )}
+                      >
+                        <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center shrink-0 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/50 transition-colors">
+                          <FolderGit2
+                            size={18}
+                            className="text-blue-500 dark:text-blue-400"
+                          />
+                        </div>
+                        <span className="font-semibold text-slate-800 dark:text-slate-200 truncate text-[15px]">
+                          {repo.name}
+                        </span>
+                        {repo.last_activity && (
+                          <span className="ml-auto pl-4 text-xs text-slate-500 dark:text-slate-400 whitespace-nowrap shrink-0 tabular-nums">
+                            <RelativeTime date={repo.last_activity} />
+                          </span>
+                        )}
+                      </AppLink>
+                    ))}
+                  </div>
                 </div>
-              </div>
-              {/* Room below the content for the degradation banner, which
+              ) : (
+                <div className="flex flex-col items-center justify-center h-64 text-slate-500 dark:text-slate-400">
+                  <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
+                    <GitBranch size={32} />
+                  </div>
+                  <p className="text-lg font-medium text-slate-500 dark:text-slate-400">
+                    Select a file or folder to browse
+                  </p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                    Vantage supports Markdown and Mermaid diagrams
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+          {/* Room below the content for the degradation banner, which
                   floats over the pane's bottom: it only lengthens what can be
                   scrolled, so it moves nothing already painted, and it lets
                   the last line scroll clear of the banner. */}
-              {bannerSpace > 0 && (
-                <div aria-hidden="true" style={{ height: bannerSpace }} />
-              )}
-            </div>
-            <DegradedBanner onSpaceChange={setBannerSpace} />
-          </div>
+          {shell.bannerSpace > 0 && (
+            <div aria-hidden="true" style={{ height: shell.bannerSpace }} />
+          )}
         </div>
-
-        {/* Diff Viewer Modal */}
-        {showDiff &&
-          (isDiffLoading ? (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-8 flex flex-col items-center">
-                <div className="w-10 h-10 border-4 border-slate-200 dark:border-slate-600 border-t-blue-600 rounded-full animate-spin mb-4" />
-                <p className="text-slate-600 dark:text-slate-300 font-medium">
-                  Loading diff...
-                </p>
-              </div>
-            </div>
-          ) : diff ? (
-            <DiffViewer diff={diff} onClose={closeDiff} />
-          ) : (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl p-8 flex flex-col items-center">
-                <p className="text-slate-600 dark:text-slate-300 font-medium mb-4">
-                  Could not load diff
-                </p>
-                <button
-                  onClick={closeDiff}
-                  className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800 transition-colors"
-                >
-                  Close
-                </button>
-              </div>
-            </div>
-          ))}
-        {/* File Picker (local) */}
-        <FilePicker
-          isOpen={filePickerMode === "local"}
-          onClose={closeFilePicker}
-          onSelect={handleFilePickerSelect}
-          hrefFor={filePickerHref}
-          files={allFiles}
-          loading={filePickerLoading && allFiles.length === 0}
-        />
-        {/* File Picker (global - all repos) */}
-        <FilePicker
-          isOpen={filePickerMode === "global"}
-          onClose={closeFilePicker}
-          onSelect={handleFilePickerSelect}
-          hrefFor={filePickerHref}
-          files={[]}
-          globalFiles={globalFiles}
-          mode="global"
-          placeholder="Search all projects' files..."
-          loading={filePickerLoading && globalFiles.length === 0}
-        />
-        {/* Project Picker */}
-        <ProjectPicker
-          isOpen={projectPickerOpen}
-          onClose={() => setProjectPickerOpen(false)}
-          onSelect={handleProjectSelect}
-          hrefFor={projectPickerHref}
-          repos={repos}
-        />
-        {/* Recents Modal */}
-        <RecentsModal
-          isOpen={recentsScope !== null}
-          scope={recentsScope ?? "project"}
-          onClose={() => setRecentsScope(null)}
-        />
-        {/* Keyboard Shortcuts Modal */}
-        <KeyboardShortcutsModal
-          isOpen={shortcutsOpen}
-          onClose={() => setShortcutsOpen(false)}
-        />
-        {/* Review Panel — mounted only while open, so its local state (armed
-            destructive confirms, half-typed replies, copy flashes) cannot
-            survive a close and reappear when the reviewer opens it again. */}
-        {reviewPanelOpen && (
-          <ReviewPanel
-            isOpen={reviewPanelOpen}
-            onClose={() => setReviewPanelOpen(false)}
-          />
-        )}
-        {/* Style Guide Modal */}
-        <StyleGuideModal
-          isOpen={styleGuideOpen}
-          onClose={() => setStyleGuideOpen(false)}
-        />
       </div>
-    </div>
+    </>
   );
 };

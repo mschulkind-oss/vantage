@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { parse as parseToml } from "smol-toml";
 import { STYLE_GUIDE } from "../../vantage-md/src/styleGuide.js";
+import { parseFrontmatter } from "../../vantage-md/src/frontmatter.js";
+import { parseMarkdown } from "../src/core/document.js";
+import {
+  QUESTION_WORDS_DEFAULT,
+  questionWords,
+} from "../src/rules/questionLength.js";
+import { ruleMeta } from "../src/rules/registry.js";
 import {
   isStageRole,
   scanPlanningDocument,
@@ -130,5 +137,40 @@ describe("the style guide's planning frontmatter", () => {
     const stages = planning["stages"] as Record<string, unknown>;
     expect(Object.values(stages).every(isStageRole)).toBe(true);
     expect(Object.keys(stages)).toContain("DESIGN");
+  });
+});
+
+describe("the style guide's advice on a question's length", () => {
+  it("states the limit planning/question-length applies by default", () => {
+    // The guide cannot import the checker, so the number is written out, and
+    // this is what keeps the two from drifting apart.
+    expect(STYLE_GUIDE).toContain(
+      `runs past ${QUESTION_WORDS_DEFAULT} words (\`planning/question-length\`)`,
+    );
+    expect(
+      ruleMeta("planning/question-length")?.options?.["max-words"],
+    ).toEqual(expect.objectContaining({ default: QUESTION_WORDS_DEFAULT }));
+  });
+
+  it("says what the count leaves out, in the convention's own markers", () => {
+    expect(STYLE_GUIDE).toContain(
+      "not counting its `_Leaning:_` paragraph and its `**Answer:**`",
+    );
+  });
+
+  it("gives examples the rule has nothing to say about", () => {
+    const questions = exampleQuestions();
+    expect(questions.length).toBeGreaterThan(0);
+    for (const body of fences("markdown")) {
+      const result = scanPlanningDocument("docs/example.md", body, false);
+      if (result.kind !== "planning") continue;
+      const { body: text, bodyLineOffset } = parseFrontmatter(body);
+      const root = parseMarkdown(text);
+      for (const question of result.document.questions) {
+        expect(
+          questionWords(root, question, bodyLineOffset),
+        ).toBeLessThanOrEqual(QUESTION_WORDS_DEFAULT);
+      }
+    }
   });
 });

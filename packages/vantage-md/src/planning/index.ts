@@ -32,6 +32,7 @@ export type { PlanningConfig, StageRole } from "./config.js";
 export { compileIgnorePatterns } from "./patterns.js";
 export { resolveRepoLink } from "./links.js";
 export { idsOf, scanPlanningDocument } from "./scan.js";
+export { LEANING_MARKER } from "./leaning.js";
 export type {
   CardBlock,
   DependsOn,
