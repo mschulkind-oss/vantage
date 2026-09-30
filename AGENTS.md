@@ -52,7 +52,29 @@ Never kill it; run test instances on other ports.
 
 ## What the gate does not tell you
 
-- **On a clone where `just setup` never ran, commits skip the gate silently.**
+- **A commit runs part of the gate, and `just done` runs all of it.** The
+  pre-commit hook runs `just check-fast`, which picks from the staged paths the
+  checks they can affect and runs them side by side, so a commit takes seconds
+  (the slowest, a `vantage-md` change, about 15 s on 32 threads and 25 s on 8)
+  rather than the gate's minute. It is not the gate, and passing it finishes
+  nothing: **`just done` must pass before work is finished**. It refuses a tree
+  with anything uncommitted and then runs all of `just check-ci`, so it checks
+  exactly what was committed, and CI runs `check-ci` on every push to `main`
+  and every pull request against it as the backstop. Which path calls for which check, and why, is in
+  [`scripts/check-fast.sh`](scripts/check-fast.sh); `just check-fast --plan`
+  prints the choice for what is staged.
+
+  It is built to fall back rather than guess. A manifest, the lockfile, the
+  `Justfile`, a package's configuration, or any path it does not know runs the
+  whole gate. And because every check reads files on disk, it **refuses a staged
+  path that is not on disk as staged** — unstaged changes on top of it, or a
+  `git rm --cached` file still there — rather than check a version the commit
+  does not hold: stage the rest, or `git stash push --keep-index
+  --include-untracked` around the commit. What nobody staged still counts as it
+  is on disk — an unstaged edit to another file, an untracked file — so it lists
+  them, and `just done`'s clean tree is what closes that gap. [`scripts/test-check-fast.sh`](scripts/test-check-fast.sh), which the
+  gate runs, pins which paths call for which checks.
+- **On a clone where `just setup` never ran, commits skip every check silently.**
   The hooks live in `scripts/hooks/` and are wired by `git config
   core.hooksPath`, which is per-clone local config — so a second machine has the
   toolchain (`mise install`) and no hooks, and no npm packages either. `just

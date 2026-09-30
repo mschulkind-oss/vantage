@@ -1,5 +1,11 @@
 # Vantage Justfile
 
+# The documents the gate runs vantage-check over (see _self-check), besides
+# CHANGELOG.md, which it checks on its own terms. They are named rather than
+# swept from the repository root, so an untracked scratch file in someone's
+# working tree cannot fail the gate.
+doc_paths := "docs userguide README.md AGENTS.md packages/vantage-check/README.md packages/vantage-md/README.md"
+
 default:
     @just --list
 
@@ -95,16 +101,18 @@ check: format
     npm run lint -w frontend && npx tsc --build frontend && npm run test -w frontend
     sh scripts/test-commit-messages.sh
     sh scripts/test-changelog-section.sh
+    sh scripts/test-check-fast.sh
     just _self-check
 
 # Run the Playwright end-to-end suite. Self-hosts a real serve + Vite pair
 # (see frontend/playwright.config.ts). First run downloads chromium:
-# `npx playwright install` from frontend/. CI runs this on every push and PR.
+# `npx playwright install` from frontend/. CI runs this on every push to main
+# and every pull request against it.
 e2e:
     sh scripts/e2e-fixture.sh
     cd frontend && npx playwright test
 
-# Read-only gate (errors on issues, never rewrites) — used by the pre-commit hook and CI.
+# The whole gate, read-only. `just done` and CI run it; a commit runs it only when check-fast falls back.
 check-ci: _deps-match
     #!/usr/bin/env bash
     set -euo pipefail
@@ -133,8 +141,26 @@ check-ci: _deps-match
     # publish.yml's create-release job share one script, and neither is reachable
     # from the gate — a release happens on a tag, not on a commit. Its tests are.
     sh scripts/test-changelog-section.sh
+    # And for the choice the pre-commit hook makes: which staged paths call for
+    # which checks. A wrong entry there passes a commit this recipe would fail,
+    # and nothing but its tests would notice before CI did.
+    sh scripts/test-check-fast.sh
     # Then the artifact, not just the source it was built from.
     just _self-check
+
+# The pre-commit hook runs this, not check-ci: the checks the staged paths call
+# for, run side by side, which takes a typical commit seconds where the whole
+# gate takes a minute. It reads the files on disk, so it refuses to run when a
+# staged path is not on disk as staged. scripts/check-fast.sh says which paths
+# call for which checks, and why.
+#
+# It is not the gate, and passing it does not finish anything: `just done` runs
+# check-ci over a clean tree and must pass before work is called done, and CI
+# runs check-ci on every push to main and every pull request against it.
+
+# The pre-commit hook's checks: what the staged files call for; `--plan` prints the choice. Not the gate — run `just done`.
+check-fast *args:
+    @sh scripts/check-fast.sh {{args}}
 
 # Assert node_modules matches the manifests, in both npm packages.
 #
@@ -161,12 +187,13 @@ _deps-match:
         exit 1
     fi
 
-# End-of-task gate: assert the tree is clean, then re-run the full CI gate.
-#
-# check-ci already runs on every commit via the pre-commit hook, so this adds the
-# two things a hook cannot see: that nothing was left uncommitted, and that the
-# committed state — not the working tree that happened to be on disk mid-task —
-# passes. Run it as the last thing you do.
+# Commits run only `just check-fast`, the part of the gate the staged paths call
+# for, so this is where the whole gate runs locally: check-ci, over a tree with
+# nothing uncommitted in it, which makes what it checks the committed state and
+# not whatever happened to be on disk mid-task. Work is not finished until it
+# passes. Run it as the last thing you do; CI runs the same gate as a backstop.
+
+# Finish a task: assert the tree is clean, then run the whole gate. Required before work is done.
 done:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -190,17 +217,16 @@ done:
 # that type-checks but cannot be bundled — or cannot run with no Node and no
 # node_modules in the picture — fails here instead of at release.
 #
-# The paths are named explicitly rather than swept from the repo root, so an
-# untracked scratch file in someone's working tree cannot fail the gate.
+# The documents themselves are checked by _check-docs, which the pre-commit
+# hook's `just check-fast` also runs whenever a document changes.
 [private]
 _self-check: cli
     #!/usr/bin/env bash
     set -euo pipefail
     bin=./packages/vantage-check/dist/vantage-check
-    paths=(docs userguide README.md AGENTS.md
-           packages/vantage-check/README.md packages/vantage-md/README.md)
-    cfg=$(mktemp) one=$(mktemp) many=$(mktemp) changelog=$(mktemp)
-    trap 'rm -f "$cfg" "$one" "$many" "$changelog"' EXIT
+    paths=({{doc_paths}} CHANGELOG.md)
+    cfg=$(mktemp) one=$(mktemp) many=$(mktemp)
+    trap 'rm -f "$cfg" "$one" "$many"' EXIT
     "$bin" version
     test -n "$("$bin" style-guide)" || { echo "style-guide printed nothing"; exit 1; }
     # A reader that stops early, as `index | head` does, closes the pipe, and
@@ -209,22 +235,7 @@ _self-check: cli
     # and pipefail makes the binary's status this line's. The unit tests prove
     # the same under Node; this proves it under Bun, which is what ships.
     "$bin" index | true
-    "$bin" check "${paths[@]}"
-    # CHANGELOG.md is here because publish.yml lifts a section out of it and
-    # posts it as the GitHub release body, and a tag is never moved: a dead link
-    # in a release that has shipped cannot be fixed, only apologized for.
-    #
-    # It runs on its own with ref/unlinked-file off. That rule asks for a link
-    # wherever prose names a file that exists beside the document, and beside
-    # CHANGELOG.md is the repository root. So "reads per-project settings from
-    # `.vantage.toml`", which names the reader's file, became a demand to link
-    # this repository's own the day that file was added. The link would be wrong
-    # where it lands, too: changelog-section.sh --link-base pins each section's
-    # links to its own tag, and v0.7.0's tree has no .vantage.toml. Every link
-    # rule still runs.
-    printf '[check.rules]\n"ref/unlinked-file" = "off"\n' > "$changelog"
-    "$bin" check --config "$changelog" CHANGELOG.md
-    paths+=(CHANGELOG.md)
+    just _check-docs
     # And the same run in one thread, byte for byte. A parallel check exists to
     # produce the sequential report sooner, never a different one — and the
     # worker-thread half of it can only be proved here: a worker runs the
@@ -245,6 +256,30 @@ _self-check: cli
         exit 1
     fi
     diff -u "$one" "$many" || { echo "a 4-thread check disagreed with a 1-thread check"; exit 1; }
+
+# Run the CLI that `just cli` built over the documents the gate covers.
+#
+# CHANGELOG.md is here because publish.yml lifts a section out of it and posts it
+# as the GitHub release body, and a tag is never moved: a dead link in a release
+# that has shipped cannot be fixed, only apologized for.
+#
+# It runs on its own with ref/unlinked-file off. That rule asks for a link
+# wherever prose names a file that exists beside the document, and beside
+# CHANGELOG.md is the repository root. So "reads per-project settings from
+# `.vantage.toml`", which names the reader's file, became a demand to link this
+# repository's own the day that file was added. The link would be wrong where it
+# lands, too: changelog-section.sh --link-base pins each section's links to its
+# own tag, and v0.7.0's tree has no .vantage.toml. Every link rule still runs.
+[private]
+_check-docs:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    bin=./packages/vantage-check/dist/vantage-check
+    changelog=$(mktemp)
+    trap 'rm -f "$changelog"' EXIT
+    "$bin" check {{doc_paths}}
+    printf '[check.rules]\n"ref/unlinked-file" = "off"\n' > "$changelog"
+    "$bin" check --config "$changelog" CHANGELOG.md
 
 # Refresh web/dist — the tracked frontend export — from frontend/ sources.
 #
