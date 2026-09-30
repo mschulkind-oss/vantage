@@ -7,6 +7,7 @@
  * resolves from the repository root.
  */
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import {
   DEFAULT_PLANNING_CONFIG,
   buildPlanningIndex,
@@ -18,9 +19,15 @@ import {
 /** This file's own URL, held in a variable so Vite does not rewrite it. */
 const here = import.meta.url;
 
-/** The absolute path of a file named relative to the repository root. */
-export function repoPath(rel: string): string {
-  return new URL(`../../../${rel}`, here).pathname;
+/**
+ * The absolute path of a file named relative to the repository root, found
+ * from `from`: the URL of a file in this directory, this one's own unless a
+ * test says otherwise. A URL's pathname is percent-encoded, so for a checkout
+ * under `/with space/` it names `/with%20space/`, which is not on disk;
+ * fileURLToPath decodes it.
+ */
+export function repoPath(rel: string, from: string = here): string {
+  return fileURLToPath(new URL(`../../../${rel}`, from));
 }
 
 /** A file's text, named relative to the repository root. */

@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { renderMarkdown } from "../../vantage-md/src/renderMarkdown.js";
 import { STYLE_GUIDE } from "../../vantage-md/src/styleGuide.js";
@@ -91,10 +91,7 @@ describe("vantage/* on documents that are right", () => {
     // Coupled on purpose: `just _self-check` runs the built binary over `docs/`,
     // so a rule that fires on a fenced example turns the gate red. This catches
     // that in `npm test` instead of in the slow binary build.
-    const repo = resolve(
-      dirname(new URL(import.meta.url).pathname),
-      "../../..",
-    );
+    const repo = resolve(import.meta.dirname, "../../..");
     const report = await checkTree(repo, ["docs/reference/inline-markup.md"]);
 
     expect(report.filesChecked).toBe(1);
@@ -123,10 +120,7 @@ describe("vantage/* on documents that are right", () => {
     // `status-chip: true` with no `status:` key to inherit, which is a
     // `vantage/status-chip-stale` warning on every document that copied it. The
     // doc gate cannot see it: a fenced example is code to the checker.
-    const repo = resolve(
-      dirname(new URL(import.meta.url).pathname),
-      "../../..",
-    );
+    const repo = resolve(import.meta.dirname, "../../..");
     const design = await readFile(
       resolve(repo, "docs/reference/inline-markup.md"),
       "utf8",
