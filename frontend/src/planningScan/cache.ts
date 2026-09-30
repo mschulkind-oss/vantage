@@ -96,8 +96,12 @@ export interface ScanCache {
   documents(repo: string): Promise<Map<string, StoredDocument>>;
   /** One document's card blocks: from memory, else from the store. */
   cards(repo: string, path: string): Promise<StoredCards | undefined>;
-  /** A writer for one build's records. */
-  writer(repo: string): CacheWriter;
+  /**
+   * A writer for one build's records. `current` is asked about each record
+   * as its batch is handed to the store, not as it is queued, and a record it
+   * refuses is dropped: a newer request may have kept its path meanwhile.
+   */
+  writer(repo: string, current?: (record: ScanRecord) => boolean): CacheWriter;
   /** Write a few records now, in one transaction. */
   write(repo: string, records: readonly ScanRecord[]): Promise<void>;
   /** Hold one document's blocks in memory, and not in the store. */
@@ -234,7 +238,7 @@ export function scanCache(
       return guarded(undefined, (open) => open.cards(repo, path));
     },
 
-    writer(repo) {
+    writer(repo, current = () => true) {
       let batch: ScanRecord[] = [];
       let inFlight: Promise<void> = Promise.resolve();
       const flush = async (): Promise<void> => {
@@ -242,7 +246,7 @@ export function scanCache(
         batch = [];
         if (records.length === 0) return;
         await inFlight;
-        inFlight = write(repo, records);
+        inFlight = write(repo, records.filter(current));
       };
       return {
         async add(record) {
