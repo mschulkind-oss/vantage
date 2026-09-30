@@ -45,6 +45,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/mschulkind-oss/vantage/internal/fsname"
 )
 
 // Entry is one bookmark.
@@ -180,12 +182,14 @@ func ValidateEntry(e Entry) error {
 		return fmt.Errorf("%w: path must be in cleaned form", ErrInvalid)
 	}
 	for _, seg := range strings.Split(p, "/") {
-		switch seg {
-		case "..":
+		switch {
+		case seg == "..":
 			return fmt.Errorf("%w: path traversal is not allowed", ErrInvalid)
-		case ".git":
+		case fsname.Same(seg, ".git"):
+			// However a case-insensitive filesystem would spell it, as pathsafe
+			// refuses it.
 			return fmt.Errorf("%w: the .git directory cannot be bookmarked", ErrInvalid)
-		case ".vantage":
+		case fsname.Same(seg, ".vantage"):
 			// vantage's own machine-to-machine state, hidden from every listing
 			// and refused by pathsafe. It must not be reachable as a bookmark
 			// either.

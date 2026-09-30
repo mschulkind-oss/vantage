@@ -3,8 +3,9 @@
 // lands inside the repository root after symlinks are resolved.
 //
 // The rule has two halves, and both are required. The lexical half rejects
-// absolute paths, NUL bytes, ".git" and ".vantage" segments, and any "../" that
-// climbs out of the root. The physical half re-checks containment against the
+// absolute paths, NUL bytes, ".git" and ".vantage" segments however a
+// case-insensitive filesystem would spell them (see [fsname.Same]), and any
+// "../" that climbs out of the root. The physical half re-checks containment against the
 // filesystem, because a lexically innocent path like "docs/logo.png" can be a
 // symlink to anywhere the server process can read. Lexical checking alone is
 // what made an in-repo symlink an arbitrary-file read through /content and
@@ -23,6 +24,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/mschulkind-oss/vantage/internal/fsname"
 	"github.com/mschulkind-oss/vantage/internal/ignore"
 )
 
@@ -63,10 +65,11 @@ func Resolve(root, path string) (string, error) {
 		return "", newError("Absolute paths not allowed")
 	}
 
-	// Block access to .git internals: reject any segment equal to ".git".
+	// Block access to .git internals: reject any segment that names ".git" on
+	// some filesystem, which on macOS includes ".GIT".
 	normalized := strings.ReplaceAll(path, "\\", "/")
 	for _, part := range strings.Split(normalized, "/") {
-		if part == ".git" {
+		if fsname.Same(part, ".git") {
 			return "", newError("Access to .git directory is not allowed")
 		}
 	}
