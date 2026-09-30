@@ -81,4 +81,4 @@ export type {
   RoutedQuestion,
   WaitingEntry,
 } from "./sections.js";
-export { cardBlockFor, questionCardSource } from "./cardSource.js";
+export { cardBlockFor } from "./cardSource.js";

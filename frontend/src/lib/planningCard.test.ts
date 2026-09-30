@@ -24,7 +24,6 @@ import {
 } from "vantage-md";
 import {
   cardBlockFor,
-  questionCardSource,
   scanPlanningDocument,
   type CardBlock,
   type PlanningQuestion,
@@ -454,34 +453,5 @@ describe("the scan's card blocks and the parse-based cut", () => {
       if (card === undefined) throw new Error(`no card for ${question.line}`);
       await expectCardMatches(source, question, card);
     }
-  });
-});
-
-describe("questionCardSource", () => {
-  it("answers the scan's own block", () => {
-    const path = "docs/gallery/open-questions.md";
-    const source = CORPUS[path] ?? "";
-    const { cards } = scanned(path, source);
-    for (const question of questionsOf(path, source)) {
-      const card = cardBlockFor(cards, question);
-      expect(questionCardSource(source, question)).toEqual({
-        markdown: card?.markdown,
-        lineOffset: card?.lineOffset,
-      });
-    }
-  });
-
-  it("still cuts a question's lines from a text it was not read from", () => {
-    const { question } = onlyCard("inline/directive-run.md", DIRECTIVE_RUN);
-    // Two lines in front, so the question's block is no block of this text.
-    const edited = `# Moved\n\n${DIRECTIVE_RUN}`;
-    expect(questionCardSource(edited, question)).toEqual(
-      oracleCard(edited, oracleOutline(edited), question),
-    );
-    // Its frontmatter no longer parses, so the scan gives it no cards at all.
-    const broken = `---\nstatus: [x\n---\n${DIRECTIVE_RUN}`;
-    expect(questionCardSource(broken, question)).toEqual(
-      oracleCard(broken, oracleOutline(broken), question),
-    );
   });
 });

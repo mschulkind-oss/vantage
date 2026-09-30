@@ -16,13 +16,7 @@
  */
 
 import type { Nodes, Root } from "mdast";
-import { parseFrontmatter } from "../frontmatter.js";
-import {
-  parseBody,
-  scanPlanningDocument,
-  type CardBlock,
-  type PlanningQuestion,
-} from "./scan.js";
+import type { CardBlock, PlanningQuestion } from "./scan.js";
 
 /** Backslash-escape what an angle-bracket destination or a title would read. */
 function escape(text: string, specials: RegExp): string {
@@ -153,57 +147,4 @@ export function cardBlockFor(
   return cards.find(
     (card) => card.startLine === startLine && card.endLine === endLine,
   );
-}
-
-/**
- * The cards of the documents scanned here most recently, by text. A document
- * with k questions has k cards, and each would otherwise scan the whole
- * document again; the page renders them all at once.
- */
-const scanned = new Map<string, readonly CardBlock[]>();
-const SCANS_KEPT = 32;
-
-function cardsOf(path: string, source: string): readonly CardBlock[] {
-  const kept = scanned.get(source);
-  if (kept !== undefined) {
-    // Most recently used last, so the oldest is the first to go.
-    scanned.delete(source);
-    scanned.set(source, kept);
-    return kept;
-  }
-  const result = scanPlanningDocument(path, source, false);
-  const cards = result.kind === "planning" ? result.cards : [];
-  scanned.set(source, cards);
-  if (scanned.size > SCANS_KEPT) {
-    const oldest = scanned.keys().next();
-    if (oldest.done !== true) scanned.delete(oldest.value);
-  }
-  return cards;
-}
-
-/**
- * The card's Markdown, and the number of file lines before its first line —
- * pass that to the viewer as its source-line offset and every
- * `data-source-line` in the card is the document's own.
- *
- * The scan's own block for `question`, from scanning `source`. It stands in
- * for the page's card until the page is handed blocks with the index, and then
- * goes (`docs/design/planning-index-at-scale.md` §7.4).
- */
-export function questionCardSource(
-  source: string,
-  question: PlanningQuestion,
-): { markdown: string; lineOffset: number } {
-  let block = cardBlockFor(cardsOf(question.path, source), question);
-  if (block === undefined) {
-    // `question` was not read from `source`, or `source` no longer scans:
-    // cut its lines anyway, as the card always has.
-    const parsed = parseFrontmatter(source);
-    const outline = outlineOf(parseBody(parsed.body), parsed.bodyLineOffset);
-    [block] = cutCardBlocks(source, outline, [question.block]);
-  }
-  return {
-    markdown: block?.markdown ?? "",
-    lineOffset: block?.lineOffset ?? 0,
-  };
 }
