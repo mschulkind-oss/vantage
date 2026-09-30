@@ -177,6 +177,27 @@ func TestAddSourceDirsSkipsWhatIsAlreadyThere(t *testing.T) {
 	require.Equal(t, []string{"~/projects"}, edit.Added, "a directory named twice is added once")
 }
 
+// On macOS ~/Code and ~/code are one directory that resolves to two strings,
+// since filepath.EvalSymlinks keeps the case it was given, so asking for the
+// other spelling added a second entry and the daemon served every clone twice.
+// It runs only where the filesystem ignores case, which is where the two are
+// one.
+func TestAddSourceDirsKnowsADirectorySpelledInAnotherCase(t *testing.T) {
+	home, cfgPath := sourceDirsFixture(t)
+	if _, err := os.Stat(filepath.Join(home, "CODE")); err != nil {
+		t.Skip("this filesystem tells case apart, so ~/code and ~/CODE are two directories here")
+	}
+	require.NoError(t, os.MkdirAll(filepath.Dir(cfgPath), 0o755))
+	body := "source_dirs = [\"~/code\"]\n"
+	require.NoError(t, os.WriteFile(cfgPath, []byte(body), 0o644))
+
+	edit, err := AddSourceDirs(cfgPath, []string{"~/CODE", "~/Code"}, editTime)
+	require.NoError(t, err)
+	require.False(t, edit.Changed())
+	require.Equal(t, []string{"~/code"}, edit.Present)
+	require.Equal(t, body, readString(t, cfgPath))
+}
+
 // A key the edit cannot rewrite in place still gets its entry — after the
 // original, comments and all, is kept beside it.
 func TestAddSourceDirsBacksUpBeforeARewrite(t *testing.T) {

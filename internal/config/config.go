@@ -508,10 +508,10 @@ func (c *Config) DiscoverReposFromSourceDirs() []RepoConfig {
 // discoverReposFromSourceDirs is [Config.DiscoverReposFromSourceDirs] with the
 // platform passed in, so a test on any host can reach every rule.
 func (c *Config) discoverReposFromSourceDirs(goos string) []RepoConfig {
-	existingPaths := make(map[string]struct{}, len(c.Repos))
+	existing := dirSet{}
 	existingNames := make(map[string]struct{}, len(c.Repos))
 	for _, r := range c.Repos {
-		existingPaths[r.Path] = struct{}{}
+		existing.add(r.Path)
 		existingNames[fsname.Key(goos, r.Name)] = struct{}{}
 	}
 
@@ -535,7 +535,7 @@ func (c *Config) discoverReposFromSourceDirs(goos string) []RepoConfig {
 			if err != nil {
 				continue
 			}
-			if _, dup := existingPaths[resolved]; dup {
+			if existing.holds(resolved) {
 				continue
 			}
 
@@ -549,12 +549,52 @@ func (c *Config) discoverReposFromSourceDirs(goos string) []RepoConfig {
 
 			repo := RepoConfig{Name: repoName, Path: resolved, Discovered: true}
 			c.Repos = append(c.Repos, repo)
-			existingPaths[resolved] = struct{}{}
+			existing.add(resolved)
 			existingNames[fsname.Key(goos, repoName)] = struct{}{}
 			added = append(added, repo)
 		}
 	}
 	return added
+}
+
+// dirSet is a set of directories that knows one however it is spelled.
+//
+// Resolving symlinks is not enough to make two spellings of a directory one
+// string. On macOS the filesystem ignores case, and filepath.EvalSymlinks keeps
+// the case it was given, so ~/Code and ~/code stay two strings for one
+// directory. So a directory is also compared by what it is, with os.SameFile.
+type dirSet struct {
+	paths map[string]bool
+	infos []os.FileInfo
+}
+
+// add puts the directory at path in the set.
+func (d *dirSet) add(path string) {
+	if d.paths == nil {
+		d.paths = map[string]bool{}
+	}
+	d.paths[path] = true
+	if info, err := os.Stat(path); err == nil {
+		d.infos = append(d.infos, info)
+	}
+}
+
+// holds reports whether the directory at path is in the set, spelled this way
+// or any other.
+func (d *dirSet) holds(path string) bool {
+	if d.paths[path] {
+		return true
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	for _, other := range d.infos {
+		if os.SameFile(info, other) {
+			return true
+		}
+	}
+	return false
 }
 
 // PruneMissingDiscoveredRepos removes every discovered repo whose directory is

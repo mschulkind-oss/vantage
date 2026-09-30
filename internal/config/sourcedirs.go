@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -142,24 +143,41 @@ func AddSourceDirsChecked(path string, dirs []string, now time.Time, check func(
 		return edit, fmt.Errorf("config: %s: source_dirs %w", path, err)
 	}
 
-	seen := map[string]string{}
+	// Each directory source_dirs names, however it is spelled there: by the
+	// path it resolves to, and by what it is (see [dirSet]), since on macOS
+	// ~/Code and ~/code are one directory that resolves to two strings.
+	type listed struct {
+		dir     dirSet
+		spelled string
+	}
+	var seen []listed
+	spelling := func(p string) (string, bool) {
+		for _, n := range seen {
+			if n.dir.holds(p) {
+				return n.spelled, true
+			}
+		}
+		return "", false
+	}
+	remember := func(p, spelled string) {
+		n := listed{spelled: spelled}
+		n.dir.add(p)
+		seen = append(seen, n)
+	}
 	for _, e := range existing {
 		if p, err := resolvePath(e); err == nil {
-			seen[p] = e
+			remember(p, e)
 		}
 	}
-	asked := map[string]bool{}
 	for _, w := range wanted {
-		if asked[w] {
-			continue
-		}
-		asked[w] = true
-		if spelled, ok := seen[w]; ok {
-			edit.Present = append(edit.Present, spelled)
+		if spelled, ok := spelling(w); ok {
+			if !slices.Contains(edit.Present, spelled) && !slices.Contains(edit.Added, spelled) {
+				edit.Present = append(edit.Present, spelled)
+			}
 			continue
 		}
 		entry := homeRelative(w, home)
-		seen[w] = entry
+		remember(w, entry)
 		edit.Added = append(edit.Added, entry)
 	}
 	if len(edit.Added) == 0 && !edit.Created {
