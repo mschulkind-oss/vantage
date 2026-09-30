@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -13,6 +14,8 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/require"
 
+	gitsvc "github.com/mschulkind-oss/vantage/internal/git"
+	"github.com/mschulkind-oss/vantage/internal/gitenv"
 	"github.com/mschulkind-oss/vantage/internal/ignore"
 )
 
@@ -82,6 +85,54 @@ func TestFlushBroadcastsRemovedDirectories(t *testing.T) {
 	require.JSONEq(t,
 		`{"type":"files_changed","repo":"repoX","paths":["b.md"]}`, raw(),
 		"removed_dirs is left out when there are none, so the old message is unchanged")
+}
+
+// A directory that goes away takes every recent file inside it along, and the
+// viewer refreshes its recent files on the push that says so. That list is
+// cached for half a minute and otherwise dropped only when git's own state
+// changes, which a plain `mv` never touches, so the refresh fetched the list
+// from before the rename: the old paths, and none of the new ones. Only this
+// repository's list is dropped: in daemon mode every served repository shares
+// the cache, and another's did not change.
+func TestFlushForgetsTheRecentFilesOfARemovedDirectory(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary not available")
+	}
+	initRepo := func(files map[string]string) string {
+		root := t.TempDir()
+		gitInit := exec.Command("git", "init", "-q")
+		gitInit.Dir = root
+		// Scrubbed, or inside the pre-commit hook, which exports GIT_DIR, this
+		// init reinitialized the repository being committed to, as a bare one.
+		gitInit.Env = append(gitenv.Scrubbed(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+		out, err := gitInit.CombinedOutput()
+		require.NoErrorf(t, err, "git init: %s", out)
+		writeTree(t, root, files)
+		return root
+	}
+	root := initRepo(map[string]string{"docs/old/a.md": "# A\n"})
+	other := initRepo(map[string]string{"b.md": "# B\n"})
+
+	gitsvc.ClearRecentFilesCache()
+	t.Cleanup(gitsvc.ClearRecentFilesCache)
+	recent := func(svc *gitsvc.GitService) []string {
+		var paths []string
+		for _, rf := range svc.RecentsUnreported(30, nil, false, true) {
+			paths = append(paths, rf.Path)
+		}
+		return paths
+	}
+	svc, otherSvc := gitsvc.NewService(root, gitsvc.Options{}), gitsvc.NewService(other, gitsvc.Options{})
+	require.Equal(t, []string{"docs/old/a.md"}, recent(svc))
+	require.Equal(t, []string{"b.md"}, recent(otherSvc))
+
+	w, err := NewWatcher(root, "", NewManager(quietLogger(), nil), nil, false, quietLogger())
+	require.NoError(t, err)
+	require.NoError(t, os.Rename(filepath.Join(root, "docs", "old"), filepath.Join(root, "docs", "new")))
+	writeTree(t, other, map[string]string{"b2.md": "# B2\n"})
+	w.flush([]string{"docs/old/", "docs/new/a.md"})
+	require.Equal(t, []string{"docs/new/a.md"}, recent(svc))
+	require.Equal(t, []string{"b.md"}, recent(otherSvc), "the other repository's list is still the cached one")
 }
 
 // --- the event loop ---------------------------------------------------------
@@ -303,11 +354,12 @@ func TestWatcherReportsADirectoryMovedOut(t *testing.T) {
 }
 
 // A removed directory is pushed in removed_dirs, and each file that was inside
-// it in paths as well: the planning index drops the directory's subtree, but the
-// viewer ignores removed_dirs and reloads a document only when its own path is
-// pushed. On macOS the order in which kqueue reports the removals varies from run
-// to run, which [TestHandleEventReportsTheFilesOfARemovedDirectoryInAnyOrder]
-// pins on any platform.
+// it in paths as well, so a consumer that reads only paths still hears of every
+// file: the planning index drops the directory's subtree, and the viewer reloads
+// a document inside it on either. On macOS the order in which kqueue reports the
+// removals varies from run to run, which
+// [TestHandleEventReportsTheFilesOfARemovedDirectoryInAnyOrder] pins on any
+// platform.
 func TestWatcherReportsARemovedDirectory(t *testing.T) {
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{"docs/gone/a.md": "# A\n", "docs/gone/sub/b.md": "# B\n"})

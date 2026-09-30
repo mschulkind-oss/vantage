@@ -124,11 +124,9 @@ type GitService struct {
 	opts        Options
 }
 
-// NewService builds a GitService for repoPath. It resolves the enclosing git
-// working tree once (via "git rev-parse --show-toplevel"); if repoPath is not
-// inside a git repo the service still works in a degraded mode that delegates to
-// immediate child repositories.
-func NewService(repoPath string, opts Options) *GitService {
+// canonicalRepoPath is repoPath as a GitService holds it, and keys its cached
+// answers by: absolute, clean, and with symlinks resolved.
+func canonicalRepoPath(repoPath string) string {
 	abs, err := filepath.Abs(repoPath)
 	if err != nil {
 		abs = repoPath
@@ -142,6 +140,15 @@ func NewService(repoPath string, opts Options) *GitService {
 	if resolved, rerr := filepath.EvalSymlinks(abs); rerr == nil {
 		abs = resolved
 	}
+	return abs
+}
+
+// NewService builds a GitService for repoPath. It resolves the enclosing git
+// working tree once (via "git rev-parse --show-toplevel"); if repoPath is not
+// inside a git repo the service still works in a degraded mode that delegates to
+// immediate child repositories.
+func NewService(repoPath string, opts Options) *GitService {
+	abs := canonicalRepoPath(repoPath)
 
 	excl := make(map[string]struct{}, len(opts.ExcludeDirs))
 	for _, d := range opts.ExcludeDirs {
@@ -803,6 +810,18 @@ func (c *recentsCache) clear() {
 	c.m = map[recentsKey]recentsEntry{}
 }
 
+// clearRepo drops the entries of the repository at repoPath, a canonical path,
+// and keeps every other repository's.
+func (c *recentsCache) clearRepo(repoPath string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for key := range c.m {
+		if key.repoPath == repoPath {
+			delete(c.m, key)
+		}
+	}
+}
+
 const (
 	statusCacheTTL = 3 * time.Second
 	recentFilesTTL = 30 * time.Second
@@ -825,6 +844,16 @@ func ClearStatusCache() {
 func ClearRecentFilesCache() {
 	recentFilesCache.clear()
 	slog.Debug("git: recent-files cache cleared")
+}
+
+// ClearRecentFilesCacheOf flushes the recent files cached for the repository
+// at repoPath alone, which is resolved the way [NewService] resolves its own.
+// The watcher calls it when a directory of its repository goes: that changes
+// the repository's recent files and no other's, and in daemon mode every served
+// repository shares the one cache.
+func ClearRecentFilesCacheOf(repoPath string) {
+	recentFilesCache.clearRepo(canonicalRepoPath(repoPath))
+	slog.Debug("git: recent-files cache cleared for one repository", "repo", repoPath)
 }
 
 // sortRecentsDesc sorts recent files by date descending (newest first). Ties are

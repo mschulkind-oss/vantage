@@ -164,6 +164,59 @@ describe("useRepoStore", () => {
     });
   });
 
+  // A document followed to where its renamed folder put it may have moved on
+  // again before it is asked for. The page keeps what it shows until the next
+  // push follows it further, rather than flashing the error on the way.
+  describe("keepOnFailure", () => {
+    const shown = { path: "r8/a.md", content: "# A", encoding: "utf-8" };
+
+    it("keeps the document on screen when the followed path fails to load", async () => {
+      useRepoStore.setState({ fileContent: shown, currentPath: "r8/a.md" });
+      mockedAxios.get.mockRejectedValueOnce(new Error("Not found"));
+
+      await useRepoStore
+        .getState()
+        .loadFile("r9/a.md", { keepOnFailure: true });
+
+      const state = useRepoStore.getState();
+      expect(state.error).toBeNull();
+      expect(state.fileContent).toBe(shown);
+      expect(state.currentPath).toBe("r8/a.md");
+      expect(state.isLoading).toBe(false);
+      // Still where the viewer was sent, so the next push is read against it.
+      expect(state.requestedPath).toBe("r9/a.md");
+    });
+
+    it("keeps a folder view on screen likewise", async () => {
+      const listing = [{ name: "a.md", path: "r8/a.md", is_dir: false }];
+      useRepoStore.setState({ currentDirectory: listing, currentPath: "r8" });
+      mockedAxios.get.mockRejectedValueOnce(new Error("Not found"));
+
+      await useRepoStore
+        .getState()
+        .viewDirectory("r9", { keepOnFailure: true });
+
+      const state = useRepoStore.getState();
+      expect(state.error).toBeNull();
+      expect(state.currentDirectory).toBe(listing);
+      expect(state.currentPath).toBe("r8");
+      expect(state.requestedPath).toBe("r9");
+    });
+
+    it("loads the followed path like any other when it is there", async () => {
+      useRepoStore.setState({ fileContent: shown, currentPath: "r8/a.md" });
+      const moved = { ...shown, path: "r9/a.md" };
+      mockedAxios.get.mockResolvedValueOnce({ data: moved });
+
+      await useRepoStore
+        .getState()
+        .loadFile("r9/a.md", { keepOnFailure: true });
+
+      expect(useRepoStore.getState().fileContent).toEqual(moved);
+      expect(useRepoStore.getState().currentPath).toBe("r9/a.md");
+    });
+  });
+
   describe("viewDirectory", () => {
     it("loads directory contents successfully", async () => {
       const mockNodes = [
@@ -491,6 +544,51 @@ describe("useRepoStore", () => {
       const nodeB = nodeA!.children!.find((n) => n.path === "a/b");
       expect(nodeB?.children).toBeDefined();
       expect(nodeB!.children!.length).toBeGreaterThan(0);
+    });
+  });
+
+  // A folder renamed or removed stays gone from the tree, and a refresh that
+  // still asked for it got a 400 every time, one more for every folder the
+  // viewer followed away from.
+  describe("forgetExpandedDirs", () => {
+    it("forgets the removed folders and every folder inside them", () => {
+      useRepoStore.setState({
+        expandedDirs: {
+          docs: true,
+          "docs/old": true,
+          "docs/old/sub": true,
+          "docs/old-x": true,
+          "docs/new": true,
+        },
+      });
+      useRepoStore.getState().forgetExpandedDirs(["docs/old"]);
+      expect(useRepoStore.getState().expandedDirs).toEqual({
+        docs: true,
+        "docs/old-x": true,
+        "docs/new": true,
+      });
+    });
+
+    it("keeps the folders holding a document that stays on screen", () => {
+      useRepoStore.setState({
+        expandedDirs: {
+          gone: true,
+          "gone/sub": true,
+          "gone/other": true,
+        },
+      });
+      useRepoStore.getState().forgetExpandedDirs(["gone"], "gone/sub/x.md");
+      expect(useRepoStore.getState().expandedDirs).toEqual({
+        gone: true,
+        "gone/sub": true,
+      });
+    });
+
+    it("leaves the state alone when nothing open was inside them", () => {
+      useRepoStore.setState({ expandedDirs: { docs: true } });
+      const expandedDirs = useRepoStore.getState().expandedDirs;
+      useRepoStore.getState().forgetExpandedDirs(["elsewhere"]);
+      expect(useRepoStore.getState().expandedDirs).toBe(expandedDirs);
     });
   });
 

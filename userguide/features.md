@@ -134,6 +134,28 @@ This is especially useful when:
 - **Editing docs** — see your formatting as you write
 - **Collaborating** — changes from any source show up immediately
 
+**A document whose folder is renamed stays on screen.** Rename or move the
+folder holding the document you are reading — with `mv docs/old docs/new`, in
+your editor, or by an agent — and the page switches to the document's new
+address, at the place you were reading. A folder you are looking at follows the
+same way. The file tree and the recent files follow at once.
+
+If you are reviewing the document, you go on reviewing it at its new address:
+its comments move there with it, and a comment you are in the middle of writing
+stays open. The comments move only when a Vantage page follows the document, so
+a folder renamed while no page has it open leaves them with the old address,
+and they come back if the folder does.
+
+If the folder is deleted or moved out of the directory Vantage serves, the page
+says, a moment later, that the document could not be loaded, and shows it again
+by itself if the folder comes back. If you are writing a comment just then, the
+page waits until you save or cancel it. It says the same, rather than guess,
+when a rename could have put the document in more than one place — two folders
+renamed at once, each holding a file of that name — and when a document is
+edited and then its folder renamed in the same moment while it is the only file
+in that folder, which looks just like a deletion. In both of those cases the
+file tree already shows the folder under its new name.
+
 ## Git Integration
 
 If the directory you're serving is a Git repository, Vantage provides:

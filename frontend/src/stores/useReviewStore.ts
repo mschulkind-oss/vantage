@@ -272,6 +272,21 @@ export async function postCommentTo(
 let loadSeq = 0;
 let saveSeq = 0;
 
+/**
+ * The review moves `followDocument` has asked the server for and not yet heard
+ * back from, as one chain: each waits for the one before, so a folder renamed
+ * twice in quick succession carries its review from the first new name to the
+ * second in that order. `to` is the path the last of them files it under.
+ * `loadReview` and `runCommand` for that path wait for the chain, or they read
+ * the new path's review before the move landed and found none, or wrote one
+ * that the move then had to merge into.
+ */
+let pendingMove: { to: string; done: Promise<void> } | null = null;
+
+/** The moves in flight, waited for by what reads or writes the review at `path`. */
+const moveSettled = (path: string): Promise<void> | null =>
+  pendingMove && pendingMove.to === path ? pendingMove.done : null;
+
 export interface PendingSelection {
   anchor: CommentAnchor;
   rect: DOMRect;
@@ -335,6 +350,22 @@ interface ReviewState {
 
   // Actions
   loadReview: (filePath: string) => Promise<void>;
+  /**
+   * The document at `from` is at `to` now: a directory it was in was renamed,
+   * and the viewer follows it there (useWebSocket's `onMoved`). It is the same
+   * document, so nothing about its review is switched: the comments, a comment
+   * being written, and review mode all stay as they are, and only the path the
+   * store files them under changes. `loadReview(to)` is then a reload of the
+   * same file rather than a switch to another, and review mode is written for
+   * `to` as the toggle would write it.
+   *
+   * The server keeps a review by its document's path, so it is asked to file
+   * this one under `to` (`POST /review/move`), which it does only once no
+   * document is left at `from`. Asked whether or not this store holds the
+   * review: the reader may have followed the document before its review had
+   * loaded.
+   */
+  followDocument: (from: string, to: string) => void;
   /**
    * Shared plumbing for the review command endpoints: fires the request
    * against the current repo base + file, adopts the comments the server
@@ -413,14 +444,17 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     // state (comments, pending selection, and *review mode itself*).  The
     // new file's mode is then re-derived below from whether it has saved
     // review data.  This prevents review mode from bleeding from one file
-    // to another just because it was enabled on the previous.
+    // to another just because it was enabled on the previous.  A file the
+    // reader turned it on for starts in it: its toggle is its own, and
+    // waiting for the server to confirm it took review mode's bar away and
+    // back, moving the document twice.
     const switchingFile = get().filePath !== filePath;
     if (switchingFile) {
       set({
         filePath,
         comments: [],
         pendingSelection: null,
-        isReviewMode: false,
+        isReviewMode: canEnterReviewMode() && readReviewModePref(filePath),
         // A command failure belongs to the document it happened on. It is
         // deliberately NOT cleared on a same-file reload: runCommand's error
         // path resyncs through here, and clearing there would erase the
@@ -435,6 +469,10 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
 
     const seq = ++loadSeq;
     const saveSeqAtStart = saveSeq;
+    // The review may be on its way here from the path the document was
+    // followed from, and until it lands the server has none to give.
+    const moving = moveSettled(filePath);
+    if (moving) await moving;
     // A response is stale if a newer load started, if a local write happened
     // while it was in flight, or if the user has since moved to a different
     // file.  Applying it would resurrect the previous file's comments, revert
@@ -498,6 +536,44 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     }
   },
 
+  followDocument: (from, to) => {
+    const { filePath, isReviewMode } = get();
+    if (filePath === from) {
+      if (isReviewMode && canEnterReviewMode()) writeReviewModePref(to, true);
+      set({ filePath: to });
+    }
+
+    const base = getApiBase();
+    if (!base || isStaticMode()) return;
+    // A write, so a reload of the review that started before it is stale, and
+    // a command sent after it is newer than its answer.
+    const seq = ++saveSeq;
+    const before = pendingMove?.done ?? Promise.resolve();
+    const done = before.then(async () => {
+      try {
+        const { data } = await axios.post<ReviewData | null>(
+          `${base}/review/move`,
+          { to },
+          { params: { path: from } },
+        );
+        // What the server filed under `to`, which is what this store holds
+        // unless a review was there already and the two were merged.
+        if (data?.comments && seq === saveSeq && get().filePath === to) {
+          set({ comments: data.comments });
+        }
+      } catch {
+        // Refused because the document is back at `from`, or failed: the
+        // review stays where it is, and the reload of `to` that waited for
+        // this shows what is filed there.
+      }
+    });
+    const move = { to, done };
+    pendingMove = move;
+    void done.then(() => {
+      if (pendingMove === move) pendingMove = null;
+    });
+  },
+
   clearCommandError: () => {
     set({ commandError: null });
   },
@@ -527,6 +603,11 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     const loadSeqAtStart = loadSeq;
     set({ commandError: null });
     try {
+      // A comment saved just after its document was followed is written where
+      // the review has been moved to, not beside it while the move is still on
+      // its way.
+      const moving = moveSettled(filePath);
+      if (moving) await moving;
       const res = await fn(base, filePath);
       // Adopt what the server actually persisted. Skipped if anything newer
       // has landed meanwhile: another write, a file switch, or a reload — a

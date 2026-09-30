@@ -230,3 +230,53 @@ func (h *Handlers) ReviewDismissals(w http.ResponseWriter, r *http.Request) {
 	}
 	h.writeCommandResult(w, svc.Repo, path, data, err)
 }
+
+// ReviewMove handles POST /review/move (and the /r/{repo} form): the document
+// at `path` is at the body's `to` now, because a directory it was in was
+// renamed and the viewer followed it there, so its review is filed under `to`
+// ([review.Store.Move]). It answers with the review filed under `to`, or null
+// when there is none.
+//
+// Refused with a 409 while a file is still at `path`: a review follows its
+// document, and a request that arrives after the folder has come back, or one
+// from a viewer that followed the wrong way, must not carry the review off.
+// Whether `to` exists is not asked, because a folder renamed twice in quick
+// succession has already moved on from the first new name by the time the
+// viewer asks, and the second request carries the review on from there.
+func (h *Handlers) ReviewMove(w http.ResponseWriter, r *http.Request) {
+	svc, from, ok := h.reviewCommandTarget(w, r)
+	if !ok {
+		return
+	}
+	var req struct {
+		To string `json:"to"`
+	}
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if req.To == "" || req.To == from {
+		writeError(w, http.StatusBadRequest, "to is required, and must differ from path")
+		return
+	}
+	for _, p := range []string{from, req.To} {
+		if _, _, err := svc.FS.ResolveFile(p); err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid path")
+			return
+		}
+	}
+	if _, there, _ := svc.FS.ResolveFile(from); there {
+		writeError(w, http.StatusConflict, "The document is still at path")
+		return
+	}
+	data, moved, err := h.deps.Reviews.Move(from, req.To, svc.Repo)
+	if err != nil {
+		slog.Error("api: review move failed", "from", from, "to", req.To, "error", err)
+		writeError(w, http.StatusInternalServerError, "Failed to move review")
+		return
+	}
+	if moved && h.deps.ReviewChanged != nil {
+		h.deps.ReviewChanged(svc.Repo, from)
+		h.deps.ReviewChanged(svc.Repo, req.To)
+	}
+	writeJSON(w, http.StatusOK, data)
+}

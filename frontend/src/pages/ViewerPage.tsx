@@ -111,6 +111,14 @@ const SIDEBAR_MAX_WIDTH = 800;
 const SIDEBAR_DEFAULT_WIDTH = 288;
 
 /**
+ * How long a document or folder followed to its renamed directory's new name
+ * may fail to load before the page says so. Renamed again in the meantime, it
+ * is not at that name either, and the push saying where it went next reaches
+ * the page within the watcher's and the socket's windows, well under this.
+ */
+const FOLLOW_GRACE_MS = 1500;
+
+/**
  * The remembered sidebar width, in px.
  *
  * Out-of-range and unparseable both mean the default rather than a clamp,
@@ -365,8 +373,6 @@ export const ViewerPage: React.FC = () => {
   /** The late item's class, for an item drawn from what the first paint lacked. */
   const lateUnless = (had: boolean) => (had ? undefined : LATE_CLASS);
 
-  useWebSocket();
-
   // --- Review mode ---
   const isReviewMode = useReviewStore((s) => s.isReviewMode);
   const toggleReviewMode = useReviewStore((s) => s.toggleReviewMode);
@@ -495,6 +501,56 @@ export const ViewerPage: React.FC = () => {
     [isMultiRepo, currentRepo],
   );
 
+  // A document or folder whose directory was renamed under it, which
+  // useWebSocket reports when the push shows where it went: the reader is
+  // taken to its new address and stays where they were in it, as through a
+  // live edit. The move is kept for the route and scroll effects below: `from`
+  // is the path on screen, `to` where it is being loaded from.
+  //
+  // A folder renamed again before `to` was asked for is not there either, so
+  // `to` is loaded keeping what is on screen when it fails, and the next push
+  // follows it on from `to` — which is why `from` stays the path on screen
+  // across a chain of them. Should no push come, `to` is loaded again after
+  // FOLLOW_GRACE_MS without that, and shows whether it is gone.
+  const followedRef = useRef<{ from: string; to: string } | null>(null);
+  // The address the page was last taken to by a follow, which is no
+  // navigation of the reader's: the mobile sidebar stays open through it.
+  const [followedParam, setFollowedParam] = useState<string | null>(null);
+  const followGraceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (followGraceRef.current) clearTimeout(followGraceRef.current);
+    },
+    [],
+  );
+  const followMoved = useCallback(
+    (from: string, to: string) => {
+      const previous = followedRef.current;
+      followedRef.current = {
+        from: previous && previous.to === from ? previous.from : from,
+        to,
+      };
+      useReviewStore.getState().followDocument(from, to);
+      const address = buildPath(to);
+      setFollowedParam(address.slice(1));
+      // Replaced, not pushed: the old address names nothing now. Its hash is
+      // left behind, since a line anchor applied again at the new address
+      // would scroll the reader away from where they are.
+      navigate(address, { replace: true });
+
+      if (followGraceRef.current) clearTimeout(followGraceRef.current);
+      followGraceRef.current = setTimeout(() => {
+        followGraceRef.current = null;
+        const { currentPath, requestedPath } = useRepoStore.getState();
+        if (requestedPath !== to || currentPath === to) return;
+        if (to.toLowerCase().endsWith(".md")) void loadFile(to);
+        else void viewDirectory(to);
+      }, FOLLOW_GRACE_MS);
+    },
+    [navigate, buildPath, loadFile, viewDirectory],
+  );
+  useWebSocket({ onMoved: followMoved });
+
   // Load repos on mount
   useEffect(() => {
     loadRepos();
@@ -523,7 +579,9 @@ export const ViewerPage: React.FC = () => {
   const [prevPathParam, setPrevPathParam] = useState(pathParam);
   if (prevPathParam !== pathParam) {
     setPrevPathParam(pathParam);
-    setSidebarOpen(false);
+    // A follow of a renamed folder is not the reader going anywhere.
+    if (pathParam === followedParam) setFollowedParam(null);
+    else setSidebarOpen(false);
   }
 
   // Load initial tree structure (after repos are loaded, only for single-repo mode)
@@ -562,9 +620,18 @@ export const ViewerPage: React.FC = () => {
     // has rendered, so they are in hand when it paints, or all but
     // (docs/design/planning-index-at-scale.md §11.2).
     const load = (p: string) => {
+      // Followed there, it keeps what is on screen should it have moved on
+      // again already (followMoved).
+      const followed = followedRef.current?.to === p;
       if (p.toLowerCase().endsWith(".md")) {
-        loadFile(p);
+        if (followed) loadFile(p, { keepOnFailure: true });
+        else loadFile(p);
         fetchHistory(p);
+      } else if (followed) {
+        viewDirectory(p, { keepOnFailure: true });
+        // A folder view keeps no place in it for the scroll effect to carry
+        // over, which is what clears a document's follow.
+        followedRef.current = null;
       } else {
         viewDirectory(p);
       }
@@ -661,8 +728,23 @@ export const ViewerPage: React.FC = () => {
   useEffect(() => {
     if (!fileContent || !contentRef.current) return;
 
+    // A document followed to where its renamed directory put it is the same
+    // document under a new path, so it keeps the reader's place too.
+    const followed = followedRef.current;
+    if (followed && fileContent.path !== followed.from) {
+      followedRef.current = null;
+    }
+    const isFollow =
+      followed !== null &&
+      prevPathRef.current === followed.from &&
+      fileContent.path === followed.to;
     const isSameFile = prevPathRef.current === fileContent.path;
     prevPathRef.current = fileContent.path;
+
+    // Where the reader was is where the page still is: the document stayed in
+    // its container, and whatever else moved under it the browser's scroll
+    // anchoring has already answered for. The restore below would undo that.
+    if (isFollow) return;
 
     if (isSameFile) {
       // Same file updated – keep current scroll position.
