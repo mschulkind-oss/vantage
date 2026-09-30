@@ -71,6 +71,8 @@ func TestVantageAlwaysIgnored(t *testing.T) {
 
 	require.True(t, IsAlwaysIgnored("./.vantage/inbox"), "leading ./ normalizes")
 	require.False(t, IsAlwaysIgnored(".vantageignore"), "prefix must not swallow siblings")
+	require.True(t, IsAlwaysIgnored(".VANTAGE/inbox/x.jsonl"), "on macOS this is the inbox")
+	require.True(t, disabled.IsIgnored(".Vantage", true))
 }
 
 func TestDisabledMatcherIgnoresNothing(t *testing.T) {
