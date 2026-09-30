@@ -692,9 +692,36 @@ describe("the roadmap notice (§6.4)", () => {
     ).toMatch(/^No roadmap: roadmap\.md could not be read, so Needs you/);
   });
 
-  it("says an empty list names no roadmap", () => {
+  it("says an empty list names no roadmap, and how to name one", () => {
     expect(PLANNING_NOTICES.roadmapNotice(listed(), [])).toBe(
-      "No roadmap: roadmap under [planning] in .vantage.toml is an empty list, so Needs you lists every open question by document.",
+      "No roadmap: roadmap under [planning] in .vantage.toml is an empty list, so Needs you lists every open question by document. List a roadmap there, or remove roadmap to find every roadmap.md.",
+    );
+  });
+
+  // The path is right, and finding by name would find the same retired file,
+  // so neither correcting it nor removing roadmap would help.
+  it("says to change the stage when every roadmap it found is retired by one", () => {
+    expect(
+      PLANNING_NOTICES.roadmapNotice(listed("roadmap.md"), [
+        roadmap("roadmap.md", "done"),
+      ]),
+    ).toBe(
+      "No roadmap: roadmap under [planning] in .vantage.toml lists roadmap.md, which has a stage with the done role, so Needs you lists every open question by document. Give it a stage without the done role, or list another roadmap.",
+    );
+    expect(
+      PLANNING_NOTICES.roadmapNotice(listed("a.md", "b.md"), [
+        roadmap("a.md", "done"),
+        roadmap("b.md", "done"),
+      ]),
+    ).toMatch(
+      / Give them stages without the done role, or list another roadmap\.$/,
+    );
+    expect(
+      PLANNING_NOTICES.roadmapNotice(byName, [
+        roadmap("old/roadmap.md", "done"),
+      ]),
+    ).toBe(
+      "No roadmap: old/roadmap.md has a stage with the done role, so Needs you lists every open question by document. Give it a stage without the done role, add another roadmap.md in any directory, or name one with roadmap under [planning] in .vantage.toml. A roadmap.md in a hidden directory, matched by .vantageignore, or ruled out by include or exclude is not read.",
     );
   });
 

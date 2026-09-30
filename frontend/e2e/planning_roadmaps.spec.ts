@@ -183,6 +183,109 @@ test.describe("several roadmaps", () => {
     await expect.poll(() => roadmapParam(page)).toBe(NESTED);
   });
 
+  // Late data never moves painted content (planning-index-at-scale.md §11):
+  // the roadmap line arrives with the index, above the box that held the
+  // progress line, so a section bar drawn in that box was pushed down on
+  // every cold load, at every width.
+  for (const width of [1280, 375]) {
+    test(`fills the frame on a cold load with no layout shift, at ${width} px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await page.addInitScript(() => {
+        interface Entry extends PerformanceEntry {
+          value: number;
+          hadRecentInput: boolean;
+          sources: { node: Node | null }[];
+        }
+        const shifts: { value: number; nodes: string[] }[] = [];
+        (window as unknown as { __shifts: typeof shifts }).__shifts = shifts;
+        new PerformanceObserver((list) => {
+          for (const entry of list.getEntries() as Entry[]) {
+            if (entry.hadRecentInput) continue;
+            shifts.push({
+              value: entry.value,
+              nodes: entry.sources.map((source) => {
+                const el =
+                  source.node instanceof Element
+                    ? source.node
+                    : (source.node?.parentElement ?? null);
+                return el === null
+                  ? "(none)"
+                  : `${el.tagName} ${el.className} "${(el.textContent ?? "").slice(0, 40)}"`;
+              }),
+            });
+          }
+        }).observe({ type: "layout-shift", buffered: true });
+      });
+      // Registered after beforeEach's proxy, so it runs first and hands the
+      // stream on to it once released.
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => (release = resolve));
+      await page.route("**/api/planning/stream", async (route) => {
+        await released;
+        await route.fallback();
+      });
+
+      await page.goto("/.vantage/planning");
+      await expect(page.getByRole("status")).toContainText(
+        /Reading planning documents|Scanning planning documents/,
+      );
+      release();
+      await expect(picker(page)).toHaveValue("roadmap.md");
+      await cardsIn(page, "Needs you").toEqual([
+        "OQ-A1: Which way does alpha go?",
+        "OQ-A2: How soon does alpha ship?",
+      ]);
+      // Two frames, so the observer has reported the last paint.
+      const shifts = await page.evaluate(
+        () =>
+          new Promise((resolve) =>
+            requestAnimationFrame(() =>
+              requestAnimationFrame(() =>
+                resolve((window as unknown as { __shifts: unknown }).__shifts),
+              ),
+            ),
+          ),
+      );
+      expect(shifts).toEqual([]);
+    });
+  }
+
+  // §6.4: the path is the only name that tells two roadmap.md files apart, so
+  // the closed control never cuts it off, however narrow the screen.
+  test("shows the chosen path whole on a narrow screen, wrapped inside the control", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 640 });
+    await page.goto(`/.vantage/planning?roadmap=${NESTED}`);
+    await expect(picker(page)).toHaveValue(NESTED);
+    await expect(picker(page)).toHaveAttribute("title", NESTED);
+    const shown = page.getByTestId("roadmap-shown");
+    await expect(shown).toHaveText(`${NESTED} (4 need you)`);
+    const fit = await shown.evaluate((el) => {
+      const text = el.getBoundingClientRect();
+      const control = el.parentElement!.getBoundingClientRect();
+      return {
+        // At 320 px the path and its count take two lines, which a closed
+        // native select, one line clipped to its box, cannot show.
+        wrapped: text.height > parseFloat(getComputedStyle(el).lineHeight),
+        inView: text.right <= document.documentElement.clientWidth,
+        inControl: text.right <= control.right && text.bottom <= control.bottom,
+        unclipped: el.scrollWidth <= el.clientWidth,
+      };
+    });
+    expect(fit).toEqual({
+      wrapped: true,
+      inView: true,
+      inControl: true,
+      unclipped: true,
+    });
+    // Still the native select over it, so a pick goes through.
+    await picker(page).selectOption("roadmap.md");
+    await expect(shown).toHaveText("roadmap.md (2 need you)");
+  });
+
   test("Referenced by names the roadmap that routes a document", async ({
     page,
   }) => {

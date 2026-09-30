@@ -170,6 +170,24 @@ describe("run", () => {
     expect(io.stdout).toContain("[planning.stages]");
   });
 
+  // Several roadmaps (planning-index.md §6.1, §8): the help says what the
+  // rule and the index do with them, not what a single roadmap did.
+  it("describes roadmaps as the index finds them", async () => {
+    const io = bufferIo();
+    await run(["help"], io);
+    const help = io.stdout.replace(/\s+/g, " ");
+
+    expect(help).toMatch(
+      /planning\/unrouted +An open question no roadmap routes, directly or through its document/,
+    );
+    expect(help).toContain(
+      "(default: the roadmap nearest the root that routes)",
+    );
+    expect(help).toContain(
+      "every roadmap.md the planning index reads is a roadmap (one in a hidden directory, matched by .vantageignore, or ruled out by include or exclude is not)",
+    );
+  });
+
   it("keeps every rule id apart from its summary in the help", async () => {
     const io = bufferIo();
     await run(["help"], io);

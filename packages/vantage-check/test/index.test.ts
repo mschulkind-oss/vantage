@@ -155,6 +155,24 @@ describe("index, as text", () => {
     );
   });
 
+  // An upgrade: `roadmap = "roadmap.md"` routed before a done stage did
+  // anything to a roadmap. The path is right, and finding by name would find
+  // the same file, so the notice says to change the stage instead.
+  it("says to change the stage when the one listed roadmap is retired by it", async () => {
+    const root = makeTree({
+      ".git/HEAD": "",
+      ".vantage.toml": `[planning]\nroadmap = "roadmap.md"\n\n${STAGES_TOML}`,
+      "roadmap.md": doc("stage: RETIRED", "- [A](a.md)"),
+      "a.md": doc("status: draft\nstage: DESIGN", questions("A", OPEN)),
+    });
+    const { code, stdout } = await index(root);
+
+    expect(code).toBe(EXIT_OK);
+    expect(stdout.split("\n")[0]).toBe(
+      "No roadmap: roadmap under [planning] in .vantage.toml lists roadmap.md, which has a stage with the done role, so Needs you lists every open question by document. Give it a stage without the done role, or list another roadmap.",
+    );
+  });
+
   it("lists every open question under Needs you when there is no roadmap", async () => {
     const root = makeTree({
       ".git/HEAD": "",
@@ -390,7 +408,7 @@ describe("index, with several roadmaps", () => {
         "",
         "Roadmaps (3)",
         "  roadmap.md  1 needs you  (chosen)",
-        "  docs/old/roadmap.md  not read: has a stage with the done role",
+        "  docs/old/roadmap.md  does not route: has a stage with the done role",
         "  docs/plans/roadmap.md  2 need you",
         "",
         "Needs you (1)",
@@ -426,7 +444,7 @@ describe("index, with several roadmaps", () => {
       [
         "Roadmaps (3)",
         "  roadmap.md  1 needs you",
-        "  docs/old/roadmap.md  not read: has a stage with the done role",
+        "  docs/old/roadmap.md  does not route: has a stage with the done role",
         "  docs/plans/roadmap.md  2 need you  (chosen)",
         "",
         "Needs you (2)",
