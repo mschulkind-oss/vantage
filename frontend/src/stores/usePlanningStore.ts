@@ -56,10 +56,13 @@ export type PlanningLoad =
       /**
        * Whether the build under way is warm: the scan cache held at least one
        * of this repository's results when it started (the scale design's §3).
-       * `false` until the scanner says so, and for a cold build. A document's
-       * first paint waits briefly only for a warm one (§11.3).
+       * `null` until the scanner's `started` says which, and `false` for a
+       * cold build. A document's first paint waits briefly for a warm one, and
+       * for one not yet known to be cold (§11.3): git's answers often land
+       * before `started` does, and a hold that read "not said yet" as cold
+       * ended on them and missed a warm index by a few milliseconds.
        */
-      warm: boolean;
+      warm: boolean | null;
       /**
        * Candidates handled of the header's count, once the header has come:
        * `null` before it (§10.6). As often as the scanner reports it, which is
@@ -128,7 +131,7 @@ type Loading = Extract<PlanningLoad, { status: "loading" }>;
 /** A first build, before the scanner has said anything about it. */
 const LOADING: Loading = {
   status: "loading",
-  warm: false,
+  warm: null,
   progress: null,
 };
 

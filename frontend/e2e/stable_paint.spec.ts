@@ -191,6 +191,128 @@ test("the header says nothing of git before git has answered", async ({
   await expect(header(page).getByText("Untracked file")).toHaveCount(1);
 });
 
+// §11.2: the header's git data when git answers after the hold. It may take
+// only the room the header has left: it once collapsed painted folders into
+// the "…", moving the file name 80px, or folded painted Path, Raw and Review
+// into the "⋯". A folder deep, so there are folders to collapse; the commit
+// and the history are routed, since the fixture commits only page1.md.
+test.describe("git that answers after the hold moves nothing in the header", () => {
+  const PATH = "docs/design/durable-agent-storage-classes.md";
+
+  /** Hold this document's git status and history until `release`. */
+  async function holdGit(page: Page): Promise<() => void> {
+    let release!: () => void;
+    const released = new Promise<void>((resolve) => (release = resolve));
+    const commit = (i: number) => ({
+      hexsha: String(i + 1).repeat(40),
+      author_name: "Vantage e2e",
+      author_email: "e2e@vantage.local",
+      date: new Date(Date.now() - (12 + i * 90) * 60_000).toISOString(),
+      message: `docs(design): storage classes, revision ${2 - i}`,
+    });
+    const forPath = (pathname: string) => (url: URL) =>
+      url.pathname === pathname && url.searchParams.get("path") === PATH;
+    await page.route(forPath("/api/git/status"), async (route) => {
+      await released;
+      await route.fulfill({
+        json: { last_commit: commit(0), git_status: null },
+      });
+    });
+    await page.route(forPath("/api/git/history"), async (route) => {
+      await released;
+      await route.fulfill({ json: [commit(0), commit(1)] });
+    });
+    return release;
+  }
+
+  /** Where everything drawn in the header is, by what it says. */
+  function painted(page: Page) {
+    return page.evaluate(() => {
+      const header = document.querySelector<HTMLElement>(
+        '[data-testid="viewer-header"]',
+      )!;
+      const drawn = [...header.querySelectorAll<HTMLElement>("*")].filter(
+        (el) =>
+          !(el instanceof SVGElement) &&
+          el.getClientRects().length > 0 &&
+          el.getBoundingClientRect().width > 1 &&
+          !el.closest("[data-testid='header-time'], .hdr-commit"),
+      );
+      // Named by what the element itself says, not by all the text inside
+      // it: a container's text grows with a late item, its box need not.
+      const nameOf = (el: HTMLElement) =>
+        el.getAttribute("aria-label") ||
+        el.getAttribute("title") ||
+        [...el.childNodes]
+          .filter((n) => n.nodeType === Node.TEXT_NODE)
+          .map((n) => n.textContent)
+          .join("")
+          .trim()
+          .slice(0, 30);
+      return {
+        yield: header.dataset.yield ?? "",
+        boxes: drawn.map((el) => {
+          const r = el.getBoundingClientRect();
+          const classes = [...el.classList].slice(0, 2).join(".");
+          return `${el.tagName.toLowerCase()}.${classes} "${nameOf(el)}" ${[r.x, r.y, r.width, r.height].map(Math.round).join(",")}`;
+        }),
+      };
+    });
+  }
+
+  for (const [width, height] of [
+    [1440, 900],
+    [960, 768],
+    [640, 800],
+    [390, 844],
+  ] as const) {
+    test(`at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height });
+      const release = await holdGit(page);
+      await page.goto(`/${PATH}`);
+      await expect(
+        prose(page).getByRole("heading", {
+          name: "Durable agent storage classes",
+        }),
+      ).toBeVisible();
+      await expect(header(page).getByTestId("breadcrumb-name")).toHaveAttribute(
+        "title",
+        PATH,
+      );
+      // Whatever else was on its way (the index, the recent files) is in.
+      await planningIndexReady(page);
+      await page.waitForTimeout(300);
+      const before = await painted(page);
+
+      const landed = await now(page);
+      release();
+      // The commit button is in the page, whether or not it found room.
+      await expect(header(page).getByTestId("header-time")).toHaveCount(1);
+      await expect(
+        header(page).locator('a[title="View full history: 2 commits"]'),
+      ).toHaveCount(1);
+      await page.waitForTimeout(300);
+
+      expectNoneInHeaderOrDocument(await shiftsAfter(page, landed));
+      const after = await painted(page);
+      // Every item drawn before is where it was, the same size; the only new
+      // boxes are the late ones, and none of the old ones went away.
+      expect(
+        before.boxes.filter((box) => !after.boxes.includes(box)),
+        `moved or gone; before ${JSON.stringify(before)}, after ${JSON.stringify(after)}`,
+      ).toEqual([]);
+      if (width >= 1440) {
+        // With room to spare, it takes the room: here all but the subject's,
+        // which yields first, and hides nothing that was drawn.
+        await expect(header(page).getByTestId("header-time")).toBeVisible();
+        await expect(
+          header(page).getByRole("link", { name: "2 commits" }),
+        ).toBeVisible();
+      }
+    });
+  }
+});
+
 // §11.2: link badges when the index lands after the document painted.
 test("an index that lands late badges only what has not been on screen", async ({
   page,
@@ -257,26 +379,43 @@ test("an index that lands late badges only what has not been on screen", async (
 });
 
 // §11.2: Referenced by, reserved at first paint and filled when the index
-// lands, for a document that is a planning document by its own text.
+// lands, for a document that is a planning document by its own text. At a
+// phone's width too, where the line wraps when nothing was reserved for it:
+// filling a one-line reservation with two lines moved the document down one.
 test.describe("Referenced by fills the line reserved for it", () => {
   const reserved = (page: Page) =>
     page.locator("[data-vantage-referenced-by-reserved]");
   const line = (page: Page) => page.locator("[data-vantage-referenced-by]");
 
-  for (const [path, title, says] of [
+  for (const [path, title, says, width] of [
     [
       "plans/hub.md",
       "The hub",
       "Referenced by 3 documents · on the roadmap under Later",
+      1440,
+    ],
+    [
+      "plans/hub.md",
+      "The hub",
+      "Referenced by 3 documents · on the roadmap under Later",
+      390,
     ],
     // No frontmatter: its `oq` directives alone say what it is.
     [
       "tree-badges/questions-only.md",
       "Questions only",
       /open questions not routed by the roadmap$/,
+      1440,
+    ],
+    [
+      "tree-badges/questions-only.md",
+      "Questions only",
+      /open questions not routed by the roadmap$/,
+      390,
     ],
   ] as const) {
-    test(path, async ({ page }) => {
+    test(`${path} at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 844 });
       const release = await holdTheStream(page);
       await page.goto(`/${path}`);
       const title1 = prose(page).getByRole("heading", {
@@ -294,6 +433,10 @@ test.describe("Referenced by fills the line reserved for it", () => {
       await expect(line(page)).toBeVisible();
       await expect(line(page).locator("button, div").first()).toHaveText(says);
       await expect(reserved(page)).toHaveCount(0);
+      expect((await line(page).boundingBox())?.height).toBeCloseTo(
+        slot!.height,
+        1,
+      );
 
       expect(await title1.boundingBox()).toEqual(before);
       expectNoneInHeaderOrDocument(await shiftsAfter(page, landed));

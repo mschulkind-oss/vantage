@@ -124,13 +124,27 @@ describe("useGitStore", () => {
       });
     });
 
-    it("answers a failed request with no commit", async () => {
+    // A failure is an answer, so a first paint waiting on it stops waiting,
+    // but not an untracked file's: with no commit and no mark it once read as
+    // one, and the header said "Untracked file" of a tracked file (L3).
+    it("answers a failed request as failed, not as a file with no commit", async () => {
       mockedAxios.get.mockRejectedValueOnce(new Error("Not found"));
 
       await useGitStore.getState().fetchStatus("test.md");
 
-      expect(useGitStore.getState().statusByPath["test.md"]).toEqual({
+      expect(useGitStore.getState().statusByPath["test.md"]).toStrictEqual({
         lastCommit: null,
+        gitStatus: null,
+        failed: true,
+      });
+
+      // The next request for it answers properly.
+      mockedAxios.get.mockResolvedValueOnce({
+        data: { last_commit: commit("Tracked"), git_status: null },
+      });
+      await useGitStore.getState().fetchStatus("test.md");
+      expect(useGitStore.getState().statusByPath["test.md"]).toStrictEqual({
+        lastCommit: commit("Tracked"),
         gitStatus: null,
       });
     });
