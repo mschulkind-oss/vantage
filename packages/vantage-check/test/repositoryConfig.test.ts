@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "../src/core/config.js";
 import {
@@ -14,7 +14,9 @@ import {
  * (`docs/design/planning-index.md` §9).
  */
 
-const repo = resolve(dirname(new URL(import.meta.url).pathname), "../../..");
+// import.meta.dirname, not a URL's pathname, which percent-encodes a space in
+// the checkout's path and so names a directory that is not there.
+const repo = resolve(import.meta.dirname, "../../..");
 
 /** The shared fixture's copy of the table, which the server's tests read too. */
 function fixtureTable(): PlanningConfig {
