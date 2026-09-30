@@ -5,7 +5,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"syscall"
 	"testing"
 	"time"
 
@@ -403,12 +402,9 @@ func TestAddSourceDirsWritesControlCharactersAsTOML(t *testing.T) {
 // and it runs on those.
 func TestAddSourceDirsRefusesANameTOMLCannotHold(t *testing.T) {
 	home, cfgPath := sourceDirsFixture(t)
+	// No directory is made: macOS's filesystems refuse the name (EILSEQ), and
+	// the name is refused before anything looks for the directory.
 	bad := filepath.Join(home, "bad\xffbyte")
-	if err := os.MkdirAll(bad, 0o755); errors.Is(err, syscall.EILSEQ) {
-		t.Skipf("this filesystem cannot hold a name that is not UTF-8: %v", err)
-	} else {
-		require.NoError(t, err)
-	}
 	_, err := AddSourceDirs(cfgPath, []string{bad}, editTime)
 	require.ErrorContains(t, err, "not valid UTF-8")
 	require.NoFileExists(t, cfgPath)
