@@ -301,20 +301,18 @@ test.describe("the planning scan cache", () => {
     expect(held["stamps"]).not.toContain(ROADMAP);
   });
 
-  test("a tab whose IndexedDB cannot be opened builds cold every time, and still has its cards", async ({
+  test("a tab whose IndexedDB cannot be opened or made again builds cold every time, and still has its cards", async ({
     page,
   }) => {
     // The database already exists at a later version than the scanner asks
-    // for, so the worker's open fails with a VersionError: the real
-    // IndexedDB refusing it, with nothing stubbed.
+    // for, so the worker's open fails with a VersionError; and the page holds
+    // it open and will not let go, so deleting it to make it again is
+    // blocked. The real IndexedDB refusing it, with nothing stubbed.
     await page.addInitScript(() => {
       const opening = indexedDB.open("vantage-planning", 999);
       (window as unknown as { __refused: Promise<boolean> }).__refused =
         new Promise((resolve) => {
-          opening.onsuccess = () => {
-            opening.result.close();
-            resolve(true);
-          };
+          opening.onsuccess = () => resolve(true);
           opening.onerror = () => resolve(false);
         });
     });
@@ -343,5 +341,152 @@ test.describe("the planning scan cache", () => {
     const second = streams[1] ?? { have: {}, lines: [] };
     expect(second.have).toEqual({});
     expect(second.lines.filter((line) => line.kind === "same")).toEqual([]);
+  });
+
+  for (const [what, seed] of [
+    [
+      "left at a later version by a newer Vantage",
+      () =>
+        new Promise<void>((resolve, reject) => {
+          const opening = indexedDB.open("vantage-planning", 999);
+          opening.onerror = () => reject(opening.error);
+          opening.onsuccess = () => {
+            opening.result.close();
+            resolve();
+          };
+        }),
+    ],
+    [
+      "without one of its stores",
+      () =>
+        new Promise<void>((resolve, reject) => {
+          const opening = indexedDB.open("vantage-planning", 1);
+          opening.onerror = () => reject(opening.error);
+          opening.onupgradeneeded = () => {
+            for (const name of ["meta", "stamps", "documents"]) {
+              opening.result.createObjectStore(name);
+            }
+          };
+          opening.onsuccess = () => {
+            opening.result.close();
+            resolve();
+          };
+        }),
+    ],
+  ] as const) {
+    test(`a database ${what} is made again, so the next load is warm`, async ({
+      page,
+    }) => {
+      // Seeded from a page of the same origin that is not the app, so no
+      // scan worker is running yet.
+      await page.goto("/api/health");
+      await page.evaluate(seed);
+      const streams = await recordStreams(page);
+      await planningPage(page);
+      expect(streams[0]?.have).toEqual({});
+
+      await planningPage(page, true);
+      expect(streams).toHaveLength(2);
+      const warm = streams[1] ?? { have: {}, lines: [] };
+      expect(Object.keys(warm.have).length).toBeGreaterThan(10);
+      expect(
+        warm.lines.filter((line) => line.kind === "same").length,
+      ).toBeGreaterThan(10);
+      // Every store is there, and holds this load's results.
+      const held = await storedPaths(page);
+      for (const name of ["stamps", "documents", "cards"]) {
+        expect(held[name]).toContain("plans/unrouted.md");
+      }
+    });
+  }
+
+  test("a tab on other code writes and reads nothing once another tab has stamped the database with its own scanner", async ({
+    page,
+  }) => {
+    // Two connections in one page stand in for two tabs, whose scan workers
+    // were built from different code. Not the app's page, so its own scan
+    // worker is not a third.
+    await page.goto("/api/health");
+    const seen = await page.evaluate(async () => {
+      const storePath = "/src/planningScan/store.ts";
+      const cachePath = "/src/planningScan/cache.ts";
+      const { idbScanStore } = await import(/* @vite-ignore */ storePath);
+      const { scanCache } = await import(/* @vite-ignore */ cachePath);
+      const logged: string[] = [];
+      const older = idbScanStore();
+      const olderCache = scanCache(older, "1:OLDSOURCE:UA", (error: unknown) =>
+        logged.push(String(error)),
+      );
+      // Opened, under the older code's id.
+      await olderCache.stamps("");
+
+      const newer = idbScanStore();
+      await newer.open("1:NEWSOURCE:UA");
+      await newer.write("", [
+        { path: "plans/b.md", hash: "h2", kind: "not-planning" },
+      ]);
+
+      const refusal = async (op: () => Promise<unknown>) => {
+        try {
+          await op();
+          return null;
+        } catch (error) {
+          return String(error);
+        }
+      };
+      const stamp = {
+        path: "plans/a.md",
+        hash: "h1",
+        kind: "planning",
+        document: { path: "plans/a.md", title: "scanned by the older code" },
+        blocks: [],
+      };
+      const refused = {
+        write: await refusal(() => older.write("", [stamp])),
+        collect: await refusal(() => older.collect("", new Set())),
+        stamps: await refusal(() => older.stamps("")),
+        cards: await refusal(() => older.cards("", "plans/b.md")),
+      };
+      // Through the cache, the refusal turns it off for the tab, once.
+      await olderCache.write("", [stamp]);
+      return {
+        refused,
+        enabled: olderCache.enabled as boolean,
+        logged,
+        stamps: await newer.stamps(""),
+        documents: await newer.documents(""),
+      };
+    });
+
+    for (const refusal of Object.values(seen.refused)) {
+      expect(refusal).toContain("another scanner");
+    }
+    expect(seen.enabled).toBe(false);
+    expect(seen.logged).toHaveLength(1);
+    // The newer code's results are all the database holds.
+    expect(seen.stamps).toEqual([
+      { path: "plans/b.md", hash: "h2", kind: "not-planning" },
+    ]);
+    expect(seen.documents).toEqual([]);
+  });
+
+  test("a tab whose scan worker's code cannot be loaded builds on its own thread, with the cache", async ({
+    page,
+  }) => {
+    // The worker is made, and its script never arrives: what a network
+    // error, a chunk the server no longer has, or a browser without module
+    // workers looks like.
+    await page.route(/\/planningScan\/worker\.ts\?worker_file/, (route) =>
+      route.abort(),
+    );
+    const streams = await recordStreams(page);
+    await planningPage(page);
+    await expect(page.getByText("The planning scan stopped")).toHaveCount(0);
+    expect(streams).toHaveLength(1);
+
+    // The inline client keeps the scan cache too, so a reload is warm.
+    await planningPage(page, true);
+    expect(streams).toHaveLength(2);
+    expect(Object.keys(streams[1]?.have ?? {}).length).toBeGreaterThan(10);
   });
 });

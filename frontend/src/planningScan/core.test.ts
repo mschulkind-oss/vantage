@@ -773,6 +773,26 @@ describe("cards", () => {
     expect(server.pathRequests()).toEqual(["plans/a.md", "plans/a.md"]);
   });
 
+  it("read a file under the config they carry while no build of this core has said", async () => {
+    // A scan worker started after the last one died idle: no header, and the
+    // roadmap's blocks, which lived in the dead one's memory, are gone.
+    const { store, written } = writeSpy();
+    const { core, server } = setup({}, store);
+    const answers = await core.cards({
+      repo: "",
+      apiBase: "/api",
+      want: want(CONFIG.roadmap),
+      full: false,
+      config: planningConfig(CONFIG),
+    });
+    expect(answers).toEqual([
+      { path: CONFIG.roadmap, block: blocksOf(CONFIG.roadmap)[0] },
+    ]);
+    expect(server.pathRequests()).toEqual([CONFIG.roadmap]);
+    // Scanned as the roadmap: kept in memory, never stored.
+    expect(written).toEqual([]);
+  });
+
   it("reject when the file cannot be read", async () => {
     const store = memoryScanStore();
     const { core, server } = setup({}, store);
@@ -878,6 +898,46 @@ describe("a refresh", () => {
   it("answers null before any build has said which file is the roadmap", async () => {
     const { core } = setup();
     expect(await refresh(core, "plans/a.md")).toBeNull();
+  });
+
+  it("scans under the config it carries while no build of this core has said", async () => {
+    // A scan worker started after the last one died idle has seen no header.
+    const { store, written } = writeSpy();
+    const { core } = setup({}, store);
+    const config = planningConfig(CONFIG);
+    const roadmap = await core.refresh({
+      repo: "",
+      apiBase: "/api",
+      seq: 9,
+      path: CONFIG.roadmap,
+      config,
+    });
+    expect(roadmap).toMatchObject({ kind: "file", path: CONFIG.roadmap });
+    const entry = await core.refresh({
+      repo: "",
+      apiBase: "/api",
+      seq: 10,
+      path: "plans/a.md",
+      config,
+    });
+    expect(entry).toMatchObject({ kind: "file", path: "plans/a.md" });
+    // The roadmap it named is never stored; the other file is.
+    expect(written).toEqual(["plans/a.md"]);
+  });
+
+  it("scans under its core's own header over the config it carries", async () => {
+    const { store, written } = writeSpy();
+    const { core } = setup({}, store);
+    await build(core);
+    written.length = 0;
+    await core.refresh({
+      repo: "",
+      apiBase: "/api",
+      seq: 9,
+      path: CONFIG.roadmap,
+      config: planningConfig({ roadmap: "elsewhere.md" }),
+    });
+    expect(written).toEqual([]);
   });
 
   it("scans under the header of the build in flight", async () => {
@@ -1053,8 +1113,11 @@ describe("helpers, for a cold build", () => {
     options: {
       cores?: number;
       limits?: Parameters<typeof setPlanningLimitsForTests>[0];
-      /** A helper's end of its channel, served; the real handler by default. */
-      serve?: (port: MessagePort) => void;
+      /**
+       * A helper's end of its channel, served; the real handler by default.
+       * `at` is its place among the build's helpers.
+       */
+      serve?: (port: MessagePort, at: number) => void;
       /** Stands in for the server's `fetch`. */
       fetch?: (server: FakeServer) => typeof fetch;
       /** Called once the helpers are attached. */
@@ -1079,7 +1142,7 @@ describe("helpers, for a cold build", () => {
           const ports = Array.from({ length: count }, () => {
             const channel = new MessageChannel();
             channels.push(channel);
-            (options.serve ?? serveHelper)(channel.port1);
+            (options.serve ?? serveHelper)(channel.port1, helpers.length);
             const helper: Helper = { sent: [], ended: false };
             helpers.push(helper);
             return recording(channel.port2, helper);
@@ -1212,6 +1275,59 @@ describe("helpers, for a cold build", () => {
     });
     expect(rig.asked).toHaveLength(1);
     expect(rig.helpers.map((helper) => helper.ended)).toEqual([true, true]);
+  });
+
+  it("reads again, by path, what a helper that never loaded was handed, and goes on without it", async () => {
+    // The first helper's code never loads: it takes what it is sent and
+    // answers none of it, so the build waits on it until it is lost.
+    let sentWhenLost = -1;
+    const rig = helperRig({
+      limits: { progressMs: 0 },
+      serve: (port, at) => {
+        if (at !== 0) {
+          serveHelper(port);
+          return;
+        }
+        port.onmessage = () =>
+          setTimeout(() => {
+            if (sentWhenLost !== -1) return;
+            sentWhenLost = rig.helpers[0]?.sent.length ?? 0;
+            rig.core.helperLost("", 1, 0);
+          });
+      },
+    });
+    const events = await build(rig.core);
+    expect(events.at(-1)).toEqual({ type: "ready" });
+
+    const lost = rig.helpers[0]?.sent ?? [];
+    expect(lost.length).toBeGreaterThan(0);
+    // Each of its lines was fetched again, and nothing else was.
+    expect(rig.server.pathRequests().sort()).toEqual([...lost].sort());
+    // The index is a one-thread build's, each candidate counted and written
+    // once, and the lost helper was sent nothing after it was lost.
+    expect(lost).toHaveLength(sentWhenLost);
+    expect(indexFrom(events)).toEqual(indexOf(HTREE, CONFIG));
+    expect(events.filter((event) => event.type === "progress").at(-1)).toEqual({
+      type: "progress",
+      done: 6,
+      total: 6,
+    });
+    expect([...rig.written].sort()).toEqual(STORED);
+    expect(rig.helpers[0]?.ended).toBe(true);
+    expect(rig.helpers[1]?.ended).toBe(true);
+  });
+
+  it("ignores a lost helper of another build, or one it never had", async () => {
+    const rig = helperRig({
+      attached: (core) => {
+        core.helperLost("", 2, 0);
+        core.helperLost("", 1, 5);
+      },
+    });
+    const events = await build(rig.core);
+    expect(events.at(-1)).toEqual({ type: "ready" });
+    expect(rig.server.pathRequests()).toEqual([]);
+    expect(indexFrom(events)).toEqual(indexOf(HTREE, CONFIG));
   });
 
   it("fails the build when a helper cannot scan a file, and ends them all", async () => {

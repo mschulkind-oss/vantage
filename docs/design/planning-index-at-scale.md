@@ -365,9 +365,19 @@ It replaces the page's one `GET /review` per listed document
   ([`usePlanningStore.ts:224`](../../frontend/src/stores/usePlanningStore.ts#L224)), whose reason
   was a corpus of this repository's size. The corpora that matter now are 300 to 1,000 documents.
 - **If it cannot be created**, the scanner client is the inline one ([§7.6](#76-the-inline-client)).
-- **If it dies mid-build** (an `error` or `messageerror` event), that build fails with *The
-  planning scan stopped*, and Retry starts a new worker. A refresh in flight is dropped, and the
-  next push for that path asks again, as a failed fetch does today.
+  That covers a worker whose code never loads, which is how it happens in practice: a network
+  error, a chunk the server no longer has, a content security policy, or a browser without module
+  workers. The browser still creates the worker, and reports the failure later as an `error`
+  event. So the worker posts `hello` once its code has loaded, and the client counts an `error` or
+  `messageerror` before that `hello` as *cannot be created*. The builds and requests already sent
+  to that worker go to the inline client, and so does everything after them.
+- **If it dies mid-build** (an `error` or `messageerror` event after its `hello`), that build fails
+  with *The planning scan stopped*, and Retry starts a new worker. A refresh in flight is dropped,
+  and the next push for that path asks again, as a failed fetch does today.
+- **If it dies idle,** the next request starts a new worker, which has seen no header. So each
+  `refresh` and `cards` request carries the config of the last header the client relayed for its
+  repository. A worker uses it only while it has heard no header of its own, so a push after the
+  death still scans under the repository's config.
 - **Never terminated** while the tab lives. Idle, it holds its code and no documents.
 
 ### 7.2 Messages
@@ -379,9 +389,11 @@ Every message is plain JSON-able data, which the planning module already promise
 | :--- | :--- | :--- |
 | main → worker | `build {repo, apiBase, seq, bypassCache}` | `started {seq, warm}`, `header`, `documents` (repeated), `progress` (at most every 100 ms), then `ready` or `failed` |
 | main → worker | `cancel {repo, seq}` | none |
-| main → worker | `refresh {repo, apiBase, seq, path}` | `scanned {seq, entry}` or `failed` |
-| main → worker | `cards {repo, reqId, want: [{path, hash, startLine}], full}` | `cards {reqId, blocks}`, each a block or `stale` |
+| main → worker | `refresh {repo, apiBase, seq, path, config}` | `scanned {seq, entry}` or `failed` |
+| main → worker | `cards {repo, reqId, want: [{path, hash, startLine}], full, config}` | `cards {reqId, blocks}`, each a block or `stale` |
 | main → worker | `quotes {repo, reqId, want: [{path, hash, lines}]}` | `quotes {reqId, lines}` |
+| main → worker | `helper-lost {seq, at}` ([§7.5](#75-helpers-for-a-cold-build)) | none; the worker reads that helper's lines again |
+| worker → main | `hello`, once its code has loaded, from the scan worker and from each helper | none |
 | worker → main | `helpers {seq, count}` ([§7.5](#75-helpers-for-a-cold-build)) | the main thread creates that many helpers and hands the worker one `MessagePort` for each |
 
 `documents` carries planning documents with their hashes, plus unreadable results. A
@@ -440,6 +452,12 @@ A cold build at 1,000 documents is about 8–12 s of scanning on one thread. Hel
   the scan worker stops reading the stream, which holds the server back.
 - **Helpers return results only.** The scan worker alone writes the cache and posts to the store.
   The store sorts at finish, so the order results arrive in does not matter.
+- **A helper whose code never loads is dropped, and the build goes on.** The main thread sees an
+  `error` before that helper's `hello` and sends the scan worker `helper-lost`, naming the helper
+  by its place among the build's ports. The scan worker hands it nothing more. It fetches each
+  line it had handed that helper again through the single-path mode, one at a time, since it kept
+  none of their content. A helper that dies after its `hello` fails its build, as the scan
+  worker's own death does.
 - **Ended with the build**, whether it is ready, failed or cancelled.
 - **Estimated gain:** 8–12 s down to 2.5–4 s at 1,000 documents with four threads.
 
@@ -449,7 +467,7 @@ A cold build at 1,000 documents is about 8–12 s of scanning on one thread. Hel
   at 8 ms as today.
 - **It serves** unit tests (jsdom has no `Worker`, and no IndexedDB either:
   [§8.1](#81-what-it-keeps-and-under-which-key)) and browsers where the worker cannot be
-  created.
+  created, or its code cannot be loaded ([§7.1](#71-lifecycle)).
 - **It is not a fallback for a worker that crashed.** A crash on some file would crash the page
   the same way.
 
@@ -501,8 +519,11 @@ server on `:8201` each have their own.
   `packages/vantage-md/src/`, the one directory of `frontend/src/` that holds the worker's own
   code, and `package-lock.json`. A production build computes it once. The dev server recomputes it when one
   of those files changes, **so the dev server keeps a warm cache too**.
-- **A production build fails** if the worker's bundle holds a module outside those roots
+- **A production build fails** if the worker's build loads a module outside those roots
   (packages under `node_modules` are covered by the lockfile). That is what keeps the id honest.
+  The check covers the build's whole module graph, not only the modules rendered into the bundle.
+  A module whose one export is a constant has that constant inlined into its importer, and is then
+  rendered nowhere.
 - **The user agent** is in the id because `leadingMarker`'s `\p{L}` follows the browser's own
   Unicode tables. A browser upgrade therefore gives a new id.
 - **A mismatch when the database opens clears every store,** and one cold build follows.
@@ -515,8 +536,20 @@ server on `:8201` each have their own.
 - **If IndexedDB is missing, over quota or throws** (private windows, storage disabled), the
   worker logs it once and runs without a cache for the rest of the tab ([§8.4](#84-without-it)).
   An evicted database is simply a cold build.
+- **A database this code cannot use is made again.** Such a database is at a later version, as a
+  newer Vantage leaves it, or lacks one of its stores. Opening it would fail in every tab on every
+  load, until the reader cleared the site's data. It is only a cache, so the open deletes it and
+  opens once more. The tab runs without a cache only if that fails too, as when another tab holds
+  the database open and will not let go.
 - **Two tabs** may build the same repository at once. Every write is a pure result, so the last
   write wins and every write is right. Nothing coordinates them.
+- **Two tabs on different code** hold different scanner ids, and the second to open clears the
+  database and stamps its own. So every read and write reads `meta` in its own transaction, and
+  touches no record unless `meta` still holds the id its tab opened with. Otherwise it aborts,
+  which turns the cache off for that tab by the rule above. A tab on the older code then neither
+  writes results the newer code would trust nor reads the newer code's results. The app reloads
+  on a new server version, which makes this rare; it still happens to a tab whose websocket never
+  reconnects.
 - **Retry sends `bypassCache`**: no `have`, and every entry for the repository is rewritten.
 - **A `.vantage.toml` push rescans with the cache.** No setting changes a scan result:
   `include` and `exclude` decide which candidates exist, `stages` enter only the derivations, and
@@ -735,9 +768,12 @@ review mode's 4 px bar. Each is its own fix.
 | :--- | :--- |
 | The stream request fails, or its first line is not a header (a static host's `index.html`) | `error`, with Retry, as today; the shape message names a static host |
 | The stream ends without `end`, or a line does not parse | the build fails: `error` with Retry, as a failed batch is today. Cache writes already made stay valid |
-| The worker cannot be created | the inline client, sliced as today |
+| The worker cannot be created, or its code never loads (an `error` before its `hello`) | the inline client, sliced as today, with what was sent to the worker |
 | The worker dies | that build fails with *The planning scan stopped*; Retry starts a new worker |
+| A helper's code never loads | the build goes on without it; the scan worker reads that helper's lines again |
 | IndexedDB is unavailable, full or throws | no cache for the tab; every load is cold |
+| The database is at a later version, or lacks a store | deleted and made again, once; one cold build |
+| Another tab, on other code, stamped the database since this tab opened it | no cache for this tab; the other tab's results are untouched |
 | The scanner id changed (a release, a browser upgrade, a vantage-md edit in dev) | every store cleared; one cold build |
 | A file changes between the stream and the next push | the stream line carries its own hash; the push refreshes it |
 | A card block comes back `stale` | the path refreshes; the previous page stays until it lands |

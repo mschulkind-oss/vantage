@@ -87,3 +87,8 @@ scope.onmessage = ({ data }) => {
   handle ??= scanWorker();
   handle(data);
 };
+
+// Loaded, as the scan worker or as a helper: the main thread counts a worker
+// that fails before this as one whose code never loaded, so the tab moves to
+// the inline client, or the build goes on without that helper (§7.1, §7.5).
+post({ type: "hello" });
