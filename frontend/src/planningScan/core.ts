@@ -1135,6 +1135,8 @@ function chunker(send: (event: BuildEvent) => void) {
 export type WorkerRequest =
   | ({ type: "build" } & BuildRequest)
   | { type: "cancel"; repo: string; seq: number }
+  /** The helpers a build asked for: one port each, transferred (§7.5). */
+  | { type: "helpers"; repo: string; seq: number; ports: HelperPort[] }
   | ({ type: "refresh"; id: number } & RefreshRequest)
   | {
       type: "cards";
@@ -1155,6 +1157,8 @@ export type WorkerRequest =
 /** What the scan worker answers. Every one is plain JSON-able data. */
 export type WorkerReply =
   | { type: "build"; repo: string; seq: number; event: BuildEvent }
+  /** Make `count` helpers for this build, and send back their ports. */
+  | { type: "helpers"; repo: string; seq: number; count: number }
   | { type: "scanned"; id: number; entry: ScannedEntry | null }
   | { type: "cards"; id: number; answers: CardAnswer[] }
   | { type: "quotes"; id: number; quotes: Quotes }
@@ -1179,6 +1183,9 @@ export function scanWorkerHandler(
       }
       case "cancel":
         core.cancel(request.repo, request.seq);
+        return;
+      case "helpers":
+        core.attachHelpers(request.repo, request.seq, request.ports);
         return;
       case "refresh": {
         const { id, repo, apiBase, seq, path } = request;
