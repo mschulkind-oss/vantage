@@ -170,6 +170,12 @@ type Watcher struct {
 	// path, the root excepted. It is what lets a Rename or Remove event be told
 	// apart as a directory going away, which by then can no longer be stat'ed.
 	dirs map[string]struct{}
+	// removedDirs is the directories most recently removed while watched — not
+	// renamed — by repo-relative slash path, the newest last, less those a later
+	// rename has cleared ([Watcher.forgetRemoved]). It is what tells the last
+	// event from a file that was in one apart from an event from a renamed
+	// directory's stale watch; see [Watcher.lastWordOfRemoved].
+	removedDirs []string
 	// closed records a Close that arrived before Start. Without it that Close
 	// found a nil fsw, did nothing, and left the watcher running for the life
 	// of the process — a repository retired in the same breath as it was
@@ -511,11 +517,12 @@ func (w *Watcher) handleEvent(ev fsnotify.Event, co *coalescer) {
 	w.stats.eventsTotal++
 	w.mu.Unlock()
 
-	if w.fromUnwatchedDir(ev.Name) {
+	if w.fromUnwatchedDir(ev.Name) && !w.lastWordOfRemoved(ev) {
 		// A watch on a file that has outlived its directory's: on macOS and the
 		// BSDs, a renamed directory's files go on reporting under the old name
 		// (see [Watcher.fromUnwatchedDir]). The watch is dropped as well, which
-		// gives back the file it holds open.
+		// gives back the file it holds open. A removed directory's file saying
+		// that it is gone too is kept, even when the directory was heard first.
 		w.unregisterWatch(ev.Name)
 		w.countEntry(ev.Name, -1)
 		w.mu.Lock()
@@ -581,11 +588,13 @@ func (w *Watcher) handleEvent(ev fsnotify.Event, co *coalescer) {
 	}
 	rel = filepath.ToSlash(rel)
 
-	// A watched directory renamed away or removed yields no file paths at all:
-	// its files move or vanish without an event of their own. It is reported
-	// as a removed directory instead, so a consumer holding paths under it can
-	// drop them. The old name can no longer be stat'ed, so the watch set is
-	// what says it was a directory.
+	// A watched directory renamed away yields no file paths at all: its files
+	// move without an event of their own. It is reported as a removed directory
+	// instead, so a consumer holding paths under it can drop them. A removed
+	// one is reported the same way, and its files are pushed as well, each by
+	// the event of its own removal, which can arrive after the directory's (see
+	// [Watcher.lastWordOfRemoved]). The old name can no longer be stat'ed, so
+	// the watch set is what says it was a directory.
 	if ev.Has(fsnotify.Rename) || ev.Has(fsnotify.Remove) {
 		if gone := w.forgetDir(rel); len(gone) > 0 {
 			if ev.Has(fsnotify.Rename) {
@@ -601,7 +610,9 @@ func (w *Watcher) handleEvent(ev fsnotify.Event, co *coalescer) {
 				// keeps those open under their old names, until each is dropped
 				// as an event from an unwatched directory or the watcher stops.
 				w.releaseFiles(slices.DeleteFunc(gone, func(dir string) bool { return dir == rel })...)
+				w.forgetRemoved(rel)
 			} else {
+				w.rememberRemoved(rel)
 				w.releaseFiles(gone...)
 			}
 			if top, _, _ := strings.Cut(rel, "/"); top == ".git" || top == ".vantage" {
@@ -788,12 +799,19 @@ func splitBatch(batch []string) (paths, removedDirs []string) {
 // filesChangedMessage is the broadcast payload for a coalesced change set.
 //
 // RemovedDirs names each watched directory that was renamed away or removed,
-// by the path it had: everything a consumer holds under it is gone, and no path
-// in Paths says so. It is omitted when empty, so the message older consumers
-// know is unchanged. A path in Paths may lie under a removed directory — a file
-// deleted along with it, or one written after the directory was replaced
-// within the window — so a consumer drops the directories first and then
-// refreshes each path, whose own answer says which it was.
+// by the path it had: everything a consumer holds under it is gone. It is
+// omitted when empty, so the message older consumers know is unchanged. A path
+// in Paths may lie under a removed directory — a file deleted along with it, or
+// one written after the directory was replaced within the window — so a
+// consumer drops the directories first and then refreshes each path, whose own
+// answer says which it was.
+//
+// Only the planning index reads RemovedDirs. The viewer ignores a push whose
+// Paths is empty, and reloads the document on screen only when its path is
+// among them, so each content file of a directory that is removed is named in
+// Paths as well, however late its removal is heard (see
+// [Watcher.lastWordOfRemoved]). A renamed directory's files are not: they move
+// without an event of their own, and RemovedDirs is the only report of them.
 type filesChangedMessage struct {
 	Type        string   `json:"type"`
 	Repo        string   `json:"repo,omitempty"`
@@ -1099,6 +1117,81 @@ func (w *Watcher) fromUnwatchedDir(name string) bool {
 	_, parentWatched := w.dirs[parent]
 	_, isWatchedDir := w.dirs[rel]
 	return !parentWatched && !isWatchedDir
+}
+
+// removedDirsKept is how many directories [Watcher.removedDirs] holds at most.
+// Each is needed only briefly, because every file in a directory is gone before
+// the directory can be removed, so its files' last events are queued already
+// when the directory's own is read. The cap bounds the list, which otherwise
+// only a rename shortens ([Watcher.forgetRemoved]).
+const removedDirsKept = 64
+
+// rememberRemoved records rel, a watched directory that has just been removed,
+// in [Watcher.removedDirs] in place of any directory inside it that is there
+// already, dropping the oldest record once there are [removedDirsKept].
+func (w *Watcher) rememberRemoved(rel string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.removedDirs = slices.DeleteFunc(w.removedDirs, func(dir string) bool {
+		return dir == rel || strings.HasPrefix(dir, rel+"/")
+	})
+	w.removedDirs = append(w.removedDirs, rel)
+	if over := len(w.removedDirs) - removedDirsKept; over > 0 {
+		w.removedDirs = slices.Delete(w.removedDirs, 0, over)
+	}
+}
+
+// forgetRemoved drops from [Watcher.removedDirs] the record of rel, a watched
+// directory just renamed away, and that of any directory it is inside. Either
+// means rel was made after that removal, and a file directly inside rel goes on
+// reporting under rel's name after the rename, as every renamed directory's
+// file does (see [Watcher.fromUnwatchedDir]): the record would keep that stale
+// event. A record of a directory inside rel is left to the cap: no file directly
+// inside rel lies below it.
+//
+// Forgetting loses nothing. Each file's last event from the removal was queued
+// before its directory was removed, so before rel could be made, watched and
+// renamed. kqueue hands events over in the order each watch's first was
+// queued, and rel's rename is reported by a watch registered after rel was
+// made, so it is heard after them. Being watched again is no such sign: after
+// `rm -rf docs/gone && mkdir docs/gone`, docs/gone's Create can be heard before
+// a late removal of docs/gone/sub/b.md, which still needs the record.
+func (w *Watcher) forgetRemoved(rel string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.removedDirs = slices.DeleteFunc(w.removedDirs, func(dir string) bool {
+		return dir == rel || strings.HasPrefix(rel, dir+"/")
+	})
+}
+
+// lastWordOfRemoved reports whether ev, an event from a directory that is not
+// watched, is the last a file sends: a Remove or a Rename, of a file that was in
+// one of [Watcher.removedDirs] or in a directory below one.
+//
+// A directory can be removed only once it is empty, so each of its files was
+// removed or moved out first. On Linux that is also the order they are heard
+// in. On macOS and the BSDs it need not be. kqueue keeps one event per watch
+// and adds each change to the one already queued, so a directory's removal
+// joins the event queued by the first of its entries to go, ahead of the files
+// that went after that one. When `rm -rf docs/gone` removes docs/gone/sub before
+// docs/gone/a.md, docs/gone is gone, and no longer watched, by the time a.md's
+// removal is heard. That event is the only report of a.md's path, which the
+// viewer needs (see [filesChangedMessage]), and unlike an event from a renamed
+// directory's file, it names the file by the path it had.
+func (w *Watcher) lastWordOfRemoved(ev fsnotify.Event) bool {
+	if !ev.Has(fsnotify.Remove) && !ev.Has(fsnotify.Rename) {
+		return false
+	}
+	rel, err := filepath.Rel(w.root, ev.Name)
+	if err != nil {
+		return false
+	}
+	parent := path.Dir(filepath.ToSlash(rel))
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return slices.ContainsFunc(w.removedDirs, func(dir string) bool {
+		return parent == dir || strings.HasPrefix(parent, dir+"/")
+	})
 }
 
 // unregisterWatch drops the watch on one directory, if there still is one. A
