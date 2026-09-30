@@ -3,6 +3,12 @@
  * worker per tab, running the scanner's core over the scan cache in
  * IndexedDB. A thin `onmessage` adapter; everything it does is `core.ts`'s.
  *
+ * A worker of this chunk is a **helper** instead (§7.5) when its first message
+ * is a `helper` start: it then scans what comes in through that message's port
+ * and does nothing else. It never makes the core, so it never opens the cache
+ * or posts to the page. The two share one chunk, so a helper runs exactly the
+ * code whose scanner id the results are stored under.
+ *
  * Every module it imports sits in this directory or in `packages/vantage-md/`,
  * which the scanner id hashes, and the production build fails if one does not
  * (`scannerId.ts`).
@@ -14,6 +20,8 @@ import {
   messageYield,
   scanWorkerHandler,
   scannerCore,
+  serveHelper,
+  type HelperStart,
   type WorkerReply,
   type WorkerRequest,
 } from "./core";
@@ -25,19 +33,39 @@ import { idbScanStore } from "./store";
  * beside it clashes.
  */
 interface ScanWorkerScope {
-  onmessage: ((event: MessageEvent<WorkerRequest>) => void) | null;
+  onmessage:
+    ((event: MessageEvent<WorkerRequest | HelperStart>) => void) | null;
   postMessage(reply: WorkerReply): void;
 }
 
 const scope = self as unknown as ScanWorkerScope;
+const post = (reply: WorkerReply) => scope.postMessage(reply);
 
-const core = scannerCore({
-  cache: scanCache(
-    idbScanStore(),
-    scannerIdOf(sourceHash, navigator.userAgent),
-  ),
-  yieldNow: messageYield(),
-});
+const scanWorker = (): ((request: WorkerRequest) => void) =>
+  scanWorkerHandler(
+    scannerCore({
+      cache: scanCache(
+        idbScanStore(),
+        scannerIdOf(sourceHash, navigator.userAgent),
+      ),
+      yieldNow: messageYield(),
+      helpers: {
+        cores: navigator.hardwareConcurrency,
+        ask: (repo, seq, count) => post({ type: "helpers", repo, seq, count }),
+      },
+    }),
+    post,
+  );
 
-const handle = scanWorkerHandler(core, (reply) => scope.postMessage(reply));
-scope.onmessage = (event) => handle(event.data);
+/** Made on the first request: a helper never makes it. */
+let handle: ((request: WorkerRequest) => void) | null = null;
+
+scope.onmessage = ({ data }) => {
+  if (data.type === "helper") {
+    scope.onmessage = null;
+    serveHelper(data.port);
+    return;
+  }
+  handle ??= scanWorker();
+  handle(data);
+};
