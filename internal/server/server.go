@@ -718,17 +718,23 @@ func (s *Server) startWatcher(ctx context.Context, rs *repoServices) {
 }
 
 // watcherFailed reports that repo's watcher stopped or never started, which
-// leaves the whole project without live reload. The usual cause is the
+// leaves the whole project without live reload. The usual cause on Linux is the
 // system's limit on inotify instances: a directory of clones takes one per
 // clone, and the kernel's default of 128 per user is shared with every other
-// program the user runs.
+// program the user runs. On macOS a watcher's kqueue is one more open file, so
+// there it is the open-file limit, which every watched file counts against.
 func (s *Server) watcherFailed(repo string, err error) {
 	msg := "Live reload is off for this whole project: its file watcher could not start"
-	if errors.Is(err, syscall.EMFILE) || errors.Is(err, syscall.ENFILE) || strings.Contains(err.Error(), "too many open files") {
+	outOfFiles := errors.Is(err, syscall.EMFILE) || errors.Is(err, syscall.ENFILE) || strings.Contains(err.Error(), "too many open files")
+	switch {
+	case !outOfFiles:
+		msg += " (" + err.Error() + "). Restart Vantage once that is fixed."
+	case s.goos == "linux":
 		msg += ", because the system's limit on file watchers was reached. " +
 			"Raise it (on Linux, fs.inotify.max_user_instances), then restart Vantage."
-	} else {
-		msg += " (" + err.Error() + "). Restart Vantage once that is fixed."
+	default:
+		msg += ", because the system's limit on open files was reached, and every watched file takes one. " +
+			"Raise it (on macOS, sysctl kern.maxfilesperproc), or list the biggest folders in .vantageignore, then restart Vantage."
 	}
 	s.reportDegraded(model.Degradation{Repo: repo, Kind: model.DegradationWatcherFailed, Path: ".", Message: msg})
 }
