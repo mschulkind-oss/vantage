@@ -38,9 +38,11 @@ planning conventions built on it change what they write ([§10](#10-what-the-con
 completed against the tree on 2026-09-28), [the brainstorm](../brainstorm/planning-index.md)
 (the ideas this chose between, and the ones it retired), and
 [`planning-index-at-scale.md`](planning-index-at-scale.md) (the 2026-09-29 amendment for large
-repositories, which supersedes parts of [§3.4](#34-when-it-is-built-and-how-it-stays-fresh),
-[§3.5](#35-limits-and-what-happens-past-them), [§5.3](#53-how-a-badge-behaves),
-[§6](#6-the-planning-page) and [§7](#7-referenced-by-and-status-in-the-file-tree)).
+repositories, which supersedes parts of [§3](#3-the-planning-index),
+[§3.4](#34-when-it-is-built-and-how-it-stays-fresh),
+[§3.5](#35-limits-and-what-happens-past-them), [§3.6](#36-failure),
+[§5.3](#53-how-a-badge-behaves), [§6](#6-the-planning-page) and
+[§7](#7-referenced-by-and-status-in-the-file-tree)).
 
 ---
 
@@ -102,8 +104,8 @@ documents, rebuilt from the files and never stored.
 > **Amended 2026-09-29.** [`planning-index-at-scale.md` §8](planning-index-at-scale.md#8-the-scan-cache)
 > keeps each file's derived facts and card blocks in the browser under the file's content hash,
 > never trusted without it ([OQ-PS1](planning-index-at-scale.md#decision-ledger), ruled
-> 2026-09-29). Once that is built, "never stored" holds for the index but not for each file's scan
-> result.
+> 2026-09-29). "Never stored" therefore holds for the index, which is still assembled on every
+> page load, but not for each file's scan result.
 
 ### 3.1 Which files it reads
 
@@ -225,6 +227,16 @@ A partial index would quietly under-report questions, so a refusal is always vis
 numbers are defaults in `[planning]`.
 
 ### 3.6 Failure
+
+> [!NOTE]
+> **Amended 2026-09-29.** The batch fetch below is gone:
+> [`planning-index-at-scale.md` §6.1](planning-index-at-scale.md#61-the-stream) replaces it with a
+> stream, and the batch's URL answers `410 Gone`, which a tab loaded before the change shows as
+> its error until it is reloaded. A failed stream, including one that ends without its `end`
+> line, fails as the batch did, and a static host is recognized by a first line that is not the
+> stream's header. [§12](planning-index-at-scale.md#12-failure-modes) of that design adds the
+> failures of the scan worker and of the browser's scan cache. The text below is the design as
+> ruled on 2026-09-28.
 
 - **The batch fetch fails:** no badges and no Referenced by line. The planning page shows the error
   with a Retry button. Documents render exactly as they do today.

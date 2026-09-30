@@ -38,7 +38,7 @@ Task-shaped: pick the one matching what you are trying to do.
 | [Review Inbox](guides/review-inbox.md) | The `.vantage/` directory: how agent responses are delivered, and gitignoring it |
 | [Static Sites](guides/static-sites.md) | Building static exports for deployment |
 | [Color Themes](guides/themes.md) | Choosing a color theme, setting a default, and writing your own |
-| [Planning Documents](guides/planning.md) | The planning page, badges that show a linked design doc's or question's current state, the Referenced by line, the `next` link, and the roadmap |
+| [Planning Documents](guides/planning.md) | The planning page and its pages, badges that show a linked design doc's or question's current state, the Referenced by line, the `next` link, the roadmap, and what your browser keeps to make a reload fast |
 | [vantage-check](guides/vantage-check.md) | The agent CLI: the Markdown style guide, and a check that a document really renders |
 
 ### Reference
