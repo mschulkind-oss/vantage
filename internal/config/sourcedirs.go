@@ -98,11 +98,14 @@ func AddSourceDirsChecked(path string, dirs []string, now time.Time, check func(
 		if err != nil {
 			return edit, err
 		}
-		if info, err := os.Stat(abs); err != nil || !info.IsDir() {
-			return edit, fmt.Errorf("config: source dir %q is not a directory", d)
-		}
+		// The name is checked before the directory: it is refused whether or
+		// not the directory is there, and on macOS it never can be, because
+		// APFS refuses to create a name that is not UTF-8.
 		if !utf8.ValidString(abs) {
 			return edit, fmt.Errorf("config: source dir %q is not valid UTF-8, which a TOML file cannot hold", d)
+		}
+		if info, err := os.Stat(abs); err != nil || !info.IsDir() {
+			return edit, fmt.Errorf("config: source dir %q is not a directory", d)
 		}
 		wanted = append(wanted, abs)
 	}
