@@ -386,6 +386,39 @@ func TestDiscoveredNamesDifferInMoreThanCaseWhereTheFilesystemIgnoresIt(t *testi
 	}
 }
 
+// A directory reached two ways is one project, however the two are spelled.
+// On macOS the spellings differ in case, which filepath.EvalSymlinks keeps, so
+// ~/Code/alpha and ~/code/alpha resolve to two strings. Here a link the config
+// never resolved stands in for the second spelling, so Linux runs this too.
+func TestDiscoverReposKnowsADirectorySpelledAnotherWay(t *testing.T) {
+	src := t.TempDir()
+	mkGitRepo(t, filepath.Join(src, "alpha"))
+	link := filepath.Join(t.TempDir(), "alpha-link")
+	require.NoError(t, os.Symlink(filepath.Join(src, "alpha"), link))
+	c := Defaults()
+	c.MultiRepo = true
+	c.SourceDirs = []string{src}
+	require.NoError(t, c.Resolve())
+	c.Repos = []RepoConfig{{Name: "explicit", Path: link}}
+	require.Empty(t, c.DiscoverReposFromSourceDirs())
+}
+
+// source_dirs holding ~/Code and ~/code served every clone twice on macOS, as
+// alpha and alpha-2, with two watchers each holding every file open. It runs
+// only where the filesystem ignores case, which is where the two are one.
+func TestDiscoverReposFromOneSourceDirListedInTwoCases(t *testing.T) {
+	src := t.TempDir()
+	mkGitRepo(t, filepath.Join(src, "Code", "alpha"))
+	if _, err := os.Stat(filepath.Join(src, "code")); err != nil {
+		t.Skip("this filesystem tells case apart, so Code and code are two directories here")
+	}
+	c := Defaults()
+	c.MultiRepo = true
+	c.SourceDirs = []string{filepath.Join(src, "Code"), filepath.Join(src, "code")}
+	require.NoError(t, c.Resolve())
+	require.Equal(t, []string{"alpha"}, repoNames(c.DiscoverReposFromSourceDirs()))
+}
+
 func TestDiscoveredReposAreMarkedAsSuch(t *testing.T) {
 	src := t.TempDir()
 	mkGitRepo(t, filepath.Join(src, "alpha"))
