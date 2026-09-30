@@ -28,11 +28,12 @@ index itself is never stored, but to keep the rebuild cheap this browser keeps
 what it found in each file, and fetches and scans a file again only once its
 content has changed ([What this browser keeps](#what-this-browser-keeps)).
 
-A document paints as soon as its content arrives. When the index is only
-moments away, because this browser already holds nearly all of it, that first
-paint waits for it, never more than 150 ms. Otherwise the document paints
-without it, and badges that arrive later appear only where they cannot move
-what you are reading ([below](#badges-on-links)).
+A document's first paint waits at most 150 ms after its content arrives, for
+what is already on its way: its git facts for the header
+([Git Integration](../features.md#last-commit-info)), and the planning index
+when this browser already holds nearly all of it. Past that, the document
+paints without them, and badges that arrive later appear only where they
+cannot move what you are reading ([below](#badges-on-links)).
 
 **Candidates.** Every `.md` file in the repository is a candidate unless one of
 these rules it out:
@@ -592,9 +593,6 @@ every candidate on every page load, and everything else works the same.
 - **The planning scan stopped:** the background thread that scans the files
   ended in the middle of a build. The planning page says so, and Retry starts
   a new one.
-- **A tab left open from an older Vantage,** across an upgrade of the server,
-  may say *The planning index moved to a stream; reload the page.* Reloading it
-  is the fix.
 - **The comments cannot be loaded:** the planning page's sections appear
   without them, under the line *Comments could not be loaded.*, and Copy
   answers stays disabled.

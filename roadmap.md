@@ -8,11 +8,9 @@ The order is the one thing this file holds that no other document can. Each entr
 
 ## 📦 Up Next
 
-1. [The planning index](docs/design/planning-index-plan.md), both phases, first: the badges this file now leans on are what its phase 1 builds.
+1. [The planning index](docs/design/planning-index-plan.md), both phases, first: the badges this file now leans on are what its phase 1 built, and only its measurement and graduation are left.
 
-   [`planning-index.md`](docs/design/planning-index.md) is decided, and [`planning-index-plan.md`](docs/design/planning-index-plan.md) is the build-ready hand-off for both phases ([§14](docs/design/planning-index.md#14-sequencing)). WP-A, which every other work package codes against, went first; the plan's [order of work](docs/design/planning-index-plan.md#order-of-work) says what follows it. Its twenty [coordinator questions](docs/design/planning-index-plan.md#the-coordinators-rulings) were ruled on 2026-09-28 into the design's [Decision Ledger](docs/design/planning-index.md#decision-ledger), so nothing blocks the build.
-
-   [`planning-index-at-scale.md`](docs/design/planning-index-at-scale.md) amends it for large repositories, where `g p` froze for seconds. It is decided too: its two questions were ruled on 2026-09-29 into its [Decision Ledger](docs/design/planning-index-at-scale.md#decision-ledger), and [its plan](docs/design/planning-index-at-scale-plan.md) is the build-ready hand-off, shipped in one release.
+   [`planning-index.md`](docs/design/planning-index.md) is built, both phases of [`planning-index-plan.md`](docs/design/planning-index-plan.md) included, and so is [`planning-index-at-scale.md`](docs/design/planning-index-at-scale.md), its amendment for large repositories, where `g p` froze for seconds, built from [its plan](docs/design/planning-index-at-scale-plan.md) to ship in one release. What is left is the amendment's [§19](docs/design/planning-index-at-scale.md#19-what-done-looks-like) timing targets, which nothing has measured against the build yet, and then graduating the two designs into one system doc.
 
 2. [A semantic-token vocabulary](docs/design/color-themes.md#9-follow-ups), before any component moves, because every PR after the first is a mapping onto its names.
 
