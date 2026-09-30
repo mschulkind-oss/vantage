@@ -17,6 +17,8 @@ import { makeTree } from "./helpers.js";
 import {
   FULL_TOML,
   FULL_TREE,
+  OPEN,
+  STAGES_TOML,
   doc,
   fullTree,
   questions,
@@ -145,7 +147,7 @@ describe("index, as text", () => {
     expect(stdout).toBe(
       [
         PLANNING_NOTICES.nothingNeedsYou,
-        PLANNING_NOTICES.noRoadmap("roadmap.md"),
+        "No roadmap: no planning candidate is named roadmap.md, so Needs you lists every open question by document. Add a roadmap.md in any directory, or name one with roadmap under [planning] in .vantage.toml. A roadmap.md in a hidden directory, matched by .vantageignore, or ruled out by include or exclude is not read.",
         "",
         PLANNING_NOTICES.noStages,
         "",
@@ -206,14 +208,16 @@ describe("index, as JSON", () => {
       "root",
       "index",
       "sections",
-      "roadmap",
+      "roadmaps",
     ]);
     expect(payload.tool).toBe("vantage-check");
     // Two meanings of "version": `check`'s JSON holds the tool's there, and
     // this one the format's, with the tool's under its own name.
     expect(payload.toolVersion).toBe(VERSION);
     expect(payload.version).toBe(INDEX_FORMAT_VERSION);
-    expect(payload.version).toBe(1);
+    // Version 2: `sections.roadmap` and the top-level `roadmap` are gone, for
+    // `sections.roadmaps` and a top-level `roadmaps` (design §8).
+    expect(payload.version).toBe(2);
     expect(payload.root).toBe(root);
   });
 
@@ -257,8 +261,14 @@ describe("index, as JSON", () => {
   it("lists the roadmap's links with the badge each carries", async () => {
     const { payload } = await indexJson(fullTree());
 
+    expect(payload.roadmaps).toHaveLength(1);
+    expect(payload.roadmaps[0]).toMatchObject({
+      path: "roadmap.md",
+      state: "routes",
+      chosen: true,
+    });
     expect(
-      payload.roadmap.map(
+      payload.roadmaps[0].links.map(
         (l: { line: number; target: string; badgeText: string | null }) => [
           l.line,
           l.target,
@@ -272,7 +282,7 @@ describe("index, as JSON", () => {
       [11, "docs/a.md", "⚠ not found"],
       [12, "README.md", null],
     ]);
-    expect(payload.roadmap[0]).toEqual({
+    expect(payload.roadmaps[0].links[0]).toEqual({
       line: 5,
       target: "docs/a.md",
       fragment: "OQ-A1",
@@ -298,15 +308,339 @@ describe("index, as JSON", () => {
     expect(payload.index.skipped).toEqual(payload.sections.skipped);
   });
 
-  it("has an empty roadmap list when the roadmap is missing", async () => {
+  it("has empty roadmap lists when there is no roadmap", async () => {
     const root = makeTree({ ".git/HEAD": "", "a.md": doc("status: draft") });
     const { payload } = await indexJson(root);
 
-    expect(payload.sections.roadmap).toEqual({
-      path: "roadmap.md",
-      present: false,
+    expect(payload.sections.roadmaps).toEqual([]);
+    expect(payload.sections.chosenRoadmap).toBeNull();
+    expect(payload.roadmaps).toEqual([]);
+  });
+
+  it("lists a listed roadmap that is missing, with no links", async () => {
+    const root = makeTree({
+      ".git/HEAD": "",
+      ".vantage.toml": '[planning]\nroadmap = "plans/roadmap.md"\n',
+      "a.md": doc("status: draft"),
     });
-    expect(payload.roadmap).toEqual([]);
+    const { payload } = await indexJson(root);
+
+    expect(payload.index.config.roadmaps).toEqual(["plans/roadmap.md"]);
+    expect(payload.sections.roadmaps).toEqual([
+      { path: "plans/roadmap.md", state: "missing", needsYouCount: 0 },
+    ]);
+    expect(payload.roadmaps).toEqual([
+      { path: "plans/roadmap.md", state: "missing", chosen: false, links: [] },
+    ]);
+  });
+});
+
+/**
+ * Three roadmaps, found by name (design §6.1, §8):
+ *
+ * - `roadmap.md`, the default, routes OQ-A1 and links the plans roadmap bare,
+ *   which routes the questions written there (none), not the ones it routes;
+ * - `docs/plans/roadmap.md` routes all of docs/b.md, then OQ-A1;
+ * - `docs/old/roadmap.md` has the done role, so it routes nothing, and
+ *   docs/c.md, which only it links, is unrouted, as is OQ-A2.
+ */
+const SEVERAL: Record<string, string> = {
+  ".git/HEAD": "ref: refs/heads/main\n",
+  ".vantage.toml": STAGES_TOML,
+  "roadmap.md": [
+    "# Roadmap",
+    "",
+    "## Now",
+    "",
+    "- [A's first](docs/a.md#OQ-A1)",
+    "- [The plans](docs/plans/roadmap.md)",
+    "",
+  ].join("\n"),
+  "docs/plans/roadmap.md": [
+    "# Plans",
+    "",
+    "## Later",
+    "",
+    "- [B](../b.md)",
+    "- [A's first](../a.md#OQ-A1)",
+    "",
+  ].join("\n"),
+  "docs/old/roadmap.md": doc("stage: RETIRED", "- [C](../c.md)"),
+  "docs/a.md": doc("status: draft\nstage: DESIGN", questions("A", OPEN, OPEN)),
+  "docs/b.md": doc("status: draft\nstage: DESIGN", questions("B", OPEN)),
+  "docs/c.md": doc("status: draft\nstage: DESIGN", questions("C", OPEN)),
+};
+
+describe("index, with several roadmaps", () => {
+  const unrouted = [
+    "Unrouted (2)",
+    "  docs/a.md:14  💬 OQ-A2: Question A2?",
+    "  docs/c.md:8  💬 OQ-C1: Question C1?",
+    "",
+  ];
+
+  it("lists every roadmap, and follows the one nearest the root", async () => {
+    const { code, stdout, stderr } = await index(makeTree(SEVERAL));
+
+    expect(code).toBe(EXIT_OK);
+    expect(stderr).toBe("");
+    expect(stdout).toBe(
+      [
+        "1 more question needs you on another roadmap. Choose one with --roadmap <path>.",
+        "",
+        "Roadmaps (3)",
+        "  roadmap.md  1 needs you  (chosen)",
+        "  docs/old/roadmap.md  not read: has a stage with the done role",
+        "  docs/plans/roadmap.md  2 need you",
+        "",
+        "Needs you (1)",
+        "  docs/a.md:8  💬 OQ-A1: Question A1?  (Now)",
+        "",
+        ...unrouted,
+        "Roadmap: roadmap.md",
+        "",
+        "# Roadmap",
+        "",
+        "## Now",
+        "",
+        "- [A's first](docs/a.md#OQ-A1) [💬 open]",
+        "- [The plans](docs/plans/roadmap.md)",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it.each([
+    [["--roadmap", "docs/plans/roadmap.md"]],
+    [["--roadmap=docs/plans/roadmap.md"]],
+    [["--roadmap", "./docs/plans/roadmap.md"]],
+    // Given twice, the last wins, as --config does.
+    [["--roadmap", "roadmap.md", "--roadmap", "docs/plans/roadmap.md"]],
+  ])("follows the roadmap --roadmap names: %j", async (args) => {
+    const { code, stdout } = await index(makeTree(SEVERAL), ...args);
+
+    expect(code).toBe(EXIT_OK);
+    // Everything the root's roadmap routes, the plans roadmap routes too, so
+    // nothing needs you on another roadmap.
+    expect(stdout).toBe(
+      [
+        "Roadmaps (3)",
+        "  roadmap.md  1 needs you",
+        "  docs/old/roadmap.md  not read: has a stage with the done role",
+        "  docs/plans/roadmap.md  2 need you  (chosen)",
+        "",
+        "Needs you (2)",
+        "  docs/b.md:8  💬 OQ-B1: Question B1?  (Later)",
+        "  docs/a.md:8  💬 OQ-A1: Question A1?  (Later)",
+        "",
+        ...unrouted,
+        "Roadmap: docs/plans/roadmap.md",
+        "",
+        "# Plans",
+        "",
+        "## Later",
+        "",
+        "- [B](../b.md) [draft · DESIGN · 💬 1]",
+        "- [A's first](../a.md#OQ-A1) [💬 open]",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("prints JSON version 2: every roadmap, the chosen one, and what the others route", async () => {
+    const { code, payload } = await indexJson(
+      makeTree(SEVERAL),
+      "--roadmap",
+      "docs/plans/roadmap.md",
+    );
+
+    expect(code).toBe(EXIT_OK);
+    expect(payload.version).toBe(2);
+    expect(payload.sections.roadmaps).toEqual([
+      { path: "roadmap.md", state: "routes", needsYouCount: 1 },
+      { path: "docs/old/roadmap.md", state: "done", needsYouCount: 0 },
+      { path: "docs/plans/roadmap.md", state: "routes", needsYouCount: 2 },
+    ]);
+    expect(payload.sections.chosenRoadmap).toBe("docs/plans/roadmap.md");
+    expect(payload.sections.onOtherRoadmaps).toEqual([]);
+    expect(payload.sections.needsYou.map((q: { id: string }) => q.id)).toEqual([
+      "OQ-B1",
+      "OQ-A1",
+    ]);
+    expect(
+      payload.roadmaps.map(
+        (r: { path: string; state: string; chosen: boolean }) => [
+          r.path,
+          r.state,
+          r.chosen,
+        ],
+      ),
+    ).toEqual([
+      ["roadmap.md", "routes", false],
+      ["docs/old/roadmap.md", "done", false],
+      ["docs/plans/roadmap.md", "routes", true],
+    ]);
+    // Each read roadmap's links, a done one's included.
+    expect(
+      payload.roadmaps.map((r: { links: { target: string }[] }) =>
+        r.links.map((l) => l.target),
+      ),
+    ).toEqual([
+      ["docs/a.md", "docs/plans/roadmap.md"],
+      ["docs/c.md"],
+      ["docs/b.md", "docs/a.md"],
+    ]);
+  });
+
+  it("lists the questions only another roadmap routes, with that roadmap", async () => {
+    const { payload } = await indexJson(makeTree(SEVERAL));
+
+    expect(payload.sections.onOtherRoadmaps).toEqual([
+      {
+        path: "docs/b.md",
+        id: "OQ-B1",
+        line: expect.any(Number),
+        heading: "Later",
+        roadmap: "docs/plans/roadmap.md",
+      },
+    ]);
+    // Routed by the plans roadmap, so not Unrouted under the root's.
+    expect(payload.sections.unrouted.map((q: { id: string }) => q.id)).toEqual([
+      "OQ-A2",
+      "OQ-C1",
+    ]);
+  });
+
+  it("prints sections deep-equal to derivePlanningSections for the chosen roadmap", async () => {
+    const root = makeTree(SEVERAL);
+    const { payload } = await indexJson(
+      root,
+      "--roadmap",
+      "docs/plans/roadmap.md",
+    );
+    const sources: PlanningSources = {
+      config: parseConfig(STAGES_TOML).planning,
+      candidateCount: 6,
+      refused: false,
+      files: Object.entries(SEVERAL)
+        .filter(([path]) => path.endsWith(".md"))
+        .map(([path, content]) => ({ path, content })),
+      skipped: [],
+      unreadable: [],
+    };
+
+    expect(payload.sections).toEqual(
+      derivePlanningSections(buildPlanningIndex(sources), {
+        roadmap: "docs/plans/roadmap.md",
+      }),
+    );
+  });
+
+  it.each([
+    [
+      ["--roadmap", "docs/a.md"],
+      "vantage-check: --roadmap docs/a.md is not a roadmap here; the roadmaps are: roadmap.md, docs/plans/roadmap.md\n",
+    ],
+    [
+      ["--roadmap", "docs/old/roadmap.md"],
+      "vantage-check: --roadmap docs/old/roadmap.md is not a roadmap here; the roadmaps are: roadmap.md, docs/plans/roadmap.md\n",
+    ],
+    [
+      ["--roadmap", "/roadmap.md"],
+      "vantage-check: --roadmap /roadmap.md is not a roadmap here; the roadmaps are: roadmap.md, docs/plans/roadmap.md\n",
+    ],
+  ])(
+    "exits 2 on a --roadmap that does not route: %j",
+    async (args, message) => {
+      for (const format of ["text", "json"]) {
+        const { code, stdout, stderr } = await index(
+          makeTree(SEVERAL),
+          "--format",
+          format,
+          ...args,
+        );
+
+        expect(code).toBe(EXIT_USAGE);
+        expect(stdout).toBe("");
+        expect(stderr).toBe(message);
+      }
+    },
+  );
+
+  it("says there is no roadmap when --roadmap names one and none routes", async () => {
+    const root = makeTree({ ".git/HEAD": "", "a.md": doc("status: draft") });
+    const { code, stdout, stderr } = await index(root, "--roadmap", "a.md");
+
+    expect(code).toBe(EXIT_USAGE);
+    expect(stdout).toBe("");
+    expect(stderr).toBe(
+      "vantage-check: --roadmap a.md is not a roadmap here; there is no roadmap\n",
+    );
+  });
+
+  it("exits 3 past max-candidates, whatever --roadmap says", async () => {
+    const root = makeTree({
+      ...SEVERAL,
+      ".vantage.toml": "[planning]\nmax-candidates = 2\n",
+    });
+    const { code, stdout, stderr } = await index(root, "--roadmap", "nope.md");
+
+    expect(code).toBe(EXIT_ENVIRONMENT);
+    expect(stdout).toBe("");
+    expect(stderr).toBe(`vantage-check: ${PLANNING_NOTICES.refused(6, 2)}\n`);
+  });
+
+  it("hides a roadmap.md that exclude rules out", async () => {
+    const root = makeTree({
+      ...SEVERAL,
+      ".vantage.toml": `[planning]\nexclude = ["docs/plans/**", "docs/old/**"]\n\n${STAGES_TOML}`,
+    });
+    const { payload } = await indexJson(root);
+
+    expect(payload.sections.roadmaps).toEqual([
+      { path: "roadmap.md", state: "routes", needsYouCount: 1 },
+    ]);
+    // With one roadmap, the text is what it always was: no Roadmaps block.
+    const { stdout } = await index(root);
+    expect(stdout).not.toContain("Roadmaps (");
+    expect(stdout).not.toContain("--roadmap");
+    expect(stdout.startsWith("Needs you (1)\n")).toBe(true);
+  });
+
+  it("reads a listed roadmap that exclude rules out, and no roadmap.md the list leaves out", async () => {
+    const root = makeTree({
+      ...SEVERAL,
+      ".vantage.toml": `[planning]\nroadmap = ["docs/plans/roadmap.md"]\nexclude = ["docs/plans/**"]\n\n${STAGES_TOML}`,
+    });
+    const { payload } = await indexJson(root);
+
+    expect(payload.sections.roadmaps).toEqual([
+      { path: "docs/plans/roadmap.md", state: "routes", needsYouCount: 2 },
+    ]);
+    expect(payload.sections.chosenRoadmap).toBe("docs/plans/roadmap.md");
+    // roadmap.md is an ordinary file now, and plans nothing.
+    expect(
+      payload.index.documents.map((d: { path: string }) => d.path),
+    ).not.toContain("roadmap.md");
+  });
+
+  it("names the listed roadmaps it could not read, among the notices", async () => {
+    const root = makeTree({
+      ...SEVERAL,
+      ".vantage.toml": `[planning]\nroadmap = ["roadmap.md", "plans/gone.md"]\n\n${STAGES_TOML}`,
+    });
+    const { stdout } = await index(root);
+
+    expect(stdout.split("\n\n")[0]).toBe(
+      "Not read as a roadmap: plans/gone.md, which roadmap under [planning] lists, is missing or not in Vantage's file list (it is not a .md file, or is in a hidden or excluded directory, or matches .vantageignore).",
+    );
+    expect(stdout).toContain(
+      [
+        "Roadmaps (2)",
+        "  roadmap.md  1 needs you  (chosen)",
+        "  plans/gone.md  not read: is missing or not in Vantage's file list (it is not a .md file, or is in a hidden or excluded directory, or matches .vantageignore)",
+      ].join("\n"),
+    );
   });
 });
 
@@ -341,7 +675,7 @@ describe("index past max-candidates", () => {
       unreadable: [],
     });
     expect(payload.sections).toBeNull();
-    expect(payload.roadmap).toBeNull();
+    expect(payload.roadmaps).toBeNull();
   });
 
   it("scans a project exactly at the limit", async () => {
@@ -382,6 +716,7 @@ describe("index's exit 2", () => {
     [["--format", "xml"], "--format takes text or json"],
     [["--strict"], "unknown option for index: --strict"],
     [["--config"], "--config needs a path"],
+    [["--roadmap"], "--roadmap needs a path"],
   ])("refuses index %j", async (args, message) => {
     const { code, stdout, stderr } = await index(process.cwd(), ...args);
 
@@ -504,9 +839,12 @@ describe("the project index scans", () => {
     expect(payload.root).toBe(repo);
     expect(paths(payload)).toContain("docs/design/planning-index.md");
     expect(paths(payload)).toContain("roadmap.md");
-    expect(payload.sections.roadmap).toEqual({
-      path: "roadmap.md",
-      present: true,
-    });
+    // Found by name: this repository sets no roadmap, and its exclude rules
+    // out the end-to-end fixture's plans/roadmap.md (design §9).
+    expect(payload.index.config.roadmaps).toBeNull();
+    expect(payload.sections.roadmaps).toEqual([
+      expect.objectContaining({ path: "roadmap.md", state: "routes" }),
+    ]);
+    expect(payload.sections.chosenRoadmap).toBe("roadmap.md");
   });
 });

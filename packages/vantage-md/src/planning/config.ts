@@ -30,8 +30,13 @@ export const STAGE_ROLES: readonly StageRole[] = [
 
 /** A resolved `[planning]` table: every key present, defaults applied. */
 export interface PlanningConfig {
-  /** Repo-relative, with no leading `./`. The default is `roadmap.md`. */
-  roadmap: string;
+  /**
+   * `roadmap`, as a list (design §9). `null` when the key is absent, the
+   * default: every candidate named `roadmap.md` is a roadmap. Otherwise
+   * exactly the roadmaps, in the order written, each repo-relative with no
+   * leading `./`; `[]` names none. A string in the file is a list of one.
+   */
+  roadmaps: string[] | null;
   /** gitignore-style lines, as `[starred] promote` writes them. */
   include: string[];
   /** gitignore-style lines; a match here wins over `include`. */
@@ -49,7 +54,7 @@ export interface PlanningConfig {
 
 /** The effective config of a repository that never wrote a `[planning]` table. */
 export const DEFAULT_PLANNING_CONFIG: Readonly<PlanningConfig> = Object.freeze({
-  roadmap: "roadmap.md",
+  roadmaps: null,
   include: ["**/*.md"],
   exclude: [],
   maxFileBytes: 1048576,
@@ -65,9 +70,58 @@ export function isStageRole(value: unknown): value is StageRole {
   );
 }
 
+/** The file name a roadmap is found by when none is listed (design §6.1). */
+export const ROADMAP_FILE_NAME = "roadmap.md";
+
+/**
+ * Whether the path's last `/`-separated segment is `roadmap.md`, compared
+ * ASCII case-insensitively: `ROADMAP.md` and `docs/Roadmap.md` are, and
+ * `roadmap.markdown`, `my-roadmap.md` and `roadmap.md/notes.md` are not. Only
+ * `A`–`Z` are folded, so no other letter, however it lowercases, can stand in
+ * for one of the name's.
+ */
+export function hasRoadmapName(path: string): boolean {
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  return (
+    name.length === ROADMAP_FILE_NAME.length &&
+    name.replace(/[A-Z]+/g, (upper) => upper.toLowerCase()) ===
+      ROADMAP_FILE_NAME
+  );
+}
+
+/**
+ * The *roadmap test*, a term the implementation plan coined: whether `path` is
+ * a roadmap under `config`. Listed in `roadmaps`, or, with `roadmaps` null,
+ * named `roadmap.md` (design §6.1).
+ *
+ * A test on the path alone. It does not ask whether the path is a candidate:
+ * a roadmap found by name is one only among candidates, which whoever lists
+ * the paths decides, and the server applies the same test to the same config,
+ * held to one answer by `internal/repoconfig/testdata/planning-roadmaps.json`.
+ */
+export function isRoadmapPath(config: PlanningConfig, path: string): boolean {
+  return config.roadmaps === null
+    ? hasRoadmapName(path)
+    : config.roadmaps.includes(path);
+}
+
+/**
+ * *Roadmap order* (design §6.1): fewer `/`-separated segments first, then the
+ * index's path order, so `roadmap.md` comes before `docs/roadmap.md`, and that
+ * before `docs/plans/roadmap.md`. Every list of roadmaps is in this order,
+ * whatever order a configured list was written in.
+ */
+export function compareRoadmaps(a: string, b: string): number {
+  const depth = a.split("/").length - b.split("/").length;
+  if (depth !== 0) return depth;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 /**
  * Whether a listed Markdown path is a candidate: matched by `include` and not
- * by `exclude`, with the roadmap a candidate whatever either says (design §3.1).
+ * by `exclude`, with a listed roadmap a candidate whatever either says
+ * (design §3.1, Plan Q2, per entry). A roadmap found by name has no such
+ * exemption: it is a roadmap because it is a candidate.
  *
  * The listing's own rules — `.md` only, hidden and excluded directories pruned,
  * `.vantageignore` — are not applied here. They belong to whoever produced the
@@ -78,5 +132,6 @@ export function candidateMatcher(
 ): (path: string) => boolean {
   const include = compileIgnorePatterns(config.include);
   const exclude = compileIgnorePatterns(config.exclude);
-  return (path) => path === config.roadmap || (include(path) && !exclude(path));
+  const listed = new Set(config.roadmaps ?? []);
+  return (path) => listed.has(path) || (include(path) && !exclude(path));
 }

@@ -63,7 +63,12 @@ import {
 } from "../planningScan/client";
 import { memoryScanStore } from "../planningScan/memoryStore";
 import { setPlanningLimitsForTests } from "../planningScan/limits";
-import { contentHash, readRepoFile, sourcesOf } from "../test/planning";
+import {
+  contentHash,
+  planningConfig,
+  readRepoFile,
+  sourcesOf,
+} from "../test/planning";
 import { fakePlanningServer } from "../test/planningStream";
 import type { ReviewComment, ReviewData } from "../types";
 
@@ -608,9 +613,10 @@ describe("empty and degenerate states", () => {
     void _;
     seed(noRoadmap);
     await renderPage();
-    expect(
-      screen.getByText(PLANNING_NOTICES.noRoadmap("roadmap.md")),
-    ).toBeTruthy();
+    // Found by name, and nothing is named roadmap.md.
+    expect(screen.getByTestId("roadmap-notice")).toHaveTextContent(
+      PLANNING_NOTICES.roadmapNotice(planningConfig({ stages: STAGES }), [])!,
+    );
     expect(querySection("Unrouted")).toBeNull();
     expect(cardsIn("Needs you")).toEqual([
       "OQ-D1: Question OQ-D1?",
@@ -621,11 +627,76 @@ describe("empty and degenerate states", () => {
   });
 
   it("names the configured roadmap when it is missing", async () => {
-    seed(TREE, { stages: STAGES, roadmap: "plans/roadmap.md" });
+    const config = { stages: STAGES, roadmaps: ["plans/roadmap.md"] };
+    seed(TREE, config);
     await renderPage();
-    expect(
-      screen.getByText(PLANNING_NOTICES.noRoadmap("plans/roadmap.md")),
-    ).toBeTruthy();
+    expect(screen.getByTestId("roadmap-notice")).toHaveTextContent(
+      PLANNING_NOTICES.roadmapNotice(planningConfig(config), [
+        { path: "plans/roadmap.md", state: "missing", needsYouCount: 0 },
+      ])!,
+    );
+    expect(querySection("Unrouted")).toBeNull();
+  });
+
+  it("names each roadmap it found by name and why none routes", async () => {
+    // roadmap.md retired by a done stage, and plans/roadmap.md too large.
+    const tree = {
+      ...TREE,
+      "roadmap.md": `---\nstage: GONE\n---\n\n${TREE["roadmap.md"]}`,
+      "plans/roadmap.md": "# Too large\n",
+    };
+    seed(
+      tree,
+      { stages: STAGES },
+      {
+        files: Object.entries(tree)
+          .filter(([path]) => path !== "plans/roadmap.md")
+          .map(([path, content]) => ({ path, content })),
+        skipped: [{ path: "plans/roadmap.md", size: 2_000_000 }],
+      },
+    );
+    await renderPage();
+    expect(screen.getByTestId("roadmap-notice")).toHaveTextContent(
+      PLANNING_NOTICES.roadmapNotice(planningConfig({ stages: STAGES }), [
+        { path: "roadmap.md", state: "done", needsYouCount: 0 },
+        { path: "plans/roadmap.md", state: "skipped", needsYouCount: 0 },
+      ])!,
+    );
+    expect(screen.queryByRole("combobox", { name: "Roadmap" })).toBeNull();
+    expect(querySection("Unrouted")).toBeNull();
+    expect(cardsIn("Needs you")).toContain("OQ-U1: Question OQ-U1?");
+  });
+
+  it("says so when roadmap under [planning] is an empty list", async () => {
+    const config = { stages: STAGES, roadmaps: [] };
+    seed(TREE, config);
+    await renderPage();
+    expect(screen.getByTestId("roadmap-notice")).toHaveTextContent(
+      PLANNING_NOTICES.roadmapNotice(planningConfig(config), [])!,
+    );
+    expect(querySection("Unrouted")).toBeNull();
+  });
+
+  it("names a listed roadmap it could not read while another routes", async () => {
+    const config = {
+      stages: STAGES,
+      roadmaps: ["roadmap.md", "plans/next/roadmap.md"],
+    };
+    seed(TREE, config);
+    await renderPage();
+    const notice = PLANNING_NOTICES.roadmapNotice(planningConfig(config), [
+      { path: "roadmap.md", state: "routes", needsYouCount: 3 },
+      { path: "plans/next/roadmap.md", state: "missing", needsYouCount: 0 },
+    ]);
+    expect(notice).toMatch(/^Not read as a roadmap/);
+    expect(screen.getByTestId("roadmap-notice")).toHaveTextContent(notice!);
+    // The one that routes still orders Needs you, with no picker for one.
+    expect(cardsIn("Needs you")).toEqual([
+      "OQ-D1: Question OQ-D1?",
+      "OQ-D3: Question OQ-D3?",
+      "OQ-A1: Question OQ-A1?",
+    ]);
+    expect(screen.queryByRole("combobox", { name: "Roadmap" })).toBeNull();
   });
 
   it("without stages, drops the three stage sections and says how to declare them", async () => {
@@ -1793,6 +1864,272 @@ describe("a preview card (planning-index-at-scale.md §10.4)", () => {
       ],
       full: true,
     });
+  });
+});
+
+describe("several roadmaps (§6.4)", () => {
+  // Found by name: roadmap.md routes OQ-D1, OQ-D3 and OQ-A1, and
+  // docs/plans/roadmap.md routes OQ-U1, then OQ-D3 again.
+  const NESTED = "docs/plans/roadmap.md";
+  const TWO: Record<string, string> = {
+    ...TREE,
+    [NESTED]: [
+      "# Plans",
+      "",
+      "## Later",
+      "",
+      "1. [Unrouted until now](../../plans/unrouted.md)",
+      "2. [One of the design's](../../plans/design.md#OQ-D3)",
+      "",
+    ].join("\n"),
+  };
+  const KEY = "vantage:planningRoadmap:";
+
+  const picker = () =>
+    screen.getByRole("combobox", { name: "Roadmap" }) as HTMLSelectElement;
+  const options = () =>
+    Array.from(picker().options, (option) => option.textContent);
+  const search = () => new URLSearchParams(router.location.split("?")[1]);
+  async function pick(path: string): Promise<void> {
+    await act(async () => {
+      fireEvent.change(picker(), { target: { value: path } });
+    });
+    await settle();
+  }
+
+  it("with one roadmap, has no roadmap line and leaves the URL alone", async () => {
+    seed();
+    await renderPage();
+    expect(screen.queryByTestId("roadmap-line")).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Roadmap" })).toBeNull();
+    expect(router.location).toBe("/.vantage/planning");
+  });
+
+  it("offers each roadmap that routes, nearest the root first and chosen, with its count", async () => {
+    seed(TWO);
+    await renderPage();
+    expect(options()).toEqual([
+      "roadmap.md (3 need you)",
+      "docs/plans/roadmap.md (2 need you)",
+    ]);
+    expect(picker().value).toBe("roadmap.md");
+    // Above the section bar.
+    expect(
+      picker().compareDocumentPosition(
+        screen.getByRole("navigation", { name: "Sections" }),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(cardsIn("Needs you")).toEqual([
+      "OQ-D1: Question OQ-D1?",
+      "OQ-D3: Question OQ-D3?",
+      "OQ-A1: Question OQ-A1?",
+    ]);
+    // OQ-U1 is routed, by the other roadmap: neither Needs you here nor
+    // Unrouted, and counted on the line instead.
+    expect(cardsIn("Unrouted")).toEqual(["OQ-X1: Question OQ-X1?"]);
+    expect(screen.getByTestId("other-roadmaps")).toHaveTextContent(
+      PLANNING_NOTICES.otherRoadmaps(1),
+    );
+    // The address says which roadmap is shown, written in place.
+    expect(search().get("roadmap")).toBe("roadmap.md");
+  });
+
+  it("follows a pick: the URL rewritten in place, Needs you back on page 1, and the other count", async () => {
+    setPlanningLimitsForTests({ pageEntries: 2 });
+    seed(TWO);
+    await renderPage("/.vantage/planning?needs-you=2&x=1", ["/plans/a.md"]);
+    expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
+    await pick(NESTED);
+    expect(picker().value).toBe(NESTED);
+    expect(search().get("roadmap")).toBe(NESTED);
+    expect(search().has("needs-you")).toBe(false);
+    expect(search().get("x")).toBe("1");
+    expect(cardsIn("Needs you")).toEqual([
+      "OQ-U1: Question OQ-U1?",
+      "OQ-D3: Question OQ-D3?",
+    ]);
+    expect(cardsIn("Unrouted")).toEqual(["OQ-X1: Question OQ-X1?"]);
+    expect(screen.getByTestId("other-roadmaps")).toHaveTextContent(
+      PLANNING_NOTICES.otherRoadmaps(2),
+    );
+    expect(
+      screen.getByRole("navigation", { name: "Sections" }),
+    ).toHaveTextContent(/Needs you 2/);
+    // No history entry: Back leaves the page.
+    act(() => router.navigate!(-1));
+    expect(router.location).toBe("/plans/a.md");
+  });
+
+  it("remembers a pick for the repository, which a later visit reopens", async () => {
+    seed(TWO);
+    await renderPage();
+    await pick(NESTED);
+    expect(readPreference(KEY)).toBe(NESTED);
+    cleanup();
+    await renderPage();
+    expect(picker().value).toBe(NESTED);
+    expect(search().get("roadmap")).toBe(NESTED);
+    expect(cardsIn("Needs you")[0]).toBe("OQ-U1: Question OQ-U1?");
+  });
+
+  it("puts the URL's roadmap over the remembered one, and never remembers a visit", async () => {
+    localStorage.setItem(KEY, NESTED);
+    seed(TWO);
+    await renderPage("/.vantage/planning?roadmap=roadmap.md");
+    expect(picker().value).toBe("roadmap.md");
+    expect(localStorage.getItem(KEY)).toBe(NESTED);
+  });
+
+  it("reads an escaped slash as a slash", async () => {
+    seed(TWO);
+    await renderPage("/.vantage/planning?roadmap=docs%2Fplans%2Froadmap.md");
+    expect(picker().value).toBe(NESTED);
+  });
+
+  it("rewrites a URL naming a document that is no roadmap to the one it shows", async () => {
+    localStorage.setItem(KEY, "plans/design.md");
+    seed(TWO);
+    await renderPage("/.vantage/planning?roadmap=plans/unrouted.md");
+    expect(picker().value).toBe("roadmap.md");
+    expect(search().get("roadmap")).toBe("roadmap.md");
+  });
+
+  it("reads the remembered roadmap once per visit, so another tab's pick changes nothing on screen", async () => {
+    seed(TWO);
+    await renderPage();
+    localStorage.setItem(KEY, NESTED);
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: KEY,
+        newValue: NESTED,
+        storageArea: localStorage,
+      }),
+    );
+    await settle();
+    expect(picker().value).toBe("roadmap.md");
+  });
+
+  it("works, remembering nothing and saying nothing, when storage fails", async () => {
+    const get = vi
+      .spyOn(Storage.prototype, "getItem")
+      .mockImplementation(() => {
+        throw new Error("SecurityError");
+      });
+    const set = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(() => {
+        throw new Error("QuotaExceededError");
+      });
+    try {
+      seed(TWO);
+      await renderPage();
+      expect(picker().value).toBe("roadmap.md");
+      await pick(NESTED);
+      expect(picker().value).toBe(NESTED);
+      expect(search().get("roadmap")).toBe(NESTED);
+      expect(cardsIn("Needs you")[0]).toBe("OQ-U1: Question OQ-U1?");
+      expect(screen.queryByRole("alert")).toBeNull();
+    } finally {
+      get.mockRestore();
+      set.mockRestore();
+    }
+  });
+
+  it("falls back when the chosen roadmap stops routing, and drops the parameter with one left", async () => {
+    seed(TWO);
+    await renderPage(`/.vantage/planning?roadmap=${NESTED}`);
+    expect(picker().value).toBe(NESTED);
+    // Retired by a done stage, as an archived roadmap is.
+    const retired = {
+      ...TWO,
+      [NESTED]: `---\nstage: GONE\n---\n\n${TWO[NESTED]}`,
+    };
+    serveTree(retired);
+    setLoad(readyOf(retired));
+    await settle();
+    expect(screen.queryByRole("combobox", { name: "Roadmap" })).toBeNull();
+    expect(search().has("roadmap")).toBe(false);
+    expect(cardsIn("Needs you")[0]).toBe("OQ-D1: Question OQ-D1?");
+    expect(cardsIn("Unrouted")).toEqual([
+      "OQ-X1: Question OQ-X1?",
+      "OQ-U1: Question OQ-U1?",
+    ]);
+  });
+
+  it("keeps Needs you on screen through a swap until the new roadmap's inputs are in", async () => {
+    setPlanningLimitsForTests({ spinnerMs: 0 });
+    let hold = false;
+    let release: () => void = () => {};
+    const tree = TWO;
+    serveTree(tree, "/api", (inline) => ({
+      cards: (repo, want, options) =>
+        hold
+          ? new Promise<CardAnswer[]>((resolve) => {
+              release = () => resolve(inline.cards(repo, want, options));
+            })
+          : inline.cards(repo, want, options),
+    }));
+    setLoad(readyOf(tree));
+    await renderPage();
+    hold = true;
+    await pick(NESTED);
+    // The picker shows the roadmap asked for at once; the rest waits.
+    expect(picker().value).toBe(NESTED);
+    expect(cardsIn("Needs you")[0]).toBe("OQ-D1: Question OQ-D1?");
+    expect(screen.getByTestId("other-roadmaps")).toHaveTextContent(
+      PLANNING_NOTICES.otherRoadmaps(1),
+    );
+    release();
+    await settle();
+    expect(cardsIn("Needs you")[0]).toBe("OQ-U1: Question OQ-U1?");
+    expect(screen.getByTestId("other-roadmaps")).toHaveTextContent(
+      PLANNING_NOTICES.otherRoadmaps(2),
+    );
+  });
+
+  it("asks ahead of a visit for the roadmap the visit will choose", async () => {
+    localStorage.setItem(KEY, NESTED);
+    const asked: CardWant[][] = [];
+    serveTree(TWO, "/api", (inline) => ({
+      cards: (repo, want, options) => {
+        asked.push(want);
+        return inline.cards(repo, want, options);
+      },
+    }));
+    setLoad(readyOf(TWO));
+    prefetchPlanningPage("");
+    await settle();
+    expect(asked).toHaveLength(1);
+    await renderPage();
+    expect(asked).toHaveLength(1);
+    expect(cardsIn("Needs you")[0]).toBe("OQ-U1: Question OQ-U1?");
+  });
+
+  it("counts in Copy answers a comment on a question only the other roadmap routes, under either", async () => {
+    seed(TWO);
+    const line = readyOf(TWO)
+      .index.documents.flatMap((d) => d.questions)
+      .find((x) => x.id === "OQ-U1")!.line;
+    reviews["plans/unrouted.md"] = [
+      {
+        id: "other-0001",
+        comment: "Ruled on the other roadmap",
+        created_at: 0,
+        reactions: [],
+        anchor: {
+          source_line: line,
+          block_text_hash: "00000000",
+          selection_offset: 0,
+          selection_length: 0,
+        },
+      },
+    ];
+    await renderPage();
+    expect(screen.queryByRole("article", { name: /OQ-U1/ })).toBeNull();
+    expect(screen.getByTestId("pending-answers")).toHaveTextContent("1");
+    await pick(NESTED);
+    expect(cardFor("OQ-U1")).toBeTruthy();
+    expect(screen.getByTestId("pending-answers")).toHaveTextContent("1");
   });
 });
 

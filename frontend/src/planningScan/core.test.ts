@@ -57,7 +57,8 @@ const question = (id: string, title: string) =>
 const plan = (title: string, ...questions: string[]) =>
   `---\nstatus: draft\n---\n\n# ${title}\n\n${questions.join("\n")}`;
 
-const CONFIG = { roadmap: "plans/roadmap.md" };
+const ROADMAP = "plans/roadmap.md";
+const CONFIG = { roadmaps: [ROADMAP] };
 
 const TREE: Record<string, string> = {
   "broken.md": "---\nstatus: [draft\n---\n",
@@ -368,7 +369,7 @@ describe("a build that fails", () => {
   const HEADER = JSON.stringify({
     kind: "header",
     config: {
-      roadmap: "roadmap.md",
+      roadmaps: null,
       include: ["**/*.md"],
       exclude: [],
       max_file_bytes: 1048576,
@@ -539,12 +540,12 @@ describe("a build with the cache", () => {
     expect(server.haves()[1]).toEqual(
       Object.fromEntries(
         Object.keys(TREE)
-          .filter((path) => path !== CONFIG.roadmap)
+          .filter((path) => path !== ROADMAP)
           .map((path) => [path, hashOf(path)]),
       ),
     );
     expect(server.fileLines[0]).toEqual(Object.keys(TREE).sort());
-    expect(server.fileLines[1]).toEqual([CONFIG.roadmap]);
+    expect(server.fileLines[1]).toEqual([ROADMAP]);
     expect(server.pathRequests()).toEqual([]);
     expect(indexFrom(warm)).toEqual(indexFrom(cold));
     expect(indexFrom(warm)).toEqual(indexOf(TREE, CONFIG));
@@ -555,7 +556,7 @@ describe("a build with the cache", () => {
     await build(core);
     server.tree["plans/b.md"] = plan("B again", question("OQ-B1", "How late?"));
     const events = await build(core, { seq: 2 });
-    expect(server.fileLines[1]).toEqual(["plans/b.md", CONFIG.roadmap]);
+    expect(server.fileLines[1]).toEqual(["plans/b.md", ROADMAP]);
     expect(indexFrom(events)).toEqual(indexOf(server.tree, CONFIG));
   });
 
@@ -722,10 +723,78 @@ describe("a build with the cache", () => {
       repo: "",
       apiBase: "/api",
       seq: 2,
-      path: CONFIG.roadmap,
+      path: ROADMAP,
     });
     expect(written).toHaveLength(5);
-    expect(written).not.toContain(CONFIG.roadmap);
+    expect(written).not.toContain(ROADMAP);
+  });
+
+  describe("with several roadmaps (planning-index.md §6.1)", () => {
+    // Two roadmaps found by name, neither a planning document but by being
+    // one: no frontmatter, no question.
+    const NESTED = "docs/plans/roadmap.md";
+    const tree = {
+      ...TREE,
+      "roadmap.md": "# Roadmap\n\n- [A](plans/a.md)\n",
+      [NESTED]: "# Plans\n\n- [B](../../plans/b.md)\n",
+    };
+    const byName = { roadmaps: null };
+
+    it("never stores either, and the server sends both whole on every build", async () => {
+      const { store, written } = writeSpy();
+      const server = fakePlanningServer(tree, { config: byName });
+      const core = scannerCore({
+        cache: scanCache(store, "scanner"),
+        fetch: server.fetch,
+        yieldNow: async () => undefined,
+      });
+      const cold = await build(core);
+      const warm = await build(core, { seq: 2 });
+      // Found by name, so plans/roadmap.md is one too.
+      const roadmaps = [NESTED, ROADMAP, "roadmap.md"];
+      expect(written.filter((path) => roadmaps.includes(path))).toEqual([]);
+      expect(Object.keys(server.haves()[1] ?? {})).not.toContain(NESTED);
+      expect(server.fileLines[1]).toEqual(roadmaps);
+      expect(server.pathRequests()).toEqual([]);
+      const index = indexFrom(warm);
+      expect(index).toEqual(indexFrom(cold));
+      expect(index).toEqual(indexOf(tree, byName));
+      expect(index.documents.map((doc) => doc.path)).toContain(NESTED);
+    });
+
+    it("reads a roadmap the server answers same for, rather than use what it stored", async () => {
+      // Stored while the config listed another roadmap, when this file was a
+      // plain document and not a planning one.
+      const { store, written } = writeSpy();
+      const options: FakeServerOptions = {
+        config: { roadmaps: ["roadmap.md"] },
+        sameForRoadmaps: true,
+      };
+      const server = fakePlanningServer(tree, options);
+      const core = scannerCore({
+        cache: scanCache(store, "scanner"),
+        fetch: server.fetch,
+        yieldNow: async () => undefined,
+      });
+      await build(core);
+      expect(written).toContain(NESTED);
+      written.length = 0;
+
+      // Now found by name, and a server that disagrees says `same` for both
+      // files that became roadmaps.
+      options.config = byName;
+      const events = await build(core, { seq: 2 });
+      expect(events.at(-1)).toEqual({ type: "ready" });
+      expect(server.haves()[1]).toHaveProperty([NESTED]);
+      expect(server.fileLines[1]).toEqual(["roadmap.md"]);
+      expect(server.pathRequests()).toEqual([NESTED, ROADMAP]);
+      const index = indexFrom(events);
+      expect(index).toEqual(indexOf(tree, byName));
+      expect(index.documents.map((doc) => doc.path)).toContain(NESTED);
+      // Read again as roadmaps, and so not stored again.
+      expect(written).not.toContain(NESTED);
+      expect(written).not.toContain(ROADMAP);
+    });
   });
 
   it("keeps each repository's results apart", async () => {
@@ -825,8 +894,8 @@ describe("cards", () => {
   it("serve the roadmap's from memory, since it is never stored", async () => {
     const { core, server } = setup();
     await build(core);
-    expect(await cards(core, want(CONFIG.roadmap))).toEqual([
-      { path: CONFIG.roadmap, block: blocksOf(CONFIG.roadmap)[0] },
+    expect(await cards(core, want(ROADMAP))).toEqual([
+      { path: ROADMAP, block: blocksOf(ROADMAP)[0] },
     ]);
     expect(server.pathRequests()).toEqual([]);
   });
@@ -932,14 +1001,12 @@ describe("cards", () => {
     const answers = await core.cards({
       repo: "",
       apiBase: "/api",
-      want: want(CONFIG.roadmap),
+      want: want(ROADMAP),
       full: false,
       config: planningConfig(CONFIG),
     });
-    expect(answers).toEqual([
-      { path: CONFIG.roadmap, block: blocksOf(CONFIG.roadmap)[0] },
-    ]);
-    expect(server.pathRequests()).toEqual([CONFIG.roadmap]);
+    expect(answers).toEqual([{ path: ROADMAP, block: blocksOf(ROADMAP)[0] }]);
+    expect(server.pathRequests()).toEqual([ROADMAP]);
     // Scanned as the roadmap: kept in memory, never stored.
     expect(written).toEqual([]);
   });
@@ -1060,10 +1127,10 @@ describe("a refresh", () => {
       repo: "",
       apiBase: "/api",
       seq: 9,
-      path: CONFIG.roadmap,
+      path: ROADMAP,
       config,
     });
-    expect(roadmap).toMatchObject({ kind: "file", path: CONFIG.roadmap });
+    expect(roadmap).toMatchObject({ kind: "file", path: ROADMAP });
     // The roadmap has no frontmatter: only the config makes it one.
     expect(roadmap?.kind === "file" && roadmap.result.kind).toBe("planning");
     const entry = await core.refresh({
@@ -1088,8 +1155,8 @@ describe("a refresh", () => {
       repo: "",
       apiBase: "/api",
       seq: 9,
-      path: CONFIG.roadmap,
-      config: planningConfig({ roadmap: "elsewhere.md" }),
+      path: ROADMAP,
+      config: planningConfig({ roadmaps: ["elsewhere.md"] }),
     });
     expect(written).toEqual([]);
   });
@@ -1100,12 +1167,12 @@ describe("a refresh", () => {
       repo: "",
       apiBase: "/api",
       seq: 2,
-      path: CONFIG.roadmap,
+      path: ROADMAP,
       config: planningConfig(CONFIG),
     });
     // The roadmap has no frontmatter: only the config makes it one.
     expect(entry?.kind === "file" && entry.result.kind).toBe("planning");
-    expect(server.pathRequests()).toEqual([CONFIG.roadmap]);
+    expect(server.pathRequests()).toEqual([ROADMAP]);
   });
 
   it("scans under a header it has seen over the config it is sent", async () => {
@@ -1115,7 +1182,7 @@ describe("a refresh", () => {
       repo: "",
       apiBase: "/api",
       seq: 2,
-      path: CONFIG.roadmap,
+      path: ROADMAP,
       config: planningConfig(),
     });
     expect(entry?.kind === "file" && entry.result.kind).toBe("planning");
@@ -1134,7 +1201,7 @@ describe("a refresh", () => {
     });
     const building = build(core);
     let settled = false;
-    const refreshing = refresh(core, CONFIG.roadmap).then((entry) => {
+    const refreshing = refresh(core, ROADMAP).then((entry) => {
       settled = true;
       return entry;
     });
@@ -1319,7 +1386,7 @@ describe("helpers, for a cold build", () => {
     Object.entries(TREE).map(([path, text]) => [path, `${text}\n${PROSE}`]),
   );
   const STORED = Object.keys(HTREE)
-    .filter((path) => path !== CONFIG.roadmap)
+    .filter((path) => path !== ROADMAP)
     .sort();
 
   const LIMITS = {
@@ -1435,7 +1502,7 @@ describe("helpers, for a cold build", () => {
     // The index a build on one thread makes, named by the same hashes.
     expect(indexFrom(events)).toEqual(indexOf(HTREE, CONFIG));
     expect(hashesOf(events)).toEqual(
-      ["plans/a.md", "plans/b.md", "plans/c.md", CONFIG.roadmap].map((path) => [
+      ["plans/a.md", "plans/b.md", "plans/c.md", ROADMAP].map((path) => [
         path,
         contentHash(HTREE[path] ?? ""),
       ]),
@@ -1455,7 +1522,7 @@ describe("helpers, for a cold build", () => {
     // And what it wrote makes the next build warm.
     const warm = await build(rig.core, { seq: 2 });
     expect(warm[0]).toEqual({ type: "started", warm: true });
-    expect(rig.server.fileLines[1]).toEqual([CONFIG.roadmap]);
+    expect(rig.server.fileLines[1]).toEqual([ROADMAP]);
   });
 
   it("hands a file larger than any queue to an empty one", async () => {

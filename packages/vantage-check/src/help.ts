@@ -14,8 +14,8 @@ Usage:
   vantage-check <path>...            check files and directories (the default command)
   vantage-check check <path>...      the same thing, said explicitly
   vantage-check index                print the project's planning index: what
-                                     needs a ruling, what waits, and the roadmap
-                                     with each link's badge
+                                     needs a ruling, what waits, and the chosen
+                                     roadmap with each link's badge
   vantage-check style-guide          print the Vantage Markdown style guide
   vantage-check version              print the version
   vantage-check help                 print this message
@@ -34,6 +34,9 @@ Options for check:
 
 Options for index:
   --format text|json                 output format (default: text)
+  --roadmap <path>                   the roadmap Needs you follows, relative to
+                                     the project root (default: the roadmap
+                                     nearest the root)
   --config <path>                    use this .vantage.toml
   --no-config                        ignore .vantage.toml entirely
 
@@ -66,10 +69,13 @@ severities ("error", "warning", "off"), and check.strict / check.exit-code:
   "link/dead-section-anchor" = "warning"
 
 The same file's [planning] table says which files are planning documents and
-what their stages mean, for index and the planning/* rules:
+what their stages mean, for index and the planning/* rules. With no roadmap
+key, every roadmap.md in the project is a roadmap; roadmap names exactly the
+ones to read instead, as one path or a list:
 
   [planning]
-  roadmap = "roadmap.md"
+  # roadmap = "plans/roadmap.md"
+  # roadmap = ["roadmap.md", "docs/plans/roadmap.md"]
   exclude = ["docs/gallery/**"]
 
   [planning.stages]

@@ -18,6 +18,13 @@
  * left out. A page past the end is clamped to the last, and a value that is not
  * a page number reads as 1; `pageSearch` says how the URL is to be rewritten.
  *
+ * With two or more roadmaps that route, the URL carries the chosen one too, as
+ * `?roadmap=docs/plans/roadmap.md` (`docs/design/planning-index.md` §6.4):
+ * *Needs you* follows it. Which roadmap is chosen is `chooseRoadmap`, one pure
+ * function of the roadmaps, the URL's value and the one this browser
+ * remembers for the repository, so the page, its inputs and every prefetch
+ * resolve it alike; `planningSearch` rewrites the URL to name it.
+ *
  * Pure functions of the index and the limits module, so the page, its inputs
  * and the viewer's prefetch lay a page out identically.
  */
@@ -27,10 +34,16 @@ import {
   type DependsOn,
   type PlanningIndex,
   type PlanningQuestion,
+  type PlanningRoadmap,
   type PlanningSections,
   type QuestionRef,
 } from "vantage-md/planning";
 import { planningLimits } from "../planningScan/limits";
+import {
+  planningRoadmapPreferenceKey,
+  readPreference,
+  writePreference,
+} from "./preferences";
 
 /** Each section, by the name its URL parameter and its heading's id carry. */
 export const SECTION_IDS = [
@@ -93,12 +106,17 @@ export type LaidOutSection =
     });
 
 export interface PlanningLayout {
+  /**
+   * The chosen roadmap its *Needs you* follows, `null` when no roadmap
+   * routes. Part of what names a layout, with `pages`.
+   */
+  roadmap: string | null;
   /** The non-empty sections, top to bottom. */
   sections: readonly LaidOutSection[];
   /**
    * The shown pages, canonically: `needs-you=2&waiting=3`, sections in order,
    * page 1 left out, `""` when every section is on its first page. Two layouts
-   * of one index with the same `pages` show the same entries.
+   * of one index with the same `roadmap` and `pages` show the same entries.
    */
   pages: string;
 }
@@ -260,18 +278,139 @@ export function layoutPlanningPage(
       items: section.entries.slice(start, end),
     } as LaidOutSection);
   }
-  return { sections: laid, pages: pages.join("&") };
+  return {
+    roadmap: sections.chosenRoadmap,
+    sections: laid,
+    pages: pages.join("&"),
+  };
 }
 
-/** The sections of `index`, derived once per index. */
-const derived = new WeakMap<PlanningIndex, PlanningSections>();
-export function sectionsOf(index: PlanningIndex): PlanningSections {
-  let sections = derived.get(index);
+/**
+ * The sections of `index` with `roadmap` asked for, derived once per index
+ * and chosen roadmap. `derivePlanningSections` falls back from a roadmap that
+ * does not route, and `null` asks for the default, so a derivation is kept
+ * under the roadmap it chose as well as the one asked for: asking for the
+ * default by name or by `null` is one derivation, and one object.
+ */
+const derived = new WeakMap<
+  PlanningIndex,
+  Map<string | null, PlanningSections>
+>();
+export function sectionsOf(
+  index: PlanningIndex,
+  roadmap: string | null = null,
+): PlanningSections {
+  let byRoadmap = derived.get(index);
+  if (byRoadmap === undefined) {
+    byRoadmap = new Map();
+    derived.set(index, byRoadmap);
+  }
+  let sections = byRoadmap.get(roadmap);
   if (sections === undefined) {
-    sections = derivePlanningSections(index);
-    derived.set(index, sections);
+    const fresh = derivePlanningSections(index, { roadmap });
+    sections = byRoadmap.get(fresh.chosenRoadmap) ?? fresh;
+    byRoadmap.set(roadmap, sections);
+    byRoadmap.set(fresh.chosenRoadmap, sections);
   }
   return sections;
+}
+
+/** The URL parameter that names the chosen roadmap. */
+export const ROADMAP_PARAM = "roadmap";
+
+/**
+ * The roadmap the URL asks for, repo-relative with one leading `./` dropped,
+ * or `null`. `URLSearchParams` has already decoded it, so `docs/plans/x.md`
+ * and `docs%2Fplans%2Fx.md` read alike.
+ */
+export function readRoadmapRequest(search: URLSearchParams): string | null {
+  const asked = search.get(ROADMAP_PARAM);
+  if (asked === null || asked === "") return null;
+  return asked.startsWith("./") ? asked.slice(2) : asked;
+}
+
+/** The roadmaps that route, in roadmap order: what the picker offers. */
+export const routingRoadmaps = (
+  roadmaps: readonly PlanningRoadmap[],
+): PlanningRoadmap[] => roadmaps.filter((r) => r.state === "routes");
+
+/**
+ * Which roadmap is chosen (`planning-index.md` §6.4): the URL's, when it names
+ * a roadmap that routes; else the one this browser remembers for the
+ * repository, when it still routes; else the default, the first that routes.
+ * `null` when none routes. `roadmaps` are in roadmap order, as
+ * `PlanningSections.roadmaps` holds them.
+ */
+export function chooseRoadmap(
+  roadmaps: readonly PlanningRoadmap[],
+  asked: string | null,
+  remembered: string | null,
+): string | null {
+  const routing = routingRoadmaps(roadmaps);
+  for (const want of [asked, remembered]) {
+    if (want !== null && routing.some((r) => r.path === want)) return want;
+  }
+  return routing[0]?.path ?? null;
+}
+
+/**
+ * The roadmap this browser remembers for `repo` (`""` in single-repo mode),
+ * or `null`. Storage that fails reads as nothing remembered.
+ */
+export function readRememberedRoadmap(repo: string): string | null {
+  const value = readPreference(planningRoadmapPreferenceKey(repo));
+  return value === null || value === "" ? null : value;
+}
+
+/**
+ * Remember a pick of `path` for `repo`. Only a pick is remembered, never a
+ * visit to a URL that names one, and storage that fails remembers nothing
+ * and says nothing.
+ */
+export function rememberRoadmap(repo: string, path: string): void {
+  writePreference(planningRoadmapPreferenceKey(repo), path);
+}
+
+/**
+ * `search` rewritten to name exactly `layout`'s pages and roadmap, or `null`
+ * when it already does. The pages are `pageSearch`'s. The roadmap is named
+ * when two or more roadmaps route, so the address always says which one is
+ * shown, and removed when fewer do, as a page parameter naming page 1 is.
+ */
+export function planningSearch(
+  search: URLSearchParams,
+  layout: PlanningLayout,
+  sections: PlanningSections,
+): URLSearchParams | null {
+  const paged = pageSearch(search, layout);
+  const base = paged ?? search;
+  const want =
+    routingRoadmaps(sections.roadmaps).length >= 2 ? layout.roadmap : null;
+  if (
+    base.get(ROADMAP_PARAM) === want &&
+    base.getAll(ROADMAP_PARAM).length <= 1
+  ) {
+    return paged;
+  }
+  const next = new URLSearchParams(base);
+  if (want === null) next.delete(ROADMAP_PARAM);
+  else next.set(ROADMAP_PARAM, want);
+  return next;
+}
+
+/**
+ * `search` with `roadmap` picked: the roadmap replaced, and *Needs you* back
+ * on its first page, since its order is another roadmap's now. Every other
+ * parameter stays.
+ */
+export function withRoadmap(
+  search: URLSearchParams,
+  roadmap: string,
+): URLSearchParams {
+  const next = new URLSearchParams(search);
+  next.set(ROADMAP_PARAM, roadmap);
+  next.delete("needs-you");
+  return next;
 }
 
 /**
@@ -319,13 +458,19 @@ export function requestWithPage(
   return { ...request, [id]: page > 1 ? String(page) : null };
 }
 
-/** Every question with a card, on any page, in page order. */
+/**
+ * Every question with a card, on any page, in page order, and every question
+ * that needs you on another roadmap: what Copy answers covers, under every
+ * roadmap, so choosing another changes neither what it copies nor its count
+ * (`planning-index.md` §6.3).
+ */
 export function listedQuestions(
   index: PlanningIndex,
   sections: PlanningSections,
 ): PlanningQuestion[] {
   const refs: QuestionRef[] = [
     ...sections.needsYou,
+    ...sections.onOtherRoadmaps,
     ...(sections.unrouted ?? []),
     ...sections.waiting.flatMap((w) =>
       w.kind === "question" ? [w.question] : [],

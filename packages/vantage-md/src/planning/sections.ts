@@ -1,5 +1,5 @@
 /**
- * The planning page's sections and the roadmap's routing (design §6), and the
+ * The planning page's sections and the roadmaps' routing (design §6), and the
  * Referenced by list (§7).
  *
  * The page, `vantage-check index` and the checker's planning rules all derive
@@ -9,7 +9,14 @@
  */
 
 import { VANTAGE_OQ_ID } from "../vantageDirectives.js";
-import type { StageRole } from "./config.js";
+import {
+  compareRoadmaps,
+  hasRoadmapName,
+  isRoadmapPath,
+  ROADMAP_FILE_NAME,
+  type PlanningConfig,
+  type StageRole,
+} from "./config.js";
 import { findDocument, type PlanningIndex } from "./model.js";
 import type {
   DependsOn,
@@ -25,7 +32,7 @@ export interface QuestionRef {
   line: number;
 }
 
-/** A question the roadmap routes, with the roadmap heading its link sits under. */
+/** A question a roadmap routes, with the roadmap heading its link sits under. */
 export interface RoutedQuestion extends QuestionRef {
   heading: string | null;
 }
@@ -34,15 +41,52 @@ export type WaitingEntry =
   | { kind: "question"; question: QuestionRef }
   | { kind: "document"; path: string; waitingOn: DependsOn[] };
 
+/**
+ * A roadmap's *state* (design §6.1, a term coined there): whether it routes,
+ * and why not when it does not. `missing` is only ever a listed roadmap's,
+ * since a roadmap found by name is one because the index holds it.
+ */
+export type RoadmapState =
+  "routes" | "done" | "skipped" | "unreadable" | "missing";
+
+/** One roadmap, as the picker, the notices and `vantage-check index` list it. */
+export interface PlanningRoadmap {
+  path: string;
+  state: RoadmapState;
+  /** Its routed questions that are open or answered: Needs you when chosen. 0 unless `routes`. */
+  needsYouCount: number;
+}
+
+/** A question another roadmap routes and the chosen one does not (§6.2). */
+export interface OtherRoadmapQuestion extends RoutedQuestion {
+  /** The first roadmap in roadmap order, other than the chosen one, that routes it. */
+  roadmap: string;
+}
+
 export interface PlanningSections {
-  /** `present` is false when the roadmap is missing, skipped or unreadable. */
-  roadmap: { path: string; present: boolean };
+  /** Every roadmap, in roadmap order (§6.1), each with its state. */
+  roadmaps: PlanningRoadmap[];
+  /**
+   * The roadmap Needs you follows: the one asked for when it routes, else the
+   * first in roadmap order that does, the *default roadmap*. `null` when none
+   * routes.
+   */
+  chosenRoadmap: string | null;
   stagesDeclared: boolean;
   /** No open question in any document outside the `done` role. */
   nothingNeedsYou: boolean;
-  /** Without a roadmap: every open question, by path, then line. */
+  /**
+   * The chosen roadmap's routed open or answered questions, in its order.
+   * With none chosen: every open question, by path, then line.
+   */
   needsYou: RoutedQuestion[];
-  /** `null` when there is no roadmap. */
+  /**
+   * Open or answered questions another roadmap routes and the chosen one does
+   * not, each once, in roadmap order and then that roadmap's own order: what
+   * the page counts beside its picker (§6.4). Empty when none is chosen.
+   */
+  onOtherRoadmaps: OtherRoadmapQuestion[];
+  /** Open questions no roadmap routes; `null` when none is chosen. */
   unrouted: QuestionRef[] | null;
   waiting: WaitingEntry[];
   /** The three stage sections are `null` when no stages are declared. */
@@ -53,16 +97,89 @@ export interface PlanningSections {
   unreadable: PlanningIndex["unreadable"];
 }
 
+/**
+ * What a roadmap that does not route is said to be, after its path (§6.4): the
+ * one phrase for each state, shared by every notice and `vantage-check
+ * index`'s Roadmaps block.
+ */
+export const ROADMAP_STATE_PHRASES: Readonly<
+  Record<Exclude<RoadmapState, "routes">, string>
+> = Object.freeze({
+  missing:
+    "is missing or not in Vantage's file list (it is not a .md file, or is in a hidden or excluded directory, or matches .vantageignore)",
+  skipped: "is larger than max-file-bytes",
+  unreadable: "could not be read",
+  done: "has a stage with the done role",
+});
+
+/** `a`, `a, and b`, `a, b, and c`: clauses, which already hold commas. */
+function clauses(items: readonly string[]): string {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+
+const LISTS_EVERY_QUESTION =
+  "so Needs you lists every open question by document.";
+
 /** One wording for the page and the CLI (P7). */
 export const PLANNING_NOTICES: {
   nothingNeedsYou: string;
-  noRoadmap(path: string): string;
+  /**
+   * The roadmap notice of design §6.4, or null: the No roadmap line when none
+   * routes, the Not read as a roadmap line when a listed one is missing,
+   * skipped or unreadable while another routes, and null otherwise.
+   */
+  roadmapNotice(
+    config: PlanningConfig,
+    roadmaps: readonly PlanningRoadmap[],
+  ): string | null;
+  /** "1 more question needs you on another roadmap." / "3 more questions need you on other roadmaps." */
+  otherRoadmaps(count: number): string;
   noStages: string;
   refused(candidateCount: number, maxCandidates: number): string;
 } = {
   nothingNeedsYou: "Nothing needs you.",
-  noRoadmap: (path) =>
-    `No roadmap: ${path} is missing, too large or unreadable, or is not in Vantage's file list (it is not a .md file, or is in a hidden or excluded directory, or matches .vantageignore), so Needs you lists every open question by document. Set roadmap under [planning] in .vantage.toml to read another file.`,
+  roadmapNotice(config, roadmaps) {
+    const unread = roadmaps.filter(
+      (r): r is PlanningRoadmap & { state: Exclude<RoadmapState, "routes"> } =>
+        r.state !== "routes",
+    );
+    if (unread.length < roadmaps.length) {
+      // One routes. Only a listed roadmap that could not be read is named: a
+      // `done` stage is a deliberate retirement, and Skipped and Could not
+      // read already list a roadmap found by name.
+      if (config.roadmaps === null) return null;
+      const failed = unread.filter((r) => r.state !== "done");
+      if (failed.length === 0) return null;
+      return `Not read as a roadmap: ${failed
+        .map(
+          (r) =>
+            `${r.path}, which roadmap under [planning] lists, ${ROADMAP_STATE_PHRASES[r.state]}`,
+        )
+        .join("; ")}.`;
+    }
+    const named = clauses(
+      unread.map((r) => `${r.path} ${ROADMAP_STATE_PHRASES[r.state]}`),
+    );
+    if (config.roadmaps === null) {
+      const found =
+        unread.length === 0
+          ? `no planning candidate is named ${ROADMAP_FILE_NAME}`
+          : named;
+      return `No roadmap: ${found}, ${LISTS_EVERY_QUESTION} Add a ${ROADMAP_FILE_NAME} in any directory, or name one with roadmap under [planning] in .vantage.toml. A ${ROADMAP_FILE_NAME} in a hidden directory, matched by .vantageignore, or ruled out by include or exclude is not read.`;
+    }
+    if (unread.length === 0) {
+      return `No roadmap: roadmap under [planning] in .vantage.toml is an empty list, ${LISTS_EVERY_QUESTION}`;
+    }
+    const listed = clauses(
+      unread.map((r) => `${r.path}, which ${ROADMAP_STATE_PHRASES[r.state]}`),
+    );
+    return `No roadmap: roadmap under [planning] in .vantage.toml lists ${listed}, ${LISTS_EVERY_QUESTION} Correct the ${unread.length === 1 ? "path" : "paths"}, or remove roadmap to find every ${ROADMAP_FILE_NAME}.`;
+  },
+  otherRoadmaps: (count) =>
+    count === 1
+      ? "1 more question needs you on another roadmap."
+      : `${count.toLocaleString("en-US")} more questions need you on other roadmaps.`,
   noStages:
     "No stages are declared, so Ready, Graduate and Disagrees are not shown. Declare them under [planning.stages] in .vantage.toml.",
   refused: (candidateCount, maxCandidates) =>
@@ -91,7 +208,7 @@ const keyOf = (ref: QuestionRef): string => `${ref.path}\n${ref.line}`;
 const isOpen = (q: PlanningQuestion): boolean => q.state === "open";
 
 /**
- * The questions one roadmap link routes (§6.1), or `null` when it routes
+ * The questions one link of `roadmap` routes (§6.1), or `null` when it routes
  * nothing at all.
  *
  * A bare link to a document routes every question in it, and routes the
@@ -101,14 +218,16 @@ const isOpen = (q: PlanningQuestion): boolean => q.state === "open";
  * through its document's `#decision-ledger` heading and routing that would
  * route the document's unrelated open questions (Plan Q12). Links to
  * non-planning documents, and to `done` documents, route nothing, and neither
- * do the roadmap's links to itself: a document's links are its links to
- * another candidate (§3.2).
+ * do a roadmap's links to itself: a document's links are its links to another
+ * candidate (§3.2). A link to another roadmap is an ordinary link, and routes
+ * the questions written there, never the ones that roadmap routes.
  */
 function routedBy(
   index: PlanningIndex,
+  roadmap: string,
   link: PlanningLink,
 ): PlanningQuestion[] | null {
-  if (link.target === index.config.roadmap) return null;
+  if (link.target === roadmap) return null;
   const doc = findDocument(index, link.target);
   if (doc === undefined || !isLive(index, doc)) return null;
   if (link.fragment === null) return doc.questions;
@@ -117,18 +236,59 @@ function routedBy(
   return reached.length > 0 ? reached : null;
 }
 
+/** A roadmap's path and its state, before any routing is counted. */
+interface RoadmapEntry {
+  path: string;
+  state: RoadmapState;
+  /** The document, when it `routes`. */
+  doc: PlanningDocument | null;
+}
+
 /**
- * The questions the roadmap routes, in the order its links reach them (§6.1),
- * each link read by `routedBy`. A question reached twice keeps its first
- * position.
+ * Every roadmap of the index, in roadmap order, with its state (§6.1).
+ * Listed: one entry per listed path, `missing` when the index holds nothing
+ * at it. Found by name: every path the index holds, as a document, skipped or
+ * unreadable, whose name is `roadmap.md`.
  */
-export function routeQuestions(index: PlanningIndex): RoutedQuestion[] {
-  const roadmap = findDocument(index, index.config.roadmap);
-  if (roadmap === undefined) return [];
+function roadmapEntries(index: PlanningIndex): RoadmapEntry[] {
+  const listed = index.config.roadmaps;
+  const paths =
+    listed === null
+      ? [...index.documents, ...index.skipped, ...index.unreadable]
+          .map((entry) => entry.path)
+          .filter(hasRoadmapName)
+      : listed;
+  return [...new Set(paths)].sort(compareRoadmaps).map((path) => {
+    const doc = findDocument(index, path);
+    if (doc !== undefined) {
+      return isLive(index, doc)
+        ? { path, state: "routes", doc }
+        : { path, state: "done", doc: null };
+    }
+    const has = (list: readonly { path: string }[]) =>
+      list.some((entry) => entry.path === path);
+    const state: RoadmapState = has(index.skipped)
+      ? "skipped"
+      : has(index.unreadable)
+        ? "unreadable"
+        : "missing";
+    return { path, state, doc: null };
+  });
+}
+
+/**
+ * The questions one routing document's links reach, in the order they reach
+ * them, each link read by `routedBy`. A question reached twice keeps its
+ * first position.
+ */
+function routesOf(
+  index: PlanningIndex,
+  roadmap: PlanningDocument,
+): RoutedQuestion[] {
   const routed: RoutedQuestion[] = [];
   const seen = new Set<string>();
   for (const link of roadmap.links) {
-    const reached = routedBy(index, link);
+    const reached = routedBy(index, roadmap.path, link);
     if (reached === null) continue;
     for (const question of reached) {
       const ref = refOf(question);
@@ -138,6 +298,58 @@ export function routeQuestions(index: PlanningIndex): RoutedQuestion[] {
     }
   }
   return routed;
+}
+
+/**
+ * The questions one roadmap routes, in its order (§6.1): `[]` unless `roadmap`
+ * is a roadmap of the index whose state is `routes`.
+ */
+export function routeQuestions(
+  index: PlanningIndex,
+  roadmap: string,
+): RoutedQuestion[] {
+  if (!isRoadmapPath(index.config, roadmap)) return [];
+  const doc = findDocument(index, roadmap);
+  if (doc === undefined || !isLive(index, doc)) return [];
+  return routesOf(index, doc);
+}
+
+/** Every routing roadmap's routes, in roadmap order. */
+interface Routing {
+  roadmaps: PlanningRoadmap[];
+  /** One entry per roadmap in `routes`, in roadmap order. */
+  routes: { path: string; doc: PlanningDocument; routed: RoutedQuestion[] }[];
+}
+
+/** Whether a routed question needs a ruling, or an answer compacted. */
+function needsYouFilter(index: PlanningIndex): (ref: QuestionRef) => boolean {
+  return (ref) => {
+    const state = questionFor(index, ref)?.state;
+    return state === "open" || state === "answered";
+  };
+}
+
+function routingOf(index: PlanningIndex): Routing {
+  const needsYou = needsYouFilter(index);
+  const routes: Routing["routes"] = [];
+  const roadmaps = roadmapEntries(index).map(({ path, state, doc }) => {
+    if (doc === null) return { path, state, needsYouCount: 0 };
+    const routed = routesOf(index, doc);
+    routes.push({ path, doc, routed });
+    return { path, state, needsYouCount: routed.filter(needsYou).length };
+  });
+  return { roadmaps, routes };
+}
+
+/**
+ * Every roadmap, in roadmap order (§6.1). Listed: one entry per listed path,
+ * `missing` when the index holds nothing at it. Found by name: every path the
+ * index holds, as a document, skipped or unreadable, whose name is
+ * `roadmap.md`; never `missing`. A document whose stage has the done role is
+ * `done`, any other document `routes`.
+ */
+export function roadmapsOf(index: PlanningIndex): PlanningRoadmap[] {
+  return routingOf(index).roadmaps;
 }
 
 /**
@@ -174,27 +386,41 @@ function waits(index: PlanningIndex, entry: DependsOn): boolean {
   return doc.questions.some(isOpen);
 }
 
-/** Every section of the planning page, top to bottom (§6.2). */
-export function derivePlanningSections(index: PlanningIndex): PlanningSections {
+/**
+ * Every section of the planning page, top to bottom (§6.2), for one chosen
+ * roadmap: `options.roadmap` when it routes, else the default roadmap, the
+ * first in roadmap order that does.
+ */
+export function derivePlanningSections(
+  index: PlanningIndex,
+  options: { roadmap?: string | null } = {},
+): PlanningSections {
   const { config } = index;
-  const present = findDocument(index, config.roadmap) !== undefined;
   const live = index.documents.filter((doc) => isLive(index, doc));
   const stagesDeclared = config.stages !== null;
-
-  const byKey = new Map<string, PlanningQuestion>();
-  for (const doc of live) {
-    for (const q of doc.questions) byKey.set(keyOf(refOf(q)), q);
-  }
+  const { roadmaps, routes } = routingOf(index);
+  const chosen =
+    routes.find((route) => route.path === options.roadmap) ?? routes[0];
 
   let needsYou: RoutedQuestion[];
+  const onOtherRoadmaps: OtherRoadmapQuestion[] = [];
   let unrouted: QuestionRef[] | null;
-  if (present) {
-    const routed = routeQuestions(index);
-    needsYou = routed.filter((ref) => {
-      const state = byKey.get(keyOf(ref))?.state;
-      return state === "open" || state === "answered";
-    });
-    unrouted = unroutedIn(live, routed);
+  if (chosen !== undefined) {
+    const needs = needsYouFilter(index);
+    needsYou = chosen.routed.filter(needs);
+    const listed = new Set(chosen.routed.map(keyOf));
+    for (const route of routes) {
+      if (route === chosen) continue;
+      for (const ref of route.routed) {
+        if (listed.has(keyOf(ref)) || !needs(ref)) continue;
+        listed.add(keyOf(ref));
+        onOtherRoadmaps.push({ ...ref, roadmap: route.path });
+      }
+    }
+    unrouted = unroutedIn(
+      live,
+      routes.flatMap((route) => route.routed),
+    );
   } else {
     needsYou = live.flatMap((doc) =>
       doc.questions.filter(isOpen).map((q) => ({ ...refOf(q), heading: null })),
@@ -224,10 +450,12 @@ export function derivePlanningSections(index: PlanningIndex): PlanningSections {
   const hasOpen = (doc: PlanningDocument) => doc.questions.some(isOpen);
 
   return {
-    roadmap: { path: config.roadmap, present },
+    roadmaps,
+    chosenRoadmap: chosen?.path ?? null,
     stagesDeclared,
     nothingNeedsYou: !live.some(hasOpen),
     needsYou,
+    onOtherRoadmaps,
     unrouted,
     waiting,
     ready: stageSection((role, doc) => role === "ready" && !hasOpen(doc)),
@@ -295,55 +523,72 @@ export interface ReferenceSource {
 
 /** What a document's Referenced by line reports, and the list behind it (§7). */
 export interface ReferenceSummary {
-  /** The documents that link here, the roadmap first and then by path. */
+  /**
+   * The documents that link here: the roadmaps that route first, in roadmap
+   * order, then the rest by path.
+   */
   sources: ReferenceSource[];
   /**
-   * The roadmap heading of the first roadmap link that routes this document or
-   * one of its questions (§6.1), `heading` being `null` for a link above every
-   * heading. `null` when no link routes it, when there is no roadmap, and for
-   * the roadmap itself, which is not on itself.
+   * Each roadmap that routes this document or one of its questions (§6.1), in
+   * roadmap order, with the heading of its first link that does, `heading`
+   * being `null` for a link above every heading. Never the document itself,
+   * which is not on itself, though it may be on another roadmap that links it.
    */
-  onRoadmap: { heading: string | null } | null;
+  onRoadmaps: { roadmap: string; heading: string | null }[];
   /**
-   * Its open questions the roadmap does not route: what the planning page lists
-   * for it under *Unrouted* (§6.2). `0` without a roadmap, where there is no
+   * Its open questions no roadmap routes: what the planning page lists for it
+   * under *Unrouted* (§6.2). `0` when no roadmap routes, where there is no
    * such section, and for a `done` document, which contributes to none.
    */
   unrouted: number;
+  /**
+   * Every roadmap that routes, in roadmap order: how many there are, which
+   * decides the line's wording, and what a label must tell apart.
+   */
+  roadmaps: string[];
 }
 
 /**
- * Who links to `path`, and whether the roadmap routes it: the two questions a
+ * Who links to `path`, and which roadmaps route it: the two questions a
  * Referenced by line answers. Routing and the unrouted count are the planning
  * page's own derivations, applied to one document, so the line and the page
- * cannot disagree (P7).
+ * cannot disagree (P7). None of it depends on a chosen roadmap, so every
+ * reader sees the same line.
  */
 export function referenceSummary(
   index: PlanningIndex,
   path: string,
 ): ReferenceSummary {
-  const roadmapPath = index.config.roadmap;
+  const { routes } = routingOf(index);
+  const roadmaps = routes.map((route) => route.path);
   const sources: ReferenceSource[] = [];
   for (const ref of referencedBy(index, path)) {
     const last = sources.at(-1);
     if (last?.from === ref.from) last.references.push(ref);
     else sources.push({ from: ref.from, references: [ref] });
   }
-  const at = sources.findIndex((source) => source.from === roadmapPath);
-  if (at > 0) sources.unshift(...sources.splice(at, 1));
+  const first = sources
+    .filter((source) => roadmaps.includes(source.from))
+    .sort((a, b) => compareRoadmaps(a.from, b.from));
+  const rest = sources.filter((source) => !roadmaps.includes(source.from));
 
-  const roadmap = findDocument(index, roadmapPath);
-  const doc = findDocument(index, path);
-  let onRoadmap: ReferenceSummary["onRoadmap"] = null;
-  if (roadmap !== undefined && path !== roadmapPath) {
-    const link = roadmap.links.find(
-      (l) => l.target === path && routedBy(index, l) !== null,
+  const onRoadmaps: ReferenceSummary["onRoadmaps"] = [];
+  for (const route of routes) {
+    if (route.path === path) continue;
+    const link = route.doc.links.find(
+      (l) => l.target === path && routedBy(index, route.path, l) !== null,
     );
-    if (link !== undefined) onRoadmap = { heading: link.heading };
+    if (link !== undefined) {
+      onRoadmaps.push({ roadmap: route.path, heading: link.heading });
+    }
   }
+  const doc = findDocument(index, path);
   const unrouted =
-    roadmap === undefined || doc === undefined || !isLive(index, doc)
+    routes.length === 0 || doc === undefined || !isLive(index, doc)
       ? 0
-      : unroutedIn([doc], routeQuestions(index)).length;
-  return { sources, onRoadmap, unrouted };
+      : unroutedIn(
+          [doc],
+          routes.flatMap((route) => route.routed),
+        ).length;
+  return { sources: [...first, ...rest], onRoadmaps, unrouted, roadmaps };
 }

@@ -42,8 +42,8 @@ func loadPatterns(t *testing.T) []patternsCase {
 
 func TestMatcherGivesThePatternsFixturesAnswers(t *testing.T) {
 	for _, tc := range loadPatterns(t) {
-		// A roadmap no path can equal, so only include and exclude decide.
-		m := NewMatcher(repoconfig.Planning{Roadmap: "\x00", Include: tc.Include, Exclude: tc.Exclude})
+		// No listed roadmap, so only include and exclude decide.
+		m := NewMatcher(repoconfig.Planning{Roadmaps: []string{}, Include: tc.Include, Exclude: tc.Exclude})
 		require.Equal(t, tc.Candidate, m.IsCandidate(tc.Path),
 			"include %q, exclude %q, path %q", tc.Include, tc.Exclude, tc.Path)
 	}
@@ -64,28 +64,72 @@ func TestThePatternsFixtureKeepsItsQuirks(t *testing.T) {
 	}
 }
 
-// The roadmap is a candidate whatever include and exclude say (design §3.1,
-// Plan Q2), and only the roadmap: the rule is an exact path, not a pattern.
-func TestTheRoadmapIsAlwaysACandidate(t *testing.T) {
+// The candidate half of internal/repoconfig/testdata/planning-roadmaps.json:
+// a listed roadmap is a candidate whatever the patterns say, and a roadmap
+// found by name is not. The roadmap half is repoconfig's IsRoadmap, asserted in
+// its own suite; vantage-md's candidateMatcher is held to the same rows.
+func TestMatcherGivesTheRoadmapsFixturesAnswers(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "repoconfig", "testdata", "planning-roadmaps.json"))
+	require.NoError(t, err)
+	var f struct {
+		Cases []struct {
+			Roadmaps  []string `json:"roadmaps"`
+			Include   []string `json:"include"`
+			Exclude   []string `json:"exclude"`
+			Path      string   `json:"path"`
+			Candidate bool     `json:"candidate"`
+		} `json:"cases"`
+	}
+	require.NoError(t, json.Unmarshal(data, &f))
+	require.NotEmpty(t, f.Cases)
+	for _, tc := range f.Cases {
+		m := NewMatcher(repoconfig.Planning{Roadmaps: tc.Roadmaps, Include: tc.Include, Exclude: tc.Exclude})
+		require.Equal(t, tc.Candidate, m.IsCandidate(tc.Path),
+			"roadmaps %q, include %q, exclude %q, path %q", tc.Roadmaps, tc.Include, tc.Exclude, tc.Path)
+	}
+}
+
+// A listed roadmap is a candidate whatever include and exclude say (design
+// §3.1, Plan Q2, now per entry), and only a listed one: the rule is an exact
+// path, not a pattern.
+func TestAListedRoadmapIsAlwaysACandidate(t *testing.T) {
 	m := NewMatcher(repoconfig.Planning{
-		Roadmap: "plans/roadmap.md",
-		Include: []string{"docs/**"},
-		Exclude: []string{"plans/**"},
+		Roadmaps: []string{"plans/roadmap.md", "notes/PLAN.md"},
+		Include:  []string{"docs/**"},
+		Exclude:  []string{"plans/**", "notes/**"},
 	})
 	require.True(t, m.IsCandidate("plans/roadmap.md"))
+	require.True(t, m.IsCandidate("notes/PLAN.md"), "every entry, not only the first")
 	require.False(t, m.IsCandidate("plans/other.md"))
 	require.False(t, m.IsCandidate("x/plans/roadmap.md"))
 	require.False(t, m.IsCandidate("roadmap.md"))
+	require.False(t, m.IsCandidate("plans/ROADMAP.md"), "compared exactly")
 
-	none := NewMatcher(repoconfig.Planning{Roadmap: "roadmap.md", Include: []string{}, Exclude: []string{}})
+	none := NewMatcher(repoconfig.Planning{Roadmaps: []string{"roadmap.md"}, Include: []string{}, Exclude: []string{}})
 	require.True(t, none.IsCandidate("roadmap.md"), "not even an empty include rules it out")
 	require.False(t, none.IsCandidate("a.md"))
+}
+
+// A roadmap found by its name is a roadmap because it is a candidate, so the
+// patterns are how a reader hides one (design §3.1): with roadmaps null nothing
+// is exempt, and with [] nothing is either.
+func TestARoadmapFoundByNameHasNoExemption(t *testing.T) {
+	for _, roadmaps := range [][]string{nil, {}} {
+		m := NewMatcher(repoconfig.Planning{
+			Roadmaps: roadmaps,
+			Include:  []string{"**/*.md"},
+			Exclude:  []string{"archive/**"},
+		})
+		require.True(t, m.IsCandidate("roadmap.md"), "roadmaps %q", roadmaps)
+		require.False(t, m.IsCandidate("archive/roadmap.md"), "roadmaps %q", roadmaps)
+		require.False(t, m.IsCandidate("ROADMAP.MD"), "roadmaps %q: **/*.md is case-sensitive", roadmaps)
+	}
 }
 
 // A literal line is a pattern too. starred.Promote treats it as a path, and
 // doing so here would make it mean something vantage-md's port does not.
 func TestALiteralLineIsMatchedAsAPattern(t *testing.T) {
-	m := NewMatcher(repoconfig.Planning{Roadmap: "\x00", Include: []string{"notes.md"}})
+	m := NewMatcher(repoconfig.Planning{Roadmaps: []string{}, Include: []string{"notes.md"}})
 	require.True(t, m.IsCandidate("notes.md"))
 	require.True(t, m.IsCandidate("docs/notes.md"))
 }
@@ -93,9 +137,10 @@ func TestALiteralLineIsMatchedAsAPattern(t *testing.T) {
 // The single-path mode answers every pushed Markdown path, so it must not
 // compile the table's lines again for each one.
 func TestOneTableIsCompiledOnce(t *testing.T) {
-	cfg := repoconfig.Planning{Roadmap: "roadmap.md", Include: []string{"docs/**"}, Exclude: []string{"docs/x/**"}}
+	cfg := repoconfig.Planning{Roadmaps: []string{"roadmap.md"}, Include: []string{"docs/**"}, Exclude: []string{"docs/x/**"}}
 	same := cfg
 	same.Include = append([]string(nil), cfg.Include...)
+	same.Roadmaps = append([]string(nil), cfg.Roadmaps...)
 	require.Same(t, matcherFor(cfg), matcherFor(same))
 
 	other := cfg
@@ -103,10 +148,27 @@ func TestOneTableIsCompiledOnce(t *testing.T) {
 	require.NotSame(t, matcherFor(cfg), matcherFor(other))
 	require.False(t, matcherFor(other).IsCandidate("docs/y/a.md"))
 	require.True(t, matcherFor(other).IsCandidate("docs/x/a.md"))
+
+	listed := cfg
+	listed.Roadmaps = []string{"plans/roadmap.md"}
+	require.NotSame(t, matcherFor(cfg), matcherFor(listed), "the roadmaps are part of the key")
+	require.True(t, matcherFor(listed).IsCandidate("plans/roadmap.md"))
+}
+
+// null finds roadmaps by name and [] names none, so the two are two tables to
+// the matcher cache, as they are on the wire. One key for both would hand a
+// table the other's matcher, and with it the other's listed exemptions.
+func TestTheMatcherCacheTellsNullFromEmpty(t *testing.T) {
+	byName := repoconfig.Planning{Roadmaps: nil, Include: []string{"docs/**"}, Exclude: []string{}}
+	none := byName
+	none.Roadmaps = []string{}
+	require.NotSame(t, matcherFor(byName), matcherFor(none))
+	require.Same(t, matcherFor(byName), matcherFor(byName))
+	require.Same(t, matcherFor(none), matcherFor(none))
 }
 
 func TestCandidatesKeepsTheListingsOrder(t *testing.T) {
-	m := NewMatcher(repoconfig.Planning{Roadmap: "roadmap.md", Include: []string{"docs/**"}})
+	m := NewMatcher(repoconfig.Planning{Roadmaps: []string{"roadmap.md"}, Include: []string{"docs/**"}})
 	require.Equal(t,
 		[]string{"docs/a.md", "docs/b.md", "roadmap.md"},
 		Candidates([]string{"README.md", "docs/a.md", "docs/b.md", "roadmap.md", "src/x.md"}, m))
@@ -178,7 +240,7 @@ func TestAnEmptyRepositorysStreamIsItsHeaderThenEnd(t *testing.T) {
 	s := writeStream(t, svc, repoconfig.DefaultPlanning(), nil)
 
 	require.Equal(t,
-		`{"kind":"header","config":{"roadmap":"roadmap.md","include":["**/*.md"],"exclude":[],`+
+		`{"kind":"header","config":{"roadmaps":null,"include":["**/*.md"],"exclude":[],`+
 			`"max_file_bytes":1048576,"max_candidates":5000,"stages":null},"candidate_count":0,"refused":false}`+"\n"+
 			`{"kind":"end","candidates":0}`+"\n",
 		s.buf.String())
@@ -196,13 +258,14 @@ func TestTheStreamSendsEveryCandidateSortedAndNoOtherFile(t *testing.T) {
 		"notes.txt":              "not Markdown\n",
 	})
 	cfg := repoconfig.DefaultPlanning()
+	cfg.Roadmaps = []string{"roadmap.md"}
 	cfg.Exclude = []string{"docs/gallery/**", "roadmap.md"}
 	cfg.Stages = map[string]string{"DESIGN": "open"}
 
 	s := writeStream(t, svc, cfg, nil)
 	lines := s.lines(t)
 	require.Equal(t, []string{"header", "file docs/a.md", "file docs/b.md", "file roadmap.md", "end"}, kinds(lines),
-		"sorted; the excluded roadmap is still a candidate")
+		"sorted; the excluded roadmap is listed, so still a candidate")
 	h := header(t, s)
 	require.Equal(t, cfg, h.Config, "config is the effective table, stages included")
 	require.Equal(t, 3, h.CandidateCount)
@@ -395,6 +458,7 @@ func TestLookupAnswersEachKind(t *testing.T) {
 		"roadmap.md":        "# Roadmap\n",
 	})
 	cfg := repoconfig.DefaultPlanning()
+	cfg.Roadmaps = []string{"roadmap.md"}
 	cfg.MaxFileBytes = 32
 	cfg.Exclude = []string{"docs/gallery/**", "roadmap.md"}
 

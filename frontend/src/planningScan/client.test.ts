@@ -474,7 +474,7 @@ describe("the worker client", () => {
         "OQ-R1",
       ),
     };
-    const config = { roadmap: ROADMAP };
+    const config = { roadmaps: [ROADMAP] };
     const [block] = scannedOf(tree, config).blocks[ROADMAP] ?? [];
     expect(block).toBeDefined();
     const { client, workers } = workerSetup({ tree, config });
@@ -497,7 +497,7 @@ describe("the worker client", () => {
     const entry = await client.refresh({ repo: "", seq: 2, path: ROADMAP });
     expect(entry).toMatchObject({ kind: "file", path: ROADMAP });
     expect(entry?.kind === "file" && entry.result.kind).toBe("planning");
-    const roadmap = expect.objectContaining({ roadmap: ROADMAP });
+    const roadmap = expect.objectContaining({ roadmaps: [ROADMAP] });
     expect(workers[1]?.posted.map((request) => request.type)).toEqual([
       "cards",
       "refresh",

@@ -1,4 +1,4 @@
-{"kind":"header","config":{"roadmap":"roadmap.md","include":["**/*.md"],"exclude":["docs/gallery/**"],"max_file_bytes":96,"max_candidates":5000,"stages":{"DECIDED":"ready","DESIGN":"open"}},"candidate_count":5,"refused":false}
+{"kind":"header","config":{"roadmaps":null,"include":["**/*.md"],"exclude":["docs/gallery/**"],"max_file_bytes":96,"max_candidates":5000,"stages":{"DECIDED":"ready","DESIGN":"open"}},"candidate_count":5,"refused":false}
 {"kind":"same","path":"AGENTS.md","hash":"9f86d081884c7d659a2feaa0c55ad015"}
 {"kind":"unreadable","path":"docs/bad.md","reason":"not UTF-8"}
 {"kind":"skipped","path":"docs/big.md","size":100}

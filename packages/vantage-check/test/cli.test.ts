@@ -71,6 +71,16 @@ describe("parseArgs", () => {
     });
   });
 
+  it("parses index's --roadmap, the last one winning", () => {
+    expect(
+      parseArgs(["index", "--roadmap", "a/roadmap.md", "--roadmap=b.md"]),
+    ).toEqual({ kind: "index", options: { format: "text", roadmap: "b.md" } });
+    expect(parseArgs(["index", "--roadmap"])).toMatchObject({
+      kind: "usage-error",
+      message: "--roadmap needs a path",
+    });
+  });
+
   // `index` scans the project the working directory is in, so a path would
   // be a second answer to a question the project root already settles.
   it.each([[["index", "docs"]], [["index", "--", "docs"]]])(

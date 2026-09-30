@@ -1033,7 +1033,7 @@ function problemReason(parsed: ParsedFrontmatter): string | undefined {
  * scanning for it should; no other caller passes it.
  *
  * Only a planning document contributes: one whose frontmatter has `status` or
- * `stage`, or that holds an `oq` directive, or the roadmap (design §3.1). A
+ * `stage`, or that holds an `oq` directive, or a roadmap (design §3.1). A
  * file whose frontmatter does not parse is unreadable, since what it would
  * have said is unknown (§3.6). Anything else is dropped before its body is
  * parsed, which is what keeps a full scan cheap (§13, §15).

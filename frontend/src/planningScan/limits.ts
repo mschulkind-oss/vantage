@@ -38,8 +38,8 @@ export interface PlanningLimits {
   cardChars: number;
   /**
    * Characters of card blocks a scanner holds in memory when there is no scan
-   * cache, least recently used first out (§8.4). The roadmap's are held here
-   * even with a cache, since it is never stored.
+   * cache, least recently used first out (§8.4). Every roadmap's are held here
+   * even with a cache, since no roadmap is ever stored.
    */
   memoryCardChars: number;
   /** How long a scan runs before it lets other work in, in ms (§7.6). */

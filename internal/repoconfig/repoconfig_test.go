@@ -271,8 +271,9 @@ func TestSharedFixtureIsReadableByThisReader(t *testing.T) {
 
 	// [planning] is the table both readers parse, so this half asserts all of
 	// it, not only the keys the server acts on.
+	// Its roadmap is written as a string, which is a list of one.
 	require.Equal(t, Planning{
-		Roadmap:       "plans/ROADMAP.md",
+		Roadmaps:      []string{"plans/ROADMAP.md"},
 		Include:       []string{"docs/**", "plans/**"},
 		Exclude:       []string{"docs/gallery/**"},
 		MaxFileBytes:  65536,
@@ -286,12 +287,15 @@ func TestSharedFixtureIsReadableByThisReader(t *testing.T) {
 // planningConfigCase is one row of testdata/planning-config.json. `planning` is
 // vantage-md's PlanningConfig, camelCased, which is the checker's shape; the
 // server's own [Planning] carries the same values under snake_case names.
+//
+// `roadmaps` is kept raw, so that a case which forgot the key cannot pass for
+// one that says `null`: decoded straight into a slice, both would be nil.
 type planningConfigCase struct {
 	Name     string `json:"name"`
 	TOML     string `json:"toml"`
 	OK       bool   `json:"ok"`
 	Planning *struct {
-		Roadmap       string            `json:"roadmap"`
+		Roadmaps      json.RawMessage   `json:"roadmaps"`
 		Include       []string          `json:"include"`
 		Exclude       []string          `json:"exclude"`
 		MaxFileBytes  int64             `json:"maxFileBytes"`
@@ -322,8 +326,13 @@ func TestPlanningFixtureResolvesAsTheCheckerDoes(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.NotNil(t, tc.Planning, "an accepted case must say what it resolves to")
+			require.NotEmpty(t, tc.Planning.Roadmaps, "an accepted case must say what roadmaps resolves to, null included")
+			// null decodes to a nil slice and [] to an empty one, and the
+			// comparison below tells the two apart, as the wire does.
+			var roadmaps []string
+			require.NoError(t, json.Unmarshal(tc.Planning.Roadmaps, &roadmaps))
 			require.Equal(t, Planning{
-				Roadmap:       tc.Planning.Roadmap,
+				Roadmaps:      roadmaps,
 				Include:       tc.Planning.Include,
 				Exclude:       tc.Planning.Exclude,
 				MaxFileBytes:  tc.Planning.MaxFileBytes,
@@ -354,6 +363,15 @@ func TestPlanningFixtureKeepsItsEdgeCases(t *testing.T) {
 		"an unknown key",
 		"a role outside the four",
 		"a limit of zero",
+		"no [planning] table",
+		"a list of roadmaps, in the order written",
+		"an empty list names no roadmap",
+		"paths that differ only in case are two roadmaps",
+		"a list holding a number",
+		"a list holding a list",
+		"a list naming one path twice",
+		"a roadmap written as a table",
+		"roadmaps written as an array of tables",
 	} {
 		require.True(t, names[want], "planning-config.json lost the case %q", want)
 	}
@@ -419,8 +437,167 @@ func TestResolvedPlanningListsAreFreshAndNeverNil(t *testing.T) {
 
 	body, err := json.Marshal(PlanningSettings{}.Resolved())
 	require.NoError(t, err)
-	require.JSONEq(t, `{"roadmap":"roadmap.md","include":["**/*.md"],"exclude":[],
+	require.JSONEq(t, `{"roadmaps":null,"include":["**/*.md"],"exclude":[],
 		"max_file_bytes":1048576,"max_candidates":5000,"stages":null}`, string(body))
+}
+
+// `roadmaps` has three meanings on the wire, and each keeps its own spelling
+// through Resolved: null finds roadmaps by name, [] names none, and a list names
+// exactly those. Turning [] into null would switch finding by name back on for
+// a repository that asked for no roadmap at all.
+func TestResolvedRoadmapsKeepNullEmptyAndAListApart(t *testing.T) {
+	for toml, want := range map[string]string{
+		"[planning]\n":                                           `null`,
+		"[planning]\nroadmap = []\n":                             `[]`,
+		"[planning]\nroadmap = \"./plans/roadmap.md\"\n":         `["plans/roadmap.md"]`,
+		"[planning]\nroadmap = [\"b.md\", \"./a/roadmap.md\"]\n": `["b.md","a/roadmap.md"]`,
+	} {
+		s, err := Parse([]byte(toml))
+		require.NoError(t, err, toml)
+		body, err := json.Marshal(s.Planning.Resolved().Roadmaps)
+		require.NoError(t, err)
+		require.JSONEq(t, want, string(body), toml)
+	}
+
+	s, err := Parse([]byte("[planning]\nroadmap = []\n"))
+	require.NoError(t, err)
+	require.False(t, s.IsZero(), "naming no roadmap is not saying nothing")
+
+	listed, err := Parse([]byte("[planning]\nroadmap = [\"a.md\"]\n"))
+	require.NoError(t, err)
+	first := listed.Planning.Resolved()
+	first.Roadmaps[0] = "edited.md"
+	require.Equal(t, []string{"a.md"}, listed.Planning.Resolved().Roadmaps, "a caller cannot edit another's list")
+}
+
+// Every refused roadmap names the key, the entry's position counted from 1 and
+// its value, whether the path breaks a rule or the entry is no text at all
+// (design §9). The string form is a list of one, so it is entry 1.
+func TestARefusedRoadmapNamesTheEntryAndItsValue(t *testing.T) {
+	for toml, want := range map[string][]string{
+		"[planning]\nroadmap = \"../r.md\"\n":                           {"planning.roadmap", "entry 1", `"../r.md"`, "must not leave the repository"},
+		"[planning]\nroadmap = [\"roadmap.md\", \"\"]\n":                {"planning.roadmap", "entry 2", `""`, "must name a file"},
+		"[planning]\nroadmap = [\"./\"]\n":                              {"planning.roadmap", "entry 1", `"./"`, "must name a file"},
+		"[planning]\nroadmap = [\"a.md\", \"/roadmap.md\"]\n":           {"planning.roadmap", "entry 2", `"/roadmap.md"`, "relative to the repository root"},
+		"[planning]\nroadmap = [\"a.md\", \"docs/../a.md\"]\n":          {"planning.roadmap", "entry 2", `"docs/../a.md"`, "must not leave the repository"},
+		"[planning]\nroadmap = [\"plans/r.md\", \"./plans/r.md\"]\n":    {"planning.roadmap", "entry 2", `"./plans/r.md"`, "entry 1"},
+		"[planning]\nroadmap = [\"roadmap.md\", 3]\n":                   {"planning.roadmap", "entry 2", "3", "not text"},
+		"[planning]\nroadmap = [[\"roadmap.md\"]]\n":                    {"planning.roadmap", "entry 1", `["roadmap.md"]`, "not text"},
+		"[planning]\nroadmap = [\"a.md\", { path = \"roadmap.md\" }]\n": {"planning.roadmap", "entry 2", "not text"},
+		"[planning]\nroadmap = { path = \"roadmap.md\" }\n":             {"planning.roadmap", "a path or a list of paths", "table"},
+		"[[planning.roadmap]]\npath = \"roadmap.md\"\n":                 {"planning.roadmap", "a path or a list of paths", "array of tables"},
+		"[planning]\nroadmap = true\n":                                  {"planning.roadmap", "a path or a list of paths", "true"},
+		"[planning]\nroadmap = 3\n":                                     {"planning.roadmap", "a path or a list of paths", "3"},
+	} {
+		s, err := Parse([]byte(toml))
+		require.Error(t, err, toml)
+		require.True(t, s.IsZero(), "a rejected file must yield nothing, not half: %s", toml)
+		for _, fragment := range want {
+			require.Contains(t, err.Error(), fragment, toml)
+		}
+	}
+}
+
+// roadmapsCase is one row of testdata/planning-roadmaps.json. `roadmaps` null
+// decodes to a nil slice and [] to an empty one, which is the distinction the
+// rows exist to pin.
+type roadmapsCase struct {
+	Roadmaps  []string `json:"roadmaps"`
+	Include   []string `json:"include"`
+	Exclude   []string `json:"exclude"`
+	Path      string   `json:"path"`
+	Candidate bool     `json:"candidate"`
+	Roadmap   bool     `json:"roadmap"`
+}
+
+func loadRoadmapsFixture(t *testing.T) []roadmapsCase {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", "planning-roadmaps.json"))
+	require.NoError(t, err)
+	var f struct {
+		Cases []roadmapsCase `json:"cases"`
+	}
+	require.NoError(t, json.Unmarshal(data, &f))
+	require.NotEmpty(t, f.Cases)
+	return f.Cases
+}
+
+// The roadmap test's half of testdata/planning-roadmaps.json. The candidate
+// half is the matcher's, and internal/planning asserts it; vantage-md's
+// isRoadmapPath is held to the same rows.
+func TestIsRoadmapGivesTheRoadmapsFixturesAnswers(t *testing.T) {
+	for _, tc := range loadRoadmapsFixture(t) {
+		cfg := Planning{Roadmaps: tc.Roadmaps, Include: tc.Include, Exclude: tc.Exclude}
+		require.Equal(t, tc.Roadmap, cfg.IsRoadmap(tc.Path), "roadmaps %q, path %q", tc.Roadmaps, tc.Path)
+	}
+}
+
+// The fixture's rows are only worth what they cover, so the ones that pin the
+// test's edges are asserted to be there: found by name with any case in the
+// name, a directory named roadmap.md, a non-ASCII letter no ASCII fold
+// reaches, a listed path compared exactly, and [] naming none.
+func TestTheRoadmapsFixtureKeepsItsEdges(t *testing.T) {
+	type key struct {
+		mode string
+		path string
+	}
+	seen := map[key]bool{}
+	for _, tc := range loadRoadmapsFixture(t) {
+		mode := "listed"
+		switch {
+		case tc.Roadmaps == nil:
+			mode = "by name"
+		case len(tc.Roadmaps) == 0:
+			mode = "none"
+		}
+		seen[key{mode, tc.Path}] = tc.Roadmap
+	}
+	for k, want := range map[key]bool{
+		{"by name", "ROADMAP.md"}:          true,
+		{"by name", "docs/Roadmap.md"}:     true,
+		{"by name", "ROADMAP.MD"}:          true,
+		{"by name", "roadmap.md/notes.md"}: false,
+		{"by name", "my-roadmap.md"}:       false,
+		{"by name", "\u0280oadmap.md"}:     false,
+		{"listed", "plans/ROADMAP.md"}:     false,
+		{"listed", "docs/PLAN.md"}:         true,
+		{"none", "roadmap.md"}:             false,
+	} {
+		got, ok := seen[k]
+		require.True(t, ok, "planning-roadmaps.json lost its %s row for %q", k.mode, k.path)
+		require.Equal(t, want, got, "%s, %q", k.mode, k.path)
+	}
+}
+
+// The name is compared ASCII case-insensitively and nothing more, as the
+// checker's port compares it: a letter outside ASCII is never folded onto one
+// inside it, however alike the two look.
+func TestIsRoadmapFoldsASCIIOnly(t *testing.T) {
+	byName := Planning{}
+	for path, want := range map[string]bool{
+		"roadmap.md":       true,
+		"RoadMap.MD":       true,
+		"a/b/c/ROADMAP.md": true,
+		"roadmap.md/":      false,
+		"":                 false,
+		"roadmap.m":        false,
+		"xroadmap.md":      false,
+		"roadmap.md.bak":   false,
+		`docs\roadmap.md`:  false, // a backslash is a character of the name, as the listing spells it
+		"roadmap\u2024md":  false, // ONE DOT LEADER, not a full stop
+		"\uff52oadmap.md":  false, // FULLWIDTH LATIN SMALL LETTER R
+		"roadmap.\u1e3fd":  false, // LATIN SMALL LETTER M WITH ACUTE
+	} {
+		require.Equal(t, want, byName.IsRoadmap(path), "%q", path)
+	}
+	require.Equal(t, "roadmap.md", RoadmapFileName)
+
+	listed := Planning{Roadmaps: []string{"plans/roadmap.md", "docs/PLAN.md"}}
+	require.True(t, listed.IsRoadmap("docs/PLAN.md"))
+	require.False(t, listed.IsRoadmap("roadmap.md"), "listing turns finding by name off")
+	require.False(t, listed.IsRoadmap("Plans/roadmap.md"), "a listed path is compared exactly")
+	require.False(t, listed.IsRoadmap("./plans/roadmap.md"))
+	require.False(t, Planning{Roadmaps: []string{}}.IsRoadmap("roadmap.md"), "[] names none")
 }
 
 // SettingsNow is for the caller answering a change to this very file, so it
@@ -433,21 +610,21 @@ func TestSettingsNowSeesAnEditInsideTheThrottleWindow(t *testing.T) {
 
 	s, err := c.Settings()
 	require.NoError(t, err)
-	require.Equal(t, "first.md", s.Planning.Resolved().Roadmap)
+	require.Equal(t, []string{"first.md"}, s.Planning.Resolved().Roadmaps)
 
 	require.NoError(t, os.WriteFile(filepath.Join(root, FileName),
 		[]byte("[planning]\nroadmap = \"second.md\"\n"), 0o644))
 
 	s, err = c.Settings()
 	require.NoError(t, err)
-	require.Equal(t, "first.md", s.Planning.Resolved().Roadmap, "Settings is still throttled")
+	require.Equal(t, []string{"first.md"}, s.Planning.Resolved().Roadmaps, "Settings is still throttled")
 
 	s, err = c.SettingsNow()
 	require.NoError(t, err)
-	require.Equal(t, "second.md", s.Planning.Resolved().Roadmap)
+	require.Equal(t, []string{"second.md"}, s.Planning.Resolved().Roadmaps)
 
 	s, err = c.Settings()
 	require.NoError(t, err)
-	require.Equal(t, "second.md", s.Planning.Resolved().Roadmap,
+	require.Equal(t, []string{"second.md"}, s.Planning.Resolved().Roadmaps,
 		"and what it read is what Settings serves from then on")
 }

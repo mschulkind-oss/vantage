@@ -6,14 +6,20 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { PlanningConfig } from "vantage-md/planning";
 import {
+  chooseRoadmap,
   isPreview,
   layoutPlanningPage,
   placeComment,
   listedQuestions,
   pageSearch,
+  planningSearch,
   readPageRequest,
+  readRememberedRoadmap,
+  readRoadmapRequest,
+  rememberRoadmap,
   sectionsOf,
   withPage,
+  withRoadmap,
   type CardEntry,
   type LaidOutSection,
   type PageRequest,
@@ -319,5 +325,140 @@ describe("placement (planning-index-at-scale.md §10.5)", () => {
     expect(placeComment(questions, outer.unitEndLine + 2)).toBeUndefined();
     expect(placeComment(questions, 1)).toBeUndefined();
     expect(placeComment([inner], outer.line)).toBeUndefined();
+  });
+});
+
+describe("the chosen roadmap (planning-index.md §6.4)", () => {
+  // Both found by name. roadmap.md routes a.md's questions, and
+  // docs/plans/roadmap.md b.md's and one of a.md's.
+  const TWO = {
+    "roadmap.md": "# Roadmap\n\n- [A](a.md)\n",
+    "docs/plans/roadmap.md":
+      "# Plans\n\n- [B](../../b.md)\n- [A2](../../a.md#OQ-A2)\n",
+    "a.md": doc("stage: DESIGN", separate("OQ-A", 2)),
+    "b.md": doc("stage: DESIGN", separate("OQ-B", 3)),
+    "c.md": doc("stage: DESIGN", separate("OQ-C", 1)),
+  };
+  const NESTED = "docs/plans/roadmap.md";
+  const index = indexOf(TWO, { stages: STAGES });
+  const { roadmaps } = sectionsOf(index);
+
+  it("is the URL's, else the remembered one, else the nearest the root, each while it routes", () => {
+    expect(chooseRoadmap(roadmaps, null, null)).toBe("roadmap.md");
+    expect(chooseRoadmap(roadmaps, NESTED, "roadmap.md")).toBe(NESTED);
+    expect(chooseRoadmap(roadmaps, null, NESTED)).toBe(NESTED);
+    expect(chooseRoadmap(roadmaps, "a.md", NESTED)).toBe(NESTED);
+    expect(chooseRoadmap(roadmaps, "a.md", "gone/roadmap.md")).toBe(
+      "roadmap.md",
+    );
+    expect(chooseRoadmap([], NESTED, NESTED)).toBeNull();
+  });
+
+  it("lays Needs you out in the chosen roadmap's order, and names it in the layout", () => {
+    const chosen = sectionsOf(index, NESTED);
+    const layout = layoutPlanningPage(index, chosen, {});
+    expect(layout.roadmap).toBe(NESTED);
+    const needsYou = layout.sections.find((s) => s.id === "needs-you")!;
+    expect(titles(needsYou)).toEqual(["OQ-B1", "OQ-B2", "OQ-B3", "OQ-A2"]);
+    expect(layoutPlanningPage(index, sectionsOf(index), {}).roadmap).toBe(
+      "roadmap.md",
+    );
+    // One derivation per index and chosen roadmap, the default's by name too.
+    expect(sectionsOf(index, NESTED)).toBe(chosen);
+    expect(sectionsOf(index, "roadmap.md")).toBe(sectionsOf(index));
+    expect(sectionsOf(index, "c.md")).toBe(sectionsOf(index));
+  });
+
+  it("lists for Copy answers the questions of every roadmap, whichever is chosen", () => {
+    const ids = (roadmap: string | null) =>
+      listedQuestions(index, sectionsOf(index, roadmap))
+        .map((q) => q.id)
+        .sort();
+    expect(ids(null)).toEqual(ids(NESTED));
+    expect(ids(null)).toEqual([
+      "OQ-A1",
+      "OQ-A2",
+      "OQ-B1",
+      "OQ-B2",
+      "OQ-B3",
+      "OQ-C1",
+    ]);
+  });
+
+  it("reads the URL's roadmap, dropping one leading ./", () => {
+    expect(readRoadmapRequest(new URLSearchParams(""))).toBeNull();
+    expect(readRoadmapRequest(new URLSearchParams("roadmap="))).toBeNull();
+    expect(
+      readRoadmapRequest(
+        new URLSearchParams("roadmap=docs%2Fplans%2Froadmap.md"),
+      ),
+    ).toBe(NESTED);
+    expect(
+      readRoadmapRequest(
+        new URLSearchParams("roadmap=./docs/plans/roadmap.md"),
+      ),
+    ).toBe(NESTED);
+  });
+
+  const rewrite = (query: string, tree: Record<string, string> = TWO) => {
+    const search = new URLSearchParams(query);
+    const at = indexOf(tree, { stages: STAGES });
+    const chosen = chooseRoadmap(
+      sectionsOf(at).roadmaps,
+      readRoadmapRequest(search),
+      null,
+    );
+    const sections = sectionsOf(at, chosen);
+    const layout = layoutPlanningPage(at, sections, readPageRequest(search));
+    return planningSearch(search, layout, sections)?.toString() ?? null;
+  };
+
+  it("writes the chosen roadmap into the URL with two or more, and leaves one that names it", () => {
+    expect(rewrite("")).toBe("roadmap=roadmap.md");
+    expect(rewrite("a=1")).toBe("a=1&roadmap=roadmap.md");
+    expect(rewrite("roadmap=docs%2Fplans%2Froadmap.md")).toBeNull();
+    expect(rewrite("roadmap=docs/plans/roadmap.md")).toBeNull();
+    expect(rewrite("roadmap=c.md&a=1")).toBe("roadmap=roadmap.md&a=1");
+    expect(rewrite("roadmap=roadmap.md&roadmap=roadmap.md")).toBe(
+      "roadmap=roadmap.md",
+    );
+  });
+
+  it("rewrites the pages and the roadmap in one", () => {
+    // roadmap.md's Needs you holds two cards: two pages of one.
+    setPlanningLimitsForTests({ pageEntries: 1 });
+    expect(rewrite("needs-you=9&roadmap=c.md")).toBe(
+      "needs-you=2&roadmap=roadmap.md",
+    );
+  });
+
+  it("removes the roadmap from the URL with fewer than two", () => {
+    const { [NESTED]: _, ...one } = TWO;
+    void _;
+    expect(rewrite("roadmap=roadmap.md&a=1", one)).toBe("a=1");
+    expect(rewrite("a=1", one)).toBeNull();
+  });
+
+  it("picks a roadmap: replaced, Needs you back on page 1, the rest kept", () => {
+    const search = new URLSearchParams(
+      "a=1&needs-you=3&roadmap=roadmap.md&waiting=2",
+    );
+    expect(withRoadmap(search, NESTED).toString()).toBe(
+      "a=1&roadmap=docs%2Fplans%2Froadmap.md&waiting=2",
+    );
+  });
+
+  it("remembers a pick per repository", () => {
+    localStorage.clear();
+    expect(readRememberedRoadmap("")).toBeNull();
+    rememberRoadmap("", NESTED);
+    rememberRoadmap("alpha", "roadmap.md");
+    expect(readRememberedRoadmap("")).toBe(NESTED);
+    expect(readRememberedRoadmap("alpha")).toBe("roadmap.md");
+    expect(localStorage.getItem("vantage:planningRoadmap:")).toBe(NESTED);
+    expect(localStorage.getItem("vantage:planningRoadmap:alpha")).toBe(
+      "roadmap.md",
+    );
+    localStorage.clear();
   });
 });

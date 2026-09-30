@@ -287,7 +287,7 @@ test.describe("a cold build's helpers", () => {
         channel.port2.postMessage({
           id: 7,
           config: {
-            roadmap: "roadmap.md",
+            roadmaps: null,
             include: ["**/*.md"],
             exclude: [],
             maxFileBytes: 1048576,

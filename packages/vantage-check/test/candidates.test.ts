@@ -105,11 +105,13 @@ describe("the listing's own rules", () => {
     const listing = new Listing(root);
     const narrowed = {
       ...config,
+      roadmaps: ["roadmap.md"],
       include: ["docs/**"],
       exclude: ["docs/gallery/**"],
     };
 
-    // The roadmap is a candidate whatever the patterns say (Plan Q2).
+    // A listed roadmap is a candidate whatever the patterns say (Plan Q2,
+    // per entry).
     expect(listCandidates(listing, narrowed)).toEqual([
       "docs/a.md",
       "roadmap.md",
@@ -117,6 +119,12 @@ describe("the listing's own rules", () => {
     expect(isCandidate(listing, narrowed, "docs/gallery/b.md")).toBe(false);
     expect(isCandidate(listing, narrowed, "roadmap.md")).toBe(true);
     expect(isCandidate(listing, narrowed, "notes/c.md")).toBe(false);
+
+    // One found by name is a roadmap because it is a candidate, so the
+    // patterns hide it like any other file (design §6.1).
+    const byName = { ...narrowed, roadmaps: null };
+    expect(listCandidates(listing, byName)).toEqual(["docs/a.md"]);
+    expect(isCandidate(listing, byName, "roadmap.md")).toBe(false);
   });
 
   it("refuses a path that is not a plain repo-relative one", () => {

@@ -20,8 +20,12 @@
 
 export {
   DEFAULT_PLANNING_CONFIG,
+  ROADMAP_FILE_NAME,
   STAGE_ROLES,
   candidateMatcher,
+  compareRoadmaps,
+  hasRoadmapName,
+  isRoadmapPath,
   isStageRole,
 } from "./config.js";
 export type { PlanningConfig, StageRole } from "./config.js";
@@ -65,18 +69,23 @@ export { badgeFor, badgeSpeech, badgeText } from "./badges.js";
 export type { PlanningBadge } from "./badges.js";
 export {
   PLANNING_NOTICES,
+  ROADMAP_STATE_PHRASES,
   derivePlanningSections,
   questionFor,
   referenceSummary,
   referencedBy,
+  roadmapsOf,
   routeQuestions,
 } from "./sections.js";
 export type {
+  OtherRoadmapQuestion,
+  PlanningRoadmap,
   PlanningSections,
   QuestionRef,
   Reference,
   ReferenceSource,
   ReferenceSummary,
+  RoadmapState,
   RoutedQuestion,
   WaitingEntry,
 } from "./sections.js";

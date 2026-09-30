@@ -20,11 +20,12 @@
  * to have painted, and on a page opened before its index was ready, for the
  * Markdown pipeline to have run once (`lib/warmMarkdown.ts`).
  *
- * Each set is cached by repository, index version and pages, the last
- * `pageInputsKept` kept, outside any component: a history entry returned to
- * whose set is cached renders the frame and the sections in one commit, and
- * `prefetchPlanningPage` fills the cache ahead of a visit, on the `g` of
- * `g p` and from the viewer's planning entry.
+ * Each set is cached by repository, index version, chosen roadmap and pages,
+ * the last `pageInputsKept` kept, outside any component: a history entry
+ * returned to whose set is cached renders the frame and the sections in one
+ * commit, and `prefetchPlanningPage` fills the cache ahead of a visit, on the
+ * `g` of `g p` and from the viewer's planning entry, for the roadmap the page
+ * would choose (§10.3).
  */
 import {
   startTransition,
@@ -37,7 +38,9 @@ import { useNavigationType } from "react-router-dom";
 import type { CardBlock, PlanningIndex } from "vantage-md/planning";
 import { mermaidFences, prerenderMermaid } from "vantage-md/react";
 import {
+  chooseRoadmap,
   layoutPlanningPage,
+  readRememberedRoadmap,
   sectionsOf,
   type PageRequest,
   type PlanningLayout,
@@ -64,7 +67,7 @@ export const blockKey = (path: string, startLine: number): string =>
   `${path}\n${startLine}`;
 
 export interface PageInputs {
-  /** Repository, index version and pages: the cache's key. */
+  /** Repository, index version, chosen roadmap and pages: the cache's key. */
   key: string;
   repo: string;
   /** The index these pages were laid out from, and its hashes. */
@@ -113,8 +116,13 @@ export function resetPlanningPageInputs(): void {
   refreshed.clear();
 }
 
-const inputsKey = (repo: string, version: number, pages: string): string =>
-  `${repo}\n${version}\n${pages}`;
+const inputsKey = (
+  repo: string,
+  version: number,
+  layout: PlanningLayout,
+): string =>
+  // A roadmap's path is never empty, so `""` stands for none.
+  `${repo}\n${version}\n${layout.roadmap ?? ""}\n${layout.pages}`;
 
 /** `promise`, or nothing once `ms` have passed. */
 function within(promise: Promise<unknown>, ms: number): Promise<void> {
@@ -329,7 +337,7 @@ export function loadPageInputs(
   ready: ReadyLoad,
   layout: PlanningLayout,
 ): Entry {
-  const key = inputsKey(repo, ready.version, layout.pages);
+  const key = inputsKey(repo, ready.version, layout);
   const had = cache.get(key);
   if (had !== undefined) {
     // Most recently used, last out.
@@ -361,18 +369,28 @@ export function loadPageInputs(
  * Ask for the inputs of `repo`'s planning page ahead of a visit — every
  * section on its first page unless `request` says otherwise — once its index
  * is ready. For the `g` of `g p`, the viewer's planning entry and a pager.
+ *
+ * `roadmap` is the roadmap the page shows, for a pager; without one, it is
+ * the roadmap a visit would choose with no roadmap in its URL: the one this
+ * browser remembers for `repo`, else the default (§10.3).
  */
 export function prefetchPlanningPage(
   repo: string,
   request: PageRequest = {},
+  roadmap?: string | null,
 ): void {
   if (isStaticMode()) return;
   const load = usePlanningStore.getState().byRepo[repo];
   if (load?.status !== "ready" || load.index.refused) return;
+  const chosen = chooseRoadmap(
+    sectionsOf(load.index).roadmaps,
+    roadmap ?? null,
+    roadmap === undefined ? readRememberedRoadmap(repo) : null,
+  );
   loadPageInputs(
     repo,
     load,
-    layoutPlanningPage(load.index, sectionsOf(load.index), request),
+    layoutPlanningPage(load.index, sectionsOf(load.index, chosen), request),
   );
 }
 
@@ -400,7 +418,7 @@ export function usePlanningPageInputs(
   const navigationType = useNavigationType();
   const wanted =
     repo !== null && ready !== null && layout !== null && !isStaticMode()
-      ? inputsKey(repo, ready.version, layout.pages)
+      ? inputsKey(repo, ready.version, layout)
       : null;
 
   const [shown, setShown] = useState<ShownInputs | null>(() => {

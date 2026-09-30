@@ -1,7 +1,8 @@
 import { symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { run } from "../src/cli.js";
+import { Listing } from "../src/core/candidates.js";
 import { parseConfig } from "../src/core/config.js";
 import { checkFiles } from "../src/core/runner.js";
 import type { RunShard } from "../src/core/parallel.js";
@@ -467,6 +468,161 @@ describe("planning/unrouted", () => {
   });
 });
 
+// Design §6.1 and §8: with no roadmap listed, every candidate named
+// roadmap.md is one, and a question is routed when any of them routes it.
+describe("planning/unrouted, with several roadmaps", () => {
+  const tree = (extra: Record<string, string> = {}) =>
+    repo({
+      ".vantage.toml": `${STAGES_TOML}\n${UNROUTED_ON}`,
+      "roadmap.md": "# Roadmap\n\n- [A's first](docs/a.md#OQ-A1)\n",
+      "docs/plans/roadmap.md": "# Plans\n\n- [A's second](../a.md#OQ-A2)\n",
+      "docs/a.md": doc(
+        "status: draft\nstage: DESIGN",
+        questions("A", OPEN, OPEN, OPEN),
+      ),
+      ...extra,
+    });
+
+  it("reports only what no roadmap routes, and names them all", async () => {
+    const root = tree();
+
+    expect(await planning(root, "docs/a.md")).toEqual([
+      "docs/a.md:20 planning/unrouted",
+    ]);
+    expect(await messages(root, "docs/a.md")).toEqual([
+      "Open question OQ-A3 is not routed by any roadmap (roadmap.md, docs/plans/roadmap.md). Link it, or this document, from one of them, so the planning page lists it under Needs you rather than Unrouted.",
+    ]);
+  });
+
+  it("finds a roadmap in any directory, and in any ASCII case", async () => {
+    const root = repo({
+      ".vantage.toml": UNROUTED_ON,
+      "docs/plans/ROADMAP.md": "# Plans\n\n- [A](../a.md)\n",
+      "docs/a.md": doc("status: draft", questions("A", OPEN)),
+    });
+
+    expect(await planning(root, "docs/a.md")).toEqual([]);
+  });
+
+  it("reads no roadmap.md that exclude rules out", async () => {
+    const root = tree({
+      ".vantage.toml": `[planning]\nexclude = ["docs/plans/**"]\n\n${STAGES_TOML}\n${UNROUTED_ON}`,
+    });
+
+    expect(await messages(root, "docs/a.md")).toEqual([
+      expect.stringContaining(
+        "OQ-A2 is not routed by the roadmap (roadmap.md)",
+      ),
+      expect.stringContaining(
+        "OQ-A3 is not routed by the roadmap (roadmap.md)",
+      ),
+    ]);
+  });
+
+  it("reads a listed roadmap that exclude rules out, and only the listed ones", async () => {
+    const root = tree({
+      ".vantage.toml": `[planning]\nroadmap = ["docs/plans/roadmap.md", "plans/gone.md"]\nexclude = ["docs/plans/**"]\n\n${STAGES_TOML}\n${UNROUTED_ON}`,
+    });
+
+    expect(await messages(root, "docs/a.md")).toEqual([
+      expect.stringContaining(
+        "OQ-A1 is not routed by the roadmap (docs/plans/roadmap.md)",
+      ),
+      expect.stringContaining(
+        "OQ-A3 is not routed by the roadmap (docs/plans/roadmap.md)",
+      ),
+    ]);
+  });
+
+  it("routes nothing from a roadmap with a done stage", async () => {
+    const root = tree({
+      "docs/plans/roadmap.md": doc("stage: RETIRED", "- [A](../a.md)"),
+    });
+
+    expect(await planning(root, "docs/a.md")).toEqual([
+      "docs/a.md:14 planning/unrouted",
+      "docs/a.md:20 planning/unrouted",
+    ]);
+  });
+
+  it("is quiet when the list is empty, since there is no roadmap", async () => {
+    const root = tree({
+      ".vantage.toml": `[planning]\nroadmap = []\n\n${STAGES_TOML}\n${UNROUTED_ON}`,
+    });
+
+    expect(await planning(root, "docs/a.md")).toEqual([]);
+  });
+});
+
+// Design §8: finding roadmaps by name costs check one walk of the listing,
+// and only when planning/unrouted is on and a checked document could fire it.
+describe("the listing walk check makes for roadmaps", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const walks = async (
+    files: Record<string, string>,
+    ...paths: string[]
+  ): Promise<number> => {
+    const list = vi.spyOn(Listing.prototype, "list");
+    await planning(repo(files), ...paths);
+    return list.mock.calls.length;
+  };
+  const OPEN_A = doc("status: draft", questions("A", OPEN));
+
+  it("walks once per run with nothing listed", async () => {
+    expect(
+      await walks(
+        {
+          ".vantage.toml": UNROUTED_ON,
+          "roadmap.md": "# Roadmap\n",
+          "a.md": OPEN_A,
+          "b.md": doc("status: draft", questions("B", OPEN)),
+        },
+        "a.md",
+        "b.md",
+      ),
+    ).toBe(1);
+  });
+
+  it("never walks for listed roadmaps", async () => {
+    expect(
+      await walks(
+        {
+          ".vantage.toml": `[planning]\nroadmap = "roadmap.md"\n\n${UNROUTED_ON}`,
+          "roadmap.md": "# Roadmap\n",
+          "a.md": OPEN_A,
+        },
+        "a.md",
+      ),
+    ).toBe(0);
+  });
+
+  it("never walks with planning/unrouted off", async () => {
+    expect(
+      await walks({ "roadmap.md": "# Roadmap\n", "a.md": OPEN_A }, "a.md"),
+    ).toBe(0);
+  });
+
+  it("never walks when no checked document has an open question", async () => {
+    expect(
+      await walks(
+        {
+          ".vantage.toml": `${STAGES_TOML}\n${UNROUTED_ON}`,
+          "roadmap.md": "# Roadmap\n",
+          "a.md": doc("status: draft\nstage: DESIGN"),
+          "b.md": doc("status: draft", questions("B", BLOCKED, ANSWERED)),
+          "c.md": doc("stage: RETIRED", questions("C", OPEN)),
+        },
+        "a.md",
+        "b.md",
+        "c.md",
+      ),
+    ).toBe(0);
+  });
+});
+
 describe("which files the rules report on", () => {
   it("reports only for the files in the run", async () => {
     const root = repo({
@@ -662,6 +818,58 @@ describe("the narrow index agrees with the full one", () => {
         path,
       ).toEqual(expected.sort());
     }
+  });
+});
+
+describe("the narrow index agrees with the full one, over several roadmaps", () => {
+  // Every roadmap.md is found by name, one of them retired, one excluded,
+  // and each routes a different part of docs/a.md.
+  const files: Record<string, string> = {
+    ".vantage.toml": `[planning]\nexclude = ["vendor/**"]\n\n${STAGES_TOML}\n${UNROUTED_ON}`,
+    "roadmap.md": "# Roadmap\n\n- [A's first](docs/a.md#OQ-A1)\n",
+    "docs/plans/roadmap.md": `# Plans\n\n- [A's second](../a.md#OQ-A2)\n\n${questions("P", OPEN, OPEN)}`,
+    "docs/old/roadmap.md": doc("stage: RETIRED", "- [A](../a.md)"),
+    "vendor/roadmap.md": "# Theirs\n\n- [A](../docs/a.md)\n",
+    "docs/a.md": doc(
+      "status: draft\nstage: DESIGN",
+      questions("A", OPEN, OPEN, OPEN),
+    ),
+    "docs/b.md": doc("status: draft", questions("B", OPEN, BLOCKED)),
+  };
+
+  it("for every document, checked alone", async () => {
+    const root = repo(files);
+    const io = bufferIo(root);
+    await run(["index", "--format", "json"], io);
+    const { index, sections } = JSON.parse(io.stdout) as {
+      index: {
+        documents: {
+          path: string;
+          questions: { id: string; unitLine: number }[];
+        }[];
+      };
+      sections: PlanningSections;
+    };
+
+    expect(sections.roadmaps.map((r) => r.path)).toEqual([
+      "roadmap.md",
+      "docs/old/roadmap.md",
+      "docs/plans/roadmap.md",
+    ]);
+    const lineOf = (path: string, id: string | null) =>
+      index.documents
+        .find((d) => d.path === path)
+        ?.questions.find((q) => q.id === id)?.unitLine;
+    const expected = (sections.unrouted ?? []).map(
+      (ref) => `${ref.path}:${lineOf(ref.path, ref.id)} planning/unrouted`,
+    );
+    expect(expected).toHaveLength(4);
+
+    const found: string[] = [];
+    for (const { path } of index.documents) {
+      found.push(...(await planning(root, path)));
+    }
+    expect(found.sort()).toEqual(expected.sort());
   });
 });
 

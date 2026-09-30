@@ -12,10 +12,22 @@
 //
 // A candidate is a file the repository's Markdown listing yields
 // ([fs.FileSystemService.ListAllFiles]) that `include` matches and `exclude`
-// does not, plus the roadmap whatever either says ([Matcher]). The patterns go
-// through the gitignore matcher `[starred] promote` uses, quirks included, and
-// vantage-md ports that matcher line for line; testdata/planning-patterns.json
-// in internal/repoconfig holds the two to one answer.
+// does not, plus each roadmap `[planning] roadmap` lists, whatever either says
+// ([Matcher]). The patterns go through the gitignore matcher `[starred]
+// promote` uses, quirks included, and vantage-md ports that matcher line for
+// line; testdata/planning-patterns.json in internal/repoconfig holds the two to
+// one answer.
+//
+// # Roadmaps
+//
+// Which candidates are roadmaps is [repoconfig.Planning.IsRoadmap]'s to say: the
+// paths `roadmap` lists, or, with no `roadmap` key, every candidate named
+// roadmap.md. That is a test on a path, not Markdown parsing. The server needs it for two things
+// only: a listed roadmap is a candidate whatever the patterns say, and every
+// roadmap is sent whole, never as `same`. The stream marks no line as a
+// roadmap; its header carries the config, and the browser applies the same
+// test to it. testdata/planning-roadmaps.json in internal/repoconfig holds the
+// two tests to one answer. Design: docs/design/planning-index.md §6.1.
 //
 // # Limits
 //
@@ -66,7 +78,10 @@ type Listing interface {
 
 // Matcher decides which listed paths are candidates.
 type Matcher struct {
-	roadmap string
+	// listed is the listed roadmaps, each a candidate whatever the patterns
+	// say. Empty when `roadmap` is [] or absent: a roadmap found by name is
+	// exempt from nothing.
+	listed  map[string]struct{}
 	include *gitignore.GitIgnore
 	exclude *gitignore.GitIgnore
 }
@@ -82,8 +97,12 @@ type Matcher struct {
 // A line the matcher cannot compile is dropped, as the matcher drops it for
 // `promote`.
 func NewMatcher(cfg repoconfig.Planning) *Matcher {
+	listed := make(map[string]struct{}, len(cfg.Roadmaps))
+	for _, rel := range cfg.Roadmaps {
+		listed[rel] = struct{}{}
+	}
 	return &Matcher{
-		roadmap: cfg.Roadmap,
+		listed:  listed,
 		include: gitignore.CompileIgnoreLines(cfg.Include...),
 		exclude: gitignore.CompileIgnoreLines(cfg.Exclude...),
 	}
@@ -103,8 +122,10 @@ const matchersKept = 16
 
 // matcherFor is [NewMatcher], compiled once per distinct cfg.
 func matcherFor(cfg repoconfig.Planning) *Matcher {
-	// JSON, so no choice of separator can make two tables one key.
-	raw, _ := json.Marshal([]any{cfg.Roadmap, cfg.Include, cfg.Exclude})
+	// JSON, so no choice of separator can make two tables one key, and so the
+	// roadmaps are spelled as they marshal: null, which finds them by name,
+	// and [], which names none, are two keys.
+	raw, _ := json.Marshal([]any{cfg.Roadmaps, cfg.Include, cfg.Exclude})
 	key := string(raw)
 	matchers.Lock()
 	defer matchers.Unlock()
@@ -119,15 +140,17 @@ func matcherFor(cfg repoconfig.Planning) *Matcher {
 	return m
 }
 
-// IsCandidate reports whether a listed path is a candidate: the roadmap, or
-// matched by include and not by exclude. rel is repo-relative and
-// slash-separated, as the listing spells it.
+// IsCandidate reports whether a listed path is a candidate: a listed roadmap,
+// or matched by include and not by exclude. rel is repo-relative and
+// slash-separated, as the listing spells it. A roadmap found by its name has no
+// exemption: it is a roadmap because it is a candidate, and the patterns are
+// how a reader hides one.
 //
 // It does not ask whether rel is listed. That belongs to whoever produced the
 // path, which is why [Candidates] takes a listing and [Lookup] asks the listing
-// first.
+// first: a listed roadmap in a hidden directory is never read.
 func (m *Matcher) IsCandidate(rel string) bool {
-	if rel == m.roadmap {
+	if _, ok := m.listed[rel]; ok {
 		return true
 	}
 	return m.include.MatchesPath(rel) && !m.exclude.MatchesPath(rel)

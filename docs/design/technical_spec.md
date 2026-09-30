@@ -201,9 +201,12 @@ The planning routes serve the planning index's inputs and never parse Markdown
 - **`POST /planning/stream`** takes `{"have": {path: content hash}}` and answers
   [NDJSON](https://github.com/ndjson/ndjson-spec): a header, one line per
   candidate, then `end`. A candidate whose hash matches `have` is a `same` line
-  with no text; the roadmap is always sent whole. The request body is capped at
-  1 KiB per `max-candidates` and never below 4 MiB (`413` past it), and only the
-  entries that could be `same` are kept of it. The answer is gzipped when
+  with no text; every roadmap is always sent whole, whether it is listed in
+  `[planning] roadmap` or, with no such key, found by its file name
+  `roadmap.md`, and the header's config (`roadmaps`) is all that says which
+  files those are. The request body is capped at 1 KiB per `max-candidates`
+  and never below 4 MiB (`413` past it), and only the entries that could be
+  `same` are kept of it. The answer is gzipped when
   accepted, flushed after the header and every 64 KiB, and stops reading once
   the request's context ends (`internal/planning/stream.go`).
 - **`GET /planning/sources?path=`** answers for one path, a `file` answer
@@ -374,7 +377,7 @@ repositories by [planning-index-at-scale.md](planning-index-at-scale.md), whose
   IndexedDB database `vantage-planning`, one per origin, keyed by repository
   and path and used only when the stream answers `same` for the hash it was
   stored under. It holds a stamp per candidate, each planning document's facts
-  and its card blocks, and nothing for the roadmap. The worker asks for the
+  and its card blocks, and nothing for any roadmap. The worker asks for the
   server id before every build, and the database holds the results of one
   scanner id and one server id, which every read and write checks again in its
   own transaction: another server at the same address is never sent this one's
