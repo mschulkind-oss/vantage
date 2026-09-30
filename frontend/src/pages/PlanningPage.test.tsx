@@ -100,6 +100,22 @@ vi.mock("vantage-md/react", async () => {
 });
 
 /**
+ * The page's warm-up of the Markdown pipeline (`lib/warmMarkdown.ts`), which
+ * a page opened before its index was ready runs before its first sections
+ * render: done at once, unless a test holds it back.
+ */
+const warming = vi.hoisted(() => ({
+  runs: 0,
+  run: (): Promise<void> => Promise.resolve(),
+}));
+vi.mock("../lib/warmMarkdown", () => ({
+  warmMarkdown: () => {
+    warming.runs += 1;
+    return warming.run();
+  },
+}));
+
+/**
  * How often each card's body rendered, by document: the viewer stands inside
  * a wrapper that is not memoized, so it renders exactly when its card does.
  */
@@ -280,7 +296,49 @@ function serveReviews(): void {
 
 const writeText = vi.fn().mockResolvedValue(undefined);
 
+/**
+ * Animation frames, each run on a task of its own — or held back while a test
+ * says so, until {@link releaseFrames}. The page's first sections wait for its
+ * frame to have painted, an animation frame and a task after it
+ * (`lib/afterPaint.ts`); jsdom's own frames come every 16 ms, which `settle`
+ * does not wait for.
+ */
+const frames = {
+  held: false,
+  next: 0,
+  pending: new Map<number, FrameRequestCallback>(),
+};
+function runFrame(id: number): void {
+  const callback = frames.pending.get(id);
+  if (callback === undefined) return;
+  frames.pending.delete(id);
+  callback(performance.now());
+}
+async function releaseFrames(): Promise<void> {
+  frames.held = false;
+  await act(async () => {
+    for (const id of [...frames.pending.keys()]) runFrame(id);
+  });
+  await settle();
+}
+let frameSpies: { mockRestore(): void }[] = [];
+
 beforeEach(() => {
+  frames.held = false;
+  frames.pending.clear();
+  frameSpies = [
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      const id = ++frames.next;
+      frames.pending.set(id, callback);
+      if (!frames.held) setTimeout(() => runFrame(id), 0);
+      return id;
+    }),
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation((id) => {
+      frames.pending.delete(id);
+    }),
+  ];
+  warming.runs = 0;
+  warming.run = () => Promise.resolve();
   resetPlanningTrackers();
   resetPlanningReviews();
   resetPlanningPageInputs();
@@ -305,6 +363,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  for (const spy of frameSpies) spy.mockRestore();
   localStorage.clear();
   setPlanningScannerForTests(null);
   setPlanningLimitsForTests(null);
@@ -644,6 +703,44 @@ describe("empty and degenerate states", () => {
     expect(screen.queryByRole("status")).toBeNull();
     expect(screen.getByRole("navigation", { name: "Sections" })).toBeTruthy();
     expect(cardsIn("Unrouted")).toHaveLength(2);
+  });
+
+  // D6 (planning-index-at-scale.md §10.6, §19): the pipeline's first run in a
+  // page load costs several times any later one, and one card's Markdown is a
+  // task React cannot split.
+  it("runs the Markdown pipeline once while the index builds, after the frame paints, and renders the sections only after it", async () => {
+    serveTree(TREE);
+    setLoad({ status: "loading", warm: false, progress: null });
+    let warmed: () => void = () => {};
+    warming.run = () =>
+      new Promise<void>((resolve) => {
+        warmed = resolve;
+      });
+    frames.held = true;
+    await renderPage();
+    // Not before the frame has painted.
+    expect(warming.runs).toBe(0);
+    await releaseFrames();
+    expect(warming.runs).toBe(1);
+
+    setLoad(readyOf(TREE));
+    await settle();
+    // The index and the page's inputs are in hand; the warm-up is not done.
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Scanning planning documents",
+    );
+    expect(screen.queryAllByRole("article")).toHaveLength(0);
+    await act(async () => warmed());
+    await settle();
+    expect(cardsIn("Unrouted")).toHaveLength(2);
+    expect(warming.runs).toBe(1);
+  });
+
+  it("runs no warm-up on a page opened with its index ready", async () => {
+    seed();
+    await renderPage();
+    expect(cardsIn("Unrouted")).toHaveLength(2);
+    expect(warming.runs).toBe(0);
   });
 });
 
@@ -1458,6 +1555,31 @@ describe("page inputs, and one commit (planning-index-at-scale.md §10.3)", () =
     // No settling: what the first render commits.
     act(() => router.navigate!(-1));
     expect(cardsIn("Unrouted")).toHaveLength(2);
+  });
+
+  // D1 (§10.1, §19): on `g p`, the `g` has asked for page 1's inputs, which
+  // are in hand when the frame commits. Rendering their cards at once kept
+  // the main thread from painting the frame until they yielded.
+  it("keeps a set already in hand back until the frame has painted, as on g p", async () => {
+    prefetchPlanningPage("");
+    await settle();
+    render(
+      <MemoryRouter initialEntries={[entry("/plans/design.md")]}>
+        <RouterProbe />
+        <Routes>
+          <Route path="/.vantage/planning/*" element={<PlanningPage />} />
+          <Route path="/*" element={<div data-testid="viewer">viewer</div>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+    frames.held = true;
+    act(() => router.navigate!("/.vantage/planning"));
+    await settle();
+    expect(screen.getByRole("navigation", { name: "Sections" })).toBeTruthy();
+    expect(screen.queryAllByRole("article")).toHaveLength(0);
+    await releaseFrames();
+    expect(cardsIn("Unrouted")).toHaveLength(2);
+    expect(warming.runs).toBe(0);
   });
 
   it("asks for page 1's inputs ahead of a visit, so the visit asks for nothing more", async () => {

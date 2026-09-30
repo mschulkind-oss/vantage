@@ -16,7 +16,9 @@
  * The page renders its sections only from a complete set, in one commit
  * inside a transition, and keeps the set on screen until the next one is
  * complete: a flip, an index update and a stale block all change the page in
- * one commit, never card by card.
+ * one commit, never card by card. The first set waits, besides, for the frame
+ * to have painted, and on a page opened before its index was ready, for the
+ * Markdown pipeline to have run once (`lib/warmMarkdown.ts`).
  *
  * Each set is cached by repository, index version and pages, the last
  * `pageInputsKept` kept, outside any component: a history entry returned to
@@ -40,7 +42,9 @@ import {
   type PageRequest,
   type PlanningLayout,
 } from "../lib/planningPages";
+import { afterNextPaint } from "../lib/afterPaint";
 import { isStaticMode } from "../lib/staticMode";
+import { warmMarkdown } from "../lib/warmMarkdown";
 import {
   planningScanner,
   type CardAnswer,
@@ -411,6 +415,25 @@ export function usePlanningPageInputs(
     latest.current = { ready, layout };
   });
 
+  // No set renders before the frame this page first committed has painted
+  // (§10.1): a set already in hand when the frame commits — a prefetch on the
+  // `g` of `g p` — would otherwise start rendering its cards at once, and the
+  // frame would paint only once they yield. A page opened before its index
+  // was ready also runs the Markdown pipeline once first, while the index
+  // builds, so its first card costs what every other one does (§10.6).
+  const [warm] = useState(() => ready === null && !isStaticMode());
+  const gate = useRef<Promise<void> | null>(null);
+  useLayoutEffect(() => {
+    let open: () => void = () => {};
+    gate.current = new Promise((resolve) => {
+      open = () => resolve();
+    });
+    return afterNextPaint(() => {
+      if (warm) void warmMarkdown().then(open);
+      else open();
+    });
+  }, [warm]);
+
   useEffect(() => {
     const { ready, layout } = latest.current;
     if (repo === null || ready === null || layout === null || wanted === null) {
@@ -418,7 +441,7 @@ export function usePlanningPageInputs(
     }
     const entry = loadPageInputs(repo, ready, layout);
     let live = true;
-    void entry.promise.then((inputs) => {
+    void Promise.all([entry.promise, gate.current]).then(([inputs]) => {
       if (!live || inputs === null) return;
       startTransition(() =>
         setShown((prev) =>

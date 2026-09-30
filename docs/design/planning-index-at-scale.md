@@ -628,6 +628,10 @@ stands:
   format, `1,200`, in the bar, the headings and the pagers alike.
 - **The sections fill the empty region** in one later commit ([§10.3](#103-page-inputs-and-one-commit)),
   below everything already painted.
+- **The first sections a visit shows start rendering only once the frame has painted**: at the
+  frame's animation frame, in a task queued from there. On `g p`, page 1's inputs were asked for
+  on the `g` and are usually in hand when the frame commits, and rendering their cards at once
+  held the main thread when the frame was due to paint, so the frame waited for the cards to yield.
 
 ### 10.2 Pages
 
@@ -673,7 +677,10 @@ stands:
   - every Mermaid diagram in those blocks, drawn into the viewer's existing SVG cache, so the
     diagram renders at its full size on mount.
 - **The sections render only from a complete set,** in one commit inside a transition. The
-  render is time-sliced, and at most 30 cards and 96 KiB of card Markdown are committed.
+  render is time-sliced, and at most 30 cards and 96 KiB of card Markdown are committed. A
+  visit's first set also waits for the frame's paint ([§10.1](#101-frame-first)), and on a page
+  opened before its index was ready, for the Markdown pipeline's first run
+  ([§10.6](#106-before-the-index-is-ready)).
 - **A spinner** shows only if the wait passes 150 ms, so an ordinary visit never flashes one.
 - **Deadlines:**
   - reviews, 1 s: the sections paint without comments, and comments that arrive later go only
@@ -747,6 +754,16 @@ stands:
   updated at most every 100 ms. The total is the header's candidate count.
 - **When the index is ready**, the section bar and the sections replace that line in one commit.
   Nothing painted sits below it, so nothing moves.
+- **The Markdown pipeline runs once while the index builds**, after the progress line has
+  painted, over four short samples of what a card holds, one sample per task, and the first
+  sections wait for that run. The pipeline's first run in a page load costs several times any
+  later one: none of its code is compiled yet, and `rehype-highlight` builds its grammars for the
+  first time. Measured on the scale fixture at 45 documents, the first card took 25–28 ms and every
+  later one 5–11 ms, or 54–67 ms against 11–22 with the CPU slowed 2×. React yields between
+  cards but cannot split one, so that first card was a long task on a direct load (D6). The run
+  moves that cost to a time the main thread is idle, in pieces that measured at most 32 ms at 2×.
+  A page opened with its index ready skips it: `g p` comes from a document, which ran the
+  pipeline.
 - **A rescan** keeps today's 2 px bar, which is positioned absolutely and moves nothing.
 - **Refused and failed** read as they do today.
 
@@ -944,7 +961,7 @@ Chromium at 1440×900, three runs per cell. The scale fixture is the scale serie
 | :--- | :--- | :--- | :--- |
 | D1 | `g p`, index ready: the frame painted, ms after the `p` keydown | ≤ 50 cold, ≤ 45 warm and revisit | ≤ 60 at every size |
 | D2 | `g p`, index ready: the first section's cards painted | ≤ 130 cold, ≤ 110 warm, ≤ 90 revisit | ≤ 250 at every size |
-| D3 | How D2 grows with documents | — | slope ≤ 0.5 ms per document from 15 to 60 (today 18.6) |
+| D3 | How D2 grows with documents, at a fixed number of cards | — | slope ≤ 0.5 ms per document from 45 to 60, where every shown page is full (today 18.6 from 15 to 60). Below 45, the second section is still filling its page, so the cards shown grow with the documents (10, 14, 17 at 15, 30, 45), and D2 with them at about 5 ms a card, which the page budget bounds ([§13](#13-bounds)) |
 | D4 | Dev server, index ready: frame / cards | ≤ 100 / ≤ 250 | ≤ 120 / ≤ 450 |
 | D5 | `g p` while the index builds: the frame, with its progress line | ≤ 60 | ≤ 80 |
 | D6 | Main-thread long tasks from planning code (scan, index assembly, section commit), any scenario, production | none | none |
