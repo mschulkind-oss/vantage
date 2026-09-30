@@ -189,6 +189,11 @@ type Watcher struct {
 	// panel polling every second, an agent, a shell — reloads every open
 	// browser for nothing.
 	gitStateFP map[string]string
+	// stamps is the size and modification time of each content path, by
+	// repo-relative slash path, as they were at the last event kept for it. It
+	// is what tells an attribute change that left the contents alone apart
+	// from one that did not; see [Watcher.attributesOnly].
+	stamps map[string]fileStamp
 	// rescan carries the directories [Watcher.Rescan] hands the event loop.
 	rescan chan string
 }
@@ -203,6 +208,7 @@ type watcherStats struct {
 	droppedOutside int
 	droppedSameFP  int
 	droppedStale   int
+	droppedAttrib  int
 }
 
 // NewWatcher constructs a Watcher rooted at the repository at root. repoName is
@@ -230,6 +236,7 @@ func NewWatcher(root, repoName string, mgr *Manager, store *review.Store, useIgn
 		matcher:    ignore.GetMatcherWithDefaults(abs, useIgnoreFiles, defaults),
 		logger:     logger.With("component", "watcher", "repo", repoName),
 		gitStateFP: map[string]string{},
+		stamps:     map[string]fileStamp{},
 		dirs:       map[string]struct{}{},
 		rescan:     make(chan string, 16),
 	}, nil
@@ -599,12 +606,58 @@ func (w *Watcher) handleEvent(ev fsnotify.Event, co *coalescer) {
 		w.mu.Unlock()
 		return
 	}
+	if !isGitState && w.attributesOnly(ev, rel) {
+		w.mu.Lock()
+		w.stats.droppedAttrib++
+		w.mu.Unlock()
+		w.logger.Debug("watcher event dropped: attributes changed, contents did not", "path", rel)
+		return
+	}
 
 	w.mu.Lock()
 	w.stats.kept++
 	w.mu.Unlock()
 	w.logger.Debug("watcher event kept", "op", ev.Op.String(), "path", rel)
 	co.add(rel)
+}
+
+// fileStamp is what [Watcher.attributesOnly] compares: a file's size and
+// modification time, in nanoseconds. The zero value is a file that is not
+// there.
+type fileStamp struct {
+	size    int64
+	modTime int64
+}
+
+// attributesOnly reports whether ev, an event for the content path rel,
+// changed nothing but rel's attributes, and records rel's size and
+// modification time either way.
+//
+// An attribute change alone is a Chmod event, and something other than an
+// edit makes most of them: Spotlight on macOS, backup and antivirus tools,
+// anything that sets an extended attribute. fsnotify warns about them, and
+// pushing each one reloaded the document for nothing. Not every one can be
+// dropped, though. On macOS and the BSDs a file emptied by truncation reports
+// an attribute change and nothing else, since the kernel truncates a file by
+// setting its attributes, and kqueue says so with NOTE_ATTRIB alone. So a
+// Chmod event is dropped only when the size and modification time are what
+// they were at the last event kept for rel, and one for a file with no event
+// kept yet is kept. A truncation that changes the size also changes the
+// modification time, as any change to the contents does.
+func (w *Watcher) attributesOnly(ev fsnotify.Event, rel string) bool {
+	var now fileStamp
+	if info, err := os.Stat(filepath.Join(w.root, filepath.FromSlash(rel))); err == nil {
+		now = fileStamp{size: info.Size(), modTime: info.ModTime().UnixNano()}
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	before, seen := w.stamps[rel]
+	if now == (fileStamp{}) {
+		delete(w.stamps, rel)
+	} else {
+		w.stamps[rel] = now
+	}
+	return ev.Op == fsnotify.Chmod && seen && before == now
 }
 
 // flush processes a coalesced change set: invalidate caches and broadcast
@@ -1051,5 +1104,6 @@ func (w *Watcher) logHeartbeat() {
 		"dropped_outside", s.droppedOutside,
 		"dropped_same_content", s.droppedSameFP,
 		"dropped_unwatched_dir", s.droppedStale,
+		"dropped_attributes_only", s.droppedAttrib,
 	)
 }

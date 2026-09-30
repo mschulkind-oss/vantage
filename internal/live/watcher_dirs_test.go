@@ -312,3 +312,65 @@ func TestWatcherReportsARemovedDirectory(t *testing.T) {
 		return p.dirs["docs/gone"] && p.paths["docs/gone/a.md"] && p.paths["docs/gone/sub/b.md"]
 	})
 }
+
+// An attribute change alone, which on macOS Spotlight makes all the time, used
+// to reload the document. It is dropped when the file's size and modification
+// time are what they were at the last event kept for it. A truncation, which
+// on macOS is only an attribute change, still counts, and so does one for a
+// file with nothing to compare against.
+func TestHandleEventDropsAnAttributeChangeThatLeftTheContentsAlone(t *testing.T) {
+	root := t.TempDir()
+	a := filepath.Join(root, "a.md")
+	require.NoError(t, os.WriteFile(a, []byte("# A\n"), 0o644))
+	w, err := NewWatcher(root, "", nil, nil, false, quietLogger(), []string{})
+	require.NoError(t, err)
+	co := newCoalescer(time.Hour, time.Hour, func([]string) {})
+	defer co.stop()
+	pushed := func(op fsnotify.Op) bool {
+		w.handleEvent(fsnotify.Event{Name: a, Op: op}, co)
+		co.mu.Lock()
+		defer co.mu.Unlock()
+		_, ok := co.pending["a.md"]
+		clear(co.pending)
+		return ok
+	}
+
+	require.True(t, pushed(fsnotify.Chmod), "with no event kept yet, there is nothing to compare against")
+	require.False(t, pushed(fsnotify.Chmod))
+	require.True(t, pushed(fsnotify.Write), "a Write is never an attribute change alone")
+	require.False(t, pushed(fsnotify.Chmod))
+
+	require.NoError(t, os.Truncate(a, 0))
+	require.True(t, pushed(fsnotify.Chmod), "emptying the file is a change")
+	require.False(t, pushed(fsnotify.Chmod))
+
+	later := time.Now().Add(time.Hour)
+	require.NoError(t, os.Chtimes(a, later, later))
+	require.True(t, pushed(fsnotify.Chmod), "a new modification time is a change")
+	require.True(t, pushed(fsnotify.Chmod|fsnotify.Write))
+
+	require.NoError(t, os.Remove(a))
+	require.True(t, pushed(fsnotify.Remove))
+	require.NoError(t, os.WriteFile(a, []byte("# A\n"), 0o644))
+	require.True(t, pushed(fsnotify.Chmod), "a file that went away and came back starts again with nothing to compare")
+}
+
+// The same from the event loop, which is what the macOS runner checks against
+// kqueue: chmod on a document pushes nothing.
+func TestWatcherDoesNotPushAChmod(t *testing.T) {
+	root := t.TempDir()
+	a := filepath.Join(root, "a.md")
+	require.NoError(t, os.WriteFile(a, []byte("# A\n"), 0o644))
+	c := liveWatcher(t, root)
+
+	// Every event of this write is handled before mid.md's, so once mid.md is
+	// pushed, nothing more is to come from it.
+	require.NoError(t, os.WriteFile(a, []byte("# A, edited\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "mid.md"), []byte("# Mid\n"), 0o644))
+	awaitPushes(t, c, func(p pushes) bool { return p.paths["a.md"] && p.paths["mid.md"] })
+
+	require.NoError(t, os.Chmod(a, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "after.md"), []byte("# After\n"), 0o644))
+	got := awaitPushes(t, c, func(p pushes) bool { return p.paths["after.md"] })
+	require.False(t, got.paths["a.md"])
+}
