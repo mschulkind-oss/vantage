@@ -10,6 +10,7 @@ import (
 	iofs "io/fs"
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -201,6 +202,7 @@ type watcherStats struct {
 	droppedIgnore  int
 	droppedOutside int
 	droppedSameFP  int
+	droppedStale   int
 }
 
 // NewWatcher constructs a Watcher rooted at the repository at root. repoName is
@@ -469,6 +471,18 @@ func (w *Watcher) handleEvent(ev fsnotify.Event, co *coalescer) {
 	w.mu.Lock()
 	w.stats.eventsTotal++
 	w.mu.Unlock()
+
+	if w.fromUnwatchedDir(ev.Name) {
+		// A watch on a file that has outlived its directory's: on macOS and the
+		// BSDs, a renamed directory's files go on reporting under the old name
+		// (see [Watcher.fromUnwatchedDir]). The watch is dropped as well, which
+		// gives back the file it holds open.
+		w.unregisterWatch(ev.Name)
+		w.mu.Lock()
+		w.stats.droppedStale++
+		w.mu.Unlock()
+		return
+	}
 
 	// A .git appearing is a directory becoming a repository — `git clone` or
 	// `git worktree add` into the tree. When repositories are boundaries, the
@@ -868,6 +882,35 @@ func entryVanished(path string, err error) bool {
 	return statErr == nil && info.IsDir()
 }
 
+// fromUnwatchedDir reports whether the event path name lies in a directory
+// below the root that is not watched, and is not itself a watched directory.
+//
+// Such an event comes from a watch that has outlived the directory's own. On
+// macOS and the BSDs fsnotify's kqueue backend holds a watch on every file in a
+// watched directory, and a watch follows its file, under the name it was
+// registered with. When a directory is renamed the backend drops only the
+// directory's own watch, and the watcher's request to drop the rest names a
+// directory the backend no longer knows. So after `mv docs/old docs/new` an
+// edit to docs/new/a.md was heard twice, once as the docs/old/a.md that no
+// longer exists. On Linux events come from the directory's watch, which is gone
+// once the rename is handled, so only one already queued can arrive this way.
+func (w *Watcher) fromUnwatchedDir(name string) bool {
+	rel, err := filepath.Rel(w.root, name)
+	if err != nil || rel == "." || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false
+	}
+	rel = filepath.ToSlash(rel)
+	parent := path.Dir(rel)
+	if parent == "." {
+		return false
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	_, parentWatched := w.dirs[parent]
+	_, isWatchedDir := w.dirs[rel]
+	return !parentWatched && !isWatchedDir
+}
+
 // unregisterWatch drops the watch on one directory, if there still is one. A
 // failure is not interesting: it means the kernel or fsnotify dropped it first.
 func (w *Watcher) unregisterWatch(path string) {
@@ -1007,5 +1050,6 @@ func (w *Watcher) logHeartbeat() {
 		"dropped_ignore", s.droppedIgnore,
 		"dropped_outside", s.droppedOutside,
 		"dropped_same_content", s.droppedSameFP,
+		"dropped_unwatched_dir", s.droppedStale,
 	)
 }
