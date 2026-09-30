@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { openWithIndex } from "./planningIndex";
 
 // Referenced by in a real browser, against the real planning endpoint
 // (docs/design/planning-index.md §7). `fixtures/test_repo/plans/hub.md` is the
@@ -178,7 +179,10 @@ test("on a narrow screen the line wraps rather than hide the roadmap's answer", 
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 640 });
-  await page.goto("/plans/hub.md");
+  // With the index at first paint, as on any visit after the first: a line
+  // that fills the one line reserved while the index was on its way stays one
+  // line for that visit (docs/design/planning-index-at-scale.md §11.2).
+  await openWithIndex(page, "/plans/hub.md");
   // The roadmap's part of the line is the point of it, so it is shown in
   // full, not cut off at the edge with the rest in a hover title.
   const status = toggle(page).getByText("on the roadmap under Later");
