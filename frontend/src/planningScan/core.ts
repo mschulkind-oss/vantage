@@ -296,17 +296,24 @@ export function serveHelper(port: HelperEnd): void {
   };
 }
 
-/** One `file` line to be scanned. */
-interface Job {
+/**
+ * A `file` line as its result is taken back: all of it but its content, which
+ * a helper holds once it is handed the line, and the scan worker does not.
+ */
+interface Handed {
   path: string;
   hash: string;
-  content: string;
   /**
    * What it counts against a queue: its content's length in characters. That
    * is near enough what a queued line costs in memory, and it is what the
    * other budgets here count.
    */
   size: number;
+}
+
+/** One `file` line to be scanned. */
+interface Job extends Handed {
+  content: string;
 }
 
 /** A place a job can be scanned: the scan worker itself, or one helper. */
@@ -349,11 +356,13 @@ interface ScanPool {
  *
  * Results are taken one at a time, in the order they come back, and a lane's
  * room is freed only once its result is taken, so what is held never grows
- * past the queues' caps however slow the cache is.
+ * past the queues' caps however slow the cache is. A line handed to a helper
+ * is held by that helper alone: the scan worker keeps only what taking its
+ * result back needs, so a helper's queue is never held twice (§13).
  */
 function scanPool(options: {
   config: PlanningConfig;
-  took: (job: Job, result: ScanResult) => Promise<void>;
+  took: (job: Handed, result: ScanResult) => Promise<void>;
   yieldNow: () => Promise<void>;
   askHelpers: () => void;
 }): ScanPool {
@@ -377,7 +386,11 @@ function scanPool(options: {
     notify();
   };
 
-  const settle = (lane: Lane, job: Job, result: ScanResult): Promise<void> => {
+  const settle = (
+    lane: Lane,
+    job: Handed,
+    result: ScanResult,
+  ): Promise<void> => {
     taking = taking
       .then(() => (over() ? undefined : took(job, result)))
       .catch(fail)
@@ -433,14 +446,15 @@ function scanPool(options: {
 
   const helperLane = (port: HelperPort): Lane => {
     let nextId = 0;
-    const sent = new Map<number, Job>();
+    const sent = new Map<number, Handed>();
     const lane: Lane = {
       queued: 0,
       cap: () => planningLimits.helperQueueBytes,
       take(job) {
         const id = ++nextId;
         lane.queued += job.size;
-        sent.set(id, job);
+        // A copy without the content: the job itself would keep it here.
+        sent.set(id, { path: job.path, hash: job.hash, size: job.size });
         try {
           port.postMessage({
             id,
