@@ -23,7 +23,7 @@
  * Not the review store, which holds one document — the one the viewer is on —
  * and resets itself on every switch.
  */
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { create } from "zustand";
 import { usePlanningStore } from "../stores/usePlanningStore";
@@ -38,6 +38,12 @@ export interface PlanningReviews {
   byPath: ReviewsByPath;
   /** Every listed document has an answer, so every count is exact. */
   known: boolean;
+  /**
+   * The last request for the listed documents failed, and some still have no
+   * answer, so the counts stay unknown until something asks again: a push, or
+   * a comment filed here.
+   */
+  failed: boolean;
   /**
    * Take the review the server just returned for `path` — a filed comment's
    * echo — so the page shows it without waiting for the push. Any request for
@@ -255,6 +261,9 @@ export function usePlanningReviews(
     repo === null ? EMPTY : (state.byRepo[repo] ?? EMPTY),
   );
 
+  // The listed set, by repository, whose last request failed.
+  const [failedFor, setFailedFor] = useState<string | null>(null);
+
   // Each listed document's epoch, as one string: an effect re-runs on a change
   // to any of them, and only the documents whose own epoch moved are read.
   const epochs = usePlanningStore((state) =>
@@ -279,7 +288,10 @@ export function usePlanningReviews(
       }
     });
     if (readRest && unread.length > 0) {
-      void fetchPlanningReviews(repo, unread, since);
+      const asked = `${repo}\n${listed.join("\n")}`;
+      void fetchPlanningReviews(repo, unread, since).then((ok) =>
+        setFailedFor((prev) => (ok ? (prev === asked ? null : prev) : asked)),
+      );
     }
     // `byPath` too: a push that lands while its document is being read is
     // read again once that answer is in.
@@ -300,5 +312,7 @@ export function usePlanningReviews(
   );
 
   const known = listed.every((path) => byPath[path] !== undefined);
-  return { byPath, known, adopt };
+  const failed =
+    !known && repo !== null && failedFor === `${repo}\n${listed.join("\n")}`;
+  return { byPath, known, failed, adopt };
 }

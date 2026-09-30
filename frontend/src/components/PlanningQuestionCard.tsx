@@ -34,7 +34,8 @@
  * the question's marker, title, state and leaning, and Show question and Open
  * document. Take this leaning and Answer… need the rendered host block for
  * their anchor, so they appear once Show question has rendered the whole card
- * in place — the reader's own action, so the page may grow.
+ * in place — the reader's own action, so the page may grow. Show question goes
+ * with it, so the focus it had goes to the card.
  */
 import React, { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { Eye } from "lucide-react";
@@ -86,6 +87,21 @@ export const CARD_ATTR = "data-planning-question";
 /** The text shown beside a comment the agent has not answered yet. */
 export const WAITING_LABEL = "waiting on the agent";
 
+/**
+ * Which of a document's comments are on one question, as its card read them
+ * from the rendered question, and what it read them from: the question and
+ * the document's comments, as the card was given them. The report stands for
+ * the rest of the visit, after the card has left the page too, and is true
+ * while both are still the page's (`docs/design/planning-index-at-scale.md`
+ * §10.5).
+ */
+export interface ScopedReport {
+  /** The ids of the comments on the question, in the document's order. */
+  ids: readonly string[];
+  question: PlanningQuestion;
+  comments: readonly ReviewComment[] | undefined;
+}
+
 interface PlanningQuestionCardProps {
   question: PlanningQuestion;
   /**
@@ -119,14 +135,16 @@ interface PlanningQuestionCardProps {
   /** The card's key on its page, which `onScoped` reports it by. */
   cardKey?: string;
   /**
-   * The ids of the document's comments that are on this question, by the
-   * card's key, read from the rendered question; `null` while the card has
-   * no rendered question to read them from (a preview, a block without its
-   * host, a card no longer on the page), so the page places them by line
-   * instead (§10.5). One callback for every card, so a card's props stay
-   * equal from one render of its page to the next.
+   * The comments on this question, by the card's key, read from the rendered
+   * question, each time the question or its document's comments change;
+   * `null` while the card has no rendered question to read them from (a
+   * preview, a block without its host, a document gone from the index), so
+   * the page places them by line instead (§10.5). A card that leaves the page
+   * says nothing: what it reported last is still true of what it read. One
+   * callback for every card, so a card's props stay equal from one render of
+   * its page to the next.
    */
-  onScoped?: (key: string, ids: readonly string[] | null) => void;
+  onScoped?: (key: string, report: ScopedReport | null) => void;
 }
 
 const lineOf = (el: Element): number =>
@@ -341,6 +359,18 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
     );
   }, [onShowQuestion, question]);
 
+  const articleRef = useRef<HTMLElement>(null);
+  /** Show question had the focus, which the card takes once it is shown. */
+  const refocusRef = useRef(false);
+  useLayoutEffect(() => {
+    if (previewing || !refocusRef.current) return;
+    refocusRef.current = false;
+    const active = document.activeElement;
+    if (active === null || active === document.body) {
+      articleRef.current?.focus({ preventScroll: true });
+    }
+  }, [previewing]);
+
   const bodyRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<CardState>(EMPTY_STATE);
   const [answering, setAnswering] = useState<{
@@ -357,14 +387,19 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
 
   // After the embedded viewer has rendered and its own passes have run — a
   // child's effects run before its parent's. Layout, so the question's
-  // siblings are never painted.
+  // siblings are never painted, and the page hears the scoping before it
+  // paints its count.
   useLayoutEffect(() => {
     const root = bodyRef.current;
-    if (!root || markdown === null) return;
+    if (!root || markdown === null) {
+      onScoped?.(cardKey, null);
+      return;
+    }
     sweep(root);
     const host = hostIn(root, question);
     if (host === undefined) {
       setState((prev) => (sameState(prev, EMPTY_STATE) ? prev : EMPTY_STATE));
+      onScoped?.(cardKey, null);
       return;
     }
     const unit = unitOf(root, host);
@@ -396,7 +431,12 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
       takenId: taken?.id ?? null,
     };
     setState((prev) => (sameState(prev, next) ? prev : next));
-  }, [markdown, question, comments]);
+    // Without an anchor the card has nothing exact to say.
+    onScoped?.(
+      cardKey,
+      built === null ? null : { ids: scoped, question, comments },
+    );
+  }, [markdown, question, comments, cardKey, onScoped]);
 
   // Every diagram as the card first painted it, and every one it becomes: a
   // diagram MarkdownViewer draws late replaces its element's content, and one
@@ -410,26 +450,6 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
     observer.observe(root, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, [markdown]);
-
-  // Reported from an effect of its own, so the page hears only real changes.
-  // Without a rendered host the card has nothing exact to say.
-  const reportKey = previewing || !state.found ? null : state.scoped.join("\n");
-  const onScopedRef = useRef(onScoped);
-  const cardKeyRef = useRef(cardKey);
-  useLayoutEffect(() => {
-    onScopedRef.current = onScoped;
-    cardKeyRef.current = cardKey;
-  });
-  useLayoutEffect(() => {
-    onScopedRef.current?.(
-      cardKeyRef.current,
-      reportKey === null ? null : reportKey === "" ? [] : reportKey.split("\n"),
-    );
-  }, [reportKey]);
-  useLayoutEffect(
-    () => () => onScopedRef.current?.(cardKeyRef.current, null),
-    [],
-  );
 
   /** The anchor and fallback text the in-page button would send, from the card. */
   const anchorNow = useCallback(() => {
@@ -473,8 +493,11 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
 
   return (
     <article
+      ref={articleRef}
       {...{ [CARD_ATTR]: `${question.path}#${question.line}` }}
       aria-label={question.title}
+      // Where Show question's focus goes once the card is shown.
+      tabIndex={preview ? -1 : undefined}
       className="rounded-xl border border-slate-200 bg-white px-5 pt-3 pb-4 shadow-sm dark:border-slate-700 dark:bg-slate-800"
     >
       <div className="mb-1 flex flex-wrap items-baseline gap-x-2 text-xs text-slate-500 dark:text-slate-400">
@@ -519,9 +542,14 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
         {previewing && onShowQuestion !== undefined && (
           <button
             type="button"
-            className="inline-flex items-center gap-1 rounded border border-slate-300 px-2.5 py-0.5 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
-            disabled={full === "loading"}
-            onClick={showQuestion}
+            className="inline-flex items-center gap-1 rounded border border-slate-300 px-2.5 py-0.5 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-100 aria-disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+            // Inert while it loads, not disabled, which would drop the focus.
+            aria-disabled={full === "loading" ? "true" : undefined}
+            onClick={(e) => {
+              if (full === "loading") return;
+              refocusRef.current = document.activeElement === e.currentTarget;
+              showQuestion();
+            }}
           >
             <Eye size={12} aria-hidden="true" />
             Show question
