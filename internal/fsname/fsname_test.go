@@ -22,3 +22,11 @@ func TestSameFoldsCaseAndTheCodePointsHFSIgnores(t *testing.T) {
 		require.False(t, Same(other, ".vantage"), "%q is another name", other)
 	}
 }
+
+func TestKeyFoldsCaseWhereTheDefaultFilesystemDoes(t *testing.T) {
+	require.Equal(t, "notes", Key("darwin", "Notes"))
+	require.Equal(t, "notes", Key("windows", "NOTES"))
+	require.Equal(t, "Notes", Key("linux", "Notes"), "on Linux those are two directories")
+	require.True(t, FoldsCase("darwin"))
+	require.False(t, FoldsCase("freebsd"))
+}

@@ -1,5 +1,11 @@
 // Package fsname says when two spellings of a file name open one file.
 //
+// [FoldsCase] and [Key] answer it for a platform's default filesystem, where
+// something Vantage names after a directory must not collide with another
+// spelled differently: bookmark lists keyed by a project's root, and review
+// files named after a project. [Same] answers it for the names Vantage refuses
+// to serve, on any filesystem at all.
+//
 // Vantage refuses every path through ".git" and ".vantage", and the refusal
 // is only as good as its idea of which names those are. macOS's filesystems,
 // APFS and HFS+, ignore case by default, so ".GIT/config" opens ".git/config"
@@ -34,4 +40,24 @@ func withoutHFSIgnorable(s string) string {
 		}
 		return r
 	}, s)
+}
+
+// FoldsCase reports whether goos's default filesystem treats two names that
+// differ only in case as one file: APFS on macOS, and NTFS on Windows.
+//
+// One statement of that question for the whole program, because several
+// callers ask it about different things, and a list of platforms that appeared
+// twice would eventually disagree with itself.
+func FoldsCase(goos string) bool {
+	return goos == "darwin" || goos == "windows"
+}
+
+// Key is name as goos's default filesystem compares it: lowercased where it
+// ignores case (see [FoldsCase]), and name itself elsewhere. Two names with one
+// key open one file.
+func Key(goos, name string) string {
+	if FoldsCase(goos) {
+		return strings.ToLower(name)
+	}
+	return name
 }

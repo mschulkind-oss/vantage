@@ -367,6 +367,25 @@ func TestDiscoverReposSkipsExistingAndDedupesNames(t *testing.T) {
 	require.ElementsMatch(t, []string{"beta-2"}, names)
 }
 
+// Every project's review files are named after it in one directory, so on
+// macOS, whose filesystem ignores case, a clone named "notes" beside a project
+// named "Notes" would read and write the other's reviews. There a name that
+// differs only in case collides; on Linux the two are different files.
+func TestDiscoveredNamesDifferInMoreThanCaseWhereTheFilesystemIgnoresIt(t *testing.T) {
+	for goos, want := range map[string]string{"darwin": "notes-2", "windows": "notes-2", "linux": "notes"} {
+		t.Run(goos, func(t *testing.T) {
+			src := t.TempDir()
+			mkGitRepo(t, filepath.Join(src, "notes"))
+			c := Defaults()
+			c.MultiRepo = true
+			c.SourceDirs = []string{src}
+			c.Repos = []RepoConfig{{Name: "Notes", Path: t.TempDir()}}
+			require.NoError(t, c.Resolve())
+			require.Equal(t, []string{want}, repoNames(c.discoverReposFromSourceDirs(goos)))
+		})
+	}
+}
+
 func TestDiscoveredReposAreMarkedAsSuch(t *testing.T) {
 	src := t.TempDir()
 	mkGitRepo(t, filepath.Join(src, "alpha"))
