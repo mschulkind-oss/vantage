@@ -702,3 +702,34 @@ func TestRecentsUnreportedTellsNoOne(t *testing.T) {
 		RecentsUnreported(1, nil, true, true)
 	require.Empty(t, reports, "nor a child's walk, delegated to")
 }
+
+// A directory gone from one repository changes that repository's recent files
+// and no other's, and in daemon mode every served repository shares the one
+// cache. Dropping all of it for one repository's `rm -r` threw away the rest.
+func TestClearRecentFilesCacheOfDropsOneRepositorysList(t *testing.T) {
+	ClearRecentFilesCache()
+	t.Cleanup(ClearRecentFilesCache)
+	alpha, beta := initRepo(t), initRepo(t)
+	writeFile(t, alpha, "a.md", "# a\n")
+	writeFile(t, beta, "b.md", "# b\n")
+	alphaSvc, betaSvc := NewService(alpha, Options{}), NewService(beta, Options{})
+	paths := func(svc *GitService) []string {
+		var out []string
+		for _, rf := range svc.RecentsUnreported(10, nil, true, true) {
+			out = append(out, rf.Path)
+		}
+		return out
+	}
+	require.Equal(t, []string{"a.md"}, paths(alphaSvc))
+	require.Equal(t, []string{"b.md"}, paths(betaSvc))
+
+	// Both change on disk; only alpha's cached list is dropped. Named the way
+	// the watcher names its root, before symlinks are resolved: on macOS
+	// t.TempDir lies under /var, which is one.
+	writeFile(t, alpha, "a2.md", "# a2\n")
+	writeFile(t, beta, "b2.md", "# b2\n")
+	ClearRecentFilesCacheOf(alpha)
+
+	require.ElementsMatch(t, []string{"a.md", "a2.md"}, paths(alphaSvc))
+	require.Equal(t, []string{"b.md"}, paths(betaSvc), "beta's list is still the cached one")
+}

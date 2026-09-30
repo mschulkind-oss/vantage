@@ -361,6 +361,7 @@ func TestRoutesTableIncludesReviewCommands(t *testing.T) {
 		{http.MethodPost, "/review/comments/{id}/replies"},
 		{http.MethodPost, "/review/comments/{id}/reopen-reply"},
 		{http.MethodPost, "/review/dismissals"},
+		{http.MethodPost, "/review/move"},
 	} {
 		scope, ok := got[want]
 		require.Truef(t, ok, "route %s %s missing from table", want.method, want.pattern)

@@ -36,6 +36,12 @@
    modal). The app resolves it to package source (see vite.config.ts), so scan
    that source to keep classes used only inside the package from being purged. */
 @source "../../packages/vantage-md/src";
+/* Not the end-to-end suite: its fixtures are documents the viewer serves, not
+   the app's source, and a document's words are no class of the app's. Scanned,
+   they also tied the dev server's stylesheet to the fixture tree, so a spec
+   that renames a fixture folder (renamed_folder.spec.ts) hot-updated this file
+   and reloaded every page the suite had open, in the middle of other specs. */
+@source not "../e2e";
 
 body {
   margin: 0;

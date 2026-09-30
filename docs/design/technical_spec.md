@@ -136,7 +136,13 @@ review store, perf store, and live Manager) are built once.
     for untracked ones), porcelain status, and recently changed files.
   - Two package-level TTL caches back the hottest calls (status and recent
     files); the file watcher flushes them via `ClearStatusCache` /
-    `ClearRecentFilesCache` when git state changes on disk.
+    `ClearRecentFilesCache` when git state changes on disk. It flushes its own
+    repository's recent files (`ClearRecentFilesCacheOf`) when a watched
+    directory is renamed away or removed, which takes every recent file inside
+    it along and touches no git state; in daemon mode the other repositories'
+    lists are left alone. A file created without either waits up to the cache's
+    30 seconds to appear among the recent files, which is also what a folder
+    moved back into the tree does.
   - Every invocation carries `--no-optional-locks`. All of them are reads, and
     without it `git status` refreshes `.git/index` as a side effect — a write
     the watcher sees, broadcasts, and gets asked for status over again.
@@ -164,10 +170,11 @@ review store, perf store, and live Manager) are built once.
     It also names the Markdown already inside a directory that appears, which
     inotify never reports by itself. A watched directory renamed away or
     removed is listed in `removed_dirs`, because a renamed one's files leave
-    without events of their own. Only the planning index reads `removed_dirs`;
-    the viewer reloads a document only when its path is pushed, so a removed
-    directory's Markdown is named in `paths` as well, even when kqueue, on
-    macOS, reports a file's removal after its directory's.
+    without events of their own. A removed directory's Markdown is named in
+    `paths` as well, even when kqueue, on macOS, reports a file's removal after
+    its directory's, so a consumer reading only `paths` hears of every file.
+    The planning index and the viewer both read `removed_dirs`
+    ([§3.3](#33-data-flow--live-updates)).
 
 - **`review.Store`** — review-mode persistence (see [§2.5](#25-review-mode-internalreview-internalreviewanchor)).
 
@@ -238,6 +245,13 @@ because its store is keyed by the vantage invocation instead of by repository
   directory (default `~/.local/share/vantage/reviews`). The filename flattens
   the repo-relative path (separators → `__`, repo-name prefix in multi-repo
   mode).
+- **`POST /review/move?path=<from>`** with `{"to": …}` files a document's
+  review under the path it moved to, for the viewer following a document whose
+  folder was renamed ([§3.3](#33-data-flow--live-updates)). `Store.Move` keeps
+  every comment and nonce, merging into a review already filed under `to`. It
+  answers `409` while a file is still at `from`, and does not ask whether `to`
+  exists, since a folder renamed twice in quick succession has moved on from
+  the first new name by the time the viewer asks.
 - **Changelog reactions:** the store applies agent-authored `<!-- changelog -->`
   bullets, turning each `[<id>] <summary>` line into a reviewer-visible
   `CommentReaction`. The watcher invokes this when a reviewed Markdown file
@@ -356,7 +370,50 @@ interceptor (`frontend/src/lib/staticMode.ts`).
    - The backend broadcasts a `files_changed` WebSocket event.
    - The frontend receives it. If `currentPath` matches, it triggers
      `loadFile(path)` (content refresh); it always triggers `refreshTree()` (in
-     case a file was added or removed).
+     case a file was added or removed) and refetches the recent files.
+4. **A directory renamed or removed under the open document** arrives as
+   `removed_dirs`, since a renamed directory's files have no events of their
+   own. The viewer follows the document, or a folder view, to its new address
+   when the pushes it handles together (one debounced batch) show where the
+   rename put it (`renamedTo` in `frontend/src/lib/removedDirs.ts`).
+
+   That is decided on the word of *witnesses*, a term coined for this: the
+   files the viewer's tree and folder listing knew were in the removed
+   directory, and the document itself, each counting for the place it arrived
+   under the same path below the directory. A file whose own old path was
+   pushed is no witness, because a renamed directory's files are never pushed
+   under their old names and a removed one's always are, so a document deleted
+   or rebuilt in place is never taken to an unrelated file of its name. The
+   place with the most witnesses wins; a tie goes to the one a single change
+   away (renamed beside itself, or moved under its own name), and anything
+   still tied is no answer.
+
+   Following replaces the old address with the new one and keeps everything
+   the reader had: the scroll position, which the scroll effect leaves to the
+   browser, review mode, the review's comments, and a comment being written.
+   The review store files the review under the new path and asks the server to
+   do the same (`POST /review/move`); loading or writing that review waits for
+   the move. The new address is loaded keeping what is on screen should it
+   fail, since a folder renamed again before it was asked for is not there
+   either and the next push follows it on; with no such push, it is loaded
+   again after 1.5 s and shows whether it is gone.
+
+   The two halves of a rename can reach the viewer in two batches, since a
+   steady stream of other changes can close the watcher's window, or the
+   viewer's, between them. So a removal that did not say where the document
+   went is read again, with what it pushed, alongside the batches of the next
+   1.5 s. The document is loaded at once all the same, keeping what is on
+   screen should it fail, which a rebuild in place answers.
+
+   Once that time is up with no rename found, the document is loaded again,
+   which shows the page saying it could not be loaded and loads it again if it
+   comes back: the folder moved out of the served tree or was deleted, or the
+   batches could mean more than one place. While the reader is writing a
+   comment in review mode, that page waits until the comment is saved or
+   cancelled. Only the removed directories of the repository on screen count,
+   and a push from another repository that only removed directories refreshes
+   nothing of this one. The removed directories are dropped from the tree's
+   open folders, except those holding a document that stays on screen.
 
 ### 3.4 The Planning Index (`frontend/src/planningScan/`)
 

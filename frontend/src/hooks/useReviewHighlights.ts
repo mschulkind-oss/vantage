@@ -918,7 +918,16 @@ interface Draft {
   selectionStart: number | null;
 }
 
-function captureDrafts(container: HTMLElement): Draft[] {
+/**
+ * Whether an inline reply or edit box under `container` holds words the
+ * reviewer has not sent: what a rebuild of this layer carries over, and what
+ * unmounting the document would lose.
+ */
+export function hasInlineDraft(container: ParentNode): boolean {
+  return captureDrafts(container).length > 0;
+}
+
+function captureDrafts(container: ParentNode): Draft[] {
   const drafts: Draft[] = [];
   const areas = container.querySelectorAll<HTMLTextAreaElement>(
     ".review-inline-reply-area, .review-inline-edit-area",
