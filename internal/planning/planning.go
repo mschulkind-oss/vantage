@@ -33,14 +33,13 @@
 // file's scan result under that hash, and tells the stream which ones it holds,
 // so a file it already scanned crosses the wire as its hash alone.
 //
-// # Three modes
+// # Two modes
 //
 // [WriteStream] answers for every candidate, one line each, sending the text
-// only of the files whose hash the browser does not hold. [WriteBatch], which
-// it replaces, answers for every candidate in one object, text and all.
-// [Lookup] answers for one path, the viewer's refresh after a change push, and
-// applies the same tests to it so that a path joins the index only on the terms
-// a full scan would have given it.
+// only of the files whose hash the browser does not hold. [Lookup] answers for
+// one path, the viewer's refresh after a change push, and applies the same
+// tests to it so that a path joins the index only on the terms a full scan
+// would have given it.
 package planning
 
 import (
@@ -56,7 +55,7 @@ import (
 // [github.com/mschulkind-oss/vantage/internal/fs.FileSystemService] provides.
 //
 // ListAllFiles and IsListed must give one answer: IsListed(p) is whether p is in
-// ListAllFiles(). The batch uses the first and the single-path mode the second,
+// ListAllFiles(). The stream uses the first and the single-path mode the second,
 // so a disagreement would let a path into the index by one route that the other
 // keeps out.
 type Listing interface {

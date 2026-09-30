@@ -15,54 +15,50 @@ import (
 	"github.com/mschulkind-oss/vantage/internal/repoconfig"
 )
 
+// planningBatchGone is the old batch's answer. The only client still asking
+// for it is a tab loaded before the batch became the stream, and what that tab
+// needs is a reload.
+const planningBatchGone = "The planning index moved to a stream; reload the page."
+
 // PlanningSources handles GET /planning/sources (and
-// /r/{repo}/planning/sources): the text of every planning candidate, for the
-// viewer's planning index to scan. Design: docs/design/planning-index.md §3.4.
+// /r/{repo}/planning/sources) with `?path=`: the answer for that one path —
+// the viewer's refresh after a change push, and its fetch of one file's card
+// text — as a single `file`, `skipped`, `unreadable` or `absent` entry, under
+// the stream's own tests, a `file` carrying its content hash beside its text.
+// Design: docs/design/planning-index.md §3.4, and for the hash
+// docs/design/planning-index-at-scale.md §6.2. See [planning.Lookup]. An empty
+// `path` is a 400, like every other endpoint's.
 //
-// Without parameters it answers the batch, streamed: the effective `[planning]`
-// table, the candidate count, whether the scan was refused past
-// `max-candidates`, and the files, the skipped and the unreadable, each list
-// sorted by path and never null. See [planning.WriteBatch].
-//
-// With `?path=` it answers for that one path — the viewer's refresh after a
-// change push — as a single `file`, `skipped`, `unreadable` or `absent` entry,
-// under the batch's own tests, a `file` carrying its content hash beside its
-// text. See [planning.Lookup]. An empty `path` is a 400, like every other
-// endpoint's.
+// Without `path` this URL was the batch, every candidate's text in one body,
+// which [Handlers.PlanningStream] replaced. It now answers 410 Gone with the
+// {"detail":…} envelope, and reads nothing: a tab loaded before the change
+// shows its error with Retry, and a reload fixes it (§6.1).
 //
 // The existing /content endpoint is deliberately not the per-file refresh. It
 // serves paths the listing never yields, has no size limit, and answers a
 // missing file and an unreadable one with the same 400.
 //
 // The config is read with [repoconfig.Config.SettingsNow], past the reload
-// throttle, because the request this most often answers is the rescan a
-// `.vantage.toml` push just caused. A file that cannot be used is logged and the
-// defaults are served, so a bad table costs the reader their exclusions and
-// never the index.
+// throttle, as the stream reads it, so one path is judged under the same table
+// as the rescan a `.vantage.toml` push just caused. A file that cannot be used
+// is logged and the defaults are served, so a bad table costs the reader their
+// exclusions and never the index.
 func (h *Handlers) PlanningSources(w http.ResponseWriter, r *http.Request) {
 	svc, ok := h.repoOr400(w, r)
 	if !ok {
 		return
 	}
-	cfg := planningConfig(svc)
-
-	if q := r.URL.Query(); q.Has("path") {
-		rel := q.Get("path")
-		if rel == "" {
-			writeDetail(w, http.StatusBadRequest, "Missing required query parameter: path")
-			return
-		}
-		writeJSON(w, http.StatusOK, planning.Lookup(svc.FS, cfg, rel))
+	q := r.URL.Query()
+	if !q.Has("path") {
+		writeDetail(w, http.StatusGone, planningBatchGone)
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := planning.WriteBatch(w, svc.FS, cfg); err != nil {
-		// Headers are gone, so there is no status left to change: the client
-		// stopped reading, and its parse of a truncated body is what fails.
-		slog.Debug("api: planning batch not delivered", "repo", svc.Repo, "error", err)
+	rel := q.Get("path")
+	if rel == "" {
+		writeDetail(w, http.StatusBadRequest, "Missing required query parameter: path")
+		return
 	}
+	writeJSON(w, http.StatusOK, planning.Lookup(svc.FS, planningConfig(svc), rel))
 }
 
 // streamBodyLimit caps the planning stream's request body. Its `have` costs
@@ -138,8 +134,8 @@ func (h *Handlers) PlanningStream(w http.ResponseWriter, r *http.Request) {
 		err = out.gz.Close()
 	}
 	if err != nil {
-		// As for the batch: the status is gone, the client stopped reading,
-		// and its reader fails on a body without `end`.
+		// Headers are gone, so there is no status left to change: the client
+		// stopped reading, and its reader fails on a body without `end`.
 		slog.Debug("api: planning stream not delivered", "repo", svc.Repo, "error", err)
 	}
 }
