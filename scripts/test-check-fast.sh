@@ -58,6 +58,43 @@ expect_files() {
     if [ "$_got" = "$_want" ]; then ok; else no "$1" "$3 wanted [$_want], got [$_got]"; fi
 }
 
+# --- what macOS's /bin/sh can parse --------------------------------------------
+#
+# macOS's /bin/sh is bash 3.2, which cannot parse a `case` pattern's closing
+# parenthesis inside a `$( … )` command substitution; dash and a current bash
+# both can, so nothing run here would notice. CI's macOS job is the first to, and
+# it fails every case of this file at once. So a `case` inside a command
+# substitution is refused by reading the script: keep it in a function and call
+# the function inside the substitution instead.
+
+# case_in_substitution <file>: "line: text" for each `case` inside `$( … )`.
+case_in_substitution() {
+    awk '
+        { line = $0; sub(/#.*/, "", line) }
+        depth > 0 && line ~ /^[ \t]*\)[ \t]*$/ { depth--; next }
+        depth > 0 && line ~ /(^|[^A-Za-z_])case[ \t]/ { print NR ": " $0 }
+        line ~ /\$\([^)]*(^|[^A-Za-z_])case[ \t]/ { print NR ": " $0 }
+        line ~ /\$\([ \t]*$/ { depth++ }
+    ' "$1"
+}
+
+_found=$(case_in_substitution "$script")
+if [ -z "$_found" ]; then ok; else no "a case inside a command substitution" "$_found"; fi
+
+# The guard itself, against the shape that broke macOS.
+cat >"${TMPDIR:-/tmp}/check-fast-guard.$$" <<'SH'
+x=$(
+    printf '%s\n' "$y" | while read -r l; do
+        case $l in
+        D*) echo "$l" ;;
+        esac
+    done
+)
+SH
+_found=$(case_in_substitution "${TMPDIR:-/tmp}/check-fast-guard.$$")
+rm "${TMPDIR:-/tmp}/check-fast-guard.$$"
+if [ -n "$_found" ]; then ok; else no "the case-in-substitution guard" "missed the shape that breaks bash 3.2"; fi
+
 # --- the table ---------------------------------------------------------------
 
 # Every path runs the document check, since a document can reach any file, and

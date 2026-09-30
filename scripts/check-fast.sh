@@ -333,10 +333,11 @@ plan=$(printf '%s\n' "$staged" | plan_from_stdin)
 # for on disk.
 printf '%s\n' "$plan" | cut -f2 | sed '/^$/d' | sort -u >"$work/checked"
 unstaged=$(git -c core.quotePath=false diff --name-only --no-renames)
-differs=$(
-    if [ -n "$unstaged" ]; then
-        printf '%s\n' "$unstaged" | grep -Fx -f "$work/checked" || true
-    fi
+# A function rather than inline: macOS's /bin/sh is bash 3.2, which cannot parse
+# a `case` pattern's closing parenthesis inside `$( … )` ("syntax error near
+# unexpected token `newline'"). test-check-fast.sh refuses any `case` inside a
+# command substitution in this file.
+deleted_but_on_disk() {
     printf '%s\n' "$staged" | while IFS= read -r _line; do
         case $_line in
         D"$tab"*)
@@ -345,6 +346,12 @@ differs=$(
             ;;
         esac
     done
+}
+differs=$(
+    if [ -n "$unstaged" ]; then
+        printf '%s\n' "$unstaged" | grep -Fx -f "$work/checked" || true
+    fi
+    deleted_but_on_disk
 )
 if [ -n "$differs" ]; then
     echo "check-fast: on disk, these staged paths are not what this commit holds:"
