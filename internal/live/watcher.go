@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -196,6 +197,9 @@ type Watcher struct {
 	stamps map[string]fileStamp
 	// rescan carries the directories [Watcher.Rescan] hands the event loop.
 	rescan chan string
+	// goos is the platform whose limits the log's advice names: runtime.GOOS,
+	// which tests replace to pin one platform's wording on any host.
+	goos string
 }
 
 // watcherStats are reset every heartbeat so they describe the most recent
@@ -239,6 +243,7 @@ func NewWatcher(root, repoName string, mgr *Manager, store *review.Store, useIgn
 		stamps:     map[string]fileStamp{},
 		dirs:       map[string]struct{}{},
 		rescan:     make(chan string, 16),
+		goos:       runtime.GOOS,
 	}, nil
 }
 
@@ -1021,8 +1026,8 @@ func (w *Watcher) logAddWatchFailure(path string, err error) {
 			rel = filepath.ToSlash(r)
 		}
 		w.reportWatchLimit(rel)
-		w.logger.Error("watcher: failed to add watch; inotify watch limit may be reached — live reload will miss changes under this directory; "+
-			"raise fs.inotify.max_user_watches (e.g. sysctl fs.inotify.max_user_watches=524288)",
+		w.logger.Error("watcher: failed to add watch; "+watchLimitName(w.goos)+" may be reached — live reload will miss changes under this directory; "+
+			watchLimitAdvice(w.goos),
 			"path", path, "error", err)
 		return
 	}
@@ -1047,8 +1052,8 @@ func (w *Watcher) handleError(err error) {
 	}
 	if isWatchLimitError(err) {
 		w.reportWatchLimit("")
-		w.logger.Error("watcher: inotify watch limit reached — live reload will miss some changes; "+
-			"raise fs.inotify.max_user_watches (e.g. sysctl fs.inotify.max_user_watches=524288)",
+		w.logger.Error("watcher: "+watchLimitName(w.goos)+" reached — live reload will miss some changes; "+
+			watchLimitAdvice(w.goos),
 			"error", err)
 		return
 	}
@@ -1075,6 +1080,26 @@ func (w *Watcher) reportWatchLimit(rel string) {
 	if fn != nil {
 		fn(d)
 	}
+}
+
+// watchLimitName names, for a log line, the limit a refused watch reached on
+// goos: inotify's count of watches on Linux, and elsewhere the open-file limit,
+// since kqueue, on macOS and the BSDs, holds a file open for every watched
+// directory and every file in it.
+func watchLimitName(goos string) string {
+	if goos == "linux" {
+		return "inotify watch limit"
+	}
+	return "open-file limit"
+}
+
+// watchLimitAdvice is what a log line tells the user to do about
+// [watchLimitName] on goos.
+func watchLimitAdvice(goos string) string {
+	if goos == "linux" {
+		return "raise fs.inotify.max_user_watches (e.g. sysctl fs.inotify.max_user_watches=524288)"
+	}
+	return "every watched file holds one open, so raise it (on macOS, sysctl kern.maxfilesperproc) or list the biggest folders in .vantageignore"
 }
 
 // isWatchLimitError reports whether err is the system refusing a watch because
