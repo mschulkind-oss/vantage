@@ -180,18 +180,18 @@ describe("usePlanningReviews", () => {
     await waitFor(() => expect(result.current.byPath["a.md"]).toHaveLength(2));
   });
 
-  it("leaves the counts unknown when the request fails, and a push asks again", async () => {
+  it("leaves the counts unknown when the request fails, says it failed, and a push asks again", async () => {
     mockedPost.mockRejectedValueOnce(new Error("down"));
     stored = { "a.md": review("a.md", comment("c1")) };
     const { result } = renderHook(() => usePlanningReviews("", ["a.md"]));
+    expect(result.current.failed).toBe(false);
     await waitFor(() => expect(mockedPost).toHaveBeenCalledTimes(1));
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await waitFor(() => expect(result.current.failed).toBe(true));
     expect(result.current.known).toBe(false);
 
     act(() => usePlanningStore.getState().noteReviewChanged("", "a.md"));
     await waitFor(() => expect(result.current.known).toBe(true));
+    expect(result.current.failed).toBe(false);
     expect(posted()).toEqual([["a.md"], ["a.md"]]);
     expect(ids(result.current.byPath["a.md"])).toEqual(["c1"]);
   });

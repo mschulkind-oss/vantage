@@ -4,9 +4,17 @@
  * `1–10 of 143 · ‹ Previous · Next ›`, and a page select in a long section.
  *
  * It sits under the section's heading and again after its last entry, at a
- * fixed height, so nothing it shows moves anything else. Its buttons are
- * disabled at the ends. A section of one page has none, which is its caller's
- * choice, not this component's.
+ * fixed height, so nothing it shows moves anything else. A section of one page
+ * has none, which is its caller's choice, not this component's.
+ *
+ * Its buttons are inert at the ends, and still focusable: `aria-disabled`
+ * rather than `disabled`, because a focused button that becomes disabled
+ * drops the keyboard's focus to the page's body, and in a section of two
+ * pages every flip ends on an end.
+ *
+ * Its controls act on the page the URL asks for, and its range says what is
+ * on screen. The two differ only while a flip waits for its page's inputs, and
+ * then a second Next goes on from the page asked for, not back to it.
  *
  * When the pointer or the focus reaches it, it asks for the next page's inputs
  * ahead of the click, so a flip usually has them in hand.
@@ -20,7 +28,10 @@ export type PagerPlace = "top" | "bottom";
 interface PlanningPagerProps {
   /** The section's name, for the pager's own label. */
   title: string;
-  /** The page shown, 1-based, and how many there are. */
+  /**
+   * The page asked for, 1-based, and how many there are then: what Previous,
+   * Next and the page select go on from.
+   */
   page: number;
   pageCount: number;
   /** The shown page's first entry, 0-based, and one past its last. */
@@ -38,7 +49,7 @@ interface PlanningPagerProps {
 }
 
 const BUTTON =
-  "rounded px-1.5 py-0.5 font-medium text-blue-600 transition-colors hover:bg-slate-100 disabled:cursor-default disabled:text-slate-400 disabled:hover:bg-transparent dark:text-blue-400 dark:hover:bg-slate-700 dark:disabled:text-slate-500";
+  "rounded px-1.5 py-0.5 font-medium text-blue-600 transition-colors hover:bg-slate-100 aria-disabled:cursor-default aria-disabled:text-slate-400 aria-disabled:hover:bg-transparent dark:text-blue-400 dark:hover:bg-slate-700 dark:aria-disabled:text-slate-500";
 
 export const PlanningPager: React.FC<PlanningPagerProps> = ({
   title,
@@ -52,8 +63,10 @@ export const PlanningPager: React.FC<PlanningPagerProps> = ({
   onPrefetch,
   busy = false,
 }) => {
+  const atFirst = page <= 1;
+  const atLast = page >= pageCount;
   const prefetchNext = () => {
-    if (page < pageCount) onPrefetch?.(page + 1);
+    if (!atLast) onPrefetch?.(page + 1);
   };
   return (
     <nav
@@ -71,8 +84,10 @@ export const PlanningPager: React.FC<PlanningPagerProps> = ({
       <button
         type="button"
         className={BUTTON}
-        disabled={page <= 1}
-        onClick={() => onFlip(page - 1, place)}
+        aria-disabled={atFirst ? "true" : undefined}
+        onClick={() => {
+          if (!atFirst) onFlip(page - 1, place);
+        }}
       >
         ‹ Previous
       </button>
@@ -80,8 +95,10 @@ export const PlanningPager: React.FC<PlanningPagerProps> = ({
       <button
         type="button"
         className={BUTTON}
-        disabled={page >= pageCount}
-        onClick={() => onFlip(page + 1, place)}
+        aria-disabled={atLast ? "true" : undefined}
+        onClick={() => {
+          if (!atLast) onFlip(page + 1, place);
+        }}
       >
         Next ›
       </button>

@@ -325,10 +325,12 @@ async function settle(): Promise<void> {
  */
 let entries = 0;
 const entry = (url: string) => {
-  const [pathname, query] = url.split("?");
+  const [rest, fragment] = url.split("#");
+  const [pathname, query] = (rest ?? url).split("?");
   return {
     pathname: pathname ?? url,
     search: query === undefined ? "" : `?${query}`,
+    hash: fragment === undefined ? "" : `#${fragment}`,
     key: `entry-${++entries}`,
   };
 };
@@ -488,7 +490,7 @@ describe("the sections, top to bottom (§6.2)", () => {
     expect(
       screen
         .getAllByRole("heading", { level: 2 })
-        .map((h) => h.textContent?.replace(/\d+$/, "")),
+        .map((h) => h.textContent?.replace(/ [\d,]+$/, "")),
     ).toEqual([
       "Needs you",
       "Unrouted",
@@ -677,13 +679,17 @@ describe("pages (planning-index-at-scale.md §10.2)", () => {
       expect(nav).toHaveTextContent("1–2 of 3");
       expect(
         within(nav).getByRole("button", { name: "‹ Previous" }),
-      ).toBeDisabled();
-      expect(within(nav).getByRole("button", { name: "Next ›" })).toBeEnabled();
+      ).toHaveAttribute("aria-disabled", "true");
+      expect(
+        within(nav).getByRole("button", { name: "Next ›" }),
+      ).not.toHaveAttribute("aria-disabled");
     }
-    // The heading's count is the section's, not the page's.
+    // The heading's count is the section's, not the page's, and a word of
+    // its name of its own.
     expect(
       within(section("Needs you")).getByRole("heading", { level: 2 }),
-    ).toHaveTextContent("Needs you3");
+    ).toHaveAccessibleName("Needs you 3");
+    expect(section("Needs you")).toHaveAccessibleName("Needs you 3");
   });
 
   it("gives a section of one page no pager", async () => {
@@ -701,10 +707,47 @@ describe("pages (planning-index-at-scale.md §10.2)", () => {
     expect(router.location).toBe("/.vantage/planning?needs-you=2");
     const nav = pager("Needs you");
     expect(nav).toHaveTextContent("3–3 of 3");
-    expect(within(nav).getByRole("button", { name: "Next ›" })).toBeDisabled();
+    expect(within(nav).getByRole("button", { name: "Next ›" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
     // Back leaves the page rather than stepping back through its pages.
     act(() => router.navigate!(-1));
     expect(router.location).toBe("/plans/roadmap.md");
+  });
+
+  // A focused button that becomes disabled drops the focus to the body, and
+  // in a section of two pages every flip ends on an end.
+  it("keeps an end's button focusable, and inert, so a flip onto the last page keeps the focus", async () => {
+    await renderPage();
+    const next = () =>
+      within(pager("Needs you")).getByRole("button", { name: "Next ›" });
+    next().focus();
+    await flip("Next ›");
+    expect(router.location).toBe("/.vantage/planning?needs-you=2");
+    expect(next()).not.toBeDisabled();
+    expect(next()).toHaveAttribute("aria-disabled", "true");
+    expect(document.activeElement).toBe(next());
+    // Pressed again, it does nothing.
+    await flip("Next ›");
+    expect(router.location).toBe("/.vantage/planning?needs-you=2");
+    expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
+  });
+
+  it("says where a flip landed in a polite live region, once it lands, and nothing before", async () => {
+    await renderPage();
+    const said = () =>
+      section("Needs you").querySelector('[aria-live="polite"][aria-atomic]');
+    expect(said()).not.toBeNull();
+    expect(said()).toHaveTextContent(/^$/);
+    await flip("Next ›");
+    expect(said()).toHaveTextContent(
+      "Needs you, page 2 of 2, entries 3–3 of 3",
+    );
+    await flip("‹ Previous");
+    expect(said()).toHaveTextContent(
+      "Needs you, page 1 of 2, entries 1–2 of 3",
+    );
   });
 
   it("clamps a page past the end to the last, and rewrites the URL in place", async () => {
@@ -727,13 +770,25 @@ describe("pages (planning-index-at-scale.md §10.2)", () => {
     Element.prototype.scrollIntoView = scrolled;
     try {
       await renderPage();
+      const top = within(pager("Needs you")).getByRole("button", {
+        name: "Next ›",
+      });
+      top.focus();
       await flip("Next ›");
       expect(scrolled).not.toHaveBeenCalled();
+      expect(document.activeElement).toBe(top);
+      // The focus goes with the heading: left on the bottom pager, it would
+      // be far below the viewport.
+      within(pager("Needs you", "bottom"))
+        .getByRole("button", { name: "‹ Previous" })
+        .focus();
       await flip("‹ Previous", "bottom");
       expect(scrolled).toHaveBeenCalledTimes(1);
-      expect(scrolled.mock.contexts[0]).toBe(
-        within(section("Needs you")).getByRole("heading", { level: 2 }),
-      );
+      const heading = within(section("Needs you")).getByRole("heading", {
+        level: 2,
+      });
+      expect(scrolled.mock.contexts[0]).toBe(heading);
+      expect(document.activeElement).toBe(heading);
     } finally {
       delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
     }
@@ -767,6 +822,58 @@ describe("pages (planning-index-at-scale.md §10.2)", () => {
     );
     await settle();
     expect(asked).toHaveLength(before);
+  });
+
+  // While a flip waits for its page, the pager goes on from the page asked
+  // for: a second Next is not lost, and the select does not jump back.
+  it("goes on from the page asked for while the one shown waits", async () => {
+    // Unrouted holds four questions of four documents, so each page asks
+    // for a block no other page holds.
+    const tree = {
+      ...TREE,
+      "plans/u2.md": doc("stage: DESIGN", q("OQ-U2", OPEN)),
+      "plans/u3.md": doc("stage: DESIGN", q("OQ-U3", OPEN)),
+    };
+    setPlanningLimitsForTests({ pageEntries: 1, pageSelectFrom: 3 });
+    let hold = false;
+    const releases: (() => void)[] = [];
+    serveTree(tree, "/api", (inline) => ({
+      cards: (repo, want, options) =>
+        hold
+          ? new Promise<CardAnswer[]>((resolve) => {
+              releases.push(() => resolve(inline.cards(repo, want, options)));
+            })
+          : inline.cards(repo, want, options),
+    }));
+    setLoad(readyOf(tree));
+    await renderPage();
+    const first = cardsIn("Unrouted");
+    hold = true;
+    const select = () =>
+      within(pager("Unrouted")).getByRole<HTMLSelectElement>("combobox", {
+        name: "Unrouted page",
+      });
+    const next = async () => {
+      await act(async () => {
+        fireEvent.click(
+          within(pager("Unrouted")).getByRole("button", { name: "Next ›" }),
+        );
+      });
+      await settle();
+    };
+    await next();
+    expect(router.location).toBe("/.vantage/planning?unrouted=2");
+    // Still page 1 on screen, and page 2 in the select.
+    expect(cardsIn("Unrouted")).toEqual(first);
+    expect(pager("Unrouted")).toHaveTextContent("1–1 of 4");
+    expect(select().value).toBe("2");
+    await next();
+    expect(router.location).toBe("/.vantage/planning?unrouted=3");
+    expect(select().value).toBe("3");
+    for (const release of releases) release();
+    await settle();
+    expect(pager("Unrouted")).toHaveTextContent("3–3 of 4");
+    expect(select().value).toBe("3");
   });
 
   it("offers a page select in a long section", async () => {
@@ -868,19 +975,94 @@ describe("the section bar (planning-index-at-scale.md §10.1)", () => {
     ]);
   });
 
-  it("jumps to a section without adding a history entry", async () => {
+  it("jumps to a section without adding a history entry, and takes the focus there", async () => {
     const scrolled = vi.fn();
     Element.prototype.scrollIntoView = scrolled;
     try {
       await renderPage();
-      fireEvent.click(within(bar()).getByRole("link", { name: /^Waiting/ }));
-      expect(scrolled.mock.contexts[0]).toBe(
-        within(section("Waiting")).getByRole("heading", { level: 2 }),
-      );
+      const link = within(bar()).getByRole("link", { name: /^Waiting/ });
+      link.focus();
+      fireEvent.click(link);
+      const heading = within(section("Waiting")).getByRole("heading", {
+        level: 2,
+      });
+      expect(scrolled.mock.contexts[0]).toBe(heading);
       expect(router.location).toBe("/.vantage/planning");
+      // So Tab goes on from the section, not from the bar.
+      expect(document.activeElement).toBe(heading);
     } finally {
       delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
     }
+  });
+
+  it("scrolls to the section a link's fragment names once the sections are in", async () => {
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    try {
+      await renderPage("/.vantage/planning#graduate");
+      expect(scrolled).toHaveBeenCalledTimes(1);
+      expect(scrolled.mock.contexts[0]).toBe(
+        within(section("Graduate")).getByRole("heading", { level: 2 }),
+      );
+      expect(
+        within(bar()).getByRole("link", { name: /^Graduate/ }),
+      ).toHaveAttribute("href", "#graduate");
+    } finally {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
+  // §10.3: the page on screen stays until an index update's inputs are
+  // ready, then changes in one commit — the frame with it.
+  it("changes its counts in the commit that changes the sections, not before", async () => {
+    await renderPage();
+    const unroutedCount = () =>
+      within(bar()).getByRole("link", { name: /^Unrouted/ }).textContent;
+    expect(unroutedCount()).toBe("Unrouted 2");
+    // One more unrouted question, whose page is held back.
+    const tree = {
+      ...TREE,
+      "plans/more.md": doc("stage: DESIGN", q("OQ-M1", OPEN)),
+    };
+    let release: () => void = () => {};
+    serveTree(tree, "/api", (inline) => ({
+      cards: (repo, want, options) =>
+        new Promise<CardAnswer[]>((resolve) => {
+          release = () => resolve(inline.cards(repo, want, options));
+        }),
+    }));
+    setLoad(readyOf(tree));
+    await settle();
+    expect(section("Unrouted")).toHaveAccessibleName("Unrouted 2");
+    expect(unroutedCount()).toBe("Unrouted 2");
+    release();
+    await settle();
+    expect(section("Unrouted")).toHaveAccessibleName("Unrouted 3");
+    expect(unroutedCount()).toBe("Unrouted 3");
+  });
+
+  it("writes every count in one number format, in the heading's name too", async () => {
+    setPlanningLimitsForTests({ pageLines: 5 });
+    seed(
+      TREE,
+      { stages: STAGES },
+      {
+        skipped: Array.from({ length: 1200 }, (_, i) => ({
+          path: `docs/huge-${i}.md`,
+          size: 2 * 1024 * 1024,
+        })),
+      },
+    );
+    await renderPage();
+    expect(
+      within(bar()).getByRole("link", { name: /^Skipped/ }),
+    ).toHaveTextContent("Skipped 1,200");
+    expect(
+      within(section("Skipped")).getByRole("heading", { level: 2 }),
+    ).toHaveAccessibleName("Skipped 1,200");
+    expect(
+      screen.getByRole("navigation", { name: "Skipped pages" }),
+    ).toHaveTextContent("1–5 of 1,200");
   });
 });
 
@@ -1170,6 +1352,41 @@ describe("page inputs, and one commit (planning-index-at-scale.md §10.3)", () =
     expect(cardsIn("Unrouted")).toHaveLength(2);
     expect(screen.getByRole("button", { name: /Copy answers/ })).toBeDisabled();
     expect(screen.getByTestId("pending-answers")).toHaveTextContent("–");
+  });
+
+  // §12: the second request comes after the sections painted, so a line
+  // above them would move them. Copy answers says it where nothing moves.
+  it("says so, and keeps Copy answers disabled, when the second reviews request fails", async () => {
+    setPlanningLimitsForTests({ pageEntries: 1 });
+    const real = vi.mocked(axios.post).getMockImplementation()!;
+    let requests = 0;
+    vi.mocked(axios.post).mockImplementation((url, body, config) => {
+      if (String(url).endsWith("/planning/reviews") && ++requests === 2) {
+        return Promise.reject(new Error("down"));
+      }
+      return real(url, body, config);
+    });
+    await renderPage();
+    expect(requests).toBe(2);
+    const copy = screen.getByRole("button", { name: /Copy answers/ });
+    expect(copy).toBeDisabled();
+    expect(copy).toHaveAttribute(
+      "title",
+      "Comments could not be loaded, so the answers waiting on the agent cannot be counted",
+    );
+    expect(screen.getByTestId("pending-answers")).toHaveTextContent("–");
+    expect(screen.getByTestId("reviews-failed")).toBeTruthy();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Comments could not be loaded.",
+    );
+    // A push asks again, and the count is known.
+    act(() =>
+      usePlanningStore.getState().noteReviewChanged("", "plans/design.md"),
+    );
+    await settle();
+    expect(screen.getByTestId("pending-answers")).toHaveTextContent("0");
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByTestId("reviews-failed")).toBeNull();
   });
 
   it("shows a spinner once the wait passes spinnerMs, and not before", async () => {
@@ -1860,7 +2077,10 @@ describe("Copy answers across pages (planning-index-at-scale.md §10.5)", () => 
     expect(pendingCount()).toBe("1");
   });
 
-  it("goes back to placement for a card flipped off the page", async () => {
+  // "A card rendered this visit reports its exact scoping": flipping away
+  // does not make the comment it found on the note OQ-S1's again, so Copy
+  // answers holds the same comments on either page.
+  it("keeps a card's own scoping after it is flipped off the page", async () => {
     const hash = await noteHash();
     reviews["plans/scoped.md"] = [
       pendingAt("moved-0001", "On the note", lineOf(SCOPED, "OQ-S1"), hash),
@@ -1870,6 +2090,32 @@ describe("Copy answers across pages (planning-index-at-scale.md §10.5)", () => 
     seed(SCOPED);
     await renderPage();
     expect(pendingCount()).toBe("0");
+    const flipUnrouted = async (label: "Next ›" | "‹ Previous") => {
+      await act(async () => {
+        fireEvent.click(
+          within(
+            screen.getByRole("navigation", { name: "Unrouted pages" }),
+          ).getByRole("button", { name: label }),
+        );
+      });
+      await settle();
+    };
+    await flipUnrouted("Next ›");
+    expect(screen.queryByRole("article", { name: /OQ-S1/ })).toBeNull();
+    expect(pendingCount()).toBe("0");
+    await flipUnrouted("‹ Previous");
+    expect(cardFor("OQ-S1")).toBeTruthy();
+    expect(pendingCount()).toBe("0");
+  });
+
+  it("places by line again once the document's comments change after its card left", async () => {
+    const hash = await noteHash();
+    reviews["plans/scoped.md"] = [
+      pendingAt("moved-0001", "On the note", lineOf(SCOPED, "OQ-S1"), hash),
+    ];
+    setPlanningLimitsForTests({ pageEntries: 2 });
+    seed(SCOPED);
+    await renderPage();
     await act(async () => {
       fireEvent.click(
         within(
@@ -1878,10 +2124,18 @@ describe("Copy answers across pages (planning-index-at-scale.md §10.5)", () => 
       );
     });
     await settle();
-    // OQ-S1's card, which found the comment on the note, is gone; by its
-    // line the comment is OQ-S1's.
-    expect(screen.queryByRole("article", { name: /OQ-S1/ })).toBeNull();
-    expect(pendingCount()).toBe("1");
+    expect(pendingCount()).toBe("0");
+    // Another comment on the document, which the card never saw: what it
+    // read is no longer what the document has, so placement decides.
+    reviews["plans/scoped.md"] = [
+      ...reviews["plans/scoped.md"],
+      pendingAt("added-0002", "On the question", lineOf(SCOPED, "OQ-S1")),
+    ];
+    act(() =>
+      usePlanningStore.getState().noteReviewChanged("", "plans/scoped.md"),
+    );
+    await settle();
+    expect(pendingCount()).toBe("2");
   });
 });
 

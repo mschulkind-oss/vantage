@@ -517,16 +517,25 @@ describe("a preview card (planning-index-at-scale.md §10.4)", () => {
       preview: true,
       onShowQuestion,
     });
+    const show = screen.getByRole("button", { name: "Show question" });
+    show.focus();
     act(() => {
-      fireEvent.click(screen.getByRole("button", { name: "Show question" }));
+      fireEvent.click(show);
     });
     expect(onShowQuestion).toHaveBeenCalledWith(question);
-    expect(
-      screen.getByRole("button", { name: "Show question" }),
-    ).toBeDisabled();
+    // Inert while it loads, and still focused: a disabled button drops it.
+    expect(show).not.toBeDisabled();
+    expect(show).toHaveAttribute("aria-disabled", "true");
+    expect(document.activeElement).toBe(show);
+    act(() => {
+      fireEvent.click(show);
+    });
+    expect(onShowQuestion).toHaveBeenCalledTimes(1);
     await act(async () => {
       answer(blockOf(question));
     });
+    // Show question is gone, so its focus goes to the card it became.
+    expect(document.activeElement).toBe(screen.getByRole("article"));
     const unit = container.querySelector("[data-planning-card-unit]");
     expect(unit?.textContent).toContain("OQ-B2");
     expect(container.querySelector("[data-planning-preview]")).toBeNull();
@@ -663,7 +672,10 @@ describe("the comments already filed on a question", () => {
     expect(items[1]).toHaveTextContent("Answered already");
     expect(items[1]).not.toHaveTextContent(WAITING_LABEL);
     expect(items[1]).toHaveTextContent("Agent: Did it.");
-    expect(onScoped).toHaveBeenLastCalledWith("b3", [onB3.id, "answered"]);
+    expect(onScoped).toHaveBeenLastCalledWith(
+      "b3",
+      expect.objectContaining({ ids: [onB3.id, "answered"] }),
+    );
     // And the take is shown as taken rather than offered twice.
     expect(screen.getByText("Leaning taken")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Take this leaning" })).toBe(
@@ -680,7 +692,10 @@ describe("the comments already filed on a question", () => {
         screen.queryByRole("list", { name: "Comments on this question" }),
         id,
       ).toBeNull();
-      expect(onScoped).not.toHaveBeenCalledWith(expect.anything(), [onB3.id]);
+      expect(onScoped).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ ids: [onB3.id] }),
+      );
       unmount();
     }
   });
@@ -754,8 +769,10 @@ describe("the comments already filed on a question", () => {
   });
 
   // planning-index-at-scale.md §10.5: a card with no rendered question has
-  // nothing exact to report, so its page places the comments by line.
-  it("reports nothing exact without a rendered question, and nothing once it is gone", async () => {
+  // nothing exact to report, so its page places the comments by line. A
+  // card rendered this visit reports what it read, and leaving withdraws
+  // nothing: the page keeps the report for as long as what it was read from.
+  it("reports nothing exact without a rendered question, and withdraws nothing when it goes", async () => {
     const onB3 = await takenOn(byId("OQ-B3"));
     const onScoped = vi.fn();
     const preview = renderCard(byId("OQ-B3"), {
@@ -766,18 +783,27 @@ describe("the comments already filed on a question", () => {
       onScoped,
     });
     expect(onScoped).toHaveBeenCalledWith("b3", null);
-    expect(onScoped.mock.calls.every(([, ids]) => ids === null)).toBe(true);
+    expect(onScoped.mock.calls.every(([, report]) => report === null)).toBe(
+      true,
+    );
     preview.unmount();
 
     onScoped.mockClear();
+    const comments = [onB3];
     const rendered = renderCard(byId("OQ-B3"), {
-      comments: [onB3],
+      comments,
       cardKey: "b3",
       onScoped,
     });
-    expect(onScoped).toHaveBeenLastCalledWith("b3", [onB3.id]);
+    expect(onScoped).toHaveBeenLastCalledWith("b3", {
+      ids: [onB3.id],
+      question: byId("OQ-B3"),
+      comments,
+    });
+    expect(onScoped.mock.lastCall?.[1].comments).toBe(comments);
+    const calls = onScoped.mock.calls.length;
     rendered.unmount();
-    expect(onScoped).toHaveBeenLastCalledWith("b3", null);
+    expect(onScoped).toHaveBeenCalledTimes(calls);
 
     // A block without the question's host in it says nothing exact either.
     const hostless = {
@@ -793,6 +819,41 @@ describe("the comments already filed on a question", () => {
     });
     expect(onScoped).toHaveBeenCalledWith("b3", null);
     expect(onScoped.mock.calls.every(([, ids]) => ids === null)).toBe(true);
+  });
+
+  // The page trusts a report only while it was read from the comments the
+  // document has now, so a card on the page says again what it read, even
+  // when the same comments are on its question.
+  it("reports again, with what it read, when its document's comments change", async () => {
+    const onB3 = await takenOn(byId("OQ-B3"));
+    const onScoped = vi.fn();
+    const first = [onB3];
+    const { rerender, onFile } = renderCard(byId("OQ-B3"), {
+      comments: first,
+      cardKey: "b3",
+      onScoped,
+    });
+    expect(onScoped.mock.lastCall?.[1].comments).toBe(first);
+    const second = [onB3, { ...onB3, id: "elsewhere", anchor: undefined }];
+    rerender(
+      <BrowserRouter>
+        <PlanningQuestionCard
+          question={byId("OQ-B3")}
+          card={blockOf(byId("OQ-B3"))}
+          badge={null}
+          comments={second}
+          href="/x"
+          onFile={onFile}
+          cardKey="b3"
+          onScoped={onScoped}
+        />
+      </BrowserRouter>,
+    );
+    expect(onScoped).toHaveBeenLastCalledWith(
+      "b3",
+      expect.objectContaining({ ids: [onB3.id] }),
+    );
+    expect(onScoped.mock.lastCall?.[1].comments).toBe(second);
   });
 
   it("says so when the comment could not be saved", async () => {

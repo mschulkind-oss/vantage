@@ -63,7 +63,10 @@ import {
 import { AppLink } from "../components/AppLink";
 import { PlanningBadgeChip } from "../components/PlanningBadge";
 import { PlanningPager, type PagerPlace } from "../components/PlanningPager";
-import { PlanningQuestionCard } from "../components/PlanningQuestionCard";
+import {
+  PlanningQuestionCard,
+  type ScopedReport,
+} from "../components/PlanningQuestionCard";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { usePlanningReviews } from "../hooks/usePlanningReviews";
 import { copyTextOrWarn } from "../lib/clipboard";
@@ -80,6 +83,7 @@ import {
   placeComment,
   readPageRequest,
   requestWithPage,
+  SECTION_IDS,
   sectionsOf,
   withPage,
   type CardEntry,
@@ -337,20 +341,33 @@ type OnFlip = (id: SectionId, page: number, place: PagerPlace) => void;
 type OnPrefetch = (id: SectionId, page: number) => void;
 
 const Section: React.FC<{
+  /** The section as it is on screen. */
   section: LaidOutSection;
+  /**
+   * The same section as the URL asks for it, which its pagers' controls go
+   * on from; the one on screen except while a flip waits for its page.
+   */
+  asked?: LaidOutSection;
   onFlip: OnFlip;
   onPrefetch?: OnPrefetch;
   /** A flip of this section is still waiting for its page. */
   busy?: boolean;
   children: React.ReactNode;
-}> = ({ section, onFlip, onPrefetch, busy, children }) => {
+}> = ({ section, asked = section, onFlip, onPrefetch, busy, children }) => {
   const { id, title, total, pageCount } = section;
+  // Said once a flip of this section lands, and not for the page it opened
+  // on: a reader who flipped hears where it went, and focus left on Next
+  // says nothing of the entries that changed below it.
+  const [landed, setLanded] = useState({ page: section.page, flipped: false });
+  if (landed.page !== section.page) {
+    setLanded({ page: section.page, flipped: true });
+  }
   const pager = (place: PagerPlace) =>
     pageCount > 1 && (
       <PlanningPager
         title={title}
-        page={section.page}
-        pageCount={pageCount}
+        page={asked.page}
+        pageCount={asked.pageCount}
         start={section.start}
         end={section.end}
         total={total}
@@ -362,13 +379,24 @@ const Section: React.FC<{
     );
   return (
     <section aria-labelledby={id} className="mb-10">
+      {/* Focusable from script alone: a jump from the section bar, or a flip
+          from the bottom pager, brings the focus here with the scroll. */}
       <h2
         id={id}
+        tabIndex={-1}
         className="mb-3 scroll-mt-4 text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
       >
-        {title}
-        <span className="ml-2 font-normal tabular-nums">{total}</span>
+        {title}{" "}
+        <span className="ml-1 font-normal tabular-nums">
+          {total.toLocaleString("en-US")}
+        </span>
       </h2>
+      {pageCount > 1 && (
+        <span className="sr-only" aria-live="polite" aria-atomic="true">
+          {landed.flipped &&
+            `${title}, page ${section.page.toLocaleString("en-US")} of ${pageCount.toLocaleString("en-US")}, entries ${(section.start + 1).toLocaleString("en-US")}–${section.end.toLocaleString("en-US")} of ${total.toLocaleString("en-US")}`}
+        </span>
+      )}
       {pager("top")}
       <div className="space-y-3">{children}</div>
       {pager("bottom")}
@@ -379,7 +407,9 @@ const Section: React.FC<{
 /**
  * One line naming each non-empty section with its exact count, from the index
  * (`docs/design/planning-index-at-scale.md` §10.1). Each entry scrolls to its
- * section, and adds no history entry.
+ * section and moves the focus to its heading, so Tab goes on from there, and
+ * adds no history entry. Its link is still the section's `#id`, which a new
+ * tab opened on it scrolls to once the sections are in.
  */
 const SectionBar: React.FC<{ layout: PlanningLayout }> = ({ layout }) => (
   <nav
@@ -400,9 +430,7 @@ const SectionBar: React.FC<{ layout: PlanningLayout }> = ({ layout }) => (
           href={`#${section.id}`}
           onClick={(e) => {
             e.preventDefault();
-            document.getElementById(section.id)?.scrollIntoView?.({
-              block: "start",
-            });
+            bringSectionIntoView(section.id);
           }}
           className="text-blue-600 no-underline hover:underline dark:text-blue-400"
         >
@@ -415,6 +443,13 @@ const SectionBar: React.FC<{ layout: PlanningLayout }> = ({ layout }) => (
     ))}
   </nav>
 );
+
+/** Scroll to a section's heading, and give the heading the focus. */
+function bringSectionIntoView(id: SectionId): void {
+  const heading = document.getElementById(id);
+  heading?.scrollIntoView?.({ block: "start" });
+  heading?.focus({ preventScroll: true });
+}
 
 const Notice: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">{children}</p>
@@ -529,12 +564,12 @@ export const PlanningPage: React.FC = () => {
     if (canonical !== null) setSearch(canonical, { replace: true });
   }, [layout, search, setSearch]);
 
-  /** A section to scroll to once its new page is on screen. */
+  /** A section to bring into view once its new page is on screen. */
   const scrollToRef = useRef<SectionId | null>(null);
   const flip = useCallback<OnFlip>(
     (id, page, place) => {
-      // The bottom pager brings its section's heading back into view; the
-      // top one leaves the scroll alone.
+      // The bottom pager brings its section's heading back into view, and
+      // the focus with it; the top one leaves both alone.
       scrollToRef.current = place === "bottom" ? id : null;
       setSearch((prev) => withPage(prev, id, page), { replace: true });
     },
@@ -567,6 +602,11 @@ export const PlanningPage: React.FC = () => {
       layout.sections.filter((s) => on.get(s.id) !== s.page).map((s) => s.id),
     );
   }, [inputs.slow, shown, layout]);
+  // Each section as the URL asks for it, which its pager goes on from.
+  const asked = useMemo(
+    () => new Map((layout?.sections ?? []).map((s) => [s.id, s] as const)),
+    [layout],
+  );
 
   // Opened while the index was still building: the progress line stays until
   // the section bar and the sections replace it in one commit (§10.6).
@@ -603,17 +643,19 @@ export const PlanningPage: React.FC = () => {
   });
   const hashes = ready?.hashes ?? null;
 
-  // Which comments sit on a listed question. A card rendered on the page
-  // reads it from its rendered question and reports it, by question; every
-  // other question places its document's comments by line (§10.5).
-  const [scoped, setScoped] = useState<
-    Readonly<Record<string, readonly string[]>>
-  >({});
+  // Which comments sit on a listed question. A card rendered this visit
+  // reads it from its rendered question and reports it, by question, and its
+  // report outlives the card: flipped off the page, it still holds for as
+  // long as the question and its document's comments are the ones it read.
+  // Every other question places its document's comments by line (§10.5).
+  const [scoped, setScoped] = useState<Readonly<Record<string, ScopedReport>>>(
+    {},
+  );
   const reportScoped = useCallback(
-    (key: string, ids: readonly string[] | null) =>
+    (key: string, report: ScopedReport | null) =>
       setScoped((prev) => {
         const had = prev[key];
-        if (ids === null) {
+        if (report === null) {
           if (had === undefined) return prev;
           const next = { ...prev };
           delete next[key];
@@ -621,12 +663,14 @@ export const PlanningPage: React.FC = () => {
         }
         if (
           had !== undefined &&
-          had.length === ids.length &&
-          had.every((id, i) => ids[i] === id)
+          had.question === report.question &&
+          had.comments === report.comments &&
+          had.ids.length === report.ids.length &&
+          had.ids.every((id, i) => report.ids[i] === id)
         ) {
           return prev;
         }
-        return { ...prev, [key]: [...ids] };
+        return { ...prev, [key]: report };
       }),
     [],
   );
@@ -647,13 +691,22 @@ export const PlanningPage: React.FC = () => {
       .sort()
       .map((path) => {
         const questions = byPath.get(path) ?? [];
+        const comments = reviews.byPath[path];
         const reported = new Set<string>();
         const reports = new Set<string>();
         for (const question of questions) {
-          const ids = scoped[refKey(question)];
-          if (ids === undefined) continue;
+          const report = scoped[refKey(question)];
+          // A report read from another version of the question, or before
+          // its document's comments last changed, says nothing of them now.
+          if (
+            report === undefined ||
+            report.question !== question ||
+            report.comments !== comments
+          ) {
+            continue;
+          }
           reported.add(refKey(question));
-          for (const id of ids) reports.add(id);
+          for (const id of report.ids) reports.add(id);
         }
         const placed = (c: ReviewComment): boolean => {
           const line = c.anchor?.source_line;
@@ -662,7 +715,7 @@ export const PlanningPage: React.FC = () => {
         };
         return {
           path,
-          comments: (reviews.byPath[path] ?? []).filter(
+          comments: (comments ?? []).filter(
             (c) => isPendingForAgent(c) && (reports.has(c.id) || placed(c)),
           ),
         };
@@ -685,6 +738,12 @@ export const PlanningPage: React.FC = () => {
   const pendingCount = pending.reduce((n, g) => n + g.comments.length, 0);
   // Exact only once every listed document's reviews are in (§10.5).
   const countKnown = index !== null && reviews.known;
+  // The request for the listed documents no shown page holds failed after
+  // the sections painted. A line above them would move them, so it is said
+  // where nothing moves: the button's own icon and tooltip, and once to a
+  // screen reader. A failure before they painted has its line (§12).
+  const reviewsFailed = reviews.failed;
+  const restFailed = reviewsFailed && shown?.inputs.reviewsFailed !== true;
   const [copied, setCopied] = useState(false);
   const copyAnswers = useCallback(() => {
     if (quotesLoading || !countKnown) return;
@@ -708,13 +767,49 @@ export const PlanningPage: React.FC = () => {
   const rootRef = useRef<HTMLDivElement>(null);
   const saveScroll = useScrollRestore(location.key, shown !== null, rootRef);
 
+  // The frame follows the sections on screen once there are any: an index
+  // update changes the section bar and the notices in the commit that
+  // changes the sections, not before it (§10.3). Before, it is the index's.
+  const frameLayout = shown?.inputs.layout ?? layout;
+  const frameSections =
+    shown !== null ? sectionsOf(shown.inputs.index) : sections;
+
   const shownPages = shown?.inputs.layout.pages ?? null;
   useLayoutEffect(() => {
     const id = scrollToRef.current;
     if (id === null || shownPages === null) return;
     scrollToRef.current = null;
-    document.getElementById(id)?.scrollIntoView?.({ block: "start" });
+    // The focus goes too, unless the reader has taken it somewhere else in
+    // the meantime: left on the bottom pager, it would be far below the
+    // viewport, and a second Enter would flip a page the reader cannot see.
+    const active = document.activeElement;
+    const section = document.getElementById(id)?.closest("section");
+    if (
+      active === null ||
+      active === document.body ||
+      section?.contains(active) === true
+    ) {
+      bringSectionIntoView(id);
+    } else {
+      document.getElementById(id)?.scrollIntoView?.({ block: "start" });
+    }
   }, [shownPages]);
+
+  // A link to a section (`#graduate`, the section bar's own link) opened in a
+  // new tab or pasted: the browser looked for the section before it was
+  // rendered, so the page scrolls to it once the sections are in. Once a
+  // visit, and not over a position the visit is restoring.
+  const sectionsIn = shown !== null && frameReady;
+  const hashTriedRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!sectionsIn || hashTriedRef.current) return;
+    hashTriedRef.current = true;
+    if (scrollPositions.has(location.key)) return;
+    const id = location.hash.slice(1);
+    if ((SECTION_IDS as readonly string[]).includes(id)) {
+      document.getElementById(id)?.scrollIntoView?.({ block: "start" });
+    }
+  }, [sectionsIn, location.hash, location.key]);
 
   // Show question on a preview card: the whole block, which only a request
   // naming it in full is answered with (§10.4), with its diagrams drawn.
@@ -803,16 +898,25 @@ export const PlanningPage: React.FC = () => {
             onClick={copyAnswers}
             disabled={!countKnown || pendingCount === 0 || quotesLoading}
             title={
-              !countKnown
-                ? "The answers waiting on the agent are still being counted"
-                : pendingCount === 0
-                  ? "No answers are waiting on the agent"
-                  : "Copy every answer waiting on the agent, grouped by document, for one trip"
+              reviewsFailed
+                ? "Comments could not be loaded, so the answers waiting on the agent cannot be counted"
+                : !countKnown
+                  ? "The answers waiting on the agent are still being counted"
+                  : pendingCount === 0
+                    ? "No answers are waiting on the agent"
+                    : "Copy every answer waiting on the agent, grouped by document, for one trip"
             }
             className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
           >
             {copied ? (
               <Check size={14} aria-hidden="true" />
+            ) : reviewsFailed ? (
+              <AlertCircle
+                size={14}
+                aria-hidden="true"
+                data-testid="reviews-failed"
+                className="text-amber-600 dark:text-amber-400"
+              />
             ) : (
               <ClipboardCopy size={14} aria-hidden="true" />
             )}
@@ -826,6 +930,11 @@ export const PlanningPage: React.FC = () => {
               {countKnown ? pendingCount : "–"}
             </span>
           </button>
+          {restFailed && (
+            <p role="alert" className="sr-only">
+              Comments could not be loaded.
+            </p>
+          )}
         </div>
       </div>
 
@@ -874,8 +983,8 @@ export const PlanningPage: React.FC = () => {
                 its place, then the notices. It paints first; the sections
                 fill the region below it in one later commit. */}
             <div className="mb-6 flex min-h-7 items-center">
-              {frameReady && layout !== null ? (
-                <SectionBar layout={layout} />
+              {frameReady && frameLayout !== null ? (
+                <SectionBar layout={frameLayout} />
               ) : (
                 <ProgressLine
                   progress={
@@ -891,7 +1000,9 @@ export const PlanningPage: React.FC = () => {
                 />
               )}
             </div>
-            {frameReady && sections !== null && <Notices sections={sections} />}
+            {frameReady && frameSections !== null && (
+              <Notices sections={frameSections} />
+            )}
             <div data-planning-sections>
               {shown !== null && frameReady ? (
                 <>
@@ -910,6 +1021,7 @@ export const PlanningPage: React.FC = () => {
                     card={card}
                     documentRow={documentRow}
                     buildPath={buildPath}
+                    asked={asked}
                     onFlip={flip}
                     onPrefetch={prefetch}
                     busy={busy}
@@ -1002,6 +1114,8 @@ const WaitingOn: React.FC<{
 /** The sections, top to bottom (§6.2); an empty one is not shown. */
 const Sections: React.FC<{
   layout: PlanningLayout;
+  /** Each section as the URL asks for it, by id. */
+  asked: ReadonlyMap<SectionId, LaidOutSection>;
   index: PlanningIndex;
   card: (question: PlanningQuestion, preview: boolean) => React.ReactNode;
   documentRow: (path: string, extra?: React.ReactNode) => React.ReactNode;
@@ -1011,6 +1125,7 @@ const Sections: React.FC<{
   busy: ReadonlySet<SectionId>;
 }> = ({
   layout,
+  asked,
   index,
   card,
   documentRow,
@@ -1043,6 +1158,7 @@ const Sections: React.FC<{
         <Section
           key={section.id}
           section={section}
+          asked={asked.get(section.id)}
           onFlip={onFlip}
           onPrefetch={onPrefetch}
           busy={busy.has(section.id)}
