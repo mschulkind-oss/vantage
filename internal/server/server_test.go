@@ -514,13 +514,15 @@ func isolateUserDirs(t *testing.T) {
 	t.Setenv("USERPROFILE", dir)
 }
 
-// linkedTempDir is a new, empty directory named by a symlink to it, which is
-// how every temp dir on macOS is named: /var is a link to /private/var. The
-// server compares paths resolved in different places — handing a retired clone
-// to the loose project compares the clone's path, resolved by the config, with
-// the loose project's root, resolved by its file service — and a directory
-// reached through a link is what makes Linux check that they agree, as a macOS
-// runner always does.
+// linkedTempDir is a new, empty directory named by a symlink to it. Every temp
+// dir on macOS is reached through a link too, since /var is a link to
+// /private/var, but there the link is higher up the path. Here it is the
+// directory itself, which is stricter: filepath.WalkDir, for one, does not
+// descend into a root that is a link. The server compares paths resolved in
+// different places — handing a retired clone to the loose project compares the
+// clone's path, resolved by the config, with the loose project's root, resolved
+// by its file service — and serving a directory reached through a link is what
+// makes a test check that they agree.
 func linkedTempDir(t *testing.T) string {
 	t.Helper()
 	link := filepath.Join(t.TempDir(), "link")
