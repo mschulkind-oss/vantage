@@ -10,7 +10,6 @@ import {
   applySource,
   buildPlanningIndex,
   findDocument,
-  parsePlanningSources,
   parseSourceEntry,
   parseStreamLine,
   planningIndexBuilder,
@@ -30,95 +29,6 @@ import {
 const DRAFT = "---\nstatus: draft\n---\n\n# A\n";
 const PLAIN = "# Not planning\n";
 const BROKEN = "---\nstatus: [draft\n---\n";
-
-/** The batch endpoint's example body, from the plan's shared contracts. */
-const ENDPOINT_EXAMPLE = {
-  config: {
-    roadmap: "roadmap.md",
-    include: ["**/*.md"],
-    exclude: ["docs/gallery/**"],
-    max_file_bytes: 1048576,
-    max_candidates: 5000,
-    stages: { DECIDED: "ready", DESIGN: "open" },
-  },
-  candidate_count: 55,
-  refused: false,
-  files: [{ path: "docs/design/planning-index.md", content: "---\ntitle: x" }],
-  skipped: [{ path: "docs/huge.md", size: 2097152 }],
-  unreadable: [{ path: "docs/latin1.md", reason: "not UTF-8" }],
-};
-
-describe("parsePlanningSources", () => {
-  it("maps the endpoint's body field by field", () => {
-    expect(parsePlanningSources(ENDPOINT_EXAMPLE)).toEqual({
-      config: {
-        roadmap: "roadmap.md",
-        include: ["**/*.md"],
-        exclude: ["docs/gallery/**"],
-        maxFileBytes: 1048576,
-        maxCandidates: 5000,
-        stages: { DECIDED: "ready", DESIGN: "open" },
-      },
-      candidateCount: 55,
-      refused: false,
-      files: [
-        { path: "docs/design/planning-index.md", content: "---\ntitle: x" },
-      ],
-      skipped: [{ path: "docs/huge.md", size: 2097152 }],
-      unreadable: [{ path: "docs/latin1.md", reason: "not UTF-8" }],
-    });
-  });
-
-  it("reads undeclared stages, and an empty table, as no stages", () => {
-    for (const stages of [null, {}]) {
-      const parsed = parsePlanningSources({
-        ...ENDPOINT_EXAMPLE,
-        config: { ...ENDPOINT_EXAMPLE.config, stages },
-      });
-      expect(parsed?.config.stages).toBeNull();
-    }
-  });
-
-  // The server keeps any word; assigning `__proto__` would drop it and leave
-  // a declared-but-empty table, which cannot exist (§9).
-  it("keeps a stage word spelled __proto__", () => {
-    const parsed = parsePlanningSources(
-      JSON.parse(
-        JSON.stringify({
-          ...ENDPOINT_EXAMPLE,
-          config: { ...ENDPOINT_EXAMPLE.config, stages: {} },
-        }).replace('"stages":{}', '"stages":{"__proto__":"open"}'),
-      ),
-    );
-    expect(Object.keys(parsed?.config.stages ?? {})).toEqual(["__proto__"]);
-    expect(Object.hasOwn(parsed?.config.stages ?? {}, "__proto__")).toBe(true);
-  });
-
-  it.each([
-    ["the static host's index.html", "<!doctype html><html></html>"],
-    ["null", null],
-    ["a body without files", { ...ENDPOINT_EXAMPLE, files: undefined }],
-    ["a body without config", { ...ENDPOINT_EXAMPLE, config: undefined }],
-    ["files as null", { ...ENDPOINT_EXAMPLE, files: null }],
-    [
-      "a role outside the four",
-      {
-        ...ENDPOINT_EXAMPLE,
-        config: { ...ENDPOINT_EXAMPLE.config, stages: { X: "shipped" } },
-      },
-    ],
-    [
-      "a file without content",
-      { ...ENDPOINT_EXAMPLE, files: [{ path: "a.md" }] },
-    ],
-    [
-      "a count that is not a number",
-      { ...ENDPOINT_EXAMPLE, candidate_count: "55" },
-    ],
-  ])("refuses %s", (_, body) => {
-    expect(parsePlanningSources(body)).toBeNull();
-  });
-});
 
 describe("parseSourceEntry", () => {
   it.each([
@@ -212,6 +122,62 @@ describe("parseStreamLine", () => {
     ]);
   });
 
+  it("maps a header's config field by field", () => {
+    expect(
+      parseStreamLine({
+        ...line("header"),
+        config: {
+          roadmap: "plans/roadmap.md",
+          include: ["**/*.md"],
+          exclude: ["docs/gallery/**"],
+          max_file_bytes: 1048576,
+          max_candidates: 5000,
+          stages: { DECIDED: "ready", DESIGN: "open" },
+        },
+      }),
+    ).toEqual({
+      kind: "header",
+      config: {
+        roadmap: "plans/roadmap.md",
+        include: ["**/*.md"],
+        exclude: ["docs/gallery/**"],
+        maxFileBytes: 1048576,
+        maxCandidates: 5000,
+        stages: { DECIDED: "ready", DESIGN: "open" },
+      },
+      candidateCount: 41,
+      refused: false,
+    });
+  });
+
+  it("reads undeclared stages, and an empty table, as no stages", () => {
+    const header = line("header");
+    for (const stages of [null, {}]) {
+      const parsed = parseStreamLine({
+        ...header,
+        config: { ...(header["config"] as object), stages },
+      });
+      expect(parsed).toMatchObject({
+        kind: "header",
+        config: { stages: null },
+      });
+    }
+  });
+
+  // The server keeps any word; assigning `__proto__` would drop it and leave
+  // a declared-but-empty table, which cannot exist (§9).
+  it("keeps a stage word spelled __proto__", () => {
+    const parsed = parseStreamLine(
+      JSON.parse(
+        LINES.header.replace('"stages":null', '"stages":{"__proto__":"open"}'),
+      ),
+    );
+    const stages =
+      parsed?.kind === "header" ? (parsed.config.stages ?? {}) : {};
+    expect(Object.keys(stages)).toEqual(["__proto__"]);
+    expect(Object.hasOwn(stages, "__proto__")).toBe(true);
+  });
+
   it("reads a refused header and the stages it declares", () => {
     const header = line("header");
     expect(
@@ -248,6 +214,23 @@ describe("parseStreamLine", () => {
       { ...line("header"), candidate_count: "41" },
     ],
     ["a header whose refusal is text", { ...line("header"), refused: "false" }],
+    [
+      "a header whose stages name a role outside the four",
+      {
+        ...line("header"),
+        config: {
+          ...(line("header")["config"] as object),
+          stages: { X: "shipped" },
+        },
+      },
+    ],
+    [
+      "a header whose include is not a list of strings",
+      {
+        ...line("header"),
+        config: { ...(line("header")["config"] as object), include: "**/*.md" },
+      },
+    ],
     [
       "a header whose config has no roadmap",
       {

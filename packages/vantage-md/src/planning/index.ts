@@ -47,7 +47,6 @@ export {
   applySource,
   buildPlanningIndex,
   findDocument,
-  parsePlanningSources,
   parseSourceEntry,
   parseStreamLine,
   planningIndexBuilder,
