@@ -2,11 +2,12 @@
  * The planning index: every planning document in one repository, with the
  * candidates that could not be read (design §3).
  *
- * Built from one batch of sources — the server's planning endpoint, or the
- * checker's own walk — or from files already scanned, and kept fresh one path
- * at a time (§3.4). Every function here returns a new index and leaves its
- * argument alone, so a viewer can hold the previous one on screen while the
- * next is computed.
+ * Built from one batch of sources, which the checker gathers by its own walk,
+ * or from files already scanned, which the viewer's scan worker reads from the
+ * planning stream (`docs/design/planning-index-at-scale.md` §6.1), and kept
+ * fresh one path at a time (§3.4). Every function here returns a new index and
+ * leaves its argument alone, so a viewer can hold the previous one on screen
+ * while the next is computed.
  */
 
 import { isStageRole, type PlanningConfig, type StageRole } from "./config.js";
@@ -17,7 +18,10 @@ import {
 } from "./scan.js";
 
 /**
- * One batch of candidate sources: the endpoint's body, camelCased.
+ * One batch of candidate sources: the config they were listed under, how many
+ * candidates there are, and each one's text or the reason it has none. The
+ * checker gathers one from its own walk; the viewer's builder takes the same
+ * fields, less `files`, from the planning stream's header and lines.
  *
  * `refused` means the repository has more candidates than `maxCandidates`, so
  * nothing was opened and the three lists are empty.
@@ -82,7 +86,7 @@ export type StreamLine =
 
 export interface PlanningIndex {
   config: PlanningConfig;
-  /** As of the last batch. */
+  /** As of the last build. */
   candidateCount: number;
   /** When true, `documents`, `skipped` and `unreadable` are all empty. */
   refused: boolean;
@@ -122,19 +126,6 @@ function stringList(value: unknown): string[] | null {
   return Array.isArray(value) && value.every(isString) ? [...value] : null;
 }
 
-/** Every element of `value` through `read`, or `null` if any is refused. */
-function listOf<T>(value: unknown, read: (item: Json) => T | null): T[] | null {
-  if (!Array.isArray(value)) return null;
-  const out: T[] = [];
-  for (const item of value) {
-    if (!isRecord(item)) return null;
-    const parsed = read(item);
-    if (parsed === null) return null;
-    out.push(parsed);
-  }
-  return out;
-}
-
 function parseConfig(value: unknown): PlanningConfig | null {
   if (!isRecord(value)) return null;
   const { roadmap, max_file_bytes, max_candidates, stages } = value;
@@ -170,10 +161,6 @@ function parseConfig(value: unknown): PlanningConfig | null {
   };
 }
 
-const readFile = (item: Json) =>
-  isString(item["path"]) && isString(item["content"])
-    ? { path: item["path"], content: item["content"] }
-    : null;
 const readSkipped = (item: Json) =>
   isString(item["path"]) && isNumber(item["size"])
     ? { path: item["path"], size: item["size"] }
@@ -182,28 +169,6 @@ const readUnreadable = (item: Json) =>
   isString(item["path"]) && isString(item["reason"])
     ? { path: item["path"], reason: item["reason"] }
     : null;
-
-/**
- * The batch endpoint's body, or `null` for any other shape.
- *
- * Strict on purpose. A static export has no endpoint, and a static host may
- * answer its URL with the site's `index.html` at 200 (design §3.6), so a body
- * that is not the batch's own shape has to read as a failure, not as an empty
- * repository.
- */
-export function parsePlanningSources(json: unknown): PlanningSources | null {
-  if (!isRecord(json)) return null;
-  const config = parseConfig(json["config"]);
-  const files = listOf(json["files"], readFile);
-  const skipped = listOf(json["skipped"], readSkipped);
-  const unreadable = listOf(json["unreadable"], readUnreadable);
-  const candidateCount = json["candidate_count"];
-  const refused = json["refused"];
-  if (config === null || files === null) return null;
-  if (skipped === null || unreadable === null) return null;
-  if (!isNumber(candidateCount) || typeof refused !== "boolean") return null;
-  return { config, candidateCount, refused, files, skipped, unreadable };
-}
 
 /** One entry from the single-path mode, or `null` for any other shape. */
 export function parseSourceEntry(json: unknown): SourceEntry | null {
@@ -236,10 +201,10 @@ export function parseSourceEntry(json: unknown): SourceEntry | null {
  * shape: a missing field, a field of the wrong type, a kind it does not know,
  * or anything that is not an object.
  *
- * As strict as {@link parsePlanningSources}, and for the same reason: a static
- * host may answer the stream's URL with the site's `index.html`, and a line
- * that is not the stream's own shape has to fail the build, never shrink the
- * index.
+ * Strict on purpose. A static export has no server, and a static host may
+ * answer the stream's URL with the site's `index.html` at 200 (design §3.6),
+ * so a line that is not the stream's own shape has to fail the build, never
+ * shrink the index.
  */
 export function parseStreamLine(json: unknown): StreamLine | null {
   if (!isRecord(json)) return null;
