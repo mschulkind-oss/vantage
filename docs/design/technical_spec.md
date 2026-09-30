@@ -213,6 +213,11 @@ The planning routes serve the planning index's inputs and never parse Markdown
 - **`POST /planning/reviews`** takes `{"paths": [...]}` and answers each stored
   review in request order, exactly as `GET /review` would, capped at 1 KiB per
   `max-candidates` (never below 1 MiB) and at `max-candidates` paths.
+- **`GET /planning/server-id`** answers `{"server_id": …}`, sent `no-store`: a
+  hash of the host name and the server's bookmark root key (the repository root,
+  or a daemon's config file), so one id per server, which the scan cache files
+  its results under
+  ([planning-index-at-scale.md §6.5](planning-index-at-scale.md#65-the-server-id)).
 
 The `/api/ws` WebSocket route is not in the table; the `live` package mounts it
 directly.
@@ -367,14 +372,19 @@ repositories by [planning-index-at-scale.md](planning-index-at-scale.md), whose
   IndexedDB database `vantage-planning`, one per origin, keyed by repository
   and path and used only when the stream answers `same` for the hash it was
   stored under. It holds a stamp per candidate, each planning document's facts
-  and its card blocks, and nothing for the roadmap. `cache.ts` is written
-  against the `ScanStore` interface (`store.ts`): `idbScanStore()` is the one
-  production implementation, and `memoryScanStore()` (`memoryStore.ts`) is a
-  unit-test double, never a fallback. A tab whose IndexedDB fails runs with no
-  cache, which makes every build cold.
-- **The scanner id** clears every store when it changes: a schema number, the
-  user agent, and a SHA-256 over the worker's source roots
-  (`packages/vantage-md/src/`, `frontend/src/planningScan/` and
+  and its card blocks, and nothing for the roadmap. The worker asks for the
+  server id before every build, and the database holds the results of one
+  scanner id and one server id, which every read and write checks again in its
+  own transaction: another server at the same address is never sent this one's
+  paths as `have`, and a tab whose database another tab cleared is refused
+  rather than trusted. `cache.ts` is written against the `ScanStore` interface
+  (`store.ts`): `idbScanStore()` is the one production implementation, and
+  `memoryScanStore()` (`memoryStore.ts`) is a unit-test double, never a
+  fallback. A tab whose IndexedDB fails runs with no cache, which makes every
+  build cold.
+- **The scanner id** clears every store when it changes, as the server id
+  does. It is a schema number, the user agent, and a SHA-256 over the worker's
+  source roots (`packages/vantage-md/src/`, `frontend/src/planningScan/` and
   `package-lock.json`), which a Vite plugin serves as
   `virtual:planning-scanner-id` (`scannerId.ts`). The dev server recomputes it
   on an edit. A production build fails when the worker's bundle holds a module

@@ -136,7 +136,8 @@ Every term here is *coined here* unless it links elsewhere. The planning index's
 | **Content hash** | The first 128 bits of [SHA-256](https://csrc.nist.gov/pubs/fips/180-4/upd1/final) over a file's bytes, as 32 lowercase hex digits | a modification time |
 | **Scan cache** | The browser's [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API) database of scan results, one per candidate, keyed by content hash ([§8](#8-the-scan-cache)) | an HTTP cache |
 | **Scanner id** | The version of the code that produced a scan result ([§8.2](#82-the-scanner-id)) | the app's release version |
-| **Warm build** | A build that starts with at least one scan-cache entry for its repository under the current scanner id. Any other build is **cold** | a build that happens to be fast |
+| **Server id** | An opaque name for the server answering at an origin: a hash of its host name and what it was started on, a single-repo server's repository root or a daemon's config file ([§6.5](#65-the-server-id)) | a repository's name: a daemon has one for all of them |
+| **Warm build** | A build that starts with at least one scan-cache entry for its repository under the current scanner id and server id. Any other build is **cold** | a build that happens to be fast |
 | **The stream** | `POST …/planning/stream`'s answer, [NDJSON](https://github.com/ndjson/ndjson-spec): one JSON object per line ([§6.1](#61-the-stream)) | the old batch, which was one JSON object |
 | **Card block** | The Markdown a question's card renders and its line offset, exactly what `questionCardSource` returns today | the question's unit, the `<li>` inside it |
 | **Frame** | The planning page's header, section bar and notices, painted first | the sections |
@@ -186,7 +187,8 @@ sequenceDiagram
     participant G as Go server
     participant P as Planning page (main)
     S->>W: build(repo, seq)
-    W->>C: this repo's stamps
+    W->>G: GET /planning/server-id
+    W->>C: this repo's stamps, if held for that server
     W->>G: POST /planning/stream {have}
     G-->>W: header, then one line per candidate, then end
     W->>C: facts for each "same" line
@@ -205,9 +207,10 @@ Warm and cold are one algorithm. A cold build simply has nothing to send as `hav
 
 1. The store numbers the build (`seq`), exactly as it numbers a batch today, and calls
    `build(repo, seq)` on the scanner client.
-2. The scan worker opens the scan cache ([§8](#8-the-scan-cache)) and reads this repository's
-   stamps (path, hash and kind, no facts). It tells the store whether the build is warm, which is
-   what the hold reads ([§11.3](#113-the-hold)).
+2. The scan worker asks the server for its server id ([§6.5](#65-the-server-id)), opens the scan
+   cache for it ([§8](#8-the-scan-cache)) and reads this repository's stamps (path, hash and kind,
+   no facts). It tells the store whether the build is warm, which is what the hold reads
+   ([§11.3](#113-the-hold)).
 3. It posts the stamps as `have` to the stream, and meanwhile reads this repository's stored
    facts.
 4. The header line carries the config, the candidate count and the refusal. The store starts a
@@ -355,6 +358,28 @@ It replaces the page's one `GET /review` per listed document
 - **No state between requests.** A stat-keyed hash memo would make warm builds stat-only, and is
   deferred until a measurement asks for it ([§16](#16-alternatives-considered)).
 
+### 6.5 The server id
+
+`GET …/planning/server-id` answers `{"server_id": "<32 hex digits>"}`, sent `no-store`: the first
+128 bits of SHA-256 over the host name and the key the server's bookmarks are already filed under
+([`starred.RootKey`](../../internal/starred/store.go)), which is a single-repo server's
+repository root, or a daemon's config file. The scan cache files every result under it
+([§8.2](#82-the-scanner-id)).
+
+- **One per server, not per repository.** Every repository a daemon serves answers the same id,
+  so moving between them empties nothing. Another repository started on the same port, or a
+  local tunnel port pointed at another machine, answers another.
+- **The same across a restart**, so a warm cache survives one, the dev server's included.
+- **Asked before every build, never remembered.** The server at an origin can change under an
+  open tab, and a reconnect's rescan is the first thing the new server hears from it. The cost is
+  one small request before the stream: about a millisecond on loopback, and one round trip to a
+  remote daemon. A tab without a cache ([§8.4](#84-without-it)) does not ask.
+- **It is no secret, and no proof.** `/info` already answers the root path. A server that named
+  another's id could as well have served a page of its own that reads the origin's storage
+  directly; what the id prevents is the viewer's own code handing one server what it kept from
+  another. Two machines with the same host name serving the same path look like one server, and
+  only that protection is lost between them: a result is still used only under a matching hash.
+
 ## 7. The scan worker
 
 ### 7.1 Lifecycle
@@ -482,13 +507,17 @@ A cold build at 1,000 documents is about 8–12 s of scanning on one thread. Hel
 ### 8.1 What it keeps, and under which key
 
 It is one IndexedDB database, `vantage-planning`, per origin. A daemon on `:8000` and a dev
-server on `:8201` each have their own.
+server on `:8201` each have their own. Servers that answer at one origin in turn, another
+repository started on the same port or a tunnel port pointed at another machine, share it,
+which is why it is filed under the server id as well ([§8.2](#82-the-scanner-id)).
 
 - **It keeps derived facts and card text** ([OQ-PS1](#decision-ledger)): each planning
   document's titles, headings, link targets and question state, and each question's card block,
   which is the document's own text. For a remote daemon that text sits in the browser profile on
-  the reader's machine. It is text the same reader can already open, it is cleared whenever the
-  scanner id changes ([§8.2](#82-the-scanner-id)), and it is never used without a matching hash.
+  the reader's machine. It is text the same reader can already open from the one server it came
+  from: it is kept per origin and per server, cleared whenever the scanner id or the server id
+  changes ([§8.2](#82-the-scanner-id)), and never used without a matching hash, so no server is
+  sent another's paths and hashes as `have`, nor shown its facts or card text.
 - **What is kept is per file, never the index.** The index is still assembled on every page
   load, from the stream and these results. [planning-index.md §3](planning-index.md#3-the-planning-index)'s
   "never stored" therefore no longer holds for a file's scan result
@@ -501,7 +530,7 @@ server on `:8201` each have their own.
 
 | Store | Key | Value | Read |
 | :--- | :--- | :--- | :--- |
-| `meta` | `"scanner"` | the scanner id | when the database opens |
+| `meta` | `"scanner"`, `"server"` | the scanner id and the server id: the owner ([§8.2](#82-the-scanner-id)) | when the database opens, and in every other transaction |
 | `stamps` | `[repo, path]` | `{hash, kind}`, plus `reason` for an unreadable file | every build, to make `have` |
 | `documents` | `[repo, path]` | the planning document's facts | every warm build |
 | `cards` | `[repo, path]` | `{hash, blocks}` | for the shown pages only |
@@ -532,7 +561,23 @@ server on `:8201` each have their own.
   rendered nowhere.
 - **The user agent** is in the id because `leadingMarker`'s `\p{L}` follows the browser's own
   Unicode tables. A browser upgrade therefore gives a new id.
-- **A mismatch when the database opens clears every store,** and one cold build follows.
+- **The server id is the other half of the owner**, a word coined here for whose results the
+  database holds: the scanner id and the server id together ([§6.5](#65-the-server-id)). The
+  worker asks for the server id before each build and opens the cache for it. Until a build has
+  had one, and for a build that could not, nothing is read or written: the build is cold, sends
+  no `have`, and keeps its card blocks in memory ([§8.4](#84-without-it)), without turning the
+  cache off. A change of server also forgets every block held in memory.
+- **A mismatch of either when the database opens clears every store,** and one cold build
+  follows.
+- **Every read and write checks the owner again,** in its own transaction. A tab that opened the
+  database before another tab cleared it, for newer code or for another server, is refused from
+  its next request on, and runs without the cache until it reloads
+  ([§8.3](#83-writes-eviction-and-failure)). Checked only at open, it would go on writing its
+  results under the new owner's name and reading the new owner's as its own, which is how an
+  upgrade with two tabs open, one of them still rescanning with the old worker, would put the old
+  code's results in front of the new. Deleting and recreating the database on a mismatch would
+  close the other tab's connection instead, but only a connection that honors `versionchange`,
+  and a delete such a connection blocks never completes.
 
 ### 8.3 Writes, eviction and failure
 
@@ -563,16 +608,16 @@ server on `:8201` each have their own.
   opens once more. The tab runs without a cache only if that fails too, as when another tab holds
   the database open and will not let go.
 - **Two tabs** may build the same repository at once. Every write is a pure result, so the last
-  write wins and every write is right. Nothing coordinates them, so one tab may leave an older
-  version than the other tab's index holds. That tab's card request is then answered `stale` and
-  its page refreshes the path ([§10.3](#103-page-inputs-and-one-commit)).
-- **Two tabs on different code** hold different scanner ids, and the second to open clears the
-  database and stamps its own. So every read and write reads `meta` in its own transaction, and
-  touches no record unless `meta` still holds the id its tab opened with. Otherwise it aborts,
-  which turns the cache off for that tab by the rule above. A tab on the older code then neither
-  writes results the newer code would trust nor reads the newer code's results. The app reloads
-  on a new server version, which makes this rare; it still happens to a tab whose websocket never
-  reconnects.
+  write wins and every write is right. Nothing coordinates them, beyond the owner every request
+  checks ([§8.2](#82-the-scanner-id)), so one tab may leave an older version than the other tab's
+  index holds. That tab's card request is then answered `stale` and its page refreshes the path
+  ([§10.3](#103-page-inputs-and-one-commit)).
+- **Two tabs on different code, or reading different servers,** hold different owners, and the
+  second to open clears the database and stamps its own. Every read and write of the first is then
+  refused, since `meta` no longer holds the owner its tab opened with, and that turns the cache off
+  for the first tab by the rule above. A tab on the older code then neither writes results the
+  newer code would trust nor reads the newer code's results. The app reloads on a new server
+  version, which makes this rare; it still happens to a tab whose websocket never reconnects.
 - **Retry sends `bypassCache`**: no `have`, and every entry for the repository is rewritten.
 - **A `.vantage.toml` push rescans with the cache.** No setting changes a scan result:
   `include` and `exclude` decide which candidates exist, `stages` enter only the derivations, and
@@ -840,6 +885,9 @@ review mode's 4 px bar. Each is its own fix.
 | The database is at a later version, or lacks a store | deleted and made again, once; one cold build |
 | Another tab, on other code, stamped the database since this tab opened it | no cache for this tab; the other tab's results are untouched |
 | The scanner id changed (a release, a browser upgrade, a vantage-md edit in dev) | every store cleared; one cold build |
+| The server id changed (another repository on the same port, a tunnel to another machine) | every store cleared before anything is read or sent; one cold build |
+| The server id cannot be had | that build reads and writes no cache: cold, with no `have` |
+| Another tab cleared the database (newer code, or another server) | this tab's next read or write is refused, and it runs without the cache until it reloads |
 | A file changes between the stream and the next push | the stream line carries its own hash; the push refreshes it |
 | A card block comes back `stale` | the path refreshes; the previous page stays until it lands |
 | A card's document is gone from the index | today's *not in the planning index any more* line |
@@ -860,7 +908,7 @@ review mode's 4 px bar. Each is its own fix.
 | Helpers | cold builds only: each holds its code, one queue of at most 2 MiB and one parse, and is ended with the build |
 | Scan cache (disk) | facts plus distinct card blocks of at most 32,000 characters each, plus about 100 B per candidate; about 10–15 MB at 1,000 documents |
 | Server, per request | one file and its encoding, the gzip window, the candidate list, and the kept `have`, at most one entry per candidate; the body is read as it arrives, capped at 1 KiB per `max-candidates` and never below 4 MiB |
-| Wire, warm | a `have` of about 60 B per candidate, and about 75 B per `same` line, plus the roadmap and changed files |
+| Wire, warm | the server id's request, a `have` of about 60 B per candidate, and about 75 B per `same` line, plus the roadmap and changed files |
 | Wire, cold | every readable candidate once, streamed and never held whole |
 | Work before the frame paints | the section derivation, 0.4–1.5 ms at 1,005 documents |
 | Work before a section's cards paint | at most 30 cards and 96 KiB of Markdown, independent of the repository |
@@ -925,8 +973,8 @@ page's per-document `GET /review` fan-out.
 | Ordering bugs across the worker boundary | the store's numbering stays on the main thread; store tests run against the inline client, with the same sequencing tests as today |
 | The scanner id misses a file the scan depends on, so a stale result is trusted | the production build fails if the worker's bundle holds a module outside the hashed roots; Retry bypasses the cache |
 | IndexedDB is unevenly reliable (Safari, private windows, quota) | memory-only for the tab; correctness never depends on the cache |
-| Unit tests cannot see IndexedDB's own behavior, since they run over the in-memory store: a transaction that commits once a task ends with no request pending, structured cloning, key order | the IndexedDB implementation stays a thin adapter over the storage interface, and the Chromium end-to-end tests run the real one through a warm reload, a changed scanner id and a failed open. Other engines' IndexedDB runs in no test |
-| Browser storage now holds repository-derived text (titles, headings, question blocks), for a remote daemon on the reader's machine | ruled acceptable ([OQ-PS1](#decision-ledger)): it is text the same reader can already open, kept per origin, cleared when the scanner id changes, never used without a matching hash, and gone when the reader clears the site's data |
+| Unit tests cannot see IndexedDB's own behavior, since they run over the in-memory store: a transaction that commits once a task ends with no request pending, structured cloning, key order | the IndexedDB implementation stays a thin adapter over the storage interface, and the Chromium end-to-end tests run the real one through a warm reload, a changed scanner id, a changed server id, two tabs over one database and a failed open. Other engines' IndexedDB runs in no test |
+| Browser storage now holds repository-derived text (titles, headings, question blocks), for a remote daemon on the reader's machine | ruled acceptable ([OQ-PS1](#decision-ledger)): it is text the same reader can already open, kept per origin and per server ([§8.2](#82-the-scanner-id)), cleared when the scanner id or the server id changes, never used without a matching hash, and gone when the reader clears the site's data |
 | Placement misplaces a comment whose block moved | only for cards not rendered this visit, and only for inclusion in Copy answers, which groups by document; the count's slot is reserved, so a correction moves nothing |
 | Late link badges now wait for the next render when the index misses the hold | the hold makes that rare on warm loads; blocks never on screen still get theirs |
 | The worker chunk pulls in KaTeX or highlight.js through `pipeline.ts`'s imports | measured absent with `bun build`; the build's size check fails if Rolldown keeps them, and the fix is a module holding only the remark plugins |
@@ -1013,3 +1061,4 @@ end to end; the figures come from the fits in [§2](#2-what-the-measurements-say
 | OQ-PS1 | The browser keeps each file's derived facts and its card blocks in IndexedDB, under the file's content hash, cleared whenever the scanner id changes and never used without a matching hash. A warm reload is what makes a 1,000-document repository cheap after the first visit, and the stored text is text the same reader can already open | 2026-09-29 | [§8.1](#81-what-it-keeps-and-under-which-key), [§14](#14-what-this-changes-in-the-planning-index-design), [§16](#16-alternatives-considered) | — |
 | OQ-PS2 | No byte sieve in Go: every candidate is streamed, and the scan stays the only judge of what a planning document is. The user ruled it an implementation matter, on the condition that the reader's experience does not degrade for it | 2026-09-29 | [§6.1](#61-the-stream), [§16](#16-alternatives-considered) | — |
 | — | Coordinator ruling: this work adds no npm dependency. The scan cache sits behind a storage interface; unit tests run it over an in-memory implementation written in this repository, and the Chromium end-to-end tests over real IndexedDB | 2026-09-29 | [§8.1](#81-what-it-keeps-and-under-which-key), [§17](#17-risks) | — |
+| — | Security review: the scan cache's owner is the scanner id and a server id the server answers, and every read and write checks it. A different server answering at one origin clears the cache before anything is read or sent as `have`, and a tab whose database another tab cleared is refused rather than trusted | 2026-09-29 | [§6.5](#65-the-server-id), [§8.1](#81-what-it-keeps-and-under-which-key), [§8.2](#82-the-scanner-id) | — |

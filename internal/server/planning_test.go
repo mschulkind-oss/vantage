@@ -215,3 +215,36 @@ func TestDaemonAnswersEachRepositorysReviews(t *testing.T) {
 		doJSON(t, h, http.MethodPost, "/api/planning/reviews", `{"paths":["a.md"]}`).Code,
 		"legacy repo routes are disabled in daemon mode")
 }
+
+// The server id names the server, not the repository: a daemon answers one id
+// for every repository it serves, so moving between them never empties the
+// viewer's scan cache, while a single-repo server on another repository
+// answers another, so a browser that meets it at the same address sends it
+// nothing it learned from the first (docs/design/planning-index-at-scale.md
+// §8.2).
+func TestTheServerIDIsOnePerServer(t *testing.T) {
+	serverID := func(t *testing.T, h http.Handler, target string) string {
+		t.Helper()
+		rec := doGET(t, h, target)
+		require.Equal(t, http.StatusOK, rec.Code, "body: %s", rec.Body.String())
+		var body struct {
+			ServerID string `json:"server_id"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+		require.Len(t, body.ServerID, 32)
+		return body.ServerID
+	}
+
+	daemon, _ := daemonServer(t)
+	h := daemon.Handler()
+	alpha := serverID(t, h, "/api/r/alpha/planning/server-id")
+	require.Equal(t, alpha, serverID(t, h, "/api/r/beta/planning/server-id"))
+	require.Equal(t, http.StatusNotFound, doGET(t, h, "/api/planning/server-id").Code,
+		"legacy repo routes are disabled in daemon mode")
+
+	one, _ := singleRepoServer(t)
+	two, _ := singleRepoServer(t)
+	first := serverID(t, one.Handler(), "/api/planning/server-id")
+	require.NotEqual(t, first, serverID(t, two.Handler(), "/api/planning/server-id"))
+	require.NotEqual(t, first, alpha)
+}

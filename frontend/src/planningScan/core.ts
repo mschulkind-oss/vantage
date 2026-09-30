@@ -817,6 +817,34 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
     readEntry(await askEntry(apiBase, path, signal), path);
 
   /**
+   * The server id of the server answering at `apiBase` (§6.5), or `null` when
+   * it cannot be had: the build then reads nothing from the cache and writes
+   * nothing to it, since a result is never used, or offered as `have`,
+   * without knowing which server it came from. A static host's page, or any
+   * other answer that is not the id, is `null` too, and the stream that
+   * follows fails with its own message.
+   */
+  const serverIdAt = async (
+    apiBase: string,
+    signal: AbortSignal,
+  ): Promise<string | null> => {
+    try {
+      const response = await fetchNow(`${apiBase}/planning/server-id`, {
+        signal,
+      });
+      if (!response.ok) return null;
+      const body: unknown = await response.json();
+      const id =
+        typeof body === "object" && body !== null && "server_id" in body
+          ? body.server_id
+          : undefined;
+      return typeof id === "string" && id !== "" ? id : null;
+    } catch {
+      return null;
+    }
+  };
+
+  /**
    * Keep one scanned file: a record in the store, or, for the roadmap, which
    * is never stored because the stream never answers `same` for it (§8.1),
    * its blocks in memory. Nothing is kept when a newer request than the one
@@ -879,6 +907,14 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
     send: (event: BuildEvent) => void,
   ): Promise<void> {
     const { repo, apiBase, bypassCache } = request;
+    // Asked on every build, never remembered: the server at this origin may
+    // have changed since the last one, and a `have` built for another server
+    // would tell this one every path and hash the other has (§8.2).
+    if (cache.enabled) {
+      const serverId = await serverIdAt(apiBase, run.controller.signal);
+      if (run.cancelled) return;
+      await cache.bind(serverId);
+    }
     const stamps = bypassCache ? [] : await cache.stamps(repo);
     if (run.cancelled) return;
     const warm = stamps.length > 0;

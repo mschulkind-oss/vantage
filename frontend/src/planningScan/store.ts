@@ -46,20 +46,42 @@ export interface StoredCards {
 }
 
 /**
+ * Whose results a store holds (§8.2): the scanner id of the code that
+ * produced them, and the server id of the server they were read from.
+ */
+export interface ScanOwner {
+  scanner: string;
+  server: string;
+}
+
+/**
+ * What every operation rejects with once the store holds another owner's
+ * results than the one it was opened for: another tab, running other code or
+ * reading another server, opened it since and cleared it (§8.2).
+ */
+export const TAKEN_OVER =
+  "The scan cache was emptied for another scanner or another server";
+
+/**
  * Per-origin storage of scan results, one record per `[repo, path]`. `repo` is
  * `""` in single-repo mode. Every operation may reject; what a rejection means
  * is the caller's.
  *
- * Every operation after `open` is for the scanner it was opened for, and
- * rejects rather than touch a record once the store holds another scanner's
- * results: another tab, on other code, opened it since (§8.3).
+ * A store is one connection, as a tab holds one, and several may share one
+ * database. Every read and write checks, in its own transaction, that the
+ * database still holds this connection's owner, and rejects with
+ * {@link TAKEN_OVER} if not: a check made only at `open` would let a tab that
+ * opened before another cleared the database go on reading the new owner's
+ * results as its own, and writing its own under the new owner's name.
  */
 export interface ScanStore {
   /**
-   * Open the store for results of `scannerId`. When the store holds another
-   * scanner's results, every record is cleared first (§8.2).
+   * Open the store for results of `owner`. When the database holds another
+   * owner's results, every record is cleared first (§8.2). A store opened
+   * again is then this owner's: what it does from then on is checked against
+   * it.
    */
-  open(scannerId: string): Promise<void>;
+  open(owner: ScanOwner): Promise<void>;
   /** Every stamp of one repository. */
   stamps(repo: string): Promise<ScanStamp[]>;
   /** Every planning document of one repository. */
@@ -83,8 +105,10 @@ export interface ScanStore {
 export const SCAN_DATABASE = "vantage-planning";
 const VERSION = 1;
 
-/** `meta` holds the scanner id under this key. */
+/** `meta` holds the owner's scanner id under this key. */
 export const SCANNER_KEY = "scanner";
+/** `meta` holds the owner's server id under this key. */
+export const SERVER_KEY = "server";
 
 const META = "meta";
 const STAMPS = "stamps";
@@ -100,51 +124,13 @@ const repoRange = (repo: string): IDBKeyRange =>
   IDBKeyRange.bound([repo], [repo, []]);
 
 /**
- * Run `body` in one transaction, and settle with what it `answer`s once the
- * transaction commits, or reject when it fails.
- *
- * `body` issues requests and returns: a transaction commits once a task ends
- * with none pending, so awaiting anything else inside one would end it, and
- * the next request would throw `TransactionInactiveError`. Anything that reads
- * before it writes does so in a request's `onsuccess`, which still runs inside
- * the transaction.
+ * Open the database. A build waits on this, so an open another tab blocks is a
+ * failure rather than a wait, and a connection that arrives after it is
+ * closed.
  */
-function transact<T = void>(
-  db: IDBDatabase,
-  stores: string[],
-  mode: IDBTransactionMode,
-  body: (tx: IDBTransaction, answer: (value: T) => void) => void,
-): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(stores, mode);
-    let answered = undefined as T;
-    tx.oncomplete = () => resolve(answered);
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () =>
-      reject(tx.error ?? new Error("The scan cache's transaction was aborted"));
-    body(tx, (value) => (answered = value));
-  });
-}
-
-/**
- * Whether `open` failed on a database this code cannot use, rather than on
- * IndexedDB itself: one at a later version, as a newer Vantage leaves it, or
- * one without a store this code needs.
- */
-const unusable = (error: unknown): boolean => {
-  const name = (error as { name?: unknown } | null)?.name;
-  return name === "VersionError" || name === "NotFoundError";
-};
-
-/** Open the database, create what it lacks, and stamp it for `scannerId`. */
-async function connect(
-  idb: IDBFactory,
-  scannerId: string,
-): Promise<IDBDatabase> {
-  const opened = await new Promise<IDBDatabase>((resolve, reject) => {
+const connect = (idb: IDBFactory): Promise<IDBDatabase> =>
+  new Promise<IDBDatabase>((resolve, reject) => {
     const req = idb.open(SCAN_DATABASE, VERSION);
-    // A build waits on this, so an open another tab blocks is a failure
-    // rather than a wait, and a connection that arrives after it is closed.
     let refused = false;
     req.onupgradeneeded = () => {
       const created = req.result;
@@ -164,25 +150,74 @@ async function connect(
       reject(new Error("The scan cache is held open by another tab"));
     };
   });
-  // Another tab upgrading or deleting the database asks every connection to
-  // close; from then on each operation here rejects.
-  opened.onversionchange = () => opened.close();
-  try {
-    await transact(opened, [META, ...RECORDS], "readwrite", (tx) => {
-      const meta = tx.objectStore(META);
-      const stored = meta.get(SCANNER_KEY);
-      stored.onsuccess = () => {
-        if (stored.result === scannerId) return;
-        for (const name of RECORDS) tx.objectStore(name).clear();
-        meta.put(scannerId, SCANNER_KEY);
-      };
-    });
-  } catch (error) {
-    opened.close();
-    throw error;
-  }
-  return opened;
+
+/**
+ * Run one transaction over `stores` and `meta`, and settle when it commits or
+ * fails: with what `body`'s returned reader reads, once it has committed.
+ *
+ * `body` issues requests and returns: a transaction commits once a task ends
+ * with none pending, so awaiting anything else inside one would end it, and
+ * the next request would throw `TransactionInactiveError`. Anything that reads
+ * before it writes does so in a request's `onsuccess`, which still runs inside
+ * the transaction.
+ *
+ * With `owner`, `body` runs only once `meta` has been read and still names
+ * it; when it names another, the transaction is aborted and the promise
+ * rejects with {@link TAKEN_OVER}. Every transaction here takes `meta`, so they
+ * run in the order they were made, and a check made in one sees every open
+ * made before it and none made after.
+ */
+function transact<T>(
+  db: IDBDatabase,
+  mode: IDBTransactionMode,
+  stores: string[],
+  owner: ScanOwner | null,
+  body: (tx: IDBTransaction) => () => T,
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([META, ...stores], mode);
+    let read: (() => T) | null = null;
+    let refused: Error | null = null;
+    const failed = () =>
+      reject(
+        refused ??
+          tx.error ??
+          new Error("The scan cache's transaction was aborted"),
+      );
+    tx.oncomplete = () => {
+      if (refused !== null || read === null) failed();
+      else resolve(read());
+    };
+    tx.onerror = failed;
+    tx.onabort = failed;
+    if (owner === null) {
+      read = body(tx);
+      return;
+    }
+    const meta = tx.objectStore(META);
+    const scanner = meta.get(SCANNER_KEY);
+    const server = meta.get(SERVER_KEY);
+    // Requests complete in the order they were made: `scanner` is in.
+    server.onsuccess = () => {
+      if (scanner.result !== owner.scanner || server.result !== owner.server) {
+        refused = new Error(TAKEN_OVER);
+        tx.abort();
+        return;
+      }
+      read = body(tx);
+    };
+  });
 }
+
+/**
+ * Whether `open` failed on a database this code cannot use, rather than on
+ * IndexedDB itself: one at a later version, as a newer Vantage leaves it, or
+ * one without a store this code needs.
+ */
+const unusable = (error: unknown): boolean => {
+  const name = (error as { name?: unknown } | null)?.name;
+  return name === "VersionError" || name === "NotFoundError";
+};
 
 /** Delete the database, which another tab's connection may not hold open. */
 const deleteDatabase = (idb: IDBFactory): Promise<void> =>
@@ -196,76 +231,96 @@ const deleteDatabase = (idb: IDBFactory): Promise<void> =>
 
 /**
  * The scan store over IndexedDB: `factory`, or the global `indexedDB`, read
- * when the store opens. A context without one, or whose browser refuses the
- * database, has `open` reject.
+ * when the store first connects. A context without one, or whose browser
+ * refuses the database, has `open` reject.
  *
  * - **A database it cannot use is made again.** One at a later version, or
  *   one without a store it needs, would refuse every open on every load until
  *   the reader cleared the site's data; it is only a cache, so `open` deletes
  *   it and opens once more, and rejects only if that fails too (§8.3).
- * - **Every operation checks the scanner id**, in its own transaction, and
- *   touches no record unless `meta` still holds the id this store was opened
- *   for. Another tab, on other code, may have cleared the database and
- *   stamped its own id since; this tab's results are then not that code's,
- *   and that code's are not this tab's, so the operation rejects instead
- *   (§8.2, §8.3).
+ * - **Every operation checks the owner**, in its own transaction, and touches
+ *   no record unless `meta` still holds the owner this store was opened for.
+ *   Another tab, on other code or reading another server, may have cleared
+ *   the database and stamped its own owner since; this tab's results are then
+ *   not that owner's, and that owner's are not this tab's, so the operation
+ *   rejects with {@link TAKEN_OVER} instead (§8.2, §8.3).
  */
 export function idbScanStore(factory?: IDBFactory): ScanStore {
-  let current: { db: IDBDatabase; scannerId: string } | null = null;
+  let db: IDBDatabase | null = null;
+  let owner: ScanOwner | null = null;
 
   /**
-   * Run `body` in a transaction over `stores` and `meta`, once `meta` is read
-   * and still holds this store's scanner id; else abort, and reject.
+   * One checked transaction. The owner is read when the transaction is made,
+   * so one made before an `open` for another owner is checked against the
+   * owner it was made under, and runs before that open's clearing.
    */
-  function stamped<T = void>(
-    stores: string[],
+  const owned = <T>(
     mode: IDBTransactionMode,
-    body: (tx: IDBTransaction, answer: (value: T) => void) => void,
-  ): Promise<T> {
-    if (current === null) {
+    stores: string[],
+    body: (tx: IDBTransaction) => () => T,
+  ): Promise<T> => {
+    if (db === null || owner === null) {
       return Promise.reject(new Error("The scan cache is not open"));
     }
-    const { db, scannerId } = current;
-    let found: { id: unknown } | null = null;
-    return transact<T>(db, [META, ...stores], mode, (tx, answer) => {
-      const stored = tx.objectStore(META).get(SCANNER_KEY);
-      stored.onsuccess = () => {
-        if (stored.result === scannerId) {
-          body(tx, answer);
-          return;
-        }
-        found = { id: stored.result };
-        tx.abort();
-      };
-    }).catch((error: unknown) => {
-      if (found === null) throw error;
-      throw new Error(
-        `The scan cache now holds the results of another scanner, ${String(found.id)}, not ${scannerId}'s`,
-      );
-    });
-  }
+    return transact(db, mode, stores, owner, body);
+  };
 
   const readAll = <T>(store: string, repo: string): Promise<T[]> =>
-    stamped<T[]>([store], "readonly", (tx, answer) => {
-      const read = tx.objectStore(store).getAll(repoRange(repo));
-      read.onsuccess = () => answer(read.result as T[]);
+    owned("readonly", [store], (tx) => {
+      const rows = tx.objectStore(store).getAll(repoRange(repo));
+      return () => rows.result as T[];
     });
 
+  /** The factory, read here, where a throw is a rejection: some contexts throw on the mere access. */
+  const factoryOf = (): IDBFactory => {
+    const idb = factory ?? globalThis.indexedDB;
+    if (idb === undefined) throw new Error("IndexedDB is not available");
+    return idb;
+  };
+
+  /** Connect, unless connected, and stamp the database for `next`. */
+  const openFor = async (next: ScanOwner): Promise<void> => {
+    if (db === null) {
+      const opened = await connect(factoryOf());
+      // Another tab upgrading or deleting the database asks every connection
+      // to close; from then on each operation here rejects.
+      opened.onversionchange = () => {
+        opened.close();
+        if (db === opened) db = null;
+      };
+      db = opened;
+    }
+    // Made in this same task as the transaction below, so every check made
+    // after this one is against `next`, and runs after its clearing.
+    owner = next;
+    await transact(db, "readwrite", RECORDS, null, (tx) => {
+      const meta = tx.objectStore(META);
+      const scanner = meta.get(SCANNER_KEY);
+      const server = meta.get(SERVER_KEY);
+      server.onsuccess = () => {
+        if (scanner.result === next.scanner && server.result === next.server) {
+          return;
+        }
+        for (const name of RECORDS) tx.objectStore(name).clear();
+        meta.put(next.scanner, SCANNER_KEY);
+        meta.put(next.server, SERVER_KEY);
+      };
+      return () => undefined;
+    });
+  };
+
   return {
-    async open(scannerId) {
-      // Read here, where a throw is a rejection: some contexts throw on the
-      // mere access.
-      const idb = factory ?? globalThis.indexedDB;
-      if (idb === undefined) throw new Error("IndexedDB is not available");
-      let db: IDBDatabase;
+    async open(next) {
       try {
-        db = await connect(idb, scannerId);
+        await openFor(next);
       } catch (error) {
         if (!unusable(error)) throw error;
-        await deleteDatabase(idb);
-        db = await connect(idb, scannerId);
+        // Its own connection would block the delete.
+        db?.close();
+        db = null;
+        await deleteDatabase(factoryOf());
+        await openFor(next);
       }
-      current = { db, scannerId };
     },
 
     stamps: (repo) => readAll<ScanStamp>(STAMPS, repo),
@@ -283,13 +338,13 @@ export function idbScanStore(factory?: IDBFactory): ScanStore {
     },
 
     cards: (repo, path) =>
-      stamped<StoredCards | undefined>([CARDS], "readonly", (tx, answer) => {
-        const read = tx.objectStore(CARDS).get([repo, path]);
-        read.onsuccess = () => answer(read.result as StoredCards | undefined);
+      owned("readonly", [CARDS], (tx) => {
+        const held = tx.objectStore(CARDS).get([repo, path]);
+        return () => held.result as StoredCards | undefined;
       }),
 
     write: (repo, records) =>
-      stamped(RECORDS, "readwrite", (tx) => {
+      owned("readwrite", RECORDS, (tx) => {
         const stamps = tx.objectStore(STAMPS);
         const documents = tx.objectStore(DOCUMENTS);
         const cards = tx.objectStore(CARDS);
@@ -304,10 +359,11 @@ export function idbScanStore(factory?: IDBFactory): ScanStore {
             cards.delete(key);
           }
         }
+        return () => undefined;
       }),
 
     collect: (repo, keep) =>
-      stamped(RECORDS, "readwrite", (tx) => {
+      owned("readwrite", RECORDS, (tx) => {
         for (const name of RECORDS) {
           const store = tx.objectStore(name);
           const cursor = store.openKeyCursor(repoRange(repo));
@@ -319,6 +375,7 @@ export function idbScanStore(factory?: IDBFactory): ScanStore {
             at.continue();
           };
         }
+        return () => undefined;
       }),
   };
 }

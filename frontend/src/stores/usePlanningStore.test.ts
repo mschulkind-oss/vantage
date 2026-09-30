@@ -78,7 +78,23 @@ interface Request {
 
 let requests: Request[] = [];
 
+/**
+ * The scan core asks which server answers before every build (the scale
+ * design §6.5). That is answered at once, and kept out of `requests`, so every
+ * race below is written in stream and one-path requests alone.
+ */
+const SERVER_ID = /\/planning\/server-id$/;
+
 const fakeFetch: typeof fetch = (input, init) =>
+  SERVER_ID.test(String(input))
+    ? Promise.resolve(
+        new Response(JSON.stringify({ server_id: "test-server" }), {
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+    : answeredByTheTest(input, init);
+
+const answeredByTheTest: typeof fetch = (input, init) =>
   new Promise<Response>((resolve, reject) => {
     const text = typeof init?.body === "string" ? init.body : undefined;
     const json = (data: unknown, status = 200) =>

@@ -144,9 +144,10 @@ func (e *planningEnv) served(t *testing.T) (repoconfig.Planning, []string) {
 func TestThePlanningRoutesAreRepoScoped(t *testing.T) {
 	e := newTestEnv(t, false)
 	want := map[string]string{
-		"/planning/sources": http.MethodGet,
-		"/planning/stream":  http.MethodPost,
-		"/planning/reviews": http.MethodPost,
+		"/planning/sources":   http.MethodGet,
+		"/planning/stream":    http.MethodPost,
+		"/planning/reviews":   http.MethodPost,
+		"/planning/server-id": http.MethodGet,
 	}
 	for _, rt := range e.h.Routes() {
 		if method, ok := want[rt.Pattern]; ok {
@@ -165,6 +166,8 @@ func TestThePlanningEndpointsWithoutARepoAre400(t *testing.T) {
 	w = e.do(e.h.PlanningStream, http.MethodPost, "/planning/stream", "{}", false)
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	w = e.do(e.h.PlanningReviews, http.MethodPost, "/planning/reviews", `{"paths":["a.md"]}`, false)
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	w = e.do(e.h.PlanningServerID, http.MethodGet, "/planning/server-id", "", false)
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 

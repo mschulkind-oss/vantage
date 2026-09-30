@@ -1,14 +1,15 @@
 /**
  * The scan cache's policy over the in-memory scan store
- * (`docs/design/planning-index-at-scale.md` §8): the scanner id, batching,
- * the card limit, and running on without a store once it fails.
+ * (`docs/design/planning-index-at-scale.md` §8): the scanner id and the
+ * server id, two tabs over one database, batching, the card limit, and
+ * running on without a store once it fails.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CardBlock, PlanningDocument } from "vantage-md/planning";
 import { keptBlocks, recordOf, scanCache, scannerIdOf } from "./cache";
 import { setPlanningLimitsForTests } from "./limits";
-import { memoryScanStore } from "./memoryStore";
-import type { ScanRecord, ScanStore } from "./store";
+import { memoryScanDatabase, memoryScanStore } from "./memoryStore";
+import { TAKEN_OVER, type ScanRecord, type ScanStore } from "./store";
 
 afterEach(() => setPlanningLimitsForTests(null));
 
@@ -35,6 +36,18 @@ const doc = (path: string): PlanningDocument => ({
 
 const planning = (path: string, hash: string, blocks: CardBlock[] = []) =>
   ({ path, hash, kind: "planning", document: doc(path), blocks }) as const;
+
+/** A cache over `store`, told that `server` answers. */
+async function bound(
+  store: ScanStore | null,
+  scannerId = "id",
+  server = "server",
+  log?: (error: unknown) => void,
+) {
+  const cache = scanCache(store, scannerId, log);
+  await cache.bind(server);
+  return cache;
+}
 
 /** A store whose every call rejects, counting them. */
 function brokenStore(): ScanStore & { calls: number } {
@@ -63,11 +76,11 @@ describe("the scanner id", () => {
 
   it("clears every record when it changes", async () => {
     const store = memoryScanStore();
-    const first = scanCache(store, "id-1");
+    const first = await bound(store, "id-1");
     await first.write("", [planning("a.md", "h1", [block(3, "x")])]);
     expect(await first.stamps("")).toHaveLength(1);
 
-    const second = scanCache(store, "id-2");
+    const second = await bound(store, "id-2");
     expect(await second.stamps("")).toEqual([]);
     expect(await second.cards("", "a.md")).toBeUndefined();
     expect((await second.documents("")).size).toBe(0);
@@ -75,8 +88,122 @@ describe("the scanner id", () => {
 
   it("keeps every record when it is the same", async () => {
     const store = memoryScanStore();
-    await scanCache(store, "id-1").write("", [planning("a.md", "h1")]);
-    expect(await scanCache(store, "id-1").stamps("")).toHaveLength(1);
+    await (await bound(store, "id-1")).write("", [planning("a.md", "h1")]);
+    expect(await (await bound(store, "id-1")).stamps("")).toHaveLength(1);
+  });
+});
+
+describe("the server id", () => {
+  it("clears every record when another server answers", async () => {
+    const cache = await bound(memoryScanStore(), "id", "server-a");
+    await cache.write("", [planning("secret/plan.md", "h1", [block(3, "x")])]);
+    await cache.write("", [
+      { path: "hr/notes.md", hash: "h2", kind: "not-planning" },
+    ]);
+
+    await cache.bind("server-b");
+    expect(await cache.stamps("")).toEqual([]);
+    expect((await cache.documents("")).size).toBe(0);
+    expect(await cache.cards("", "secret/plan.md")).toBeUndefined();
+
+    // And nothing of it is there when the first server comes back.
+    await cache.bind("server-a");
+    expect(await cache.stamps("")).toEqual([]);
+    expect(cache.enabled).toBe(true);
+  });
+
+  it("keeps every record while the same server answers", async () => {
+    const cache = await bound(memoryScanStore(), "id", "server-a");
+    await cache.write("", [planning("a.md", "h1")]);
+    await cache.bind("server-a");
+    expect(await cache.stamps("")).toHaveLength(1);
+  });
+
+  it("reads and writes nothing until a server is named, or once it cannot be", async () => {
+    const store = memoryScanStore();
+    const unbound = scanCache(store, "id");
+    await unbound.write("", [planning("a.md", "h1", [block(3, "x")])]);
+    expect(await unbound.stamps("")).toEqual([]);
+    // Held in memory instead, as a failed write's blocks are.
+    expect(await unbound.cards("", "a.md")).toEqual({
+      hash: "h1",
+      blocks: [block(3, "x")],
+    });
+
+    const cache = await bound(store, "id", "server-a");
+    await cache.write("", [planning("b.md", "h2")]);
+    await cache.bind(null);
+    expect(await cache.stamps("")).toEqual([]);
+    await cache.write("", [planning("c.md", "h3")]);
+    // Not off: named again, it reads what it held, and nothing written blind.
+    expect(cache.enabled).toBe(true);
+    await cache.bind("server-a");
+    expect((await cache.stamps("")).map((stamp) => stamp.path)).toEqual([
+      "b.md",
+    ]);
+  });
+
+  it("forgets the blocks it held in memory when the server changes", async () => {
+    const cache = await bound(memoryScanStore(), "id", "server-a");
+    cache.remember("", "roadmap.md", "h", [block(1, "the roadmap")]);
+    expect(await cache.cards("", "roadmap.md")).toBeDefined();
+    await cache.bind("server-b");
+    expect(await cache.cards("", "roadmap.md")).toBeUndefined();
+  });
+});
+
+describe("two tabs over one database", () => {
+  it("refuse the tab that opened it before another cleared it, from its next write on", async () => {
+    const database = memoryScanDatabase();
+    const log = vi.fn();
+    const older = await bound(memoryScanStore(database), "OLD", "server", log);
+    await older.write("", [planning("a.md", "h1")]);
+
+    // A tab of newer code opens it, and clears the older code's results.
+    const newer = await bound(memoryScanStore(database), "NEW", "server");
+    expect(await newer.stamps("")).toEqual([]);
+
+    // The older tab's next write is refused, and turns its cache off.
+    await older.write("", [planning("b.md", "h2", [block(3, "by OLD")])]);
+    expect(older.enabled).toBe(false);
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith(new Error(TAKEN_OVER));
+    // Its blocks are kept in its own memory, as a failed write's are.
+    expect(await older.cards("", "b.md")).toEqual({
+      hash: "h2",
+      blocks: [block(3, "by OLD")],
+    });
+
+    // The newer tab reads nothing the older one wrote.
+    expect(await newer.stamps("")).toEqual([]);
+    expect((await newer.documents("")).size).toBe(0);
+    expect(await newer.cards("", "b.md")).toBeUndefined();
+    expect(newer.enabled).toBe(true);
+  });
+
+  it("refuse the older tab's reads of the newer tab's results", async () => {
+    const database = memoryScanDatabase();
+    const older = await bound(memoryScanStore(database), "id", "server-a");
+    const newer = await bound(memoryScanStore(database), "id", "server-b");
+    await newer.write("", [planning("b.md", "h2", [block(3, "by B")])]);
+
+    expect(await older.stamps("")).toEqual([]);
+    expect(older.enabled).toBe(false);
+    expect(await older.cards("", "b.md")).toBeUndefined();
+    expect(await newer.stamps("")).toHaveLength(1);
+  });
+
+  it("share it while both hold the same owner", async () => {
+    const database = memoryScanDatabase();
+    const one = await bound(memoryScanStore(database), "id", "server");
+    const two = await bound(memoryScanStore(database), "id", "server");
+    await one.write("", [planning("a.md", "h1")]);
+    await two.write("", [planning("b.md", "h2")]);
+    expect((await one.stamps("")).map((stamp) => stamp.path)).toEqual([
+      "a.md",
+      "b.md",
+    ]);
+    expect(one.enabled && two.enabled).toBe(true);
   });
 });
 
@@ -112,7 +239,7 @@ describe("records", () => {
   });
 
   it("reads back what it wrote, per repository", async () => {
-    const cache = scanCache(memoryScanStore(), "id");
+    const cache = await bound(memoryScanStore());
     await cache.write("one", [
       planning("a.md", "h1", [block(3, "x")]),
       { path: "b.md", hash: "h2", kind: "not-planning" },
@@ -135,7 +262,7 @@ describe("records", () => {
   });
 
   it("drops a document's facts and blocks when its path stops being one", async () => {
-    const cache = scanCache(memoryScanStore(), "id");
+    const cache = await bound(memoryScanStore());
     await cache.write("", [planning("a.md", "h1", [block(3, "x")])]);
     await cache.write("", [{ path: "a.md", hash: "h2", kind: "not-planning" }]);
     expect((await cache.documents("")).size).toBe(0);
@@ -143,7 +270,7 @@ describe("records", () => {
   });
 
   it("collects every record of one repository outside the kept paths", async () => {
-    const cache = scanCache(memoryScanStore(), "id");
+    const cache = await bound(memoryScanStore());
     await cache.write("", [planning("a.md", "h"), planning("b.md", "h")]);
     await cache.write("other", [planning("a.md", "h")]);
     await cache.collect("", new Set(["b.md"]));
@@ -164,7 +291,7 @@ describe("a build's writer", () => {
         return store.write(repo, records);
       },
     };
-    const cache = scanCache(counting, "id");
+    const cache = await bound(counting);
     const writer = cache.writer("");
     for (const path of ["a.md", "b.md", "c.md", "d.md", "e.md"]) {
       await writer.add({ path, hash: "h", kind: "not-planning" });
@@ -189,7 +316,7 @@ describe("a build's writer", () => {
         return store.write(repo, records);
       },
     };
-    const writer = scanCache(slow, "id").writer("");
+    const writer = (await bound(slow)).writer("");
     await writer.add({ path: "a.md", hash: "h", kind: "not-planning" });
     let second = false;
     const adding = writer
@@ -217,7 +344,7 @@ describe("without a store", () => {
   it("turns off at the first failure, logs it once, and never asks again", async () => {
     const store = brokenStore();
     const log = vi.fn();
-    const cache = scanCache(store, "id", log);
+    const cache = await bound(store, "id", "server", log);
     expect(await cache.stamps("")).toEqual([]);
     expect(cache.enabled).toBe(false);
     await cache.write("", [planning("a.md", "h")]);
@@ -236,7 +363,7 @@ describe("without a store", () => {
         throw new Error("quota exceeded");
       },
     };
-    const cache = scanCache(failing, "id", log);
+    const cache = await bound(failing, "id", "server", log);
     await cache.write("", [planning("a.md", "h", [block(3, "x")])]);
     expect(cache.enabled).toBe(false);
     expect(log).toHaveBeenCalledTimes(1);
@@ -273,7 +400,7 @@ describe("without a store", () => {
 describe("the in-memory store", () => {
   it("copies on every write and read, as IndexedDB does", async () => {
     const store = memoryScanStore();
-    await store.open("id");
+    await store.open({ scanner: "id", server: "server" });
     const record = planning("a.md", "h", [block(3, "x")]);
     await store.write("", [record]);
     record.blocks[0]!.markdown = "changed after the write";
