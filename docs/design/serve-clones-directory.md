@@ -303,7 +303,13 @@ or without the split. Three conditions are reported:
   On Linux the banner says: *Live reload is off below docs/big and 2 more
   folders: the system's limit on watched folders was reached. Raise it (on
   Linux, fs.inotify.max_user_watches), or list the biggest folders in
-  .vantageignore.* On macOS it names the open-file limit instead.
+  .vantageignore.* On macOS it names the open-file limit instead. There the
+  open files are the same ones the server's connections, the documents it
+  reads and its pipes to git need, so a tree big enough to take them all used
+  to break the whole server, not only live reload. The watchers of one server
+  therefore share a budget of open files: three quarters of the process's
+  limit, leaving the rest at least 256. A directory whose files would
+  overspend it is refused, and reported like one the kernel refused.
 - **The untracked-file walk hits `walk_timeout`.** Recents then lack every
   untracked file, and the banner says so and names the setting. A later run
   of the same walk that finishes in time takes the report back, and the

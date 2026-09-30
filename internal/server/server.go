@@ -172,6 +172,10 @@ type Server struct {
 	// goos is the platform the banner's advice is for: runtime.GOOS, which
 	// tests replace to pin one platform's wording on any host.
 	goos string
+	// fileBudget is the share of the open-file limit every watcher's watches
+	// may hold between them: [live.DefaultFileBudget], which is nil (no budget)
+	// except on macOS and the BSDs. Tests replace it with a small one.
+	fileBudget *live.FileBudget
 	// watcherStart runs one watcher; nil means [live.Watcher.Start]. Only tests
 	// set it, to make a watcher fail to start without exhausting a real limit.
 	watcherStart func(*live.Watcher, context.Context) error
@@ -207,6 +211,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		degraded:        map[string]map[string]model.Degradation{},
 		timedOutWalks:   map[string]map[git.WalkReport]bool{},
 		goos:            runtime.GOOS,
+		fileBudget:      live.DefaultFileBudget(),
 	}
 
 	if err := s.buildRepoServices(); err != nil {
@@ -697,6 +702,9 @@ func (s *Server) startWatcher(ctx context.Context, rs *repoServices) {
 	if s.watchLimit > 0 {
 		w.SetWatchLimit(s.watchLimit)
 	}
+	if s.fileBudget != nil {
+		w.SetFileBudget(s.fileBudget)
+	}
 	s.watchersMu.Lock()
 	s.watchers[rs.name] = w
 	s.watchersMu.Unlock()
@@ -1016,9 +1024,10 @@ func degradationMessageFor(goos string, d model.Degradation, cfg *config.Config)
 				"Raise it (on Linux, fs.inotify.max_user_watches), or list the biggest folders in .vantageignore."
 		}
 		// kqueue, on macOS and the BSDs, holds a descriptor for every watched
-		// directory and every file in it: its limit is the open-file limit.
-		return "Live reload is off " + where + ": the system's limit on open files was reached, and every watched file takes one. " +
-			"Raise it (on macOS, sysctl kern.maxfilesperproc), or list the biggest folders in .vantageignore."
+		// directory and every file in it: its limit is the open-file limit, of
+		// which the watchers may spend a share (see [live.FileBudget]).
+		return "Live reload is off " + where + ": watching more would use up the files Vantage may keep open, and every watched file takes one. " +
+			"Raise the open-file limit (on macOS, sysctl kern.maxfilesperproc), or list the biggest folders in .vantageignore."
 	case model.DegradationWalkTimeout:
 		return fmt.Sprintf("Recent files may be missing untracked documents: finding them took longer than walk_timeout (%s). "+
 			"Raise walk_timeout, or list the biggest folders in .vantageignore.", cfg.WalkTimeout)

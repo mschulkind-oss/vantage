@@ -200,6 +200,14 @@ type Watcher struct {
 	// goos is the platform whose limits the log's advice names: runtime.GOOS,
 	// which tests replace to pin one platform's wording on any host.
 	goos string
+	// files, when set, is the budget of open files this watcher shares with
+	// every other in the process; see [Watcher.SetFileBudget]. charged is what
+	// it has charged to it for each directory's entries, by repo-relative slash
+	// path ("." for the root, which also holds a file for itself), and ownFiles
+	// what it holds open for itself.
+	files    *FileBudget
+	charged  map[string]int
+	ownFiles int
 }
 
 // watcherStats are reset every heartbeat so they describe the most recent
@@ -241,6 +249,7 @@ func NewWatcher(root, repoName string, mgr *Manager, store *review.Store, useIgn
 		logger:     logger.With("component", "watcher", "repo", repoName),
 		gitStateFP: map[string]string{},
 		stamps:     map[string]fileStamp{},
+		charged:    map[string]int{},
 		dirs:       map[string]struct{}{},
 		rescan:     make(chan string, 16),
 		goos:       runtime.GOOS,
@@ -321,9 +330,19 @@ func (w *Watcher) SetWatchLimit(n int) {
 	w.watchLimit = n
 }
 
-// errWatchBudget is what a registration past [Watcher.SetWatchLimit] fails
-// with. It wraps ENOSPC — what inotify says when the real limit is reached —
-// so everything that recognizes one recognizes the other.
+// SetFileBudget makes the watcher charge the files its watches hold open to b,
+// which it shares with every other watcher given b, and refuse a directory whose
+// files would overspend it, the way [Watcher.SetWatchLimit] refuses one (see
+// [FileBudget]). Call it before Start.
+func (w *Watcher) SetFileBudget(b *FileBudget) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.files = b
+}
+
+// errWatchBudget is what a registration past [Watcher.SetWatchLimit] or its
+// [FileBudget] fails with. It wraps ENOSPC — what inotify says when the real
+// limit is reached — so everything that recognizes one recognizes the other.
 var errWatchBudget = fmt.Errorf("watch budget spent: %w", syscall.ENOSPC)
 
 // Start begins watching. It adds the recursive watch set, then runs the event
@@ -342,7 +361,13 @@ func (w *Watcher) Start(ctx context.Context) error {
 	}
 	w.fsw = fsw
 	w.addWatch = fsw.Add
+	if w.files != nil {
+		w.files.add(watcherOwnFiles)
+		w.ownFiles = watcherOwnFiles
+	}
 	w.mu.Unlock()
+	// Start returns only once fsw is closed, and every file with it.
+	defer w.releaseAllFiles()
 
 	added := w.addRecursive(w.root)
 	w.seedGitStateFingerprints()
@@ -465,9 +490,11 @@ func (w *Watcher) watchTree(dir string, found func(rel string)) int {
 		// registration sent no event this watch could hear, so the check is
 		// made again now that anything later will be heard.
 		if w.stopAtRepos && path != w.root && gitsvc.IsRepoBoundary(path) {
-			for _, gone := range w.forgetDir(filepath.ToSlash(rel)) {
-				w.unregisterWatch(filepath.Join(w.root, filepath.FromSlash(gone)))
+			gone := w.forgetDir(filepath.ToSlash(rel))
+			for _, dir := range gone {
+				w.unregisterWatch(filepath.Join(w.root, filepath.FromSlash(dir)))
 			}
+			w.releaseFiles(gone...)
 			return iofs.SkipDir
 		}
 		added++
@@ -490,10 +517,19 @@ func (w *Watcher) handleEvent(ev fsnotify.Event, co *coalescer) {
 		// (see [Watcher.fromUnwatchedDir]). The watch is dropped as well, which
 		// gives back the file it holds open.
 		w.unregisterWatch(ev.Name)
+		w.countEntry(ev.Name, -1)
 		w.mu.Lock()
 		w.stats.droppedStale++
 		w.mu.Unlock()
 		return
+	}
+	switch {
+	case ev.Has(fsnotify.Create):
+		// kqueue has opened the new entry, to watch it.
+		w.countEntry(ev.Name, 1)
+	case ev.Has(fsnotify.Remove) || ev.Has(fsnotify.Rename):
+		// kqueue has dropped the entry's watch, and closed its file.
+		w.countEntry(ev.Name, -1)
 	}
 
 	// A .git appearing is a directory becoming a repository — `git clone` or
@@ -504,9 +540,11 @@ func (w *Watcher) handleEvent(ev fsnotify.Event, co *coalescer) {
 	if (ev.Has(fsnotify.Create) || ev.Has(fsnotify.Write)) && w.stopAtRepos && filepath.Base(ev.Name) == ".git" {
 		parent := filepath.Dir(ev.Name)
 		if rel, relErr := filepath.Rel(w.root, parent); relErr == nil && rel != "." && gitsvc.IsRepoBoundary(parent) {
-			for _, dir := range w.forgetDir(filepath.ToSlash(rel)) {
+			gone := w.forgetDir(filepath.ToSlash(rel))
+			for _, dir := range gone {
 				w.unregisterWatch(filepath.Join(w.root, filepath.FromSlash(dir)))
 			}
+			w.releaseFiles(gone...)
 			w.logger.Debug("watcher: directory became a repository; no longer watched", "path", rel)
 			return
 		}
@@ -559,6 +597,12 @@ func (w *Watcher) handleEvent(ev fsnotify.Event, co *coalescer) {
 				for _, dir := range gone {
 					w.unregisterWatch(filepath.Join(w.root, filepath.FromSlash(dir)))
 				}
+				// All but the files directly inside the renamed directory: kqueue
+				// keeps those open under their old names, until each is dropped
+				// as an event from an unwatched directory or the watcher stops.
+				w.releaseFiles(slices.DeleteFunc(gone, func(dir string) bool { return dir == rel })...)
+			} else {
+				w.releaseFiles(gone...)
 			}
 			if top, _, _ := strings.Cut(rel, "/"); top == ".git" || top == ".vantage" {
 				// git's and Vantage's own state: no consumer holds a path there.
@@ -875,6 +919,11 @@ func (w *Watcher) registerWatch(path string) error {
 	if overBudget {
 		return errWatchBudget
 	}
+	if !w.chargeFiles(path) {
+		return errWatchBudget
+	}
+	// A request that fails leaves its charge in place: on kqueue it can leave
+	// the directory's files open, and they stay open until the watcher stops.
 	err := w.add(path)
 	for attempt := 1; attempt < addAttempts && entryVanished(path, err); attempt++ {
 		// The directory is asked for again as it stands, without dropping what
@@ -898,6 +947,89 @@ func (w *Watcher) registerWatch(path string) error {
 		w.mu.Unlock()
 	}
 	return nil
+}
+
+// chargeFiles charges the files watching the directory at path holds open to
+// the watcher's [FileBudget], and reports whether they fit; with no budget they
+// always do. kqueue holds a file open for each entry of a watched directory,
+// and for the directory itself, which is an entry of its parent's except at the
+// root. So a directory costs its entries, and the root one more.
+func (w *Watcher) chargeFiles(path string) bool {
+	if w.files == nil {
+		return true
+	}
+	entries, _ := os.ReadDir(path)
+	n := len(entries)
+	rel := "."
+	if r, err := filepath.Rel(w.root, path); err == nil {
+		rel = filepath.ToSlash(r)
+	}
+	if rel == "." {
+		n++
+	}
+	if !w.files.take(n) {
+		return false
+	}
+	w.mu.Lock()
+	w.charged[rel] += n
+	w.mu.Unlock()
+	return true
+}
+
+// countEntry charges one more file, or one fewer when delta is -1, to the
+// directory holding the entry at name: an entry kqueue has started or stopped
+// watching since its directory's watch was registered.
+func (w *Watcher) countEntry(name string, delta int) {
+	if w.files == nil {
+		return
+	}
+	rel, err := filepath.Rel(w.root, name)
+	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+		return
+	}
+	dir := path.Dir(filepath.ToSlash(rel))
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if delta < 0 && w.charged[dir] == 0 {
+		return
+	}
+	w.charged[dir] += delta
+	if delta > 0 {
+		w.files.add(delta)
+	} else {
+		w.files.give(-delta)
+	}
+}
+
+// releaseFiles gives back to the budget everything charged for each of dirs,
+// directories whose watches are gone.
+func (w *Watcher) releaseFiles(dirs ...string) {
+	if w.files == nil {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	for _, dir := range dirs {
+		w.files.give(w.charged[dir])
+		delete(w.charged, dir)
+	}
+}
+
+// releaseAllFiles gives back everything this watcher charged, once it has
+// stopped and closed its kqueue.
+func (w *Watcher) releaseAllFiles() {
+	if w.files == nil {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	total := w.ownFiles
+	for _, n := range w.charged {
+		total += n
+	}
+	w.files.give(total)
+	clear(w.charged)
+	w.ownFiles = 0
 }
 
 // add asks for one directory's watch, once.
