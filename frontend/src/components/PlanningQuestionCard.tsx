@@ -1,14 +1,23 @@
 /**
  * One question on the planning page (`docs/design/planning-index.md` §6.3).
  *
- * The question is rendered exactly as the viewer renders it in its document:
- * an embedded `MarkdownViewer` over its card block, the root-level block that
- * holds it as the scan cut it (`docs/design/planning-index-at-scale.md` §7.4),
- * at the document's own source lines. That block usually holds
- * the question's siblings too — an Open Questions list is one block — so once
- * it renders, everything outside the question's own unit (its `<li>`, or its
- * host block outside a list) is hidden, and every list item on the way keeps
- * the number it has in the document.
+ * The question is rendered by the viewer's own pipeline: an embedded
+ * `MarkdownViewer` over its card block, the root-level block that holds it as
+ * the scan cut it (`docs/design/planning-index-at-scale.md` §7.4), at the
+ * document's own source lines. That block usually holds the question's
+ * siblings too — an Open Questions list is one block — so once it renders,
+ * everything outside the question's own unit (its `<li>`, or its host block
+ * outside a list) is hidden, and every list item on the way keeps the number
+ * it has in the document, which a card shows when it has no headline.
+ *
+ * The card then lays the unit out to be read (`planningCardParts.ts`): the
+ * question's bold title becomes the card's headline, its leaning a block of
+ * its own, an empty `Answer:` placeholder is not shown, and the rest of the
+ * question is cut to `CARD_CLAMP_LINES` lines behind Show full question. All
+ * of it is decided in the same layout pass that isolates the unit, before the
+ * card paints, and Show full question has a slot of fixed width in the control
+ * row whether or not there is anything to unfold, so nothing the card paints
+ * moves later (§11). Unfolding is the reader's own action, so it may.
  *
  * Answering files a comment that is indistinguishable from one filed with the
  * in-page button: the anchor is built from the card's own rendered host with
@@ -65,6 +74,17 @@ import {
   indexBlocks,
 } from "../lib/reviewAnchor";
 import { isStaticMode } from "../lib/staticMode";
+import {
+  CARD_CLAMP_LINES,
+  CARD_OVERFLOW_ATTR,
+  headlineMarker,
+  markCardParts,
+  measureClampSoon,
+  overflowsClamp,
+  unmarkCardParts,
+} from "../lib/planningCardParts";
+import { focusIsIdle } from "../hooks/useShellPage";
+import { planningCardId } from "../lib/planningCardId";
 import { planningLimits } from "../planningScan/limits";
 import {
   commandErrorMessage,
@@ -170,8 +190,13 @@ function unitOf(root: HTMLElement, host: AnswerableOpenQuestion): HTMLElement {
   return item !== null && root.contains(item) ? item : host.stamped;
 }
 
-/** Undo what `isolate` did: every mark and every list number it set. */
+/**
+ * Undo what `isolate` and `markCardParts` did: every mark, every list number
+ * and every text node they set, so the card reads its question as its
+ * document has it.
+ */
 function sweep(root: HTMLElement): void {
+  unmarkCardParts(root);
   for (const el of root.querySelectorAll(`[${CARD_PATH_ATTR}]`)) {
     el.removeAttribute(CARD_PATH_ATTR);
   }
@@ -242,13 +267,33 @@ interface CardState {
   scoped: readonly string[];
   /** The comment an earlier take filed, if the leaning has been taken. */
   takenId: string | null;
+  /** The unit was laid out (`markCardParts`): false leaves it as rendered. */
+  laidOut: boolean;
+  /** The bold title is hidden in the unit, for the headline to show. */
+  titled: boolean;
+  /** The unit has a leaning block of its own. */
+  leaning: boolean;
+  /** Some of the unit is hidden while the card is folded. */
+  more: boolean;
 }
 
-const EMPTY_STATE: CardState = { found: false, scoped: [], takenId: null };
+const EMPTY_STATE: CardState = {
+  found: false,
+  scoped: [],
+  takenId: null,
+  laidOut: false,
+  titled: false,
+  leaning: false,
+  more: false,
+};
 
 const sameState = (a: CardState, b: CardState): boolean =>
   a.found === b.found &&
   a.takenId === b.takenId &&
+  a.laidOut === b.laidOut &&
+  a.titled === b.titled &&
+  a.leaning === b.leaning &&
+  a.more === b.more &&
   a.scoped.length === b.scoped.length &&
   a.scoped.every((id, i) => b.scoped[i] === id);
 
@@ -286,18 +331,29 @@ const STATE_LABEL: Record<PlanningQuestion["state"], string> = {
   blocked: "Blocked",
 };
 
+/**
+ * The card's headline: the question's status marker and its bold title, as
+ * the planning index read them, so it is there at first paint.
+ */
+const Headline: React.FC<{ question: PlanningQuestion }> = ({ question }) => {
+  const marker = headlineMarker(question.marker);
+  return (
+    <h3
+      data-planning-card-headline
+      className="mt-0 mb-1.5 text-[17px] leading-snug font-semibold text-slate-900 dark:text-slate-100"
+    >
+      {marker !== "" && <span aria-hidden="true">{marker} </span>}
+      {question.title}
+    </h3>
+  );
+};
+
 /** A preview card's body: the question as the index knows it, and no more. */
 const PreviewBody: React.FC<{ question: PlanningQuestion }> = ({
   question,
 }) => (
   <div data-planning-preview className="text-sm">
-    <p className="font-medium text-slate-800 dark:text-slate-100">
-      {question.marker !== "" && (
-        <span aria-hidden="true">{question.marker} </span>
-      )}
-      {question.title}
-    </p>
-    <p className="mt-0.5 text-[13px] text-slate-600 dark:text-slate-400">
+    <p className="text-[13px] text-slate-600 dark:text-slate-400">
       {STATE_LABEL[question.state]}
       {question.leaning !== null && <> · Leaning: {question.leaning}</>}
     </p>
@@ -341,6 +397,9 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
       ? (full as CardBlock)
       : given;
   const [showFailed, setShowFailed] = useState(false);
+  // Folded unless the reader unfolds it; a question shown from its preview was
+  // asked for whole, so it arrives unfolded.
+  const [unfolded, setUnfolded] = useState(false);
   const showQuestion = useCallback(() => {
     if (onShowQuestion === undefined) return;
     setShowFailed(false);
@@ -351,6 +410,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
           prev?.question === question ? { question, block } : prev,
         );
         if (block === null) setShowFailed(true);
+        else setUnfolded(true);
       },
       () => {
         setShown(null);
@@ -365,14 +425,16 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   useLayoutEffect(() => {
     if (previewing || !refocusRef.current) return;
     refocusRef.current = false;
-    const active = document.activeElement;
-    if (active === null || active === document.body) {
+    if (focusIsIdle(document.activeElement)) {
       articleRef.current?.focus({ preventScroll: true });
     }
   }, [previewing]);
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<CardState>(EMPTY_STATE);
+  /** The block `markCardParts` cut short, which Show full question measures. */
+  const clampRef = useRef<HTMLElement | null>(null);
+  const [overflowing, setOverflowing] = useState(false);
   const [answering, setAnswering] = useState<{
     rect: DOMRect;
     text: string;
@@ -391,7 +453,9 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   // paints its count.
   useLayoutEffect(() => {
     const root = bodyRef.current;
+    clampRef.current = null;
     if (!root || markdown === null) {
+      setState((prev) => (sameState(prev, EMPTY_STATE) ? prev : EMPTY_STATE));
       onScoped?.(cardKey, null);
       return;
     }
@@ -425,10 +489,23 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
             built.anchor,
             leaningComment(host.stamped),
           );
+    // Last, once everything above has read the unit as its document has it.
+    const parts = markCardParts(
+      root,
+      unit,
+      host.block,
+      question.title,
+      question.marker,
+    );
+    clampRef.current = parts.clamp;
     const next: CardState = {
       found: built !== null,
       scoped,
       takenId: taken?.id ?? null,
+      laidOut: true,
+      titled: parts.titled,
+      leaning: parts.leaning,
+      more: parts.more,
     };
     setState((prev) => (sameState(prev, next) ? prev : next));
     // Without an anchor the card has nothing exact to say.
@@ -450,6 +527,40 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
     observer.observe(root, { childList: true, subtree: true });
     return () => observer.disconnect();
   }, [markdown]);
+
+  // Whether the cut-short block runs past its lines, which decides whether
+  // Show full question is offered: measured before the card paints, and again
+  // whenever the block's size changes (a wider page, a font that loaded). Its
+  // slot is always there, so the answer changing later moves nothing.
+  //
+  // The first measurement waits for the end of the task, with every other
+  // card committed alongside (`measureClampSoon`), so a page of cards is laid
+  // out once rather than once a card; it is still made before the paint.
+  useLayoutEffect(() => {
+    const el = clampRef.current;
+    if (el === null || !el.isConnected) {
+      setOverflowing(false);
+      return;
+    }
+    let live = true;
+    const read = () => live && el.isConnected && overflowsClamp(el, !unfolded);
+    const write = (over: boolean) => {
+      if (!live) return;
+      el.toggleAttribute(CARD_OVERFLOW_ATTR, over && !unfolded);
+      setOverflowing(over);
+    };
+    measureClampSoon({ read, write });
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => write(read()));
+    observer?.observe(el);
+    return () => {
+      live = false;
+      observer?.disconnect();
+    };
+    // The layout pass's own inputs, since each run of it marks the block anew.
+  }, [markdown, question, comments, cardKey, onScoped, unfolded]);
 
   /** The anchor and fallback text the in-page button would send, from the card. */
   const anchorNow = useCallback(() => {
@@ -491,9 +602,24 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   const listed = (comments ?? []).filter((c) => state.scoped.includes(c.id));
   const listOpen = open ?? !commentsLate;
 
+  const id = planningCardId(question.path, question.id, question.unitLine);
+  const bodyId = `${id}-body`;
+  // The rendered question leads with its title only once the layout pass has
+  // taken it out of the unit; the index's question is all a card without a
+  // rendered question has.
+  const headed = card === undefined || card === null || state.titled;
+  // Take this leaning files the directive's leaning, so a question whose unit
+  // writes none out shows the one it would file.
+  const leaningAside =
+    state.laidOut && !state.leaning && question.leaning !== null
+      ? question.leaning
+      : null;
+  const foldable = state.laidOut && (state.more || overflowing);
+
   return (
     <article
       ref={articleRef}
+      id={id}
       {...{ [CARD_ATTR]: `${question.path}#${question.line}` }}
       aria-label={question.title}
       // Where Show question's focus goes once the card is shown.
@@ -513,12 +639,18 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
         {badge !== null && <PlanningBadgeChip badge={badge} />}
       </div>
 
+      {headed && <Headline question={question} />}
+
       <div
         ref={bodyRef}
+        id={bodyId}
         className="planning-card-body"
+        data-planning-card-headed={state.titled ? "" : undefined}
+        data-planning-card-unfolded={unfolded ? "" : undefined}
         style={
           {
             "--planning-mermaid-frame": `${planningLimits.mermaidFramePx}px`,
+            "--planning-card-clamp-lines": CARD_CLAMP_LINES,
           } as React.CSSProperties
         }
       >
@@ -537,6 +669,15 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
           />
         )}
       </div>
+
+      {leaningAside !== null && (
+        <p
+          data-planning-card-leaning-aside
+          className="planning-card-leaning mt-2 mb-0 text-sm text-slate-700 dark:text-slate-300"
+        >
+          <em>Leaning:</em> {leaningAside}
+        </p>
+      )}
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
         {previewing && onShowQuestion !== undefined && (
@@ -615,23 +756,47 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
             Could not load the question.
           </span>
         )}
-        {/* Always there, at a fixed width, so a count that arrives late
-            moves nothing (§11.2). */}
-        <span
-          data-planning-comment-slot
-          className="ml-auto inline-flex w-28 justify-end"
-        >
-          {listed.length > 0 && (
-            <button
-              type="button"
-              aria-expanded={listOpen}
-              data-planning-comment-count
-              onClick={() => setOpen(!listOpen)}
-              className="rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-600 tabular-nums transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
-            >
-              {listed.length === 1 ? "1 comment" : `${listed.length} comments`}
-            </button>
-          )}
+        <span className="ml-auto inline-flex items-center gap-2">
+          {/* Always there, at a fixed width, so whether the question runs
+              past its lines, which is known only once it is laid out, moves
+              nothing (§11). */}
+          <span
+            data-planning-fold-slot
+            className="inline-flex w-32 justify-end"
+          >
+            {foldable && (
+              <button
+                type="button"
+                aria-expanded={unfolded}
+                aria-controls={bodyId}
+                data-planning-card-fold
+                onClick={() => setUnfolded(!unfolded)}
+                className="rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
+              >
+                {unfolded ? "Show less" : "Show full question"}
+              </button>
+            )}
+          </span>
+          {/* Always there, at a fixed width, so a count that arrives late
+              moves nothing (§11.2). */}
+          <span
+            data-planning-comment-slot
+            className="inline-flex w-28 justify-end"
+          >
+            {listed.length > 0 && (
+              <button
+                type="button"
+                aria-expanded={listOpen}
+                data-planning-comment-count
+                onClick={() => setOpen(!listOpen)}
+                className="rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-600 tabular-nums transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
+              >
+                {listed.length === 1
+                  ? "1 comment"
+                  : `${listed.length} comments`}
+              </button>
+            )}
+          </span>
         </span>
       </div>
 

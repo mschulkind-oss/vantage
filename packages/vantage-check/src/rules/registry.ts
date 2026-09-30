@@ -1,4 +1,5 @@
 import type { RuleSetting } from "../core/types.js";
+import { QUESTION_WORDS_DEFAULT } from "./questionLength.js";
 
 export interface RuleMeta {
   id: string;
@@ -6,6 +7,20 @@ export interface RuleMeta {
   summary: string;
   /** What the rule does when nothing configures it. */
   default: RuleSetting;
+  /**
+   * The numbers a rule can be tuned by, besides its severity, keyed by the
+   * name `[check.rules]` gives them in a rule's table (`core/config.ts`). A
+   * rule without any takes a severity and nothing else.
+   */
+  options?: Readonly<Record<string, RuleOption>>;
+}
+
+/** One number a rule can be tuned by: a whole number of at least 1. */
+export interface RuleOption {
+  /** What the number limits, for the message that refuses a bad one. */
+  summary: string;
+  /** Its value when nothing configures it. */
+  default: number;
 }
 
 /**
@@ -244,6 +259,18 @@ export const RULES: readonly RuleMeta[] = [
     summary:
       "An open question no roadmap routes, directly or through its document (off by default)",
     default: "off",
+  },
+  {
+    id: "planning/question-length",
+    summary: `A question whose text, leaning and Answer aside, runs past \`max-words\` (${QUESTION_WORDS_DEFAULT}), more than its card on the planning page shows before the clamp`,
+    default: "warning",
+    options: {
+      "max-words": {
+        summary: "the most words a question's text may run to",
+        // Calibrated where it is defined, which says against what.
+        default: QUESTION_WORDS_DEFAULT,
+      },
+    },
   },
   {
     id: "render/pipeline",

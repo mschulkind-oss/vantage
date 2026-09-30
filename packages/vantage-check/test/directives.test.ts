@@ -1147,6 +1147,20 @@ describe("vantage/oq-missing", () => {
     expect(await check(noLeaning)).toEqual([]);
   });
 
+  it("reads a leaning with a note before its colon, or a dash in place of it", async () => {
+    // One marker for every reader of a leaning (vantage-md's LEANING_MARKER):
+    // the card and planning/question-length read these as leanings too.
+    for (const marker of [
+      "_Leaning (revised 2026-09-04, as filed):_",
+      "_Leaning_ —",
+    ]) {
+      expect(
+        await check(question("💬").replace("_Leaning:_", marker)),
+        marker,
+      ).toEqual(["vantage/oq-missing"]);
+    }
+  });
+
   it("does not mistake prose about leanings for a leaning", async () => {
     // Anchored on purpose: a paragraph that mentions the word is commentary.
     const prose = [

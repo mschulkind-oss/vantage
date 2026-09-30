@@ -494,12 +494,19 @@ page ([§6.4](#64-several-roadmaps-on-the-page)), `--roadmap` in `vantage-check 
 
 Each question appears as a card with the following parts:
 
-- **The question itself,** rendered exactly as the viewer renders that list item: its options,
-  context and leaning. The page adds no summary, so the question reads the same here as in its
-  document. A question whose [card block](planning-index-at-scale.md#3-terms) is over 32,000
+- **The question itself,** rendered by the viewer's pipeline from that list item, and laid out
+  to be read (ruled 2026-09-30). Its bold title is the card's headline, after its status marker;
+  its `Leaning:` paragraph is a block of its own; a filled-in `**Answer:**` is shown whole and an
+  empty one (`_(empty — fill in when decided)_`) not at all; the badges on links inside it are
+  drawn muted. The rest is cut to three lines behind **Show full question**, which unfolds it all.
+  The page adds no summary: every word shown is the document's, and what is not shown is hidden,
+  not removed, so an answer's anchor reads the question as its document has it. The layout is
+  decided before the card paints, and Show full question has a fixed-width slot whether or not it
+  is offered, so nothing moves afterwards ([§11](planning-index-at-scale.md#11-late-data-never-moves-painted-content)).
+  A question whose [card block](planning-index-at-scale.md#3-terms) is over 32,000
   characters is a *preview card* instead: its document's name and badge, the question's marker,
   title, state and leaning, and **Show question** and **Open document**. Show question renders the
-  full card in place.
+  full card in place, unfolded.
 - **Its document,** by name, with that document's badge.
 - **Its controls, which follow its state.** An open question offers **Take this leaning** (only
   when a leaning exists), **Answer…** and **Open document**. A ✅ answered question has been
@@ -543,7 +550,9 @@ planning page at its previous scroll position.
 
 **The roadmap line** *(coined here)* is one line of the page's frame, directly above the section
 bar, shown only when two or more roadmaps route ([§6.1](#61-the-roadmaps)). With one, or none,
-there is no line, and the page reads as a one-roadmap page always has.
+there is no line, and the page reads as a one-roadmap page always has. While the contents
+column is drawn, the line stands at the head of the planning outline instead
+([§6.5](#65-the-app-shell-and-the-planning-outline)), so there is only ever one picker.
 
 - **The picker** is a native select with the visible label **Roadmap**. It offers every roadmap
   that routes, in roadmap order, each by its full repo-relative path followed by its *Needs
@@ -604,6 +613,56 @@ the same way: *Not read as a roadmap: plans/b.md, which roadmap under [planning]
 missing or not in Vantage's file list (…).* A listed roadmap in the `done` state gets no such
 line, since a `done` stage is a deliberate retirement, and neither does a roadmap found by name,
 since *Skipped* and *Could not read* already list it.
+
+### 6.5 The app shell, and the planning outline
+
+> [!NOTE]
+> **Added 2026-09-30** by user direction: the page lives in the app's frame like every other
+> page, and its contents column is an outline of the page.
+
+**The app shell** *(coined here)* is the frame the document viewer draws around a document:
+the sidebar with the file tree, bookmarks and recent files, the pickers and dialogs the
+keyboard opens, and the shortcuts. The planning page is drawn in it too
+([`AppShell.tsx`](../../frontend/src/components/AppShell.tsx)), and it is one shell for both:
+a layout route around the two pages, so going from a document to the planning page and back
+replaces the main column and nothing else. The sidebar is not drawn again, its tree keeps its
+expanded folders and its scroll position, and nothing it shows is asked for again. It has the
+same remembered width, and `b` puts it away. The header is the viewer's, fitted by the
+same yield steps: the sidebar button, the contents-column and full-width toggles, the breadcrumb
+with the page's name, and **Copy answers**. A document's controls (Raw, Path, history, review)
+have no meaning here and are not drawn, and the keys that act on a document do nothing, so the
+shortcuts help (`?`) leaves them out. The two
+toggles are the viewer's own preferences, so the page stores nothing new. The cards keep a
+reading width, and full width widens them to the pane. The pane is what scrolls, so the saved
+and restored scroll position of [§6.3](#63-a-question-on-the-page) is the pane's, and a page
+opened with the focus on nothing gives the pane the focus, without scrolling it, so PageDown,
+Space and the arrow keys scroll it as they scroll a window.
+
+**The planning outline** *(coined here)* is what the contents column shows on this page, in
+place of a document's table of contents. It is drawn from the frame's index, so it paints with
+the section bar and changes when it does:
+
+- **Each non-empty section,** with its count. Clicking one scrolls to its heading and gives it
+  the focus, as the section bar does.
+- **Under a section of cards or rows,** the documents it lists, in the section's order, at most
+  50 of them and then a line with how many more. Each shows its file name, the folder under it,
+  and how many of its questions the section holds, or under *Disagrees* how many are open.
+  Clicking one flips its section to the page holding the document's first card or row, with no
+  history entry, as a flip does, then scrolls to that entry and focuses it or its first
+  control. The count wraps under the name rather than take its width: the file name wins.
+- **It follows the scroll.** The section being read, and the document whose card or row is at
+  the top of the pane, are marked; scrolled to the end, the last entry on screen is.
+- **Every entry is a link.** A document's names its page and its entry as the fragment, as
+  `?unrouted=2#pq-plans%2Fb.md--L12`: a card's id is `pq-`, its path encoded, `--`, and its
+  question's `id=`, or `L` and its unit's first line when it has none; a row's is `pr-`, its
+  section, `--`, and its path encoded. A page opened on such a link scrolls to that entry once its sections are
+  in, and so does one whose query the page rewrites as it opens, a missing `roadmap=` or an
+  explicit page 1: the rewrite keeps the fragment.
+- **The roadmap picker** of [§6.4](#64-several-roadmaps-on-the-page) stands at its head when
+  two or more roadmaps route, drawn as it is on its line: its path and count whole, wrapping in
+  the column's width rather than cut off. On a narrow screen, where the column is not drawn, it
+  stays on its line. Nothing of the column is drawn before the outline is, its head included:
+  a *Contents* label painted first was pushed down by the picker arriving above it.
 
 ## 7. Referenced by, and status in the file tree
 
@@ -834,7 +893,7 @@ shaped by settings that belong to one reader rather than to the repository, such
 cannot see those, so where they are set, `index` can list a file that the planning page does
 not.
 
-The `check` command gains four rules:
+The `check` command gains five rules:
 
 | Rule | Default | Reports |
 | --- | --- | --- |
@@ -842,9 +901,10 @@ The `check` command gains four rules:
 | `planning/depends-on-missing` | error | a `depends-on` entry whose target does not exist or lies outside the repository, or whose `#OQ-…` id appears nowhere in its target |
 | `planning/stage-disagrees` | warning | the page's *Disagrees* section |
 | `planning/unrouted` | off | an open question no roadmap routes. This repository runs it as a warning, so the gate lists unrouted questions without failing |
+| `planning/question-length` | warning | a question whose text, less its leaning and its Answer, runs past 120 words (`max-words`), long by this repository's measure and well past the three lines its card shows folded ([§6.3](#63-a-question-on-the-page)). Added 2026-09-30; the limit's calibration is in the [vantage-check guide](../../userguide/guides/vantage-check.md#what-it-checks) |
 
-These rules are the same derivations the page uses, so the page and the gate can never
-disagree (P7).
+The first four are the same derivations the page uses, so the page and the gate can never
+disagree (P7); the fifth measures the questions the same scan finds.
 
 ## 9. Configuration
 
@@ -1079,3 +1139,7 @@ the plan proposed.
 | — | Amended for large repositories by [`planning-index-at-scale.md`](planning-index-at-scale.md): the index is built in a worker from a stream that carries only the files whose content changed, each file's scan result is kept in the browser under its content hash ([OQ-PS1](planning-index-at-scale.md#decision-ledger)), the planning page pages, and late data never moves painted content | 2026-09-29 | [§3](#3-the-planning-index), [§3.4](#34-when-it-is-built-and-how-it-stays-fresh), [§3.6](#36-failure), [§5.3](#53-how-a-badge-behaves), [§6](#6-the-planning-page), [§7](#7-referenced-by-and-status-in-the-file-tree) | ✅ [`planningScan/`](../../frontend/src/planningScan/core.ts) |
 | — | User ruling 2026-09-30: roadmaps are discovered by name; several can be listed and picked. With no `roadmap` key, every candidate named `roadmap.md` (ASCII case-insensitive, any directory) is a roadmap, hidden by the normal exclusions; `roadmap` takes a string or a list, which names exactly the roadmaps, each read whatever `include` and `exclude` say, and `[]` names none. The page offers a picker when several route, its choice in the URL and remembered per repository, the default nearest the root. A question is routed when any roadmap routes it, and *Needs you* follows the chosen one. Every surface agrees, and a notice names what was looked for. This repository's `.vantage.toml` keeps working unchanged | 2026-09-30 | [§3.1](#31-which-files-it-reads), [§6.1](#61-the-roadmaps), [§6.2](#62-sections-top-to-bottom), [§6.4](#64-several-roadmaps-on-the-page), [§7](#7-referenced-by-and-status-in-the-file-tree), [§8](#8-vantage-check-index-and-the-planning-rules), [§9](#9-configuration) | ✅ [`sections.ts`](../../packages/vantage-md/src/planning/sections.ts), [`repoconfig.go`](../../internal/repoconfig/repoconfig.go) |
 | — | The details that ruling left, decided with it and open to the user's review: questions only another roadmap routes are counted beside the picker (*N more questions need you on other roadmaps*), not listed; the roadmap line is a native select above the section bar, shown only when two or more roadmaps route; the URL always names the roadmap shown when there is a choice, and only a pick is remembered; Copy answers covers every roadmap's questions; a roadmap with a `done` stage routes nothing; a roadmap's link to another routes that roadmap's own questions, never transitively; `vantage-check index` JSON is format version 2, with `sections.roadmaps`, `chosenRoadmap`, `onOtherRoadmaps` and a top-level `roadmaps`; `--roadmap` is repo-relative and exits `2` on a path that does not route; a list entry that is not text, breaks a path rule or repeats a path refuses the file in both readers; the stream marks roadmaps only through its header's config | 2026-09-30 | [§6.1](#61-the-roadmaps), [§6.3](#63-a-question-on-the-page), [§6.4](#64-several-roadmaps-on-the-page), [§8](#8-vantage-check-index-and-the-planning-rules), [§9](#9-configuration), [§12](#12-alternatives-considered) | ✅ [`PlanningPage.tsx`](../../frontend/src/pages/PlanningPage.tsx), [`index.ts`](../../packages/vantage-check/src/commands/index.ts) |
+| — | User direction 2026-09-30: the planning page is drawn in the app shell, with the viewer's header, sidebar and full-width toggle, and its contents column is the planning outline, with the roadmap picker at its head while the column is shown | 2026-09-30 | [§6.5](#65-the-app-shell-and-the-planning-outline) | ✅ [`PlanningOutline.tsx`](../../frontend/src/components/PlanningOutline.tsx) |
+| — | Review of that build, 2026-09-30: the shell is one layout route around both pages, so `g p` and Back keep the sidebar, its tree's scroll and everything it fetched; the outline's head is drawn with the outline, never before it; the picker at its head wraps its path and count as its line does; a link's fragment survives the page rewriting its query; a page opened with the focus on nothing focuses its pane, so the browser's scrolling keys work; the shortcuts help lists only the keys the page wires | 2026-09-30 | [§6.5](#65-the-app-shell-and-the-planning-outline) | ✅ [`AppShell.tsx`](../../frontend/src/components/AppShell.tsx), [`useShellPage.ts`](../../frontend/src/hooks/useShellPage.ts) |
+| — | User direction 2026-09-30: a question's card is laid out to be read. Its bold title is the headline, its leaning a block of its own, an empty Answer is not shown and a filled-in one is shown whole, the badges inside it are muted (no wash, no capitals, a lighter ink, and gray, faded glyphs), and the rest is cut to three lines behind *Show full question*. Every word shown is the document's, and an answer's anchor is unchanged | 2026-09-30 | [§6.3](#63-a-question-on-the-page) | ✅ [`planningCardParts.ts`](../../frontend/src/lib/planningCardParts.ts) |
+| — | User direction 2026-09-30: `planning/question-length` warns on a question whose text, less its leaning and its Answer, runs past 120 words, a limit set in the gap where this repository's 54 questions thin out (48 run to 93 words or fewer, six from 132), which says where they thin out rather than where a question starts to bury itself; a repository whose questions run longer raises `max-words` or turns the rule off. A leaning is one marker everywhere it is read (`LEANING_MARKER`), a note in parentheses before its colon allowed; `[check.rules]` takes a table for a rule with options, such as `max-words` | 2026-09-30 | [§8](#8-vantage-check-index-and-the-planning-rules) | ✅ [`questionLength.ts`](../../packages/vantage-check/src/rules/questionLength.ts) |

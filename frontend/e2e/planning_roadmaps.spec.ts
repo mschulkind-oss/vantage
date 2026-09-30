@@ -228,7 +228,9 @@ test.describe("several roadmaps", () => {
       });
 
       await page.goto("/.vantage/planning");
-      await expect(page.getByRole("status")).toContainText(
+      // The progress line's, not the degradation banner's live region, which
+      // the app shell keeps mounted beside the page.
+      await expect(page.getByRole("main").getByRole("status")).toContainText(
         /Reading planning documents|Scanning planning documents/,
       );
       release();
@@ -285,6 +287,153 @@ test.describe("several roadmaps", () => {
     await picker(page).selectOption("roadmap.md");
     await expect(shown).toHaveText("roadmap.md (2 need you)");
   });
+
+  // One picker (planning-index.md §6.5): at the head of the planning
+  // outline while the contents column is shown, and not above the sections.
+  test("puts the picker at the head of the planning outline, and only there", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem("vantage:tocOpen", "true");
+    });
+    await page.goto("/.vantage/planning");
+    const outline = page.getByRole("navigation", { name: "Planning outline" });
+    await expect(
+      outline.getByRole("combobox", { name: "Roadmap" }),
+    ).toBeVisible();
+    await expect(picker(page)).toHaveCount(1);
+    await expect(
+      page.getByRole("main").getByRole("combobox", { name: "Roadmap" }),
+    ).toHaveCount(0);
+    await picker(page).selectOption(NESTED);
+    await cardsIn(page, "Needs you").toEqual([
+      "OQ-B1: Which way does beta go?",
+      "OQ-B2: Who builds beta?",
+      "OQ-B3: Does beta need a flag?",
+      "OQ-A2: How soon does alpha ship?",
+    ]);
+    // The outline follows the pick, with the section bar.
+    await expect(
+      outline.getByRole("link", { name: /^Needs you \d/ }),
+    ).toHaveText("Needs you 4");
+  });
+
+  // §6.4 in the outline's 256 px: the path is the only name that tells two
+  // roadmap.md files apart, so the closed control wraps it rather than cut
+  // it or its count off, as on its line.
+  test("shows the chosen path whole at the head of the outline, wrapped in the column", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1024, height: 800 });
+    await page.addInitScript(() => {
+      localStorage.setItem("vantage:tocOpen", "true");
+    });
+    await page.goto(`/.vantage/planning?roadmap=${NESTED}`);
+    const outline = page.getByRole("navigation", { name: "Planning outline" });
+    const shown = outline.getByTestId("roadmap-shown");
+    await expect(shown).toHaveText(`${NESTED} (4 need you)`);
+    await expect(picker(page)).toHaveAttribute("title", NESTED);
+    const fit = await shown.evaluate((el) => {
+      const text = el.getBoundingClientRect();
+      const control = el.parentElement!.getBoundingClientRect();
+      const column = el
+        .closest('[data-testid="planning-outline"]')!
+        .getBoundingClientRect();
+      return {
+        column: Math.round(column.width),
+        wrapped: text.height > parseFloat(getComputedStyle(el).lineHeight),
+        inControl: text.right <= control.right && text.bottom <= control.bottom,
+        inColumn: control.right <= column.right + 0.5,
+        unclipped: el.scrollWidth <= el.clientWidth,
+      };
+    });
+    expect(fit).toEqual({
+      column: 256,
+      wrapped: true,
+      inControl: true,
+      inColumn: true,
+      unclipped: true,
+    });
+    // Still the native select over it, so a pick goes through.
+    await picker(page).selectOption("roadmap.md");
+    await expect(shown).toHaveText("roadmap.md (2 need you)");
+  });
+
+  // Late data never moves painted content: the picker arrives with the
+  // index, so the outline's head is drawn only with it. A Contents label
+  // painted first was pushed down by it, about 110 px, on every cold load.
+  for (const width of [1440, 1024]) {
+    test(`fills the outline on a cold load with no layout shift, at ${width} px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await page.addInitScript(() => {
+        localStorage.setItem("vantage:tocOpen", "true");
+        interface Entry extends PerformanceEntry {
+          value: number;
+          hadRecentInput: boolean;
+          sources: { node: Node | null }[];
+        }
+        const shifts: { value: number; nodes: string[] }[] = [];
+        (window as unknown as { __shifts: typeof shifts }).__shifts = shifts;
+        new PerformanceObserver((list) => {
+          for (const entry of list.getEntries() as Entry[]) {
+            if (entry.hadRecentInput) continue;
+            const nodes = entry.sources.map((source) => {
+              const el =
+                source.node instanceof Element
+                  ? source.node
+                  : (source.node?.parentElement ?? null);
+              // The sidebar's file tree filling a folder late is the shell's
+              // own layout-shift source, as stable_paint.spec.ts records it.
+              if (el?.closest('[data-testid="sidebar"]')) return "sidebar";
+              return el === null
+                ? "(none)"
+                : `${el.tagName} ${el.className} "${(el.textContent ?? "").slice(0, 40)}"`;
+            });
+            if (nodes.length > 0 && nodes.every((n) => n === "sidebar")) {
+              continue;
+            }
+            shifts.push({ value: entry.value, nodes });
+          }
+        }).observe({ type: "layout-shift", buffered: true });
+      });
+      let release!: () => void;
+      const released = new Promise<void>((resolve) => (release = resolve));
+      await page.route("**/api/planning/stream", async (route) => {
+        await released;
+        await route.fallback();
+      });
+
+      await page.goto("/.vantage/planning");
+      await expect(page.getByRole("main").getByRole("status")).toContainText(
+        /Reading planning documents|Scanning planning documents/,
+      );
+      release();
+      const outline = page.getByRole("navigation", {
+        name: "Planning outline",
+      });
+      await expect(
+        outline.getByRole("combobox", { name: "Roadmap" }),
+      ).toHaveValue("roadmap.md");
+      await expect(outline.getByText("Contents")).toBeVisible();
+      await cardsIn(page, "Needs you").toEqual([
+        "OQ-A1: Which way does alpha go?",
+        "OQ-A2: How soon does alpha ship?",
+      ]);
+      const shifts = await page.evaluate(
+        () =>
+          new Promise((resolve) =>
+            requestAnimationFrame(() =>
+              requestAnimationFrame(() =>
+                resolve((window as unknown as { __shifts: unknown }).__shifts),
+              ),
+            ),
+          ),
+      );
+      expect(shifts).toEqual([]);
+    });
+  }
 
   test("Referenced by names the roadmap that routes a document", async ({
     page,

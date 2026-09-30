@@ -93,6 +93,12 @@ export interface PlanningLimits {
   pendingCountDigits: number;
   /** File lines quoted either side of a comment's anchor in Copy answers. */
   quoteContextLines: number;
+  /**
+   * Documents the planning outline lists under one section; past it, a line
+   * says how many more there are, and the section's pager reaches them. The
+   * design names no such number, so this one is coined here.
+   */
+  outlineDocuments: number;
 
   /* ---- A document's first paint (§11.3) ---- */
 
@@ -129,6 +135,7 @@ export const DEFAULT_PLANNING_LIMITS: Readonly<PlanningLimits> = Object.freeze({
   pageInputsKept: 8,
   pendingCountDigits: 4,
   quoteContextLines: 2,
+  outlineDocuments: 50,
 
   holdMs: 150,
 });
