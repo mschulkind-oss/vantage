@@ -201,6 +201,76 @@ test.describe("a cold build's helpers", () => {
     expect(paths).toContain("plans/unrouted.md");
   });
 
+  test("a build goes on without a helper whose code cannot be loaded", async ({
+    page,
+  }) => {
+    await page.goto("/");
+    await planningIndexReady(page);
+    const url = await scanWorkerUrl(page);
+    // The first helper's script never arrives; the rest are the real chunk.
+    await page.route(/[?&]helper-that-never-loads/, (route) => route.abort());
+
+    const { events, tab } = await page.evaluate(async (url) => {
+      const clientPath = "/src/planningScan/client.ts";
+      const { workerScannerClient } = await import(
+        /* @vite-ignore */ clientPath
+      );
+      let helpers = 0;
+      const client = workerScannerClient(
+        () => {
+          const worker = new Worker(url, { type: "module" });
+          worker.postMessage({
+            type: "limits",
+            limits: {
+              helperThresholdBytes: 1024,
+              helperQueueBytes: 1024,
+              maxHelpers: 2,
+              helperReservedCores: 0,
+            },
+          });
+          return worker;
+        },
+        () =>
+          new Worker(helpers++ === 0 ? `${url}&helper-that-never-loads` : url, {
+            type: "module",
+          }),
+      );
+      const events = await new Promise<BuildEvent[]>((resolve) => {
+        const seen: BuildEvent[] = [];
+        client.build(
+          { repo: "", seq: 1, bypassCache: true },
+          (event: BuildEvent) => {
+            seen.push(event);
+            if (event.type === "ready" || event.type === "failed") {
+              resolve(seen);
+            }
+          },
+        );
+      });
+      const storePath = "/src/stores/usePlanningStore.ts";
+      const { usePlanningStore } = await import(/* @vite-ignore */ storePath);
+      const load = usePlanningStore.getState().byRepo[""];
+      return {
+        events,
+        tab:
+          load?.status === "ready"
+            ? { documents: (load.index.documents as Document[]).length }
+            : null,
+      };
+    }, url);
+
+    expect(events.at(-1)).toEqual({ type: "ready" });
+    // As many planning documents as the tab's own build found. (Other specs
+    // rewrite files of this fixture, never into or out of being one.)
+    const paths = events
+      .flatMap((event) => (event.type === "documents" ? event.docs : []))
+      .map(({ document }) => document.path);
+    expect(new Set(paths).size).toBe(paths.length);
+    expect(paths).toContain("plans/unrouted.md");
+    expect(tab).not.toBeNull();
+    expect(paths).toHaveLength(tab?.documents ?? -1);
+  });
+
   test("a worker of the scan worker's chunk, started as a helper, scans what its port sends", async ({
     page,
   }) => {

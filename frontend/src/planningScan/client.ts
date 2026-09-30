@@ -9,21 +9,23 @@
  * - **the worker client**, which posts to the scan worker, created once per
  *   tab at boot. If it dies (an `error` or `messageerror` event), every build
  *   it had fails with *The planning scan stopped*, every refresh in flight
- *   answers `null`, and the next request starts a new worker (§7.1). When a
- *   cold build asks for helpers, it makes them and hands each one end of a
- *   channel whose other end goes to the scan worker, so their data never
- *   passes through this thread; it ends them with the build (§7.5);
+ *   answers `null`, and the next request starts a new worker (§7.1). One that
+ *   fails before its `hello`, whose code never loaded, could not be created,
+ *   and the tab moves to the inline client. When a cold build asks for
+ *   helpers, it makes them and hands each one end of a channel whose other
+ *   end goes to the scan worker, so their data never passes through this
+ *   thread; it ends them with the build (§7.5);
  * - **the inline client**, which runs the core on the main thread, sliced at
  *   `sliceMs` so the page can paint. It serves the unit tests, which have no
- *   `Worker`, and a browser where the worker cannot be created. It is not a
- *   fallback for a worker that crashed: a crash on some file would crash the
- *   page the same way (§7.6).
+ *   `Worker`, and a browser where the worker cannot be created or its code
+ *   cannot be loaded. It is not a fallback for a worker that crashed: a crash
+ *   on some file would crash the page the same way (§7.6).
  *
  * The client makes no ordering decision (§5.4): it hands every answer to its
  * caller, and the planning store's request numbering decides which one wins.
  */
 
-import type { ScannedEntry } from "vantage-md/planning";
+import type { PlanningConfig, ScannedEntry } from "vantage-md/planning";
 import { scanCache, scannerIdOf } from "./cache";
 import {
   scannerCore,
@@ -105,15 +107,24 @@ export interface WorkerLike {
 interface Pending {
   settle(reply: WorkerReply): void;
   stop(): void;
+  /** Ask `client` instead, and settle as it answers. */
+  move(client: ScannerClient): void;
 }
 
 /** A build a repository is waiting on. */
 interface Build {
   seq: number;
+  bypassCache: boolean;
   on: (event: BuildEvent) => void;
   /** The helpers made for it, which end with it (§7.5). */
   helpers: WorkerLike[];
+  /** How many helpers' ports the scan worker has been sent for it. */
+  lent: number;
 }
+
+/** Whether a worker's message is its `hello`: its code has loaded. */
+const isHello = (event: Event): boolean =>
+  (event as MessageEvent<WorkerReply | null>).data?.type === "hello";
 
 /**
  * The client over the scan worker. `spawn` makes a worker; the first is made
@@ -121,15 +132,31 @@ interface Build {
  * after one dies. `spawnHelper` makes a worker to be a helper: by default one
  * from the scan worker's own chunk, which a {@link HelperStart} message makes
  * a helper, so a helper runs exactly the scan worker's code.
+ *
+ * `unavailable` makes the client to use instead once a scan worker fails
+ * before its `hello`: its code never loaded, so no worker can be created here
+ * (§7.1). What was sent to that worker is asked of it instead, and so is
+ * everything after. Without it, such a failure is a death like any other.
  */
 export function workerScannerClient(
   spawn: () => WorkerLike,
   spawnHelper: () => WorkerLike = spawnScanWorker,
+  unavailable?: () => ScannerClient,
 ): ScannerClient {
   let worker: WorkerLike | null = null;
+  /** Whether `worker` has said `hello`. */
+  let loaded = false;
+  /** The client asked instead, once a scan worker failed to load. */
+  let instead: ScannerClient | null = null;
   let nextId = 0;
   const builds = new Map<string, Build>();
   const pending = new Map<number, Pending>();
+  /**
+   * The config of the last header each repository's builds sent. A refresh
+   * or card request carries it, so a scan worker started after one died idle,
+   * which has seen no header, scans under the repository's config (§7.1).
+   */
+  const configs = new Map<string, PlanningConfig>();
 
   const endHelpers = (build: Build): void => {
     for (const helper of build.helpers.splice(0)) helper.terminate();
@@ -142,7 +169,6 @@ export function workerScannerClient(
   };
 
   const died = (dead: WorkerLike): void => {
-    if (worker !== dead) return;
     worker = null;
     dead.terminate();
     const stopped = [...builds.values()];
@@ -154,6 +180,34 @@ export function workerScannerClient(
       build.on({ type: "failed", message: STOPPED_MESSAGE, shape: false });
     }
     for (const request of waiting) request.stop();
+  };
+
+  /**
+   * A scan worker that failed before its `hello` could not be created (§7.1):
+   * from now on the tab asks `unavailable`'s client, starting with every
+   * build and request that worker had.
+   */
+  const neverLoaded = (dead: WorkerLike, make: () => ScannerClient): void => {
+    worker = null;
+    dead.terminate();
+    const client = make();
+    instead = client;
+    const moved = [...builds];
+    const waiting = [...pending.values()];
+    builds.clear();
+    pending.clear();
+    for (const [repo, build] of moved) {
+      endHelpers(build);
+      const { seq, bypassCache, on } = build;
+      client.build({ repo, seq, bypassCache }, on);
+    }
+    for (const request of waiting) request.move(client);
+  };
+
+  const lost = (dead: WorkerLike): void => {
+    if (worker !== dead) return;
+    if (!loaded && unavailable !== undefined) neverLoaded(dead, unavailable);
+    else died(dead);
   };
 
   /**
@@ -169,6 +223,29 @@ export function workerScannerClient(
       // A scan worker that cannot take a message is dying too.
     }
     build.on({ type: "failed", message: STOPPED_MESSAGE, shape: false });
+  };
+
+  /**
+   * A helper that failed before its `hello` never loaded, so it will scan
+   * nothing (§7.5): the build goes on without it, and the scan worker reads
+   * again what it had handed it.
+   */
+  const helperNeverLoaded = (
+    repo: string,
+    build: Build,
+    helper: WorkerLike,
+    at: number,
+  ): void => {
+    const held = build.helpers.indexOf(helper);
+    if (held === -1) return;
+    build.helpers.splice(held, 1);
+    helper.terminate();
+    if (builds.get(repo) !== build) return;
+    try {
+      worker?.postMessage({ type: "helper-lost", repo, seq: build.seq, at });
+    } catch {
+      // A scan worker that cannot take a message is dying too.
+    }
   };
 
   /**
@@ -197,24 +274,40 @@ export function workerScannerClient(
         helper.terminate();
         break;
       }
-      helper.addEventListener("error", () => helperDied(repo, build));
-      helper.addEventListener("messageerror", () => helperDied(repo, build));
+      // Its place among the build's ports, which names it to the scan worker.
+      const at = build.lent + ports.length;
+      let helperLoaded = false;
+      const gone = (): void => {
+        if (helperLoaded) helperDied(repo, build);
+        else helperNeverLoaded(repo, build, helper, at);
+      };
+      helper.addEventListener("message", (event) => {
+        if (isHello(event)) helperLoaded = true;
+      });
+      helper.addEventListener("error", gone);
+      helper.addEventListener("messageerror", gone);
       build.helpers.push(helper);
       ports.push(channel.port2);
     }
     if (ports.length === 0) return;
     try {
       scan.postMessage({ type: "helpers", repo, seq, ports }, ports);
+      build.lent += ports.length;
     } catch {
       endHelpers(build);
     }
   };
 
-  const receive = (reply: WorkerReply): void => {
+  const receive = (from: WorkerLike, reply: WorkerReply): void => {
+    if (reply.type === "hello") {
+      if (from === worker) loaded = true;
+      return;
+    }
     if (reply.type === "build") {
+      const { event } = reply;
+      if (event.type === "header") configs.set(reply.repo, event.config);
       const build = builds.get(reply.repo);
       if (build?.seq !== reply.seq) return;
-      const { event } = reply;
       if (event.type === "ready" || event.type === "failed") {
         over(reply.repo, build);
       }
@@ -235,19 +328,24 @@ export function workerScannerClient(
     if (worker !== null) return worker;
     const spawned = spawn();
     spawned.addEventListener("message", (event) =>
-      receive((event as MessageEvent<WorkerReply>).data),
+      receive(spawned, (event as MessageEvent<WorkerReply>).data),
     );
-    spawned.addEventListener("error", () => died(spawned));
-    spawned.addEventListener("messageerror", () => died(spawned));
+    spawned.addEventListener("error", () => lost(spawned));
+    spawned.addEventListener("messageerror", () => lost(spawned));
     worker = spawned;
+    loaded = false;
     return spawned;
   };
 
-  /** Post a request that has an answer, and settle as `read` says. */
+  /**
+   * Post a request that has an answer, and settle as `read` says; or, once
+   * the worker turns out never to have loaded, as `elsewhere` answers.
+   */
   function ask<T>(
     request: (id: number) => WorkerRequest,
     read: (reply: WorkerReply) => T,
     stopped: () => T,
+    elsewhere: (client: ScannerClient) => Promise<T>,
   ): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       const id = ++nextId;
@@ -261,6 +359,7 @@ export function workerScannerClient(
       pending.set(id, {
         settle: (reply) => settle(() => read(reply)),
         stop: () => settle(stopped),
+        move: (client) => elsewhere(client).then(resolve, reject),
       });
       try {
         current().postMessage(request(id));
@@ -286,11 +385,16 @@ export function workerScannerClient(
   current();
 
   return {
-    build({ repo, seq, bypassCache }, on) {
+    build(request, on) {
+      if (instead !== null) {
+        instead.build(request, on);
+        return;
+      }
+      const { repo, seq, bypassCache } = request;
       // The scan worker supersedes an earlier build of the repository.
       const earlier = builds.get(repo);
       if (earlier !== undefined) endHelpers(earlier);
-      builds.set(repo, { seq, on, helpers: [] });
+      builds.set(repo, { seq, bypassCache, on, helpers: [], lent: 0 });
       try {
         current().postMessage({
           type: "build",
@@ -308,6 +412,10 @@ export function workerScannerClient(
     },
 
     cancel(repo, seq) {
+      if (instead !== null) {
+        instead.cancel(repo, seq);
+        return;
+      }
       const build = builds.get(repo);
       if (build?.seq === seq) over(repo, build);
       try {
@@ -317,8 +425,10 @@ export function workerScannerClient(
       }
     },
 
-    refresh: ({ repo, seq, path }) =>
-      ask(
+    refresh: (request) => {
+      if (instead !== null) return instead.refresh(request);
+      const { repo, seq, path } = request;
+      return ask(
         (id) => ({
           type: "refresh",
           id,
@@ -326,13 +436,17 @@ export function workerScannerClient(
           apiBase: apiBaseOf(repo),
           seq,
           path,
+          config: configs.get(repo),
         }),
         (reply) => (reply.type === "scanned" ? reply.entry : null),
         () => null,
-      ),
+        (client) => client.refresh(request),
+      );
+    },
 
-    cards: (repo, want, options) =>
-      ask(
+    cards: (repo, want, options) => {
+      if (instead !== null) return instead.cards(repo, want, options);
+      return ask(
         (id) => ({
           type: "cards",
           id,
@@ -340,17 +454,23 @@ export function workerScannerClient(
           apiBase: apiBaseOf(repo),
           want,
           full: options?.full ?? false,
+          config: configs.get(repo),
         }),
         (reply) => (reply.type === "cards" ? reply.answers : refused(reply)),
         stop,
-      ),
+        (client) => client.cards(repo, want, options),
+      );
+    },
 
-    quotes: (repo, want) =>
-      ask(
+    quotes: (repo, want) => {
+      if (instead !== null) return instead.quotes(repo, want);
+      return ask(
         (id) => ({ type: "quotes", id, repo, apiBase: apiBaseOf(repo), want }),
         (reply) => (reply.type === "quotes" ? reply.quotes : refused(reply)),
         stop,
-      ),
+        (client) => client.quotes(repo, want),
+      );
+    },
   };
 }
 
@@ -420,7 +540,14 @@ function spawnScanWorker(): Worker {
   });
 }
 
-function workerClient(): ScannerClient | null {
+/**
+ * The worker client, or `null` where no worker can be made at all. `inline`
+ * makes the client it moves to when the worker's code fails to load: a
+ * network error, a chunk the server no longer has, a content security policy
+ * that lets the worker be made and not fetch it, or a browser without module
+ * workers.
+ */
+function workerClient(inline: () => ScannerClient): ScannerClient | null {
   if (typeof Worker === "undefined") return null;
   let first: Worker | null;
   try {
@@ -429,16 +556,20 @@ function workerClient(): ScannerClient | null {
     // Refused outright (a content security policy, say): the inline client.
     return null;
   }
-  return workerScannerClient(() => {
-    const spawned = first ?? spawnScanWorker();
-    first = null;
-    return spawned;
-  });
+  return workerScannerClient(
+    () => {
+      const spawned = first ?? spawnScanWorker();
+      first = null;
+      return spawned;
+    },
+    spawnScanWorker,
+    inline,
+  );
 }
 
 /**
  * Make the tab's scanner client, once: the worker client, or the inline one
- * where no worker can be made. `sourceHash` is the scanner id's source half,
+ * where no worker can be made or its code cannot be loaded. `sourceHash` is the scanner id's source half,
  * which only the inline client needs, since the worker reads its own; without
  * it the inline client runs with no scan cache, because a result is never
  * trusted without a scanner id.
@@ -448,13 +579,13 @@ function workerClient(): ScannerClient | null {
 export function startPlanningScanner(
   sourceHash: string | null = null,
 ): ScannerClient {
-  started ??=
-    workerClient() ??
+  const inline = (): ScannerClient =>
     inlineScannerClient({
       store: sourceHash === null ? null : idbScanStore(),
       scannerId:
         sourceHash === null ? "" : scannerIdOf(sourceHash, navigator.userAgent),
     });
+  started ??= workerClient(inline) ?? inline();
   return started;
 }
 
