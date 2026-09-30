@@ -2,110 +2,9 @@ package planning
 
 import (
 	"encoding/json"
-	"io"
-	"strconv"
 
-	"github.com/mschulkind-oss/vantage/internal/perf"
 	"github.com/mschulkind-oss/vantage/internal/repoconfig"
 )
-
-// Skipped is a candidate over `max-file-bytes`, which was never opened.
-type Skipped struct {
-	Path string `json:"path"`
-	Size int64  `json:"size"`
-}
-
-// Unreadable is a candidate that exists and could not be read, with the reason.
-type Unreadable struct {
-	Path   string `json:"path"`
-	Reason string `json:"reason"`
-}
-
-// file is one entry of the batch's `files`.
-type file struct {
-	Path    string `json:"path"`
-	Content string `json:"content"`
-}
-
-// WriteBatch writes the batch body for listing under cfg:
-//
-//	{"config": …, "candidate_count": N, "refused": false,
-//	 "files": [{"path", "content"}], "skipped": [{"path", "size"}],
-//	 "unreadable": [{"path", "reason"}]}
-//
-// `config` is cfg itself, so the viewer applies the same rules this did. Every
-// list is sorted by path, because the listing is, and none is ever null.
-//
-// Past cfg.MaxCandidates the answer is refused and nothing is opened: `files`,
-// `skipped` and `unreadable` are empty and `candidate_count` says how many
-// there were. A candidate that vanished between the listing and its read is left
-// out; the watcher reports its removal.
-//
-// The body is streamed, one file at a time. An error means w stopped accepting
-// the body — the client went away — and what was written is incomplete.
-func WriteBatch(w io.Writer, listing Listing, cfg repoconfig.Planning) error {
-	defer perf.Default.Track(perf.CategoryFS, "planning_batch")()
-
-	candidates := Candidates(listing.ListAllFiles(), matcherFor(cfg))
-	refused := len(candidates) > cfg.MaxCandidates
-
-	config, err := json.Marshal(cfg)
-	if err != nil {
-		return err
-	}
-	head := `{"config":` + string(config) +
-		`,"candidate_count":` + strconv.Itoa(len(candidates)) +
-		`,"refused":` + strconv.FormatBool(refused) +
-		`,"files":[`
-	if _, err := io.WriteString(w, head); err != nil {
-		return err
-	}
-
-	skipped := []Skipped{}
-	unreadable := []Unreadable{}
-	if !refused {
-		r := newReader(listing.RootPath(), cfg.MaxFileBytes)
-		first := true
-		for _, rel := range candidates {
-			got := r.read(rel)
-			switch got.kind {
-			case KindSkipped:
-				skipped = append(skipped, Skipped{Path: rel, Size: got.size})
-			case KindUnreadable:
-				unreadable = append(unreadable, Unreadable{Path: rel, Reason: got.reason})
-			case KindFile:
-				entry, err := json.Marshal(file{Path: rel, Content: got.content})
-				if err != nil {
-					return err
-				}
-				if !first {
-					if _, err := io.WriteString(w, ","); err != nil {
-						return err
-					}
-				}
-				first = false
-				if _, err := w.Write(entry); err != nil {
-					return err
-				}
-			}
-		}
-	}
-
-	tail, err := json.Marshal(struct {
-		Skipped    []Skipped    `json:"skipped"`
-		Unreadable []Unreadable `json:"unreadable"`
-	}{skipped, unreadable})
-	if err != nil {
-		return err
-	}
-	// tail is `{"skipped":…,"unreadable":…}`; its opening brace becomes the
-	// separator after `files`, so the object closes with the tail's own brace.
-	if _, err := io.WriteString(w, "],"); err != nil {
-		return err
-	}
-	_, err = w.Write(tail[1:])
-	return err
-}
 
 // Entry is the single-path mode's answer for one path, one of four kinds:
 //
@@ -160,13 +59,13 @@ func (e Entry) MarshalJSON() ([]byte, error) {
 	}
 }
 
-// Lookup answers for the one path rel, applying the batch's tests to it: it must
-// be listed, it must be a candidate, and then it is read within the size limit
-// exactly as [WriteBatch] reads it.
+// Lookup answers for the one path rel, applying the stream's tests to it: it
+// must be listed, it must be a candidate, and then it is read within the size
+// limit exactly as [WriteStream] reads it.
 //
 // The candidate limit is not applied. Whether a scan is refused is a property of
-// the whole batch, and the viewer asks about one path of a refused index only
-// while a rescan's batch is out, whose answer may not be refused.
+// the whole stream, and the viewer asks about one path of a refused index only
+// while a rescan's stream is out, whose answer may not be refused.
 func Lookup(listing Listing, cfg repoconfig.Planning, rel string) Entry {
 	absent := Entry{Path: rel, Kind: KindAbsent}
 	if !matcherFor(cfg).IsCandidate(rel) || !listing.IsListed(rel) {

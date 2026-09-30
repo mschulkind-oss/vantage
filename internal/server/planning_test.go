@@ -73,6 +73,17 @@ func planningKind(t *testing.T, h http.Handler, target string) string {
 	return entry.Kind
 }
 
+// requireBatchGone checks that target, the old batch's URL, answers 410 Gone
+// through the whole stack, with the detail an old tab's reader can act on. A
+// route that fell through to the SPA would answer index.html at 200, which the
+// old viewer reads as a server that is not Vantage.
+func requireBatchGone(t *testing.T, h http.Handler, target string) {
+	t.Helper()
+	rec := doGET(t, h, target)
+	require.Equal(t, http.StatusGone, rec.Code, "body: %s", rec.Body.String())
+	require.JSONEq(t, `{"detail":"The planning index moved to a stream; reload the page."}`, rec.Body.String())
+}
+
 // isolatePlanningDirs is isolateUserDirs plus the XDG override, so neither the
 // developer's user ignore file nor their config can change what is listed.
 func isolatePlanningDirs(t *testing.T) {
@@ -82,7 +93,7 @@ func isolatePlanningDirs(t *testing.T) {
 }
 
 // Single-repo mode serves the endpoints at the legacy paths, under the
-// repository's own `[planning]` table.
+// repository's own `[planning]` table, and the old batch's URL is gone.
 func TestTheRepositoryServesItsPlanningSources(t *testing.T) {
 	isolatePlanningDirs(t)
 	root := initRepo(t, map[string]string{
@@ -104,6 +115,7 @@ func TestTheRepositoryServesItsPlanningSources(t *testing.T) {
 	require.Equal(t, []string{"docs/gallery/**"}, exclude)
 	require.Equal(t, "absent", planningKind(t, h, "/api/planning/sources?path=docs/gallery/status.md"))
 	require.Equal(t, "file", planningKind(t, h, "/api/planning/sources?path=docs/design/a.md"))
+	requireBatchGone(t, h, "/api/planning/sources")
 }
 
 // In daemon mode each repository is served under its own table. A handler that
@@ -131,6 +143,7 @@ func TestDaemonServesEachRepositorysPlanningSourcesUnderItsOwnTable(t *testing.T
 
 	require.Equal(t, "absent", planningKind(t, h, "/api/r/alpha/planning/sources?path=docs/x.md"))
 	require.Equal(t, "file", planningKind(t, h, "/api/r/beta/planning/sources?path=docs/y.md"))
+	requireBatchGone(t, h, "/api/r/alpha/planning/sources")
 
 	require.Equal(t, http.StatusNotFound, doJSON(t, h, http.MethodPost, "/api/planning/stream", `{}`).Code,
 		"legacy repo routes are disabled in daemon mode")
