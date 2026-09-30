@@ -25,7 +25,18 @@ import {
   type WorkerReply,
   type WorkerRequest,
 } from "./core";
+import { setPlanningLimitsForTests, type PlanningLimits } from "./limits";
 import { idbScanStore } from "./store";
+
+/**
+ * This worker's own limits, configured down. A worker has its own copy of the
+ * limits module, which no override made on the page reaches, so the dev
+ * server's end-to-end tests send this. A production build ignores it.
+ */
+interface LimitsForTests {
+  type: "limits";
+  limits: Partial<PlanningLimits>;
+}
 
 /**
  * The little of a dedicated worker's global scope this uses. The app compiles
@@ -34,7 +45,10 @@ import { idbScanStore } from "./store";
  */
 interface ScanWorkerScope {
   onmessage:
-    ((event: MessageEvent<WorkerRequest | HelperStart>) => void) | null;
+    | ((
+        event: MessageEvent<WorkerRequest | HelperStart | LimitsForTests>,
+      ) => void)
+    | null;
   postMessage(reply: WorkerReply): void;
 }
 
@@ -64,6 +78,10 @@ scope.onmessage = ({ data }) => {
   if (data.type === "helper") {
     scope.onmessage = null;
     serveHelper(data.port);
+    return;
+  }
+  if (data.type === "limits") {
+    if (import.meta.env.DEV) setPlanningLimitsForTests(data.limits);
     return;
   }
   handle ??= scanWorker();
