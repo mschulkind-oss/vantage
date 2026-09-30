@@ -1106,6 +1106,9 @@ func TestWatcherDropsUnchangedGitStateEvent(t *testing.T) {
 
 	w, err := NewWatcher(root, "", nil, nil, false, slog.New(slog.DiscardHandler))
 	require.NoError(t, err)
+	// .git/index is heard through the watch on .git, as it is when running.
+	w.addWatch = func(string) error { return nil }
+	w.addRecursive(root)
 	w.seedGitStateFingerprints()
 
 	var flushed []string
