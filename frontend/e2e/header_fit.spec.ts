@@ -887,26 +887,34 @@ test.describe("an untracked file's header", () => {
     // Hours old, so the relative time reads the same for the whole test.
     const mtime = new Date(Date.now() - 180 * MINUTE);
     fs.utimesSync(file, mtime, mtime);
+    // The rest of the list is the server's, fetched once here, and the page's
+    // own request is answered at once from it rather than passed through to
+    // the server. A document's first paint waits at most 150 ms for this list
+    // (docs/design/planning-index-at-scale.md §11.3, "the hold"); a list that
+    // lands after that is late data (§11.1, L1), and the time it carries is
+    // drawn only where it moves nothing already painted (§11.2). Between the
+    // painted Untracked file button and Path there is no such place, so a
+    // time that came through the server's round trip was never drawn for the
+    // visit, and this test, which is about the steps the header takes and not
+    // about late data (stable_paint.spec.ts is), read every step after it as
+    // out of order.
+    const recent = (await (
+      await page.request.get("/api/git/recent?limit=30")
+    ).json()) as { path: string }[];
+    const listed = [
+      {
+        path: UNTRACKED,
+        date: mtime.toISOString(),
+        author_name: "",
+        message: "",
+        hexsha: "",
+        untracked: true,
+      },
+      ...recent.filter((f) => f.path !== UNTRACKED),
+    ];
     await page.route(
       (url) => url.pathname === "/api/git/recent",
-      async (route) => {
-        const response = await route.fetch();
-        const recent = (await response.json()) as { path: string }[];
-        await route.fulfill({
-          response,
-          json: [
-            {
-              path: UNTRACKED,
-              date: mtime.toISOString(),
-              author_name: "",
-              message: "",
-              hexsha: "",
-              untracked: true,
-            },
-            ...recent.filter((f) => f.path !== UNTRACKED),
-          ],
-        });
-      },
+      (route) => route.fulfill({ json: listed }),
     );
   });
 
