@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/mschulkind-oss/vantage/internal/config"
 	"github.com/mschulkind-oss/vantage/internal/fs"
+	"github.com/mschulkind-oss/vantage/internal/fsname"
 	"github.com/mschulkind-oss/vantage/internal/git"
 )
 
@@ -73,7 +75,7 @@ func splitClonesDirectory(cfg *config.Config) (*clonesPlan, bool) {
 	// mode serves — serving nothing at all would be worse than serving what is
 	// beside them.
 	if wantLoose || len(cfg.Repos) == 0 {
-		loose := config.RepoConfig{Name: freeRepoName(looseProjectName(dir), cfg.Repos), Path: dir, Loose: true}
+		loose := config.RepoConfig{Name: freeRepoName(runtime.GOOS, looseProjectName(dir), cfg.Repos), Path: dir, Loose: true}
 		cfg.Repos = append([]config.RepoConfig{loose}, cfg.Repos...)
 		plan.Loose = loose.Name
 		plan.LooseEmpty = !wantLoose
@@ -84,14 +86,15 @@ func splitClonesDirectory(cfg *config.Config) (*clonesPlan, bool) {
 
 // freeRepoName is name, or — when one of repos already has it — name with the
 // first "-2", "-3", … suffix none of them has: the daemon's rule for a
-// collision.
-func freeRepoName(name string, repos []config.RepoConfig) string {
+// collision, which compares names as goos's filesystem does (see
+// [config.Config.DiscoverReposFromSourceDirs]).
+func freeRepoName(goos, name string, repos []config.RepoConfig) string {
 	taken := make(map[string]bool, len(repos))
 	for _, r := range repos {
-		taken[r.Name] = true
+		taken[fsname.Key(goos, r.Name)] = true
 	}
 	candidate := name
-	for n := 2; taken[candidate]; n++ {
+	for n := 2; taken[fsname.Key(goos, candidate)]; n++ {
 		candidate = fmt.Sprintf("%s-%d", name, n)
 	}
 	return candidate

@@ -310,6 +310,19 @@ func TestSplitClonesDirectoryNamesACollidingCloneWithASuffix(t *testing.T) {
 	require.Equal(t, repoNamesOf(daemon), repoNamesOf(cfg)[1:], "every clone is named as the daemon names it")
 }
 
+// `vantage serve ~/Notes`, where ~/Notes/notes is a clone, served the clone as
+// "notes" and the loose project as "Notes". Every project's review files are
+// named after it in one directory, and on macOS those two names open the same
+// files, so the two projects shared their reviews. There the loose project
+// takes a suffix, as the daemon names a colliding clone.
+func TestTheLooseProjectsNameDiffersInMoreThanCaseWhereTheFilesystemIgnoresIt(t *testing.T) {
+	repos := []config.RepoConfig{{Name: "notes"}, {Name: "Notes-2"}}
+	require.Equal(t, "Notes-3", freeRepoName("darwin", "Notes", repos))
+	require.Equal(t, "Notes-3", freeRepoName("windows", "Notes", repos))
+	require.Equal(t, "Notes", freeRepoName("linux", "Notes", repos))
+	require.Equal(t, "notes-2", freeRepoName("linux", "notes", repos))
+}
+
 func repoNamesOf(cfg *config.Config) []string {
 	out := make([]string, 0, len(cfg.Repos))
 	for _, r := range cfg.Repos {
