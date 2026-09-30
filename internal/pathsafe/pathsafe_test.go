@@ -42,6 +42,16 @@ func TestResolveLexicalRejections(t *testing.T) {
 		{"dot-vantage after a detour", "docs/../.vantage/state.json", "Access to .vantage directory is not allowed"},
 		{"dot-vantage through backslashes", `x\..\.vantage\state.json`, "Access to .vantage directory is not allowed"},
 		{"dot-vantage itself after a detour", "docs/../.vantage", "Access to .vantage directory is not allowed"},
+		// macOS's filesystems ignore case, and HFS+ also ignores some invisible
+		// code points, so each of these opens .git or .vantage there. On Linux
+		// they name directories that do not exist, which is why a check that
+		// compared bytes passed every test here and still served .git/config on
+		// a Mac.
+		{"dot-git in capitals", ".GIT/config", "Access to .git directory is not allowed"},
+		{"dot-git in mixed case", "docs/.Git/HEAD", "Access to .git directory is not allowed"},
+		{"dot-git with a code point HFS+ ignores", ".g\u200cit/config", "Access to .git directory is not allowed"},
+		{"dot-vantage in capitals", ".VANTAGE/inbox/x.jsonl", "Access to .vantage directory is not allowed"},
+		{"dot-vantage in mixed case after a detour", "docs/../.Vantage/state.json", "Access to .vantage directory is not allowed"},
 		{"traversal", "../secret.md", "Path traversal detected"},
 		{"traversal mid-path", "docs/../../secret.md", "Path traversal detected"},
 	}

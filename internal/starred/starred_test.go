@@ -37,6 +37,9 @@ func TestValidateEntry(t *testing.T) {
 		{"the .vantage dir", Entry{Path: ".vantage/inbox"}, false},
 		{"a nested .vantage", Entry{Path: "sub/.vantage/inbox"}, false},
 		{"the .git dir", Entry{Path: "a/.git/config"}, false},
+		// On macOS these open .git/config and .vantage/inbox.
+		{"the .git dir in capitals", Entry{Path: ".GIT/config"}, false},
+		{"the .vantage dir in capitals", Entry{Path: "sub/.Vantage/inbox"}, false},
 		{"a NUL byte", Entry{Path: "a\x00b"}, false},
 		{"an over-long path", Entry{Path: long}, false},
 		{"an over-long repo", Entry{Repo: strings.Repeat("r", MaxRepoLen+1), Path: "a.md"}, false},

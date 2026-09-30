@@ -35,6 +35,7 @@ import (
 	gitignore "github.com/sabhiram/go-gitignore"
 
 	"github.com/mschulkind-oss/vantage/internal/config"
+	"github.com/mschulkind-oss/vantage/internal/fsname"
 )
 
 // workspaceIgnoreName is the per-repo ignore file, resolved against the root.
@@ -48,10 +49,12 @@ const vantageDirName = ".vantage"
 // IsAlwaysIgnored reports whether rel (repo-relative, slash-or-OS-separated)
 // falls in the built-in always-ignored set: paths hidden even when ignore
 // files are disabled and that no negation pattern can resurface. Currently
-// that is .vantage and everything under it.
+// that is .vantage and everything under it, spelled however a filesystem that
+// ignores case would open it (see [fsname.Same]): on macOS ".VANTAGE/inbox" is
+// the inbox.
 func IsAlwaysIgnored(rel string) bool {
-	rel = normalizeRel(rel)
-	return rel == vantageDirName || strings.HasPrefix(rel, vantageDirName+"/")
+	top, _, _ := strings.Cut(normalizeRel(rel), "/")
+	return fsname.Same(top, vantageDirName)
 }
 
 // reloadInterval caps how often a [Matcher] re-stats its source files. The
