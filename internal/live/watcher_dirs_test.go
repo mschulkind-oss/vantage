@@ -3,6 +3,7 @@ package live
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -301,6 +302,12 @@ func TestWatcherReportsADirectoryMovedOut(t *testing.T) {
 	require.False(t, got.paths["docs/old/sub/c.md"], "a directory outside the tree is not watched as part of it")
 }
 
+// A removed directory is pushed in removed_dirs, and each file that was inside
+// it in paths as well: the planning index drops the directory's subtree, but the
+// viewer ignores removed_dirs and reloads a document only when its own path is
+// pushed. On macOS the order in which kqueue reports the removals varies from run
+// to run, which [TestHandleEventReportsTheFilesOfARemovedDirectoryInAnyOrder]
+// pins on any platform.
 func TestWatcherReportsARemovedDirectory(t *testing.T) {
 	root := t.TempDir()
 	writeTree(t, root, map[string]string{"docs/gone/a.md": "# A\n", "docs/gone/sub/b.md": "# B\n"})
@@ -311,6 +318,155 @@ func TestWatcherReportsARemovedDirectory(t *testing.T) {
 	awaitPushes(t, c, func(p pushes) bool {
 		return p.dirs["docs/gone"] && p.paths["docs/gone/a.md"] && p.paths["docs/gone/sub/b.md"]
 	})
+}
+
+// A directory can be removed only once it is empty, so every file in it goes
+// first, but kqueue, on macOS and the BSDs, can report the directory's removal
+// before a file's. It queues a watch's event where that watch's first change
+// put it and adds each later change to it: when `rm -rf docs/gone` empties sub
+// before it deletes a.md, docs/gone's event is queued by sub's removal, and the
+// removal of docs/gone joins it there, ahead of a.md's. By then docs/gone is no
+// longer watched, and an event from a directory that is not watched is dropped
+// as coming from a renamed directory's stale watch — which is what made
+// TestWatcherReportsARemovedDirectory fail on the macOS runner now and then,
+// with docs/gone/a.md never pushed. inotify always reports the removals in the
+// order they were made.
+//
+// A renamed directory's files go on reporting under their old names, and
+// those events are still dropped — also when the name is one a directory was
+// removed under before.
+func TestHandleEventReportsTheFilesOfARemovedDirectoryInAnyOrder(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		order []string
+	}{
+		{"inotify", []string{"docs/gone/a.md", "docs/gone/sub/b.md", "docs/gone/sub", "docs/gone"}},
+		// What the macOS runner heard: a.md was deleted after sub was.
+		{"kqueue, a file after its directory", []string{"docs/gone/sub/b.md", "docs/gone/sub", "docs/gone", "docs/gone/a.md"}},
+		// a.md deleted first: its deletion queued docs/gone's event, ahead of
+		// b.md's, and the removal of docs/gone joined it there.
+		{"kqueue, a.md listed first", []string{"docs/gone/a.md", "docs/gone", "docs/gone/sub/b.md", "docs/gone/sub"}},
+		// docs/gone had an earlier change still waiting to be read when the
+		// removal began, so its event was queued ahead of both files'.
+		{"kqueue, everything after the directory", []string{"docs/gone", "docs/gone/a.md", "docs/gone/sub/b.md", "docs/gone/sub"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeTree(t, root, map[string]string{
+				"docs/gone/a.md": "# A\n", "docs/gone/sub/b.md": "# B\n", "docs/old/c.md": "# C\n",
+			})
+			w, err := NewWatcher(root, "", nil, nil, false, quietLogger(), []string{})
+			require.NoError(t, err)
+			w.addWatch = func(string) error { return nil }
+			w.addRecursive(root)
+			co := newCoalescer(time.Hour, time.Hour, func([]string) {})
+			defer co.stop()
+			pushed := func() (paths, dirs []string) {
+				co.mu.Lock()
+				defer co.mu.Unlock()
+				var batch []string
+				for p := range co.pending {
+					batch = append(batch, p)
+				}
+				clear(co.pending)
+				return splitBatch(batch)
+			}
+			event := func(rel string, op fsnotify.Op) {
+				w.handleEvent(fsnotify.Event{Name: filepath.Join(root, filepath.FromSlash(rel)), Op: op}, co)
+			}
+
+			require.NoError(t, os.RemoveAll(filepath.Join(root, "docs", "gone")))
+			for _, rel := range tc.order {
+				event(rel, fsnotify.Remove)
+			}
+			paths, dirs := pushed()
+			require.Equal(t, []string{"docs/gone"}, dirs)
+			require.Equal(t, []string{"docs/gone/a.md", "docs/gone/sub/b.md"}, paths)
+
+			require.NoError(t, os.Rename(filepath.Join(root, "docs", "old"), filepath.Join(root, "docs", "new")))
+			event("docs/old", fsnotify.Rename)
+			event("docs/new", fsnotify.Create)
+			paths, dirs = pushed()
+			require.Equal(t, []string{"docs/old"}, dirs)
+			require.Equal(t, []string{"docs/new/c.md"}, paths)
+
+			// docs/new/c.md deleted, and heard once more through the watch that
+			// kept its old name.
+			require.NoError(t, os.Remove(filepath.Join(root, "docs", "new", "c.md")))
+			event("docs/new/c.md", fsnotify.Remove)
+			event("docs/old/c.md", fsnotify.Remove)
+			paths, _ = pushed()
+			require.Equal(t, []string{"docs/new/c.md"}, paths)
+
+			// docs/gone made again, then renamed away: its name is a renamed
+			// directory's now, and a file that was in it reporting its removal
+			// under that name is dropped like any other.
+			writeTree(t, root, map[string]string{"docs/gone/d.md": "# D\n"})
+			event("docs/gone", fsnotify.Create)
+			paths, _ = pushed()
+			require.Equal(t, []string{"docs/gone/d.md"}, paths)
+			require.NoError(t, os.Rename(filepath.Join(root, "docs", "gone"), filepath.Join(root, "docs", "moved")))
+			event("docs/gone", fsnotify.Rename)
+			event("docs/moved", fsnotify.Create)
+			paths, dirs = pushed()
+			require.Equal(t, []string{"docs/gone"}, dirs)
+			require.Equal(t, []string{"docs/moved/d.md"}, paths)
+			require.NoError(t, os.Remove(filepath.Join(root, "docs", "moved", "d.md")))
+			event("docs/moved/d.md", fsnotify.Remove)
+			event("docs/gone/d.md", fsnotify.Remove)
+			paths, _ = pushed()
+			require.Equal(t, []string{"docs/moved/d.md"}, paths)
+		})
+	}
+}
+
+// The record of removed directories names each removal once, by its outermost
+// directory, and keeps only the newest.
+func TestRememberRemovedFoldsAndBoundsTheRecord(t *testing.T) {
+	w, err := NewWatcher(t.TempDir(), "", nil, nil, false, quietLogger(), []string{})
+	require.NoError(t, err)
+	lastWord := func(rel string) bool {
+		return w.lastWordOfRemoved(fsnotify.Event{Name: filepath.Join(w.root, filepath.FromSlash(rel)), Op: fsnotify.Remove})
+	}
+
+	w.rememberRemoved("docs/gone/sub")
+	w.rememberRemoved("docs/gone-x")
+	w.rememberRemoved("docs/gone")
+	require.Equal(t, []string{"docs/gone-x", "docs/gone"}, w.removedDirs,
+		"a directory replaces the ones inside it, and a sibling sharing its prefix stays")
+	require.True(t, lastWord("docs/gone/a.md"))
+	require.True(t, lastWord("docs/gone/sub/b.md"))
+	require.False(t, lastWord("docs/gone-x-sibling/a.md"), "a sibling sharing a record's prefix is not inside it")
+
+	for i := range removedDirsKept {
+		w.rememberRemoved(fmt.Sprintf("tmp/%d", i))
+	}
+	require.Len(t, w.removedDirs, removedDirsKept)
+	require.Equal(t, "tmp/0", w.removedDirs[0], "the oldest records went first")
+	require.False(t, w.lastWordOfRemoved(fsnotify.Event{Name: filepath.Join(w.root, "docs", "gone", "a.md"), Op: fsnotify.Remove}))
+	require.True(t, w.lastWordOfRemoved(fsnotify.Event{Name: filepath.Join(w.root, "tmp", "0", "deep", "a.md"), Op: fsnotify.Rename}))
+	require.False(t, w.lastWordOfRemoved(fsnotify.Event{Name: filepath.Join(w.root, "tmp", "0", "a.md"), Op: fsnotify.Write}),
+		"only a file's last event, which says it is gone")
+}
+
+// A directory renamed away clears the record of a removal under its own name,
+// and that of one it lies in: it was made after that removal, and its files go
+// on reporting under the old name. A record inside it, and a sibling's sharing
+// its prefix, stay.
+func TestForgetRemovedClearsTheRecordsARenamedDirectoryLiesIn(t *testing.T) {
+	w, err := NewWatcher(t.TempDir(), "", nil, nil, false, quietLogger(), []string{})
+	require.NoError(t, err)
+	for _, dir := range []string{"docs/gone", "docs/gone-x", "docs/old/sub", "tmp/a", "keep"} {
+		w.rememberRemoved(dir)
+	}
+
+	w.forgetRemoved("docs/gone")
+	require.Equal(t, []string{"docs/gone-x", "docs/old/sub", "tmp/a", "keep"}, w.removedDirs)
+	w.forgetRemoved("tmp/a/b")
+	require.Equal(t, []string{"docs/gone-x", "docs/old/sub", "keep"}, w.removedDirs, "a record the renamed directory lies in")
+	w.forgetRemoved("docs/old")
+	w.forgetRemoved("keeper")
+	require.Equal(t, []string{"docs/gone-x", "docs/old/sub", "keep"}, w.removedDirs)
 }
 
 // An attribute change alone, which on macOS Spotlight makes all the time, used

@@ -163,8 +163,11 @@ review store, perf store, and live Manager) are built once.
     ([planning-index.md §3.4](planning-index.md#34-when-it-is-built-and-how-it-stays-fresh)).
     It also names the Markdown already inside a directory that appears, which
     inotify never reports by itself. A watched directory renamed away or
-    removed is listed in `removed_dirs`, because its files leave without events
-    of their own.
+    removed is listed in `removed_dirs`, because a renamed one's files leave
+    without events of their own. Only the planning index reads `removed_dirs`;
+    the viewer reloads a document only when its path is pushed, so a removed
+    directory's Markdown is named in `paths` as well, even when kqueue, on
+    macOS, reports a file's removal after its directory's.
 
 - **`review.Store`** — review-mode persistence (see [§2.5](#25-review-mode-internalreview-internalreviewanchor)).
 
