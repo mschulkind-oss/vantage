@@ -144,7 +144,7 @@ Every term here is *coined here* unless it links elsewhere. The planning index's
 | **Page** (of a section) | A fixed run of one section's entries, chosen by a URL query parameter ([§10.2](#102-pages)) | a browser page |
 | **Page inputs** | What the shown pages' cards need before they may paint: their card blocks, their documents' reviews, and their Mermaid diagrams drawn | the index |
 | **Preview card** | A card drawn from the index alone, for a question whose card block is too large to render unasked ([§10.4](#104-cards)) | a summary shown instead of every card |
-| **Placement** | Matching a comment to a listed question by its anchor line, for a card that has not been rendered ([§10.5](#105-comments-and-copy-answers)) | the card's own scoping, which reads the rendered block |
+| **Placement** | Matching a comment to a listed question by its anchor line, for a card that has not been rendered this visit, or whose report is older than its question or its document's comments ([§10.5](#105-comments-and-copy-answers)) | the card's own scoping, which reads the rendered block |
 | **The hold** | A document's first paint waiting, at most 150 ms, for data already on its way ([§11.3](#113-the-hold)) | a wait for a cold build |
 
 A **long task** is a main-thread task over 50 ms ([Long Tasks API](https://w3c.github.io/longtasks/)).
@@ -618,8 +618,14 @@ stands:
   router's transition, so something visible changes about 20–45 ms after the keypress.
 - **The section bar** is one line naming each non-empty section and its count, for example
   `Needs you 143 · Unrouted 12 · Waiting 7 · Ready 3 · Skipped 1`. Each entry jumps to its section
-  without adding a history entry. The counts come from the index, never from rendering, so they
-  are exact at first paint.
+  without adding a history entry, and moves the keyboard's focus to the section's heading, so Tab
+  goes on from there. Its link is still the section's `#id`: a page opened on one, in a new tab or
+  pasted, scrolls to that section once the sections render, unless the visit restores a scroll
+  position of its own. The counts come from the index, never from rendering, so they
+  are exact at first paint. Once sections are on screen, the bar and the notices are drawn from
+  the index those sections were laid out from, so an index update changes them in the commit that
+  changes the sections ([§10.3](#103-page-inputs-and-one-commit)). Every count is written in one
+  format, `1,200`, in the bar, the headings and the pagers alike.
 - **The sections fill the empty region** in one later commit ([§10.3](#103-page-inputs-and-one-commit)),
   below everything already painted.
 
@@ -636,7 +642,12 @@ stands:
   cards total 25,148 characters, so every section here fits on one page, as today.
 - **The pager** sits under a section's heading and again after its last entry:
   `1–10 of 143 · ‹ Previous · Next ›`, plus a page select in a long section. Its height is fixed,
-  its buttons are disabled at the ends, and a section of one page has no pager.
+  and a section of one page has no pager. Its buttons are inert at the ends but stay focusable
+  (`aria-disabled`, not `disabled`): a focused button that becomes disabled drops the keyboard's
+  focus to the page's body, and in a section of two pages every flip lands on an end.
+- **The pager's controls go on from the page asked for**, the URL's; its range shows the page on
+  screen. The two differ only while a flip waits for its inputs, so a second Next during that wait
+  asks for the page after the one asked for, and the page select keeps the reader's choice.
 - **The URL carries the pages**: `/.vantage/planning?needs-you=3&waiting=2`, 1-based, with page
   1 left out. A flip replaces the history entry, so Back from Open document returns to the same
   pages and scroll position, and Back from the planning page leaves it rather than stepping back
@@ -644,8 +655,11 @@ stands:
 - **Out of range:** a page past the end is clamped to the last one, a malformed value reads as 1,
   and either rewrites the URL in place.
 - **A flip** keeps the current page on screen until the next page's inputs are ready, then swaps
-  it in one commit. The bottom pager then scrolls its section's heading into view; the top pager
-  leaves the scroll alone.
+  it in one commit. The bottom pager then scrolls its section's heading into view and moves the
+  focus to it, unless the reader has put the focus outside the section meanwhile; the top pager
+  leaves both alone. When the new page lands, a polite live region in the section says where it
+  went (*Unrouted, page 2 of 3, entries 11–20 of 27*), because the focus left on Next says
+  nothing of the entries that changed below it. It says nothing for the page a visit opens on.
 - **Prefetch:** the next page's inputs when the pointer or focus reaches a pager. Page 1's inputs
   on the `g` of `g p`, and on hover or focus of the toolbar's planning entry, once the index is
   ready. The usual gap between `g` and `p` hides both requests.
@@ -669,8 +683,9 @@ stands:
 - **A `stale` block** refreshes its path, and the previous page stays until the refresh lands and
   the blocks are asked for again.
 - **An index update** (a push, a rescan) derives the pages again. The page on screen stays until
-  the new set's inputs are ready, then changes in one commit. That is a change of data
-  ([§11.1](#111-the-rules)), so the page may re-lay out.
+  the new set's inputs are ready, then changes in one commit, the section bar's counts and the
+  notices with it. That is a change of data ([§11.1](#111-the-rules)), so the page may re-lay
+  out.
 - **Each set of inputs is cached** by repository, index version and page parameters, the last 8
   kept. Returning to a history entry whose inputs are cached renders the frame and the sections in
   one commit and then restores the scroll, so the page never flashes at the top first.
@@ -689,7 +704,9 @@ stands:
   question's marker, title, state and leaning, and two controls: **Show question** and **Open
   document**. *Take this leaning* and *Answer…* appear only once it is shown, since both need the
   rendered host block for their anchor. Showing it renders the full card in place. That is the
-  reader's own action, so the page may grow.
+  reader's own action, so the page may grow. Show question goes away with the preview, so the
+  focus it had moves to the card; while the block loads, the button is inert rather than disabled,
+  for the same reason as the pager's.
 
 ### 10.5 Comments, and Copy answers
 
@@ -700,7 +717,11 @@ stands:
   ([§11.1](#111-the-rules)).
 - **Copy answers still covers every listed question on every page**, as
   [OQ-PL4](planning-index.md#decision-ledger) ruled:
-  - **a card rendered this visit** reports its exact scoping, from the rendered block, as today;
+  - **a card rendered this visit** reports its exact scoping, from the rendered block, as today.
+    The report names what it was read from, the question and its document's comments, and it
+    holds after the card leaves the page: flipping away and back leaves Copy answers' count and
+    payload as they were. It stops holding once the index has another version of the question, or
+    the document's comments change, and placement decides until the card renders again;
   - **any other card** uses placement. A comment on document *d* counts for listed question *q*
     of *d* when `q.unitLine ≤ anchor.source_line ≤ q.unitEndLine`, and the innermost such unit
     wins. That is exact unless the comment's block has moved since it was filed. A moved one is
@@ -802,6 +823,7 @@ review mode's 4 px bar. Each is its own fix.
 | A card block comes back `stale` | the path refreshes; the previous page stays until it lands |
 | A card's document is gone from the index | today's *not in the planning index any more* line |
 | The reviews request fails | the sections paint without comments, with one line at the top of the region in the same commit (*Comments could not be loaded*), and Copy answers is disabled. A push retries |
+| The second reviews request fails (the listed documents no shown page holds), after the sections painted | a line above the sections would move them, so it is said where nothing moves: the pending count stays `–`, Copy answers stays disabled with a warning icon in place of its own and a tooltip saying the comments could not be loaded, and a screen reader hears *Comments could not be loaded* once. A push retries |
 | A Mermaid diagram misses its deadline | the fixed 240 px frame |
 | A page parameter is out of range or malformed | clamped, or read as page 1 |
 | A tab from before the upgrade | the old batch URL answers `410`; the page shows the error and Retry, and a reload fixes it |

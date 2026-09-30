@@ -307,6 +307,65 @@ test.describe("the planning page", () => {
     await expect(page).toHaveURL("about:blank");
   });
 
+  // A control that goes away or turns disabled under the keyboard drops the
+  // focus to the body, which jsdom does not do, so this is where it shows.
+  test("keeps the keyboard's place through a flip, a jump and Show question", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 600 });
+    await page.goto("/.vantage/planning");
+    const needsYou = section(page, "Needs you");
+    await expect(needsYou.getByRole("article")).toHaveCount(10);
+    const focused = () =>
+      page.evaluate(() => {
+        const el = document.activeElement;
+        return el === null || el === document.body
+          ? "BODY"
+          : `${el.tagName}:${el.textContent?.trim()}`;
+      });
+
+    // Onto the last page: Next stays focused, and inert.
+    const next = pager(page, "Needs you").getByRole("button", {
+      name: "Next ›",
+    });
+    await next.focus();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\?needs-you=2$/);
+    await expect(next).toHaveAttribute("aria-disabled", "true");
+    expect(await focused()).toBe("BUTTON:Next ›");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\?needs-you=2$/);
+
+    // From the bottom pager: the heading comes into view, and the focus
+    // with it.
+    await page
+      .getByRole("navigation", { name: "Needs you pages, below" })
+      .getByRole("button", { name: "‹ Previous" })
+      .focus();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/\.vantage\/planning$/);
+    const heading = needsYou.getByRole("heading", { level: 2 });
+    await expect(heading).toBeFocused();
+    await expect(heading).toBeInViewport();
+
+    // A jump from the section bar takes the focus to the section.
+    await page
+      .getByRole("navigation", { name: "Sections" })
+      .getByRole("link", { name: /^Unrouted/ })
+      .focus();
+    await page.keyboard.press("Enter");
+    await expect(
+      section(page, "Unrouted").getByRole("heading", { level: 2 }),
+    ).toBeFocused();
+
+    // Show question goes, and the card it became takes the focus.
+    const oversized = card(page, "OQ-V1: Is the long question shown whole?");
+    await oversized.getByRole("button", { name: "Show question" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(oversized.getByText("The end of the question.")).toBeVisible();
+    await expect(oversized).toBeFocused();
+  });
+
   test("draws a question past the size limit as a preview card, and Show question renders it whole", async ({
     page,
   }) => {
