@@ -154,9 +154,11 @@ function parseCheck(argv: string[]): Invocation {
 }
 
 /**
- * `index [--format text|json] [--config <path> | --no-config]`. It takes no
- * paths: it scans the project the working directory belongs to, so a path
- * would be a second answer to a question the root already settles.
+ * `index [--format text|json] [--roadmap <path>] [--config <path> |
+ * --no-config]`. It takes no paths: it scans the project the working
+ * directory belongs to, so a path would be a second answer to a question the
+ * root already settles. `--roadmap` chooses which roadmap Needs you follows,
+ * and given twice, the last wins, as `--config` does.
  */
 function parseIndex(argv: string[]): Invocation {
   const options: IndexOptions = { format: "text" };
@@ -202,6 +204,14 @@ function parseIndex(argv: string[]): Invocation {
       case "--no-config":
         options.noConfig = true;
         break;
+      case "--roadmap": {
+        const value = takeValue();
+        if (value === undefined) {
+          return { kind: "usage-error", message: "--roadmap needs a path" };
+        }
+        options.roadmap = value;
+        break;
+      }
       default:
         return {
           kind: "usage-error",

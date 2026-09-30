@@ -68,8 +68,19 @@ export type PreferenceKey = (typeof PREFERENCE_KEYS)[number];
  */
 export const REVIEW_MODE_FAMILY = "vantage.reviewMode:";
 
+/**
+ * The roadmap the planning page shows is remembered per repository
+ * (`docs/design/planning-index.md` §6.4), so it is a family too: one key per
+ * repository, the empty name in single-repo mode, holding the picked roadmap's
+ * repo-relative path as it is. Only a pick on the page writes one.
+ */
+export const PLANNING_ROADMAP_FAMILY = "vantage:planningRoadmap:";
+
 /** Every registered prefix under which a preference may mint keys at runtime. */
-export const PREFERENCE_FAMILIES = [REVIEW_MODE_FAMILY] as const;
+export const PREFERENCE_FAMILIES = [
+  REVIEW_MODE_FAMILY,
+  PLANNING_ROADMAP_FAMILY,
+] as const;
 
 export type PreferenceFamily = (typeof PREFERENCE_FAMILIES)[number];
 
@@ -85,6 +96,14 @@ export type PreferenceName = PreferenceKey | `${PreferenceFamily}${string}`;
  */
 export function reviewModePreferenceKey(scope: string): PreferenceName {
   return `${REVIEW_MODE_FAMILY}${scope}`;
+}
+
+/**
+ * Where the planning page remembers the roadmap picked for `repo`: `""` in
+ * single-repo mode, the repository's name in daemon mode.
+ */
+export function planningRoadmapPreferenceKey(repo: string): PreferenceName {
+  return `${PLANNING_ROADMAP_FAMILY}${repo}`;
 }
 
 /**
@@ -113,6 +132,11 @@ export const UNSYNCED_PREFERENCES: Partial<
     "further than that, closing the review affordances under a reviewer " +
     "part-way through a comment on the strength of a click in another tab. " +
     "Adoption at open is the weaker guarantee and the right one.",
+  [PLANNING_ROADMAP_FAMILY]:
+    "The planning page reads the remembered roadmap once per visit, by design " +
+    "(planning-index.md §6.4): another tab's pick must never swap Needs you " +
+    "under a reader who is part-way through answering it here. The next visit " +
+    "reads the new pick, and a URL that names a roadmap outranks it anyway.",
 };
 
 /**

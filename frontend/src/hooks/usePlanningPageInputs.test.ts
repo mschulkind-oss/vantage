@@ -207,6 +207,33 @@ describe("one set of inputs", () => {
     expect(asked).toHaveLength(1);
   });
 
+  it("keeps the same pages under another roadmap as another set", async () => {
+    const asked = serve();
+    // docs/roadmap.md, found by name, routes plans/b.md.
+    const ready = readyOf({
+      ...TREE,
+      "docs/roadmap.md": "# Docs\n\n- [B](../plans/b.md)\n",
+    });
+    const nearest = layoutPlanningPage(
+      ready.index,
+      sectionsOf(ready.index),
+      {},
+    );
+    const other = layoutPlanningPage(
+      ready.index,
+      sectionsOf(ready.index, "docs/roadmap.md"),
+      {},
+    );
+    expect(nearest.pages).toBe(other.pages);
+    const first = loadPageInputs("", ready, nearest);
+    const second = loadPageInputs("", ready, other);
+    expect(second).not.toBe(first);
+    expect(loadPageInputs("", ready, other)).toBe(second);
+    const [a, b] = await Promise.all([first.promise, second.promise]);
+    expect(a?.key).not.toBe(b?.key);
+    expect(asked).toHaveLength(2);
+  });
+
   it("refreshes a stale block's path once for its hash", async () => {
     setPlanningLimitsForTests({ reviewsDeadlineMs: 10 });
     serve(() => ({
@@ -333,6 +360,37 @@ describe("prefetchPlanningPage", () => {
     prefetchPlanningPage("");
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(asked).toHaveLength(1);
+  });
+
+  it("asks for the remembered roadmap's first page, else the default's, and a pager's own", async () => {
+    const tree = {
+      ...TREE,
+      "docs/roadmap.md": "# Docs\n\n- [B](../plans/b.md)\n",
+    };
+    usePlanningStore.setState({ byRepo: { "": readyOf(tree) } });
+    const paths = (want: CardWant[] | undefined) =>
+      want?.map((item) => item.path);
+    // Nothing remembered: the nearest the root, roadmap.md, routing a.md.
+    const byDefault = serve();
+    prefetchPlanningPage("");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(paths(byDefault[0])).toEqual(["plans/a.md", "plans/a.md"]);
+    resetPlanningPageInputs();
+    localStorage.setItem("vantage:planningRoadmap:", "docs/roadmap.md");
+    try {
+      const asked = serve();
+      prefetchPlanningPage("");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(asked).toHaveLength(1);
+      expect(paths(asked[0])).toEqual(["plans/b.md"]);
+      // A pager names the roadmap the page shows, over the remembered one.
+      prefetchPlanningPage("", {}, "roadmap.md");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(asked).toHaveLength(2);
+      expect(paths(asked[1])).toEqual(["plans/a.md", "plans/a.md"]);
+    } finally {
+      localStorage.clear();
+    }
   });
 
   it("asks for nothing while the index builds, when it is refused, or in a static export", async () => {

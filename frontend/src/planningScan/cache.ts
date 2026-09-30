@@ -20,8 +20,8 @@
  * - **The first failure turns it off for the tab**, logged once (§8.3). From
  *   then on it holds no stamps, so a build sends no `have`, and the card blocks
  *   of this tab's scans are kept in memory instead, up to `memoryCardChars`,
- *   least recently used first out (§8.4). The roadmap's blocks are kept there
- *   even with a store, because the roadmap is never stored.
+ *   least recently used first out (§8.4). Every roadmap's blocks are kept
+ *   there even with a store, because no roadmap is ever stored.
  *
  * It holds no document text beyond card blocks, and those only in the memory
  * above; everything else is facts.

@@ -95,12 +95,13 @@ func NewStream(listing Listing, cfg repoconfig.Planning) *Stream {
 
 // Wants reports whether the entry path: hash of a request's `have` could ever
 // make one of this stream's lines `same`: the stream is not refused, path is
-// one of its candidates and is not the roadmap, and hash is spelled as a
-// content hash is. An entry it refuses changes nothing [Stream.Write] writes,
-// so a caller that keeps only what it accepts holds at most one path and 32
-// digits per candidate, however large the body it read them from.
+// one of its candidates and is no roadmap ([repoconfig.Planning.IsRoadmap]),
+// and hash is spelled as a content hash is. An entry it refuses changes
+// nothing [Stream.Write] writes, so a caller that keeps only what it accepts
+// holds at most one path and 32 digits per candidate, however large the body
+// it read them from.
 func (s *Stream) Wants(path, hash string) bool {
-	if s.refused || path == s.cfg.Roadmap || !isContentHash(hash) {
+	if s.refused || s.cfg.IsRoadmap(path) || !isContentHash(hash) {
 		return false
 	}
 	if s.wanted == nil {
@@ -127,9 +128,12 @@ func (s *Stream) Wants(path, hash string) bool {
 // have maps a path to the content hash the browser holds a scan result for. A
 // candidate that reads whole, as UTF-8 and within the size limit, to exactly
 // that hash is `same`; any other readable candidate is `file`, with its text.
-// The roadmap is always `file`, whatever have says, so that whether a file is
-// the roadmap is never part of what the browser keeps. A path in have that is
-// not a candidate is ignored, and a nil have asks for every text: a cold build.
+// Every roadmap, each path `roadmap` lists or, with no `roadmap` key, each
+// candidate named roadmap.md, is always `file`, whatever have says, so that
+// whether a file is a roadmap is never part of what the browser keeps. No line
+// says which files are roadmaps: the header's config does, and the browser
+// applies the same test to it. A path in have that is not a candidate is
+// ignored, and a nil have asks for every text: a cold build.
 //
 // Each candidate is read exactly as [Lookup] reads one. Every candidate is
 // sent whatever it holds: which files are planning documents is the scan's to
@@ -169,7 +173,7 @@ func (s *Stream) Write(ctx context.Context, w Flusher, have map[string]string) e
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			line := candidateLine(rel, r.read(rel), rel == s.cfg.Roadmap, have)
+			line := candidateLine(rel, r.read(rel), s.cfg.IsRoadmap(rel), have)
 			if line == nil {
 				continue
 			}

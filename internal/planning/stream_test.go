@@ -146,7 +146,7 @@ func TestSameIsOnlyForAnEqualHash(t *testing.T) {
 	require.Equal(t, "test", lines[2]["content"])
 }
 
-// The roadmap is never `same`, so which file is the roadmap never has to be
+// A roadmap is never `same`, so whether a file is a roadmap never has to be
 // part of what the browser keeps under a hash (design §8.1).
 func TestTheRoadmapIsSentWholeWhateverHaveSays(t *testing.T) {
 	svc, _ := repo(t, map[string]string{"roadmap.md": "# Roadmap\n", "plans/road.md": "test"})
@@ -157,10 +157,110 @@ func TestTheRoadmapIsSentWholeWhateverHaveSays(t *testing.T) {
 	require.Equal(t, []string{"header", "same plans/road.md", "file roadmap.md", "end"}, kinds(lines))
 	require.Equal(t, "# Roadmap\n", lines[2]["content"])
 
-	cfg.Roadmap = "plans/road.md"
+	cfg.Roadmaps = []string{"plans/road.md"}
 	lines = writeStream(t, svc, cfg, have).lines(t)
 	require.Equal(t, []string{"header", "file plans/road.md", "same roadmap.md", "end"}, kinds(lines),
-		"the configured roadmap, not the default one")
+		"the listed roadmap, and roadmap.md, which the list leaves out, is an ordinary file")
+}
+
+// Every roadmap is sent whole, not only one: each file found by its name, in
+// any directory and any case, or each one listed. A path the roadmap test does
+// not pick is `same` as any other file is (planning-index-at-scale.md §6.1).
+func TestEveryRoadmapIsSentWhole(t *testing.T) {
+	svc, _ := repo(t, map[string]string{
+		"roadmap.md":            "# Roadmap\n",
+		"docs/plans/roadmap.md": "test",
+		"docs/Roadmap.md":       "test",
+		"docs/a.md":             "test",
+	})
+	have := map[string]string{
+		"roadmap.md": roadmapHash, "docs/plans/roadmap.md": testHash, "docs/Roadmap.md": testHash, "docs/a.md": testHash,
+	}
+	for _, tc := range []struct {
+		name     string
+		roadmaps []string
+		want     []string
+	}{
+		{"found by name", nil, []string{"file docs/Roadmap.md", "same docs/a.md", "file docs/plans/roadmap.md", "file roadmap.md"}},
+		{"listed, both", []string{"roadmap.md", "docs/plans/roadmap.md"}, []string{"same docs/Roadmap.md", "same docs/a.md", "file docs/plans/roadmap.md", "file roadmap.md"}},
+		{"listed, one", []string{"docs/plans/roadmap.md"}, []string{"same docs/Roadmap.md", "same docs/a.md", "file docs/plans/roadmap.md", "same roadmap.md"}},
+		{"none", []string{}, []string{"same docs/Roadmap.md", "same docs/a.md", "same docs/plans/roadmap.md", "same roadmap.md"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := repoconfig.DefaultPlanning()
+			cfg.Roadmaps = tc.roadmaps
+			lines := writeStream(t, svc, cfg, have).lines(t)
+			require.Equal(t, append(append([]string{"header"}, tc.want...), "end"), kinds(lines))
+			for _, l := range lines {
+				if l["kind"] == KindFile {
+					require.NotEmpty(t, l["content"], l["path"])
+				}
+			}
+		})
+	}
+}
+
+// Finding by name looks only among candidates, so `exclude` hides a roadmap
+// found by its name, from the stream and from the single-path mode alike. A
+// listed one is read whatever the patterns say (Plan Q2, per entry), but only
+// if the listing yields it: in a hidden directory it is not read, whatever the
+// list says (design §3.1).
+func TestExcludeHidesAFoundRoadmapAndNotAListedOne(t *testing.T) {
+	svc, _ := repo(t, map[string]string{
+		"roadmap.md":          "# Roadmap\n",
+		"archive/roadmap.md":  "# Archived\n",
+		"plans/roadmap.md":    "# Plans\n",
+		".private/roadmap.md": "# Hidden\n",
+	})
+	cfg := repoconfig.DefaultPlanning()
+	cfg.Exclude = []string{"archive/**", "plans/**"}
+
+	lines := writeStream(t, svc, cfg, nil).lines(t)
+	require.Equal(t, []string{"header", "file roadmap.md", "end"}, kinds(lines), "found by name, so hidden by exclude")
+	require.Equal(t, KindAbsent, Lookup(svc, cfg, "archive/roadmap.md").Kind)
+	require.Equal(t, KindAbsent, Lookup(svc, cfg, "plans/roadmap.md").Kind)
+	require.Equal(t, KindFile, Lookup(svc, cfg, "roadmap.md").Kind)
+
+	cfg.Roadmaps = []string{"plans/roadmap.md", ".private/roadmap.md"}
+	lines = writeStream(t, svc, cfg, nil).lines(t)
+	require.Equal(t, []string{"header", "file plans/roadmap.md", "file roadmap.md", "end"}, kinds(lines),
+		"listed, so read despite exclude; roadmap.md is still an ordinary candidate; the hidden one is never listed")
+	require.Equal(t, 2.0, lines[0]["candidate_count"])
+	require.Equal(t, KindFile, Lookup(svc, cfg, "plans/roadmap.md").Kind)
+	require.Equal(t, KindAbsent, Lookup(svc, cfg, "archive/roadmap.md").Kind, "not listed, so excluded")
+	require.Equal(t, KindAbsent, Lookup(svc, cfg, ".private/roadmap.md").Kind, "listed, but the listing leaves it out")
+}
+
+// The header's config is the stream's whole roadmap marking, so `roadmaps` has
+// to reach the browser as the resolved table spells it: null, a list, or [],
+// each as itself (planning-index-at-scale.md §6.1). No other line gains a field.
+func TestTheHeaderCarriesTheRoadmapsAsResolved(t *testing.T) {
+	svc, _ := repo(t, map[string]string{"roadmap.md": "# Roadmap\n", "b/roadmap.md": "# B\n"})
+	for _, tc := range []struct {
+		roadmaps []string
+		want     string
+	}{
+		{nil, `null`},
+		{[]string{"b/roadmap.md", "a.md"}, `["b/roadmap.md","a.md"]`},
+		{[]string{}, `[]`},
+	} {
+		cfg := repoconfig.DefaultPlanning()
+		cfg.Roadmaps = tc.roadmaps
+		body := writeStream(t, svc, cfg, nil).buf.String()
+		first, _, _ := strings.Cut(body, "\n")
+		var h struct {
+			Config map[string]json.RawMessage `json:"config"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(first), &h))
+		require.JSONEq(t, tc.want, string(h.Config["roadmaps"]), "roadmaps %q", tc.roadmaps)
+		require.NotContains(t, h.Config, "roadmap", "the one roadmap is gone from the wire")
+
+		for _, l := range decodeLines(t, body)[1:] {
+			for key := range l {
+				require.Contains(t, []string{"kind", "path", "hash", "content", "size", "reason", "candidates"}, key)
+			}
+		}
+	}
 }
 
 // A nil have and an empty one are both a cold build: every text is sent.
@@ -377,6 +477,40 @@ func TestWantsKeepsOnlyWhatCouldBeSame(t *testing.T) {
 	}
 	require.Equal(t, map[string]string{"a.md": testHash, "b.md": testHash[:31] + "6"}, kept)
 	require.Equal(t, writeStream(t, svc, cfg, have).buf.String(), writeStream(t, svc, cfg, kept).buf.String())
+}
+
+// Wants refuses every roadmap, found by name or listed, since no roadmap is
+// ever `same`: its `have` entry could change nothing the stream writes. A path
+// the roadmap test does not pick is wanted as any candidate is.
+func TestWantsRefusesEveryRoadmap(t *testing.T) {
+	svc, _ := repo(t, map[string]string{
+		"roadmap.md": "# Roadmap\n", "docs/plans/ROADMAP.md": "test", "notes/next.md": "test", "a.md": "test",
+	})
+	for _, tc := range []struct {
+		name     string
+		roadmaps []string
+		exclude  []string
+		refused  []string
+		wanted   []string
+	}{
+		{"found by name", nil, []string{}, []string{"roadmap.md", "docs/plans/ROADMAP.md"}, []string{"notes/next.md", "a.md"}},
+		// Excluded, so a candidate only because it is listed.
+		{"listed", []string{"notes/next.md"}, []string{"notes/**"}, []string{"notes/next.md"}, []string{"roadmap.md", "docs/plans/ROADMAP.md", "a.md"}},
+		{"none", []string{}, []string{}, nil, []string{"roadmap.md", "docs/plans/ROADMAP.md", "notes/next.md", "a.md"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := repoconfig.DefaultPlanning()
+			cfg.Roadmaps = tc.roadmaps
+			cfg.Exclude = tc.exclude
+			stream := NewStream(svc, cfg)
+			for _, path := range tc.refused {
+				require.False(t, stream.Wants(path, testHash), "%q is a roadmap", path)
+			}
+			for _, path := range tc.wanted {
+				require.True(t, stream.Wants(path, testHash), "%q is no roadmap", path)
+			}
+		})
+	}
 }
 
 // A candidate whose name is not UTF-8, which Linux allows, is unreadable and

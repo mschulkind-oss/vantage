@@ -82,12 +82,12 @@ depends-on:
 - **Frontmatter is the stage's one home.** Do not repeat the word in a prose \`**Status:**\` line: that is a second copy, and no tool can read or check it. Keep the prose line, where a document has one, for the date and the why.
 - **\`next\` is the next step, on one line of plain text.** A bare \`OQ-\` id in it links to this document's question of that id, so name the question rather than paraphrasing it.
 - **\`depends-on\` lists what the document waits on**: relative paths, resolved like links, each optionally ending in \`#OQ-\u2026\` to name one question. A single path may stand on its own. A target that does not exist, lies outside the repository, or does not contain the id is an error (\`planning/depends-on-missing\`).
-- **Never a \`priority\` key.** A priority only means something relative to the others, so it lives in one ordered list, the roadmap, and not in each document.
-- **The roadmap is ordered links.** Each entry is a link to a document or a question, then a one-clause reason for its place; the badge beside the link carries the rest, so never copy a status, a stage or a count into it. Prose beneath an entry holds only what has no other home, such as what would unblock it. A bare link to a document *routes* every question in it into the roadmap's order, and a link to one question's \`#OQ-\u2026\` anchor routes that question; a link to any other heading routes nothing. With \`planning/unrouted\` turned on, \`vantage-check\` reports an open question no roadmap link reaches.
-- **\`[planning]\` in \`.vantage.toml\`** names the roadmap, which files are read, and what each stage word means. Every key is optional:
+- **Never a \`priority\` key.** A priority only means something relative to the others, so it lives in an ordered list, a roadmap, and not in each document.
+- **A roadmap is ordered links.** Every file named \`roadmap.md\` is a roadmap, in any directory, unless \`[planning]\` lists the roadmaps instead. Each entry is a link to a document or a question, then a one-clause reason for its place; the badge beside the link carries the rest, so never copy a status, a stage or a count into it. Prose beneath an entry holds only what has no other home, such as what would unblock it. A bare link to a document *routes* every question in it into the roadmap's order, and a link to one question's \`#OQ-\u2026\` anchor routes that question; a link to any other heading routes nothing. A question is routed when any roadmap routes it, and with \`planning/unrouted\` turned on, \`vantage-check\` reports an open question no roadmap routes.
+- **\`[planning]\` in \`.vantage.toml\`** says which files are read, which of them are roadmaps, and what each stage word means. Every key is optional:
 \`\`\`toml
 [planning]
-roadmap = "roadmap.md"          # the default
+# roadmap = ["roadmap.md", "docs/plans/roadmap.md"]  # absent: every roadmap.md
 exclude = ["docs/gallery/**"]   # gitignore syntax; every .md is included by default
 
 [planning.stages]               # each word maps to open | ready | built | done

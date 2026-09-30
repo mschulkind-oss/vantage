@@ -259,6 +259,90 @@ describe("the line (§7)", () => {
   });
 });
 
+describe("the line with several roadmaps (§7)", () => {
+  // Both found by name: roadmap.md at the root and plans/roadmap.md.
+  const ROOT = "# Roadmap\n\n## Building\n\n- [it](docs/design/target.md)\n";
+  const PLANS =
+    "# Plans\n\n## Later\n\n- [it](../docs/design/target.md#OQ-T1)\n";
+
+  it("names the first roadmap that routes it, by the fewest directories, and how many more do", () => {
+    const summary = summaryOf({
+      [TARGET]: planning(questions("T", 2)),
+      "roadmap.md": ROOT,
+      "plans/roadmap.md": PLANS,
+    });
+    expect(summaryLine(summary)).toEqual({
+      count: "Referenced by 2 documents",
+      roadmap: "on roadmap.md under Building and 1 other roadmap",
+      unrouted: null,
+    });
+    renderLine(summary);
+    expect(toggle()).toHaveTextContent(
+      /^Referenced by 2 documents · on roadmap.md under Building and 1 other roadmap$/,
+    );
+  });
+
+  it("names a roadmap below the root by its directory, beside roadmap.md", () => {
+    const summary = summaryOf({
+      [TARGET]: planning(questions("T", 2)),
+      "roadmap.md": "# Roadmap\n",
+      "plans/roadmap.md": PLANS,
+    });
+    expect(summaryLine(summary)).toEqual({
+      count: "Referenced by 1 document",
+      roadmap: "on plans/roadmap.md under Later",
+      unrouted: "1 open question not routed by any roadmap",
+    });
+  });
+
+  it("counts what no roadmap routes, not what one does not", () => {
+    // roadmap.md routes OQ-T1 and plans/roadmap.md OQ-T2, so nothing is left.
+    const summary = summaryOf({
+      [TARGET]: planning(questions("T", 2)),
+      "roadmap.md":
+        "# Roadmap\n\n## Now\n\n- [it](docs/design/target.md#OQ-T1)\n",
+      "plans/roadmap.md":
+        "# Plans\n\n## Later\n\n- [it](../docs/design/target.md#OQ-T2)\n",
+    });
+    expect(summaryLine(summary)?.unrouted).toBeNull();
+    expect(summaryLine(summary)?.roadmap).toBe(
+      "on roadmap.md under Now and 1 other roadmap",
+    );
+  });
+
+  it("speaks of the roadmap again when only one of them routes", () => {
+    // plans/roadmap.md is retired by a done stage, so it routes nothing.
+    const summary = referenceSummary(
+      indexOf(
+        {
+          [TARGET]: planning(questions("T", 2)),
+          "roadmap.md": ROOT.replace("#OQ-T1", ""),
+          "plans/roadmap.md": `---\nstage: DONE\n---\n\n${PLANS}`,
+        },
+        { stages: { DONE: "done" } },
+      ),
+      TARGET,
+    );
+    expect(summaryLine(summary)?.roadmap).toBe("on the roadmap under Building");
+  });
+
+  it("puts the roadmaps that route first in the list, in roadmap order", () => {
+    const summary = summaryOf({
+      [TARGET]: planning(questions("T", 1)),
+      "roadmap.md": ROOT,
+      "plans/roadmap.md": PLANS,
+      "docs/a.md": citing("design/target.md", ["Uses"]),
+    });
+    renderLine(summary);
+    fireEvent.click(toggle());
+    expect(rows()).toEqual([
+      "roadmap.md · Building",
+      "plans/roadmap.md · Later",
+      "a.md · Uses",
+    ]);
+  });
+});
+
 describe("the disclosure", () => {
   const summary = () =>
     summaryOf({

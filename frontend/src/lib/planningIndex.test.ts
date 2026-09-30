@@ -86,7 +86,7 @@ describe("parseStreamLine", () => {
   /** The stream's example lines, from the design's §6.1, one of each kind. */
   const LINES = {
     header:
-      '{"kind":"header","config":{"roadmap":"roadmap.md","include":["**/*.md"],"exclude":[],"max_file_bytes":1048576,"max_candidates":5000,"stages":null},"candidate_count":41,"refused":false}',
+      '{"kind":"header","config":{"roadmaps":null,"include":["**/*.md"],"exclude":[],"max_file_bytes":1048576,"max_candidates":5000,"stages":null},"candidate_count":41,"refused":false}',
     same: `{"kind":"same","path":"AGENTS.md","hash":"${HASH}"}`,
     file: '{"kind":"file","path":"docs/design/a.md","hash":"60303ae22b998861bce3b28f33eec1be","content":"---\\nstatus: draft\\n---\\n"}',
     skipped: '{"kind":"skipped","path":"docs/big.md","size":2097152}',
@@ -127,7 +127,7 @@ describe("parseStreamLine", () => {
       parseStreamLine({
         ...line("header"),
         config: {
-          roadmap: "plans/roadmap.md",
+          roadmaps: ["plans/roadmap.md", "roadmap.md"],
           include: ["**/*.md"],
           exclude: ["docs/gallery/**"],
           max_file_bytes: 1048576,
@@ -138,7 +138,7 @@ describe("parseStreamLine", () => {
     ).toEqual({
       kind: "header",
       config: {
-        roadmap: "plans/roadmap.md",
+        roadmaps: ["plans/roadmap.md", "roadmap.md"],
         include: ["**/*.md"],
         exclude: ["docs/gallery/**"],
         maxFileBytes: 1048576,
@@ -148,6 +148,21 @@ describe("parseStreamLine", () => {
       candidateCount: 41,
       refused: false,
     });
+  });
+
+  // The header's config is the stream's whole roadmap marking
+  // (planning-index-at-scale.md §6.1): null finds them by name, and a list,
+  // [] included, names them.
+  it("reads roadmaps as null, a list, or an empty list", () => {
+    const header = line("header");
+    for (const roadmaps of [null, [], ["a.md"]]) {
+      expect(
+        parseStreamLine({
+          ...header,
+          config: { ...(header["config"] as object), roadmaps },
+        }),
+      ).toMatchObject({ kind: "header", config: { roadmaps } });
+    }
   });
 
   it("reads undeclared stages, and an empty table, as no stages", () => {
@@ -232,10 +247,39 @@ describe("parseStreamLine", () => {
       },
     ],
     [
-      "a header whose config has no roadmap",
+      "a header whose config has no roadmaps",
+      (() => {
+        const header = line("header");
+        const { roadmaps: _roadmaps, ...config } = header["config"] as Record<
+          string,
+          unknown
+        >;
+        return { ...header, config };
+      })(),
+    ],
+    [
+      // A server from before several roadmaps; its tab's Retry and a reload
+      // recover it (design §13).
+      "a header from before several roadmaps",
+      JSON.parse(
+        LINES.header.replace('"roadmaps":null', '"roadmap":"roadmap.md"'),
+      ),
+    ],
+    [
+      "a header whose roadmaps are one string",
       {
         ...line("header"),
-        config: { ...(line("header")["config"] as object), roadmap: null },
+        config: {
+          ...(line("header")["config"] as object),
+          roadmaps: "roadmap.md",
+        },
+      },
+    ],
+    [
+      "a header whose roadmaps hold a number",
+      {
+        ...line("header"),
+        config: { ...(line("header")["config"] as object), roadmaps: [3] },
       },
     ],
     ["a same line whose path is a number", { ...line("same"), path: 7 }],
@@ -296,12 +340,25 @@ describe("buildPlanningIndex", () => {
     expect(index.skipped).toEqual([skipped[1], skipped[0]]);
   });
 
-  it("makes the roadmap a document even with nothing in it, and only the roadmap", () => {
+  it("makes a listed roadmap a document even with nothing in it, and only the listed ones", () => {
     const index = indexOf(
-      { "plans/ROADMAP.md": PLAIN, "roadmap.md": PLAIN },
-      { roadmap: "plans/ROADMAP.md" },
+      { "plans/ROADMAP.md": PLAIN, "roadmap.md": PLAIN, "notes.md": PLAIN },
+      { roadmaps: ["plans/ROADMAP.md"] },
     );
     expect(index.documents.map((d) => d.path)).toEqual(["plans/ROADMAP.md"]);
+  });
+
+  it("makes every roadmap found by name a document", () => {
+    const index = indexOf({
+      "plans/ROADMAP.md": PLAIN,
+      "roadmap.md": PLAIN,
+      "notes.md": PLAIN,
+      "my-roadmap.md": PLAIN,
+    });
+    expect(index.documents.map((d) => d.path)).toEqual([
+      "plans/ROADMAP.md",
+      "roadmap.md",
+    ]);
   });
 
   it("scans at max-candidates and refuses one past it (§3.5)", () => {
@@ -629,8 +686,30 @@ describe("applySource (§3.4)", () => {
       path: "notes.md",
       content: PLAIN,
     });
+    const nested = applySource(index, {
+      kind: "file",
+      path: "docs/plans/Roadmap.md",
+      content: PLAIN,
+    });
     expect(roadmap.documents.map((d) => d.path)).toEqual(["roadmap.md"]);
     expect(other.documents).toEqual([]);
+    expect(nested.documents.map((d) => d.path)).toEqual([
+      "docs/plans/Roadmap.md",
+    ]);
+    const listed = buildPlanningIndex(
+      sourcesOf({}, {}, { roadmaps: ["notes.md"] }),
+    );
+    expect(
+      applySource(listed, { kind: "file", path: "roadmap.md", content: PLAIN })
+        .documents,
+    ).toEqual([]);
+    expect(
+      applySource(listed, {
+        kind: "file",
+        path: "notes.md",
+        content: PLAIN,
+      }).documents.map((d) => d.path),
+    ).toEqual(["notes.md"]);
   });
 
   // Every pushed Markdown path is asked about, planning or not, so an answer

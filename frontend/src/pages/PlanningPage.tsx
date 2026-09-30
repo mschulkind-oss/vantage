@@ -13,6 +13,12 @@
  * entries, with the page in the URL (`lib/planningPages.ts`). A flip replaces
  * the history entry, so Back from a document returns to the same pages.
  *
+ * Several roadmaps (`planning-index.md` §6.4): when two or more route, the
+ * roadmap line above the section bar offers a picker, and *Needs you* follows
+ * the chosen one. The choice is in the URL as `?roadmap=`, and a pick is
+ * remembered for the repository in this browser; picking is a flip of
+ * *Needs you* to its first page.
+ *
  * Frame first (§10.1, §10.3): the route's first render is the header, the
  * section bar and the notices, with no card in it. The sections fill the
  * region below in one later commit, from a complete set of page inputs —
@@ -55,8 +61,10 @@ import {
   type CardBlock,
   type DependsOn,
   type PlanningBadge,
+  type PlanningConfig,
   type PlanningIndex,
   type PlanningQuestion,
+  type PlanningRoadmap,
   type PlanningSections,
   type QuestionRef,
 } from "vantage-md/planning";
@@ -77,15 +85,21 @@ import {
   usePlanningPageInputs,
 } from "../hooks/usePlanningPageInputs";
 import {
+  chooseRoadmap,
   layoutPlanningPage,
   listedQuestions as listedQuestionsOf,
-  pageSearch,
   placeComment,
+  planningSearch,
   readPageRequest,
+  readRememberedRoadmap,
+  readRoadmapRequest,
+  rememberRoadmap,
   requestWithPage,
+  routingRoadmaps,
   SECTION_IDS,
   sectionsOf,
   withPage,
+  withRoadmap,
   type CardEntry,
   type LaidOutSection,
   type PlanningLayout,
@@ -451,8 +465,16 @@ function bringSectionIntoView(id: SectionId): void {
   heading?.focus({ preventScroll: true });
 }
 
-const Notice: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <p className="mb-3 text-sm text-slate-500 dark:text-slate-400">{children}</p>
+const Notice: React.FC<{ children: React.ReactNode; testId?: string }> = ({
+  children,
+  testId,
+}) => (
+  <p
+    data-testid={testId}
+    className="mb-3 text-sm text-slate-500 dark:text-slate-400"
+  >
+    {children}
+  </p>
 );
 
 /** The line that stands where the section bar will be, while the index builds. */
@@ -466,23 +488,94 @@ const ProgressLine: React.FC<{
   </p>
 );
 
-/** The notices under the section bar (§6.2): each only when it applies. */
-const Notices: React.FC<{ sections: PlanningSections }> = ({ sections }) => (
-  <>
-    {sections.nothingNeedsYou && (
-      <p
-        data-testid="nothing-needs-you"
-        className="mb-6 text-base font-medium text-slate-700 dark:text-slate-200"
+/**
+ * The notices under the section bar (§6.2): each only when it applies. The
+ * roadmap notice names what the page looked for when no roadmap routes, or a
+ * listed roadmap it could not read while another routes (§6.4).
+ */
+const Notices: React.FC<{
+  sections: PlanningSections;
+  config: PlanningConfig;
+}> = ({ sections, config }) => {
+  const roadmapNotice = PLANNING_NOTICES.roadmapNotice(
+    config,
+    sections.roadmaps,
+  );
+  return (
+    <>
+      {sections.nothingNeedsYou && (
+        <p
+          data-testid="nothing-needs-you"
+          className="mb-6 text-base font-medium text-slate-700 dark:text-slate-200"
+        >
+          {PLANNING_NOTICES.nothingNeedsYou}
+        </p>
+      )}
+      {roadmapNotice !== null && (
+        <Notice testId="roadmap-notice">{roadmapNotice}</Notice>
+      )}
+      {!sections.stagesDeclared && <Notice>{PLANNING_NOTICES.noStages}</Notice>}
+    </>
+  );
+};
+
+/** `(4 need you)`, or `(1 needs you)`: a roadmap's count in the picker. */
+const needYouCount = (n: number): string =>
+  `(${n.toLocaleString("en-US")} ${n === 1 ? "needs" : "need"} you)`;
+
+/**
+ * The roadmap line (§6.4): above the section bar, and only when two or more
+ * roadmaps route. A native select labelled Roadmap offers each by its full
+ * path, never shortened, since every one is named roadmap.md, with its
+ * *Needs you* count; after it, as text, how many questions need you only on
+ * the others. Its options and that count are the frame's, drawn from the
+ * index the sections on screen were laid out from; its value is the roadmap
+ * asked for, at once, and a spinner beside it says when the swap has waited
+ * longer than a flip may without one.
+ */
+const RoadmapLine: React.FC<{
+  roadmaps: readonly PlanningRoadmap[];
+  value: string;
+  others: number;
+  busy: boolean;
+  onPick: (path: string) => void;
+}> = ({ roadmaps, value, others, busy, onPick }) => {
+  const id = React.useId();
+  return (
+    <div
+      data-testid="roadmap-line"
+      className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600 dark:text-slate-300"
+    >
+      <label htmlFor={id} className="font-medium">
+        Roadmap
+      </label>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onPick(e.target.value)}
+        className="max-w-full min-w-0 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
       >
-        {PLANNING_NOTICES.nothingNeedsYou}
-      </p>
-    )}
-    {!sections.roadmap.present && (
-      <Notice>{PLANNING_NOTICES.noRoadmap(sections.roadmap.path)}</Notice>
-    )}
-    {!sections.stagesDeclared && <Notice>{PLANNING_NOTICES.noStages}</Notice>}
-  </>
-);
+        {roadmaps.map((roadmap) => (
+          <option key={roadmap.path} value={roadmap.path}>
+            {roadmap.path} {needYouCount(roadmap.needsYouCount)}
+          </option>
+        ))}
+      </select>
+      {others > 0 && (
+        <span data-testid="other-roadmaps">
+          {PLANNING_NOTICES.otherRoadmaps(others)}
+        </span>
+      )}
+      {busy && (
+        <Loader2
+          size={14}
+          className="animate-spin text-blue-600"
+          aria-hidden="true"
+        />
+      )}
+    </div>
+  );
+};
 
 const NO_SECTIONS: ReadonlySet<SectionId> = new Set();
 
@@ -541,13 +634,44 @@ export const PlanningPage: React.FC = () => {
 
   const ready = load.status === "ready" ? load : null;
   const index = ready?.index ?? null;
+  const [search, setSearch] = useSearchParams();
+
+  // The roadmap this browser remembers for the repository, read once per
+  // visit (§6.4): another tab's pick never changes a page already on screen.
+  // Read again only when the page's repository changes, and set by a pick.
+  const pageRepo = onThisRepo ? repo : null;
+  const [remembered, setRemembered] = useState(() => ({
+    repo: pageRepo,
+    path: pageRepo === null ? null : readRememberedRoadmap(pageRepo),
+  }));
+  if (remembered.repo !== pageRepo) {
+    setRemembered({
+      repo: pageRepo,
+      path: pageRepo === null ? null : readRememberedRoadmap(pageRepo),
+    });
+  }
+  const rememberedRoadmap =
+    remembered.repo === pageRepo ? remembered.path : null;
+
+  // The chosen roadmap: the URL's, else the remembered one, else the
+  // default, each only while it routes. A roadmap that stops routing under
+  // an index update falls back the same way.
+  const askedRoadmap = useMemo(() => readRoadmapRequest(search), [search]);
+  const chosenRoadmap =
+    index === null || index.refused
+      ? null
+      : chooseRoadmap(
+          sectionsOf(index).roadmaps,
+          askedRoadmap,
+          rememberedRoadmap,
+        );
   const sections = useMemo(
-    () => (index === null || index.refused ? null : sectionsOf(index)),
-    [index],
+    () =>
+      index === null || index.refused ? null : sectionsOf(index, chosenRoadmap),
+    [index, chosenRoadmap],
   );
 
   // The pages, from the URL (§10.2).
-  const [search, setSearch] = useSearchParams();
   const request = useMemo(() => readPageRequest(search), [search]);
   const layout = useMemo(
     () =>
@@ -557,12 +681,13 @@ export const PlanningPage: React.FC = () => {
     [index, sections, request],
   );
   // A page past a section's end, a malformed page and an explicit page 1 are
-  // rewritten in place.
+  // rewritten in place, and so is the roadmap: named when two or more route,
+  // gone when fewer do.
   useEffect(() => {
-    if (layout === null) return;
-    const canonical = pageSearch(search, layout);
+    if (layout === null || sections === null) return;
+    const canonical = planningSearch(search, layout, sections);
     if (canonical !== null) setSearch(canonical, { replace: true });
-  }, [layout, search, setSearch]);
+  }, [layout, sections, search, setSearch]);
 
   /** A section to bring into view once its new page is on screen. */
   const scrollToRef = useRef<SectionId | null>(null);
@@ -575,14 +700,30 @@ export const PlanningPage: React.FC = () => {
     },
     [setSearch],
   );
+  // Picking a roadmap is a flip (§6.4): the URL's roadmap replaced with no
+  // history entry, Needs you back on its first page, and the pick
+  // remembered for the repository.
+  const pickRoadmap = useCallback(
+    (path: string) => {
+      if (pageRepo !== null) rememberRoadmap(pageRepo, path);
+      setRemembered({ repo: pageRepo, path });
+      scrollToRef.current = null;
+      setSearch((prev) => withRoadmap(prev, path), { replace: true });
+    },
+    [pageRepo, setSearch],
+  );
   // A pager the pointer or the focus reaches asks for the next page ahead.
   const prefetch = useCallback<OnPrefetch>(
     (id, page) => {
       if (onThisRepo && repo !== null) {
-        prefetchPlanningPage(repo, requestWithPage(request, id, page));
+        prefetchPlanningPage(
+          repo,
+          requestWithPage(request, id, page),
+          chosenRoadmap,
+        );
       }
     },
-    [onThisRepo, repo, request],
+    [onThisRepo, repo, request, chosenRoadmap],
   );
 
   // The inputs of the pages shown (§10.3). The sections render only from a
@@ -772,7 +913,23 @@ export const PlanningPage: React.FC = () => {
   // changes the sections, not before it (§10.3). Before, it is the index's.
   const frameLayout = shown?.inputs.layout ?? layout;
   const frameSections =
-    shown !== null ? sectionsOf(shown.inputs.index) : sections;
+    shown !== null
+      ? sectionsOf(shown.inputs.index, shown.inputs.layout.roadmap)
+      : sections;
+  const frameConfig = (shown?.inputs.index ?? index)?.config ?? null;
+  // The roadmap line's options, from the frame; its value, the roadmap asked
+  // for, as soon as it is asked for (§6.4).
+  const frameRoutes =
+    frameSections === null ? [] : routingRoadmaps(frameSections.roadmaps);
+  const pickerValue =
+    chosenRoadmap !== null && frameRoutes.some((r) => r.path === chosenRoadmap)
+      ? chosenRoadmap
+      : (frameSections?.chosenRoadmap ?? null);
+  const roadmapSwapSlow =
+    inputs.slow &&
+    shown !== null &&
+    layout !== null &&
+    shown.inputs.layout.roadmap !== layout.roadmap;
 
   const shownPages = shown?.inputs.layout.pages ?? null;
   useLayoutEffect(() => {
@@ -979,9 +1136,22 @@ export const PlanningPage: React.FC = () => {
           </Notice>
         ) : (
           <>
-            {/* The frame (§10.1): the section bar, or the progress line in
-                its place, then the notices. It paints first; the sections
-                fill the region below it in one later commit. */}
+            {/* The frame (§10.1): the roadmap line when two or more
+                roadmaps route, the section bar, or the progress line in
+                their place, then the notices. It paints first; the
+                sections fill the region below it in one later commit. */}
+            {frameReady &&
+              frameSections !== null &&
+              frameRoutes.length >= 2 &&
+              pickerValue !== null && (
+                <RoadmapLine
+                  roadmaps={frameRoutes}
+                  value={pickerValue}
+                  others={frameSections.onOtherRoadmaps.length}
+                  busy={roadmapSwapSlow}
+                  onPick={pickRoadmap}
+                />
+              )}
             <div className="mb-6 flex min-h-7 items-center">
               {frameReady && frameLayout !== null ? (
                 <SectionBar layout={frameLayout} />
@@ -1000,8 +1170,8 @@ export const PlanningPage: React.FC = () => {
                 />
               )}
             </div>
-            {frameReady && frameSections !== null && (
-              <Notices sections={frameSections} />
+            {frameReady && frameSections !== null && frameConfig !== null && (
+              <Notices sections={frameSections} config={frameConfig} />
             )}
             <div data-planning-sections>
               {shown !== null && frameReady ? (

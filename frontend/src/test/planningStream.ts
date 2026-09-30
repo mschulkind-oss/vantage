@@ -10,7 +10,7 @@
  * are cut. A request's `signal` errors the body it is reading, as a real
  * aborted fetch does.
  */
-import type { PlanningConfig } from "vantage-md/planning";
+import { isRoadmapPath, type PlanningConfig } from "vantage-md/planning";
 import { contentHash, planningConfig } from "./planning";
 
 export interface FakeServerOptions {
@@ -27,6 +27,12 @@ export interface FakeServerOptions {
    * `500`, as a server that cannot say would.
    */
   serverId?: string | null;
+  /**
+   * Answer `same` for a roadmap whose hash `have` names, as a server that
+   * disagrees with the worker about which files are roadmaps would. An
+   * agreeing server never does (scale design §6.1).
+   */
+  sameForRoadmaps?: boolean;
 }
 
 /** One request the fake server answered, as it arrived. */
@@ -60,7 +66,7 @@ export interface FakeServer {
 }
 
 const snakeConfig = (config: PlanningConfig) => ({
-  roadmap: config.roadmap,
+  roadmaps: config.roadmaps,
   include: config.include,
   exclude: config.exclude,
   max_file_bytes: config.maxFileBytes,
@@ -71,7 +77,11 @@ const snakeConfig = (config: PlanningConfig) => ({
 const byteLength = (text: string): number =>
   new TextEncoder().encode(text).length;
 
-/** The planning stream's lines for `tree`, answering `have` (§6.1). */
+/**
+ * The planning stream's lines for `tree`, answering `have` (§6.1). Every path
+ * of the tree is a candidate, and a roadmap, by the header's own test, is
+ * always a `file`.
+ */
 export function streamLines(
   tree: Record<string, string>,
   have: Record<string, string>,
@@ -98,7 +108,10 @@ export function streamLines(
         lines.push({ kind: "skipped", path, size });
       } else if (reason !== undefined) {
         lines.push({ kind: "unreadable", path, reason });
-      } else if (path !== config.roadmap && have[path] === hash) {
+      } else if (
+        (options.sameForRoadmaps === true || !isRoadmapPath(config, path)) &&
+        have[path] === hash
+      ) {
         lines.push({ kind: "same", path, hash });
       } else {
         lines.push({ kind: "file", path, hash, content });

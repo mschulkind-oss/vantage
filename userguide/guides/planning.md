@@ -51,8 +51,8 @@ these rules it out:
 **Planning documents.** A candidate is a **planning document** when its
 frontmatter has a `status` or a `stage` key, or when it contains at least one
 `oq` directive (the markup that makes an Open Question answerable in one click;
-see [Style Guide for Agents](../reference/style-guide.md)). The roadmap
-([below](#the-roadmap)) is always one. Every other candidate is read, found to
+see [Style Guide for Agents](../reference/style-guide.md)). Every roadmap
+([below](#the-roadmap)) is one too. Every other candidate is read, found to
 be neither, and dropped. Only planning documents contribute to the index: their
 header, their questions and their links.
 
@@ -235,18 +235,37 @@ Every other row, directories included, looks as it always did.
 
 ## The roadmap
 
-The roadmap is the file `[planning] roadmap` names, `roadmap.md` at the
-repository root unless it says otherwise. It is always read when it exists,
-even if `include` or `exclude` would rule it out.
+A **roadmap** is a planning document whose links set an order. A repository can
+have none, one or several, and which files they are is decided one of two ways:
 
-What the roadmap holds is an **order**: a list of links, each with a one-clause
+- **Found by name,** with no `roadmap` key under `[planning]`, which is the
+  default: every candidate named `roadmap.md`, in any directory, is a roadmap,
+  so `roadmap.md` at the root and `docs/plans/roadmap.md` both are, with nothing
+  to configure. The name is compared ignoring case, so `ROADMAP.md` is one too,
+  but only among candidates, and the default `include`, `**/*.md`, does not
+  match `ROADMAP.MD`. To hide a `roadmap.md`, rule it out as any file is ruled
+  out: a hidden directory, `.vantageignore`, or `include` and `exclude`.
+- **Listed:** `roadmap = "plans/roadmap.md"`, or a list such as
+  `roadmap = ["roadmap.md", "docs/plans/roadmap.md"]`, names exactly the
+  roadmaps, and finding by name is off. A listed file need not be named
+  `roadmap.md`, and it is read even if `include` or `exclude` would rule it out.
+  `roadmap = []` names none
+  ([Planning Documents](../reference/configuration.md#planning-documents)).
+
+A roadmap whose stage has the `done` role routes nothing: that is how an
+archived roadmap stays in the tree without keeping its questions off
+*Unrouted*. With several roadmaps, the one nearest the repository root, in the
+fewest folders and then by path, is the **default**, and the planning page
+offers the others ([below](#several-roadmaps)).
+
+What a roadmap holds is an **order**: a list of links, each with a one-clause
 reason for its place. Everything the linked documents own is in their badges,
 so a roadmap entry never copies a status, a count or a stage, and prose kept
 beneath an entry holds only what has no other home, such as the condition that
 would unblock it.
 
-Its links, in document order, **route** questions. A routed question is one the
-roadmap reaches:
+Its links, in document order, **route** questions. A routed question is one
+some roadmap reaches:
 
 - a link to a question, `x.md#OQ-X`, routes that question;
 - a bare link to a document, with no `#`, routes every question in it, at that
@@ -255,19 +274,21 @@ roadmap reaches:
   is the document's. That is how a compacted question is cited, through
   `#decision-ledger`, without routing the document's other questions;
 - a question reached twice keeps its first position;
-- links to other files, and to a document whose stage has the `done` role,
-  route nothing.
+- links to other files, to a document whose stage has the `done` role, and
+  from a roadmap to itself route nothing;
+- a link to another roadmap is an ordinary link: it routes the questions
+  written in that roadmap, not the ones that roadmap routes.
 
-An open question the roadmap does not route is **unrouted**: it needs a
-ruling, and the one list that says what to do next has missed it. The planning
-page lists those under *Unrouted*, and so does `vantage-check index`.
+An open question no roadmap routes is **unrouted**: it needs a ruling, and every
+list that says what to do next has missed it. The planning page lists those
+under *Unrouted*, and so does `vantage-check index`.
 
 ---
 
 ## Referenced by
 
 Below a planning document's frontmatter card, or at the top of a document
-that has none, one line says whether the roadmap has the document and how many
+that has none, one line says whether a roadmap has the document and how many
 planning documents link to it:
 
 | The line | Means |
@@ -278,15 +299,19 @@ planning documents link to it:
 | *Referenced by 3 documents · on the roadmap under Building · 1 open question not routed by the roadmap* | The roadmap routes one question and has missed another |
 | *2 open questions not routed by the roadmap* | Unrouted questions in a document nothing links to. The line is then the only place the document shows them, and there is nothing to open |
 | *Referenced by 3 documents* | Other documents link here, and the roadmap has nothing to add |
+| *Referenced by 3 documents · on plans/roadmap.md under Building and 1 other roadmap* | With several roadmaps: the first, nearest the root, that routes this document or one of its questions, named by as much of its path as tells it from the other roadmaps, and how many more route it |
+| *Referenced by 3 documents · 2 open questions not routed by any roadmap* | With several roadmaps: two of its open questions are routed by none of them |
 
-The count is of documents, not links, and the roadmap is one of them when it
-links here. A document's links to itself do not count. When nothing links to a
-document and none of its questions is unrouted, there is no line. With no
-roadmap, or for a document whose stage has the `done` role, the line gives the
-count alone.
+The line reads the same in every browser: it never depends on the roadmap the
+planning page shows. The count is of documents, not links, and a roadmap is one
+of them when it links here. A document's links to itself do not count. When
+nothing links to a document and none of its questions is unrouted, there is no
+line. When no roadmap routes, or for a document whose stage has the `done`
+role, the line gives the count alone.
 
 Click the line, or press Enter or Space on it, to see who links here: one row
-per document, the roadmap first, then by path. A row is the document's file
+per document, the roadmaps that route first, nearest the root first, then the
+rest by path. A row is the document's file
 name, with its full path on hover, then the headings its links sit under. Each
 heading links to the first line under it that links here. Two documents with
 the same file name each show as much of their folder as tells them apart, such
@@ -347,8 +372,8 @@ From top to bottom, leaving out any that are empty, each with its count:
 
 | Section | Holds | Each entry shows |
 | :--- | :--- | :--- |
-| **Needs you** | Routed questions that are open or answered, in roadmap order | the question's [card](#a-questions-card) |
-| **Unrouted** | Open questions the roadmap does not route, by path | the question's card |
+| **Needs you** | Questions the shown roadmap routes that are open or answered, in its order | the question's [card](#a-questions-card) |
+| **Unrouted** | Open questions no roadmap routes, by path | the question's card |
 | **Waiting** | Blocked questions, and documents with a `depends-on` entry that still waits: one naming a question waits while it is open (💬), and one naming a document waits while that document has an open question | a blocked question's card; a document's name and badge, then each entry it waits on, with that entry's badge |
 | **Ready** | Documents whose stage has the `ready` role and no open questions | the document's name and badge |
 | **Graduate** | Documents whose stage has the `built` role and no questions left | the document's name and badge |
@@ -361,10 +386,18 @@ Clicking a document's name opens it, as **Open document** does
 
 Two cases change the sections:
 
-- **With no roadmap,** because the file is missing, too large or unreadable,
-  or is not in the file list Vantage shows (a hidden or excluded directory, a
-  `.vantageignore` match, or a file not named `.md`), *Needs you* lists every open question by document, *Unrouted* is not shown,
-  and a line names the file that would be read as the roadmap.
+- **When no roadmap routes,** because no candidate is named `roadmap.md`, or
+  each roadmap is missing, too large, unreadable or retired by a `done` stage,
+  *Needs you* lists every open question by document, *Unrouted* is not shown,
+  and a line says what the page looked for and how to point it at a roadmap,
+  such as *No roadmap: no planning candidate is named roadmap.md, so Needs you
+  lists every open question by document.*, followed by what to do. A listed
+  roadmap is missing when it does not exist or is not in the file list Vantage
+  shows: a hidden or excluded directory, a `.vantageignore` match, or a file not
+  named `.md`.
+- **When a listed roadmap cannot be read while another routes,** the sections
+  are as usual, and a line names it: *Not read as a roadmap: plans/b.md, which
+  roadmap under [planning] lists, is missing or not in Vantage's file list …*.
 - **With no stages declared,** *Ready*, *Graduate* and *Disagrees* are not
   shown, and a line says how to declare them.
 
@@ -374,6 +407,37 @@ answered questions: those await compaction, not a ruling.
 
 Past the candidate limit ([below](#limits)) there are no sections at all, only a
 line saying how many candidates there are and to narrow `include`.
+
+### Several roadmaps
+
+When two or more roadmaps route, a **Roadmap** menu sits above the section bar.
+It lists each by its full path, nearest the repository root first, with how
+many of its questions need you, such as `docs/plans/roadmap.md (4 need you)`.
+*Needs you* follows the one shown, in its order, and after the menu a line says
+how many more questions need you only on the others, such as *3 more questions
+need you on other roadmaps.* Those questions are routed, so they are not under
+*Unrouted*: choose their roadmap to see them.
+
+- **The address says which roadmap is shown,** as
+  `?roadmap=docs/plans/roadmap.md` (the `/` may be escaped as `%2F`; both
+  read alike), so a copied link shows the same roadmap to anyone.
+- **Choosing one** replaces the history entry rather than adding one, as a
+  [flip](#pages) does, and shows *Needs you* from its first page. The menu
+  changes at once, and the sections once the new cards are ready.
+- **This browser remembers your choice** for each repository, and the next
+  visit opens on it. Only a choice made in the menu is remembered, never a link
+  that names one, and a choice made in another tab does not change a page
+  already open.
+- **Which roadmap is shown:** the address's, when it names one that routes;
+  else the one this browser remembers, while it still routes; else the one
+  nearest the root. A roadmap that stops routing, because it was deleted,
+  renamed, excluded or given a `done` stage, gives way in the same order, and
+  the address is corrected in place.
+- **[Copy answers](#copy-answers)** covers the questions of every roadmap, so
+  choosing another changes neither what it copies nor its count.
+
+With one roadmap that routes, or none, there is no menu, and the address
+carries no `roadmap`.
 
 ### Pages
 
@@ -475,7 +539,8 @@ answer. With none, the button is disabled.
 
 It counts and copies the comments on the questions of every
 [page](#pages), not only the ones shown, so a comment on a question two pages
-on is included. The count reads `–` until every listed document's comments have
+on is included, and those of every [roadmap](#several-roadmaps), so is one on
+a question only another roadmap routes. The count reads `–` until every listed document's comments have
 loaded, and the button waits until then; the count has room for four digits, so
 its arrival moves nothing. A question whose card has not been drawn in this
 visit gets the comments filed on its lines in the document, which is exact
@@ -503,8 +568,10 @@ It prints the [planning page's sections](#its-sections) as text, with the same
 notices, and leaves out any that are empty: a question as its path, line,
 marker and title rather than a card, and a document as its path.
 
-After the sections comes the roadmap itself, with each link's badge written
-inline in brackets. The options, the JSON form and the exit codes are in the
+After the sections comes the roadmap *Needs you* follows, with each link's badge
+written inline in brackets. With several roadmaps it lists them all, chooses the
+one nearest the root as the page does, and takes `--roadmap <path>` to choose
+another. The options, the JSON form and the exit codes are in the
 vantage-check guide's [`index` section](vantage-check.md#vantage-check-index),
 and the four `planning/*` rules that `check` runs over the same scan are in
 [What it checks](vantage-check.md#what-it-checks).
@@ -533,8 +600,8 @@ Markdown ([Pages](#pages)), and a card over 32,000 characters is a
   answers with one line for every candidate, but with a file's text only when
   this browser does not already hold what it found in that content
   ([below](#what-this-browser-keeps)). So the first visit fetches and scans
-  every candidate, and a reload afterwards only the roadmap and the files that
-  changed.
+  every candidate, and a reload afterwards only the roadmaps and the files
+  that changed.
 - **A changed file** is fetched and scanned again on its own, as the live-reload
   push names it. A new file joins the index and a deleted one leaves it.
 - **A change to `.vantage.toml`** rescans the whole repository, and files whose
@@ -560,7 +627,7 @@ and port, has a database of its own.
   document it also holds what the index takes from it (its header, headings,
   links and questions) and the Markdown each of its question cards shows, which
   is the document's own text. A card over 32,000 characters is not kept, and
-  nothing is kept for the roadmap.
+  nothing is kept for a roadmap, which is read afresh on every page load.
 - **When it is used:** only when the server reports the same content hash for
   the file. An edit, a checkout or a branch switch changes the hash of every
   file it touches, and those files are fetched and scanned again.
