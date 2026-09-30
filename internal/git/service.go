@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
@@ -168,9 +169,38 @@ func (s *GitService) resolveWorkingDir() string {
 		return ""
 	}
 	if abs, aerr := filepath.Abs(top); aerr == nil {
-		return filepath.Clean(abs)
+		top = abs
 	}
-	return filepath.Clean(top)
+	return spelledAs(s.repoPath, filepath.Clean(top))
+}
+
+// spelledAs returns top, a directory that contains path, spelled the way path
+// spells it: the ancestor of path, or path itself, that is the same directory.
+// It returns top unchanged when path already lies below it as written, or when
+// no ancestor is it.
+//
+// git reports its work tree as the system names it, and on macOS the system
+// names a directory in the case it has on disk, while the path Vantage was
+// given keeps the case it was typed in: resolving symlinks does not touch case.
+// A project served as ~/code/proj when the directory is ~/Code/proj would then
+// see every file outside the work tree, the way a symlinked path used to, and
+// history, status and diffs would all come back empty.
+func spelledAs(path, top string) string {
+	if rel, err := filepath.Rel(top, path); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return top
+	}
+	topInfo, err := os.Stat(top)
+	if err != nil {
+		return top
+	}
+	for dir := path; ; dir = filepath.Dir(dir) {
+		if info, err := os.Stat(dir); err == nil && os.SameFile(info, topInfo) {
+			return dir
+		}
+		if filepath.Dir(dir) == dir {
+			return top
+		}
+	}
 }
 
 // InWorkTree reports whether repoPath lies inside a git work tree — the
