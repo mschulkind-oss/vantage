@@ -87,6 +87,50 @@ func TestSymlinkedRepoPathResolves(t *testing.T) {
 	require.NotNil(t, last, "last commit must resolve through a symlinked repo path")
 }
 
+// git names its work tree as the system does, which on macOS is in the case
+// the directory has on disk, while the service's path keeps the case it was
+// given. The work tree is then spelled as the service's path spells it, found
+// by what the directory is. A symlink the service never resolved stands in for
+// the other spelling here, so Linux checks the search too.
+func TestTheWorkTreeIsSpelledAsTheRepoPathSpellsIt(t *testing.T) {
+	top := filepath.Join(t.TempDir(), "Repo")
+	require.NoError(t, os.MkdirAll(filepath.Join(top, "docs"), 0o755))
+	alias := filepath.Join(t.TempDir(), "repo")
+	require.NoError(t, os.Symlink(top, alias))
+
+	require.Equal(t, alias, spelledAs(filepath.Join(alias, "docs"), top))
+	require.Equal(t, alias, spelledAs(alias, top))
+	require.Equal(t, top, spelledAs(filepath.Join(top, "docs"), top), "already spelled alike")
+	require.Equal(t, top, spelledAs(t.TempDir(), top), "no ancestor is the work tree")
+}
+
+// The case the test above stands in for, where the filesystem ignores case: a
+// project served as .../repo/docs when git's work tree is .../Repo. It runs on
+// the macOS runner and skips where the two spellings are two directories.
+func TestHistoryOfAProjectWhosePathIsSpelledInAnotherCase(t *testing.T) {
+	ClearStatusCache()
+	ClearRecentFilesCache()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary not available")
+	}
+	parent := t.TempDir()
+	repo := filepath.Join(parent, "Repo")
+	require.NoError(t, os.MkdirAll(repo, 0o755))
+	if _, err := os.Stat(filepath.Join(parent, "repo")); err != nil {
+		t.Skip("this filesystem tells case apart, so Repo and repo are two directories here")
+	}
+	runGit(t, repo, "-c", "init.defaultBranch=main", "init")
+	writeFile(t, repo, "docs/a.md", "# A\n")
+	runGit(t, repo, "add", ".")
+	runGit(t, repo, "commit", "-m", "add a")
+
+	svc := NewService(filepath.Join(parent, "repo", "docs"), Options{})
+	require.Equal(t, "docs/a.md", svc.repoRelativePath("a.md"))
+	hist := svc.History("a.md", 10)
+	require.Len(t, hist, 1)
+	require.Equal(t, "add a", hist[0].Message)
+}
+
 func TestIntegrationRootCommitHistoryAndDiff(t *testing.T) {
 	ClearStatusCache()
 	ClearRecentFilesCache()
