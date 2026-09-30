@@ -29,6 +29,8 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/caarlos0/env/v11"
+
+	"github.com/mschulkind-oss/vantage/internal/fsname"
 )
 
 // ExampleConfig is the annotated daemon-config template written by
@@ -492,14 +494,25 @@ func (c *Config) Resolve() error {
 // them eligible for [Config.PruneMissingDiscoveredRepos] later. It returns the
 // newly added repos.
 //
+// A collision is decided the way the platform's filesystem compares names
+// ([fsname.Key]): on macOS "notes" collides with "Notes", because every
+// project's review files are named after it in one shared directory, and there
+// the two names would open the same files.
+//
 // Unreadable source dirs and entries are skipped silently; callers that want to
 // warn can inspect the source-dir existence themselves.
 func (c *Config) DiscoverReposFromSourceDirs() []RepoConfig {
+	return c.discoverReposFromSourceDirs(runtime.GOOS)
+}
+
+// discoverReposFromSourceDirs is [Config.DiscoverReposFromSourceDirs] with the
+// platform passed in, so a test on any host can reach every rule.
+func (c *Config) discoverReposFromSourceDirs(goos string) []RepoConfig {
 	existingPaths := make(map[string]struct{}, len(c.Repos))
 	existingNames := make(map[string]struct{}, len(c.Repos))
 	for _, r := range c.Repos {
 		existingPaths[r.Path] = struct{}{}
-		existingNames[r.Name] = struct{}{}
+		existingNames[fsname.Key(goos, r.Name)] = struct{}{}
 	}
 
 	var added []RepoConfig
@@ -528,7 +541,7 @@ func (c *Config) DiscoverReposFromSourceDirs() []RepoConfig {
 
 			repoName := name
 			for counter := 2; ; counter++ {
-				if _, taken := existingNames[repoName]; !taken {
+				if _, taken := existingNames[fsname.Key(goos, repoName)]; !taken {
 					break
 				}
 				repoName = fmt.Sprintf("%s-%d", name, counter)
@@ -537,7 +550,7 @@ func (c *Config) DiscoverReposFromSourceDirs() []RepoConfig {
 			repo := RepoConfig{Name: repoName, Path: resolved, Discovered: true}
 			c.Repos = append(c.Repos, repo)
 			existingPaths[resolved] = struct{}{}
-			existingNames[repoName] = struct{}{}
+			existingNames[fsname.Key(goos, repoName)] = struct{}{}
 			added = append(added, repo)
 		}
 	}

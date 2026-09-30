@@ -10,6 +10,7 @@ import (
 
 	gitignore "github.com/sabhiram/go-gitignore"
 
+	"github.com/mschulkind-oss/vantage/internal/fsname"
 	"github.com/mschulkind-oss/vantage/internal/pathsafe"
 )
 
@@ -99,7 +100,7 @@ func promote(goos string, req PromoteRequest) (rows []Listed, rejected []string)
 	var patterns []string
 	seen := map[string]bool{}
 	key := func(p string) string {
-		if foldsCase(goos) {
+		if fsname.FoldsCase(goos) {
 			return strings.ToLower(p)
 		}
 		return p
@@ -231,7 +232,7 @@ func MergeListed(sources ...[]Listed) []Listed {
 func mergeListed(goos string, sources ...[]Listed) []Listed {
 	type key struct{ repo, path string }
 	fold := func(p string) string {
-		if foldsCase(goos) {
+		if fsname.FoldsCase(goos) {
 			return strings.ToLower(p)
 		}
 		return p

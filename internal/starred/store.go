@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/mschulkind-oss/vantage/internal/config"
+	"github.com/mschulkind-oss/vantage/internal/fsname"
 )
 
 // dirName is the subdirectory of the user config dir holding one file per root.
@@ -145,21 +146,7 @@ func NormalizeRoot(root string) string {
 // is reachable from a test on any host — the seam internal/config uses for the
 // same reason.
 func normalizeRoot(goos, root string) string {
-	if foldsCase(goos) {
-		return strings.ToLower(root)
-	}
-	return root
-}
-
-// foldsCase reports whether goos's default filesystem treats two spellings of
-// one name as one file.
-//
-// One statement of that question for the whole package, because two callers ask
-// it about different things — [normalizeRoot] about a repository root, and
-// promotion about a path inside one — and a platform list that appeared twice
-// would eventually disagree with itself.
-func foldsCase(goos string) bool {
-	return goos == "darwin" || goos == "windows"
+	return fsname.Key(goos, root)
 }
 
 // RootKey returns the storage key for cfg.
