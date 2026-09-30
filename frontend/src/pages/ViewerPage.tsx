@@ -76,7 +76,7 @@ import { useHeaderFit } from "../hooks/useHeaderFit";
 import { useFirstPaintHold } from "../hooks/useFirstPaintHold";
 import { prefetchPlanningPage } from "../hooks/usePlanningPageInputs";
 import { usePlanningStore } from "../stores/usePlanningStore";
-import { splitExtension } from "../lib/headerFit";
+import { LATE_CLASS, splitExtension } from "../lib/headerFit";
 import { usePersistentFlag } from "../hooks/usePersistentFlag";
 import { usePersistentValue } from "../hooks/usePersistentValue";
 import { StyleGuideModal } from "../components/StyleGuideModal";
@@ -190,13 +190,16 @@ export const ViewerPage: React.FC = () => {
     fetchHistory,
   } = useGitStore();
 
-  // Whether this repository's planning index is being built warm, from the
-  // scan cache (planning-index-at-scale.md §3): the one build a document's
-  // first paint waits for. A cold one can take seconds, and is never waited on.
+  // Whether this repository's planning index may be being built warm, from
+  // the scan cache (planning-index-at-scale.md §3): the one build a document's
+  // first paint waits for. A cold one can take seconds, and is never waited
+  // on. Until the scanner's `started` has said which it is, it may be warm:
+  // git usually answers first, and reading that silence as cold ended the
+  // hold a few milliseconds before a warm index landed.
   const planningRepo = isMultiRepo ? currentRepo : "";
   const warmBuild = usePlanningStore((state) => {
     const load = planningRepo === null ? undefined : state.byRepo[planningRepo];
-    return load?.status === "loading" && load.warm;
+    return load?.status === "loading" && load.warm !== false;
   });
   // Page 1 of the planning page, asked for when the pointer or focus reaches
   // the toolbar's planning entry (planning-index-at-scale.md §10.2), so the
@@ -207,10 +210,10 @@ export const ViewerPage: React.FC = () => {
   }, [planningRepo]);
   // The hold (§11.3): a document that has just arrived waits, at most
   // `holdMs`, for what its first paint shows that is already on its way — its
-  // header's git facts, asked for with its content, the index of a warm
-  // build, and on a first load the recent-files list the header takes an
-  // untracked file's date from and the Path button's root. The previous
-  // document, or the shell, stays up meanwhile.
+  // header's git facts, asked for with its content, the index of a build that
+  // is warm or not yet known to be cold, and on a first load the recent-files
+  // list the header takes an untracked file's date from and the Path button's
+  // root. The previous document, or the shell, stays up meanwhile.
   const firstPaintWaiting =
     loadedPath !== null &&
     (statusByPath[loadedPath] === undefined ||
@@ -233,11 +236,12 @@ export const ViewerPage: React.FC = () => {
 
   // The git facts the header shows are the shown path's own, and there are
   // none until git has answered for it: an unknown status is not an untracked
-  // file (docs/design/planning-index-at-scale.md §11.1, L3). They are asked for
-  // with the content, so the next document's answer can land while this one
-  // is still on screen, and leaves this one's header as it was.
+  // file (docs/design/planning-index-at-scale.md §11.1, L3), and neither is a
+  // request that failed. They are asked for with the content, so the next
+  // document's answer can land while this one is still on screen, and leaves
+  // this one's header as it was.
   const pathGit = currentPath ? statusByPath[currentPath] : undefined;
-  const statusKnown = pathGit !== undefined;
+  const statusKnown = pathGit !== undefined && !pathGit.failed;
   const latestCommit = pathGit?.lastCommit ?? null;
   const fileGitStatus = pathGit?.gitStatus ?? null;
   const history = useMemo(
@@ -340,6 +344,26 @@ export const ViewerPage: React.FC = () => {
     const match = recentFiles.find((f) => f.path === currentPath);
     return match?.date ?? null;
   }, [statusKnown, latestCommit, currentPath, recentFiles]);
+
+  // What the header had in hand when the shown path first painted. An item
+  // drawn from anything that arrived after that is late data: it is marked
+  // `hdr-late`, and takes only the room the header has left, so it never
+  // moves what the reader is already looking at (planning-index-at-scale.md
+  // §11.2; "Late items" in lib/headerFit.ts). Kept per path, adjusted during
+  // render as the viewer's own visit is, so the render that meets a new path
+  // already answers for it.
+  const inHand = {
+    path: currentPath,
+    status: statusKnown,
+    history: currentPath !== null && historyByPath[currentPath] !== undefined,
+    root: repoRootPath !== null,
+    mtime: fileMtime !== null,
+  };
+  const [paintedWith, setPaintedWith] = useState(inHand);
+  if (paintedWith.path !== currentPath) setPaintedWith(inHand);
+  const firstPaint = paintedWith.path === currentPath ? paintedWith : inHand;
+  /** The late item's class, for an item drawn from what the first paint lacked. */
+  const lateUnless = (had: boolean) => (had ? undefined : LATE_CLASS);
 
   useWebSocket();
 
@@ -1328,7 +1352,10 @@ export const ViewerPage: React.FC = () => {
                   {fileGitStatus && (
                     <button
                       onClick={handleCommitClick}
-                      className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2 py-1.5 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors cursor-pointer"
+                      className={cn(
+                        "flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2 py-1.5 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors cursor-pointer",
+                        lateUnless(firstPaint.status),
+                      )}
                       title="View uncommitted changes"
                     >
                       <GitBranch size={12} />
@@ -1349,7 +1376,10 @@ export const ViewerPage: React.FC = () => {
                       currentPath &&
                       fetchDiff(currentPath, latestCommit.hexsha)
                     }
-                    className="hdr-commit hidden sm:flex items-center gap-3 min-w-0 text-xs group cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 -mx-2 transition-colors"
+                    className={cn(
+                      "hdr-commit hidden sm:flex items-center gap-3 min-w-0 text-xs group cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 -mx-2 transition-colors",
+                      lateUnless(firstPaint.status),
+                    )}
                     // The subject is the first thing the header gives up, so
                     // the tooltip is where it can still be read in full.
                     title={`${latestCommit.message}\n${formatDateTime(latestCommit.date)} — click to view diff`}
@@ -1387,7 +1417,10 @@ export const ViewerPage: React.FC = () => {
                       currentPath &&
                       fetchDiff(currentPath, latestCommit.hexsha)
                     }
-                    className="sm:hidden flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors"
+                    className={cn(
+                      "sm:hidden flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors",
+                      lateUnless(firstPaint.status),
+                    )}
                     title="View diff"
                   >
                     <Clock size={14} />
@@ -1408,7 +1441,10 @@ export const ViewerPage: React.FC = () => {
                               ? `/history/${currentRepo}/${currentPath}`
                               : `/history/${currentPath}`
                           }
-                          className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors no-underline"
+                          className={cn(
+                            "flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors no-underline",
+                            lateUnless(firstPaint.history),
+                          )}
                           title={`View full history: ${history.length} ${plural(history.length, "commit")}`}
                         >
                           <History size={14} />
@@ -1420,7 +1456,10 @@ export const ViewerPage: React.FC = () => {
                     {currentPath && repoRootPath && (
                       <button
                         onClick={handleCopyPath}
-                        className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
+                        className={cn(
+                          "flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
+                          lateUnless(firstPaint.root),
+                        )}
                         title={`Copy absolute path: ${repoRootPath}/${currentPath}`}
                       >
                         {pathCopied ? (
@@ -1584,7 +1623,10 @@ export const ViewerPage: React.FC = () => {
                       onClick={() =>
                         currentPath && fetchWorkingDiff(currentPath)
                       }
-                      className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 sm:px-3 py-1.5 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors cursor-pointer"
+                      className={cn(
+                        "flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-2 sm:px-3 py-1.5 rounded-lg hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors cursor-pointer",
+                        lateUnless(firstPaint.status),
+                      )}
                       title="View file content as diff"
                     >
                       <FileQuestion size={14} />
@@ -1595,7 +1637,10 @@ export const ViewerPage: React.FC = () => {
                   )}
                   {fileMtime && (
                     <div
-                      className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 px-2 py-1.5"
+                      className={cn(
+                        "hidden sm:flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 px-2 py-1.5",
+                        lateUnless(firstPaint.mtime),
+                      )}
                       title={formatDateTime(fileMtime)}
                     >
                       <Clock size={14} />
@@ -1615,7 +1660,10 @@ export const ViewerPage: React.FC = () => {
                     {currentPath && repoRootPath && (
                       <button
                         onClick={handleCopyPath}
-                        className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer"
+                        className={cn(
+                          "flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-lg px-2 py-1.5 transition-colors cursor-pointer",
+                          lateUnless(firstPaint.root),
+                        )}
                         title={`Copy absolute path: ${repoRootPath}/${currentPath}`}
                       >
                         {pathCopied ? (

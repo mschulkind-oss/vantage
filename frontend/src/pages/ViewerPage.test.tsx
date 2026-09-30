@@ -28,6 +28,7 @@ import { useWebSocket } from "../hooks/useWebSocket";
 import { usePlanningStore } from "../stores/usePlanningStore";
 import { planningLimits } from "../planningScan/limits";
 import { prefetchPlanningPage } from "../hooks/usePlanningPageInputs";
+import { indexOf } from "../test/planning";
 import { BrowserRouter } from "react-router-dom";
 import type { CommentReaction, ReviewComment } from "../types";
 
@@ -48,13 +49,24 @@ vi.mock("../components/FileTree", () => ({
 // so the mock has to be able to report one — otherwise every assertion about
 // what the Review toggle says is vacuously true at zero.
 let mockOpenQuestionCount = 0;
+/**
+ * Each render of the viewer: the document it drew, and what the planning
+ * index was as it did, so the hold's tests can ask what a first paint had.
+ */
+const mockViewerRenders: { path: string; planning: string | undefined }[] = [];
 vi.mock("../components/MarkdownViewer", () => ({
   MarkdownViewer: ({
+    currentPath,
     onOpenQuestionCount,
   }: {
+    currentPath: string;
     onOpenQuestionCount?: (count: number) => void;
   }) => {
     onOpenQuestionCount?.(mockOpenQuestionCount);
+    mockViewerRenders.push({
+      path: currentPath,
+      planning: usePlanningStore.getState().byRepo[""]?.status,
+    });
     return <div data-testid="markdown-viewer">MarkdownViewer</div>;
   },
 }));
@@ -592,6 +604,128 @@ describe("ViewerPage", () => {
       loaded("c.md");
       rerender(page());
       expect(shownName()).toBe("c.md");
+    });
+
+    // Git usually answers before the scanner has said whether its build is
+    // warm. A hold that read that silence as cold ended on git's answer, and
+    // a warm index landing a few milliseconds later missed the first paint:
+    // on a third of warm reloads the page had no badges and no Referenced by
+    // for the whole visit.
+    it("waits for a build not yet known to be cold, so a warm index is in the first paint", () => {
+      loaded("a.md");
+      answered("a.md", "b.md", "c.md");
+      const { rerender } = render(page());
+      const loading = (warm: boolean | null) =>
+        act(() => {
+          usePlanningStore.setState({
+            byRepo: { "": { status: "loading", warm, progress: null } },
+          });
+        });
+
+      loading(null);
+      loaded("b.md");
+      rerender(page());
+      // Git has answered, and the scanner has said nothing yet.
+      expect(shownName()).toBe("a.md");
+      loading(true);
+      expect(shownName()).toBe("a.md");
+      mockViewerRenders.length = 0;
+      act(() => vi.advanceTimersByTime(planningLimits.holdMs / 2));
+      act(() => {
+        usePlanningStore.setState({
+          byRepo: {
+            "": {
+              status: "ready",
+              index: indexOf({}),
+              version: 1,
+              rescanning: false,
+              hashes: {},
+            },
+          },
+        });
+      });
+      expect(shownName()).toBe("b.md");
+      expect(mockViewerRenders.find((r) => r.path === "b.md")).toEqual({
+        path: "b.md",
+        planning: "ready",
+      });
+
+      // A cold build ends the hold the moment the scanner says so.
+      loading(null);
+      loaded("c.md");
+      rerender(page());
+      expect(shownName()).toBe("b.md");
+      loading(false);
+      expect(shownName()).toBe("c.md");
+    });
+
+    // L3: a failed status request is no answer about the file. It once read
+    // as a file with no commit, so a tracked file's header said "Untracked
+    // file" and showed its modification time as if that were all git knew.
+    it("says nothing of git when the status request failed, and waits no longer for it", () => {
+      loaded("a.md");
+      gitStore.mockReturnValue({
+        ...gitStore(),
+        statusByPath: {
+          "a.md": { lastCommit: null, gitStatus: null, failed: true },
+        },
+        historyByPath: { "a.md": [] },
+        recentFiles: [
+          {
+            path: "a.md",
+            date: new Date().toISOString(),
+            author_name: "",
+            message: "",
+            hexsha: "",
+          },
+        ],
+      });
+      render(page());
+      expect(shownName()).toBe("a.md");
+      expect(screen.queryByText("Untracked file")).toBeNull();
+      expect(screen.queryByTestId("header-time")).toBeNull();
+      expect(screen.queryByTitle(/click to view diff$/)).toBeNull();
+    });
+
+    // §11.2: what the first paint lacked is late data, which the header fit
+    // draws only where it moves nothing already drawn (lib/headerFit.ts).
+    it("marks the header's git items late when git answered after the first paint", () => {
+      loaded("a.md");
+      answered("a.md");
+      const { rerender } = render(page());
+      const commitButton = () => screen.getByTitle(/click to view diff$/);
+      const historyLink = () =>
+        screen.getByTitle("View full history: 1 commit");
+      const withHistory = (...paths: string[]) =>
+        gitStore.mockReturnValue({
+          ...gitStore(),
+          statusByPath: Object.fromEntries(paths.map((p) => [p, COMMITTED])),
+          historyByPath: Object.fromEntries(
+            paths.map((p) => [p, [COMMITTED.lastCommit]]),
+          ),
+        });
+      // In hand when a.md painted: ordinary items.
+      withHistory("a.md");
+      rerender(page());
+      expect(commitButton()).not.toHaveClass("hdr-late");
+
+      // b.md paints at the hold's deadline, with nothing from git.
+      loaded("b.md");
+      rerender(page());
+      act(() => vi.advanceTimersByTime(planningLimits.holdMs));
+      expect(shownName()).toBe("b.md");
+      withHistory("a.md", "b.md");
+      rerender(page());
+      expect(commitButton()).toHaveClass("hdr-late");
+      expect(historyLink()).toHaveClass("hdr-late");
+
+      // The next document to arrive with its answers is not late at all.
+      withHistory("a.md", "b.md", "c.md");
+      loaded("c.md");
+      rerender(page());
+      expect(shownName()).toBe("c.md");
+      expect(commitButton()).not.toHaveClass("hdr-late");
+      expect(historyLink()).not.toHaveClass("hdr-late");
     });
 
     it("waits for nothing when everything is in hand", () => {

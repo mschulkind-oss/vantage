@@ -23,6 +23,13 @@
  *   exists for, and a touch screen has no hover to show the title. Below `sm`
  *   the line wraps, and a row wraps with a hanging indent and breaks a file
  *   name with nowhere else to break rather than widen the page.
+ * - **One line at every width when it fills a reservation** (`oneLine`): the
+ *   line the viewer reserved at first paint for an index still on its way
+ *   (`docs/design/planning-index-at-scale.md` §11.2) is one line tall, and a
+ *   phone's wrapped line was two, so filling it moved the whole document down
+ *   a line. There it is cut off instead, for this visit only, with the whole
+ *   of it in the title and the documents behind the disclosure; the next
+ *   visit has the index at first paint and wraps it.
  *
  * It sits inside the prose container, directly after the frontmatter card, so
  * it is built from elements nothing there reads as the document: no heading,
@@ -41,6 +48,11 @@ interface ReferencedByProps {
   summary: ReferenceSummary;
   /** The viewer URL of a repository path, `/{repo}/…` in daemon mode. */
   hrefFor: (path: string) => string;
+  /**
+   * Keep the line to one line at every width, as it must be when it fills the
+   * line reserved for it at first paint. Otherwise it wraps below `sm`.
+   */
+  oneLine?: boolean;
 }
 
 /** Marks the whole surface, for tests and for any pass that must step around it. */
@@ -231,7 +243,11 @@ function SourceRow({
   );
 }
 
-export function ReferencedBy({ summary, hrefFor }: ReferencedByProps) {
+export function ReferencedBy({
+  summary,
+  hrefFor,
+  oneLine = false,
+}: ReferencedByProps) {
   const [open, setOpen] = useState(false);
   const [expandedRows, setExpandedRows] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -245,6 +261,7 @@ export function ReferencedBy({ summary, hrefFor }: ReferencedByProps) {
   if (line === null) return null;
   const text = textOf(line);
   const labels = sourceLabels(summary.sources.map((source) => source.from));
+  const truncate = oneLine ? "truncate" : "sm:truncate";
 
   return (
     <div
@@ -252,7 +269,7 @@ export function ReferencedBy({ summary, hrefFor }: ReferencedByProps) {
       className="not-prose mb-6 text-[13px] leading-relaxed text-slate-500 dark:text-slate-400"
     >
       {summary.sources.length === 0 ? (
-        <div className="sm:truncate" title={text}>
+        <div className={truncate} title={text}>
           <LineWords line={line} />
         </div>
       ) : (
@@ -272,7 +289,7 @@ export function ReferencedBy({ summary, hrefFor }: ReferencedByProps) {
                 open && "rotate-90",
               )}
             />
-            <span className="min-w-0 sm:truncate">
+            <span className={cn("min-w-0", truncate)}>
               <LineWords line={line} />
             </span>
           </button>

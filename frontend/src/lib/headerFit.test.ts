@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  LATE_CLASS,
+  PLACED_ATTR,
   SUBJECT_FLOOR_PX,
   YIELD_STEPS,
   fewestSteps,
@@ -209,5 +211,109 @@ describe("fitHeader", () => {
     box.width = 1300;
     expect(fitHeader(header)).toBe(0);
     expect(header.dataset.yield).toBe("");
+  });
+});
+
+/**
+ * A header whose toolbar holds one drawn button and one late item, laid out
+ * the way the stylesheet lays it out: the toolbar packs against the far end
+ * while its items fit, and runs off it when they do not. The late item takes
+ * room only once placed; the subject and the date steps narrow it alone, the
+ * labels step narrows the drawn button, and the dirs step the breadcrumb.
+ */
+function lateHeader(width: number) {
+  const header = document.createElement("div");
+  header.innerHTML =
+    '<div class="hdr-lead"></div>' +
+    `<div class="hdr-tools"><button class="${LATE_CLASS}"></button><button class="drawn"></button></div>`;
+  const lead = header.querySelector<HTMLElement>(".hdr-lead")!;
+  const late = header.querySelector<HTMLElement>(`.${LATE_CLASS}`)!;
+  const drawn = header.querySelector<HTMLElement>(".drawn")!;
+  const box = { width };
+  const GAP = 8;
+  const layout = () => {
+    const taken = (header.dataset.yield ?? "").split(" ");
+    const leadRight = taken.includes("dirs") ? 320 : 400;
+    const drawnWidth = taken.includes("labels") ? 30 : 100;
+    const lateWidth = taken.includes("date")
+      ? 100
+      : taken.includes("subject")
+        ? 150
+        : 300;
+    const placed = late.hasAttribute(PLACED_ATTR);
+    const content = drawnWidth + (placed ? GAP + lateWidth : 0);
+    const start = leadRight + GAP;
+    const end = Math.max(box.width, start + content);
+    return {
+      lead: { left: 0, right: leadRight },
+      drawn: { left: end - drawnWidth, right: end },
+      late: placed
+        ? { left: end - content, right: end - drawnWidth - GAP }
+        : { left: 0, right: 0 },
+    };
+  };
+  const rect = (r: { left: number; right: number }) =>
+    ({ ...r, top: 0, bottom: 20 }) as DOMRect;
+  header.getBoundingClientRect = () => rect({ left: 0, right: box.width });
+  lead.getBoundingClientRect = () => rect(layout().lead);
+  drawn.getBoundingClientRect = () => rect(layout().drawn);
+  late.getBoundingClientRect = () => rect(layout().late);
+  const placed = () => late.hasAttribute(PLACED_ATTR);
+  return { header, box, placed };
+}
+
+// Late data takes only the room the header has left
+// (docs/design/planning-index-at-scale.md §11.2). A commit that arrived after
+// the first paint once took the `dirs` step, collapsing painted folders and
+// moving the file name 80px, or folded painted actions into the "⋯".
+describe("fitHeader with a late item", () => {
+  it("draws it in the room the header has left", () => {
+    const { header, placed } = lateHeader(1000);
+    expect(fitHeader(header)).toBe(0);
+    expect(placed()).toBe(true);
+  });
+
+  it("takes a step for it that acts on it alone", () => {
+    // 408px wanted in 392 at no steps; the subject, which only it has, is
+    // enough.
+    const { header, placed } = lateHeader(800);
+    expect(fitHeader(header)).toBe(1);
+    expect(header.dataset.yield).toBe("subject");
+    expect(placed()).toBe(true);
+  });
+
+  it("leaves it undrawn rather than take a step that moves what is drawn", () => {
+    // Only the labels step would make room, and it narrows the drawn button.
+    const { header, placed } = lateHeader(600);
+    expect(fitHeader(header)).toBe(0);
+    expect(header.dataset.yield).toBe("");
+    expect(placed()).toBe(false);
+  });
+
+  it("tries it again at the next fit, and draws it once there is room", () => {
+    const { header, box, placed } = lateHeader(600);
+    fitHeader(header);
+    expect(placed()).toBe(false);
+    box.width = 1000;
+    expect(fitHeader(header)).toBe(0);
+    expect(placed()).toBe(true);
+  });
+
+  it("fits it as an ordinary item once it is drawn", () => {
+    const { header, box, placed } = lateHeader(800);
+    expect(fitHeader(header)).toBe(1);
+    // A narrower window is the reader's doing: the header gives way as it
+    // always does, and what was drawn stays drawn.
+    box.width = 600;
+    expect(fitHeader(header)).toBe(3);
+    expect(placed()).toBe(true);
+  });
+
+  it("drops the mark from an item that is no longer late", () => {
+    const { header } = fakeHeader(1000, needing(900));
+    const button = header.querySelector("button")!;
+    button.setAttribute(PLACED_ATTR, "");
+    fitHeader(header);
+    expect(button.hasAttribute(PLACED_ATTR)).toBe(false);
   });
 });

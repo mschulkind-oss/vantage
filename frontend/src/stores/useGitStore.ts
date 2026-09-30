@@ -31,6 +31,15 @@ export interface PathGitStatus {
   lastCommit: GitCommit | null;
   /** `modified`, `added`, `deleted`, `untracked`, or `null` when clean. */
   gitStatus: string | null;
+  /**
+   * The request failed, so git said nothing and neither field above is known.
+   * It is still an answer — a first paint waiting on it stops waiting — but
+   * not a status: an answer with no commit reads as an untracked file, which
+   * is a guess about a file that may well be tracked
+   * (`docs/design/planning-index-at-scale.md` §11.1, L3). The next push for
+   * the path, or the next visit to it, asks again.
+   */
+  failed?: true;
 }
 
 /**
@@ -53,7 +62,7 @@ interface GitState {
    * the next document, which the viewer does together with its content, leaves
    * the header of the document still on screen alone.
    *
-   * A request that fails still answers: with no commit and no status.
+   * A request that fails still answers, as `failed`: see `PathGitStatus`.
    */
   statusByPath: Readonly<Record<string, PathGitStatus>>;
   /** Each path's history once answered, likewise; a failure answers `[]`. */
@@ -199,7 +208,7 @@ export const useGitStore = create<GitState>((set, get) => ({
         gitStatus: response.data.git_status,
       };
     } catch {
-      answer = { lastCommit: null, gitStatus: null };
+      answer = { lastCommit: null, gitStatus: null, failed: true };
     }
     if (current()) {
       set({ statusByPath: remember(get().statusByPath, path, answer) });

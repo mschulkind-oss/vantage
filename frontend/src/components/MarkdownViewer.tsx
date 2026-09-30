@@ -820,12 +820,15 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     Object.hasOwn(frontmatter, "status") || Object.hasOwn(frontmatter, "stage");
   const referencedByLine =
     referenceSummaryHere === null ? null : summaryLine(referenceSummaryHere);
+  // Drawn after the first paint, it fills the one line reserved for it, so it
+  // is one line at every width: wrapped on a phone, it moved the document.
   const referencedBy =
     referenceSummaryHere !== null && referencedByLine !== null ? (
       <ReferencedBy
         key={currentPath}
         summary={referenceSummaryHere}
         hrefFor={buildPath}
+        oneLine={!indexedAtFirstPaint}
       />
     ) : null;
 
@@ -946,8 +949,9 @@ export const REFERENCED_BY_RESERVED_ATTR =
 /**
  * The line Referenced by fills when the index lands after a document's first
  * paint (`docs/design/planning-index-at-scale.md` §11.2): as tall as its one
- * line and its margin, so filling it moves nothing, and left empty when the
- * index has nothing to say. Built like the line, from nothing the document's
+ * line and its margin, and the line that fills it is kept to one line at every
+ * width, so filling it moves nothing; left empty when the index has nothing
+ * to say. Built like the line, from nothing the document's
  * passes read as the document.
  */
 function ReservedLine() {

@@ -116,11 +116,37 @@ code {
 .hdr-lead {
   flex-shrink: 0;
 }
+/* The toolbar takes the whole of the row the leading half leaves, packing its
+   items against the far end, so that room is inside it. An item arriving
+   late then goes into room the toolbar already had: nothing to its right
+   moves, and neither does the toolbar's own box, which, sized to its items,
+   grew leftward and was a layout shift of its own even though it draws
+   nothing (docs/design/planning-index-at-scale.md §11.2). `safe` sends an
+   overflow off the far end, where the fit measures it; where it is not
+   supported, the fit checks the near end too. */
 .hdr-tools {
   min-width: 0;
+  flex-grow: 1;
+  justify-content: flex-end;
+  justify-content: safe flex-end;
 }
-.hdr-tools > * {
+.hdr-tools > *,
+.hdr-overflow > *,
+.hdr-actions > * {
   flex-shrink: 0;
+}
+/* Until the actions fold, their two wrappers lay nothing out, so the actions
+   are the toolbar's own items. For the same reason: sized to the actions, a
+   wrapper's box moved whenever an action arrived at its start. */
+.viewer-header:not([data-yield~="actions"]) .hdr-overflow,
+.viewer-header:not([data-yield~="actions"]) .hdr-actions {
+  display: contents;
+}
+/* Header items whose data arrived after the document painted (`hdr-late`)
+   are drawn only once the fit has found them room that moves nothing drawn
+   already (lib/headerFit.ts, "late items"). */
+.viewer-header .hdr-late:not([data-hdr-placed]) {
+  display: none;
 }
 .hdr-tools > .hdr-commit {
   flex-shrink: 1;

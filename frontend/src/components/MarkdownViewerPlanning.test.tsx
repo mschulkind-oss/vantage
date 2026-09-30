@@ -514,6 +514,11 @@ describe("Referenced by (§7)", () => {
       expect(toggle()).toHaveTextContent(
         "Referenced by 2 documents · on the roadmap under Rule these first",
       );
+      // One line at every width, as the reservation is: below `sm` the line
+      // otherwise wraps, and a phone's two lines moved the document down one.
+      const words = toggle().querySelector("span.min-w-0");
+      expect(words).toHaveClass("truncate");
+      expect(words).not.toHaveClass("sm:truncate");
     });
 
     it("leaves the line empty when the index has nothing to say", () => {
@@ -569,6 +574,10 @@ describe("Referenced by (§7)", () => {
       renderViewer(TARGET, "docs/design.md");
       expect(reserved()).toBeNull();
       expect(surface()).not.toBeNull();
+      // Nothing was reserved, so a phone may wrap it.
+      const words = toggle().querySelector("span.min-w-0");
+      expect(words).toHaveClass("sm:truncate");
+      expect(words).not.toHaveClass("truncate");
     });
 
     it("follows the index live once the first paint had it", () => {
