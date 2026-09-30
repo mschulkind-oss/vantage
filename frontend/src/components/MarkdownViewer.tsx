@@ -61,9 +61,9 @@ interface MarkdownViewerProps {
   onOpenQuestionCount?: (count: number) => void;
   /**
    * Added to every `data-source-line`. For a slice of a document rendered on
-   * its own — the planning page's question card, from `questionCardSource` —
-   * so every line, and every review anchor built on one, is the document's.
-   * Default 0.
+   * its own — the planning page's question card, over the card block the
+   * planning scan cut, which carries this offset — so every line, and every
+   * review anchor built on one, is the document's. Default 0.
    */
   sourceLineOffset?: number;
   /**
