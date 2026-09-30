@@ -1,8 +1,8 @@
 ---
 title: "The planning index at scale — implementation plan"
 status: accepted
-stage: DECIDED
-next: "Build WP-A and WP-B first, in parallel; nothing else codes without WP-A's types"
+stage: BUILT
+next: "Nothing here: every work package is built, and what is left is the design's own next step"
 depends-on:
   - planning-index-at-scale.md
 tags: [planning, implementation-plan, performance]
@@ -11,14 +11,14 @@ summary: "Build hand-off for the planning index at scale: seven work packages wi
 
 # The planning index at scale — implementation plan
 
-**Status:** DECIDED, 2026-09-29: build-ready, and nothing blocks it. Promoted from sketch the same day, once
+**Status:** BUILT, 2026-09-29 (`f2fe17a`–`5d13a29`, on `planning-scale`): every work package
+landed, A2's and B2's cleanups and WP-G's docs included. UNMEASURED: the design's
+[§19](planning-index-at-scale.md#19-what-done-looks-like) timing targets have not been run
+against the build. Promoted from sketch on 2026-09-29, once
 [OQ-PS1](planning-index-at-scale.md#decision-ledger) (the browser keeps facts and card text),
 [OQ-PS2](planning-index-at-scale.md#decision-ledger) (no byte sieve) and the coordinator's
-no-new-dependency ruling were in the design's Decision Ledger. Written against `70a05b3`,
-2026-09-29, and re-checked there at promotion. `main` has moved 11 commits since, none of them in
-`internal/`, the planning module, the store or the planning page. Re-read WP-E's and WP-F's
-anchors after any rebase: `MarkdownViewer.tsx` shifts by about 10 lines past `:620`, and
-`ef626fe` changed `mermaidLoader.ts`.
+no-new-dependency ruling were in the design's Decision Ledger. Written against `70a05b3`: every
+`file:line` below names that tree, not the built one.
 
 **Design:** [`planning-index-at-scale.md`](planning-index-at-scale.md).
 
@@ -286,8 +286,9 @@ moves into the inline client.
 - **One repository's records:** keys are `[repo, path]`, and arrays sort after strings, so
   `IDBKeyRange.bound([repo], [repo, []])` spans exactly one repository's paths.
 - **Check the worker chunk for KaTeX and highlight.js.** `pipeline.ts` imports both beside
-  `buildRemarkPlugins`. `bun build` shook them out (300 KB minified, 87 KB gzipped); if Rolldown
-  keeps them, move `buildRemarkPlugins` into a module of its own. That is A's file set, so ask
+  `buildRemarkPlugins`. `bun build` shook them out (300 KB minified, 87 KB gzipped, an estimate;
+  the Vite production chunk came to 302 KB and 93 KB); if Rolldown keeps them, move
+  `buildRemarkPlugins` into a module of its own. That is A's file set, so ask
   first.
 - **The dev server must invalidate the virtual module** when a hashed file changes, or a dev
   session keeps trusting results from the old code.

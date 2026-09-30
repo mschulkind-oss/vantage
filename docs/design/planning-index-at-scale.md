@@ -2,8 +2,8 @@
 title: "The planning index at scale — page through it, and never hand the page the corpus"
 date: 2026-09-29
 status: accepted
-stage: DECIDED
-next: "Build it: the plan's WP-A and WP-B first, in parallel"
+stage: BUILT
+next: "Measure §19's targets against the build, then graduate this design and planning-index.md into one system doc"
 depends-on:
   - planning-index.md
 tags: [planning, performance, viewer, worker, layout-stability]
@@ -12,9 +12,11 @@ summary: "The planning page renders one page of each section from card blocks th
 
 # The planning index at scale — page through it, and never hand the page the corpus
 
-**Status:** DECIDED, 2026-09-29. Both questions are ruled; nothing is built. Evidence verified
-against the tree at `70a05b3`; the timings are the 2026-09-29 measurements summarized in
-[§2](#2-what-the-measurements-say).
+**Status:** BUILT, 2026-09-29 (`f2fe17a`–`5d13a29`, on `planning-scale`). UNMEASURED: none of
+[§19](#19-what-done-looks-like)'s timing, heap or DOM targets has been run against the build;
+D8, D11, D12 and D13 are held by tests. The design was measured and its evidence verified
+against the tree at `70a05b3`, before any of it was built: *today*, here, means that tree, and
+every line-anchored link is pinned to it.
 
 > **In short.** `g p` is slow because the planning page renders every card before it paints,
 > and the index is slow because the browser scans the whole corpus, fetched as one string, on
@@ -30,10 +32,12 @@ a large repository. The fits put that at 5.8 s for 300 documents and 18.8 s for 
 stream endpoint that sends only what changed, and a planning page that paints its frame first
 and then each section's current page in one commit.
 
-**Cost.** The batch endpoint, `ready.sources` and the card's second parse are deleted. A second
-JavaScript chunk ships (about 87 KB gzipped), and the browser keeps each file's derived facts and
-card text ([§8](#8-the-scan-cache)). [`planning-index.md`](planning-index.md) gets a dated
-pointer in each section this changes ([§14](#14-what-this-changes-in-the-planning-index-design)).
+**Cost.** The batch, `ready.sources` and the card's second parse are deleted, and the batch's URL
+answers `410`. A second JavaScript chunk ships (302 KB minified, 93 KB gzipped, in the
+production build), and the browser keeps each file's derived facts and card text
+([§8](#8-the-scan-cache)). [`planning-index.md`](planning-index.md) now describes the built
+system, with a dated pointer in each section this changed
+([§14](#14-what-this-changes-in-the-planning-index-design)).
 
 **Start at [§4](#4-the-three-costs-and-what-removes-each)**, the three costs and what removes
 each. Everything else is how.
@@ -41,8 +45,8 @@ each. Everything else is how.
 **Needs your ruling:** None.
 
 **Reads with:** [`planning-index.md`](planning-index.md) (the design this amends) and
-[`planning-index-at-scale-plan.md`](planning-index-at-scale-plan.md) (the build plan, completed
-against the tree and build-ready).
+[`planning-index-at-scale-plan.md`](planning-index-at-scale-plan.md) (the build plan it was
+built from).
 
 ---
 
@@ -111,8 +115,9 @@ Measured for this design, on this repository with Bun 1.4:
   ([§7.4](#74-card-blocks-cut-from-the-scans-own-parse)).
 - **The facts are small.** 2.8 KB of JSON per planning document, 84% of it links. The six cards'
   Markdown is 25,148 characters, of which 6,800 are distinct.
-- **The worker chunk would be 300 KB minified, 87 KB gzipped** (a `bun build` of the scan
-  entry), with no KaTeX, highlight.js or React in it.
+- **The worker chunk is 302 KB minified and 93 KB gzipped**, with no KaTeX, highlight.js or
+  React in it: the Vite production build's `worker-*.js`, measured 2026-09-29 after the build.
+  A `bun build` of the scan entry had estimated 300 KB and 87 KB.
 
 From the three proposals' own runs, in headless Chromium: an IndexedDB put of 840 records
 (2.8 MB) took 50–69 ms; reading every stamp 3.3–7.5 ms; reading every document 20–23 ms for
@@ -139,7 +144,7 @@ Every term here is *coined here* unless it links elsewhere. The planning index's
 | **Server id** | An opaque name for the server answering at an origin: a hash of its host name and what it was started on, a single-repo server's repository root or a daemon's config file ([§6.5](#65-the-server-id)) | a repository's name: a daemon has one for all of them |
 | **Warm build** | A build that starts with at least one scan-cache entry for its repository under the current scanner id and server id. Any other build is **cold** | a build that happens to be fast |
 | **The stream** | `POST …/planning/stream`'s answer, [NDJSON](https://github.com/ndjson/ndjson-spec): one JSON object per line ([§6.1](#61-the-stream)) | the old batch, which was one JSON object |
-| **Card block** | The Markdown a question's card renders and its line offset, exactly what `questionCardSource` returns today | the question's unit, the `<li>` inside it |
+| **Card block** | The Markdown a question's card renders, with its line offset, the number of file lines before its first line. The Markdown is the root-level block holding the question and then the document's link reference definitions, or the whole document when that block holds a footnote; the scan cuts it from its own parse ([§7.4](#74-card-blocks-cut-from-the-scans-own-parse)) | the question's unit, the `<li>` inside it |
 | **Frame** | The planning page's header, section bar and notices, painted first | the sections |
 | **Section bar** | One line under the header naming each non-empty section with its exact count | a pager |
 | **Page** (of a section) | A fixed run of one section's entries, chosen by a URL query parameter ([§10.2](#102-pages)) | a browser page |
@@ -156,9 +161,9 @@ A **long task** is a main-thread task over 50 ms ([Long Tasks API](https://w3c.g
 
 | Cost | What causes it | What removes it |
 | :--- | :--- | :--- |
-| **Every card renders before anything paints** | The router's transition waits for the whole page. Every card renders, and each listed document is parsed a second time to cut its card ([`cardSource.ts`](../../packages/vantage-md/src/planning/cardSource.ts#L97-L139)) | The frame paints first ([§10.1](#101-frame-first)). Then each section shows one page of at most 10 cards and 32 KiB of Markdown ([§10.2](#102-pages)), cut from blocks the scan already made ([§7.4](#74-card-blocks-cut-from-the-scans-own-parse)), and the cards are memoized ([§10.4](#104-cards)) |
-| **The index is built on the main thread from one string, on every load** | `axios.get` of the whole batch ([`usePlanningStore.ts`](../../frontend/src/stores/usePlanningStore.ts#L297-L301)), then a scan sliced at 8 ms ([`:212-238`](../../frontend/src/stores/usePlanningStore.ts#L212-L238)), and nothing kept across loads | The scan worker ([§7](#7-the-scan-worker)), reading the stream one line at a time ([§6.1](#61-the-stream)), with the scan cache making a warm load scan almost nothing ([§8](#8-the-scan-cache)) |
-| **The corpus is held in memory** | The batch string, then `ready.sources`, which keeps every planning document's text for the session ([`:55-56`](../../frontend/src/stores/usePlanningStore.ts#L55-L56)), plus every card's DOM | No text on the main thread ([§9](#9-the-index-on-the-main-thread)); card blocks fetched for the shown pages only; quoted context fetched for pending answers only ([§10.5](#105-comments-and-copy-answers)) |
+| **Every card renders before anything paints** | The router's transition waits for the whole page. Every card renders, and each listed document is parsed a second time to cut its card ([`cardSource.ts`][at-outlines]) | The frame paints first ([§10.1](#101-frame-first)). Then each section shows one page of at most 10 cards and 32 KiB of Markdown ([§10.2](#102-pages)), cut from blocks the scan already made ([§7.4](#74-card-blocks-cut-from-the-scans-own-parse)), and the cards are memoized ([§10.4](#104-cards)) |
+| **The index is built on the main thread from one string, on every load** | `axios.get` of the whole batch ([`usePlanningStore.ts`][at-batch]), then a scan sliced at 8 ms ([`:212-238`][at-slice]), and nothing kept across loads | The scan worker ([§7](#7-the-scan-worker)), reading the stream one line at a time ([§6.1](#61-the-stream)), with the scan cache making a warm load scan almost nothing ([§8](#8-the-scan-cache)) |
+| **The corpus is held in memory** | The batch string, then `ready.sources`, which keeps every planning document's text for the session ([`:55-56`][at-sources]), plus every card's DOM | No text on the main thread ([§9](#9-the-index-on-the-main-thread)); card blocks fetched for the shown pages only; quoted context fetched for pending answers only ([§10.5](#105-comments-and-copy-answers)) |
 
 The server's part is small and stays within P4: it hashes what it already reads, and sends a
 file's text only when the browser's hash disagrees.
@@ -244,7 +249,7 @@ result. The store then applies it under exactly today's rules.
 ### 5.4 Ordering
 
 **The store's request numbering, held changes and removal guards
-([`usePlanningStore.ts`](../../frontend/src/stores/usePlanningStore.ts#L135-L173)) stay on the
+([`usePlanningStore.ts`][at-ordering]) stay on the
 main thread, unchanged.** The worker makes no ordering decision of its own. It answers each
 request, and the store decides which answer wins, just as it decided between fetch responses.
 
@@ -285,7 +290,7 @@ at the fastest level when the request accepts gzip.
   between the listing and its read is left out, as today; the watcher reports its removal.
 - **Every candidate is sent, whatever it holds.** The server never judges which files are
   planning documents: the scan's early exit
-  ([`scan.ts:1005`](../../packages/vantage-md/src/planning/scan.ts#L1005)) does, in the worker,
+  ([`scan.ts:1005`][at-early-exit]) does, in the worker,
   where a file that is not one costs microseconds (S4).
 - **`same`** means the file was read within the limits, is UTF-8, and hashes to exactly what
   `have` gave for it. **The roadmap is never `same`**: it is always sent as `file`, so whether a
@@ -319,13 +324,16 @@ at the fastest level when the request accepts gzip.
 > [§19](#19-what-done-looks-like)'s D7 and D8 are measured with every candidate streamed.
 
 The old batch, `GET …/planning/sources` without `path`, answers `410 Gone` with the detail *The
-planning index moved to a stream; reload the page.* A tab loaded before the upgrade shows that
-error with Retry, and a reload fixes it. That is cleaner than reusing the route, where the old
-code would have read the new body as the wrong shape.
+planning index moved to a stream; reload the page.* That text is for a direct API caller: no
+page reads it. No release has ever requested the batch (the last one, v0.7.0, has no planning
+index), so only a tab of an unreleased build can still ask. That tab shows its store's own
+error, *Could not load the planning index: Request failed with status code 410*, with Retry,
+and a reload fixes it. That is cleaner than reusing the route, where the old code would have
+read the new body as the wrong shape.
 
 ### 6.2 One path
 
-`GET …/planning/sources?path=` stays exactly as it is ([`sources.go`](../../internal/planning/sources.go#L62-L85)),
+`GET …/planning/sources?path=` stays exactly as it is ([`sources.go`][at-lookup]),
 and its `file` answer gains `hash`. Change pushes, Show question ([§10.4](#104-cards)) and quoted
 context ([§10.5](#105-comments-and-copy-answers)) use it.
 
@@ -342,7 +350,7 @@ in request order, each `review` exactly what `GET /review?path=` returns.
 - A store read error leaves that path out with a warning, as `GET /review` degrades to `null`.
 
 It replaces the page's one `GET /review` per listed document
-([`usePlanningReviews.ts`](../../frontend/src/hooks/usePlanningReviews.ts#L82-L112)). A
+([`usePlanningReviews.ts`][at-review-gets]). A
 `review_changed` push still refetches its one document through `GET /review`.
 
 ### 6.4 What the server holds
@@ -387,11 +395,11 @@ repository root, or a daemon's config file. The scan cache files every result un
 - **Created once per tab at app boot**, as soon as static mode is known and is off. A static
   export never creates one. One worker serves every repository in daemon mode, and its start
   (20–40 ms) overlaps `/api/repos`.
-- **Its own chunk.** A module worker built by Vite from the same `vantage-md/planning` source
-  alias the app uses, so there is still one implementation (S4). It carries remark and yaml a
-  second time: about 300 KB minified, 87 KB gzipped.
+- **Its own chunk.** A module worker built by Vite from the same `vantage-md/planning` source alias
+  the app uses, so there is still one implementation (S4). It carries remark and yaml a second time:
+  302 KB minified and 93 KB gzipped in the production build ([§2](#2-what-the-measurements-say)).
 - **This reverses the store's recorded "No Worker"**
-  ([`usePlanningStore.ts:224`](../../frontend/src/stores/usePlanningStore.ts#L224)), whose reason
+  ([`usePlanningStore.ts:224`][at-no-worker]), whose reason
   was a corpus of this repository's size. The corpora that matter now are 300 to 1,000 documents.
 - **If it cannot be created**, the scanner client is the inline one ([§7.6](#76-the-inline-client)).
   That covers a worker whose code never loads, which is how it happens in practice: a network
@@ -414,7 +422,7 @@ repository root, or a daemon's config file. The scan cache files every result un
 ### 7.2 Messages
 
 Every message is plain JSON-able data, which the planning module already promises
-([`index.ts`](../../packages/vantage-md/src/planning/index.ts#L1-L15)).
+([`index.ts`][at-plain-data]).
 
 | Direction | Message | Answer |
 | :--- | :--- | :--- |
@@ -445,9 +453,9 @@ not-planning file sends nothing.
 ### 7.4 Card blocks, cut from the scan's own parse
 
 - **The scan cuts each question's card block from the root it already parsed**
-  ([`scan.ts:1009`](../../packages/vantage-md/src/planning/scan.ts#L1009)), before `readAlerts`
+  ([`scan.ts:1009`][at-parse]), before `readAlerts`
   rewrites blockquotes (`:1013`). The rules are today's, from
-  [`cardSource.ts`](../../packages/vantage-md/src/planning/cardSource.ts#L39-L76):
+  [`cardSource.ts`][at-card-rules]:
   - the root-level block holding the question;
   - the document's link reference definitions outside it, after one blank line;
   - a block holding a footnote gets the whole document, at offset 0.
@@ -464,8 +472,9 @@ not-planning file sends nothing.
   comes back `stale`, and the page then refreshes that path ([§10.3](#103-page-inputs-and-one-commit)).
 - **The cost** is a walk over a root already parsed, measured at 0.29 ms for 230 KB, where
   today's second parse costs as much as the scan itself.
-- **`questionCardSource` and its 32-document outline cache are deleted.** A test holds the new
-  blocks equal, byte for byte, to the old function's output over `docs/` and the gallery.
+- **`questionCardSource` and its 32-document outline cache are deleted.** Their parse-based cut
+  lives on only as a test's oracle, which holds the scan's blocks equal to it, byte for byte,
+  over `docs/`, the gallery and the end-to-end fixtures.
 
 ### 7.5 Helpers for a cold build
 
@@ -748,10 +757,10 @@ stands:
   the question's unit hidden. [planning-index.md §6.3](planning-index.md#63-a-question-on-the-page)
   holds for every card within the budget.
 - **Memoized.** A card re-renders only when its own question, block, badge or document's
-  comments change. Today's inline `onScoped` closure
-  ([`PlanningPage.tsx:358`](../../frontend/src/pages/PlanningPage.tsx#L358)) becomes one stable
-  callback taking the card's key, and badges are memoized per index version. A review answer then
-  re-renders only its own document's cards, not every card.
+  comments change. The page hands every card one stable callback taking the card's key, where
+  it once made a new `onScoped` closure per card on every render
+  ([`PlanningPage.tsx:358`][at-on-scoped]), and badges are memoized per index version. A review
+  answer then re-renders only its own document's cards, not every card.
 - **A preview card**, for a block over 32,000 characters, shows its file name and badge, the
   question's marker, title, state and leaning, and two controls: **Show question** and **Open
   document**. *Take this leaning* and *Answer…* appear only once it is shown, since both need the
@@ -789,7 +798,7 @@ stands:
     because some browsers drop the user activation that a copy needs across an `await`;
   - the button is disabled, never hidden, while any group's lines are still coming;
   - the payload builder takes a line lookup instead of a whole text
-    ([`useReviewStore.ts:900`](../../frontend/src/stores/useReviewStore.ts#L900)), and a
+    ([`useReviewStore.ts:900`][at-payload]), and a
     one-document payload stays byte-identical to that document's own Copy.
 
 ### 10.6 Before the index is ready
@@ -824,9 +833,9 @@ stands:
   re-renders in place, as the viewer re-renders a document it live-reloads. The rule is about data
   that existed when the page painted and reached it afterwards.
 - **L3. Nothing is shown on a guess.** The header never says *Untracked file*
-  ([`ViewerPage.tsx:1515`](../../frontend/src/pages/ViewerPage.tsx#L1515)) before git status
-  has answered, nor when the request failed: a failure ends the hold like an answer, and the
-  header shows neither that label nor a date until a push or the next visit asks again.
+  ([`ViewerPage.tsx:1515`][at-untracked]) before git status has answered, nor when the request
+  failed: a failure ends the hold like an answer, and the header shows neither that label nor a
+  date until a push or the next visit asks again.
 - **L4. A first paint may wait briefly for data already on its way** ([§11.3](#113-the-hold)),
   and never for work of unknown length.
 
@@ -856,14 +865,16 @@ review mode's 4 px bar. Each is its own fix.
 ### 11.3 The hold
 
 - **A document's first paint waits at most 150 ms after its content arrives**, and only for:
-  - the planning index, while a build for this repository is under way that `started`
-    ([§7.2](#72-messages)) has said is warm, or has not yet said is cold. Git's answers usually
-    arrive before `started` does, so a hold that read that silence as cold ended on them, and a
-    warm index landing a few milliseconds later missed a third of warm first paints;
-  - the header's git status and history, once requested.
+  - the planning index, while a warm build for this repository is under way, or a build that
+    `started` ([§7.2](#72-messages)) has not yet said is cold. Git's answers usually arrive before
+    `started` does, so a hold that read that silence as cold ended on them, and a warm index
+    landing a few milliseconds later missed a third of warm first paints;
+  - the header's git status and history, once requested;
+  - on a first load, the recent-files list, which the header takes an untracked file's date
+    from, and the repository's `/info`, which the Path button's root comes from.
 - **Never for a cold build, and never on the planning page**, which has its own gate. A cold build
-  ends the wait the moment `started` says so. Moving to a document when everything is already in
-  hand waits for nothing.
+  ends the wait the moment `started` says so. Nor for a live reload, a directory or an error,
+  which show at once. Moving to a document when everything is already in hand waits for nothing.
 - **While it holds,** the previous document stays up when moving between documents in the app,
   or the app's shell on a first load.
 - **Why it is still needed:** a warm build at 1,000 documents is estimated to finish 100–180 ms
@@ -895,7 +906,7 @@ review mode's 4 px bar. Each is its own fix.
 | The second reviews request fails (the listed documents no shown page holds), after the sections painted | a line above the sections would move them, so it is said where nothing moves: the pending count stays `–`, Copy answers stays disabled with a warning icon in place of its own and a tooltip saying the comments could not be loaded, and a screen reader hears *Comments could not be loaded* once. A push retries |
 | A Mermaid diagram misses its deadline | the fixed 240 px frame |
 | A page parameter is out of range or malformed | clamped, or read as page 1 |
-| A tab from before the upgrade | the old batch URL answers `410`; the page shows the error and Retry, and a reload fixes it |
+| A tab of an unreleased build from before the change ([§6.1](#61-the-stream)) | the old batch URL answers `410`; the page shows its store's own error with Retry, and a reload fixes it. The answer's `detail` is for a direct API caller |
 | Refused past `max-candidates` | as today |
 | Static export | no worker, no requests; today's message |
 
@@ -915,15 +926,16 @@ review mode's 4 px bar. Each is its own fix.
 
 ## 14. What this changes in the planning-index design
 
-[`planning-index.md`](planning-index.md) describes what is built on `main`. Each section below
-gets a dated pointer to this document, and its body keeps describing the built system until this
-design is built.
+[`planning-index.md`](planning-index.md) describes the built system, this design included. Each
+section below carries a dated pointer to the part of this document that changed it, and its body
+describes what was built.
 
 | Section | What changes |
 | :--- | :--- |
 | [§3](planning-index.md#3-the-planning-index) | "rebuilt from the files and never stored" becomes: rebuilt from the files on every load, with each file's derived facts and card blocks kept in the browser under its content hash and never trusted without it ([§8.1](#81-what-it-keeps-and-under-which-key)) |
 | [§3.4](planning-index.md#34-when-it-is-built-and-how-it-stays-fresh) | *Full scan* and *Transport* are superseded by [§5.2](#52-a-build-step-by-step), [§6.1](#61-the-stream) and [§7](#7-the-scan-worker). *Incremental*, *Reconnect* and *Ordering* stand, through the worker ([§5.3](#53-a-change-push), [§5.4](#54-ordering)) |
 | [§3.5](planning-index.md#35-limits-and-what-happens-past-them) | no new candidate limit. The page adds two render budgets: 32 KiB of Markdown per section page, and 32,000 characters per card before a preview card ([§10.2](#102-pages), [§10.4](#104-cards)) |
+| [§3.6](planning-index.md#36-failure) | the batch's failure becomes the stream's, and the scan worker and the scan cache add theirs ([§12](#12-failure-modes)). A static host is recognized by a first line that is not the stream's header |
 | [§5.3](planning-index.md#53-how-a-badge-behaves) | "First render never waits for them" is replaced by the hold and the never-seen-block rule ([§11](#11-late-data-never-moves-painted-content)) |
 | [§6](planning-index.md#6-the-planning-page) | frame first, the section bar, pages and pagers ([§10](#10-the-planning-page-paged)). [§6.2](planning-index.md#62-sections-top-to-bottom)'s sections and order are unchanged. [§6.3](planning-index.md#63-a-question-on-the-page) gains comments ready at first paint, preview cards past the budget, and placement for Copy answers |
 | [§7](planning-index.md#7-referenced-by-and-status-in-the-file-tree) | Referenced by's reserved line ([§11.2](#112-every-late-datum-and-where-its-space-comes-from)) |
@@ -977,7 +989,7 @@ page's per-document `GET /review` fan-out.
 | Browser storage now holds repository-derived text (titles, headings, question blocks), for a remote daemon on the reader's machine | ruled acceptable ([OQ-PS1](#decision-ledger)): it is text the same reader can already open, kept per origin and per server ([§8.2](#82-the-scanner-id)), cleared when the scanner id or the server id changes, never used without a matching hash, and gone when the reader clears the site's data |
 | Placement misplaces a comment whose block moved | only for cards not rendered this visit, and only for inclusion in Copy answers, which groups by document; the count's slot is reserved, so a correction moves nothing |
 | Late link badges now wait for the next render when the index misses the hold | the hold makes that rare on warm loads; blocks never on screen still get theirs |
-| The worker chunk pulls in KaTeX or highlight.js through `pipeline.ts`'s imports | measured absent with `bun build`; the build's size check fails if Rolldown keeps them, and the fix is a module holding only the remark plugins |
+| The worker chunk pulls in KaTeX or highlight.js through `pipeline.ts`'s imports | `buildRemarkPlugins` has a module of its own, and a production build fails when the worker's bundle holds KaTeX, highlight.js, React or Mermaid ([`scannerId.ts`](../../frontend/src/planningScan/scannerId.ts)); the production chunk holds neither |
 | One large file is one long task inside the worker | off the main thread; a refresh waits behind it at most once |
 | Heavy test rewrites (the store's 761-line test, the page's 830) | the inline client keeps the store tests' shape; the page tests are rewritten to the new behavior, not relaxed until green |
 | Facts dominate main-thread memory at the ceiling: 5,000 planning documents of a link-heavy mix is about 35 MB of JSON | bounded by `max-candidates`, and far below today's text; measured by [§19](#19-what-done-looks-like) |
@@ -1027,7 +1039,7 @@ And the behavior:
   [§10.2](#102-pages) says.
 - Copy answers on page 1 includes a pending comment filed on a page-2 question.
 - A card over the budget is a preview card, and Show question renders the whole card.
-- A tab built before the change sees the `410` message, and a reload fixes it.
+- The old batch URL answers `410 Gone`, with a detail a direct API caller can read.
 - A load whose IndexedDB cannot be opened still builds the index, cold, and the planning page
   renders its cards.
 
@@ -1056,9 +1068,27 @@ end to end; the figures come from the fits in [§2](#2-what-the-measurements-say
 
 | ID | Ruling / Decision | Date | Settled in | Built |
 | :--- | :--- | :--- | :--- | :--- |
-| — | User direction: the planning page is paged, not infinitely scrolled; every question stays reachable; the browser is never handed the whole corpus as one payload, and never holds it | 2026-09-29 | [§10.2](#102-pages), [§6.1](#61-the-stream) | — |
-| — | User rule: late data never moves painted content. It fills reserved or leftover space, or is ready before first paint, and a paint may be held briefly for it. It replaces "first render never waits" | 2026-09-29 | [§11](#11-late-data-never-moves-painted-content) | — |
-| OQ-PS1 | The browser keeps each file's derived facts and its card blocks in IndexedDB, under the file's content hash, cleared whenever the scanner id changes and never used without a matching hash. A warm reload is what makes a 1,000-document repository cheap after the first visit, and the stored text is text the same reader can already open | 2026-09-29 | [§8.1](#81-what-it-keeps-and-under-which-key), [§14](#14-what-this-changes-in-the-planning-index-design), [§16](#16-alternatives-considered) | — |
-| OQ-PS2 | No byte sieve in Go: every candidate is streamed, and the scan stays the only judge of what a planning document is. The user ruled it an implementation matter, on the condition that the reader's experience does not degrade for it | 2026-09-29 | [§6.1](#61-the-stream), [§16](#16-alternatives-considered) | — |
-| — | Coordinator ruling: this work adds no npm dependency. The scan cache sits behind a storage interface; unit tests run it over an in-memory implementation written in this repository, and the Chromium end-to-end tests over real IndexedDB | 2026-09-29 | [§8.1](#81-what-it-keeps-and-under-which-key), [§17](#17-risks) | — |
-| — | Security review: the scan cache's owner is the scanner id and a server id the server answers, and every read and write checks it. A different server answering at one origin clears the cache before anything is read or sent as `have`, and a tab whose database another tab cleared is refused rather than trusted | 2026-09-29 | [§6.5](#65-the-server-id), [§8.1](#81-what-it-keeps-and-under-which-key), [§8.2](#82-the-scanner-id) | — |
+| — | User direction: the planning page is paged, not infinitely scrolled; every question stays reachable; the browser is never handed the whole corpus as one payload, and never holds it | 2026-09-29 | [§10.2](#102-pages), [§6.1](#61-the-stream) | ✅ [`planningPages.ts`](../../frontend/src/lib/planningPages.ts), [`stream.go`](../../internal/planning/stream.go) |
+| — | User rule: late data never moves painted content. It fills reserved or leftover space, or is ready before first paint, and a paint may be held briefly for it. It replaces "first render never waits" | 2026-09-29 | [§11](#11-late-data-never-moves-painted-content) | ✅ [`useFirstPaintHold.ts`](../../frontend/src/hooks/useFirstPaintHold.ts), [`stable_paint.spec.ts`](../../frontend/e2e/stable_paint.spec.ts) |
+| OQ-PS1 | The browser keeps each file's derived facts and its card blocks in IndexedDB, under the file's content hash, cleared whenever the scanner id changes and never used without a matching hash. A warm reload is what makes a 1,000-document repository cheap after the first visit, and the stored text is text the same reader can already open | 2026-09-29 | [§8.1](#81-what-it-keeps-and-under-which-key), [§14](#14-what-this-changes-in-the-planning-index-design), [§16](#16-alternatives-considered) | ✅ [`cache.ts`](../../frontend/src/planningScan/cache.ts) |
+| OQ-PS2 | No byte sieve in Go: every candidate is streamed, and the scan stays the only judge of what a planning document is. The user ruled it an implementation matter, on the condition that the reader's experience does not degrade for it | 2026-09-29 | [§6.1](#61-the-stream), [§16](#16-alternatives-considered) | ✅ [`stream.go`](../../internal/planning/stream.go) |
+| — | Coordinator ruling: this work adds no npm dependency. The scan cache sits behind a storage interface; unit tests run it over an in-memory implementation written in this repository, and the Chromium end-to-end tests over real IndexedDB | 2026-09-29 | [§8.1](#81-what-it-keeps-and-under-which-key), [§17](#17-risks) | ✅ [`store.ts`](../../frontend/src/planningScan/store.ts), [`memoryStore.ts`](../../frontend/src/planningScan/memoryStore.ts) |
+| — | Security review: the scan cache's owner is the scanner id and a server id the server answers, and every read and write checks it. A different server answering at one origin clears the cache before anything is read or sent as `have`, and a tab whose database another tab cleared is refused rather than trusted | 2026-09-29 | [§6.5](#65-the-server-id), [§8.1](#81-what-it-keeps-and-under-which-key), [§8.2](#82-the-scanner-id) | ✅ [`planning_server_id.go`](../../internal/api/planning_server_id.go), [`store.ts`](../../frontend/src/planningScan/store.ts) |
+
+<!-- Evidence at 70a05b3, the tree this design was measured on. -->
+
+[at-outlines]: https://github.com/mschulkind-oss/vantage/blob/70a05b3b88df358272fa0d61d9462124aafc6571/packages/vantage-md/src/planning/cardSource.ts#L97-L139
+[at-batch]: https://github.com/mschulkind-oss/vantage/blob/70a05b3b88df358272fa0d61d9462124aafc6571/frontend/src/stores/usePlanningStore.ts#L297-L301
+[at-slice]: https://github.com/mschulkind-oss/vantage/blob/70a05b3b88df358272fa0d61d9462124aafc6571/frontend/src/stores/usePlanningStore.ts#L212-L238
+[at-sources]: https://github.com/mschulkind-oss/vantage/blob/70a05b3b88df358272fa0d61d9462124aafc6571/frontend/src/stores/usePlanningStore.ts#L55-L56
+[at-ordering]: https://github.com/mschulkind-oss/vantage/blob/70a05b3b88df358272fa0d61d9462124aafc6571/frontend/src/stores/usePlanningStore.ts#L135-L173
+[at-no-worker]: https://github.com/mschulkind-oss/vantage/blob/70a05b3b88df358272fa0d61d9462124aafc6571/frontend/src/stores/usePlanningStore.ts#L224
+[at-early-exit]: https://github.com/mschulkind-oss/vantage/blob/70a05b3b88df358272fa0d61d9462124aafc6571/packages/vantage-md/src/planning/scan.ts#L1005
+[at-parse]: https://github.com/mschulkind-oss/vantage/blob/70a05b3b88df358272fa0d61d9462124aafc6571/packages/vantage-md/src/planning/scan.ts#L1009
+[at-plain-data]: https://github.com/mschulkind-oss/vantage/blob/70a05b3b88df358272fa0d61d9462124aafc6571/packages/vantage-md/src/planning/index.ts#L1-L15
+[at-card-rules]: https://github.com/mschulkind-oss/vantage/blob/70a05b3b88df358272fa0d61d9462124aafc6571/packages/vantage-md/src/planning/cardSource.ts#L39-L76
+[at-lookup]: https://github.com/mschulkind-oss/vantage/blob/70a05b3b88df358272fa0d61d9462124aafc6571/internal/planning/sources.go#L157-L180
+[at-review-gets]: https://github.com/mschulkind-oss/vantage/blob/70a05b3b88df358272fa0d61d9462124aafc6571/frontend/src/hooks/usePlanningReviews.ts#L82-L112
+[at-on-scoped]: https://github.com/mschulkind-oss/vantage/blob/70a05b3b88df358272fa0d61d9462124aafc6571/frontend/src/pages/PlanningPage.tsx#L358
+[at-payload]: https://github.com/mschulkind-oss/vantage/blob/70a05b3b88df358272fa0d61d9462124aafc6571/frontend/src/stores/useReviewStore.ts#L900
+[at-untracked]: https://github.com/mschulkind-oss/vantage/blob/70a05b3b88df358272fa0d61d9462124aafc6571/frontend/src/pages/ViewerPage.tsx#L1515
