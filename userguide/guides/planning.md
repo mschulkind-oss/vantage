@@ -22,9 +22,17 @@ the rest) are Vantage's own, from its
 ## What Vantage reads
 
 The **planning index** is Vantage's model of a repository's planning
-documents. It is rebuilt from the files every time and never stored. Nothing
-waits for it: a document renders as it always has, and its badges appear once
-the index is ready.
+documents. It is rebuilt from the files on every page load, in the background
+and off the page's own thread, so scrolling and typing never wait for it. The
+index itself is never stored, but to keep the rebuild cheap this browser keeps
+what it found in each file, and fetches and scans a file again only once its
+content has changed ([What this browser keeps](#what-this-browser-keeps)).
+
+A document paints as soon as its content arrives. When the index is only
+moments away, because this browser already holds nearly all of it, that first
+paint waits for it, never more than 150 ms. Otherwise the document paints
+without it, and badges that arrive later appear only where they cannot move
+what you are reading ([below](#badges-on-links)).
 
 **Candidates.** Every `.md` file in the repository is a candidate unless one of
 these rules it out:
@@ -165,6 +173,11 @@ A badge is decoration, never content:
 - **It keeps up.** When a file changes, the badges on every open page follow
   without a reload. Answer a question, let the agent compact it, and the link
   to it turns to `✅ ruled`.
+- **It never moves what you are reading.** When the index is ready as a
+  document first paints, every badge is in that paint. When the index comes
+  later, a badge is drawn only in the part of the document below the screen
+  that you have not scrolled to yet, and a link you have already seen gets its
+  badge the next time you open the document.
 - **It prints as plain text**, and a screen reader reads it after the link as
   words: *in review, design, 5 open questions*.
 
@@ -283,6 +296,13 @@ The list is closed whenever you open a document, and nothing remembers that
 you opened it. It prints only when it is open, and then with
 every heading; the line always prints.
 
+When a document opens before the index is ready, the line's room is kept for
+it in the first paint, so the line fills in later without pushing the document
+down, and stays blank if it turns out to have nothing to say. The room is kept
+when the document's own `status` or `stage` key, or an `oq` directive in it,
+already shows it is a planning document. A roadmap with neither shows its line
+the next time it is opened.
+
 ---
 
 ## The planning page
@@ -308,6 +328,17 @@ nothing.
 > `/recent/notes.md` is the recent-files page, and `/history/notes.md` is the
 > commit history of a root-level `notes.md`. In daemon mode the same goes for a
 > whole repository named `history` or `recent`.
+
+**What appears when.** The page's header and its [section bar](#pages) appear
+as soon as you press `g p`. The cards of each section's shown page follow
+together, in one step, once their text, their documents' comments and their
+Mermaid diagrams are all in hand, so nothing on the page moves as they arrive.
+A spinner shows only if that takes longer than 150 ms. Opened while the index
+is still being read, the page says *Reading planning documents…* where the
+section bar will be, then *Scanning planning documents: 412 of 1,000*, and the
+section bar and the sections replace that line when the index is ready. A
+rescan of an index already shown keeps the page as it is, with a thin bar
+along its top.
 
 ### Its sections
 
@@ -343,6 +374,40 @@ answered questions: those await compaction, not a ruling.
 Past the candidate limit ([below](#limits)) there are no sections at all, only a
 line saying how many candidates there are and to narrow `include`.
 
+### Pages
+
+Each section shows one page of its entries at a time, so the page opens as
+quickly for a thousand documents as for ten:
+
+| Sections | A page holds |
+| :--- | :--- |
+| Needs you, Unrouted, Waiting | 10 entries, or fewer when their cards together would pass 32,768 characters of Markdown. A page always holds at least one entry, and a [preview card](#a-questions-card) counts for none of those characters |
+| Ready, Graduate, Disagrees | 25 documents |
+| Skipped, Could not read | 50 lines |
+
+- **The section bar,** under the header, names each section that is not empty
+  with its count, such as `Needs you 143 · Unrouted 12 · Waiting 7`. The counts
+  are of the whole section, whatever page is shown. Clicking one scrolls to its
+  section without adding a history entry.
+- **A pager** sits under the heading of a section with more than one page, and
+  again after its last entry: `1–10 of 143 · ‹ Previous · Next ›`, with a page
+  menu once a section has five pages. The pager at the bottom brings the
+  section's heading back into view; the one at the top leaves the scroll where
+  it is. A section of one page has no pager.
+- **The page you flip to** replaces the shown one only once its cards are
+  ready, and the shown page stays up until then.
+- **The address carries the pages,** as in
+  `/.vantage/planning?needs-you=3&waiting=2`, with page 1 left out. A flip
+  replaces the history entry rather than adding one, so Back from a document
+  you opened returns to the same pages at the same scroll position, and Back
+  from the planning page leaves it rather than stepping back through its
+  pages. A page past a section's end shows its last page, a value that is not
+  a page number shows page 1, and either way the address is corrected in place.
+
+Paging decides only what is drawn. Every question is still counted in the
+section bar and reachable through its section's pager, and
+[Copy answers](#copy-answers) covers the questions on every page.
+
 ### A question's card
 
 A card shows the question exactly as its document renders it: its list item,
@@ -370,17 +435,34 @@ What the card offers follows the question's state:
   question: a question you could not answer from its card usually needs the
   rest of the document, and its table of contents lists the question one click
   away. Opening it leaves the document's review mode as it was. **Back**
-  returns to the planning page at the same scroll position.
+  returns to the planning page with the same [pages](#pages), at the same
+  scroll position.
 
 A comment filed from a card is filed in the question's own document, exactly as
 if you had filed it there: that document's Review panel lists it, its own Copy
 includes it, and the agent answers it through the
 [review inbox](review-inbox.md) as usual. Filing never reorders the page.
 
-Below its buttons, a card lists the comments already filed on that question,
-and only on it. Each is marked *waiting on the agent* until the agent answers
+When comments are filed on that question, and only on it, the card's row of
+buttons ends with their count, such as *2 comments*, which shows or hides
+them. Comments already in hand when the card appears are listed below its
+buttons at once. The page waits up to a second for them; comments that load
+later than that go only into the count until you open it, so the card never
+grows under you. Each is marked *waiting on the agent* until the agent answers
 it, the agent's latest reply appears beneath it once there is one, and a
-dismissed comment says so.
+dismissed comment says so. A comment filed while the page is open, from the
+page or elsewhere, shows up on its card at once.
+
+A Mermaid diagram in a card is drawn before the card appears. One that takes
+longer than a second draws later into a frame of fixed height, 240 px, scaled
+to fit.
+
+**A very long question gets a preview card.** When the Markdown a card would
+render is over 32,000 characters, the card shows only the document's name and
+badge and the question's marker, title, state and leaning, with **Show
+question** and **Open document**. Show question renders the whole card in
+place, and it then offers Take this leaning and Answer… as any card does:
+both need the rendered question to anchor the comment to.
 
 ### Copy answers
 
@@ -389,6 +471,14 @@ to the agent in one trip, rather than one trip per document. Beside it is the
 number of comments waiting on the agent on the questions the page lists: not
 dismissed, and not yet answered, or edited or replied to since the agent's last
 answer. With none, the button is disabled.
+
+It counts and copies the comments on the questions of every
+[page](#pages), not only the ones shown, so a comment on a question two pages
+on is included. The count reads `–` until every listed document's comments have
+loaded, and the button waits until then; the count has room for four digits, so
+its arrival moves nothing. A question whose card has not been drawn in this
+visit gets the comments filed on its lines in the document, which is exact
+unless the question has moved since a comment was filed.
 
 It copies those comments grouped by document, each group exactly the block that
 document's own Copy produces, then one set of instructions for answering all of
@@ -430,16 +520,62 @@ and the four `planning/*` rules that `check` runs over the same scan are in
 Both are keys of `[planning]`
 ([Configuration](../reference/configuration.md#planning-documents)).
 
+The planning page adds two limits of its own, which are not settings and never
+leave anything out: a page stops before its cards pass 32,768 characters of
+Markdown ([Pages](#pages)), and a card over 32,000 characters is a
+[preview card](#a-questions-card) until you ask for the whole question.
+
 ## How it stays current
 
-- **The first scan** runs in the background the first time a page needs it,
-  and its result is kept while you move from page to page.
+- **Each page load** builds the index once, in the background, the first time
+  a page needs it, and keeps it while you move from page to page. The server
+  answers with one line for every candidate, but with a file's text only when
+  this browser does not already hold what it found in that content
+  ([below](#what-this-browser-keeps)). So the first visit fetches and scans
+  every candidate, and a reload afterwards only the roadmap and the files that
+  changed.
 - **A changed file** is fetched and scanned again on its own, as the live-reload
   push names it. A new file joins the index and a deleted one leaves it.
-- **A change to `.vantage.toml`** rescans the whole repository.
+- **A change to `.vantage.toml`** rescans the whole repository, and files whose
+  content has not changed are not fetched again.
 - **A dropped connection** to the server means changes may have been missed,
   so when it comes back while a page is open, the whole repository is rescanned,
   and the old index stays shown until the new one is ready.
+- **Retry,** on the planning page's error, rescans without what this browser
+  keeps: every candidate is fetched and scanned again, and what was kept for it
+  is replaced.
+
+## What this browser keeps
+
+To make a reload cheap, your browser keeps what Vantage read from each file, in
+an [IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API)
+database named `vantage-planning`. Each address Vantage is served from, host
+and port, has a database of its own.
+
+- **What it holds,** for each candidate: its path, its **content hash**, and
+  whether it is a planning document. The content hash is the first 128 bits of
+  the [SHA-256](https://csrc.nist.gov/pubs/fips/180-4/upd1/final) of the file's
+  bytes, a fingerprint that changes whenever the content does. For a planning
+  document it also holds what the index takes from it (its header, headings,
+  links and questions) and the Markdown each of its question cards shows, which
+  is the document's own text. A card over 32,000 characters is not kept, and
+  nothing is kept for the roadmap.
+- **When it is used:** only when the server reports the same content hash for
+  the file. An edit, a checkout or a branch switch changes the hash of every
+  file it touches, and those files are fetched and scanned again.
+- **When it is emptied:** all of it, whenever Vantage's code for reading these
+  files changes, as it does in most releases, or your browser is upgraded; the
+  next page load then fetches and scans everything once. After each full read, what was
+  kept for files that are no longer candidates is removed.
+- **Where it lives:** in your browser profile, on the machine you browse from.
+  With a [daemon](daemon-mode.md) on another machine, that puts text from its
+  repositories on yours: text you can already open there.
+- **To remove it,** clear the site data for Vantage's address in your
+  browser's settings.
+
+A browser without IndexedDB, or whose IndexedDB is full, disabled or failing,
+as in some private windows, keeps nothing. Vantage then fetches and scans
+every candidate on every page load, and everything else works the same.
 
 ## When something goes wrong
 
@@ -450,6 +586,15 @@ Both are keys of `[planning]`
 - **A static export** from [`vantage build`](static-sites.md) is always in that
   case, because it has no server to read the files from, and its planning page
   says so.
+- **The planning scan stopped:** the background thread that scans the files
+  ended in the middle of a build. The planning page says so, and Retry starts
+  a new one.
+- **A tab left open from an older Vantage,** across an upgrade of the server,
+  may say *The planning index moved to a stream; reload the page.* Reloading it
+  is the fix.
+- **The comments cannot be loaded:** the planning page's sections appear
+  without them, under the line *Comments could not be loaded.*, and Copy
+  answers stays disabled.
 - **One file cannot be read,** or its frontmatter does not parse: it is listed
   under *Could not read* and contributes nothing, its questions included.
   Everything else is unaffected.

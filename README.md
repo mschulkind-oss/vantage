@@ -285,8 +285,9 @@ Vantage exposes a REST API for programmatic access under `/api`.
 | ------------------------------------------- | ------------------------------------ |
 | `GET /api/tree?path=.`                      | File tree listing                    |
 | `GET /api/content?path=file.md`             | File content                         |
-| `GET /api/planning/sources`                 | Every planning index source          |
+| `POST /api/planning/stream`                 | Every planning candidate, one JSON line each; a file's text only when the browser lacks it |
 | `GET /api/planning/sources?path=file.md`    | Planning index source for one file   |
+| `POST /api/planning/reviews`                | Review comments of many documents    |
 | `GET /api/files`                            | List all Markdown files              |
 | `GET /api/files/all`                        | List all files                       |
 | `GET /api/recent/all`                       | Recently changed files, all projects |

@@ -497,7 +497,10 @@ three large fields emptied:
 - **`index`** holds the effective `[planning]` config, the candidate count, and
   every planning document with its header, its questions and its links, the
   links narrowed to those that point at another candidate. *Skipped* and
-  *Could not read* are here too.
+  *Could not read* are here too. Each question carries the file lines it spans,
+  `unitLine` to `unitEndLine`, and `cardChars`, the length of the Markdown its
+  card shows on the planning page, which is what the page's
+  [pages](planning.md#pages) are cut by.
 - **`sections`** holds the same lists the text form prints.
 - **`roadmap`** holds one entry per link in the roadmap, with its line, its
   target and the badge it gets.
