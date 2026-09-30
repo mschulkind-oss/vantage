@@ -191,10 +191,26 @@ Routes are declared in a single table (`routes.go`) with a `Scope`:
   the request context either way; the server's resolve middleware injects the
   right pair.
 
-Repo-scoped routes: `/version`, `/info`, `/files`, `/tree`, `/content`,
-`/planning/sources` ([planning-index.md §3.4](planning-index.md#34-when-it-is-built-and-how-it-stays-fresh)),
-`/git/history`, `/git/status`, `/git/diff`, `/git/diff/working`, `/git/recent`,
-and `/review` (GET/PUT/DELETE).
+Repo-scoped routes: `/version`, `/info`, `/files`, `/tree`, `/content`, the
+planning routes below, `/git/history`, `/git/status`, `/git/diff`,
+`/git/diff/working`, `/git/recent`, and `/review` (GET/PUT/DELETE).
+
+The planning routes serve the planning index's inputs and never parse Markdown
+([planning-index-at-scale.md §6](planning-index-at-scale.md#6-the-server)):
+
+- **`POST /planning/stream`** takes `{"have": {path: content hash}}` and answers
+  [NDJSON](https://github.com/ndjson/ndjson-spec): a header, one line per
+  candidate, then `end`. A candidate whose hash matches `have` is a `same` line
+  with no text; the roadmap is always sent whole. The request body is capped at
+  4 MiB (`413` past it), the answer is gzipped when accepted, and it is flushed
+  after the header and every 64 KiB (`internal/planning/stream.go`).
+- **`GET /planning/sources?path=`** answers for one path, a `file` answer
+  carrying its content hash. Without `path` it was the whole-corpus batch the
+  stream replaced, and it now answers `410 Gone`, so a tab loaded before the
+  change shows an error and a reload fixes it.
+- **`POST /planning/reviews`** takes `{"paths": [...]}` and answers each stored
+  review in request order, exactly as `GET /review` would, capped at 1 MiB and
+  at `max-candidates` paths.
 
 The `/api/ws` WebSocket route is not in the table; the `live` package mounts it
 directly.
@@ -289,6 +305,11 @@ interceptor (`frontend/src/lib/staticMode.ts`).
   - Comments, snapshots, and reactions for the current file.
   - Loads via `GET /api/review`, saves via `PUT /api/review`, and ends a review
     via `DELETE /api/review`.
+- **`usePlanningStore`**
+  - One planning index per repository, and the numbering that decides which
+    build or refresh answer wins ([§3.4](#34-the-planning-index-frontendsrcplanningscan)).
+  - `ready` holds the index, which is facts only, and each planning document's
+    content hash, never a document's text.
 - **`useStarredStore`**
   - `entries`, `isStarred(repo, path)`, `toggleStar()`, `removeStar()`.
   - Talks to the literal `/api/starred`, with no repo-scoped base — the route is
@@ -324,6 +345,57 @@ interceptor (`frontend/src/lib/staticMode.ts`).
    - The frontend receives it. If `currentPath` matches, it triggers
      `loadFile(path)` (content refresh); it always triggers `refreshTree()` (in
      case a file was added or removed).
+
+### 3.4 The Planning Index (`frontend/src/planningScan/`)
+
+The design is [planning-index.md](planning-index.md), amended for large
+repositories by [planning-index-at-scale.md](planning-index-at-scale.md), whose
+[§3](planning-index-at-scale.md#3-terms) defines the terms used here.
+
+- **The scan runs in a worker.** vantage-md's planning scan runs in the *scan
+  worker*, a dedicated module Web Worker built by Vite as its own chunk from the
+  same `vantage-md/planning` source alias the app uses. `main.tsx` starts it
+  once per tab at boot, unless the page is a static export. The store and the
+  page call it through the *scanner client* (`client.ts`,
+  `planningScanner()`). Where a worker cannot be created, the inline client
+  runs the same core (`core.ts`) on the main thread, sliced at 8 ms; the unit
+  tests run it too, since jsdom has no `Worker`. A cold build large enough may
+  add up to three helper workers, which return results to the scan worker only.
+- **The scan cache.** The scan worker keeps each candidate's scan result in the
+  IndexedDB database `vantage-planning`, one per origin, keyed by repository
+  and path and used only when the stream answers `same` for the hash it was
+  stored under. It holds a stamp per candidate, each planning document's facts
+  and its card blocks, and nothing for the roadmap. `cache.ts` is written
+  against the `ScanStore` interface (`store.ts`): `idbScanStore()` is the one
+  production implementation, and `memoryScanStore()` (`memoryStore.ts`) is a
+  unit-test double, never a fallback. A tab whose IndexedDB fails runs with no
+  cache, which makes every build cold.
+- **The scanner id** clears every store when it changes: a schema number, the
+  user agent, and a SHA-256 over the worker's source roots
+  (`packages/vantage-md/src/`, `frontend/src/planningScan/` and
+  `package-lock.json`), which a Vite plugin serves as
+  `virtual:planning-scanner-id` (`scannerId.ts`). The dev server recomputes it
+  on an edit. A production build fails when the worker's bundle holds a module
+  outside those roots and `node_modules`, or KaTeX, highlight.js, React or
+  Mermaid.
+- **Ordering stays on the main thread.** `usePlanningStore` numbers every build
+  and refresh as it numbered the old fetches. The client makes no ordering
+  decision; it hands every answer back, and the store picks the winner. A build
+  is set into the store once, at `ready`: no partial index is shown.
+- **The planning page** (`PlanningPage.tsx`) paints its frame (header, section
+  bar and notices) first, then each section's shown page in one commit, once
+  that page's inputs are complete (`hooks/usePlanningPageInputs.ts`): card
+  blocks from the worker, the documents' reviews in one
+  `POST …/planning/reviews`, and their Mermaid diagrams drawn. Pages are laid
+  out from the index alone (`lib/planningPages.ts`) and carried in the URL.
+  Copy answers' quoted lines come from the worker too, so the main thread never
+  holds a document's text.
+- **Document pages** request git status and history with the content, and hold
+  a first paint up to 150 ms for them and for a warm build. A badge that lands
+  later is drawn only in blocks that have not been on screen, and Referenced
+  by keeps its line's room from the first paint.
+- **Every number** these rules fix lives in `limits.ts` (`planningLimits`),
+  which tests configure down instead of growing an input to a default.
 
 ---
 

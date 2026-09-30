@@ -142,6 +142,8 @@ If the directory you're serving is a Git repository, Vantage provides:
 
 Every file shows the most recent commit message, author, and relative timestamp (e.g., "about 2 hours ago"). Click the timestamp to view the diff.
 
+Vantage asks git about a file together with its content, and a document's first paint waits for the answer, never more than 150 ms, so the header usually has it from the start. The header never guesses: it says *Untracked file* only once git has said so. Anything that arrives later takes only the room the header has left, and never narrows the file name.
+
 ### Commit History
 
 Press **h** on any file to open the full commit history. Each commit shows the message, author, date, and short SHA. Click any commit to view its diff.
