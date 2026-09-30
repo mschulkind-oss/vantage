@@ -564,9 +564,12 @@ and port, has a database of its own.
   the file. An edit, a checkout or a branch switch changes the hash of every
   file it touches, and those files are fetched and scanned again.
 - **When it is emptied:** all of it, whenever Vantage's code for reading these
-  files changes, as it does in most releases, or your browser is upgraded; the
-  next page load then fetches and scans everything once. After each full read, what was
-  kept for files that are no longer candidates is removed.
+  files changes, as it does in most releases, or your browser is upgraded, or a
+  different Vantage server answers at that address: another repository started
+  on the same port, or a tunnel to another machine. The next page load then
+  fetches and scans everything once. Nothing kept from one server is ever sent
+  to another, or shown with it. After each full read, what was kept for files
+  that are no longer candidates is removed.
 - **Where it lives:** in your browser profile, on the machine you browse from.
   With a [daemon](daemon-mode.md) on another machine, that puts text from its
   repositories on yours: text you can already open there.

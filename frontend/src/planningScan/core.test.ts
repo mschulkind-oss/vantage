@@ -28,7 +28,7 @@ import {
   type ScannerCore,
 } from "./core";
 import { setPlanningLimitsForTests } from "./limits";
-import { memoryScanStore } from "./memoryStore";
+import { memoryScanDatabase, memoryScanStore } from "./memoryStore";
 import type { ScanStore } from "./store";
 import {
   contentHash,
@@ -489,6 +489,9 @@ describe("the shared stream lines", () => {
       cache: scanCache(memoryScanStore(), "scanner"),
       fetch: async (input, init) => {
         const url = new URL(String(input), "http://vantage.test");
+        if (url.pathname.endsWith("/planning/server-id")) {
+          return new Response(JSON.stringify({ server_id: "golden" }));
+        }
         if (url.pathname.endsWith("/planning/stream")) {
           return chunkedResponse(GOLDEN, 16, init?.signal ?? undefined);
         }
@@ -578,6 +581,110 @@ describe("a build with the cache", () => {
     expect(events[0]).toEqual({ type: "started", warm: false });
     expect(second.server.haves()).toEqual([{}]);
     expect(second.server.fileLines[0]).toEqual(Object.keys(TREE).sort());
+  });
+
+  /*
+   * The scan cache is per origin, and a different server may answer at the
+   * same origin: another repository started on the same port, or a local
+   * tunnel port pointed at another machine. What one server's files were
+   * named and what they hashed to is never sent to the other (§8.2).
+   */
+  const SECRET: Record<string, string> = {
+    "hr/layoffs-2026.md": "# Who goes\n",
+    "secret/acquisition-target-acme.md": plan(
+      "Acme",
+      question("OQ-S1", "When?"),
+    ),
+  };
+  const OTHER: Record<string, string> = { "docs/b.md": "# B\n" };
+
+  it("sends a server that answers after another none of the other's paths or hashes", async () => {
+    const database = memoryScanDatabase();
+    const earlier = memoryScanStore(database);
+    const a = fakePlanningServer(SECRET, { config: CONFIG, serverId: "a" });
+    const first = scannerCore({
+      cache: scanCache(earlier, "scanner"),
+      fetch: a.fetch,
+      yieldNow: async () => undefined,
+    });
+    await build(first);
+    expect(await earlier.stamps("")).toHaveLength(2);
+
+    // A tab of the same code, at the same origin, now served by another.
+    const store = memoryScanStore(database);
+    const b = fakePlanningServer(OTHER, { config: CONFIG, serverId: "b" });
+    const second = scannerCore({
+      cache: scanCache(store, "scanner"),
+      fetch: b.fetch,
+      yieldNow: async () => undefined,
+    });
+    const events = await build(second);
+    expect(events[0]).toEqual({ type: "started", warm: false });
+    expect(b.haves()).toEqual([{}]);
+    expect(indexFrom(events)).toEqual(indexOf(OTHER, CONFIG));
+    // And the first server's results are gone from the store.
+    expect((await store.stamps("")).map((stamp) => stamp.path)).toEqual([
+      "docs/b.md",
+    ]);
+    expect(
+      await store.cards("", "secret/acquisition-target-acme.md"),
+    ).toBeUndefined();
+  });
+
+  it("asks which server answers on every build, so a tab left open across a change sends the new one nothing", async () => {
+    const a = fakePlanningServer(SECRET, { config: CONFIG, serverId: "a" });
+    const b = fakePlanningServer(OTHER, { config: CONFIG, serverId: "b" });
+    let answering = a;
+    const core = scannerCore({
+      cache: scanCache(memoryScanStore(), "scanner"),
+      fetch: (input, init) => answering.fetch(input, init),
+      yieldNow: async () => undefined,
+    });
+    await build(core);
+    expect(a.haves()).toEqual([{}]);
+
+    // The reconnect's rescan reaches the other server.
+    answering = b;
+    const events = await build(core, { seq: 2 });
+    expect(events[0]).toEqual({ type: "started", warm: false });
+    expect(b.haves()).toEqual([{}]);
+    // A refresh after it is kept as the new server's.
+    expect(
+      await core.refresh({ ...REQUEST, seq: 3, path: "docs/b.md" }),
+    ).toMatchObject({ kind: "file", path: "docs/b.md" });
+
+    // Its next build is warm with its own results only.
+    await build(core, { seq: 4 });
+    expect(b.haves()[1]).toEqual({
+      "docs/b.md": contentHash(OTHER["docs/b.md"] ?? ""),
+    });
+    expect(a.serverIdRequests + b.serverIdRequests).toBe(3);
+  });
+
+  it("builds cold, and keeps nothing, when the server id cannot be had", async () => {
+    const { core, server, log } = setup({ serverId: null });
+    const events = await build(core);
+    expect(events[0]).toEqual({ type: "started", warm: false });
+    expect(indexFrom(events)).toEqual(indexOf(TREE, CONFIG));
+    expect(log).not.toHaveBeenCalled();
+
+    // Nothing was written blind: once the id is had, the build is still cold.
+    server.serverId = "fake-server";
+    expect((await build(core, { seq: 2 }))[0]).toEqual({
+      type: "started",
+      warm: false,
+    });
+    expect((await build(core, { seq: 3 }))[0]).toEqual({
+      type: "started",
+      warm: true,
+    });
+    expect(server.haves().slice(0, 2)).toEqual([{}, {}]);
+  });
+
+  it("does not ask for the server id without a store", async () => {
+    const { core, server } = setup({}, null);
+    expect((await build(core)).at(-1)).toEqual({ type: "ready" });
+    expect(server.serverIdRequests).toBe(0);
   });
 
   it("collects the paths the stream no longer names, once the build is done", async () => {
@@ -957,6 +1064,8 @@ describe("a refresh", () => {
       config,
     });
     expect(roadmap).toMatchObject({ kind: "file", path: CONFIG.roadmap });
+    // The roadmap has no frontmatter: only the config makes it one.
+    expect(roadmap?.kind === "file" && roadmap.result.kind).toBe("planning");
     const entry = await core.refresh({
       repo: "",
       apiBase: "/api",
@@ -965,8 +1074,9 @@ describe("a refresh", () => {
       config,
     });
     expect(entry).toMatchObject({ kind: "file", path: "plans/a.md" });
-    // The roadmap it named is never stored; the other file is.
-    expect(written).toEqual(["plans/a.md"]);
+    // No build of this core has said which server answers, so nothing is
+    // written (§8.2).
+    expect(written).toEqual([]);
   });
 
   it("scans under its core's own header over the config it carries", async () => {

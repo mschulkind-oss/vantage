@@ -2,7 +2,8 @@
  * A fake Vantage server for the scan worker's suites: a `fetch` that answers
  * `POST …/planning/stream` and `GET …/planning/sources?path=` from a tree of
  * path → content, as `internal/planning/stream.go` and `sources.go` answer
- * them (`docs/design/planning-index-at-scale.md` §6.1, §6.2).
+ * them (`docs/design/planning-index-at-scale.md` §6.1, §6.2), and
+ * `GET …/planning/server-id` with its server id (§6.5).
  *
  * The stream's body is served in chunks of `chunkBytes` bytes of its UTF-8
  * encoding, one chunk per read, so a test decides where lines and characters
@@ -21,6 +22,11 @@ export interface FakeServerOptions {
   unreadable?: Record<string, string>;
   /** The API base it answers under; `/api` by default. */
   apiBase?: string;
+  /**
+   * The server id it answers, `fake-server` by default; `null` answers
+   * `500`, as a server that cannot say would.
+   */
+  serverId?: string | null;
 }
 
 /** One request the fake server answered, as it arrived. */
@@ -36,7 +42,15 @@ export interface FakeServer {
   fetch: typeof fetch;
   /** The tree it serves; a test edits it between requests. */
   tree: Record<string, string>;
+  /** The server id it answers; a test changes it between requests. */
+  serverId: string | null;
+  /**
+   * The stream and one-path requests it answered, in order. The server id's
+   * are counted in `serverIdRequests` instead, so `requests[0]` is still a
+   * build's stream.
+   */
   requests: FakeRequest[];
+  serverIdRequests: number;
   /** The `have` of each stream request, in order: `{}` for none. */
   haves(): Record<string, string>[];
   /** The paths each stream sent as `file`, in order. */
@@ -154,7 +168,9 @@ export function fakePlanningServer(
   const apiBase = options.apiBase ?? "/api";
   const server: FakeServer = {
     tree: { ...initial },
+    serverId: options.serverId === undefined ? "fake-server" : options.serverId,
     requests: [],
+    serverIdRequests: 0,
     fileLines: [],
     haves: () =>
       server.requests
@@ -175,6 +191,13 @@ export function fakePlanningServer(
       const method = init?.method ?? "GET";
       const signal = init?.signal ?? undefined;
       const text = typeof init?.body === "string" ? init.body : undefined;
+      if (method === "GET" && url === `${apiBase}/planning/server-id`) {
+        server.serverIdRequests += 1;
+        if (signal?.aborted) throw abortError();
+        return server.serverId === null
+          ? json({ detail: "no" }, 500)
+          : json({ server_id: server.serverId });
+      }
       server.requests.push({
         method,
         url,
