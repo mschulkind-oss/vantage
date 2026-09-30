@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type BrowserContext, type Page } from "@playwright/test";
+import { TAKEN_OVER } from "../src/planningScan/store";
 import { planningIndexReady } from "./planningIndex";
 
 // The scan worker and its cache in a real browser: the worker over the real
@@ -128,6 +129,96 @@ const storedPaths = (page: Page) =>
         };
       }),
   );
+
+/** What `meta` holds under `key`, as a string; `"undefined"` for nothing. */
+const metaValue = (page: Page, key: string) =>
+  page.evaluate(
+    (at) =>
+      new Promise<string>((resolve, reject) => {
+        const opening = indexedDB.open("vantage-planning");
+        opening.onerror = () => reject(opening.error);
+        opening.onsuccess = () => {
+          const db = opening.result;
+          const read = db
+            .transaction("meta", "readonly")
+            .objectStore("meta")
+            .get(at);
+          read.onsuccess = () => {
+            db.close();
+            resolve(String(read.result));
+          };
+        };
+      }),
+    key,
+  );
+
+/** Put `value` in `meta` under `key`, as another tab's open would. */
+const putMeta = (page: Page, key: string, value: string) =>
+  page.evaluate(
+    ([at, held]) =>
+      new Promise<void>((resolve, reject) => {
+        const opening = indexedDB.open("vantage-planning");
+        opening.onerror = () => reject(opening.error);
+        opening.onsuccess = () => {
+          const db = opening.result;
+          const tx = db.transaction("meta", "readwrite");
+          tx.objectStore("meta").put(held, at);
+          tx.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          tx.onerror = () => reject(tx.error);
+        };
+      }),
+    [key, value] as const,
+  );
+
+/** The module the scan worker stores through, as the dev server serves it. */
+const STORE_MODULE = "/src/planningScan/store.ts";
+
+/**
+ * A tab holding one connection of the real scan store over the real
+ * IndexedDB, as a scan worker holds one. It is opened on a page of this origin
+ * that boots no app, so no worker of the app's touches the database meanwhile.
+ */
+async function storeTab(context: BrowserContext): Promise<Page> {
+  const page = await context.newPage();
+  await page.goto("/api/health");
+  await page.evaluate(async (url) => {
+    const module = (await import(/* @vite-ignore */ url)) as {
+      idbScanStore: () => unknown;
+    };
+    (window as unknown as { scanStore: unknown }).scanStore =
+      module.idbScanStore();
+  }, STORE_MODULE);
+  return page;
+}
+
+/** Call one of the tab's store operations: what it resolved with, or why not. */
+const call = (page: Page, op: string, ...args: unknown[]) =>
+  page.evaluate(
+    async ([name, given]) => {
+      const store = (
+        window as unknown as {
+          scanStore: Record<string, (...a: unknown[]) => Promise<unknown>>;
+        }
+      ).scanStore;
+      try {
+        return { ok: (await store[name]?.(...given)) ?? null };
+      } catch (error) {
+        return { refused: error instanceof Error ? error.message : "?" };
+      }
+    },
+    [op, args] as const,
+  );
+
+const record = (path: string, markdown: string) => ({
+  path,
+  hash: "0".repeat(32),
+  kind: "planning",
+  document: { path },
+  blocks: [{ startLine: 1, endLine: 1, lineOffset: 0, markdown }],
+});
 
 test.describe("the planning scan cache", () => {
   test("the scan worker starts at boot, and builds the index a document needs", async ({
@@ -417,11 +508,11 @@ test.describe("the planning scan cache", () => {
       const olderCache = scanCache(older, "1:OLDSOURCE:UA", (error: unknown) =>
         logged.push(String(error)),
       );
-      // Opened, under the older code's id.
-      await olderCache.stamps("");
+      // Opened, under the older code's id, for this server.
+      await olderCache.bind("s");
 
       const newer = idbScanStore();
-      await newer.open("1:NEWSOURCE:UA");
+      await newer.open({ scanner: "1:NEWSOURCE:UA", server: "s" });
       await newer.write("", [
         { path: "plans/b.md", hash: "h2", kind: "not-planning" },
       ]);
@@ -488,5 +579,75 @@ test.describe("the planning scan cache", () => {
     await planningPage(page, true);
     expect(streams).toHaveLength(2);
     expect(Object.keys(streams[1]?.have ?? {}).length).toBeGreaterThan(10);
+  });
+
+  test("a database kept for another server makes the next load cold, and sends none of its paths", async ({
+    page,
+  }) => {
+    const streams = await recordStreams(page);
+    await planningPage(page);
+    const answered = (await (
+      await page.request.get("/api/planning/server-id")
+    ).json()) as { server_id: string };
+    expect(await metaValue(page, "server")).toBe(answered.server_id);
+
+    // What a different server answering at this address would find: every
+    // record kept, under the first server's id.
+    await putMeta(page, "server", "a server that answered here before");
+    await planningPage(page, true);
+    expect(streams).toHaveLength(2);
+    const cold = streams[1] ?? { have: {}, lines: [] };
+    expect(cold.have).toEqual({});
+    expect(cold.lines.filter((line) => line.kind === "same")).toEqual([]);
+    expect(await metaValue(page, "server")).toBe(answered.server_id);
+  });
+
+  test("a tab whose database another tab has cleared reads and writes nothing more", async ({
+    context,
+  }) => {
+    const older = await storeTab(context);
+    const newer = await storeTab(context);
+    const refused = { refused: TAKEN_OVER };
+
+    expect(await call(older, "open", { scanner: "OLD", server: "s" })).toEqual({
+      ok: null,
+    });
+    expect(
+      await call(older, "write", "", [record("a.md", "# by OLD")]),
+    ).toEqual({ ok: null });
+
+    // A tab of newer code opens it, clears it, and stamps it with its own id,
+    // while the older tab's connection stays open.
+    expect(await call(newer, "open", { scanner: "NEW", server: "s" })).toEqual({
+      ok: null,
+    });
+    expect(await call(newer, "stamps", "")).toEqual({ ok: [] });
+
+    // Everything the older tab asks through that connection is refused.
+    expect(
+      await call(older, "write", "", [record("b.md", "# by OLD, after")]),
+    ).toEqual(refused);
+    expect(await call(older, "stamps", "")).toEqual(refused);
+    expect(await call(older, "cards", "", "a.md")).toEqual(refused);
+
+    // So the newer tab, and one opened after, read nothing of the older's.
+    expect(await call(newer, "stamps", "")).toEqual({ ok: [] });
+    expect(await call(newer, "documents", "")).toEqual({ ok: [] });
+    const fresh = await storeTab(context);
+    expect(await call(fresh, "open", { scanner: "NEW", server: "s" })).toEqual({
+      ok: null,
+    });
+    expect(await call(fresh, "stamps", "")).toEqual({ ok: [] });
+    expect(await metaValue(fresh, "scanner")).toBe("NEW");
+
+    // The same holds for a tab reading another server.
+    expect(
+      await call(newer, "write", "", [record("c.md", "# by NEW")]),
+    ).toEqual({ ok: null });
+    expect(await call(fresh, "open", { scanner: "NEW", server: "t" })).toEqual({
+      ok: null,
+    });
+    expect(await call(fresh, "stamps", "")).toEqual({ ok: [] });
+    expect(await call(newer, "stamps", "")).toEqual(refused);
   });
 });

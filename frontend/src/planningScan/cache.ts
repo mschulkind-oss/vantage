@@ -5,9 +5,13 @@
  *
  * The policy is all here, so every store is only storage:
  *
- * - **The scanner id** is checked when the store opens, and a mismatch clears
- *   it (§8.2): results from other code, or from a browser with other Unicode
- *   tables, are never read.
+ * - **The scanner id and the server id** are the store's owner (§8.2): a
+ *   mismatch when it opens clears it, and every read and write checks the
+ *   owner again, so results from other code, from a browser with other
+ *   Unicode tables, or from another server answering at the same origin are
+ *   never read, never sent as `have`, and never written under another's name.
+ *   Nothing is read or written until a build has said which server answers
+ *   ({@link ScanCache.bind}).
  * - **One write per record**, in transactions of `cacheBatch` records, at most
  *   one of them in flight, overlapped with scanning (§8.3).
  * - **Blocks past `cardChars` are never kept** (§7.4). The page draws a
@@ -90,6 +94,15 @@ export interface CacheWriter {
 export interface ScanCache {
   /** False from the first failure on, and from the start without a store. */
   readonly enabled: boolean;
+  /**
+   * Say which server answers at this origin now, by its server id (§8.2), and
+   * settle once the store is open for it: cleared first when it held another
+   * server's results. Until the first call, and after a call with `null` (the
+   * id could not be had), nothing is read or written, as if the cache were
+   * off, without turning it off. A change of server also forgets every block
+   * held in memory.
+   */
+  bind(serverId: string | null): Promise<void>;
   /** Every stamp of `repo`; none once the cache is off. */
   stamps(repo: string): Promise<ScanStamp[]>;
   /** Every stored planning document of `repo`, by path. */
@@ -128,7 +141,10 @@ export function scanCache(
   log: (error: unknown) => void = defaultLog,
 ): ScanCache {
   let enabled = store !== null;
-  let opened: Promise<void> | null = null;
+  /** The server the store is open for, or opening; `null` for none. */
+  let bound: string | null = null;
+  /** Settles once the store is open for `bound`. */
+  let opened: Promise<void> = Promise.resolve();
 
   const fail = (error: unknown): void => {
     if (!enabled) return;
@@ -136,12 +152,16 @@ export function scanCache(
     log(error);
   };
 
-  /** The store, once it is open and while it works; else `null`. */
+  /**
+   * The store, once it is open for a server and while it works; else `null`.
+   * An operation asked for under one server and reached after a change to
+   * another is dropped rather than done under the new one.
+   */
   const usable = async (): Promise<ScanStore | null> => {
-    if (store === null || !enabled) return null;
-    opened ??= store.open(scannerId).catch(fail);
+    const server = bound;
+    if (store === null || !enabled || server === null) return null;
     await opened;
-    return enabled ? store : null;
+    return enabled && bound === server ? store : null;
   };
 
   async function guarded<T>(
@@ -216,6 +236,19 @@ export function scanCache(
   return {
     get enabled() {
       return enabled;
+    },
+
+    bind(serverId) {
+      if (store === null || !enabled || serverId === bound) return opened;
+      bound = serverId;
+      // Nothing one server's scans left here serves another's.
+      memory.clear();
+      memoryChars = 0;
+      if (serverId === null) return opened;
+      const owner = { scanner: scannerId, server: serverId };
+      // After the open before it, so the two never interleave.
+      opened = opened.then(() => store.open(owner)).catch(fail);
+      return opened;
     },
 
     stamps: (repo) => guarded([], (open) => open.stamps(repo)),
