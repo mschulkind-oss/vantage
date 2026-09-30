@@ -197,7 +197,7 @@ func TestPlanningStreamHasTheContractsShape(t *testing.T) {
 	require.Equal(t, "no-store", w.Header().Get("Cache-Control"))
 	require.Empty(t, w.Header().Get("Content-Encoding"), "not asked for gzip, so not gzipped")
 	require.Equal(t,
-		`{"kind":"header","config":{"roadmap":"roadmap.md","include":["**/*.md"],"exclude":[],`+
+		`{"kind":"header","config":{"roadmaps":null,"include":["**/*.md"],"exclude":[],`+
 			`"max_file_bytes":1048576,"max_candidates":5000,"stages":null},"candidate_count":0,"refused":false}`+"\n"+
 			`{"kind":"end","candidates":0}`+"\n",
 		w.Body.String())
@@ -241,7 +241,7 @@ func TestPlanningStreamPastTheLimitIsRefused(t *testing.T) {
 	require.Equal(t, 2, lines[1].Candidates)
 }
 
-// What the browser holds comes back as `same`, the roadmap excepted. The hash
+// What the browser holds comes back as `same`, the roadmaps excepted. The hash
 // is "test"'s, the one the design's example shows.
 func TestPlanningStreamAnswersHaveWithSame(t *testing.T) {
 	e := newPlanningEnv(t, map[string]string{
@@ -254,6 +254,52 @@ func TestPlanningStreamAnswersHaveWithSame(t *testing.T) {
 	require.Empty(t, lines[1].Content)
 	require.Equal(t, hash, lines[2].Hash)
 	require.Equal(t, "test", lines[2].Content)
+}
+
+// A repository with its roadmap under docs/plans/ and none at the root, and no
+// `roadmap` key: every candidate named roadmap.md is a roadmap, so both are
+// sent whole whatever the browser holds, and the header says `roadmaps` is
+// null. Listing them instead, one of them excluded, reads both all the same,
+// and the header carries the list as written, "./" dropped.
+func TestPlanningStreamSendsEveryRoadmapWhole(t *testing.T) {
+	e := newPlanningEnv(t, map[string]string{
+		"docs/plans/roadmap.md": "test",
+		"notes/ROADMAP.md":      "test",
+		"docs/a.md":             "test",
+	})
+	const hash = "9f86d081884c7d659a2feaa0c55ad015"
+	have := `{"have":{"docs/plans/roadmap.md":"` + hash + `","notes/ROADMAP.md":"` + hash + `","docs/a.md":"` + hash + `"}}`
+
+	lines := streamLines(t, e.stream(have))
+	require.Nil(t, lines[0].Config.Roadmaps, "found by name")
+	require.Equal(t, []string{"same docs/a.md", "file docs/plans/roadmap.md", "file notes/ROADMAP.md"}, sent(lines))
+	require.Equal(t, "file", planningKindOf(t, e, "docs/plans/roadmap.md"))
+
+	writeFile(t, e.dir, ".vantage.toml",
+		"[planning]\nroadmap = [\"./docs/plans/roadmap.md\", \"notes/ROADMAP.md\"]\nexclude = [\"docs/plans/**\"]\n")
+	lines = streamLines(t, e.stream(have))
+	require.Equal(t, []string{"docs/plans/roadmap.md", "notes/ROADMAP.md"}, lines[0].Config.Roadmaps)
+	require.Equal(t, []string{"same docs/a.md", "file docs/plans/roadmap.md", "file notes/ROADMAP.md"}, sent(lines),
+		"a listed roadmap is read although exclude rules it out")
+	require.Equal(t, "file", planningKindOf(t, e, "docs/plans/roadmap.md"))
+
+	writeFile(t, e.dir, ".vantage.toml", "[planning]\nroadmap = []\nexclude = [\"docs/plans/**\"]\n")
+	lines = streamLines(t, e.stream(have))
+	require.Equal(t, []string{}, lines[0].Config.Roadmaps, "[] stays [], never null")
+	require.Equal(t, []string{"same docs/a.md", "same notes/ROADMAP.md"}, sent(lines))
+	require.Equal(t, "absent", planningKindOf(t, e, "docs/plans/roadmap.md"))
+}
+
+// planningKindOf is the single-path mode's `kind` for rel.
+func planningKindOf(t *testing.T, e *planningEnv, rel string) string {
+	t.Helper()
+	w := e.get("/planning/sources?path=" + rel)
+	require.Equal(t, http.StatusOK, w.Code, "body: %s", w.Body.String())
+	var entry struct {
+		Kind string `json:"kind"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &entry))
+	return entry.Kind
 }
 
 // The request body's answers, each decided before a line is written. No body,
@@ -356,7 +402,7 @@ func TestBodyLimitIsAKiBPerCandidateAboveItsFloor(t *testing.T) {
 }
 
 // The stream's `have` is kept to what the stream can use as the body is read:
-// an entry for a path that is no candidate, for the roadmap, or with a value
+// an entry for a path that is no candidate, for a roadmap, or with a value
 // no content hash could equal is dropped, so a body of short distinct keys
 // holds nothing in the heap. Decoded whole, such a body held about 4.4 times
 // its size, 18.6 MB for a body just under 4 MiB (design §6.4).
@@ -437,7 +483,7 @@ func (f *flushRecorder) Flush() {
 func TestPlanningStreamFlushesTheHeaderThroughTheCompressor(t *testing.T) {
 	e := newPlanningEnv(t, map[string]string{"a.md": "test", "b.md": "# B\n"})
 	handler := perf.Middleware(perf.NewStore())(http.HandlerFunc(e.h.PlanningStream))
-	const header = `{"kind":"header","config":{"roadmap":"roadmap.md","include":["**/*.md"],"exclude":[],` +
+	const header = `{"kind":"header","config":{"roadmaps":null,"include":["**/*.md"],"exclude":[],` +
 		`"max_file_bytes":1048576,"max_candidates":5000,"stages":null},"candidate_count":2,"refused":false}` + "\n"
 
 	for _, encoding := range []string{"", "gzip"} {

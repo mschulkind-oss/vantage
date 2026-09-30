@@ -227,7 +227,7 @@ function answerStream(
 const snakeConfig = (config: Partial<PlanningConfig> = {}) => {
   const full = planningConfig(config);
   return {
-    roadmap: full.roadmap,
+    roadmaps: full.roadmaps,
     include: full.include,
     exclude: full.exclude,
     max_file_bytes: full.maxFileBytes,
@@ -1060,7 +1060,7 @@ describe("ordering (§3.4; scale design §5.4)", () => {
     await flush();
     const settled = readyIndex();
     answerRefused(first, 9999, {
-      roadmap: "elsewhere.md",
+      roadmaps: ["elsewhere.md"],
       include: [],
       exclude: [],
       max_file_bytes: 1,
@@ -1069,7 +1069,7 @@ describe("ordering (§3.4; scale design §5.4)", () => {
     });
     await flush();
     expect(readyIndex()).toBe(settled);
-    expect(settled.config.roadmap).toBe("roadmap.md");
+    expect(settled.config.roadmaps).toBeNull();
     expect(settled.refused).toBe(false);
   });
 
@@ -1200,11 +1200,11 @@ describe("a scanner that has seen no header (scale design §7.1)", () => {
       take(STREAM),
       { ...TREE, [ROAD]: ROADMAP },
       {
-        config: { roadmap: ROAD },
+        config: { roadmaps: [ROAD] },
       },
     );
     await flush();
-    expect(readyIndex().config.roadmap).toBe(ROAD);
+    expect(readyIndex().config.roadmaps).toEqual([ROAD]);
 
     // A new core, which has read no stream: what the worker client starts
     // when its worker dies with no build out.
@@ -1296,7 +1296,7 @@ describe("the store's own guards, whatever the scanner reports", () => {
     act(() => {
       first?.on({
         type: "header",
-        config: planningConfig({ roadmap: "elsewhere.md" }),
+        config: planningConfig({ roadmaps: ["elsewhere.md"] }),
         candidateCount: 9999,
         refused: true,
       });

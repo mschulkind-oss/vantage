@@ -26,6 +26,7 @@
 
 import {
   DEFAULT_PLANNING_CONFIG,
+  isRoadmapPath,
   parseSourceEntry,
   parseStreamLine,
   scanCandidate,
@@ -766,9 +767,9 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
   /**
    * The config a file of `repo` is scanned under now: the in-flight build's,
    * once its header arrives, else the last header's, else `given`, the one
-   * the request carries. Whether a file is the roadmap is part of its scan,
-   * so a refresh sent during a rescan waits for the rescan's header, as it
-   * once waited for its batch.
+   * the request carries. Whether a file is a roadmap is part of its scan, and
+   * only a header says which files are, so a refresh sent during a rescan
+   * waits for the rescan's header, as it once waited for its batch.
    */
   const configFor = async (
     repo: string,
@@ -845,11 +846,13 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
   };
 
   /**
-   * Keep one scanned file: a record in the store, or, for the roadmap, which
-   * is never stored because the stream never answers `same` for it (§8.1),
-   * its blocks in memory. Nothing is kept when a newer request than the one
-   * it answers has been kept for its path; a build's record is asked again as
-   * its batch is written.
+   * Keep one scanned file: a record in the store, or, for a roadmap, which is
+   * never stored because the stream never answers `same` for one (§8.1), its
+   * blocks in memory. Which files are roadmaps is `isRoadmapPath` of the
+   * config, the header's test the server applies too (planning-index.md
+   * §6.1). Nothing is kept when a newer request than the one it answers has
+   * been kept for its path; a build's record is asked again as its batch is
+   * written.
    */
   const keepScanned = async (
     repo: string,
@@ -868,7 +871,7 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
       }
       paths.set(path, by.seq);
     }
-    if (path === config.roadmap) {
+    if (isRoadmapPath(config, path)) {
       if (result.kind === "planning") {
         cache.remember(repo, path, hash, result.cards);
       }
@@ -977,7 +980,9 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
         seq: run.seq,
         writer,
       });
-      if (path !== config.roadmap) keep.add(path);
+      // A roadmap is never stored, so a build never keeps one: a stored
+      // record from before the file became a roadmap is collected.
+      if (!isRoadmapPath(config, path)) keep.add(path);
       chunk.result(path, hash, result);
       counted();
     };
@@ -1025,14 +1030,17 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
     /**
      * A file the server says is unchanged. Its stored result is used when it
      * is there under that hash; if another tab collected it meanwhile, or the
-     * server named a hash this build never sent, it is read again (§5.2).
+     * server named a hash this build never sent, it is read again (§5.2). So
+     * is a roadmap, whatever is stored for it: an agreeing server never
+     * answers `same` for one, and a stored result is never a roadmap's, so
+     * using it would put a plain document where a roadmap belongs (§6.1).
      */
     const takeSame = async (
       config: PlanningConfig,
       path: string,
       hash: string,
     ): Promise<void> => {
-      const stamp = stampOf.get(path);
+      const stamp = isRoadmapPath(config, path) ? undefined : stampOf.get(path);
       if (stamp?.hash === hash) {
         if (stamp.kind === "not-planning") {
           keep.add(path);

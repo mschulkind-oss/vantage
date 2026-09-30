@@ -10,7 +10,12 @@
  * while the next is computed.
  */
 
-import { isStageRole, type PlanningConfig, type StageRole } from "./config.js";
+import {
+  isRoadmapPath,
+  isStageRole,
+  type PlanningConfig,
+  type StageRole,
+} from "./config.js";
 import {
   scanPlanningDocument,
   type PlanningDocument,
@@ -128,11 +133,17 @@ function stringList(value: unknown): string[] | null {
 
 function parseConfig(value: unknown): PlanningConfig | null {
   if (!isRecord(value)) return null;
-  const { roadmap, max_file_bytes, max_candidates, stages } = value;
+  const { max_file_bytes, max_candidates, stages } = value;
   const include = stringList(value["include"]);
   const exclude = stringList(value["exclude"]);
-  if (!isString(roadmap) || include === null || exclude === null) return null;
+  if (include === null || exclude === null) return null;
   if (!isNumber(max_file_bytes) || !isNumber(max_candidates)) return null;
+  // `null` finds roadmaps by name, and a list names them; a config without the
+  // key is from before several roadmaps, and cannot say which files are
+  // roadmaps (design §13).
+  const listed = value["roadmaps"];
+  const roadmaps = listed === null ? null : stringList(listed);
+  if (listed !== null && roadmaps === null) return null;
 
   // An empty table is no table (design §9), so only a declared word makes one.
   let roles: Record<string, StageRole> | null = null;
@@ -152,7 +163,7 @@ function parseConfig(value: unknown): PlanningConfig | null {
     }
   }
   return {
-    roadmap,
+    roadmaps,
     include,
     exclude,
     maxFileBytes: max_file_bytes,
@@ -265,15 +276,15 @@ function insertSorted<T extends { path: string }>(list: T[], item: T): T[] {
 }
 
 /**
- * Scan one candidate as the index reads it: whether it is the roadmap is
- * decided from `config`, so no caller decides it.
+ * Scan one candidate as the index reads it: whether it is a roadmap is
+ * decided from `config` by the roadmap test, so no caller decides it.
  */
 export function scanCandidate(
   config: PlanningConfig,
   path: string,
   content: string,
 ): ScanResult {
-  return scanPlanningDocument(path, content, path === config.roadmap);
+  return scanPlanningDocument(path, content, isRoadmapPath(config, path));
 }
 
 /**
@@ -282,7 +293,7 @@ export function scanCandidate(
  * The refusal is decided here as well as by whoever produced the batch: a
  * count over `maxCandidates` refuses even when `refused` says otherwise, so the
  * checker's walk and the server cannot disagree about where the line is.
- * Whether a file is the roadmap is decided here too, from the config, and no
+ * Whether a file is a roadmap is decided here too, from the config, and no
  * caller passes it.
  */
 export function buildPlanningIndex(sources: PlanningSources): PlanningIndex {

@@ -1,0 +1,5 @@
+# The several-roadmaps end-to-end fixture (docs/design/planning-index.md §6.4),
+# served by planning_roadmaps.spec.ts's own server and read by no other spec.
+# There is no roadmap key, so both roadmap.md files are found by name.
+[planning.stages]
+DESIGN = "open"

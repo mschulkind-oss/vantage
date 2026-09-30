@@ -1,0 +1,208 @@
+{
+  "description": [
+    "Which listed paths are roadmaps, under a resolved [planning] table's roadmaps, include and exclude.",
+    "`roadmaps` is the resolved setting: null when .vantage.toml has no roadmap key, so that every candidate named roadmap.md is a roadmap, otherwise the listed paths, [] naming none.",
+    "`candidate` is what Matcher.IsCandidate (the server) and candidateMatcher (vantage-md) answer: include matches and exclude does not, or the path is listed in roadmaps, whatever the patterns say. A roadmap found by its name has no such exemption.",
+    "`roadmap` is the roadmap test, repoconfig.Planning.IsRoadmap and vantage-md's isRoadmapPath: listed in roadmaps, compared exactly, or, with roadmaps null, a path whose last /-separated segment is roadmap.md compared ASCII case-insensitively. It does not ask whether the path is a candidate: a path is a roadmap of the index when the server lists it and both are true.",
+    "The pattern half of each `candidate` comes from sabhiram/go-gitignore under Go's regexp, as in planning-patterns.json, and every value was confirmed by running the server's code. `ROADMAP.MD` is named roadmap.md but is no candidate under the case-sensitive **/*.md, so it is not found; `ʀoadmap.md` starts with U+0280, which ASCII case-insensitivity does not fold.",
+    "Read by the server's internal/repoconfig and internal/planning tests and by vantage-md's port (frontend/src/lib/planningPatterns.test.ts)."
+  ],
+  "cases": [
+    {
+      "roadmaps": null,
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [],
+      "path": "roadmap.md",
+      "candidate": true,
+      "roadmap": true
+    },
+    {
+      "roadmaps": null,
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [],
+      "path": "docs/plans/roadmap.md",
+      "candidate": true,
+      "roadmap": true
+    },
+    {
+      "roadmaps": null,
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [],
+      "path": "ROADMAP.md",
+      "candidate": true,
+      "roadmap": true
+    },
+    {
+      "roadmaps": null,
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [],
+      "path": "docs/Roadmap.md",
+      "candidate": true,
+      "roadmap": true
+    },
+    {
+      "roadmaps": null,
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [],
+      "path": "ROADMAP.MD",
+      "candidate": false,
+      "roadmap": true
+    },
+    {
+      "roadmaps": null,
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [],
+      "path": "roadmap.markdown",
+      "candidate": false,
+      "roadmap": false
+    },
+    {
+      "roadmaps": null,
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [],
+      "path": "my-roadmap.md",
+      "candidate": true,
+      "roadmap": false
+    },
+    {
+      "roadmaps": null,
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [],
+      "path": "roadmap-2026.md",
+      "candidate": true,
+      "roadmap": false
+    },
+    {
+      "roadmaps": null,
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [],
+      "path": "roadmap.md/notes.md",
+      "candidate": true,
+      "roadmap": false
+    },
+    {
+      "roadmaps": null,
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [],
+      "path": "ʀoadmap.md",
+      "candidate": true,
+      "roadmap": false
+    },
+    {
+      "roadmaps": null,
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [
+        "frontend/e2e/fixtures/**"
+      ],
+      "path": "frontend/e2e/fixtures/test_repo/plans/roadmap.md",
+      "candidate": false,
+      "roadmap": true
+    },
+    {
+      "roadmaps": [
+        "plans/roadmap.md"
+      ],
+      "include": [
+        "docs/**"
+      ],
+      "exclude": [],
+      "path": "plans/roadmap.md",
+      "candidate": true,
+      "roadmap": true
+    },
+    {
+      "roadmaps": [
+        "plans/roadmap.md"
+      ],
+      "include": [
+        "docs/**"
+      ],
+      "exclude": [],
+      "path": "roadmap.md",
+      "candidate": false,
+      "roadmap": false
+    },
+    {
+      "roadmaps": [
+        "plans/roadmap.md"
+      ],
+      "include": [
+        "docs/**"
+      ],
+      "exclude": [],
+      "path": "docs/roadmap.md",
+      "candidate": true,
+      "roadmap": false
+    },
+    {
+      "roadmaps": [
+        "plans/roadmap.md"
+      ],
+      "include": [
+        "docs/**"
+      ],
+      "exclude": [],
+      "path": "plans/ROADMAP.md",
+      "candidate": false,
+      "roadmap": false
+    },
+    {
+      "roadmaps": [
+        "plans/roadmap.md"
+      ],
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [
+        "plans/**"
+      ],
+      "path": "plans/roadmap.md",
+      "candidate": true,
+      "roadmap": true
+    },
+    {
+      "roadmaps": [
+        "docs/PLAN.md"
+      ],
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [],
+      "path": "docs/PLAN.md",
+      "candidate": true,
+      "roadmap": true
+    },
+    {
+      "roadmaps": [],
+      "include": [
+        "**/*.md"
+      ],
+      "exclude": [],
+      "path": "roadmap.md",
+      "candidate": true,
+      "roadmap": false
+    }
+  ]
+}

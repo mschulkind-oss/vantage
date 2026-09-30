@@ -20,7 +20,7 @@ interface ConfigCase {
 }
 
 const PLANNING_KEYS = [
-  "roadmap",
+  "roadmaps",
   "include",
   "exclude",
   "maxFileBytes",
@@ -52,6 +52,34 @@ describe("planning-config.json", () => {
     }
   });
 
+  // Design §9: the string form, the list form, and each way a list is refused.
+  it("holds a case for each form of roadmap, and each refusal of a list", () => {
+    const roadmaps = (name: string) =>
+      cases.find((c) => c.name === name)?.planning?.roadmaps;
+    expect(roadmaps("no [planning] table")).toBeNull();
+    expect(roadmaps("every key")).toEqual(["docs/ROADMAP.md"]);
+    expect(roadmaps("a list of roadmaps, in the order written")).toEqual([
+      "docs/plans/roadmap.md",
+      "roadmap.md",
+    ]);
+    expect(roadmaps("an empty list names no roadmap")).toEqual([]);
+    for (const name of [
+      "a list holding a number",
+      "a list holding a list",
+      "a list holding an empty path",
+      "a list holding only ./",
+      "a list holding an absolute path",
+      "a list holding a path that climbs out and back",
+      "a list naming one path twice",
+      "a roadmap written as a table",
+      "roadmaps written as an array of tables",
+      "a roadmap that is a boolean",
+      "an unknown key",
+    ]) {
+      expect(cases.find((c) => c.name === name)?.ok, name).toBe(false);
+    }
+  });
+
   it("holds an empty [planning.stages] table that reads as no stages", () => {
     const empty = cases.find(
       (c) => c.ok && /\[planning\.stages\]\s*$/.test(c.toml),
@@ -67,6 +95,43 @@ describe("planning-config.json", () => {
         expect(() => parseToml(c.toml), c.name).not.toThrow();
       }
     }
+  });
+});
+
+describe("planning-roadmaps.json", () => {
+  const { cases } = planningFixture<{
+    cases: {
+      roadmaps: string[] | null;
+      include: string[];
+      exclude: string[];
+      path: string;
+      candidate: boolean;
+      roadmap: boolean;
+    }[];
+  }>("planning-roadmaps.json");
+
+  it("gives every case the six fields both readers read", () => {
+    for (const c of cases) {
+      expect(Object.keys(c).sort(), c.path).toEqual(
+        [
+          "candidate",
+          "exclude",
+          "include",
+          "path",
+          "roadmap",
+          "roadmaps",
+        ].sort(),
+      );
+      expect(c.roadmaps === null || Array.isArray(c.roadmaps), c.path).toBe(
+        true,
+      );
+    }
+  });
+
+  it("finds by name and lists, both", () => {
+    expect(cases.some((c) => c.roadmaps === null)).toBe(true);
+    expect(cases.some((c) => (c.roadmaps?.length ?? 0) > 0)).toBe(true);
+    expect(cases.some((c) => c.roadmaps?.length === 0)).toBe(true);
   });
 });
 

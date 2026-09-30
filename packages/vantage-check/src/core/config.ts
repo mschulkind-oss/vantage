@@ -259,7 +259,7 @@ function parsePlanning(
   for (const [key, value] of Object.entries(table)) {
     switch (key) {
       case "roadmap":
-        planning.roadmap = asRoadmap(value, path);
+        planning.roadmaps = asRoadmaps(value, path);
         break;
       case "include":
       case "exclude":
@@ -284,22 +284,63 @@ function parsePlanning(
 }
 
 /**
- * A repo-relative path: not empty, no leading `/`, no `..` segment. A leading
- * `./` is dropped, so the value compares equal to the paths the index holds.
+ * `roadmap`, as a list (design §9): a string is a list of one, and a list
+ * names exactly those roadmaps, in the order written, `[]` none. Anything else
+ * is refused, and so is a list holding anything but text or one path twice.
+ * smol-toml hands an inline table and `[[planning.roadmap]]` over as a table
+ * and as a list of tables, so both are refused here too.
  */
-function asRoadmap(value: unknown, path: string): string {
-  if (typeof value !== "string") {
+function asRoadmaps(value: unknown, path: string): string[] {
+  if (typeof value === "string") return [asRoadmap(value, path, null)];
+  if (!Array.isArray(value)) {
     throw new ConfigError(
-      `${path}: planning.roadmap must be a repo-relative path written as text`,
+      `${path}: planning.roadmap must be a repo-relative path written as text, or a list of them (got ${JSON.stringify(value)})`,
     );
   }
+  const seen = new Map<string, number>();
+  return value.map((entry: unknown, i) => {
+    const position = i + 1;
+    if (typeof entry !== "string") {
+      throw new ConfigError(
+        `${path}: entry ${position} of planning.roadmap must be a repo-relative path written as text (got ${JSON.stringify(entry)})`,
+      );
+    }
+    const roadmap = asRoadmap(entry, path, position);
+    const earlier = seen.get(roadmap);
+    if (earlier !== undefined) {
+      throw new ConfigError(
+        `${path}: entry ${position} of planning.roadmap (${JSON.stringify(entry)}) names the same path as entry ${earlier}; list each roadmap once`,
+      );
+    }
+    seen.set(roadmap, position);
+    return roadmap;
+  });
+}
+
+/**
+ * A repo-relative path: not empty, no leading `/`, no `..` segment. A leading
+ * `./` is dropped, so the value compares equal to the paths the index holds.
+ * `position` is the entry's, counted from 1, in the list form, and `null` for
+ * the string form, which has only the one.
+ */
+function asRoadmap(
+  value: string,
+  path: string,
+  position: number | null,
+): string {
+  const where =
+    position === null
+      ? "planning.roadmap"
+      : `entry ${position} of planning.roadmap`;
   const roadmap = value.startsWith("./") ? value.slice(2) : value;
   if (roadmap === "") {
-    throw new ConfigError(`${path}: planning.roadmap is empty`);
+    throw new ConfigError(
+      `${path}: ${where} is empty (got ${JSON.stringify(value)})`,
+    );
   }
   if (roadmap.startsWith("/") || roadmap.split("/").includes("..")) {
     throw new ConfigError(
-      `${path}: planning.roadmap must be a path inside the repository, relative to its root, with no leading / and no .. (got ${JSON.stringify(value)})`,
+      `${path}: ${where} must be a path inside the repository, relative to its root, with no leading / and no .. (got ${JSON.stringify(value)})`,
     );
   }
   return roadmap;

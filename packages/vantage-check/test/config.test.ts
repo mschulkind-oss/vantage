@@ -131,8 +131,9 @@ describe("parseConfig", () => {
     const fixture = testdata("shared-config.toml");
     const { planning } = parseConfig(readFileSync(fixture, "utf8"), fixture);
 
+    // A string is a list of one (docs/design/planning-index.md §9).
     expect(planning).toEqual({
-      roadmap: "plans/ROADMAP.md",
+      roadmaps: ["plans/ROADMAP.md"],
       include: ["docs/**", "plans/**"],
       exclude: ["docs/gallery/**"],
       maxFileBytes: 65536,
@@ -307,6 +308,60 @@ describe("[planning], as planning-config.json pins it for both readers", () => {
     ['[planning]\nstages = ["DESIGN"]\n', "planning.stages must be a table"],
   ])("says what is wrong with %j", (source, fragment) => {
     expect(() => parseConfig(source)).toThrow(fragment);
+  });
+
+  // Design §9: an entry's error names planning.roadmap, the entry's position
+  // counted from 1, and its value.
+  it.each([
+    [
+      '[planning]\nroadmap = ["roadmap.md", 3]\n',
+      "entry 2 of planning.roadmap must be a repo-relative path written as text (got 3)",
+    ],
+    [
+      '[planning]\nroadmap = [["roadmap.md"]]\n',
+      'entry 1 of planning.roadmap must be a repo-relative path written as text (got ["roadmap.md"])',
+    ],
+    [
+      '[[planning.roadmap]]\npath = "roadmap.md"\n',
+      'entry 1 of planning.roadmap must be a repo-relative path written as text (got {"path":"roadmap.md"})',
+    ],
+    [
+      '[planning]\nroadmap = ["roadmap.md", "./"]\n',
+      'entry 2 of planning.roadmap is empty (got "./")',
+    ],
+    [
+      '[planning]\nroadmap = ["a.md", "docs/../roadmap.md"]\n',
+      'entry 2 of planning.roadmap must be a path inside the repository, relative to its root, with no leading / and no .. (got "docs/../roadmap.md")',
+    ],
+    [
+      '[planning]\nroadmap = ["plans/roadmap.md", "a.md", "./plans/roadmap.md"]\n',
+      'entry 3 of planning.roadmap ("./plans/roadmap.md") names the same path as entry 1',
+    ],
+    [
+      '[planning]\nroadmap = { path = "roadmap.md" }\n',
+      'planning.roadmap must be a repo-relative path written as text, or a list of them (got {"path":"roadmap.md"})',
+    ],
+    [
+      "[planning]\nroadmap = true\n",
+      "planning.roadmap must be a repo-relative path written as text, or a list of them (got true)",
+    ],
+  ])("says which roadmap entry is wrong in %j", (source, fragment) => {
+    expect(() => parseConfig(source)).toThrow(ConfigError);
+    expect(() => parseConfig(source)).toThrow(fragment);
+  });
+
+  it("keeps the list in the order written, and a string as a list of one", () => {
+    expect(
+      parseConfig('[planning]\nroadmap = ["b/roadmap.md", "./a.md"]\n').planning
+        .roadmaps,
+    ).toEqual(["b/roadmap.md", "a.md"]);
+    expect(
+      parseConfig('[planning]\nroadmap = "./a.md"\n').planning.roadmaps,
+    ).toEqual(["a.md"]);
+    expect(parseConfig("[planning]\nroadmap = []\n").planning.roadmaps).toEqual(
+      [],
+    );
+    expect(parseConfig("[planning]\n").planning.roadmaps).toBeNull();
   });
 });
 

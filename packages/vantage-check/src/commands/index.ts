@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import {
   PLANNING_NOTICES,
+  ROADMAP_STATE_PHRASES,
   VANTAGE_OQ_PREFERENCE,
   badgeFor,
   badgeText,
@@ -10,6 +11,7 @@ import {
   questionFor,
   type PlanningBadge,
   type PlanningIndex,
+  type PlanningRoadmap,
   type PlanningSections,
   type PlanningSources,
   type QuestionRef,
@@ -30,9 +32,13 @@ import { VERSION } from "../version.js";
  * It scans the *project root* (the nearest ancestor of the working directory
  * holding `.git` or `.vantage.toml`, else the working directory itself), builds
  * the planning index from every candidate there, and prints the page's
- * sections, then the roadmap with each link's badge inline. Every line of it is
- * a derivation `vantage-md` also hands the viewer, so the page and the CLI
- * cannot disagree (P7).
+ * sections for the chosen roadmap, then that roadmap with each link's badge
+ * inline. Every line of it is a derivation `vantage-md` also hands the viewer,
+ * so the page and the CLI cannot disagree (P7).
+ *
+ * With several roadmaps it lists them all and chooses one as the page does,
+ * with no memory between runs: `--roadmap`, else the one nearest the root
+ * (design §8).
  *
  * It reports and does not judge, so it never exits 1: 0 when it ran, 2 for bad
  * arguments or a bad config, 3 when it could not run, which includes a project
@@ -44,6 +50,12 @@ export interface IndexOptions {
   configPath?: string;
   /** Ignore any `.vantage.toml` and use the built-in defaults. */
   noConfig?: boolean;
+  /**
+   * `--roadmap`: the roadmap Needs you follows, repo-relative, one leading
+   * `./` dropped. It has to be one that routes; without it, the default
+   * roadmap is chosen.
+   */
+  roadmap?: string;
 }
 
 /**
@@ -51,7 +63,7 @@ export interface IndexOptions {
  * the tool's version `version`; this one says `toolVersion` for that, so the
  * word here can mean the format, and a later change to the shape can say so.
  */
-export const INDEX_FORMAT_VERSION = 1;
+export const INDEX_FORMAT_VERSION = 2;
 
 /** A candidate project, scanned: the index and the text each document had. */
 interface ScannedProject {
@@ -89,7 +101,33 @@ export function indexCommand(options: IndexOptions, io: Io): number {
 
   const project = scanProject(root, loaded.planning);
   const { index } = project;
-  const sections = index.refused ? null : derivePlanningSections(index);
+  // Past max-candidates nothing was read, so there is nothing to hold
+  // `--roadmap` to, and the refusal is the answer whatever it says.
+  const asked =
+    options.roadmap === undefined || index.refused
+      ? undefined
+      : options.roadmap.replace(/^\.\//, "");
+  const sections = index.refused
+    ? null
+    : derivePlanningSections(index, { roadmap: asked ?? null });
+
+  // A path that is not a roadmap that routes falls back to the default in
+  // the sections, as on the page; asked for by name, it is a bad argument.
+  if (sections !== null && asked !== undefined) {
+    if (sections.chosenRoadmap !== asked) {
+      const routing = sections.roadmaps
+        .filter((roadmap) => roadmap.state === "routes")
+        .map((roadmap) => roadmap.path);
+      const known =
+        routing.length === 0
+          ? "there is no roadmap"
+          : `the roadmaps are: ${routing.join(", ")}`;
+      io.err(
+        `vantage-check: --roadmap ${options.roadmap} is not a roadmap here; ${known}\n`,
+      );
+      return EXIT_USAGE;
+    }
+  }
 
   if (options.format === "json") {
     io.out(renderJson(project, sections));
@@ -154,7 +192,7 @@ function scanProject(
   };
 }
 
-/** A link from the roadmap, as the JSON lists it. */
+/** A link from a roadmap, as the JSON lists it. */
 interface RoadmapLink {
   line: number;
   target: string;
@@ -182,9 +220,14 @@ function narrowed(project: ScannedProject): PlanningIndex {
   };
 }
 
-function roadmapLinks(project: ScannedProject): RoadmapLink[] {
+/** One roadmap's links, or none when it was not read (design §8). */
+function roadmapLinks(
+  project: ScannedProject,
+  narrowedIndex: PlanningIndex,
+  path: string,
+): RoadmapLink[] {
   const { index } = project;
-  const roadmap = findDocument(narrowed(project), index.config.roadmap);
+  const roadmap = findDocument(narrowedIndex, path);
   if (roadmap === undefined) return [];
   return roadmap.links.map((link) => {
     const badge = badgeFor(index, roadmap.path, {
@@ -202,23 +245,36 @@ function roadmapLinks(project: ScannedProject): RoadmapLink[] {
 }
 
 /**
- * The machine-readable index. A refused project has no sections and no
- * roadmap to show, so both are `null` there, and `index.refused` and
- * `index.candidateCount` say why.
+ * The machine-readable index, format version 2 (design §8). A refused project
+ * has no sections and no roadmaps to show, so both are `null` there, and
+ * `index.refused` and `index.candidateCount` say why.
+ *
+ * `roadmaps` has one entry per entry of `sections.roadmaps`, in the same
+ * order, each with the links version 1 printed as `roadmap`; they are empty
+ * unless the file was read, which is the `routes` and `done` states.
  */
 function renderJson(
   project: ScannedProject,
   sections: PlanningSections | null,
 ): string {
+  const index = narrowed(project);
   return `${JSON.stringify(
     {
       tool: "vantage-check",
       toolVersion: VERSION,
       version: INDEX_FORMAT_VERSION,
       root: project.root,
-      index: narrowed(project),
+      index,
       sections,
-      roadmap: sections === null ? null : roadmapLinks(project),
+      roadmaps:
+        sections === null
+          ? null
+          : sections.roadmaps.map(({ path, state }) => ({
+              path,
+              state,
+              chosen: path === sections.chosenRoadmap,
+              links: roadmapLinks(project, index, path),
+            })),
     },
     null,
     2,
@@ -277,10 +333,26 @@ function section(title: string, lines: readonly string[]): string | null {
   ].join("\n");
 }
 
+/** `1 needs you`, `4 need you`. */
+function needsYouCount(n: number): string {
+  return `${n.toLocaleString("en-US")} ${n === 1 ? "needs" : "need"} you`;
+}
+
+/** One line of the Roadmaps block: the path, then what it gives or why not. */
+function roadmapLine(roadmap: PlanningRoadmap, chosen: string | null): string {
+  if (roadmap.state !== "routes") {
+    return `${roadmap.path}  not read: ${ROADMAP_STATE_PHRASES[roadmap.state]}`;
+  }
+  const line = `${roadmap.path}  ${needsYouCount(roadmap.needsYouCount)}`;
+  return roadmap.path === chosen ? `${line}  (chosen)` : line;
+}
+
 /**
  * The page's sections in page order, each hidden when empty, with the notices
- * where the page shows them; then the roadmap's source with a badge in
- * brackets after each badged link.
+ * where the page shows them; then the chosen roadmap's source with a badge in
+ * brackets after each badged link. With two or more roadmaps, in any state,
+ * a Roadmaps block lists them before Needs you; with one or none the text is
+ * what it was before there could be several.
  */
 function renderText(
   project: ScannedProject,
@@ -292,10 +364,26 @@ function renderText(
 
   const notices: string[] = [];
   if (sections.nothingNeedsYou) notices.push(PLANNING_NOTICES.nothingNeedsYou);
-  if (!sections.roadmap.present) {
-    notices.push(PLANNING_NOTICES.noRoadmap(sections.roadmap.path));
+  const roadmapNotice = PLANNING_NOTICES.roadmapNotice(
+    config,
+    sections.roadmaps,
+  );
+  if (roadmapNotice !== null) notices.push(roadmapNotice);
+  if (sections.onOtherRoadmaps.length > 0) {
+    notices.push(
+      `${PLANNING_NOTICES.otherRoadmaps(sections.onOtherRoadmaps.length)} Choose one with --roadmap <path>.`,
+    );
   }
   if (notices.length > 0) blocks.push(notices.join("\n"));
+
+  if (sections.roadmaps.length >= 2) {
+    blocks.push(
+      section(
+        "Roadmaps",
+        sections.roadmaps.map((r) => roadmapLine(r, sections.chosenRoadmap)),
+      ),
+    );
+  }
 
   blocks.push(
     section(
@@ -358,9 +446,10 @@ function renderText(
     ),
   );
 
-  const roadmap = sections.roadmap.present
-    ? findDocument(index, config.roadmap)
-    : undefined;
+  const roadmap =
+    sections.chosenRoadmap === null
+      ? undefined
+      : findDocument(index, sections.chosenRoadmap);
   const source =
     roadmap === undefined ? undefined : project.sources.get(roadmap.path);
   if (roadmap !== undefined && source !== undefined) {

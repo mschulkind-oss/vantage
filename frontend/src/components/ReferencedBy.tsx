@@ -4,6 +4,12 @@
  * roadmap routes it, and how many of its open questions the roadmap does not,
  * and, behind that line, those documents.
  *
+ * With several roadmaps that route, the line names the first in roadmap order
+ * that routes the document, by the fewest trailing directories that tell it
+ * from the others, then how many more do, and its unrouted count is of the
+ * questions no roadmap routes. It never reads the planning page's chosen
+ * roadmap, so every reader, in every browser, sees the same line.
+ *
  * The line is the point. A list of every linking heading pushed a heavily cited
  * document's body a screen down to answer two questions a reader asks of it:
  * *is this on the roadmap?* and *who depends on it?* So the line answers the
@@ -68,14 +74,18 @@ const counted = (n: number, one: string, many: string) =>
 export interface SummaryLine {
   /** `Referenced by N documents`; `null` when no document links here. */
   count: string | null;
-  /** `on the roadmap under X` when the roadmap routes it, otherwise `null`. */
+  /**
+   * `on the roadmap under X` when the roadmap routes it; with several that
+   * route, `on plans/roadmap.md under X and N other roadmaps`, naming the
+   * first that routes it. Otherwise `null`.
+   */
   roadmap: string | null;
   /**
    * `K open questions not routed by the roadmap`, in the warning tone, or
-   * `null` when there are none. Worded so that it stays true of a document the
-   * roadmap links only by heading, which routes nothing (§6.1), and of the
-   * roadmap itself: it says what the roadmap leaves out, never that the
-   * document is off it.
+   * `null` when there are none; `…not routed by any roadmap` with several that
+   * route. Worded so that it stays true of a document the roadmap links only
+   * by heading, which routes nothing (§6.1), and of the roadmap itself: it
+   * says what the roadmap leaves out, never that the document is off it.
    */
   unrouted: string | null;
 }
@@ -92,15 +102,24 @@ export function summaryLine(summary: ReferenceSummary): SummaryLine | null {
   const n = summary.sources.length;
   const count =
     n > 0 ? `Referenced by ${counted(n, "document", "documents")}` : null;
+  // One roadmap is "the roadmap"; with several, each is named as a row names
+  // a file, so `roadmap.md` at the root reads beside `plans/roadmap.md`.
+  const several = summary.roadmaps.length > 1;
   let roadmap: string | null = null;
-  if (summary.onRoadmap !== null) {
-    const { heading } = summary.onRoadmap;
-    roadmap =
-      heading === null ? "on the roadmap" : `on the roadmap under ${heading}`;
+  const [first, ...more] = summary.onRoadmaps;
+  if (first !== undefined) {
+    const name = several
+      ? (sourceLabels(summary.roadmaps).get(first.roadmap) ?? first.roadmap)
+      : "the roadmap";
+    roadmap = `on ${name}`;
+    if (first.heading !== null) roadmap += ` under ${first.heading}`;
+    if (more.length > 0) {
+      roadmap += ` and ${counted(more.length, "other roadmap", "other roadmaps")}`;
+    }
   }
   const unrouted =
     summary.unrouted > 0
-      ? `${counted(summary.unrouted, "open question", "open questions")} not routed by the roadmap`
+      ? `${counted(summary.unrouted, "open question", "open questions")} not routed by ${several ? "any roadmap" : "the roadmap"}`
       : null;
   if (count === null && roadmap === null && unrouted === null) return null;
   return { count, roadmap, unrouted };

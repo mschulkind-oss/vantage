@@ -89,11 +89,12 @@ type Settings struct {
 	// docs/design/planning-index.md §9.
 	//
 	// It is the one table both readers of this file parse in full. The server
-	// uses the roadmap, include, exclude and the two limits, to decide what the
-	// planning endpoint serves — the roadmap because it is served whatever
-	// include and exclude say — and hands the stages to the viewer untouched;
-	// the checker uses all of it. Each validates every key, so a table one of
-	// them would refuse is refused by both.
+	// uses the roadmaps, include, exclude and the two limits, to decide what the
+	// planning endpoint serves — the roadmaps because a listed one is served
+	// whatever include and exclude say, and every roadmap is always sent whole —
+	// and hands the stages to the viewer untouched; the checker uses all of it.
+	// Each validates every key, so a table one of them would refuse is refused
+	// by both.
 	Planning PlanningSettings `toml:"planning"`
 }
 
@@ -113,9 +114,12 @@ type StarredSettings struct {
 // `include` to its default. [PlanningSettings.Resolved] is where the defaults are
 // applied.
 type PlanningSettings struct {
-	// Roadmap is the repo-relative path of the file whose links set the order of
-	// the planning page. A leading "./" is dropped.
-	Roadmap *string `toml:"roadmap"`
+	// Roadmap is `roadmap` as written: the repo-relative paths of the roadmaps,
+	// the files whose links set an order on the planning page, as one path or a
+	// list of them. Nil when the key is absent, which makes every candidate
+	// named [RoadmapFileName] a roadmap instead. Design:
+	// docs/design/planning-index.md §6.1.
+	Roadmap *RoadmapSetting `toml:"roadmap"`
 	// Include and Exclude are gitignore-syntax lines, matched the way
 	// `[starred] promote` matches its patterns. A candidate is a listed Markdown
 	// file matched by Include and not by Exclude.
@@ -138,13 +142,96 @@ func (p PlanningSettings) IsZero() bool {
 		p.MaxFileBytes == nil && p.MaxCandidates == nil && len(p.Stages) == 0
 }
 
+// RoadmapSetting is `roadmap` as written: a TOML string, which is a list of
+// one, or an array of strings. Paths holds them as written, "./" and all, and
+// is non-nil once decoded, so `roadmap = []` stays a list that names nothing.
+//
+// It decodes through [toml.Unmarshaler], so any other shape is refused at
+// decode time: a number, a boolean, a date, an inline table, an array of
+// tables (`[[planning.roadmap]]`), and an array holding anything but strings.
+// The unmarshaler is handed the parsed value, and BurntSushi/toml takes TOML
+// 1.0's mixed arrays, so `["roadmap.md", 3]` arrives as a `[]any` holding a
+// number without complaint: every element's type is checked here, as
+// [PlanningSettings.validate] checks `stages`' own type for the same library's
+// leniency. The path rules are validate's.
+type RoadmapSetting struct{ Paths []string }
+
+// UnmarshalTOML takes the value the decoder parsed for `roadmap`.
+func (r *RoadmapSetting) UnmarshalTOML(value any) error {
+	switch v := value.(type) {
+	case string:
+		r.Paths = []string{v}
+		return nil
+	case []any:
+		paths := make([]string, 0, len(v))
+		for i, entry := range v {
+			text, ok := entry.(string)
+			if !ok {
+				return fmt.Errorf("planning.roadmap entry %d is %s, not text", i+1, describeTOML(entry))
+			}
+			paths = append(paths, text)
+		}
+		r.Paths = paths
+		return nil
+	default:
+		return fmt.Errorf("planning.roadmap must be a path or a list of paths, not %s", describeTOML(value))
+	}
+}
+
+// describeTOML names a value the TOML decoder parsed, with the value itself
+// where it is short enough to quote, for an error message: `the number 3`,
+// `the list ["roadmap.md"]`, `a table`.
+func describeTOML(v any) string {
+	switch v := v.(type) {
+	case string:
+		return fmt.Sprintf("the text %q", v)
+	case bool:
+		return fmt.Sprintf("the boolean %t", v)
+	case int64:
+		return fmt.Sprintf("the number %d", v)
+	case float64:
+		return fmt.Sprintf("the fractional number %v", v)
+	case []any:
+		return "the list " + tomlList(v)
+	case map[string]any:
+		return "a table"
+	case []map[string]any:
+		return "an array of tables"
+	default:
+		return "a date or time"
+	}
+}
+
+// tomlList spells a parsed list roughly as TOML writes one.
+func tomlList(list []any) string {
+	parts := make([]string, 0, len(list))
+	for _, e := range list {
+		switch e := e.(type) {
+		case string:
+			parts = append(parts, fmt.Sprintf("%q", e))
+		case []any:
+			parts = append(parts, tomlList(e))
+		case map[string]any:
+			parts = append(parts, "{…}")
+		default:
+			parts = append(parts, fmt.Sprint(e))
+		}
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
 // The `[planning]` defaults (design §9). A repository that never wrote the table
-// still gets an index: everything Markdown is included and nothing is excluded.
+// still gets an index: everything Markdown is included, nothing is excluded,
+// and every candidate named [RoadmapFileName] is a roadmap.
 const (
-	DefaultRoadmap       = "roadmap.md"
 	DefaultMaxFileBytes  = int64(1 << 20) // 1 MiB
 	DefaultMaxCandidates = 5000
 )
+
+// RoadmapFileName is the file name that makes a candidate a roadmap when
+// `roadmap` is absent, compared ASCII case-insensitively with a path's last
+// segment ([Planning.IsRoadmap]).
+const RoadmapFileName = "roadmap.md"
 
 // StageRoles is the closed set of stage roles, in the order the design lists
 // them. A role is what a stage word means to the planning page; a repository
@@ -156,7 +243,11 @@ var StageRoles = []string{"open", "ready", "built", "done"}
 // it carries JSON tags — the viewer reads its own copy of the rules from there
 // rather than parsing the file a second time.
 type Planning struct {
-	Roadmap       string   `json:"roadmap"`
+	// Roadmaps is nil when roadmaps are found by name, and marshals as null;
+	// otherwise it is the listed paths, "./" dropped, in the order written,
+	// non-nil and possibly empty, marshaling as a list. [PlanningSettings.Resolved]
+	// never turns [] into nil, since the two mean opposite things.
+	Roadmaps      []string `json:"roadmaps"`
 	Include       []string `json:"include"`
 	Exclude       []string `json:"exclude"`
 	MaxFileBytes  int64    `json:"max_file_bytes"`
@@ -171,7 +262,6 @@ type Planning struct {
 // cannot edit another's defaults.
 func DefaultPlanning() Planning {
 	return Planning{
-		Roadmap:       DefaultRoadmap,
 		Include:       []string{"**/*.md"},
 		Exclude:       []string{},
 		MaxFileBytes:  DefaultMaxFileBytes,
@@ -183,11 +273,15 @@ func DefaultPlanning() Planning {
 //
 // It assumes the table passed [Parse]'s validation; it does not validate again.
 // The lists are copied and never nil, because they are marshaled straight onto
-// the wire, where the API's contract is `[]` and never `null`.
+// the wire, where the API's contract is `[]` and never `null` — except
+// Roadmaps, which is null exactly when `roadmap` is absent.
 func (p PlanningSettings) Resolved() Planning {
 	out := DefaultPlanning()
 	if p.Roadmap != nil {
-		out.Roadmap = strings.TrimPrefix(*p.Roadmap, "./")
+		out.Roadmaps = make([]string, 0, len(p.Roadmap.Paths))
+		for _, raw := range p.Roadmap.Paths {
+			out.Roadmaps = append(out.Roadmaps, strings.TrimPrefix(raw, "./"))
+		}
 	}
 	if p.Include != nil {
 		out.Include = append([]string{}, (*p.Include)...)
@@ -232,14 +326,65 @@ func (p PlanningSettings) validate(meta toml.MetaData) error {
 	}
 
 	if p.Roadmap != nil {
-		if err := validRoadmap(*p.Roadmap); err != nil {
-			return fmt.Errorf("%s: planning.roadmap: %w", FileName, err)
+		seen := make(map[string]int, len(p.Roadmap.Paths))
+		for i, raw := range p.Roadmap.Paths {
+			if err := validRoadmap(raw); err != nil {
+				return fmt.Errorf("%s: planning.roadmap entry %d, %q: %w", FileName, i+1, raw, err)
+			}
+			path := strings.TrimPrefix(raw, "./")
+			if first, ok := seen[path]; ok {
+				return fmt.Errorf("%s: planning.roadmap entry %d, %q: names %q again, as entry %d did",
+					FileName, i+1, raw, path, first)
+			}
+			seen[path] = i + 1
 		}
 	}
 	return nil
 }
 
-// validRoadmap reports why a roadmap path cannot name a file in the repository.
+// IsRoadmap is the roadmap test: rel is one of Roadmaps, compared exactly, or,
+// with Roadmaps nil, its last "/"-separated segment is [RoadmapFileName]
+// compared ASCII case-insensitively. rel is repo-relative and slash-separated,
+// as the listing spells it. Design: docs/design/planning-index.md §6.1.
+//
+// It does not ask whether rel is a candidate. A listed roadmap is one whatever
+// include and exclude say, and a roadmap found by name is one only if it is a
+// candidate already; the matcher in internal/planning applies both halves.
+// vantage-md's isRoadmapPath is the same test, and
+// testdata/planning-roadmaps.json holds the two to one answer.
+func (p Planning) IsRoadmap(rel string) bool {
+	if p.Roadmaps != nil {
+		for _, r := range p.Roadmaps {
+			if r == rel {
+				return true
+			}
+		}
+		return false
+	}
+	return hasRoadmapName(rel[strings.LastIndexByte(rel, '/')+1:])
+}
+
+// hasRoadmapName reports whether name is [RoadmapFileName] in any ASCII case.
+// Not [strings.EqualFold], which folds by Unicode's rules: the checker's port
+// compares in ASCII, and the two must agree on every name.
+func hasRoadmapName(name string) bool {
+	if len(name) != len(RoadmapFileName) {
+		return false
+	}
+	for i := range len(name) {
+		c := name[i]
+		if 'A' <= c && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		if c != RoadmapFileName[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// validRoadmap reports why one roadmap path cannot name a file in the
+// repository.
 //
 // The rule is lexical and deliberately small: one leading "./" is dropped, and
 // what is left must be non-empty, must not start with "/", and must hold no ".."

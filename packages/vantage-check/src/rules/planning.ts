@@ -1,15 +1,15 @@
 import { realpathSync, statSync } from "node:fs";
 import { dirname, join, parse, relative, sep } from "node:path";
 import {
-  buildPlanningIndex,
   derivePlanningSections,
   findDocument,
+  hasRoadmapName,
   idsOf,
+  planningIndexBuilder,
   questionFor,
   type PlanningConfig,
   type PlanningDocument,
   type PlanningSections,
-  type PlanningSources,
   type SourceEntry,
 } from "../../../vantage-md/src/planning/index.js";
 import { parseFrontmatter } from "../../../vantage-md/src/frontmatter.js";
@@ -20,6 +20,7 @@ import {
 import {
   Listing,
   isCandidate,
+  listCandidates,
   matchesPatterns,
   readCandidate,
 } from "../core/candidates.js";
@@ -35,19 +36,24 @@ import type { EnvironmentFailure, Finding } from "../core/types.js";
  *
  * Not per file, as every other rule is, for two reasons. A worker is handed
  * rule overrides and hands back findings, and nothing else crosses: the
- * `[planning]` table does not, and `planning/unrouted` needs the roadmap,
- * which is rarely one of the files a shard was given. And running once after
+ * `[planning]` table does not, and `planning/unrouted` needs the roadmaps,
+ * which are rarely among the files a shard was given. And running once after
  * both the sequential and the parallel path is what keeps `--jobs 1` and
  * `--jobs 4` byte-identical. The cost is a second parse of each planning
  * document the run checks.
  *
  * The rules read a *narrow index* (also the plan's term): the index built from
- * the roadmap plus the run's own candidates, never a walk of the tree. Every
- * rule needs only a document and the roadmap, and the page's sections, derived
- * from that batch, give each of the run's documents exactly the membership the
- * full index would. That is why the page and the gate cannot disagree (P7),
- * and why a one-file check costs one roadmap parse and has no candidate count
- * to refuse (Plan Q7).
+ * the roadmaps plus the run's own candidates. Every rule needs only a document
+ * and the roadmaps, and the page's sections, derived from that batch, give
+ * each of the run's documents exactly the membership the full index would.
+ * That is why the page and the gate cannot disagree (P7), and why a one-file
+ * check has no candidate count to refuse (Plan Q7).
+ *
+ * Listed roadmaps are found with the listing's one-path test. Roadmaps found
+ * by name cannot be known without listing the tree, so the pass walks the
+ * project root's listing once for them, and only when `planning/unrouted` is
+ * on and one of the run's documents has an open question it could report
+ * (design §8). The walk counts nothing and refuses nothing.
  */
 
 export const PLANNING_RULES = [
@@ -141,27 +147,28 @@ class PlanningPass {
 
   run(): void {
     const { config } = this;
-    const sources: PlanningSources = {
+    const builder = planningIndexBuilder({
       config,
-      // The narrow index has no count: it never walks the tree, so it has
+      // The narrow index has no count: it never counts the tree, so it has
       // nothing to refuse (Plan Q7), and a count here could only trip the
       // index's own refusal on a large run.
       candidateCount: 0,
       refused: false,
-      files: [],
       skipped: [],
       unreadable: [],
-    };
+    });
     const added = new Set<string>();
-    const add = (entry: SourceEntry) => {
+    const add = (entry: SourceEntry): PlanningDocument | null => {
       added.add(entry.path);
-      if (entry.kind === "file") {
-        sources.files.push({ path: entry.path, content: entry.content });
-        this.texts.set(join(this.base, entry.path), entry.content);
-      } else if (entry.kind === "skipped") {
-        sources.skipped.push({ path: entry.path, size: entry.size });
-      } else if (entry.kind === "unreadable") {
-        sources.unreadable.push({ path: entry.path, reason: entry.reason });
+      switch (entry.kind) {
+        case "file":
+          this.texts.set(join(this.base, entry.path), entry.content);
+          return builder.add({ path: entry.path, content: entry.content });
+        case "skipped":
+        case "unreadable":
+          return builder.addScanned(entry);
+        case "absent":
+          return null;
       }
     };
 
@@ -170,6 +177,9 @@ class PlanningPass {
     // to quiet these rules too (§13).
     const listing = this.root === null ? null : new Listing(this.root);
     const checked = new Map<string, string>();
+    // Whether a checked document has an open question `unrouted` could
+    // report: without one, no roadmap can change a finding.
+    let unroutable = false;
     for (const file of this.files) {
       const rel = relativeTo(this.base, file);
       if (rel === null || checked.has(rel)) continue;
@@ -180,25 +190,37 @@ class PlanningPass {
       if (!candidate) continue;
       checked.set(rel, file);
       const entry = readCandidate(this.base, rel, config.maxFileBytes);
-      if (entry.kind !== "file" || this.mayFire(entry.content)) add(entry);
+      if (entry.kind === "file" && !this.mayFire(entry.content)) continue;
+      const doc = add(entry);
+      if (doc !== null && this.mayBeUnrouted(doc)) unroutable = true;
     }
     if (checked.size === 0) return;
 
     // Without a project there is no roadmap, and Unrouted is not shown
-    // without one (§6.2), so `unrouted` reports nothing. The roadmap may be
-    // one of the run's files already, read and left out only because no rule
+    // without one (§6.2), so `unrouted` reports nothing. A roadmap may be one
+    // of the run's files already, read and left out only because no rule
     // could report on it; routing still needs it.
     if (
       listing !== null &&
-      this.settings.enabled("planning/unrouted") &&
-      !added.has(config.roadmap) &&
-      isCandidate(listing, config, config.roadmap)
+      unroutable &&
+      this.settings.enabled("planning/unrouted")
     ) {
-      add(readCandidate(this.base, config.roadmap, config.maxFileBytes));
+      for (const rel of this.roadmaps(listing)) {
+        if (!added.has(rel)) {
+          add(readCandidate(this.base, rel, config.maxFileBytes));
+        }
+      }
     }
 
-    const index = buildPlanningIndex(sources);
+    const index = builder.finish();
     const sections = derivePlanningSections(index);
+    const routing = sections.roadmaps
+      .filter((roadmap) => roadmap.state === "routes")
+      .map((roadmap) => roadmap.path);
+    const unroutedBy =
+      routing.length === 1
+        ? `the roadmap (${routing.join("")}). Link it, or this document, from there`
+        : `any roadmap (${routing.join(", ")}). Link it, or this document, from one of them`;
     for (const [rel, file] of checked) {
       const doc = findDocument(index, rel);
       if (doc === undefined) continue;
@@ -214,10 +236,39 @@ class PlanningPass {
         report(
           "planning/unrouted",
           question?.unitLine ?? ref.line,
-          `Open question ${name} is not routed by the roadmap (${config.roadmap}). Link it, or this document, from there, so the planning page lists it under Needs you rather than Unrouted.`,
+          `Open question ${name} is not routed by ${unroutedBy}, so the planning page lists it under Needs you rather than Unrouted.`,
         );
       }
     }
+  }
+
+  /**
+   * Whether `unrouted` could report on the document: it has an open question
+   * and its stage has no `done` role, since a done document contributes to no
+   * section (Plan Q11).
+   */
+  private mayBeUnrouted(doc: PlanningDocument): boolean {
+    const stages = this.config.stages;
+    const done =
+      stages !== null &&
+      doc.stage !== null &&
+      Object.hasOwn(stages, doc.stage) &&
+      stages[doc.stage] === "done";
+    return !done && doc.questions.some((q) => q.state === "open");
+  }
+
+  /**
+   * The paths the project's roadmaps may be at, candidates all (design §6.1):
+   * each listed one the listing holds, whatever `include` and `exclude` say,
+   * or, with none listed, every candidate named `roadmap.md`, found by the
+   * one walk of the listing this pass makes.
+   */
+  private roadmaps(listing: Listing): string[] {
+    const listed = this.config.roadmaps;
+    if (listed !== null) {
+      return listed.filter((rel) => isCandidate(listing, this.config, rel));
+    }
+    return listCandidates(listing, this.config).filter(hasRoadmapName);
   }
 
   /**

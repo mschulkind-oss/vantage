@@ -272,7 +272,7 @@ list at `/` has no project and so no offer to apply.
 ## Planning Documents
 
 The `[planning]` table in `.vantage.toml` says which files Vantage reads as the
-repository's plans, which one is the roadmap, and what the repository's stage
+repository's plans, which of them are roadmaps, and what the repository's stage
 words mean. What Vantage does with them (badges on links, the planning page,
 and `vantage-check index`) is in the [Planning Documents](../guides/planning.md)
 guide. The table is optional, and every key has a default:
@@ -280,7 +280,9 @@ guide. The table is optional, and every key has a default:
 ```toml
 # .vantage.toml, committed at the repository root
 [planning]
-roadmap = "roadmap.md"        # the default
+# roadmap absent, the default: every candidate named roadmap.md is a roadmap
+# roadmap = "plans/roadmap.md"                       # exactly this one
+# roadmap = ["roadmap.md", "docs/plans/roadmap.md"]  # exactly these; [] is none
 include = ["**/*.md"]         # the default
 exclude = ["docs/gallery/**"] # the default is []
 max-file-bytes = 1048576      # the default: 1 MiB
@@ -295,8 +297,8 @@ SUPERSEDED = "done"
 
 | Key | Type | Default | Description |
 | --- | --- | --- | --- |
-| `roadmap` | string | `"roadmap.md"` | The file whose links set the order. Relative to the repository root; a leading `./` is dropped, and an empty path, a leading `/` or a `..` segment is an error. Read whenever it exists, even if `include` or `exclude` would rule it out |
-| `include` | array of strings | `["**/*.md"]` | Patterns a candidate must match. An explicit `[]` is kept, and then only the roadmap is read |
+| `roadmap` | string, or array of strings | none: every candidate named `roadmap.md` | The files whose links set the order. Absent, every candidate whose file name is `roadmap.md`, in any directory and in any ASCII case, is a roadmap; `include` and `exclude` hide one like any other file. Set, it names exactly the roadmaps: a string is one, an array is each of them, and `[]` is none. A listed path is relative to the repository root, a leading `./` is dropped, and an empty path, a leading `/`, a `..` segment or a path listed twice is an error. A listed roadmap is read whenever it exists, even if `include` or `exclude` would rule it out |
+| `include` | array of strings | `["**/*.md"]` | Patterns a candidate must match. An explicit `[]` is kept, and then only the listed roadmaps are read |
 | `exclude` | array of strings | `[]` | Patterns that rule a candidate out, even when `include` matches it |
 | `max-file-bytes` | integer | `1048576` | A candidate larger than this is skipped, and listed as skipped. A whole number, at least 1 |
 | `max-candidates` | integer | `5000` | With more candidates than this, nothing is scanned at all. A whole number, at least 1 |
@@ -312,6 +314,16 @@ the same rules, except for two settings it cannot see, `exclude_dirs` and
 than to the repository itself, so where they are set, `vantage-check index` can
 list a file that your Vantage does not.
 
+> [!WARNING]
+> **A roadmap found by name has to be a candidate, and the default `include` is
+> case-sensitive.** `**/*.md` does not match `ROADMAP.MD`, so that file is not a
+> roadmap until `include` matches it, or `roadmap` lists it. `ROADMAP.md` and
+> `docs/plans/Roadmap.md` are found, since only the `.md` has to match.
+
+With several roadmaps, the [planning page](../guides/planning.md) offers a
+choice of roadmap, and `vantage-check index` lists them all; a question is
+routed when any roadmap routes it.
+
 The patterns use the same gitignore syntax as `[starred] promote`, and every
 line goes through that one matcher, a plain path included. It is not git's own
 matcher:
@@ -324,8 +336,10 @@ matcher:
   line RE2 cannot compile is ignored.
 
 The table is checked as a whole, like the rest of the file. An unknown key in
-`[planning]`, a role outside the four, or a limit that is not a whole number of
-at least 1 makes the file untrustworthy:
+`[planning]` (`roadmaps` among them: the key is `roadmap` in both forms), a
+`roadmap` that is neither a path nor a list of paths, a role outside the four,
+or a limit that is not a whole number of at least 1 makes the file
+untrustworthy:
 
 - **the server** logs a warning naming the file and serves the repository as
   though the file were absent, so its `[starred]` list and `theme` are dropped
