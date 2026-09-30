@@ -161,20 +161,31 @@ export const PLANNING_NOTICES: {
     const named = clauses(
       unread.map((r) => `${r.path} ${ROADMAP_STATE_PHRASES[r.state]}`),
     );
+    // When every one was read and is retired by a done stage, the path is
+    // right, and finding by name finds the same file: the remedy is its stage.
+    const allDone =
+      unread.length > 0 && unread.every((r) => r.state === "done");
+    const restage = `Give ${unread.length === 1 ? "it a stage" : "them stages"} without the done role`;
     if (config.roadmaps === null) {
       const found =
         unread.length === 0
           ? `no planning candidate is named ${ROADMAP_FILE_NAME}`
           : named;
-      return `No roadmap: ${found}, ${LISTS_EVERY_QUESTION} Add a ${ROADMAP_FILE_NAME} in any directory, or name one with roadmap under [planning] in .vantage.toml. A ${ROADMAP_FILE_NAME} in a hidden directory, matched by .vantageignore, or ruled out by include or exclude is not read.`;
+      const remedy = allDone
+        ? `${restage}, add another ${ROADMAP_FILE_NAME} in any directory, or name one with roadmap under [planning] in .vantage.toml.`
+        : `Add a ${ROADMAP_FILE_NAME} in any directory, or name one with roadmap under [planning] in .vantage.toml.`;
+      return `No roadmap: ${found}, ${LISTS_EVERY_QUESTION} ${remedy} A ${ROADMAP_FILE_NAME} in a hidden directory, matched by .vantageignore, or ruled out by include or exclude is not read.`;
     }
     if (unread.length === 0) {
-      return `No roadmap: roadmap under [planning] in .vantage.toml is an empty list, ${LISTS_EVERY_QUESTION}`;
+      return `No roadmap: roadmap under [planning] in .vantage.toml is an empty list, ${LISTS_EVERY_QUESTION} List a roadmap there, or remove roadmap to find every ${ROADMAP_FILE_NAME}.`;
     }
     const listed = clauses(
       unread.map((r) => `${r.path}, which ${ROADMAP_STATE_PHRASES[r.state]}`),
     );
-    return `No roadmap: roadmap under [planning] in .vantage.toml lists ${listed}, ${LISTS_EVERY_QUESTION} Correct the ${unread.length === 1 ? "path" : "paths"}, or remove roadmap to find every ${ROADMAP_FILE_NAME}.`;
+    const remedy = allDone
+      ? `${restage}, or list another roadmap.`
+      : `Correct the ${unread.length === 1 ? "path" : "paths"}, or remove roadmap to find every ${ROADMAP_FILE_NAME}.`;
+    return `No roadmap: roadmap under [planning] in .vantage.toml lists ${listed}, ${LISTS_EVERY_QUESTION} ${remedy}`;
   },
   otherRoadmaps: (count) =>
     count === 1

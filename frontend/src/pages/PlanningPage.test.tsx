@@ -1934,6 +1934,38 @@ describe("several roadmaps (§6.4)", () => {
     expect(search().get("roadmap")).toBe("roadmap.md");
   });
 
+  it("shows the chosen roadmap's whole path in the closed control, which wraps rather than cut it off", async () => {
+    seed(TWO);
+    await renderPage();
+    // Drawn by the page, since a closed select clips its text to one line,
+    // and hidden from a screen reader, which hears the select's own value.
+    const shown = screen.getByTestId("roadmap-shown");
+    expect(shown).toHaveTextContent(/^roadmap\.md \(3 need you\)$/);
+    expect(shown).toHaveAttribute("aria-hidden", "true");
+    expect(shown).toHaveClass("[overflow-wrap:anywhere]");
+    expect(picker()).toHaveAttribute("title", "roadmap.md");
+    await pick(NESTED);
+    expect(screen.getByTestId("roadmap-shown")).toHaveTextContent(
+      /^docs\/plans\/roadmap\.md \(2 need you\)$/,
+    );
+    expect(picker()).toHaveAttribute("title", NESTED);
+  });
+
+  it("draws the section bar in a box of its own, so the roadmap line above it moves no painted box", async () => {
+    setLoad({ status: "loading", warm: false, progress: null });
+    serveTree(TWO);
+    await renderPage();
+    const progressBox = screen.getByRole("status").parentElement!;
+    setLoad(readyOf(TWO));
+    await settle();
+    expect(screen.getByTestId("roadmap-line")).toBeTruthy();
+    // A box reused from the progress line would be one the roadmap line,
+    // inserted above it, pushed down: a layout shift on every cold load.
+    const bar = screen.getByRole("navigation", { name: "Sections" });
+    expect(bar.parentElement).not.toBe(progressBox);
+    expect(progressBox.isConnected).toBe(false);
+  });
+
   it("follows a pick: the URL rewritten in place, Needs you back on page 1, and the other count", async () => {
     setPlanningLimitsForTests({ pageEntries: 2 });
     seed(TWO);
@@ -2071,10 +2103,16 @@ describe("several roadmaps (§6.4)", () => {
     }));
     setLoad(readyOf(tree));
     await renderPage();
+    // The spinner's slot is there before it is needed, so showing it moves
+    // nothing (on a phone, a spinner appended to the full line wrapped).
+    const slot = screen.getByTestId("roadmap-spinner-slot");
+    expect(slot).toBeEmptyDOMElement();
     hold = true;
     await pick(NESTED);
     // The picker shows the roadmap asked for at once; the rest waits.
     expect(picker().value).toBe(NESTED);
+    expect(screen.getByTestId("roadmap-spinner-slot")).toBe(slot);
+    expect(slot.querySelector("svg.animate-spin")).not.toBeNull();
     expect(cardsIn("Needs you")[0]).toBe("OQ-D1: Question OQ-D1?");
     expect(screen.getByTestId("other-roadmaps")).toHaveTextContent(
       PLANNING_NOTICES.otherRoadmaps(1),
@@ -2085,6 +2123,8 @@ describe("several roadmaps (§6.4)", () => {
     expect(screen.getByTestId("other-roadmaps")).toHaveTextContent(
       PLANNING_NOTICES.otherRoadmaps(2),
     );
+    expect(screen.getByTestId("roadmap-spinner-slot")).toBe(slot);
+    expect(slot).toBeEmptyDOMElement();
   });
 
   it("asks ahead of a visit for the roadmap the visit will choose", async () => {

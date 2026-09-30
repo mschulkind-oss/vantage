@@ -2,8 +2,8 @@
 title: "The planning index at scale — page through it, and never hand the page the corpus"
 date: 2026-09-29
 status: accepted
-stage: DECIDED
-next: "Build several roadmaps (planning-index-plan.md's first section), then measure §19's targets and graduate this design and planning-index.md into one system doc"
+stage: BUILT
+next: "Measure §19's targets against the build, then graduate this design and planning-index.md into one system doc"
 depends-on:
   - planning-index.md
 tags: [planning, performance, viewer, worker, layout-stability]
@@ -12,10 +12,10 @@ summary: "The planning page renders one page of each section from card blocks th
 
 # The planning index at scale — page through it, and never hand the page the corpus
 
-**Status:** 2026-09-30. Built 2026-09-29 (`f2fe17a`–`5d13a29`, on `planning-scale`), all
-but what several roadmaps change: every roadmap sent whole and never stored, and the roadmap
-line on the page ([`planning-index.md` §6.4](planning-index.md#64-several-roadmaps-on-the-page)),
-decided 2026-09-30 and not built. UNMEASURED: none of [§19](#19-what-done-looks-like)'s timing,
+**Status:** BUILT, 2026-09-30. Built 2026-09-29 (`f2fe17a`–`5d13a29`, on `planning-scale`);
+what several roadmaps change, every roadmap sent whole and never stored and the roadmap line on
+the page ([`planning-index.md` §6.4](planning-index.md#64-several-roadmaps-on-the-page)), was
+built by `4bef79d` on 2026-09-30. UNMEASURED: none of [§19](#19-what-done-looks-like)'s timing,
 heap or DOM targets has been run against the build; D8, D11, D12 and D13 are held by tests. The
 design was measured and its evidence verified against the tree at `70a05b3`, before any of it
 was built: *today*, here, means that tree, and every line-anchored link is pinned to it.
@@ -51,7 +51,7 @@ each. Everything else is how.
 [`planning-index-at-scale-plan.md`](planning-index-at-scale-plan.md) (the build plan it was
 built from), and [the first section of
 `planning-index-plan.md`](planning-index-plan.md#several-roadmaps--the-2026-09-30-build) (the
-build plan for several roadmaps, which changes this design's stream, cache and frame).
+build plan for several roadmaps, which changed this design's stream, cache and frame).
 
 ---
 
@@ -840,6 +840,9 @@ stands:
   updated at most every 100 ms. The total is the header's candidate count.
 - **When the index is ready**, the roadmap line (when there is one), the section bar and the
   sections replace that line in one commit. Nothing painted sits below it, so nothing moves.
+  The box that held the progress line is replaced too, never reused for the section bar:
+  reused, it is a painted box the roadmap line, inserted above it, pushes down, which the
+  browser scores as a layout shift on every cold load though nothing a reader saw moved.
 - **The Markdown pipeline runs once while the index builds**, after the progress line has
   painted, over four short samples of what a card holds, one sample per task, and the first
   sections wait for that run. The pipeline's first run in a page load costs several times any
@@ -1107,7 +1110,7 @@ end to end; the figures come from the fits in [§2](#2-what-the-measurements-say
 | OQ-PS2 | No byte sieve in Go: every candidate is streamed, and the scan stays the only judge of what a planning document is. The user ruled it an implementation matter, on the condition that the reader's experience does not degrade for it | 2026-09-29 | [§6.1](#61-the-stream), [§16](#16-alternatives-considered) | ✅ [`stream.go`](../../internal/planning/stream.go) |
 | — | Coordinator ruling: this work adds no npm dependency. The scan cache sits behind a storage interface; unit tests run it over an in-memory implementation written in this repository, and the Chromium end-to-end tests over real IndexedDB | 2026-09-29 | [§8.1](#81-what-it-keeps-and-under-which-key), [§17](#17-risks) | ✅ [`store.ts`](../../frontend/src/planningScan/store.ts), [`memoryStore.ts`](../../frontend/src/planningScan/memoryStore.ts) |
 | — | Security review: the scan cache's owner is the scanner id and a server id the server answers, and every read and write checks it. A different server answering at one origin clears the cache before anything is read or sent as `have`, and a tab whose database another tab cleared is refused rather than trusted | 2026-09-29 | [§6.5](#65-the-server-id), [§8.1](#81-what-it-keeps-and-under-which-key), [§8.2](#82-the-scanner-id) | ✅ [`planning_server_id.go`](../../internal/api/planning_server_id.go), [`store.ts`](../../frontend/src/planningScan/store.ts) |
-| — | Several roadmaps ([`planning-index.md`'s ruling of 2026-09-30](planning-index.md#decision-ledger)): every roadmap is sent whole and never stored; the header's `roadmaps` is the stream's only roadmap marking, the server and the worker apply one path test to it, and a `same` line for a roadmap is fetched rather than answered from the cache; the roadmap line joins the frame, `roadmap` joins the URL and the page-inputs key, and Copy answers covers every roadmap | 2026-09-30 | [§6.1](#61-the-stream), [§8.1](#81-what-it-keeps-and-under-which-key), [§10.1](#101-frame-first), [§10.2](#102-pages), [§10.3](#103-page-inputs-and-one-commit) | — [the build plan](planning-index-plan.md#several-roadmaps--the-2026-09-30-build) |
+| — | Several roadmaps ([`planning-index.md`'s ruling of 2026-09-30](planning-index.md#decision-ledger)): every roadmap is sent whole and never stored; the header's `roadmaps` is the stream's only roadmap marking, the server and the worker apply one path test to it, and a `same` line for a roadmap is fetched rather than answered from the cache; the roadmap line joins the frame, `roadmap` joins the URL and the page-inputs key, and Copy answers covers every roadmap | 2026-09-30 | [§6.1](#61-the-stream), [§8.1](#81-what-it-keeps-and-under-which-key), [§10.1](#101-frame-first), [§10.2](#102-pages), [§10.3](#103-page-inputs-and-one-commit) | ✅ [`stream.go`](../../internal/planning/stream.go), [`core.ts`](../../frontend/src/planningScan/core.ts) |
 
 <!-- Evidence at 70a05b3, the tree this design was measured on. -->
 

@@ -1,20 +1,19 @@
 ---
 title: "The planning index — implementation plan"
 status: in-review
-stage: DECIDED
-next: "Build the several-roadmaps work packages, WP-core, WP-go and WP-web, and land them as one integration commit"
+stage: BUILT
+next: "Nothing here: every work package is built, and what is left is the design's own next step"
 depends-on:
   - planning-index.md
 tags: [planning, implementation-plan]
-summary: "Build hand-off for the whole planning-index design: phases 1 and 2 in seven work packages, built, and several roadmaps in three, not yet built, each with disjoint file sets, the contracts between them, and the tests that prove each behavior."
+summary: "Build hand-off for the whole planning-index design: phases 1 and 2 in seven work packages, and several roadmaps in three, all built, each with disjoint file sets, the contracts between them, and the tests that prove each behavior."
 ---
 
 # The planning index — implementation plan
 
-**Design:** [`planning-index.md`](planning-index.md) · **Status:** 2026-09-30. Several roadmaps
-([below](#several-roadmaps--the-2026-09-30-build)) is decided and not built; everything after
-it is built. Phases 1
-and 2 landed on `main` by `70a05b3`, and
+**Design:** [`planning-index.md`](planning-index.md) · **Status:** BUILT, 2026-09-30. Several roadmaps
+([below](#several-roadmaps--the-2026-09-30-build)) was built by `4bef79d`, its three work
+packages landed as one integration commit. Phases 1 and 2 landed on `main` by `70a05b3`, and
 [`planning-index-at-scale.md`](planning-index-at-scale.md) has since replaced the batch endpoint
 of [WP-B](#wp-b--config-endpoint-watcher-go) with a stream. MEASURED at `70a05b3`: the scan took
 336–487 ms of wall time on this repository, within
@@ -46,7 +45,7 @@ terms: [planning index](planning-index.md#3-the-planning-index),
 
 ## Several roadmaps — the 2026-09-30 build
 
-Written 2026-09-30 against `da26523`; nothing in it is built. It builds the user's ruling of
+Written 2026-09-30 against `da26523`, and built by `4bef79d` the same day. It builds the user's ruling of
 that day ([Decision Ledger](planning-index.md#decision-ledger)) as the design states it:
 [§6.1](planning-index.md#61-the-roadmaps) (which files are roadmaps, and what each routes),
 [§6.4](planning-index.md#64-several-roadmaps-on-the-page) (the page),

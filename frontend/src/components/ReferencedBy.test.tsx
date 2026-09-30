@@ -341,6 +341,43 @@ describe("the line with several roadmaps (§7)", () => {
       "a.md · Uses",
     ]);
   });
+
+  it("names a roadmap's row as the line names it, told from every roadmap that routes", () => {
+    // Only docs/roadmap.md links here, but roadmap.md at the root is a
+    // roadmap too, so a row that said `roadmap.md` would read as that one.
+    const summary = summaryOf({
+      [TARGET]: planning(questions("T", 1)),
+      "roadmap.md": "# Roadmap\n\n## Now\n\n- [a](docs/a.md)\n",
+      "docs/a.md": planning(questions("A", 1)),
+      "docs/roadmap.md": "# Docs\n\n## Soon\n\n- [it](design/target.md)\n",
+    });
+    expect(summaryLine(summary)?.roadmap).toBe("on docs/roadmap.md under Soon");
+    renderLine(summary);
+    fireEvent.click(toggle());
+    expect(rows()).toEqual(["docs/roadmap.md · Soon"]);
+  });
+
+  it("tells roadmaps apart by their directories, never by the case of a letter", () => {
+    // All three are found by the one name, compared case-insensitively.
+    const summary = summaryOf({
+      [TARGET]: planning(questions("T", 2)),
+      "roadmap.md": "# Roadmap\n\n## Now\n\n- [a](docs/a.md)\n",
+      "docs/a.md": planning(questions("A", 1)),
+      "docs/Roadmap.md":
+        "# Docs\n\n## Soon\n\n- [it](design/target.md#OQ-T1)\n",
+      "plans/ROADMAP.md":
+        "# Plans\n\n## Later\n\n- [it](../docs/design/target.md#OQ-T2)\n",
+    });
+    expect(summaryLine(summary)?.roadmap).toBe(
+      "on docs/Roadmap.md under Soon and 1 other roadmap",
+    );
+    renderLine(summary);
+    fireEvent.click(toggle());
+    expect(rows()).toEqual([
+      "docs/Roadmap.md · Soon",
+      "plans/ROADMAP.md · Later",
+    ]);
+  });
 });
 
 describe("the disclosure", () => {

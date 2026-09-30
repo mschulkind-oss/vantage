@@ -242,7 +242,7 @@ export const RULES: readonly RuleMeta[] = [
   {
     id: "planning/unrouted",
     summary:
-      "An open question the roadmap does not link, directly or through its document (off by default)",
+      "An open question no roadmap routes, directly or through its document (off by default)",
     default: "off",
   },
   {

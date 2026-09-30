@@ -3,19 +3,19 @@ title: "The planning index — write each planning fact once, and show it wherev
 author: "Matt Schulkind"
 date: 2026-09-28
 status: accepted
-stage: DECIDED
-next: "Build several roadmaps: the three work packages of planning-index-plan.md's first section, landed as one commit"
+stage: BUILT
+next: "Measure planning-index-at-scale.md's §19 targets against the build, then graduate both designs into one system doc"
 tags: [planning, roadmap, viewer, vantage-check, vantage-md, config]
 summary: "Vantage reads a repository's planning documents as a set — frontmatter, open questions, and the links between them — and shows each fact beside every link to it, on a page of its own, and to agents through vantage-check. It finds every roadmap by its file name, and never writes a document."
 ---
 
 # The planning index — write each planning fact once, and show it wherever it is linked
 
-**Status:** 2026-09-30. Everything but several roadmaps is built: phases 1 and 2 on `main` by
-`70a05b3`, and [the amendment for large repositories](planning-index-at-scale.md) by
-`f2fe17a`–`5d13a29`. The user's ruling of 2026-09-30, that roadmaps are found by their file name
-and that several can be listed and picked ([§6.1](#61-the-roadmaps),
-[§6.4](#64-several-roadmaps-on-the-page)), is decided and not built; its build plan is
+**Status:** BUILT, 2026-09-30. Phases 1 and 2 were built on `main` by `70a05b3`, and
+[the amendment for large repositories](planning-index-at-scale.md) by `f2fe17a`–`5d13a29`. The
+user's ruling of 2026-09-30, that roadmaps are found by their file name and that several can be
+listed and picked ([§6.1](#61-the-roadmaps), [§6.4](#64-several-roadmaps-on-the-page)), was
+built by `4bef79d` from
 [the first section of `planning-index-plan.md`](planning-index-plan.md#several-roadmaps--the-2026-09-30-build).
 MEASURED at `70a05b3`: this repository's scan took 336–487 ms of wall time, within
 [§15](#15-what-done-looks-like)'s 1 s
@@ -549,7 +549,11 @@ there is no line, and the page reads as a one-roadmap page always has.
   that routes, in roadmap order, each by its full repo-relative path followed by its *Needs
   you* count, as `docs/plans/roadmap.md (4 need you)`, or `(1 needs you)`. Every such file is
   named `roadmap.md`, so the path is the only name that tells them apart, and it is never
-  shortened.
+  shortened. A closed native select shows its value on one line, clipped to its box, so on a
+  narrow screen a deep path lost its file name and its count. The page therefore draws the
+  chosen option's text itself, wrapping, under a transparent select that still takes the
+  pointer and the keyboard, opens the platform's menu and is what a screen reader hears; the
+  select's title is the path, for a pointer.
 - **After the picker,** when some questions need you only on other roadmaps, the line says so:
   *3 more questions need you on other roadmaps*. It counts the open and answered questions
   another roadmap routes and the chosen one does not, each once. It is text, not a control: the
@@ -573,8 +577,9 @@ there is no line, and the page reads as a one-roadmap page always has.
   remembers nothing and says nothing.
 - **The swap is a flip.** The picker shows the roadmap asked for at once. *Needs you*, the
   section bar's counts and the line's own count change together, in one commit, once the new
-  page's inputs are in hand, with the 150 ms spinner rule of a flip. Nothing else is announced:
-  the select's own value is what a screen reader hears.
+  page's inputs are in hand, with the 150 ms spinner rule of a flip. The spinner sits beside the
+  picker in room kept for it, so showing it never changes the line's height. Nothing else is
+  announced: the select's own value is what a screen reader hears.
 - **When the chosen roadmap stops routing** under an index update, because it was deleted,
   renamed, excluded or given a `done` stage, the page falls back as above and rewrites the URL
   in place. That is a change of data, which may re-lay the page out.
@@ -586,9 +591,10 @@ there is no line, and the page reads as a one-roadmap page always has.
 | Case | The line reads |
 | :--- | :--- |
 | Found by name, and nothing found | *No roadmap: no planning candidate is named roadmap.md, so Needs you lists every open question by document. Add a roadmap.md in any directory, or name one with roadmap under [planning] in .vantage.toml. A roadmap.md in a hidden directory, matched by .vantageignore, or ruled out by include or exclude is not read.* |
-| Found by name, and none routes | the same, with its first clause naming each roadmap found and why it does not route, as *docs/roadmap.md is larger than max-file-bytes, and plans/roadmap.md has a stage with the done role* |
-| Listed, as `[]` | *No roadmap: roadmap under [planning] in .vantage.toml is an empty list, so Needs you lists every open question by document.* |
+| Found by name, and none routes | the same, with its first clause naming each roadmap found and why it does not route, as *docs/roadmap.md is larger than max-file-bytes, and plans/roadmap.md has a stage with the done role*; when every one found has a `done` stage, the remedy starts *Give it a stage without the done role* (*them stages*, for several) |
+| Listed, as `[]` | *No roadmap: roadmap under [planning] in .vantage.toml is an empty list, so Needs you lists every open question by document. List a roadmap there, or remove roadmap to find every roadmap.md.* |
 | Listed, and none routes | *No roadmap: roadmap under [planning] in .vantage.toml lists plans/roadmap.md, which is missing or not in Vantage's file list (it is not a .md file, or is in a hidden or excluded directory, or matches .vantageignore), so Needs you lists every open question by document. Correct the path, or remove roadmap to find every roadmap.md.* |
+| Listed, and every one has a `done` stage | *No roadmap: roadmap under [planning] in .vantage.toml lists roadmap.md, which has a stage with the done role, so Needs you lists every open question by document. Give it a stage without the done role, or list another roadmap.* The path is right, and finding by name would find the same file, so neither correcting it nor removing `roadmap` would help |
 
 Each roadmap is named with its state's phrase: `missing` *is missing or not in Vantage's file
 list (…)*, `skipped` *is larger than max-file-bytes*, `unreadable` *could not be read*, and
@@ -619,8 +625,11 @@ since *Skipped* and *Could not read* already list it.
 
   With several roadmaps, a roadmap is named by the fewest trailing directories that tell it
   from the other roadmaps that route, as a list row names a file: `roadmap.md` at the root
-  beside `plans/roadmap.md`. The line never reads the page's chosen roadmap, so every reader,
-  and every browser, sees the same line for a document.
+  beside `plans/roadmap.md`. Names are compared ASCII case-insensitively, as a roadmap's file
+  name is found ([§6.1](#61-the-roadmaps)), so `docs/Roadmap.md` and `plans/ROADMAP.md` each
+  keep their directory: a reader does not tell two files apart by the case of a letter. The
+  line never reads the page's chosen roadmap, so every reader, and every browser, sees the
+  same line for a document.
 
   So a document the roadmap routes one question of, holding another it does not, reads
   *Referenced by 2 documents · on the roadmap under Now · 1 open question not routed by the
@@ -658,7 +667,10 @@ since *Skipped* and *Could not read* already list it.
   for example *roadmap.md · Rule these first · Later*. Each heading links to the first line
   under it that links here, and the file name to the link above every heading, if the document
   has one, or else to the top of the document. A link above every heading adds no heading. A row
-  shows at most four headings, then *+M more*, which opens that row.
+  shows at most four headings, then *+M more*, which opens that row. With several roadmaps that
+  route, the rows' names are told apart from those roadmaps too, so a roadmap's row names it
+  exactly as the line does: a `docs/roadmap.md` that is the only roadmap linking here is
+  *docs/roadmap.md* in its row, never a *roadmap.md* that would read as the root's.
 
   When a document links here, the line is a button that says whether it is open, so it works
   from the keyboard and to a screen reader. **It is collapsed on every document load**, and
@@ -751,15 +763,20 @@ to count.
   ```text
   Roadmaps (3)
     roadmap.md  3 need you  (chosen)
+    docs/old/roadmap.md  does not route: has a stage with the done role
     docs/plans/roadmap.md  4 need you
-    docs/old/roadmap.md  not read: has a stage with the done role
   ```
+
+  A roadmap that does not route says why: *does not route* for one a `done` stage retires,
+  which was read and whose links the JSON carries, and *not read* for one that is `missing`,
+  `skipped` or `unreadable`.
 
   and it ends, as today, with the chosen roadmap's own source, badged. The other roadmaps'
   sources are not printed; `--roadmap` prints any one of them. With one roadmap, or none, the
   text is what it was, the notice's new words aside.
 - **JSON** is format `version` 2, because `sections.roadmap` and the top-level `roadmap` are
-  gone:
+  gone, and `index.config.roadmap` became `index.config.roadmaps`: the listed paths, or `null`
+  when roadmaps are found by name:
 
   ```json
   {
@@ -771,8 +788,8 @@ to count.
     "sections": {
       "roadmaps": [
         { "path": "roadmap.md", "state": "routes", "needsYouCount": 3 },
-        { "path": "docs/plans/roadmap.md", "state": "routes", "needsYouCount": 4 },
-        { "path": "docs/old/roadmap.md", "state": "done", "needsYouCount": 0 }
+        { "path": "docs/old/roadmap.md", "state": "done", "needsYouCount": 0 },
+        { "path": "docs/plans/roadmap.md", "state": "routes", "needsYouCount": 4 }
       ],
       "chosenRoadmap": "roadmap.md",
       "needsYou": [{ "path": "docs/a.md", "id": "OQ-1", "line": 12, "heading": "Now" }],
@@ -784,8 +801,8 @@ to count.
     },
     "roadmaps": [
       { "path": "roadmap.md", "state": "routes", "chosen": true, "links": [] },
-      { "path": "docs/plans/roadmap.md", "state": "routes", "chosen": false, "links": [] },
-      { "path": "docs/old/roadmap.md", "state": "done", "chosen": false, "links": [] }
+      { "path": "docs/old/roadmap.md", "state": "done", "chosen": false, "links": [] },
+      { "path": "docs/plans/roadmap.md", "state": "routes", "chosen": false, "links": [] }
     ]
   }
   ```
@@ -804,8 +821,8 @@ to count.
 listed roadmap is found as before, with the listing's one-path test. With nothing listed,
 `planning/unrouted` cannot know which `roadmap.md` files exist without listing the tree, so it
 walks the project root's listing once per run and reads only the candidates named `roadmap.md`.
-It does so only when that rule is on and a document it checks holds an `oq` directive, and it
-still counts nothing and refuses nothing. Its message names the roadmap, *not routed by the
+It does so only when that rule is on and a document it checks has an open question and no
+stage with the `done` role, and it still counts nothing and refuses nothing. Its message names the roadmap, *not routed by the
 roadmap (roadmap.md)*, or with several, *not routed by any roadmap (roadmap.md,
 docs/plans/roadmap.md)*.
 
@@ -967,6 +984,8 @@ maintains them.
 | The server and the worker disagree on which paths are roadmaps, and a stored result is used for one | One shared fixture holds both path tests to one answer, and the worker never uses a stored result for a path it holds to be a roadmap, even when the stream says `same` ([`planning-index-at-scale.md` §6.1](planning-index-at-scale.md#61-the-stream)) |
 | Many roadmaps make every warm reload send each of them whole | **Accepted.** Each is bounded by `max-file-bytes`; a monorepo with one per package can list the ones it wants |
 | Two readers of one repository open the page on different roadmaps | By design: the choice is remembered per browser. The URL always names the roadmap shown, so a shared link shows the same one |
+| An upgrade: a repository with no `roadmap` key that narrowed `include` or `exclude`, such as `include = ["docs/**"]`, relied on the old default's exemption, which read the root's `roadmap.md` whatever the patterns said; found by name, that file is a candidate like any other, so the repository has *No roadmap* | **Accepted** (the ruling applies the normal exclusions). The notice's last sentence names the cause, the [configuration reference](../../userguide/reference/configuration.md#planning-documents) says what to do, `roadmap = "roadmap.md"`, and the notes of the first release carrying several roadmaps say so. The planning index has shipped in no tag, so only a build of `main` is affected |
+| An upgrade: a listed roadmap whose stage has the `done` role, such as `roadmap = "roadmap.md"` in a repository whose own roadmap carries a stage its vocabulary maps to `done`, routed before and routes nothing now | **Accepted** ([§6.1](#61-the-roadmaps)). The notice says it has a stage with the `done` role and gives the remedy that fits, *Give it a stage without the done role, or list another roadmap* ([§6.4](#64-several-roadmaps-on-the-page)), since the path is right and finding by name would find the same file |
 | A tab from before this change reads a stream header that has `roadmaps` instead of `roadmap` | Its build fails with the stream's shape error and Retry, as a tab of an older build does after any wire change; a reload fixes it. No released tab has ever read the stream ([`planning-index-at-scale.md` §6.1](planning-index-at-scale.md#61-the-stream)) |
 
 ## 14. Sequencing
@@ -977,7 +996,7 @@ maintains them.
 2. **Phase 2:** the planning page, Referenced by, and file-tree badges.
 3. **Several roadmaps** (ruled 2026-09-30): the config's second form, finding roadmaps by name,
    the picker, and every surface's reading of several. The change crosses both config readers
-   and the planning module's types, so its three work packages land as one commit
+   and the planning module's types, so its three work packages landed as one commit, `4bef79d`
    ([`planning-index-plan.md`](planning-index-plan.md#several-roadmaps--the-2026-09-30-build)).
 
 Each phase lands with this repository's own corpus converted, so it is used the day it ships:
@@ -1058,5 +1077,5 @@ the plan proposed.
 | — | Plan Q20: the plan's eight gap-fills. A header that does not parse makes its file unreadable; a non-string or empty `stage` and a non-string or multi-line `next` are ignored, a single `depends-on` path is a one-entry list, and a non-string entry is dropped; stage matching is exact and case-sensitive; an empty stages table is none; a `depends-on` target outside the repository, or whose `#OQ-…` id appears nowhere in it, is a finding; a skipped or unreadable roadmap counts as missing; an empty document badge is not drawn; `next` links only an id a question carries | 2026-09-28 | [§3.6](#36-failure), [§4](#4-the-header-of-record-stage-next-depends-on), [§5.1](#51-which-links-get-a-badge), [§6.2](#62-sections-top-to-bottom), [§9](#9-configuration) | ✅ [`scan.ts`](../../packages/vantage-md/src/planning/scan.ts) |
 | — | User ruling 2026-09-28: the file name wins. A tree badge takes no width from a file name: it uses only the room the name leaves, is drawn whole or not at all, and is a compact dot and `💬 N` whose words are its tooltip and accessible name. It replaced a full status chip that cut long names down to their first letter | 2026-09-28 | [§7](#7-referenced-by-and-status-in-the-file-tree) | ✅ [`PlanningTreeBadge.tsx`](../../frontend/src/components/PlanningTreeBadge.tsx) |
 | — | Amended for large repositories by [`planning-index-at-scale.md`](planning-index-at-scale.md): the index is built in a worker from a stream that carries only the files whose content changed, each file's scan result is kept in the browser under its content hash ([OQ-PS1](planning-index-at-scale.md#decision-ledger)), the planning page pages, and late data never moves painted content | 2026-09-29 | [§3](#3-the-planning-index), [§3.4](#34-when-it-is-built-and-how-it-stays-fresh), [§3.6](#36-failure), [§5.3](#53-how-a-badge-behaves), [§6](#6-the-planning-page), [§7](#7-referenced-by-and-status-in-the-file-tree) | ✅ [`planningScan/`](../../frontend/src/planningScan/core.ts) |
-| — | User ruling 2026-09-30: roadmaps are discovered by name; several can be listed and picked. With no `roadmap` key, every candidate named `roadmap.md` (ASCII case-insensitive, any directory) is a roadmap, hidden by the normal exclusions; `roadmap` takes a string or a list, which names exactly the roadmaps, each read whatever `include` and `exclude` say, and `[]` names none. The page offers a picker when several route, its choice in the URL and remembered per repository, the default nearest the root. A question is routed when any roadmap routes it, and *Needs you* follows the chosen one. Every surface agrees, and a notice names what was looked for. This repository's `.vantage.toml` keeps working unchanged | 2026-09-30 | [§3.1](#31-which-files-it-reads), [§6.1](#61-the-roadmaps), [§6.2](#62-sections-top-to-bottom), [§6.4](#64-several-roadmaps-on-the-page), [§7](#7-referenced-by-and-status-in-the-file-tree), [§8](#8-vantage-check-index-and-the-planning-rules), [§9](#9-configuration) | — [the build plan](planning-index-plan.md#several-roadmaps--the-2026-09-30-build) |
-| — | The details that ruling left, decided with it and open to the user's review: questions only another roadmap routes are counted beside the picker (*N more questions need you on other roadmaps*), not listed; the roadmap line is a native select above the section bar, shown only when two or more roadmaps route; the URL always names the roadmap shown when there is a choice, and only a pick is remembered; Copy answers covers every roadmap's questions; a roadmap with a `done` stage routes nothing; a roadmap's link to another routes that roadmap's own questions, never transitively; `vantage-check index` JSON is format version 2, with `sections.roadmaps`, `chosenRoadmap`, `onOtherRoadmaps` and a top-level `roadmaps`; `--roadmap` is repo-relative and exits `2` on a path that does not route; a list entry that is not text, breaks a path rule or repeats a path refuses the file in both readers; the stream marks roadmaps only through its header's config | 2026-09-30 | [§6.1](#61-the-roadmaps), [§6.3](#63-a-question-on-the-page), [§6.4](#64-several-roadmaps-on-the-page), [§8](#8-vantage-check-index-and-the-planning-rules), [§9](#9-configuration), [§12](#12-alternatives-considered) | — [the build plan](planning-index-plan.md#several-roadmaps--the-2026-09-30-build) |
+| — | User ruling 2026-09-30: roadmaps are discovered by name; several can be listed and picked. With no `roadmap` key, every candidate named `roadmap.md` (ASCII case-insensitive, any directory) is a roadmap, hidden by the normal exclusions; `roadmap` takes a string or a list, which names exactly the roadmaps, each read whatever `include` and `exclude` say, and `[]` names none. The page offers a picker when several route, its choice in the URL and remembered per repository, the default nearest the root. A question is routed when any roadmap routes it, and *Needs you* follows the chosen one. Every surface agrees, and a notice names what was looked for. This repository's `.vantage.toml` keeps working unchanged | 2026-09-30 | [§3.1](#31-which-files-it-reads), [§6.1](#61-the-roadmaps), [§6.2](#62-sections-top-to-bottom), [§6.4](#64-several-roadmaps-on-the-page), [§7](#7-referenced-by-and-status-in-the-file-tree), [§8](#8-vantage-check-index-and-the-planning-rules), [§9](#9-configuration) | ✅ [`sections.ts`](../../packages/vantage-md/src/planning/sections.ts), [`repoconfig.go`](../../internal/repoconfig/repoconfig.go) |
+| — | The details that ruling left, decided with it and open to the user's review: questions only another roadmap routes are counted beside the picker (*N more questions need you on other roadmaps*), not listed; the roadmap line is a native select above the section bar, shown only when two or more roadmaps route; the URL always names the roadmap shown when there is a choice, and only a pick is remembered; Copy answers covers every roadmap's questions; a roadmap with a `done` stage routes nothing; a roadmap's link to another routes that roadmap's own questions, never transitively; `vantage-check index` JSON is format version 2, with `sections.roadmaps`, `chosenRoadmap`, `onOtherRoadmaps` and a top-level `roadmaps`; `--roadmap` is repo-relative and exits `2` on a path that does not route; a list entry that is not text, breaks a path rule or repeats a path refuses the file in both readers; the stream marks roadmaps only through its header's config | 2026-09-30 | [§6.1](#61-the-roadmaps), [§6.3](#63-a-question-on-the-page), [§6.4](#64-several-roadmaps-on-the-page), [§8](#8-vantage-check-index-and-the-planning-rules), [§9](#9-configuration), [§12](#12-alternatives-considered) | ✅ [`PlanningPage.tsx`](../../frontend/src/pages/PlanningPage.tsx), [`index.ts`](../../packages/vantage-check/src/commands/index.ts) |

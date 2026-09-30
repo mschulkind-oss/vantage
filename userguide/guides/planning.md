@@ -116,7 +116,7 @@ writes the word in a prose `**Status:**` line has a second copy that no tool
 can read or check; keep the date and the reason there, and the word here.
 
 **There is no `priority` key.** A priority only means something relative to
-the others, so it belongs in one ordered list, the roadmap, rather than in
+the others, so it belongs in an ordered list, a roadmap, rather than in
 each document.
 
 ### Stage roles
@@ -299,15 +299,16 @@ planning documents link to it:
 | *Referenced by 3 documents · on the roadmap under Building · 1 open question not routed by the roadmap* | The roadmap routes one question and has missed another |
 | *2 open questions not routed by the roadmap* | Unrouted questions in a document nothing links to. The line is then the only place the document shows them, and there is nothing to open |
 | *Referenced by 3 documents* | Other documents link here, and the roadmap has nothing to add |
-| *Referenced by 3 documents · on plans/roadmap.md under Building and 1 other roadmap* | With several roadmaps: the first, nearest the root, that routes this document or one of its questions, named by as much of its path as tells it from the other roadmaps, and how many more route it |
-| *Referenced by 3 documents · 2 open questions not routed by any roadmap* | With several roadmaps: two of its open questions are routed by none of them |
+| *Referenced by 3 documents · on plans/roadmap.md under Building and 1 other roadmap* | With several roadmaps that route: the first, nearest the root, that routes this document or one of its questions, named by as much of its path as tells it from the other roadmaps that route, and how many more route it |
+| *Referenced by 3 documents · 2 open questions not routed by any roadmap* | With several roadmaps that route: two of its open questions are routed by none of them |
 
 The line reads the same in every browser: it never depends on the roadmap the
 planning page shows. The count is of documents, not links, and a roadmap is one
 of them when it links here. A document's links to itself do not count. When
 nothing links to a document and none of its questions is unrouted, there is no
 line. When no roadmap routes, or for a document whose stage has the `done`
-role, the line gives the count alone.
+role, the line gives the count alone. With one roadmap that routes, it is *the
+roadmap*, however many others are retired by a `done` stage or cannot be read.
 
 Click the line, or press Enter or Space on it, to see who links here: one row
 per document, the roadmaps that route first, nearest the root first, then the
@@ -315,8 +316,11 @@ rest by path. A row is the document's file
 name, with its full path on hover, then the headings its links sit under. Each
 heading links to the first line under it that links here. Two documents with
 the same file name each show as much of their folder as tells them apart, such
-as *brainstorm/x.md* and *design/x.md*. A row shows four headings, then *+M
-more* for the rest.
+as *brainstorm/x.md* and *design/x.md*, and names that differ only in capitals,
+such as `roadmap.md` and `ROADMAP.md`, count as the same name. With several
+roadmaps that route, a roadmap's row names it exactly as the line does, so
+`docs/roadmap.md` is never shortened to a `roadmap.md` that would read as the
+root's. A row shows four headings, then *+M more* for the rest.
 
 The list is closed whenever you open a document, and nothing remembers that
 you opened it. It prints only when it is open, and then with
@@ -391,8 +395,9 @@ Two cases change the sections:
   *Needs you* lists every open question by document, *Unrouted* is not shown,
   and a line says what the page looked for and how to point it at a roadmap,
   such as *No roadmap: no planning candidate is named roadmap.md, so Needs you
-  lists every open question by document.*, followed by what to do. A listed
-  roadmap is missing when it does not exist or is not in the file list Vantage
+  lists every open question by document.*, followed by what to do: when every
+  roadmap found or listed is retired by a `done` stage, that is to give it a
+  stage without the `done` role. A listed roadmap is missing when it does not exist or is not in the file list Vantage
   shows: a hidden or excluded directory, a `.vantageignore` match, or a file not
   named `.md`.
 - **When a listed roadmap cannot be read while another routes,** the sections
@@ -413,6 +418,8 @@ line saying how many candidates there are and to narrow `include`.
 When two or more roadmaps route, a **Roadmap** menu sits above the section bar.
 It lists each by its full path, nearest the repository root first, with how
 many of its questions need you, such as `docs/plans/roadmap.md (4 need you)`.
+The path is never shortened: on a narrow screen the closed menu wraps it onto a
+second line rather than cut off its end.
 *Needs you* follows the one shown, in its order, and after the menu a line says
 how many more questions need you only on the others, such as *3 more questions
 need you on other roadmaps.* Those questions are routed, so they are not under
@@ -423,7 +430,8 @@ need you on other roadmaps.* Those questions are routed, so they are not under
   read alike), so a copied link shows the same roadmap to anyone.
 - **Choosing one** replaces the history entry rather than adding one, as a
   [flip](#pages) does, and shows *Needs you* from its first page. The menu
-  changes at once, and the sections once the new cards are ready.
+  changes at once, and the sections once the new cards are ready; a spinner
+  beside the menu, in room kept for it, shows when that takes a moment.
 - **This browser remembers your choice** for each repository, and the next
   visit opens on it. Only a choice made in the menu is remembered, never a link
   that names one, and a choice made in another tab does not change a page
@@ -643,6 +651,14 @@ and port, has a database of its own.
   repositories on yours: text you can already open there.
 - **To remove it,** clear the site data for Vantage's address in your
   browser's settings.
+
+It also keeps **the roadmap you chose** on the planning page
+([Several roadmaps](#several-roadmaps)), one per repository, in the browser's
+`localStorage` for Vantage's address, under `vantage:planningRoadmap:`
+followed by the repository's name, which is empty when Vantage serves one
+repository. It holds the roadmap's path and nothing else, and only a choice
+made in the menu writes it. Clearing the site data removes it too; without it,
+the page opens on the roadmap nearest the root.
 
 A browser without IndexedDB, or whose IndexedDB is full, disabled or failing,
 as in some private windows, keeps nothing. Vantage then fetches and scans
