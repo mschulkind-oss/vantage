@@ -2,8 +2,10 @@ package live
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 	"time"
 
@@ -216,6 +218,70 @@ func TestWatcherReportsARenamedDirectoryAndItsNewContents(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "new", "sub", "c.md"), []byte("# C\n"), 0o644))
 	got = awaitPushes(t, c, func(p pushes) bool { return p.paths["docs/new/sub/c.md"] })
 	require.False(t, got.paths["docs/old/sub/c.md"])
+
+	// On macOS the watch on a file directly inside the renamed directory kept its
+	// old name, so this edit was pushed twice, once as docs/old/a.md. The file
+	// written after it proves that no such push is still to come: events are
+	// handled in order.
+	require.NoError(t, os.WriteFile(filepath.Join(root, "docs", "new", "a.md"), []byte("# A, edited\n"), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "after.md"), []byte("# After\n"), 0o644))
+	got = awaitPushes(t, c, func(p pushes) bool { return p.paths["docs/new/a.md"] && p.paths["after.md"] })
+	require.False(t, got.paths["docs/old/a.md"])
+}
+
+// An event from a directory the watcher does not watch comes from a watch that
+// outlived its directory's, as a renamed directory's files do on macOS. It is
+// dropped, and so is the watch. A watched directory's own event still counts
+// when its parent is not watched, as when the parent's watch failed.
+func TestHandleEventDropsEventsFromADirectoryThatIsNoLongerWatched(t *testing.T) {
+	root := t.TempDir()
+	writeTree(t, root, map[string]string{"docs/old/a.md": "# A\n", "notes/sub/b.md": "# B\n", "top.md": "# Top\n"})
+	w, err := NewWatcher(root, "", nil, nil, false, quietLogger(), []string{})
+	require.NoError(t, err)
+	w.addWatch = func(path string) error {
+		if path == filepath.Join(root, "notes") {
+			return errors.New("permission denied")
+		}
+		return nil
+	}
+	var removed []string
+	w.removeWatch = func(path string) {
+		rel, _ := filepath.Rel(root, path)
+		removed = append(removed, filepath.ToSlash(rel))
+	}
+	w.addRecursive(root)
+	co := newCoalescer(time.Hour, time.Hour, func([]string) {})
+	defer co.stop()
+	pending := func() []string {
+		co.mu.Lock()
+		defer co.mu.Unlock()
+		var out []string
+		for p := range co.pending {
+			out = append(out, p)
+		}
+		sort.Strings(out)
+		clear(co.pending)
+		return out
+	}
+
+	require.NoError(t, os.Rename(filepath.Join(root, "docs", "old"), filepath.Join(root, "docs", "new")))
+	w.handleEvent(fsnotify.Event{Name: filepath.Join(root, "docs", "old"), Op: fsnotify.Rename}, co)
+	w.handleEvent(fsnotify.Event{Name: filepath.Join(root, "docs", "new"), Op: fsnotify.Create}, co)
+	require.Equal(t, []string{"docs/new/a.md", "docs/old/"}, pending())
+	removed = nil
+
+	w.handleEvent(fsnotify.Event{Name: filepath.Join(root, "docs", "old", "a.md"), Op: fsnotify.Write}, co)
+	require.Empty(t, pending(), "docs/old/a.md no longer exists")
+	require.Equal(t, []string{"docs/old/a.md"}, removed, "the watch that heard it is dropped")
+
+	w.handleEvent(fsnotify.Event{Name: filepath.Join(root, "docs", "new", "a.md"), Op: fsnotify.Write}, co)
+	w.handleEvent(fsnotify.Event{Name: filepath.Join(root, "top.md"), Op: fsnotify.Write}, co)
+	require.Equal(t, []string{"docs/new/a.md", "top.md"}, pending())
+
+	require.NoError(t, os.RemoveAll(filepath.Join(root, "notes", "sub")))
+	w.handleEvent(fsnotify.Event{Name: filepath.Join(root, "notes", "sub"), Op: fsnotify.Remove}, co)
+	require.Equal(t, []string{"notes/sub/"}, pending(), "notes is not watched, but notes/sub was")
+	require.Equal(t, []string{"docs/old/a.md"}, removed)
 }
 
 // A directory moved out of the tree is removed as far as the tree is concerned,
