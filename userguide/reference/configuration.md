@@ -324,6 +324,18 @@ With several roadmaps, the [planning page](../guides/planning.md) offers a
 choice of roadmap, and `vantage-check index` lists them all; a question is
 routed when any roadmap routes it.
 
+**Coming from a single `roadmap`,** two settings read differently since
+roadmaps are found by name:
+
+- **With no `roadmap` key,** the root's `roadmap.md` used to be read whatever
+  `include` and `exclude` said. Found by name, it is a candidate like any
+  other, so a repository that narrowed `include`, such as to `["docs/**"]`, or
+  excluded its root, now has no roadmap until it matches the file or lists it:
+  `roadmap = "roadmap.md"`.
+- **A listed roadmap whose stage has the `done` role routes nothing,** as
+  every roadmap with that stage does. The planning page says so, and to give it
+  another stage or list another roadmap.
+
 The patterns use the same gitignore syntax as `[starred] promote`, and every
 line goes through that one matcher, a plain path included. It is not git's own
 matcher:

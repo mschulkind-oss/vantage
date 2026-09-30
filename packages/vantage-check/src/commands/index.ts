@@ -338,8 +338,15 @@ function needsYouCount(n: number): string {
   return `${n.toLocaleString("en-US")} ${n === 1 ? "needs" : "need"} you`;
 }
 
-/** One line of the Roadmaps block: the path, then what it gives or why not. */
+/**
+ * One line of the Roadmaps block: the path, then what it gives or why not. A
+ * `done` roadmap was read, and its links are in the JSON, so it is said not to
+ * route; every other state is one the file was not read in.
+ */
 function roadmapLine(roadmap: PlanningRoadmap, chosen: string | null): string {
+  if (roadmap.state === "done") {
+    return `${roadmap.path}  does not route: ${ROADMAP_STATE_PHRASES.done}`;
+  }
   if (roadmap.state !== "routes") {
     return `${roadmap.path}  not read: ${ROADMAP_STATE_PHRASES[roadmap.state]}`;
   }

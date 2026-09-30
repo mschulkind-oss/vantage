@@ -343,9 +343,9 @@ scan, so the gate and the page cannot disagree.
 They run once, after every document in the run has been checked, and each one
 needs only the document it reports on and the roadmaps. A roadmap that
 `[planning] roadmap` lists is read with no walk of the tree, so a one-file run
-costs one extra read of each. With none listed, every `roadmap.md` is a
-roadmap, and the only way to know which exist is to list the tree: `check`
-walks the project root's file list once per run, and only when
+costs one extra read of each. With none listed, every candidate named
+`roadmap.md` is a roadmap, and the only way to know which exist is to list the
+tree: `check` walks the project root's file list once per run, and only when
 `planning/unrouted` is on and a document it checks has an open question.
 Either way nothing is counted, so the `max-candidates` limit that stops `index`
 never stops `check`. A finding is reported only against a file the run was
@@ -446,7 +446,7 @@ server running. Design background:
 | Option | Effect |
 | :--- | :--- |
 | `--format text\|json` | Output format. Default `text`. |
-| `--roadmap <path>` | The roadmap *Needs you* follows, and whose source is printed. Relative to the project root, with one leading `./` dropped; given twice, the last wins. Default: the roadmap nearest the root. |
+| `--roadmap <path>` | The roadmap *Needs you* follows, and whose source is printed. Relative to the project root, with one leading `./` dropped; given twice, the last wins. Default: the roadmap nearest the root that routes. |
 | `--config <path>` | Read this `.vantage.toml`. It never changes which project is scanned. |
 | `--no-config` | Ignore `.vantage.toml` and use the built-in defaults. |
 
@@ -460,9 +460,9 @@ the two commands agree on the project.
 
 **With several roadmaps**, `index` lists them all and follows one, as the
 planning page does, with no memory between runs: the one `--roadmap` names,
-else the one nearest the root, which is the one with the fewest directories in
-its path, the first by path among equals. A question is routed when any
-roadmap routes it, so *Unrouted* holds only what none of them routes, and a
+else the one nearest the root that routes, which is the one with the fewest
+directories in its path, the first by path among equals. A question is routed
+when any roadmap routes it, so *Unrouted* holds only what none of them routes, and a
 question only another roadmap routes is counted in one line instead:
 *3 more questions need you on other roadmaps. Choose one with --roadmap
 \<path\>.* A `--roadmap` that names no roadmap that routes is a bad argument,
@@ -491,12 +491,14 @@ entry, with the notes the [Planning Documents](planning.md#its-sections) guide
 describes: no roadmap, and what was looked for; a listed roadmap that could not
 be read; questions on other roadmaps; no stages; or nothing that needs you.
 With two or more roadmaps, in any state, a block before *Needs you* lists them,
-nearest the root first:
+nearest the root first. A roadmap that does not route says why: *does not
+route* for one retired by a `done` stage, which was read, and *not read* for
+one that is missing, too large or unreadable.
 
 ```text
 Roadmaps (3)
   roadmap.md  3 need you  (chosen)
-  docs/old/roadmap.md  not read: has a stage with the done role
+  docs/old/roadmap.md  does not route: has a stage with the done role
   docs/plans/roadmap.md  4 need you
 ```
 
@@ -549,7 +551,9 @@ three large fields emptied:
 
 A refused project prints `null` for both `sections` and `roadmaps`. Version 2
 replaced version 1's `sections.roadmap` and top-level `roadmap` when a
-repository could have several roadmaps.
+repository could have several roadmaps, and `index.config.roadmap` became
+`index.config.roadmaps`: the listed paths, or `null` when roadmaps are found
+by name.
 
 ### Exit codes
 

@@ -49,6 +49,7 @@ import {
   AlertCircle,
   ArrowLeft,
   Check,
+  ChevronDown,
   ClipboardCopy,
   ListChecks,
   Loader2,
@@ -523,6 +524,10 @@ const Notices: React.FC<{
 const needYouCount = (n: number): string =>
   `(${n.toLocaleString("en-US")} ${n === 1 ? "needs" : "need"} you)`;
 
+/** What the picker says of a roadmap: its full path, then its count. */
+const roadmapOption = (roadmap: PlanningRoadmap): string =>
+  `${roadmap.path} ${needYouCount(roadmap.needsYouCount)}`;
+
 /**
  * The roadmap line (§6.4): above the section bar, and only when two or more
  * roadmaps route. A native select labelled Roadmap offers each by its full
@@ -532,6 +537,17 @@ const needYouCount = (n: number): string =>
  * index the sections on screen were laid out from; its value is the roadmap
  * asked for, at once, and a spinner beside it says when the swap has waited
  * longer than a flip may without one.
+ *
+ * - **The closed control wraps the path rather than cut it off.** A closed
+ *   native select shows its option's text on one line, clipped to its box,
+ *   so on a phone a deep path lost its file name and its count. The page
+ *   draws that text itself, wrapping, and lays the select over it,
+ *   transparent: the select still takes the pointer and the keyboard, opens
+ *   the platform's own menu, and is what a screen reader hears, while the
+ *   drawn text is hidden from it. Its title is the path, for a pointer.
+ * - **The spinner has a slot of its own, always there,** beside the control
+ *   and never wrapped away from it, so showing it never changes the line's
+ *   height or moves anything under it.
  */
 const RoadmapLine: React.FC<{
   roadmaps: readonly PlanningRoadmap[];
@@ -541,6 +557,7 @@ const RoadmapLine: React.FC<{
   onPick: (path: string) => void;
 }> = ({ roadmaps, value, others, busy, onPick }) => {
   const id = React.useId();
+  const chosen = roadmaps.find((roadmap) => roadmap.path === value);
   return (
     <div
       data-testid="roadmap-line"
@@ -549,29 +566,51 @@ const RoadmapLine: React.FC<{
       <label htmlFor={id} className="font-medium">
         Roadmap
       </label>
-      <select
-        id={id}
-        value={value}
-        onChange={(e) => onPick(e.target.value)}
-        className="max-w-full min-w-0 rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
-      >
-        {roadmaps.map((roadmap) => (
-          <option key={roadmap.path} value={roadmap.path}>
-            {roadmap.path} {needYouCount(roadmap.needsYouCount)}
-          </option>
-        ))}
-      </select>
+      <span className="flex max-w-full min-w-0 items-center gap-2">
+        <span className="relative flex min-w-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2 py-1 text-slate-800 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+          <span
+            aria-hidden="true"
+            data-testid="roadmap-shown"
+            className="min-w-0 [overflow-wrap:anywhere]"
+          >
+            {chosen === undefined ? value : roadmapOption(chosen)}
+          </span>
+          <ChevronDown
+            aria-hidden="true"
+            size={14}
+            className="shrink-0 text-slate-500 dark:text-slate-400"
+          />
+          <select
+            id={id}
+            value={value}
+            title={value}
+            onChange={(e) => onPick(e.target.value)}
+            className="absolute inset-0 h-full w-full cursor-pointer appearance-none bg-white text-sm text-slate-800 opacity-0 dark:bg-slate-800 dark:text-slate-100"
+          >
+            {roadmaps.map((roadmap) => (
+              <option key={roadmap.path} value={roadmap.path}>
+                {roadmapOption(roadmap)}
+              </option>
+            ))}
+          </select>
+        </span>
+        <span
+          data-testid="roadmap-spinner-slot"
+          className="flex size-3.5 shrink-0 items-center justify-center"
+        >
+          {busy && (
+            <Loader2
+              size={14}
+              className="animate-spin text-blue-600"
+              aria-hidden="true"
+            />
+          )}
+        </span>
+      </span>
       {others > 0 && (
         <span data-testid="other-roadmaps">
           {PLANNING_NOTICES.otherRoadmaps(others)}
         </span>
-      )}
-      {busy && (
-        <Loader2
-          size={14}
-          className="animate-spin text-blue-600"
-          aria-hidden="true"
-        />
       )}
     </div>
   );
@@ -1152,7 +1191,17 @@ export const PlanningPage: React.FC = () => {
                   onPick={pickRoadmap}
                 />
               )}
-            <div className="mb-6 flex min-h-7 items-center">
+            {/* Keyed by what it holds: the progress line's box is not the
+                section bar's. Reused, it was the one painted box the roadmap
+                line, inserted above it, moved down, which the browser scores
+                as a layout shift on every cold load of a page with a picker,
+                though nothing painted under it moved (planning-index-at-scale.md
+                §10.6). Replaced, it is a removal and an insertion, which score
+                nothing. */}
+            <div
+              key={frameReady && frameLayout !== null ? "bar" : "progress"}
+              className="mb-6 flex min-h-7 items-center"
+            >
               {frameReady && frameLayout !== null ? (
                 <SectionBar layout={frameLayout} />
               ) : (

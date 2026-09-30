@@ -8,7 +8,8 @@
  * that routes the document, by the fewest trailing directories that tell it
  * from the others, then how many more do, and its unrouted count is of the
  * questions no roadmap routes. It never reads the planning page's chosen
- * roadmap, so every reader, in every browser, sees the same line.
+ * roadmap, so every reader, in every browser, sees the same line. A roadmap's
+ * row in the list is named exactly as the line names it (see `labelsOf`).
  *
  * The line is the point. A list of every linking heading pushed a heavily cited
  * document's body a screen down to answer two questions a reader asks of it:
@@ -109,7 +110,7 @@ export function summaryLine(summary: ReferenceSummary): SummaryLine | null {
   const [first, ...more] = summary.onRoadmaps;
   if (first !== undefined) {
     const name = several
-      ? (sourceLabels(summary.roadmaps).get(first.roadmap) ?? first.roadmap)
+      ? (labelsOf(summary).get(first.roadmap) ?? first.roadmap)
       : "the roadmap";
     roadmap = `on ${name}`;
     if (first.heading !== null) roadmap += ` under ${first.heading}`;
@@ -151,35 +152,62 @@ function LineWords({ line }: { line: SummaryLine }) {
   );
 }
 
+/** `a`–`z` for `A`–`Z`, and nothing else, as `hasRoadmapName` folds a name. */
+const foldAscii = (text: string) =>
+  text.replace(/[A-Z]+/g, (upper) => upper.toLowerCase());
+
 /**
  * The label for each of `paths`: its file name, or, when another path in the
  * list has the same file name, the fewest trailing directories that tell it
  * apart, the way an editor labels two tabs of the same name. Sorted by path,
  * `docs/brainstorm/x.md` and `docs/design/x.md` would otherwise read as one
  * name twice, in an order that looks unsorted.
+ *
+ * Names are compared ASCII case-insensitively, as a roadmap's file name is
+ * (design §6.1): `roadmap.md`, `Roadmap.md` and `ROADMAP.md` are all roadmaps
+ * found by one name, and a reader does not tell two files apart by the case of
+ * a letter, so each of them gets a directory.
  */
-function sourceLabels(paths: readonly string[]): Map<string, string> {
-  const parts = new Map(paths.map((path) => [path, path.split("/")]));
+function sourceLabels(paths: Iterable<string>): Map<string, string> {
+  const parts = new Map(
+    [...paths].map((path) => [path, foldAscii(path).split("/")]),
+  );
+  const all = [...parts.keys()];
   const tail = (path: string, n: number) =>
     parts.get(path)!.slice(-n).join("/");
   const labels = new Map<string, string>();
-  for (const path of paths) {
+  for (const path of all) {
     const own = parts.get(path)!;
     let n = 1;
     while (
       n < own.length &&
-      paths.some((other) => other !== path && tail(other, n) === tail(path, n))
+      all.some((other) => other !== path && tail(other, n) === tail(path, n))
     ) {
       n += 1;
     }
-    labels.set(path, tail(path, n));
+    labels.set(path, path.split("/").slice(-n).join("/"));
   }
   return labels;
 }
 
+/**
+ * The name of every file the surface shows: each linking document, and, when
+ * the line names roadmaps because several route, each of those too. They are
+ * labelled together, so a roadmap's row and the line name it the same way: a
+ * `docs/roadmap.md` that is the only roadmap linking here is still
+ * `docs/roadmap.md` in its row when `roadmap.md` at the root is a roadmap too.
+ */
+function labelsOf(summary: ReferenceSummary): Map<string, string> {
+  const paths = new Set(summary.sources.map((source) => source.from));
+  if (summary.roadmaps.length > 1) {
+    for (const roadmap of summary.roadmaps) paths.add(roadmap);
+  }
+  return sourceLabels(paths);
+}
+
 interface SourceRowProps {
   source: ReferenceSource;
-  /** What the row calls the source; see `sourceLabels`. */
+  /** What the row calls the source; see `labelsOf`. */
   name: string;
   hrefFor: (path: string) => string;
   expanded: boolean;
@@ -279,7 +307,7 @@ export function ReferencedBy({
   const line = summaryLine(summary);
   if (line === null) return null;
   const text = textOf(line);
-  const labels = sourceLabels(summary.sources.map((source) => source.from));
+  const labels = labelsOf(summary);
   const truncate = oneLine ? "truncate" : "sm:truncate";
 
   return (

@@ -30,6 +30,19 @@ function exampleQuestions(): PlanningQuestion[] {
   });
 }
 
+describe("the style guide's roadmaps", () => {
+  it("says a roadmap.md the index does not read is no roadmap", () => {
+    // Finding by name looks only among candidates (planning-index.md §6.1),
+    // so an agent must not put one under an excluded path and expect it to
+    // route.
+    const guide = STYLE_GUIDE.replace(/\s+/g, " ");
+    expect(guide).toContain("Every `roadmap.md` Vantage reads is a roadmap");
+    expect(guide).toContain(
+      "one in a hidden directory, matched by `.vantageignore`, or ruled out by `include` or `exclude` is not read, and so is not a roadmap",
+    );
+  });
+});
+
 describe("the style guide's blocked question", () => {
   it("carries an oq directive, so the index counts it", () => {
     // A question with no directive does not exist to the index (§3.3), so the

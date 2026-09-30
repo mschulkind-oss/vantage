@@ -36,7 +36,7 @@ Options for index:
   --format text|json                 output format (default: text)
   --roadmap <path>                   the roadmap Needs you follows, relative to
                                      the project root (default: the roadmap
-                                     nearest the root)
+                                     nearest the root that routes)
   --config <path>                    use this .vantage.toml
   --no-config                        ignore .vantage.toml entirely
 
@@ -70,8 +70,9 @@ severities ("error", "warning", "off"), and check.strict / check.exit-code:
 
 The same file's [planning] table says which files are planning documents and
 what their stages mean, for index and the planning/* rules. With no roadmap
-key, every roadmap.md in the project is a roadmap; roadmap names exactly the
-ones to read instead, as one path or a list:
+key, every roadmap.md the planning index reads is a roadmap (one in a hidden
+directory, matched by .vantageignore, or ruled out by include or exclude is
+not); roadmap names exactly the ones to read instead, as one path or a list:
 
   [planning]
   # roadmap = "plans/roadmap.md"
