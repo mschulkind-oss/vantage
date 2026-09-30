@@ -160,19 +160,32 @@ function snapshot(page: Page, labels: string[], dirs: string[]) {
       const timeEl = header.querySelector('[data-testid="header-time"]');
       const nav = header.querySelector("nav")!;
 
-      // The row's items, in order: every direct child of the two halves.
+      // The row's items, in order: every item the two halves lay out, which
+      // for the toolbar includes the actions, whose wrappers lay out no box
+      // of their own (`display: contents`) until the actions fold.
+      const rowItems = (parent: Element): Element[] =>
+        [...parent.children].flatMap((child) =>
+          getComputedStyle(child).display === "contents"
+            ? rowItems(child)
+            : [child],
+        );
       const [lead, tools] = [...header.children] as HTMLElement[];
-      const items = [...lead.children, ...(tools ? tools.children : [])]
+      const items = [...lead.children, ...(tools ? rowItems(tools) : [])]
         .filter((el) => shown(el))
         .map((el) => ({ el, r: box(el) }));
       const h = box(header);
       const cs = getComputedStyle(header);
       const contentRight = h.right - parseFloat(cs.paddingRight);
-      // What justify-between spreads between the halves is the room nobody
-      // is using; the halves' own gap is not room anybody could have.
+      // The toolbar takes the rest of the row and packs its items against
+      // the far end, so the room nobody is using is what lies before its
+      // first drawn item; the halves' own gap is not room anybody could have.
       const gap = parseFloat(cs.columnGap) || 0;
-      const slack = tools
-        ? box(tools).left - box(lead).right - gap
+      const firstTool = tools ? rowItems(tools).find((el) => shown(el)) : null;
+      const slack = firstTool
+        ? box(firstTool).left -
+          (parseFloat(getComputedStyle(firstTool).marginLeft) || 0) -
+          box(lead).right -
+          gap
         : contentRight - box(lead).right;
 
       const label = (el: Element) =>
@@ -280,8 +293,14 @@ function layoutWith(page: Page, count: number) {
         const edge =
           header.getBoundingClientRect().right -
           parseFloat(getComputedStyle(header).paddingRight);
+        const rowItems = (parent: Element): Element[] =>
+          [...parent.children].flatMap((child) =>
+            getComputedStyle(child).display === "contents"
+              ? rowItems(child)
+              : [child],
+          );
         const [lead, tools] = [...header.children];
-        const past = [lead, ...(tools ? tools.children : [])].filter(
+        const past = [lead, ...(tools ? rowItems(tools) : [])].filter(
           (el) =>
             el.getBoundingClientRect().right +
               (parseFloat(getComputedStyle(el).marginRight) || 0) >

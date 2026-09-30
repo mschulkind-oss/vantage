@@ -431,7 +431,8 @@ and the `?path=` answers, still resolved out of order by the test. Plus: `hashes
 - **"On screen" is the document's scroll container, not the window.** Observe blocks against
   that container.
 - **The hold has one deadline, 150 ms from the content's arrival**, from the limits module. It
-  never waits on a cold build: read `warm` from the store.
+  never waits on a cold build: read `warm` from the store, which is `null` until `started` says
+  which, and wait on `null` as on `true` — git usually answers first.
 - **The header's fit logic already reserves a label's longer state** (`hdr-reserve`, commit
   `c845344`). Late items must use it and the leftover room, and `header_fit.spec.ts` stays green.
 

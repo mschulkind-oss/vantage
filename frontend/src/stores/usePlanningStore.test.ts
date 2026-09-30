@@ -420,7 +420,7 @@ describe("the build (§3.4, full scan; scale design §5.2)", () => {
     expect(readyLoad().hashes).toEqual(coldHashes);
   });
 
-  it("sets the store at the header and at ready alone, however many chunks the documents come in", async () => {
+  it("sets the store at started, the header and ready alone, however many chunks the documents come in", async () => {
     setPlanningLimitsForTests({ chunkEntries: 1, progressMs: 60_000 });
     const tree = Object.fromEntries(
       ["a", "b", "c", "d", "e", "f"].map((name) => [
@@ -439,6 +439,7 @@ describe("the build (§3.4, full scan; scale design §5.2)", () => {
       unsubscribe();
     }
     expect(seen).toEqual([
+      { status: "loading", warm: null, progress: null },
       { status: "loading", warm: false, progress: null },
       { status: "loading", warm: false, progress: { done: 0, total: 6 } },
       expect.objectContaining({ status: "ready" }),
@@ -446,9 +447,12 @@ describe("the build (§3.4, full scan; scale design §5.2)", () => {
     expect(paths()).toHaveLength(6);
   });
 
-  it("says whether the build is warm while it loads", async () => {
+  // Not knowing yet is its own state, not a cold build: the viewer's hold
+  // waits on a build that may be warm, and git's answers, which end it
+  // otherwise, usually land before the scanner has said (§11.3).
+  it("says whether the build is warm while it loads, and when it cannot say yet", async () => {
     store().ensure("");
-    expect(load()).toEqual({ status: "loading", warm: false, progress: null });
+    expect(load()).toEqual({ status: "loading", warm: null, progress: null });
     await flush();
     // Cold: the scan cache holds nothing of this repository yet.
     expect(load()).toMatchObject({ status: "loading", warm: false });
@@ -460,7 +464,7 @@ describe("the build (§3.4, full scan; scale design §5.2)", () => {
     resetPlanningTrackers();
     usePlanningStore.setState({ byRepo: {} });
     store().ensure("");
-    expect(load()).toMatchObject({ status: "loading", warm: false });
+    expect(load()).toMatchObject({ status: "loading", warm: null });
     await flush();
     expect(load()).toMatchObject({ status: "loading", warm: true });
     answerStream(take(STREAM));

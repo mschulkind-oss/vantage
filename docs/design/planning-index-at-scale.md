@@ -763,7 +763,8 @@ stands:
   that existed when the page painted and reached it afterwards.
 - **L3. Nothing is shown on a guess.** The header never says *Untracked file*
   ([`ViewerPage.tsx:1515`](../../frontend/src/pages/ViewerPage.tsx#L1515)) before git status
-  has answered.
+  has answered, nor when the request failed: a failure ends the hold like an answer, and the
+  header shows neither that label nor a date until a push or the next visit asks again.
 - **L4. A first paint may wait briefly for data already on its way** ([§11.3](#113-the-hold)),
   and never for work of unknown length.
 
@@ -780,10 +781,10 @@ stands:
 | KaTeX and highlighting | cards | synchronous, so never late |
 | Link badges, index ready within the hold | documents | ready at first paint |
 | Link badges, index later | documents | drawn only inside blocks that have not yet been on screen. A link in a block the reader has already seen waits for the next render |
-| Referenced by | documents | one line reserved at first paint when the document is a planning document by its own frontmatter or directives. It fills when the index lands, or stays empty if it has nothing to say. With no reservation, it waits for the next render |
+| Referenced by | documents | one line reserved at first paint when the document is a planning document by its own frontmatter or directives. It fills when the index lands, cut to that one line at every width — below 640 px an unreserved line wraps, and two lines in a one-line slot moved the document — or stays empty if it has nothing to say. With no reservation, it waits for the next render |
 | Tree badges | file tree | the room the name leaves, as [planning-index.md §7](planning-index.md#7-referenced-by-and-status-in-the-file-tree) already rules |
 | `next` link ids | frontmatter card | the same text becoming a link, at the same size |
-| Header git data (status, history, the file's date, *N commits*) | viewer header | requested together with the content, not after it renders. Within the hold, it is in the first paint. Later, an item takes only the room the header has left, or the slot its label reserved at first paint. It never narrows the file name (S6) |
+| Header git data (status, history, the file's date, *N commits*, and the Path button's root) | viewer header | requested together with the content, not after it renders. Within the hold, it is in the first paint. Later, an item takes only the room the header has left, or the slot its label reserved at first paint: the toolbar spans the room the breadcrumb leaves, so an item arriving late goes into room the toolbar already has, and the header gives up more for it only what belongs to the late items themselves (the commit subject, say). Where that is not room enough, the item is not drawn until the header next has room for it, after a resize say, or the next visit. It never collapses a painted folder, folds a painted action or narrows the file name (S6) |
 | An index update from a push | everywhere | L2: applied live |
 
 Outside this design, three sources the earlier baseline measured fall under the same rules:
@@ -793,11 +794,14 @@ review mode's 4 px bar. Each is its own fix.
 ### 11.3 The hold
 
 - **A document's first paint waits at most 150 ms after its content arrives**, and only for:
-  - the planning index, while a warm build for this repository is under way (`started` says so,
-    [§7.2](#72-messages));
+  - the planning index, while a build for this repository is under way that `started`
+    ([§7.2](#72-messages)) has said is warm, or has not yet said is cold. Git's answers usually
+    arrive before `started` does, so a hold that read that silence as cold ended on them, and a
+    warm index landing a few milliseconds later missed a third of warm first paints;
   - the header's git status and history, once requested.
-- **Never for a cold build, and never on the planning page**, which has its own gate. Moving to a
-  document when everything is already in hand waits for nothing.
+- **Never for a cold build, and never on the planning page**, which has its own gate. A cold build
+  ends the wait the moment `started` says so. Moving to a document when everything is already in
+  hand waits for nothing.
 - **While it holds,** the previous document stays up when moving between documents in the app,
   or the app's shell on a first load.
 - **Why it is still needed:** a warm build at 1,000 documents is estimated to finish 100–180 ms
