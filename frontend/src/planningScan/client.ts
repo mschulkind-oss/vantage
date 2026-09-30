@@ -9,7 +9,10 @@
  * - **the worker client**, which posts to the scan worker, created once per
  *   tab at boot. If it dies (an `error` or `messageerror` event), every build
  *   it had fails with *The planning scan stopped*, every refresh in flight
- *   answers `null`, and the next request starts a new worker (§7.1);
+ *   answers `null`, and the next request starts a new worker (§7.1). When a
+ *   cold build asks for helpers, it makes them and hands each one end of a
+ *   channel whose other end goes to the scan worker, so their data never
+ *   passes through this thread; it ends them with the build (§7.5);
  * - **the inline client**, which runs the core on the main thread, sliced at
  *   `sliceMs` so the page can paint. It serves the unit tests, which have no
  *   `Worker`, and a browser where the worker cannot be created. It is not a
@@ -28,6 +31,7 @@ import {
   type BuildEvent,
   type CardAnswer,
   type CardWant,
+  type HelperStart,
   type QuoteWant,
   type Quotes,
   type WorkerReply,
@@ -82,9 +86,15 @@ const apiBaseOf = (repo: string): string =>
  * The worker client
  * ------------------------------------------------------------------ */
 
-/** The little of a `Worker` the client uses, so a test can stand in for it. */
+/**
+ * The little of a `Worker` the client uses, so a test can stand in for it:
+ * the scan worker, which takes requests, or a helper, which takes its start.
+ */
 export interface WorkerLike {
-  postMessage(request: WorkerRequest): void;
+  postMessage(
+    message: WorkerRequest | HelperStart,
+    transfer?: Transferable[],
+  ): void;
   addEventListener(
     type: "message" | "error" | "messageerror",
     listener: (event: Event) => void,
@@ -97,20 +107,39 @@ interface Pending {
   stop(): void;
 }
 
+/** A build a repository is waiting on. */
+interface Build {
+  seq: number;
+  on: (event: BuildEvent) => void;
+  /** The helpers made for it, which end with it (§7.5). */
+  helpers: WorkerLike[];
+}
+
 /**
  * The client over the scan worker. `spawn` makes a worker; the first is made
  * at once, so it starts beside the app's first requests, and another only
- * after one dies.
+ * after one dies. `spawnHelper` makes a worker to be a helper: by default one
+ * from the scan worker's own chunk, which a {@link HelperStart} message makes
+ * a helper, so a helper runs exactly the scan worker's code.
  */
-export function workerScannerClient(spawn: () => WorkerLike): ScannerClient {
+export function workerScannerClient(
+  spawn: () => WorkerLike,
+  spawnHelper: () => WorkerLike = spawnScanWorker,
+): ScannerClient {
   let worker: WorkerLike | null = null;
   let nextId = 0;
-  /** The build each repository is waiting on. */
-  const builds = new Map<
-    string,
-    { seq: number; on: (event: BuildEvent) => void }
-  >();
+  const builds = new Map<string, Build>();
   const pending = new Map<number, Pending>();
+
+  const endHelpers = (build: Build): void => {
+    for (const helper of build.helpers.splice(0)) helper.terminate();
+  };
+
+  /** A build this client hears nothing more of: its helpers end now. */
+  const over = (repo: string, build: Build): void => {
+    if (builds.get(repo) === build) builds.delete(repo);
+    endHelpers(build);
+  };
 
   const died = (dead: WorkerLike): void => {
     if (worker !== dead) return;
@@ -120,10 +149,65 @@ export function workerScannerClient(spawn: () => WorkerLike): ScannerClient {
     const waiting = [...pending.values()];
     builds.clear();
     pending.clear();
-    for (const { on } of stopped) {
-      on({ type: "failed", message: STOPPED_MESSAGE, shape: false });
+    for (const build of stopped) {
+      endHelpers(build);
+      build.on({ type: "failed", message: STOPPED_MESSAGE, shape: false });
     }
     for (const request of waiting) request.stop();
+  };
+
+  /**
+   * A helper that dies takes its build with it, as the scan worker's own
+   * death would (§7.1): the build fails, and the scan worker drops it.
+   */
+  const helperDied = (repo: string, build: Build): void => {
+    if (builds.get(repo) !== build) return;
+    over(repo, build);
+    try {
+      worker?.postMessage({ type: "cancel", repo, seq: build.seq });
+    } catch {
+      // A scan worker that cannot take a message is dying too.
+    }
+    build.on({ type: "failed", message: STOPPED_MESSAGE, shape: false });
+  };
+
+  /**
+   * Make the helpers a build asked for, and hand the scan worker one end of
+   * a channel to each (§7.5). A build that is over gets none; where no more
+   * workers can be made, it goes on with those it has.
+   */
+  const lend = (repo: string, seq: number, count: number): void => {
+    const build = builds.get(repo);
+    const scan = worker;
+    if (build?.seq !== seq || scan === null) return;
+    const ports: MessagePort[] = [];
+    for (let made = 0; made < count; made++) {
+      let helper: WorkerLike;
+      try {
+        helper = spawnHelper();
+      } catch {
+        break;
+      }
+      const channel = new MessageChannel();
+      try {
+        helper.postMessage({ type: "helper", port: channel.port1 }, [
+          channel.port1,
+        ]);
+      } catch {
+        helper.terminate();
+        break;
+      }
+      helper.addEventListener("error", () => helperDied(repo, build));
+      helper.addEventListener("messageerror", () => helperDied(repo, build));
+      build.helpers.push(helper);
+      ports.push(channel.port2);
+    }
+    if (ports.length === 0) return;
+    try {
+      scan.postMessage({ type: "helpers", repo, seq, ports }, ports);
+    } catch {
+      endHelpers(build);
+    }
   };
 
   const receive = (reply: WorkerReply): void => {
@@ -132,9 +216,13 @@ export function workerScannerClient(spawn: () => WorkerLike): ScannerClient {
       if (build?.seq !== reply.seq) return;
       const { event } = reply;
       if (event.type === "ready" || event.type === "failed") {
-        builds.delete(reply.repo);
+        over(reply.repo, build);
       }
       build.on(event);
+      return;
+    }
+    if (reply.type === "helpers") {
+      lend(reply.repo, reply.seq, reply.count);
       return;
     }
     const request = pending.get(reply.id);
@@ -199,7 +287,10 @@ export function workerScannerClient(spawn: () => WorkerLike): ScannerClient {
 
   return {
     build({ repo, seq, bypassCache }, on) {
-      builds.set(repo, { seq, on });
+      // The scan worker supersedes an earlier build of the repository.
+      const earlier = builds.get(repo);
+      if (earlier !== undefined) endHelpers(earlier);
+      builds.set(repo, { seq, on, helpers: [] });
       try {
         current().postMessage({
           type: "build",
@@ -217,7 +308,8 @@ export function workerScannerClient(spawn: () => WorkerLike): ScannerClient {
     },
 
     cancel(repo, seq) {
-      if (builds.get(repo)?.seq === seq) builds.delete(repo);
+      const build = builds.get(repo);
+      if (build?.seq === seq) over(repo, build);
       try {
         worker?.postMessage({ type: "cancel", repo, seq });
       } catch {
@@ -318,11 +410,15 @@ let started: ScannerClient | null = null;
 let forTests: ScannerClient | null = null;
 
 /**
- * A new scan worker. Vite finds a worker's entry only from this expression,
- * written literally, and bundles it as a chunk of its own.
+ * A new worker of the scan worker's chunk: the scan worker, or a helper once
+ * it is sent a {@link HelperStart}. Vite finds a worker's entry only from this
+ * expression, written literally, and bundles it as a chunk of its own.
  */
-const spawnScanWorker = (): Worker =>
-  new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
+function spawnScanWorker(): Worker {
+  return new Worker(new URL("./worker.ts", import.meta.url), {
+    type: "module",
+  });
+}
 
 function workerClient(): ScannerClient | null {
   if (typeof Worker === "undefined") return null;
