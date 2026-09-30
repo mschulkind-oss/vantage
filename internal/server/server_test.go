@@ -1790,6 +1790,7 @@ func TestAFinishedWalkClearsItsTimeout(t *testing.T) {
 // test exhausts a real limit.
 func TestAWatcherThatCannotStartIsReported(t *testing.T) {
 	srv, _ := daemonServer(t)
+	srv.goos = "linux" // the wording checked below
 	srv.watcherStart = func(w *live.Watcher, _ context.Context) error {
 		if w.RepoName() == "beta" {
 			return fmt.Errorf("couldn't initialize inotify: %w", syscall.EMFILE)
@@ -1811,6 +1812,34 @@ func TestAWatcherThatCannotStartIsReported(t *testing.T) {
 	require.Equal(t, model.DegradationWatcherFailed, got.Kind)
 	require.Equal(t, "Live reload is off for this whole project: its file watcher could not start, because the system's "+
 		"limit on file watchers was reached. Raise it (on Linux, fs.inotify.max_user_instances), then restart Vantage.", got.Message)
+}
+
+// A watcher that cannot start for want of files names the platform's limit: on
+// Linux the count of inotify instances, on macOS the open-file limit, which the
+// watcher's kqueue and every file it watches count against. The Linux advice
+// used to be given on both.
+func TestAWatcherThatCannotStartNamesThePlatformsLimit(t *testing.T) {
+	for goos, want := range map[string]string{
+		"linux": "Live reload is off for this whole project: its file watcher could not start, because the system's " +
+			"limit on file watchers was reached. Raise it (on Linux, fs.inotify.max_user_instances), then restart Vantage.",
+		"darwin": "Live reload is off for this whole project: its file watcher could not start, because the system's " +
+			"limit on open files was reached, and every watched file takes one. Raise it (on macOS, sysctl kern.maxfilesperproc), " +
+			"or list the biggest folders in .vantageignore, then restart Vantage.",
+	} {
+		t.Run(goos, func(t *testing.T) {
+			srv, _ := daemonServer(t)
+			srv.goos = goos
+			srv.watcherFailed("beta", fmt.Errorf("kqueue: %w", syscall.EMFILE))
+			got := degradedList(t, srv.Handler())
+			require.Len(t, got, 1)
+			require.Equal(t, want, got[0].Message)
+		})
+	}
+	srv, _ := daemonServer(t)
+	srv.goos = "darwin"
+	srv.watcherFailed("beta", fmt.Errorf("permission denied"))
+	require.Equal(t, "Live reload is off for this whole project: its file watcher could not start (permission denied). "+
+		"Restart Vantage once that is fixed.", degradedList(t, srv.Handler())[0].Message)
 }
 
 // The server's own last-activity warm walks with gitignored files included,

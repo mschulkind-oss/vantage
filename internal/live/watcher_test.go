@@ -299,6 +299,7 @@ func TestAddRecursiveLogsWatchLimitFailuresAsActionableErrors(t *testing.T) {
 	var rec levelRecorder
 	w, err := NewWatcher(root, "repoX", nil, nil, false, slog.New(&rec), []string{})
 	require.NoError(t, err)
+	w.goos = "linux" // the wording checked below
 	w.addWatch = func(string) error { return errors.New("no space left on device") }
 
 	require.Equal(t, 0, w.addRecursive(root))
@@ -306,6 +307,26 @@ func TestAddRecursiveLogsWatchLimitFailuresAsActionableErrors(t *testing.T) {
 	r, ok := findRecord(rec.records, "watcher: failed to add watch; inotify watch limit may be reached — live reload will miss changes under this directory; raise fs.inotify.max_user_watches (e.g. sysctl fs.inotify.max_user_watches=524288)")
 	require.True(t, ok, "ENOSPC Add failure should include the same actionable limit hint as async watcher errors")
 	require.Equal(t, slog.LevelError, r.Level)
+}
+
+// On macOS the limit a refused watch reaches is the open-file limit, and the
+// log used to send the user to an inotify setting that does not exist there.
+func TestWatchLimitLogsNameThePlatformsLimit(t *testing.T) {
+	root := t.TempDir()
+	var rec levelRecorder
+	w, err := NewWatcher(root, "repoX", nil, nil, false, slog.New(&rec), []string{})
+	require.NoError(t, err)
+	w.goos = "darwin"
+	w.addWatch = func(path string) error { return fmt.Errorf("%q: %w", path, syscall.EMFILE) }
+
+	require.Equal(t, 0, w.addRecursive(root))
+	w.handleError(fmt.Errorf("kqueue: %w", syscall.EMFILE))
+
+	advice := "every watched file holds one open, so raise it (on macOS, sysctl kern.maxfilesperproc) or list the biggest folders in .vantageignore"
+	_, ok := findRecord(rec.records, "watcher: failed to add watch; open-file limit may be reached — live reload will miss changes under this directory; "+advice)
+	require.True(t, ok, "records: %v", rec.records)
+	_, ok = findRecord(rec.records, "watcher: open-file limit reached — live reload will miss some changes; "+advice)
+	require.True(t, ok, "records: %v", rec.records)
 }
 
 func TestAddRecursivePrunesWorktrees(t *testing.T) {

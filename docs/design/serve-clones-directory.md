@@ -317,7 +317,10 @@ or without the split. Three conditions are reported:
   whole project. Each project has a watcher of its own, and on Linux each one
   takes an inotify instance, whose default limit of 128 per user is shared
   with every other program. A directory of many clones can run out, and the
-  banner names `fs.inotify.max_user_instances` when it does.
+  banner names `fs.inotify.max_user_instances` when it does. On macOS a
+  watcher's kqueue is one more open file, so there the banner names the
+  open-file limit, `kern.maxfilesperproc`, as the log lines of a refused
+  watch do.
 
 Degradations are kept per project in memory and served at `GET
 /api/degraded`. The first degradation of each kind in each project also
