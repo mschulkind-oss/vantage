@@ -11,7 +11,9 @@
  * would not see that. No test grows an input to a default.
  *
  * A worker has its own copy of this module, so an override made on the main
- * thread reaches the inline client and never the worker.
+ * thread reaches the inline client and never the worker. The dev server's
+ * end-to-end tests configure a worker's own copy down through the `limits`
+ * message its dev build takes (`worker.ts`); a production build ignores it.
  */
 
 export interface PlanningLimits {
