@@ -221,7 +221,8 @@ Warm and cold are one algorithm. A cold build simply has nothing to send as `hav
 6. Results reach the store in chunks of at most 100 documents or 256 KiB (a single larger
    document travels alone), so no message costs the main thread more than about 3 ms to receive.
 7. At `end` the worker posts `ready`. Once idle, it deletes this repository's cache entries that
-   the stream did not name.
+   the stream did not name, except those a refresh newer than the build wrote
+   ([§8.3](#83-writes-eviction-and-failure)).
 8. The store finishes the index (one sort), replays the changes it held while the build was out,
    and sets the store once. No partial index is ever shown, because a partial index would quietly
    under-report ([planning-index.md §3.5](planning-index.md#35-limits-and-what-happens-past-them)).
@@ -245,7 +246,10 @@ main thread, unchanged.** The worker makes no ordering decision of its own. It a
 request, and the store decides which answer wins, just as it decided between fetch responses.
 
 A worker is one thread: a refresh that arrives during a build runs between two files, so it waits
-at most one file's scan. Builds for different repositories in daemon mode interleave the same way.
+at most one file's scan. The build goes on while the refresh's request is out, and once its answer
+is back the build lets it finish (the body read, the scan and the cache write) before it scans
+another file, since each of those steps would otherwise wait out a scan of its own. Builds for
+different repositories in daemon mode interleave the same way.
 
 ## 6. The server
 
@@ -374,10 +378,12 @@ It replaces the page's one `GET /review` per listed document
 - **If it dies mid-build** (an `error` or `messageerror` event after its `hello`), that build fails
   with *The planning scan stopped*, and Retry starts a new worker. A refresh in flight is dropped,
   and the next push for that path asks again, as a failed fetch does today.
-- **If it dies idle,** the next request starts a new worker, which has seen no header. So each
-  `refresh` and `cards` request carries the config of the last header the client relayed for its
-  repository. A worker uses it only while it has heard no header of its own, so a push after the
-  death still scans under the repository's config.
+- **If it dies with no build out**, the index stays ready and the next request starts a new
+  worker. That worker has read no header, so it would not know which file is the roadmap. Each
+  `refresh` therefore carries the config of the index it is for, and each `cards` request the
+  config of the last header the client relayed for its repository, which a `refresh` sent without
+  an index's config carries too. A worker that has seen no header of the repository scans under
+  that config; one that has seen a header uses the header's.
 - **Never terminated** while the tab lives. Idle, it holds its code and no documents.
 
 ### 7.2 Messages
@@ -532,7 +538,22 @@ server on `:8201` each have their own.
 
 - **Writes** go in transactions of 100 records, overlapped with scanning.
 - **Garbage collection:** after `end`, the entries of this repository that the stream did not
-  name are deleted with a cursor once the worker is idle. A refused build collects nothing.
+  name are deleted with a cursor once the worker is idle. An entry a refresh newer than the build
+  wrote is kept, such as one for a file made after the listing. A refused build collects nothing.
+- **Writes follow the store's numbering** ([§5.4](#54-ordering)). The store numbers builds and
+  refreshes from one sequence, discards an answer older than the latest build, and lays a refresh
+  newer than a build over that build's index. The worker keeps a write only where the store keeps
+  the answer it comes from:
+  - a build's record is dropped if a newer refresh has written its path. That is checked when its
+    batch is written, not when it is queued;
+  - a refresh's result is dropped if a newer refresh has written the path, or a newer build has
+    begun;
+  - a card request's own read of a file is dropped if either has happened since the request
+    looked.
+
+  So within a tab the cache holds the version of each file that the index on screen holds,
+  whichever answer lands last. A card request naming the index's hash finds its block, and the
+  next warm reload sends that file as `same`.
 - **If IndexedDB is missing, over quota or throws** (private windows, storage disabled), the
   worker logs it once and runs without a cache for the rest of the tab ([§8.4](#84-without-it)).
   An evicted database is simply a cold build.
@@ -542,7 +563,9 @@ server on `:8201` each have their own.
   opens once more. The tab runs without a cache only if that fails too, as when another tab holds
   the database open and will not let go.
 - **Two tabs** may build the same repository at once. Every write is a pure result, so the last
-  write wins and every write is right. Nothing coordinates them.
+  write wins and every write is right. Nothing coordinates them, so one tab may leave an older
+  version than the other tab's index holds. That tab's card request is then answered `stale` and
+  its page refreshes the path ([§10.3](#103-page-inputs-and-one-commit)).
 - **Two tabs on different code** hold different scanner ids, and the second to open clears the
   database and stamps its own. So every read and write reads `meta` in its own transaction, and
   touches no record unless `meta` still holds the id its tab opened with. Otherwise it aborts,

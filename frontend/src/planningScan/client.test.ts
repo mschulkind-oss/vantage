@@ -26,7 +26,7 @@ import {
   type WorkerLike,
 } from "./client";
 import { memoryScanStore } from "./memoryStore";
-import { contentHash, scannedOf } from "../test/planning";
+import { contentHash, planningConfig, scannedOf } from "../test/planning";
 import {
   chunkedResponse,
   fakePlanningServer,
@@ -505,6 +505,30 @@ describe("the worker client", () => {
     for (const request of workers[1]?.posted ?? []) {
       expect(request).toMatchObject({ config: roadmap });
     }
+  });
+
+  it("answers a refresh after its worker died with no build out, under the config it is sent (§7.1)", async () => {
+    const { client, workers, server } = workerSetup();
+    await buildAll(client);
+    workers[0]?.die();
+    const entry = await client.refresh({
+      repo: "",
+      seq: 2,
+      path: "a.md",
+      config: planningConfig(),
+    });
+    // A new worker, which has read no stream, answered it from the file.
+    expect(workers).toHaveLength(2);
+    expect(workers[1]?.posted).toMatchObject([
+      { type: "refresh", path: "a.md", config: planningConfig() },
+    ]);
+    expect(entry).toMatchObject({
+      kind: "file",
+      path: "a.md",
+      hash: contentHash(DOC),
+      result: { kind: "planning" },
+    });
+    expect(server.pathRequests()).toEqual(["a.md"]);
   });
 
   it("fails a request it cannot post, as a worker that died", async () => {
