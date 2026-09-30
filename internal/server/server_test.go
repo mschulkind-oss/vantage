@@ -1677,6 +1677,33 @@ func TestWatchLimitReachesTheBrowser(t *testing.T) {
 		"Raise it (on Linux, fs.inotify.max_user_watches), or list the biggest folders in .vantageignore.", got[0].Message)
 }
 
+// On macOS every watched file holds a file open, so the server gives all its
+// watchers one budget of open files between them, and a project whose watches
+// do not fit is refused with the watch-limit banner. The budget is configured
+// down to nothing here, so no project fits.
+func TestTheFileBudgetReachesEveryWatcher(t *testing.T) {
+	srv, _ := daemonServer(t)
+	srv.goos = "darwin" // the wording checked below
+	srv.fileBudget = live.NewFileBudget(0)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- srv.Run(ctx) }()
+	defer func() {
+		cancel()
+		<-done
+		require.NoError(t, srv.Shutdown(context.Background()))
+	}()
+
+	waitFor(t, "every project to be refused", func() bool { return len(degradedList(t, srv.Handler())) == 2 })
+	for _, d := range degradedList(t, srv.Handler()) {
+		require.Equal(t, model.DegradationWatchLimit, d.Kind)
+		require.Equal(t, ".", d.Path)
+		require.Equal(t, "Live reload is off for this whole project: watching more would use up the files Vantage may keep open, "+
+			"and every watched file takes one. Raise the open-file limit (on macOS, sysctl kern.maxfilesperproc), "+
+			"or list the biggest folders in .vantageignore.", d.Message)
+	}
+}
+
 func TestWalkTimeoutReachesTheBrowser(t *testing.T) {
 	isolateUserDirs(t)
 	root := initRepo(t, map[string]string{"a.md": "# A\n"})
@@ -1880,8 +1907,8 @@ func TestTheWatchLimitNamesThePlatformsSetting(t *testing.T) {
 	require.Equal(t, "Live reload is off below docs: the system's limit on watched folders was reached. "+
 		"Raise it (on Linux, fs.inotify.max_user_watches), or list the biggest folders in .vantageignore.",
 		degradationMessageFor("linux", d, config.Defaults()))
-	require.Equal(t, "Live reload is off below docs: the system's limit on open files was reached, and every watched file takes one. "+
-		"Raise it (on macOS, sysctl kern.maxfilesperproc), or list the biggest folders in .vantageignore.",
+	require.Equal(t, "Live reload is off below docs: watching more would use up the files Vantage may keep open, and every watched file takes one. "+
+		"Raise the open-file limit (on macOS, sysctl kern.maxfilesperproc), or list the biggest folders in .vantageignore.",
 		degradationMessageFor("darwin", d, config.Defaults()))
 }
 
