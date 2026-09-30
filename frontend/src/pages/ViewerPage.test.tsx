@@ -17,6 +17,7 @@ import {
   afterEach,
 } from "vitest";
 import { ViewerPage } from "./ViewerPage";
+import { AppShell } from "../components/AppShell";
 import { useRepoStore } from "../stores/useRepoStore";
 import { useGitStore } from "../stores/useGitStore";
 import { useReviewStore } from "../stores/useReviewStore";
@@ -220,7 +221,9 @@ describe("ViewerPage", () => {
   const renderPage = () =>
     render(
       <BrowserRouter>
-        <ViewerPage />
+        <AppShell>
+          <ViewerPage />
+        </AppShell>
       </BrowserRouter>,
     );
 
@@ -447,7 +450,9 @@ describe("ViewerPage", () => {
       });
       rerender(
         <BrowserRouter>
-          <ViewerPage />
+          <AppShell>
+            <ViewerPage />
+          </AppShell>
         </BrowserRouter>,
       );
       expect(screen.getByText("Untracked file")).toBeInTheDocument();
@@ -535,7 +540,9 @@ describe("ViewerPage", () => {
     };
     const page = () => (
       <BrowserRouter>
-        <ViewerPage />
+        <AppShell>
+          <ViewerPage />
+        </AppShell>
       </BrowserRouter>
     );
     const shownName = () =>
@@ -1143,7 +1150,9 @@ describe("ViewerPage", () => {
     const rerenderPage = (rerender: (ui: React.ReactElement) => void) =>
       rerender(
         <BrowserRouter>
-          <ViewerPage />
+          <AppShell>
+            <ViewerPage />
+          </AppShell>
         </BrowserRouter>,
       );
 

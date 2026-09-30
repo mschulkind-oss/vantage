@@ -4,6 +4,7 @@ import { parse as parseToml } from "smol-toml";
 import {
   isKnownRule,
   isOpenNamespace,
+  ruleMeta,
   ruleNamespaces,
 } from "../rules/registry.js";
 import {
@@ -13,7 +14,7 @@ import {
   type PlanningConfig,
   type StageRole,
 } from "../../../vantage-md/src/planning/index.js";
-import { Settings } from "./settings.js";
+import { Settings, type RuleOptions } from "./settings.js";
 import type { RuleSetting } from "./types.js";
 
 /** Run-level policy: what makes the run fail, and how loudly. */
@@ -197,6 +198,7 @@ export function parseConfig(
 
   const policy: CheckPolicy = { ...DEFAULT_POLICY };
   const overrides = new Map<string, RuleSetting>();
+  const options = new Map<string, RuleOptions>();
 
   for (const [key, value] of Object.entries(check)) {
     switch (key) {
@@ -224,7 +226,13 @@ export function parseConfig(
         const rules = asTable(value, path, "check.rules");
         for (const [id, setting] of Object.entries(rules)) {
           assertRuleId(id, path);
-          overrides.set(id, asSetting(setting, id, path));
+          if (!isTable(setting)) {
+            overrides.set(id, asSetting(setting, id, path));
+            continue;
+          }
+          const table = asRuleTable(setting, id, path);
+          if (table.setting !== undefined) overrides.set(id, table.setting);
+          options.set(id, table.options);
         }
         break;
       }
@@ -238,7 +246,7 @@ export function parseConfig(
       ? defaultPlanning()
       : parsePlanning(asTable(root["planning"], path, "planning"), path);
 
-  return { settings: new Settings(overrides), policy, planning };
+  return { settings: new Settings(overrides, options), policy, planning };
 }
 
 /**
@@ -398,6 +406,58 @@ function assertRuleId(id: string, path: string): void {
 
   throw new ConfigError(
     `${path}: unknown rule "${id}". Run \`vantage-check help\` for the list; a whole family is "${ruleNamespaces()[0]}/*".`,
+  );
+}
+
+/**
+ * A rule written as a table, `{ severity = "warning", max-words = 150 }`: the
+ * form that sets a rule's options, which only a rule the registry gives
+ * options takes. `severity` is optional, and without it the rule keeps the
+ * severity the family, `*` or the registry gives it. An option is a whole
+ * number of at least 1, and a key that is neither is refused, as an unknown
+ * rule is.
+ */
+function asRuleTable(
+  table: Record<string, unknown>,
+  id: string,
+  path: string,
+): { setting: RuleSetting | undefined; options: RuleOptions } {
+  const known = ruleMeta(id)?.options;
+  const names = known === undefined ? [] : Object.keys(known);
+  if (names.length === 0) {
+    throw new ConfigError(
+      `${path}: rule "${id}" takes only a severity, "error", "warning" or "off", and no table`,
+    );
+  }
+  let setting: RuleSetting | undefined;
+  const options: Record<string, number> = {};
+  for (const [key, value] of Object.entries(table)) {
+    if (key === "severity") {
+      setting = asSetting(value, id, path);
+      continue;
+    }
+    if (!names.includes(key)) {
+      throw new ConfigError(
+        `${path}: unknown key ${JSON.stringify(key)} for rule "${id}", which takes severity and ${names.join(", ")}`,
+      );
+    }
+    if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+      throw new ConfigError(
+        `${path}: ${key} for rule "${id}" is ${known?.[key]?.summary ?? key}, and must be a whole number of 1 or more (got ${JSON.stringify(value)})`,
+      );
+    }
+    options[key] = value;
+  }
+  return { setting, options };
+}
+
+/** A TOML table, as smol-toml hands one over; a date is an object too. */
+function isTable(value: unknown): value is Record<string, unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    !(value instanceof Date)
   );
 }
 

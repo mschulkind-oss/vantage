@@ -344,6 +344,20 @@ beside **Vantage** at the top of the sidebar. It is built from the index every t
 own: no snooze, no assignment, no read state. It changes when the documents do,
 without a reload.
 
+It sits in the app as a document does: the sidebar is beside it, with its file
+tree, bookmarks and recent files (**`b`** puts it away and brings it back), and
+the header carries the sidebar button, the
+[contents column](#the-contents-column) and
+[full width](../features.md#full-width) toggles, and
+[Copy answers](#copy-answers). The contents and full-width toggles are the
+document viewer's own: turned on for one, they are on for the other. The keys
+that act on the page work here too (`t`, `r`, `Shift+P`, `?`, `j`, `k`), and
+those that act on a document, such as `d` for its diff, do nothing, so the
+shortcuts help (`?`) leaves them out. Going between a document and this page
+leaves the sidebar exactly as it was, its tree scrolled where you left it. The
+page scrolls with PageDown, Space and the arrow keys as soon as it opens. The
+cards keep a reading width; **Use full width** widens them to the window.
+
 Its address is `/.vantage/planning`, or `/.vantage/planning/<repo>` in
 [daemon mode](daemon-mode.md). A document's own address is its path, `/<path>`
 or `/<repo>/<path>`, so a page at `/planning` would hide every document under a
@@ -415,7 +429,9 @@ line saying how many candidates there are and to narrow `include`.
 
 ### Several roadmaps
 
-When two or more roadmaps route, a **Roadmap** menu sits above the section bar.
+When two or more roadmaps route, a **Roadmap** menu sits above the section bar,
+or at the head of the [contents column](#the-contents-column) while that is
+shown. There is only ever one.
 It lists each by its full path, nearest the repository root first, with how
 many of its questions need you, such as `docs/plans/roadmap.md (4 need you)`.
 The path is never shortened: on a narrow screen the closed menu wraps it onto a
@@ -481,13 +497,56 @@ Paging decides only what is drawn. Every question is still counted in the
 section bar and reachable through its section's pager, and
 [Copy answers](#copy-answers) covers the questions on every page.
 
+### The contents column
+
+The header's contents toggle, the one that shows a document's
+[table of contents](../features.md#table-of-contents), shows the page's outline
+in the same column here, beside the cards:
+
+- **Each section** that is not empty, with its count. Clicking one scrolls to
+  it, as the section bar does.
+- **Under a section,** the documents it lists, in the section's order, each by
+  its file name with its folder below it, and after the name how many of its
+  questions the section holds (under *Disagrees*, how many are still open).
+  Clicking one shows the page of the section that holds its first card or row,
+  and scrolls to it. Like a flip, that replaces the history entry.
+- **Where you are** is marked as you scroll: the section, and the document
+  whose card is at the top of the page.
+- **Every entry is a link.** Tab reaches it and Enter follows it, and
+  Ctrl-click or a middle click opens it in a new tab, at the same page and card.
+- **With several roadmaps,** the **Roadmap** menu sits at the head of the
+  column instead of above the section bar, its path and count whole, wrapped
+  to the column's width.
+
+A section lists its first 50 documents, then says how many more there are; its
+pager reaches them. The column is not drawn on a narrow screen, where the menu
+stays above the section bar.
+
 ### A question's card
 
-A card shows the question exactly as its document renders it: its list item,
-or its own block when it is not in a list, with the number it has there, its
-options, its context and its leaning.
-Nothing is summarized, so a question reads the same on the page as in its
-document. Above it, the card names the document, with that document's badge.
+A card shows the question as its document renders it, laid out to be read at
+a glance. Above it, the card names the document, with that document's badge.
+
+- **The question's bold title is the card's headline,** after its status
+  emoji, and the rest of its list item, or of its own block when it is not in
+  a list, follows it.
+- **Its leaning is a block of its own,** set off in color, and an answer
+  already written in is shown whole.
+- **The rest is cut to three lines** while the card is folded, and faded at
+  the cut when there is more. **Show full question**, at the end of the card's
+  row of buttons, unfolds all of it, and **Show less** folds it again. A
+  question opened with Show question from its preview card, below, arrives
+  unfolded.
+- **An empty answer is not shown:** the convention's `**Answer:**` over
+  `_(empty — fill in when decided)_` is left out until someone fills it in.
+- **The badges on links inside the question are quiet,** with no colored box,
+  no capitals and no color, the status emoji in gray, so they read as context
+  rather than as the card's news.
+
+Nothing is summarized or rewritten: every word on the card is the document's
+own. A question with no bold title, such as a bare paragraph, shows as its
+document renders it, with its directive's leaning beside it when it writes none
+out.
 
 What the card offers follows the question's state:
 
@@ -539,7 +598,7 @@ both need the rendered question to anchor the comment to.
 
 ### Copy answers
 
-**Copy answers**, at the top of the page, hands every answer given on the page
+**Copy answers**, in the page's header, hands every answer given on the page
 to the agent in one trip, rather than one trip per document. Beside it is the
 number of comments waiting on the agent on the questions the page lists: not
 dismissed, and not yet answered, or edited or replied to since the agent's last
@@ -581,7 +640,7 @@ written inline in brackets. With several roadmaps it lists them all, chooses the
 one nearest the root as the page does, and takes `--roadmap <path>` to choose
 another. The options, the JSON form and the exit codes are in the
 vantage-check guide's [`index` section](vantage-check.md#vantage-check-index),
-and the four `planning/*` rules that `check` runs over the same scan are in
+and the `planning/*` rules that `check` runs over the same scan are in
 [What it checks](vantage-check.md#what-it-checks).
 
 ---

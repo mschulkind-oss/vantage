@@ -21,6 +21,7 @@ import { VANTAGE_OQ_STATUS } from "../../../vantage-md/src/vantageDirectives.js"
 import { Listing, listCandidates, readCandidate } from "../core/candidates.js";
 import { ConfigError, loadConfig } from "../core/config.js";
 import { repositoryRoot } from "../core/projectRoot.js";
+import { oneLine } from "../core/text.js";
 import { EXIT_ENVIRONMENT, EXIT_OK, EXIT_USAGE } from "../exit.js";
 import type { Io } from "../io.js";
 import { VERSION } from "../version.js";
@@ -284,16 +285,6 @@ function renderJson(
 /* ------------------------------------------------------------------ *
  * Text
  * ------------------------------------------------------------------ */
-
-const TITLE_WIDTH = 100;
-
-/** Collapse whitespace, and cut a long title where a line would wrap. */
-function oneLine(text: string): string {
-  const flat = text.replace(/\s+/g, " ").trim();
-  return flat.length <= TITLE_WIDTH
-    ? flat
-    : `${flat.slice(0, TITLE_WIDTH - 1).trimEnd()}…`;
-}
 
 /** A question's state as the page marks it: `💬`, `💬 🤷`, `🔒` or `✅`. */
 function stateGlyph(state: QuestionState, preference: boolean): string {

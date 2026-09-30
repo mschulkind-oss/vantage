@@ -339,6 +339,7 @@ scan, so the gate and the page cannot disagree.
 | `planning/depends-on-missing` | A `depends-on` entry whose target does not exist or lies outside the repository, or whose `#OQ-…` id appears nowhere in it | error |
 | `planning/stage-disagrees` | A document whose stage has the `ready` or `built` role while it still has open questions | warning |
 | `planning/unrouted` | An open question no roadmap [routes](planning.md#the-roadmap), directly or through its document | **off** |
+| `planning/question-length` | A question whose text, not counting its leaning and its Answer, runs past 120 words | warning |
 
 They run once, after every document in the run has been checked, and each one
 needs only the document it reports on and the roadmaps. A roadmap that
@@ -361,6 +362,48 @@ asked to check.
   roadmap routes. The message names the roadmap, as *not routed by the roadmap
   (roadmap.md)*, or with several, *not routed by any roadmap (roadmap.md,
   docs/plans/roadmap.md)*.
+- **`planning/question-length` keeps a question readable on its card.** The
+  planning page shows each question as a card that leads with its bold title
+  and shows only the first few lines of the text below it, so a question
+  buried in a paragraph of background, history and cross-references is one the
+  reviewer has to dig for. The rule counts the words of the question's text as
+  the page renders it: the list item or footnote that holds the question, or
+  the block that hosts it when nothing does, title included, less every
+  paragraph that states a leaning and less the `**Answer:**` paragraph and
+  everything after it. A leaning is a paragraph that opens with `Leaning:`,
+  however it is emphasized, with or without a note in parentheses before the
+  colon (`_Leaning (revised 2026-09-04):_`), or with a dash in place of the
+  colon (`Leaning —`); the card and `vantage/oq-missing` read a leaning the
+  same way. So the empty placeholder below the label counts for nothing, and
+  neither does a ruling written in its place. A word is anything between
+  spaces that holds a letter or a digit: the status emoji is none, a link
+  counts its label alone, and a path in a code span is one word. A question in
+  a document whose stage has the `done` role is never measured, since the page
+  shows no card for it. A question found by a heading whose `oq` directive sits
+  directly above its leaning is read as that leaning alone, as its card shows
+  it, so it measures nothing however long the text under the heading is. A
+  finding names a question by its `id=`, or by the first 100 characters of its
+  title.
+
+  The limit of **120 words** was calibrated on 2026-09-30 against the 54
+  questions Vantage's own repository had written to the convention over its
+  history, each at its newest version. Half ran to 52 words or fewer and 48 to
+  93 or fewer; the other six ran from 132 to 233, and none fell between 93
+  and 132, so any limit in that gap finds the same six. That is where this
+  repository's questions thin out, not a line between a question that buries
+  what it asks and one that does not: a question of 93 words below the limit
+  is as dense as one of 132 above it, and the limit is well past what a folded
+  card shows, the title and about three lines. A repository whose questions
+  run longer will see many warnings — in one measured on the same day, the
+  median question ran to 187 words and 62% passed 120 — and should raise the
+  limit with `max-words`, or turn the rule off:
+
+  ```toml
+  [check.rules]
+  "planning/question-length" = { severity = "warning", max-words = 200 }
+  # or: "planning/question-length" = "off"
+  ```
+
 - **The roadmaps are found from the file's [project root](#vantage-check-index)**,
   the same root `index` scans. With no root, the per-document rules still run,
   and `planning/unrouted` finds no roadmap and reports nothing.
@@ -387,7 +430,14 @@ exit-code = 1       # the code to exit with when findings fail the run
 "markdown/hygiene" = "warning"
 "markdown/no-literal-urls" = "off"
 "link/dead-section-anchor" = "warning"
+# A rule with options takes a table: severity (optional) and its options.
+"planning/question-length" = { severity = "warning", max-words = 150 }
 ```
+
+A rule's options are whole numbers of at least 1, set on the rule by its exact
+id; a family such as `"planning/*"` takes a severity only. Without `severity`,
+the table leaves the rule at the severity its family, `*` or its default gives
+it. Today `planning/question-length`'s `max-words` is the only option.
 
 `--strict` on the command line turns strict on; it cannot turn a configured
 `strict = true` back off. `exit-code` is about findings only — it can make a run

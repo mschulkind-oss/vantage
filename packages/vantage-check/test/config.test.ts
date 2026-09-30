@@ -238,6 +238,85 @@ describe("parseConfig", () => {
   });
 });
 
+describe("a rule written as a table", () => {
+  const RULE = "planning/question-length";
+  const rules = (value: string) => `[check.rules]\n"${RULE}" = ${value}\n`;
+
+  it("sets the rule's options and its severity", () => {
+    const { settings } = parseConfig(
+      rules('{ severity = "error", max-words = 150 }'),
+    );
+
+    expect(settings.setting(RULE)).toBe("error");
+    expect(settings.option(RULE, "max-words")).toBe(150);
+  });
+
+  it("reads the table-header form the same way", () => {
+    const { settings } = parseConfig(
+      `[check.rules."${RULE}"]\nseverity = "off"\nmax-words = 90\n`,
+    );
+
+    expect(settings.enabled(RULE)).toBe(false);
+    expect(settings.option(RULE, "max-words")).toBe(90);
+  });
+
+  it("leaves the severity to the family, `*` and the default without one", () => {
+    expect(
+      parseConfig(rules("{ max-words = 150 }")).settings.setting(RULE),
+    ).toBe("warning");
+    const family = parseConfig(
+      `[check.rules]\n"planning/*" = "error"\n"${RULE}" = { max-words = 150 }\n`,
+    ).settings;
+    expect(family.setting(RULE)).toBe("error");
+    expect(family.option(RULE, "max-words")).toBe(150);
+  });
+
+  it("gives an option its default when nothing sets it", () => {
+    expect(Settings.defaults().option(RULE, "max-words")).toBe(120);
+    expect(
+      parseConfig(rules('"error"')).settings.option(RULE, "max-words"),
+    ).toBe(120);
+  });
+
+  it("survives the crossing to a worker, as plain data", () => {
+    const { settings } = parseConfig(
+      rules('{ severity = "error", max-words = 7 }'),
+    );
+    const cloned = structuredClone({
+      overrides: settings.entries(),
+      options: settings.optionEntries(),
+    });
+    const rebuilt = new Settings(
+      new Map(cloned.overrides),
+      new Map(cloned.options),
+    );
+
+    expect(rebuilt.setting(RULE)).toBe("error");
+    expect(rebuilt.option(RULE, "max-words")).toBe(7);
+  });
+
+  it.each([
+    [rules("{ max-words = 0 }"), "whole number of 1 or more"],
+    [rules("{ max-words = 1.5 }"), "whole number of 1 or more"],
+    [rules('{ max-words = "150" }'), "whole number of 1 or more"],
+    [rules("{ max-chars = 150 }"), 'unknown key "max-chars"'],
+    [rules('{ severity = "loud" }'), "must be"],
+    [
+      '[check.rules]\n"link/missing-target" = { severity = "error" }\n',
+      "takes only a severity",
+    ],
+    [
+      '[check.rules]\n"planning/*" = { max-words = 150 }\n',
+      "takes only a severity",
+    ],
+    ['[check.rules]\n"planning/nope" = { max-words = 150 }\n', "unknown rule"],
+    [rules("1979-05-27"), "must be"],
+  ])("rejects %j", (source, fragment) => {
+    expect(() => parseConfig(source)).toThrow(ConfigError);
+    expect(() => parseConfig(source)).toThrow(fragment);
+  });
+});
+
 /** A file in the shared fixtures the server's suite also reads. */
 function testdata(name: string): string {
   return join(

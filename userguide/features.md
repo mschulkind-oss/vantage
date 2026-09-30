@@ -217,13 +217,16 @@ one click*.
 The choice is remembered: turn it on once and it stays on as you move
 between documents and across restarts. It appears only for a rendered Markdown
 document — not for raw view, a directory listing or a binary file — and only on
-a screen wide enough to have a margin to put it in.
+a screen wide enough to have a margin to put it in. On the
+[planning page](guides/planning.md#the-contents-column) the same toggle shows
+the page's outline instead: its sections, and the documents each one lists.
 
 ## Full Width
 
 The expand icon beside it drops the fixed reading column and lets the document
 use the whole window, which is what you want for a wide table or a large
-diagram. It is remembered the same way.
+diagram. It is remembered the same way, and widens the
+[planning page](guides/planning.md#the-planning-page)'s cards too.
 
 ## Starred
 

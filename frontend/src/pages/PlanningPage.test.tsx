@@ -35,6 +35,7 @@ import {
   type PlanningSources,
 } from "vantage-md/planning";
 import { PlanningPage } from "./PlanningPage";
+import { AppShell } from "../components/AppShell";
 import { resetPlanningReviews } from "../hooks/usePlanningReviews";
 import {
   prefetchPlanningPage,
@@ -70,6 +71,8 @@ import {
   sourcesOf,
 } from "../test/planning";
 import { fakePlanningServer } from "../test/planningStream";
+import { planningCardId } from "../lib/planningCardId";
+import { planningRowId } from "../lib/planningOutline";
 import type { ReviewComment, ReviewData } from "../types";
 
 vi.mock("axios");
@@ -257,10 +260,31 @@ function setLoad(load: PlanningLoad, repo = ""): void {
  * The review endpoint, in memory
  * ------------------------------------------------------------------ */
 
+/** What the app shell reads for its sidebar and banner, or `undefined`. */
+function shellAnswer(url: string): unknown {
+  const { pathname } = new URL(url, "http://localhost");
+  if (pathname === "/api/degraded") return [];
+  if (pathname === "/api/starred") return { entries: [] };
+  if (pathname.endsWith("/tree") || pathname.endsWith("/git/recent")) {
+    return [];
+  }
+  return undefined;
+}
+
+/** Every GET for one document's review, which the page must never send. */
+const reviewGets = () =>
+  vi
+    .mocked(axios.get)
+    .mock.calls.filter(([url]) => String(url).endsWith("/review"));
+
 let reviews: Record<string, ReviewComment[]>;
 
 function serveReviews(): void {
   vi.mocked(axios.get).mockImplementation(async (url, config) => {
+    // The app shell's own reads: the sidebar's bookmarks, file tree and
+    // recent files, and the degradation banner's list. None to show.
+    const shell = shellAnswer(String(url));
+    if (shell !== undefined) return { data: shell };
     if (String(url).endsWith("/review")) {
       const path = (config?.params as { path: string }).path;
       const comments = reviews[path];
@@ -400,8 +424,13 @@ const entry = (url: string) => {
 };
 
 /** Where the router is, and a way to move it, from outside the routes. */
-const router: { location: string; navigate: NavigateFunction | null } = {
+const router: {
+  location: string;
+  hash: string;
+  navigate: NavigateFunction | null;
+} = {
   location: "",
+  hash: "",
   navigate: null,
 };
 function RouterProbe() {
@@ -409,6 +438,7 @@ function RouterProbe() {
   const navigate = useNavigate();
   useLayoutEffect(() => {
     router.location = `${location.pathname}${location.search}`;
+    router.hash = location.hash;
     router.navigate = navigate;
   });
   return null;
@@ -422,8 +452,10 @@ async function renderPage(url = "/.vantage/planning", before: string[] = []) {
     >
       <RouterProbe />
       <Routes>
-        <Route path="/.vantage/planning/*" element={<PlanningPage />} />
-        <Route path="/*" element={<div data-testid="viewer">viewer</div>} />
+        <Route element={<AppShell />}>
+          <Route path="/.vantage/planning/*" element={<PlanningPage />} />
+          <Route path="/*" element={<div data-testid="viewer">viewer</div>} />
+        </Route>
       </Routes>
     </MemoryRouter>,
   );
@@ -431,6 +463,34 @@ async function renderPage(url = "/.vantage/planning", before: string[] = []) {
   return view;
 }
 
+/**
+ * What the page's own column holds: the degradation banner beside it has a
+ * live region too, a status of its own.
+ */
+const inPage = () => within(screen.getByRole("main"));
+/** The pane, which is what scrolls in the app shell. */
+const scroller = () =>
+  document.querySelector<HTMLElement>("[data-content-scroll]")!;
+/**
+ * Every assignment to any element's `scrollTop` until `restore`, by element
+ * and value: how a scroll the page makes is seen, where jsdom lays nothing
+ * out.
+ */
+function watchScrollTop() {
+  const own = Object.getOwnPropertyDescriptor(Element.prototype, "scrollTop")!;
+  const spy = vi.fn<(el: Element, value: number) => void>();
+  Object.defineProperty(Element.prototype, "scrollTop", {
+    configurable: true,
+    get: own.get,
+    set(this: Element, value: number) {
+      spy(this, value);
+      own.set!.call(this, value);
+    },
+  });
+  return Object.assign(spy, {
+    restore: () => Object.defineProperty(Element.prototype, "scrollTop", own),
+  });
+}
 const section = (name: string) =>
   screen.getByRole("region", { name: new RegExp(`^${name}`) });
 const querySection = (name: string) =>
@@ -736,7 +796,7 @@ describe("empty and degenerate states", () => {
   it("shows a progress line where the section bar will be while the first scan runs", async () => {
     setLoad({ status: "loading", warm: false, progress: null });
     await renderPage();
-    expect(screen.getByRole("status")).toHaveTextContent(
+    expect(inPage().getByRole("status")).toHaveTextContent(
       "Reading planning documents…",
     );
     setLoad({
@@ -744,7 +804,7 @@ describe("empty and degenerate states", () => {
       warm: false,
       progress: { done: 412, total: 1000 },
     });
-    expect(screen.getByRole("status")).toHaveTextContent(
+    expect(inPage().getByRole("status")).toHaveTextContent(
       "Scanning planning documents: 412 of 1,000",
     );
     expect(screen.queryAllByRole("region")).toHaveLength(0);
@@ -765,13 +825,13 @@ describe("empty and degenerate states", () => {
     setLoad(readyOf(TREE));
     await settle();
     // The index is ready, and the sections are not: the line stays.
-    expect(screen.getByRole("status")).toHaveTextContent(
+    expect(inPage().getByRole("status")).toHaveTextContent(
       "Scanning planning documents",
     );
     expect(screen.queryByRole("navigation", { name: "Sections" })).toBeNull();
     release();
     await settle();
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(inPage().queryByRole("status")).toBeNull();
     expect(screen.getByRole("navigation", { name: "Sections" })).toBeTruthy();
     expect(cardsIn("Unrouted")).toHaveLength(2);
   });
@@ -797,7 +857,7 @@ describe("empty and degenerate states", () => {
     setLoad(readyOf(TREE));
     await settle();
     // The index and the page's inputs are in hand; the warm-up is not done.
-    expect(screen.getByRole("status")).toHaveTextContent(
+    expect(inPage().getByRole("status")).toHaveTextContent(
       "Scanning planning documents",
     );
     expect(screen.queryAllByRole("article")).toHaveLength(0);
@@ -1067,21 +1127,17 @@ describe("pages (planning-index-at-scale.md §10.2)", () => {
   it("returns from Open document to the same pages, at the same scroll", async () => {
     await renderPage();
     await flip("Next ›");
-    Object.defineProperty(window, "scrollY", {
-      value: 640,
-      configurable: true,
-    });
+    scroller().scrollTop = 640;
     fireEvent.click(
       within(cardFor("OQ-A1")).getByRole("link", { name: "Open document" }),
     );
     expect(screen.getByTestId("viewer")).toBeTruthy();
-    Object.defineProperty(window, "scrollY", { value: 0, configurable: true });
-    vi.mocked(window.scrollTo).mockClear();
     act(() => router.navigate!(-1));
     await settle();
     expect(router.location).toBe("/.vantage/planning?needs-you=2");
     expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
-    expect(window.scrollTo).toHaveBeenCalledWith(0, 640);
+    // The pane the page came back with, not the one it left.
+    expect(scroller().scrollTop).toBe(640);
   });
 });
 
@@ -1096,10 +1152,7 @@ describe("a flip's scroll position", () => {
   // only from Open document, which saves as it leaves.
   it("carries over to the replaced history entry", async () => {
     await renderPage();
-    Object.defineProperty(window, "scrollY", {
-      value: 300,
-      configurable: true,
-    });
+    scroller().scrollTop = 300;
     await act(async () => {
       fireEvent.click(
         within(
@@ -1113,11 +1166,9 @@ describe("a flip's scroll position", () => {
       within(section("Waiting")).getByRole("link", { name: "design.md#OQ-D1" }),
     );
     expect(screen.getByTestId("viewer")).toBeTruthy();
-    Object.defineProperty(window, "scrollY", { value: 0, configurable: true });
-    vi.mocked(window.scrollTo).mockClear();
     act(() => router.navigate!(-1));
     await settle();
-    expect(window.scrollTo).toHaveBeenCalledWith(0, 300);
+    expect(scroller().scrollTop).toBe(300);
   });
 });
 
@@ -1396,7 +1447,7 @@ describe("the reviews, in one request (planning-index-at-scale.md §6.3)", () =>
         "plans/built.md",
       ]),
     );
-    expect(vi.mocked(axios.get)).not.toHaveBeenCalled();
+    expect(reviewGets()).toEqual([]);
   });
 
   it("reads every other listed document in one more POST once the sections have painted", async () => {
@@ -1428,7 +1479,7 @@ describe("the reviews, in one request (planning-index-at-scale.md §6.3)", () =>
     await settle();
     expect(cardsIn("Needs you")).toEqual(["OQ-D3: Question OQ-D3?"]);
     expect(reviewRequests()).toHaveLength(2);
-    expect(vi.mocked(axios.get)).not.toHaveBeenCalled();
+    expect(reviewGets()).toEqual([]);
   });
 });
 
@@ -1558,14 +1609,16 @@ describe("page inputs, and one commit (planning-index-at-scale.md §10.3)", () =
   });
 
   it("shows a spinner once the wait passes spinnerMs, and not before", async () => {
-    setPlanningLimitsForTests({ spinnerMs: 20 });
+    // Long enough for the page and the app shell around it to render and
+    // settle first, on a loaded machine too.
+    setPlanningLimitsForTests({ spinnerMs: 150 });
     serveTree(TREE, "/api", () => ({
       cards: () => new Promise<CardAnswer[]>(() => {}),
     }));
     await renderPage();
     expect(screen.queryByLabelText("Loading this page's cards")).toBeNull();
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 40));
+      await new Promise((resolve) => setTimeout(resolve, 200));
     });
     expect(screen.getByLabelText("Loading this page's cards")).toBeTruthy();
   });
@@ -1613,8 +1666,10 @@ describe("page inputs, and one commit (planning-index-at-scale.md §10.3)", () =
       <MemoryRouter initialEntries={[entry("/.vantage/planning")]}>
         <RouterProbe />
         <Routes>
-          <Route path="/.vantage/planning/*" element={<PlanningPage />} />
-          <Route path="/*" element={<div data-testid="viewer">viewer</div>} />
+          <Route element={<AppShell />}>
+            <Route path="/.vantage/planning/*" element={<PlanningPage />} />
+            <Route path="/*" element={<div data-testid="viewer">viewer</div>} />
+          </Route>
         </Routes>
       </MemoryRouter>,
     );
@@ -1638,8 +1693,10 @@ describe("page inputs, and one commit (planning-index-at-scale.md §10.3)", () =
       <MemoryRouter initialEntries={[entry("/plans/design.md")]}>
         <RouterProbe />
         <Routes>
-          <Route path="/.vantage/planning/*" element={<PlanningPage />} />
-          <Route path="/*" element={<div data-testid="viewer">viewer</div>} />
+          <Route element={<AppShell />}>
+            <Route path="/.vantage/planning/*" element={<PlanningPage />} />
+            <Route path="/*" element={<div data-testid="viewer">viewer</div>} />
+          </Route>
         </Routes>
       </MemoryRouter>,
     );
@@ -1905,6 +1962,61 @@ describe("several roadmaps (§6.4)", () => {
     expect(router.location).toBe("/.vantage/planning");
   });
 
+  // One picker, where the planning outline is drawn at its head, and back
+  // above the section bar when it is not (§6.5).
+  it("puts the picker at the head of the planning outline while it is drawn, and only there", async () => {
+    localStorage.setItem("vantage:tocOpen", "true");
+    seed(TWO);
+    await renderPage();
+    const outline = screen.getByRole("navigation", {
+      name: "Planning outline",
+    });
+    expect(screen.getAllByRole("combobox", { name: "Roadmap" })).toHaveLength(
+      1,
+    );
+    expect(outline).toContainElement(picker());
+    expect(screen.getByRole("main")).not.toContainElement(picker());
+    await pick(NESTED);
+    expect(search().get("roadmap")).toBe(NESTED);
+
+    // Hidden, the column gives the picker back to its line.
+    fireEvent.click(
+      within(screen.getByTestId("planning-header")).getByRole("button", {
+        name: "Hide contents",
+      }),
+    );
+    expect(screen.getAllByRole("combobox", { name: "Roadmap" })).toHaveLength(
+      1,
+    );
+    expect(screen.getByRole("main")).toContainElement(picker());
+    expect(picker().value).toBe(NESTED);
+  });
+
+  // Late data never moves painted content (§6.5): the picker comes with the
+  // index, so a Contents label painted before it would be pushed down by it.
+  // The outline's head comes in the commit that draws the section bar.
+  it("draws the outline's head with the section bar, never a label the picker lands above", async () => {
+    localStorage.setItem("vantage:tocOpen", "true");
+    setLoad({ status: "loading", warm: false, progress: null });
+    serveTree(TWO);
+    await renderPage();
+    const column = screen.getByTestId("planning-outline");
+    expect(column.textContent).toBe("");
+    expect(screen.queryByRole("combobox", { name: "Roadmap" })).toBeNull();
+    setLoad(readyOf(TWO));
+    await settle();
+    const outline = screen.getByRole("navigation", {
+      name: "Planning outline",
+    });
+    const label = within(outline).getByText("Contents");
+    // The picker first, then the label, both there at once.
+    expect(
+      picker().compareDocumentPosition(label) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "Sections" })).toBeTruthy();
+  });
+
   it("offers each roadmap that routes, nearest the root first and chosen, with its count", async () => {
     seed(TWO);
     await renderPage();
@@ -1955,7 +2067,11 @@ describe("several roadmaps (§6.4)", () => {
     setLoad({ status: "loading", warm: false, progress: null });
     serveTree(TWO);
     await renderPage();
-    const progressBox = screen.getByRole("status").parentElement!;
+    // The progress line's, not the degradation banner's live region, which
+    // the app shell keeps mounted.
+    const progressBox = within(screen.getByRole("main")).getByRole(
+      "status",
+    ).parentElement!;
     setLoad(readyOf(TWO));
     await settle();
     expect(screen.getByTestId("roadmap-line")).toBeTruthy();
@@ -2654,34 +2770,65 @@ describe("Open document, then Back (§6.3, §15)", () => {
     render(
       <MemoryRouter initialEntries={[entry("/.vantage/planning")]}>
         <Routes>
-          <Route path="/.vantage/planning/*" element={<PlanningPage />} />
-          <Route path="/*" element={<BackButton />} />
+          <Route element={<AppShell />}>
+            <Route path="/.vantage/planning/*" element={<PlanningPage />} />
+            <Route path="/*" element={<BackButton />} />
+          </Route>
         </Routes>
       </MemoryRouter>,
     );
     await settle();
 
-    // The reader scrolls down to a card, then opens its document.
-    Object.defineProperty(window, "scrollY", {
-      value: 640,
-      configurable: true,
-    });
+    // The reader scrolls the pane down to a card, then opens its document.
+    scroller().scrollTop = 640;
     fireEvent.click(
       within(cardFor("OQ-U1")).getByRole("link", { name: "Open document" }),
     );
     expect(screen.getByRole("button", { name: "Go back" })).toBeTruthy();
 
-    Object.defineProperty(window, "scrollY", { value: 0, configurable: true });
-    vi.mocked(window.scrollTo).mockClear();
     fireEvent.click(screen.getByRole("button", { name: "Go back" }));
     expect(cardFor("OQ-U1")).toBeTruthy();
-    expect(window.scrollTo).toHaveBeenCalledWith(0, 640);
+    expect(scroller().scrollTop).toBe(640);
+  });
+
+  // The pane arrives with the app shell, which waits for the repositories:
+  // a page that opened before them follows its scroll all the same.
+  it("saves the pane's position as it scrolls, when the page opened before the repositories were known", async () => {
+    const { loadRepos } = useRepoStore.getState();
+    useRepoStore.setState({ reposLoaded: false, loadRepos: async () => {} });
+    try {
+      await renderPage();
+      expect(screen.queryByTestId("sidebar")).toBeNull();
+      act(() => useRepoStore.setState({ reposLoaded: true }));
+      await settle();
+      scroller().scrollTop = 480;
+      await act(async () => {
+        scroller().dispatchEvent(new Event("scroll"));
+      });
+      await settle();
+      // A link that saves nothing on its way out.
+      fireEvent.click(
+        within(section("Waiting")).getByRole("link", {
+          name: "design.md#OQ-D1",
+        }),
+      );
+      expect(screen.getByTestId("viewer")).toBeTruthy();
+      act(() => router.navigate!(-1));
+      await settle();
+      expect(scroller().scrollTop).toBe(480);
+    } finally {
+      useRepoStore.setState({ loadRepos });
+    }
   });
 
   it("restores nothing on a fresh visit", async () => {
-    vi.mocked(window.scrollTo).mockClear();
-    await renderPage();
-    expect(window.scrollTo).not.toHaveBeenCalled();
+    const scrolled = watchScrollTop();
+    try {
+      await renderPage();
+      expect(scrolled).not.toHaveBeenCalled();
+    } finally {
+      scrolled.restore();
+    }
   });
 });
 
@@ -2736,7 +2883,444 @@ describe("in a static export (§3.6, Plan Q3)", () => {
     await renderPage();
     expect(screen.getByText(STATIC_MESSAGE)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
-    expect(vi.mocked(axios.get)).not.toHaveBeenCalled();
+    expect(reviewGets()).toEqual([]);
     expect(vi.mocked(axios.post)).not.toHaveBeenCalled();
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * The app shell, and the planning outline (planning-index.md §6.5)
+ * ------------------------------------------------------------------ */
+
+const header = () => screen.getByTestId("planning-header");
+
+describe("in the app shell (§6.5)", () => {
+  beforeEach(() => seed());
+
+  it("draws the page beside the sidebar, under the viewer's header", async () => {
+    await renderPage();
+    expect(screen.getByTestId("sidebar")).toBeTruthy();
+    // The sidebar's file tree, read as the viewer reads it.
+    expect(
+      vi
+        .mocked(axios.get)
+        .mock.calls.some(([url]) => String(url).startsWith("/api/tree?")),
+    ).toBe(true);
+    expect(
+      within(header()).getByRole("heading", { level: 1, name: "Planning" }),
+    ).toBeTruthy();
+    expect(
+      within(header()).getByRole("link", { name: "root" }),
+    ).toHaveAttribute("href", "/");
+    expect(
+      within(header()).getByRole("button", { name: "Open sidebar" }),
+    ).toBeTruthy();
+    expect(
+      within(header()).getByRole("button", { name: "Show contents" }),
+    ).toHaveAttribute("aria-pressed", "false");
+    expect(
+      within(header()).getByRole("button", { name: "Use full width" }),
+    ).toHaveAttribute("aria-pressed", "false");
+    expect(
+      within(header()).getByRole("button", { name: /^Copy answers/ }),
+    ).toBeTruthy();
+    // A document's controls have no meaning here.
+    for (const name of ["Raw", "Path", "Review"]) {
+      expect(within(header()).queryByRole("button", { name })).toBeNull();
+    }
+  });
+
+  it("puts the sidebar away with b, as the viewer does", async () => {
+    await renderPage();
+    const open = within(header()).getByRole("button", { name: "Open sidebar" });
+    expect(open).toHaveClass("md:hidden");
+    act(() => {
+      fireEvent.keyDown(document, { key: "b" });
+    });
+    expect(localStorage.getItem("vantage:sidebarCollapsed")).toBe("true");
+    expect(open).not.toHaveClass("md:hidden");
+  });
+
+  it("widens the cards on Use full width, which is the viewer's own preference", async () => {
+    await renderPage();
+    const column = screen.getByRole("main");
+    expect(column).toHaveClass("max-w-4xl");
+    fireEvent.click(
+      within(header()).getByRole("button", { name: "Use full width" }),
+    );
+    expect(column).toHaveClass("max-w-none");
+    expect(localStorage.getItem("vantage:fullWidth")).toBe("true");
+    expect(
+      within(header()).getByRole("button", { name: "Use fixed width" }),
+    ).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("offers neither the sidebar nor the contents column where no repository is named", async () => {
+    useRepoStore.setState({
+      isMultiRepo: true,
+      currentRepo: null,
+      repos: [{ name: "alpha" }] as never,
+    });
+    await renderPage("/.vantage/planning");
+    expect(screen.getByText(/Choose a project/)).toBeTruthy();
+    expect(screen.queryByTestId("sidebar")).toBeNull();
+    expect(
+      within(header()).queryByRole("button", { name: "Show contents" }),
+    ).toBeNull();
+  });
+});
+
+describe("the planning outline (§6.5)", () => {
+  beforeEach(() => {
+    localStorage.setItem("vantage:tocOpen", "true");
+  });
+
+  const outline = () =>
+    screen.getByRole("navigation", { name: "Planning outline" });
+  const outlineSections = () =>
+    within(outline())
+      .getAllByTestId("outline-section")
+      .map((a) => a.textContent);
+  /** A section's entry in the outline, and the documents listed under it. */
+  const outlineEntry = (title: string) =>
+    within(outline())
+      .getAllByTestId("outline-section")
+      .find((a) => a.textContent?.startsWith(title))!;
+  const outlineDocuments = (title: string) =>
+    Array.from(
+      outlineEntry(title).parentElement!.querySelectorAll(
+        "[data-testid=outline-document]",
+      ),
+      (a) => a.getAttribute("aria-label"),
+    );
+  const outlineDocument = (title: string, path: string) =>
+    outlineEntry(title).parentElement!.querySelector<HTMLAnchorElement>(
+      `[data-testid=outline-document][data-path="${path}"]`,
+    )!;
+
+  it("is the contents column, which the header's toggle shows and hides", async () => {
+    localStorage.removeItem("vantage:tocOpen");
+    seed();
+    await renderPage();
+    expect(
+      screen.queryByRole("navigation", { name: "Planning outline" }),
+    ).toBeNull();
+    fireEvent.click(
+      within(header()).getByRole("button", { name: "Show contents" }),
+    );
+    expect(outline()).toBeTruthy();
+    expect(localStorage.getItem("vantage:tocOpen")).toBe("true");
+  });
+
+  it("names each section with its count, and under each its documents with their questions there", async () => {
+    seed();
+    await renderPage();
+    expect(outlineSections()).toEqual([
+      "Needs you 3",
+      "Unrouted 2",
+      "Waiting 2",
+      "Ready 1",
+      "Graduate 1",
+      "Disagrees 1",
+    ]);
+    expect(outlineDocuments("Needs you")).toEqual([
+      "plans/design.md, 2 questions",
+      "plans/answered.md, 1 question",
+    ]);
+    expect(outlineDocuments("Unrouted")).toEqual([
+      "plans/disagrees.md, 1 question",
+      "plans/unrouted.md, 1 question",
+    ]);
+    expect(outlineDocuments("Waiting")).toEqual(
+      expect.arrayContaining(["plans/design.md, 1 question", "plans/deps.md"]),
+    );
+    expect(outlineDocuments("Ready")).toEqual(["plans/ready.md"]);
+    expect(outlineDocuments("Disagrees")).toEqual([
+      "plans/disagrees.md, 1 question",
+    ]);
+    // By file name, with its folders apart from it.
+    const design = outlineDocument("Needs you", "plans/design.md");
+    expect(
+      within(design).getByTestId("outline-document-name"),
+    ).toHaveTextContent(/^design\.md$/);
+    expect(design).toHaveTextContent("plans/");
+    expect(design).toHaveAttribute("title", "plans/design.md");
+  });
+
+  it("jumps to a section, with no history entry, and takes the focus to its heading", async () => {
+    seed();
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    try {
+      await renderPage();
+      scrolled.mockClear();
+      fireEvent.click(outlineEntry("Waiting"));
+      const heading = within(section("Waiting")).getByRole("heading", {
+        level: 2,
+      });
+      expect(scrolled.mock.contexts[0]).toBe(heading);
+      expect(document.activeElement).toBe(heading);
+      expect(router.location).toBe("/.vantage/planning");
+    } finally {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
+  it("flips a section to the page holding a document's first entry, in place of the history entry, and brings it into view", async () => {
+    setPlanningLimitsForTests({ pageRows: 1 });
+    seed({
+      ...TREE,
+      "plans/ready2.md": doc("status: accepted\nstage: DECIDED", "Decided."),
+    });
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    try {
+      await renderPage("/.vantage/planning", ["/plans/roadmap.md"]);
+      expect(documentsIn("Ready")).toEqual(["plans/ready.md"]);
+      scrolled.mockClear();
+      await act(async () => {
+        fireEvent.click(outlineDocument("Ready", "plans/ready2.md"));
+      });
+      await settle();
+      expect(router.location).toBe("/.vantage/planning?ready=2");
+      expect(documentsIn("Ready")).toEqual(["plans/ready2.md"]);
+      const row = section("Ready").querySelector(
+        '[data-planning-document="plans/ready2.md"]',
+      )!;
+      expect(row.id).toBe(planningRowId("ready", "plans/ready2.md"));
+      expect(scrolled.mock.contexts).toContain(row);
+      // The focus goes with it, onto the row's first control.
+      expect(document.activeElement).toBe(
+        within(row as HTMLElement).getByRole("link", {
+          name: "plans/ready2.md",
+        }),
+      );
+      // Already on its page, a document is brought into view at once.
+      scrolled.mockClear();
+      fireEvent.click(outlineDocument("Ready", "plans/ready2.md"));
+      expect(scrolled.mock.contexts).toContain(row);
+      // The flip replaced the entry it was on.
+      act(() => router.navigate!(-1));
+      expect(router.location).toBe("/plans/roadmap.md");
+    } finally {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
+  it("flips a section of cards to the page holding a document's first card", async () => {
+    setPlanningLimitsForTests({ pageEntries: 1 });
+    seed();
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    try {
+      await renderPage();
+      scrolled.mockClear();
+      await act(async () => {
+        fireEvent.click(outlineDocument("Needs you", "plans/answered.md"));
+      });
+      await settle();
+      expect(router.location).toBe("/.vantage/planning?needs-you=3");
+      expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
+      // The card itself, by the id the card carries (`planningCardId`), is
+      // brought into view, and the focus goes to its first control.
+      const card = cardFor("OQ-A1");
+      const load = usePlanningStore.getState().byRepo[""];
+      const index = load?.status === "ready" ? load.index : null;
+      const [question] = index!.documents.find(
+        (d) => d.path === "plans/answered.md",
+      )!.questions;
+      expect(card.id).toBe(
+        planningCardId("plans/answered.md", "OQ-A1", question!.unitLine),
+      );
+      expect(scrolled.mock.contexts).toContain(card);
+      expect(card.contains(document.activeElement)).toBe(true);
+      expect(document.activeElement).not.toBe(card);
+    } finally {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
+  it("scrolls to the card a link's fragment names once the sections are in", async () => {
+    seed();
+    const load = () => usePlanningStore.getState().byRepo[""];
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    try {
+      // The index is seeded, so the card's id is known before the page opens.
+      const ready = load();
+      const index = ready?.status === "ready" ? ready.index : null;
+      const [question] = index!.documents.find(
+        (d) => d.path === "plans/answered.md",
+      )!.questions;
+      const id = planningCardId(
+        "plans/answered.md",
+        "OQ-A1",
+        question!.unitLine,
+      );
+      await renderPage(`/.vantage/planning#${id}`);
+      expect(scrolled).toHaveBeenCalledTimes(1);
+      expect(scrolled.mock.contexts[0]).toBe(cardFor("OQ-A1"));
+    } finally {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
+  // A link whose query the page rewrites in place (an explicit page 1 here;
+  // a missing roadmap= where two route) still goes where its fragment points:
+  // the rewrite keeps the fragment.
+  it("keeps a link's fragment through the rewrite of its query, and scrolls to its card", async () => {
+    seed();
+    const load = () => usePlanningStore.getState().byRepo[""];
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    try {
+      const ready = load();
+      const index = ready?.status === "ready" ? ready.index : null;
+      const [question] = index!.documents.find(
+        (d) => d.path === "plans/answered.md",
+      )!.questions;
+      const id = planningCardId(
+        "plans/answered.md",
+        "OQ-A1",
+        question!.unitLine,
+      );
+      await renderPage(`/.vantage/planning?unrouted=1#${id}`);
+      expect(router.location).toBe("/.vantage/planning");
+      expect(router.hash).toBe(`#${id}`);
+      expect(scrolled).toHaveBeenCalledTimes(1);
+      expect(scrolled.mock.contexts[0]).toBe(cardFor("OQ-A1"));
+    } finally {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
+  it("asks for a document's page ahead when the pointer or the focus reaches its entry", async () => {
+    setPlanningLimitsForTests({ pageEntries: 1 });
+    const asked: CardWant[][] = [];
+    serveTree(TREE, "/api", (inline) => ({
+      cards: (repo, want, options) => {
+        asked.push(want);
+        return inline.cards(repo, want, options);
+      },
+    }));
+    setLoad(readyOf(TREE));
+    await renderPage();
+    const a1Asked = () =>
+      asked.some((want) => want.some((w) => w.path === "plans/answered.md"));
+    expect(a1Asked()).toBe(false);
+    fireEvent.pointerEnter(outlineDocument("Needs you", "plans/answered.md"));
+    await settle();
+    expect(a1Asked()).toBe(true);
+    // The jump then has its page in hand, and asks nothing more.
+    const before = asked.length;
+    await act(async () => {
+      fireEvent.click(outlineDocument("Needs you", "plans/answered.md"));
+    });
+    await settle();
+    expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
+    expect(asked).toHaveLength(before);
+  });
+
+  it("links each document to its page and its first card, and leaves a modified click to the browser", async () => {
+    setPlanningLimitsForTests({ pageEntries: 1 });
+    seed();
+    await renderPage();
+    const answered = outlineDocument("Needs you", "plans/answered.md");
+    const load = usePlanningStore.getState().byRepo[""];
+    const index = load?.status === "ready" ? load.index : null;
+    const [question] = index!.documents.find(
+      (d) => d.path === "plans/answered.md",
+    )!.questions;
+    expect(answered).toHaveAttribute(
+      "href",
+      `/.vantage/planning?needs-you=3#${planningCardId("plans/answered.md", "OQ-A1", question!.unitLine)}`,
+    );
+    expect(outlineEntry("Waiting")).toHaveAttribute("href", "#waiting");
+    fireEvent.click(answered, { ctrlKey: true });
+    await settle();
+    expect(router.location).toBe("/.vantage/planning");
+  });
+
+  it("scrolls to the row a link's fragment names once the sections are in", async () => {
+    seed();
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    try {
+      await renderPage(
+        `/.vantage/planning#${planningRowId("ready", "plans/ready.md")}`,
+      );
+      expect(scrolled).toHaveBeenCalledTimes(1);
+      expect(scrolled.mock.contexts[0]).toBe(
+        section("Ready").querySelector(
+          '[data-planning-document="plans/ready.md"]',
+        ),
+      );
+    } finally {
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+
+  it("marks the section and the document being read as the pane scrolls", async () => {
+    seed();
+    // A layout of the page's own: every element of the sections that has
+    // an id stands 100px below the one before it, less how far the pane has
+    // scrolled, and the pane itself at the top of the window.
+    let scrolledBy = 0;
+    const rect = vi
+      .spyOn(Element.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: Element) {
+        const placed = Array.from(
+          document.querySelectorAll("[data-planning-sections] [id]"),
+        );
+        const at = placed.indexOf(this);
+        const top = at === -1 ? 0 : at * 100 - scrolledBy;
+        return { top, bottom: top, left: 0, right: 0 } as DOMRect;
+      });
+    try {
+      await renderPage();
+      const current = () =>
+        Array.from(
+          outline().querySelectorAll("[aria-current=location]"),
+          (a) => a.getAttribute("aria-label") ?? a.textContent,
+        );
+      expect(current()).toEqual(["Needs you 3"]);
+
+      const placed = Array.from(
+        document.querySelectorAll("[data-planning-sections] [id]"),
+      );
+      const row = document.getElementById(
+        planningRowId("ready", "plans/ready.md"),
+      )!;
+      scrolledBy = placed.indexOf(row) * 100 - 20;
+      await act(async () => {
+        scroller().dispatchEvent(new Event("scroll"));
+      });
+      await settle();
+      expect(current()).toEqual(["Ready 1", "plans/ready.md"]);
+
+      scrolledBy =
+        placed.indexOf(document.getElementById("disagrees")!) * 100 - 50;
+      await act(async () => {
+        scroller().dispatchEvent(new Event("scroll"));
+      });
+      await settle();
+      expect(current()).toEqual(["Disagrees 1"]);
+    } finally {
+      rect.mockRestore();
+    }
+  });
+
+  it("lists outlineDocuments documents under a section, and says how many more", async () => {
+    setPlanningLimitsForTests({ outlineDocuments: 1 });
+    seed();
+    await renderPage();
+    expect(outlineDocuments("Needs you")).toEqual([
+      "plans/design.md, 2 questions",
+    ]);
+    expect(
+      within(outlineEntry("Needs you").parentElement!).getByTestId(
+        "outline-more",
+      ),
+    ).toHaveTextContent("and 1 more document");
   });
 });

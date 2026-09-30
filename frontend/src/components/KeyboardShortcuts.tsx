@@ -8,10 +8,19 @@ interface Shortcut {
   /** Other key sequences that do the same thing, shown after an "or". */
   alternatives?: string[][];
   description: string;
+  /**
+   * A key that acts on the document a page shows, which a page without one
+   * (the planning page) does not wire: the help leaves it out there.
+   */
+  document?: true;
+  /** What it says on such a page, when it does something else there. */
+  withoutDocument?: string;
 }
 
 interface ShortcutGroup {
   title: string;
+  /** Its title on a page that shows no document. */
+  titleWithoutDocument?: string;
   shortcuts: Shortcut[];
 }
 
@@ -31,7 +40,11 @@ const shortcutGroups: ShortcutGroup[] = [
       { keys: ["g", "r"], description: "Go to recent files page" },
       { keys: ["g", "p"], description: "Go to the planning page" },
       { keys: ["b"], description: "Toggle sidebar" },
-      { keys: ["Esc"], description: "Close a dialog, or leave raw view" },
+      {
+        keys: ["Esc"],
+        description: "Close a dialog, or leave raw view",
+        withoutDocument: "Close a dialog",
+      },
     ],
   },
   {
@@ -47,14 +60,15 @@ const shortcutGroups: ShortcutGroup[] = [
   },
   {
     title: "File Viewing",
+    titleWithoutDocument: "Scrolling",
     shortcuts: [
       { keys: ["j"], description: "Scroll down" },
       { keys: ["k"], description: "Scroll up" },
       { keys: ["g", "g"], description: "Scroll to top" },
       { keys: ["Shift", "G"], description: "Scroll to bottom" },
-      { keys: ["d"], description: "View latest diff" },
-      { keys: ["h"], description: "View file history" },
-      { keys: ["y"], description: "Copy absolute file path" },
+      { keys: ["d"], description: "View latest diff", document: true },
+      { keys: ["h"], description: "View file history", document: true },
+      { keys: ["y"], description: "Copy absolute file path", document: true },
     ],
   },
   {
@@ -100,11 +114,32 @@ const KeyCombo: React.FC<{ keys: string[] }> = ({ keys }) => (
 interface KeyboardShortcutsModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /**
+   * Whether the page on screen wires the keys that act on a document. Where
+   * it does not, the help lists only what the keys do there.
+   */
+  documentKeys?: boolean;
+}
+
+/** The groups as a page lists them: without its document keys, if it has none. */
+function groupsFor(documentKeys: boolean): ShortcutGroup[] {
+  if (documentKeys) return shortcutGroups;
+  return shortcutGroups.map((group) => ({
+    title: group.titleWithoutDocument ?? group.title,
+    shortcuts: group.shortcuts
+      .filter((shortcut) => shortcut.document !== true)
+      .map((shortcut) =>
+        shortcut.withoutDocument === undefined
+          ? shortcut
+          : { ...shortcut, description: shortcut.withoutDocument },
+      ),
+  }));
 }
 
 export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
   isOpen,
   onClose,
+  documentKeys = true,
 }) => {
   useEffect(() => {
     if (!isOpen) return;
@@ -153,7 +188,7 @@ export const KeyboardShortcutsModal: React.FC<KeyboardShortcutsModalProps> = ({
 
         {/* Body */}
         <div className="px-6 py-4 overflow-y-auto flex-1 space-y-5">
-          {shortcutGroups.map((group) => (
+          {groupsFor(documentKeys).map((group) => (
             <div key={group.title}>
               <h3 className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
                 {group.title}

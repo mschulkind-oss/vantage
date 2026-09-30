@@ -2,7 +2,7 @@ import { statSync } from "node:fs";
 import { availableParallelism } from "node:os";
 import { Worker, parentPort } from "node:worker_threads";
 import { checkFiles } from "./runner.js";
-import { Settings } from "./settings.js";
+import { Settings, type RuleOptions } from "./settings.js";
 import type { RuleSetting, RunReport } from "./types.js";
 
 /**
@@ -206,13 +206,14 @@ export async function checkFilesInParallel(
  *
  * Everything crossing the boundary is plain data, which rules out handing a
  * worker the `Settings` object: it is a class with methods, and structured
- * cloning would strip them. The override map is what a `Settings` actually is,
- * so that is what travels.
+ * cloning would strip them. The override map and the options are what a
+ * `Settings` actually is, so that is what travels.
  */
 interface ShardRequest {
   files: string[];
   cwd: string;
   overrides: [string, RuleSetting][];
+  options: [string, RuleOptions][];
 }
 
 type ShardResponse =
@@ -279,6 +280,7 @@ export const workerShard: RunShard = (files, cwd, settings) =>
       files: [...files],
       cwd,
       overrides: settings.entries(),
+      options: settings.optionEntries(),
     };
     worker.postMessage(request);
   });
@@ -300,7 +302,7 @@ export function serveShards(): void {
           report: await checkFiles(
             request.files,
             request.cwd,
-            new Settings(new Map(request.overrides)),
+            new Settings(new Map(request.overrides), new Map(request.options)),
           ),
         };
       } catch (error) {

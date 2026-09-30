@@ -198,16 +198,22 @@ function questionsOf(
   });
 }
 
-/** Every section's entries, in order; an empty section is left out. */
-function entriesOf(
-  index: PlanningIndex,
-  sections: PlanningSections,
-): (
+/** One section's entries, all of them, before they are paged. */
+export type SectionEntries =
   | { id: SectionId; kind: "cards"; entries: CardEntry[] }
   | { id: SectionId; kind: "rows"; entries: string[] }
   | { id: SectionId; kind: "skipped"; entries: PlanningIndex["skipped"] }
-  | { id: SectionId; kind: "unreadable"; entries: PlanningIndex["unreadable"] }
-)[] {
+  | { id: SectionId; kind: "unreadable"; entries: PlanningIndex["unreadable"] };
+
+/**
+ * Every section's entries, in order; an empty section is left out. What the
+ * page lays out, and what the planning outline lists
+ * (`lib/planningOutline.ts`).
+ */
+export function sectionEntries(
+  index: PlanningIndex,
+  sections: PlanningSections,
+): SectionEntries[] {
   const waiting: CardEntry[] = sections.waiting.flatMap((entry) => {
     if (entry.kind === "document") {
       return [
@@ -235,9 +241,24 @@ function entriesOf(
     { id: "skipped", kind: "skipped", entries: sections.skipped },
     { id: "could-not-read", kind: "unreadable", entries: sections.unreadable },
   ] as const;
-  return all.filter((section) => section.entries.length > 0) as ReturnType<
-    typeof entriesOf
-  >;
+  return all.filter(
+    (section) => section.entries.length > 0,
+  ) as SectionEntries[];
+}
+
+/**
+ * Where each page of a section starts: `bounds[i]` is page `i + 1`'s first
+ * entry, and the last bound is the section's length.
+ */
+export function pageBounds(section: SectionEntries): number[] {
+  return section.kind === "cards"
+    ? cardBounds(section.entries)
+    : fixedBounds(
+        section.entries.length,
+        section.kind === "rows"
+          ? planningLimits.pageRows
+          : planningLimits.pageLines,
+      );
 }
 
 /**
@@ -251,16 +272,8 @@ export function layoutPlanningPage(
 ): PlanningLayout {
   const laid: LaidOutSection[] = [];
   const pages: string[] = [];
-  for (const section of entriesOf(index, sections)) {
-    const bounds =
-      section.kind === "cards"
-        ? cardBounds(section.entries)
-        : fixedBounds(
-            section.entries.length,
-            section.kind === "rows"
-              ? planningLimits.pageRows
-              : planningLimits.pageLines,
-          );
+  for (const section of sectionEntries(index, sections)) {
+    const bounds = pageBounds(section);
     const pageCount = bounds.length - 1;
     const page = Math.min(pageAsked(request[section.id]), pageCount);
     const start = bounds[page - 1] ?? 0;

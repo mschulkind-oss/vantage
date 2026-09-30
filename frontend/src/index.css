@@ -1935,11 +1935,136 @@ th.review-block-hovered {
   margin-top: 0;
   margin-bottom: 0;
 }
-.planning-card-body [data-planning-card-unit] > :first-child {
+/* Inside a unit that holds blocks, the space between two is the later one's
+   top margin alone, so a block the card hides (the title's own paragraph, an
+   empty Answer, what folding hides) leaves no gap behind it. */
+.planning-card-body
+  [data-planning-card-unit]
+  > :is(
+    p,
+    ul,
+    ol,
+    blockquote,
+    pre,
+    table,
+    div,
+    hr,
+    details,
+    figure,
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6,
+    .katex-display
+  ) {
+  margin-top: 0.75em;
+  margin-bottom: 0;
+}
+.planning-card-body [data-planning-card-unit] > :first-child,
+.planning-card-body
+  [data-planning-card-unit]
+  > [data-planning-card-part="lede"]
+  + * {
   margin-top: 0;
 }
 .planning-card-body [data-planning-card-unit] > :last-child {
   margin-bottom: 0;
+}
+
+/* The card's layout of its question (`planningCardParts.ts`). The bold title
+   is the card's headline, so it is hidden here, with the paragraph it opens
+   when it was all that paragraph held, and so is an empty Answer. Hidden
+   rather than removed: every anchor and hash reads the text as the document
+   has it. */
+.planning-card-body [data-planning-card-part="title"],
+.planning-card-body [data-planning-card-part="lede"],
+.planning-card-body [data-planning-card-part="placeholder"] {
+  display: none !important;
+}
+/* With the headline leading the card, the question's number in its list says
+   nothing more, and its indent would set the question off from its headline. */
+.planning-card-body[data-planning-card-headed]
+  :is(ol, ul, li):is([data-planning-card-path], [data-planning-card-unit]) {
+  list-style: none;
+  padding-inline-start: 0;
+  margin-inline-start: 0;
+}
+/* Folded, the question shows its first block cut to a few lines, faded at the
+   cut while there is more of it, and nothing after it but its leaning and a
+   filled-in answer. The line count is the card's, from `CARD_CLAMP_LINES`.
+   The clamp is on from the first paint, and only the fade waits for the
+   measurement, which moves nothing. */
+.planning-card-body:not([data-planning-card-unfolded])
+  [data-planning-card-part="more"] {
+  display: none !important;
+}
+.planning-card-body:not([data-planning-card-unfolded])
+  [data-planning-card-part="clamp"] {
+  max-height: calc(var(--planning-card-clamp-lines, 3) * 1.5em);
+  max-height: calc(var(--planning-card-clamp-lines, 3) * 1lh);
+  overflow: hidden;
+}
+.planning-card-body:not([data-planning-card-unfolded])
+  [data-planning-card-part="clamp"][data-planning-card-overflow] {
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - 1.5em),
+    transparent
+  );
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5em), transparent);
+}
+/* The leaning, as a block of its own: the document's `Leaning:` paragraph, or
+   the directive's leaning when the question writes none out. */
+.planning-card-body [data-planning-card-part="leaning"],
+.planning-card-leaning {
+  border-inline-start: 3px solid var(--vantage-tone-note-accent);
+  border-radius: 0 0.375rem 0.375rem 0;
+  background-color: var(--vantage-tone-note-wash);
+  padding: 0.4em 0.75em;
+}
+.planning-card-body [data-planning-card-part="leaning"] > em:first-child,
+.planning-card-leaning > em:first-child {
+  font-style: normal;
+  font-weight: 600;
+}
+/* A link's planning badge inside a question is context, not the card's news:
+   the chip loses its wash and capitals, and every part is drawn quieter than
+   the text around it — in the muted accent, which is lighter than the body's
+   ink in the light theme and darker in the dark one (the muted ink is the
+   body's own color there), and faded, with its glyph (a question's ✅, 💬 or
+   🔒) drawn in gray, since a color emoji takes no text color. Faded no
+   further than 0.85, which keeps the text above the app's 3:1 floor on a
+   card in both themes. A warning (a link to nothing) keeps its tone. */
+.planning-card-body .vantage-planning-badge {
+  font-weight: 400;
+}
+.planning-card-body .vantage-planning-badge .vantage-chip {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-weight: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.planning-card-body
+  .vantage-planning-badge__part:not(.vantage-planning-badge__part--warning) {
+  color: var(--vantage-tone-muted-accent);
+  filter: grayscale(1);
+  opacity: 0.85;
+}
+/* Paper has no Show full question: a card prints unfolded. */
+@media print {
+  .planning-card-body:not([data-planning-card-unfolded])
+    [data-planning-card-part="more"] {
+    display: revert !important;
+  }
+  .planning-card-body [data-planning-card-part="clamp"] {
+    max-height: none !important;
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+  }
 }
 /* A Mermaid diagram that was not drawn when its card painted
    (planning-index-at-scale.md §10.3) draws later into a frame of fixed height,

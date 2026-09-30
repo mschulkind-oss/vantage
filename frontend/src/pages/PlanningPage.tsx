@@ -44,14 +44,18 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { useLocation, useParams, useSearchParams } from "react-router-dom";
+import {
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from "react-router-dom";
 import {
   AlertCircle,
-  ArrowLeft,
   Check,
   ChevronDown,
+  ChevronRight,
   ClipboardCopy,
-  ListChecks,
   Loader2,
   RefreshCw,
 } from "lucide-react";
@@ -70,15 +74,40 @@ import {
   type QuestionRef,
 } from "vantage-md/planning";
 import { AppLink } from "../components/AppLink";
+import {
+  OpenSidebarButton,
+  ViewToggles,
+  ViewTogglesPanel,
+} from "../components/AppShell";
+import { CollapsedFolders } from "../components/CollapsedFolders";
+import { HeaderOverflow } from "../components/HeaderOverflow";
 import { PlanningBadgeChip } from "../components/PlanningBadge";
+import { PlanningOutline } from "../components/PlanningOutline";
 import { PlanningPager, type PagerPlace } from "../components/PlanningPager";
 import {
   PlanningQuestionCard,
   type ScopedReport,
 } from "../components/PlanningQuestionCard";
 import { useWebSocket } from "../hooks/useWebSocket";
+import { focusIsIdle, useShellPage } from "../hooks/useShellPage";
+import { useHeaderFit } from "../hooks/useHeaderFit";
+import {
+  usePlanningOutlineActive,
+  type OutlineTarget,
+} from "../hooks/usePlanningOutlineActive";
+import { CONTENTS_COLUMN_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
+import { usePersistentFlag } from "../hooks/usePersistentFlag";
 import { usePlanningReviews } from "../hooks/usePlanningReviews";
+import { scrollToAnchorElement } from "../lib/anchorScroll";
 import { copyTextOrWarn } from "../lib/clipboard";
+import { planningCardId } from "../lib/planningCardId";
+import {
+  outlineTargetId,
+  planningOutline,
+  planningRowId,
+  type OutlineDocument,
+} from "../lib/planningOutline";
+import { cn } from "../lib/utils";
 import {
   blockKey as pageBlockKey,
   predrawDiagrams,
@@ -97,7 +126,6 @@ import {
   rememberRoadmap,
   requestWithPage,
   routingRoadmaps,
-  SECTION_IDS,
   sectionsOf,
   withPage,
   withRoadmap,
@@ -139,7 +167,9 @@ const RESTORE_SETTLE_MS = 2000;
 
 /**
  * Save this visit's scroll position as the reader scrolls, and put it back
- * when the page is returned to.
+ * when the page is returned to. The position is the pane's, `scroller`,
+ * which is what scrolls in the app shell (`components/AppShell.tsx`), and
+ * which is not there until the shell is.
  *
  * Restored once the sections render, and again while the page grows for a
  * short while after — the comments load after the cards, and a Mermaid
@@ -157,6 +187,7 @@ function useScrollRestore(
   key: string,
   ready: boolean,
   rootRef: React.RefObject<HTMLElement | null>,
+  scroller: HTMLElement | null,
 ): () => void {
   const restoringRef = useRef(false);
   /** This visit has restored its position, or had none to restore. */
@@ -171,16 +202,21 @@ function useScrollRestore(
     // after it, where the reader is.
     const carried =
       restoredRef.current && !restoringRef.current
-        ? window.scrollY
+        ? scroller?.scrollTop
         : scrollPositions.get(previous);
     if (carried !== undefined) scrollPositions.set(key, carried);
+    // Only a new key carries a position; the scroller is read as it stands.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   const save = useCallback(() => {
-    if (!restoringRef.current) scrollPositions.set(key, window.scrollY);
-  }, [key]);
+    if (!restoringRef.current && scroller !== null) {
+      scrollPositions.set(key, scroller.scrollTop);
+    }
+  }, [key, scroller]);
 
   useEffect(() => {
+    if (scroller === null) return;
     let frame: number | null = null;
     const onScroll = () => {
       if (frame !== null) return;
@@ -189,20 +225,24 @@ function useScrollRestore(
         save();
       });
     };
-    window.addEventListener("scroll", onScroll, { passive: true });
+    scroller.addEventListener("scroll", onScroll, { passive: true });
     return () => {
-      window.removeEventListener("scroll", onScroll);
+      scroller.removeEventListener("scroll", onScroll);
       if (frame !== null) cancelAnimationFrame(frame);
     };
-  }, [save]);
+  }, [save, scroller]);
 
   useLayoutEffect(() => {
-    if (!ready || restoredRef.current) return;
+    // Not before the pane is there to be scrolled: it arrives with the
+    // shell, in a commit of its own before the first paint.
+    if (!ready || scroller === null || restoredRef.current) return;
     restoredRef.current = true;
     const target = scrollPositions.get(key);
     if (target === undefined) return;
     restoringRef.current = true;
-    const restore = () => window.scrollTo(0, target);
+    const restore = () => {
+      if (scroller !== null) scrollPaneTo(scroller, target);
+    };
     restore();
 
     const stop = () => {
@@ -223,9 +263,17 @@ function useScrollRestore(
       window.addEventListener(type, stop, true);
     }
     return stop;
-  }, [key, ready, rootRef]);
+  }, [key, ready, rootRef, scroller]);
 
   return save;
+}
+
+/**
+ * Scroll the pane to `top`, by its `scrollTop`: what every browser has, and
+ * what a test environment without layout keeps.
+ */
+function scrollPaneTo(pane: HTMLElement, top: number): void {
+  pane.scrollTop = top;
 }
 
 /** What says the reader has taken the scrolling over. */
@@ -466,6 +514,37 @@ function bringSectionIntoView(id: SectionId): void {
   heading?.focus({ preventScroll: true });
 }
 
+/**
+ * Bring an outline document's card or row into view the way the contents
+ * column brings a heading (`lib/anchorScroll.ts`), and give it the focus —
+ * or its first control, when it takes none itself — so Tab goes on from
+ * there, as it does from a section the section bar jumps to.
+ */
+function bringTargetIntoView(id: string, scroller: HTMLElement | null): void {
+  const el = document.getElementById(id);
+  if (el === null) return;
+  scrollToAnchorElement(el, scroller);
+  const focusable = el.hasAttribute("tabindex")
+    ? el
+    : el.querySelector<HTMLElement>("a[href], button:not([disabled])");
+  focusable?.focus({ preventScroll: true });
+}
+
+/**
+ * The element a URL's fragment names: by the fragment as written, else as
+ * percent-decoded, which is how a browser looks for it.
+ */
+function elementForFragment(fragment: string): HTMLElement | null {
+  if (fragment === "") return null;
+  const found = document.getElementById(fragment);
+  if (found !== null) return found;
+  try {
+    return document.getElementById(decodeURIComponent(fragment));
+  } catch {
+    return null;
+  }
+}
+
 const Notice: React.FC<{ children: React.ReactNode; testId?: string }> = ({
   children,
   testId,
@@ -555,19 +634,38 @@ const RoadmapLine: React.FC<{
   others: number;
   busy: boolean;
   onPick: (path: string) => void;
-}> = ({ roadmaps, value, others, busy, onPick }) => {
+  /**
+   * Drawn at the head of the planning outline, its parts one under another,
+   * rather than as a line above the section bar (§6.5).
+   */
+  stacked?: boolean;
+}> = ({ roadmaps, value, others, busy, onPick, stacked = false }) => {
   const id = React.useId();
   const chosen = roadmaps.find((roadmap) => roadmap.path === value);
   return (
     <div
       data-testid="roadmap-line"
-      className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600 dark:text-slate-300"
+      className={
+        stacked
+          ? "mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-slate-600 dark:text-slate-300"
+          : "mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600 dark:text-slate-300"
+      }
     >
       <label htmlFor={id} className="font-medium">
         Roadmap
       </label>
-      <span className="flex max-w-full min-w-0 items-center gap-2">
-        <span className="relative flex min-w-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2 py-1 text-slate-800 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100">
+      <span
+        className={cn(
+          "flex max-w-full min-w-0 items-center gap-2",
+          stacked && "w-full",
+        )}
+      >
+        <span
+          className={cn(
+            "relative flex min-w-0 items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2 py-1 text-slate-800 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-1 has-[:focus-visible]:outline-blue-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100",
+            stacked && "flex-1 justify-between",
+          )}
+        >
           <span
             aria-hidden="true"
             data-testid="roadmap-shown"
@@ -621,24 +719,48 @@ const NO_SECTIONS: ReadonlySet<SectionId> = new Set();
 export const PlanningPage: React.FC = () => {
   const { "*": pathParam } = useParams();
   const location = useLocation();
-  const {
-    isMultiRepo,
-    currentRepo,
-    setCurrentRepo,
-    repos,
-    reposLoaded,
-    loadRepos,
-  } = useRepoStore();
+  /**
+   * The pane, which is what scrolls in the app shell: a ref for the shell's
+   * scrolling keys, and the element itself for what follows its scroll,
+   * since it arrives with the shell, after the page's first render.
+   */
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [pane, setPane] = useState<HTMLDivElement | null>(null);
+  const paneRef = useCallback((el: HTMLDivElement | null) => {
+    contentRef.current = el;
+    setPane(el);
+  }, []);
+  const { isMultiRepo, currentRepo, setCurrentRepo, repos, reposLoaded } =
+    useRepoStore();
 
   // The repository the URL names, in daemon mode.
   const repoName = isMultiRepo
     ? (pathParam?.split("/").filter(Boolean)[0] ?? "")
     : "";
   const repoExists = !isMultiRepo || repos.some((r) => r.name === repoName);
+  // The sidebar is the repository's, so it is drawn wherever the URL names
+  // one that is served, as the viewer draws it, and not over a page asking
+  // for a project or naming one that is not there.
+  const showSidebar = !isMultiRepo || (repoName !== "" && repoExists);
 
-  useEffect(() => {
-    if (!reposLoaded) loadRepos();
-  }, [loadRepos, reposLoaded]);
+  // The viewer's own two reading preferences, and the same ones: a reader who
+  // keeps the contents column open, or reads at full width, does so here too,
+  // and nothing about them is the planning page's to store.
+  const [contentsOpen, setContentsOpen] = usePersistentFlag("vantage:tocOpen");
+  const [fullWidth, setFullWidth] = usePersistentFlag("vantage:fullWidth");
+  const toggleContents = useCallback(
+    () => setContentsOpen((open) => !open),
+    [setContentsOpen],
+  );
+  const toggleFullWidth = useCallback(
+    () => setFullWidth((on) => !on),
+    [setFullWidth],
+  );
+  // The column is drawn only where there is room for it, as the table of
+  // contents is; where it is not, the roadmap picker stays above the section
+  // bar, so there is always exactly one.
+  const wide = useMediaQuery(CONTENTS_COLUMN_QUERY, true);
+  const outlineShown = contentsOpen && wide && showSidebar;
 
   useEffect(() => {
     if (isMultiRepo && repoName && repoExists && repoName !== currentRepo) {
@@ -669,7 +791,6 @@ export const PlanningPage: React.FC = () => {
       isMultiRepo && currentRepo ? `/${currentRepo}/${path}` : `/${path}`,
     [isMultiRepo, currentRepo],
   );
-  const backLink = isMultiRepo && currentRepo ? `/${currentRepo}` : "/";
 
   const ready = load.status === "ready" ? load : null;
   const index = ready?.index ?? null;
@@ -721,20 +842,39 @@ export const PlanningPage: React.FC = () => {
   );
   // A page past a section's end, a malformed page and an explicit page 1 are
   // rewritten in place, and so is the roadmap: named when two or more route,
-  // gone when fewer do.
+  // gone when fewer do. The fragment stays: a link to a card or a section
+  // that needs its query rewritten still goes where it points, once the
+  // sections are in (below). Setting the query alone would drop it.
+  const navigate = useNavigate();
+  const { hash } = location;
   useEffect(() => {
     if (layout === null || sections === null) return;
     const canonical = planningSearch(search, layout, sections);
-    if (canonical !== null) setSearch(canonical, { replace: true });
-  }, [layout, sections, search, setSearch]);
+    if (canonical === null) return;
+    const query = canonical.toString();
+    navigate(
+      { search: query === "" ? "" : `?${query}`, hash },
+      { replace: true },
+    );
+  }, [layout, sections, search, navigate, hash]);
 
   /** A section to bring into view once its new page is on screen. */
   const scrollToRef = useRef<SectionId | null>(null);
+  /**
+   * An outline document to bring into view once the page of its section that
+   * holds it is on screen: the section, that page, and what to go to.
+   */
+  const jumpRef = useRef<{
+    section: SectionId;
+    page: number;
+    target: string;
+  } | null>(null);
   const flip = useCallback<OnFlip>(
     (id, page, place) => {
       // The bottom pager brings its section's heading back into view, and
       // the focus with it; the top one leaves both alone.
       scrollToRef.current = place === "bottom" ? id : null;
+      jumpRef.current = null;
       setSearch((prev) => withPage(prev, id, page), { replace: true });
     },
     [setSearch],
@@ -747,6 +887,7 @@ export const PlanningPage: React.FC = () => {
       if (pageRepo !== null) rememberRoadmap(pageRepo, path);
       setRemembered({ repo: pageRepo, path });
       scrollToRef.current = null;
+      jumpRef.current = null;
       setSearch((prev) => withRoadmap(prev, path), { replace: true });
     },
     [pageRepo, setSearch],
@@ -944,8 +1085,13 @@ export const PlanningPage: React.FC = () => {
     [adopt],
   );
 
-  const rootRef = useRef<HTMLDivElement>(null);
-  const saveScroll = useScrollRestore(location.key, shown !== null, rootRef);
+  const rootRef = useRef<HTMLElement>(null);
+  const saveScroll = useScrollRestore(
+    location.key,
+    shown !== null,
+    rootRef,
+    pane,
+  );
 
   // The frame follows the sections on screen once there are any: an index
   // update changes the section bar and the notices in the commit that
@@ -971,7 +1117,18 @@ export const PlanningPage: React.FC = () => {
     shown.inputs.layout.roadmap !== layout.roadmap;
 
   const shownPages = shown?.inputs.layout.pages ?? null;
+  const shownLayout = shown?.inputs.layout ?? null;
   useLayoutEffect(() => {
+    // An outline document, once its page is the one on screen.
+    const jump = jumpRef.current;
+    const landed =
+      jump !== null &&
+      shownLayout?.sections.find((s) => s.id === jump.section)?.page ===
+        jump.page;
+    if (jump !== null && landed) {
+      jumpRef.current = null;
+      bringTargetIntoView(jump.target, contentRef.current);
+    }
     const id = scrollToRef.current;
     if (id === null || shownPages === null) return;
     scrollToRef.current = null;
@@ -980,32 +1137,119 @@ export const PlanningPage: React.FC = () => {
     // viewport, and a second Enter would flip a page the reader cannot see.
     const active = document.activeElement;
     const section = document.getElementById(id)?.closest("section");
-    if (
-      active === null ||
-      active === document.body ||
-      section?.contains(active) === true
-    ) {
+    if (focusIsIdle(active) || section?.contains(active) === true) {
       bringSectionIntoView(id);
     } else {
       document.getElementById(id)?.scrollIntoView?.({ block: "start" });
     }
+    // The layout is what a landed flip changes, and `shownPages` says when.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shownPages]);
 
-  // A link to a section (`#graduate`, the section bar's own link) opened in a
-  // new tab or pasted: the browser looked for the section before it was
-  // rendered, so the page scrolls to it once the sections are in. Once a
-  // visit, and not over a position the visit is restoring.
+  // A link to a section (`#graduate`, the section bar's own link), or to a
+  // card or a row (an outline entry's), opened in a new tab or pasted: the
+  // browser looked for it before it was rendered, so the page scrolls to it
+  // once the sections are in. Once a visit, and not over a position the
+  // visit is restoring.
   const sectionsIn = shown !== null && frameReady;
+  const sectionsRef = useRef<HTMLDivElement>(null);
   const hashTriedRef = useRef(false);
   useLayoutEffect(() => {
     if (!sectionsIn || hashTriedRef.current) return;
     hashTriedRef.current = true;
     if (scrollPositions.has(location.key)) return;
-    const id = location.hash.slice(1);
-    if ((SECTION_IDS as readonly string[]).includes(id)) {
-      document.getElementById(id)?.scrollIntoView?.({ block: "start" });
+    const target = elementForFragment(location.hash.slice(1));
+    if (target !== null && sectionsRef.current?.contains(target)) {
+      target.scrollIntoView?.({ block: "start" });
     }
   }, [sectionsIn, location.hash, location.key]);
+
+  // The planning outline (§6.5): drawn from the frame's index, so it paints
+  // with the section bar and changes when it does.
+  const frameIndex = shown?.inputs.index ?? index;
+  const outline = useMemo(
+    () =>
+      outlineShown &&
+      frameReady &&
+      frameIndex !== null &&
+      frameSections !== null
+        ? planningOutline(frameIndex, frameSections)
+        : null,
+    [outlineShown, frameReady, frameIndex, frameSections],
+  );
+  // What the outline follows as the page scrolls: each section's heading,
+  // and the cards and rows on screen, in page order.
+  const outlineTargets = useMemo(
+    (): OutlineTarget[] =>
+      !outlineShown || shownLayout === null
+        ? []
+        : shownLayout.sections.flatMap((section): OutlineTarget[] => [
+            { section: section.id, path: null, id: section.id },
+            ...(section.kind === "cards"
+              ? section.items.map((item) =>
+                  item.kind === "question"
+                    ? {
+                        section: section.id,
+                        path: item.question.path,
+                        id: planningCardId(
+                          item.question.path,
+                          item.question.id,
+                          item.question.unitLine,
+                        ),
+                      }
+                    : {
+                        section: section.id,
+                        path: item.path,
+                        id: planningRowId(section.id, item.path),
+                      },
+                )
+              : section.kind === "rows"
+                ? section.items.map((path) => ({
+                    section: section.id,
+                    path,
+                    id: planningRowId(section.id, path),
+                  }))
+                : []),
+          ]),
+    [outlineShown, shownLayout],
+  );
+  const outlineActive = usePlanningOutlineActive(
+    pane,
+    outlineTargets,
+    outlineShown && sectionsIn,
+  );
+  // A document in the outline: its section flipped to the page holding its
+  // first entry, with no history entry, as a flip is, and that entry brought
+  // into view once the page is on screen — at once when it already is.
+  const jumpToDocument = useCallback(
+    (id: SectionId, document: OutlineDocument) => {
+      const target = outlineTargetId(id, document);
+      const onScreen = shownLayout?.sections.find((s) => s.id === id)?.page;
+      const asked = layout?.sections.find((s) => s.id === id)?.page;
+      scrollToRef.current = null;
+      if (asked !== document.page) {
+        setSearch((prev) => withPage(prev, id, document.page), {
+          replace: true,
+        });
+      }
+      if (onScreen === document.page) {
+        jumpRef.current = null;
+        bringTargetIntoView(target, contentRef.current);
+      } else {
+        jumpRef.current = { section: id, page: document.page, target };
+      }
+    },
+    [shownLayout, layout, setSearch],
+  );
+  // Its link, for a modified click and a new tab: the page it flips to, and
+  // the entry it goes to as the fragment.
+  const outlineHref = useCallback(
+    (id: SectionId, document: OutlineDocument): string => {
+      const query = withPage(search, id, document.page).toString();
+      return `${location.pathname}${query === "" ? "" : `?${query}`}#${outlineTargetId(id, document)}`;
+    },
+    [search, location.pathname],
+  );
 
   // Show question on a preview card: the whole block, which only a request
   // naming it in full is answered with (§10.4), with its diagrams drawn.
@@ -1050,9 +1294,14 @@ export const PlanningPage: React.FC = () => {
     );
   };
 
-  const documentRow = (path: string, extra?: React.ReactNode) => (
+  const documentRow = (
+    section: SectionId,
+    path: string,
+    extra?: React.ReactNode,
+  ) => (
     <DocumentRow
       key={path}
+      section={section}
       path={path}
       index={shownIndex!}
       href={buildPath(path)}
@@ -1062,33 +1311,101 @@ export const PlanningPage: React.FC = () => {
     </DocumentRow>
   );
 
-  return (
+  const headerRef = useHeaderFit();
+
+  // The roadmap picker (§6.4), and only one of it: at the head of the
+  // planning outline while the outline is drawn, else on its line above the
+  // section bar (§6.5). Its options are the frame's.
+  const picker =
+    frameReady &&
+    frameSections !== null &&
+    frameRoutes.length >= 2 &&
+    pickerValue !== null
+      ? (stacked: boolean) => (
+          <RoadmapLine
+            roadmaps={frameRoutes}
+            value={pickerValue}
+            others={frameSections.onOtherRoadmaps.length}
+            busy={roadmapSwapSlow}
+            onPick={pickRoadmap}
+            stacked={stacked}
+          />
+        )
+      : null;
+
+  // The header's breadcrumb: the repository, then the page.
+  const crumbRoot = isMultiRepo
+    ? repoName === ""
+      ? { label: "Projects", href: "/" }
+      : { label: repoName, href: `/${repoName}` }
+    : { label: "root", href: "/" };
+  // The contents column is the planning outline here, offered wherever the
+  // page shows a repository's planning; full width, on every page.
+  const contentsToggle = showSidebar
+    ? { on: contentsOpen, onToggle: toggleContents }
+    : null;
+  const fullWidthToggle = { on: fullWidth, onToggle: toggleFullWidth };
+
+  // Drawn in the app shell, as the viewer is, which shows its loading state
+  // until the repositories are known: which sidebar to draw is not known
+  // before.
+  const shell = useShellPage({
+    contentRef,
+    showSidebar,
+    routeKey: `planning\n${pathParam ?? ""}`,
+    currentPath: null,
+  });
+
+  // The header is the viewer's, fitted by the same yield steps
+  // (`lib/headerFit.ts`): the ways to the sidebar and the view toggles, the
+  // breadcrumb with the page's name last to give up room, and the page's
+  // one action, Copy answers, which folds into the "⋯" with the toggles.
+  const header = (
     <div
-      ref={rootRef}
-      className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-slate-100"
+      ref={headerRef}
+      data-testid="planning-header"
+      className="viewer-header h-14 border-b border-slate-200 dark:border-slate-700 flex items-center px-3 md:px-6 justify-between shrink-0 bg-white dark:bg-slate-800 gap-2"
     >
-      <div className="border-b border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
-        <div className="mx-auto flex max-w-4xl items-center gap-3 px-6 py-4">
+      <div className="hdr-lead flex items-center gap-2">
+        {showSidebar && <OpenSidebarButton shell={shell} />}
+        <ViewToggles contents={contentsToggle} fullWidth={fullWidthToggle} />
+        <nav className="hdr-crumbs flex items-center text-sm gap-1 min-w-0 overflow-hidden">
           <AppLink
-            to={backLink}
-            className="rounded-lg p-2 text-slate-500 no-underline transition-colors hover:bg-slate-100 hover:text-slate-700 dark:text-slate-400 dark:hover:bg-slate-700 dark:hover:text-slate-200"
-            title="Back"
+            to={crumbRoot.href}
+            className="hdr-repo text-slate-500 dark:text-slate-400 hover:text-blue-600 font-medium transition-colors shrink-0 no-underline"
           >
-            <ArrowLeft size={20} />
+            {crumbRoot.label}
           </AppLink>
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600">
-            <ListChecks size={18} className="text-white" />
-          </div>
-          <div className="min-w-0 flex-1">
-            <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-              Planning
-            </h1>
-            {isMultiRepo && currentRepo && (
-              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                {currentRepo}
-              </p>
-            )}
-          </div>
+          {/* The repository's "…", which only the `repo` step shows. */}
+          <span className="hdr-dirs-collapsed hdr-no-dirs items-center gap-1 shrink-0">
+            <ChevronRight
+              size={14}
+              className="hdr-sep text-slate-500 dark:text-slate-400 shrink-0"
+            />
+            <CollapsedFolders
+              root={crumbRoot}
+              dirs={[]}
+              hrefFor={() => crumbRoot.href}
+            />
+          </span>
+          <ChevronRight
+            size={14}
+            className="text-slate-500 dark:text-slate-400 shrink-0"
+          />
+          <h1 className="hdr-name flex min-w-0 text-sm font-semibold text-slate-900 dark:text-slate-100">
+            <span className="truncate">Planning</span>
+          </h1>
+        </nav>
+      </div>
+      <div className="hdr-tools flex items-center gap-2">
+        <HeaderOverflow
+          extra={
+            <ViewTogglesPanel
+              contents={contentsToggle}
+              fullWidth={fullWidthToggle}
+            />
+          }
+        >
           <button
             type="button"
             onClick={copyAnswers}
@@ -1116,7 +1433,10 @@ export const PlanningPage: React.FC = () => {
             ) : (
               <ClipboardCopy size={14} aria-hidden="true" />
             )}
-            {copied ? "Copied" : "Copy answers"}
+            {/* As wide as its longer label, so Copied moves nothing. */}
+            <span className="hdr-label hdr-reserve" data-reserve="Copy answers">
+              {copied ? "Copied" : "Copy answers"}
+            </span>
             {/* Room for four digits, so the count arriving moves nothing. */}
             <span
               data-testid="pending-answers"
@@ -1126,154 +1446,195 @@ export const PlanningPage: React.FC = () => {
               {countKnown ? pendingCount : "–"}
             </span>
           </button>
-          {restFailed && (
-            <p role="alert" className="sr-only">
-              Comments could not be loaded.
-            </p>
-          )}
-        </div>
+        </HeaderOverflow>
       </div>
+    </div>
+  );
 
-      <main className="relative mx-auto max-w-4xl px-6 py-8">
-        {ready?.rescanning && (
-          <div className="absolute top-0 right-6 left-6 h-0.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
-            <div className="h-full w-full animate-pulse bg-blue-500" />
-          </div>
-        )}
-        {isMultiRepo && reposLoaded && repoName === "" ? (
-          <Notice>
-            Choose a project to see its planning page.{" "}
-            <AppLink to="/" className="text-blue-600 dark:text-blue-400">
-              Projects
-            </AppLink>
-          </Notice>
-        ) : isMultiRepo && reposLoaded && !repoExists ? (
-          <Notice>Repository not found: {repoName}</Notice>
-        ) : load.status === "error" ? (
-          <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
-            <AlertCircle size={16} className="shrink-0" />
-            <span className="flex-1">{load.message}</span>
-            <button
-              type="button"
-              onClick={() => {
-                // Without the scan cache: Retry is how a reader gets past a
-                // result it no longer trusts.
-                if (repo !== null) rescan(repo, { bypassCache: true });
-              }}
-              className="flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium transition-colors hover:bg-amber-100 dark:hover:bg-amber-900/40"
-            >
-              <RefreshCw size={12} />
-              Retry
-            </button>
-          </div>
-        ) : index?.refused ? (
-          <Notice>
-            {PLANNING_NOTICES.refused(
-              index.candidateCount,
-              index.config.maxCandidates,
+  return (
+    <>
+      {header}
+      {restFailed && (
+        <p role="alert" className="sr-only">
+          Comments could not be loaded.
+        </p>
+      )}
+      <div className="flex-1 flex min-h-0 relative">
+        {/* Focusable, not in the tab order: the shell gives it the focus
+                as the page opens (useShellPage), so the browser's scrolling
+                keys scroll it. */}
+        <div
+          ref={paneRef}
+          data-content-scroll
+          tabIndex={-1}
+          className="flex-1 overflow-y-auto bg-slate-50 outline-none dark:bg-slate-900"
+        >
+          {/* The viewer's band: the contents column, then the page's
+                  column, glued to the pane's left. The cards keep a reading
+                  measure until the reader asks for the full width. */}
+          <div className="flex gap-12 py-4 px-4 sm:py-6 sm:px-8">
+            {outlineShown && (
+              <PlanningOutline
+                outline={outline}
+                active={outlineActive}
+                picker={picker?.(true) ?? null}
+                hrefOf={outlineHref}
+                onSection={bringSectionIntoView}
+                onDocument={jumpToDocument}
+                onPrefetch={prefetch}
+              />
             )}
-          </Notice>
-        ) : (
-          <>
-            {/* The frame (§10.1): the roadmap line when two or more
+            <main
+              ref={rootRef}
+              className={cn(
+                "relative min-w-0 flex-1",
+                fullWidth ? "max-w-none" : "max-w-4xl",
+              )}
+            >
+              {ready?.rescanning && (
+                <div className="absolute top-0 right-0 left-0 h-0.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
+                  <div className="h-full w-full animate-pulse bg-blue-500" />
+                </div>
+              )}
+              {isMultiRepo && reposLoaded && repoName === "" ? (
+                <Notice>
+                  Choose a project to see its planning page.{" "}
+                  <AppLink to="/" className="text-blue-600 dark:text-blue-400">
+                    Projects
+                  </AppLink>
+                </Notice>
+              ) : isMultiRepo && reposLoaded && !repoExists ? (
+                <Notice>Repository not found: {repoName}</Notice>
+              ) : load.status === "error" ? (
+                <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+                  <AlertCircle size={16} className="shrink-0" />
+                  <span className="flex-1">{load.message}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Without the scan cache: Retry is how a reader gets past a
+                      // result it no longer trusts.
+                      if (repo !== null) rescan(repo, { bypassCache: true });
+                    }}
+                    className="flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium transition-colors hover:bg-amber-100 dark:hover:bg-amber-900/40"
+                  >
+                    <RefreshCw size={12} />
+                    Retry
+                  </button>
+                </div>
+              ) : index?.refused ? (
+                <Notice>
+                  {PLANNING_NOTICES.refused(
+                    index.candidateCount,
+                    index.config.maxCandidates,
+                  )}
+                </Notice>
+              ) : (
+                <>
+                  {/* The frame (§10.1): the roadmap line when two or more
                 roadmaps route, the section bar, or the progress line in
                 their place, then the notices. It paints first; the
                 sections fill the region below it in one later commit. */}
-            {frameReady &&
-              frameSections !== null &&
-              frameRoutes.length >= 2 &&
-              pickerValue !== null && (
-                <RoadmapLine
-                  roadmaps={frameRoutes}
-                  value={pickerValue}
-                  others={frameSections.onOtherRoadmaps.length}
-                  busy={roadmapSwapSlow}
-                  onPick={pickRoadmap}
-                />
-              )}
-            {/* Keyed by what it holds: the progress line's box is not the
-                section bar's. Reused, it was the one painted box the roadmap
-                line, inserted above it, moved down, which the browser scores
-                as a layout shift on every cold load of a page with a picker,
-                though nothing painted under it moved (planning-index-at-scale.md
-                §10.6). Replaced, it is a removal and an insertion, which score
-                nothing. */}
-            <div
-              key={frameReady && frameLayout !== null ? "bar" : "progress"}
-              className="mb-6 flex min-h-7 items-center"
-            >
-              {frameReady && frameLayout !== null ? (
-                <SectionBar layout={frameLayout} />
-              ) : (
-                <ProgressLine
-                  progress={
-                    load.status === "loading"
-                      ? load.progress
-                      : index !== null
-                        ? {
-                            done: index.candidateCount,
-                            total: index.candidateCount,
-                          }
-                        : null
-                  }
-                />
-              )}
-            </div>
-            {frameReady && frameSections !== null && frameConfig !== null && (
-              <Notices sections={frameSections} config={frameConfig} />
-            )}
-            <div data-planning-sections>
-              {shown !== null && frameReady ? (
-                <>
-                  {shown.inputs.reviewsFailed && (
-                    <p
-                      role="alert"
-                      className="mb-6 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400"
-                    >
-                      <AlertCircle size={14} className="shrink-0" />
-                      Comments could not be loaded.
-                    </p>
-                  )}
-                  <Sections
-                    layout={shown.inputs.layout}
-                    index={shown.inputs.index}
-                    card={card}
-                    documentRow={documentRow}
-                    buildPath={buildPath}
-                    asked={asked}
-                    onFlip={flip}
-                    onPrefetch={prefetch}
-                    busy={busy}
-                  />
+                  {!outlineShown && picker?.(false)}
+                  {/* Keyed by what it holds: the progress line's box is
+                          not the section bar's. Reused, it was the one
+                          painted box the roadmap line, inserted above it,
+                          moved down, which the browser scores as a layout
+                          shift on every cold load of a page with a picker,
+                          though nothing painted under it moved
+                          (planning-index-at-scale.md §10.6). Replaced, it is
+                          a removal and an insertion, which score nothing. */}
+                  <div
+                    key={
+                      frameReady && frameLayout !== null ? "bar" : "progress"
+                    }
+                    className="mb-6 flex min-h-7 items-center"
+                  >
+                    {frameReady && frameLayout !== null ? (
+                      <SectionBar layout={frameLayout} />
+                    ) : (
+                      <ProgressLine
+                        progress={
+                          load.status === "loading"
+                            ? load.progress
+                            : index !== null
+                              ? {
+                                  done: index.candidateCount,
+                                  total: index.candidateCount,
+                                }
+                              : null
+                        }
+                      />
+                    )}
+                  </div>
+                  {frameReady &&
+                    frameSections !== null &&
+                    frameConfig !== null && (
+                      <Notices sections={frameSections} config={frameConfig} />
+                    )}
+                  <div ref={sectionsRef} data-planning-sections>
+                    {shown !== null && frameReady ? (
+                      <>
+                        {shown.inputs.reviewsFailed && (
+                          <p
+                            role="alert"
+                            className="mb-6 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400"
+                          >
+                            <AlertCircle size={14} className="shrink-0" />
+                            Comments could not be loaded.
+                          </p>
+                        )}
+                        <Sections
+                          layout={shown.inputs.layout}
+                          index={shown.inputs.index}
+                          card={card}
+                          documentRow={documentRow}
+                          buildPath={buildPath}
+                          asked={asked}
+                          onFlip={flip}
+                          onPrefetch={prefetch}
+                          busy={busy}
+                        />
+                      </>
+                    ) : inputs.slow ? (
+                      <div className="flex items-center justify-center py-20">
+                        <Loader2
+                          size={32}
+                          className="animate-spin text-blue-600"
+                          aria-label="Loading this page's cards"
+                        />
+                      </div>
+                    ) : null}
+                  </div>
                 </>
-              ) : inputs.slow ? (
-                <div className="flex items-center justify-center py-20">
-                  <Loader2
-                    size={32}
-                    className="animate-spin text-blue-600"
-                    aria-label="Loading this page's cards"
-                  />
-                </div>
-              ) : null}
-            </div>
-          </>
-        )}
-      </main>
-    </div>
+              )}
+            </main>
+          </div>
+          {/* Room below the page for the degradation banner, as the
+                  viewer keeps it. */}
+          {shell.bannerSpace > 0 && (
+            <div aria-hidden="true" style={{ height: shell.bannerSpace }} />
+          )}
+        </div>
+      </div>
+    </>
   );
 };
 
 /** One document, by name, with its badge and whatever the section adds. */
 const DocumentRow: React.FC<{
+  /** The section it is a row of, which names it for the outline. */
+  section: SectionId;
   path: string;
   index: PlanningIndex;
   href: string;
   onOpen: () => void;
   children?: React.ReactNode;
-}> = ({ path, index, href, onOpen, children }) => {
+}> = ({ section, path, index, href, onOpen, children }) => {
   const badge = badgeFor(index, "", { path, fragment: null });
   return (
     <div
+      id={planningRowId(section, path)}
       data-planning-document={path}
       className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm dark:border-slate-700 dark:bg-slate-800"
     >
@@ -1337,7 +1698,11 @@ const Sections: React.FC<{
   asked: ReadonlyMap<SectionId, LaidOutSection>;
   index: PlanningIndex;
   card: (question: PlanningQuestion, preview: boolean) => React.ReactNode;
-  documentRow: (path: string, extra?: React.ReactNode) => React.ReactNode;
+  documentRow: (
+    section: SectionId,
+    path: string,
+    extra?: React.ReactNode,
+  ) => React.ReactNode;
   buildPath: (path: string) => string;
   onFlip: OnFlip;
   onPrefetch?: OnPrefetch;
@@ -1353,7 +1718,7 @@ const Sections: React.FC<{
   onPrefetch,
   busy,
 }) => {
-  const entry = (item: CardEntry) =>
+  const entry = (section: SectionId, item: CardEntry) =>
     item.kind === "question" ? (
       <React.Fragment key={`question\n${refKey(item.question)}`}>
         {card(item.question, item.preview)}
@@ -1361,6 +1726,7 @@ const Sections: React.FC<{
     ) : (
       <React.Fragment key={`doc\n${item.path}`}>
         {documentRow(
+          section,
           item.path,
           <WaitingOn
             from={item.path}
@@ -1383,10 +1749,11 @@ const Sections: React.FC<{
           busy={busy.has(section.id)}
         >
           {section.kind === "cards" ? (
-            section.items.map(entry)
+            section.items.map((item) => entry(section.id, item))
           ) : section.kind === "rows" ? (
             section.items.map((path) =>
               documentRow(
+                section.id,
                 path,
                 section.id === "disagrees" ? (
                   <p className="mt-1 text-[13px] text-slate-600 dark:text-slate-400">
