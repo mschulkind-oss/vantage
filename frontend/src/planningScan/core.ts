@@ -89,6 +89,22 @@ export interface RefreshRequest {
   apiBase: string;
   seq: number;
   path: string;
+  /**
+   * The repository's config as the caller last heard it from a header. Used
+   * only while this core has heard none for the repository: a scan worker
+   * started after the last one died, idle, has seen no stream (§7.1).
+   */
+  config?: PlanningConfig;
+}
+
+/** A card request: see {@link ScannerCore.cards}. */
+export interface CardsRequest {
+  repo: string;
+  apiBase: string;
+  want: readonly CardWant[];
+  full: boolean;
+  /** As a refresh's: the header's config, for a core that has heard none. */
+  config?: PlanningConfig;
 }
 
 /** One card block asked for, named by its document's content hash. */
@@ -334,6 +350,12 @@ interface ScanPool {
   submit(job: Job): Promise<void>;
   /** Helpers' ports as they arrive. Once the pool is stopped, they are closed. */
   attach(ports: readonly HelperPort[]): void;
+  /**
+   * The helper attached `at`th, from 0, never loaded, so it will answer
+   * nothing: it is handed nothing more, and each line it was handed is read
+   * again, by path, since this thread kept none of their content.
+   */
+  lose(at: number): void;
   /** Settle once every job handed out has its result taken, or throw the first failure. */
   drain(): Promise<void>;
   /** Throw the first failure, if there has been one. */
@@ -358,15 +380,19 @@ interface ScanPool {
  * room is freed only once its result is taken, so what is held never grows
  * past the queues' caps however slow the cache is. A line handed to a helper
  * is held by that helper alone: the scan worker keeps only what taking its
- * result back needs, so a helper's queue is never held twice (§13).
+ * result back needs, so a helper's queue is never held twice (§13). That is
+ * also what reads a line again, by path, when its helper turns out never to
+ * have loaded (`lose`).
  */
 function scanPool(options: {
   config: PlanningConfig;
   took: (job: Handed, result: ScanResult) => Promise<void>;
+  /** A lost helper's line, fetched again by path and taken as any entry is. */
+  reread: (job: Handed) => Promise<void>;
   yieldNow: () => Promise<void>;
   askHelpers: () => void;
 }): ScanPool {
-  const { config, took, yieldNow, askHelpers } = options;
+  const { config, took, reread, yieldNow, askHelpers } = options;
   let stopped = false;
   let failed: { error: unknown } | null = null;
   let asked = false;
@@ -442,13 +468,31 @@ function scanPool(options: {
 
   /* ---- A helper's lane ---- */
 
-  const helpers: Lane[] = [];
+  interface HelperLane extends Lane {
+    /** It never loaded: it is handed nothing more. */
+    lost: boolean;
+    lose(): void;
+  }
 
-  const helperLane = (port: HelperPort): Lane => {
+  const helpers: HelperLane[] = [];
+  /** Lost helpers' lines being read again, not yet handed to a lane. */
+  let rereading = 0;
+  /**
+   * The re-reads, one at a time, so what they hold is one file's content
+   * waiting for a lane, as a stream line is (§13).
+   */
+  let rereads: Promise<void> = Promise.resolve();
+
+  const helperLane = (port: HelperPort): HelperLane => {
     let nextId = 0;
     const sent = new Map<number, Handed>();
-    const lane: Lane = {
+    const end = (): void => {
+      port.onmessage = null;
+      port.close();
+    };
+    const lane: HelperLane = {
       queued: 0,
+      lost: false,
       cap: () => planningLimits.helperQueueBytes,
       take(job) {
         const id = ++nextId;
@@ -466,6 +510,25 @@ function scanPool(options: {
           fail(error);
         }
       },
+      lose() {
+        if (lane.lost) return;
+        lane.lost = true;
+        end();
+        const lostJobs = [...sent.values()];
+        sent.clear();
+        lane.queued = 0;
+        for (const job of lostJobs) {
+          rereading += 1;
+          rereads = rereads
+            .then(() => (over() ? undefined : reread(job)))
+            .catch(fail)
+            .finally(() => {
+              rereading -= 1;
+              notify();
+            });
+        }
+        notify();
+      },
     };
     port.onmessage = ({ data }) => {
       const job = sent.get(data.id);
@@ -474,16 +537,13 @@ function scanPool(options: {
       if ("error" in data) fail(new Error(data.error));
       else void settle(lane, job, data.result);
     };
-    ends.push(() => {
-      port.onmessage = null;
-      port.close();
-    });
+    ends.push(end);
     return lane;
   };
 
   const pick = (size: number): Lane | null => {
     let best: Lane | null = null;
-    for (const lane of [...helpers, self]) {
+    for (const lane of [...helpers.filter((helper) => !helper.lost), self]) {
       if (lane.queued > 0 && lane.queued + size > lane.cap()) continue;
       if (best === null || lane.queued < best.queued) best = lane;
     }
@@ -518,11 +578,19 @@ function scanPool(options: {
       notify();
     },
 
+    lose(at) {
+      helpers[at]?.lose();
+    },
+
     async drain() {
       for (;;) {
         if (failed !== null) throw failed.error;
         if (stopped) return;
-        if (self.queued === 0 && helpers.every((lane) => lane.queued === 0)) {
+        if (
+          self.queued === 0 &&
+          rereading === 0 &&
+          helpers.every((lane) => lane.queued === 0)
+        ) {
           return;
         }
         await changed();
@@ -569,14 +637,14 @@ export interface ScannerCore {
    * over, or has no use for them, has them closed.
    */
   attachHelpers(repo: string, seq: number, ports: readonly HelperPort[]): void;
+  /**
+   * The helper at `at` among build `seq`'s ports failed to load: it is handed
+   * nothing more, and what it was handed is read again by path (§7.5).
+   */
+  helperLost(repo: string, seq: number, at: number): void;
   /** The path's scanned entry, with no card blocks in it; `null` when it failed. */
   refresh(request: RefreshRequest): Promise<ScannedEntry | null>;
-  cards(request: {
-    repo: string;
-    apiBase: string;
-    want: readonly CardWant[];
-    full: boolean;
-  }): Promise<CardAnswer[]>;
+  cards(request: CardsRequest): Promise<CardAnswer[]>;
   quotes(request: {
     repo: string;
     apiBase: string;
@@ -640,11 +708,15 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
 
   /**
    * The config a file of `repo` is scanned under now: the in-flight build's,
-   * once its header arrives, else the last header's. Whether a file is the
-   * roadmap is part of its scan, so a refresh sent during a rescan waits for
-   * the rescan's header, as it once waited for its batch.
+   * once its header arrives, else the last header's, else `given`, the one
+   * the request carries. Whether a file is the roadmap is part of its scan,
+   * so a refresh sent during a rescan waits for the rescan's header, as it
+   * once waited for its batch.
    */
-  const configFor = async (repo: string): Promise<PlanningConfig | null> => {
+  const configFor = async (
+    repo: string,
+    given?: PlanningConfig,
+  ): Promise<PlanningConfig | null> => {
     let run = runs.get(repo);
     while (run !== undefined) {
       const config = await run.header.promise;
@@ -653,7 +725,7 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
       const next = runs.get(repo);
       run = next === run ? undefined : next;
     }
-    return configs.get(repo) ?? null;
+    return configs.get(repo) ?? given ?? null;
   };
 
   const fetchEntry = async (
@@ -870,6 +942,11 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
           run.pool = scanPool({
             config,
             took: (job, result) => took(config, job.path, job.hash, result),
+            reread: async (job) =>
+              takeEntry(
+                config,
+                await fetchEntry(apiBase, job.path, run.controller.signal),
+              ),
             yieldNow,
             askHelpers: () => helpers?.ask(repo, run.seq, count),
           });
@@ -977,9 +1054,14 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
       else for (const port of ports) port.close();
     },
 
-    async refresh({ repo, apiBase, path }) {
+    helperLost(repo, seq, at) {
+      const run = runs.get(repo);
+      if (run?.seq === seq) run.pool?.lose(at);
+    },
+
+    async refresh({ repo, apiBase, path, config: given }) {
       try {
-        const config = await configFor(repo);
+        const config = await configFor(repo, given);
         if (config === null) return null;
         const entry = await fetchEntry(apiBase, path);
         if (entry.kind !== "file") return entry;
@@ -994,7 +1076,7 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
       }
     },
 
-    async cards({ repo, apiBase, want, full }) {
+    async cards({ repo, apiBase, want, full, config: given }) {
       const answers: CardAnswer[] = new Array(want.length);
       // One read, and at most one fetch, per document version asked about.
       const groups = new Map<string, number[]>();
@@ -1039,7 +1121,8 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
           missing.forEach(stale);
           return;
         }
-        const config = (await configFor(repo)) ?? DEFAULT_PLANNING_CONFIG;
+        const config =
+          (await configFor(repo, given)) ?? DEFAULT_PLANNING_CONFIG;
         const result = scanCandidate(config, path, entry.content);
         if (held === undefined) {
           await keepScanned(repo, config, path, hash, result);
@@ -1151,15 +1234,13 @@ export type WorkerRequest =
   | { type: "cancel"; repo: string; seq: number }
   /** The helpers a build asked for: one port each, transferred (§7.5). */
   | { type: "helpers"; repo: string; seq: number; ports: HelperPort[] }
+  /**
+   * The helper whose port was `at`, counted from 0 in the order this build's
+   * ports were sent, failed to load: it will answer nothing (§7.5).
+   */
+  | { type: "helper-lost"; repo: string; seq: number; at: number }
   | ({ type: "refresh"; id: number } & RefreshRequest)
-  | {
-      type: "cards";
-      id: number;
-      repo: string;
-      apiBase: string;
-      want: CardWant[];
-      full: boolean;
-    }
+  | ({ type: "cards"; id: number; want: CardWant[] } & CardsRequest)
   | {
       type: "quotes";
       id: number;
@@ -1170,6 +1251,12 @@ export type WorkerRequest =
 
 /** What the scan worker answers. Every one is plain JSON-able data. */
 export type WorkerReply =
+  /**
+   * Posted once, as the worker's code finishes loading, by the scan worker
+   * and by a helper alike: a worker that fails before it has said this could
+   * not be created (§7.1, §7.5).
+   */
+  | { type: "hello" }
   | { type: "build"; repo: string; seq: number; event: BuildEvent }
   /** Make `count` helpers for this build, and send back their ports. */
   | { type: "helpers"; repo: string; seq: number; count: number }
@@ -1201,10 +1288,13 @@ export function scanWorkerHandler(
       case "helpers":
         core.attachHelpers(request.repo, request.seq, request.ports);
         return;
+      case "helper-lost":
+        core.helperLost(request.repo, request.seq, request.at);
+        return;
       case "refresh": {
-        const { id, repo, apiBase, seq, path } = request;
+        const { id, repo, apiBase, seq, path, config } = request;
         void core
-          .refresh({ repo, apiBase, seq, path })
+          .refresh({ repo, apiBase, seq, path, config })
           .then((entry) => post({ type: "scanned", id, entry }));
         return;
       }

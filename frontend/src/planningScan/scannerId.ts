@@ -14,9 +14,12 @@
  *   session never trusts results from the code before an edit and still keeps
  *   a warm cache between edits.
  * - **The worker's bundle may hold nothing else.** The instance in
- *   `worker.plugins` fails the build when a module of the worker's bundle
+ *   `worker.plugins` fails the build when a module of the worker's build
  *   sits outside those roots and outside `node_modules`, because a change to
  *   such a module would change what the scan produces without changing the id.
+ *   It looks at the build's whole module graph for that, since a module whose
+ *   one export is a constant is inlined and is then in no chunk's module
+ *   list.
  *   It fails it too when the bundle holds a package the scan never needs
  *   (KaTeX, highlight.js, React, Mermaid): `pipeline.ts` imports the first two
  *   beside the remark plugins the scan does use, and the design's worker
@@ -115,21 +118,32 @@ const isBundlerModule = (id: string): boolean =>
   /^\0(rolldown\/|vite\/)/.test(id);
 
 /**
- * Every module of the worker's bundle the guard refuses, with why: one
- * outside the hashed roots and `node_modules`, or one of a forbidden package.
- * Empty when the bundle is sound.
+ * Every module of the worker's build the guard refuses, with why: one outside
+ * the hashed roots and `node_modules`, or a rendered one of a forbidden
+ * package or a package's DOM build. Empty when the bundle is sound.
+ *
+ * `rendered` are the modules whose code is in the bundle, and `graph` every
+ * module the build loaded, which is more, in two ways. A module whose one
+ * export is a constant is inlined into its importer and rendered nowhere, yet
+ * its value is in the worker's code, so the source check covers the graph. A
+ * package the scan's imports reach and never call, as they reach KaTeX
+ * through `micromark-extension-math`, is dropped whole and puts nothing
+ * there, so the package checks cover only what is rendered.
  */
 export function workerBundleProblems(
-  moduleIds: Iterable<string>,
+  rendered: Iterable<string>,
   roots: ScannerRoots,
+  graph: Iterable<string> = [],
 ): string[] {
   const problems: string[] = [];
-  for (const raw of moduleIds) {
+  const inBundle = new Set(rendered);
+  for (const raw of new Set([...inBundle, ...graph])) {
     const id = raw.split("?")[0] ?? raw;
     if (id === RESOLVED_ID || isBundlerModule(id)) continue;
     // The innermost `node_modules` names the package.
     const parts = id.split(`${path.sep}node_modules${path.sep}`);
     if (parts.length > 1) {
+      if (!inBundle.has(raw)) continue;
       const [scopeOrName = "", name = ""] = (parts.at(-1) ?? "").split(
         path.sep,
       );
@@ -198,10 +212,14 @@ export function planningScannerId(options: ScannerIdOptions): Plugin {
 
     generateBundle(_output, bundle) {
       if (options.guard !== true) return;
-      const ids = Object.values(bundle).flatMap((chunk) =>
+      const rendered = Object.values(bundle).flatMap((chunk) =>
         chunk.type === "chunk" ? chunk.moduleIds : [],
       );
-      const problems = workerBundleProblems(ids, roots);
+      // The build's whole graph too: Rolldown inlines a constant another
+      // module exports and then leaves that module out of `moduleIds`.
+      const problems = workerBundleProblems(rendered, roots, [
+        ...this.getModuleIds(),
+      ]);
       if (problems.length > 0) {
         this.error(
           [

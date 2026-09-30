@@ -153,6 +153,30 @@ describe("the build guard", () => {
     expect(problems[0]).toContain("never needs katex");
   });
 
+  it("fails a module of the build's graph outside the roots, though no chunk renders it", () => {
+    // A module whose one export is a constant, inlined into its importer.
+    expect(
+      workerBundleProblems(SOUND, roots, [
+        ...SOUND,
+        "/repo/frontend/src/constants.ts",
+      ]),
+    ).toEqual([
+      "/repo/frontend/src/constants.ts: outside the files the scanner id hashes",
+    ]);
+  });
+
+  it("passes a package the graph reaches and the bundle leaves out", () => {
+    // As the scan's imports reach KaTeX through micromark-extension-math,
+    // and tree-shaking drops it whole.
+    expect(
+      workerBundleProblems(SOUND, roots, [
+        ...SOUND,
+        "/repo/node_modules/micromark-extension-math/node_modules/katex/dist/katex.mjs",
+        "/repo/node_modules/decode-named-character-reference/index.dom.js",
+      ]),
+    ).toEqual([]);
+  });
+
   it("fails a bundle holding a package's DOM build", () => {
     expect(
       workerBundleProblems(
@@ -167,20 +191,25 @@ describe("the build guard", () => {
     ]);
   });
 
+  /**
+   * A plugin context over a build whose graph is `graph`: what
+   * `generateBundle` reads besides the bundle, and how it fails a build.
+   */
+  const buildContext = (graph: string[]) => ({
+    getModuleIds: () => graph[Symbol.iterator](),
+    error: (message: string) => {
+      throw new Error(message);
+    },
+  });
+
   it("fails the worker's build, and not the app's", () => {
     const plugin = planningScannerId({ repoRoot: "/repo", guard: true });
+    const moduleIds = [...SOUND, "/repo/frontend/src/lib/utils.ts"];
     const bundle = {
-      "worker.js": {
-        type: "chunk",
-        moduleIds: [...SOUND, "/repo/frontend/src/lib/utils.ts"],
-      },
+      "worker.js": { type: "chunk", moduleIds },
       "worker.css": { type: "asset" },
     };
-    const context = {
-      error: (message: string) => {
-        throw new Error(message);
-      },
-    };
+    const context = buildContext(moduleIds);
     expect(() =>
       call(plugin.generateBundle, context, {}, bundle, false),
     ).toThrow(/frontend\/src\/lib\/utils\.ts/);
@@ -188,6 +217,23 @@ describe("the build guard", () => {
     const app = planningScannerId({ repoRoot: "/repo" });
     expect(() =>
       call(app.generateBundle, context, {}, bundle, false),
+    ).not.toThrow();
+  });
+
+  it("fails the worker's build over a module whose constant was inlined, which no chunk lists", () => {
+    // `export const LIMIT = 7`, imported by a hashed module: Rolldown writes
+    // the 7 into the importer and drops the module from `moduleIds`, so only
+    // the build's graph still names it.
+    const plugin = planningScannerId({ repoRoot: "/repo", guard: true });
+    const bundle = { "worker.js": { type: "chunk", moduleIds: SOUND } };
+    const graph = [...SOUND, "/repo/frontend/src/constants.ts"];
+    expect(() =>
+      call(plugin.generateBundle, buildContext(graph), {}, bundle, false),
+    ).toThrow(
+      /\/repo\/frontend\/src\/constants\.ts: outside the files the scanner id hashes/,
+    );
+    expect(() =>
+      call(plugin.generateBundle, buildContext(SOUND), {}, bundle, false),
     ).not.toThrow();
   });
 
