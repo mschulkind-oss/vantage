@@ -306,7 +306,7 @@ code would have read the new body as the wrong shape.
 
 ### 6.2 One path
 
-`GET …/planning/sources?path=` stays exactly as it is ([`sources.go`](../../internal/planning/sources.go#L157-L180)),
+`GET …/planning/sources?path=` stays exactly as it is ([`sources.go`](../../internal/planning/sources.go#L62-L85)),
 and its `file` answer gains `hash`. Change pushes, Show question ([§10.4](#104-cards)) and quoted
 context ([§10.5](#105-comments-and-copy-answers)) use it.
 

@@ -68,27 +68,6 @@ func (e *planningEnv) streamRequest(body string, headers ...string) *http.Reques
 	return r
 }
 
-// planningBatch is the batch body, decoded.
-type planningBatch struct {
-	Config         repoconfig.Planning `json:"config"`
-	CandidateCount int                 `json:"candidate_count"`
-	Refused        bool                `json:"refused"`
-	Files          []struct {
-		Path    string `json:"path"`
-		Content string `json:"content"`
-	} `json:"files"`
-	Skipped    []json.RawMessage `json:"skipped"`
-	Unreadable []json.RawMessage `json:"unreadable"`
-}
-
-func (b planningBatch) paths() []string {
-	out := []string{}
-	for _, f := range b.Files {
-		out = append(out, f.Path)
-	}
-	return out
-}
-
 // streamLine is one line of the stream, every kind's fields together.
 type streamLine struct {
 	Kind           string              `json:"kind"`
@@ -144,27 +123,17 @@ func sent(lines []streamLine) []string {
 	return out
 }
 
-// served reads, from each endpoint that answers for every candidate, the config
-// it was served under and the paths it sent the text of. The config tests run
-// over both: the batch still serves until the viewer has moved onto the stream.
-func (e *planningEnv) served(t *testing.T) map[string]func() (repoconfig.Planning, []string) {
-	return map[string]func() (repoconfig.Planning, []string){
-		"batch": func() (repoconfig.Planning, []string) {
-			var b planningBatch
-			decode(t, e.get("/planning/sources"), &b)
-			return b.Config, b.paths()
-		},
-		"stream": func() (repoconfig.Planning, []string) {
-			lines := streamLines(t, e.stream(""))
-			paths := []string{}
-			for _, l := range lines {
-				if l.Kind == "file" {
-					paths = append(paths, l.Path)
-				}
-			}
-			return lines[0].Config, paths
-		},
+// served reads a cold stream's config and the paths it sent the text of.
+func (e *planningEnv) served(t *testing.T) (repoconfig.Planning, []string) {
+	t.Helper()
+	lines := streamLines(t, e.stream(""))
+	paths := []string{}
+	for _, l := range lines {
+		if l.Kind == "file" {
+			paths = append(paths, l.Path)
+		}
 	}
+	return lines[0].Config, paths
 }
 
 func TestThePlanningRoutesAreRepoScoped(t *testing.T) {
@@ -194,20 +163,19 @@ func TestThePlanningEndpointsWithoutARepoAre400(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-// The contract's shape: snake_case, the effective config, and lists that are
-// `[]` and never `null` — a static host's SPA fallback answers this URL with
-// HTML, so the viewer refuses anything that is not exactly this shape.
-func TestPlanningBatchHasTheContractsShape(t *testing.T) {
-	e := newPlanningEnv(t, nil)
-	w := e.get("/planning/sources")
-	require.Equal(t, http.StatusOK, w.Code)
-	require.Equal(t, "application/json", w.Header().Get("Content-Type"))
-	require.JSONEq(t, `{
-		"config": {"roadmap": "roadmap.md", "include": ["**/*.md"], "exclude": [],
-			"max_file_bytes": 1048576, "max_candidates": 5000, "stages": null},
-		"candidate_count": 0, "refused": false,
-		"files": [], "skipped": [], "unreadable": []
-	}`, w.Body.String())
+// The batch moved to the stream, so its old URL, GET …/planning/sources
+// without `path`, answers 410 Gone with a detail that says what to do. Only a
+// tab loaded before the move still asks for it, and a reload gives it a viewer
+// that reads the stream. Whatever else the query holds, only `path` asks for
+// the single-path mode.
+func TestTheOldPlanningBatchIsGone(t *testing.T) {
+	e := newPlanningEnv(t, map[string]string{"roadmap.md": "# Roadmap\n", "a.md": "# A\n"})
+	for _, target := range []string{"/planning/sources", "/planning/sources?", "/planning/sources?paths=a.md"} {
+		w := e.get(target)
+		require.Equal(t, http.StatusGone, w.Code, target)
+		require.Equal(t, "application/json", w.Header().Get("Content-Type"), target)
+		require.JSONEq(t, `{"detail":"The planning index moved to a stream; reload the page."}`, w.Body.String(), target)
+	}
 }
 
 // The stream's shape, byte for byte for an empty repository: a header with the
@@ -225,33 +193,6 @@ func TestPlanningStreamHasTheContractsShape(t *testing.T) {
 			`"max_file_bytes":1048576,"max_candidates":5000,"stages":null},"candidate_count":0,"refused":false}`+"\n"+
 			`{"kind":"end","candidates":0}`+"\n",
 		w.Body.String())
-}
-
-func TestPlanningBatchAppliesTheRepositorysTable(t *testing.T) {
-	e := newPlanningEnv(t, map[string]string{
-		"roadmap.md":             "# Roadmap\n",
-		"docs/design/a.md":       "---\nstage: DESIGN\n---\n",
-		"docs/gallery/status.md": "---\nstatus: accepted\n---\n",
-		"docs/huge.md":           strings.Repeat("x", 100),
-		"docs/latin1.md":         "caf\xe9\n",
-		".vantage.toml": "[planning]\nexclude = [\"docs/gallery/**\"]\nmax-file-bytes = 64\n\n" +
-			"[planning.stages]\nDESIGN = \"open\"\nDECIDED = \"ready\"\n",
-	})
-
-	w := e.get("/planning/sources")
-	require.Equal(t, http.StatusOK, w.Code)
-	var b planningBatch
-	decode(t, w, &b)
-
-	require.Equal(t, []string{"docs/gallery/**"}, b.Config.Exclude)
-	require.Equal(t, int64(64), b.Config.MaxFileBytes)
-	require.Equal(t, map[string]string{"DESIGN": "open", "DECIDED": "ready"}, b.Config.Stages)
-	require.Equal(t, 4, b.CandidateCount, "the gallery is excluded")
-	require.Equal(t, []string{"docs/design/a.md", "roadmap.md"}, b.paths())
-	require.Len(t, b.Skipped, 1)
-	require.JSONEq(t, `{"path":"docs/huge.md","size":100}`, string(b.Skipped[0]))
-	require.Len(t, b.Unreadable, 1)
-	require.JSONEq(t, `{"path":"docs/latin1.md","reason":"not UTF-8"}`, string(b.Unreadable[0]))
 }
 
 func TestPlanningStreamAppliesTheRepositorysTable(t *testing.T) {
@@ -278,19 +219,6 @@ func TestPlanningStreamAppliesTheRepositorysTable(t *testing.T) {
 	require.Equal(t, int64(100), lines[2].Size)
 	require.Equal(t, "not UTF-8", lines[3].Reason)
 	require.Equal(t, 4, lines[len(lines)-1].Candidates)
-}
-
-func TestPlanningBatchPastTheLimitIsRefused(t *testing.T) {
-	e := newPlanningEnv(t, map[string]string{
-		"a.md": "# A\n", "b.md": "# B\n",
-		".vantage.toml": "[planning]\nmax-candidates = 1\n",
-	})
-	var b planningBatch
-	decode(t, e.get("/planning/sources"), &b)
-	require.True(t, b.Refused)
-	require.Equal(t, 2, b.CandidateCount)
-	require.Empty(t, b.Files)
-	require.NotNil(t, b.Files, "still [] on the wire")
 }
 
 func TestPlanningStreamPastTheLimitIsRefused(t *testing.T) {
@@ -459,45 +387,36 @@ func TestABadPlanningTableServesTheDefaultsAndSaysSo(t *testing.T) {
 	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})))
 	t.Cleanup(func() { slog.SetDefault(prev) })
 
-	for name, serve := range e.served(t) {
-		logs.Reset()
-		config, paths := serve()
-		require.Equal(t, repoconfig.DefaultPlanning(), config, name)
-		require.Equal(t, []string{"docs/gallery/status.md"}, paths, name)
-		require.Contains(t, logs.String(), "planning.roadmaps", name)
-		require.Contains(t, logs.String(), filepath.Join(e.dir, ".vantage.toml"), name)
-	}
+	config, paths := e.served(t)
+	require.Equal(t, repoconfig.DefaultPlanning(), config)
+	require.Equal(t, []string{"docs/gallery/status.md"}, paths)
+	require.Contains(t, logs.String(), "planning.roadmaps")
+	require.Contains(t, logs.String(), filepath.Join(e.dir, ".vantage.toml"))
 }
 
 // The rescan a `.vantage.toml` push causes lands inside the config's reload
 // throttle. The endpoint must see the edit anyway, or the rescan is served the
 // table from before it and nothing asks again.
 func TestThePlanningEndpointSeesAConfigEditAtOnce(t *testing.T) {
-	for _, name := range []string{"batch", "stream"} {
-		t.Run(name, func(t *testing.T) {
-			e := newPlanningEnv(t, map[string]string{
-				"a.md": "# A\n", "docs/b.md": "# B\n",
-				".vantage.toml": "[planning]\nexclude = []\n",
-			})
-			_, paths := e.served(t)[name]()
-			require.Equal(t, []string{"a.md", "docs/b.md"}, paths)
+	e := newPlanningEnv(t, map[string]string{
+		"a.md": "# A\n", "docs/b.md": "# B\n",
+		".vantage.toml": "[planning]\nexclude = []\n",
+	})
+	_, paths := e.served(t)
+	require.Equal(t, []string{"a.md", "docs/b.md"}, paths)
 
-			writeFile(t, e.dir, ".vantage.toml", "[planning]\nexclude = [\"docs/**\"]\n")
-			_, paths = e.served(t)[name]()
-			require.Equal(t, []string{"a.md"}, paths)
-		})
-	}
+	writeFile(t, e.dir, ".vantage.toml", "[planning]\nexclude = [\"docs/**\"]\n")
+	_, paths = e.served(t)
+	require.Equal(t, []string{"a.md"}, paths)
 }
 
 // Without a config to read, a repository is served the defaults.
-func TestPlanningSourcesWithNoConfigServesTheDefaults(t *testing.T) {
+func TestPlanningStreamWithNoConfigServesTheDefaults(t *testing.T) {
 	e := newPlanningEnv(t, map[string]string{"a.md": "# A\n"})
 	e.cfg = nil
-	for name, serve := range e.served(t) {
-		config, paths := serve()
-		require.Equal(t, repoconfig.DefaultPlanning(), config, name)
-		require.Equal(t, []string{"a.md"}, paths, name)
-	}
+	config, paths := e.served(t)
+	require.Equal(t, repoconfig.DefaultPlanning(), config)
+	require.Equal(t, []string{"a.md"}, paths)
 }
 
 // A file's answer carries its content hash, the first 128 bits of SHA-256 in
