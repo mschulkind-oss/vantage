@@ -41,19 +41,40 @@ interface RepoState {
   setCurrentRepo: (repo: string | null) => void;
   setRepoSortMode: (mode: "alphabetical" | "recent") => void;
   sortedRepos: () => RepoInfo[];
-  loadFile: (path: string) => Promise<void>;
-  viewDirectory: (path: string) => Promise<void>;
+  loadFile: (path: string, options?: LoadOptions) => Promise<void>;
+  viewDirectory: (path: string, options?: LoadOptions) => Promise<void>;
   refreshTree: (path?: string) => Promise<void>;
   refreshExpandedTree: () => Promise<void>;
   setCurrentPath: (path: string | null) => void;
   loadDirChildren: (path: string) => Promise<void>;
   toggleDir: (path: string) => void;
   expandToPath: (path: string) => void;
+  /**
+   * Forget that the folders inside any of `dirs` were open, since they are
+   * gone: left in `expandedDirs`, every later refresh of the tree asked for
+   * each of them again, and every follow of a renamed folder added one. The
+   * folders holding `keep`, when it is given, stay open, and `keep` itself: a
+   * document or folder view that stays on screen where it was, and loads again
+   * if its folder comes back.
+   */
+  forgetExpandedDirs: (dirs: readonly string[], keep?: string | null) => void;
   loadPathDirectories: (path: string) => Promise<void>;
   setShowEmptyDirs: (show: boolean) => void;
   setShowHidden: (show: boolean) => void;
   setShowGitignored: (show: boolean) => void;
   markPathsChanged: (paths: Iterable<string>) => void;
+}
+
+/** How `loadFile` and `viewDirectory` load. */
+export interface LoadOptions {
+  /**
+   * When the load fails, keep what the page shows and say nothing, instead of
+   * replacing it with the error. For a document or folder the viewer followed
+   * to where its renamed directory put it: renamed again before it was asked
+   * for, it is not there either, and the next push follows it on. The caller
+   * loads it again, without this, once it has waited long enough.
+   */
+  keepOnFailure?: boolean;
 }
 
 /**
@@ -326,6 +347,20 @@ export const useRepoStore = create<RepoState>((set, get) => ({
       return { expandedDirs: newExpandedDirs };
     }),
 
+  forgetExpandedDirs: (dirs, keep = null) =>
+    set((state) => {
+      const within = (path: string, dir: string) =>
+        path === dir || path.startsWith(`${dir}/`);
+      const holdsKeep = (dir: string) => keep !== null && within(keep, dir);
+      const gone = Object.keys(state.expandedDirs).filter(
+        (dir) => dirs.some((d) => within(dir, d)) && !holdsKeep(dir),
+      );
+      if (gone.length === 0) return state;
+      const expandedDirs = { ...state.expandedDirs };
+      for (const dir of gone) delete expandedDirs[dir];
+      return { expandedDirs };
+    }),
+
   // Load directory children for all expanded directories along a path
   loadPathDirectories: async (path: string) => {
     if (!path || path === ".") return;
@@ -397,7 +432,7 @@ export const useRepoStore = create<RepoState>((set, get) => ({
     }
   },
 
-  loadFile: async (path) => {
+  loadFile: async (path, options) => {
     const seq = ++navSeq;
     const { currentRepo, isMultiRepo } = get();
     const apiBase = getApiBase(currentRepo, isMultiRepo);
@@ -417,6 +452,10 @@ export const useRepoStore = create<RepoState>((set, get) => ({
       });
     } catch {
       if (seq !== navSeq) return;
+      if (options?.keepOnFailure) {
+        set({ isLoading: false });
+        return;
+      }
       set({
         error: "Failed to load file content",
         isLoading: false,
@@ -433,7 +472,7 @@ export const useRepoStore = create<RepoState>((set, get) => ({
     }
   },
 
-  viewDirectory: async (path) => {
+  viewDirectory: async (path, options) => {
     const seq = ++navSeq;
     const { currentRepo, isMultiRepo } = get();
     const apiBase = getApiBase(currentRepo, isMultiRepo);
@@ -454,6 +493,10 @@ export const useRepoStore = create<RepoState>((set, get) => ({
       });
     } catch {
       if (seq !== navSeq) return;
+      if (options?.keepOnFailure) {
+        set({ isLoading: false });
+        return;
+      }
       set({
         error: "Failed to load directory",
         isLoading: false,

@@ -25,6 +25,8 @@ describe("useWebSocket", () => {
   const mockRefreshExpandedTree = vi.fn();
   const mockFetchStatus = vi.fn();
   const mockViewDirectory = vi.fn();
+  const mockExpandToPath = vi.fn();
+  const mockForgetExpandedDirs = vi.fn();
   const mockFetchRecentFiles = vi.fn();
   const mockMarkPathsChanged = vi.fn();
   const mockRefreshRepos = vi.fn();
@@ -74,8 +76,12 @@ describe("useWebSocket", () => {
     loadFile: mockLoadFile,
     refreshExpandedTree: mockRefreshExpandedTree,
     viewDirectory: mockViewDirectory,
+    expandToPath: mockExpandToPath,
+    forgetExpandedDirs: mockForgetExpandedDirs,
     markPathsChanged: mockMarkPathsChanged,
     refreshRepos: mockRefreshRepos,
+    fileTree: [],
+    currentDirectory: null,
     reposLoaded: true,
     isMultiRepo: false,
     currentRepo: null,
@@ -738,14 +744,25 @@ describe("useWebSocket", () => {
       expect(mockNoteFilesChanged).toHaveBeenCalledWith("beta", ["a.md"], []);
     });
 
-    it("hands on a push that names only removed directories, and refreshes nothing else", () => {
+    // This push used to refresh nothing else, and the test said so on purpose:
+    // the viewer was not meant to read removed_dirs at all, so the watcher named
+    // a removed directory's files in `paths` as well. A renamed directory's
+    // files have no events to name, though, so a folder renamed under the
+    // reader left the tree listing it and the document on screen claiming to
+    // exist. Now the push is the viewer's too: see "a directory removed or
+    // renamed under the viewer" below for what it does to the document.
+    it("hands on a push that names only removed directories, and refreshes the tree and recents with it", () => {
       renderHook(() => useWebSocket());
       send({ type: "files_changed", paths: [], removed_dirs: ["docs/old"] });
       act(() => {
         vi.advanceTimersByTime(600);
       });
       expect(mockNoteFilesChanged).toHaveBeenCalledWith("", [], ["docs/old"]);
-      expect(mockRefreshExpandedTree).not.toHaveBeenCalled();
+      expect(mockRefreshExpandedTree).toHaveBeenCalledTimes(1);
+      expect(mockFetchRecentFiles).toHaveBeenCalledTimes(1);
+      // test.md was not inside docs/old, so it is left as it is.
+      expect(mockLoadFile).not.toHaveBeenCalled();
+      expect(mockMarkPathsChanged).not.toHaveBeenCalled();
     });
 
     it("hands on every review_changed, not only the document on screen", () => {
@@ -873,6 +890,499 @@ describe("useWebSocket", () => {
         mockWebSocket.onopen!(new Event("open"));
       });
       expect(mockNoteReconnect).not.toHaveBeenCalled();
+    });
+  });
+
+  // A renamed directory's files move without an event of their own, so the
+  // push names the directory in removed_dirs and the new directory's Markdown in
+  // paths (internal/live/watcher.go, filesChangedMessage). What the reader sees
+  // of a document inside it is decided here.
+  describe("a directory removed or renamed under the viewer", () => {
+    const onMoved = vi.fn();
+    const viewing = (path: string, overrides: Record<string, unknown> = {}) => {
+      const repoState = makeRepoStoreState({
+        currentPath: path,
+        requestedPath: path,
+        ...overrides,
+      });
+      const mockStore = (selector?: (state: typeof repoState) => unknown) => {
+        if (typeof selector === "function") return selector(repoState);
+        return repoState;
+      };
+      mockStore.getState = () => repoState;
+      (useRepoStore as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+        mockStore,
+      );
+      (
+        useRepoStore as unknown as { getState: () => typeof repoState }
+      ).getState = () => repoState;
+    };
+    const settle = () =>
+      act(() => {
+        vi.advanceTimersByTime(600);
+      });
+    /** `settle`, and then whatever the batch's requests had waiting on them. */
+    const settled = async () => {
+      settle();
+      await act(async () => {});
+    };
+    /** Long enough that no second half of a rename is still awaited. */
+    const gone = () =>
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+    // The tree as it stood before the batch: the open document's folder is
+    // open, so the files beside it are known.
+    const tree = [
+      {
+        name: "docs",
+        path: "docs",
+        is_dir: true,
+        children: [
+          {
+            name: "old",
+            path: "docs/old",
+            is_dir: true,
+            children: [
+              { name: "a.md", path: "docs/old/a.md", is_dir: false },
+              { name: "b.md", path: "docs/old/b.md", is_dir: false },
+            ],
+          },
+        ],
+      },
+    ];
+
+    it("reloads the open document when a directory it was in went", () => {
+      viewing("docs/old/a.md");
+      renderHook(() => useWebSocket({ onMoved }));
+      // Moved out of the served tree: nothing says where it went.
+      send({ type: "files_changed", paths: [], removed_dirs: ["docs/old"] });
+      settle();
+      // Asked for at once, in case it is still there, keeping what is on
+      // screen if it is not: the other half of a rename may be on its way.
+      expect(mockLoadFile).toHaveBeenCalledTimes(1);
+      expect(mockLoadFile).toHaveBeenCalledWith("docs/old/a.md", {
+        keepOnFailure: true,
+      });
+      expect(mockFetchStatus).toHaveBeenCalledWith("docs/old/a.md");
+      expect(onMoved).not.toHaveBeenCalled();
+
+      // None came. The reload is what lands the reader on the page that says
+      // the document is gone, and loads it again if it comes back.
+      gone();
+      expect(mockLoadFile).toHaveBeenCalledTimes(2);
+      expect(mockLoadFile).toHaveBeenLastCalledWith("docs/old/a.md");
+      expect(onMoved).not.toHaveBeenCalled();
+    });
+
+    // The watcher's window, or this page's, can close between the two halves
+    // of a rename under a steady stream of other changes.
+    it("follows a rename whose halves arrive in two batches", async () => {
+      viewing("docs/old/a.md", { fileTree: tree });
+      renderHook(() => useWebSocket({ onMoved }));
+      send({ type: "files_changed", paths: [], removed_dirs: ["docs/old"] });
+      await settled();
+      expect(onMoved).not.toHaveBeenCalled();
+
+      send({
+        type: "files_changed",
+        paths: ["docs/new/a.md", "docs/new/b.md"],
+      });
+      settle();
+      expect(onMoved).toHaveBeenCalledWith("docs/old/a.md", "docs/new/a.md");
+      // Never told it was gone on the way.
+      gone();
+      expect(mockLoadFile).not.toHaveBeenCalledWith("docs/old/a.md");
+    });
+
+    it("reads the first half's pushes with the second's", async () => {
+      // Deleted, the document's removal heard: a file of its name that
+      // appears a moment later elsewhere is some other document.
+      viewing("gone/x.md");
+      renderHook(() => useWebSocket({ onMoved }));
+      send({
+        type: "files_changed",
+        paths: ["gone/x.md"],
+        removed_dirs: ["gone"],
+      });
+      await settled();
+      send({ type: "files_changed", paths: ["elsewhere/x.md"] });
+      await settled();
+      expect(onMoved).not.toHaveBeenCalled();
+      // Nor was the not-found page put off by that push.
+      gone();
+      expect(mockLoadFile).toHaveBeenLastCalledWith("gone/x.md");
+    });
+
+    it("waits no longer than the halves of a rename can be apart", async () => {
+      viewing("docs/old/a.md");
+      renderHook(() => useWebSocket({ onMoved }));
+      send({ type: "files_changed", paths: [], removed_dirs: ["docs/old"] });
+      await settled();
+      gone();
+      await settled();
+      send({ type: "files_changed", paths: ["docs/new/a.md"] });
+      await settled();
+      expect(onMoved).not.toHaveBeenCalled();
+    });
+
+    it("follows the document to the renamed directory's new name", () => {
+      viewing("docs/old/a.md");
+      renderHook(() => useWebSocket({ onMoved }));
+      send({
+        type: "files_changed",
+        paths: ["docs/new/a.md"],
+        removed_dirs: ["docs/old"],
+      });
+      settle();
+      expect(onMoved).toHaveBeenCalledWith("docs/old/a.md", "docs/new/a.md");
+      // Not reloaded where it was, which would paint the not-found page on the
+      // way to the document's new address.
+      expect(mockLoadFile).not.toHaveBeenCalled();
+      // The tree opens the new folder before it refreshes, so the refresh
+      // fetches the folder's listing along with the rest.
+      expect(mockExpandToPath).toHaveBeenCalledWith("docs/new/a.md");
+      expect(mockExpandToPath.mock.invocationCallOrder[0]).toBeLessThan(
+        mockRefreshExpandedTree.mock.invocationCallOrder[0],
+      );
+      expect(mockFetchRecentFiles).toHaveBeenCalledTimes(1);
+    });
+
+    it("follows it when the rename arrives as two pushes in one batch", () => {
+      viewing("docs/old/a.md");
+      renderHook(() => useWebSocket({ onMoved }));
+      send({ type: "files_changed", paths: [], removed_dirs: ["docs/old"] });
+      send({ type: "files_changed", paths: ["docs/new/a.md"] });
+      settle();
+      expect(onMoved).toHaveBeenCalledWith("docs/old/a.md", "docs/new/a.md");
+      expect(mockRefreshExpandedTree).toHaveBeenCalledTimes(1);
+    });
+
+    // An agent that fixes a document and then files it away: the edit and the
+    // rename land in one batch. The edit is heard, so the document is no
+    // witness of its own, and its folder's other files, known from the tree,
+    // say where it went.
+    it("follows a document edited just before its directory was renamed", () => {
+      viewing("docs/old/a.md", { fileTree: tree });
+      renderHook(() => useWebSocket({ onMoved }));
+      send({ type: "files_changed", paths: ["docs/old/a.md"] });
+      send({
+        type: "files_changed",
+        paths: ["docs/new/a.md", "docs/new/b.md"],
+        removed_dirs: ["docs/old"],
+      });
+      settle();
+      expect(onMoved).toHaveBeenCalledWith("docs/old/a.md", "docs/new/a.md");
+      expect(mockLoadFile).not.toHaveBeenCalled();
+    });
+
+    // A removed directory's files are pushed by their own removals; a renamed
+    // one's never are. So a pushed old path says the document was deleted or
+    // rebuilt where it was, and a file of its name elsewhere in the same batch
+    // is some other document.
+    it("does not take a deleted document for an unrelated one of its name", () => {
+      viewing("docs/plans/foo/README.md");
+      renderHook(() => useWebSocket({ onMoved }));
+      send({
+        type: "files_changed",
+        paths: ["docs/plans/foo/README.md"],
+        removed_dirs: ["docs/plans/foo"],
+      });
+      send({ type: "files_changed", paths: ["docs/plans/bar/README.md"] });
+      settle();
+      gone();
+      expect(onMoved).not.toHaveBeenCalled();
+      expect(mockLoadFile).toHaveBeenLastCalledWith("docs/plans/foo/README.md");
+    });
+
+    it("reloads a document rebuilt where it was", () => {
+      viewing("out/index.md");
+      renderHook(() => useWebSocket({ onMoved }));
+      send({
+        type: "files_changed",
+        paths: ["docs/index.md", "out/index.md"],
+        removed_dirs: ["out"],
+      });
+      // Asked for at once: a rebuild puts it back where it was.
+      settle();
+      expect(mockLoadFile).toHaveBeenCalledWith("out/index.md", {
+        keepOnFailure: true,
+      });
+      gone();
+      expect(onMoved).not.toHaveBeenCalled();
+    });
+
+    // The folder more of the directory's files arrived in, as the tree listed
+    // them, is where it went.
+    it("is not led off by a file of the same name edited elsewhere", () => {
+      viewing("docs/old/a.md", { fileTree: tree });
+      renderHook(() => useWebSocket({ onMoved }));
+      send({
+        type: "files_changed",
+        paths: ["docs/new/a.md", "docs/new/b.md", "nearby/a.md"],
+        removed_dirs: ["docs/old"],
+      });
+      settle();
+      expect(onMoved).toHaveBeenCalledWith("docs/old/a.md", "docs/new/a.md");
+    });
+
+    it("reloads it rather than guess when two documents could be it", () => {
+      viewing("docs/old/a.md");
+      renderHook(() => useWebSocket({ onMoved }));
+      send({
+        type: "files_changed",
+        paths: ["one/a.md", "two/a.md"],
+        removed_dirs: ["docs/old"],
+      });
+      settle();
+      gone();
+      expect(onMoved).not.toHaveBeenCalled();
+      expect(mockLoadFile).toHaveBeenLastCalledWith("docs/old/a.md");
+    });
+
+    it("reloads it when no page is there to follow it", () => {
+      viewing("docs/old/a.md");
+      renderHook(() => useWebSocket());
+      send({
+        type: "files_changed",
+        paths: ["docs/new/a.md"],
+        removed_dirs: ["docs/old"],
+      });
+      settle();
+      gone();
+      expect(mockLoadFile).toHaveBeenLastCalledWith("docs/old/a.md");
+    });
+
+    it("leaves the open document alone when the directory was elsewhere", () => {
+      viewing("docs/keep/a.md");
+      renderHook(() => useWebSocket({ onMoved }));
+      send({ type: "files_changed", paths: [], removed_dirs: ["docs/old"] });
+      settle();
+      expect(mockLoadFile).not.toHaveBeenCalled();
+      expect(onMoved).not.toHaveBeenCalled();
+      expect(mockRefreshExpandedTree).toHaveBeenCalledTimes(1);
+    });
+
+    it("reloads a directory view that was inside it", () => {
+      viewing("docs/old/sub");
+      renderHook(() => useWebSocket({ onMoved }));
+      send({ type: "files_changed", paths: [], removed_dirs: ["docs/old"] });
+      settle();
+      expect(mockViewDirectory).toHaveBeenCalledWith("docs/old/sub", {
+        keepOnFailure: true,
+      });
+      gone();
+      expect(mockViewDirectory).toHaveBeenLastCalledWith("docs/old/sub");
+      expect(onMoved).not.toHaveBeenCalled();
+    });
+
+    // The folder's own listing says which files it held, and where they
+    // arrived is where it went.
+    it("follows a folder view of the renamed folder to its new name", () => {
+      viewing("docs/old", {
+        currentDirectory: [
+          { name: "a.md", path: "docs/old/a.md", is_dir: false },
+          { name: "b.md", path: "docs/old/b.md", is_dir: false },
+        ],
+      });
+      renderHook(() => useWebSocket({ onMoved }));
+      send({
+        type: "files_changed",
+        paths: ["docs/new/a.md", "docs/new/b.md"],
+        removed_dirs: ["docs/old"],
+      });
+      settle();
+      expect(onMoved).toHaveBeenCalledWith("docs/old", "docs/new");
+      expect(mockExpandToPath).toHaveBeenCalledWith("docs/new");
+      expect(mockViewDirectory).not.toHaveBeenCalled();
+    });
+
+    // Left open, a folder that went was asked for again by every refresh of
+    // the tree after it, and each follow added one more.
+    it("forgets that the folders that went were open", () => {
+      viewing("docs/old/a.md");
+      renderHook(() => useWebSocket({ onMoved }));
+      send({
+        type: "files_changed",
+        paths: ["docs/new/a.md"],
+        removed_dirs: ["docs/old"],
+      });
+      settle();
+      expect(mockForgetExpandedDirs).toHaveBeenCalledWith(["docs/old"], null);
+      expect(mockForgetExpandedDirs.mock.invocationCallOrder[0]).toBeLessThan(
+        mockRefreshExpandedTree.mock.invocationCallOrder[0],
+      );
+    });
+
+    it("keeps the folders of a document that stays on screen open", () => {
+      viewing("docs/old/a.md");
+      renderHook(() => useWebSocket({ onMoved }));
+      send({ type: "files_changed", paths: [], removed_dirs: ["docs/old"] });
+      settle();
+      expect(mockForgetExpandedDirs).toHaveBeenCalledWith(
+        ["docs/old"],
+        "docs/old/a.md",
+      );
+    });
+
+    // A popover's words live in the popover, and an inline box's in the box:
+    // replacing the document with the page saying it is gone throws them away.
+    describe("while the reviewer is writing on it", () => {
+      afterEach(() => {
+        useReviewStore.setState({
+          isReviewMode: false,
+          pendingSelection: null,
+        });
+        document.body.innerHTML = "";
+      });
+
+      const selection = {
+        anchor: {
+          source_line: 1,
+          block_text_hash: "x",
+          selection_offset: 0,
+          selection_length: 0,
+        },
+        rect: new DOMRect(),
+        displayText: "words",
+        clamped: false,
+      };
+
+      it("keeps a document that went on screen until the new comment is saved or cancelled", () => {
+        viewing("docs/old/a.md");
+        useReviewStore.setState({
+          isReviewMode: true,
+          pendingSelection: selection,
+        });
+        renderHook(() => useWebSocket({ onMoved }));
+        send({ type: "files_changed", paths: [], removed_dirs: ["docs/old"] });
+        settle();
+        // Asked for all the same, keeping what is on screen if it is gone.
+        expect(mockLoadFile).toHaveBeenCalledTimes(1);
+        expect(mockLoadFile).toHaveBeenCalledWith("docs/old/a.md", {
+          keepOnFailure: true,
+        });
+
+        act(() => {
+          vi.advanceTimersByTime(2000);
+        });
+        expect(mockLoadFile).toHaveBeenCalledTimes(1);
+
+        act(() => {
+          useReviewStore.setState({ pendingSelection: null });
+          vi.advanceTimersByTime(600);
+        });
+        expect(mockLoadFile).toHaveBeenCalledTimes(2);
+        expect(mockLoadFile).toHaveBeenLastCalledWith("docs/old/a.md");
+        act(() => {
+          vi.advanceTimersByTime(2000);
+        });
+        expect(mockLoadFile).toHaveBeenCalledTimes(2);
+      });
+
+      it("waits for an inline reply that has words in it", () => {
+        viewing("docs/old/a.md");
+        useReviewStore.setState({ isReviewMode: true });
+        document.body.innerHTML =
+          '<div data-review-inline-comment="c1"><textarea class="review-inline-reply-area"></textarea></div>';
+        const area = document.querySelector("textarea")!;
+        area.value = "half a reply";
+        renderHook(() => useWebSocket({ onMoved }));
+        send({ type: "files_changed", paths: [], removed_dirs: ["docs/old"] });
+        settle();
+        expect(mockLoadFile).toHaveBeenCalledWith("docs/old/a.md", {
+          keepOnFailure: true,
+        });
+
+        gone();
+        expect(mockLoadFile).toHaveBeenCalledTimes(1);
+        act(() => {
+          area.value = "";
+          vi.advanceTimersByTime(600);
+        });
+        expect(mockLoadFile).toHaveBeenLastCalledWith("docs/old/a.md");
+      });
+
+      it("does not wait on an empty box, nor outside review mode", () => {
+        viewing("docs/old/a.md");
+        useReviewStore.setState({
+          isReviewMode: false,
+          pendingSelection: selection,
+        });
+        renderHook(() => useWebSocket({ onMoved }));
+        send({ type: "files_changed", paths: [], removed_dirs: ["docs/old"] });
+        settle();
+        gone();
+        expect(mockLoadFile).toHaveBeenLastCalledWith("docs/old/a.md");
+      });
+    });
+
+    // In daemon mode another repository's `rm -r` reaches this page too, and
+    // changes nothing of the repository on screen.
+    it("refreshes nothing of the viewer for another repository's removed directories", () => {
+      viewing("docs/a.md", { isMultiRepo: true, currentRepo: "alpha" });
+      renderHook(() => useWebSocket({ onMoved }));
+      send({
+        type: "files_changed",
+        repo: "beta",
+        paths: [],
+        removed_dirs: ["build/tmp"],
+      });
+      settle();
+      expect(mockRefreshExpandedTree).not.toHaveBeenCalled();
+      expect(mockFetchRecentFiles).not.toHaveBeenCalled();
+      expect(mockForgetExpandedDirs).not.toHaveBeenCalled();
+      // The all-projects lists span every repository, so they follow it.
+      expect(mockPickerRefresh).toHaveBeenCalled();
+      expect(mockAllRecentsRefresh).toHaveBeenCalled();
+    });
+
+    // In daemon mode every repository's pushes reach every page, and a path
+    // means something only in the repository that sent it.
+    it("does not follow a rename in another repository", () => {
+      viewing("docs/old/a.md", { isMultiRepo: true, currentRepo: "alpha" });
+      renderHook(() => useWebSocket({ onMoved }));
+      send({
+        type: "files_changed",
+        repo: "beta",
+        paths: ["docs/new/a.md"],
+        removed_dirs: ["docs/old"],
+      });
+      settle();
+      expect(onMoved).not.toHaveBeenCalled();
+      expect(mockLoadFile).not.toHaveBeenCalled();
+    });
+
+    it("follows a rename in its own repository", () => {
+      viewing("docs/old/a.md", { isMultiRepo: true, currentRepo: "alpha" });
+      renderHook(() => useWebSocket({ onMoved }));
+      send({
+        type: "files_changed",
+        repo: "alpha",
+        paths: ["docs/new/a.md"],
+        removed_dirs: ["docs/old"],
+      });
+      settle();
+      expect(onMoved).toHaveBeenCalledWith("docs/old/a.md", "docs/new/a.md");
+    });
+
+    it("refreshes none of the viewer on a page that is not the viewer", () => {
+      viewing("docs/old/a.md");
+      renderHook(() => useWebSocket({ viewer: false, onMoved }));
+      send({
+        type: "files_changed",
+        paths: ["docs/new/a.md"],
+        removed_dirs: ["docs/old"],
+      });
+      settle();
+      expect(mockNoteFilesChanged).toHaveBeenCalledWith(
+        "",
+        ["docs/new/a.md"],
+        ["docs/old"],
+      );
+      expect(onMoved).not.toHaveBeenCalled();
+      expect(mockLoadFile).not.toHaveBeenCalled();
+      expect(mockRefreshExpandedTree).not.toHaveBeenCalled();
     });
   });
 

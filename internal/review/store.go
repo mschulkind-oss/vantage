@@ -57,11 +57,39 @@ func NewStore(dir string) *Store {
 // func. Callers must hold it across an entire read-modify-write, not just the
 // write, or the read half still races.
 func (s *Store) lock(filePath, repo string) func() {
-	h := fnv.New32a()
-	_, _ = h.Write([]byte(s.reviewFile(filePath, repo)))
-	mu := &s.locks[h.Sum32()%lockShards]
+	mu := &s.locks[s.shard(filePath, repo)]
 	mu.Lock()
 	return mu.Unlock
+}
+
+// shard is the index of the lock that serializes the review file for filePath
+// in repo.
+func (s *Store) shard(filePath, repo string) uint32 {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(s.reviewFile(filePath, repo)))
+	return h.Sum32() % lockShards
+}
+
+// lockPair acquires the locks of two review files at once, for a command that
+// reads and writes both, and returns its release func. The two are taken in
+// shard order, so two such commands cannot each hold the lock the other waits
+// for, and once when both files share a shard, since a sync.Mutex taken twice
+// by one goroutine deadlocks it.
+func (s *Store) lockPair(a, b, repo string) func() {
+	i, j := s.shard(a, repo), s.shard(b, repo)
+	if i == j {
+		s.locks[i].Lock()
+		return s.locks[i].Unlock
+	}
+	if i > j {
+		i, j = j, i
+	}
+	s.locks[i].Lock()
+	s.locks[j].Lock()
+	return func() {
+		s.locks[j].Unlock()
+		s.locks[i].Unlock()
+	}
 }
 
 // DefaultStore returns a Store rooted at the literal ~/.local/share/vantage/reviews.
@@ -193,4 +221,68 @@ func (s *Store) Delete(filePath, repo string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// Move files the review of the document at from under to, where the document
+// is now: a directory it was in was renamed, and the viewer followed it there.
+// A review is kept by its document's path, so without this its comments would
+// stay behind at an address that names nothing.
+//
+// The review keeps everything it holds: comments, their reactions, and the
+// nonces of the responses already applied. A review already filed under to
+// keeps its own as well, and gains from's comments, less any whose id it
+// already has, and its nonces, so neither review's history is lost. Move
+// reports whether from had a review to move, and returns the review filed
+// under to once it is done, nil when there is none.
+func (s *Store) Move(from, to, repo string) (*model.ReviewData, bool, error) {
+	defer s.lockPair(from, to, repo)()
+	src, err := s.getLocked(from, repo)
+	if err != nil {
+		return nil, false, err
+	}
+	dst, err := s.getLocked(to, repo)
+	if err != nil {
+		return nil, false, err
+	}
+	if src == nil {
+		return dst, false, nil
+	}
+
+	moved := src
+	if dst != nil {
+		moved = dst
+		have := make(map[string]struct{}, len(dst.Comments))
+		for _, c := range dst.Comments {
+			have[c.ID] = struct{}{}
+		}
+		for _, c := range src.Comments {
+			if _, dup := have[c.ID]; !dup {
+				moved.Comments = append(moved.Comments, c)
+			}
+		}
+		seen := make(map[string]struct{}, len(dst.Nonces))
+		for _, n := range dst.Nonces {
+			seen[n] = struct{}{}
+		}
+		for _, n := range src.Nonces {
+			if _, dup := seen[n]; !dup {
+				moved.Nonces = append(moved.Nonces, n)
+			}
+		}
+		if n := len(moved.Nonces); n > maxNonces {
+			moved.Nonces = append([]string(nil), moved.Nonces[n-maxNonces:]...)
+		}
+	}
+	moved.FilePath = to
+	if err := s.saveLocked(to, repo, moved); err != nil {
+		return nil, false, err
+	}
+	// Two paths can flatten to one file name (`a/b.md` and `a__b.md`), and
+	// removing it then would delete the review just saved.
+	if old := s.reviewFile(from, repo); old != s.reviewFile(to, repo) {
+		if err := os.Remove(old); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return nil, false, err
+		}
+	}
+	return moved, true, nil
 }

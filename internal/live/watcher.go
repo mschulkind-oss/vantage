@@ -745,9 +745,18 @@ func (w *Watcher) flush(batch []string) {
 	if hasMarkdown {
 		fssvc.ClearMarkdownDirCache()
 	}
+	// The recent files are cached for half a minute, since working them out
+	// reads git's log. A directory that went takes every recent file in it
+	// along, though, and a plain `mv` touches no git state, so the list the
+	// viewer refetches on this push would still name them all. That changes
+	// this repository's list alone, and in daemon mode every served repository
+	// shares the cache, so only this one's is dropped.
 	if hasGitState {
 		gitsvc.ClearRecentFilesCache()
 		w.logger.Debug("cleared recent-files cache due to git state change")
+	} else if len(removedDirs) > 0 {
+		gitsvc.ClearRecentFilesCacheOf(w.root)
+		w.logger.Debug("cleared this repository's recent-files cache", "removed_dirs", len(removedDirs))
 	}
 
 	msg := filesChangedMessage{Type: "files_changed", Paths: paths, RemovedDirs: removedDirs}
@@ -806,12 +815,18 @@ func splitBatch(batch []string) (paths, removedDirs []string) {
 // consumer drops the directories first and then refreshes each path, whose own
 // answer says which it was.
 //
-// Only the planning index reads RemovedDirs. The viewer ignores a push whose
-// Paths is empty, and reloads the document on screen only when its path is
-// among them, so each content file of a directory that is removed is named in
-// Paths as well, however late its removal is heard (see
-// [Watcher.lastWordOfRemoved]). A renamed directory's files are not: they move
-// without an event of their own, and RemovedDirs is the only report of them.
+// Each content file of a directory that is removed is named in Paths as well,
+// however late its removal is heard (see [Watcher.lastWordOfRemoved]), so a
+// consumer that reads only Paths still hears of it. A renamed directory's files
+// are not: they move without an event of their own, and RemovedDirs is the only
+// report of them. Both the planning index and the viewer read it. The viewer
+// reloads a document or folder on screen that lay inside a removed directory,
+// or, when the pushes it handles together name the Markdown under the
+// directory's new name, takes the reader there (frontend/src/lib/removedDirs.ts)
+// and asks for the document's review to be filed under its new path
+// (POST /review/move). That a file of a renamed directory is never named here
+// under its old path is what tells the viewer a renamed document from a
+// deleted one.
 type filesChangedMessage struct {
 	Type        string   `json:"type"`
 	Repo        string   `json:"repo,omitempty"`

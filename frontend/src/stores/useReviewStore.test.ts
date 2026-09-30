@@ -317,6 +317,217 @@ describe("useReviewStore", () => {
     });
   });
 
+  // useWebSocket reports a document whose directory was renamed under it, and
+  // the viewer follows it to its new path. A reader who was reviewing it goes on
+  // reviewing it there.
+  describe("followDocument", () => {
+    it("keeps review mode on at the document's new path, from the moment it switches", async () => {
+      useReviewStore.setState({
+        filePath: "docs/old/a.md",
+        isReviewMode: true,
+      });
+      useReviewStore
+        .getState()
+        .followDocument("docs/old/a.md", "docs/new/a.md");
+
+      const answer = deferred<{ data: ReviewData | null }>();
+      mockedAxios.get.mockReturnValueOnce(answer.promise);
+      const loading = useReviewStore.getState().loadReview("docs/new/a.md");
+      // Not only once the server answers: review mode's bar going and coming
+      // back would move the document twice while the reader is in it.
+      expect(useReviewStore.getState().isReviewMode).toBe(true);
+      expect(useReviewStore.getState().filePath).toBe("docs/new/a.md");
+
+      answer.resolve({ data: null });
+      await loading;
+      expect(useReviewStore.getState().isReviewMode).toBe(true);
+    });
+
+    it("leaves review mode off where it was off", async () => {
+      useReviewStore.setState({
+        filePath: "docs/old/a.md",
+        isReviewMode: false,
+      });
+      useReviewStore
+        .getState()
+        .followDocument("docs/old/a.md", "docs/new/a.md");
+      mockedAxios.get.mockResolvedValueOnce({ data: null });
+      await useReviewStore.getState().loadReview("docs/new/a.md");
+      expect(useReviewStore.getState().isReviewMode).toBe(false);
+    });
+
+    it("moves nothing for a document it is not reviewing", async () => {
+      useReviewStore.setState({ filePath: "other.md", isReviewMode: true });
+      useReviewStore
+        .getState()
+        .followDocument("docs/old/a.md", "docs/new/a.md");
+      expect(localStorage.length).toBe(0);
+      expect(useReviewStore.getState().filePath).toBe("other.md");
+    });
+
+    // The same document under a new path: what the reader has on screen of its
+    // review stays, above all what they are in the middle of writing.
+    describe("the review it had", () => {
+      const comment: ReviewComment = {
+        id: "c1",
+        selected_text: "selected",
+        comment: "please fix",
+        fallback_text: "line",
+        reactions: [],
+      };
+      const selection = {
+        anchor: commentAnchor,
+        rect: new DOMRect(0, 0, 10, 10),
+        displayText: "some words",
+        clamped: false,
+      };
+      const reviewing = () =>
+        useReviewStore.setState({
+          filePath: "docs/old/a.md",
+          isReviewMode: true,
+          comments: [comment],
+          pendingSelection: selection,
+        });
+      const moveCalls = () =>
+        mockedAxios.post.mock.calls.filter(([url]) =>
+          String(url).endsWith("/review/move"),
+        );
+
+      it("keeps its comments and the comment being written through the reload at the new path", async () => {
+        reviewing();
+        mockedAxios.post.mockResolvedValueOnce({ data: null });
+        useReviewStore
+          .getState()
+          .followDocument("docs/old/a.md", "docs/new/a.md");
+        const answer = deferred<{ data: ReviewData | null }>();
+        mockedAxios.get.mockReturnValueOnce(answer.promise);
+        const loading = useReviewStore.getState().loadReview("docs/new/a.md");
+
+        // Not a switch to another file, which clears both.
+        const state = useReviewStore.getState();
+        expect(state.comments).toEqual([comment]);
+        expect(state.pendingSelection).toBe(selection);
+        expect(state.isReviewMode).toBe(true);
+
+        await vi.waitFor(() => expect(mockedAxios.get).toHaveBeenCalled());
+        answer.resolve({
+          data: { file_path: "docs/new/a.md", comments: [comment] },
+        });
+        await loading;
+        expect(useReviewStore.getState().comments).toEqual([comment]);
+        expect(useReviewStore.getState().pendingSelection).toBe(selection);
+      });
+
+      it("asks the server to file the review where the document is now", async () => {
+        reviewing();
+        mockedAxios.post.mockResolvedValueOnce({ data: null });
+        useReviewStore
+          .getState()
+          .followDocument("docs/old/a.md", "docs/new/a.md");
+        await vi.waitFor(() =>
+          expect(moveCalls()).toEqual([
+            [
+              "/api/review/move",
+              { to: "docs/new/a.md" },
+              { params: { path: "docs/old/a.md" } },
+            ],
+          ]),
+        );
+      });
+
+      // Asked for before the move has landed, the new path has no review yet.
+      it("reloads the review at the new path only once the move has landed", async () => {
+        reviewing();
+        const moved = deferred<{ data: ReviewData | null }>();
+        mockedAxios.post.mockReturnValueOnce(moved.promise);
+        useReviewStore
+          .getState()
+          .followDocument("docs/old/a.md", "docs/new/a.md");
+        mockedAxios.get.mockResolvedValueOnce({
+          data: { file_path: "docs/new/a.md", comments: [comment] },
+        });
+        const loading = useReviewStore.getState().loadReview("docs/new/a.md");
+        await Promise.resolve();
+        expect(mockedAxios.get).not.toHaveBeenCalled();
+
+        moved.resolve({
+          data: { file_path: "docs/new/a.md", comments: [comment] },
+        });
+        await loading;
+        expect(mockedAxios.get).toHaveBeenCalledWith("/api/review", {
+          params: { path: "docs/new/a.md" },
+        });
+        expect(useReviewStore.getState().comments).toEqual([comment]);
+      });
+
+      it("adopts what the server filed there, merged with a review already there", async () => {
+        reviewing();
+        const already: ReviewComment = { ...comment, id: "c0" };
+        mockedAxios.post.mockResolvedValueOnce({
+          data: { file_path: "docs/new/a.md", comments: [already, comment] },
+        });
+        useReviewStore
+          .getState()
+          .followDocument("docs/old/a.md", "docs/new/a.md");
+        await vi.waitFor(() =>
+          expect(useReviewStore.getState().comments).toEqual([
+            already,
+            comment,
+          ]),
+        );
+      });
+
+      // Saved a moment after the follow, the comment lands in the review
+      // where it has been moved, not in a new one beside it.
+      it("writes a comment saved during the move where the move puts the review", async () => {
+        reviewing();
+        const moved = deferred<{ data: ReviewData | null }>();
+        mockedAxios.post.mockReturnValueOnce(moved.promise);
+        useReviewStore
+          .getState()
+          .followDocument("docs/old/a.md", "docs/new/a.md");
+        mockedAxios.post.mockResolvedValueOnce({ data: null });
+        const saving = useReviewStore
+          .getState()
+          .addComment(commentAnchor, "my new comment", "quoted");
+        await Promise.resolve();
+        expect(
+          mockedAxios.post.mock.calls.some(([url]) =>
+            String(url).endsWith("/review/comments"),
+          ),
+        ).toBe(false);
+
+        moved.resolve({ data: null });
+        await saving;
+        const created = mockedAxios.post.mock.calls.find(([url]) =>
+          String(url).endsWith("/review/comments"),
+        );
+        expect(created?.[2]).toEqual({ params: { path: "docs/new/a.md" } });
+      });
+
+      // A folder renamed twice in quick succession: the second move carries the
+      // review on from where the first put it, so it is asked for after it.
+      it("moves it along a chain of renames one after another", async () => {
+        reviewing();
+        const first = deferred<{ data: ReviewData | null }>();
+        mockedAxios.post.mockReturnValueOnce(first.promise);
+        mockedAxios.post.mockResolvedValueOnce({ data: null });
+        const store = useReviewStore.getState();
+        store.followDocument("docs/old/a.md", "docs/new/a.md");
+        store.followDocument("docs/new/a.md", "docs/newer/a.md");
+        expect(useReviewStore.getState().filePath).toBe("docs/newer/a.md");
+        await Promise.resolve();
+        expect(moveCalls()).toHaveLength(1);
+
+        first.resolve({ data: null });
+        await vi.waitFor(() => expect(moveCalls()).toHaveLength(2));
+        expect(moveCalls()[1][2]).toEqual({
+          params: { path: "docs/new/a.md" },
+        });
+      });
+    });
+  });
+
   describe("comment mutations", () => {
     const baseComment: ReviewComment = {
       id: "c1",

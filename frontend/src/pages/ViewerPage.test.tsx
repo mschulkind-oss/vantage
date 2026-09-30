@@ -736,6 +736,194 @@ describe("ViewerPage", () => {
       rerender(page());
       expect(shownName()).toBe("b.md");
     });
+
+    // useWebSocket reports a document whose directory was renamed under it,
+    // and the page takes the reader to its new address as if nothing
+    // happened: the same document, where they were in it.
+    describe("a document whose directory was renamed under it", () => {
+      const OLD = "docs/old/a.md";
+      const NEW = "docs/new/a.md";
+      const socket = useWebSocket as unknown as ReturnType<typeof vi.fn>;
+      /** The page's answer to useWebSocket's report of a move. */
+      const reportMove = (from: string, to: string) => {
+        const options = socket.mock.calls.at(-1)?.[0] as
+          { onMoved?: (from: string, to: string) => void } | undefined;
+        expect(options?.onMoved).toBeTypeOf("function");
+        act(() => options!.onMoved!(from, to));
+      };
+      // jsdom does no layout and has no element scrollTo, which the page
+      // calls to start a newly opened document at its top.
+      const scrollTo = vi.fn();
+      beforeEach(() => {
+        // Read by the review store, which asks the server to move the review,
+        // and by the page once a follow's grace period is over.
+        (useRepoStore as unknown as { getState: () => unknown }).getState =
+          () => ({ currentRepo: null, isMultiRepo: false });
+        Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+          value: scrollTo,
+          configurable: true,
+          writable: true,
+        });
+      });
+      afterEach(() => {
+        delete (HTMLElement.prototype as { scrollTo?: unknown }).scrollTo;
+        localStorage.clear();
+      });
+
+      it("goes to its new address in place of the old one", () => {
+        loaded(OLD);
+        answered(OLD);
+        render(page());
+        reportMove(OLD, NEW);
+        // Replaced, not pushed: the old address names nothing now, so Back
+        // leads to where the reader was before it.
+        expect(mockNavigate).toHaveBeenCalledWith(`/${NEW}`, {
+          replace: true,
+        });
+      });
+
+      it("keeps the reader where they were in it", () => {
+        loaded(OLD);
+        answered(OLD);
+        const { rerender } = render(page());
+        scrollTo.mockClear();
+
+        reportMove(OLD, NEW);
+        loaded(NEW);
+        answered(OLD, NEW);
+        rerender(page());
+        expect(shownName()).toBe(NEW);
+        expect(scrollTo).not.toHaveBeenCalled();
+
+        // Any other document the reader opens after it starts at its top.
+        loaded("c.md");
+        answered(OLD, NEW, "c.md");
+        rerender(page());
+        expect(scrollTo).toHaveBeenCalledWith(0, 0);
+      });
+
+      it("keeps review mode on for it", () => {
+        loaded(OLD);
+        answered(OLD);
+        useReviewStore.setState({ filePath: OLD, isReviewMode: true });
+        render(page());
+        reportMove(OLD, NEW);
+        expect(localStorage.getItem(`vantage.reviewMode:${NEW}`)).toBe("on");
+      });
+
+      // Renamed again before its new address was asked for, the document is
+      // not there either, and the next push follows it on. Until then the
+      // page keeps what it shows rather than flash the not-found page.
+      describe("renamed again before it was asked for", () => {
+        const NEWER = "docs/newer/a.md";
+        /** What the store says when the grace period ends. */
+        const storeSays = (currentPath: string, requestedPath: string) => {
+          (useRepoStore as unknown as { getState: () => unknown }).getState =
+            () => ({
+              currentRepo: null,
+              isMultiRepo: false,
+              currentPath,
+              requestedPath,
+            });
+        };
+
+        it("asks for its new address keeping the document on screen", () => {
+          storeSays(OLD, NEW);
+          loaded(OLD);
+          answered(OLD);
+          const { rerender } = render(page());
+          reportMove(OLD, NEW);
+          mockUseParams.mockReturnValue({ "*": NEW });
+          rerender(page());
+          expect(mockLoadFile).toHaveBeenCalledWith(NEW, {
+            keepOnFailure: true,
+          });
+        });
+
+        it("says it is gone once no push has taken it further", () => {
+          storeSays(OLD, NEW);
+          loaded(OLD);
+          answered(OLD);
+          const { rerender } = render(page());
+          reportMove(OLD, NEW);
+          mockUseParams.mockReturnValue({ "*": NEW });
+          rerender(page());
+          mockLoadFile.mockClear();
+
+          act(() => vi.advanceTimersByTime(1000));
+          expect(mockLoadFile).not.toHaveBeenCalled();
+          act(() => vi.advanceTimersByTime(600));
+          expect(mockLoadFile).toHaveBeenCalledTimes(1);
+          expect(mockLoadFile).toHaveBeenCalledWith(NEW);
+        });
+
+        it("asks for nothing more once it has landed", () => {
+          storeSays(NEW, NEW);
+          loaded(OLD);
+          answered(OLD);
+          render(page());
+          reportMove(OLD, NEW);
+          mockLoadFile.mockClear();
+          act(() => vi.advanceTimersByTime(2000));
+          expect(mockLoadFile).not.toHaveBeenCalled();
+        });
+
+        it("keeps the reader where they were along the chain", () => {
+          storeSays(OLD, NEWER);
+          loaded(OLD);
+          answered(OLD);
+          const { rerender } = render(page());
+          scrollTo.mockClear();
+
+          reportMove(OLD, NEW);
+          reportMove(NEW, NEWER);
+          loaded(NEWER);
+          answered(OLD, NEWER);
+          rerender(page());
+          expect(shownName()).toBe(NEWER);
+          expect(scrollTo).not.toHaveBeenCalled();
+          expect(mockNavigate).toHaveBeenLastCalledWith(`/${NEWER}`, {
+            replace: true,
+          });
+        });
+      });
+
+      // On a phone the sidebar is a panel the reader slid open, and a
+      // navigation of theirs closes it. A follow is not one.
+      it("leaves the mobile sidebar open", () => {
+        const width = window.innerWidth;
+        Object.defineProperty(window, "innerWidth", {
+          value: 390,
+          configurable: true,
+        });
+        try {
+          loaded(OLD);
+          answered(OLD);
+          const { rerender } = render(page());
+          fireEvent.click(screen.getByLabelText("Open sidebar"));
+          expect(screen.getByTestId("sidebar")).toHaveClass("translate-x-0");
+
+          reportMove(OLD, NEW);
+          loaded(NEW);
+          answered(OLD, NEW);
+          rerender(page());
+          expect(screen.getByTestId("sidebar")).toHaveClass("translate-x-0");
+
+          // Opening another document still closes it.
+          loaded("c.md");
+          answered(OLD, NEW, "c.md");
+          rerender(page());
+          expect(screen.getByTestId("sidebar")).toHaveClass(
+            "-translate-x-full",
+          );
+        } finally {
+          Object.defineProperty(window, "innerWidth", {
+            value: width,
+            configurable: true,
+          });
+        }
+      });
+    });
   });
 
   it("loads file when path ends with .md service call", () => {
