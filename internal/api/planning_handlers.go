@@ -4,8 +4,10 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -61,22 +63,49 @@ func (h *Handlers) PlanningSources(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, planning.Lookup(svc.FS, planningConfig(svc), rel))
 }
 
-// streamBodyLimit caps the planning stream's request body. Its `have` costs
-// about 60 B a candidate, so the cap holds several times `max-candidates`'
-// default of 5,000. A variable so a test can lower it rather than send 4 MiB.
-var streamBodyLimit int64 = 4 << 20
+// bodyBytesPerCandidate is how much of a planning request's body each of the
+// repository's `max-candidates` allows. A warm `have` entry costs its path and
+// about 40 B more, and a reviews path its own length and 3, so a repository at
+// its limit fits with room to spare, and raising the limit raises the cap with
+// it: a fixed cap would answer every warm build past about 54,000 candidates
+// with a 413 the limit allows (design §6.1).
+const bodyBytesPerCandidate = 1 << 10
+
+// streamBodyFloor and reviewsBodyFloor are the least each endpoint's body cap
+// is, whatever `max-candidates` says. Variables so a test can lower them
+// rather than send megabytes.
+var (
+	streamBodyFloor  int64 = 4 << 20
+	reviewsBodyFloor int64 = 1 << 20
+)
+
+// bodyLimit is a planning request's body cap for a repository whose
+// `max-candidates` is maxCandidates: [bodyBytesPerCandidate] each, and never
+// below floor. It saturates rather than overflow, since the config bounds
+// `max-candidates` only from below.
+func bodyLimit(floor int64, maxCandidates int) int64 {
+	if int64(maxCandidates) > math.MaxInt64/bodyBytesPerCandidate {
+		return math.MaxInt64
+	}
+	return max(floor, int64(maxCandidates)*bodyBytesPerCandidate)
+}
 
 // PlanningStream handles POST /planning/stream (and
 // /r/{repo}/planning/stream): every planning candidate as one line of NDJSON,
 // with the text only of the files whose content hash the browser does not
 // already hold. Design: docs/design/planning-index-at-scale.md §6.1. The lines
-// are [planning.WriteStream]'s.
+// are [planning.Stream.Write]'s.
 //
 // The body is `{"have": {path: hash, …}}`, the hashes the browser keeps scan
 // results under. No body, `{}`, or an empty or null `have` asks for a cold
-// build: every text. A body past [streamBodyLimit] is a 413, and one that is
-// not exactly an object of that shape, alone, is a 400, both with the
+// build: every text. A body past [bodyLimit] is a 413, and one that is not
+// exactly an object of that shape, alone, is a 400, both with the
 // {"detail":…} envelope and before a line is written.
+//
+// The candidates are listed before the body is read, and the body is read one
+// entry at a time, keeping only the entries [planning.Stream.Wants] accepts:
+// whatever the body's size, what the request holds of `have` is at most one
+// path and one hash per candidate (design §6.4).
 //
 // The answer is `application/x-ndjson`, never cached, and gzipped at the
 // fastest level when the request accepts gzip, since a cold build's body is
@@ -88,6 +117,10 @@ var streamBodyLimit int64 = 4 << 20
 // because it scans each line before reading the next, holds the server back by
 // TCP, which is the design's backpressure.
 //
+// The request's context ends the reading: once the client has gone, no
+// further candidate is opened, although behind gzip no write fails until the
+// next flush.
+//
 // The config is read as [Handlers.PlanningSources] reads it, past the reload
 // throttle, because the build this most often answers is the one a
 // `.vantage.toml` push just caused.
@@ -96,25 +129,21 @@ func (h *Handlers) PlanningStream(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var req *struct {
-		Have map[string]string `json:"have"`
-	}
-	switch err := decodeCapped(w, r, streamBodyLimit, &req); {
+	cfg := planningConfig(svc)
+	stream := planning.NewStream(svc.FS, cfg)
+	limit := bodyLimit(streamBodyFloor, cfg.MaxCandidates)
+	have, err := readHave(w, r, limit, stream.Wants)
+	switch {
 	case errors.Is(err, io.EOF):
 		// No body at all: a cold build.
 	case isTooLarge(err):
 		writeDetail(w, http.StatusRequestEntityTooLarge,
-			"The planning stream's request is larger than "+strconv.FormatInt(streamBodyLimit, 10)+" bytes")
+			"The planning stream's request is larger than "+strconv.FormatInt(limit, 10)+" bytes")
 		return
-	case err != nil || req == nil:
+	case err != nil:
 		writeDetail(w, http.StatusBadRequest, `Invalid request body: expected {"have": {path: hash}}`)
 		return
 	}
-	var have map[string]string
-	if req != nil {
-		have = req.Have
-	}
-	cfg := planningConfig(svc)
 
 	header := w.Header()
 	header.Set("Content-Type", "application/x-ndjson")
@@ -129,7 +158,7 @@ func (h *Handlers) PlanningStream(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 
-	err := planning.WriteStream(out, svc.FS, cfg, have)
+	err = stream.Write(r.Context(), out, have)
 	if err == nil && out.gz != nil {
 		err = out.gz.Close()
 	}
@@ -185,10 +214,6 @@ func acceptsGzip(r *http.Request) bool {
 	return false
 }
 
-// reviewsBodyLimit caps the reviews request's body. A variable so a test can
-// lower it rather than send 1 MiB.
-var reviewsBodyLimit int64 = 1 << 20
-
 // planningReview is one entry of the reviews answer.
 type planningReview struct {
 	Path   string            `json:"path"`
@@ -208,36 +233,36 @@ type planningReview struct {
 //
 // A path is validated as GET /review validates it, and one that fails, the
 // empty path, is left out. A store read error leaves its path out with a
-// warning, as GET /review degrades to null. The body is capped at
-// [reviewsBodyLimit] and at the repository's `max-candidates` paths, since the
-// page never lists more documents than that; past either cap it is a 413. A
-// body that is not exactly that shape, an empty one included, is a 400.
+// warning, as GET /review degrades to null. The body is capped at [bodyLimit]
+// and at the repository's `max-candidates` paths, since the page never lists
+// more documents than that; past either cap it is a 413, and the path past the
+// second is refused as soon as it is read. A body that is not exactly that
+// shape, an empty one included, is a 400.
 func (h *Handlers) PlanningReviews(w http.ResponseWriter, r *http.Request) {
 	svc, ok := h.repoOr400(w, r)
 	if !ok {
 		return
 	}
-	var req *struct {
-		Paths []string `json:"paths"`
-	}
-	switch err := decodeCapped(w, r, reviewsBodyLimit, &req); {
+	maxPaths := planningConfig(svc).MaxCandidates
+	limit := bodyLimit(reviewsBodyFloor, maxPaths)
+	paths, err := readPaths(w, r, limit, maxPaths)
+	switch {
 	case isTooLarge(err):
 		writeDetail(w, http.StatusRequestEntityTooLarge,
-			"The reviews request is larger than "+strconv.FormatInt(reviewsBodyLimit, 10)+" bytes")
+			"The reviews request is larger than "+strconv.FormatInt(limit, 10)+" bytes")
 		return
-	case err != nil || req == nil:
+	case errors.Is(err, errTooManyPaths):
+		writeDetail(w, http.StatusRequestEntityTooLarge,
+			"The reviews request names more than "+strconv.Itoa(maxPaths)+" paths, the planning index's max-candidates")
+		return
+	case err != nil:
 		writeDetail(w, http.StatusBadRequest, `Invalid request body: expected {"paths": [path]}`)
 		return
 	}
-	if limit := planningConfig(svc).MaxCandidates; len(req.Paths) > limit {
-		writeDetail(w, http.StatusRequestEntityTooLarge,
-			"The reviews request names more than "+strconv.Itoa(limit)+" paths, the planning index's max-candidates")
-		return
-	}
 
-	reviews := make([]planningReview, 0, len(req.Paths))
-	seen := make(map[string]bool, len(req.Paths))
-	for _, path := range req.Paths {
+	reviews := make([]planningReview, 0, len(paths))
+	seen := make(map[string]bool, len(paths))
+	for _, path := range paths {
 		if path == "" || seen[path] {
 			continue
 		}
@@ -256,22 +281,121 @@ func (h *Handlers) PlanningReviews(w http.ResponseWriter, r *http.Request) {
 	}{reviews})
 }
 
-// decodeCapped decodes the request body, at most limit bytes of it, into v as
-// exactly one JSON value.
+// errTooManyPaths is a reviews body naming more paths than `max-candidates`.
+var errTooManyPaths = errors.New("more paths than max-candidates")
+
+// readHave reads the stream's body, `{"have": {path: hash, …}}`, keeping only
+// the entries wants accepts. A null `have` is nil, as no `have` is.
+func readHave(w http.ResponseWriter, r *http.Request, limit int64, wants func(path, hash string) bool) (map[string]string, error) {
+	var have map[string]string
+	err := readObject(w, r, limit, "have", func(dec *json.Decoder) error {
+		switch tok, err := dec.Token(); {
+		case err != nil:
+			return err
+		case tok == nil:
+			have = nil
+			return nil
+		case tok != json.Delim('{'):
+			return errors.New(`"have" is not an object`)
+		}
+		if have == nil {
+			have = map[string]string{}
+		}
+		for dec.More() {
+			// A key is always a string: the decoder refuses anything else.
+			key, err := dec.Token()
+			if err != nil {
+				return err
+			}
+			value, err := dec.Token()
+			if err != nil {
+				return err
+			}
+			hash, ok := value.(string)
+			if !ok {
+				return errors.New("a hash that is not a string")
+			}
+			if path := key.(string); wants(path, hash) {
+				have[path] = hash
+			}
+		}
+		_, err := dec.Token()
+		return err
+	})
+	return have, err
+}
+
+// readPaths reads the reviews body, `{"paths": [path, …]}`, refusing it with
+// [errTooManyPaths] at the first path past maxPaths.
+func readPaths(w http.ResponseWriter, r *http.Request, limit int64, maxPaths int) ([]string, error) {
+	var paths []string
+	err := readObject(w, r, limit, "paths", func(dec *json.Decoder) error {
+		switch tok, err := dec.Token(); {
+		case err != nil:
+			return err
+		case tok == nil:
+			paths = nil
+			return nil
+		case tok != json.Delim('['):
+			return errors.New(`"paths" is not an array`)
+		}
+		paths = paths[:0]
+		for dec.More() {
+			tok, err := dec.Token()
+			if err != nil {
+				return err
+			}
+			path, ok := tok.(string)
+			if !ok {
+				return errors.New("a path that is not a string")
+			}
+			if len(paths) == maxPaths {
+				return errTooManyPaths
+			}
+			paths = append(paths, path)
+		}
+		_, err := dec.Token()
+		return err
+	})
+	return paths, err
+}
+
+// readObject reads the request body, at most limit bytes of it, as exactly one
+// JSON object whose only key is field, handing the decoder to value to read
+// what follows the key each time it appears. The body is read token by token,
+// so what a handler holds of it is what value keeps, never the decoded whole.
 //
 // It returns io.EOF for a body that is empty or only whitespace, an
-// [*http.MaxBytesError] (see [isTooLarge]) for one past the limit, and any
-// other error for one that is not a single JSON value of v's shape, a key v
-// does not have included: a misspelled field read as absent would pass for a
-// request that asked for nothing. [decodeBody] answers 400 for all three alike,
-// which is why the planning endpoints do not use it.
-func decodeCapped(w http.ResponseWriter, r *http.Request, limit int64, v any) error {
+// [*http.MaxBytesError] (see [isTooLarge]) for one past the limit, value's own
+// error, and any other error for one that is not a single object of that
+// shape, another key included: a misspelled field read as absent would pass
+// for a request that asked for nothing. [decodeBody] answers 400 for all of
+// them alike, which is why the planning endpoints do not use it.
+func readObject(w http.ResponseWriter, r *http.Request, limit int64, field string, value func(*json.Decoder) error) error {
 	body := http.MaxBytesReader(w, r.Body, limit)
 	defer func() { _ = body.Close() }()
 	dec := json.NewDecoder(body)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(v); err != nil {
+	switch tok, err := dec.Token(); {
+	case err != nil:
 		return err
+	case tok != json.Delim('{'):
+		return errors.New("not an object")
+	}
+	for dec.More() {
+		key, err := dec.Token()
+		if err != nil {
+			return truncated(err)
+		}
+		if key != field {
+			return fmt.Errorf("unknown key %q", key)
+		}
+		if err := value(dec); err != nil {
+			return truncated(err)
+		}
+	}
+	// The object's closing brace, and then nothing but whitespace.
+	if _, err := dec.Token(); err != nil {
+		return truncated(err)
 	}
 	switch _, err := dec.Token(); {
 	case errors.Is(err, io.EOF):
@@ -281,6 +405,15 @@ func decodeCapped(w http.ResponseWriter, r *http.Request, limit int64, v any) er
 	default:
 		return errors.New("more than one JSON value")
 	}
+}
+
+// truncated is err met inside the object, where the end of the body is a
+// body cut short and not an empty one.
+func truncated(err error) error {
+	if errors.Is(err, io.EOF) {
+		return io.ErrUnexpectedEOF
+	}
+	return err
 }
 
 // isTooLarge reports whether err is a request body past its cap.

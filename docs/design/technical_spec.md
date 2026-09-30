@@ -202,15 +202,17 @@ The planning routes serve the planning index's inputs and never parse Markdown
   [NDJSON](https://github.com/ndjson/ndjson-spec): a header, one line per
   candidate, then `end`. A candidate whose hash matches `have` is a `same` line
   with no text; the roadmap is always sent whole. The request body is capped at
-  4 MiB (`413` past it), the answer is gzipped when accepted, and it is flushed
-  after the header and every 64 KiB (`internal/planning/stream.go`).
+  1 KiB per `max-candidates` and never below 4 MiB (`413` past it), and only the
+  entries that could be `same` are kept of it. The answer is gzipped when
+  accepted, flushed after the header and every 64 KiB, and stops reading once
+  the request's context ends (`internal/planning/stream.go`).
 - **`GET /planning/sources?path=`** answers for one path, a `file` answer
   carrying its content hash. Without `path` it was the whole-corpus batch the
   stream replaced, and it now answers `410 Gone`, so a tab loaded before the
   change shows an error and a reload fixes it.
 - **`POST /planning/reviews`** takes `{"paths": [...]}` and answers each stored
-  review in request order, exactly as `GET /review` would, capped at 1 MiB and
-  at `max-candidates` paths.
+  review in request order, exactly as `GET /review` would, capped at 1 KiB per
+  `max-candidates` (never below 1 MiB) and at `max-candidates` paths.
 
 The `/api/ws` WebSocket route is not in the table; the `live` package mounts it
 directly.

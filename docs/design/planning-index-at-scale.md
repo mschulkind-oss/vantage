@@ -254,8 +254,13 @@ at most one file's scan. Builds for different repositories in daemon mode interl
 `POST /api/planning/stream`, and `/api/r/{repo}/planning/stream` in daemon mode.
 
 **Request.** `{"have": {"docs/a.md": "<content hash>", …}}`. An empty object, or no body, asks
-for a cold build. The body is capped at 4 MiB, and a larger one is refused with `413`. A body
-that is not that shape is a `400`. A path in `have` that is not a candidate is ignored.
+for a cold build. The body is capped at 1 KiB per `max-candidates`, and never below 4 MiB; a
+larger one is refused with `413`. A `have` entry costs its path and about 40 B more, so a
+repository at its limit fits with room to spare, and raising the limit raises the cap: a fixed
+4 MiB answered every warm build past about 54,000 candidates with a `413`. A body that is not
+that shape is a `400`. A path in `have` that is not a candidate is ignored. The candidates are
+listed before the body is read, and the body is read one entry at a time, keeping only an entry
+that could make a line `same` ([§6.4](#64-what-the-server-holds)).
 
 **Response.** `200`, `Content-Type: application/x-ndjson`, `Cache-Control: no-store`, gzipped
 at the fastest level when the request accepts gzip.
@@ -281,10 +286,17 @@ at the fastest level when the request accepts gzip.
 - **The config** is today's object, read the same way (`SettingsNow`, past the reload throttle).
 - **Refused** past `max-candidates`: the header says `"refused":true`, then comes `end`, and
   nothing is opened.
+- **A name that is not UTF-8** (Linux allows one) makes its candidate `unreadable`, *its name is
+  not UTF-8*, and nothing is opened. JSON carries only UTF-8, so the name would arrive with the
+  replacement character, U+FFFD, for each invalid byte: a path `?path=` never finds, and a result
+  kept under it never `same`.
+  Two names that differ only in those bytes still arrive as one path, twice.
 - **`end` is mandatory.** A body without it, such as a dropped connection, is a failed build,
   never a smaller index.
 - **Flushed** after the header and every 64 KiB, so the first line reaches the worker at once.
-- **A client that goes away** stops the reading at the next write, as the batch does today.
+- **A client that goes away** stops the reading before the next candidate: the request's
+  context is asked before each read. A failed write says so too late, since behind gzip the
+  lines reach the connection only at the next 64 KiB flush, about 870 `same` lines.
 - **Go's JSON encoder escapes every newline**, so a newline in the body always ends a line.
 
 > [!NOTE]
@@ -316,7 +328,9 @@ context ([§10.5](#105-comments-and-copy-answers)) use it.
 `{"reviews": [{"path": "…", "review": {…}}]}`: one entry for each path that has a stored review,
 in request order, each `review` exactly what `GET /review?path=` returns.
 
-- The body is capped at 1 MiB and at `max-candidates` paths.
+- The body is capped at 1 KiB per `max-candidates`, never below 1 MiB, and at `max-candidates`
+  paths. It is read one path at a time, and the path past the limit is a `413` as soon as it is
+  read.
 - Each path is validated as `GET /review` validates it, and one that fails is left out.
 - A store read error leaves that path out with a warning, as `GET /review` degrades to `null`.
 
@@ -326,8 +340,12 @@ It replaces the page's one `GET /review` per listed document
 
 ### 6.4 What the server holds
 
-- **Memory:** one file, its JSON encoding, the gzip window, the parsed `have` (at most the 4 MiB
-  body) and the candidate list. Nothing is proportional to the corpus's bytes.
+- **Memory:** one file, its JSON encoding, the gzip window, the kept `have` and the candidate
+  list. Nothing is proportional to the corpus's bytes, nor to the body's: an entry for a path
+  that is no candidate, for the roadmap, or with a value that is no content hash's spelling is
+  dropped as it is read, so the kept `have` is at most one path and 32 digits per candidate.
+  Decoded whole, a body of short distinct keys held about 4.4 times its size, 18.6 MB for one
+  just under 4 MiB.
 - **CPU:** it reads and hashes every candidate on every build, the same reads as today plus a
   hash, measured at about 1 ms per MB. That is about 1 ms here and an estimated 20–30 ms at 21 MB.
 - **No state between requests.** A stat-keyed hash memo would make warm builds stat-only, and is
@@ -739,7 +757,7 @@ review mode's 4 px bar. Each is its own fix.
 | Scan worker | its code, one stream line (at most `max-file-bytes` plus escaping), one file's parse, up to 100 queued cache writes, and the facts of a chunk not yet posted |
 | Helpers | cold builds only: each holds its code, one queue of at most 2 MiB and one parse, and is ended with the build |
 | Scan cache (disk) | facts plus distinct card blocks of at most 32,000 characters each, plus about 100 B per candidate; about 10–15 MB at 1,000 documents |
-| Server, per request | one file and its encoding, the gzip window, a request body of at most 4 MiB, the candidate list |
+| Server, per request | one file and its encoding, the gzip window, the candidate list, and the kept `have`, at most one entry per candidate; the body is read as it arrives, capped at 1 KiB per `max-candidates` and never below 4 MiB |
 | Wire, warm | a `have` of about 60 B per candidate, and about 75 B per `same` line, plus the roadmap and changed files |
 | Wire, cold | every readable candidate once, streamed and never held whole |
 | Work before the frame paints | the section derivation, 0.4–1.5 ms at 1,005 documents |

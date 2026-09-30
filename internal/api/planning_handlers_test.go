@@ -3,13 +3,17 @@ package api
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -17,6 +21,7 @@ import (
 
 	"github.com/mschulkind-oss/vantage/internal/model"
 	"github.com/mschulkind-oss/vantage/internal/perf"
+	"github.com/mschulkind-oss/vantage/internal/planning"
 	"github.com/mschulkind-oss/vantage/internal/repoconfig"
 )
 
@@ -261,8 +266,10 @@ func TestPlanningStreamReadsItsBody(t *testing.T) {
 		require.Equal(t, []string{"file a.md"}, sent(streamLines(t, w)), "body %q is a cold build", body)
 	}
 	for _, body := range []string{
-		`null`, `[]`, `"have"`, `{`, `{"have":[]}`, `{"have":{"a.md":5}}`,
+		`null`, `[]`, `"have"`, `{`, `{"have":[]}`, `{"have":{"a.md":5}}`, `{"have":{"a.md":{}}}`,
 		`{"hav":{"a.md":"9f86d081884c7d659a2feaa0c55ad015"}}`, `{"have":{}} {}`, `{"have":{}}x`,
+		// Cut short at each depth: a body that ends early is never a cold build.
+		`{"have":`, `{"have":{`, `{"have":{"a.md"`, `{"have":{"a.md":"9f86d081884c7d659a2feaa0c55ad015"}`,
 	} {
 		w := e.stream(body)
 		require.Equal(t, http.StatusBadRequest, w.Code, "body %q", body)
@@ -271,29 +278,102 @@ func TestPlanningStreamReadsItsBody(t *testing.T) {
 	}
 }
 
-// The body cap, lowered to a few hundred bytes rather than proven with 4 MiB:
-// a body of exactly the cap is read, and one byte more is a 413, however the
-// extra byte arrives.
+// The body cap, its floor lowered to 2 KiB rather than proven with 4 MiB, in a
+// repository whose `max-candidates` of 1 asks for less than the floor: a body
+// of exactly the cap is read, and one byte more is a 413, however the extra
+// byte arrives.
 func TestPlanningStreamRefusesABodyPastItsCap(t *testing.T) {
-	prev := streamBodyLimit
-	streamBodyLimit = 256
-	t.Cleanup(func() { streamBodyLimit = prev })
-	e := newPlanningEnv(t, map[string]string{"a.md": "test"})
+	const floor = 2 << 10
+	prev := streamBodyFloor
+	streamBodyFloor = floor
+	t.Cleanup(func() { streamBodyFloor = prev })
+	e := newPlanningEnv(t, map[string]string{"a.md": "test", ".vantage.toml": "[planning]\nmax-candidates = 1\n"})
 
 	have := `{"have":{"a.md":"9f86d081884c7d659a2feaa0c55ad015"}}`
-	atCap := have + strings.Repeat(" ", 256-len(have))
-	require.Len(t, atCap, 256)
+	atCap := have + strings.Repeat(" ", floor-len(have))
+	require.Len(t, atCap, floor)
 	require.Equal(t, []string{"same a.md"}, sent(streamLines(t, e.stream(atCap))))
 
 	for _, body := range []string{
 		atCap + " ",
-		`{"have":{"` + strings.Repeat("x", 300) + `.md":"h"}}`,
-		strings.Repeat(" ", 300),
+		`{"have":{"` + strings.Repeat("x", floor) + `.md":"h"}}`,
+		strings.Repeat(" ", floor+1),
 	} {
 		w := e.stream(body)
 		require.Equal(t, http.StatusRequestEntityTooLarge, w.Code, "a %d-byte body", len(body))
-		require.Contains(t, w.Body.String(), `"detail"`)
+		require.JSONEq(t, `{"detail":"The planning stream's request is larger than 2048 bytes"}`, w.Body.String())
 	}
+}
+
+// The cap grows with `max-candidates`, 1 KiB a candidate, so a warm build the
+// limit allows is never a 413. With a fixed cap, a repository whose `have` had
+// outgrown it was answered 413 on every warm load, and Retry, which sends no
+// `have`, only refilled the cache for the next load to fail again. Here the
+// floor is 1 KiB and 20 candidates' `have` is larger than that.
+func TestPlanningStreamsCapGrowsWithMaxCandidates(t *testing.T) {
+	prev := streamBodyFloor
+	streamBodyFloor = 1 << 10
+	t.Cleanup(func() { streamBodyFloor = prev })
+	files := map[string]string{".vantage.toml": "[planning]\nmax-candidates = 20\n"}
+	have := map[string]string{}
+	for i := range 20 {
+		path := fmt.Sprintf("docs/design/document-%02d.md", i)
+		files[path] = "test"
+		have[path] = "9f86d081884c7d659a2feaa0c55ad015"
+	}
+	e := newPlanningEnv(t, files)
+	raw, err := json.Marshal(map[string]any{"have": have})
+	require.NoError(t, err)
+	require.Greater(t, len(raw), 1<<10, "past the floor")
+
+	lines := streamLines(t, e.stream(string(raw)))
+	require.Len(t, lines, 22)
+	for _, line := range lines[1:21] {
+		require.Equal(t, "same", line.Kind, line.Path)
+	}
+
+	const limit = 20 << 10
+	atCap := string(raw) + strings.Repeat(" ", limit-len(raw))
+	require.Equal(t, http.StatusOK, e.stream(atCap).Code)
+	w := e.stream(atCap + " ")
+	require.Equal(t, http.StatusRequestEntityTooLarge, w.Code)
+	require.Contains(t, w.Body.String(), "larger than 20480 bytes")
+}
+
+func TestBodyLimitIsAKiBPerCandidateAboveItsFloor(t *testing.T) {
+	require.Equal(t, int64(4<<20), bodyLimit(4<<20, 1))
+	require.Equal(t, int64(4<<20), bodyLimit(4<<20, 4096), "at the floor exactly")
+	require.Equal(t, int64(5000<<10), bodyLimit(4<<20, repoconfig.DefaultMaxCandidates),
+		"the default max-candidates asks for a little more than 4 MiB")
+	require.Equal(t, int64(100000<<10), bodyLimit(4<<20, 100000))
+	require.Equal(t, int64(1<<20), bodyLimit(1<<20, 1))
+	if strconv.IntSize == 64 {
+		require.Equal(t, int64(math.MaxInt64), bodyLimit(1<<20, math.MaxInt), "it saturates rather than overflow")
+	}
+}
+
+// The stream's `have` is kept to what the stream can use as the body is read:
+// an entry for a path that is no candidate, for the roadmap, or with a value
+// no content hash could equal is dropped, so a body of short distinct keys
+// holds nothing in the heap. Decoded whole, such a body held about 4.4 times
+// its size, 18.6 MB for a body just under 4 MiB (design §6.4).
+func TestTheStreamKeepsOnlyTheHaveItCanUse(t *testing.T) {
+	e := newPlanningEnv(t, map[string]string{"roadmap.md": "# Roadmap\n", "a.md": "test", "b.md": "test"})
+	const hash = "9f86d081884c7d659a2feaa0c55ad015"
+	var body strings.Builder
+	body.WriteString(`{"have":{"a.md":"` + hash + `","roadmap.md":"` + hash + `","b.md":"not a hash"`)
+	for i := range 2000 {
+		fmt.Fprintf(&body, `,"x%04d.md":"%s"`, i, hash)
+	}
+	body.WriteString(`}}`)
+
+	r := e.streamRequest(body.String())
+	stream := planning.NewStream(e.fs, repoconfig.DefaultPlanning())
+	have, err := readHave(httptest.NewRecorder(), r, 1<<20, stream.Wants)
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"a.md": hash}, have)
+
+	require.Equal(t, []string{"same a.md", "file b.md", "file roadmap.md"}, sent(streamLines(t, e.stream(body.String()))))
 }
 
 // Gzipped when the request accepts it, at no cost to the lines: the same body,
@@ -336,11 +416,15 @@ func TestAcceptsGzipReadsTheHeadersQualities(t *testing.T) {
 type flushRecorder struct {
 	*httptest.ResponseRecorder
 	flushed [][]byte
+	onFlush func() // called after each flush, when set
 }
 
 func (f *flushRecorder) Flush() {
 	f.flushed = append(f.flushed, bytes.Clone(f.Body.Bytes()))
 	f.ResponseRecorder.Flush()
+	if f.onFlush != nil {
+		f.onFlush()
+	}
 }
 
 // The header line reaches the client by the first flush, compressed or not,
@@ -372,6 +456,39 @@ func TestPlanningStreamFlushesTheHeaderThroughTheCompressor(t *testing.T) {
 			first = got
 		}
 		require.Equal(t, header, string(first), "the first flush carries the header line and nothing after it (%q)", encoding)
+	}
+}
+
+// A client that goes away ends the request's context, and the stream reads
+// nothing more for it. Through the compressor no write would fail: the lines
+// sat in it until the next 64 KiB flush, so a repository of fewer than about
+// 870 candidates had its whole corpus read and hashed for nobody. Here the
+// context ends once the header has been flushed, and the body is that header
+// alone, with no `end` and, gzipped, no footer either.
+func TestPlanningStreamStopsReadingWhenTheRequestEnds(t *testing.T) {
+	e := newPlanningEnv(t, map[string]string{"a.md": "test", "b.md": "# B\n", "c.md": "# C\n"})
+	handler := perf.Middleware(perf.NewStore())(http.HandlerFunc(e.h.PlanningStream))
+
+	for _, encoding := range []string{"", "gzip"} {
+		r := e.streamRequest("", "Accept-Encoding", encoding)
+		ctx, cancel := context.WithCancel(r.Context())
+		r = r.WithContext(ctx)
+		r.URL.Path = "/api/planning/stream"
+		w := &flushRecorder{ResponseRecorder: httptest.NewRecorder(), onFlush: cancel}
+		handler.ServeHTTP(w, r)
+		cancel()
+
+		body := w.Body.Bytes()
+		if encoding == "gzip" {
+			zr, err := gzip.NewReader(bytes.NewReader(body))
+			require.NoError(t, err)
+			got, err := io.ReadAll(zr)
+			require.ErrorIs(t, err, io.ErrUnexpectedEOF, "never closed, so no footer")
+			body = got
+		}
+		lines := strings.SplitAfter(string(body), "\n")
+		require.Len(t, lines, 2, "the header and nothing after it (%q): %q", encoding, body)
+		require.True(t, strings.HasPrefix(lines[0], `{"kind":"header",`), lines[0])
 	}
 }
 
@@ -583,21 +700,60 @@ func TestPlanningReviewsCapsItsPaths(t *testing.T) {
 	require.Contains(t, w.Body.String(), "2 paths")
 }
 
-// The body cap, lowered to 128 bytes rather than proven with 1 MiB.
+// The body cap, its floor lowered to 2 KiB rather than proven with 1 MiB, in a
+// repository whose `max-candidates` of 1 asks for less than the floor.
 func TestPlanningReviewsCapsItsBody(t *testing.T) {
-	prev := reviewsBodyLimit
-	reviewsBodyLimit = 128
-	t.Cleanup(func() { reviewsBodyLimit = prev })
-	e := newPlanningEnv(t, nil)
+	const floor = 2 << 10
+	prev := reviewsBodyFloor
+	reviewsBodyFloor = floor
+	t.Cleanup(func() { reviewsBodyFloor = prev })
+	e := newPlanningEnv(t, map[string]string{".vantage.toml": "[planning]\nmax-candidates = 1\n"})
 	e.saveReview(t, "a.md", "a1")
 
 	body := `{"paths":["a.md"]}`
-	atCap := body + strings.Repeat(" ", 128-len(body))
+	atCap := body + strings.Repeat(" ", floor-len(body))
 	w := e.reviews(atCap)
 	require.Equal(t, http.StatusOK, w.Code)
 	w = e.reviews(atCap + " ")
 	require.Equal(t, http.StatusRequestEntityTooLarge, w.Code)
-	require.Contains(t, w.Body.String(), `"detail"`)
+	require.JSONEq(t, `{"detail":"The reviews request is larger than 2048 bytes"}`, w.Body.String())
+}
+
+// The cap grows with `max-candidates`, 1 KiB a path, so the page's request for
+// as many documents as the limit allows is never refused for its size. Here
+// the floor is 128 bytes, and three paths are past it.
+func TestPlanningReviewsCapGrowsWithMaxCandidates(t *testing.T) {
+	prev := reviewsBodyFloor
+	reviewsBodyFloor = 128
+	t.Cleanup(func() { reviewsBodyFloor = prev })
+	e := newPlanningEnv(t, map[string]string{".vantage.toml": "[planning]\nmax-candidates = 3\n"})
+	long := "docs/design/" + strings.Repeat("a-rather-long-name-", 3)
+	e.saveReview(t, long+"1.md", "a1")
+
+	body := `{"paths":["` + long + `1.md","` + long + `2.md","` + long + `3.md"]}`
+	require.Greater(t, len(body), 128)
+	w := e.reviews(body)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	var got reviewsAnswer
+	decode(t, w, &got)
+	require.Equal(t, []string{long + "1.md"}, got.paths())
+
+	w = e.reviews(body + strings.Repeat(" ", 3<<10-len(body)+1))
+	require.Equal(t, http.StatusRequestEntityTooLarge, w.Code)
+	require.Contains(t, w.Body.String(), "larger than 3072 bytes")
+}
+
+// The path past `max-candidates` is refused as it is read, before the rest of
+// the body is: what the request holds is at most that many paths, never the
+// whole body decoded. So a body that would be malformed further on is a 413.
+func TestPlanningReviewsStopsReadingAtThePathPastItsLimit(t *testing.T) {
+	e := newPlanningEnv(t, map[string]string{".vantage.toml": "[planning]\nmax-candidates = 2\n"})
+	w := e.reviews(`{"paths":["a.md","b.md","c.md",` + strings.Repeat("1,", 100) + "{")
+	require.Equal(t, http.StatusRequestEntityTooLarge, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), "2 paths")
+
+	w = e.reviews(`{"paths":["a.md","b.md",1]}`)
+	require.Equal(t, http.StatusBadRequest, w.Code, "within the limit, a malformed body is still a 400")
 }
 
 // A body that is not exactly `{"paths": [path]}` is a 400, an empty one
@@ -606,6 +762,7 @@ func TestPlanningReviewsRefusesAMalformedBody(t *testing.T) {
 	e := newPlanningEnv(t, nil)
 	for _, body := range []string{
 		"", `null`, `[]`, `{"paths":"a.md"}`, `{"paths":[1]}`, `{"path":["a.md"]}`, `{"paths":[]} {}`, `{`,
+		`{"paths":["a.md"]`, `{"paths":["a.md"`, `{"paths":`, `{"paths":[["a.md"]]}`,
 	} {
 		w := e.reviews(body)
 		require.Equal(t, http.StatusBadRequest, w.Code, "body %q", body)

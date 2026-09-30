@@ -2,6 +2,7 @@ package planning
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -65,7 +66,7 @@ func decodeLines(t *testing.T, body string) []map[string]any {
 func writeStream(t *testing.T, listing Listing, cfg repoconfig.Planning, have map[string]string) *streamLog {
 	t.Helper()
 	var s streamLog
-	require.NoError(t, WriteStream(&s, listing, cfg, have))
+	require.NoError(t, NewStream(listing, cfg).Write(context.Background(), &s, have))
 	return &s
 }
 
@@ -221,7 +222,7 @@ func TestTheHeaderIsFlushedBeforeAnyFileIsRead(t *testing.T) {
 	var s streamLog
 	logOpens(t, &s, root)
 
-	require.NoError(t, WriteStream(&s, svc, repoconfig.DefaultPlanning(), nil))
+	require.NoError(t, NewStream(svc, repoconfig.DefaultPlanning()).Write(context.Background(), &s, nil))
 	require.Equal(t, []string{"write", "flush", "open a.md", "write", "open b.md", "write", "write"}, s.events,
 		"header, flush, then one read and one line per file, then end")
 	first, _, _ := strings.Cut(s.buf.String(), "\n")
@@ -278,7 +279,7 @@ func TestTheStreamStopsWhenTheClientGoesAway(t *testing.T) {
 	opened := countOpens(t)
 
 	// The header and a.md are delivered; b.md is read and cannot be.
-	err := WriteStream(&failingFlusher{failingWriter{after: 2}}, svc, repoconfig.DefaultPlanning(), nil)
+	err := NewStream(svc, repoconfig.DefaultPlanning()).Write(context.Background(), &failingFlusher{failingWriter{after: 2}}, nil)
 	require.Error(t, err)
 	require.Equal(t, []string{filepath.Join(root, "a.md"), filepath.Join(root, "b.md")}, *opened,
 		"the stream stopped at the first line it could not deliver")
@@ -288,9 +289,127 @@ func TestTheStreamStopsWhenTheClientGoesAway(t *testing.T) {
 func TestTheStreamStopsWhenAFlushFails(t *testing.T) {
 	svc, _ := repo(t, map[string]string{"a.md": "# A\n"})
 	opened := countOpens(t)
-	err := WriteStream(brokenFlush{}, svc, repoconfig.DefaultPlanning(), nil)
+	err := NewStream(svc, repoconfig.DefaultPlanning()).Write(context.Background(), brokenFlush{}, nil)
 	require.Error(t, err)
 	require.Empty(t, *opened, "nothing is read after the header could not be flushed")
+}
+
+// cancelAtFlush is a streamLog that ends the request's context at its first
+// flush, as a client does that leaves once it has the header.
+type cancelAtFlush struct {
+	streamLog
+	cancel context.CancelFunc
+}
+
+func (c *cancelAtFlush) Flush() error {
+	c.cancel()
+	return c.streamLog.Flush()
+}
+
+// The request's context ending stops the reading before the next candidate,
+// however many lines the writer below would still accept. Behind gzip no write
+// fails until the next 64 KiB flush, so a failed write alone would read a small
+// repository's whole corpus for a client that has gone (design §6.1).
+func TestTheStreamStopsWhenItsContextEnds(t *testing.T) {
+	svc, root := repo(t, map[string]string{"a.md": "# A\n", "b.md": "# B\n", "c.md": "# C\n"})
+	have := map[string]string{"b.md": testHash}
+
+	// Gone once the header is flushed: nothing is opened at all.
+	ctx, cancel := context.WithCancel(context.Background())
+	s := &cancelAtFlush{cancel: cancel}
+	logOpens(t, &s.streamLog, root)
+	err := NewStream(svc, repoconfig.DefaultPlanning()).Write(ctx, s, have)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, []string{"write", "flush"}, s.events, "the header, and no file opened after it")
+
+	// Gone while a.md is read: its line is written, and b.md is never opened.
+	ctx, cancel = context.WithCancel(context.Background())
+	var mid streamLog
+	logOpens(t, &mid, root)
+	logged := openFile
+	openFile = func(name string) (*os.File, error) {
+		cancel()
+		return logged(name)
+	}
+	t.Cleanup(func() { openFile = logged })
+	err = NewStream(svc, repoconfig.DefaultPlanning()).Write(ctx, &mid, have)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, []string{"write", "flush", "open a.md", "write"}, mid.events)
+}
+
+// Wants accepts only an entry that could make a line `same`, so a have kept to
+// what it accepts writes the very stream the whole have writes. That is what
+// lets the handler drop the rest as it reads the body (design §6.4).
+func TestWantsKeepsOnlyWhatCouldBeSame(t *testing.T) {
+	svc, _ := repo(t, map[string]string{
+		"roadmap.md": "# Roadmap\n", "a.md": "test", "b.md": "test", "notes.txt": "test",
+	})
+	cfg := repoconfig.DefaultPlanning()
+	stream := NewStream(svc, cfg)
+	require.True(t, stream.Wants("a.md", testHash))
+	require.True(t, stream.Wants("b.md", draftHash), "a hash that does not match is still a hash")
+	for _, entry := range [][2]string{
+		{"roadmap.md", roadmapHash},         // the roadmap is never same
+		{"notes.txt", testHash},             // not a candidate
+		{"gone.md", testHash},               // not listed
+		{"./a.md", testHash},                // spelled another way
+		{"a.md", testHash[:31]},             // too short
+		{"a.md", testHash + "0"},            // too long
+		{"a.md", strings.ToUpper(testHash)}, // not lowercase
+		{"a.md", testHash[:31] + "g"},       // not hex
+	} {
+		require.False(t, stream.Wants(entry[0], entry[1]), "%q: %q", entry[0], entry[1])
+	}
+
+	refusing := cfg
+	refusing.MaxCandidates = 2
+	require.False(t, NewStream(svc, refusing).Wants("a.md", testHash), "a refused stream reads no have")
+
+	have := map[string]string{
+		"a.md": testHash, "b.md": testHash[:31] + "6", "roadmap.md": roadmapHash,
+		"notes.txt": testHash, "gone.md": testHash, "./b.md": testHash, "a.MD": "X",
+	}
+	kept := map[string]string{}
+	for path, hash := range have {
+		if stream.Wants(path, hash) {
+			kept[path] = hash
+		}
+	}
+	require.Equal(t, map[string]string{"a.md": testHash, "b.md": testHash[:31] + "6"}, kept)
+	require.Equal(t, writeStream(t, svc, cfg, have).buf.String(), writeStream(t, svc, cfg, kept).buf.String())
+}
+
+// A candidate whose name is not UTF-8, which Linux allows, is unreadable and
+// never opened. JSON would carry its name with U+FFFD for each invalid byte, so
+// as a file it would be kept under a path no lookup finds and never be `same`,
+// and two such names would be one path. As unreadable it is listed under
+// *Could not read* and nothing is kept for it.
+func TestANameThatIsNotUTF8IsUnreadable(t *testing.T) {
+	svc, root := repo(t, map[string]string{"a.md": "# A\n"})
+	for _, name := range []string{"caf\xe9.md", "caf\xe8.md"} {
+		// Text that is UTF-8, so the name is all that is wrong with the file.
+		if err := os.WriteFile(filepath.Join(root, name), []byte("# One\n"), 0o644); err != nil {
+			t.Skipf("this file system refuses a name that is not UTF-8: %v", err)
+		}
+	}
+	cfg := repoconfig.DefaultPlanning()
+	opened := countOpens(t)
+
+	const shown = "caf\uFFFD.md"
+	for _, have := range []map[string]string{nil, {shown: testHash}} {
+		lines := writeStream(t, svc, cfg, have).lines(t)
+		require.Equal(t, []string{"header", "file a.md", "unreadable " + shown, "unreadable " + shown, "end"}, kinds(lines))
+		for _, line := range lines[2:4] {
+			require.Equal(t, map[string]any{"kind": "unreadable", "path": shown, "reason": "its name is not UTF-8"}, line)
+		}
+		require.Equal(t, 3.0, lines[0]["candidate_count"])
+	}
+	require.Equal(t, []string{filepath.Join(root, "a.md"), filepath.Join(root, "a.md")}, *opened,
+		"only a.md, once per stream")
+
+	require.Equal(t, Entry{Path: "caf\xe9.md", Kind: KindUnreadable, Reason: "its name is not UTF-8"},
+		Lookup(svc, cfg, "caf\xe9.md"))
+	require.Equal(t, KindAbsent, Lookup(svc, cfg, shown).Kind, "the name the browser holds is no file")
 }
 
 // failingFlusher is a failingWriter whose flushes succeed, so only its writes fail.

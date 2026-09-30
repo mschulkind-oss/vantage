@@ -1,6 +1,7 @@
 package planning
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 
@@ -17,12 +18,12 @@ const (
 	KindEnd    = "end"
 )
 
-// flushEvery is how many bytes of lines [WriteStream] writes before it flushes
+// flushEvery is how many bytes of lines [Stream.Write] writes before it flushes
 // them. It is a variable so that a test can prove the bound by lowering it,
 // rather than by building a tree past 64 KiB.
 var flushEvery = 64 << 10
 
-// Flusher is where [WriteStream] writes: a writer that can push everything it
+// Flusher is where [Stream.Write] writes: a writer that can push everything it
 // has been given to the client at once. Over HTTP it is the response, through
 // its compressor when there is one.
 type Flusher interface {
@@ -66,9 +67,55 @@ type (
 	}
 )
 
-// WriteStream writes the planning stream for listing under cfg: one JSON object
-// per line (NDJSON), naming by its content hash alone each file whose hash the
-// browser already holds. Design: docs/design/planning-index-at-scale.md §6.1.
+// Stream is one planning stream with its candidates listed: made before the
+// request's body is read, so that what the handler keeps of the body's `have`
+// is only what [Stream.Wants] says this stream can use. Design:
+// docs/design/planning-index-at-scale.md §6.1 and §6.4.
+type Stream struct {
+	root       string
+	cfg        repoconfig.Planning
+	candidates []string
+	refused    bool
+	// wanted is the candidates as a set, built at the first [Stream.Wants].
+	wanted map[string]struct{}
+}
+
+// NewStream lists the stream for listing under cfg: [Candidates] of the
+// listing, in its order, which is path order, and whether there are more of
+// them than cfg.MaxCandidates, which refuses the stream.
+func NewStream(listing Listing, cfg repoconfig.Planning) *Stream {
+	candidates := Candidates(listing.ListAllFiles(), matcherFor(cfg))
+	return &Stream{
+		root:       listing.RootPath(),
+		cfg:        cfg,
+		candidates: candidates,
+		refused:    len(candidates) > cfg.MaxCandidates,
+	}
+}
+
+// Wants reports whether the entry path: hash of a request's `have` could ever
+// make one of this stream's lines `same`: the stream is not refused, path is
+// one of its candidates and is not the roadmap, and hash is spelled as a
+// content hash is. An entry it refuses changes nothing [Stream.Write] writes,
+// so a caller that keeps only what it accepts holds at most one path and 32
+// digits per candidate, however large the body it read them from.
+func (s *Stream) Wants(path, hash string) bool {
+	if s.refused || path == s.cfg.Roadmap || !isContentHash(hash) {
+		return false
+	}
+	if s.wanted == nil {
+		s.wanted = make(map[string]struct{}, len(s.candidates))
+		for _, rel := range s.candidates {
+			s.wanted[rel] = struct{}{}
+		}
+	}
+	_, ok := s.wanted[path]
+	return ok
+}
+
+// Write writes the planning stream: one JSON object per line (NDJSON), naming
+// by its content hash alone each file whose hash the browser already holds.
+// Design: docs/design/planning-index-at-scale.md §6.1.
 //
 //	{"kind":"header","config":…,"candidate_count":N,"refused":false}
 //	{"kind":"same","path":…,"hash":…}
@@ -84,13 +131,12 @@ type (
 // the roadmap is never part of what the browser keeps. A path in have that is
 // not a candidate is ignored, and a nil have asks for every text: a cold build.
 //
-// The candidates are [Candidates] of the listing, in its order, which is path
-// order, each read exactly as [Lookup] reads one. Every candidate is sent
-// whatever it holds: which files are planning documents is the scan's to
+// Each candidate is read exactly as [Lookup] reads one. Every candidate is
+// sent whatever it holds: which files are planning documents is the scan's to
 // decide, in the browser, and never this package's. A candidate that vanished
 // between the listing and its read is left out, as the watcher reports its
-// removal. Past cfg.MaxCandidates the header says `"refused":true`, `end`
-// follows it, and nothing is opened.
+// removal. A refused stream's header says `"refused":true`, `end` follows it,
+// and nothing is opened.
 //
 // `end` carries the candidate count again and closes every stream, refused or
 // not, because a body without it is how a reader tells a dropped connection
@@ -102,25 +148,28 @@ type (
 // newline and at no other. `<`, `>` and `&` are written as themselves: the
 // body is never HTML, and Markdown is full of them.
 //
-// An error means w stopped accepting the body — the client went away — and
-// nothing more is read for it.
-func WriteStream(w Flusher, listing Listing, cfg repoconfig.Planning, have map[string]string) error {
+// ctx is the request's, and it is asked before each candidate is read: once it
+// is done, Write returns its error and opens nothing more. A failed write
+// alone would say so too late, since behind a compressor the lines reach the
+// connection only at the next flush, 64 KiB of them later. Any other error
+// means w stopped accepting the body, and nothing more is read for it either.
+func (s *Stream) Write(ctx context.Context, w Flusher, have map[string]string) error {
 	defer perf.Default.Track(perf.CategoryFS, "planning_stream")()
 
-	candidates := Candidates(listing.ListAllFiles(), matcherFor(cfg))
-	refused := len(candidates) > cfg.MaxCandidates
-
 	out := newLineWriter(w)
-	if err := out.line(headerLine{KindHeader, cfg, len(candidates), refused}); err != nil {
+	if err := out.line(headerLine{KindHeader, s.cfg, len(s.candidates), s.refused}); err != nil {
 		return err
 	}
 	if err := out.flush(); err != nil {
 		return err
 	}
-	if !refused {
-		r := newReader(listing.RootPath(), cfg.MaxFileBytes)
-		for _, rel := range candidates {
-			line := candidateLine(rel, r.read(rel), rel == cfg.Roadmap, have)
+	if !s.refused {
+		r := newReader(s.root, s.cfg.MaxFileBytes)
+		for _, rel := range s.candidates {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			line := candidateLine(rel, r.read(rel), rel == s.cfg.Roadmap, have)
 			if line == nil {
 				continue
 			}
@@ -129,7 +178,7 @@ func WriteStream(w Flusher, listing Listing, cfg repoconfig.Planning, have map[s
 			}
 		}
 	}
-	return out.line(endLine{KindEnd, len(candidates)})
+	return out.line(endLine{KindEnd, len(s.candidates)})
 }
 
 // candidateLine is the line for one candidate's read, or nil for a candidate
