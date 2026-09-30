@@ -208,8 +208,10 @@ The planning routes serve the planning index's inputs and never parse Markdown
   the request's context ends (`internal/planning/stream.go`).
 - **`GET /planning/sources?path=`** answers for one path, a `file` answer
   carrying its content hash. Without `path` it was the whole-corpus batch the
-  stream replaced, and it now answers `410 Gone`, so a tab loaded before the
-  change shows an error and a reload fixes it.
+  stream replaced, and it now answers `410 Gone`, with a `detail` for a direct
+  API caller. No release ever asked for the batch; a tab of an unreleased build
+  that still does shows its generic load error with Retry, and a reload fixes
+  it.
 - **`POST /planning/reviews`** takes `{"paths": [...]}` and answers each stored
   review in request order, exactly as `GET /review` would, capped at 1 KiB per
   `max-candidates` (never below 1 MiB) and at `max-candidates` paths.
@@ -403,9 +405,12 @@ repositories by [planning-index-at-scale.md](planning-index-at-scale.md), whose
   Copy answers' quoted lines come from the worker too, so the main thread never
   holds a document's text.
 - **Document pages** request git status and history with the content, and hold
-  a first paint up to 150 ms for them and for a warm build. A badge that lands
-  later is drawn only in blocks that have not been on screen, and Referenced
-  by keeps its line's room from the first paint.
+  a first paint up to 150 ms (`useFirstPaintHold`) for them, for a warm build,
+  and on a first load for the recent-files list (an untracked file's date) and
+  `/info` (the Path button's root). A live reload, a directory and an error
+  never wait. A badge that lands later is drawn only in blocks that have not
+  been on screen, and Referenced by keeps its line's room from the first
+  paint.
 - **Every number** these rules fix lives in `limits.ts` (`planningLimits`),
   which tests configure down instead of growing an input to a default.
 

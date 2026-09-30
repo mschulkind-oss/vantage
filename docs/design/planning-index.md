@@ -3,15 +3,22 @@ title: "The planning index — write each planning fact once, and show it wherev
 author: "Matt Schulkind"
 date: 2026-09-28
 status: accepted
-stage: DECIDED
+stage: BUILT
+next: "Graduate it, with planning-index-at-scale.md, into one system doc"
 tags: [planning, roadmap, viewer, vantage-check, vantage-md, config]
 summary: "Vantage reads a repository's planning documents as a set — frontmatter, open questions, and the links between them — and shows each fact beside every link to it, on a page of its own, and to agents through vantage-check. It never writes a document."
 ---
 
 # The planning index — write each planning fact once, and show it wherever it is linked
 
-**Status:** DECIDED, 2026-09-28. Every question is ruled, the implementation plan's twenty
-included; nothing is built. Evidence verified against the tree at `612e784`.
+**Status:** BUILT, 2026-09-29. Phases 1 and 2 were built on `main` by `70a05b3`, and
+[the amendment for large repositories](planning-index-at-scale.md) on `planning-scale`
+(`f2fe17a`–`5d13a29`). MEASURED at `70a05b3`: this repository's scan took 336–487 ms of wall
+time, within [§15](#15-what-done-looks-like)'s 1 s
+([`planning-index-at-scale.md` §2](planning-index-at-scale.md#2-what-the-measurements-say));
+the amendment's own targets are unmeasured. Every question is ruled, the implementation plan's
+twenty included. [§2](#2-what-exists-today) is the tree at `612e784`, before any of it was
+built.
 
 > **In short.** A roadmap goes stale because it copies each design doc's state. If every
 > planning fact has exactly one home and every other mention of it is a plain link, Vantage
@@ -38,11 +45,12 @@ planning conventions built on it change what they write ([§10](#10-what-the-con
 completed against the tree on 2026-09-28), [the brainstorm](../brainstorm/planning-index.md)
 (the ideas this chose between, and the ones it retired), and
 [`planning-index-at-scale.md`](planning-index-at-scale.md) (the 2026-09-29 amendment for large
-repositories, which supersedes parts of [§3](#3-the-planning-index),
+repositories, which changed [§3](#3-the-planning-index),
 [§3.4](#34-when-it-is-built-and-how-it-stays-fresh),
 [§3.5](#35-limits-and-what-happens-past-them), [§3.6](#36-failure),
-[§5.3](#53-how-a-badge-behaves), [§6](#6-the-planning-page) and
-[§7](#7-referenced-by-and-status-in-the-file-tree)).
+[§5.3](#53-how-a-badge-behaves), [§6](#6-the-planning-page),
+[§7](#7-referenced-by-and-status-in-the-file-tree), [§13](#13-risks) and
+[§15](#15-what-done-looks-like); each carries a dated pointer to the part of it that did).
 
 ---
 
@@ -98,14 +106,13 @@ Nothing today builds backlinks, a link graph, or a whole-project scan of Markdow
 ## 3. The planning index
 
 The **planning index** *(coined in the brainstorm)* is a model of the repository's planning
-documents, rebuilt from the files and never stored.
+documents, rebuilt from the files on every page load. The index itself is never stored. Each
+file's scan result, its derived facts and its questions' card blocks, is kept in the browser
+under the file's content hash, and never trusted without it.
 
 > [!NOTE]
-> **Amended 2026-09-29.** [`planning-index-at-scale.md` §8](planning-index-at-scale.md#8-the-scan-cache)
-> keeps each file's derived facts and card blocks in the browser under the file's content hash,
-> never trusted without it ([OQ-PS1](planning-index-at-scale.md#decision-ledger), ruled
-> 2026-09-29). "Never stored" therefore holds for the index, which is still assembled on every
-> page load, but not for each file's scan result.
+> **Amended 2026-09-29** by [`planning-index-at-scale.md` §8](planning-index-at-scale.md#8-the-scan-cache)
+> ([OQ-PS1](planning-index-at-scale.md#decision-ledger)).
 
 ### 3.1 Which files it reads
 
@@ -181,19 +188,19 @@ exempts 🔒 questions from the directive, so it has to change
 ### 3.4 When it is built, and how it stays fresh
 
 > [!NOTE]
-> **Amended 2026-09-29.** *Full scan* and *Transport* below are superseded by
-> [`planning-index-at-scale.md` §5.2](planning-index-at-scale.md#52-a-build-step-by-step),
-> [§6.1](planning-index-at-scale.md#61-the-stream) and
-> [§7](planning-index-at-scale.md#7-the-scan-worker): the scan runs in a worker, fed by a stream
-> that carries only the files whose content changed. *Incremental*, *Reconnect* and *Ordering*
-> stand, through that worker. The text below is the design as ruled on 2026-09-28.
+> **Amended 2026-09-29** by [`planning-index-at-scale.md` §5](planning-index-at-scale.md#5-the-shape),
+> [§6](planning-index-at-scale.md#6-the-server) and [§7](planning-index-at-scale.md#7-the-scan-worker): *Full scan* and *Transport*.
 
-- **Full scan:** once per project per browser session, on first need. First need is opening any
-  document, the planning page, or the file tree. It runs in the background, and nothing waits
-  on it.
+- **Full scan:** once per page load, on first need, and kept while the reader moves between
+  pages. First need is opening any document, the planning page, or the file tree. It runs in a
+  dedicated worker, off the page's main thread, and scans only the roadmap and the files whose
+  content this browser has not scanned before; every other file's result comes from the
+  browser's scan cache. Nothing waits on it but the planning page, which shows its progress,
+  and a document's first paint, which may hold up to 150 ms for a build the cache has made
+  nearly free ([§5.3](#53-how-a-badge-behaves)).
 - **Incremental:** when the existing change push names a candidate path, only that file is
   fetched and re-scanned. A new or deleted file joins or leaves the index. A change to
-  `.vantage.toml` triggers a full rescan.
+  `.vantage.toml` triggers a full rescan, which still reuses the scan cache.
 - **Reconnect:** pushes sent while the push connection is down are lost. So when it drops and
   comes back while a page is open, a ready index is rescanned in full, and stays shown until the
   new scan lands. Only a genuine reconnect does this: a page's first connection is not one. A
@@ -202,13 +209,16 @@ exempts 🔒 questions from the directive, so it has to change
 - **Ordering:** each request for a path is numbered. A response is discarded if a newer request
   for the same path has already been sent. Otherwise the latest response wins. Scanning is a
   pure function of file contents, so re-running it is always safe.
-- **Transport:** one request returns every candidate's source. The server applies its file
-  listing's own rules, the include and exclude patterns and the limits, and does no parsing. A per-file
-  refresh asks the same endpoint for one path and gets the same tests applied to that file: it
-  answers with the file's source, or says the file is skipped, unreadable, or absent (missing,
-  or not a candidate). The existing content endpoint is not used for this. It serves paths the
-  listing never yields, has no size limit, and answers a missing file and an unreadable one
-  alike.
+- **Transport:** one streamed request, `POST …/planning/stream`, sends the content hash of every
+  file the browser holds a result for. The server answers one line per candidate, in path order: the
+  file's source, or only its hash when that matches, followed by an `end` line
+  ([`planning-index-at-scale.md` §6.1](planning-index-at-scale.md#61-the-stream)). It applies its
+  file listing's own rules, the include and exclude patterns and the limits, hashes what it reads,
+  and does no parsing. A per-file refresh asks the planning endpoint's single-path mode, `GET
+  …/planning/sources?path=`, and gets the same tests applied to that file: it answers with the
+  file's source and hash, or says the file is skipped, unreadable, or absent (missing, or not a
+  candidate). The existing content endpoint is not used for this. It serves paths the listing never
+  yields, has no size limit, and answers a missing file and an unreadable one alike.
 
 ### 3.5 Limits, and what happens past them
 
@@ -229,17 +239,18 @@ numbers are defaults in `[planning]`.
 ### 3.6 Failure
 
 > [!NOTE]
-> **Amended 2026-09-29.** The batch fetch below is gone:
-> [`planning-index-at-scale.md` §6.1](planning-index-at-scale.md#61-the-stream) replaces it with a
-> stream, and the batch's URL answers `410 Gone`, which a tab loaded before the change shows as
-> its error until it is reloaded. A failed stream, including one that ends without its `end`
-> line, fails as the batch did, and a static host is recognized by a first line that is not the
-> stream's header. [§12](planning-index-at-scale.md#12-failure-modes) of that design adds the
-> failures of the scan worker and of the browser's scan cache. The text below is the design as
-> ruled on 2026-09-28.
+> **Amended 2026-09-29** by [`planning-index-at-scale.md` §12](planning-index-at-scale.md#12-failure-modes): the
+> stream's failures, the scan worker's and the scan cache's.
 
-- **The batch fetch fails:** no badges and no Referenced by line. The planning page shows the error
-  with a Retry button. Documents render exactly as they do today.
+- **The build fails:** the stream request fails, its first line is not the stream's header, a
+  line does not parse, or the body ends without its `end` line. No badges and no Referenced by
+  line; a build that stopped part way is never shown as a smaller index. The planning page
+  shows the error with a Retry button, which scans again without the scan cache. Documents
+  render exactly as they do without the index.
+- **The scan worker stops** in the middle of a build: that build fails with *The planning scan
+  stopped*, and Retry starts a new worker.
+- **The browser keeps nothing** when its IndexedDB is missing, full or failing: every page load
+  is then a full scan of every candidate, and nothing else changes.
 - **One file cannot be read:** a file the server cannot read, or whose frontmatter does not
   parse (invalid YAML, an unterminated block, or not a mapping), is listed under *Could not
   read* on the planning page and contributes nothing, its `oq` directives included. Everything
@@ -247,10 +258,10 @@ numbers are defaults in `[planning]`.
 - **Multi-repo mode:** one index per repository. A link from one repository into another is
   never decorated.
 - **A static export** ([`vantage build`](../../userguide/guides/static-sites.md)) has no
-  planning endpoint, so it behaves as a failed batch fetch: no badges and no Referenced by
-  line, and its planning page shows the error. A static host may answer the endpoint's URL
-  with the site's `index.html`, so any answer that is not the batch's own shape counts as a
-  failure.
+  planning endpoint and starts no scan, so it behaves as a failed build: no badges and no
+  Referenced by line, and its planning page says it is a static export. A static host may
+  answer the endpoint's URL with the site's `index.html`, so an answer whose first line is not
+  the stream's header counts as a failure.
 
 ## 4. The header of record: `stage`, `next`, `depends-on`
 
@@ -324,10 +335,8 @@ A link gets a badge when all of the following hold:
 ### 5.3 How a badge behaves
 
 > [!NOTE]
-> **Amended 2026-09-29.** "First render never waits for them" is superseded by
-> [`planning-index-at-scale.md` §11](planning-index-at-scale.md#11-late-data-never-moves-painted-content):
-> a document's first paint may hold up to 150 ms for a warm index, and a badge that arrives later
-> is drawn only in blocks that have not been on screen yet.
+> **Amended 2026-09-29** by [`planning-index-at-scale.md` §11](planning-index-at-scale.md#11-late-data-never-moves-painted-content):
+> when a badge may arrive.
 
 - **It is appended after the link**, as a sibling element. It is not part of the link's text,
   and clicking it does nothing.
@@ -335,8 +344,10 @@ A link gets a badge when all of the following hold:
   badge that changed with the counts would move every comment on a roadmap line. Badges are
   also left out of the contents column, of copied selections, and of the visible text that
   `vantage-check`'s agreement tests use.
-- **Badges appear once the scan finishes, and change as the index updates.** First render never
-  waits for them.
+- **Badges appear once the index is ready, and change as it updates.** A document's first paint
+  waits for them only while a build the scan cache makes nearly free is under way, and never
+  more than 150 ms. A badge that arrives after the paint is drawn only in blocks that have not
+  been on screen yet, so it never moves what the reader has seen.
 - **In print**, a badge prints as plain text.
 - **On GitHub there are no badges.** A roadmap there is ordered links with their reasons,
   which are the judged part. The derived part is one click away, in each document's frontmatter
@@ -348,15 +359,19 @@ A link gets a badge when all of the following hold:
 
 > [!NOTE]
 > **Amended 2026-09-29** by [`planning-index-at-scale.md` §10](planning-index-at-scale.md#10-the-planning-page-paged):
-> the page paints its header and a section bar first, and each section shows one page at a time,
-> with its page in the URL. The sections and their order ([§6.2](#62-sections-top-to-bottom)) are
-> unchanged. In [§6.3](#63-a-question-on-the-page), comments are ready when a card first paints,
-> a card too large to render unasked is a preview card, and Copy answers places comments on
-> questions not rendered this visit by their anchor line.
+> paging, and [§6.3](#63-a-question-on-the-page)'s cards.
 
 A page for each project, reached from a toolbar entry and with `g p` (a free chord that matches
 `g h` and `g r`). It is built entirely from the index and **stores nothing** of its own: no
 snooze, no assignment, no read state.
+
+**It pages.** It paints its frame first: the header, a
+[section bar](planning-index-at-scale.md#3-terms) naming each non-empty section with its count,
+and its notices. Each section then shows one page: 10 entries in *Needs you*, *Unrouted* and
+*Waiting*, where a page also stops before its cards' Markdown passes 32 KiB; 25 document rows in
+the stage sections; 50 lines in *Skipped* and *Could not read*. The shown pages paint together,
+in one commit, once their cards, their documents' comments and their diagrams are in hand. Each
+section's page is in the URL, as `?needs-you=2`, so Back returns to the same pages.
 
 Its URL is `/.vantage/planning`, and `/.vantage/planning/<repo>` in
 [daemon mode](../../userguide/guides/daemon-mode.md). Viewer URLs are `/<path>` and
@@ -416,7 +431,10 @@ Each question appears as a card with the following parts:
 
 - **The question itself,** rendered exactly as the viewer renders that list item: its options,
   context and leaning. The page adds no summary, so the question reads the same here as in its
-  document.
+  document. A question whose [card block](planning-index-at-scale.md#3-terms) is over 32,000
+  characters is a *preview card* instead: its document's name and badge, the question's marker,
+  title, state and leaning, and **Show question** and **Open document**. Show question renders the
+  full card in place.
 - **Its document,** by name, with that document's badge.
 - **Its controls, which follow its state.** An open question offers **Take this leaning** (only
   when a leaning exists), **Answer…** and **Open document**. A ✅ answered question has been
@@ -424,8 +442,9 @@ Each question appears as a card with the following parts:
   blocked question, listed under *Waiting*, cannot be answered yet and offers only **Open
   document**.
 - **Any comments already filed on it,** each marked *waiting on the agent* while it is still
-  pending. They come from the review comments Vantage already stores, so the page stores
-  nothing.
+  pending, painted with the card. The page waits up to 1 s for them; comments that arrive later
+  go only into the card's comment count, which is always there, until it is opened. They come
+  from the review comments Vantage already stores, so the page stores nothing.
 
 **The viewer's review mode follows the same rule.** It offers **Take this leaning** on open
 questions only, never on a 🔒 or ✅ one, and the Review toggle's count of questions answerable in
@@ -436,13 +455,15 @@ question, in every state.
 **indistinguishable from one filed with the in-page button**: the same anchor and the same text.
 Filing does not reorder the page.
 
-**Copy answers** hands the answers to the agent in one trip. The button sits at the top of the
-page and shows how many answers are pending. It copies every comment still pending for the agent
-on a question listed on the page, grouped by document. Each group is the block that document's
-own Copy produces, and one set of responding instructions closes the payload. Agent replies
-already name their `path`, so the reply side needs nothing new. The button is disabled when
-nothing is pending. Other comments in the same documents are not included; each document's own
-Copy still covers those.
+**Copy answers** hands the answers to the agent in one trip. The button sits at the top of the page
+and shows how many answers are pending. It copies every comment still pending for the agent on a
+question listed on the page, on every page and not only the shown ones, grouped by document. A
+question whose card has not been rendered this visit gets the comments anchored between the first
+and the last line of its unit, the innermost unit winning. Each group is the block that document's
+own Copy produces, and one set of responding instructions closes the payload. Agent replies already
+name their `path`, so the reply side needs nothing new. The button is disabled when nothing is
+pending. Other comments in the same documents are not included; each document's own Copy still
+covers those.
 
 **Open document lands at the top of the document**, not at the question (ruled 2026-09-28).
 A question that can't be answered from its own card usually needs the wider document, and no
@@ -453,10 +474,8 @@ planning page at its previous scroll position.
 ## 7. Referenced by, and status in the file tree
 
 > [!NOTE]
-> **Amended 2026-09-29.** When the index is not ready at first paint, a planning document reserves
-> Referenced by's one line
-> ([`planning-index-at-scale.md` §11.2](planning-index-at-scale.md#112-every-late-datum-and-where-its-space-comes-from)),
-> so the line never pushes the document down when it lands.
+> **Amended 2026-09-29** by [`planning-index-at-scale.md` §11.2](planning-index-at-scale.md#112-every-late-datum-and-where-its-space-comes-from):
+> Referenced by's reserved line.
 
 - **Referenced by:** one line below a planning document's frontmatter card, or first in the
   document when it has no card. It answers the two questions a reader asks of a document on its
@@ -481,7 +500,9 @@ planning page at its previous scroll position.
   N counts the planning documents that link to this one or to one of its questions, once each
   however many links they hold. The roadmap counts as one when it links here. The document's
   links to itself are not counted. When nothing links to it and nothing in it is unrouted,
-  there is no line.
+  there is no line. When the index is not ready at first paint, a document that is a planning
+  document by its own frontmatter or directives reserves the line's room, so the line never
+  pushes the document down when it lands; it stays empty if it has nothing to say.
 
   From the `sm` width up the line is one line, cut off at its end when it does not fit, with
   the whole of it on hover. Below that width it wraps instead: the end is the roadmap's
@@ -688,14 +709,14 @@ maintains them.
 | --- | --- |
 | A badge changes a block's visible text and moves comment anchors | Excluded from anchor text by rule ([§5.3](#53-how-a-badge-behaves)). A test files a comment, changes the count, and checks that the anchor still resolves |
 | The index and the contents column disagree on a question's state | One extraction, or an agreement test ([§3.3](#33-a-question)) |
-| Scan time on a large repository | Parse only planning documents, refuse past the candidate limit, and scan in the background. Measured by the done criteria in [§15](#15-what-done-looks-like). At 300 documents and more this is not enough, as measured on 2026-09-29; [`planning-index-at-scale.md`](planning-index-at-scale.md) takes it over, with targets in its [§19](planning-index-at-scale.md#19-what-done-looks-like) |
+| Scan time on a large repository | Parse only planning documents and refuse past the candidate limit. Scan in a worker, fed only the files whose content changed, with each file's result kept in the browser, and render one page of each section ([`planning-index-at-scale.md`](planning-index-at-scale.md)). A background scan on the main thread alone froze `g p` for seconds at 300 documents. Targets: [§15](#15-what-done-looks-like) here, and the amendment's [§19](planning-index-at-scale.md#19-what-done-looks-like) at scale |
 | Another tool already uses a top-level `stage` key, such as a site generator's `stage: production` | **Accepted.** A `stage` key alone makes a file a planning document ([§3.1](#31-which-files-it-reads)), so every link to it and its file-tree row show `production` as its stage. The checker holds `stage` to a vocabulary only when stages are declared, and a repository whose files use the key for something else lists them in `[planning] exclude`. A foreign `next` is read only in a file that is already a planning document |
 | An answer filed from the page gets a different anchor than the in-page button would give | The two paths are compared in a test that files from both |
 
 ## 14. Sequencing
 
 1. **Phase 1:** the scan in `vantage-md`, the `[planning]` config in both readers, the
-   frontmatter keys, the batch endpoint, link badges, and `vantage-check index` with its
+   frontmatter keys, the planning endpoint, link badges, and `vantage-check index` with its
    rules. At this point the roadmap can be rewritten as lists of links.
 2. **Phase 2:** the planning page, Referenced by, and file-tree badges.
 
@@ -720,9 +741,10 @@ phase writes its notes then, as every release does.
   position.
 - `vantage-check index` prints the same sections the page shows, and
   `planning/stage-vocabulary` fails on an off-vocabulary `stage`.
-- On this repository, the first page load has the index ready within 1 s. No document's first
-  render waits for it. (Amended 2026-09-29: [`planning-index-at-scale.md` §19](planning-index-at-scale.md#19-what-done-looks-like)
-  sets the targets at scale, and a first render may now hold briefly for a warm index.)
+- On this repository, the first page load has the index ready within 1 s, and no document's
+  first paint waits for it longer than the 150 ms hold
+  ([`planning-index-at-scale.md` §11.3](planning-index-at-scale.md#113-the-hold)). The amendment's
+  [§19](planning-index-at-scale.md#19-what-done-looks-like) sets the targets at scale.
 
 ## Decision Ledger
 
@@ -733,32 +755,33 @@ the plan proposed.
 
 | ID | Ruling / Decision | Date | Settled in | Built |
 | :--- | :--- | :--- | :--- | :--- |
-| — | Build it: a planning index in Vantage, following the brainstorm's direction ([`OQ-PI1`](../brainstorm/planning-index.md#decision-ledger)) | 2026-09-28 | [§1](#1-verdict-and-the-principles) | — |
-| — | **Open document** from the planning page lands at the top of the document, not at the question | 2026-09-28 | [§6.3](#63-a-question-on-the-page) | — |
-| — | User direction 2026-09-29: Referenced by is one motivated, collapsed line. It says whether the roadmap routes the document and how many documents link to it, and opens to one row per document. It replaces a list with one row per linking document and heading, always open, which pushed a heavily cited document's body a screen down | 2026-09-29 | [§7](#7-referenced-by-and-status-in-the-file-tree) | — |
-| — | Referenced by always counts the open questions the roadmap does not route, as *K open questions not routed by the roadmap*, even when the roadmap routes another of the document's questions. It replaces *not on the roadmap (K open questions)*, shown only when nothing was routed, which hid a partly routed document's unrouted questions, read as false on a document the roadmap links only by heading, and on the roadmap's own page said the roadmap was not on itself. The user direction did not say which wins when both apply; this keeps both, and is open to the user's review | 2026-09-29 | [§7](#7-referenced-by-and-status-in-the-file-tree) | — |
-| OQ-PL1 | `stage:` is the stage's only home; a prose status line carries the date and the why. Decided on generic grounds, not to fit one set of conventions | 2026-09-28 | [§4](#4-the-header-of-record-stage-next-depends-on) | — |
-| OQ-PL2 | A planning document is any file with planning frontmatter or an `oq` directive; everything is included by default, with an exclude list | 2026-09-28 | [§3.1](#31-which-files-it-reads) | — |
-| OQ-PL3 | A roadmap fully readable only in Vantage is acceptable: GitHub keeps the order and reasons | 2026-09-28 | [§5.3](#53-how-a-badge-behaves) | — |
-| OQ-PL4 | One **Copy answers** button on the planning page, grouped by document | 2026-09-28 | [§6.3](#63-a-question-on-the-page) | — |
-| — | Plan Q1: patterns keep the server's matcher, its quirks and RE2 dialect included; the checker ports it, and one shared fixture pins both readers | 2026-09-28 | [§3.1](#31-which-files-it-reads) | — |
-| — | Plan Q2: the roadmap is read whenever it exists, even when `include` or `exclude` rules it out | 2026-09-28 | [§3.1](#31-which-files-it-reads) | — |
-| — | Plan Q3: static exports get no badges and no planning index; the planning page shows its failed-fetch error | 2026-09-28 | [§3.6](#36-failure) | — |
-| — | Plan Q4: this repository runs `planning/unrouted` as a warning | 2026-09-28 | [§8](#8-vantage-check-index-and-the-planning-rules), [§9](#9-configuration) | — |
-| — | Plan Q5: an `oq` with no id, a malformed id or a repeated one is still a question, counted with no id. **Take this leaning** is not offered on 🔒 or ✅ questions, neither in the viewer's review mode nor on the planning page, where 🔒 questions sit under *Waiting* with no Take or Answer… control; the contents column still lists them. The plan's default had left the buttons unchanged | 2026-09-28 | [§3.3](#33-a-question), [§6.3](#63-a-question-on-the-page) | — |
-| — | Plan Q6: every question the index holds is live; a `depends-on` naming a question waits only while that question is open (💬) | 2026-09-28 | [§3.3](#33-a-question), [§6.2](#62-sections-top-to-bottom) | — |
-| — | Plan Q7: `vantage-check index` exits `3` past `max-candidates`; `check` is unaffected | 2026-09-28 | [§8](#8-vantage-check-index-and-the-planning-rules) | — |
-| — | Plan Q8: this work adds no Unreleased section to the changelog; release notes are written at release time, as today. The plan's default had added one | 2026-09-28 | [§14](#14-sequencing) | — |
-| — | Plan Q9: the checker mirrors the repository-level listing rules only; per-reader settings stay invisible to it | 2026-09-28 | [§8](#8-vantage-check-index-and-the-planning-rules) | — |
-| — | Plan Q10: each roadmap item becomes a link plus a one-clause reason with its existing prose kept beneath; this repository's stages are [§9](#9-configuration)'s table | 2026-09-28 | [§1](#1-verdict-and-the-principles) (P5), [§14](#14-sequencing) | — |
-| — | Plan Q11: a `done` document contributes nothing to any section, and a `depends-on` on it never makes its dependent wait | 2026-09-28 | [§4](#4-the-header-of-record-stage-next-depends-on) | — |
-| — | Plan Q12: only a bare document link and a `#OQ-…` link route; a heading link routes nothing | 2026-09-28 | [§6.1](#61-the-roadmap) | — |
-| — | Plan Q13: the planning page lives at `/.vantage/planning`, and `/.vantage/planning/<repo>` in daemon mode; `/recent` and `/history` stay, and the user guide documents what they hide | 2026-09-28 | [§6](#6-the-planning-page) | — |
-| — | Plan Q14: a genuine reconnect rescans a ready index and keeps it shown until the new scan lands; a page's first connection is not a reconnect | 2026-09-28 | [§3.4](#34-when-it-is-built-and-how-it-stays-fresh) | — |
-| — | Plan Q15: a per-file refresh asks the planning endpoint for one path, never the content endpoint | 2026-09-28 | [§3.4](#34-when-it-is-built-and-how-it-stays-fresh) | — |
-| — | Plan Q16: one project root for both commands, the nearest ancestor holding `.git` or `.vantage.toml`; `--config` never moves it, and `index` falls back to the current directory | 2026-09-28 | [§8](#8-vantage-check-index-and-the-planning-rules) | — |
-| — | Plan Q17: an `oq` inside a raw HTML block is not a question to the index; the agreement test pins that one divergence | 2026-09-28 | [§3.3](#33-a-question) | — |
-| — | Plan Q18: a foreign top-level `stage` key makes a planning document, as designed; `[planning] exclude` is the remedy | 2026-09-28 | [§13](#13-risks) | — |
-| — | Plan Q19: the planning module is internal to `vantage-md`; `FrontmatterDisplay`'s optional `linkIds` is the one public addition | 2026-09-28 | [§1](#1-verdict-and-the-principles) (P4) | — |
-| — | Plan Q20: the plan's eight gap-fills. A header that does not parse makes its file unreadable; a non-string or empty `stage` and a non-string or multi-line `next` are ignored, a single `depends-on` path is a one-entry list, and a non-string entry is dropped; stage matching is exact and case-sensitive; an empty stages table is none; a `depends-on` target outside the repository, or whose `#OQ-…` id appears nowhere in it, is a finding; a skipped or unreadable roadmap counts as missing; an empty document badge is not drawn; `next` links only an id a question carries | 2026-09-28 | [§3.6](#36-failure), [§4](#4-the-header-of-record-stage-next-depends-on), [§5.1](#51-which-links-get-a-badge), [§6.2](#62-sections-top-to-bottom), [§9](#9-configuration) | — |
-| — | User ruling 2026-09-28: the file name wins. A tree badge takes no width from a file name: it uses only the room the name leaves, is drawn whole or not at all, and is a compact dot and `💬 N` whose words are its tooltip and accessible name. It replaced a full status chip that cut long names down to their first letter | 2026-09-28 | [§7](#7-referenced-by-and-status-in-the-file-tree) | — |
+| — | Build it: a planning index in Vantage, following the brainstorm's direction ([`OQ-PI1`](../brainstorm/planning-index.md#decision-ledger)) | 2026-09-28 | [§1](#1-verdict-and-the-principles) | ✅ [`planning/`](../../packages/vantage-md/src/planning/index.ts) |
+| — | **Open document** from the planning page lands at the top of the document, not at the question | 2026-09-28 | [§6.3](#63-a-question-on-the-page) | ✅ [`PlanningQuestionCard.tsx`](../../frontend/src/components/PlanningQuestionCard.tsx) |
+| — | User direction 2026-09-29: Referenced by is one motivated, collapsed line. It says whether the roadmap routes the document and how many documents link to it, and opens to one row per document. It replaces a list with one row per linking document and heading, always open, which pushed a heavily cited document's body a screen down | 2026-09-29 | [§7](#7-referenced-by-and-status-in-the-file-tree) | ✅ [`ReferencedBy.tsx`](../../frontend/src/components/ReferencedBy.tsx) |
+| — | Referenced by always counts the open questions the roadmap does not route, as *K open questions not routed by the roadmap*, even when the roadmap routes another of the document's questions. It replaces *not on the roadmap (K open questions)*, shown only when nothing was routed, which hid a partly routed document's unrouted questions, read as false on a document the roadmap links only by heading, and on the roadmap's own page said the roadmap was not on itself. The user direction did not say which wins when both apply; this keeps both, and is open to the user's review | 2026-09-29 | [§7](#7-referenced-by-and-status-in-the-file-tree) | ✅ [`ReferencedBy.tsx`](../../frontend/src/components/ReferencedBy.tsx) |
+| OQ-PL1 | `stage:` is the stage's only home; a prose status line carries the date and the why. Decided on generic grounds, not to fit one set of conventions | 2026-09-28 | [§4](#4-the-header-of-record-stage-next-depends-on) | ✅ [`scan.ts`](../../packages/vantage-md/src/planning/scan.ts) |
+| OQ-PL2 | A planning document is any file with planning frontmatter or an `oq` directive; everything is included by default, with an exclude list | 2026-09-28 | [§3.1](#31-which-files-it-reads) | ✅ [`scan.ts`](../../packages/vantage-md/src/planning/scan.ts) |
+| OQ-PL3 | A roadmap fully readable only in Vantage is acceptable: GitHub keeps the order and reasons | 2026-09-28 | [§5.3](#53-how-a-badge-behaves) | ✅ nothing to build |
+| OQ-PL4 | One **Copy answers** button on the planning page, grouped by document | 2026-09-28 | [§6.3](#63-a-question-on-the-page) | ✅ [`PlanningPage.tsx`](../../frontend/src/pages/PlanningPage.tsx) |
+| — | Plan Q1: patterns keep the server's matcher, its quirks and RE2 dialect included; the checker ports it, and one shared fixture pins both readers | 2026-09-28 | [§3.1](#31-which-files-it-reads) | ✅ [`patterns.ts`](../../packages/vantage-md/src/planning/patterns.ts) |
+| — | Plan Q2: the roadmap is read whenever it exists, even when `include` or `exclude` rules it out | 2026-09-28 | [§3.1](#31-which-files-it-reads) | ✅ [`planning.go`](../../internal/planning/planning.go) |
+| — | Plan Q3: static exports get no badges and no planning index; the planning page shows its failed-fetch error | 2026-09-28 | [§3.6](#36-failure) | ✅ [`usePlanningStore.ts`](../../frontend/src/stores/usePlanningStore.ts) |
+| — | Plan Q4: this repository runs `planning/unrouted` as a warning | 2026-09-28 | [§8](#8-vantage-check-index-and-the-planning-rules), [§9](#9-configuration) | ✅ [`.vantage.toml`](../../.vantage.toml) |
+| — | Plan Q5: an `oq` with no id, a malformed id or a repeated one is still a question, counted with no id. **Take this leaning** is not offered on 🔒 or ✅ questions, neither in the viewer's review mode nor on the planning page, where 🔒 questions sit under *Waiting* with no Take or Answer… control; the contents column still lists them. The plan's default had left the buttons unchanged | 2026-09-28 | [§3.3](#33-a-question), [§6.3](#63-a-question-on-the-page) | ✅ [`useOpenQuestionButtons.ts`](../../frontend/src/hooks/useOpenQuestionButtons.ts) |
+| — | Plan Q6: every question the index holds is live; a `depends-on` naming a question waits only while that question is open (💬) | 2026-09-28 | [§3.3](#33-a-question), [§6.2](#62-sections-top-to-bottom) | ✅ [`sections.ts`](../../packages/vantage-md/src/planning/sections.ts) |
+| — | Plan Q7: `vantage-check index` exits `3` past `max-candidates`; `check` is unaffected | 2026-09-28 | [§8](#8-vantage-check-index-and-the-planning-rules) | ✅ [`index.ts`](../../packages/vantage-check/src/commands/index.ts) |
+| — | Plan Q8: this work adds no Unreleased section to the changelog; release notes are written at release time, as today. The plan's default had added one | 2026-09-28 | [§14](#14-sequencing) | ✅ nothing to build |
+| — | Plan Q9: the checker mirrors the repository-level listing rules only; per-reader settings stay invisible to it | 2026-09-28 | [§8](#8-vantage-check-index-and-the-planning-rules) | ✅ [`candidates.ts`](../../packages/vantage-check/src/core/candidates.ts) |
+| — | Plan Q10: each roadmap item becomes a link plus a one-clause reason with its existing prose kept beneath; this repository's stages are [§9](#9-configuration)'s table | 2026-09-28 | [§1](#1-verdict-and-the-principles) (P5), [§14](#14-sequencing) | ✅ [`roadmap.md`](../../roadmap.md) |
+| — | Plan Q11: a `done` document contributes nothing to any section, and a `depends-on` on it never makes its dependent wait | 2026-09-28 | [§4](#4-the-header-of-record-stage-next-depends-on) | ✅ [`sections.ts`](../../packages/vantage-md/src/planning/sections.ts) |
+| — | Plan Q12: only a bare document link and a `#OQ-…` link route; a heading link routes nothing | 2026-09-28 | [§6.1](#61-the-roadmap) | ✅ [`sections.ts`](../../packages/vantage-md/src/planning/sections.ts) |
+| — | Plan Q13: the planning page lives at `/.vantage/planning`, and `/.vantage/planning/<repo>` in daemon mode; `/recent` and `/history` stay, and the user guide documents what they hide | 2026-09-28 | [§6](#6-the-planning-page) | ✅ [`planningRoute.ts`](../../frontend/src/lib/planningRoute.ts) |
+| — | Plan Q14: a genuine reconnect rescans a ready index and keeps it shown until the new scan lands; a page's first connection is not a reconnect | 2026-09-28 | [§3.4](#34-when-it-is-built-and-how-it-stays-fresh) | ✅ [`usePlanningStore.ts`](../../frontend/src/stores/usePlanningStore.ts) |
+| — | Plan Q15: a per-file refresh asks the planning endpoint for one path, never the content endpoint | 2026-09-28 | [§3.4](#34-when-it-is-built-and-how-it-stays-fresh) | ✅ [`core.ts`](../../frontend/src/planningScan/core.ts) |
+| — | Plan Q16: one project root for both commands, the nearest ancestor holding `.git` or `.vantage.toml`; `--config` never moves it, and `index` falls back to the current directory | 2026-09-28 | [§8](#8-vantage-check-index-and-the-planning-rules) | ✅ [`projectRoot.ts`](../../packages/vantage-check/src/core/projectRoot.ts) |
+| — | Plan Q17: an `oq` inside a raw HTML block is not a question to the index; the agreement test pins that one divergence | 2026-09-28 | [§3.3](#33-a-question) | ✅ [`scan.ts`](../../packages/vantage-md/src/planning/scan.ts) |
+| — | Plan Q18: a foreign top-level `stage` key makes a planning document, as designed; `[planning] exclude` is the remedy | 2026-09-28 | [§13](#13-risks) | ✅ nothing to build |
+| — | Plan Q19: the planning module is internal to `vantage-md`; `FrontmatterDisplay`'s optional `linkIds` is the one public addition | 2026-09-28 | [§1](#1-verdict-and-the-principles) (P4) | ✅ [`FrontmatterDisplay.tsx`](../../packages/vantage-md/src/FrontmatterDisplay.tsx) |
+| — | Plan Q20: the plan's eight gap-fills. A header that does not parse makes its file unreadable; a non-string or empty `stage` and a non-string or multi-line `next` are ignored, a single `depends-on` path is a one-entry list, and a non-string entry is dropped; stage matching is exact and case-sensitive; an empty stages table is none; a `depends-on` target outside the repository, or whose `#OQ-…` id appears nowhere in it, is a finding; a skipped or unreadable roadmap counts as missing; an empty document badge is not drawn; `next` links only an id a question carries | 2026-09-28 | [§3.6](#36-failure), [§4](#4-the-header-of-record-stage-next-depends-on), [§5.1](#51-which-links-get-a-badge), [§6.2](#62-sections-top-to-bottom), [§9](#9-configuration) | ✅ [`scan.ts`](../../packages/vantage-md/src/planning/scan.ts) |
+| — | User ruling 2026-09-28: the file name wins. A tree badge takes no width from a file name: it uses only the room the name leaves, is drawn whole or not at all, and is a compact dot and `💬 N` whose words are its tooltip and accessible name. It replaced a full status chip that cut long names down to their first letter | 2026-09-28 | [§7](#7-referenced-by-and-status-in-the-file-tree) | ✅ [`PlanningTreeBadge.tsx`](../../frontend/src/components/PlanningTreeBadge.tsx) |
+| — | Amended for large repositories by [`planning-index-at-scale.md`](planning-index-at-scale.md): the index is built in a worker from a stream that carries only the files whose content changed, each file's scan result is kept in the browser under its content hash ([OQ-PS1](planning-index-at-scale.md#decision-ledger)), the planning page pages, and late data never moves painted content | 2026-09-29 | [§3](#3-the-planning-index), [§3.4](#34-when-it-is-built-and-how-it-stays-fresh), [§3.6](#36-failure), [§5.3](#53-how-a-badge-behaves), [§6](#6-the-planning-page), [§7](#7-referenced-by-and-status-in-the-file-tree) | ✅ [`planningScan/`](../../frontend/src/planningScan/core.ts) |

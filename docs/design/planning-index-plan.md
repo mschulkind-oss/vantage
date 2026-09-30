@@ -1,8 +1,8 @@
 ---
 title: "The planning index — implementation plan"
 status: in-review
-stage: DECIDED
-next: "Build WP-A alone; every other work package codes against its types"
+stage: BUILT
+next: "Nothing here: every work package is built, and what is left is the design's own next step"
 depends-on:
   - planning-index.md
 tags: [planning, implementation-plan]
@@ -11,11 +11,15 @@ summary: "Build hand-off for the whole planning-index design, phases 1 and 2: se
 
 # The planning index — implementation plan
 
-**Design:** [`planning-index.md`](planning-index.md) · **Status:** promoted from sketch on
-2026-09-28 and revised after review the same day; build-ready for phases 1 and 2. Its twenty
-questions for the coordinator were ruled the same day
-([below](#the-coordinators-rulings)). Written against `4948138`; revised against `dc400f6`,
-2026-09-28.
+**Design:** [`planning-index.md`](planning-index.md) · **Status:** BUILT, 2026-09-29: phases 1
+and 2 landed on `main` by `70a05b3`, and
+[`planning-index-at-scale.md`](planning-index-at-scale.md) has since replaced the batch endpoint
+of [WP-B](#wp-b--config-endpoint-watcher-go) with a stream. MEASURED at `70a05b3`: the scan took
+336–487 ms of wall time on this repository, within
+[the design's 1 s](planning-index.md#15-what-done-looks-like). Promoted from sketch on 2026-09-28
+and revised after review the same day. Its twenty questions for the coordinator were ruled the
+same day ([below](#the-coordinators-rulings)). Written against `4948138`; revised against
+`dc400f6`, 2026-09-28.
 
 **Precedence.** The design wins on behavior. The tree wins on fact: when a file has moved or a
 helper is gone, follow the tree and say so in the commit. This plan is advice, and it is the
