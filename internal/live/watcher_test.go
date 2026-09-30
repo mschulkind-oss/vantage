@@ -224,19 +224,19 @@ func TestAddRecursiveWarnsAndCountsFailedWatchRegistrations(t *testing.T) {
 
 // kqueueEntryVanished is the error fsnotify's kqueue backend returns when an
 // entry of the directory it was asked to watch is deleted after the backend
-// listed the directory and before it opened the entry, word for word as a
-// macOS CI runner logged it.
+// read the directory and before it stat'ed the entry, word for word as a macOS
+// CI runner logged it.
 func kqueueEntryVanished(dir, entry string) error {
 	gone := filepath.Join(dir, entry)
 	return fmt.Errorf("%q: %w", gone, &os.PathError{Op: "lstat", Path: gone, Err: syscall.ENOENT})
 }
 
-// On macOS a directory's watch failed for good when a file inside it came and
-// went while the watch was being made: kqueue opens every entry in turn, and
-// gives up on the directory at the first one that has vanished, so edits to the
-// files it had not reached yet were never heard. The directory is watched
-// afresh instead, a bounded number of times, and one that is itself gone is
-// not asked about again.
+// On macOS a request to watch a directory fails when a file inside it is
+// deleted while the request is being made, though the directory ends up watched
+// all the same, and the watcher used to count it as failed and leave it out of
+// its record of watched directories. It is asked for again instead, without
+// the half-made watch being dropped first, a bounded number of times; and a
+// directory that is itself gone is not asked about again.
 func TestRegisterWatchTriesAgainWhenAnEntryVanished(t *testing.T) {
 	root := t.TempDir()
 	docs := filepath.Join(root, "docs")
@@ -267,8 +267,10 @@ func TestRegisterWatchTriesAgainWhenAnEntryVanished(t *testing.T) {
 		return nil
 	})
 	require.Equal(t, 2, w.addRecursive(root))
-	require.Equal(t, []string{"add .", "add docs", "remove docs", "add docs"}, calls)
+	require.Equal(t, []string{"add .", "add docs", "add docs"}, calls,
+		"dropping the half-made watch would erase kqueue's record that docs exists, and the next change beside it would announce docs as new")
 	require.Zero(t, w.watchFailedDirs)
+	require.Contains(t, w.dirs, "docs")
 
 	w = recording(func(path string) error {
 		if path == docs {
@@ -277,8 +279,9 @@ func TestRegisterWatchTriesAgainWhenAnEntryVanished(t *testing.T) {
 		return nil
 	})
 	require.Equal(t, 1, w.addRecursive(root), "a directory whose entries never hold still is given up on")
-	require.Equal(t, []string{"add .", "add docs", "remove docs", "add docs", "remove docs", "add docs"}, calls)
+	require.Equal(t, []string{"add .", "add docs", "add docs", "add docs"}, calls)
 	require.Equal(t, 1, w.watchFailedDirs)
+	require.NotContains(t, w.dirs, "docs")
 
 	w = recording(func(path string) error {
 		if path == docs {

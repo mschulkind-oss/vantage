@@ -792,8 +792,8 @@ func (w *Watcher) fingerprint(rel string) string {
 }
 
 // addAttempts is how many times [Watcher.registerWatch] asks for one
-// directory's watch while the failures are only an entry inside it vanishing
-// (see [entryVanished]).
+// directory's watch while each failure is only a missing path under a directory
+// that is still there (see [entryVanished]).
 const addAttempts = 3
 
 func (w *Watcher) registerWatch(path string) error {
@@ -805,12 +805,13 @@ func (w *Watcher) registerWatch(path string) error {
 	}
 	err := w.add(path)
 	for attempt := 1; attempt < addAttempts && entryVanished(path, err); attempt++ {
-		// kqueue had already registered the directory itself when the entry
-		// failed, and a second request for a directory it already holds does
-		// not list the entries again. So the half-made watch is dropped first,
-		// and the directory is watched afresh.
-		w.logger.Debug("watcher: an entry vanished while its directory was being watched; trying again", "path", path, "error", err)
-		w.unregisterWatch(path)
+		// The directory is asked for again as it stands, without dropping what
+		// the failed request left behind: on kqueue that is a watch on the
+		// directory which only needs claiming (see [entryVanished]). Dropping it
+		// first also erased the backend's record that the directory exists, which
+		// a new request does not restore, so the next change beside it announced
+		// it as created, and its whole subtree was walked and pushed again.
+		w.logger.Debug("watcher: a path went missing while a directory was being watched; asking again", "path", path, "error", err)
 		err = w.add(path)
 	}
 	if err != nil {
@@ -840,14 +841,25 @@ func (w *Watcher) add(path string) error {
 }
 
 // entryVanished reports whether err, from asking to watch the directory at
-// path, says that something inside the directory went away rather than the
-// directory itself. kqueue, fsnotify's backend on macOS and the BSDs, lists a
-// directory it is asked to watch and opens every entry in it, and the whole
-// request fails when one is deleted between the listing and the open: git's
-// index.lock, an editor's temporary file, anything a tool writes and removes
-// while a watch is being made. The directory is still there and watchable.
-// inotify never lists the directory, so on Linux a missing path is the
-// directory's own, and it is gone.
+// path, is a missing path while the directory itself is still there.
+//
+// On macOS and the BSDs that is an entry inside the directory going away in the
+// middle of the request. fsnotify's kqueue backend registers the directory,
+// reads its entries, and then stats each one it read, and it fails the whole
+// request when one was deleted in between: git's index.lock, an editor's
+// temporary file, the probe file `git init` writes into .git. The directory is
+// watched all the same, since the backend keeps the registration, and the
+// deletion that failed the request is itself a change to the directory, which
+// makes the backend read it again and watch every entry it had not reached,
+// announcing each as created, so the Markdown among them is pushed once as
+// changed although it is not. So a second request, which finds the directory
+// already watched and returns at once, is all that is missing. Before one was
+// made, the failure cost only the watcher's own record of the directory: it was
+// logged and counted as failed, and left out of [Watcher.dirs], so it was never
+// reported as removed when it went.
+//
+// On Linux inotify never reads the directory, so a missing path is the
+// directory's own, and one that is there again is simply watched afresh.
 func entryVanished(path string, err error) bool {
 	if err == nil || !errors.Is(err, iofs.ErrNotExist) {
 		return false
