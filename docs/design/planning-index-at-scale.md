@@ -2,8 +2,8 @@
 title: "The planning index at scale — page through it, and never hand the page the corpus"
 date: 2026-09-29
 status: accepted
-stage: BUILT
-next: "Measure §19's targets against the build, then graduate this design and planning-index.md into one system doc"
+stage: DECIDED
+next: "Build several roadmaps (planning-index-plan.md's first section), then measure §19's targets and graduate this design and planning-index.md into one system doc"
 depends-on:
   - planning-index.md
 tags: [planning, performance, viewer, worker, layout-stability]
@@ -12,11 +12,13 @@ summary: "The planning page renders one page of each section from card blocks th
 
 # The planning index at scale — page through it, and never hand the page the corpus
 
-**Status:** BUILT, 2026-09-29 (`f2fe17a`–`5d13a29`, on `planning-scale`). UNMEASURED: none of
-[§19](#19-what-done-looks-like)'s timing, heap or DOM targets has been run against the build;
-D8, D11, D12 and D13 are held by tests. The design was measured and its evidence verified
-against the tree at `70a05b3`, before any of it was built: *today*, here, means that tree, and
-every line-anchored link is pinned to it.
+**Status:** 2026-09-30. Built 2026-09-29 (`f2fe17a`–`5d13a29`, on `planning-scale`), all
+but what several roadmaps change: every roadmap sent whole and never stored, and the roadmap
+line on the page ([`planning-index.md` §6.4](planning-index.md#64-several-roadmaps-on-the-page)),
+decided 2026-09-30 and not built. UNMEASURED: none of [§19](#19-what-done-looks-like)'s timing,
+heap or DOM targets has been run against the build; D8, D11, D12 and D13 are held by tests. The
+design was measured and its evidence verified against the tree at `70a05b3`, before any of it
+was built: *today*, here, means that tree, and every line-anchored link is pinned to it.
 
 > **In short.** `g p` is slow because the planning page renders every card before it paints,
 > and the index is slow because the browser scans the whole corpus, fetched as one string, on
@@ -44,9 +46,12 @@ each. Everything else is how.
 
 **Needs your ruling:** None.
 
-**Reads with:** [`planning-index.md`](planning-index.md) (the design this amends) and
+**Reads with:** [`planning-index.md`](planning-index.md) (the design this amends, which since
+2026-09-30 finds several roadmaps),
 [`planning-index-at-scale-plan.md`](planning-index-at-scale-plan.md) (the build plan it was
-built from).
+built from), and [the first section of
+`planning-index-plan.md`](planning-index-plan.md#several-roadmaps--the-2026-09-30-build) (the
+build plan for several roadmaps, which changes this design's stream, cache and frame).
 
 ---
 
@@ -131,7 +136,7 @@ Every term here is *coined here* unless it links elsewhere. The planning index's
 [planning index](planning-index.md#3-the-planning-index),
 [candidate and planning document](planning-index.md#31-which-files-it-reads),
 [live question](planning-index.md#33-a-question) and
-[routed](planning-index.md#61-the-roadmap), keep their meanings.
+[routed](planning-index.md#61-the-roadmaps), keep their meanings.
 
 | Term | Means | Is not |
 | :--- | :--- | :--- |
@@ -278,7 +283,7 @@ that could make a line `same` ([§6.4](#64-what-the-server-holds)).
 at the fastest level when the request accepts gzip.
 
 ```json
-{"kind":"header","config":{"roadmap":"roadmap.md","include":["**/*.md"],"exclude":[],"max_file_bytes":1048576,"max_candidates":5000,"stages":null},"candidate_count":41,"refused":false}
+{"kind":"header","config":{"roadmaps":null,"include":["**/*.md"],"exclude":[],"max_file_bytes":1048576,"max_candidates":5000,"stages":null},"candidate_count":41,"refused":false}
 {"kind":"same","path":"AGENTS.md","hash":"9f86d081884c7d659a2feaa0c55ad015"}
 {"kind":"file","path":"docs/design/a.md","hash":"60303ae22b998861bce3b28f33eec1be","content":"---\nstatus: draft\n---\n…"}
 {"kind":"skipped","path":"docs/big.md","size":2097152}
@@ -293,9 +298,25 @@ at the fastest level when the request accepts gzip.
   ([`scan.ts:1005`][at-early-exit]) does, in the worker,
   where a file that is not one costs microseconds (S4).
 - **`same`** means the file was read within the limits, is UTF-8, and hashes to exactly what
-  `have` gave for it. **The roadmap is never `same`**: it is always sent as `file`, so whether a
-  file is the roadmap never has to be part of a cache key ([§8.1](#81-what-it-keeps-and-under-which-key)).
-- **The config** is today's object, read the same way (`SettingsNow`, past the reload throttle).
+  `have` gave for it. **No roadmap is ever `same`**: every roadmap
+  ([`planning-index.md` §6.1](planning-index.md#61-the-roadmaps)) is always sent as `file`, so
+  whether a file is a roadmap never has to be part of a cache key
+  ([§8.1](#81-what-it-keeps-and-under-which-key)).
+- **Which paths are roadmaps is the header's to say, and no line's.** The header's config carries
+  `roadmaps`: `null` when they are found by name, or the configured list, `[]` included. The
+  server applies one path test to it, a listed path or, with `null`, a candidate whose file name
+  is `roadmap.md` compared ASCII case-insensitively, and the worker applies the same test to the
+  same header. That is the stream's whole roadmap marking. A mark on each line would make the
+  server a second judge of what the worker already decides from the header, so there is none;
+  one shared fixture holds the two tests to one answer. Recognizing a path is not parsing
+  Markdown, so S4 holds.
+- **A `same` line for a path the worker holds to be a roadmap** is never answered from the cache:
+  the worker fetches that file through the single-path mode and scans it, as it does a `same`
+  line whose stored result is gone. Agreeing servers never send one; this is what keeps a
+  disagreeing one from putting a stored non-roadmap result where a roadmap belongs.
+- **The config** is today's object, with `roadmaps` in place of the one `roadmap`
+  ([`planning-index.md` §9](planning-index.md#9-configuration)), read the same way
+  (`SettingsNow`, past the reload throttle).
 - **Refused** past `max-candidates`: the header says `"refused":true`, then comes `end`, and
   nothing is opened.
 - **A name that is not UTF-8** (Linux allows one) makes its candidate `unreadable`, *its name is
@@ -312,7 +333,7 @@ at the fastest level when the request accepts gzip.
 - **Go's JSON encoder escapes every newline**, so a newline in the body always ends a line.
 
 > [!NOTE]
-> **There is no byte sieve** ([OQ-PS2](#decision-ledger)). Sending only the roadmap and the files
+> **There is no byte sieve** ([OQ-PS2](#decision-ledger)). Sending only the roadmaps and the files
 > that start with `---` or `+++` or contain `vantage:` looks like a free saving, and it is not
 > one. It is a Go copy of the scan's early exit, which makes Go a second judge of what a planning
 > document is, the thing S4 exists to prevent, and every new frontmatter form or sentinel would
@@ -357,7 +378,7 @@ It replaces the page's one `GET /review` per listed document
 
 - **Memory:** one file, its JSON encoding, the gzip window, the kept `have` and the candidate
   list. Nothing is proportional to the corpus's bytes, nor to the body's: an entry for a path
-  that is no candidate, for the roadmap, or with a value that is no content hash's spelling is
+  that is no candidate, for a roadmap, or with a value that is no content hash's spelling is
   dropped as it is read, so the kept `have` is at most one path and 32 digits per candidate.
   Decoded whole, a body of short distinct keys held about 4.4 times its size, 18.6 MB for one
   just under 4 MiB.
@@ -412,7 +433,7 @@ repository root, or a daemon's config file. The scan cache files every result un
   with *The planning scan stopped*, and Retry starts a new worker. A refresh in flight is dropped,
   and the next push for that path asks again, as a failed fetch does today.
 - **If it dies with no build out**, the index stays ready and the next request starts a new
-  worker. That worker has read no header, so it would not know which file is the roadmap. Each
+  worker. That worker has read no header, so it would not know which files are roadmaps. Each
   `refresh` therefore carries the config of the index it is for, and each `cards` request the
   config of the last header the client relayed for its repository, which a `refresh` sent without
   an index's config carries too. A worker that has seen no header of the repository scans under
@@ -547,8 +568,10 @@ which is why it is filed under the server id as well ([§8.2](#82-the-scanner-id
 - **A result is used only when the stream answers `same`** with the hash it was stored under.
   The key is content, so there is no modification-time race, a `git checkout` that rewrites
   every mtime costs nothing, and two repositories holding identical files are both right.
-- **The roadmap is never stored.** The stream never answers `same` for it, so a roadmap setting
-  that changes needs nothing special.
+- **No roadmap is ever stored.** The stream never answers `same` for one, so a `roadmap` setting
+  that changes, or a file that becomes a roadmap or stops being one, needs nothing special: a
+  roadmap's card blocks are kept in the worker's memory only
+  ([§8.4](#84-without-it)).
 - **`repo`** is `""` in single-repo mode and the repository's name in daemon mode. A daemon
   restarted with a different repository under the same name is still served correctly, because a
   result depends only on the path and the content.
@@ -630,7 +653,7 @@ which is why it is filed under the server id as well ([§8.2](#82-the-scanner-id
 - **Retry sends `bypassCache`**: no `have`, and every entry for the repository is rewritten.
 - **A `.vantage.toml` push rescans with the cache.** No setting changes a scan result:
   `include` and `exclude` decide which candidates exist, `stages` enter only the derivations, and
-  the roadmap is never cached.
+  no roadmap is ever cached.
 
 ### 8.4 Without it
 
@@ -659,27 +682,31 @@ stands:
   - `applyScanned(index, entry)` applies a scanned entry, and `applySource` becomes scan then
     `applyScanned`, so `vantage-check` is unchanged;
   - `parseStreamLine` replaces `parsePlanningSources` and is just as strict.
-- **`vantage-check index --format json`** shows the two new question fields. Its `version` stays,
-  since nothing was renamed or removed.
+- **`vantage-check index --format json`** shows the two new question fields. Its `version` stayed
+  1, since nothing was renamed or removed; several roadmaps made it 2
+  ([`planning-index.md` §8](planning-index.md#8-vantage-check-index-and-the-planning-rules)).
 
 ## 10. The planning page, paged
 
 ### 10.1 Frame first
 
 - **The route's first render is the frame and an empty sections region.** The frame is the
-  header (Back, title, repository, and Copy answers with its reserved count), the section bar
-  and the notices (*Nothing needs you*, no roadmap, no stages, refused). It commits inside the
-  router's transition, so something visible changes about 20–45 ms after the keypress.
+  header (Back, title, repository, and Copy answers with its reserved count), the roadmap line
+  when two or more roadmaps route
+  ([`planning-index.md` §6.4](planning-index.md#64-several-roadmaps-on-the-page)), the section
+  bar and the notices (*Nothing needs you*, no roadmap, a listed roadmap not read, no stages,
+  refused). It commits inside the router's transition, so something visible changes about
+  20–45 ms after the keypress.
 - **The section bar** is one line naming each non-empty section and its count, for example
   `Needs you 143 · Unrouted 12 · Waiting 7 · Ready 3 · Skipped 1`. Each entry jumps to its section
   without adding a history entry, and moves the keyboard's focus to the section's heading, so Tab
   goes on from there. Its link is still the section's `#id`: a page opened on one, in a new tab or
   pasted, scrolls to that section once the sections render, unless the visit restores a scroll
-  position of its own. The counts come from the index, never from rendering, so they
-  are exact at first paint. Once sections are on screen, the bar and the notices are drawn from
-  the index those sections were laid out from, so an index update changes them in the commit that
-  changes the sections ([§10.3](#103-page-inputs-and-one-commit)). Every count is written in one
-  format, `1,200`, in the bar, the headings and the pagers alike.
+  position of its own. The counts come from the index, never from rendering, so they are exact at
+  first paint. Once sections are on screen, the roadmap line, the bar and the notices are drawn
+  from the index those sections were laid out from, so an index update changes them in the commit
+  that changes the sections ([§10.3](#103-page-inputs-and-one-commit)). Every count is written in
+  one format, `1,200`, in the bar, the headings and the pagers alike.
 - **The sections fill the empty region** in one later commit ([§10.3](#103-page-inputs-and-one-commit)),
   below everything already painted.
 - **The first sections a visit shows start rendering only once the frame has painted**: at the
@@ -706,10 +733,12 @@ stands:
 - **The pager's controls go on from the page asked for**, the URL's; its range shows the page on
   screen. The two differ only while a flip waits for its inputs, so a second Next during that wait
   asks for the page after the one asked for, and the page select keeps the reader's choice.
-- **The URL carries the pages**: `/.vantage/planning?needs-you=3&waiting=2`, 1-based, with page
-  1 left out. A flip replaces the history entry, so Back from Open document returns to the same
-  pages and scroll position, and Back from the planning page leaves it rather than stepping back
-  through pages.
+- **The URL carries the pages**: `/.vantage/planning?needs-you=3&waiting=2`, 1-based, with page 1
+  left out. With a choice of roadmap it carries that too, as `roadmap=docs/plans/roadmap.md`, and
+  picking another is a flip of *Needs you* to its first page
+  ([`planning-index.md` §6.4](planning-index.md#64-several-roadmaps-on-the-page)). A flip
+  replaces the history entry, so Back from Open document returns to the same pages and scroll
+  position, and Back from the planning page leaves it rather than stepping back through pages.
 - **Out of range:** a page past the end is clamped to the last one, a malformed value reads as 1,
   and either rewrites the URL in place.
 - **A flip** keeps the current page on screen until the next page's inputs are ready, then swaps
@@ -747,9 +776,11 @@ stands:
   the new set's inputs are ready, then changes in one commit, the section bar's counts and the
   notices with it. That is a change of data ([§11.1](#111-the-rules)), so the page may re-lay
   out.
-- **Each set of inputs is cached** by repository, index version and page parameters, the last 8
-  kept. Returning to a history entry whose inputs are cached renders the frame and the sections in
-  one commit and then restores the scroll, so the page never flashes at the top first.
+- **Each set of inputs is cached** by repository, index version, chosen roadmap and page
+  parameters, the last 8 kept. A prefetch asks for the roadmap the page would choose: the
+  remembered one, else the default. Returning to a history entry whose inputs are cached renders
+  the frame and the sections in one commit and then restores the scroll, so the page never flashes
+  at the top first.
 
 ### 10.4 Cards
 
@@ -776,7 +807,8 @@ stands:
 - **A push after paint** (`review_changed`, such as the agent's reply) applies at once, as the
   viewer applies it to a document. That is a change of data, not late data
   ([§11.1](#111-the-rules)).
-- **Copy answers still covers every listed question on every page**, as
+- **Copy answers still covers every listed question on every page**, and under every roadmap
+  ([`planning-index.md` §6.3](planning-index.md#63-a-question-on-the-page)), as
   [OQ-PL4](planning-index.md#decision-ledger) ruled:
   - **a card rendered this visit** reports its exact scoping, from the rendered block, as today.
     The report names what it was read from, the question and its document's comments, and it
@@ -806,8 +838,8 @@ stands:
 - **One fixed-height progress line** stands where the section bar will be: *Reading planning
   documents…* until the header line arrives, then *Scanning planning documents: 412 of 1,000*,
   updated at most every 100 ms. The total is the header's candidate count.
-- **When the index is ready**, the section bar and the sections replace that line in one commit.
-  Nothing painted sits below it, so nothing moves.
+- **When the index is ready**, the roadmap line (when there is one), the section bar and the
+  sections replace that line in one commit. Nothing painted sits below it, so nothing moves.
 - **The Markdown pipeline runs once while the index builds**, after the progress line has
   painted, over four short samples of what a card holds, one sample per task, and the first
   sections wait for that run. The pipeline's first run in a page load costs several times any
@@ -845,6 +877,7 @@ stands:
 | :--- | :--- | :--- |
 | The sections | planning page | the empty region below the frame, filled in one commit |
 | Section counts | planning page | ready at first paint, from the index |
+| The roadmap line | planning page | ready at first paint, from the index and the remembered choice, which is read synchronously; it takes the progress line's place with the section bar |
 | Comments filed before the visit | cards | ready at first paint, through the gate |
 | Comments past the 1 s review deadline | cards | a fixed-width *N comments* count in the card's control row, which is always there, expanding on click; nothing inline |
 | The pending count | planning page header | a slot reserved for four digits |
@@ -919,7 +952,7 @@ review mode's 4 px bar. Each is its own fix.
 | Helpers | cold builds only: each holds its code, one queue of at most 2 MiB and one parse, and is ended with the build |
 | Scan cache (disk) | facts plus distinct card blocks of at most 32,000 characters each, plus about 100 B per candidate; about 10–15 MB at 1,000 documents |
 | Server, per request | one file and its encoding, the gzip window, the candidate list, and the kept `have`, at most one entry per candidate; the body is read as it arrives, capped at 1 KiB per `max-candidates` and never below 4 MiB |
-| Wire, warm | the server id's request, a `have` of about 60 B per candidate, and about 75 B per `same` line, plus the roadmap and changed files |
+| Wire, warm | the server id's request, a `have` of about 60 B per candidate, and about 75 B per `same` line, plus every roadmap and changed files |
 | Wire, cold | every readable candidate once, streamed and never held whole |
 | Work before the frame paints | the section derivation, 0.4–1.5 ms at 1,005 documents |
 | Work before a section's cards paint | at most 30 cards and 96 KiB of Markdown, independent of the repository |
@@ -1026,7 +1059,7 @@ Chromium at 1440×900, three runs per cell. The scale fixture is the scale serie
 | D5 | `g p` while the index builds: the frame, with its progress line | ≤ 60 | ≤ 80 |
 | D6 | Main-thread long tasks from planning code (scan, index assembly, section commit), any scenario, production | none | none |
 | D7 | Index ready after `ensure`, production | warm ≤ 100 ms, cold ≤ 600 ms, off the main thread | warm ≤ 150 ms, cold ≤ 2 s with one thread |
-| D8 | A warm reload's stream | no `file` line but the roadmap's | same |
+| D8 | A warm reload's stream | no `file` line but the roadmaps' | same |
 | D9 | Main-thread JS heap after GC, planning page open | ≤ 12 MB | ≤ 14 MB at 60, slope ≤ 0.05 MB per document (today 0.29) |
 | D10 | DOM elements on the planning page | ≤ 3,000 | ≤ 3,000 at every size |
 | D11 | Review requests per visit | at most 2 POSTs, no per-document GET | same |
@@ -1074,6 +1107,7 @@ end to end; the figures come from the fits in [§2](#2-what-the-measurements-say
 | OQ-PS2 | No byte sieve in Go: every candidate is streamed, and the scan stays the only judge of what a planning document is. The user ruled it an implementation matter, on the condition that the reader's experience does not degrade for it | 2026-09-29 | [§6.1](#61-the-stream), [§16](#16-alternatives-considered) | ✅ [`stream.go`](../../internal/planning/stream.go) |
 | — | Coordinator ruling: this work adds no npm dependency. The scan cache sits behind a storage interface; unit tests run it over an in-memory implementation written in this repository, and the Chromium end-to-end tests over real IndexedDB | 2026-09-29 | [§8.1](#81-what-it-keeps-and-under-which-key), [§17](#17-risks) | ✅ [`store.ts`](../../frontend/src/planningScan/store.ts), [`memoryStore.ts`](../../frontend/src/planningScan/memoryStore.ts) |
 | — | Security review: the scan cache's owner is the scanner id and a server id the server answers, and every read and write checks it. A different server answering at one origin clears the cache before anything is read or sent as `have`, and a tab whose database another tab cleared is refused rather than trusted | 2026-09-29 | [§6.5](#65-the-server-id), [§8.1](#81-what-it-keeps-and-under-which-key), [§8.2](#82-the-scanner-id) | ✅ [`planning_server_id.go`](../../internal/api/planning_server_id.go), [`store.ts`](../../frontend/src/planningScan/store.ts) |
+| — | Several roadmaps ([`planning-index.md`'s ruling of 2026-09-30](planning-index.md#decision-ledger)): every roadmap is sent whole and never stored; the header's `roadmaps` is the stream's only roadmap marking, the server and the worker apply one path test to it, and a `same` line for a roadmap is fetched rather than answered from the cache; the roadmap line joins the frame, `roadmap` joins the URL and the page-inputs key, and Copy answers covers every roadmap | 2026-09-30 | [§6.1](#61-the-stream), [§8.1](#81-what-it-keeps-and-under-which-key), [§10.1](#101-frame-first), [§10.2](#102-pages), [§10.3](#103-page-inputs-and-one-commit) | — [the build plan](planning-index-plan.md#several-roadmaps--the-2026-09-30-build) |
 
 <!-- Evidence at 70a05b3, the tree this design was measured on. -->
 

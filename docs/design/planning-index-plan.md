@@ -1,17 +1,19 @@
 ---
 title: "The planning index — implementation plan"
 status: in-review
-stage: BUILT
-next: "Nothing here: every work package is built, and what is left is the design's own next step"
+stage: DECIDED
+next: "Build the several-roadmaps work packages, WP-core, WP-go and WP-web, and land them as one integration commit"
 depends-on:
   - planning-index.md
 tags: [planning, implementation-plan]
-summary: "Build hand-off for the whole planning-index design, phases 1 and 2: seven work packages with disjoint file sets, the contracts between them, and the tests that prove each behavior."
+summary: "Build hand-off for the whole planning-index design: phases 1 and 2 in seven work packages, built, and several roadmaps in three, not yet built, each with disjoint file sets, the contracts between them, and the tests that prove each behavior."
 ---
 
 # The planning index — implementation plan
 
-**Design:** [`planning-index.md`](planning-index.md) · **Status:** BUILT, 2026-09-29: phases 1
+**Design:** [`planning-index.md`](planning-index.md) · **Status:** 2026-09-30. Several roadmaps
+([below](#several-roadmaps--the-2026-09-30-build)) is decided and not built; everything after
+it is built. Phases 1
 and 2 landed on `main` by `70a05b3`, and
 [`planning-index-at-scale.md`](planning-index-at-scale.md) has since replaced the batch endpoint
 of [WP-B](#wp-b--config-endpoint-watcher-go) with a stream. MEASURED at `70a05b3`: the scan took
@@ -39,10 +41,405 @@ terms: [planning index](planning-index.md#3-the-planning-index),
 [candidate and planning document](planning-index.md#31-which-files-it-reads),
 [live question](planning-index.md#33-a-question),
 [stage role](planning-index.md#4-the-header-of-record-stage-next-depends-on),
-[routed](planning-index.md#61-the-roadmap),
+[routed](planning-index.md#61-the-roadmaps),
 [project root](planning-index.md#8-vantage-check-index-and-the-planning-rules).
 
-## Order of work
+## Several roadmaps — the 2026-09-30 build
+
+Written 2026-09-30 against `da26523`; nothing in it is built. It builds the user's ruling of
+that day ([Decision Ledger](planning-index.md#decision-ledger)) as the design states it:
+[§6.1](planning-index.md#61-the-roadmaps) (which files are roadmaps, and what each routes),
+[§6.4](planning-index.md#64-several-roadmaps-on-the-page) (the page),
+[§7](planning-index.md#7-referenced-by-and-status-in-the-file-tree) (Referenced by),
+[§8](planning-index.md#8-vantage-check-index-and-the-planning-rules) (`index` and `check`),
+[§9](planning-index.md#9-configuration) (the config) and
+[`planning-index-at-scale.md` §6.1](planning-index-at-scale.md#61-the-stream) (the stream).
+Where this section and the phase 1 and 2 contracts further down disagree, this section is
+current.
+
+**Terms.** *WP-core*, *WP-go* and *WP-web* *(coined here)* are this build's three work
+packages. The *roadmap test* *(coined here)* is the one test on a path that says whether it is
+a roadmap: listed in `roadmaps`, or, with `roadmaps` null, named `roadmap.md`. The server and
+the planning module each implement it, and one fixture holds them to one answer. An
+*integration commit* (the user's term, from their working rules) is one commit carrying a whole
+parallel set of related changes, made once they are applied to one tree and the gate passes on
+it.
+
+### How it lands
+
+1. **The three are built at once**, each in its own worktree from the commit that added this
+   section, each touching only its own files ([below](#file-sets)) and coding against the
+   contracts here.
+2. **They land as one integration commit, and none of them can land alone.** Two contracts
+   cross every boundary at the same moment:
+   - `planning-config.json` holds the Go reader and the checker to one answer for every
+     `.vantage.toml`, so both must accept the list form, and both must resolve to `roadmaps`,
+     in the same commit;
+   - `PlanningConfig.roadmap` becomes `roadmaps`, and `PlanningSections`, `ReferenceSummary` and
+     `PLANNING_NOTICES` change shape, while `tsc --build` compiles vantage-md with every
+     frontend consumer.
+
+   So the pre-commit hook would refuse each one's commit: a vantage-md change typechecks the
+   frontend, and a fixture change runs both readers' suites.
+3. **Each WP verifies its own slice** with the targeted checks in its section, which never need
+   another WP's files, and hands over its change uncommitted, as its worktree's diff: a commit
+   of its own could not pass the hook. A test that does need another's files waits for the
+   integration and says so in the hand-off.
+4. **The integrator** applies the three diffs onto one tree from the same commit, runs
+   `just check-fast`, commits once with a conventional message, and runs `just done`. A
+   disagreement between two WPs is settled by this section, and where this section is silent, by
+   the design.
+
+### File sets
+
+| WP | Owns |
+| :--- | :--- |
+| WP-core | `packages/vantage-md/src/planning/**`, `packages/vantage-md/src/styleGuide.ts`, `packages/vantage-check/**`, the planning module's suites in the frontend (`frontend/src/lib/planningIndex.test.ts`, `planningSections.test.ts`, `planningScan.test.ts`, `planningPatterns.test.ts`, `planningFixtures.test.ts`, `planningBadges.test.ts`, `planningCard.test.ts`, `planningAgreement.test.tsx`) and their helper `frontend/src/test/planning.ts`, whose exported signatures do not change; `userguide/reference/configuration.md`, `userguide/guides/vantage-check.md`, `userguide/reference/style-guide.md` |
+| WP-go | `internal/**`, the shared fixtures in `internal/repoconfig/testdata/` included; `docs/design/technical_spec.md` |
+| WP-web | the rest of `frontend/`: `src/planningScan/**`, `src/test/planningStream.ts`, `src/lib/planningPages.ts` and its test, `src/lib/planningDocs.test.ts`, `src/lib/preferences.ts`, and `src/pages/`, `src/components/`, `src/hooks/`, `src/stores/` and `e2e/`; `userguide/guides/planning.md`, `userguide/features.md` |
+| Nobody | `CHANGELOG.md`, `web/dist`, `package.json`, `package-lock.json`, `.vantage.toml`, `roadmap.md`, and the three planning design docs, this one included. A WP that finds the design wrong stops and reports it rather than edit it |
+
+The fixtures are WP-go's because the Go code produced their pattern answers, and WP-core's
+suites that read them are verified at the integration. This repository's `.vantage.toml`
+changes in no WP: it sets no `roadmap`, so it finds `roadmap.md` by name, and its `exclude`
+already rules out the end-to-end fixture's `plans/roadmap.md`.
+
+### Contract: the config both readers parse
+
+| `.vantage.toml` | Resolved `roadmaps` |
+| :--- | :--- |
+| no `roadmap` key | `null`: found by name |
+| `roadmap = "plans/roadmap.md"` | `["plans/roadmap.md"]` |
+| `roadmap = ["./a/roadmap.md", "roadmap.md"]` | `["a/roadmap.md", "roadmap.md"]`, in the order written |
+| `roadmap = []` | `[]` |
+
+```go
+// internal/repoconfig
+type PlanningSettings struct {
+	Roadmap *RoadmapSetting `toml:"roadmap"` // nil when the key is absent
+	// Include, Exclude, MaxFileBytes, MaxCandidates, Stages: unchanged
+}
+
+// RoadmapSetting is `roadmap` as written: a TOML string or an array of strings. It decodes
+// through toml.Unmarshaler, so any other shape is refused at decode time.
+type RoadmapSetting struct{ Paths []string }
+
+type Planning struct {
+	// Roadmaps is nil when roadmaps are found by name, and marshals as null; otherwise
+	// non-nil, possibly empty, marshaling as a list. Resolved never turns [] into nil.
+	Roadmaps      []string          `json:"roadmaps"`
+	Include       []string          `json:"include"`
+	Exclude       []string          `json:"exclude"`
+	MaxFileBytes  int64             `json:"max_file_bytes"`
+	MaxCandidates int               `json:"max_candidates"`
+	Stages        map[string]string `json:"stages"`
+}
+
+const RoadmapFileName = "roadmap.md" // DefaultRoadmap is deleted
+
+// IsRoadmap is the roadmap test: rel is listed in Roadmaps, or, with Roadmaps nil, its last
+// "/"-separated segment is RoadmapFileName compared ASCII case-insensitively. It does not ask
+// whether rel is a candidate.
+func (p Planning) IsRoadmap(rel string) bool
+```
+
+```ts
+// packages/vantage-md/src/planning/config.ts
+export interface PlanningConfig {
+  roadmaps: string[] | null; // replaces `roadmap`; DEFAULT_PLANNING_CONFIG.roadmaps is null
+  include: string[];
+  exclude: string[];
+  maxFileBytes: number;
+  maxCandidates: number;
+  stages: Record<string, StageRole> | null;
+}
+```
+
+**Refused, by both readers, refusing the whole file** ([design §9](planning-index.md#9-configuration)):
+a `roadmap` that is neither text nor an array; an array element that is not text; an entry that
+is empty once one leading `./` is dropped, starts with `/`, or holds a `..` segment; and two
+entries that are one path once `./` is dropped. An entry's message names `planning.roadmap`, the
+entry's position counted from 1, and its value quoted; the rest of the wording is each reader's.
+The TOML key stays `roadmap`, and the fixture's existing *an unknown key* case, `roadmaps = …`,
+stays refused.
+
+> [!WARNING]
+> **BurntSushi/toml takes TOML 1.0's mixed arrays.** `roadmap = ["a.md", 3]` decodes without
+> complaint into `[]any`, so `UnmarshalTOML` has to check every element's type itself, as
+> `validate` already checks `stages`' own type for the same library's leniency.
+> `[[planning.roadmap]]` reaches it as an array of maps, and an inline table as a map; refuse
+> both there.
+
+**`planning-config.json` changes.** Its description names the new rules. Every accepted case's
+`planning` object carries `roadmaps` instead of `roadmap`: `null` in every case that writes no
+`roadmap`, `["docs/ROADMAP.md"]` in *every key*, and `["plans/roadmap.md"]` in *a leading ./ on
+the roadmap is dropped*. The string cases already refused (a number, empty, absolute, outside
+the repository, climbing out and back) stay as they are. New cases:
+
+| Name | `toml` | `ok` | `roadmaps` |
+| :--- | :--- | :--- | :--- |
+| a list of roadmaps, in the order written | `[planning]\nroadmap = ["docs/plans/roadmap.md", "roadmap.md"]\n` | true | `["docs/plans/roadmap.md", "roadmap.md"]` |
+| a list entry's leading ./ is dropped | `[planning]\nroadmap = ["./plans/roadmap.md"]\n` | true | `["plans/roadmap.md"]` |
+| an empty list names no roadmap | `[planning]\nroadmap = []\n` | true | `[]` |
+| a list of one | `[planning]\nroadmap = ["plans/ROADMAP.md"]\n` | true | `["plans/ROADMAP.md"]` |
+| paths that differ only in case are two roadmaps | `[planning]\nroadmap = ["Roadmap.md", "roadmap.md"]\n` | true | `["Roadmap.md", "roadmap.md"]` |
+| a list holding a number | `[planning]\nroadmap = ["roadmap.md", 3]\n` | false | |
+| a list holding a list | `[planning]\nroadmap = [["roadmap.md"]]\n` | false | |
+| a list holding an empty path | `[planning]\nroadmap = ["roadmap.md", ""]\n` | false | |
+| a list holding only ./ | `[planning]\nroadmap = ["./"]\n` | false | |
+| a list holding an absolute path | `[planning]\nroadmap = ["/roadmap.md"]\n` | false | |
+| a list holding a path that climbs out and back | `[planning]\nroadmap = ["docs/../roadmap.md"]\n` | false | |
+| a list naming one path twice | `[planning]\nroadmap = ["plans/roadmap.md", "./plans/roadmap.md"]\n` | false | |
+| a roadmap written as a table | `[planning]\nroadmap = { path = "roadmap.md" }\n` | false | |
+| roadmaps written as an array of tables | `[[planning.roadmap]]\npath = "roadmap.md"\n` | false | |
+| a roadmap that is a boolean | `[planning]\nroadmap = true\n` | false | |
+
+**`planning-roadmaps.json`, new.** One object with a `description` and `cases`; each case is
+`{roadmaps, include, exclude, path, candidate, roadmap}`, where `candidate` is what
+`candidateMatcher` / `Matcher.IsCandidate` answers and `roadmap` what the roadmap test answers.
+A path is a roadmap of the index when the server lists it and both are true. The pattern half of
+each `candidate` was computed with vantage-md's port of the matcher, which
+`planning-patterns.json` pins to Go's; WP-go confirms it by running the Go code, and the code
+wins over this table.
+
+| `roadmaps` | `include` | `exclude` | `path` | `candidate` | `roadmap` |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| null | `**/*.md` | | `roadmap.md` | true | true |
+| null | `**/*.md` | | `docs/plans/roadmap.md` | true | true |
+| null | `**/*.md` | | `ROADMAP.md` | true | true |
+| null | `**/*.md` | | `docs/Roadmap.md` | true | true |
+| null | `**/*.md` | | `ROADMAP.MD` | false | true |
+| null | `**/*.md` | | `roadmap.markdown` | false | false |
+| null | `**/*.md` | | `my-roadmap.md` | true | false |
+| null | `**/*.md` | | `roadmap-2026.md` | true | false |
+| null | `**/*.md` | | `roadmap.md/notes.md` | true | false |
+| null | `**/*.md` | | `ʀoadmap.md` (U+0280) | true | false |
+| null | `**/*.md` | `frontend/e2e/fixtures/**` | `frontend/e2e/fixtures/test_repo/plans/roadmap.md` | false | true |
+| `["plans/roadmap.md"]` | `docs/**` | | `plans/roadmap.md` | true | true |
+| `["plans/roadmap.md"]` | `docs/**` | | `roadmap.md` | false | false |
+| `["plans/roadmap.md"]` | `docs/**` | | `docs/roadmap.md` | true | false |
+| `["plans/roadmap.md"]` | `docs/**` | | `plans/ROADMAP.md` | false | false |
+| `["plans/roadmap.md"]` | `**/*.md` | `plans/**` | `plans/roadmap.md` | true | true |
+| `["docs/PLAN.md"]` | `**/*.md` | | `docs/PLAN.md` | true | true |
+| `[]` | `**/*.md` | | `roadmap.md` | true | false |
+
+`shared-config.toml` does not change: its string `roadmap = "plans/ROADMAP.md"` now resolves to
+`["plans/ROADMAP.md"]`, which each reader's suite asserts.
+
+### Contract: the stream's roadmap marking
+
+- **The header's config is the whole marking.** It carries `"roadmaps": null`, a list, or `[]`,
+  and no other key: `roadmap` is gone from the wire. No `same`, `file`, `skipped` or
+  `unreadable` line, and no single-path answer, gains a field.
+- **The server** applies `IsRoadmap` to the header's config:
+  - `Matcher.IsCandidate(rel)` is true for a listed roadmap whatever the patterns say, and
+    exempts nothing when `Roadmaps` is nil;
+  - `Stream.Wants(path, hash)` is false for a roadmap, so its `have` entry is never kept;
+  - `candidateLine` never answers `same` for a roadmap;
+  - `matcherFor`'s key holds `Roadmaps` as it marshals, so `null` and `[]` are two keys.
+- **The worker** applies `isRoadmapPath` to the same header's config: it scans a roadmap as one,
+  never writes it to the cache or counts it among the paths a build keeps, holds its card
+  blocks in memory, and answers a `same` line for a roadmap by fetching the file through the
+  single-path mode and scanning it, as it answers a `same` line whose stored result is gone.
+- **`refresh` and `cards` messages** carry a `PlanningConfig` as they do today, with `roadmaps`.
+- **A tab from before the change** fails its build on the new header, since `parseStreamLine`
+  refuses a config without `roadmaps`; Retry and a reload recover it
+  ([design §13](planning-index.md#13-risks)).
+
+### Contract: the planning module
+
+WP-core provides it; WP-web and `vantage-check` consume it. Everything stays plain JSON-able
+data. **Removed:** `PlanningConfig.roadmap`, `PlanningSections.roadmap`,
+`PLANNING_NOTICES.noRoadmap`, `ReferenceSummary.onRoadmap`, and `routeQuestions`' one-argument
+form.
+
+```ts
+// ---- config.ts --------------------------------------------------------------
+export const ROADMAP_FILE_NAME = "roadmap.md";
+/** The path's last "/"-separated segment is roadmap.md, ASCII case-insensitively. */
+export function hasRoadmapName(path: string): boolean;
+/** The roadmap test: listed in `roadmaps`, or named roadmap.md when `roadmaps` is null. Not candidacy. */
+export function isRoadmapPath(config: PlanningConfig, path: string): boolean;
+/** Roadmap order: fewer "/"-separated segments first, then the index's path order. */
+export function compareRoadmaps(a: string, b: string): number;
+/** include && !exclude; a listed roadmap is a candidate whatever they say, a discovered one is not. */
+export function candidateMatcher(config: PlanningConfig): (path: string) => boolean;
+
+// ---- model.ts ---------------------------------------------------------------
+// scanCandidate(config, path, content): unchanged signature; isRoadmap = isRoadmapPath(config, path).
+// parseStreamLine: a header's config needs `roadmaps`, null or an array of strings.
+
+// ---- sections.ts ------------------------------------------------------------
+export type RoadmapState = "routes" | "done" | "skipped" | "unreadable" | "missing";
+export interface PlanningRoadmap {
+  path: string;
+  state: RoadmapState;
+  /** Its routed questions that are open or answered: Needs you when chosen. 0 unless `routes`. */
+  needsYouCount: number;
+}
+/**
+ * Every roadmap, in roadmap order. Listed: one entry per listed path, `missing` when the
+ * index holds nothing at it. Found by name: every path the index holds, as a document,
+ * skipped or unreadable, whose name is roadmap.md; never `missing`. A document whose stage
+ * has the done role is `done`, any other document `routes`.
+ */
+export function roadmapsOf(index: PlanningIndex): PlanningRoadmap[];
+/** The questions one roadmap routes, in its order (design §6.1); [] unless it `routes`. */
+export function routeQuestions(index: PlanningIndex, roadmap: string): RoutedQuestion[];
+
+export interface OtherRoadmapQuestion extends RoutedQuestion {
+  /** The first roadmap in roadmap order, other than the chosen one, that routes it. */
+  roadmap: string;
+}
+export interface PlanningSections {
+  roadmaps: PlanningRoadmap[];
+  /** `options.roadmap` when it `routes`, else the first that does; null when none does. */
+  chosenRoadmap: string | null;
+  stagesDeclared: boolean;
+  nothingNeedsYou: boolean;
+  /** The chosen roadmap's routed open or answered questions, in its order; with none chosen, every open question by path, then line. */
+  needsYou: RoutedQuestion[];
+  /** Open or answered, routed by another roadmap and not the chosen one, each once, in roadmap order then that roadmap's order. */
+  onOtherRoadmaps: OtherRoadmapQuestion[];
+  /** Open questions no roadmap routes; null when none is chosen. */
+  unrouted: QuestionRef[] | null;
+  waiting: WaitingEntry[];            // unchanged
+  ready: string[] | null;             // unchanged
+  graduate: string[] | null;          // unchanged
+  disagrees: string[] | null;         // unchanged
+  skipped: PlanningIndex["skipped"];  // unchanged
+  unreadable: PlanningIndex["unreadable"]; // unchanged
+}
+export function derivePlanningSections(
+  index: PlanningIndex,
+  options?: { roadmap?: string | null },
+): PlanningSections;
+
+export const PLANNING_NOTICES: {
+  nothingNeedsYou: string;
+  /**
+   * The roadmap notice of design §6.4, or null: the No roadmap line when none routes, the
+   * Not read as a roadmap line when a listed one is missing, skipped or unreadable while
+   * another routes, and null otherwise.
+   */
+  roadmapNotice(config: PlanningConfig, roadmaps: readonly PlanningRoadmap[]): string | null;
+  /** "1 more question needs you on another roadmap." / "3 more questions need you on other roadmaps." */
+  otherRoadmaps(count: number): string;
+  noStages: string;                                                  // unchanged
+  refused(candidateCount: number, maxCandidates: number): string;    // unchanged
+};
+
+export interface ReferenceSummary {
+  /** Linking documents: the roadmaps that route first, in roadmap order, then the rest by path. */
+  sources: ReferenceSource[];
+  /** Each roadmap that routes this document or one of its questions, in roadmap order, with the heading of its first link that does; never the document itself. */
+  onRoadmaps: { roadmap: string; heading: string | null }[];
+  /** Its open questions no roadmap routes; 0 when none routes, and for a done document. */
+  unrouted: number;
+  /** Every roadmap that routes, in roadmap order: how many there are, and what a label must tell apart. */
+  roadmaps: string[];
+}
+```
+
+`derivePlanningSections` stays cheap enough to run per index and per choice: every roadmap's
+routing is one pass over its links. How the frontend memoizes it per (index, chosen roadmap) is
+WP-web's; a `WeakMap` per index holding one entry per roadmap is enough.
+
+### Contract: `vantage-check index`
+
+- `index [--format text|json] [--roadmap <path>] [--config <path> | --no-config]`. `--roadmap`
+  takes its value as `--config` does, `--roadmap=<path>` included; without one it is a usage
+  error, *--roadmap needs a path*. `IndexOptions` gains `roadmap?: string`.
+- The value is repo-relative with one leading `./` dropped. One that is not a `routes` roadmap
+  exits `2`: *vantage-check: --roadmap docs/x.md is not a roadmap here; the roadmaps are:
+  roadmap.md, docs/plans/roadmap.md*, or *…; there is no roadmap* when none routes. A refused
+  project exits `3` first.
+- JSON is `INDEX_FORMAT_VERSION = 2`, in exactly the shape of
+  [design §8](planning-index.md#8-vantage-check-index-and-the-planning-rules): `sections` is
+  `derivePlanningSections(index, {roadmap})` as it serializes, and the top-level `roadmaps` has
+  `{path, state, chosen, links}` per `sections.roadmaps` entry, where `links` is version 1's
+  `RoadmapLink[]` for the files that were read and `[]` for the rest.
+- Text is [design §8](planning-index.md#8-vantage-check-index-and-the-planning-rules)'s: the roadmap notice and the other-roadmaps line (with *Choose one with
+  --roadmap \<path\>*) among the notices, the `Roadmaps (N)` block before *Needs you* when two or
+  more roadmaps are listed in any state, and the chosen roadmap's badged source last.
+- `USAGE` and the `[planning]` sample in `help.ts` show the new option and both forms of
+  `roadmap`.
+
+### WP-core — the planning module and `vantage-check`
+
+- **Builds** the config and sections contracts above, `scanCandidate` and `parseStreamLine`'s
+  changes, the checker's `roadmap` parse (`asRoadmaps` in place of `asRoadmap`), `--roadmap`,
+  `index`'s JSON and text, and in `rules/planning.ts` a narrow index holding every roadmap:
+  each listed one through `isCandidate`, as the one roadmap is read today, or with `roadmaps`
+  null the candidates of one `Listing(root).list()` walk that pass `hasRoadmapName`, walked only
+  when `planning/unrouted` is enabled and a checked document may fire it. The unrouted message
+  is [design §8](planning-index.md#8-vantage-check-index-and-the-planning-rules)'s.
+- **Tests** (a failing test first for every behavior): the roadmap test and roadmap order; a
+  discovered roadmap hidden by `exclude`; a listed one read despite it; `roadmapsOf` in each
+  state; routing by two roadmaps, a question routed by either leaving *Unrouted*,
+  `onOtherRoadmaps` deduplicated and ordered, a `done` roadmap routing nothing, a roadmap's link
+  to another routing only that roadmap's own questions; `chosenRoadmap` honoring a routing
+  request and falling back from any other; every notice case in [design §6.4](planning-index.md#64-several-roadmaps-on-the-page); `referenceSummary`
+  with one and with two roadmaps; the checker's parse of every new fixture case; `index` text
+  and JSON with two roadmaps, `--roadmap` chosen, unknown and refused; `check` walking only with
+  nothing listed, and only when the rule could fire.
+- **Verifies** with `npx vitest run` over its frontend suites from `frontend/`, the checker's
+  suites from `packages/vantage-check/`, and `tsc --build` of `packages/vantage-md` and
+  `packages/vantage-check`. The fixture-reading cases wait for WP-go's fixtures, and the
+  frontend typecheck for WP-web.
+- **Docs:** the style guide's `[planning]` paragraph, `configuration.md`'s `roadmap` row (both
+  forms, finding by name, the case-sensitive `include` trap), and `vantage-check.md`'s `index`
+  and `planning/unrouted` text, JSON version 2 included.
+
+### WP-go — the server
+
+- **Builds** the Go half of the config contract, `IsRoadmap`, the four stream changes, and the
+  two fixture files, with the case lists above.
+- **Tests:** the fixture tests for both files; a stream over a tree with `roadmap.md` and
+  `docs/plans/roadmap.md` and a `have` naming both, answering `file` for each; a listed roadmap
+  under `exclude` still streamed, and a discovered one under `exclude` absent from the stream
+  and from the single-path mode; the header's `roadmaps` as `null`, a list and `[]`; `Wants`
+  refusing a roadmap; the matcher cache telling `null` from `[]`.
+- **Verifies** with `go test ./internal/...` and `go vet ./...`. The Go fixture tests are the
+  first to read the new fixtures, and nothing of WP-go's waits on another WP.
+- **Docs:** [`technical_spec.md`](technical_spec.md)'s two sentences on the roadmap, the stream's and the scan
+  cache's, say every roadmap.
+
+### WP-web — the viewer
+
+- **The worker:** the stream-marking contract in `planningScan/core.ts`, and the fake server in
+  `test/planningStream.ts` answering as WP-go's stream does.
+- **The page:** the roadmap line, the choice, the URL and the notices of [design §6.4](planning-index.md#64-several-roadmaps-on-the-page). The
+  choice is one pure function of the routing roadmaps, the URL's value and the remembered one,
+  so the page, its inputs and every prefetch resolve it alike. The remembered choice is a new
+  entry in `lib/preferences.ts`, per repository; its storage format is WP-web's.
+  `planningPages.ts`' `pageSearch` keeps `roadmap` as it keeps any parameter that is not a
+  section's; the canonical `roadmap` is written separately, and the page-inputs key and
+  `prefetchPlanningPage` include the chosen roadmap. `listedQuestions` adds `onOtherRoadmaps`,
+  so Copy answers covers every roadmap.
+- **Referenced by:** `summaryLine`'s words of [design §7](planning-index.md#7-referenced-by-and-status-in-the-file-tree), naming roadmaps through the file's
+  existing `sourceLabels` over `summary.roadmaps`.
+- **Tests:** the worker never storing either of two roadmaps and fetching on a `same` line for
+  one; the page with one roadmap unchanged; with two, the picker's options and counts, a pick
+  rewriting the URL and dropping `needs-you`, a reload and a later visit reopening the pick, a
+  URL naming a non-roadmap rewritten in place, the other-roadmaps line, a failing
+  `localStorage`; Copy answers counting a comment on a question only the other roadmap routes;
+  every notice; Referenced by with two roadmaps. One end-to-end spec shows the picker over two
+  roadmaps in a real browser. How it gets a two-roadmap repository, a second server on a private
+  port over a new fixture of at most 30 files or a config written for the spec alone, is
+  WP-web's choice, provided every existing spec keeps `test_repo`'s one listed roadmap.
+- **Verifies** with `npx vitest run` over its suites and, after the integration, the
+  frontend's `tsc --build` and `just e2e`.
+- **Docs:** `userguide/guides/planning.md`'s roadmap section, its notices and its Referenced by
+  table, and `features.md` wherever it says *the roadmap*.
+
+### Done, for this build
+
+- [ ] [The design's done list for several roadmaps](planning-index.md#15-what-done-looks-like)
+  holds, checked by hand on a two-roadmap repository as well as by the tests above.
+- [ ] `vantage-check index` on this repository prints what it printed before the change, but
+  for the JSON's version 2 shape.
+- [ ] The integration commit passes `just check-fast`, and `just done` passes after it.
 
 1. **WP-A, alone.** Every other WP codes against its types, and it moves checker helpers that C
    must not touch.
@@ -490,7 +887,7 @@ export const useWebSocket: (options?: { viewer?: boolean }) => void;
   false`; a `done` document still gets its badge. `resolveRepoLink` gives `null` for a scheme,
   `//`, a leading `/` and a path escaping the root, which is the rule
   [§3.6](planning-index.md#36-failure)'s cross-repository line rests on.
-- [§6.1](planning-index.md#61-the-roadmap), [§6.2](planning-index.md#62-sections-top-to-bottom):
+- [§6.1](planning-index.md#61-the-roadmaps), [§6.2](planning-index.md#62-sections-top-to-bottom):
   routing by question link and by bare document link; a `#decision-ledger` link, as
   `roadmap.md:16` cites [`OQ-CT1`](color-themes.md#decision-ledger), routes nothing (Q12); a
   second reach keeps its first position; every section's contents, order and empty-hides
@@ -931,7 +1328,7 @@ ready, `next` renders as plain text.
 | `.vantage.toml` | new: `[planning]` excluding `docs/gallery/**` and `frontend/e2e/fixtures/**`, the [§9](planning-index.md#9-configuration) stages, and `"planning/unrouted" = "warning"` (Q4) |
 | `packages/vantage-check/test/repositoryConfig.test.ts` | new: this repository's `.vantage.toml` rejects a fixture path and a gallery path |
 | `docs/**` frontmatter | `stage:` per the table below |
-| `roadmap.md` | ordered link lists ([§6.1](planning-index.md#61-the-roadmap)), every item kept, its prose beneath (Q10) |
+| `roadmap.md` | ordered link lists ([§6.1](planning-index.md#61-the-roadmaps)), every item kept, its prose beneath (Q10) |
 
 **Traps.**
 
@@ -1009,7 +1406,9 @@ not planning documents; leave them.
 - **Add npm `ignore`.** Q1 ruled for the server's matcher, and with git's semantics the
   checker and the server would disagree on every pattern.
 - **Add a total-bytes cap, or take `.markdown` as a candidate.** Neither is in the design.
-- **Walk the tree in `check`.** No rule needs more than the document and the roadmap.
+- **Walk the tree in `check`,** beyond the one listing walk that finds roadmaps by name
+  ([design §8](planning-index.md#8-vantage-check-index-and-the-planning-rules)). No rule needs
+  more than the document and the roadmaps.
 - **Render cards from `question.title`** or any other summary:
   [§6.3](planning-index.md#63-a-question-on-the-page) requires the viewer pipeline.
 - **Touch `web/dist`, the static builder or `docs/gallery/`.** Q3 ruled that a static export

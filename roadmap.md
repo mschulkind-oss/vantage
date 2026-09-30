@@ -1,6 +1,6 @@
 # Roadmap
 
-**Updated:** 2026-09-29
+**Updated:** 2026-09-30
 
 The order is the one thing this file holds that no other document can. Each entry is a link and the reason it sits where it does. What the linked document owns, its status, its stage and its open questions, is not copied here: Vantage shows it in a badge beside the link, and on GitHub it is one click away in that document's frontmatter. Prose beneath an entry holds only what has no other home. What a link here routes, and how `vantage-check index` finds the questions this file misses: [Planning Documents](userguide/guides/planning.md#the-roadmap).
 
@@ -8,9 +8,9 @@ The order is the one thing this file holds that no other document can. Each entr
 
 ## 📦 Up Next
 
-1. [The planning index](docs/design/planning-index-plan.md), both phases, first: the badges this file now leans on are what its phase 1 built, and only its measurement and graduation are left.
+1. [The planning index](docs/design/planning-index-plan.md), both phases, first: the badges this file now leans on are what its phase 1 built, and what is left is several roadmaps, then its measurement and graduation.
 
-   [`planning-index.md`](docs/design/planning-index.md) is built, both phases of [`planning-index-plan.md`](docs/design/planning-index-plan.md) included, and so is [`planning-index-at-scale.md`](docs/design/planning-index-at-scale.md), its amendment for large repositories, where `g p` froze for seconds, built from [its plan](docs/design/planning-index-at-scale-plan.md) to ship in one release. What is left is the amendment's [§19](docs/design/planning-index-at-scale.md#19-what-done-looks-like) timing targets, which nothing has measured against the build yet, and then graduating the two designs into one system doc.
+   [`planning-index.md`](docs/design/planning-index.md) is built, both phases of [`planning-index-plan.md`](docs/design/planning-index-plan.md) included, and so is [`planning-index-at-scale.md`](docs/design/planning-index-at-scale.md), its amendment for large repositories, where `g p` froze for seconds, built from [its plan](docs/design/planning-index-at-scale-plan.md) to ship in one release. What is left is, first, several roadmaps: the user's ruling of 2026-09-30 that a roadmap is found by its file name and that several can be listed and picked, decided and [planned as three work packages](docs/design/planning-index-plan.md#several-roadmaps--the-2026-09-30-build) that land as one commit, because a repository that keeps its roadmap at `docs/plans/roadmap.md` gets *No roadmap* today. Then the amendment's [§19](docs/design/planning-index-at-scale.md#19-what-done-looks-like) timing targets, which nothing has measured against the build yet, and then graduating the two designs into one system doc.
 
 2. [A semantic-token vocabulary](docs/design/color-themes.md#9-follow-ups), before any component moves, because every PR after the first is a mapping onto its names.
 
