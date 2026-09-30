@@ -61,7 +61,7 @@ func (e Entry) MarshalJSON() ([]byte, error) {
 
 // Lookup answers for the one path rel, applying the stream's tests to it: it
 // must be listed, it must be a candidate, and then it is read within the size
-// limit exactly as [WriteStream] reads it.
+// limit exactly as [Stream.Write] reads it.
 //
 // The candidate limit is not applied. Whether a scan is refused is a property of
 // the whole stream, and the viewer asks about one path of a refused index only

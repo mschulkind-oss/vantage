@@ -31,6 +31,7 @@ const (
 	reasonNotRegular = "not a regular file"
 	reasonOutside    = "outside the repository"
 	reasonOtherPath  = "its name reads as a different path"
+	reasonNameUTF8   = "its name is not UTF-8"
 )
 
 // read is the outcome of reading one candidate.
@@ -54,6 +55,20 @@ func contentHash(data []byte) string {
 	return hex.EncodeToString(sum[:16])
 }
 
+// isContentHash reports whether s is spelled as a [contentHash] is: 32
+// lowercase hex digits. Nothing else can equal one.
+func isContentHash(s string) bool {
+	if len(s) != 32 {
+		return false
+	}
+	for i := range len(s) {
+		if c := s[i]; (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
 // openFile is os.Open, replaceable in tests so they can prove what was never
 // opened — the refusal and the size limit both promise that — without relying
 // on permissions, which a test running as root does not have.
@@ -71,6 +86,12 @@ func newReader(root string, maxBytes int64) *reader {
 
 // read reads the candidate at rel, refusing what a planning source cannot be.
 //
+// A name that is not UTF-8 is refused first, and nothing is opened for it. JSON
+// carries only UTF-8, so the name would reach the browser with the replacement
+// character, U+FFFD, in place of each invalid byte: a path no lookup finds
+// again, under which a result could be kept and never matched, and one that
+// two such files could share.
+//
 // Containment is proved by [pathsafe.Resolve], the rule `/content` uses. The
 // file must then be a regular file by Lstat, which refuses a symlink even to a
 // file inside the repository: the listing never yields one, so neither does
@@ -86,6 +107,9 @@ func newReader(root string, maxBytes int64) *reader {
 // because the planning page lists unreadable files and says nothing of absent
 // ones.
 func (r *reader) read(rel string) read {
+	if !utf8.ValidString(rel) {
+		return read{kind: KindUnreadable, reason: reasonNameUTF8}
+	}
 	full, err := pathsafe.Resolve(r.root, rel)
 	if err != nil {
 		return read{kind: KindUnreadable, reason: reasonOutside}

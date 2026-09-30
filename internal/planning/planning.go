@@ -35,7 +35,7 @@
 //
 // # Two modes
 //
-// [WriteStream] answers for every candidate, one line each, sending the text
+// [Stream.Write] answers for every candidate, one line each, sending the text
 // only of the files whose hash the browser does not hold. [Lookup] answers for
 // one path, the viewer's refresh after a change push, and applies the same
 // tests to it so that a path joins the index only on the terms a full scan
