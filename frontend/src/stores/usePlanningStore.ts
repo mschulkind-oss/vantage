@@ -423,10 +423,15 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
     const seq = ++tracker.seq;
     tracker.sent.set(path, seq);
 
+    // What the file is scanned under by a scanner that has seen no header,
+    // as one made after the last one died has not (scale design §7.1).
+    const load = get().byRepo[repo];
+    const config = load?.status === "ready" ? load.index.config : null;
+
     void (async () => {
       let entry: ScannedEntry | null;
       try {
-        entry = await planningScanner().refresh({ repo, seq, path });
+        entry = await planningScanner().refresh({ repo, seq, path, config });
       } catch {
         entry = null;
       }

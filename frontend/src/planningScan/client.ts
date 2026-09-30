@@ -57,12 +57,15 @@ export interface ScannerClient {
   cancel(repo: string, seq: number): void;
   /**
    * One path's scanned entry, as the planning index applies it, with no card
-   * text in it; `null` when it could not be had.
+   * text in it; `null` when it could not be had. `config` is the config of the
+   * index the answer is for, which a worker that has seen no header of the
+   * repository scans under: one made after another died (§7.1).
    */
   refresh(request: {
     repo: string;
     seq: number;
     path: string;
+    config?: PlanningConfig | null;
   }): Promise<ScannedEntry | null>;
   /**
    * Card blocks, one answer per card asked for, in order. `full` asks for
@@ -427,7 +430,7 @@ export function workerScannerClient(
 
     refresh: (request) => {
       if (instead !== null) return instead.refresh(request);
-      const { repo, seq, path } = request;
+      const { repo, seq, path, config = null } = request;
       return ask(
         (id) => ({
           type: "refresh",
@@ -436,7 +439,8 @@ export function workerScannerClient(
           apiBase: apiBaseOf(repo),
           seq,
           path,
-          config: configs.get(repo),
+          // The index's config, as the store holds it, else the last header's.
+          config: config ?? configs.get(repo),
         }),
         (reply) => (reply.type === "scanned" ? reply.entry : null),
         () => null,
@@ -507,8 +511,8 @@ export function inlineScannerClient(
       void core.build({ repo, apiBase: apiBaseOf(repo), seq, bypassCache }, on);
     },
     cancel: (repo, seq) => core.cancel(repo, seq),
-    refresh: ({ repo, seq, path }) =>
-      core.refresh({ repo, apiBase: apiBaseOf(repo), seq, path }),
+    refresh: ({ repo, seq, path, config = null }) =>
+      core.refresh({ repo, apiBase: apiBaseOf(repo), seq, path, config }),
     cards: (repo, want, cardOptions) =>
       core.cards({
         repo,

@@ -38,6 +38,7 @@ import {
 } from "../planningScan/client";
 import { setPlanningLimitsForTests } from "../planningScan/limits";
 import { memoryScanStore } from "../planningScan/memoryStore";
+import type { ScanStore } from "../planningScan/store";
 import {
   contentHash,
   planningConfig,
@@ -266,11 +267,27 @@ async function readyWith(tree: Record<string, string> = TREE): Promise<void> {
 }
 
 let client: InlineScannerClient;
+/** The scan cache's store under `client`. */
+let scanStore: ScanStore;
+
+/** The content hash the scan cache holds for each path. */
+const cachedHashes = async (): Promise<Record<string, string>> =>
+  Object.fromEntries(
+    (await scanStore.stamps("")).map((stamp) => [stamp.path, stamp.hash]),
+  );
+
+/** The paths a stream answering `request` for `tree` sends as `file`. */
+const fileLinesFor = (request: Request, tree: Record<string, string>) =>
+  streamLines(tree, haveOf(request)).flatMap((line) => {
+    const parsed = JSON.parse(line) as { kind: string; path?: string };
+    return parsed.kind === "file" ? [parsed.path] : [];
+  });
 
 beforeEach(() => {
   requests = [];
+  scanStore = memoryScanStore();
   client = inlineScannerClient({
-    store: memoryScanStore(),
+    store: scanStore,
     scannerId: "test",
     fetch: fakeFetch,
   });
@@ -1049,6 +1066,143 @@ describe("ordering (§3.4; scale design §5.4)", () => {
     answerStream(second);
     await flush();
     expect(paths()).not.toContain("other.md");
+  });
+});
+
+/*
+ * The scan cache follows the same numbering: it ends up holding the version
+ * of each file the index on screen holds, whichever answer lands last, so a
+ * card request naming the index's hash is answered and the next warm build
+ * streams nothing but the roadmap (scale design §8.3, §19 D8).
+ */
+describe("the scan cache, under the same numbering (scale design §8.3)", () => {
+  const answered = fileAnswer("docs/design.md", DESIGN_ANSWERED);
+  const NEW = "---\nstatus: draft\n---\n\n# New\n";
+  const state = () =>
+    findDocument(readyIndex(), "docs/design.md")?.questions[0].state;
+
+  it("keeps a push answered before the build's end over the build's own record, and one for a file made after the listing", async () => {
+    store().ensure("");
+    await flush();
+    const feed = take(STREAM).open();
+    const lines = streamLines(TREE, {});
+    // Every candidate line has been read, and the end has not come.
+    feed.send(...lines.slice(0, -1));
+    await flush();
+    store().noteFilesChanged("", ["docs/design.md", "docs/new.md"], []);
+    await flush();
+    take(one("docs/design.md")).answer(answered);
+    take(one("docs/new.md")).answer(fileAnswer("docs/new.md", NEW));
+    await flush();
+    feed.send(...lines.slice(-1));
+    feed.close();
+    await flush();
+    await client.idle();
+
+    const { hashes } = readyLoad();
+    expect(hashes["docs/design.md"]).toBe(contentHash(DESIGN_ANSWERED));
+    expect(hashes["docs/new.md"]).toBe(contentHash(NEW));
+    const cached = await cachedHashes();
+    expect(cached["docs/design.md"]).toBe(hashes["docs/design.md"]);
+    expect(cached["docs/new.md"]).toBe(hashes["docs/new.md"]);
+
+    // A card request naming the index's hash is answered, not `stale`.
+    const block = scannedOf({ "docs/design.md": DESIGN_ANSWERED }).blocks[
+      "docs/design.md"
+    ]?.[0];
+    const asked = requests.length;
+    expect(
+      await client.cards("", [
+        {
+          path: "docs/design.md",
+          hash: hashes["docs/design.md"] ?? "",
+          startLine: block?.startLine ?? 0,
+        },
+      ]),
+    ).toEqual([{ path: "docs/design.md", block }]);
+    expect(requests).toHaveLength(asked);
+
+    // The next build sends both as `have`, so only the roadmap is a `file`.
+    const tree = {
+      ...TREE,
+      "docs/design.md": DESIGN_ANSWERED,
+      "docs/new.md": NEW,
+    };
+    store().rescan("");
+    await flush();
+    expect(fileLinesFor(take(STREAM), tree)).toEqual(["roadmap.md"]);
+  });
+
+  it("keeps the newer push's version when the older push's answer lands last", async () => {
+    await readyWith();
+    store().noteFilesChanged("", ["docs/design.md"], []);
+    await flush();
+    const older = take(one("docs/design.md"));
+    store().noteFilesChanged("", ["docs/design.md"], []);
+    await flush();
+    const newer = take(one("docs/design.md"));
+    newer.answer(answered);
+    await flush();
+    // The older request read the file before it changed.
+    older.answer(fileAnswer("docs/design.md", DESIGN));
+    await flush();
+    expect(state()).toBe("answered");
+    expect((await cachedHashes())["docs/design.md"]).toBe(
+      readyLoad().hashes["docs/design.md"],
+    );
+  });
+
+  it("keeps the build's version when a push older than the build is answered after it", async () => {
+    await readyWith();
+    store().noteFilesChanged("", ["docs/design.md"], []);
+    await flush();
+    const stale = take(one("docs/design.md"));
+    store().rescan("");
+    await flush();
+    answerStream(take(STREAM));
+    await flush();
+    stale.answer(answered);
+    await flush();
+    await client.idle();
+    expect(state()).toBe("open");
+    expect((await cachedHashes())["docs/design.md"]).toBe(
+      readyLoad().hashes["docs/design.md"],
+    );
+  });
+});
+
+describe("a scanner that has seen no header (scale design §7.1)", () => {
+  it("answers a push for a ready index under that index's config, as a worker made after one died must", async () => {
+    const ROAD = "plans/road.md";
+    store().ensure("");
+    await flush();
+    answerStream(
+      take(STREAM),
+      { ...TREE, [ROAD]: ROADMAP },
+      {
+        config: { roadmap: ROAD },
+      },
+    );
+    await flush();
+    expect(readyIndex().config.roadmap).toBe(ROAD);
+
+    // A new core, which has read no stream: what the worker client starts
+    // when its worker dies with no build out.
+    setPlanningScannerForTests(
+      inlineScannerClient({
+        store: memoryScanStore(),
+        scannerId: "test",
+        fetch: fakeFetch,
+      }),
+    );
+    // With no frontmatter it is a planning document only as the roadmap.
+    const next = `${ROADMAP}1. [Legacy](docs/old/legacy.md)\n`;
+    store().noteFilesChanged("", [ROAD], []);
+    await flush();
+    take(one(ROAD)).answer(fileAnswer(ROAD, next));
+    await flush();
+    expect(load()).toMatchObject({ status: "ready", rescanning: false });
+    expect(readyLoad().hashes[ROAD]).toBe(contentHash(next));
   });
 });
 

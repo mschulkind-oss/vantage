@@ -24,6 +24,7 @@ import {
   type HelperAnswer,
   type HelperJob,
   type HelperPort,
+  type HelperSupply,
   type ScannerCore,
 } from "./core";
 import { setPlanningLimitsForTests } from "./limits";
@@ -756,6 +757,49 @@ describe("cards", () => {
     expect(server.pathRequests()).toEqual(["plans/a.md"]);
   });
 
+  it("keep nothing they read once a refresh has kept a newer version meanwhile", async () => {
+    const store = memoryScanStore();
+    const server = fakePlanningServer(TREE, { config: CONFIG });
+    let hold: Promise<void> | null = null;
+    const core = scannerCore({
+      cache: scanCache(store, "scanner"),
+      fetch: async (input, init) => {
+        const response = await server.fetch(input, init);
+        // The card request's answer, read before the file changed, is slow.
+        const held = hold;
+        hold = null;
+        if (held !== null) await held;
+        return response;
+      },
+      yieldNow: async () => undefined,
+    });
+    await build(core);
+    await store.collect("", new Set());
+    let release!: () => void;
+    hold = new Promise((resolve) => (release = resolve));
+    const carding = cards(core, want("plans/a.md"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(server.pathRequests()).toEqual(["plans/a.md"]);
+
+    const changed = plan("A changed", question("OQ-A1", "Now?"));
+    server.tree["plans/a.md"] = changed;
+    await core.refresh({
+      repo: "",
+      apiBase: "/api",
+      seq: 2,
+      path: "plans/a.md",
+    });
+    release();
+    // The version asked for is answered, and the newer one stays kept.
+    expect(await carding).toEqual([
+      { path: "plans/a.md", block: blocksOf("plans/a.md")[0] },
+    ]);
+    const stamps = await store.stamps("");
+    expect(stamps.find((stamp) => stamp.path === "plans/a.md")?.hash).toBe(
+      contentHash(changed),
+    );
+  });
+
   it("past the card limit are previews, unless asked for in full", async () => {
     setPlanningLimitsForTests({ cardChars: 50 });
     const { core, server } = setup();
@@ -940,6 +984,33 @@ describe("a refresh", () => {
     expect(written).toEqual([]);
   });
 
+  it("scans under the config it is sent when it has seen no header, as a worker made after one died has not (§7.1)", async () => {
+    const { core, server } = setup();
+    const entry = await core.refresh({
+      repo: "",
+      apiBase: "/api",
+      seq: 2,
+      path: CONFIG.roadmap,
+      config: planningConfig(CONFIG),
+    });
+    // The roadmap has no frontmatter: only the config makes it one.
+    expect(entry?.kind === "file" && entry.result.kind).toBe("planning");
+    expect(server.pathRequests()).toEqual([CONFIG.roadmap]);
+  });
+
+  it("scans under a header it has seen over the config it is sent", async () => {
+    const { core } = setup();
+    await build(core);
+    const entry = await core.refresh({
+      repo: "",
+      apiBase: "/api",
+      seq: 2,
+      path: CONFIG.roadmap,
+      config: planningConfig(),
+    });
+    expect(entry?.kind === "file" && entry.result.kind).toBe("planning");
+  });
+
   it("scans under the header of the build in flight", async () => {
     const server = fakePlanningServer(TREE, { config: CONFIG });
     let release!: () => void;
@@ -965,6 +1036,82 @@ describe("a refresh", () => {
     const entry = await refreshing;
     expect(entry?.kind === "file" && entry.result.kind).toBe("planning");
     await building;
+  });
+});
+
+describe("a refresh made during a build (§5.4)", () => {
+  /**
+   * A cold build that yields after every candidate, with a push for a.md
+   * made at its first yield and that push's answer back at its third. Each
+   * cache write takes a task, as an IndexedDB transaction does. The log holds
+   * each candidate handled, as progress reports it, around the refresh's
+   * steps.
+   */
+  async function pushDuringBuild(helpers?: HelperSupply): Promise<string[]> {
+    setPlanningLimitsForTests({ sliceMs: 0, progressMs: 0 });
+    const log: string[] = [];
+    const server = fakePlanningServer(TREE, { config: CONFIG });
+    const inner = memoryScanStore();
+    const store: ScanStore = {
+      ...inner,
+      write: async (repo, records) => {
+        await timeoutYield();
+        return inner.write(repo, records);
+      },
+    };
+    let release!: () => void;
+    const back = new Promise<void>((resolve) => (release = resolve));
+    let yields = 0;
+    let refreshing: Promise<unknown> = Promise.resolve();
+    const core: ScannerCore = scannerCore({
+      cache: scanCache(store, "scanner"),
+      fetch: async (input, init) => {
+        const response = await server.fetch(input, init);
+        if (String(input).includes("?path=")) {
+          await back;
+          log.push("answer back");
+        }
+        return response;
+      },
+      yieldNow: async () => {
+        yields += 1;
+        if (yields === 1) {
+          log.push("push");
+          refreshing = core
+            .refresh({ repo: "", apiBase: "/api", seq: 2, path: "plans/a.md" })
+            .then((entry) => log.push(`refreshed ${entry?.kind}`));
+        }
+        if (yields === 3) release();
+        await timeoutYield();
+      },
+      helpers,
+    });
+    await core.build(REQUEST, (event) => {
+      if (event.type === "progress") log.push(`handled ${event.done}`);
+    });
+    await refreshing;
+    return log;
+  }
+
+  const expectLetFinish = (log: string[]) => {
+    const back = log.indexOf("answer back");
+    expect(back).toBeGreaterThan(-1);
+    // Nothing more is scanned between its answer and its end.
+    expect(log[back + 1]).toBe("refreshed file");
+    // And the build went on while its request was out.
+    expect(
+      log.slice(log.indexOf("push"), back).some((e) => e.startsWith("handled")),
+    ).toBe(true);
+    expect(log.filter((e) => e.startsWith("handled"))).toHaveLength(6);
+  };
+
+  it("is let finish once its answer is back, before the build scans its next file", async () => {
+    expectLetFinish(await pushDuringBuild());
+  });
+
+  it("is let finish before the scan worker's own queue scans on, in a build with helpers", async () => {
+    // Helpers asked for and never come: every file is scanned on this thread.
+    expectLetFinish(await pushDuringBuild({ cores: 4, ask: () => undefined }));
   });
 });
 

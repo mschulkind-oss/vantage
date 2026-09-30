@@ -9,7 +9,9 @@
  * It makes no ordering decision (§5.4). It answers each request, and the
  * planning store decides which answer wins. The one exception is that a build
  * supersedes an earlier build of the same repository, which the store would
- * discard whole anyway: it is cancelled rather than read to its end.
+ * discard whole anyway: it is cancelled rather than read to its end. What it
+ * writes to the cache does follow the store's numbering, so the cache keeps
+ * the answer the store keeps (§8.3).
  *
  * A cold build can share its scanning with **helpers** (§7.5): extra workers
  * the main thread makes when the scan worker asks, each reached through a
@@ -90,11 +92,13 @@ export interface RefreshRequest {
   seq: number;
   path: string;
   /**
-   * The repository's config as the caller last heard it from a header. Used
-   * only while this core has heard none for the repository: a scan worker
-   * started after the last one died, idle, has seen no stream (§7.1).
+   * The config of the index the answer is for, which the planning store holds
+   * once its index is ready, else the last header the caller relayed for the
+   * repository: what the file is scanned under when this core has seen no
+   * header of the repository, as a worker made after one died has not
+   * (§7.1). A header this core has seen wins over it.
    */
-  config?: PlanningConfig;
+  config?: PlanningConfig | null;
 }
 
 /** A card request: see {@link ScannerCore.cards}. */
@@ -683,6 +687,21 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve };
 }
 
+/**
+ * Which request a kept result answers, and so whether it may replace what the
+ * cache holds for its path (§8.3):
+ *
+ * - `build`: a record of build `seq`, queued in its writer;
+ * - `refresh`: the answer to refresh `seq`;
+ * - `fill`: a card request's read of a file it found nothing kept for. It has
+ *   no number of its own, so `seq` is the newest the path had when the
+ *   request looked, and it is kept only if nothing newer has been since.
+ */
+type Keeper =
+  | { kind: "build"; seq: number; writer: CacheWriter }
+  | { kind: "refresh"; seq: number }
+  | { kind: "fill"; seq: number };
+
 interface Run {
   seq: number;
   controller: AbortController;
@@ -706,6 +725,44 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
   const configs = new Map<string, PlanningConfig>();
   let background: Promise<void> = Promise.resolve();
 
+  /*
+   * The request numbers the cache's writes answer (§8.3). The planning store
+   * numbers builds and refreshes from one sequence per repository, discards
+   * an answer to a request older than the latest build, and lays a refresh
+   * newer than a build in flight over that build's index (§5.4). A write is
+   * kept only where the store would keep its answer, so the cache ends up
+   * holding the version of each file the index on screen holds, whichever
+   * answer comes back last.
+   */
+  /** Per repository, the number of the latest build begun. */
+  const floors = new Map<string, number>();
+  /** Per repository, per path, the number of the newest refresh kept. */
+  const refreshed = new Map<string, Map<string, number>>();
+
+  /** The newest request kept for `path`, as far as this core knows. */
+  const newestFor = (repo: string, path: string): number =>
+    Math.max(
+      floors.get(repo) ?? -Infinity,
+      refreshed.get(repo)?.get(path) ?? -Infinity,
+    );
+
+  /**
+   * Refreshes whose answer has arrived, so that what is left of each is one
+   * body read, one scan and one write. A build lets them finish before it
+   * scans its next file, so a push made during a build waits for at most one
+   * file's scan and its own round trip (§5.4); without that, each of those
+   * steps would wait out a scan of its own.
+   */
+  const ahead = new Set<Promise<unknown>>();
+  const letAhead = async (): Promise<void> => {
+    while (ahead.size > 0) await Promise.allSettled(ahead);
+  };
+  /** Let other work in, then let every refresh ahead finish. */
+  const pause = async (): Promise<void> => {
+    await yieldNow();
+    await letAhead();
+  };
+
   /**
    * The config a file of `repo` is scanned under now: the in-flight build's,
    * once its header arrives, else the last header's, else `given`, the one
@@ -715,7 +772,7 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
    */
   const configFor = async (
     repo: string,
-    given?: PlanningConfig,
+    given?: PlanningConfig | null,
   ): Promise<PlanningConfig | null> => {
     let run = runs.get(repo);
     while (run !== undefined) {
@@ -728,15 +785,19 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
     return configs.get(repo) ?? given ?? null;
   };
 
-  const fetchEntry = async (
+  const askEntry = (
     apiBase: string,
     path: string,
     signal?: AbortSignal,
+  ): Promise<Response> =>
+    fetchNow(`${apiBase}/planning/sources?path=${encodeURIComponent(path)}`, {
+      signal,
+    });
+
+  const readEntry = async (
+    response: Response,
+    path: string,
   ): Promise<SourceEntry> => {
-    const response = await fetchNow(
-      `${apiBase}/planning/sources?path=${encodeURIComponent(path)}`,
-      { signal },
-    );
     if (!response.ok) throw new Error(statusMessage(response.status));
     const entry = parseSourceEntry(await response.json());
     if (entry === null || entry.path !== path) {
@@ -748,10 +809,19 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
     return entry;
   };
 
+  const fetchEntry = async (
+    apiBase: string,
+    path: string,
+    signal?: AbortSignal,
+  ): Promise<SourceEntry> =>
+    readEntry(await askEntry(apiBase, path, signal), path);
+
   /**
    * Keep one scanned file: a record in the store, or, for the roadmap, which
    * is never stored because the stream never answers `same` for it (§8.1),
-   * its blocks in memory.
+   * its blocks in memory. Nothing is kept when a newer request than the one
+   * it answers has been kept for its path; a build's record is asked again as
+   * its batch is written.
    */
   const keepScanned = async (
     repo: string,
@@ -759,8 +829,17 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
     path: string,
     hash: string,
     result: ScanResult,
-    writer?: CacheWriter,
+    by: Keeper,
   ): Promise<void> => {
+    if (newestFor(repo, path) > by.seq) return;
+    if (by.kind === "refresh") {
+      let paths = refreshed.get(repo);
+      if (paths === undefined) {
+        paths = new Map();
+        refreshed.set(repo, paths);
+      }
+      paths.set(path, by.seq);
+    }
     if (path === config.roadmap) {
       if (result.kind === "planning") {
         cache.remember(repo, path, hash, result.cards);
@@ -768,8 +847,28 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
       return;
     }
     const record = recordOf(path, hash, result);
-    if (writer === undefined) await cache.write(repo, [record]);
-    else await writer.add(record);
+    if (by.kind === "build") await by.writer.add(record);
+    else await cache.write(repo, [record]);
+  };
+
+  /**
+   * What build `seq`'s collection keeps: what its stream named, and every
+   * path a newer refresh has kept, such as a file made after the listing.
+   * Refreshes no newer are forgotten here, since the build's number now
+   * outranks them.
+   */
+  const keptAfter = (
+    repo: string,
+    seq: number,
+    named: ReadonlySet<string>,
+  ): Set<string> => {
+    const keep = new Set(named);
+    const paths = refreshed.get(repo);
+    for (const [path, at] of paths ?? []) {
+      if (at > seq) keep.add(path);
+      else paths?.delete(path);
+    }
+    return keep;
   };
 
   /* ---- Build ---- */
@@ -811,7 +910,10 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
     let lastProgress = now();
     let sliceStart = now();
     const keep = new Set<string>();
-    const writer = cache.writer(repo);
+    const writer = cache.writer(
+      repo,
+      (record) => newestFor(repo, record.path) <= run.seq,
+    );
     const chunk = chunker(send);
 
     /** One more candidate handled, and progress if it is due. */
@@ -834,7 +936,11 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
       hash: string,
       result: ScanResult,
     ): Promise<void> => {
-      await keepScanned(repo, config, path, hash, result, writer);
+      await keepScanned(repo, config, path, hash, result, {
+        kind: "build",
+        seq: run.seq,
+        writer,
+      });
       if (path !== config.roadmap) keep.add(path);
       chunk.result(path, hash, result);
       counted();
@@ -919,6 +1025,10 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
 
     await readLines(response.body, async (text) => {
       if (run.cancelled) throw CANCELLED;
+      if (ahead.size > 0) {
+        await letAhead();
+        if (run.cancelled) throw CANCELLED;
+      }
       run.pool?.check();
       if (seen.ended) {
         throw new StreamError("The planning stream went on past its end");
@@ -947,7 +1057,7 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
                 config,
                 await fetchEntry(apiBase, job.path, run.controller.signal),
               ),
-            yieldNow,
+            yieldNow: pause,
             askHelpers: () => helpers?.ask(repo, run.seq, count),
           });
         }
@@ -1005,7 +1115,9 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
     // Once idle: what the stream no longer names is gone. A refused stream
     // names nothing, so it collects nothing (§8.3).
     if (!refused) {
-      background = background.then(() => cache.collect(repo, keep));
+      background = background.then(() =>
+        cache.collect(repo, keptAfter(repo, run.seq, keep)),
+      );
     }
   }
 
@@ -1014,6 +1126,8 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
       const { repo, seq } = request;
       const earlier = runs.get(repo);
       if (earlier !== undefined) cancelRun(earlier);
+      // From here on an answer to an older request is one the store discards.
+      floors.set(repo, Math.max(floors.get(repo) ?? -Infinity, seq));
       const run: Run = {
         seq,
         controller: new AbortController(),
@@ -1059,18 +1173,30 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
       if (run?.seq === seq) run.pool?.lose(at);
     },
 
-    async refresh({ repo, apiBase, path, config: given }) {
+    async refresh({ repo, apiBase, seq, path, config: given }) {
       try {
         const config = await configFor(repo, given);
         if (config === null) return null;
-        const entry = await fetchEntry(apiBase, path);
-        if (entry.kind !== "file") return entry;
-        const hash = entry.hash ?? "";
-        const result = scanCandidate(config, path, entry.content);
-        // Written before it is answered, so a card request that follows the
-        // answer finds this version.
-        await keepScanned(repo, config, path, hash, result);
-        return { kind: "file", path, hash, result: withoutCards(result) };
+        const response = await askEntry(apiBase, path);
+        const rest = (async (): Promise<ScannedEntry> => {
+          const entry = await readEntry(response, path);
+          if (entry.kind !== "file") return entry;
+          const hash = entry.hash ?? "";
+          const result = scanCandidate(config, path, entry.content);
+          // Written before it is answered, so a card request that follows
+          // the answer finds this version.
+          await keepScanned(repo, config, path, hash, result, {
+            kind: "refresh",
+            seq,
+          });
+          return { kind: "file", path, hash, result: withoutCards(result) };
+        })();
+        ahead.add(rest);
+        try {
+          return await rest;
+        } finally {
+          ahead.delete(rest);
+        }
       } catch {
         return null;
       }
@@ -1099,6 +1225,7 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
           };
         };
 
+        const since = newestFor(repo, path);
         const held = await cache.cards(repo, path);
         if (held !== undefined && held.hash !== hash) {
           indexes.forEach(stale);
@@ -1125,7 +1252,10 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
           (await configFor(repo, given)) ?? DEFAULT_PLANNING_CONFIG;
         const result = scanCandidate(config, path, entry.content);
         if (held === undefined) {
-          await keepScanned(repo, config, path, hash, result);
+          await keepScanned(repo, config, path, hash, result, {
+            kind: "fill",
+            seq: since,
+          });
         }
         const blocks = result.kind === "planning" ? result.cards : [];
         for (const at of missing) {
