@@ -11,6 +11,13 @@
  * supersedes an earlier build of the same repository, which the store would
  * discard whole anyway: it is cancelled rather than read to its end.
  *
+ * A cold build can share its scanning with **helpers** (§7.5): extra workers
+ * the main thread makes when the scan worker asks, each reached through a
+ * channel of its own, which scan the `file` lines they are handed and answer
+ * with results only. The scan worker still writes the cache and posts every
+ * event itself. Both ends of that channel are here: the pool that hands lines
+ * out, and `serveHelper`, which a helper runs.
+ *
  * Nothing here imports `virtual:planning-scanner-id`, which resolves only
  * under `vite.config.ts`: the scanner id reaches the cache as an argument.
  */
@@ -203,6 +210,325 @@ export function messageYield(): () => Promise<void> {
 }
 
 /* ------------------------------------------------------------------ *
+ * Helpers (§7.5)
+ * ------------------------------------------------------------------ */
+
+/** One file the scan worker hands a helper to scan. */
+export interface HelperJob {
+  id: number;
+  config: PlanningConfig;
+  path: string;
+  content: string;
+}
+
+/** A helper's answer to one job: its scan result, or why it has none. */
+export type HelperAnswer =
+  { id: number; result: ScanResult } | { id: number; error: string };
+
+/**
+ * The little of a `MessagePort` a helper's channel uses: it sends `Send` and
+ * receives `Receive`, so a test can stand in for either end.
+ */
+export interface ChannelPort<Send, Receive> {
+  postMessage(message: Send): void;
+  onmessage: ((event: MessageEvent<Receive>) => void) | null;
+  close(): void;
+}
+
+/** The scan worker's end of a helper's channel. */
+export type HelperPort = ChannelPort<HelperJob, HelperAnswer>;
+
+/** A helper's own end of its channel. */
+export type HelperEnd = ChannelPort<HelperAnswer, HelperJob>;
+
+/**
+ * What the main thread sends a worker it has just made, to make it a helper
+ * rather than the scan worker. The port is the helper's end of its channel.
+ */
+export interface HelperStart {
+  type: "helper";
+  port: HelperEnd;
+}
+
+/**
+ * Where a build's helpers come from: the scan worker's, which asks the main
+ * thread for them (§7.5). The core has none without it, as the inline client
+ * has none: a page that cannot make the scan worker cannot make a helper.
+ */
+export interface HelperSupply {
+  /** The cores the machine reports, `navigator.hardwareConcurrency`. */
+  cores: number;
+  /**
+   * Ask for `count` helpers for build `seq` of `repo`. Their ports arrive,
+   * when they do, through {@link ScannerCore.attachHelpers}.
+   */
+  ask(repo: string, seq: number, count: number): void;
+}
+
+/**
+ * How many helpers a cold build may have on a machine reporting `cores`
+ * cores: `maxHelpers`, less what the main thread and the scan worker need,
+ * which leaves none on two cores or fewer (§7.5).
+ */
+export function helpersFor(cores: number): number {
+  const { maxHelpers, helperReservedCores } = planningLimits;
+  const spare = Math.floor(cores) - helperReservedCores;
+  return Number.isFinite(spare) ? Math.max(0, Math.min(maxHelpers, spare)) : 0;
+}
+
+/**
+ * A helper's work: scan each job that comes in through `port`, and answer it
+ * the same way, one at a time. It holds no cache and posts nothing else, so a
+ * helper's results reach the store only through the scan worker.
+ */
+export function serveHelper(port: HelperEnd): void {
+  port.onmessage = ({ data }) => {
+    let answer: HelperAnswer;
+    try {
+      answer = {
+        id: data.id,
+        result: scanCandidate(data.config, data.path, data.content),
+      };
+    } catch (error) {
+      answer = { id: data.id, error: messageOf(error) };
+    }
+    port.postMessage(answer);
+  };
+}
+
+/** One `file` line to be scanned. */
+interface Job {
+  path: string;
+  hash: string;
+  content: string;
+  /**
+   * What it counts against a queue: its content's length in characters. That
+   * is near enough what a queued line costs in memory, and it is what the
+   * other budgets here count.
+   */
+  size: number;
+}
+
+/** A place a job can be scanned: the scan worker itself, or one helper. */
+interface Lane {
+  /** Characters handed to this lane whose results are not yet taken back. */
+  queued: number;
+  /** The most it may hold. An empty lane takes a job of any size. */
+  cap(): number;
+  take(job: Job): void;
+}
+
+/** A cold build's scanning, spread over the scan worker and its helpers. */
+interface ScanPool {
+  /**
+   * Hand `job` to a lane, once one has room. While none does, this waits, and
+   * so does the stream, which is how the server is held back.
+   */
+  submit(job: Job): Promise<void>;
+  /** Helpers' ports as they arrive. Once the pool is stopped, they are closed. */
+  attach(ports: readonly HelperPort[]): void;
+  /** Settle once every job handed out has its result taken, or throw the first failure. */
+  drain(): Promise<void>;
+  /** Throw the first failure, if there has been one. */
+  check(): void;
+  /** End every helper's channel, and drop whatever comes back. */
+  stop(): void;
+}
+
+/**
+ * The pool of one cold build (§7.5). Each job goes to whichever lane has the
+ * fewest characters queued and room for it, a helper before the scan worker
+ * on a tie, since the scan worker also reads the stream, writes the cache and
+ * posts the events.
+ *
+ * The scan worker's own lane holds up to `helperThresholdBytes`, and it scans
+ * that queue a job at a time, letting the stream be read on between jobs.
+ * When a line finds its queue full and no helper yet, what has come in and not
+ * been scanned is past the threshold, and `askHelpers` is called, once. Each
+ * helper's lane holds up to `helperQueueBytes`.
+ *
+ * Results are taken one at a time, in the order they come back, and a lane's
+ * room is freed only once its result is taken, so what is held never grows
+ * past the queues' caps however slow the cache is.
+ */
+function scanPool(options: {
+  config: PlanningConfig;
+  took: (job: Job, result: ScanResult) => Promise<void>;
+  yieldNow: () => Promise<void>;
+  askHelpers: () => void;
+}): ScanPool {
+  const { config, took, yieldNow, askHelpers } = options;
+  let stopped = false;
+  let failed: { error: unknown } | null = null;
+  let asked = false;
+  let taking: Promise<void> = Promise.resolve();
+  const waiting: (() => void)[] = [];
+  const ends: (() => void)[] = [];
+
+  const over = (): boolean => stopped || failed !== null;
+  /** Wake whoever waits on a lane's room or on the pool's end. */
+  const notify = (): void => {
+    for (const wake of waiting.splice(0)) wake();
+  };
+  const changed = (): Promise<void> =>
+    new Promise((resolve) => waiting.push(resolve));
+  const fail = (error: unknown): void => {
+    failed ??= { error };
+    notify();
+  };
+
+  const settle = (lane: Lane, job: Job, result: ScanResult): Promise<void> => {
+    taking = taking
+      .then(() => (over() ? undefined : took(job, result)))
+      .catch(fail)
+      .finally(() => {
+        lane.queued -= job.size;
+        notify();
+      });
+    return taking;
+  };
+
+  /* ---- The scan worker's own lane ---- */
+
+  const own: Job[] = [];
+  let scanning = false;
+  const self: Lane = {
+    queued: 0,
+    cap: () => planningLimits.helperThresholdBytes,
+    take(job) {
+      self.queued += job.size;
+      own.push(job);
+      void scanOwn();
+    },
+  };
+
+  async function scanOwn(): Promise<void> {
+    if (scanning) return;
+    scanning = true;
+    try {
+      while (own.length > 0 && !over()) {
+        // The stream is read on first: that is how a backlog shows, and how
+        // the next line can go to a helper instead.
+        await yieldNow();
+        const job = own.shift();
+        if (job === undefined || over()) break;
+        let result: ScanResult;
+        try {
+          result = scanCandidate(config, job.path, job.content);
+        } catch (error) {
+          fail(error);
+          break;
+        }
+        await settle(self, job, result);
+      }
+    } finally {
+      scanning = false;
+      notify();
+    }
+  }
+
+  /* ---- A helper's lane ---- */
+
+  const helpers: Lane[] = [];
+
+  const helperLane = (port: HelperPort): Lane => {
+    let nextId = 0;
+    const sent = new Map<number, Job>();
+    const lane: Lane = {
+      queued: 0,
+      cap: () => planningLimits.helperQueueBytes,
+      take(job) {
+        const id = ++nextId;
+        lane.queued += job.size;
+        sent.set(id, job);
+        try {
+          port.postMessage({
+            id,
+            config,
+            path: job.path,
+            content: job.content,
+          });
+        } catch (error) {
+          fail(error);
+        }
+      },
+    };
+    port.onmessage = ({ data }) => {
+      const job = sent.get(data.id);
+      if (job === undefined) return;
+      sent.delete(data.id);
+      if ("error" in data) fail(new Error(data.error));
+      else void settle(lane, job, data.result);
+    };
+    ends.push(() => {
+      port.onmessage = null;
+      port.close();
+    });
+    return lane;
+  };
+
+  const pick = (size: number): Lane | null => {
+    let best: Lane | null = null;
+    for (const lane of [...helpers, self]) {
+      if (lane.queued > 0 && lane.queued + size > lane.cap()) continue;
+      if (best === null || lane.queued < best.queued) best = lane;
+    }
+    return best;
+  };
+
+  return {
+    async submit(job) {
+      for (;;) {
+        if (over()) return;
+        const lane = pick(job.size);
+        if (lane !== null) {
+          lane.take(job);
+          return;
+        }
+        if (!asked) {
+          // Only the scan worker's own queue can be full before any helper
+          // is asked for, so what it holds and this line pass the threshold.
+          asked = true;
+          askHelpers();
+          continue;
+        }
+        await changed();
+      }
+    },
+
+    attach(ports) {
+      for (const port of ports) {
+        if (over()) port.close();
+        else helpers.push(helperLane(port));
+      }
+      notify();
+    },
+
+    async drain() {
+      for (;;) {
+        if (failed !== null) throw failed.error;
+        if (stopped) return;
+        if (self.queued === 0 && helpers.every((lane) => lane.queued === 0)) {
+          return;
+        }
+        await changed();
+      }
+    },
+
+    check() {
+      if (failed !== null) throw failed.error;
+    },
+
+    stop() {
+      if (stopped) return;
+      stopped = true;
+      for (const end of ends.splice(0)) end();
+      notify();
+    },
+  };
+}
+
+/* ------------------------------------------------------------------ *
  * The core
  * ------------------------------------------------------------------ */
 
@@ -213,6 +539,8 @@ export interface ScannerCoreOptions {
   /** Let other work in once a slice has run `sliceMs`. */
   yieldNow?: () => Promise<void>;
   now?: () => number;
+  /** Where a cold build's helpers come from; none without it. */
+  helpers?: HelperSupply;
 }
 
 export interface ScannerCore {
@@ -222,6 +550,11 @@ export interface ScannerCore {
     post: (event: BuildEvent) => void,
   ): Promise<void>;
   cancel(repo: string, seq: number): void;
+  /**
+   * The ports of the helpers build `seq` of `repo` asked for. A build that is
+   * over, or has no use for them, has them closed.
+   */
+  attachHelpers(repo: string, seq: number, ports: readonly HelperPort[]): void;
   /** The path's scanned entry, with no card blocks in it; `null` when it failed. */
   refresh(request: RefreshRequest): Promise<ScannedEntry | null>;
   cards(request: {
@@ -274,10 +607,12 @@ interface Run {
   cancelled: boolean;
   /** Settles with the header's config, or `null` if the build ends without one. */
   header: Deferred<PlanningConfig | null>;
+  /** A cold build's scanning pool, from its header on; `null` without helpers. */
+  pool: ScanPool | null;
 }
 
 export function scannerCore(options: ScannerCoreOptions): ScannerCore {
-  const { cache } = options;
+  const { cache, helpers } = options;
   const fetchNow: typeof fetch =
     options.fetch ?? ((input, init) => globalThis.fetch(input, init));
   const yieldNow = options.yieldNow ?? timeoutYield;
@@ -393,27 +728,68 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
     const writer = cache.writer(repo);
     const chunk = chunker(send);
 
+    /** One more candidate handled, and progress if it is due. */
+    const counted = (): void => {
+      done += 1;
+      if (now() - lastProgress >= planningLimits.progressMs) {
+        lastProgress = now();
+        send({
+          type: "progress",
+          done,
+          total: seen.header?.candidateCount ?? 0,
+        });
+      }
+    };
+
+    /** One scanned file, from this thread or a helper: kept, sent, counted. */
+    const took = async (
+      config: PlanningConfig,
+      path: string,
+      hash: string,
+      result: ScanResult,
+    ): Promise<void> => {
+      await keepScanned(repo, config, path, hash, result, writer);
+      if (path !== config.roadmap) keep.add(path);
+      chunk.result(path, hash, result);
+      counted();
+    };
+
     const takeEntry = async (
       config: PlanningConfig,
       entry: SourceEntry,
     ): Promise<void> => {
       switch (entry.kind) {
         case "file": {
+          const { path, content } = entry;
           const hash = entry.hash ?? "";
-          const result = scanCandidate(config, entry.path, entry.content);
-          await keepScanned(repo, config, entry.path, hash, result, writer);
-          if (entry.path !== config.roadmap) keep.add(entry.path);
-          chunk.result(entry.path, hash, result);
+          if (run.pool !== null) {
+            await run.pool.submit({
+              path,
+              hash,
+              content,
+              size: content.length,
+            });
+          } else {
+            await took(
+              config,
+              path,
+              hash,
+              scanCandidate(config, path, content),
+            );
+          }
           return;
         }
         case "skipped":
           chunk.skipped({ path: entry.path, size: entry.size });
+          counted();
           return;
         case "unreadable":
           chunk.unreadable({ path: entry.path, reason: entry.reason });
+          counted();
           return;
         case "absent":
           // Gone since the listing; the watcher reports its removal.
+          counted();
           return;
       }
     };
@@ -432,17 +808,20 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
       if (stamp?.hash === hash) {
         if (stamp.kind === "not-planning") {
           keep.add(path);
+          counted();
           return;
         }
         if (stamp.kind === "unreadable") {
           keep.add(path);
           chunk.unreadable({ path, reason: stamp.reason ?? "" });
+          counted();
           return;
         }
         const doc = (await stored).get(path);
         if (doc?.hash === hash) {
           keep.add(path);
           chunk.document(doc.document, hash);
+          counted();
           return;
         }
       }
@@ -454,6 +833,7 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
 
     await readLines(response.body, async (text) => {
       if (run.cancelled) throw CANCELLED;
+      run.pool?.check();
       if (seen.ended) {
         throw new StreamError("The planning stream went on past its end");
       }
@@ -470,6 +850,16 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
         configs.set(repo, line.config);
         run.header.resolve(line.config);
         const { config, candidateCount, refused } = line;
+        // Helpers are for a cold build only (§7.5): a warm one scans little.
+        const count = helpers === undefined ? 0 : helpersFor(helpers.cores);
+        if (!warm && !refused && count > 0) {
+          run.pool = scanPool({
+            config,
+            took: (job, result) => took(config, job.path, job.hash, result),
+            yieldNow,
+            askHelpers: () => helpers?.ask(repo, run.seq, count),
+          });
+        }
         send({ type: "header", config, candidateCount, refused });
         return;
       }
@@ -497,17 +887,12 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
           await takeEntry(config, line);
           break;
         case "skipped":
-          chunk.skipped({ path: line.path, size: line.size });
-          break;
         case "unreadable":
-          chunk.unreadable({ path: line.path, reason: line.reason });
+          await takeEntry(config, line);
           break;
       }
-      done += 1;
-      if (now() - lastProgress >= planningLimits.progressMs) {
-        lastProgress = now();
-        send({ type: "progress", done, total: header.candidateCount });
-      }
+      // Each kind has counted itself: a file handed to the pool counts once
+      // its result is taken.
       if (now() - sliceStart >= planningLimits.sliceMs) {
         await yieldNow();
         sliceStart = now();
@@ -518,6 +903,8 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
     if (!seen.ended) {
       throw new StreamError("The planning stream ended before its end line");
     }
+    await run.pool?.drain();
+    if (run.cancelled) return;
     const { refused } = seen.header;
     chunk.flush();
     await writer.close();
@@ -541,6 +928,7 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
         controller: new AbortController(),
         cancelled: false,
         header: deferred(),
+        pool: null,
       };
       runs.set(repo, run);
       const send = (event: BuildEvent) => {
@@ -557,6 +945,8 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
           });
         }
       } finally {
+        // Its helpers end with it, ready, failed or cancelled (§7.5).
+        run.pool?.stop();
         run.header.resolve(null);
         if (runs.get(repo) === run) runs.delete(repo);
       }
@@ -565,6 +955,12 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
     cancel(repo, seq) {
       const run = runs.get(repo);
       if (run?.seq === seq) cancelRun(run);
+    },
+
+    attachHelpers(repo, seq, ports) {
+      const run = runs.get(repo);
+      if (run?.seq === seq && run.pool !== null) run.pool.attach(ports);
+      else for (const port of ports) port.close();
     },
 
     async refresh({ repo, apiBase, path }) {
@@ -675,6 +1071,7 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
 function cancelRun(run: Run): void {
   run.cancelled = true;
   run.controller.abort();
+  run.pool?.stop();
 }
 
 /**

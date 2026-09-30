@@ -9,14 +9,21 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   parseStreamLine,
   planningIndexBuilder,
+  scanCandidate,
   type PlanningIndex,
 } from "vantage-md/planning";
 import { scanCache } from "./cache";
 import {
+  helpersFor,
   readLines,
   scannerCore,
+  serveHelper,
+  timeoutYield,
   type BuildEvent,
   type BuildRequest,
+  type HelperAnswer,
+  type HelperJob,
+  type HelperPort,
   type ScannerCore,
 } from "./core";
 import { setPlanningLimitsForTests } from "./limits";
@@ -25,6 +32,7 @@ import type { ScanStore } from "./store";
 import {
   contentHash,
   indexOf,
+  planningConfig,
   readRepoFile,
   scannedOf,
 } from "../test/planning";
@@ -32,6 +40,7 @@ import {
   chunkedBody,
   chunkedResponse,
   fakePlanningServer,
+  type FakeServer,
   type FakeServerOptions,
 } from "../test/planningStream";
 
@@ -951,5 +960,498 @@ describe("a cancelled build", () => {
     const later = await (second as Promise<BuildEvent[]> | null);
     expect(later?.at(-1)).toEqual({ type: "ready" });
     expect(indexFrom(later ?? [])).toEqual(indexOf(TREE, CONFIG));
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Helpers
+ * ------------------------------------------------------------------ */
+
+describe("a helper", () => {
+  it("answers each file with the scan's own result, and a scan that throws with its message", async () => {
+    const channel = new MessageChannel();
+    serveHelper(channel.port1);
+    const answers: HelperAnswer[] = [];
+    const answered = new Promise<void>((resolve) => {
+      channel.port2.onmessage = ({ data }: MessageEvent<HelperAnswer>) => {
+        answers.push(data);
+        if (answers.length === 2) resolve();
+      };
+    });
+    const config = planningConfig(CONFIG);
+    const content = TREE["plans/a.md"] ?? "";
+    channel.port2.postMessage({ id: 1, config, path: "plans/a.md", content });
+    // A config the scan cannot read: it throws, and the helper says why.
+    channel.port2.postMessage({ id: 2, config: null, path: "b.md", content });
+    await answered;
+    channel.port1.close();
+
+    expect(answers[0]).toEqual({
+      id: 1,
+      result: scanCandidate(config, "plans/a.md", content),
+    });
+    expect(answers[1]).toEqual({ id: 2, error: expect.any(String) });
+  });
+});
+
+describe("helpers, for a cold build", () => {
+  // TREE with a paragraph more in each file, so its six files pass a
+  // threshold and a queue configured down to 1 KiB.
+  const PROSE = `${"These words are here for their length alone, and say nothing. ".repeat(6)}\n`;
+  const HTREE: Record<string, string> = Object.fromEntries(
+    Object.entries(TREE).map(([path, text]) => [path, `${text}\n${PROSE}`]),
+  );
+  const STORED = Object.keys(HTREE)
+    .filter((path) => path !== CONFIG.roadmap)
+    .sort();
+
+  const LIMITS = {
+    helperThresholdBytes: 1024,
+    helperQueueBytes: 1024,
+    maxHelpers: 2,
+    helperReservedCores: 2,
+  };
+
+  interface Helper {
+    /** The paths the scan worker sent it, in order. */
+    sent: string[];
+    /** Whether the scan worker's end of its channel was closed. */
+    ended: boolean;
+  }
+
+  const channels: MessageChannel[] = [];
+  afterEach(() => {
+    for (const channel of channels.splice(0)) {
+      channel.port1.close();
+      channel.port2.close();
+    }
+  });
+
+  /** The scan worker's end of a channel, noting what it sends and its close. */
+  const recording = (port: MessagePort, helper: Helper): HelperPort => ({
+    postMessage(job) {
+      helper.sent.push(job.path);
+      port.postMessage(job);
+    },
+    get onmessage() {
+      return port.onmessage;
+    },
+    set onmessage(listener) {
+      port.onmessage = listener;
+    },
+    close() {
+      helper.ended = true;
+      port.close();
+    },
+  });
+
+  /**
+   * A core whose helpers are real channels to the real helper handler, made
+   * and attached as soon as they are asked for, as the main thread would.
+   */
+  function helperRig(
+    options: {
+      cores?: number;
+      limits?: Parameters<typeof setPlanningLimitsForTests>[0];
+      /** A helper's end of its channel, served; the real handler by default. */
+      serve?: (port: MessagePort) => void;
+      /** Stands in for the server's `fetch`. */
+      fetch?: (server: FakeServer) => typeof fetch;
+      /** Called once the helpers are attached. */
+      attached?: (core: ScannerCore) => void;
+    } = {},
+  ) {
+    setPlanningLimitsForTests({ ...LIMITS, ...options.limits });
+    const { store, written } = writeSpy();
+    const server = fakePlanningServer(HTREE, { config: CONFIG });
+    const asked: { repo: string; seq: number; count: number }[] = [];
+    const helpers: Helper[] = [];
+    const core: ScannerCore = scannerCore({
+      cache: scanCache(store, "scanner"),
+      fetch: options.fetch?.(server) ?? server.fetch,
+      // A task, as the worker's is: the stream is read on while the scan
+      // worker's own queue waits.
+      yieldNow: timeoutYield,
+      helpers: {
+        cores: options.cores ?? 4,
+        ask(repo, seq, count) {
+          asked.push({ repo, seq, count });
+          const ports = Array.from({ length: count }, () => {
+            const channel = new MessageChannel();
+            channels.push(channel);
+            (options.serve ?? serveHelper)(channel.port1);
+            const helper: Helper = { sent: [], ended: false };
+            helpers.push(helper);
+            return recording(channel.port2, helper);
+          });
+          core.attachHelpers(repo, seq, ports);
+          options.attached?.(core);
+        },
+      },
+    });
+    return { core, server, asked, helpers, written };
+  }
+
+  const hashesOf = (events: BuildEvent[]) =>
+    documentsOf(events)
+      .map(({ document, hash }) => [document.path, hash])
+      .sort(([a = ""], [b = ""]) => (a < b ? -1 : 1));
+
+  it("spreads its files over the helpers, with the same results, each written once, and ends them at ready", async () => {
+    const rig = helperRig({ limits: { progressMs: 0 } });
+    const events = await build(rig.core);
+    expect(events.at(-1)).toEqual({ type: "ready" });
+    expect(rig.asked).toEqual([{ repo: "", seq: 1, count: 2 }]);
+
+    // Each helper had files, the scan worker scanned some itself, and no
+    // file went to two threads.
+    const sent = rig.helpers.flatMap((helper) => helper.sent);
+    for (const helper of rig.helpers) {
+      expect(helper.sent.length).toBeGreaterThan(0);
+    }
+    expect(sent.length).toBeLessThan(6);
+    expect(new Set(sent).size).toBe(sent.length);
+
+    // The index a build on one thread makes, named by the same hashes.
+    expect(indexFrom(events)).toEqual(indexOf(HTREE, CONFIG));
+    expect(hashesOf(events)).toEqual(
+      ["plans/a.md", "plans/b.md", "plans/c.md", CONFIG.roadmap].map((path) => [
+        path,
+        contentHash(HTREE[path] ?? ""),
+      ]),
+    );
+    // Every candidate counted once.
+    expect(events.filter((event) => event.type === "progress").at(-1)).toEqual({
+      type: "progress",
+      done: 6,
+      total: 6,
+    });
+
+    // The scan worker alone wrote the cache: each result once, never the
+    // roadmap.
+    expect([...rig.written].sort()).toEqual(STORED);
+    expect(rig.helpers.map((helper) => helper.ended)).toEqual([true, true]);
+
+    // And what it wrote makes the next build warm.
+    const warm = await build(rig.core, { seq: 2 });
+    expect(warm[0]).toEqual({ type: "started", warm: true });
+    expect(rig.server.fileLines[1]).toEqual([CONFIG.roadmap]);
+  });
+
+  it("hands a file larger than any queue to an empty one", async () => {
+    // Every file is past every cap, so each lane takes one at a time.
+    const rig = helperRig({
+      limits: { helperThresholdBytes: 100, helperQueueBytes: 100 },
+    });
+    const events = await build(rig.core);
+    expect(events.at(-1)).toEqual({ type: "ready" });
+    expect(rig.asked).toHaveLength(1);
+    expect(indexFrom(events)).toEqual(indexOf(HTREE, CONFIG));
+  });
+
+  it("asks for none in a warm build, however much has changed", async () => {
+    const rig = helperRig();
+    await build(rig.core);
+    for (const path of Object.keys(rig.server.tree)) {
+      rig.server.tree[path] += "\nChanged since.\n";
+    }
+    const warm = await build(rig.core, { seq: 2 });
+    expect(warm[0]).toEqual({ type: "started", warm: true });
+    expect(rig.server.fileLines[1]).toHaveLength(6);
+    expect(rig.asked).toHaveLength(1);
+    expect(indexFrom(warm)).toEqual(indexOf(rig.server.tree, CONFIG));
+  });
+
+  it("asks for them in a build that bypasses the cache, which is cold", async () => {
+    const rig = helperRig();
+    await build(rig.core);
+    const again = await build(rig.core, { seq: 2, bypassCache: true });
+    expect(again.at(-1)).toEqual({ type: "ready" });
+    expect(rig.asked.map((ask) => ask.seq)).toEqual([1, 2]);
+    expect(indexFrom(again)).toEqual(indexOf(HTREE, CONFIG));
+  });
+
+  it.each([
+    [1, 0],
+    [2, 0],
+    [3, 1],
+    [4, 2],
+    [5, 3],
+    [64, 3],
+    [Number.NaN, 0],
+  ])("allows a machine of %d cores %d helpers", (cores, count) => {
+    expect(helpersFor(cores)).toBe(count);
+  });
+
+  it("asks for as many as the cores leave, and none on two cores", async () => {
+    const three = helperRig({ cores: 3 });
+    expect((await build(three.core)).at(-1)).toEqual({ type: "ready" });
+    expect(three.asked).toEqual([{ repo: "", seq: 1, count: 1 }]);
+
+    const two = helperRig({ cores: 2 });
+    const events = await build(two.core);
+    expect(two.asked).toEqual([]);
+    expect(indexFrom(events)).toEqual(indexOf(HTREE, CONFIG));
+  });
+
+  it("ends them when the build fails", async () => {
+    // The stream is cut before its end line.
+    const rig = helperRig({
+      fetch: (server) => async (input, init) => {
+        const response = await server.fetch(input, init);
+        if (!String(input).endsWith("/planning/stream")) return response;
+        const text = (await response.text()).replace(/[^\n]*\n$/, "");
+        return chunkedResponse(text, text.length, init?.signal ?? undefined);
+      },
+    });
+    const events = await build(rig.core);
+    expect(events.at(-1)).toEqual({
+      type: "failed",
+      message: "The planning stream ended before its end line",
+      shape: false,
+    });
+    expect(rig.asked).toHaveLength(1);
+    expect(rig.helpers.map((helper) => helper.ended)).toEqual([true, true]);
+  });
+
+  it("fails the build when a helper cannot scan a file, and ends them all", async () => {
+    const rig = helperRig({
+      serve: (port) => {
+        port.onmessage = ({ data }: MessageEvent<HelperJob>) =>
+          port.postMessage({ id: data.id, error: "The helper broke" });
+      },
+    });
+    const events = await build(rig.core);
+    expect(events.at(-1)).toEqual({
+      type: "failed",
+      message: "The helper broke",
+      shape: false,
+    });
+    expect(kinds(events)).not.toContain("ready");
+    expect(rig.helpers.map((helper) => helper.ended)).toEqual([true, true]);
+  });
+
+  it("ends them when the build is cancelled, and posts nothing more", async () => {
+    const rig = helperRig({
+      attached: (core) => queueMicrotask(() => core.cancel("", 1)),
+    });
+    const events = await build(rig.core);
+    expect(kinds(events)).toEqual(["started", "header"]);
+    expect(rig.server.requests[0]?.signal?.aborted).toBe(true);
+    expect(rig.helpers.map((helper) => helper.ended)).toEqual([true, true]);
+  });
+
+  it("goes on alone when its helpers never come, and closes those that come after", async () => {
+    setPlanningLimitsForTests(LIMITS);
+    const server = fakePlanningServer(HTREE, { config: CONFIG });
+    const asked: number[] = [];
+    const core = scannerCore({
+      cache: scanCache(memoryScanStore(), "scanner"),
+      fetch: server.fetch,
+      yieldNow: timeoutYield,
+      helpers: { cores: 4, ask: (_repo, seq) => asked.push(seq) },
+    });
+    const events = await build(core);
+    expect(asked).toEqual([1]);
+    expect(events.at(-1)).toEqual({ type: "ready" });
+    expect(indexFrom(events)).toEqual(indexOf(HTREE, CONFIG));
+
+    let closed = 0;
+    const late: HelperPort = {
+      onmessage: null,
+      postMessage: () => {
+        throw new Error("a closed port is sent nothing");
+      },
+      close: () => (closed += 1),
+    };
+    core.attachHelpers("", 1, [late]);
+    expect(closed).toBe(1);
+  });
+
+  /**
+   * A core whose stream comes one line per read, whose helpers answer only
+   * once let go, and whose own scanning waits for `open`; each helper holds
+   * 600 characters, so one file apiece.
+   */
+  function heldRig(
+    options: {
+      store?: ScanStore;
+      /** The helpers answer at once, and the scan worker's own queue is open. */
+      answering?: boolean;
+      cacheBatch?: number;
+    } = {},
+  ) {
+    setPlanningLimitsForTests({
+      ...LIMITS,
+      helperQueueBytes: 600,
+      cacheBatch: options.cacheBatch,
+    });
+    const server = fakePlanningServer(HTREE, { config: CONFIG });
+    let pulls = 0;
+    const oneLineAtATime: typeof fetch = async (input, init) => {
+      const response = await server.fetch(input, init);
+      if (!String(input).endsWith("/planning/stream")) return response;
+      const lines = (await response.text()).split(/(?<=\n)/);
+      return new Response(
+        new ReadableStream<Uint8Array>(
+          {
+            pull(controller) {
+              const next = lines[pulls++];
+              if (next === undefined) controller.close();
+              else controller.enqueue(new TextEncoder().encode(next));
+            },
+          },
+          { highWaterMark: 0 },
+        ),
+      );
+    };
+
+    /** A helper that answers only once it is let go. */
+    const held = () => {
+      const jobs: HelperJob[] = [];
+      let answering = options.answering ?? false;
+      const answer = (job: HelperJob) =>
+        port.onmessage?.(
+          new MessageEvent("message", {
+            data: {
+              id: job.id,
+              result: scanCandidate(job.config, job.path, job.content),
+            },
+          }),
+        );
+      const port: HelperPort = {
+        onmessage: null,
+        postMessage(job) {
+          if (answering) queueMicrotask(() => answer(job));
+          else jobs.push(job);
+        },
+        close() {
+          held.closed = true;
+        },
+      };
+      const held = {
+        port,
+        jobs,
+        closed: false,
+        letGo() {
+          answering = true;
+          for (const job of jobs.splice(0)) answer(job);
+        },
+        /** Answer what it holds with an error. */
+        refuse() {
+          for (const job of jobs.splice(0)) {
+            port.onmessage?.(
+              new MessageEvent("message", {
+                data: { id: job.id, error: "The helper broke" },
+              }),
+            );
+          }
+        },
+      };
+      return held;
+    };
+    const helpers = [held(), held()];
+    // The scan worker scans nothing of its own until this opens.
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => (open = resolve));
+    if (options.answering === true) open();
+    const core: ScannerCore = scannerCore({
+      cache: scanCache(options.store ?? memoryScanStore(), "scanner"),
+      fetch: oneLineAtATime,
+      yieldNow: () => gate,
+      // The clock stands still: no slice and no progress, only the queues.
+      now: () => 0,
+      helpers: {
+        cores: 4,
+        ask: (repo, seq) =>
+          core.attachHelpers(
+            repo,
+            seq,
+            helpers.map((helper) => helper.port),
+          ),
+      },
+    });
+    return { core, server, helpers, open, pulls: () => pulls };
+  }
+
+  const ticks = async () => {
+    for (let i = 0; i < 5; i++) await timeoutYield();
+  };
+
+  it("reads the stream no further while every queue is full", async () => {
+    const { core, helpers, open, pulls } = heldRig();
+    const building = build(core);
+    await ticks();
+    // The header; broken.md and notes.md to the scan worker, near its 1 KiB;
+    // plans/a.md and plans/b.md to a helper each; plans/c.md finds no room.
+    expect(helpers.map((helper) => helper.jobs.length)).toEqual([1, 1]);
+    expect(pulls()).toBe(6);
+    await ticks();
+    expect(pulls()).toBe(6);
+
+    // Room again: the rest is read, and waits on the scan worker's own queue.
+    for (const helper of helpers) helper.letGo();
+    await ticks();
+    expect(pulls()).toBe(9);
+    open();
+    const events = await building;
+    expect(events.at(-1)).toEqual({ type: "ready" });
+    expect(indexFrom(events)).toEqual(indexOf(HTREE, CONFIG));
+  });
+
+  it("holds the stream back while the cache is slow to take results", async () => {
+    // Every result is its own write, and none of them finishes.
+    const inner = memoryScanStore();
+    let release!: () => void;
+    const writing = new Promise<void>((resolve) => (release = resolve));
+    const store: ScanStore = {
+      ...inner,
+      write: async (repo, records) => {
+        await writing;
+        return inner.write(repo, records);
+      },
+    };
+    const { core, pulls } = heldRig({ store, answering: true, cacheBatch: 1 });
+    const building = build(core);
+    await ticks();
+    // The first result's write is in flight and the second waits on it, so
+    // their lanes still count them: what is held stays within the queues.
+    expect(pulls()).toBeLessThan(9);
+    release();
+    const events = await building;
+    expect(events.at(-1)).toEqual({ type: "ready" });
+    expect(indexFrom(events)).toEqual(indexOf(HTREE, CONFIG));
+    expect(pulls()).toBe(9);
+  });
+
+  it("stops reading the stream at a helper's failure", async () => {
+    const { core, helpers, pulls } = heldRig();
+    const building = build(core);
+    await ticks();
+    expect(pulls()).toBe(6);
+    helpers[0]?.refuse();
+    const events = await building;
+    expect(events.at(-1)).toEqual({
+      type: "failed",
+      message: "The helper broke",
+      shape: false,
+    });
+    // The line that was waiting is dropped, and the next is never handled.
+    expect(pulls()).toBeLessThanOrEqual(7);
+    expect(helpers.map((helper) => helper.closed)).toEqual([true, true]);
+  });
+
+  it("lets go of a stream held back by full queues when it is cancelled", async () => {
+    const { core, server, helpers, pulls } = heldRig();
+    const building = build(core);
+    await ticks();
+    expect(pulls()).toBe(6);
+    // Nothing will make room: neither helper answers, and the scan worker's
+    // own queue never opens.
+    core.cancel("", 1);
+    const events = await building;
+    expect(kinds(events)).toEqual(["started", "header"]);
+    expect(server.requests[0]?.signal?.aborted).toBe(true);
+    expect(helpers.map((helper) => helper.closed)).toEqual([true, true]);
   });
 });
