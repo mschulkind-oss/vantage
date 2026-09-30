@@ -8,8 +8,9 @@
 
 set -eu
 
-# This runs inside `just check-ci`, which the pre-commit hook runs — so git's own
-# environment is set and points at the repository being committed to. Every
+# This runs inside `just check-ci`, and inside the pre-commit hook's
+# `just check-fast` whenever the scripts it tests are staged — so git's own
+# environment can be set and point at the repository being committed to. Every
 # variable of it has to go before the throwaway repo below is touched, or
 # `git init`/`git add`/`git commit` operate on the outer repo's index instead of
 # the temp one, and the range cases assert against the wrong history.

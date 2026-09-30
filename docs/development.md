@@ -67,7 +67,8 @@ just setup        # go mod download + build vantage-md + npm ci
 ```
 
 `just setup` also points git at the tracked hooks directory
-(`scripts/hooks`), so the quality gate runs on commit.
+(`scripts/hooks`), so every commit runs the checks its staged files call for.
+That is not the whole gate; see [Code Quality](#code-quality).
 
 ## Running in Development
 
@@ -105,13 +106,77 @@ Bug fixes must include a regression test that demonstrates the bug.
 ```bash
 just format      # format Go + frontend (gofmt + prettier), no tests — run before committing
 just check       # format, then lint, type-check, and test (the full local gate)
-just check-ci    # read-only: errors on unformatted/lint issues, never rewrites
+just check-ci    # the whole gate, read-only: errors on unformatted/lint issues, never rewrites
+just check-fast  # what the pre-commit hook runs: only the checks the staged files call for
+just done        # finish a task: assert nothing is uncommitted, then run all of check-ci
 ```
 
-Run `just format` before committing. The pre-commit hook (and CI) run
-`just check-ci`, which *fails* on unformatted or lint-dirty code rather than
-rewriting it — so formatting stays an explicit, staged step (no surprise
-reformats showing up after a commit).
+Run `just format` before committing. None of the pre-commit hook,
+`just check-ci` or CI rewrites anything: each *fails* on unformatted or
+lint-dirty code rather than rewriting it (only `just format` and `just check`
+rewrite) — so formatting stays an explicit, staged step (no surprise reformats
+showing up after a commit).
+
+### What a commit runs, and what finishes the work
+
+The pre-commit hook runs `just check-fast`, not the whole gate. It picks, from
+the staged paths, the checks those paths can affect, and runs them side by
+side, so a commit takes seconds rather than the gate's minute:
+
+- every commit runs `vantage-check` over every document the gate checks. A
+  renamed heading breaks links in documents nobody staged, and a document can
+  reach any file: a link to a deleted file breaks, a `#L` anchor breaks when
+  the file it points into gets shorter, and a new file breaks a document beside
+  it that already names it in prose;
+- a Markdown file also runs `vantage-check`'s tests, which read this
+  repository's own documents;
+- a Go file runs `gofmt` on it, then `go vet`, `staticcheck` and `go test` over
+  every package, whose caches make the untouched ones nearly free. A file under
+  `internal/` also runs `vantage-check`'s tests, which hold its copies of the
+  server's rules to the Go source;
+- a frontend or `vantage-md` module runs prettier and eslint on it, the
+  type-check, and the tests that import it, plus the tests that read files off
+  disk rather than importing them (and, for `vantage-md`, the package build and
+  the `vantage-check` binary compiled from it);
+- a manifest, the lockfile, the `Justfile`, a package's configuration, or any
+  path `check-fast` does not know runs the whole gate, `just check-ci`.
+
+[`scripts/check-fast.sh`](../scripts/check-fast.sh) holds every path's checks,
+and the reasons for them; `just check-fast --plan` prints what the staged files would
+run, without running it.
+
+How long that takes depends on what is staged and on the machine. Measured on
+32 threads with other work running (load average 8 to 35), against about 50 s
+for `just check-ci`:
+
+| Staged                        | 32 threads | 8 threads |
+| ----------------------------- | ---------- | --------- |
+| a user guide page             | 3 s        | 4.5 s     |
+| a Go file                     | 3–7 s      | 5.5 s     |
+| a frontend module             | 4–5.5 s    | 6 s       |
+| a page under `docs/`          | 8–11 s     | 15 s      |
+| a `vantage-check` module      | 9.5–14 s   | 10–11 s   |
+| a `vantage-md` module         | 14.5–16 s  | 25–31 s   |
+
+A `vantage-md` change is the slowest because the frontend suite that tests it
+is, in effect, all of the frontend's tests; a `docs/` page runs the frontend's
+planning suites, which read the documents.
+
+Every check reads the files on disk, so `check-fast` **refuses a staged path
+that is not on disk as staged**, rather than check a version the commit does
+not hold: a staged file with unstaged changes on top, or a staged deletion
+whose file is still there (as `git rm --cached` leaves it). Stage the rest, or
+set it aside for the commit with `git stash push --keep-index
+--include-untracked`, then `git stash pop`. Files nobody staged are still read
+as they are on disk, as `just check-ci` reads them, so `check-fast` lists any
+unstaged or untracked file it finds: a commit that needs one passes the hook
+and fails in CI.
+
+**Passing it does not finish anything.** `just done` does: it fails if anything
+is uncommitted and then runs all of `just check-ci`, so what it checks is
+exactly what was committed, and it has to pass before the work is called
+finished. CI runs `just check-ci` on every push to `main` and every pull request
+against it, as the backstop.
 
 `just check` covers both halves of the codebase:
 

@@ -990,8 +990,9 @@ not planning documents; leave them.
   ids and summaries, the `index` JSON `version`, the single-path mode and its four kinds,
   `removed_dirs`, the `/.vantage/planning` route, `data-vantage-planning-badge`,
   `data-vantage-link-target`.
-- **Norms:** every commit passes `just check-ci`, which the pre-commit hook runs. A manifest
-  change lands with `package-lock.json`; none is expected.
+- **Norms:** every commit passes the pre-commit hook (`just check-fast`), and `just done` (all
+  of `just check-ci`, over a clean tree) passes before a work package is called finished. A
+  manifest change lands with `package-lock.json`; none is expected.
 - **When all seven have landed:** delete this plan, move traps that proved real into a system
   doc (the `system-doc` skill), and take the roadmap item out. That commit records what the
   implementers had to rediscover and what they never needed.

@@ -1,4 +1,16 @@
 #!/bin/sh
-# Runs the full CI quality gate before every commit.
-# Installed via `just install-hooks`.
-just check-ci
+# Runs `just check-fast`: the checks the staged files call for, and no others.
+# Wired by `just setup` via core.hooksPath.
+#
+# This is not the gate. `just done` runs the whole of it (`just check-ci`) over a
+# clean tree, and must pass before work is finished; CI runs the same gate on
+# every push to main and every pull request against it. scripts/check-fast.sh
+# says what a commit runs.
+#
+# A core.hooksPath set to an absolute path makes every worktree of this clone run
+# this one file, including worktrees on branches from before check-fast existed.
+# Those still get what this hook ran then: the whole gate.
+if [ -f "$(git rev-parse --show-toplevel)/scripts/check-fast.sh" ]; then
+    exec just check-fast
+fi
+exec just check-ci
