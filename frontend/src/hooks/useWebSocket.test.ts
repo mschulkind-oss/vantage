@@ -369,7 +369,7 @@ describe("useWebSocket", () => {
   // The route loads the document a new mount shows. currentPath still names
   // the document the previous page showed, so reloading it on the first
   // connection superseded the route's load, and the new URL kept showing the
-  // old document (g p from a document, then Open document on a card).
+  // old document (g p from a document, then a card's document name).
   it("does not reload the previous document on a mount's first connection", () => {
     renderHook(() => useWebSocket());
 

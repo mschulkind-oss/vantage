@@ -95,6 +95,9 @@ vi.mock("react-router-dom", async () => {
 
 afterEach(cleanup);
 
+/** Open document's accessible name, which says what its icon does. */
+const OPEN_DOCUMENT = "Open document (opens in a new tab)";
+
 /* ------------------------------------------------------------------ *
  * The corpus
  * ------------------------------------------------------------------ */
@@ -477,11 +480,41 @@ describe("the card shows its question, and only its question", () => {
     );
   });
 
-  it("links Open document to the document itself, with no fragment", () => {
-    renderCard(byId("OQ-B2"));
-    expect(screen.getByRole("link", { name: "Open document" })).toHaveAttribute(
-      "href",
-      "/docs/design/agent-bootstrap.md",
+  // Its icon is the one for a link that opens elsewhere, and a reader who
+  // clicked it expected a new tab (user direction, 2026-10-01).
+  it("opens Open document in a new tab, at the document itself, with no fragment", () => {
+    navigate.mockClear();
+    const onOpenHere = vi.fn();
+    renderCard(byId("OQ-B2"), { onOpenHere });
+    const link = screen.getByRole("link", { name: OPEN_DOCUMENT });
+    // Said to a screen reader; the eye has the icon.
+    expect(link).toHaveTextContent(/^Open document/);
+    expect(link.querySelector(".sr-only")).toHaveTextContent(
+      "(opens in a new tab)",
+    );
+    expect(link).toHaveAttribute("href", "/docs/design/agent-bootstrap.md");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    // The browser opens the tab; this one goes nowhere, and saves nothing.
+    expect(fireEvent.click(link)).toBe(true);
+    expect(navigate).not.toHaveBeenCalled();
+    expect(onOpenHere).not.toHaveBeenCalled();
+  });
+
+  it("opens the document in this tab from its name, once the page has saved its place", () => {
+    navigate.mockClear();
+    const onOpenHere = vi.fn();
+    renderCard(byId("OQ-B2"), { onOpenHere });
+    const link = screen.getByRole("link", {
+      name: "docs/design/agent-bootstrap.md",
+    });
+    expect(link).toHaveAttribute("href", "/docs/design/agent-bootstrap.md");
+    expect(link).not.toHaveAttribute("target");
+    expect(fireEvent.click(link)).toBe(false);
+    expect(navigate).toHaveBeenCalledWith("/docs/design/agent-bootstrap.md");
+    expect(onOpenHere).toHaveBeenCalledOnce();
+    expect(onOpenHere.mock.invocationCallOrder[0]).toBeLessThan(
+      navigate.mock.invocationCallOrder[0]!,
     );
   });
 
@@ -749,7 +782,7 @@ describe("the card is laid out to be read", () => {
       act(() => screen.getByRole("link", { name: "the auth design" }).focus());
       expect(body).not.toHaveAttribute("data-planning-card-unfolded");
       // Nor does a focus outside the question, the card's own controls.
-      act(() => screen.getByRole("link", { name: "Open document" }).focus());
+      act(() => screen.getByRole("link", { name: OPEN_DOCUMENT }).focus());
       expect(body).not.toHaveAttribute("data-planning-card-unfolded");
     });
 
@@ -1327,7 +1360,7 @@ describe("a preview card (planning-index.md §6.6)", () => {
         .map((b) => b.textContent)
         .filter(Boolean),
     ).toEqual(["Show question"]);
-    expect(screen.getByRole("link", { name: "Open document" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: OPEN_DOCUMENT })).toBeTruthy();
   });
 
   it("renders the whole card in place once Show question has its block", async () => {
@@ -1411,7 +1444,7 @@ describe("the card's controls follow the question's state (Plan Q5)", () => {
       screen.getByRole("button", { name: "Take this leaning" }),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Answer…" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Open document" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: OPEN_DOCUMENT })).toBeTruthy();
   });
 
   it("offers Answer… and Open document, and no Take, on an answered question", () => {
@@ -1420,7 +1453,7 @@ describe("the card's controls follow the question's state (Plan Q5)", () => {
       null,
     );
     expect(screen.getByRole("button", { name: "Answer…" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Open document" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: OPEN_DOCUMENT })).toBeTruthy();
   });
 
   it("offers only Open document on a blocked question", () => {
@@ -1429,7 +1462,7 @@ describe("the card's controls follow the question's state (Plan Q5)", () => {
       null,
     );
     expect(screen.queryByRole("button", { name: "Answer…" })).toBe(null);
-    expect(screen.getByRole("link", { name: "Open document" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: OPEN_DOCUMENT })).toBeTruthy();
   });
 
   it("offers no Take on a question a `question` directive declared, whatever its state", () => {
@@ -1465,7 +1498,7 @@ describe("the card's controls follow the question's state (Plan Q5)", () => {
         null,
       );
       expect(screen.queryByRole("button", { name: "Answer…" })).toBe(null);
-      expect(screen.getByRole("link", { name: "Open document" })).toBeTruthy();
+      expect(screen.getByRole("link", { name: OPEN_DOCUMENT })).toBeTruthy();
     } finally {
       delete window.__VANTAGE_STATIC__;
     }
