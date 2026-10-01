@@ -7,12 +7,13 @@ platform. The wheel carries no Python code that matters: the binary is installed
 as the console script itself, so uvx execs a real executable with no interpreter
 in the path.
 
-**It does not care what produced the binary.** Both release workflows use it —
-`publish-check.yml` for the bun-compiled `vantage-check`, `publish.yml` for the
-Go `vantage` server — and each hands over the same binary it already attached to
-the GitHub release, so the wheel and the archive are the same bytes. That
-property is the reason this exists rather than a tool that compiles for itself;
-see docs/design/pypi-distribution.md §4.5.
+**It does not care what produced the binary.** `publish.yml` uses it for both
+the bun-compiled `vantage-check` and the Go `vantage` server, and hands over the
+same binary it already attached to the GitHub release, so the wheel and the
+archive are the same bytes. That property is the reason this exists rather than
+a tool that compiles for itself.
+
+Architecture and invariants: docs/reference/pypi-distribution.md (§6.1).
 
 Deliberately zero-dependency — no setuptools, no hatchling, no build backend.
 A wheel is a zip with three metadata files, and adding a Python build toolchain
@@ -112,10 +113,11 @@ def main() -> int:
     # there is no console-script shim in this wheel, the binary *is* the script,
     # so `uvx vantage-check` resolves `vantage-check` directly. The server's
     # wheel is `vantage-md` carrying a `vantage` script, which is why this is a
-    # flag rather than the distribution name (pypi-distribution.md §4.3).
+    # flag rather than the distribution name (docs/reference/pypi-distribution.md
+    # §6.2).
     script_name = args.script or distribution
 
-    # Windows is not a target (docs/design/pypi-distribution.md §4.4). It used
+    # Windows is not a target (docs/reference/pypi-distribution.md §6.3). It used
     # to be, and it carried the whole reason this check exists: bun suffixes
     # only its Windows output with .exe, so a tag and a binary that disagreed
     # produced a wheel that installed cleanly and failed on first run. Rather

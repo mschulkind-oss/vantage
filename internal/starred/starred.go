@@ -36,6 +36,9 @@
 //     file but does not push to the first process's browsers, so those see a
 //     stale list until they reload. Two processes on one root is an unusual
 //     setup, and an mtime poller is not worth its weight.
+//
+// Promotion, the rows a config file adds and this package never stores:
+// docs/reference/repo-config.md.
 package starred
 
 import (

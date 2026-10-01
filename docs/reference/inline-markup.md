@@ -25,7 +25,10 @@ summary: "Vantage-only markup carried in HTML comments with a `vantage:` sentine
 
 # Vantage directives — Vantage-only markup inside ordinary Markdown
 
-**Status:** CURRENT as of 2026-09-01, verified against `3134838`.
+**Status:** CURRENT as of 2026-09-01, verified against `3134838`. The plugin
+chain's diagram and ordering rules, in
+[Where the plugin runs](#where-the-plugin-runs), were re-verified on 2026-10-01
+against `7fa8cbf`; nothing else was.
 
 A **directive** is an HTML comment carrying a `vantage:` sentinel —
 `<!-- vantage: section tone=warning -->` — that Vantage compiles into
@@ -52,8 +55,8 @@ says what a section means and each theme decides how it looks.
 | Validation | `vantage-check` (`rules/directives.ts`, `rules/vantageFrontmatter.ts`) |
 | Withholding a fallback block, and predicting it from the parse | `vantage-md` (`withholdFallbacks` in `rehypeVantageDirectives.ts`; `isFallbackTarget` in `directiveTargets.ts`, read by the planning scan and the checker) |
 
-**Reads with:** [`../design/agent-cli.md`](../design/agent-cli.md) (the checker
-that validates this markup),
+**Reads with:** [`agent-cli.md`](agent-cli.md) (the checker that validates
+this markup),
 [`../design/review-state-architecture.md`](../design/review-state-architecture.md)
 (why the one-click control rides an existing command instead of inventing a
 channel), and [`../../userguide/review-inbox.md`](../../userguide/guides/review-inbox.md).
@@ -249,17 +252,24 @@ viewers, and the checker's mdast parser.
 ```mermaid
 flowchart LR
   raw["rehype-raw<br/>(comments become nodes)"] --> sl["rehypeSourceLines"]
-  sl --> dir["rehypeVantageDirectives<br/>(stamps data-vantage-*)"]
-  dir --> san["rehype-sanitize<br/>(deletes comments,<br/>allowlists attributes)"]
-  san --> slug["rehype-slug"] --> hl["rehype-highlight"]
+  sl --> al["rehypeVantageAlerts"] --> dir["rehypeVantageDirectives<br/>(stamps data-vantage-*)"]
+  dir --> svg["rehypeStripSvgContainers"]
+  svg --> san["rehype-sanitize<br/>(deletes comments,<br/>allowlists attributes)"]
+  san --> anc["rehypeVantageAnchors<br/>(question ids become id)"]
+  anc --> slug["rehype-slug"] --> hl["rehype-highlight"]
   hl --> cap["captureMathStamps"] --> katex["rehype-katex"] --> res["restoreMathStamps"]
 ```
 
-Two ordering facts are load-bearing and must not be "tidied":
+Three ordering facts are load-bearing and must not be "tidied":
 
 - **`rehype-slug` must stay after `rehype-sanitize`.** The default schema clobbers
   `id` with a `user-content-` prefix, so a slug generated before the sanitizer
   comes out renamed.
+- **`rehypeVantageAnchors` sits between the two**, after the sanitizer for the
+  same reason and before `rehype-slug`, which leaves an element that already has
+  an `id` alone. It moves a question directive's id onto the block's `id`, so a
+  question written as a heading keeps its question id rather than a slug
+  ([the question anchor](linked-references.md#the-question-anchor)).
 - **`rehype-katex` runs after `rehype-sanitize`**, which means KaTeX's own output
   is never filtered. See [Security](#security).
 
@@ -682,14 +692,16 @@ what a naive count of `[data-vantage-oq]` gives on a document that also stamps a
 The table of contents is a third caller, and it takes the list *before* the
 state filter: it lists every question the function finds and tallies them by
 state, 🔒 and ✅ included
-([`contents-open-questions.md`](../design/contents-open-questions.md)). So the
+([`contents-open-questions.md`](contents-open-questions.md)). So the
 column can list more questions than there are buttons, and that is deliberate:
 a blocked or answered question is still one a reader of the document wants to
 see. What the column must not do is promise an action the page does not offer,
 so its tally's tooltip says how many of its questions can be answered in one
 click, the number the Review toggle gives, rather than implying that all of them
-can. It still takes its list from `documentQuestions` rather than re-querying
-the attributes, so it never lists a stamped `pre` or `table`, which
+can. A static export, which has no toggle, still shows that number
+([known gaps](contents-open-questions.md#8-known-gaps)). It still takes its list
+from `documentQuestions` rather than re-querying the attributes, so it never
+lists a stamped `pre` or `table`, which
 has no button in any state and is no question to the planning index either. The
 planning page's card is the fourth caller, finding its question's host
 ([above](#the-same-comment-from-the-planning-page)).

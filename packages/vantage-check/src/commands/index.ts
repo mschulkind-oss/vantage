@@ -107,8 +107,8 @@ export function indexCommand(options: IndexOptions, io: Io): number {
   const root = repositoryRoot(io.cwd) ?? io.cwd;
 
   // The root's own config and nothing above it, the one file the server
-  // reads for this repository (repo-config.md §2.2), so the page and this
-  // command read the same `[planning]` (P7).
+  // reads for this repository (docs/reference/repo-config.md §3.2), so the
+  // page and this command read the same `[planning]` (P7).
   const load: LoadOptions = {
     from: root,
     stopAt: root,

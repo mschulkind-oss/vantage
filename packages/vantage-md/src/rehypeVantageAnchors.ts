@@ -20,6 +20,8 @@
  * contents column finds every question by that or `[data-vantage-question]` —
  * and leaving a second copy of the id in the markup invites a future reader to
  * use the wrong one.
+ *
+ * Architecture and invariants: docs/reference/linked-references.md
  */
 
 import type { Root, Element } from "hast";

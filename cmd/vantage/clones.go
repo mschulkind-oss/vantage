@@ -14,8 +14,8 @@ import (
 )
 
 // clonesPlan records how `serve` split a directory of clones, for the startup
-// line and the service tip. A directory of clones — a term docs/design/
-// serve-clones-directory.md §2 coins — is a directory that is not inside a git
+// line and the service tip. A directory of clones — a term docs/reference/
+// serve-clones-directory.md §2 defines — is a directory that is not inside a git
 // work tree and has at least one immediate child that is a repository.
 type clonesPlan struct {
 	// Dir is the absolute, resolved directory being served.
@@ -46,10 +46,12 @@ type clonesPlan struct {
 // daemon's own discovery, so the two modes cannot drift; and because
 // SourceDirs is set, the server's refresh loop picks up a clone made after
 // startup exactly as the daemon's does. The loose project, when there is one,
-// is named after the clones are, so every clone gets the name the daemon would
-// give it and a link to one means the same project in both; a clone sharing
-// the directory's name leaves the loose project the "-2" suffix. It is still
-// listed first.
+// is named after the clones are, so every clone present now gets the name a
+// daemon serving only dir would give it and a link to one means the same
+// project in both; a clone sharing the directory's name leaves the loose
+// project the "-2" suffix. It is still listed first. A clone made later is
+// named against the loose project as well, and so can differ from the
+// daemon's (docs/reference/serve-clones-directory.md §3.2).
 func splitClonesDirectory(cfg *config.Config) (*clonesPlan, bool) {
 	dir := cfg.TargetRepo
 	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
@@ -102,7 +104,7 @@ func freeRepoName(goos, name string, repos []config.RepoConfig) string {
 
 // holdsRepositories reports whether any immediate, non-hidden child of dir is a
 // repository: it holds a .git directory, or it is a linked worktree. Only the
-// first kind becomes a project (see docs/design/serve-clones-directory.md §2.1),
+// first kind becomes a project (see docs/reference/serve-clones-directory.md §3.1),
 // but either one means dir is not a single project.
 func holdsRepositories(dir string) bool {
 	entries, err := os.ReadDir(dir)

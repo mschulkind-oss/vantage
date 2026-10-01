@@ -3,9 +3,10 @@ import { classify } from "../src/rules/mermaid.js";
 import { checkTree, makeTree, ruleIds } from "./helpers.js";
 
 /**
- * The delegate the design warns about. Mermaid's grammar works headless but
- * its sanitization step does not, so a naive `try { mermaid.parse() } catch`
- * reports every valid flowchart in a repository as broken.
+ * The delegate docs/reference/agent-cli.md §5.4 warns about. Mermaid's grammar
+ * works headless but its sanitization step does not, so a naive
+ * `try { mermaid.parse() } catch` reports every valid flowchart in a
+ * repository as broken.
  *
  * The first test here is the one that matters: valid diagrams, of the kinds
  * this project actually writes, must produce nothing at all.

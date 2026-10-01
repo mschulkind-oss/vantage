@@ -26,8 +26,9 @@ export interface RuleOption {
 /**
  * Every rule the checker knows, and what it does out of the box.
  *
- * Three kinds, and the split is the design's P2. `link/*` is ours because no
- * general-purpose tool can answer "does this path exist in *this* repo".
+ * Three kinds, and the split is P2 of docs/reference/agent-cli.md. `link/*` is
+ * ours because no general-purpose tool can answer "does this path exist in
+ * *this* repo".
  * `frontmatter/*`, `mermaid/*`, `katex/*` and `render/*` delegate to the parser
  * that actually owns the question, so a diagram fails for the reason the viewer
  * would fail on it, in that parser's own words. And `vantage/*` is about

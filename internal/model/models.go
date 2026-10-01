@@ -118,20 +118,20 @@ type RepoInfo struct {
 	LastActivity *time.Time `json:"last_activity"`
 	// Pinned asks the viewer to list this project ahead of the others in
 	// every sort order. Only the loose project of a directory of clones sets
-	// it (docs/design/serve-clones-directory.md §3); absent means false.
+	// it (docs/reference/serve-clones-directory.md §4); absent means false.
 	Pinned bool `json:"pinned,omitempty"`
 	// Clones maps each directory directly inside the loose project's root that
 	// another project serves — a clone, or a symlink resolving to one — to
 	// that project's name. The loose project refuses every path inside a
 	// clone, so the viewer sends a link or image from a loose note into one to
-	// the clone's own project instead (docs/design/serve-clones-directory.md
-	// §3). Only the loose project sets it; absent means none.
+	// the clone's own project instead (docs/reference/serve-clones-directory.md
+	// §4.3). Only the loose project sets it; absent means none.
 	Clones map[string]string `json:"clones,omitempty"`
 }
 
 // Degradation is one way a project is being served worse than normal because
-// it is too big for a limit — the term docs/design/serve-clones-directory.md §7
-// coins. GET /api/degraded lists every current one, and the viewer shows them
+// it is too big for a limit — the term docs/reference/serve-clones-directory.md §2
+// defines. GET /api/degraded lists every current one, and the viewer shows them
 // in a banner instead of leaving the reader to find a log line.
 type Degradation struct {
 	// Repo is the project's name ("" in single-repo mode). Strict: the

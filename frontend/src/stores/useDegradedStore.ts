@@ -6,7 +6,7 @@ import type { Degradation } from "../types";
 /**
  * The ways the server is serving a project worse than normal because it is too
  * big for a limit — the file watcher out of watches, the untracked-file walk
- * out of time. See docs/design/serve-clones-directory.md §7.
+ * out of time. See docs/reference/serve-clones-directory.md §7.
  *
  * Global, like the bookmark list: GET /api/degraded spans every project, and
  * the banner picks out the one open. A `degraded_changed` push refetches it.

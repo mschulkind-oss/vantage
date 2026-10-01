@@ -3,8 +3,8 @@
 // That file already has a reader: `vantage-check` has configured its rule
 // severities there since it shipped. The server is its **second** reader, and the
 // two share one file on purpose — a repository should have one place to configure
-// Vantage, not one per binary. Design, including why this is a design change
-// rather than a config key: `docs/design/repo-config.md`.
+// Vantage, not one per binary. Architecture and invariants:
+// `docs/reference/repo-config.md`.
 //
 // The division is strict in both directions. This package reads the tables the
 // server owns and steps over everything else; the checker reads `[check]` and
@@ -598,9 +598,11 @@ func readGuarded(path string, info os.FileInfo) ([]byte, error) {
 	defer func() { _ = f.Close() }()
 
 	// Re-check through the handle: the Lstat above and this Open are two
-	// syscalls, and what sat between them can have been replaced with a symlink
-	// in between. `O_NOFOLLOW` would be the direct answer and is not portable,
-	// so the check is repeated where it cannot be raced.
+	// syscalls, and the file can have been replaced in between. The Open follows
+	// a symlink, so this refuses whatever it reached that is not a regular file.
+	// It does not prove the handle is the file the Lstat saw: a symlink to a
+	// regular file swapped in between is read (docs/reference/repo-config.md
+	// §3.3).
 	fi, err := f.Stat()
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", FileName, err)

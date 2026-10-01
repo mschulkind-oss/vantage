@@ -23,7 +23,7 @@ no `node_modules`, nothing to install on the machine that runs it. And it never
 talks to a server — every command works offline against files on disk, because
 an agent's sandbox is not guaranteed to have a Vantage running in it.
 
-Design background: [`../docs/design/agent-cli.md`](../../docs/design/agent-cli.md).
+How it works inside: [`docs/reference/agent-cli.md`](../../docs/reference/agent-cli.md).
 
 ---
 
@@ -61,8 +61,8 @@ Archives are published on the app's own release, `v<version>`, and each one
 carries **both** binaries — `vantage` and `vantage-check` — as
 `vantage_<version>_<os>_<arch>.tar.gz`, where `<os>` is `linux` or `darwin` and
 `<arch>` is `amd64` or `arm64`. There is no Windows build
-([`../docs/design/pypi-distribution.md`](../../docs/design/pypi-distribution.md)
-[§4.4](../../docs/design/pypi-distribution.md#44-which-platforms-the-server-wheel-covers)), and no separate `vantage-check@*` release: everything in this repo ships
+([`docs/reference/pypi-distribution.md`](../../docs/reference/pypi-distribution.md)
+[§6.3](../../docs/reference/pypi-distribution.md#63-platforms)), and no separate `vantage-check@*` release: everything in this repo ships
 on one tag at one version.
 
 ### From source
@@ -692,8 +692,8 @@ an agent does not take *Rule each* as meant for it:
 ```text
 Ready to graduate (2)
 Built, with no questions left. An agent turns it into a reference doc.
-  docs/design/agent-cli.md  [accepted · BUILT]
-  docs/design/repo-config.md  [accepted · BUILT]
+  docs/design/api.md  [accepted · BUILT]
+  docs/design/search.md  [accepted · BUILT]
 ```
 
 A *Blocked* document's line names what it waits on, as
@@ -797,7 +797,7 @@ it, as in `vantage-check index --request graduate`.
 Repository: /home/me/project
 
 Ready to graduate (1): built, with no questions left. For each, write a reference document of the system as built, where the repository keeps those: verify every claim against the code, and say what it covers and the commit it was verified at (if you use a system-doc skill, use it). Give it the stage the repository's other reference documents carry (one with the done role: CURRENT, GRADUATED, SUPERSEDED), or none. Then delete the design document and any plan written for it, repoint every link to them and citation of them, in documents, code comments and tests, at the new one, and keep every question id other documents cite resolvable.
-- docs/design/agent-cli.md  (stage BUILT)
+- docs/design/api.md  (stage BUILT)
 
 Verify: in the repository, run `vantage-check` on every Markdown file you changed, then `vantage-check index`.
 ```
@@ -842,10 +842,13 @@ command cannot run, or exits `2` (a configuration error, or a checker older
 than your [`target`](../reference/configuration.md#the-oldest-release-your-readers-use)
 refusing to run), the agent delivers anyway and leaves `.vantage.toml` as it is.
 
-That is deliberately the only channel: it needs no setup from you, it reaches
-whatever environment the agent happens to have, and it arrives at the moment it
-is useful — just before the work comes back to you. The trade-off is that a
-document being drafted with no review round yet gets no pointer;
+That channel needs no setup from you, it reaches whatever environment the agent
+happens to have, and it arrives at the moment it is useful — just before the
+work comes back to you. The planning page's agent requests carry the same
+pointer: each ends by telling the agent to run `vantage-check` on every
+Markdown file it changed ([Agent requests](#agent-requests)). Nothing writes it
+into the agent's own configuration. The trade-off is that a document being
+drafted with no review round and no agent request behind it gets no pointer;
 `vantage-check style-guide` is there for anyone who wants to wire it in earlier.
 
 ---
@@ -927,10 +930,18 @@ deliberately.
 `vantage-check` imports the viewer's Markdown pipeline — the `vantage-md`
 package — by relative path from source, rather than depending on a published
 copy, so `check` runs the code the browser runs in a viewer of the same
-release. Its KaTeX and Mermaid versions are pinned to the viewer's by a test in
-the package (`test/deps.test.ts`) that fails the gate if the two `node_modules`
-trees drift. A second implementation would drift invisibly and pass documents
-the viewer breaks on.
+release. A second implementation would drift invisibly and pass documents the
+viewer breaks on. It uses the very Mermaid the viewer does: the packages share
+one npm workspace with a single installed copy, and a test in the package
+(`test/deps.test.ts`) fails the gate if the checker and the viewer ever resolve
+different copies.
+
+KaTeX is not yet held to that. The checker parses formulas with the workspace's
+KaTeX, while the viewer renders them with an older copy that its math plugin
+brings along, so a command only the newer KaTeX knows, such as `\mapsfrom`, can
+pass the check and still render as red error text. The reference lists this
+with the checker's other
+[known gaps](../../docs/reference/agent-cli.md#11-known-gaps).
 
 ---
 

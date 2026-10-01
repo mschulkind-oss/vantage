@@ -2,12 +2,15 @@
  * The canonical Vantage Markdown style guide.
  *
  * This string is the single source of truth for the conventions Vantage's
- * renderer expects. Two consumers read it:
+ * renderer expects. It reaches readers three ways:
  *
  * - the in-app "Style Guide for Agents" modal, which shows it with a copy
- *   button, and
+ *   button,
  * - the `vantage-check style-guide` command, which prints it so an agent can
- *   fetch it without a human in the loop.
+ *   fetch it without a human in the loop, and
+ * - this package's own export, for anyone who renders with `vantage-md`.
+ *
+ * How the CLI serves it, and why there is one copy: docs/reference/agent-cli.md
  *
  * Every rule stated here should be one a checker can enforce or a renderer
  * actually cares about — if a line is neither, it does not belong.

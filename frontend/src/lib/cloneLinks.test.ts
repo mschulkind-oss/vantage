@@ -3,7 +3,7 @@ import { projectFor } from "./cloneLinks";
 
 // The loose project — the one holding the Markdown beside a directory of
 // clones — refuses every path inside a clone, because each clone is a project
-// of its own (docs/design/serve-clones-directory.md §3). A link or image from a
+// of its own (docs/reference/serve-clones-directory.md §4.3). A link or image from a
 // loose note into a clone is sent to the clone's project instead.
 describe("projectFor", () => {
   const clones = { alpha: "alpha", code: "code-2", link: "alpha" };

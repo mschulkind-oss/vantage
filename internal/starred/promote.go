@@ -23,8 +23,8 @@ const MaxPromoted = 100
 
 // promoteGlobChars are what make a line a pattern rather than a path.
 //
-// A line without them costs no filesystem access at all, and that is a
-// requirement rather than an optimization — see [Promote].
+// A line without them never lists the repository, and that is a requirement
+// rather than an optimization — see [Promote].
 const promoteGlobChars = "*?["
 
 // PromoteRequest is one repository's promotion, from one source.
@@ -63,14 +63,15 @@ type PromoteRequest struct {
 // A refused line is never fatal: the rest of the list still promotes, because one
 // typo should not cost a reader the other documents their project named.
 //
-// # A literal costs nothing
+// # A literal never lists the repository
 //
-// A line with no glob character is taken as a path and resolved with no
-// filesystem access whatsoever. That is load-bearing. The viewer refetches the
-// whole list on mount, on reconnect, and on every change push, all ungated, so a
-// ten-repository daemon would otherwise perform ten full document walks per star
-// click — and the motivating case, one roadmap, is exactly the case that must stay
-// free.
+// A line with no glob character is taken as a path. It costs the lstat calls
+// that prove it is contained in the repository, and one stat more when
+// RequireExists asks, but never a listing. That is load-bearing. The viewer
+// refetches the whole list on mount, on reconnect, and on every change push, all
+// ungated, so a ten-repository daemon would otherwise perform ten full document
+// walks per star click — and the motivating case, one roadmap, is exactly the
+// case that must stay cheap.
 //
 // Only a pattern calls Candidates, and then at most once for the whole request.
 //

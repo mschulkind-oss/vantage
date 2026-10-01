@@ -1,3 +1,4 @@
+// The file both readers share, and what each reads: docs/reference/repo-config.md
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { parse as parseToml } from "smol-toml";
@@ -196,7 +197,7 @@ export function loadConfig(options: LoadOptions): LoadedConfig {
 /**
  * The `[planning]` table one project's planning is read under: the table the
  * server reads for it, which is its root's own `.vantage.toml` and nothing
- * above it (`docs/design/repo-config.md` §2.2). The run's `[check]` table is
+ * above it (`docs/reference/repo-config.md` §3.2). The run's `[check]` table is
  * found by walking up from the first target, and may come from further up, or
  * from another of the run's projects; its `[planning]` is this project's only
  * when it is the root's own file. An explicit `--config` or `--no-config` is
@@ -426,7 +427,7 @@ function parsePlanning(
           );
         }
         // The server reads this table too, and refuses the whole file over a
-        // key it does not know (docs/design/repo-config.md §2.3), so the one
+        // key it does not know (docs/reference/repo-config.md §3.4), so the one
         // reader that warns says what the other does.
         warnings.push(
           `${path}: unknown key planning.${key}, which ${checkerName()} does not know, so this run ignores it. Here [planning] takes roadmap, include, exclude, max-file-bytes, max-candidates and a [planning.stages] table, and ${viewerName()} ignores the whole file over a key it does not know, [starred] and theme included. ${newerOrTypo("key")}`,

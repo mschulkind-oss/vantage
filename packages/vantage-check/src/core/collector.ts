@@ -16,8 +16,9 @@ export interface FilePosition {
  *
  * The two verbs are deliberately different shapes. `report` states something
  * about the document. `fail` says the check itself did not happen — the
- * distinction the whole design rests on, and the reason a rule cannot
- * accidentally turn a broken environment into a finding by throwing.
+ * distinction the checker rests on (P2 of docs/reference/agent-cli.md), and the
+ * reason a rule cannot accidentally turn a broken environment into a finding by
+ * throwing.
  */
 export class Collector {
   readonly findings: Finding[] = [];

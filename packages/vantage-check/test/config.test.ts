@@ -70,7 +70,7 @@ describe("parseConfig", () => {
   });
 
   // `.vantage.toml` has a second reader: the server reads its own top-level
-  // table out of the same file (docs/design/repo-config.md). This is not the
+  // table out of the same file (docs/reference/repo-config.md). This is not the
   // "other tools" guarantee above wearing a different hat — that one is about
   // being a good neighbor, and this one is load-bearing for a Vantage feature.
   // If it ever stops holding, every repository that promotes a starred document

@@ -70,9 +70,10 @@ func writeFiles(t *testing.T, dir string, files map[string]string) {
 	}
 }
 
-// clonesDir builds the small fixture the design note's reproduction used: a
-// directory named "code" (not a repository) holding three tiny clones, each
-// with a gitignored generated/ folder, and one loose notes.md.
+// clonesDir builds the small fixture that shows what serving a directory of
+// clones as one project gets wrong (docs/reference/serve-clones-directory.md
+// §9.1): a directory named "code" (not a repository) holding three tiny
+// clones, each with a gitignored generated/ folder, and one loose notes.md.
 func clonesDir(t *testing.T) string {
 	t.Helper()
 	parent := t.TempDir()
@@ -138,7 +139,7 @@ func TestSplitClonesDirectoryOmitsTheLooseProjectWithoutLooseMarkdown(t *testing
 
 // The loose project exists only for Markdown the loose project's tree would
 // show, so the check behind it honors what the tree honors: the exclude list
-// and walk_max_depth (docs/design/serve-clones-directory.md §3).
+// and walk_max_depth (docs/reference/serve-clones-directory.md §4.4).
 func TestSplitClonesDirectoryLooksForLooseMarkdownAsTheTreeDoes(t *testing.T) {
 	code := clonesDir(t)
 	require.NoError(t, os.Remove(filepath.Join(code, "notes.md")))
@@ -214,7 +215,7 @@ func TestPlanServeOneProjectKeepsTheSingleProject(t *testing.T) {
 
 // A linked worktree counts as a repository for detection — its parent is not
 // one project — but it is not served as one, in this mode or the daemon's (see
-// docs/design/serve-clones-directory.md §2.1).
+// docs/reference/serve-clones-directory.md §3.1).
 func TestSplitClonesDirectoryCountsALinkedWorktreeWithoutServingIt(t *testing.T) {
 	parent := t.TempDir()
 	if resolved, err := filepath.EvalSymlinks(parent); err == nil {
@@ -398,7 +399,7 @@ func treeNames(t *testing.T, h http.Handler, target string) []string {
 }
 
 // End to end over the server's routes: the split fixes what serving the same
-// directory as one project got wrong (docs/design/serve-clones-directory.md §1).
+// directory as one project gets wrong (docs/reference/serve-clones-directory.md §9.1).
 func TestServedClonesDirectoryGivesEachCloneItsOwnProject(t *testing.T) {
 	isolateHome(t)
 	code := clonesDir(t)

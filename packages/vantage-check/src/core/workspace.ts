@@ -14,7 +14,8 @@ export type TargetKind = "file" | "directory" | "missing";
  * times.
  *
  * Nothing here touches the network or a running server — a link is resolved by
- * looking at the filesystem, which is the only channel the CLI has (P1).
+ * looking at the filesystem, which is the only channel the CLI has (P1 of
+ * docs/reference/agent-cli.md).
  */
 export class Workspace {
   private readonly kinds = new Map<string, TargetKind>();

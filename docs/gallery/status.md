@@ -144,7 +144,7 @@ The gap used to be the interesting part: nothing said "this document has three
 unanswered questions" without reading the page, which is the one thing a scanning
 reader most wants. **The table of contents now does** — the three questions above
 are listed in it, each with its emoji, under a tally counting them by state. See
-[`contents-open-questions.md`](../design/contents-open-questions.md).
+[`contents-open-questions.md`](../reference/contents-open-questions.md).
 
 So the check this page asks for has moved. The emoji no longer has to carry the
 whole weight on its own at item level: it also appears in the margin, where the

@@ -11,6 +11,9 @@
  * executable, where a separate `worker.js` is not a path anything can load.
  * Run from source the same trick loads this TypeScript through bun, so the two
  * environments do not diverge.
+ *
+ * Architecture and invariants: docs/reference/agent-cli.md. The shared parse,
+ * the worker threads and their invariants: docs/reference/check-performance.md
  */
 import { isMainThread } from "node:worker_threads";
 import { run } from "./cli.js";
