@@ -64,7 +64,7 @@ describe("the planning page's route (Plan Q13)", () => {
   });
 });
 
-// planning-index.md §6.5: the viewer and the planning page are drawn in one
+// planning-index.md §6.1: the viewer and the planning page are drawn in one
 // shell, so going between them replaces the main column and nothing else —
 // the sidebar is not drawn again, nor its tree, recent files and bookmarks
 // asked for again.

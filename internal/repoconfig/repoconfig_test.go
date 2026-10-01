@@ -472,7 +472,8 @@ func TestResolvedRoadmapsKeepNullEmptyAndAListApart(t *testing.T) {
 
 // Every refused roadmap names the key, the entry's position counted from 1 and
 // its value, whether the path breaks a rule or the entry is no text at all
-// (design §9). The string form is a list of one, so it is entry 1.
+// (docs/reference/planning-index.md §14). The string form is a list of one,
+// so it is entry 1.
 func TestARefusedRoadmapNamesTheEntryAndItsValue(t *testing.T) {
 	for toml, want := range map[string][]string{
 		"[planning]\nroadmap = \"../r.md\"\n":                           {"planning.roadmap", "entry 1", `"../r.md"`, "must not leave the repository"},

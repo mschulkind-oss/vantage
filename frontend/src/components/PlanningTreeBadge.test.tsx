@@ -1,5 +1,5 @@
 /**
- * Planning state in the file tree (`docs/design/planning-index.md` §7), in the
+ * Planning state in the file tree (`docs/reference/planning-index.md` §7), in the
  * tree's compact form: each planning document's row shows a dot in its status
  * chip's tone and `💬 N` for its open questions, says every word of it once,
  * in the badge's accessible name, and shows them as the tooltip of the row's
@@ -321,7 +321,7 @@ describe("file-tree badges (§7)", () => {
     expect(badgeIn("docs/staged.md", "/alpha")).not.toBeNull();
   });
 
-  it("starts the index: the tree is one of its first needs (§3.4)", () => {
+  it("starts the index: the tree is one of its first needs (§8.2)", () => {
     renderTree();
     expect(builds).toEqual([{ repo: "", seq: 1, bypassCache: false }]);
   });

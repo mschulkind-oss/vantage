@@ -3,7 +3,7 @@ import * as fs from "fs";
 
 /**
  * The file tree's planning badges never cost a file name any width
- * (`docs/design/planning-index.md` §7).
+ * (`docs/reference/planning-index.md` §7).
  *
  * The rules, each checked on every row of `fixtures/test_repo/tree-badges/`, a
  * directory of long planning-document names like a real `docs/design/`, at

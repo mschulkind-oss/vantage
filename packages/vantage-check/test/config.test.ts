@@ -131,7 +131,7 @@ describe("parseConfig", () => {
     const fixture = testdata("shared-config.toml");
     const { planning } = parseConfig(readFileSync(fixture, "utf8"), fixture);
 
-    // A string is a list of one (docs/design/planning-index.md §9).
+    // A string is a list of one (docs/reference/planning-index.md §14).
     expect(planning).toEqual({
       roadmaps: ["plans/ROADMAP.md"],
       include: ["docs/**", "plans/**"],
@@ -433,7 +433,7 @@ interface PlanningConfigCase {
 
 // The server's internal/repoconfig test reads the same cases, so the two
 // readers of `[planning]` accept and refuse exactly the same files, and resolve
-// an accepted one to the same table (docs/design/planning-index.md §9).
+// an accepted one to the same table (docs/reference/planning-index.md §14).
 describe("[planning], as planning-config.json pins it for both readers", () => {
   const { cases } = JSON.parse(
     readFileSync(testdata("planning-config.json"), "utf8"),
@@ -482,7 +482,7 @@ describe("[planning], as planning-config.json pins it for both readers", () => {
     expect(() => parseConfig(source)).toThrow(fragment);
   });
 
-  // Design §9: an entry's error names planning.roadmap, the entry's position
+  // §14: an entry's error names planning.roadmap, the entry's position
   // counted from 1, and its value.
   it.each([
     [
@@ -602,7 +602,7 @@ describe("check with configuration", () => {
 
   // The design wants a bad [planning] to fail loudly rather than be read as
   // half a table, and the checker has only one way to say so: exit 2, for
-  // every command, `check` included (docs/design/planning-index.md §9).
+  // every command, `check` included (docs/reference/planning-index.md §14).
   it("refuses a check whose [planning] is bad, before checking anything", async () => {
     const io = bufferIo(
       makeTree({

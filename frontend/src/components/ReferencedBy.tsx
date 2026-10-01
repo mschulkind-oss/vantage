@@ -1,5 +1,5 @@
 /**
- * Referenced by (`docs/design/planning-index.md` §7): one line under a planning
+ * Referenced by (`docs/reference/planning-index.md` §7): one line under a planning
  * document's frontmatter card saying how many documents link to it, whether the
  * roadmap routes it, and how many of its open questions the roadmap does not,
  * and, behind that line, those documents.
@@ -32,7 +32,7 @@
  *   name with nowhere else to break rather than widen the page.
  * - **One line at every width when it fills a reservation** (`oneLine`): the
  *   line the viewer reserved at first paint for an index still on its way
- *   (`docs/design/planning-index-at-scale.md` §11.2) is one line tall, and a
+ *   (`docs/reference/planning-index.md` §12.2) is one line tall, and a
  *   phone's wrapped line was two, so filling it moved the whole document down
  *   a line. There it is cut off instead, for this visit only, with the whole
  *   of it in the title and the documents behind the disclosure; the next
@@ -85,7 +85,7 @@ export interface SummaryLine {
    * `K open questions not routed by the roadmap`, in the warning tone, or
    * `null` when there are none; `…not routed by any roadmap` with several that
    * route. Worded so that it stays true of a document the roadmap links only
-   * by heading, which routes nothing (§6.1), and of the roadmap itself: it
+   * by heading, which routes nothing (§4.3), and of the roadmap itself: it
    * says what the roadmap leaves out, never that the document is off it.
    */
   unrouted: string | null;
@@ -164,7 +164,7 @@ const foldAscii = (text: string) =>
  * name twice, in an order that looks unsorted.
  *
  * Names are compared ASCII case-insensitively, as a roadmap's file name is
- * (design §6.1): `roadmap.md`, `Roadmap.md` and `ROADMAP.md` are all roadmaps
+ * (§4.1): `roadmap.md`, `Roadmap.md` and `ROADMAP.md` are all roadmaps
  * found by one name, and a reader does not tell two files apart by the case of
  * a letter, so each of them gets a directory.
  */

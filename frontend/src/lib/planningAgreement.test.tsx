@@ -1,5 +1,6 @@
 /**
- * Design §3.3: the planning index and the contents column agree on every
+ * `docs/reference/planning-index.md` §3.3: the planning index and the
+ * contents column agree on every
  * question and its state.
  *
  * They read the same questions two ways. The column reads the rendered page —

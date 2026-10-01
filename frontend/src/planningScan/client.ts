@@ -1,5 +1,5 @@
 /**
- * The scanner client (`docs/design/planning-index-at-scale.md` §7): what the
+ * The scanner client (`docs/reference/planning-index.md` §10): what the
  * planning store and the planning page call to build a repository's index,
  * refresh one path, and fetch card blocks and quoted lines, without holding
  * any document's text on the main thread.
@@ -9,19 +9,19 @@
  * - **the worker client**, which posts to the scan worker, created once per
  *   tab at boot. If it dies (an `error` or `messageerror` event), every build
  *   it had fails with *The planning scan stopped*, every refresh in flight
- *   answers `null`, and the next request starts a new worker (§7.1). One that
+ *   answers `null`, and the next request starts a new worker (§10.1). One that
  *   fails before its `hello`, whose code never loaded, could not be created,
  *   and the tab moves to the inline client. When a cold build asks for
  *   helpers, it makes them and hands each one end of a channel whose other
  *   end goes to the scan worker, so their data never passes through this
- *   thread; it ends them with the build (§7.5);
+ *   thread; it ends them with the build (§10.5);
  * - **the inline client**, which runs the core on the main thread, sliced at
  *   `sliceMs` so the page can paint. It serves the unit tests, which have no
  *   `Worker`, and a browser where the worker cannot be created or its code
  *   cannot be loaded. It is not a fallback for a worker that crashed: a crash
- *   on some file would crash the page the same way (§7.6).
+ *   on some file would crash the page the same way (§10.6).
  *
- * The client makes no ordering decision (§5.4): it hands every answer to its
+ * The client makes no ordering decision (§8.3): it hands every answer to its
  * caller, and the planning store's request numbering decides which one wins.
  */
 
@@ -59,7 +59,7 @@ export interface ScannerClient {
    * One path's scanned entry, as the planning index applies it, with no card
    * text in it; `null` when it could not be had. `config` is the config of the
    * index the answer is for, which a worker that has seen no header of the
-   * repository scans under: one made after another died (§7.1).
+   * repository scans under: one made after another died (§10.1).
    */
   refresh(request: {
     repo: string;
@@ -80,7 +80,7 @@ export interface ScannerClient {
   quotes(repo: string, want: QuoteWant[]): Promise<Quotes>;
 }
 
-/** What a build of a worker that died says (§7.1). */
+/** What a build of a worker that died says (§10.1). */
 export const STOPPED_MESSAGE = "The planning scan stopped";
 
 /** A repository's API base, the planning store's shape. */
@@ -119,7 +119,7 @@ interface Build {
   seq: number;
   bypassCache: boolean;
   on: (event: BuildEvent) => void;
-  /** The helpers made for it, which end with it (§7.5). */
+  /** The helpers made for it, which end with it (§10.5). */
   helpers: WorkerLike[];
   /** How many helpers' ports the scan worker has been sent for it. */
   lent: number;
@@ -138,7 +138,7 @@ const isHello = (event: Event): boolean =>
  *
  * `unavailable` makes the client to use instead once a scan worker fails
  * before its `hello`: its code never loaded, so no worker can be created here
- * (§7.1). What was sent to that worker is asked of it instead, and so is
+ * (§10.1). What was sent to that worker is asked of it instead, and so is
  * everything after. Without it, such a failure is a death like any other.
  */
 export function workerScannerClient(
@@ -157,7 +157,7 @@ export function workerScannerClient(
   /**
    * The config of the last header each repository's builds sent. A refresh
    * or card request carries it, so a scan worker started after one died idle,
-   * which has seen no header, scans under the repository's config (§7.1).
+   * which has seen no header, scans under the repository's config (§10.1).
    */
   const configs = new Map<string, PlanningConfig>();
 
@@ -186,7 +186,7 @@ export function workerScannerClient(
   };
 
   /**
-   * A scan worker that failed before its `hello` could not be created (§7.1):
+   * A scan worker that failed before its `hello` could not be created (§10.1):
    * from now on the tab asks `unavailable`'s client, starting with every
    * build and request that worker had.
    */
@@ -215,7 +215,7 @@ export function workerScannerClient(
 
   /**
    * A helper that dies takes its build with it, as the scan worker's own
-   * death would (§7.1): the build fails, and the scan worker drops it.
+   * death would (§10.1): the build fails, and the scan worker drops it.
    */
   const helperDied = (repo: string, build: Build): void => {
     if (builds.get(repo) !== build) return;
@@ -230,7 +230,7 @@ export function workerScannerClient(
 
   /**
    * A helper that failed before its `hello` never loaded, so it will scan
-   * nothing (§7.5): the build goes on without it, and the scan worker reads
+   * nothing (§10.5): the build goes on without it, and the scan worker reads
    * again what it had handed it.
    */
   const helperNeverLoaded = (
@@ -253,7 +253,7 @@ export function workerScannerClient(
 
   /**
    * Make the helpers a build asked for, and hand the scan worker one end of
-   * a channel to each (§7.5). A build that is over gets none; where no more
+   * a channel to each (§10.5). A build that is over gets none; where no more
    * workers can be made, it goes on with those it has.
    */
   const lend = (repo: string, seq: number, count: number): void => {
@@ -384,7 +384,7 @@ export function workerScannerClient(
     throw new Error(STOPPED_MESSAGE);
   };
 
-  // Started at once, beside the app's first requests (§7.1).
+  // Started at once, beside the app's first requests (§10.1).
   current();
 
   return {

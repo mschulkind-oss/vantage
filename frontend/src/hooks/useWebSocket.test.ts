@@ -51,7 +51,7 @@ describe("useWebSocket", () => {
     typeof useStarredStore.getState
   >["loadStarred"];
   // And for the planning index, whose three socket calls are the whole of its
-  // freshness (docs/design/planning-index.md §3.4).
+  // freshness (docs/reference/planning-index.md §8.3).
   const mockNoteFilesChanged = vi.fn();
   const mockNoteReviewChanged = vi.fn();
   const mockNoteReconnect = vi.fn();
@@ -722,7 +722,7 @@ describe("useWebSocket", () => {
       } as MessageEvent);
     });
 
-  describe("the planning index (docs/design/planning-index.md §3.4)", () => {
+  describe("the planning index (docs/reference/planning-index.md §8.3)", () => {
     it("hands every files_changed push to the index at once, with its removed directories", () => {
       renderHook(() => useWebSocket());
       send({

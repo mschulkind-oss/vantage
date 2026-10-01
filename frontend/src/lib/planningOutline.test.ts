@@ -1,5 +1,5 @@
 /**
- * The planning outline (`docs/design/planning-index.md` §6.5), drawn from the
+ * The planning outline (`docs/reference/planning-index.md` §6.9), drawn from the
  * index alone. Every limit is proven by configuring it down in the limits
  * module, never by growing a tree to a default.
  */

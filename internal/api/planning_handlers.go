@@ -27,14 +27,13 @@ const planningBatchGone = "The planning index moved to a stream; reload the page
 // the viewer's refresh after a change push, and its fetch of one file's card
 // text — as a single `file`, `skipped`, `unreadable` or `absent` entry, under
 // the stream's own tests, a `file` carrying its content hash beside its text.
-// Design: docs/design/planning-index.md §3.4, and for the hash
-// docs/design/planning-index-at-scale.md §6.2. See [planning.Lookup]. An empty
+// Reference: docs/reference/planning-index.md §9.2. See [planning.Lookup]. An empty
 // `path` is a 400, like every other endpoint's.
 //
 // Without `path` this URL was the batch, every candidate's text in one body,
 // which [Handlers.PlanningStream] replaced. It now answers 410 Gone with the
 // {"detail":…} envelope, and reads nothing: a tab loaded before the change
-// shows its error with Retry, and a reload fixes it (§6.1).
+// shows its error with Retry, and a reload fixes it (§9.1).
 //
 // The existing /content endpoint is deliberately not the per-file refresh. It
 // serves paths the listing never yields, has no size limit, and answers a
@@ -68,7 +67,7 @@ func (h *Handlers) PlanningSources(w http.ResponseWriter, r *http.Request) {
 // about 40 B more, and a reviews path its own length and 3, so a repository at
 // its limit fits with room to spare, and raising the limit raises the cap with
 // it: a fixed cap would answer every warm build past about 54,000 candidates
-// with a 413 the limit allows (design §6.1).
+// with a 413 the limit allows (§9.1).
 const bodyBytesPerCandidate = 1 << 10
 
 // streamBodyFloor and reviewsBodyFloor are the least each endpoint's body cap
@@ -93,7 +92,7 @@ func bodyLimit(floor int64, maxCandidates int) int64 {
 // PlanningStream handles POST /planning/stream (and
 // /r/{repo}/planning/stream): every planning candidate as one line of NDJSON,
 // with the text only of the files whose content hash the browser does not
-// already hold. Design: docs/design/planning-index-at-scale.md §6.1. The lines
+// already hold. Reference: docs/reference/planning-index.md §9.1. The lines
 // are [planning.Stream.Write]'s.
 //
 // The body is `{"have": {path: hash, …}}`, the hashes the browser keeps scan
@@ -105,7 +104,7 @@ func bodyLimit(floor int64, maxCandidates int) int64 {
 // The candidates are listed before the body is read, and the body is read one
 // entry at a time, keeping only the entries [planning.Stream.Wants] accepts:
 // whatever the body's size, what the request holds of `have` is at most one
-// path and one hash per candidate (design §6.4).
+// path and one hash per candidate (§9.4).
 //
 // The answer is `application/x-ndjson`, never cached, and gzipped at the
 // fastest level when the request accepts gzip, since a cold build's body is
@@ -115,7 +114,7 @@ func bodyLimit(floor int64, maxCandidates int) int64 {
 //
 // No write deadline is set, and none should be: a browser that reads slowly,
 // because it scans each line before reading the next, holds the server back by
-// TCP, which is the design's backpressure.
+// TCP, which is the stream's backpressure.
 //
 // The request's context ends the reading: once the client has gone, no
 // further candidate is opened, although behind gzip no write fails until the
@@ -223,7 +222,7 @@ type planningReview struct {
 // PlanningReviews handles POST /planning/reviews (and
 // /r/{repo}/planning/reviews): the stored reviews of many documents in one
 // request, where the planning page used to send one GET /review per listed
-// document. Design: docs/design/planning-index-at-scale.md §6.3.
+// document. Reference: docs/reference/planning-index.md §9.3.
 //
 // The body is `{"paths": [...]}`, and the answer is
 // `{"reviews": [{"path": …, "review": …}]}`: one entry for each distinct path

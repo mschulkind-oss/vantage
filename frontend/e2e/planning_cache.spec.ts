@@ -4,7 +4,7 @@ import { planningIndexReady } from "./planningIndex";
 
 // The scan worker and its cache in a real browser: the worker over the real
 // planning stream, and the scan cache over the real IndexedDB, which no unit
-// test can reach (docs/design/planning-index-at-scale.md §8, §19).
+// test can reach (docs/reference/planning-index.md §11, §18).
 //
 // Every build here is the app's own: the planning store asks the tab's
 // scanner client for the index as soon as a surface needs it. Each test gets a
@@ -226,7 +226,7 @@ test.describe("the planning scan cache", () => {
   }) => {
     const streams = await recordStreams(page);
     await page.goto("/plans/roadmap.md");
-    // Started beside the app's first requests (§7.1).
+    // Started beside the app's first requests (§10.1).
     await expect.poll(() => page.workers().length).toBe(1);
     expect(page.workers()[0]?.url()).toContain("/planningScan/worker");
     // One stream built the index. (A badge is no sign of it: the index lands
@@ -253,7 +253,7 @@ test.describe("the planning scan cache", () => {
     const warm = streams[1] ?? { have: {}, lines: [] };
 
     // Every file the first load read went back as `have`, but the roadmap,
-    // which is never stored (§8.1).
+    // which is never stored (§11.1).
     const readable = cold.lines.filter((line) => line.kind === "file");
     for (const line of readable) {
       if (line.path === ROADMAP) continue;

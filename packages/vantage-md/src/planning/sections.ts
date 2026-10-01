@@ -1,5 +1,6 @@
 /**
- * The planning page's sections and the roadmaps' routing (design §6), and the
+ * The planning page's sections and the roadmaps' routing
+ * (`docs/reference/planning-index.md` §4, §6), and the
  * Referenced by list (§7).
  *
  * The page, `vantage-check index` and the checker's planning rules all derive
@@ -42,7 +43,7 @@ export type WaitingEntry =
   | { kind: "document"; path: string; waitingOn: DependsOn[] };
 
 /**
- * A roadmap's *state* (design §6.1, a term coined there): whether it routes,
+ * A roadmap's *state* (§4.2, a term defined in §2): whether it routes,
  * and why not when it does not. `missing` is only ever a listed roadmap's,
  * since a roadmap found by name is one because the index holds it.
  */
@@ -64,7 +65,7 @@ export interface OtherRoadmapQuestion extends RoutedQuestion {
 }
 
 export interface PlanningSections {
-  /** Every roadmap, in roadmap order (§6.1), each with its state. */
+  /** Every roadmap, in roadmap order (§4.2), each with its state. */
   roadmaps: PlanningRoadmap[];
   /**
    * The roadmap Needs you follows: the one asked for when it routes, else the
@@ -83,7 +84,7 @@ export interface PlanningSections {
   /**
    * Open or answered questions another roadmap routes and the chosen one does
    * not, each once, in roadmap order and then that roadmap's own order: what
-   * the page counts beside its picker (§6.4). Empty when none is chosen.
+   * the page counts beside its picker (§6.8). Empty when none is chosen.
    */
   onOtherRoadmaps: OtherRoadmapQuestion[];
   /** Open questions no roadmap routes; `null` when none is chosen. */
@@ -98,7 +99,7 @@ export interface PlanningSections {
 }
 
 /**
- * What a roadmap that does not route is said to be, after its path (§6.4): the
+ * What a roadmap that does not route is said to be, after its path (§6.8): the
  * one phrase for each state, shared by every notice and `vantage-check
  * index`'s Roadmaps block.
  */
@@ -125,7 +126,7 @@ const LISTS_EVERY_QUESTION =
 export const PLANNING_NOTICES: {
   nothingNeedsYou: string;
   /**
-   * The roadmap notice of design §6.4, or null: the No roadmap line when none
+   * The roadmap notice of §6.8, or null: the No roadmap line when none
    * routes, the Not read as a roadmap line when a listed one is missing,
    * skipped or unreadable while another routes, and null otherwise.
    */
@@ -219,7 +220,7 @@ const keyOf = (ref: QuestionRef): string => `${ref.path}\n${ref.line}`;
 const isOpen = (q: PlanningQuestion): boolean => q.state === "open";
 
 /**
- * The questions one link of `roadmap` routes (§6.1), or `null` when it routes
+ * The questions one link of `roadmap` routes (§4.3), or `null` when it routes
  * nothing at all.
  *
  * A bare link to a document routes every question in it, and routes the
@@ -256,7 +257,7 @@ interface RoadmapEntry {
 }
 
 /**
- * Every roadmap of the index, in roadmap order, with its state (§6.1).
+ * Every roadmap of the index, in roadmap order, with its state (§4.2).
  * Listed: one entry per listed path, `missing` when the index holds nothing
  * at it. Found by name: every path the index holds, as a document, skipped or
  * unreadable, whose name is `roadmap.md`.
@@ -312,7 +313,7 @@ function routesOf(
 }
 
 /**
- * The questions one roadmap routes, in its order (§6.1): `[]` unless `roadmap`
+ * The questions one roadmap routes, in its order (§4.3): `[]` unless `roadmap`
  * is a roadmap of the index whose state is `routes`.
  */
 export function routeQuestions(
@@ -353,7 +354,7 @@ function routingOf(index: PlanningIndex): Routing {
 }
 
 /**
- * Every roadmap, in roadmap order (§6.1). Listed: one entry per listed path,
+ * Every roadmap, in roadmap order (§4.2). Listed: one entry per listed path,
  * `missing` when the index holds nothing at it. Found by name: every path the
  * index holds, as a document, skipped or unreadable, whose name is
  * `roadmap.md`; never `missing`. A document whose stage has the done role is
@@ -540,7 +541,7 @@ export interface ReferenceSummary {
    */
   sources: ReferenceSource[];
   /**
-   * Each roadmap that routes this document or one of its questions (§6.1), in
+   * Each roadmap that routes this document or one of its questions (§4.3), in
    * roadmap order, with the heading of its first link that does, `heading`
    * being `null` for a link above every heading. Never the document itself,
    * which is not on itself, though it may be on another roadmap that links it.

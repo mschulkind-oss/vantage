@@ -2,8 +2,8 @@
  * A fake Vantage server for the scan worker's suites: a `fetch` that answers
  * `POST …/planning/stream` and `GET …/planning/sources?path=` from a tree of
  * path → content, as `internal/planning/stream.go` and `sources.go` answer
- * them (`docs/design/planning-index-at-scale.md` §6.1, §6.2), and
- * `GET …/planning/server-id` with its server id (§6.5).
+ * them (`docs/reference/planning-index.md` §9.1, §9.2), and
+ * `GET …/planning/server-id` with its server id (§9.5).
  *
  * The stream's body is served in chunks of `chunkBytes` bytes of its UTF-8
  * encoding, one chunk per read, so a test decides where lines and characters
@@ -30,7 +30,7 @@ export interface FakeServerOptions {
   /**
    * Answer `same` for a roadmap whose hash `have` names, as a server that
    * disagrees with the worker about which files are roadmaps would. An
-   * agreeing server never does (scale design §6.1).
+   * agreeing server never does (§9.1).
    */
   sameForRoadmaps?: boolean;
 }
@@ -78,7 +78,7 @@ const byteLength = (text: string): number =>
   new TextEncoder().encode(text).length;
 
 /**
- * The planning stream's lines for `tree`, answering `have` (§6.1). Every path
+ * The planning stream's lines for `tree`, answering `have` (§9.1). Every path
  * of the tree is a candidate, and a roadmap, by the header's own test, is
  * always a `file`.
  */

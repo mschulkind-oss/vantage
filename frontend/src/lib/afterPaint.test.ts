@@ -1,5 +1,5 @@
 /**
- * `afterNextPaint` (`docs/design/planning-index-at-scale.md` §10.1): work that
+ * `afterNextPaint` (`docs/reference/planning-index.md` §6.3): work that
  * must not take the main thread from a frame waits for the frame's animation
  * frame, and then for a task queued from there, which runs once it has
  * painted.

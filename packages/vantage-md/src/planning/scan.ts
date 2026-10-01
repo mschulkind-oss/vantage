@@ -1,6 +1,6 @@
 /**
  * One candidate file, read into what it contributes to the planning index
- * (design §3.1–§3.3, §4).
+ * (`docs/reference/planning-index.md` §3.1–§3.4).
  *
  * The parse is the viewer's own remark half (`buildRemarkPlugins`), so a link
  * or a directive means here what it means on the page. Where the viewer
@@ -56,7 +56,7 @@ import { resolveRepoLink } from "./links.js";
 /** A question's state. `answered` is ✅: ruled, awaiting compaction. */
 export type QuestionState = "open" | "blocked" | "answered";
 
-/** One question: an `oq` directive that yields a button (design §3.3). */
+/** One question: an `oq` directive that yields a button (§3.3). */
 export interface PlanningQuestion {
   path: string;
   /**
@@ -86,7 +86,7 @@ export interface PlanningQuestion {
    * File line of the unit's last line: where that `<li>` ends, or the host
    * block's last line when there is none. With `unitLine` it spans the
    * question's unit, which is how a comment is placed on a question whose card
-   * has not been rendered (`docs/design/planning-index-at-scale.md` §10.5).
+   * has not been rendered (`docs/reference/planning-index.md` §6.7).
    */
   unitEndLine: number;
   /**
@@ -97,7 +97,7 @@ export interface PlanningQuestion {
   /**
    * The length of the Markdown its card renders (`CardBlock.markdown`), as
    * JavaScript counts a string's length. The planning page pages by it before
-   * any block is fetched (`docs/design/planning-index-at-scale.md` §10.2).
+   * any block is fetched (`docs/reference/planning-index.md` §6.4).
    */
   cardChars: number;
 }
@@ -105,7 +105,7 @@ export interface PlanningQuestion {
 /**
  * The Markdown a question's card renders, for one distinct `block` of its
  * document: every question in that block shares it
- * (`docs/design/planning-index-at-scale.md` §7.4).
+ * (`docs/reference/planning-index.md` §10.4).
  *
  * Not a fact of the index. A scan returns a document's blocks beside its
  * document, for whoever keeps them to hand them to the planning page.
@@ -138,7 +138,7 @@ export interface PlanningLink {
   endOffset: number;
 }
 
-/** One `depends-on` entry (design §4). */
+/** One `depends-on` entry (§3.4). */
 export interface DependsOn {
   /** The entry as written. */
   raw: string;
@@ -149,7 +149,7 @@ export interface DependsOn {
   line: number;
 }
 
-/** A header value that is ignored, and why (design §4, Plan Q20). */
+/** A header value that is ignored, and why (§3.4, Plan Q20). */
 export interface HeaderProblem {
   key: "stage" | "next" | "depends-on";
   line: number;
@@ -1033,10 +1033,10 @@ function problemReason(parsed: ParsedFrontmatter): string | undefined {
  * scanning for it should; no other caller passes it.
  *
  * Only a planning document contributes: one whose frontmatter has `status` or
- * `stage`, or that holds an `oq` directive, or a roadmap (design §3.1). A
+ * `stage`, or that holds an `oq` directive, or a roadmap (§3.1). A
  * file whose frontmatter does not parse is unreadable, since what it would
- * have said is unknown (§3.6). Anything else is dropped before its body is
- * parsed, which is what keeps a full scan cheap (§13, §15).
+ * have said is unknown (§15). Anything else is dropped before its body is
+ * parsed, which is what keeps a full scan cheap (§3.1).
  *
  * A planning document comes with its questions' card blocks, cut from the same
  * parse, so nothing has to parse a document a second time for its cards.

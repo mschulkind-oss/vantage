@@ -1020,7 +1020,7 @@ function nodeText(node: RootContent | ListItem): string {
  * wants the question without the button says so with its marker — 🔒 if it is
  * blocked, ✅ once it is decided — and keeps the directive, which offers no
  * button in either state (Plan Q5) and is the only thing the planning index
- * reads a question from (`docs/design/planning-index.md` §3.3). A repo that
+ * reads a question from (`docs/reference/planning-index.md` §3.3). A repo that
  * wants the whole rule advisory sets `"vantage/oq-missing" = "warning"` under
  * `[check.rules]`.
  */

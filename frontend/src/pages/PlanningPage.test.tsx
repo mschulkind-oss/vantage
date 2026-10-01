@@ -1,5 +1,5 @@
 /**
- * The planning page (`docs/design/planning-index.md` §6): each section of
+ * The planning page (`docs/reference/planning-index.md` §6): each section of
  * §6.2 with its notices and its empty and degenerate states, the cards'
  * controls per state (Plan Q5), filing, and Copy answers.
  *
@@ -601,7 +601,7 @@ describe("the sections, top to bottom (§6.2)", () => {
     );
   });
 
-  it("puts the sections in the design's order", async () => {
+  it("puts the sections in the reference's order", async () => {
     seed(
       TREE,
       { stages: STAGES },
@@ -836,7 +836,7 @@ describe("empty and degenerate states", () => {
     expect(cardsIn("Unrouted")).toHaveLength(2);
   });
 
-  // D6 (planning-index-at-scale.md §10.6, §19): the pipeline's first run in a
+  // D6 (planning-index.md §6.10, §18): the pipeline's first run in a
   // page load costs several times any later one, and one card's Markdown is a
   // task React cannot split.
   it("runs the Markdown pipeline once while the index builds, after the frame paints, and renders the sections only after it", async () => {
@@ -875,7 +875,7 @@ describe("empty and degenerate states", () => {
   });
 });
 
-describe("pages (planning-index-at-scale.md §10.2)", () => {
+describe("pages (planning-index.md §6.4)", () => {
   // Needs you holds three cards, and Unrouted two, so at two a page Needs you
   // has two pages and Unrouted one.
   beforeEach(() => {
@@ -1172,7 +1172,7 @@ describe("a flip's scroll position", () => {
   });
 });
 
-describe("the section bar (planning-index-at-scale.md §10.1)", () => {
+describe("the section bar (planning-index.md §6.3)", () => {
   beforeEach(() => seed());
 
   const bar = () => screen.getByRole("navigation", { name: "Sections" });
@@ -1231,7 +1231,7 @@ describe("the section bar (planning-index-at-scale.md §10.1)", () => {
     }
   });
 
-  // §10.3: the page on screen stays until an index update's inputs are
+  // §6.5: the page on screen stays until an index update's inputs are
   // ready, then changes in one commit — the frame with it.
   it("changes its counts in the commit that changes the sections, not before", async () => {
     await renderPage();
@@ -1285,7 +1285,7 @@ describe("the section bar (planning-index-at-scale.md §10.1)", () => {
   });
 });
 
-describe("the cards' blocks, from the scanner client (planning-index-at-scale.md §7.4)", () => {
+describe("the cards' blocks, from the scanner client (planning-index.md §10.4)", () => {
   /** The tree with every file changed, so nothing an earlier test held fits. */
   const edited = (label: string) =>
     Object.fromEntries(
@@ -1420,7 +1420,7 @@ describe("the cards' blocks, from the scanner client (planning-index-at-scale.md
   });
 });
 
-describe("the reviews, in one request (planning-index-at-scale.md §6.3)", () => {
+describe("the reviews, in one request (planning-index.md §9.3)", () => {
   beforeEach(() => seed());
 
   const reviewRequests = () =>
@@ -1483,7 +1483,7 @@ describe("the reviews, in one request (planning-index-at-scale.md §6.3)", () =>
   });
 });
 
-describe("page inputs, and one commit (planning-index-at-scale.md §10.3)", () => {
+describe("page inputs, and one commit (planning-index.md §6.5)", () => {
   beforeEach(() => seed());
 
   /** The reviews request, held until `release` answers it. */
@@ -1573,7 +1573,7 @@ describe("page inputs, and one commit (planning-index-at-scale.md §10.3)", () =
     expect(screen.getByTestId("pending-answers")).toHaveTextContent("–");
   });
 
-  // §12: the second request comes after the sections painted, so a line
+  // §15: the second request comes after the sections painted, so a line
   // above them would move them. Copy answers says it where nothing moves.
   it("says so, and keeps Copy answers disabled, when the second reviews request fails", async () => {
     setPlanningLimitsForTests({ pageEntries: 1 });
@@ -1683,7 +1683,7 @@ describe("page inputs, and one commit (planning-index-at-scale.md §10.3)", () =
     expect(cardsIn("Unrouted")).toHaveLength(2);
   });
 
-  // D1 (§10.1, §19): on `g p`, the `g` has asked for page 1's inputs, which
+  // D1 (§6.3, §18): on `g p`, the `g` has asked for page 1's inputs, which
   // are in hand when the frame commits. Rendering their cards at once kept
   // the main thread from painting the frame until they yielded.
   it("keeps a set already in hand back until the frame has painted, as on g p", async () => {
@@ -1746,7 +1746,7 @@ describe("page inputs, and one commit (planning-index-at-scale.md §10.3)", () =
   });
 });
 
-describe("Mermaid, drawn before the cards commit (planning-index-at-scale.md §10.3)", () => {
+describe("Mermaid, drawn before the cards commit (planning-index.md §6.5)", () => {
   const DIAGRAM = "graph LR\n  A --> B";
   const tree = {
     ...TREE,
@@ -1804,7 +1804,7 @@ describe("Mermaid, drawn before the cards commit (planning-index-at-scale.md §1
   });
 });
 
-describe("memoized cards (planning-index-at-scale.md §10.4)", () => {
+describe("memoized cards (planning-index.md §6.6)", () => {
   beforeEach(() => seed());
 
   it("renders no card of another document when one document's reviews answer", async () => {
@@ -1839,7 +1839,7 @@ describe("memoized cards (planning-index-at-scale.md §10.4)", () => {
   });
 });
 
-describe("a preview card (planning-index-at-scale.md §10.4)", () => {
+describe("a preview card (planning-index.md §6.6)", () => {
   // OQ-U1's card, 150-odd characters, is past a limit configured down to
   // 100; every other card of the tree is within it.
   const tree = {
@@ -1924,7 +1924,7 @@ describe("a preview card (planning-index-at-scale.md §10.4)", () => {
   });
 });
 
-describe("several roadmaps (§6.4)", () => {
+describe("several roadmaps (§6.8)", () => {
   // Found by name: roadmap.md routes OQ-D1, OQ-D3 and OQ-A1, and
   // docs/plans/roadmap.md routes OQ-U1, then OQ-D3 again.
   const NESTED = "docs/plans/roadmap.md";
@@ -1963,7 +1963,7 @@ describe("several roadmaps (§6.4)", () => {
   });
 
   // One picker, where the planning outline is drawn at its head, and back
-  // above the section bar when it is not (§6.5).
+  // above the section bar when it is not (§6.9).
   it("puts the picker at the head of the planning outline while it is drawn, and only there", async () => {
     localStorage.setItem("vantage:tocOpen", "true");
     seed(TWO);
@@ -1992,7 +1992,7 @@ describe("several roadmaps (§6.4)", () => {
     expect(picker().value).toBe(NESTED);
   });
 
-  // Late data never moves painted content (§6.5): the picker comes with the
+  // Late data never moves painted content (§6.9): the picker comes with the
   // index, so a Contents label painted before it would be pushed down by it.
   // The outline's head comes in the commit that draws the section bar.
   it("draws the outline's head with the section bar, never a label the picker lands above", async () => {
@@ -2436,7 +2436,7 @@ describe("filing from the page", () => {
  * Copy answers
  * ------------------------------------------------------------------ */
 
-describe("Copy answers (§6.3)", () => {
+describe("Copy answers (§6.7)", () => {
   beforeEach(() => seed());
 
   const copyButton = () => screen.getByRole("button", { name: /Copy answers/ });
@@ -2577,7 +2577,7 @@ describe("Copy answers (§6.3)", () => {
   });
 });
 
-describe("Copy answers across pages (planning-index-at-scale.md §10.5)", () => {
+describe("Copy answers across pages (planning-index.md §6.7)", () => {
   const copyButton = () => screen.getByRole("button", { name: /Copy answers/ });
   const pendingCount = () => screen.getByTestId("pending-answers").textContent;
 
@@ -2754,7 +2754,7 @@ describe("Copy answers across pages (planning-index-at-scale.md §10.5)", () => 
   });
 });
 
-describe("Open document, then Back (§6.3, §15)", () => {
+describe("Open document, then Back (§6.6)", () => {
   beforeEach(() => seed());
 
   function BackButton() {
@@ -2834,7 +2834,7 @@ describe("Open document, then Back (§6.3, §15)", () => {
 
 describe("scoping a comment to its question, over agent-bootstrap.md", () => {
   // Its five open questions are items of one loose list, so every card's DOM
-  // holds all five (the plan's first WP-E trap).
+  // holds all five (the trap `docs/reference/planning-index.md` §6.6 warns of).
   const PATH = "docs/design/agent-bootstrap.md";
   beforeEach(() => seed({ [PATH]: readRepoFile(PATH) }, { stages: null }));
 
@@ -2873,7 +2873,7 @@ describe("scoping a comment to its question, over agent-bootstrap.md", () => {
   });
 });
 
-describe("in a static export (§3.6, Plan Q3)", () => {
+describe("in a static export (§15, Plan Q3)", () => {
   afterEach(() => {
     delete window.__VANTAGE_STATIC__;
   });
@@ -2889,12 +2889,12 @@ describe("in a static export (§3.6, Plan Q3)", () => {
 });
 
 /* ------------------------------------------------------------------ *
- * The app shell, and the planning outline (planning-index.md §6.5)
+ * The app shell, and the planning outline (planning-index.md §6.1, §6.9)
  * ------------------------------------------------------------------ */
 
 const header = () => screen.getByTestId("planning-header");
 
-describe("in the app shell (§6.5)", () => {
+describe("in the app shell (§6.1)", () => {
   beforeEach(() => seed());
 
   it("draws the page beside the sidebar, under the viewer's header", async () => {
@@ -2970,7 +2970,7 @@ describe("in the app shell (§6.5)", () => {
   });
 });
 
-describe("the planning outline (§6.5)", () => {
+describe("the planning outline (§6.9)", () => {
   beforeEach(() => {
     localStorage.setItem("vantage:tocOpen", "true");
   });

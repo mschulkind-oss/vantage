@@ -26,9 +26,9 @@ import {
 } from "./planningTree.js";
 
 /**
- * The planning rules (`docs/design/planning-index.md` §8). Each is a
+ * The planning rules (`docs/reference/planning-index.md` §13). Each is a
  * derivation the planning page also shows, so beyond firing and staying quiet
- * on the cases §4 lists, the thing to prove is that the gate reads each file
+ * on the cases §3.4 lists, the thing to prove is that the gate reads each file
  * the way the full index reads it, although it reads only that file and the
  * roadmap.
  */
@@ -216,7 +216,7 @@ describe("the [planning] table each file is judged by", () => {
   });
 
   // With no root there is no repository to anchor the patterns to, so they
-  // are read against the working directory, as `index` scans it (§8).
+  // are read against the working directory, as `index` scans it (§13).
   it("applies include and exclude without a root, from the working directory", async () => {
     const tree = makeTree({
       "cfg/v.toml": `[planning]\nexclude = ["docs/**"]\n\n${STAGES_TOML}`,
@@ -489,7 +489,7 @@ describe("planning/unrouted", () => {
   });
 });
 
-// Design §6.1 and §8: with no roadmap listed, every candidate named
+// §4.1 and §13.3: with no roadmap listed, every candidate named
 // roadmap.md is one, and a question is routed when any of them routes it.
 describe("planning/unrouted, with several roadmaps", () => {
   const tree = (extra: Record<string, string> = {}) =>
@@ -575,7 +575,7 @@ describe("planning/unrouted, with several roadmaps", () => {
   });
 });
 
-// Design §8: finding roadmaps by name costs check one walk of the listing,
+// §13.3: finding roadmaps by name costs check one walk of the listing,
 // and only when planning/unrouted is on and a checked document could fire it.
 describe("planning/question-length", () => {
   /** `n` words of prose. */
@@ -848,7 +848,7 @@ describe("which files the rules report on", () => {
     ]);
   });
 
-  // `exclude` is how a repository quiets a foreign `stage` key (design §13),
+  // `exclude` is how a repository quiets a foreign `stage` key (§3.1),
   // and a file the server would never list is no planning document either.
   it("is quiet on a file that is not a candidate", async () => {
     const root = repo({

@@ -1,11 +1,11 @@
 /**
  * The planning index: every planning document in one repository, with the
- * candidates that could not be read (design §3).
+ * candidates that could not be read (`docs/reference/planning-index.md` §3).
  *
  * Built from one batch of sources, which the checker gathers by its own walk,
  * or from files already scanned, which the viewer's scan worker reads from the
- * planning stream (`docs/design/planning-index-at-scale.md` §6.1), and kept
- * fresh one path at a time (§3.4). Every function here returns a new index and
+ * planning stream (`docs/reference/planning-index.md` §9.1), and kept
+ * fresh one path at a time (§8.3). Every function here returns a new index and
  * leaves its argument alone, so a viewer can hold the previous one on screen
  * while the next is computed.
  */
@@ -44,7 +44,7 @@ export interface PlanningSources {
 export type SourceEntry =
   /**
    * `hash` is the file's content hash, which the server's answer carries
-   * (`docs/design/planning-index-at-scale.md` §6.2) and the checker's own walk
+   * (`docs/reference/planning-index.md` §9.2) and the checker's own walk
    * does not.
    */
   | { kind: "file"; path: string; content: string; hash?: string }
@@ -56,7 +56,7 @@ export type SourceEntry =
 /**
  * One path's answer with a file's text replaced by its scan result: what the
  * scan worker answers a refresh with, having read and scanned the file off
- * the main thread (`docs/design/planning-index-at-scale.md` §5.3). `hash` is
+ * the main thread (`docs/reference/planning-index.md` §8.3). `hash` is
  * the file's content hash, which the index itself never reads.
  */
 export type ScannedEntry =
@@ -68,7 +68,7 @@ export type ScannedEntry =
 
 /**
  * One line of the planning stream, `POST …/planning/stream`
- * (`docs/design/planning-index-at-scale.md` §6.1), camelCased: a header, then
+ * (`docs/reference/planning-index.md` §9.1), camelCased: a header, then
  * one line per candidate in path order, then `end`.
  *
  * `same` says the file hashes to exactly what the request's `have` gave for
@@ -122,7 +122,7 @@ const isNumber = (value: unknown): value is number =>
 
 /**
  * A content hash: the first 128 bits of SHA-256 over a file's bytes, as 32
- * lowercase hex digits (`docs/design/planning-index-at-scale.md` §3).
+ * lowercase hex digits (`docs/reference/planning-index.md` §2).
  */
 const isHash = (value: unknown): value is string =>
   isString(value) && /^[0-9a-f]{32}$/.test(value);
@@ -140,12 +140,12 @@ function parseConfig(value: unknown): PlanningConfig | null {
   if (!isNumber(max_file_bytes) || !isNumber(max_candidates)) return null;
   // `null` finds roadmaps by name, and a list names them; a config without the
   // key is from before several roadmaps, and cannot say which files are
-  // roadmaps (design §13).
+  // roadmaps (§15).
   const listed = value["roadmaps"];
   const roadmaps = listed === null ? null : stringList(listed);
   if (listed !== null && roadmaps === null) return null;
 
-  // An empty table is no table (design §9), so only a declared word makes one.
+  // An empty table is no table (§14), so only a declared word makes one.
   let roles: Record<string, StageRole> | null = null;
   if (stages !== null) {
     if (!isRecord(stages)) return null;
@@ -213,7 +213,7 @@ export function parseSourceEntry(json: unknown): SourceEntry | null {
  * or anything that is not an object.
  *
  * Strict on purpose. A static export has no server, and a static host may
- * answer the stream's URL with the site's `index.html` at 200 (design §3.6),
+ * answer the stream's URL with the site's `index.html` at 200 (§15),
  * so a line that is not the stream's own shape has to fail the build, never
  * shrink the index.
  */

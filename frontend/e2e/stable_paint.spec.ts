@@ -2,14 +2,14 @@ import { test, expect, type Page } from "@playwright/test";
 import { planningIndexReady } from "./planningIndex";
 
 // Late data never moves painted content, on a document's page
-// (docs/design/planning-index-at-scale.md §11, and D12 of §19: no layout
+// (docs/reference/planning-index.md §12, and D12 of §18: no layout
 // shift after first paint from planning decorations or the header on warm
 // loads). Measured the way the browser scores it, with a `layout-shift`
 // PerformanceObserver installed before any of the app's scripts run.
 //
 // Only shifts in the header and the document are held to zero. The file
-// tree filling a folder late and review mode's 4px bar are the design's
-// "other layout-shift sources" (§11.2, §15), each a fix of its own; they are
+// tree filling a folder late and review mode's 4px bar are the reference's
+// "other layout-shift sources" (§12.2, §17), each a fix of its own; they are
 // recorded, and printed when an assertion fails, but not asserted.
 
 /** One layout-shift entry, with where each of its sources was. */
@@ -121,7 +121,7 @@ const prose = (page: Page) => page.locator("[data-content-scroll] .prose");
 const header = (page: Page) => page.getByTestId("viewer-header");
 
 test.beforeEach(async ({ page }) => {
-  // The size the design's measurements were taken at (§19).
+  // The size §18's targets are measured at.
   await page.setViewportSize({ width: 1440, height: 900 });
   await observeShifts(page);
 });
@@ -191,7 +191,7 @@ test("the header says nothing of git before git has answered", async ({
   await expect(header(page).getByText("Untracked file")).toHaveCount(1);
 });
 
-// §11.2: the header's git data when git answers after the hold. It may take
+// §12.2: the header's git data when git answers after the hold. It may take
 // only the room the header has left: it once collapsed painted folders into
 // the "…", moving the file name 80px, or folded painted Path, Raw and Review
 // into the "⋯". A folder deep, so there are folders to collapse; the commit
@@ -313,7 +313,7 @@ test.describe("git that answers after the hold moves nothing in the header", () 
   }
 });
 
-// §11.2: link badges when the index lands after the document painted.
+// §12.2: link badges when the index lands after the document painted.
 test("an index that lands late badges only what has not been on screen", async ({
   page,
 }) => {
@@ -378,7 +378,7 @@ test("an index that lands late badges only what has not been on screen", async (
   ).toBeVisible();
 });
 
-// §11.2: Referenced by, reserved at first paint and filled when the index
+// §12.2: Referenced by, reserved at first paint and filled when the index
 // lands, for a document that is a planning document by its own text. At a
 // phone's width too, where the line wraps when nothing was reserved for it:
 // filling a one-line reservation with two lines moved the document down one.

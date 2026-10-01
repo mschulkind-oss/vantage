@@ -1,6 +1,6 @@
 /**
- * The planning page's page inputs (`docs/design/planning-index-at-scale.md`
- * §10.3): what the shown pages' cards need before they may paint.
+ * The planning page's page inputs (`docs/reference/planning-index.md`
+ * §6.5): what the shown pages' cards need before they may paint.
  *
  * - **Their card blocks**, from the scanner client, which cut them in the scan
  *   and keeps them in the scan cache. A preview card's block is not asked for.
@@ -25,7 +25,7 @@
  * returned to whose set is cached renders the frame and the sections in one
  * commit, and `prefetchPlanningPage` fills the cache ahead of a visit, on the
  * `g` of `g p` and from the viewer's planning entry, for the roadmap the page
- * would choose (§10.3).
+ * would choose (§6.5).
  */
 import {
   startTransition,
@@ -94,7 +94,7 @@ export interface ShownInputs {
   /**
    * The documents whose reviews were in hand when the set was committed.
    * Another document's comments came late, so its cards show them only in
-   * their reserved count until the reader asks (§11.2).
+   * their reserved count until the reader asks (§12.2).
    */
   reviewed: ReadonlySet<string>;
 }
@@ -372,7 +372,7 @@ export function loadPageInputs(
  *
  * `roadmap` is the roadmap the page shows, for a pager; without one, it is
  * the roadmap a visit would choose with no roadmap in its URL: the one this
- * browser remembers for `repo`, else the default (§10.3).
+ * browser remembers for `repo`, else the default (§6.5).
  */
 export function prefetchPlanningPage(
   repo: string,
@@ -434,11 +434,11 @@ export function usePlanningPageInputs(
   });
 
   // No set renders before the frame this page first committed has painted
-  // (§10.1): a set already in hand when the frame commits — a prefetch on the
+  // (§6.3): a set already in hand when the frame commits — a prefetch on the
   // `g` of `g p` — would otherwise start rendering its cards at once, and the
   // frame would paint only once they yield. A page opened before its index
   // was ready also runs the Markdown pipeline once first, while the index
-  // builds, so its first card costs what every other one does (§10.6).
+  // builds, so its first card costs what every other one does (§6.10).
   const [warm] = useState(() => ready === null && !isStaticMode());
   const gate = useRef<Promise<void> | null>(null);
   useLayoutEffect(() => {

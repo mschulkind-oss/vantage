@@ -1,9 +1,9 @@
 /**
  * The planning index — a model of a repository's planning documents, rebuilt
  * from the files on every load and never stored whole
- * (`docs/design/planning-index.md`). What the viewer does keep is each file's
+ * (`docs/reference/planning-index.md`). What the viewer does keep is each file's
  * scan result, in the browser under the file's content hash, and it never uses
- * one without a matching hash (`docs/design/planning-index-at-scale.md` §8.1).
+ * one without a matching hash (`docs/reference/planning-index.md` §11.1).
  *
  * Internal to vantage-md, and deliberately so (P4, Plan Q19): nothing here is
  * exported from the published entry `src/index.ts`, so it is not semver API.

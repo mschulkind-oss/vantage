@@ -2116,8 +2116,8 @@ describe("static export — review mode is unreachable", () => {
 });
 
 /**
- * What the planning page files and copies (`docs/design/planning-index.md`
- * §6.3): a comment on a document that is not the one on screen, and one
+ * What the planning page files and copies (`docs/reference/planning-index.md`
+ * §6.7): a comment on a document that is not the one on screen, and one
  * payload answering several documents, each group reading as that document's
  * own Copy would.
  */
@@ -2302,7 +2302,7 @@ describe("the planning page's review writes and payload", () => {
 
     // The planning page holds no document's text: only the lines its pending
     // comments quote, each anchor line and two either side, come from the scan
-    // worker (planning-index-at-scale.md §10.5).
+    // worker (planning-index.md §6.7).
     it("quotes from only the lines each comment needs as from the whole text", () => {
       const text = Array.from({ length: 12 }, (_, i) => `line ${i + 1}`).join(
         "\n",

@@ -25,7 +25,7 @@ import {
 } from "./planningTree.js";
 
 /**
- * `vantage-check index` (`docs/design/planning-index.md` §8): the planning
+ * `vantage-check index` (`docs/reference/planning-index.md` §13): the planning
  * page's sections as text or JSON, for the project the working directory is
  * in. The sections are vantage-md's derivations, so what these tests prove is
  * that the command feeds them the tree the server would, and prints what they
@@ -192,7 +192,7 @@ describe("index, as text", () => {
   });
 
   // ✅ questions await compaction rather than a ruling, so the page can say
-  // both at once (design §6.2).
+  // both at once (§6.2).
   it("says nothing needs you above a Needs you holding only answered questions", async () => {
     const root = makeTree({
       ".git/HEAD": "",
@@ -234,7 +234,7 @@ describe("index, as JSON", () => {
     expect(payload.toolVersion).toBe(VERSION);
     expect(payload.version).toBe(INDEX_FORMAT_VERSION);
     // Version 2: `sections.roadmap` and the top-level `roadmap` are gone, for
-    // `sections.roadmaps` and a top-level `roadmaps` (design §8).
+    // `sections.roadmaps` and a top-level `roadmaps` (§13).
     expect(payload.version).toBe(2);
     expect(payload.root).toBe(root);
   });
@@ -259,7 +259,7 @@ describe("index, as JSON", () => {
     expect(withoutLinks(payload.index)).toEqual(withoutLinks(built));
     // docs/a.md links README.md (a candidate), an excluded draft, a file
     // under node_modules (never listed) and itself; only the first is a link
-    // in design §3.2's sense.
+    // in §3.2's sense.
     const links = Object.fromEntries(
       (payload.index as PlanningIndex).documents.map((d) => [
         d.path,
@@ -354,7 +354,7 @@ describe("index, as JSON", () => {
 });
 
 /**
- * Three roadmaps, found by name (design §6.1, §8):
+ * Three roadmaps, found by name (§4.1, §13.2):
  *
  * - `roadmap.md`, the default, routes OQ-A1 and links the plans roadmap bare,
  *   which routes the questions written there (none), not the ones it routes;
@@ -671,7 +671,7 @@ describe("index past max-candidates", () => {
   });
 
   // A partial index would quietly under-report, so the refusal is loud:
-  // exit 3, "could not run", and the page's own words (design §3.5).
+  // exit 3, "could not run", and the page's own words (§16).
   it("scans nothing, says why, and exits 3", async () => {
     const { code, stdout, stderr } = await index(makeTree(tree(2)));
 
@@ -855,10 +855,10 @@ describe("the project index scans", () => {
 
     expect(code).toBe(EXIT_OK);
     expect(payload.root).toBe(repo);
-    expect(paths(payload)).toContain("docs/design/planning-index.md");
+    expect(paths(payload)).toContain("docs/reference/planning-index.md");
     expect(paths(payload)).toContain("roadmap.md");
     // Found by name: this repository sets no roadmap, and its exclude rules
-    // out the end-to-end fixture's plans/roadmap.md (design §9).
+    // out the end-to-end fixture's plans/roadmap.md (§14).
     expect(payload.index.config.roadmaps).toBeNull();
     expect(payload.sections.roadmaps).toEqual([
       expect.objectContaining({ path: "roadmap.md", state: "routes" }),

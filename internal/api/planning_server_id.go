@@ -16,7 +16,7 @@ import (
 // build, and a browser holding results under any other id empties its cache
 // before it reads or sends anything, so a different server answering at the
 // same address is never sent another server's paths and hashes as `have`, nor
-// shown its text. Design: docs/design/planning-index-at-scale.md §6.5, §8.2.
+// shown its text. Reference: docs/reference/planning-index.md §9.5, §11.2.
 //
 // The answer is `{"server_id": "<32 lowercase hex digits>"}`, from
 // [serverID] over the host name and [starred.RootKey], the key that already

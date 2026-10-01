@@ -46,7 +46,7 @@ export function applyDeltaFlash(
 
 /**
  * Nodes another pass hangs off a block that say nothing about the document:
- * planning badges (`docs/design/planning-index.md` §5.3), whose text is the
+ * planning badges (`docs/reference/planning-index.md` §5.3), whose text is the
  * linked document's state. The badge pass runs after this one, so a snapshot
  * taken with them would differ from its predecessor whenever an index update
  * and a content change met, and flash a block whose text never changed.

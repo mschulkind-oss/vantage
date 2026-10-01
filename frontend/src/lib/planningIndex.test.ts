@@ -1,7 +1,7 @@
 /**
  * The planning index as a whole: the batch it is built from, the limits, and
- * the per-path updates that keep it fresh (`docs/design/planning-index.md`
- * §3.4–§3.6, and the rules the plan's shared contracts spell out).
+ * the per-path updates that keep it fresh (`docs/reference/planning-index.md`
+ * §8 and §15, and the rules the model's types cannot carry).
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -83,7 +83,7 @@ describe("parseSourceEntry", () => {
 
 describe("parseStreamLine", () => {
   const HASH = "9f86d081884c7d659a2feaa0c55ad015";
-  /** The stream's example lines, from the design's §6.1, one of each kind. */
+  /** The stream's example lines, from §9.1, one of each kind. */
   const LINES = {
     header:
       '{"kind":"header","config":{"roadmaps":null,"include":["**/*.md"],"exclude":[],"max_file_bytes":1048576,"max_candidates":5000,"stages":null},"candidate_count":41,"refused":false}',
@@ -151,7 +151,7 @@ describe("parseStreamLine", () => {
   });
 
   // The header's config is the stream's whole roadmap marking
-  // (planning-index-at-scale.md §6.1): null finds them by name, and a list,
+  // (planning-index.md §9.1): null finds them by name, and a list,
   // [] included, names them.
   it("reads roadmaps as null, a list, or an empty list", () => {
     const header = line("header");
@@ -180,7 +180,7 @@ describe("parseStreamLine", () => {
   });
 
   // The server keeps any word; assigning `__proto__` would drop it and leave
-  // a declared-but-empty table, which cannot exist (§9).
+  // a declared-but-empty table, which cannot exist (§14).
   it("keeps a stage word spelled __proto__", () => {
     const parsed = parseStreamLine(
       JSON.parse(
@@ -259,7 +259,7 @@ describe("parseStreamLine", () => {
     ],
     [
       // A server from before several roadmaps; its tab's Retry and a reload
-      // recover it (design §13).
+      // recover it (§15).
       "a header from before several roadmaps",
       JSON.parse(
         LINES.header.replace('"roadmaps":null', '"roadmap":"roadmap.md"'),
@@ -361,7 +361,7 @@ describe("buildPlanningIndex", () => {
     ]);
   });
 
-  it("scans at max-candidates and refuses one past it (§3.5)", () => {
+  it("scans at max-candidates and refuses one past it (§16)", () => {
     const tree = { "a.md": DRAFT, "b.md": DRAFT };
     const at = buildPlanningIndex(sourcesOf(tree, {}, { maxCandidates: 2 }));
     expect(at.refused).toBe(false);
@@ -490,7 +490,7 @@ describe("planningIndexBuilder", () => {
   });
 });
 
-describe("applyScanned (§3.4)", () => {
+describe("applyScanned (§8.3)", () => {
   const base = (): PlanningIndex =>
     buildPlanningIndex(
       sourcesOf(
@@ -571,7 +571,7 @@ describe("applyScanned (§3.4)", () => {
   });
 });
 
-describe("applySource (§3.4)", () => {
+describe("applySource (§8.3)", () => {
   const base = (): PlanningIndex =>
     buildPlanningIndex(
       sourcesOf(

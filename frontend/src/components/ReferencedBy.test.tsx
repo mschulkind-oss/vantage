@@ -1,6 +1,6 @@
 /**
  * The Referenced by line and the list behind it
- * (`docs/design/planning-index.md` §7), rendered from summaries the planning
+ * (`docs/reference/planning-index.md` §7), rendered from summaries the planning
  * module derives from real trees. Where it sits in a document, and when it is
  * shown at all, is `MarkdownViewerPlanning.test.tsx`'s.
  */
@@ -158,7 +158,7 @@ describe("the line (§7)", () => {
   });
 
   it("does not say a document the roadmap links only by heading is off the roadmap", () => {
-    // A heading link routes nothing (§6.1), so the question is unrouted, but
+    // A heading link routes nothing (§4.3), so the question is unrouted, but
     // the roadmap does list the document, and the line must not deny it.
     const summary = summaryOf({
       [TARGET]: planning(`## Details\n\n${questions("T", 1)}`),

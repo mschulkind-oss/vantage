@@ -1,6 +1,6 @@
 /**
  * What a file-tree row shows of its planning document
- * (`docs/design/planning-index.md` §7), in the tree's compact form: a dot in
+ * (`docs/reference/planning-index.md` §7), in the tree's compact form: a dot in
  * the status chip's tone and `💬 N` for open questions, with every word of it
  * in `label`.
  *
@@ -30,7 +30,7 @@ export interface TreeBadge {
    * alone. `null` draws no dot, for a document whose only state is questions.
    */
   tone: (typeof VANTAGE_TONES)[number] | null;
-  /** The stage is not one of the declared words (§4). */
+  /** The stage is not one of the declared words (§3.4). */
   undeclaredStage: boolean;
   /** Open questions: `💬 N` when there are any. Blocked ones are not shown. */
   open: number;

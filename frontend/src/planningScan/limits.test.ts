@@ -1,5 +1,5 @@
 /**
- * The limits module: the design's numbers, and a test's override of them.
+ * The limits module: the default numbers, and a test's override of them.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -11,7 +11,7 @@ import {
 afterEach(() => setPlanningLimitsForTests(null));
 
 describe("the limits module", () => {
-  it("holds the design's numbers", () => {
+  it("holds the default numbers", () => {
     expect(planningLimits).toEqual(DEFAULT_PLANNING_LIMITS);
     expect(planningLimits.chunkEntries).toBe(100);
     expect(planningLimits.chunkBytes).toBe(256 * 1024);

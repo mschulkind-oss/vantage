@@ -913,7 +913,7 @@ describe("answerableOpenQuestions — an inline SVG inside the question", () => 
 });
 
 /**
- * Plan Q5 (`docs/design/planning-index.md` §6.3): review mode offers **Take
+ * Plan Q5 (`docs/reference/planning-index.md` §6.6): review mode offers **Take
  * this leaning** on open questions only. A 🔒 question cannot be answered yet
  * and a ✅ one has been ruled, so neither gets a row — no button, no taken
  * chip, no Undo — and the Review toggle's count follows the buttons. The

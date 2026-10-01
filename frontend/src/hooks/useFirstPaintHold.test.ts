@@ -1,5 +1,5 @@
 /**
- * The hold (`docs/design/planning-index-at-scale.md` §11.3): a document's
+ * The hold (`docs/reference/planning-index.md` §12.3): a document's
  * first paint waits, at most `holdMs` after its content arrives, for data
  * already on its way, and the previous document stays up while it does.
  */

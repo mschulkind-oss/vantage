@@ -8,8 +8,8 @@
  * imports it.
  *
  * **Never a fallback.** A tab whose IndexedDB fails runs with no cache at all
- * (`docs/design/planning-index-at-scale.md` §8.4); a memory-backed one would
- * make its rescans warm, which the design does not do.
+ * (`docs/reference/planning-index.md` §11.4); a memory-backed one would
+ * make its rescans warm, which Vantage deliberately does not do.
  *
  * Every write and read is a `structuredClone`, as IndexedDB's are, so a test
  * cannot pass on a reference the real store would have copied.

@@ -121,7 +121,8 @@ describe("the listing's own rules", () => {
     expect(isCandidate(listing, narrowed, "notes/c.md")).toBe(false);
 
     // One found by name is a roadmap because it is a candidate, so the
-    // patterns hide it like any other file (design §6.1).
+    // patterns hide it like any other file
+    // (docs/reference/planning-index.md §4.1).
     const byName = { ...narrowed, roadmaps: null };
     expect(listCandidates(listing, byName)).toEqual(["docs/a.md"]);
     expect(isCandidate(listing, byName, "roadmap.md")).toBe(false);

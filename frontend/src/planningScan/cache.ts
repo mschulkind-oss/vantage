@@ -1,11 +1,11 @@
 /**
- * The scan cache (`docs/design/planning-index-at-scale.md` §8): each
+ * The scan cache (`docs/reference/planning-index.md` §11): each
  * candidate's scan result, kept under the content hash it was scanned from and
  * never used without a matching one, written against a {@link ScanStore}.
  *
  * The policy is all here, so every store is only storage:
  *
- * - **The scanner id and the server id** are the store's owner (§8.2): a
+ * - **The scanner id and the server id** are the store's owner (§11.2): a
  *   mismatch when it opens clears it, and every read and write checks the
  *   owner again, so results from other code, from a browser with other
  *   Unicode tables, or from another server answering at the same origin are
@@ -13,14 +13,14 @@
  *   Nothing is read or written until a build has said which server answers
  *   ({@link ScanCache.bind}).
  * - **One write per record**, in transactions of `cacheBatch` records, at most
- *   one of them in flight, overlapped with scanning (§8.3).
- * - **Blocks past `cardChars` are never kept** (§7.4). The page draws a
+ *   one of them in flight, overlapped with scanning (§11.3).
+ * - **Blocks past `cardChars` are never kept** (§10.4). The page draws a
  *   preview card for such a question, and a request for it in full reads the
  *   file again.
- * - **The first failure turns it off for the tab**, logged once (§8.3). From
+ * - **The first failure turns it off for the tab**, logged once (§11.3). From
  *   then on it holds no stamps, so a build sends no `have`, and the card blocks
  *   of this tab's scans are kept in memory instead, up to `memoryCardChars`,
- *   least recently used first out (§8.4). Every roadmap's blocks are kept
+ *   least recently used first out (§11.4). Every roadmap's blocks are kept
  *   there even with a store, because no roadmap is ever stored.
  *
  * It holds no document text beyond card blocks, and those only in the memory
@@ -44,7 +44,7 @@ import type {
 export const SCAN_CACHE_SCHEMA = 1;
 
 /**
- * The scanner id (§8.2): the schema, the hash of the source the scan is built
+ * The scanner id (§11.2): the schema, the hash of the source the scan is built
  * from (`virtual:planning-scanner-id`), and the browser's user agent, since
  * the scan's `\p{L}` follows the browser's own Unicode tables.
  */
@@ -95,7 +95,7 @@ export interface ScanCache {
   /** False from the first failure on, and from the start without a store. */
   readonly enabled: boolean;
   /**
-   * Say which server answers at this origin now, by its server id (§8.2), and
+   * Say which server answers at this origin now, by its server id (§11.2), and
    * settle once the store is open for it: cleared first when it held another
    * server's results. Until the first call, and after a call with `null` (the
    * id could not be had), nothing is read or written, as if the cache were
@@ -133,7 +133,7 @@ const defaultLog = (error: unknown): void => {
 /**
  * The cache over `store`, for results of `scannerId`. With `store` null the
  * cache is off from the start: that is how a context without IndexedDB runs,
- * and never a memory-backed store in its place (§8.4).
+ * and never a memory-backed store in its place (§11.4).
  */
 export function scanCache(
   store: ScanStore | null,

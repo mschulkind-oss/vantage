@@ -1,6 +1,6 @@
 /**
- * The Markdown pipeline's warm-up (`docs/design/planning-index-at-scale.md`
- * §10.6): the viewer's own chain, over samples that between them hold what a
+ * The Markdown pipeline's warm-up (`docs/reference/planning-index.md`
+ * §6.10): the viewer's own chain, over samples that between them hold what a
  * card holds, one sample per task, once per page load.
  */
 import { renderToStaticMarkup } from "react-dom/server";

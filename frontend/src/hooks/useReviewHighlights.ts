@@ -111,7 +111,7 @@ export function useReviewHighlights(
     // text node of its `textContent`: a selection can span a whole link, and
     // flattening it turned the link into plain text — and the planning badge
     // beside it into words of the block, which changed the block's hash and
-    // drifted every comment on it (docs/design/planning-index.md §13).
+    // drifted every comment on it (docs/reference/planning-index.md §5.3).
     el.querySelectorAll(`mark[${MARK_ATTR}]`).forEach((mark) => {
       const parent = mark.parentNode;
       if (parent) {

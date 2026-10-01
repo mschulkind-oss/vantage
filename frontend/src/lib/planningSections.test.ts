@@ -1,6 +1,6 @@
 /**
  * The roadmaps' routing and the planning page's sections
- * (`docs/design/planning-index.md` §6.1, §6.2, §6.4), and Referenced by and
+ * (`docs/reference/planning-index.md` §4, §6.2, §6.8), and Referenced by and
  * its summary line (§7).
  *
  * These are the derivations the page, `vantage-check index` and the checker's
@@ -65,7 +65,7 @@ function ref(index: PlanningIndex, id: string): QuestionRef {
   throw new Error(`no question ${id}`);
 }
 
-describe("routing (§6.1)", () => {
+describe("routing (§4.3)", () => {
   const tree = {
     "roadmap.md": [
       "# Roadmap",
@@ -153,7 +153,7 @@ describe("routing (§6.1)", () => {
   });
 });
 
-describe("which files are roadmaps (§6.1)", () => {
+describe("which files are roadmaps (§4.1)", () => {
   const ROADMAP = "# Roadmap\n";
 
   it("finds every roadmap.md by name, in any directory and any ASCII case, in roadmap order", () => {
@@ -227,7 +227,7 @@ describe("which files are roadmaps (§6.1)", () => {
   });
 });
 
-describe("several roadmaps (§6.1, §6.4)", () => {
+describe("several roadmaps (§4, §6.8)", () => {
   // Two roadmaps that route: the root's (the default) and docs/plans/'s. A
   // third is retired by its done stage. Between them:
   //   - OQ-A1 is routed by both, OQ-A2 only by the root's;
@@ -637,14 +637,14 @@ describe("the notices", () => {
     expect(PLANNING_NOTICES.nothingNeedsYou).toBe("Nothing needs you.");
   });
 
-  it("say how many files there are and to narrow include (§3.5)", () => {
+  it("say how many files there are and to narrow include (§16)", () => {
     const text = PLANNING_NOTICES.refused(5001, 5000);
     expect(text).toContain("5,001");
     expect(text).toContain("5,000");
     expect(text).toContain("include");
   });
 
-  it("count the questions that need you on other roadmaps (§6.4)", () => {
+  it("count the questions that need you on other roadmaps (§6.8)", () => {
     expect(PLANNING_NOTICES.otherRoadmaps(1)).toBe(
       "1 more question needs you on another roadmap.",
     );
@@ -657,9 +657,9 @@ describe("the notices", () => {
   });
 });
 
-// §6.4's table: the one line says what was looked for, and how to point the
+// §6.8's table: the one line says what was looked for, and how to point the
 // page at a roadmap.
-describe("the roadmap notice (§6.4)", () => {
+describe("the roadmap notice (§6.8)", () => {
   const byName = planningConfig();
   const listed = (...roadmaps: string[]) => planningConfig({ roadmaps });
   const roadmap = (
@@ -906,7 +906,7 @@ describe("the Referenced by summary (§7)", () => {
   });
 
   it("names the heading of the first roadmap link that routes the document", () => {
-    // The ledger link comes first but routes nothing (§6.1, Plan Q12).
+    // The ledger link comes first but routes nothing (§4.3, Plan Q12).
     expect(summaryOf(tree, "docs/a.md")).toMatchObject({
       onRoadmaps: [{ roadmap: "roadmap.md", heading: "Building" }],
       roadmaps: ["roadmap.md"],

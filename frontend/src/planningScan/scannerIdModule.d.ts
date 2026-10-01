@@ -1,6 +1,6 @@
 /**
- * The scanner id's source half (`docs/design/planning-index-at-scale.md`
- * §8.2), served by the Vite plugin in `scannerId.ts`. It resolves only under
+ * The scanner id's source half (`docs/reference/planning-index.md`
+ * §11.2), served by the Vite plugin in `scannerId.ts`. It resolves only under
  * `vite.config.ts`, never in a unit test.
  *
  * Named apart from `scannerId.ts` on purpose: TypeScript drops a `.d.ts` that

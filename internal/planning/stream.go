@@ -69,8 +69,8 @@ type (
 
 // Stream is one planning stream with its candidates listed: made before the
 // request's body is read, so that what the handler keeps of the body's `have`
-// is only what [Stream.Wants] says this stream can use. Design:
-// docs/design/planning-index-at-scale.md §6.1 and §6.4.
+// is only what [Stream.Wants] says this stream can use. Reference:
+// docs/reference/planning-index.md §9.1 and §9.4.
 type Stream struct {
 	root       string
 	cfg        repoconfig.Planning
@@ -116,7 +116,7 @@ func (s *Stream) Wants(path, hash string) bool {
 
 // Write writes the planning stream: one JSON object per line (NDJSON), naming
 // by its content hash alone each file whose hash the browser already holds.
-// Design: docs/design/planning-index-at-scale.md §6.1.
+// Reference: docs/reference/planning-index.md §9.1.
 //
 //	{"kind":"header","config":…,"candidate_count":N,"refused":false}
 //	{"kind":"same","path":…,"hash":…}

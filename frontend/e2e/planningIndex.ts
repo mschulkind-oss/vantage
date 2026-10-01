@@ -1,7 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 
 // Helpers for specs whose documents must paint with the planning index in
-// hand. Since docs/design/planning-index-at-scale.md §11, an index that lands
+// hand. Since docs/reference/planning-index.md §12, an index that lands
 // after a document's first paint badges only the blocks the reader has not
 // seen, and Referenced by fills only a line reserved for it: a spec that opens
 // a short document cold and waits for its badges waits for nothing. These

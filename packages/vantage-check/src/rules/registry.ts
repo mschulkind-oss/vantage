@@ -232,8 +232,8 @@ export const RULES: readonly RuleMeta[] = [
       "A status chip with no `status:` to show, or one that disagrees with it",
     default: "warning",
   },
-  // `planning/*` — the planning index's rules (docs/design/planning-index.md
-  // §8). Each is a derivation the planning page also shows, run over the same
+  // `planning/*` — the planning index's rules (docs/reference/planning-index.md
+  // §13). Each is a derivation the planning page also shows, run over the same
   // scan, so the page and the gate cannot disagree. They run once, after every
   // file, over the run's own documents and the roadmap (`rules/planning.ts`).
   {

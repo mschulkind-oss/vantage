@@ -4,7 +4,8 @@
  *
  * The server matches `[planning] include` and `exclude` with
  * `sabhiram/go-gitignore`, which rewrites each line into a Go `regexp` — RE2 —
- * and passes `[`, `(`, `\`, `{` and `+` straight through into it (design §3.1).
+ * and passes `[`, `(`, `\`, `{` and `+` straight through into it
+ * (`docs/reference/planning-index.md` §3.1).
  * A JavaScript `RegExp` is not RE2: `[[:upper:]]` is a POSIX class to Go and a
  * set of eight characters to JavaScript, `\q` is an error to Go and the letter
  * `q` to JavaScript, `{01}` is a literal to Go and a quantifier to JavaScript.

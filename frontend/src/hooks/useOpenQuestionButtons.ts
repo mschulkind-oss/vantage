@@ -251,7 +251,7 @@ export function answerableOpenQuestions(
  * Exported because a second surface files the same comment. The planning page
  * takes a leaning from a card that renders the question through this same
  * pipeline, and the comment it files must be indistinguishable from this
- * pass's (`docs/design/planning-index.md` §6.3), so both read the text here,
+ * pass's (`docs/reference/planning-index.md` §6.7), so both read the text here,
  * from the rendered element, and neither from the planning index.
  */
 export function leaningComment(stamped: HTMLElement): string {
@@ -265,8 +265,8 @@ export function leaningComment(stamped: HTMLElement): string {
 
 /**
  * Whether a question offers Take this leaning: it is open, or carries no
- * marker, which counts as open (Plan Q5, `docs/design/planning-index.md`
- * §6.3). A 🔒 question cannot be answered yet and a ✅ one has been ruled, so
+ * marker, which counts as open (Plan Q5, `docs/reference/planning-index.md`
+ * §6.6). A 🔒 question cannot be answered yet and a ✅ one has been ruled, so
  * neither has a leaning left to take.
  *
  * The state is read exactly as the contents column reads it (`questionLabel`,

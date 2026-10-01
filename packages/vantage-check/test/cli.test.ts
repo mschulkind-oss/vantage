@@ -185,7 +185,7 @@ describe("run", () => {
     expect(io.stdout).toContain("[planning.stages]");
   });
 
-  // Several roadmaps (planning-index.md §6.1, §8): the help says what the
+  // Several roadmaps (planning-index.md §4, §13): the help says what the
   // rule and the index do with them, not what a single roadmap did.
   it("describes roadmaps as the index finds them", async () => {
     const io = bufferIo();

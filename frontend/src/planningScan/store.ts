@@ -1,6 +1,6 @@
 /**
  * The scan store: the storage interface the scan cache is written against
- * (`docs/design/planning-index-at-scale.md` §8.1; the plan coined the name),
+ * (`docs/reference/planning-index.md` §11.1; §2 defines the name),
  * and {@link idbScanStore}, its one production implementation.
  *
  * Six operations, and nothing about policy: which results are kept, when a
@@ -46,7 +46,7 @@ export interface StoredCards {
 }
 
 /**
- * Whose results a store holds (§8.2): the scanner id of the code that
+ * Whose results a store holds (§11.2): the scanner id of the code that
  * produced them, and the server id of the server they were read from.
  */
 export interface ScanOwner {
@@ -57,7 +57,7 @@ export interface ScanOwner {
 /**
  * What every operation rejects with once the store holds another owner's
  * results than the one it was opened for: another tab, running other code or
- * reading another server, opened it since and cleared it (§8.2).
+ * reading another server, opened it since and cleared it (§11.2).
  */
 export const TAKEN_OVER =
   "The scan cache was emptied for another scanner or another server";
@@ -77,7 +77,7 @@ export const TAKEN_OVER =
 export interface ScanStore {
   /**
    * Open the store for results of `owner`. When the database holds another
-   * owner's results, every record is cleared first (§8.2). A store opened
+   * owner's results, every record is cleared first (§11.2). A store opened
    * again is then this owner's: what it does from then on is checked against
    * it.
    */
@@ -101,7 +101,7 @@ export interface ScanStore {
  * IndexedDB
  * ------------------------------------------------------------------ */
 
-/** The database, one per origin (§8.1). */
+/** The database, one per origin (§11.1). */
 export const SCAN_DATABASE = "vantage-planning";
 const VERSION = 1;
 
@@ -237,13 +237,13 @@ const deleteDatabase = (idb: IDBFactory): Promise<void> =>
  * - **A database it cannot use is made again.** One at a later version, or
  *   one without a store it needs, would refuse every open on every load until
  *   the reader cleared the site's data; it is only a cache, so `open` deletes
- *   it and opens once more, and rejects only if that fails too (§8.3).
+ *   it and opens once more, and rejects only if that fails too (§11.3).
  * - **Every operation checks the owner**, in its own transaction, and touches
  *   no record unless `meta` still holds the owner this store was opened for.
  *   Another tab, on other code or reading another server, may have cleared
  *   the database and stamped its own owner since; this tab's results are then
  *   not that owner's, and that owner's are not this tab's, so the operation
- *   rejects with {@link TAKEN_OVER} instead (§8.2, §8.3).
+ *   rejects with {@link TAKEN_OVER} instead (§11.2, §11.3).
  */
 export function idbScanStore(factory?: IDBFactory): ScanStore {
   let db: IDBDatabase | null = null;

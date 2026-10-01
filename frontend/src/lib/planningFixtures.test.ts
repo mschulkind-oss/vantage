@@ -1,10 +1,10 @@
 /**
- * The shared planning fixtures in `internal/repoconfig/testdata/` hold what the
- * plan says they hold.
+ * The shared planning fixtures in `internal/repoconfig/testdata/` hold the
+ * cases they exist for.
  *
  * The server's suite and `vantage-check`'s read them, and each proves its own
  * reader against them. What neither can see is a fixture that lost the case it
- * exists for, so the cases the plan names are asserted here, together with the
+ * exists for, so those cases are asserted here, together with the
  * shapes both readers parse.
  */
 import { describe, expect, it } from "vitest";
@@ -52,7 +52,8 @@ describe("planning-config.json", () => {
     }
   });
 
-  // Design §9: the string form, the list form, and each way a list is refused.
+  // docs/reference/planning-index.md §14: the string form, the list form, and
+  // each way a list is refused.
   it("holds a case for each form of roadmap, and each refusal of a list", () => {
     const roadmaps = (name: string) =>
       cases.find((c) => c.name === name)?.planning?.roadmaps;
