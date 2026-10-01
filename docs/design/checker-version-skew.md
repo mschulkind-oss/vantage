@@ -361,7 +361,7 @@ This covers skills, `AGENTS.md`, and any other standing instructions to an agent
 | **0.8.0** | The compatibility test, as its own recipe and CI job ([§3.4](#34-the-compatibility-test)) | built |
 | **0.8.0** | The payload's exit-2 sentence ([§5](#5-the-viewers-version-in-the-review-payload)) | built |
 | **0.8.0, if [OQ-VS1](#OQ-VS1) is B** | `VANTAGE_VIEWER` in the payload ([§5](#5-the-viewers-version-in-the-review-payload)) | open |
-| **0.8.0** | **Text.** The CHANGELOG's paragraph for 0.7.x readers is rewritten: they need no pin, and a drawing shows its fallback. The user guide and the agent instructions follow [§6.3](#63-what-agent-instructions-must-say) and [§13](#13-what-this-changes-in-other-documents). | text |
+| **0.8.0** | **Text.** The CHANGELOG's paragraph for 0.7.x readers is rewritten: they need no pin, and a drawing shows its fallback. The user guide and the agent instructions follow [§6.3](#63-what-agent-instructions-must-say) and [§13](#13-what-this-changes-in-other-documents). | CHANGELOG and user guide done; agent instructions text |
 | **When 0.8.0 is on PyPI** | Guide copies in agent instructions are regenerated from the published output. | text |
 | **When a capability gap needs it** | [§12](#12-deferred-until-a-capability-gap-needs-it) | deferred |
 
@@ -391,10 +391,10 @@ These land with the 0.8.0 work, except where noted. Done with the build, after `
 - [`pypi-distribution.md`](pypi-distribution.md): the agent row's "at the repo's shared version" holds only with a pin, since bare `uvx` runs the newest release.
 - [`vantage-check.md`](../../userguide/guides/vantage-check.md): "Which release it writes for" drops the `uvx vantage-check@0.7.1` remedy, since a 0.7.1 checker reports 0.8.0's `question` and `fallback` as errors. It documents the config warnings and the refusal instead.
 - [`configuration.md`](../../userguide/reference/configuration.md) documents `target`.
+- [`CHANGELOG.md`](../../CHANGELOG.md): 0.8.0's paragraph for readers on 0.7 says they need no pinned checker ([§11](#11-what-ships-when)), and the section names `question`, `fallback`, the config warnings and `target`.
 
 Still to do:
 
-- [`CHANGELOG.md`](../../CHANGELOG.md): 0.8.0's "If your readers stay on 0.7" paragraph is rewritten ([§11](#11-what-ships-when)), before the tag.
 - [`repo-config.md`](repo-config.md): [OQ-RC5](repo-config.md#6-decision-ledger) is amended for unknown keys if [OQ-VS5](#OQ-VS5) is A.
 - [`agent-bootstrap.md`](agent-bootstrap.md): P6 and [OQ-B6](agent-bootstrap.md#decision-ledger) gain [§5](#5-the-viewers-version-in-the-review-payload)'s line, if [OQ-VS1](#OQ-VS1) is B.
 
