@@ -1,6 +1,6 @@
 /**
- * The planning page's page inputs (`docs/design/planning-index-at-scale.md`
- * §10.3), below the page: what one set asks for, how the sets are cached and
+ * The planning page's page inputs (`docs/reference/planning-index.md`
+ * §6.5), below the page: what one set asks for, how the sets are cached and
  * kept, and what a prefetch does. The page's own suite covers what the reader
  * sees of them.
  */

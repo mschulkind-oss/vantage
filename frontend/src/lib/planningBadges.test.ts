@@ -1,5 +1,5 @@
 /**
- * What a link shows about its target (`docs/design/planning-index.md` §5.1 and
+ * What a link shows about its target (`docs/reference/planning-index.md` §5.1 and
  * §5.2): one case per row of the badge table, and every way a link gets none.
  */
 import { describe, expect, it } from "vitest";
@@ -143,7 +143,7 @@ describe("what a badge says (§5.2)", () => {
 
   // The directive is still there, so nothing compacted the question, but the
   // index holds no question for it (§3.3, Plan Q17). `✅ ruled` would tell the
-  // reconciler (§10) to compact a question nobody ruled.
+  // reconciler (§3.5) to compact a question nobody ruled.
   it.each([
     ["an orphaned directive", "docs/design/orphan.md", "OQ-1"],
     ["a directive inside raw HTML", "docs/design/raw.md", "OQ-8"],

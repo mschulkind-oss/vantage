@@ -220,8 +220,8 @@ func TestDaemonAnswersEachRepositorysReviews(t *testing.T) {
 // for every repository it serves, so moving between them never empties the
 // viewer's scan cache, while a single-repo server on another repository
 // answers another, so a browser that meets it at the same address sends it
-// nothing it learned from the first (docs/design/planning-index-at-scale.md
-// §8.2).
+// nothing it learned from the first (docs/reference/planning-index.md
+// §11.2).
 func TestTheServerIDIsOnePerServer(t *testing.T) {
 	serverID := func(t *testing.T, h http.Handler, target string) string {
 		t.Helper()

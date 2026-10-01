@@ -1,19 +1,19 @@
 /**
  * Link badges: a post-render pass that hangs a planning badge after every
  * rendered link whose target has something to show
- * (`docs/design/planning-index.md` §5).
+ * (`docs/reference/planning-index.md` §5).
  *
  * The same shape as `useOpenQuestionButtons`: sweep this pass's own nodes
  * first, re-run on the document and on each new index, and leave no trace on
  * unmount. A sweep first is what makes it idempotent, and it is also what turns
  * a badge whose target stopped being a planning document back into nothing.
  *
- * When they appear is `docs/design/planning-index-at-scale.md` §11 (L1), since
+ * When they appear is `docs/reference/planning-index.md` §12 (L1), since
  * a badge widens its line and can wrap it:
  *
  * - **Index ready at the document's first paint:** every badge is in that
  *   paint. The pass is a layout effect, so it runs before the browser paints,
- *   and the hold (§11.3) makes this the usual case on a warm load.
+ *   and the hold (§12.3) makes this the usual case on a warm load.
  * - **Index later:** badges are drawn only in blocks that have not been on
  *   screen, and that lie below it, where a wider line moves nothing the reader
  *   can see. A link in a block the reader has already seen waits for the next
@@ -22,7 +22,7 @@
  *   (L2). Whatever badges the visit draws follow it in place.
  *
  * Until the index is ready, and whenever it is not, the pass only sweeps. That
- * is also the whole of §3.6's failure case — a failed build leaves the
+ * is also the whole of §15's failure case — a failed build leaves the
  * document exactly as it renders today.
  */
 import { useLayoutEffect, useRef, type RefObject } from "react";

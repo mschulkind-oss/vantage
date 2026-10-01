@@ -1,7 +1,7 @@
 /**
- * The Markdown a question's card renders (`docs/design/planning-index.md`
- * §6.3), now cut by the scan from its own parse
- * (`docs/design/planning-index-at-scale.md` §7.4).
+ * The Markdown a question's card renders (`docs/reference/planning-index.md`
+ * §6.6), now cut by the scan from its own parse
+ * (`docs/reference/planning-index.md` §10.4).
  *
  * The cards used to be cut by parsing each document a second time. That
  * parse-based cut is kept here, verbatim, as the oracle: for every question in

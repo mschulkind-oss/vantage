@@ -11,7 +11,7 @@ export default defineConfig({
     alias: [
       // The planning index, which is internal to vantage-md: it is not in the
       // package's exports and never reaches its dist/, so this alias is the only
-      // way in (docs/design/planning-index.md, P4).
+      // way in (docs/reference/planning-index.md, P4).
       {
         find: /^vantage-md\/planning$/,
         replacement: path.resolve(

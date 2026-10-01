@@ -5,7 +5,7 @@
 [check.rules]
 # An open question the roadmap does not route is listed, not failed: the gate
 # shows what roadmap.md has not placed yet without holding every commit to it
-# (docs/design/planning-index.md §8, Plan Q4).
+# (docs/reference/planning-index.md §13, Plan Q4).
 "planning/unrouted" = "warning"
 
 [planning]
@@ -15,7 +15,7 @@
 # ignored by the file listing the index reads from.
 exclude = ["docs/gallery/**", "frontend/e2e/fixtures/**"]
 
-# The design's vocabulary (docs/design/planning-index.md §9). The role is what
+# The stage vocabulary (docs/reference/planning-index.md §14). The role is what
 # a word means to the planning index: open is being decided, ready is decided
 # and not built, built is built, and done is no longer a live proposal.
 [planning.stages]

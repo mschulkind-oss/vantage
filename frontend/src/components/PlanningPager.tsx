@@ -1,6 +1,6 @@
 /**
  * The pager of one section of the planning page
- * (`docs/design/planning-index-at-scale.md` §10.2):
+ * (`docs/reference/planning-index.md` §6.4):
  * `1–10 of 143 · ‹ Previous · Next ›`, and a page select in a long section.
  *
  * It sits under the section's heading and again after its last entry, at a

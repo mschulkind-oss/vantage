@@ -10,9 +10,10 @@ summary: "Every planning fact gets one home: a document's own frontmatter, its `
 
 # A planning index: write each fact once, and let Vantage show it wherever it is referenced
 
-**Status:** SUPERSEDED, 2026-09-28, by the design doc
-[`planning-index.md`](../design/planning-index.md). Ideas #5 and #11 are still
-candidates here, and the retired ideas stay listed with their reasons.
+**Status:** SUPERSEDED, 2026-09-28, by the planning-index design, since built and
+graduated into the reference [`planning-index.md`](../reference/planning-index.md).
+Ideas #5 and #11 are still candidates here, and the retired ideas stay listed with
+their reasons.
 
 **In short.** A roadmap goes stale because it **copies** each design doc's state
 into another file: the doc's status, how many questions it has open, which one to
@@ -482,16 +483,18 @@ across the repo, plus Unrouted, which ends the kind of miss that left
 
 ## Decision Ledger
 
-The design doc [`planning-index.md`](../design/planning-index.md) now owns this brainstorm's
-questions. The ids below still resolve here, so links to them keep working.
+The planning-index design took over this brainstorm's questions, and its rulings now
+live in the reference's
+[Why it's this way](../reference/planning-index.md#why-its-this-way). The ids below
+still resolve here, so links to them keep working.
 
 | ID | Ruling / Decision | Date | Settled in | Built |
 | :--- | :--- | :--- | :--- | :--- |
-| OQ-PI1 | Yes: the planning page belongs in Vantage. The user endorsed the vision and asked for a design doc | 2026-09-28 | [design §1](../design/planning-index.md#1-verdict-and-the-principles) | — |
-| OQ-PI2 | Moved to the design as [`OQ-PL2`](../design/planning-index.md#decision-ledger) | 2026-09-28 | — | — |
-| OQ-PI3 | Retire the generated block (#4). Live links replace it, as part of the endorsed vision | 2026-09-28 | [design §12](../design/planning-index.md#12-alternatives-considered) | — |
-| OQ-PI4 | Moved to the design as [`OQ-PL1`](../design/planning-index.md#decision-ledger) | 2026-09-28 | — | — |
-| OQ-PI5 | Moved to the design as [`OQ-PL3`](../design/planning-index.md#decision-ledger) | 2026-09-28 | — | — |
+| OQ-PI1 | Yes: the planning page belongs in Vantage. The user endorsed the vision and asked for a design doc | 2026-09-28 | [reference §1](../reference/planning-index.md#1-what-it-is-for-and-the-rules-it-keeps) | — |
+| OQ-PI2 | Moved to the design as [`OQ-PL2`](../reference/planning-index.md#why-its-this-way), now in the reference | 2026-09-28 | — | — |
+| OQ-PI3 | Retire the generated block (#4). Live links replace it, as part of the endorsed vision | 2026-09-28 | [reference §1.1](../reference/planning-index.md#11-principles) | — |
+| OQ-PI4 | Moved to the design as [`OQ-PL1`](../reference/planning-index.md#why-its-this-way), now in the reference | 2026-09-28 | — | — |
+| OQ-PI5 | Moved to the design as [`OQ-PL3`](../reference/planning-index.md#why-its-this-way), now in the reference | 2026-09-28 | — | — |
 
 ## Open threads
 

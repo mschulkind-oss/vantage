@@ -10,9 +10,7 @@ The order is the one thing this file holds that no other document can. Each entr
 
 1. [Checker version skew](docs/design/checker-version-skew.md), first, because [`OQ-VS1`](docs/design/checker-version-skew.md#OQ-VS1) has to be ruled before 0.8.0 is tagged.
 
-2. [The planning index](docs/design/planning-index-plan.md), both phases, ahead of the rest: the badges this file now leans on are what its phase 1 built, and only its measurement and graduation are left.
-
-   [`planning-index.md`](docs/design/planning-index.md) is built, both phases of [`planning-index-plan.md`](docs/design/planning-index-plan.md) included, and so is [`planning-index-at-scale.md`](docs/design/planning-index-at-scale.md), its amendment for large repositories, where `g p` froze for seconds, built from [its plan](docs/design/planning-index-at-scale-plan.md) to ship in one release, and so are [several roadmaps](docs/design/planning-index-plan.md#several-roadmaps--the-2026-09-30-build), found by their file name and picked on the page. What is left is the amendment's [§19](docs/design/planning-index-at-scale.md#19-what-done-looks-like) timing targets, which nothing has measured against the build yet, and then graduating the two designs into one system doc.
+2. [Measuring the planning index at scale](docs/design/planning-index-measurement.md), ahead of the rest, because 0.8.0 is the first release to carry the index and it has not been measured at scale.
 
 3. [A semantic-token vocabulary](docs/design/color-themes.md#9-follow-ups), before any component moves, because every PR after the first is a mapping onto its names.
 

@@ -41,7 +41,7 @@ function normalize(path: string): string | null {
  * `null` covers a scheme (`https:`, `mailto:`, `file:`), a protocol-relative
  * `//host`, a leading `/`, and a relative path whose `..` climbs out of the
  * root. The last is what keeps a link from one repository into another from
- * ever being decorated (design §3.6): each repository is its own root, so the
+ * ever being decorated (`docs/reference/planning-index.md` §5.1): each repository is its own root, so the
  * path leaves it. The query is dropped and percent escapes are decoded, as the
  * checker's link rules clean a path (`splitFragment`, `cleanPath`).
  *

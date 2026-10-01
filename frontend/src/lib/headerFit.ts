@@ -56,7 +56,7 @@
  * **Late items** (a term this module coins) are the exception to fitting
  * afresh. An item the viewer marks `hdr-late` is one whose data arrived after
  * the document's first paint: its commit, its history, its date, the Path
- * button's root (`docs/design/planning-index-at-scale.md` §11.2). It may take
+ * button's root (`docs/reference/planning-index.md` §12.2). It may take
  * only the room the header has left: it is drawn once a fit finds it room at
  * the steps the header already had, plus any further steps that act on late
  * items alone (the subject, say, when only the late commit button has one),

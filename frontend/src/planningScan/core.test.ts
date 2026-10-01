@@ -1,6 +1,6 @@
 /**
  * The scanner's core, over the in-memory scan store and a fake server
- * (`docs/design/planning-index-at-scale.md` §5–§8): the stream reader, a build
+ * (`docs/reference/planning-index.md` §8–§11): the stream reader, a build
  * warm and cold, the cache's rules, cards, quotes, refreshes and cancelling.
  *
  * Every limit is proven by configuring it down; no input grows to a default.
@@ -588,7 +588,7 @@ describe("a build with the cache", () => {
    * The scan cache is per origin, and a different server may answer at the
    * same origin: another repository started on the same port, or a local
    * tunnel port pointed at another machine. What one server's files were
-   * named and what they hashed to is never sent to the other (§8.2).
+   * named and what they hashed to is never sent to the other (§11.2).
    */
   const SECRET: Record<string, string> = {
     "hr/layoffs-2026.md": "# Who goes\n",
@@ -729,7 +729,7 @@ describe("a build with the cache", () => {
     expect(written).not.toContain(ROADMAP);
   });
 
-  describe("with several roadmaps (planning-index.md §6.1)", () => {
+  describe("with several roadmaps (planning-index.md §4)", () => {
     // Two roadmaps found by name, neither a planning document but by being
     // one: no frontmatter, no question.
     const NESTED = "docs/plans/roadmap.md";
@@ -1142,7 +1142,7 @@ describe("a refresh", () => {
     });
     expect(entry).toMatchObject({ kind: "file", path: "plans/a.md" });
     // No build of this core has said which server answers, so nothing is
-    // written (§8.2).
+    // written (§11.2).
     expect(written).toEqual([]);
   });
 
@@ -1161,7 +1161,7 @@ describe("a refresh", () => {
     expect(written).toEqual([]);
   });
 
-  it("scans under the config it is sent when it has seen no header, as a worker made after one died has not (§7.1)", async () => {
+  it("scans under the config it is sent when it has seen no header, as a worker made after one died has not (§10.1)", async () => {
     const { core, server } = setup();
     const entry = await core.refresh({
       repo: "",
@@ -1216,7 +1216,7 @@ describe("a refresh", () => {
   });
 });
 
-describe("a refresh made during a build (§5.4)", () => {
+describe("a refresh made during a build (§8.3)", () => {
   /**
    * A cold build that yields after every candidate, with a push for a.md
    * made at its first yield and that push's answer back at its third. Each

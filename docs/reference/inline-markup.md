@@ -489,8 +489,8 @@ inbox verb — per **P4** this is a *macro over an existing command*.
 The [planning page](../../userguide/guides/planning.md#the-planning-page) lists
 questions from many documents, each on a card, and its **Take this leaning**
 files a comment indistinguishable from this button's: the same body, the same
-anchor and the same fallback text. The planning design requires that
-([`planning-index.md` §6.3](../design/planning-index.md#63-a-question-on-the-page)),
+anchor and the same fallback text. The planning index requires that
+([`planning-index.md` §6.7](planning-index.md#67-answering-and-copy-answers)),
 and the card meets it by taking this button's route rather than a second one.
 It renders the question's block through the viewer's own pipeline, finds the
 question's host in it with `answerableOpenQuestions`, builds the anchor with
@@ -569,8 +569,9 @@ than no button.
 question cannot be answered yet and a ✅ one has been ruled, so neither has a
 leaning left to take, and neither gets a row at all: no button, no taken chip
 and no Undo, even when an earlier take exists. The planning design ruled this
-for the page and the viewer alike (its Decision Ledger row *Plan Q5*,
-[`planning-index.md` §6.3](../design/planning-index.md#63-a-question-on-the-page)).
+for the page and the viewer alike (*Plan Q5*, kept in the reference's
+[Why it's this way](planning-index.md#why-its-this-way), and
+[`planning-index.md` §6.6](planning-index.md#66-question-cards)).
 The state is read as the table of contents reads it, from the question's title
 and then its marker (`questionLabel`), so the column's glyph and the button can
 never disagree about which state a question is in. The filter runs after

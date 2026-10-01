@@ -1,7 +1,7 @@
 /**
  * The planning outline (a term this module coins): what the contents column
  * lists on the planning page, in place of a document's table of contents
- * (`docs/design/planning-index.md` §6.5). Each non-empty section, with its
+ * (`docs/reference/planning-index.md` §6.9). Each non-empty section, with its
  * count, and under a section of cards or document rows the documents it
  * lists, in the section's own order, each with the number of its questions
  * there and the page of the section that holds its first entry.

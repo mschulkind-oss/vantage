@@ -166,7 +166,7 @@ review store, perf store, and live Manager) are built once.
     open browser once a second.
   - Besides Markdown, `files_changed` names the root `.vantage.toml` when it
     changes, so the viewer can rescan its planning index
-    ([planning-index.md §3.4](planning-index.md#34-when-it-is-built-and-how-it-stays-fresh)).
+    ([planning-index.md §8.3](../reference/planning-index.md#83-staying-fresh-change-pushes-reconnects-and-ordering)).
     It also names the Markdown already inside a directory that appears, which
     inotify never reports by itself. A watched directory renamed away or
     removed is listed in `removed_dirs`, because a renamed one's files leave
@@ -203,7 +203,7 @@ planning routes below, `/git/history`, `/git/status`, `/git/diff`,
 `/git/diff/working`, `/git/recent`, and `/review` (GET/PUT/DELETE).
 
 The planning routes serve the planning index's inputs and never parse Markdown
-([planning-index-at-scale.md §6](planning-index-at-scale.md#6-the-server)):
+([planning-index.md §9](../reference/planning-index.md#9-the-server)):
 
 - **`POST /planning/stream`** takes `{"have": {path: content hash}}` and answers
   [NDJSON](https://github.com/ndjson/ndjson-spec): a header, one line per
@@ -229,7 +229,7 @@ The planning routes serve the planning index's inputs and never parse Markdown
   hash of the host name and the server's bookmark root key (the repository root,
   or a daemon's config file), so one id per server, which the scan cache files
   its results under
-  ([planning-index-at-scale.md §6.5](planning-index-at-scale.md#65-the-server-id)).
+  ([planning-index.md §9.5](../reference/planning-index.md#95-the-server-id)).
 
 The `/api/ws` WebSocket route is not in the table; the `live` package mounts it
 directly.
@@ -417,9 +417,9 @@ interceptor (`frontend/src/lib/staticMode.ts`).
 
 ### 3.4 The Planning Index (`frontend/src/planningScan/`)
 
-The design is [planning-index.md](planning-index.md), amended for large
-repositories by [planning-index-at-scale.md](planning-index-at-scale.md), whose
-[§3](planning-index-at-scale.md#3-terms) defines the terms used here.
+The system is described in the reference
+[planning-index.md](../reference/planning-index.md), whose
+[§2](../reference/planning-index.md#2-terms) defines the terms used here.
 
 - **The scan runs in a worker.** vantage-md's planning scan runs in the *scan
   worker*, a dedicated module Web Worker built by Vite as its own chunk from the

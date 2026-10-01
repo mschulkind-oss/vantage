@@ -70,7 +70,7 @@ export const REVIEW_MODE_FAMILY = "vantage.reviewMode:";
 
 /**
  * The roadmap the planning page shows is remembered per repository
- * (`docs/design/planning-index.md` §6.4), so it is a family too: one key per
+ * (`docs/reference/planning-index.md` §6.8), so it is a family too: one key per
  * repository, the empty name in single-repo mode, holding the picked roadmap's
  * repo-relative path as it is. Only a pick on the page writes one.
  */
@@ -134,7 +134,7 @@ export const UNSYNCED_PREFERENCES: Partial<
     "Adoption at open is the weaker guarantee and the right one.",
   [PLANNING_ROADMAP_FAMILY]:
     "The planning page reads the remembered roadmap once per visit, by design " +
-    "(planning-index.md §6.4): another tab's pick must never swap Needs you " +
+    "(planning-index.md §6.8): another tab's pick must never swap Needs you " +
     "under a reader who is part-way through answering it here. The next visit " +
     "reads the new pick, and a URL that names a roadmap outranks it anyway.",
 };

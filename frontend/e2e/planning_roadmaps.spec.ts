@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { openWithIndex } from "./planningIndex";
 
 // Several roadmaps on the planning page, in a real browser, against a real
-// server (docs/design/planning-index.md §6.4, §7). The fixture is
+// server (docs/reference/planning-index.md §6.8, §7). The fixture is
 // `fixtures/multi_roadmap/`, which no other spec reads: its .vantage.toml sets
 // no roadmap, so the server and the scan worker both find `roadmap.md` and
 // `docs/plans/roadmap.md` by name. roadmap.md routes alpha.md's two questions;
@@ -183,7 +183,7 @@ test.describe("several roadmaps", () => {
     await expect.poll(() => roadmapParam(page)).toBe(NESTED);
   });
 
-  // Late data never moves painted content (planning-index-at-scale.md §11):
+  // Late data never moves painted content (planning-index.md §12):
   // the roadmap line arrives with the index, above the box that held the
   // progress line, so a section bar drawn in that box was pushed down on
   // every cold load, at every width.
@@ -254,7 +254,7 @@ test.describe("several roadmaps", () => {
     });
   }
 
-  // §6.4: the path is the only name that tells two roadmap.md files apart, so
+  // §6.8: the path is the only name that tells two roadmap.md files apart, so
   // the closed control never cuts it off, however narrow the screen.
   test("shows the chosen path whole on a narrow screen, wrapped inside the control", async ({
     page,
@@ -288,7 +288,7 @@ test.describe("several roadmaps", () => {
     await expect(shown).toHaveText("roadmap.md (2 need you)");
   });
 
-  // One picker (planning-index.md §6.5): at the head of the planning
+  // One picker (planning-index.md §6.9): at the head of the planning
   // outline while the contents column is shown, and not above the sections.
   test("puts the picker at the head of the planning outline, and only there", async ({
     page,
@@ -318,7 +318,7 @@ test.describe("several roadmaps", () => {
     ).toHaveText("Needs you 4");
   });
 
-  // §6.4 in the outline's 256 px: the path is the only name that tells two
+  // §6.8 in the outline's 256 px: the path is the only name that tells two
   // roadmap.md files apart, so the closed control wraps it rather than cut
   // it or its count off, as on its line.
   test("shows the chosen path whole at the head of the outline, wrapped in the column", async ({

@@ -244,7 +244,7 @@ describe("collectOutline", () => {
     // button and takes the question's id. Listed as a heading, it was the one
     // answerable question the column left out: the gallery's `OQ-6` rendered
     // seven buttons against a column of six, and a planning index counting from
-    // source could not agree with it (design §3.3).
+    // source could not agree with it (docs/reference/planning-index.md §3.3).
     const container = document.createElement("div");
     container.innerHTML = `
       <h2 id="on-a-heading" class="group relative"><a href="#on-a-heading" class="heading-anchor">#</a>On a heading</h2>
@@ -793,7 +793,7 @@ describe("TableOfContents", () => {
 });
 
 /**
- * Plan Q5 (`docs/design/planning-index.md` §6.3): review mode offers Take this
+ * Plan Q5 (`docs/reference/planning-index.md` §6.6): review mode offers Take this
  * leaning on open questions only, and the column is not filtered with it. Over
  * the gallery's status page, rendered through the real chain, with the button
  * pass running on the same container as the column.

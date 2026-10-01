@@ -1,5 +1,5 @@
 /**
- * Where the planning page lives (`docs/design/planning-index.md` §6).
+ * Where the planning page lives (`docs/reference/planning-index.md` §6).
  *
  * Under `.vantage`, because viewer URLs are `/<path>` and `/<repo>/<path>`: a
  * bare `/planning` would hide every document under a top-level `planning/`

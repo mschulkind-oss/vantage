@@ -3,7 +3,7 @@
  * so that what imports it imports no rehype plugin.
  *
  * The planning scan parses with it, and the scan runs in a worker
- * (`docs/design/planning-index-at-scale.md` §7): `pipeline.ts` also imports
+ * (`docs/reference/planning-index.md` §10): `pipeline.ts` also imports
  * `rehype-katex`, whose browser build builds a `DOMParser` the moment it
  * loads, and a worker has none. A production bundle shakes those imports out,
  * but the dev server loads every module a module imports, so the worker would

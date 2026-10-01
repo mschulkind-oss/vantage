@@ -5,7 +5,7 @@ import { makeTree } from "./helpers.js";
 /**
  * Planning fixtures shared by the `index` and planning-rule suites: small
  * repositories whose documents land in every section of the planning page
- * (`docs/design/planning-index.md` §6.2).
+ * (`docs/reference/planning-index.md` §6.2).
  */
 
 /**

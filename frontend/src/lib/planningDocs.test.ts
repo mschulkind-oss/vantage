@@ -1,20 +1,19 @@
 /**
  * The planning docs say what the built code does.
  *
- * `docs/design/planning-index.md` and its amendment for large repositories,
- * `docs/design/planning-index-at-scale.md`, are the design of record, and
- * `docs/design/technical_spec.md` and the user guide's
- * `userguide/guides/planning.md` retell parts of them. Each case holds one
- * claim a reader acts on to the code, the server or the other doc it
- * describes, so a change that leaves one of them behind fails here rather than
- * misleading whoever reads it next.
+ * `docs/reference/planning-index.md` is the reference of record for the
+ * planning index, and `docs/design/technical_spec.md` and the user guide's
+ * `userguide/guides/planning.md` retell parts of it. Each case holds one claim
+ * a reader acts on to the code, the server or the other doc it describes, so a
+ * change that leaves one of them behind fails here rather than misleading
+ * whoever reads it next.
  */
+import { readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_PLANNING_LIMITS } from "../planningScan/limits";
-import { readRepoFile } from "../test/planning";
+import { readRepoFile, repoPath } from "../test/planning";
 
-const DESIGN = "docs/design/planning-index-at-scale.md";
-const BASE_DESIGN = "docs/design/planning-index.md";
+const REFERENCE = "docs/reference/planning-index.md";
 const SPEC = "docs/design/technical_spec.md";
 const GUIDE = "userguide/guides/planning.md";
 const FEATURES = "userguide/features.md";
@@ -26,7 +25,7 @@ function flat(markdown: string): string {
 
 /**
  * The section under the first heading starting with `heading`, such as
- * `"### 11.3"`, up to the next heading of the same level or higher.
+ * `"### 12.3"`, up to the next heading of the same level or higher.
  */
 function section(markdown: string, heading: string): string {
   const level = /^#+/.exec(heading)?.[0].length ?? 0;
@@ -41,21 +40,16 @@ function section(markdown: string, heading: string): string {
   return rest.slice(0, end < 0 ? undefined : end).join("\n");
 }
 
-/** The anchors of the links in `markdown` that point into `file`. */
-function anchorsInto(markdown: string, file: string): Set<string> {
-  const escaped = file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`\\]\\(${escaped}(#[\\w-]+)\\)`, "g");
-  return new Set([...markdown.matchAll(pattern)].map((match) => match[1]));
-}
-
 describe("the old planning batch's 410", () => {
   const detail = /const planningBatchGone = "([^"]+)"/.exec(
     readRepoFile("internal/api/planning_handlers.go"),
   )?.[1];
 
-  it("is quoted in the design exactly as the server writes it", () => {
+  it("is quoted in the reference exactly as the server writes it", () => {
     expect(detail).toBeDefined();
-    expect(flat(section(readRepoFile(DESIGN), "### 6.1"))).toContain(detail);
+    expect(
+      flat(section(readRepoFile(REFERENCE), "## Current values")),
+    ).toContain(detail);
   });
 
   it("is never promised to a reader as what a page shows", () => {
@@ -64,36 +58,6 @@ describe("the old planning batch's 410", () => {
     // planning index" with axios's status text, and no release ever shipped
     // it, so the detail is for a direct API caller only.
     expect(flat(readRepoFile(GUIDE))).not.toContain(detail);
-  });
-});
-
-describe("the amendment's evidence", () => {
-  const design = readRepoFile(DESIGN);
-
-  it("pins every line-anchored link to the tree it was verified against", () => {
-    // A relative link carries a line number into whatever the file holds now,
-    // so once the code moved it landed on unrelated lines. The design's
-    // evidence is the tree its status line names, which a permalink keeps.
-    const verified = /verified against the tree at `([0-9a-f]{7,40})`/.exec(
-      flat(design),
-    )?.[1];
-    expect(verified).toBeDefined();
-
-    const inline = [...design.matchAll(/\]\(([^)\s]+)\)/g)];
-    const defined = [...design.matchAll(/^\[[^\]]+\]:\s*(\S+)/gm)];
-    const anchored = [...inline, ...defined]
-      .map((match) => match[1])
-      .filter((target) => /#L\d/.test(target));
-
-    expect(anchored.length).toBeGreaterThan(0);
-    for (const target of anchored) {
-      const sha =
-        /^https:\/\/github\.com\/mschulkind-oss\/vantage\/blob\/([0-9a-f]{40})\//.exec(
-          target,
-        )?.[1];
-      expect(sha, target).toBeDefined();
-      expect(sha?.startsWith(verified ?? "?"), target).toBe(true);
-    }
   });
 });
 
@@ -107,86 +71,93 @@ function stageRoles(): Map<string, string> {
   );
 }
 
-/** The `Built` cells of a design's Decision Ledger, one per ruling. */
-function builtCells(markdown: string): string[] {
-  const ledger = section(markdown, "## Decision Ledger");
-  const rows = ledger.split("\n").filter((line) => line.startsWith("| "));
-  const header = rows[0]?.split("|").map((cell) => cell.trim()) ?? [];
-  const column = header.indexOf("Built");
-  if (column < 0) throw new Error("the ledger has no Built column");
-  return rows.slice(2).map((row) => row.split("|")[column]?.trim() ?? "");
-}
+describe("the reference", () => {
+  it("anchors to symbols and packages, never to a line", () => {
+    // A system doc outlives its own line numbers: a `#L42` link is wrong the
+    // first time anyone edits the file above it, and a reader who finds one
+    // stale stops trusting the rest. The reference names a symbol and the
+    // package it lives in instead, which a search finds after it moves.
+    const reference = readRepoFile(REFERENCE);
+    const inline = [...reference.matchAll(/\]\(([^)\s]+)\)/g)];
+    const defined = [...reference.matchAll(/^\[[^\]]+\]:\s*(\S+)/gm)];
+    const anchored = [...inline, ...defined]
+      .map((match) => match[1] ?? "")
+      .filter((target) => /#L\d/.test(target));
 
-describe("a planning design's stage", () => {
-  // A `—` in the Built column is a ruling nothing has built yet, so the
-  // design still owes work and is filed under Ready; a design whose every
-  // ruling is built owes nothing, and Ready would send a reader to build it
-  // again.
-  it.each([BASE_DESIGN, DESIGN])("agrees with %s's own ledger", (path) => {
-    const markdown = readRepoFile(path);
-    const stage = /^stage:\s*(\S+)/m.exec(markdown)?.[1] ?? "";
-    const role = stageRoles().get(stage);
-    const cells = builtCells(markdown);
+    expect(inline.length).toBeGreaterThan(0);
+    expect(anchored).toEqual([]);
+  });
 
-    expect(cells.length).toBeGreaterThan(0);
-    const unbuilt = cells.filter((cell) => !cell.startsWith("✅"));
-    if (role === "built") expect(unbuilt).toEqual([]);
-    if (unbuilt.length === 0) expect(role).not.toBe("ready");
+  it("is filed under a stage whose role is done", () => {
+    // The reference describes what is built, so it owes nobody a ruling or a
+    // build: a `done` role keeps it out of every section of the planning page.
+    const stage = /^stage:\s*(\S+)/m.exec(readRepoFile(REFERENCE))?.[1] ?? "";
+    expect(stageRoles().get(stage)).toBe("done");
   });
 });
 
-describe("planning-index.md, once amended", () => {
-  const base = readRepoFile(BASE_DESIGN);
-  const changes = section(readRepoFile(DESIGN), "## 14.");
+/** The section numbers the reference's own headings carry, as `6` and `6.4`. */
+function referenceSections(): Set<string> {
+  const numbers = [
+    ...readRepoFile(REFERENCE).matchAll(/^#{2,3} (\d+(?:\.\d+)?)\.? /gm),
+  ].map((match) => match[1] ?? "");
+  return new Set(numbers);
+}
 
-  /** The planning-index.md sections the amendment's §14 table names. */
-  const changed = new Set(
-    changes
-      .split("\n")
-      .filter((line) => line.startsWith("| [§"))
-      .flatMap((line) => [
-        ...anchorsInto(line.split("|")[1] ?? "", "planning-index.md"),
-      ]),
-  );
+/** Every source file under `dir`, repository-relative, tests included. */
+function sourceFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(repoPath(dir), { withFileTypes: true })) {
+    const rel = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) {
+      if (entry.name === "node_modules" || entry.name === "dist") continue;
+      out.push(...sourceFiles(rel));
+    } else if (/\.(?:ts|tsx|go|css|toml)$/.test(entry.name)) {
+      out.push(rel);
+    }
+  }
+  return out;
+}
 
-  it("names in Reads with every section the amendment changed", () => {
-    const readsWith = /^\*\*Reads with:\*\*[\s\S]*?\n\n/m.exec(base)?.[0] ?? "";
-    const named = new Set(
-      [...readsWith.matchAll(/\]\((#[\w-]+)\)/g)].map((m) => m[1]),
-    );
+describe("a citation of the reference in code", () => {
+  it("names a section the reference has", () => {
+    // Code comments cite the reference by section number, and no Markdown
+    // checker reads a comment. Each section a comment names right after the
+    // reference's file name, as `planning-index.md` §6.4, or §9.1 and §9.4,
+    // has to be a numbered heading of the reference, or the pointer leads
+    // nowhere once the reference is renumbered.
+    const sections = referenceSections();
+    expect(sections.has("6.4")).toBe(true);
 
-    expect(changed.size).toBeGreaterThan(0);
-    expect([...changed].filter((anchor) => !named.has(anchor))).toEqual([]);
-  });
-
-  it("lists in the amendment every section that carries its dated note", () => {
-    // Each heading whose own text, before the next heading, carries an
-    // "Amended 2026-09-29" note, as its anchor.
-    const amended = base
-      .split(/^(?=#+ )/m)
-      .filter((part) => part.includes("> **Amended 2026-09-29"))
-      .map(
-        (part) =>
-          "#" +
-          (/^#+ (.+)/.exec(part)?.[1] ?? "")
-            .toLowerCase()
-            .replace(/[^\w\s-]/g, "")
-            .replace(/\s/g, "-"),
-      );
-
-    expect(amended.length).toBeGreaterThan(0);
-    expect(amended.filter((anchor) => !changed.has(anchor))).toEqual([]);
-  });
-
-  it("describes the built system in its bodies, not the batch", () => {
-    // Its bodies were kept frozen at the 2026-09-28 ruling while the
-    // amendment was unbuilt. Built, a body that still describes the batch
-    // tells a reader how a system works that no longer exists.
-    expect(base).not.toMatch(/text below is the design as ruled/);
-    const transport = flat(section(base, "### 3.4"));
-    expect(transport).toContain("POST …/planning/stream");
-    expect(transport).not.toContain("one request returns every candidate");
-    expect(flat(section(base, "### 3.6"))).not.toMatch(/\bbatch\b/);
+    const citation =
+      /planning-index\.md`?,?\s*((?:§\d+(?:\.\d+)?(?:(?:,\s*|\s+and\s+|–)(?=§))?)+)/g;
+    const dangling: string[] = [];
+    let cited = 0;
+    for (const dir of [
+      "frontend/src",
+      "frontend/e2e",
+      "packages/vantage-md/src",
+      "packages/vantage-check/src",
+      "packages/vantage-check/test",
+      "internal",
+    ]) {
+      for (const file of sourceFiles(dir)) {
+        // Comments are wrapped, so a citation may cross a line.
+        const text = flat(
+          readRepoFile(file).replace(/\n\s*(?:\*|\/\/|#)\s?/g, " "),
+        );
+        for (const match of text.matchAll(citation)) {
+          for (const number of (match[1] ?? "").matchAll(/§(\d+(?:\.\d+)?)/g)) {
+            cited++;
+            if (!sections.has(number[1] ?? "")) {
+              dangling.push(`${file}: §${number[1] ?? ""}`);
+            }
+          }
+        }
+      }
+    }
+    expect(cited).toBeGreaterThan(50);
+    expect(dangling).toEqual([]);
   });
 });
 
@@ -215,7 +186,7 @@ describe("a document's first paint", () => {
     "length",
   ]);
 
-  it("names everything the hold waits on, in the design and the spec", () => {
+  it("names everything the hold waits on, in the reference and the spec", () => {
     const expression = /const firstPaintWaiting =([\s\S]*?);/.exec(
       readRepoFile("frontend/src/pages/ViewerPage.tsx"),
     )?.[1];
@@ -234,7 +205,8 @@ describe("a document's first paint", () => {
       ).toHaveProperty(name);
     }
 
-    const hold = flat(section(readRepoFile(DESIGN), "### 11.3"));
+    const reference = readRepoFile(REFERENCE);
+    const hold = flat(section(reference, "### 12.3"));
     const spec = flat(readRepoFile(SPEC));
     const specBullet = /\*\*Document pages\*\*[^*]*?(?= - \*\*|$)/.exec(
       spec,
@@ -242,10 +214,13 @@ describe("a document's first paint", () => {
     expect(specBullet, "technical_spec's Document pages bullet").toBeDefined();
     for (const name of names) {
       const words = INPUTS[name] ?? name;
-      expect(hold, `design §11.3 on ${name}`).toContain(words);
+      expect(hold, `the reference's §12.3 on ${name}`).toContain(words);
       expect(specBullet, `technical_spec on ${name}`).toContain(words);
     }
-    expect(hold).toContain(holdMs);
+    // The reference states a number once, in its Current values table.
+    expect(flat(section(reference, "## Current values"))).toContain(
+      `| The hold | ${holdMs}`,
+    );
     expect(specBullet).toContain(holdMs);
   });
 

@@ -1,6 +1,6 @@
 /**
  * A planning badge: what a link's target says about its own state
- * (`docs/design/planning-index.md` §5).
+ * (`docs/reference/planning-index.md` §5).
  *
  * Two renderings of one markup. `PlanningBadgeChip` is the React element, for
  * surfaces React draws (the planning page); `planningBadgeElement` is the same
@@ -60,7 +60,7 @@ const STAGE_SHOWN = 32;
 const BIDI_CONTROLS = /[\u202a-\u202e\u2066-\u2069]/g;
 
 /**
- * A stage as a badge draws it. `stage` is one word by design (§4), but
+ * A stage as a badge draws it. `stage` is one word by design (§3.4), but
  * nothing bounds what a document writes, and a badge does not wrap, so a long
  * one is cut short, whole in the badge's tooltip. A bidi control would draw
  * the stored word as another, which only the badge would show, so it is left
@@ -97,7 +97,7 @@ function badgeMarkup(badge: PlanningBadge): BadgeMarkup {
     );
   }
   if (badge.stage !== null) {
-    // A word outside the declared stages is drawn in the warning tone (§4).
+    // A word outside the declared stages is drawn in the warning tone (§3.4).
     parts.push(
       part(shownStage(badge.stage), !badge.stageInVocabulary && WARNING),
     );

@@ -1,7 +1,6 @@
 /**
  * The planning index, one per repository, as the viewer holds it
- * (`docs/design/planning-index.md` §3.4, and §5 and §9 of
- * `docs/design/planning-index-at-scale.md`, "the scale design" below).
+ * (`docs/reference/planning-index.md` §8).
  *
  * Built once per repository per page session, on first need, by the scanner
  * client, which reads the planning stream and scans in the scan worker; and
@@ -20,8 +19,7 @@
  *   index only when the server answers `file`, which carries the listing
  *   rules, the include and exclude patterns, the size limit and the UTF-8
  *   test. So there is no matcher here.
- * - **Requests are numbered per repository** (§3.4, "Ordering", and the scale
- *   design's §5.4). The client makes no ordering decision, so the numbering
+ * - **Requests are numbered per repository** (§8.3, "Ordering"). The client makes no ordering decision, so the numbering
  *   stays here, unchanged: a refreshed entry is discarded when a newer request
  *   covering its path has been sent, and a build is discarded whole — config,
  *   count and refusal included — when a later rescan has been sent. An entry
@@ -55,17 +53,17 @@ export type PlanningLoad =
       status: "loading";
       /**
        * Whether the build under way is warm: the scan cache held at least one
-       * of this repository's results when it started (the scale design's §3).
+       * of this repository's results when it started (§2).
        * `null` until the scanner's `started` says which, and `false` for a
        * cold build. A document's first paint waits briefly for a warm one, and
-       * for one not yet known to be cold (§11.3): git's answers often land
+       * for one not yet known to be cold (§12.3): git's answers often land
        * before `started` does, and a hold that read "not said yet" as cold
        * ended on them and missed a warm index by a few milliseconds.
        */
       warm: boolean | null;
       /**
        * Candidates handled of the header's count, once the header has come:
-       * `null` before it (§10.6). As often as the scanner reports it, which is
+       * `null` before it (§6.10). As often as the scanner reports it, which is
        * at most every `progressMs`.
        */
       progress: { done: number; total: number } | null;
@@ -80,7 +78,7 @@ export type PlanningLoad =
       /**
        * Each planning document's content hash, by path: what a request for
        * its card blocks or quoted lines names, so the scanner client answers
-       * from exactly the version this index read (scale design §9).
+       * from exactly the version this index read (§8.4).
        */
       hashes: Readonly<Record<string, string>>;
     }
@@ -103,7 +101,7 @@ interface PlanningStore {
    *
    * `bypassCache` is Retry's: the build sends no `have`, so every file is
    * read and scanned again, and every scan-cache entry of the repository is
-   * rewritten (the scale design's §8.3). No setting changes a scan result,
+   * rewritten (§11.3). No setting changes a scan result,
    * so a config push rescans with the cache.
    */
   rescan(repo: string, options?: { bypassCache?: boolean }): void;
@@ -135,10 +133,10 @@ const LOADING: Loading = {
   progress: null,
 };
 
-/** The file whose change rescans the whole index (§3.4). */
+/** The file whose change rescans the whole index (§8.3). */
 const CONFIG_FILE = ".vantage.toml";
 
-/** What the planning page shows for a static export (§3.6, Plan Q3). */
+/** What the planning page shows for a static export (§15, Plan Q3). */
 export const STATIC_MESSAGE =
   "This is a static export, which has no planning index: it needs the Vantage server.";
 
@@ -320,7 +318,7 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
     const tracker = trackerFor(repo);
     const scanner = planningScanner();
     // A build still out is superseded: its answer would be discarded whole,
-    // so the scanner stops reading it (scale design §5.2).
+    // so the scanner stops reading it (§8.2).
     if (tracker.batchPending) scanner.cancel(repo, tracker.batch);
     const seq = ++tracker.seq;
     tracker.batch = seq;
@@ -427,7 +425,7 @@ export const usePlanningStore = create<PlanningStore>((set, get) => {
     tracker.sent.set(path, seq);
 
     // What the file is scanned under by a scanner that has seen no header,
-    // as one made after the last one died has not (scale design §7.1).
+    // as one made after the last one died has not (§10.1).
     const load = get().byRepo[repo];
     const config = load?.status === "ready" ? load.index.config : null;
 
@@ -549,7 +547,7 @@ export function usePlanningRepo(): string | null {
 
 /**
  * Start the current repository's planning index on mount, for a surface that
- * is one of its first needs (§3.4: a document, the planning page, the file
+ * is one of its first needs (§8.2: a document, the planning page, the file
  * tree). Re-runs `ensure` when the repository changes, and when the repo store
  * first loads. Returns the repository, as `usePlanningRepo` does.
  */

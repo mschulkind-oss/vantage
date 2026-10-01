@@ -1,6 +1,6 @@
 /**
- * A question's card on the planning page (`docs/design/planning-index.md`
- * §6.3), and above all §13's last risk: an answer filed from the page must be
+ * A question's card on the planning page (`docs/reference/planning-index.md`
+ * §6.6), and above all §6.7's rule: an answer filed from the page must be
  * indistinguishable from one filed with the in-page button.
  *
  * Each case files the same question twice — once with the in-page button over
@@ -348,7 +348,7 @@ async function answerOnCard(
   return filedBy(onFile);
 }
 
-describe("an answer from the card is the in-page button's (§13, §15)", () => {
+describe("an answer from the card is the in-page button's (§6.7)", () => {
   it("has a corpus holding every shape to compare", () => {
     expect(CASES.length).toBeGreaterThanOrEqual(15);
   });
@@ -358,7 +358,7 @@ describe("an answer from the card is the in-page button's (§13, §15)", () => {
     const { onFile } = renderCard(question);
 
     if (question.leaning === null) {
-      // No leaning, so no Take on the card (§6.3). The in-page button files
+      // No leaning, so no Take on the card (§6.6). The in-page button files
       // the default; Answer… files what is typed, on the same anchor.
       expect(screen.queryByRole("button", { name: "Take this leaning" })).toBe(
         null,
@@ -818,7 +818,7 @@ describe("the card is laid out to be read", () => {
   });
 });
 
-describe("a diagram not drawn when the card painted (planning-index-at-scale.md §10.3)", () => {
+describe("a diagram not drawn when the card painted (planning-index.md §6.5)", () => {
   const DRAWN = "graph LR\n  A --> B";
   const source = [
     "# Diagrams",
@@ -878,7 +878,7 @@ describe("a diagram not drawn when the card painted (planning-index-at-scale.md 
   });
 });
 
-describe("a preview card (planning-index-at-scale.md §10.4)", () => {
+describe("a preview card (planning-index.md §6.6)", () => {
   it("shows the question as the index knows it, and only Show question and Open document", () => {
     const question = byId("OQ-B2");
     renderCard(question, {
@@ -1122,7 +1122,7 @@ describe("the comments already filed on a question", () => {
     ).toBeNull();
   });
 
-  // planning-index-at-scale.md §11.2: comments that reach a painted card go
+  // planning-index.md §12.2: comments that reach a painted card go
   // into a slot that was always there, and nothing inline.
   it("lists comments that came late only once the reader opens the count", async () => {
     const onB3 = await takenOn(byId("OQ-B3"));
@@ -1177,7 +1177,7 @@ describe("the comments already filed on a question", () => {
     ).toBeTruthy();
   });
 
-  // planning-index-at-scale.md §10.5: a card with no rendered question has
+  // planning-index.md §6.7: a card with no rendered question has
   // nothing exact to report, so its page places the comments by line. A
   // card rendered this visit reports what it read, and leaving withdraws
   // nothing: the page keeps the report for as long as what it was read from.

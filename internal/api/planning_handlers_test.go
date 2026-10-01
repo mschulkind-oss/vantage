@@ -242,7 +242,7 @@ func TestPlanningStreamPastTheLimitIsRefused(t *testing.T) {
 }
 
 // What the browser holds comes back as `same`, the roadmaps excepted. The hash
-// is "test"'s, the one the design's example shows.
+// is "test"'s, the one the reference's example shows.
 func TestPlanningStreamAnswersHaveWithSame(t *testing.T) {
 	e := newPlanningEnv(t, map[string]string{
 		"AGENTS.md": "test", "docs/a.md": "test", "roadmap.md": "test",
@@ -405,7 +405,8 @@ func TestBodyLimitIsAKiBPerCandidateAboveItsFloor(t *testing.T) {
 // an entry for a path that is no candidate, for a roadmap, or with a value
 // no content hash could equal is dropped, so a body of short distinct keys
 // holds nothing in the heap. Decoded whole, such a body held about 4.4 times
-// its size, 18.6 MB for a body just under 4 MiB (design §6.4).
+// its size, 18.6 MB for a body just under 4 MiB
+// (docs/reference/planning-index.md §9.4).
 func TestTheStreamKeepsOnlyTheHaveItCanUse(t *testing.T) {
 	e := newPlanningEnv(t, map[string]string{"roadmap.md": "# Roadmap\n", "a.md": "test", "b.md": "test"})
 	const hash = "9f86d081884c7d659a2feaa0c55ad015"

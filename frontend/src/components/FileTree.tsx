@@ -371,7 +371,7 @@ const FileTreeNode = memo(FileTreeNodeInner, (prevProps, nextProps) => {
 });
 
 const FileTreeInner: React.FC<FileTreeProps> = ({ nodes }) => {
-  // The tree is one of the index's first needs (planning-index.md §3.4). Each
+  // The tree is one of the index's first needs (planning-index.md §8.2). Each
   // nested list asks too, which is idempotent.
   useEnsurePlanningIndex();
   return (

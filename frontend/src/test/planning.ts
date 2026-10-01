@@ -86,7 +86,7 @@ export function indexOf(
 /**
  * A file's content hash as the server computes it: the first 128 bits of
  * SHA-256 over its UTF-8 bytes, in lowercase hex
- * (`docs/design/planning-index-at-scale.md` §3).
+ * (`docs/reference/planning-index.md` §2).
  */
 export function contentHash(content: string): string {
   return createHash("sha256")
@@ -100,7 +100,7 @@ export type ScannedFile = Extract<ScannedEntry, { kind: "file" }>;
 
 /**
  * A tree of path → content as the scan worker holds it once it has read each
- * file (`docs/design/planning-index-at-scale.md` §5.2): every file scanned,
+ * file (`docs/reference/planning-index.md` §8.2): every file scanned,
  * with its content hash, in path order as the stream lists them, and each
  * planning document's card blocks by path. For the suites of the worker, the
  * planning store and the planning page.

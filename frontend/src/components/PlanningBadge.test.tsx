@@ -1,5 +1,5 @@
 /**
- * A planning badge's markup (`docs/design/planning-index.md` §5.2, §5.3): the
+ * A planning badge's markup (`docs/reference/planning-index.md` §5.2, §5.3): the
  * words it shows, what a screen reader hears, and that the React element and
  * the DOM node a post-render pass inserts are the same markup.
  */
@@ -82,7 +82,7 @@ describe("PlanningBadgeChip", () => {
     );
   });
 
-  // `stage` is one word by design (§4), but nothing bounds what a document
+  // `stage` is one word by design (§3.4), but nothing bounds what a document
   // writes there, and a badge does not wrap: a stage of thousands of
   // characters would widen every page that links to its document.
   it("shows a long stage cut short, whole in its tooltip", () => {

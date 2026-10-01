@@ -202,7 +202,7 @@ function newId(): string {
  * A comment the reviewer is about to file, with its client-side id and stamp:
  * what the popover, the one-click take and the planning page each create, so a
  * comment filed from any of them is indistinguishable from the others
- * (`docs/design/planning-index.md` §6.3).
+ * (`docs/reference/planning-index.md` §6.7).
  */
 export function newReviewComment(
   anchor: CommentAnchor,
@@ -995,14 +995,14 @@ export interface AnswerGroup {
   comments: readonly ReviewComment[];
   /**
    * The document's lines, for the quoted context; `null` quotes none. The
-   * planning page holds no document's text (`planning-index-at-scale.md`
-   * §10.5), only the lines its pending comments quote.
+   * planning page holds no document's text (`planning-index.md`
+   * §6.7), only the lines its pending comments quote.
    */
   lines: LineLookup | null;
 }
 
 /**
- * The planning page's Copy answers (`docs/design/planning-index.md` §6.3): one
+ * The planning page's Copy answers (`docs/reference/planning-index.md` §6.7): one
  * payload handing every group's comments to the agent in one trip. Each group
  * is the block that document's own Copy produces, and one set of responding
  * instructions, naming every document, closes it. With one group it is

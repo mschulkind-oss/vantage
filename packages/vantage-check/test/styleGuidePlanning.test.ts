@@ -17,7 +17,7 @@ import {
 
 /**
  * The style guide tells agents how to write what the planning index reads
- * (`docs/design/planning-index.md` §10). `directives.test.ts` holds its
+ * (`docs/reference/planning-index.md` §3.5). `directives.test.ts` holds its
  * directive examples to the checker's rules; these hold its planning examples
  * to the scan itself, so an example an agent copies means to Vantage what the
  * guide says it means.
@@ -39,7 +39,7 @@ function exampleQuestions(): PlanningQuestion[] {
 
 describe("the style guide's roadmaps", () => {
   it("says a roadmap.md the index does not read is no roadmap", () => {
-    // Finding by name looks only among candidates (planning-index.md §6.1),
+    // Finding by name looks only among candidates (planning-index.md §4.1),
     // so an agent must not put one under an excluded path and expect it to
     // route.
     const guide = STYLE_GUIDE.replace(/\s+/g, " ");
@@ -68,7 +68,7 @@ describe("the style guide's blocked question", () => {
 
   it("says a blocked or answered question gets no one-click answer", () => {
     // Review mode offers Take this leaning on open questions only (Plan Q5,
-    // planning-index.md §6.3). An agent told to keep a directive that renders
+    // planning-index.md §6.6). An agent told to keep a directive that renders
     // no button needs telling that is expected, not a mistake to fix.
     expect(STYLE_GUIDE).toContain(
       "Neither state gets the one-click button in review mode",

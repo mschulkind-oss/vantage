@@ -1,7 +1,7 @@
 /**
- * Link badges in the viewer (`docs/design/planning-index.md` §5): which links
+ * Link badges in the viewer (`docs/reference/planning-index.md` §5): which links
  * get one, where it goes, and every text it must stay out of — review anchors
- * above all (§13's first risk), the contents column, the delta flash and a
+ * above all (§5.3's anchor rule), the contents column, the delta flash and a
  * click in review mode.
  *
  * Renders the app's real `MarkdownViewer` against a planning store seeded with
@@ -359,7 +359,7 @@ describe("when the badges appear and change (§5.3)", () => {
     );
   });
 
-  it("leaves the document exactly as it renders today when the build fails (§3.6)", async () => {
+  it("leaves the document exactly as it renders today when the build fails (§15)", async () => {
     const plain = renderViewer(ROADMAP);
     const today = plain.container.innerHTML;
     plain.unmount();
@@ -417,7 +417,7 @@ describe("when the badges appear and change (§5.3)", () => {
 });
 
 /* ------------------------------------------------------------------ *
- * A late index (planning-index-at-scale.md §11.2)
+ * A late index (planning-index.md §12.2)
  * ------------------------------------------------------------------ */
 
 describe("an index that lands after the first paint", () => {
@@ -601,7 +601,7 @@ describe("an index that lands after the first paint", () => {
  * What a badge must stay out of
  * ------------------------------------------------------------------ */
 
-describe("review anchors ignore badges (§5.3, §13)", () => {
+describe("review anchors ignore badges (§5.3)", () => {
   const blockOf = (name: string) =>
     linkNamed(name).closest<HTMLElement>("[data-source-line]")!;
 

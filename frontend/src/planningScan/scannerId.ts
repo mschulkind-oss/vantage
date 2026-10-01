@@ -1,6 +1,6 @@
 /**
  * The scanner id's source half, and the build guard that keeps it honest
- * (`docs/design/planning-index-at-scale.md` §8.2).
+ * (`docs/reference/planning-index.md` §11.2).
  *
  * A Vite plugin serving `virtual:planning-scanner-id`, whose one export,
  * `sourceHash`, is SHA-256 over every file the scan worker's code comes from:
@@ -22,8 +22,8 @@
  *   list.
  *   It fails it too when the bundle holds a package the scan never needs
  *   (KaTeX, highlight.js, React, Mermaid): `pipeline.ts` imports the first two
- *   beside the remark plugins the scan does use, and the design's worker
- *   carries none of them (§2). And when it holds a package's DOM build
+ *   beside the remark plugins the scan does use, and the worker
+ *   carries none of them (§10.1). And when it holds a package's DOM build
  *   (`*.dom.js`), which throws in a worker the moment it loads, as
  *   `decode-named-character-reference`'s did until `vite.config.ts` pointed it
  *   at its worker build.
@@ -225,7 +225,7 @@ export function planningScannerId(options: ScannerIdOptions): Plugin {
           [
             "The planning scan worker's bundle holds code its scanner id does not hash,",
             "so a change to it would not change the id, and a stale result would be trusted",
-            "(docs/design/planning-index-at-scale.md §8.2). Move it under",
+            "(docs/reference/planning-index.md §11.2). Move it under",
             "packages/vantage-md/src/ or frontend/src/planningScan/, or out of the worker:",
             ...problems.map((problem) => `  ${problem}`),
           ].join("\n"),

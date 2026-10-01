@@ -139,7 +139,7 @@ export const ViewerPage: React.FC = () => {
   } = useGitStore();
 
   // Whether this repository's planning index may be being built warm, from
-  // the scan cache (planning-index-at-scale.md §3): the one build a document's
+  // the scan cache (planning-index.md §2): the one build a document's
   // first paint waits for. A cold one can take seconds, and is never waited
   // on. Until the scanner's `started` has said which it is, it may be warm:
   // git usually answers first, and reading that silence as cold ended the
@@ -149,7 +149,7 @@ export const ViewerPage: React.FC = () => {
     const load = planningRepo === null ? undefined : state.byRepo[planningRepo];
     return load?.status === "loading" && load.warm !== false;
   });
-  // The hold (§11.3): a document that has just arrived waits, at most
+  // The hold (§12.3): a document that has just arrived waits, at most
   // `holdMs`, for what its first paint shows that is already on its way — its
   // header's git facts, asked for with its content, the index of a build that
   // is warm or not yet known to be cold, and on a first load the recent-files
@@ -177,7 +177,7 @@ export const ViewerPage: React.FC = () => {
 
   // The git facts the header shows are the shown path's own, and there are
   // none until git has answered for it: an unknown status is not an untracked
-  // file (docs/design/planning-index-at-scale.md §11.1, L3), and neither is a
+  // file (docs/reference/planning-index.md §12.1, L3), and neither is a
   // request that failed. They are asked for with the content, so the next
   // document's answer can land while this one is still on screen, and leaves
   // this one's header as it was.
@@ -228,8 +228,8 @@ export const ViewerPage: React.FC = () => {
   // What the header had in hand when the shown path first painted. An item
   // drawn from anything that arrived after that is late data: it is marked
   // `hdr-late`, and takes only the room the header has left, so it never
-  // moves what the reader is already looking at (planning-index-at-scale.md
-  // §11.2; "Late items" in lib/headerFit.ts). Kept per path, adjusted during
+  // moves what the reader is already looking at (planning-index.md
+  // §12.2; "Late items" in lib/headerFit.ts). Kept per path, adjusted during
   // render as the viewer's own visit is, so the render that meets a new path
   // already answers for it.
   const inHand = {
@@ -454,7 +454,7 @@ export const ViewerPage: React.FC = () => {
 
     // The header's git facts are asked for with the content, not once it
     // has rendered, so they are in hand when it paints, or all but
-    // (docs/design/planning-index-at-scale.md §11.2).
+    // (docs/reference/planning-index.md §12.2).
     const load = (p: string) => {
       // Followed there, it keeps what is on screen should it have moved on
       // again already (followMoved).
@@ -748,7 +748,7 @@ export const ViewerPage: React.FC = () => {
   // The toggle for it, though, is in the header from the moment the route
   // names a document, before its content arrives: added when the content
   // landed, it pushed the full-width toggle and the breadcrumb along on every
-  // document's first paint (planning-index-at-scale.md §11.1, L1). Only a
+  // document's first paint (planning-index.md §12.1, L1). Only a
   // document that turns out to be binary takes it away again.
   const routeFile =
     (isMultiRepo ? pathParam?.split("/").slice(1).join("/") : pathParam) ?? "";
@@ -1195,7 +1195,7 @@ export const ViewerPage: React.FC = () => {
             <div className="hdr-tools flex items-center gap-2">
               {/* Only once git has said so: before it answers, a file
                       with a commit would read as untracked for as long as
-                      the answer took (§11.1, L3). */}
+                      the answer took (§12.1, L3). */}
               {statusKnown && !isStaticMode() && (
                 <button
                   onClick={() => currentPath && fetchWorkingDiff(currentPath)}

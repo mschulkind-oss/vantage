@@ -1,7 +1,6 @@
 /**
- * The viewer's planning index (`docs/design/planning-index.md` §3.4, §3.6, and
- * §5 and §9 of `docs/design/planning-index-at-scale.md`, "the scale design"
- * in the names below): the build through the scanner client, the per-file
+ * The viewer's planning index (`docs/reference/planning-index.md` §8, §10
+ * and §15): the build through the scanner client, the per-file
  * refresh through it, the numbering that decides which answer wins, and the
  * rescans.
  *
@@ -79,8 +78,8 @@ interface Request {
 let requests: Request[] = [];
 
 /**
- * The scan core asks which server answers before every build (the scale
- * design §6.5). That is answered at once, and kept out of `requests`, so every
+ * The scan core asks which server answers before every build
+ * (§9.5). That is answered at once, and kept out of `requests`, so every
  * race below is written in stream and one-path requests alone.
  */
 const SERVER_ID = /\/planning\/server-id$/;
@@ -329,7 +328,7 @@ afterEach(() => {
  * The build
  * ------------------------------------------------------------------ */
 
-describe("the build (§3.4, full scan; scale design §5.2)", () => {
+describe("the build (§8.2)", () => {
   it("fills the index, and holds each planning document's content hash", async () => {
     await readyWith();
     const current = readyLoad();
@@ -465,7 +464,7 @@ describe("the build (§3.4, full scan; scale design §5.2)", () => {
 
   // Not knowing yet is its own state, not a cold build: the viewer's hold
   // waits on a build that may be warm, and git's answers, which end it
-  // otherwise, usually land before the scanner has said (§11.3).
+  // otherwise, usually land before the scanner has said (§12.3).
   it("says whether the build is warm while it loads, and when it cannot say yet", async () => {
     store().ensure("");
     expect(load()).toEqual({ status: "loading", warm: null, progress: null });
@@ -600,7 +599,7 @@ describe("the build (§3.4, full scan; scale design §5.2)", () => {
   });
 });
 
-describe("a refused index (§3.5)", () => {
+describe("a refused index (§16)", () => {
   // Only a rescan can change a refused index, so one path's answer would be
   // read and thrown away.
   it("asks nothing about a pushed path", async () => {
@@ -635,7 +634,7 @@ describe("a refused index (§3.5)", () => {
   });
 });
 
-describe("failure (§3.6; scale design §12)", () => {
+describe("failure (§15)", () => {
   it("gives error when the stream request fails", async () => {
     store().ensure("");
     await flush();
@@ -716,7 +715,7 @@ describe("failure (§3.6; scale design §12)", () => {
  * Per-file refresh
  * ------------------------------------------------------------------ */
 
-describe("a pushed path (§3.4, incremental; scale design §5.3)", () => {
+describe("a pushed path (§8.3)", () => {
   it("re-scans a changed candidate from the single-path mode", async () => {
     await readyWith();
     store().noteFilesChanged("", ["docs/design.md"], []);
@@ -927,7 +926,7 @@ describe("a pushed path (§3.4, incremental; scale design §5.3)", () => {
  * Ordering
  * ------------------------------------------------------------------ */
 
-describe("ordering (§3.4; scale design §5.4)", () => {
+describe("ordering (§8.3)", () => {
   const answered = fileAnswer("docs/design.md", DESIGN_ANSWERED);
   const gone = { path: "docs/design.md", kind: "absent" };
   const state = () =>
@@ -1093,9 +1092,9 @@ describe("ordering (§3.4; scale design §5.4)", () => {
  * The scan cache follows the same numbering: it ends up holding the version
  * of each file the index on screen holds, whichever answer lands last, so a
  * card request naming the index's hash is answered and the next warm build
- * streams nothing but the roadmap (scale design §8.3, §19 D8).
+ * streams nothing but the roadmap (§11.3, §18 D8).
  */
-describe("the scan cache, under the same numbering (scale design §8.3)", () => {
+describe("the scan cache, under the same numbering (§11.3)", () => {
   const answered = fileAnswer("docs/design.md", DESIGN_ANSWERED);
   const NEW = "---\nstatus: draft\n---\n\n# New\n";
   const state = () =>
@@ -1191,7 +1190,7 @@ describe("the scan cache, under the same numbering (scale design §8.3)", () => 
   });
 });
 
-describe("a scanner that has seen no header (scale design §7.1)", () => {
+describe("a scanner that has seen no header (§10.1)", () => {
   it("answers a push for a ready index under that index's config, as a worker made after one died must", async () => {
     const ROAD = "plans/road.md";
     store().ensure("");

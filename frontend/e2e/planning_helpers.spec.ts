@@ -1,8 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 import { planningIndexReady } from "./planningIndex";
 
-// A cold build's helpers in a real browser (docs/design/planning-index-at-scale.md
-// §7.5): workers the main thread makes at the scan worker's request, from the
+// A cold build's helpers in a real browser (docs/reference/planning-index.md
+// §10.5): workers the main thread makes at the scan worker's request, from the
 // scan worker's own chunk, joined to it by real transferred MessagePorts. No
 // unit test reaches any of that, since jsdom has no Worker.
 //

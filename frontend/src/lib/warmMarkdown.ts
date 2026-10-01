@@ -1,6 +1,6 @@
 /**
  * Run the viewer's Markdown pipeline once before a page's first card needs it
- * (`docs/design/planning-index-at-scale.md` §10.6).
+ * (`docs/reference/planning-index.md` §6.10).
  *
  * The first time the pipeline runs in a page load it costs several times what
  * any later run does: none of its code has been compiled yet, and

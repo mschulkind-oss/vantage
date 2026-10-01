@@ -1,5 +1,5 @@
 /**
- * The planning page's pages (`docs/design/planning-index-at-scale.md` §10.2):
+ * The planning page's pages (`docs/reference/planning-index.md` §6.4):
  * which run of each section's entries is shown, from the index alone and the
  * page each section's URL parameter asks for.
  *
@@ -12,14 +12,14 @@
  * A card's Markdown is its question's `cardChars`, so page boundaries are
  * known before anything is fetched. A Waiting document row counts as one entry
  * and no Markdown, and so does a preview card, whose block is not rendered
- * (§10.4). A page always holds at least one entry.
+ * (§6.6). A page always holds at least one entry.
  *
  * The URL carries the pages, `?needs-you=3&waiting=2`, 1-based, with page 1
  * left out. A page past the end is clamped to the last, and a value that is not
  * a page number reads as 1; `pageSearch` says how the URL is to be rewritten.
  *
  * With two or more roadmaps that route, the URL carries the chosen one too, as
- * `?roadmap=docs/plans/roadmap.md` (`docs/design/planning-index.md` §6.4):
+ * `?roadmap=docs/plans/roadmap.md` (`docs/reference/planning-index.md` §6.8):
  * *Needs you* follows it. Which roadmap is chosen is `chooseRoadmap`, one pure
  * function of the roadmaps, the URL's value and the one this browser
  * remembers for the repository, so the page, its inputs and every prefetch
@@ -138,7 +138,7 @@ export function readPageRequest(search: URLSearchParams): PageRequest {
   return out;
 }
 
-/** Whether a question's card is a preview card (§10.4). */
+/** Whether a question's card is a preview card (§6.6). */
 export const isPreview = (question: PlanningQuestion): boolean =>
   question.cardChars > planningLimits.cardChars;
 
@@ -348,7 +348,7 @@ export const routingRoadmaps = (
 ): PlanningRoadmap[] => roadmaps.filter((r) => r.state === "routes");
 
 /**
- * Which roadmap is chosen (`planning-index.md` §6.4): the URL's, when it names
+ * Which roadmap is chosen (`planning-index.md` §6.8): the URL's, when it names
  * a roadmap that routes; else the one this browser remembers for the
  * repository, when it still routes; else the default, the first that routes.
  * `null` when none routes. `roadmaps` are in roadmap order, as
@@ -475,7 +475,7 @@ export function requestWithPage(
  * Every question with a card, on any page, in page order, and every question
  * that needs you on another roadmap: what Copy answers covers, under every
  * roadmap, so choosing another changes neither what it copies nor its count
- * (`planning-index.md` §6.3).
+ * (`planning-index.md` §6.7).
  */
 export function listedQuestions(
   index: PlanningIndex,
@@ -497,7 +497,7 @@ export function listedQuestions(
 
 /**
  * The listed question a comment anchored on file line `line` sits on, for a
- * card that has not been rendered (`planning-index-at-scale.md` §10.5,
+ * card that has not been rendered (`planning-index.md` §6.7,
  * *placement*): the innermost of `questions` whose unit, `unitLine` to
  * `unitEndLine`, holds the line, or `undefined` when none does. Exact unless
  * the comment's block has moved since it was filed.

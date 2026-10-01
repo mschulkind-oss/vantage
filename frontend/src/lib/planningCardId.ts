@@ -1,7 +1,7 @@
 /**
  * The `id` of a question's card on the planning page: the element the page's
  * outline scrolls to when a document under a section is clicked
- * (`docs/design/planning-index.md` §6.3).
+ * (`docs/reference/planning-index.md` §6.6).
  *
  * One function, shared by the card that carries the id and every surface that
  * looks it up, so the two can never spell it differently. A question appears on

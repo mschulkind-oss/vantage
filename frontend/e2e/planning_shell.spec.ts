@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 // The planning page in the app shell, with the planning outline in its
-// contents column (docs/design/planning-index.md §6.5), in a real browser.
+// contents column (docs/reference/planning-index.md §6.9), in a real browser.
 // The fixture is test_repo's plans/, as planning_page.spec.ts reads it: Needs
 // you holds design.md's two questions and paged.md's twelve, ten to a page,
 // Unrouted holds 27 questions over two pages, and Graduate one document.
