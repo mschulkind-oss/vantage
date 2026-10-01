@@ -517,7 +517,7 @@ func TestWantsRefusesEveryRoadmap(t *testing.T) {
 // never opened. JSON would carry its name with U+FFFD for each invalid byte, so
 // as a file it would be kept under a path no lookup finds and never be `same`,
 // and two such names would be one path. As unreadable it is listed under
-// *Could not read* and nothing is kept for it.
+// *Unreadable* and nothing is kept for it.
 func TestANameThatIsNotUTF8IsUnreadable(t *testing.T) {
 	svc, root := repo(t, map[string]string{"a.md": "# A\n"})
 	for _, name := range []string{"caf\xe9.md", "caf\xe8.md"} {

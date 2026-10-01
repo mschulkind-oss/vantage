@@ -162,9 +162,9 @@ describe("one set of inputs", () => {
     const asked = serve();
     const ready = readyOf();
     await inputsOf(ready);
-    // Needs you's first card, and Unrouted's.
+    // Needs you's first card, and Not on a roadmap's.
     expect(asked[0]?.map((w) => w.path)).toEqual(["plans/a.md", "plans/b.md"]);
-    // Page 2 of Needs you, and Unrouted's page again, whose block the first
+    // Page 2 of Needs you, and Not on a roadmap's page again, whose block the first
     // set already holds.
     await inputsOf(ready, { "needs-you": "2" });
     expect(asked[1]?.map((w) => w.path)).toEqual(["plans/a.md"]);

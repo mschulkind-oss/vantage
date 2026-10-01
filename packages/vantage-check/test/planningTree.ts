@@ -69,13 +69,15 @@ export const FULL_TOML = [
 /**
  * Every section of the page, from one tree. The paths each file lands in:
  *
- * - `docs/a.md`: OQ-A1 routed (Needs you), OQ-A2 unrouted, OQ-A3 blocked
- *   (Waiting).
+ * - `docs/a.md`: OQ-A1 routed (Needs you), OQ-A2 unrouted (Not on a
+ *   roadmap), OQ-A3 blocked (Blocked).
  * - `docs/b.md`: routed whole by a bare link, so its ✅ OQ-B1 and 🤷 OQ-B2
  *   are in Needs you.
- * - `docs/c.md`: DECIDED with no questions (Ready), and it waits on OQ-A2.
- * - `docs/d.md`: BUILT with no questions (Graduate).
- * - `docs/e.md`: BUILT with an open question (Disagrees, and Unrouted).
+ * - `docs/c.md`: DECIDED with no questions (Ready to build), and it waits on
+ *   OQ-A2.
+ * - `docs/d.md`: BUILT with no questions (Ready to graduate).
+ * - `docs/e.md`: BUILT with an open question (Stage conflict, and Not on a
+ *   roadmap).
  * - `docs/old.md`: RETIRED, the `done` role, so its open question is nowhere.
  * - `docs/huge.md` is over `max-file-bytes`, `docs/latin1.md` is not UTF-8
  *   and `docs/broken.md`'s header does not parse.

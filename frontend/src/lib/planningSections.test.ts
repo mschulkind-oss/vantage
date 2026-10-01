@@ -332,7 +332,7 @@ describe("several roadmaps (§4, §6.8)", () => {
     );
   });
 
-  it("leaves Unrouted only what no roadmap routes", () => {
+  it("leaves Not on a roadmap only what no roadmap routes", () => {
     for (const roadmap of ["roadmap.md", "docs/plans/roadmap.md"]) {
       expect(ids(derivePlanningSections(index, { roadmap }).unrouted)).toEqual([
         "OQ-C1",
@@ -429,7 +429,7 @@ describe("the sections (§6.2)", () => {
     ]);
   });
 
-  it("lists blocked questions and waiting documents under Waiting, by path", () => {
+  it("lists blocked questions and waiting documents under Blocked, by path", () => {
     expect(sections.waiting).toEqual([
       {
         kind: "document",
@@ -454,7 +454,7 @@ describe("the sections (§6.2)", () => {
     expect(entry?.kind === "document" && entry.waitingOn).toHaveLength(1);
   });
 
-  it("sorts documents into Ready, Graduate and Disagrees by role", () => {
+  it("sorts documents into Ready to build, Ready to graduate and Stage conflict by role", () => {
     expect(sections.ready).toEqual(["docs/ready.md"]);
     expect(sections.graduate).toEqual(["docs/built.md"]);
     expect(sections.disagrees).toEqual([
@@ -531,7 +531,7 @@ describe("the sections (§6.2)", () => {
     expect(unstaged.unrouted?.map((q) => q.path)).toContain("docs/done.md");
   });
 
-  it("carries Skipped and Could not read through", () => {
+  it("carries Too large and Unreadable through", () => {
     const skipped = [{ path: "docs/huge.md", size: 2_000_000 }];
     const unreadable = [{ path: "docs/latin1.md", reason: "not UTF-8" }];
     const index = buildPlanningIndex(sourcesOf(tree, { skipped, unreadable }));
@@ -768,7 +768,7 @@ describe("the roadmap notice (§6.8)", () => {
     );
   });
 
-  // A done stage is a deliberate retirement, and Skipped and Could not read
+  // A done stage is a deliberate retirement, and Too large and Unreadable
   // already list a roadmap found by name.
   it("says nothing of a listed done roadmap, or of one found by name, while another routes", () => {
     expect(

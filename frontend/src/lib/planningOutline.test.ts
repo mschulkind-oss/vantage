@@ -4,7 +4,11 @@
  * module, never by growing a tree to a default.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { buildPlanningIndex, type PlanningConfig } from "vantage-md/planning";
+import {
+  buildPlanningIndex,
+  sectionExplanation,
+  type PlanningConfig,
+} from "vantage-md/planning";
 import { setPlanningLimitsForTests } from "../planningScan/limits";
 import { indexOf, questionDirective, sourcesOf } from "../test/planning";
 import { planningCardId } from "./planningCardId";
@@ -50,7 +54,7 @@ const STAGES: PlanningConfig["stages"] = {
   BUILT: "built",
 };
 
-/** A roadmap that routes nothing, so every open question is Unrouted. */
+/** A roadmap that routes nothing, so no open question is on a roadmap. */
 const ROADMAP = { "roadmap.md": "# Roadmap\n" };
 
 function outlineOf(tree: Record<string, string>) {
@@ -75,9 +79,23 @@ describe("the planning outline", () => {
       "ready.md": doc("stage: DECIDED", "Decided."),
     });
     expect(outline.map((s) => `${s.title} ${s.total}`)).toEqual([
-      "Unrouted 2",
-      "Ready 1",
+      "Not on a roadmap 2",
+      "Ready to build 1",
     ]);
+  });
+
+  it("gives each section the line under its heading, as the page's tooltip", () => {
+    const { outline, sections } = outlineOf({
+      "b.md": doc("stage: DESIGN", questions("OQ-B", 1)),
+      "ready.md": doc("stage: DECIDED", "Decided."),
+    });
+    expect(outline.map((s) => s.explanation)).toEqual([
+      sectionExplanation("unrouted", sections),
+      sectionExplanation("ready", sections),
+    ]);
+    expect(sectionOf(outline, "ready").explanation).toBe(
+      "Decided, with no open questions. An agent builds it.",
+    );
   });
 
   it("lists a section's documents in the section's order, each with its questions there", () => {
@@ -85,7 +103,7 @@ describe("the planning outline", () => {
       "b.md": doc("stage: DESIGN", questions("OQ-B", 3)),
       "a.md": doc("stage: DESIGN", questions("OQ-A", 1)),
     });
-    // Unrouted orders by path, then line.
+    // Not on a roadmap orders by path, then line.
     expect(listed(outline, "unrouted")).toEqual(["a.md 1 p1", "b.md 3 p1"]);
   });
 
@@ -148,7 +166,7 @@ describe("the planning outline", () => {
     expect(outlineTargetId("ready", ready)).toBe("pr-ready--plans%2Fready.md");
   });
 
-  it("counts a Waiting document's blocked questions with its own row, which comes first", () => {
+  it("counts a Blocked document's blocked questions with its own row, which comes first", () => {
     const { outline } = outlineOf({
       "b.md": doc("stage: DESIGN", questions("OQ-B", 1)),
       "w.md": doc(
@@ -160,14 +178,14 @@ describe("the planning outline", () => {
     expect(waiting.map((d) => [d.path, d.questions])).toEqual([["w.md", 2]]);
   });
 
-  it("counts the open questions that put a document under Disagrees", () => {
+  it("counts the open questions that put a document under Stage conflict", () => {
     const { outline } = outlineOf({
       "d.md": doc("stage: DECIDED", questions("OQ-D", 2)),
     });
     expect(listed(outline, "disagrees")).toEqual(["d.md 2 p1"]);
   });
 
-  it("lists no documents under Skipped", () => {
+  it("lists no documents under Too large", () => {
     const index = buildPlanningIndex(
       sourcesOf(
         ROADMAP,

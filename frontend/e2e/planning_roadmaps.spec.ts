@@ -144,11 +144,11 @@ test.describe("several roadmaps", () => {
       "OQ-A1: Which way does alpha go?",
       "OQ-A2: How soon does alpha ship?",
     ]);
-    // Beta's three are routed, by the other roadmap: counted, not Unrouted.
+    // Beta's three are routed, by the other roadmap: counted, not Not on a roadmap.
     await expect(page.getByTestId("other-roadmaps")).toHaveText(
       "3 more questions need you on other roadmaps.",
     );
-    await cardsIn(page, "Unrouted").toEqual([
+    await cardsIn(page, "Not on a roadmap").toEqual([
       "OQ-G1: Is anyone tracking gamma?",
     ]);
     // The address says which roadmap is shown, written in place.
@@ -452,7 +452,7 @@ test.describe("several roadmaps", () => {
     // Nothing links here, so the line is text with nothing to open.
     await openWithIndex(page, "/designs/gamma.md");
     await expect(surface).toHaveText(
-      "1 open question not routed by any roadmap",
+      "1 open question not on any roadmap",
     );
   });
 });

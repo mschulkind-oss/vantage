@@ -5,12 +5,12 @@
  *
  * | Sections | A page holds |
  * | :--- | :--- |
- * | Needs you, Unrouted, Waiting | `pageEntries` entries, stopping early before its cards' Markdown passes `pageMarkdownChars` |
- * | Ready, Graduate, Disagrees | `pageRows` document rows |
- * | Skipped, Could not read | `pageLines` lines |
+ * | Needs you, Not on a roadmap, Blocked | `pageEntries` entries, stopping early before its cards' Markdown passes `pageMarkdownChars` |
+ * | Ready to build, Ready to graduate, Stage conflict | `pageRows` document rows |
+ * | Too large, Unreadable | `pageLines` lines |
  *
  * A card's Markdown is its question's `cardChars`, so page boundaries are
- * known before anything is fetched. A Waiting document row counts as one entry
+ * known before anything is fetched. A Blocked document row counts as one entry
  * and no Markdown, and so does a preview card, whose block is not rendered
  * (§6.6). A page always holds at least one entry.
  *
@@ -29,12 +29,16 @@
  * and the viewer's prefetch lay a page out identically.
  */
 import {
+  PLANNING_SECTION_IDS,
+  PLANNING_SECTION_TITLES,
   derivePlanningSections,
   questionFor,
+  sectionExplanation,
   type DependsOn,
   type PlanningIndex,
   type PlanningQuestion,
   type PlanningRoadmap,
+  type PlanningSectionId,
   type PlanningSections,
   type QuestionRef,
 } from "vantage-md/planning";
@@ -45,31 +49,18 @@ import {
   writePreference,
 } from "./preferences";
 
-/** Each section, by the name its URL parameter and its heading's id carry. */
-export const SECTION_IDS = [
-  "needs-you",
-  "unrouted",
-  "waiting",
-  "ready",
-  "graduate",
-  "disagrees",
-  "skipped",
-  "could-not-read",
-] as const;
-export type SectionId = (typeof SECTION_IDS)[number];
+/**
+ * Each section, by the name its URL parameter and its heading's id carry, and
+ * its title: the shared planning module's (`vantage-md/planning`'s guide),
+ * which `vantage-check index` prints too. An id is a machine interface and
+ * never changes; a title is display text.
+ */
+export const SECTION_IDS = PLANNING_SECTION_IDS;
+export type SectionId = PlanningSectionId;
+export const SECTION_TITLES: Readonly<Record<SectionId, string>> =
+  PLANNING_SECTION_TITLES;
 
-export const SECTION_TITLES: Readonly<Record<SectionId, string>> = {
-  "needs-you": "Needs you",
-  unrouted: "Unrouted",
-  waiting: "Waiting",
-  ready: "Ready",
-  graduate: "Graduate",
-  disagrees: "Disagrees",
-  skipped: "Skipped",
-  "could-not-read": "Could not read",
-};
-
-/** One entry of Needs you, Unrouted or Waiting. */
+/** One entry of Needs you, Not on a roadmap or Blocked. */
 export type CardEntry =
   | {
       kind: "question";
@@ -82,6 +73,8 @@ export type CardEntry =
 interface SectionPage {
   id: SectionId;
   title: string;
+  /** The line under its heading: what its entries are, and what to do. */
+  explanation: string;
   /** Entries in the whole section. */
   total: number;
   pageCount: number;
@@ -282,6 +275,7 @@ export function layoutPlanningPage(
     laid.push({
       id: section.id,
       title: SECTION_TITLES[section.id],
+      explanation: sectionExplanation(section.id, sections),
       total: section.entries.length,
       pageCount,
       page,

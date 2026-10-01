@@ -28,13 +28,13 @@ test.describe("the planning page", () => {
   const pane = (page: Page) => page.locator("[data-content-scroll]");
   const paneTop = (page: Page) => pane(page).evaluate((el) => el.scrollTop);
 
-  test("loads by its URL, listing the fixture's unrouted question under Unrouted", async ({
+  test("loads by its URL, listing the fixture's unrouted question under Not on a roadmap", async ({
     page,
   }) => {
     await page.goto("/.vantage/planning");
     await expect(page.getByRole("heading", { name: "Planning" })).toBeVisible();
     await expect(
-      section(page, "Unrouted").getByRole("article", {
+      section(page, "Not on a roadmap").getByRole("article", {
         name: "OQ-U1: Is anyone tracking this?",
       }),
     ).toBeVisible();
@@ -43,7 +43,9 @@ test.describe("the planning page", () => {
       10,
     );
     await expect(
-      section(page, "Graduate").getByRole("link", { name: "plans/shipped.md" }),
+      section(page, "Ready to graduate").getByRole("link", {
+        name: "plans/shipped.md",
+      }),
     ).toBeVisible();
     // The card is the question as its document renders it, and only it: the
     // second question's card holds the first too, in the same list, hidden,
@@ -362,11 +364,11 @@ test.describe("the planning page", () => {
     // A jump from the section bar takes the focus to the section.
     await page
       .getByRole("navigation", { name: "Sections" })
-      .getByRole("link", { name: /^Unrouted/ })
+      .getByRole("link", { name: /^Not on a roadmap/ })
       .focus();
     await page.keyboard.press("Enter");
     await expect(
-      section(page, "Unrouted").getByRole("heading", { level: 2 }),
+      section(page, "Not on a roadmap").getByRole("heading", { level: 2 }),
     ).toBeFocused();
 
     // Show question goes, and the card it became takes the focus.
@@ -396,14 +398,77 @@ test.describe("the planning page", () => {
     ).toHaveCount(0);
   });
 
+  test("explains each section, and copies an agent request from the real index, moving nothing and printing no button", async ({
+    page,
+    context,
+  }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.goto("/.vantage/planning");
+    const unrouted = section(page, "Not on a roadmap");
+    await expect(unrouted.getByRole("article")).toHaveCount(10);
+    // The line under each heading, with the section.
+    await expect(unrouted).toHaveAccessibleDescription(
+      "Open questions no roadmap links to. An agent proposes where each goes; you confirm.",
+    );
+    await expect(
+      section(page, "Ready to graduate").getByText(
+        "Built, with no questions left. An agent turns it into a reference doc.",
+      ),
+    ).toBeVisible();
+    // An agent's sections have the button, and Needs you has none.
+    await expect(
+      section(page, "Needs you").locator("[data-planning-agent-request]"),
+    ).toHaveCount(0);
+
+    const copy = page.getByRole("button", {
+      name: "Copy agent request for Not on a roadmap",
+    });
+    const about = unrouted.locator("[data-planning-section-about]");
+    // Measured where the click will find it, so the click scrolls nothing.
+    await copy.scrollIntoViewIfNeeded();
+    const before = {
+      copy: await copy.boundingBox(),
+      about: await about.boundingBox(),
+      first: await unrouted.getByRole("article").first().boundingBox(),
+    };
+    await copy.click();
+    await expect(copy).toHaveText("Copied");
+    // Copied stands in the label's own room: nothing moved.
+    expect({
+      copy: await copy.boundingBox(),
+      about: await about.boundingBox(),
+      first: await unrouted.getByRole("article").first().boundingBox(),
+    }).toEqual(before);
+    // For every one of the section's 27, not only this page's ten, and the
+    // repository by the root the server reports.
+    const copied = await page.evaluate(() => navigator.clipboard.readText());
+    expect(copied).toMatch(/^Repository: \/\S*test_repo\n/);
+    expect(copied.match(/^- \S+:\d+ /gm)).toHaveLength(27);
+    expect(copied).toContain(`${UNROUTED}:`);
+    expect(copied).toMatch(/Verify: .*vantage-check index/);
+    await expect(copy).toHaveText("Copy agent request", { timeout: 4000 });
+
+    await page.getByRole("button", { name: "Copy all agent requests" }).click();
+    const all = await page.evaluate(() => navigator.clipboard.readText());
+    expect(all).toContain("Not on a roadmap (27)");
+    expect(all).toContain("Ready to graduate (1)");
+    expect(all).toContain("- plans/shipped.md");
+
+    await page.emulateMedia({ media: "print" });
+    await expect(
+      page.locator("[data-planning-agent-request]:visible"),
+    ).toHaveCount(0);
+    await expect(about).toBeVisible();
+  });
+
   test("moves nothing painted on a load that has to build the index first", async ({
     page,
   }) => {
     await watchShifts(page);
     await page.goto("/.vantage/planning");
-    await expect(section(page, "Unrouted").getByRole("article")).toHaveCount(
-      10,
-    );
+    await expect(
+      section(page, "Not on a roadmap").getByRole("article"),
+    ).toHaveCount(10);
     // Long enough for the second reviews request, and anything late.
     await page.waitForTimeout(1500);
     const shifts = await shifted(page);

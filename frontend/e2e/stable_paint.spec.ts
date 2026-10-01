@@ -404,13 +404,13 @@ test.describe("Referenced by fills the line reserved for it", () => {
     [
       "tree-badges/questions-only.md",
       "Questions only",
-      /open questions not routed by the roadmap$/,
+      /open questions not on the roadmap$/,
       1440,
     ],
     [
       "tree-badges/questions-only.md",
       "Questions only",
-      /open questions not routed by the roadmap$/,
+      /open questions not on the roadmap$/,
       390,
     ],
   ] as const) {

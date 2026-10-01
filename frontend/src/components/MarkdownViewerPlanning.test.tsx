@@ -446,9 +446,7 @@ describe("Referenced by (§7)", () => {
   it("counts a document's unrouted questions when nothing links to it", () => {
     seedReady(indexOf(TREE));
     renderViewer(FORGOTTEN, "docs/forgotten.md");
-    expect(surface()).toHaveTextContent(
-      /^1 open question not routed by the roadmap$/,
-    );
+    expect(surface()).toHaveTextContent(/^1 open question not on the roadmap$/);
     expect(screen.queryByRole("button", { name: /roadmap/ })).toBeNull();
   });
 
@@ -584,7 +582,7 @@ describe("Referenced by (§7)", () => {
       seedReady(indexOf({ ...TREE, "roadmap.md": "# Roadmap\n" }));
       renderViewer(TARGET, "docs/design.md");
       expect(toggle()).toHaveTextContent(
-        /^Referenced by 1 document · 1 open question not routed by the roadmap$/,
+        /^Referenced by 1 document · 1 open question not on the roadmap$/,
       );
       // A push that changes what links here is a change of data (L2).
       seedReady(indexOf(TREE));

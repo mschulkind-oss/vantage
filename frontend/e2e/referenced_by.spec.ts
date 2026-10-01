@@ -170,7 +170,7 @@ test("a document nothing links to still counts its unrouted questions", async ({
 }) => {
   await page.goto("/plans/unrouted.md");
   await expect(surface(page)).toHaveText(
-    "1 open question not routed by the roadmap",
+    "1 open question not on the roadmap",
   );
   await expect(surface(page).getByRole("button")).toHaveCount(0);
 });

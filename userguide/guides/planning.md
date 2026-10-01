@@ -264,8 +264,8 @@ have none, one or several, and which files they are is decided one of two ways:
   ([Planning Documents](../reference/configuration.md#planning-documents)).
 
 A roadmap whose stage has the `done` role routes nothing: that is how an
-archived roadmap stays in the tree without keeping its questions off
-*Unrouted*. With several roadmaps, the one nearest the repository root, in the
+archived roadmap stays in the tree without keeping its questions off *Not on a
+roadmap*. With several roadmaps, the one nearest the repository root, in the
 fewest folders and then by path, is the **default**, and the planning page
 offers the others ([below](#several-roadmaps)).
 
@@ -290,9 +290,11 @@ some roadmap reaches:
 - a link to another roadmap is an ordinary link: it routes the questions
   written in that roadmap, not the ones that roadmap routes.
 
-An open question no roadmap routes is **unrouted**: it needs a ruling, and every
-list that says what to do next has missed it. The planning page lists those
-under *Unrouted*, and so does `vantage-check index`.
+An open question no roadmap routes is **not on a roadmap**: it needs a ruling,
+and every list that says what to do next has missed it. The planning page lists
+those under *Not on a roadmap*, and so does `vantage-check index`. A document
+linked from a roadmap can still hold such a question, when the link names
+another question or a heading.
 
 ---
 
@@ -306,19 +308,19 @@ planning documents link to it:
 | :--- | :--- |
 | *Referenced by 3 documents · on the roadmap under Building* | The roadmap [routes](#the-roadmap) this document or one of its questions. *Building* is the roadmap heading its first such link sits under |
 | *Referenced by 3 documents · on the roadmap* | The same, when the roadmap's link sits above every heading |
-| *Referenced by 3 documents · 2 open questions not routed by the roadmap* | Two of its open questions are unrouted: they need a ruling, and the roadmap has missed them. That part is in the warning tone |
-| *Referenced by 3 documents · on the roadmap under Building · 1 open question not routed by the roadmap* | The roadmap routes one question and has missed another |
-| *2 open questions not routed by the roadmap* | Unrouted questions in a document nothing links to. The line is then the only place the document shows them, and there is nothing to open |
+| *Referenced by 3 documents · 2 open questions not on the roadmap* | The roadmap routes neither of two of its open questions: they need a ruling, and the roadmap has missed them. That part is in the warning tone |
+| *Referenced by 3 documents · on the roadmap under Building · 1 open question not on the roadmap* | The roadmap routes one question and has missed another |
+| *2 open questions not on the roadmap* | Open questions no roadmap routes, in a document nothing links to. The line is then the only place the document shows them, and there is nothing to open |
 | *Referenced by 3 documents* | Other documents link here, and the roadmap has nothing to add |
 | *Referenced by 3 documents · on plans/roadmap.md under Building and 1 other roadmap* | With several roadmaps that route: the first, nearest the root, that routes this document or one of its questions, named by as much of its path as tells it from the other roadmaps that route, and how many more route it |
-| *Referenced by 3 documents · 2 open questions not routed by any roadmap* | With several roadmaps that route: two of its open questions are routed by none of them |
+| *Referenced by 3 documents · 2 open questions not on any roadmap* | With several roadmaps that route: two of its open questions are routed by none of them |
 
 The line reads the same in every browser: it never depends on the roadmap the
 planning page shows. The count is of documents, not links, and a roadmap is one
 of them when it links here. A document's links to itself do not count. When
-nothing links to a document and none of its questions is unrouted, there is no
-line. When no roadmap routes, or for a document whose stage has the `done`
-role, the line gives the count alone. With one roadmap that routes, it is *the
+nothing links to a document and every one of its open questions is on a
+roadmap, there is no line. When no roadmap routes, or for a document whose
+stage has the `done` role, the line gives the count alone. With one roadmap that routes, it is *the
 roadmap*, however many others are retired by a `done` stage or cannot be read.
 
 Click the line, or press Enter or Space on it, to see who links here: one row
@@ -397,18 +399,27 @@ along its top.
 
 ### Its sections
 
-From top to bottom, leaving out any that are empty, each with its count:
+From top to bottom, leaving out any that are empty, each with its count and
+who does the next thing with its entries:
 
-| Section | Holds | Each entry shows |
-| :--- | :--- | :--- |
-| **Needs you** | Questions the shown roadmap routes that are open or answered, in its order | the question's [card](#a-questions-card) |
-| **Unrouted** | Open questions no roadmap routes, by path | the question's card |
-| **Waiting** | Blocked questions, and documents with a `depends-on` entry that still waits: one naming a question waits while it is open (💬), and one naming a document waits while that document has an open question | a blocked question's card; a document's name and badge, then each entry it waits on, with that entry's badge |
-| **Ready** | Documents whose stage has the `ready` role and no open questions | the document's name and badge |
-| **Graduate** | Documents whose stage has the `built` role and no questions left | the document's name and badge |
-| **Disagrees** | Documents whose stage says `ready` or `built` while they still have open questions | the document's name and badge |
-| **Skipped** | Candidates over the size limit ([below](#limits)) | the path, its size and the limit |
-| **Could not read** | Candidates that could not be read, or whose frontmatter does not parse | the path and why |
+| Section | Holds | Who acts | Each entry shows |
+| :--- | :--- | :--- | :--- |
+| **Needs you** | Questions the shown roadmap [routes](#the-roadmap) that are open or answered, in its order | you | the question's [card](#a-questions-card) |
+| **Not on a roadmap** | Open questions no roadmap routes, by path | an agent proposes where each goes, and you confirm | the question's card |
+| **Blocked** | Blocked questions, and documents with a `depends-on` entry that still waits: one naming a question waits while it is open (💬), and one naming a document waits while that document has an open question | nobody: what it waits on comes first | a blocked question's card; a document's name and badge, then *blocked on* each entry it waits on, with that entry's badge |
+| **Ready to build** | Documents whose stage has the `ready` role and no open questions; one can be under *Blocked* too | an agent | the document's name and badge |
+| **Ready to graduate** | Documents whose stage has the `built` role and no questions left; one can be under *Blocked* too | an agent | the document's name and badge |
+| **Stage conflict** | Documents whose stage says `ready` or `built` while they still have open questions | an agent | the document's name and badge |
+| **Too large** | Candidates over the size limit ([below](#limits)) | you | the path, its size and the limit |
+| **Unreadable** | Candidates that could not be read, or whose frontmatter does not parse | you | the path and why |
+
+Under each heading, one line says what the section's entries are and what to
+do with them, such as *Built, with no questions left. An agent turns it into a
+reference doc.* under *Ready to graduate*. The [section bar](#pages) and the
+[contents column](#the-contents-column) show the same line when the pointer
+rests on a section's name, and `vantage-check index` prints it under each
+heading. A section that is an agent's work has **Copy agent request**
+([below](#agent-requests)).
 
 Clicking a document's name opens it, as **Open document** does
 ([below](#a-questions-card)).
@@ -417,8 +428,8 @@ Two cases change the sections:
 
 - **When no roadmap routes,** because no candidate is named `roadmap.md`, or
   each roadmap is missing, too large, unreadable or retired by a `done` stage,
-  *Needs you* lists every open question by document, *Unrouted* is not shown,
-  and a line says what the page looked for and how to point it at a roadmap,
+  *Needs you* lists every open question by document, *Not on a roadmap* is not
+  shown, and a line says what the page looked for and how to point it at a roadmap,
   such as *No roadmap: no planning candidate is named roadmap.md, so Needs you
   lists every open question by document.*, followed by what to do: when every
   roadmap found or listed is retired by a `done` stage, that is to give it a
@@ -428,8 +439,8 @@ Two cases change the sections:
 - **When a listed roadmap cannot be read while another routes,** the sections
   are as usual, and a line names it: *Not read as a roadmap: plans/b.md, which
   roadmap under [planning] lists, is missing or not in Vantage's file list …*.
-- **With no stages declared,** *Ready*, *Graduate* and *Disagrees* are not
-  shown, and a line says how to declare them.
+- **With no stages declared,** *Ready to build*, *Ready to graduate* and
+  *Stage conflict* are not shown, and a line says how to declare them.
 
 When no document has an open question, `done` documents aside, the page says
 **Nothing needs you**. That line can sit above a *Needs you* holding only ✅
@@ -449,8 +460,8 @@ The path is never shortened: on a narrow screen the closed menu wraps it onto a
 second line rather than cut off its end.
 *Needs you* follows the one shown, in its order, and after the menu a line says
 how many more questions need you only on the others, such as *3 more questions
-need you on other roadmaps.* Those questions are routed, so they are not under
-*Unrouted*: choose their roadmap to see them.
+need you on other roadmaps.* Those questions are on a roadmap, so they are not
+under *Not on a roadmap*: choose their roadmap to see them.
 
 - **The address says which roadmap is shown,** as
   `?roadmap=docs/plans/roadmap.md` (the `/` may be escaped as `%2F`; both
@@ -481,13 +492,13 @@ quickly for a thousand documents as for ten:
 
 | Sections | A page holds |
 | :--- | :--- |
-| Needs you, Unrouted, Waiting | 10 entries, or fewer when their cards together would pass 32,768 characters of Markdown. A page always holds at least one entry, and a [preview card](#a-questions-card) counts for none of those characters |
-| Ready, Graduate, Disagrees | 25 documents |
-| Skipped, Could not read | 50 lines |
+| Needs you, Not on a roadmap, Blocked | 10 entries, or fewer when their cards together would pass 32,768 characters of Markdown. A page always holds at least one entry, and a [preview card](#a-questions-card) counts for none of those characters |
+| Ready to build, Ready to graduate, Stage conflict | 25 documents |
+| Too large, Unreadable | 50 lines |
 
 - **The section bar,** under the header, names each section that is not empty
-  with its count, such as `Needs you 143 · Unrouted 12 · Waiting 7`. The counts
-  are of the whole section, whatever page is shown. Clicking one scrolls to its
+  with its count, such as `Needs you 143 · Not on a roadmap 12 · Blocked 7`.
+  The counts are of the whole section, whatever page is shown. Clicking one scrolls to its
   section without adding a history entry.
 - **A pager** sits under the heading of a section with more than one page, and
   again after its last entry: `1–10 of 143 · ‹ Previous · Next ›`, with a page
@@ -506,7 +517,8 @@ quickly for a thousand documents as for ten:
 
 Paging decides only what is drawn. Every question is still counted in the
 section bar and reachable through its section's pager, and
-[Copy answers](#copy-answers) covers the questions on every page.
+[Copy answers](#copy-answers) and the [agent requests](#agent-requests) cover
+the entries on every page.
 
 ### The contents column
 
@@ -518,7 +530,8 @@ in the same column here, beside the cards:
   it, as the section bar does.
 - **Under a section,** the documents it lists, in the section's order, each by
   its file name with its folder below it, and after the name how many of its
-  questions the section holds (under *Disagrees*, how many are still open).
+  questions the section holds (under *Stage conflict*, how many are still
+  open).
   Clicking one shows the page of the section that holds its first card or row,
   and scrolls to it. Like a flip, that replaces the history entry.
 - **Where you are** is marked as you scroll: the section, and the document
@@ -577,7 +590,7 @@ What the card offers follows the question's state:
 | :--- | :--- | :--- | :--- |
 | 💬 open, or no marker | when its `oq` directive has a leaning | yes | yes |
 | ✅ answered | no: it has been ruled | yes | yes |
-| 🔒 blocked, under *Waiting* | no | no: it cannot be answered yet | yes |
+| 🔒 blocked, under *Blocked* | no | no: it cannot be answered yet | yes |
 
 - **Take this leaning** files the question's leaning as a review comment on
   it: the same comment review mode's own **Take this leaning** button files in
@@ -648,6 +661,39 @@ Only comments on questions the page lists are copied. A document's other
 comments, on its prose or on a question the page does not list, are left to
 that document's own Copy.
 
+### Agent requests
+
+Four sections are an agent's work: *Not on a roadmap*, *Ready to build*,
+*Ready to graduate* and *Stage conflict*. Each has **Copy agent request** beside
+its heading, which copies an instruction for an agent covering every entry of
+that section, on every [page](#pages), not only the ones shown. **Copy all
+agent requests**, before Expand all on the line naming the sections, copies one
+instruction covering all four. An empty section is not shown, so it has no
+button, and with all four empty there is no Copy all agent requests.
+
+| Section | The request asks the agent to |
+| :--- | :--- |
+| Not on a roadmap | propose where each question belongs on a roadmap, with a one-clause reason, and leave the order for you to confirm. It decides no priority |
+| Ready to build | build each document from its plan, then give it a stage with the `built` role. If one should not be built, it asks you before retiring it, with the stage with the `done` role you choose. It skips a document marked blocked, one *Blocked* lists too |
+| Ready to graduate | rewrite each as a reference document of the system as built, verified against the code, saying what it covers and the commit it was verified at, with the stage your other reference documents carry; then delete the design document and any plan written for it, repoint every link and citation of them, in documents, code comments and tests, and keep every question id that other documents cite resolvable |
+| Stage conflict | find whether the stage or the open questions are wrong, from the document and the code, and set a wrong stage back to one with the `open` role, or propose moving a follow-up question to a new document. It rules and answers nothing: where a question looks settled, it tells you what it found and asks you for the ruling |
+
+Every request names the repository, by the absolute path of its root, and
+each entry by its path, with its question's id and title or the document's
+stage, and for a document *Blocked* lists too, what it waits on. It ends with
+how to check the work: run `vantage-check` on the Markdown files changed, then
+`vantage-check index`. Vantage writes the text when you press the button, from
+the index on screen, so it names what the documents say now, in the stage
+words `[planning.stages]` declares now. Nothing is stored, nothing is fetched,
+and nothing needs to be selected first. Until the server has reported the
+repository's root, the request names it `.`, or by its name in
+[daemon mode](daemon-mode.md).
+
+The button's label reads *Copied* for two seconds, in room kept for it, so
+nothing moves. Neither button prints. `vantage-check index --request` prints the
+same text, so an agent can ask for it itself
+([`vantage-check index`](vantage-check.md#vantage-check-index)).
+
 ---
 
 ## Reading it from the command line
@@ -656,7 +702,9 @@ that document's own Copy.
 directory is in, so an agent sees what a person sees, with no server running.
 It prints the [planning page's sections](#its-sections) as text, with the same
 notices, and leaves out any that are empty: a question as its path, line,
-marker and title rather than a card, and a document as its path.
+marker and title rather than a card, and a document as its path. Each section's
+heading is followed by the line the page shows under it, and `--request` prints
+the [agent requests](#agent-requests) the page copies.
 
 After the sections comes the roadmap *Needs you* follows, with each link's badge
 written inline in brackets. With several roadmaps it lists them all, chooses the
@@ -672,7 +720,7 @@ and the `planning/*` rules that `check` runs over the same scan are in
 
 | Limit | Default | Past it |
 | :--- | :--- | :--- |
-| One file's size | 1 MiB | The file is skipped, and listed under *Skipped* |
+| One file's size | 1 MiB | The file is skipped, and listed under *Too large* |
 | Candidates in the repository | 5,000 | Nothing is scanned at all, and the planning page and `vantage-check index` say how many candidates there are and to narrow `include`. A partial index would quietly under-count, so the refusal is always visible |
 
 Both are keys of `[planning]`
@@ -764,7 +812,7 @@ every candidate on every page load, and everything else works the same.
   without them, under the line *Comments could not be loaded.*, and Copy
   answers stays disabled.
 - **One file cannot be read,** or its frontmatter does not parse: it is listed
-  under *Could not read* and contributes nothing, its questions included.
+  under *Unreadable* and contributes nothing, its questions included.
   Everything else is unaffected.
 - **A `[planning]` table that is wrong,** such as a role outside the four: the
   server logs it and falls back to the defaults, and `vantage-check` refuses

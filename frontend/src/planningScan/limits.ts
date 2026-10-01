@@ -58,16 +58,16 @@ export interface PlanningLimits {
 
   /* ---- The planning page (§6) ---- */
 
-  /** Entries per page of Needs you, Unrouted and Waiting. */
+  /** Entries per page of Needs you, Not on a roadmap and Blocked. */
   pageEntries: number;
   /**
    * Card Markdown per page of those sections, in characters (`cardChars`): a
    * page stops before its cards pass it, and always holds at least one entry.
    */
   pageMarkdownChars: number;
-  /** Document rows per page of Ready, Graduate and Disagrees. */
+  /** Document rows per page of Ready to build, Ready to graduate and Stage conflict. */
   pageRows: number;
-  /** Lines per page of Skipped and Could not read. */
+  /** Lines per page of Too large and Unreadable. */
   pageLines: number;
   /**
    * Pages in a section from which its pager also offers a page select. The

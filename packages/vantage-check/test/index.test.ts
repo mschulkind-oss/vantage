@@ -8,8 +8,11 @@ import { bufferIo } from "../src/io.js";
 import { VERSION } from "../src/version.js";
 import {
   PLANNING_NOTICES,
+  PLANNING_SECTION_GUIDE,
   buildPlanningIndex,
   derivePlanningSections,
+  planningAgentRequest,
+  planningSectionGuide,
   type PlanningIndex,
   type PlanningSources,
 } from "../../vantage-md/src/planning/index.js";
@@ -88,34 +91,44 @@ describe("index, as text", () => {
     expect(stderr).toBe("");
     expect(stdout).toBe(
       [
-        "Needs you (3)",
+        "Needs you (3) · for the human",
+        "Open or answered questions on this roadmap, in its order. Rule each open one, then Copy answers.",
         "  docs/a.md:8  💬 OQ-A1: Question A1?  (Rule these first)",
         "  docs/b.md:8  ✅ OQ-B1: Question B1?  (Rule these first)",
         "  docs/b.md:14  💬 🤷 OQ-B2: Question B2?  (Rule these first)",
         "",
-        "Unrouted (2)",
+        "Not on a roadmap (2)",
+        "Open questions no roadmap links to. An agent proposes where each goes; you confirm.",
         "  docs/a.md:14  💬 OQ-A2: Question A2?",
         "  docs/e.md:8  💬 OQ-E1: Question E1?",
         "",
-        "Waiting (2)",
+        "Blocked (2)",
+        "Waiting on a question, a document or an outside event. Nothing to do here.",
         "  docs/a.md:20  🔒 OQ-A3: Question A3?",
-        "  docs/c.md  waits on docs/a.md#OQ-A2",
+        "  docs/c.md  blocked on docs/a.md#OQ-A2",
         "",
-        "Ready (1)",
+        "Ready to build (1)",
+        "Decided, with no open questions. An agent builds it.",
         "  docs/c.md  [accepted · DECIDED]",
         "",
-        "Graduate (1)",
+        "Ready to graduate (1)",
+        "Built, with no questions left. An agent turns it into a reference doc.",
         "  docs/d.md  [accepted · BUILT]",
         "",
-        "Disagrees (1)",
+        "Stage conflict (1)",
+        "The stage says ready or built, but questions are open. An agent finds which is wrong.",
         "  docs/e.md  [accepted · BUILT · 💬 1]",
         "",
-        "Skipped (1)",
+        "Too large (1) · for the human",
+        "Over max-file-bytes ([planning] in .vantage.toml), so not scanned. Raise the limit or exclude the file.",
         "  docs/huge.md  5,033 bytes, over max-file-bytes (4,096 bytes)",
         "",
-        "Could not read (2)",
+        "Unreadable (2) · for the human",
+        "Could not be read. Fix or exclude the file.",
         "  docs/broken.md  the frontmatter does not parse: Flow sequence in block collection must be sufficiently indented and end with a ] at line 1, column 10:",
         "  docs/latin1.md  not UTF-8",
+        "",
+        "Agent requests: vantage-check index --request",
         "",
         "Roadmap: roadmap.md",
         "",
@@ -173,7 +186,7 @@ describe("index, as text", () => {
     );
   });
 
-  it("lists every open question under Needs you when there is no roadmap", async () => {
+  it("lists every open question under Needs you when there is no roadmap, and says so", async () => {
     const root = makeTree({
       ".git/HEAD": "",
       "b.md": doc("status: draft", questions("B", "💬")),
@@ -183,12 +196,15 @@ describe("index, as text", () => {
 
     expect(stdout).toContain(
       [
-        "Needs you (2)",
+        "Needs you (2) · for the human",
+        "Open questions, by document. Rule each, then Copy answers.",
         "  a.md:7  💬 OQ-A1: Question A1?",
         "  b.md:7  💬 OQ-B1: Question B1?",
       ].join("\n"),
     );
-    expect(stdout).not.toContain("Unrouted");
+    expect(stdout).not.toContain("Not on a roadmap");
+    // Nothing for an agent, so no pointer to --request.
+    expect(stdout).not.toContain("--request");
   });
 
   // ✅ questions await compaction rather than a ruling, so the page can say
@@ -204,7 +220,8 @@ describe("index, as text", () => {
     const head = [
       PLANNING_NOTICES.nothingNeedsYou,
       "",
-      "Needs you (1)",
+      "Needs you (1) · for the human",
+      PLANNING_SECTION_GUIDE["needs-you"].explanation,
       "  a.md:7  ✅ OQ-A1: Question A1?  (Roadmap)",
       "",
     ].join("\n");
@@ -226,6 +243,7 @@ describe("index, as JSON", () => {
       "root",
       "index",
       "sections",
+      "sectionGuide",
       "roadmaps",
     ]);
     expect(payload.tool).toBe("vantage-check");
@@ -314,7 +332,43 @@ describe("index, as JSON", () => {
     });
   });
 
-  it("lists Skipped and Could not read", async () => {
+  // The page's headings and explanation lines, for a consumer that renders
+  // the sections itself. A key of its own, so `sections` is untouched.
+  it("carries each section's title, explanation and actor, in page order", async () => {
+    const { payload } = await indexJson(fullTree());
+
+    expect(payload.sectionGuide).toEqual(
+      planningSectionGuide(payload.sections),
+    );
+    expect(
+      payload.sectionGuide.map(
+        (g: { id: string; key: string; title: string; actor: string }) => [
+          g.id,
+          g.key,
+          g.title,
+          g.actor,
+        ],
+      ),
+    ).toEqual([
+      ["needs-you", "needsYou", "Needs you", "you"],
+      ["unrouted", "unrouted", "Not on a roadmap", "agent"],
+      ["waiting", "waiting", "Blocked", "nobody"],
+      ["ready", "ready", "Ready to build", "agent"],
+      ["graduate", "graduate", "Ready to graduate", "agent"],
+      ["disagrees", "disagrees", "Stage conflict", "agent"],
+      ["skipped", "skipped", "Too large", "you"],
+      ["could-not-read", "unreadable", "Unreadable", "you"],
+    ]);
+    // Every `key` names a field `sections` holds.
+    for (const { key } of payload.sectionGuide) {
+      expect(payload.sections).toHaveProperty(key);
+    }
+    expect(payload.sectionGuide[1].explanation).toBe(
+      "Open questions no roadmap links to. An agent proposes where each goes; you confirm.",
+    );
+  });
+
+  it("lists Too large and Unreadable", async () => {
     const { payload } = await indexJson(fullTree());
 
     expect(payload.sections.skipped).toEqual([
@@ -391,7 +445,8 @@ const SEVERAL: Record<string, string> = {
 
 describe("index, with several roadmaps", () => {
   const unrouted = [
-    "Unrouted (2)",
+    "Not on a roadmap (2)",
+    PLANNING_SECTION_GUIDE.unrouted.explanation,
     "  docs/a.md:14  💬 OQ-A2: Question A2?",
     "  docs/c.md:8  💬 OQ-C1: Question C1?",
     "",
@@ -408,13 +463,16 @@ describe("index, with several roadmaps", () => {
         "",
         "Roadmaps (3)",
         "  roadmap.md  1 needs you  (chosen)",
-        "  docs/old/roadmap.md  does not route: has a stage with the done role",
+        "  docs/old/roadmap.md  ignored: has a stage with the done role",
         "  docs/plans/roadmap.md  2 need you",
         "",
-        "Needs you (1)",
+        "Needs you (1) · for the human",
+        PLANNING_SECTION_GUIDE["needs-you"].explanation,
         "  docs/a.md:8  💬 OQ-A1: Question A1?  (Now)",
         "",
         ...unrouted,
+        "Agent requests: vantage-check index --request",
+        "",
         "Roadmap: roadmap.md",
         "",
         "# Roadmap",
@@ -444,14 +502,17 @@ describe("index, with several roadmaps", () => {
       [
         "Roadmaps (3)",
         "  roadmap.md  1 needs you",
-        "  docs/old/roadmap.md  does not route: has a stage with the done role",
+        "  docs/old/roadmap.md  ignored: has a stage with the done role",
         "  docs/plans/roadmap.md  2 need you  (chosen)",
         "",
-        "Needs you (2)",
+        "Needs you (2) · for the human",
+        PLANNING_SECTION_GUIDE["needs-you"].explanation,
         "  docs/b.md:8  💬 OQ-B1: Question B1?  (Later)",
         "  docs/a.md:8  💬 OQ-A1: Question A1?  (Later)",
         "",
         ...unrouted,
+        "Agent requests: vantage-check index --request",
+        "",
         "Roadmap: docs/plans/roadmap.md",
         "",
         "# Plans",
@@ -522,7 +583,7 @@ describe("index, with several roadmaps", () => {
         roadmap: "docs/plans/roadmap.md",
       },
     ]);
-    // Routed by the plans roadmap, so not Unrouted under the root's.
+    // Routed by the plans roadmap, so not on Not on a roadmap under the root's.
     expect(payload.sections.unrouted.map((q: { id: string }) => q.id)).toEqual([
       "OQ-A2",
       "OQ-C1",
@@ -622,7 +683,7 @@ describe("index, with several roadmaps", () => {
     const { stdout } = await index(root);
     expect(stdout).not.toContain("Roadmaps (");
     expect(stdout).not.toContain("--roadmap");
-    expect(stdout.startsWith("Needs you (1)\n")).toBe(true);
+    expect(stdout.startsWith("Needs you (1) · for the human\n")).toBe(true);
   });
 
   it("reads a listed roadmap that exclude rules out, and no roadmap.md the list leaves out", async () => {
@@ -662,6 +723,150 @@ describe("index, with several roadmaps", () => {
   });
 });
 
+/** The request `--request` prints for the full tree, every agent section. */
+const FULL_REQUEST = (root: string) =>
+  [
+    `Repository: ${root}`,
+    "",
+    "Not on a roadmap (2): open questions no roadmap links to. For each, propose its place on roadmap.md, with a one-clause reason. Do not decide priority: show the proposals to the human, and edit a roadmap only once they confirm the order. An entry is a link to the question's #OQ- anchor, or to its document with no fragment, which places every question in it.",
+    "- docs/a.md:14  OQ-A2: Question A2?",
+    "- docs/e.md:8  OQ-E1: Question E1?",
+    "",
+    // docs/c.md waits on OQ-A2 (Blocked lists it too), so it is marked, and
+    // the agent is told to skip it rather than build ahead of a ruling.
+    "Ready to build (1): decided, with no open questions. Build each from its plan, then set its stage to BUILT. If one should not be built, ask the human, and only with their agreement retire it by setting its stage to RETIRED. Skip any entry marked blocked: it waits on something else first.",
+    "- docs/c.md  (stage DECIDED; blocked on docs/a.md#OQ-A2)",
+    "",
+    "Ready to graduate (1): built, with no questions left. For each, write a reference document of the system as built, where the repository keeps those: verify every claim against the code, and say what it covers and the commit it was verified at (if you use a system-doc skill, use it). Give it the stage the repository's other reference documents carry (one with the done role: RETIRED), or none. Then delete the design document and any plan written for it, repoint every link to them and citation of them, in documents, code comments and tests, at the new one, and keep every question id other documents cite resolvable.",
+    "- docs/d.md  (stage BUILT)",
+    "",
+    "Stage conflict (1): the stage says ready or built, but questions are open. For each, find which is wrong, from the document and the code. If the stage is wrong, set it to DESIGN. If a question is a follow-up, propose moving it to a new document. Rule and answer nothing: where a question looks settled, tell the human what you found and ask for a ruling.",
+    "- docs/e.md  (stage BUILT; open: OQ-E1)",
+    "",
+    "Verify: in the repository, run `vantage-check` on every Markdown file you changed, then `vantage-check index`.",
+    "",
+  ].join("\n");
+
+describe("index --request", () => {
+  it("prints the request for every agent section, and nothing else", async () => {
+    const root = fullTree();
+    const { code, stdout, stderr } = await index(root, "--request");
+
+    expect(code).toBe(EXIT_OK);
+    expect(stderr).toBe("");
+    expect(stdout).toBe(FULL_REQUEST(root));
+  });
+
+  // P7: the page's buttons copy `planningAgentRequest` over the index it
+  // built from the server's batch, with the repository's root path; this is
+  // the same function over the same batch, so the two texts are one.
+  it("prints exactly planningAgentRequest over the same tree, for any sections", async () => {
+    const root = fullTree();
+    const built = buildPlanningIndex(fullSources());
+    const sections = derivePlanningSections(built);
+    for (const ids of [
+      [],
+      ["graduate"],
+      ["disagrees", "unrouted"],
+      ["ready", "graduate"],
+    ] as const) {
+      const { stdout } = await index(root, "--request", ...ids);
+      const expected = planningAgentRequest(built, sections, {
+        repository: root,
+        ...(ids.length === 0 ? {} : { ids }),
+      });
+
+      expect(stdout).toBe(`${expected}\n`);
+    }
+  });
+
+  it("covers the sections asked for, in page order, whatever order they are asked in", async () => {
+    const root = fullTree();
+    const { stdout } = await index(root, "--request", "disagrees", "unrouted");
+
+    const heads = stdout
+      .split("\n")
+      .filter((line) => /^[A-Z][a-z].* \(\d+\): /.test(line))
+      .map((line) => line.slice(0, line.indexOf(":")));
+    expect(heads).toEqual(["Not on a roadmap (2)", "Stage conflict (1)"]);
+    expect(stdout.startsWith(`Repository: ${root}\n\n`)).toBe(true);
+    expect(stdout.endsWith("then `vantage-check index`.\n")).toBe(true);
+  });
+
+  it("leaves out an empty section, and prints nothing when every asked one is", async () => {
+    const root = makeTree({
+      ".git/HEAD": "",
+      ".vantage.toml": STAGES_TOML,
+      "roadmap.md": "# Roadmap\n\n- [A](a.md)\n",
+      "a.md": doc("status: draft\nstage: DESIGN", questions("A", OPEN)),
+      "b.md": doc("status: accepted\nstage: BUILT"),
+    });
+
+    const all = await index(root, "--request");
+    expect(all.code).toBe(EXIT_OK);
+    expect(all.stdout).toContain("Ready to graduate (1)");
+    expect(all.stdout).not.toContain("Not on a roadmap");
+    expect(all.stdout).not.toContain("Ready to build");
+
+    const none = await index(root, "--request", "ready", "disagrees");
+    expect(none.code).toBe(EXIT_OK);
+    expect(none.stdout).toBe("");
+    expect(none.stderr).toBe(
+      "vantage-check: nothing to ask an agent: Ready to build and Stage conflict have no entries\n",
+    );
+  });
+
+  it("asks where a question goes among every roadmap that is read", async () => {
+    const { stdout } = await index(makeTree(SEVERAL), "--request", "unrouted");
+
+    expect(stdout).toContain(
+      "For each, propose its place on one of the roadmaps (roadmap.md or docs/plans/roadmap.md), with a one-clause reason.",
+    );
+    expect(stdout).toContain(
+      [
+        "- docs/a.md:14  OQ-A2: Question A2?",
+        "- docs/c.md:8  OQ-C1: Question C1?",
+      ].join("\n"),
+    );
+    // The chosen roadmap changes Needs you, and nothing a request covers.
+    const chosen = await index(
+      makeTree(SEVERAL),
+      "--request",
+      "unrouted",
+      "--roadmap",
+      "docs/plans/roadmap.md",
+    );
+    expect(chosen.stdout.replace(/^Repository: .*\n/, "")).toBe(
+      stdout.replace(/^Repository: .*\n/, ""),
+    );
+  });
+
+  it("still refuses a --roadmap that names no roadmap", async () => {
+    const { code, stdout } = await index(
+      makeTree(SEVERAL),
+      "--request",
+      "--roadmap",
+      "docs/a.md",
+    );
+
+    expect(code).toBe(EXIT_USAGE);
+    expect(stdout).toBe("");
+  });
+
+  it("exits 3 past max-candidates, with nothing on stdout", async () => {
+    const root = makeTree({
+      ".vantage.toml": "[planning]\nmax-candidates = 1\n",
+      "a.md": doc("status: draft"),
+      "b.md": doc("status: draft"),
+    });
+    const { code, stdout, stderr } = await index(root, "--request");
+
+    expect(code).toBe(EXIT_ENVIRONMENT);
+    expect(stdout).toBe("");
+    expect(stderr).toBe(`vantage-check: ${PLANNING_NOTICES.refused(2, 1)}\n`);
+  });
+});
+
 describe("index past max-candidates", () => {
   const tree = (limit: number) => ({
     ".vantage.toml": `[planning]\nmax-candidates = ${limit}\n`,
@@ -693,6 +898,7 @@ describe("index past max-candidates", () => {
       unreadable: [],
     });
     expect(payload.sections).toBeNull();
+    expect(payload.sectionGuide).toBeNull();
     expect(payload.roadmaps).toBeNull();
   });
 
