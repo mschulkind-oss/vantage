@@ -39,6 +39,13 @@ export const PREFERENCE_KEYS = [
   "vantage:colorTheme",
   "vantage:tocOpen",
   "vantage:fullWidth",
+  /**
+   * Whether the planning page's question cards open unfolded: the page's
+   * Expand all / Collapse all, which every card rendered later opens with
+   * (`docs/reference/planning-index.md` §6.6). A display preference like
+   * full width, not planning state; absent, cards open folded.
+   */
+  "vantage:planningCardsExpanded",
   "vantage:sidebarCollapsed",
   /** The sidebar's width in px, as a decimal string. */
   "vantage:sidebarWidth",

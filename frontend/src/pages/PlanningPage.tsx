@@ -55,6 +55,8 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
   ClipboardCopy,
   Loader2,
   RefreshCw,
@@ -86,6 +88,7 @@ import { PlanningOutline } from "../components/PlanningOutline";
 import { PlanningPager, type PagerPlace } from "../components/PlanningPager";
 import {
   PlanningQuestionCard,
+  type CardFolds,
   type ScopedReport,
 } from "../components/PlanningQuestionCard";
 import { useWebSocket } from "../hooks/useWebSocket";
@@ -101,6 +104,7 @@ import { usePlanningReviews } from "../hooks/usePlanningReviews";
 import { scrollToAnchorElement } from "../lib/anchorScroll";
 import { copyTextOrWarn } from "../lib/clipboard";
 import { planningCardId } from "../lib/planningCardId";
+import { afterClampMeasures } from "../lib/planningCardParts";
 import {
   outlineTargetId,
   planningOutline,
@@ -507,6 +511,60 @@ const SectionBar: React.FC<{ layout: PlanningLayout }> = ({ layout }) => (
   </nav>
 );
 
+/**
+ * Expand all, or Collapse all: every question card on the page unfolded or
+ * folded, and every card rendered after it opened the same way — on another
+ * page, in another section, on the next visit — until it is pressed again
+ * (§6.6). It sits at the end of the section bar's line, the page's own line of
+ * controls over its cards, from the frame's first paint.
+ *
+ * `expanded` is what the last press here, or the page's opening, brought the
+ * cards on screen to, so the label names what a press does to them. A screen
+ * reader is told what a press did, since a button's new name is not read out.
+ */
+const CardsToggle: React.FC<{ expanded: boolean; onToggle: () => void }> = ({
+  expanded,
+  onToggle,
+}) => {
+  const [pressed, setPressed] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        data-planning-cards-toggle
+        onClick={() => {
+          setPressed(true);
+          onToggle();
+        }}
+        title={
+          expanded
+            ? "Fold every question to its first lines, and open the cards shown later folded"
+            : "Show every question in full, and open the cards shown later unfolded"
+        }
+        className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 print:hidden dark:text-slate-300 dark:hover:bg-slate-700"
+      >
+        {expanded ? (
+          <ChevronsDownUp size={14} aria-hidden="true" />
+        ) : (
+          <ChevronsUpDown size={14} aria-hidden="true" />
+        )}
+        {expanded ? "Collapse all" : "Expand all"}
+      </button>
+      <span
+        data-planning-cards-status
+        className="sr-only"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {pressed &&
+          (expanded
+            ? "Every question is shown in full."
+            : "Every question is folded to its first lines.")}
+      </span>
+    </>
+  );
+};
+
 /** Scroll to a section's heading, and give the heading the focus. */
 function bringSectionIntoView(id: SectionId): void {
   const heading = document.getElementById(id);
@@ -523,11 +581,25 @@ function bringSectionIntoView(id: SectionId): void {
 function bringTargetIntoView(id: string, scroller: HTMLElement | null): void {
   const el = document.getElementById(id);
   if (el === null) return;
-  scrollToAnchorElement(el, scroller);
+  landOn(el, scroller);
   const focusable = el.hasAttribute("tabindex")
     ? el
     : el.querySelector<HTMLElement>("a[href], button:not([disabled])");
   focusable?.focus({ preventScroll: true });
+}
+
+/**
+ * Scroll `el` to the top of the pane, as the contents column brings a heading
+ * (`scrollToAnchorElement`), and again once the cards committed with it have
+ * measured their folds (`afterClampMeasures`), still before the paint: until
+ * then each card above it that hides anything lacks the control at its cut,
+ * and Show less, so `el` would land lower than they leave it.
+ */
+function landOn(el: HTMLElement, scroller: HTMLElement | null): void {
+  scrollToAnchorElement(el, scroller);
+  afterClampMeasures(() => {
+    if (el.isConnected) scrollToAnchorElement(el, scroller);
+  });
 }
 
 /**
@@ -756,6 +828,25 @@ export const PlanningPage: React.FC = () => {
     () => setFullWidth((on) => !on),
     [setFullWidth],
   );
+  // Whether question cards open unfolded: a display preference of the page's
+  // own, kept like the two above. Each press brings every card on screen to
+  // it and forgets the folds the reader set card by card, which until then
+  // outlive a card's page being flipped away and back.
+  const [cardsExpanded, setCardsExpanded] = usePersistentFlag(
+    "vantage:planningCardsExpanded",
+  );
+  const [folds, setFolds] = useState<CardFolds>(() => new Map());
+  // What this tab last brought its cards on screen to: the preference as the
+  // page opened, then each press here. Another tab's press changes the
+  // preference, which the cards rendered later open with, and moves none on
+  // screen here, so the toggle goes on naming what a press does to them.
+  const [cardsBrought, setCardsBrought] = useState(cardsExpanded);
+  const toggleCards = useCallback(() => {
+    const next = !cardsBrought;
+    setCardsBrought(next);
+    setCardsExpanded(next);
+    setFolds(new Map());
+  }, [cardsBrought, setCardsExpanded]);
   // The column is drawn only where there is room for it, as the table of
   // contents is; where it is not, the roadmap picker stays above the section
   // bar, so there is always exactly one.
@@ -1160,7 +1251,8 @@ export const PlanningPage: React.FC = () => {
     if (scrollPositions.has(location.key)) return;
     const target = elementForFragment(location.hash.slice(1));
     if (target !== null && sectionsRef.current?.contains(target)) {
-      target.scrollIntoView?.({ block: "start" });
+      // Where the outline's own jump to it would land (`outlineHref`).
+      landOn(target, contentRef.current);
     }
   }, [sectionsIn, location.hash, location.key]);
 
@@ -1290,6 +1382,8 @@ export const PlanningPage: React.FC = () => {
         onFile={fileComment}
         cardKey={key}
         onScoped={reportScoped}
+        unfoldedByDefault={cardsExpanded}
+        folds={folds}
       />
     );
   };
@@ -1548,10 +1642,20 @@ export const PlanningPage: React.FC = () => {
                     key={
                       frameReady && frameLayout !== null ? "bar" : "progress"
                     }
-                    className="mb-6 flex min-h-7 items-center"
+                    className="mb-6 flex min-h-7 items-center gap-3"
                   >
                     {frameReady && frameLayout !== null ? (
-                      <SectionBar layout={frameLayout} />
+                      <>
+                        <SectionBar layout={frameLayout} />
+                        {frameLayout.sections.some(
+                          (s) => s.kind === "cards",
+                        ) && (
+                          <CardsToggle
+                            expanded={cardsBrought}
+                            onToggle={toggleCards}
+                          />
+                        )}
+                      </>
                     ) : (
                       <ProgressLine
                         progress={

@@ -643,7 +643,10 @@ full-width toggles, the breadcrumb with the page's name, and **Copy answers**.
   not drawn, and the keys that act on a document do nothing, so the shortcuts
   help (`?`) leaves them out.
 - The two toggles are the viewer's own preferences, so the page stores nothing
-  new. Cards keep a reading width, and full width widens them to the pane.
+  new for them. Cards keep a reading width, and full width widens them to the
+  pane. The page's one preference of its own, **Expand all** / **Collapse all**
+  ([§6.6](#66-question-cards)), is a display preference of the same kind, kept
+  the same way.
 - The pane is what scrolls, so the page's saved and restored scroll position is
   the pane's, and a page opened with the focus on nothing gives the pane the
   focus, without scrolling it, so the browser's scrolling keys work.
@@ -705,7 +708,9 @@ and it commits inside the transition at once.
   opened on one scrolls to that section once the sections render, unless the visit
   restores a scroll position of its own. The counts come from the index, never
   from rendering, so they are exact at first paint, and every count is written in
-  one format, `1,200`, in the bar, the headings and the pagers alike.
+  one format, `1,200`, in the bar, the headings and the pagers alike. At the end
+  of the bar's line, whenever a section holds question cards, is **Expand all**
+  or **Collapse all** ([§6.6](#66-question-cards)), drawn with the bar.
 - Once sections are on screen, the roadmap line, the bar and the notices are drawn
   from the index those sections were laid out from, so an index update changes
   them in the commit that changes the sections.
@@ -809,11 +814,32 @@ Each question appears as a card:
   `LEANING_MARKER`, the one marker every reader of a leaning uses — is a block of
   its own; a filled-in `**Answer:**` is shown whole and an empty one not at all;
   the badges on links inside it are drawn muted. The rest is cut to a few lines
-  behind **Show full question**, which unfolds it all. Every word shown is the
-  document's, and what is not shown is hidden, not removed, so an answer's anchor
-  reads the question as its document has it. The layout is decided before the card
-  paints, and Show full question has a fixed-width slot whether or not it is
-  offered, so nothing moves afterwards.
+  while the card is folded (below). Every word shown is the document's, and what
+  is not shown is hidden, not removed, so an answer's anchor reads the question as
+  its document has it. The layout, and the fold the card opens with, are decided
+  before the card paints, so nothing moves afterwards.
+- **Its fold.** A folded card that hides anything — its first block runs past its
+  lines, or blocks after it are folded away — fades its last shown line, which is
+  the **cut** *(coined here)*: the end of that first block, where the reader sees
+  the question stop. **Show full question** sits directly under it, in an element
+  the card keeps at the cut inside the rendered question and that no anchor or
+  hash reads (`REVIEW_UI_SELECTOR`); unfolded, the card offers **Show less** after
+  the question instead. A question that fits its lines shows neither, and keeps
+  no room for them. The fade is a mask over the text, so it dissolves into
+  whatever the card is drawn on in every theme; in forced colors (Windows High
+  Contrast) there is none, since it would dim the reader's own contrast. Both
+  controls are buttons with `aria-expanded` and `aria-controls`, described by the
+  card's headline, which tells one card's apart from another's in a list of the
+  page's buttons. Pressing one keeps the card's top where it was on screen, unless
+  folding would leave the whole card above the pane, when its top comes into view,
+  and gives the focus the control had to what the press revealed: unfolding, the
+  question itself, focusable for as long as it holds the focus, so reading goes on
+  into the text it showed; folding, Show full question at the cut. Either is
+  brought into the pane if the fold left it out — Show less, at the end of a long
+  question with the card's top kept, would often be below it. A link in the cut-off
+  lines that the reader tabs to unfolds the card, and nothing scrolls the folded
+  block itself, so a folded card always opens on the start of its question. Paper
+  prints every card unfolded, with no fade and no controls.
 - **Its document,** by name, with that document's badge.
 - **Its controls, which follow its state.** An open question offers **Take this
   leaning** (only when an `oq` declared it and states a leaning), **Answer…** and
@@ -833,6 +859,21 @@ Each question appears as a card:
   question's `id=`, or `L` and its unit's first line when it has none
   (`planningCardId`). A question appears on the page at most once, so the id is
   unique.
+
+**Expand all / Collapse all**, at the end of the section bar's line, unfolds or
+folds every card on the page and sets how every card rendered later opens — on
+another page, in another section, on the next visit. It is a display preference
+like full width, not planning state: remembered under
+`vantage:planningCardsExpanded` and followed across tabs, where another tab's
+choice opens the cards rendered later its way and moves none on screen. Its label
+names what a press does to the cards on screen, which the page's opening or this
+tab's last press brought them to, so another tab's choice changes neither them
+nor the label, and the first press here after it does what it says. A press is
+announced to a screen reader, which does not read out a button's new name. A card
+the reader folds or unfolds keeps that fold for the visit, across a flip away and
+back, until the next press, which brings every card to the page's; with every card
+unfolded by hand, Expand all still reads Expand all, and its press sets the
+default and moves nothing.
 
 **A preview card**, for a question whose card block is over the card limit, shows
 its document's name and badge, the question's marker, title, state and leaning,
@@ -977,7 +1018,11 @@ paints with the section bar and changes when it does
   the folder under it, and how many of its questions the section holds, or under
   *Disagrees* how many are open. Clicking one flips its section to the page
   holding the document's first entry, with no history entry, then scrolls to that
-  entry and focuses it. The count wraps under the name rather than take its width:
+  entry, 16 px below the pane's top as the contents column brings a heading
+  (`ANCHOR_MARGIN`), and focuses it. The cards a flip puts above the entry draw
+  the fold controls at their cuts in a pass of their own, after the page's
+  (`afterClampMeasures`), so the scroll is made again once they have, before
+  anything paints. The count wraps under the name rather than take its width:
   the file name wins (S6).
 - **It follows the scroll.** The section being read, and the document whose entry
   is at the top of the pane, are marked; scrolled to the end, the last entry on
@@ -985,8 +1030,8 @@ paints with the section bar and changes when it does
 - **Every entry is a link.** A document's names its page and its entry as the
   fragment, as `?unrouted=2#pq-plans%2Fb.md--L12`; a row's id is `pr-`, its
   section, `--`, and its path encoded. A page opened on such a link scrolls to that
-  entry once its sections are in, and so does one whose query the page rewrites
-  as it opens: the rewrite keeps the fragment.
+  entry once its sections are in, where the click would have, and so does one
+  whose query the page rewrites as it opens: the rewrite keeps the fragment.
 - **The roadmap picker** stands at its head when two or more roadmaps route, its
   path and count whole, wrapping in the column's width. On a narrow screen, where
   the column is not drawn, it stays on its line. Nothing of the column is drawn
@@ -1748,7 +1793,8 @@ by number.
 | Comments filed before the visit | cards | ready at first paint, through the gate |
 | Comments past the reviews deadline | cards | a fixed-width *N comments* count in the card's control row, which is always there, expanding on click; nothing inline |
 | The planning outline's head: its label and the roadmap picker | planning page, contents column | drawn with the outline, in the commit that draws the section bar; the column's width is held by its empty frame meanwhile |
-| Whether a question runs past its folded lines | cards | measured before the card paints, and again when its width changes, all cards of a page in one pass of reads before any write; *Show full question* has a fixed-width slot, always there, and the cut is on from the first paint |
+| Whether a question runs past its folded lines | cards | measured before the card paints, and again when its size changes, which a reader's resize does, all cards of a page in one pass of reads before any write; the fade and *Show full question* at the cut are drawn in that pass, and the clamp is on from the first paint |
+| The fold a card opens with | cards | ready at first paint: the reader's own fold from earlier in the visit, else the remembered *Expand all* / *Collapse all*, read synchronously; another tab's change opens only the cards rendered after it |
 | The pending count | planning page header | a slot reserved for a few digits |
 | Mermaid in a card | cards | drawn before the commit; past its deadline, a fixed-height frame |
 | KaTeX and highlighting | cards | synchronous, so never late |
@@ -2207,6 +2253,8 @@ is the only place most of the numbers are stated.
 | Keyboard chord | `g p` | `useKeyboardShortcuts` |
 | Section URL parameters | `needs-you`, `unrouted`, `waiting`, `ready`, `graduate`, `disagrees`, `skipped`, `could-not-read`; `roadmap` | `SECTION_IDS` in `frontend/src/lib/planningPages.ts` |
 | Remembered roadmap | `localStorage` key `vantage:planningRoadmap:<repo>` | `PLANNING_ROADMAP_FAMILY` in `frontend/src/lib/preferences.ts` |
+| Cards open unfolded | `localStorage` key `vantage:planningCardsExpanded`, `"true"` or `"false"`; absent, folded | `PREFERENCE_KEYS` in `frontend/src/lib/preferences.ts` |
+| Lines a folded card shows | 3 | `CARD_CLAMP_LINES` in `frontend/src/lib/planningCardParts.ts` |
 | Card and row ids | `pq-<path>--<id or L<line>>`, `pr-<section>--<path>` | `planningCardId`, `planningOutline.ts` |
 | Badge and link attributes | `data-vantage-planning-badge`, `data-vantage-link-target`, `data-vantage-referenced-by` | `PLANNING_BADGE_ATTR`, `LINK_TARGET_ATTR`, `REFERENCED_BY_ATTR` |
 | Stream body cap | 1 KiB per `max-candidates`, never below 4 MiB | `bodyBytesPerCandidate`, `streamBodyFloor` in `internal/api` |
