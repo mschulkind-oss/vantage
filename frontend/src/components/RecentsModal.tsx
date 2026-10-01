@@ -23,7 +23,8 @@ import { isNewTabEnter, openInNewTab } from "../lib/navigation";
 
 /**
  * Which files the modal lists: the current project's (`r`) or every
- * project's (`Shift+R`). Nothing else about the modal differs between them.
+ * project's (`Shift+R`, and `r` on the project list, where no project is
+ * chosen). Nothing else about the modal differs between them.
  */
 export type RecentsScope = "project" | "all";
 
@@ -44,7 +45,9 @@ export const RecentsModal: React.FC<RecentsModalProps> = ({
   const project = useGitStore();
   const all = useAllRecentsStore();
   const { isMultiRepo, currentRepo } = useRepoStore();
-  const isAll = scope === "all";
+  // On the project list no project is chosen, so the current project's list
+  // would be empty: it lists every project's instead, as `t` searches them.
+  const isAll = scope === "all" || (isMultiRepo && !currentRepo);
 
   const recentFiles: RecentRow[] = isAll ? all.files : project.recentFiles;
   const isRecentLoading = isAll ? all.loading : project.isRecentLoading;
