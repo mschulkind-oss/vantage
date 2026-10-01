@@ -32,8 +32,12 @@ import {
   VANTAGE_TONES,
   hasVantageSentinel,
   isQuestionDirective,
-  questionDirectiveFor,
+  questionOffersTake,
   vantageOqStatus,
+  VANTAGE_LEANING_ATTRIBUTE,
+  VANTAGE_OQ_ATTRIBUTE,
+  VANTAGE_QUESTION_ATTRIBUTE,
+  VANTAGE_QUESTION_SELECTOR,
   parseVantageDirective,
   renderMarkdown,
   STYLE_GUIDE,
@@ -247,7 +251,7 @@ describe("the closed vocabulary", () => {
     expect([...VANTAGE_RUNS]).toEqual(["start", "middle", "end", "only"]);
   });
 
-  it("gives `section` and `block` the same keys, and `oq` free text", () => {
+  it("gives `section` and `block` the same keys, and both question names free text", () => {
     // They differ in extent, not in what they can say.
     expect(Object.keys(DIRECTIVE_VOCABULARY.section ?? {})).toEqual(
       Object.keys(DIRECTIVE_VOCABULARY.block ?? {}),
@@ -258,21 +262,30 @@ describe("the closed vocabulary", () => {
     expect(DIRECTIVE_VOCABULARY.oq).toEqual({ id: null, leaning: null });
     // Withholding a block is the whole of what `fallback` says.
     expect(DIRECTIVE_VOCABULARY.fallback).toEqual({});
-    // A `question` offers no control, so it has no comment body to carry.
-    expect(DIRECTIVE_VOCABULARY.question).toEqual({ id: null });
+    // `question` takes exactly `oq`'s keys: it replaces `oq`, in every state.
+    expect(DIRECTIVE_VOCABULARY.question).toEqual(DIRECTIVE_VOCABULARY.oq);
   });
 
-  it("names the two question directives, and which state takes which", () => {
+  it("names the two question directives, and offers a take by state alone", () => {
     expect([...VANTAGE_QUESTION_NAMES]).toEqual(["oq", "question"]);
     expect(DIRECTIVE_NAMES.filter(isQuestionDirective)).toEqual([
       ...VANTAGE_QUESTION_NAMES,
     ]);
-    // `oq` means "answer this in one click" to every viewer that has shipped,
-    // so it is the open question's name alone.
-    expect(questionDirectiveFor("open")).toBe("oq");
-    expect(questionDirectiveFor(null)).toBe("oq");
-    expect(questionDirectiveFor("blocked")).toBe("question");
-    expect(questionDirectiveFor("settled")).toBe("question");
+    // Open, or unmarked, which counts as open; never 🔒 or ✅, whatever the
+    // directive's name.
+    expect(questionOffersTake("open")).toBe(true);
+    expect(questionOffersTake(null)).toBe(true);
+    expect(questionOffersTake("blocked")).toBe(false);
+    expect(questionOffersTake("settled")).toBe(false);
+  });
+
+  it("names the attributes a question is found by in the rendered page", () => {
+    // The contract the viewer reads, and the one a reader of this package's
+    // markup has: every question, the `oq` ones, and the leaning.
+    expect(VANTAGE_QUESTION_ATTRIBUTE).toBe("data-vantage-question");
+    expect(VANTAGE_QUESTION_SELECTOR).toBe("[data-vantage-question]");
+    expect(VANTAGE_OQ_ATTRIBUTE).toBe("data-vantage-oq");
+    expect(VANTAGE_LEANING_ATTRIBUTE).toBe("data-vantage-leaning");
   });
 });
 
@@ -324,7 +337,7 @@ describe("target resolution", () => {
     expect(prose(markup)).toBe("Some prose more prose");
   });
 
-  it("resolves inside a list item, which is where an `oq` directive lives", async () => {
+  it("resolves inside a list item, which is where a question directive lives", async () => {
     // The design's own example puts the comment at column 0 between two list
     // items; measured, that splits one `<ol>` into two and visibly renumbers
     // the document, so the working form indents it inside the item. That is
@@ -333,7 +346,7 @@ describe("target resolution", () => {
       [
         "1. **OQ-B1: does the daemon retry?**",
         "",
-        '   <!-- vantage: oq id=OQ-B1 leaning="Back of the queue" -->',
+        '   <!-- vantage: question id=OQ-B1 leaning="Back of the queue" -->',
         "",
         "   _Leaning:_ back of the queue.",
         "",
@@ -344,7 +357,7 @@ describe("target resolution", () => {
     expect(host.querySelectorAll("ol")).toHaveLength(1);
     const target = host.querySelectorAll("li")[0].querySelectorAll("p")[1];
     expect(stamped(target)).toEqual({
-      "data-vantage-oq": "true",
+      "data-vantage-question": "true",
       "data-vantage-leaning": "Back of the queue",
     });
     // The stamped block is still an anchorable block with a line number.
@@ -781,7 +794,7 @@ describe("merging", () => {
     const host = await render(
       [
         "<!-- vantage: section tone=note -->",
-        '<!-- vantage: oq leaning="Ship it" -->',
+        '<!-- vantage: question leaning="Ship it" -->',
         "",
         "## Question",
         "",
@@ -792,10 +805,10 @@ describe("merging", () => {
     expect(stamped(host.querySelector("h2"))).toEqual({
       "data-vantage-tone": "note",
       "data-vantage-run": "start",
-      "data-vantage-oq": "true",
+      "data-vantage-question": "true",
       "data-vantage-leaning": "Ship it",
     });
-    // `oq` marks one answerable question, so it does not follow the section.
+    // A question marks one block, so it does not follow the section.
     expect(stamped(host.querySelector("p"))).toEqual({
       "data-vantage-tone": "note",
       "data-vantage-run": "end",
@@ -1093,6 +1106,10 @@ describe("unknown is inert (P3/D2)", () => {
   });
 });
 
+/**
+ * `oq` — the name `question` replaces, deprecated and never removed. It renders
+ * as it has since 0.7, and now carries the question stamp beside its own.
+ */
 describe("the `oq` directive", () => {
   it("marks the block with the string `true`, never a bare attribute", async () => {
     // `rehype-stringify` emits a bare `data-vantage-oq` for the boolean `true`
@@ -1103,6 +1120,8 @@ describe("the `oq` directive", () => {
 
     expect(markup).toContain('data-vantage-oq="true"');
     expect(markup).not.toMatch(/data-vantage-oq[ >]/);
+    expect(markup).toContain('data-vantage-question="true"');
+    expect(markup).not.toMatch(/data-vantage-question[ >]/);
   });
 
   it("collapses the whitespace of a wrapped leaning", async () => {
@@ -1139,6 +1158,7 @@ describe("the `oq` directive", () => {
 
     expect(stamped(host.querySelector("p"))).toEqual({
       "data-vantage-oq": "true",
+      "data-vantage-question": "true",
     });
   });
 
@@ -1171,45 +1191,83 @@ describe("the `oq` directive", () => {
 });
 
 /**
- * `question` — a 🔒 blocked or ✅ answered question. It anchors and counts as an
- * `oq` does and carries no control, so it stamps an attribute of its own: every
- * reader of `[data-vantage-oq]` keeps reading "a question to answer".
+ * `question` — a question in any state. It stamps `data-vantage-question`, the
+ * attribute every question carries, and its leaning; `data-vantage-oq` stays
+ * what it has meant since 0.7, "declared with `oq`".
  */
 describe("the `question` directive", () => {
-  it("anchors its block and stamps no answerable question", async () => {
-    const markup = await html("<!-- vantage: question id=OQ-9 -->\n\nBody.\n");
-
-    expect(markup).toContain('data-vantage-question="true"');
-    expect(markup).toContain('id="OQ-9"');
-    expect(markup).not.toContain("data-vantage-oq");
-  });
-
-  it("drops a `leaning`, which only an `oq` carries", async () => {
+  it("anchors its block and carries its leaning, with no `oq` stamp", async () => {
     const host = await render(
       '<!-- vantage: question id=OQ-9 leaning="Yes." -->\n\nBody.\n',
     );
 
     expect(stamped(host.querySelector("p"))).toEqual({
       "data-vantage-question": "true",
+      "data-vantage-leaning": "Yes.",
     });
     expect(host.querySelector("p")?.id).toBe("OQ-9");
   });
 
-  it("gives way to an `oq` anywhere in the same run", async () => {
+  it("stamps a 🔒 or ✅ question exactly as an open one: the state is the marker's", async () => {
+    for (const marker of ["\u{1F512} ", "✅ ", "\u{1F4AC} ", ""]) {
+      const host = await render(
+        `<!-- vantage: question id=OQ-9 leaning="Yes." -->\n\n${marker}Body.\n`,
+      );
+      expect(stamped(host.querySelector("p")), marker).toEqual({
+        "data-vantage-question": "true",
+        "data-vantage-leaning": "Yes.",
+      });
+    }
+  });
+
+  it("is one question with an `oq` in the same run, read as a viewer before `question` reads it: the `oq` alone", async () => {
     // One run is one question, and a viewer that predates `question` drops it
-    // and reads the `oq`. So the run is an answerable question to every viewer,
-    // whichever comes first, and the two names' keys merge.
+    // and reads the `oq` alone. So the run carries the `oq` stamp and the
+    // `oq`'s keys, whichever comes first, and none of the `question`'s: the
+    // same bytes stamp the same leaning and the same anchor in 0.7 and 0.8.
     for (const run of [
-      '<!-- vantage: question id=OQ-9 -->\n<!-- vantage: oq leaning="Yes." -->',
-      '<!-- vantage: oq leaning="Yes." -->\n<!-- vantage: question id=OQ-9 -->',
+      '<!-- vantage: question id=OQ-9 leaning="Q." -->\n<!-- vantage: oq leaning="O." -->',
+      '<!-- vantage: oq leaning="O." -->\n<!-- vantage: question id=OQ-9 leaning="Q." -->',
     ]) {
       const host = await render(`${run}\n\nBody.\n`);
       expect(stamped(host.querySelector("p")), run).toEqual({
         "data-vantage-oq": "true",
-        "data-vantage-leaning": "Yes.",
+        "data-vantage-question": "true",
+        "data-vantage-leaning": "O.",
       });
-      expect(host.querySelector("p")?.id, run).toBe("OQ-9");
+      expect(host.querySelector("p")?.id, run).toBe("");
     }
+    const host = await render(
+      '<!-- vantage: question leaning="Q." -->\n<!-- vantage: oq id=OQ-9 -->\n\nBody.\n',
+    );
+    expect(stamped(host.querySelector("p"))).toEqual({
+      "data-vantage-oq": "true",
+      "data-vantage-question": "true",
+    });
+    expect(host.querySelector("p")?.id).toBe("OQ-9");
+  });
+
+  it("finds every question by one selector, under either name", async () => {
+    const host = await render(
+      [
+        "<!-- vantage: oq id=OQ-1 -->",
+        "",
+        "One.",
+        "",
+        "<!-- vantage: question id=OQ-2 -->",
+        "",
+        "Two.",
+        "",
+      ].join("\n"),
+    );
+    expect(
+      [...host.querySelectorAll(VANTAGE_QUESTION_SELECTOR)].map((el) => el.id),
+    ).toEqual(["OQ-1", "OQ-2"]);
+    expect(
+      [...host.querySelectorAll(`[${VANTAGE_OQ_ATTRIBUTE}]`)].map(
+        (el) => el.id,
+      ),
+    ).toEqual(["OQ-1"]);
   });
 
   it("lands only where an `oq` would", async () => {
@@ -1909,6 +1967,7 @@ describe("the sanitizer is the second gate", () => {
       "data-vantage-badge": "wip",
       "data-vantage-run": "start",
       "data-vantage-oq": "true",
+      "data-vantage-question": "true",
       "data-vantage-leaning": "Take it",
     });
   });

@@ -9,7 +9,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { questionDirectiveFor, vantageOqStatus } from "vantage-md";
+import { questionOffersTake, vantageOqStatus } from "vantage-md";
 import {
   DEFAULT_PLANNING_CONFIG,
   buildPlanningIndex,
@@ -41,22 +41,18 @@ export function readRepoFile(rel: string): string {
 }
 
 /**
- * The directive a question marked `marker` is declared with, as the convention
- * writes it: an open or unmarked question's `oq`, restating `leaning` when it
- * has one, and a 🔒 or ✅ one's `question`, which takes none
- * (`questionDirectiveFor`).
+ * A directive for a question marked `marker`: `question`, the one name for a
+ * question in every state, restating `leaning` on an open or unmarked one. A
+ * 🔒 or ✅ one gets none, which nothing would offer to take.
  */
 export function questionDirective(
   marker: string,
   id: string,
   leaning: string | null = null,
 ): string {
-  if (questionDirectiveFor(vantageOqStatus(marker)) === "question") {
-    return `<!-- vantage: question id=${id} -->`;
-  }
-  return leaning === null
-    ? `<!-- vantage: oq id=${id} -->`
-    : `<!-- vantage: oq id=${id} leaning="${leaning}" -->`;
+  return leaning === null || !questionOffersTake(vantageOqStatus(marker))
+    ? `<!-- vantage: question id=${id} -->`
+    : `<!-- vantage: question id=${id} leaning="${leaning}" -->`;
 }
 
 /** A shared planning fixture from `internal/repoconfig/testdata/`. */

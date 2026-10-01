@@ -66,7 +66,7 @@ Two switches change what these pages are showing you:
 | [Badges and chips](./badges-and-chips.md) | all five `badge` tokens, every heading level, the frontmatter status chip | does the chip stay legible small and stay a chip when large? |
 | [Sections and the run](./sections.md) | one toned section across nine block types; adjacent runs; the unstampable hole | is the stripe continuous, and does it stop where the section stops? |
 | [Collapse](./collapse.md) | `collapsed=true`, nesting, the caret, the three gates | does the caret work by keyboard, and does everything print open? |
-| [Open questions](./open-questions.md) | `oq`, the one-click button, where it will not appear, and `question` | one affirmative button per open question, none on a blocked or answered one, and nothing when review mode is off? |
+| [Open questions](./open-questions.md) | `question`, the one-click button, where it will not appear, and `oq`, the name `question` replaces | one affirmative button per open question, none on a blocked or answered one, and nothing when review mode is off? |
 | [Status at a glance](./status.md) | task lists, badges and chips together, in the shapes a roadmap uses | can you tell what still needs you *without reading*? |
 | [Inline SVG](./inline-svg.md) | a night scene, a chart, an icon in a sentence and a drawing in a toned section, in both themes and in print, each with a `fallback` block | did every shape the source draws reach the page, does it read in both themes, and is every fallback block withheld? |
 
@@ -196,7 +196,7 @@ that stops attaching to anything, fails a commit instead of quietly becoming a
 specimen of nothing.
 
 The flip side: **every directive in these files has to be valid.** The
-interesting invalid cases — an unknown token, an `oq` above a list, a directive
+interesting invalid cases — an unknown token, a question directive above a list, a directive
 with nothing after it — are described in prose and in fenced examples rather
 than written live, because writing them live would fail the gate. Point
 `vantage-check` at a scratch file to see those.

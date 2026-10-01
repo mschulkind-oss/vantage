@@ -22,5 +22,9 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["vite.config.ts", "src/planningScan/scannerId.ts"]
+  "include": [
+    "vite.config.ts",
+    "src/planningScan/scannerId.ts",
+    "src/lib/viewerRelease.ts"
+  ]
 }

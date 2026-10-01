@@ -80,6 +80,26 @@ describe("vantage/frontmatter-value", () => {
       expect(findings[0]?.detail).toContain(status);
     }
   });
+
+  it("gives the two branches every unknown value gets: a typo, or a newer Vantage's", async () => {
+    // docs/design/checker-version-skew.md §6.2: these strings are frozen into
+    // 0.8.0's checker, and a value a later release adds must not read as one
+    // to delete.
+    const findings = await findingsFor("vantage:", "  status-chip: archived");
+
+    expect(findings.map((f) => f.rule)).toEqual(["vantage/frontmatter-value"]);
+    expect(findings[0]?.detail).toContain(
+      "If `archived` is a typo, fix it. If it comes from a newer Vantage, don't remove it",
+    );
+  });
+
+  it("keeps the branches to a value a later release could add", async () => {
+    // A list is a shape, not a value from a closed set: no release adds one.
+    const findings = await findingsFor("vantage:", "  status-chip: [draft]");
+
+    expect(findings.map((f) => f.rule)).toEqual(["vantage/frontmatter-value"]);
+    expect(findings[0]?.detail).not.toContain("newer Vantage");
+  });
 });
 
 describe("vantage/status-chip-stale", () => {

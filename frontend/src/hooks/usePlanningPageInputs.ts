@@ -5,9 +5,12 @@
  * - **Their card blocks**, from the scanner client, which cut them in the scan
  *   and keeps them in the scan cache. A preview card's block is not asked for.
  * - **The reviews of the documents their cards and rows belong to**, in one
- *   `POST …/planning/reviews` (`usePlanningReviews.ts`). The sections wait
- *   for them at most `reviewsDeadlineMs`; comments that come later go only
- *   into each card's reserved count.
+ *   `POST …/planning/reviews` (`usePlanningReviews.ts`), with those of every
+ *   listed document holding a question that needs the human, on any page
+ *   and under any roadmap, since a comment there answers it and takes it off
+ *   the need-you numbers the sections paint with (`needYouDocuments`). The
+ *   sections wait for them at most `reviewsDeadlineMs`; comments that come
+ *   later go only into each card's reserved count.
  * - **Every Mermaid diagram in those blocks**, drawn into the viewer's SVG
  *   cache, so it is at its full size when its card mounts. The sections wait
  *   at most `mermaidDeadlineMs` after the blocks; a diagram drawn later draws
@@ -40,6 +43,7 @@ import { mermaidFences, prerenderMermaid } from "vantage-md/react";
 import {
   chooseRoadmap,
   layoutPlanningPage,
+  listedQuestions,
   readRememberedRoadmap,
   sectionsOf,
   type PageRequest,
@@ -185,6 +189,25 @@ function needsOf(layout: PlanningLayout, hashes: ReadyLoad["hashes"]) {
 }
 
 /**
+ * The listed documents holding a question that needs the human — open, or
+ * answered and awaiting compaction — under the layout's roadmap: every
+ * document whose comments can take a question off the page's need-you
+ * numbers (`lib/planningAnswers.ts`), whichever page or roadmap lists it.
+ */
+export function needYouDocuments(
+  index: PlanningIndex,
+  roadmap: string | null,
+): string[] {
+  const paths = new Set<string>();
+  for (const question of listedQuestions(index, sectionsOf(index, roadmap))) {
+    if (question.state === "open" || question.state === "answered") {
+      paths.add(question.path);
+    }
+  }
+  return [...paths].sort();
+}
+
+/**
  * Whether the repository's index moves on from `version` within `ms`: the
  * refresh a stale block asked for has landed.
  */
@@ -232,9 +255,14 @@ async function gather(
 ): Promise<PageInputs | null> {
   const { wants, unhashed, documents } = needsOf(layout, ready.hashes);
 
-  // The reviews are asked for at once, and waited for at most their deadline.
+  // The reviews are asked for at once, and waited for at most their deadline:
+  // the shown documents', and every one whose comments the need-you numbers
+  // read, so that a cold visit paints them right.
   let reviewsFailed = false;
-  const reviews = fetchPlanningReviews(repo, documents).then(
+  const reviews = fetchPlanningReviews(repo, [
+    ...documents,
+    ...needYouDocuments(ready.index, layout.roadmap),
+  ]).then(
     (ok) => {
       reviewsFailed = !ok;
     },

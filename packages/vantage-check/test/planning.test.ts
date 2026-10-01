@@ -13,10 +13,7 @@ import { RULES, ruleMeta } from "../src/rules/registry.js";
 import { PLANNING_RULES } from "../src/rules/planning.js";
 import { QUESTION_WORDS_DEFAULT } from "../src/rules/questionLength.js";
 import type { PlanningSections } from "../../vantage-md/src/planning/index.js";
-import {
-  questionDirectiveFor,
-  vantageOqStatus,
-} from "../../vantage-md/src/vantageDirectives.js";
+import { QUESTION_SHAPE } from "../../vantage-md/src/planning/leaning.js";
 import { makeTree } from "./helpers.js";
 import {
   ANSWERED,
@@ -597,9 +594,7 @@ describe("planning/question-length", () => {
       "",
       `   ${prose(words - 3)}`,
       "",
-      questionDirectiveFor(vantageOqStatus(marker)) === "oq"
-        ? `   <!-- vantage: oq id=${id} leaning="The last." -->`
-        : `   <!-- vantage: question id=${id} -->`,
+      `   <!-- vantage: question id=${id} leaning="The last." -->`,
       "",
       `   _Leaning:_ ${prose(leaning)}`,
       "",
@@ -656,7 +651,7 @@ describe("planning/question-length", () => {
   // a finding ran to a line of a thousand characters and more.
   it("names a question with no id or bold title by its first 100 characters", async () => {
     const body = [
-      '<!-- vantage: oq leaning="A paragraph." -->',
+      '<!-- vantage: question leaning="A paragraph." -->',
       "",
       `A question written as a plain paragraph with no id, ${prose(150)}.`,
       "",
@@ -672,7 +667,9 @@ describe("planning/question-length", () => {
     ).toBe(true);
     expect(name![1]!.endsWith("…")).toBe(true);
     expect(Number(name![2])).toBeGreaterThan(150);
-    expect(message!.length).toBeLessThan(600);
+    // The shape every such finding quotes aside, the message stays a line.
+    expect(message).toContain(QUESTION_SHAPE);
+    expect(message!.replace(QUESTION_SHAPE, "").length).toBeLessThan(700);
   });
 
   it("measures every state a card is shown for", async () => {

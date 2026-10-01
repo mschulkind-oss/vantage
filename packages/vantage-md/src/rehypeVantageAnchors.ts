@@ -16,10 +16,9 @@
  * acquiring a heading slug. Where both could apply, the Open Question id wins.
  *
  * The data attribute is removed on the way through. Nothing downstream reads
- * it — the review button finds its block by `[data-vantage-oq]`, and the
- * contents column finds every question by that or `[data-vantage-question]` —
- * and leaving a second copy of the id in the markup invites a future reader to
- * use the wrong one.
+ * it — every reader finds a question by `[data-vantage-question]`
+ * (`VANTAGE_QUESTION_SELECTOR`) — and leaving a second copy of the id in the
+ * markup invites a future reader to use the wrong one.
  *
  * Architecture and invariants: docs/reference/linked-references.md
  */

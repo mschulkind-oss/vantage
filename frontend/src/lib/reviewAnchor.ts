@@ -274,6 +274,34 @@ export function findHashNeighbor(
 }
 
 /**
+ * The block an anchor resolves to, as the highlighter resolves it: the block
+ * at its line when the hash agrees, else a block with its hash within
+ * `NEIGHBOR_RADIUS` lines, else the block at its line anyway. `null` without
+ * an anchor, or with no block at its line and none near it with its hash.
+ *
+ * Shared by the two passes that ask which Open Question a comment is on — the
+ * in-page row and the planning card — so they place a comment alike.
+ */
+export function resolveCommentBlock(
+  index: BlockIndex,
+  anchor: CommentAnchor | null | undefined,
+): HTMLElement | null {
+  if (!anchor) return null;
+  const atLine = blockAtLine(index, anchor.source_line, anchor.block_text_hash);
+  if (atLine?.getAttribute("data-block-hash") === anchor.block_text_hash) {
+    return atLine;
+  }
+  return (
+    findHashNeighbor(
+      index,
+      anchor.block_text_hash,
+      anchor.source_line,
+      NEIGHBOR_RADIUS,
+    ) ?? atLine
+  );
+}
+
+/**
  * The whole-block anchor for `block`, identical in shape to what a click on it
  * in review mode produces — `MarkdownViewer`'s `buildCapturedSelection` with no
  * selection: offset 0, length 0, and the canonicalized block text as the

@@ -90,36 +90,56 @@ function textOf(node: Nodes): string {
 }
 
 /**
- * The node a question's card is about: its unit, the list item or footnote
- * that holds it, or the block that hosts it when nothing does. The scan gives
- * the unit's first and last lines, and the outermost block of a unit's kind
- * spanning exactly those lines is it.
+ * The blocks of a question's unit, as its card shows them: the children of
+ * the list item or footnote that holds it; or, outside one, the block that
+ * hosts it — a quote's own blocks, for a quote — and the blocks after it in
+ * its parent that the unit runs over. The scan gives the unit's first and
+ * last lines: the outermost block of a unit's kind spanning exactly those
+ * lines is a unit of one node, and otherwise the unit is the run of siblings
+ * from the one starting on the first line to the one ending on the last.
  */
-function unitOf(
+function unitBlocks(
   root: Root,
   question: Pick<PlanningQuestion, "unitLine" | "unitEndLine">,
   bodyLineOffset: number,
-): Nodes | undefined {
+): Nodes[] | undefined {
   const from = question.unitLine - bodyLineOffset;
   const to = question.unitEndLine - bodyLineOffset;
-  const find = (node: Nodes): Nodes | undefined => {
+  const inside = (node: Nodes): Nodes[] =>
+    node.type === "paragraph" || node.type === "heading"
+      ? [node]
+      : ((node as { children?: Nodes[] }).children ?? []);
+  const find = (node: Nodes): Nodes[] | undefined => {
     const start = node.position?.start.line;
     const end = node.position?.end.line;
     if (start === undefined || end === undefined) return undefined;
     if (start > to || end < from) return undefined;
-    if (start === from && end === to && UNIT_TYPES.has(node.type)) return node;
+    if (start === from && end === to && UNIT_TYPES.has(node.type)) {
+      return inside(node);
+    }
     if (!("children" in node)) return undefined;
-    for (const child of node.children as Nodes[]) {
+    const children = node.children as Nodes[];
+    for (const child of children) {
       const found = find(child);
       if (found !== undefined) return found;
     }
-    return undefined;
+    // A unit of several blocks: the host, starting on the first line, and
+    // its later siblings up to the one ending on the last.
+    const at = children.findIndex(
+      (child) =>
+        child.position?.start.line === from && UNIT_TYPES.has(child.type),
+    );
+    const last = children.findIndex(
+      (child, i) => i > at && child.position?.end.line === to,
+    );
+    if (at === -1 || last === -1) return undefined;
+    const host = children[at]!;
+    return [
+      ...(host.type === "blockquote" ? inside(host) : [host]),
+      ...children.slice(at + 1, last + 1),
+    ];
   };
-  for (const child of root.children) {
-    const found = find(child);
-    if (found !== undefined) return found;
-  }
-  return undefined;
+  return find(root);
 }
 
 /**
@@ -145,12 +165,8 @@ export function questionWords(
   question: Pick<PlanningQuestion, "unitLine" | "unitEndLine">,
   bodyLineOffset: number,
 ): number | null {
-  const unit = unitOf(root, question, bodyLineOffset);
-  if (unit === undefined) return null;
-  const blocks =
-    unit.type === "paragraph" || unit.type === "heading"
-      ? [unit]
-      : ((unit as { children: Nodes[] }).children ?? []);
+  const blocks = unitBlocks(root, question, bodyLineOffset);
+  if (blocks === undefined) return null;
   let text = "";
   for (const block of blocks) {
     if (block.type === "paragraph") {

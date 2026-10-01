@@ -44,7 +44,7 @@ document. Inside the `covers:` perimeter it changed only comments and the tests 
 read these documents, repointing them here, so the code it describes is `9507cac`'s,
 unchanged. The Post-pass row in [§2](#2-terms) and the post-pass paragraph in
 [§13.3](#133-the-planning-rules), which said the post-pass runs after every file,
-were corrected on 2026-10-01 and re-verified against `7fa8cbf`; nothing else was.
+were corrected on 2026-10-01 and re-verified against `7fa8cbf`.
 **MEASURED at scale on 2026-10-01**, against `46c4091`'s code: every scale target
 in [§18](#18-scale-targets-and-what-has-been-measured) has been run against the
 build, or is held by a test. The scale fixture meets every target but D6 as the
@@ -52,7 +52,15 @@ harness counts it and D3's cold slope, which the runs cannot resolve, and this
 repository misses D2, D4's cards and D9. Each of those waits on a ruling or a run
 in [its own piece of work](../design/planning-index-measurement.md).
 The note in [§12.3](#123-the-hold) and the record of what has been run were
-rewritten from those runs; nothing else was re-verified.
+rewritten from those runs. Amended 2026-10-01, in the commit after `936e24b`, and
+read from that commit's code: the Unit row and the coined terms *answered by a
+comment* and *counted* in [§2](#2-terms) and
+[§6.7](#67-answering-and-copy-answers), [§3.3](#33-questions),
+[§6.2](#62-sections-top-to-bottom), [§6.6](#66-question-cards),
+[§6.7](#67-answering-and-copy-answers),
+[§6.8](#68-several-roadmaps-on-the-page), the need-you row of
+[§12.2](#122-every-late-datum-and-where-its-space-comes-from), and the question
+rows of [Current values](#current-values). Nothing else was re-verified.
 
 The **planning index** is Vantage's model of a repository's planning documents:
 their frontmatter, their open questions and the links between them. It is
@@ -82,8 +90,9 @@ Vantage never writes into a document.
 | The CLI and the planning rules | `packages/vantage-check/src/commands/index.ts`, `packages/vantage-check/src/rules/planning.ts` |
 
 **Reads with:** [`repo-config.md`](repo-config.md) (the `.vantage.toml`
-file both readers share), [`inline-markup.md`](inline-markup.md) (the `oq` and
-`question` directives this index counts, and the one-click answer it reuses),
+file both readers share), [`inline-markup.md`](inline-markup.md) (the `question`
+directive this index counts, with `oq`, the deprecated name it replaces, and the
+one-click answer it reuses),
 [`technical_spec.md`](../design/technical_spec.md) (where the planning routes and
 the scan worker sit in the whole system), and
 [the brainstorm](../brainstorm/planning-index.md) (the ideas this was chosen from,
@@ -112,7 +121,7 @@ Numbered because code comments and sibling documents cite them.
   writes into a document, never transcludes one document into another, and has
   no template language.
 - **P3. Only markup with a fixed meaning.** That means frontmatter keys, the
-  question directives `oq` and `question`, and Markdown links. Prose conventions, such as the `**Status:**`
+  question directives `question` and `oq`, and Markdown links. Prose conventions, such as the `**Status:**`
   line, a roadmap's tables, or a Decision Ledger's columns, are never parsed.
 - **P4. One parser.** The planning scan lives in `vantage-md` and is shared by
   the viewer and `vantage-check`. It is internal to that package: both consume
@@ -213,7 +222,7 @@ is in git; this is now where the terms are defined.
 | **Planning index** | The model of a repository's planning documents that every planning surface reads ([§3](#3-the-planning-index-what-it-reads-and-holds)) | a stored database; it is assembled anew on each page load | the brainstorm, 2026-09-25 |
 | **Candidate** | A Markdown file the server lists that `[planning]` includes ([§3.1](#31-candidates-and-planning-documents)) | every file in the tree | the planning-index design |
 | **Planning document** | A candidate with a `status` or `stage` key, or a question directive, or that is a roadmap | any Markdown file | the planning-index design |
-| **Question directive** | An `oq` directive, on an open question, or a `question` directive, on a blocked or answered one ([§3.3](#33-questions)) | the prose convention around it | [`checker-version-skew.md` OQ-VS4](../design/checker-version-skew.md#decision-ledger), 2026-09-30 |
+| **Question directive** | A `question` directive, on a question in any state, or an `oq`, the deprecated name it replaces ([§3.3](#33-questions)) | the prose convention around it | [`checker-version-skew.md` OQ-VS4](../design/checker-version-skew.md#decision-ledger), 2026-09-30, and the user's review of it, 2026-10-01 |
 | **Question** | A question directive on a block that could host the one-click button, identified by document path and id ([§3.3](#33-questions)) | a prose question with no directive | the planning-index design |
 | **Live** (question) | Every question the index holds, whatever its state; compaction, which deletes the directive, is what ends it | *open*, which is one state of a live question | the planning-index design |
 | **Stage role** | What a stage word means to the planning page: `open`, `ready`, `built` or `done` ([§3.4](#34-the-header-of-record-stage-next-depends-on)) | the stage word itself, which is the repository's own | the planning-index design |
@@ -232,7 +241,7 @@ is in git; this is now where the terms are defined.
 | **App shell** | The frame the viewer draws around a document — sidebar, pickers, dialogs, shortcuts — which the planning page is drawn in too ([§6.1](#61-the-url-the-route-and-the-app-shell)) | the header alone | the planning-index design |
 | **Planning outline** | What the contents column shows on the planning page, in place of a document's table of contents ([§6.9](#69-the-planning-outline)) | the section bar, though it is drawn from the same index | the planning-index design |
 | **Project root** | The nearest ancestor of a directory holding `.git` or `.vantage.toml` ([§13.1](#131-the-project-root)) | the directory a `--config` file sits in | the planning-index design |
-| **Unit** (of a question) | The element at the question's start: its list item, or the host block outside a list | the card block, which can hold several units | the first implementation plan |
+| **Unit** (of a question) | The blocks a question is: its list item; or, outside a list, its host block and the blocks after it up to the next heading, rule or question ([§3.3](#33-questions)) | the card block, which can hold several units | the first implementation plan; outside a list, amended 2026-10-01 |
 | **Single-path mode** | The planning endpoint answering for one `?path=` ([§9.2](#92-one-path-the-single-path-mode)) | the content endpoint, which it deliberately is not | the first implementation plan |
 | **Post-pass** | The planning rules' one run in `check`'s main thread, apart from the per-file work, whose findings join the report after it ([§13.3](#133-the-planning-rules)) | a per-file rule | the first implementation plan |
 | **Narrow index** | The index `check` builds from the roadmaps plus the run's own files, with no count of the tree | the full index `index` builds | the first implementation plan |
@@ -255,6 +264,8 @@ is in git; this is now where the terms are defined.
 | **Page inputs** | What the shown pages' cards need before they may paint: their card blocks, their documents' reviews, and their Mermaid diagrams drawn ([§6.5](#65-page-inputs-and-one-commit)) | the index | the at-scale amendment |
 | **Preview card** | A card drawn from the index alone, for a question whose card block is too large to render unasked ([§6.6](#66-question-cards)) | a summary shown instead of every card | the at-scale amendment |
 | **Placement** | Matching a comment to a listed question by its anchor line, for a card not rendered this visit ([§6.7](#67-answering-and-copy-answers)) | the card's own scoping, which reads the rendered block | the at-scale amendment |
+| **Answered by a comment** | A question with a comment pending for the agent on it, by scoping or placement: the human's answer, whatever its text ([§6.7](#67-answering-and-copy-answers)) | the ✅ *answered* state, which only the document's marker gives | coined in this document, from the user's ruling of 2026-10-01 |
+| **Counted** (document) | One whose reviews the page's need-you numbers read: held when the page opened, when a set of sections committed, or answered from the page ([§6.7](#67-answering-and-copy-answers)) | every document whose reviews are held | coined in this document, 2026-10-01 |
 | **The hold** | A document's first paint waiting briefly for data already on its way ([§12.3](#123-the-hold)) | a wait for a cold build | the at-scale amendment |
 | **Limits module** | `frontend/src/planningScan/limits.ts`: every number the worker, the page and the hold enforce, in one object tests configure down | `[planning]`, which a repository sets | the at-scale implementation plan |
 | **Scale fixture** | The repository the scale targets are measured on: 15, 30, 45 or 60 planning documents, each a renamed copy of one of four real documents ([§18](#18-scale-targets-and-what-has-been-measured)) | a fixture in the tree, or a large input: it never holds more than 60 documents | the at-scale amendment |
@@ -305,7 +316,7 @@ between threads or printed as JSON without translation.
   matcher means a pattern means the same thing to the server, the checker and
   `promote`.
 - **Planning document:** a candidate whose frontmatter has `status` or `stage`,
-  or that contains at least one question directive, `oq` or `question`. Every
+  or that contains at least one question directive, `question` or `oq`. Every
   roadmap is a planning document, even with neither.
 - Only planning documents contribute anything: facts, questions, or links. Any
   other candidate is read, found to be neither, and dropped before its body is
@@ -351,24 +362,28 @@ candidates only when it prints them.
 ### 3.3 Questions
 
 A question is identified by **(document path, id)** and carries a **state**, a
-**title**, the **directive** that declared it (`oq` or `question`), a
-**leaning** (an `oq`'s `leaning=`, which may be absent), and the lines it
+**title**, the **directive** that declared it (`question` or `oq`), a
+**leaning** (the directive's `leaning=`, which may be absent), and the lines it
 spans.
 
 - **State** is read from the emoji before its bold title, with the map the
   directive vocabulary already defines: 💬 is *open*, 💬 🤷 is *open* flagged as
   a preference, 🔒 is *blocked*, and ✅ is *answered*, awaiting compaction. A
   question with no marker counts as *open*.
-- **Two names declare a question, and they differ in one promise.** An `oq` is
-  an open question, the one review mode and the card offer to answer in one
-  click; a `question` is a 🔒 or ✅ one, declared, anchored and counted the same
-  way, with the same id grammar, and offered to nobody. A `question` takes no
-  `leaning`, so its leaning is always absent. A run holding both is an `oq`, as
-  it is to a viewer that predates `question`. The name is not read from the
-  marker: the index holds what the document declares, and `vantage-check`
-  reports a name that disagrees with the state (`vantage/question-name`).
+- **Two names declare a question, and the state is never the name's.** A
+  `question` declares one in any state; an `oq` is the name it replaces,
+  deprecated and still read, which every viewer before 0.8 offers to answer
+  whatever its marker says. Both take `id` and `leaning`, and a 🔒 or ✅
+  question may carry a leaning, which nothing offers to take. A run holding
+  both is an `oq`, and only the `oq`'s keys apply, as it is to a viewer that
+  predates `question` and drops the rest; the run's id stands when the first
+  comment in the document to declare it is one of the run's own
+  ([`inline-markup.md`](inline-markup.md#names-position-and-extent)).
+  `vantage-check` reports an `oq` on a 🔒 or ✅ question as an error
+  (`vantage/question-name`) and any other `oq` as a warning
+  (`vantage/oq-deprecated`).
 - **A question with no question directive does not exist to the index.** That
-  is why 🔒 and ✅ questions keep a directive, a `question`, until compaction.
+  is why a question keeps its directive in every state, until compaction.
 - **No id, a malformed id, or a repeated one** still makes a question. It is
   counted, badged and listed like any other, with no id: a link to its document
   routes it, but no `#OQ-…` link can name it. The first occurrence of a repeated
@@ -381,14 +396,23 @@ spans.
 - **In a withheld block,** one a `<!-- vantage: fallback -->` run lands on, a
   question is no question: Vantage never renders the block
   ([fallback blocks](inline-markup.md#fallback-blocks)), so the page shows no
-  button, the contents column no entry, and the planning page no card. An `oq`
-  directive written in the same run as the `fallback` goes with the block. A
+  button, the contents column no entry, and the planning page no card. A
+  question directive written in the same run as the `fallback` goes with the
+  block. A
   raw `<div>` with blank lines inside it is withheld whole, so the questions and
   links between its opening and closing tags are read by neither.
-- **Outside a list item, the question is the block its directive lands on.** A
-  directive written below a bold title marked ✅ lands on the block
-  after it, so the index, like the column, reads that block's marker, which is
-  none, and the question as open. `vantage-check` reports that layout under
+- **Outside a list item, the question starts at the block its directive lands
+  on, and runs over the blocks after it** in the same parent, up to the first
+  heading (for a question written as a heading, the first of its level or
+  higher, so it runs to the end of its section), thematic break, or block that
+  is or holds another question's host (`unitEnd` in the scan,
+  `questionUnitBlocks` in the app, held equal by `planningAgreement.test.tsx`).
+  Link definitions, comments and a withheld fallback render nothing there, so
+  they neither end a question nor belong to one. Its marker and title are read
+  from the block the directive lands on, as the column reads them: a directive
+  written below a bold title marked ✅ lands on the block after it, so the
+  index, like the column, reads that block's marker, which is none, and the
+  question as open. `vantage-check` reports that layout under
   `vantage/question-name` when the title above is marked 🔒 or ✅, and says to
   put the directive above the title.
 - **Live.** Every question the index holds is live, whatever its state.
@@ -396,10 +420,13 @@ spans.
   and that is the only way a question stops being live.
 - **Lines.** `line` is the block the in-page button anchors on (the paragraph
   after the directive, not the list item); `unitLine` and `unitEndLine` span the
-  question's unit; `block` is the root-level block holding it; and `cardChars` is
-  the length of its card block, which the page pages by
-  ([§6.4](#64-pages)). `unitEndLine` has no rendered twin — a rendered `<li>`
-  carries only its start line — so it is tested against parse positions.
+  question's unit; `block` is the root-level block holding it, or, for a
+  question outside a list at the root, its directive run to the unit's last
+  line; and `cardChars` is the length of its card block, which the page pages
+  by ([§6.4](#64-pages)). `unitEndLine` has no rendered twin — a rendered
+  `<li>` carries only its start line — so it is tested against parse
+  positions, and placement by it against the page's own reading of every
+  block of every document under `docs/`.
 
 Which directives are questions, and what their markers say, is the contents
 column's own reading, predicted from the parse: the scan uses the same host-target
@@ -431,8 +458,8 @@ depends-on:
 | `depends-on` | a list of relative paths, each optionally with `#OQ-…` | A single path counts as a one-entry list, and an entry that is not a string is dropped. Resolved like links. A target that does not exist or lies outside the repository, or whose `#OQ-…` id appears nowhere in its text, is a checker error |
 
 A frontmatter block that does not parse — invalid YAML, an unterminated block, or
-not a mapping — makes its whole file unreadable to the index, `oq` directives
-included ([§15](#15-failure-modes)). A value of the wrong shape is ignored with a
+not a mapping — makes its whole file unreadable to the index, question
+directives included ([§15](#15-failure-modes)). A value of the wrong shape is ignored with a
 `HeaderProblem`, which the checker reports.
 
 **There is no `priority` key.** Priorities written separately into each document
@@ -459,7 +486,9 @@ Vantage's style guide (`vantage-check style-guide`, generated from
 `packages/vantage-md/src/styleGuide.ts`) and the user guide's style-guide page
 state these conventions to whoever writes the documents: `stage`, `next` and
 `depends-on` as top-level keys, frontmatter as the stage's one home, a
-`question` directive on 🔒 and ✅ questions, a roadmap as ordered links with a
+`question` directive on every question, in every state, a question written in its
+parts (a title line, short context, the options as a list, and the leaning and
+the Answer as paragraphs of their own), a roadmap as ordered links with a
 one-clause reason each, and the `[planning]` table, including that a file named
 `roadmap.md` is a roadmap wherever it sits unless `roadmap` lists them instead.
 `packages/vantage-check/test/styleGuidePlanning.test.ts` holds that text to this
@@ -742,7 +771,12 @@ section's title, the line that explains it, and its actor.
 - A document whose stage has the `done` role appears in no section.
 - If no document outside the `done` role has an open question, the page says
   **Nothing needs you**. That line can sit above a *Needs you* holding only ✅
-  answered questions, which await compaction rather than a ruling.
+  answered questions, which await compaction rather than a ruling. It says so
+  too when every open question is *answered by a comment*
+  ([§6.7](#67-answering-and-copy-answers)), adding that every open question has
+  the human's answer, waiting on the agent; that line stands at the head of the
+  sections rather than among the notices, since it is drawn from the reviews the
+  sections are painted with.
 - **A question only another roadmap routes** is in neither *Needs you* nor
   *Not on a roadmap*: it is routed, just not by the chosen roadmap. The page counts those
   questions beside its roadmap picker rather than listing them in a section of
@@ -916,11 +950,24 @@ Each question appears as a card:
   (the card's `onOpenHere`), so **Back** returns to the same pages at the same
   scroll.
 - **Its controls, which follow its state.** An open question offers **Take this
-  leaning** (only when an `oq` declared it and states a leaning), **Answer…** and
-  **Open document**. A ✅
-  answered question has been ruled, so it offers **Answer…** and **Open
-  document**. A 🔒 blocked question, listed under *Blocked*, cannot be answered yet
-  and offers only **Open document**.
+  leaning**, whichever name declared it, with the document row's default text
+  when it states no leaning, **Answer…** and **Open document**. A ✅ answered
+  question has been ruled, so it offers **Answer…** and **Open document**. A 🔒
+  blocked question, listed under *Blocked*, cannot be answered yet and offers
+  only **Open document**.
+- **Whether it is answered by a comment** ([§6.7](#67-answering-and-copy-answers)),
+  by the document row's own rule (`questionOffer`,
+  [`inline-markup.md`](inline-markup.md#a-comment-on-a-question-is-its-answer)),
+  so the card and the row never offer different controls for one question.
+  While its own take is pending for the agent, *Leaning taken* stands where
+  Take this leaning would, with **Undo** while the take is the whole thread;
+  while any other comment on it is, *Answered — waiting on the agent*, alone.
+  Either way the answer is filed and Answer… goes. Once a take is no longer
+  pending — the agent replied, or the reviewer dismissed it — the chip says
+  so, *Leaning taken — the agent replied* or *— dismissed*, and Answer… is back
+  beside it, with Undo while the take is still the whole thread; Take this
+  leaning is not offered again, which would file a duplicate. The comment is
+  listed below, marked *waiting on the agent* while it is pending.
 - **Any comments already filed on it,** each marked *waiting on the agent* while
   it is still pending, painted with the card through the gate of
   [§6.5](#65-page-inputs-and-one-commit). Comments that arrive later go only into
@@ -982,11 +1029,13 @@ review mode.
 > place in the document.
 
 **The viewer's review mode follows the same rule.** It offers **Take this
-leaning** on open `oq` questions only, never on a 🔒 or ✅ one or a `question`,
-and the Review toggle's count of questions answerable in one click counts only
-the questions that offer it. The contents column still lists every question, in
-every state; the filter runs after `documentQuestions`, never inside it
-([`inline-markup.md`](inline-markup.md#the-same-comment-from-the-planning-page)).
+leaning** and **Answer…** on open questions only, whichever name declared them,
+never on a 🔒 or ✅ one, in one row at the end of the question, and the chip in
+their place once a comment answers it. The Review toggle's count of questions
+answerable in one click counts only the takes on offer. The contents column
+still lists every question, in every state; the filter runs after
+`documentQuestions`, never inside it
+([`inline-markup.md`](inline-markup.md#the-one-click-open-question-answer)).
 
 ### 6.7 Answering, and Copy answers
 
@@ -1024,8 +1073,57 @@ one card:
   placed by its old line until its card is rendered. A pending comment is one the
   agent has not answered yet, so its document has rarely changed under it.
 
-The reviews of listed documents on no shown page are fetched after the sections
-paint, in a second reviews request.
+The page inputs' reviews request holds the shown pages' documents and every
+listed document holding a question that needs the human — open, or ✅ awaiting
+compaction — on any page and under any roadmap (`needYouDocuments`), since a
+comment in one of those can take a question off the numbers below; the reviews
+of every other listed document are fetched after the sections paint, in a
+second reviews request.
+
+**A comment on a question is its answer** (the user's ruling of 2026-10-01). A
+question is *answered by a comment* *(coined here)* while a comment pending for
+the agent is on it, by the scoping or placement above: a take, an Answer…, or a
+comment typed on any block of its unit in its document, which is how a reviewer
+who does not take the leaning answers. Not the ✅ state, which the document's
+marker gives; the question keeps its state and its place, and is answered for
+exactly as long as the comment is pending. Then:
+
+- **Its card says so** ([§6.6](#66-question-cards)), and Copy answers copies the
+  comment, as it copies every pending comment on a listed question.
+- **It stops counting as needing the human.** The picker's *(N need you)*, the
+  line counting questions that need you on other roadmaps, and *Nothing needs
+  you* leave it out (`frontend/src/lib/planningAnswers.ts`), while its section
+  keeps listing it, marked, so the human sees what they answered. The section's
+  own count, and the section bar's, still count it, since they count entries,
+  and say beside it how many of those are answered, as *Needs you 3 (3
+  answered)*, so neither reads as contradicting *Nothing needs you* above it.
+- **A take no longer pending needs the human again.** Once the agent replies to
+  a take, or the reviewer dismisses it, the take is not pending, so the
+  question counts again; its card and its row say what became of the take and
+  offer Answer… beside it ([§6.6](#66-question-cards)). Take this leaning is not
+  offered again, which would file a duplicate: the question is answered again
+  by a comment on it, or, while the take is the whole thread, by Undo and a
+  fresh take.
+- **`vantage-check index` does not subtract it.** The CLI reads documents and no
+  reviews, so its counts are the index's alone; the page holds the reviews.
+
+What these numbers read is late data on a page painted before its reviews, and
+which reviews each reads depends on what it would move. **The picker's counts
+and the other-roadmaps line** keep the room of the index's count, which an
+answer only lowers ([§6.8](#68-several-roadmaps-on-the-page)), so they read
+every review the page holds, the moment it arrives. ***Nothing needs you***, which
+adds a line, and the sections' answered counts read only the reviews of the
+**counted** documents *(coined here)*: those whose reviews were held when the
+page opened, then every document whose reviews are held when a set of sections
+commits — the first, a flip, a roadmap picked, an index update — and the
+document of an answer filed on the page. A document whose reviews first arrive
+after its sections painted — past the reviews deadline, since every document
+these numbers read is in the page inputs' request — waits for the next such
+commit; a counted document's reviews changing is a change of data, which
+applies at once ([§12.1](#121-the-rules), L1 and L2). Until 2026-10-01 every
+number read the counted documents alone, and the documents another roadmap
+routes came in the second request, so a cold visit counted none of their
+answers until the reader picked another roadmap and came back.
 
 **Quoted context comes without the text.** The scanner client fetches only the
 documents holding pending comments, returns only the lines each quote needs (the
@@ -1043,7 +1141,10 @@ there is only ever one picker.
 
 - **The picker** is a native select with the visible label **Roadmap**. It offers
   every roadmap that routes, in roadmap order, each by its full repo-relative path
-  followed by its *Needs you* count, as `docs/plans/roadmap.md (4 need you)`.
+  followed by its *Needs you* count less the questions answered by a comment
+  ([§6.7](#67-answering-and-copy-answers)), as `docs/plans/roadmap.md (4 need
+  you)`. The drawn count keeps the room the index's count takes, so a count
+  lowered after the line painted moves nothing.
   Every such file is usually named `roadmap.md`, so the path is the only name that
   tells them apart, and it is never shortened. A closed native select clips its
   value to one line, so the page draws the chosen option's text itself, wrapping,
@@ -1052,7 +1153,9 @@ there is only ever one picker.
 - **After the picker,** when some questions need you only on other roadmaps, the
   line says so: *3 more questions need you on other roadmaps*. It counts the open
   and answered questions another roadmap routes and the chosen one does not, each
-  once. It is text, not a control.
+  once, less those answered by a comment, and keeps the room its index count
+  takes; with every one answered it says *No more questions need you on other
+  roadmaps*. It is text, not a control.
 - **Which roadmap is chosen,** in order: the URL's `roadmap=`, when it names one
   that routes; else the one this browser remembers for this repository, when it
   still routes; else the default roadmap. With two or more roadmaps the page then
@@ -1201,7 +1304,8 @@ to three parts, joined by *·* in this order (`referenceSummary` in
   line at every width.
 - **It sits inside the prose container** and is built from elements nothing there
   reads as the document: no heading, which the contents column would list; no
-  `[data-vantage-oq]`; no `p` or `li`, which review mode would offer to comment on;
+  question attribute (`[data-vantage-question]`, `[data-vantage-oq]`); no `p` or
+  `li`, which review mode would offer to comment on;
   and no `data-source-line`, so no review anchor can land on it.
 
 ### 7.2 The file tree's badge
@@ -1879,6 +1983,8 @@ by number.
 | Whether a question runs past its folded lines | cards | measured before the card paints, and again when its size changes, which a reader's resize does, all cards of a page in one pass of reads before any write; the fade and *Show full question* at the cut are drawn in that pass, and the clamp is on from the first paint |
 | The fold a card opens with | cards | ready at first paint: the reader's own fold from earlier in the visit, else the remembered *Expand all* / *Collapse all*, read synchronously; another tab's change opens only the cards rendered after it |
 | The pending count | planning page header | a slot reserved for a few digits |
+| Questions answered by a comment, in the need-you numbers | planning page | every document holding a question that needs you is in the page inputs' reviews request, so a cold visit paints with their answers; the picker's count and the other-roadmaps line keep the room of the index's count, which an answer only lowers, and read every review as it arrives; *Nothing needs you* from answers, and each section's answered count, read the counted documents' reviews alone, so one arriving after its sections painted waits for the next commit of sections, and the line stands at the head of the sections, drawn with them |
+| A question's controls in review mode | documents | a layout effect, so the row is in the document's first paint; comments arriving later change what the row holds, one line high in every state, and the controls a state drops are its last |
 | Mermaid in a card | cards | drawn before the commit; past its deadline, a fixed-height frame |
 | KaTeX and highlighting | cards | synchronous, so never late |
 | Link badges, index ready within the hold | documents | ready at first paint |
@@ -2160,22 +2266,24 @@ SUPERSEDED = "done"
   below 1, rejects the whole file in both readers, `[starred]` and `theme` included.
   The server logs it and falls back to the defaults; the checker exits `2`, as it does
   for bad `[check]` values.
-- **An unknown key is where the readers part.** The server rejects the whole file over
-  it, as over a bad value. The checker warns, ignores the key and reads the rest,
-  because to a checker older than the key every key a later release adds looks like a
-  typo ([Keys From a Newer Release](../../userguide/reference/configuration.md#keys-from-a-newer-release)).
+- **An unknown key is a warning in both readers.** Each warns, ignores the key and
+  reads the rest of the file, because to a reader older than the key every key a later
+  release adds looks like a typo: the checker on stderr, the server in its log, once
+  per version of the file ([Keys From a Newer Release](../../userguide/reference/configuration.md#keys-from-a-newer-release)).
+  `theme`, `target` or `starred` written inside the table is misplaced rather than
+  unknown, and rejects the whole file in both.
 - An empty `[planning.stages]` table is the same as none.
 - `planning-config.json` holds both readers to one answer for every case, and each
   reader words its errors in its own voice. `version-skew-config.json` holds each
-  reader's own answer to a key it does not know and to the top-level `target`, where
-  the two differ.
+  reader's own answer to a key it does not know and to the top-level `target`, which
+  agree for this table and differ where only one reader reads a table at all.
 
 **`roadmap` takes a string or a list, and both readers hold it to one set of rules:**
 
 - **Absent** means found by name. **A string** is a list of one, so a file written
   before lists existed keeps its meaning. **A list of strings** names exactly those
   roadmaps, and `[]` names none. The key stays `roadmap` in both forms; `roadmaps` is
-  an unknown key, which the server rejects the file over and the checker warns about.
+  an unknown key, which both readers warn about and ignore.
 - **Each path** is text, with one leading `./` dropped, and must then be non-empty,
   must not start with `/`, and must hold no `..` segment.
 - **No path twice.** Two entries that are one path once `./` is dropped are an error.
@@ -2228,7 +2336,7 @@ declares its stage vocabulary; and runs `planning/unrouted` as a warning.
 | The server id changed (another repository on the same port, a tunnel to another machine) | Every store cleared before anything is read or sent; one cold build |
 | The server id cannot be had | That build reads and writes no cache: cold, with no `have` |
 | Another tab cleared the database (newer code, or another server) | This tab's next read or write is refused, and it runs without the cache until it reloads |
-| One file cannot be read, or its frontmatter does not parse | Listed under *Unreadable* and contributing nothing, its `oq` directives included. Everything else is unaffected |
+| One file cannot be read, or its frontmatter does not parse | Listed under *Unreadable* and contributing nothing, its question directives included. Everything else is unaffected |
 | A file changes between the stream and the next push | The stream line carries its own hash; the push refreshes it |
 | A card block comes back `stale` | The path refreshes; the previous page stays until it lands |
 | A card's document is gone from the index | The card says it is not in the planning index any more |
@@ -2507,6 +2615,7 @@ is the only place most of the numbers are stated.
 | The hold | 150 ms after the content arrives | `holdMs` |
 | Referenced by headings per row | 4, then *+M more* | `HEADINGS_SHOWN` in `ReferencedBy.tsx` |
 | `planning/question-length` default | 120 words (`max-words`) | `QUESTION_WORDS_DEFAULT` in `rules/questionLength.ts` |
+| A question answered by a comment, its chip | *Leaning taken* for its own take, else *Answered — waiting on the agent* | `OQ_TAKEN_LABEL`, `OQ_ANSWERED_LABEL` in `frontend/src/hooks/useOpenQuestionButtons.ts` |
 | `index` JSON format version | 2 | `INDEX_FORMAT_VERSION` in `commands/index.ts` |
 
 ---
@@ -2522,17 +2631,18 @@ git.
 | ID | Ruling | Date |
 | :--- | :--- | :--- |
 | OQ-PL1 | `stage:` is the stage's only home; a prose status line carries the date and the why. Decided on generic grounds, not to fit one set of conventions ([§3.4](#34-the-header-of-record-stage-next-depends-on)) | 2026-09-28 |
-| OQ-PL2 | A planning document is any file with planning frontmatter or an `oq` directive; everything is included by default, with an exclude list. Requiring declared roots was rejected: nothing would appear until someone wrote the config ([§3.1](#31-candidates-and-planning-documents)) | 2026-09-28 |
+| OQ-PL2 | A planning document is any file with planning frontmatter or a question directive; everything is included by default, with an exclude list. Requiring declared roots was rejected: nothing would appear until someone wrote the config ([§3.1](#31-candidates-and-planning-documents)) | 2026-09-28 |
 | OQ-PL3 | A roadmap fully readable only in Vantage is acceptable: GitHub keeps the order and the reasons ([§5.3](#53-how-a-badge-behaves)) | 2026-09-28 |
 | OQ-PL4 | One **Copy answers** button on the planning page, grouped by document: answering three documents from one page must not take three trips ([§6.7](#67-answering-and-copy-answers)) | 2026-09-28 |
 | OQ-PS1 | The browser keeps each file's derived facts *and* its card blocks, under the content hash, cleared when the owner changes and never used without a matching hash. Keeping facts but no card text would cost a fetch and scan of each shown page's documents on every first visit; keeping nothing makes every load cold ([§11.1](#111-what-it-keeps-and-under-which-key)) | 2026-09-29 |
 | OQ-PS2 | No byte sieve in Go: every candidate is streamed, and the scan stays the only judge of what a planning document is. Ruled an implementation matter, on the condition that the reader's experience does not degrade for it ([§9.1](#91-the-stream)) | 2026-09-29 |
 | OQ-VS4 | A 🔒 or ✅ question is declared with a `question` directive, never an `oq`, which every viewer before 0.8 offers to answer in one click. A release never gives existing notation a new meaning, so the closed states got a name older viewers drop ([`checker-version-skew.md`](../design/checker-version-skew.md#decision-ledger), [§3.3](#33-questions)) | 2026-09-30 |
+| OQ-VS6 | One `question` directive declares a question in any state, and its marker alone is its state, so a question that changes state changes its marker and nothing else. `oq` is deprecated, never removed: every Vantage reads it with its 0.7 meaning, and the index counts it as before. Two names split by state made every change of state a rename, and a rename forgotten as a question closed is the misreading `question` exists to stop ([`checker-version-skew.md`](../design/checker-version-skew.md#decision-ledger), [§3.3](#33-questions)) | 2026-10-01 |
 | Plan Q1 | Patterns keep the server's matcher, its quirks and RE2 dialect included; the checker ports it, and one shared fixture pins both readers ([§3.1](#31-candidates-and-planning-documents)) | 2026-09-28 |
 | Plan Q2 | A listed roadmap is read whenever it exists, even when `include` or `exclude` rules it out — per entry, since several roadmaps ([§4.1](#41-which-files-are-roadmaps)) | 2026-09-28 |
 | Plan Q3 | A static export gets no badges and no planning index; its planning page says so ([§15](#15-failure-modes)) | 2026-09-28 |
 | Plan Q4 | This repository runs `planning/unrouted` as a warning ([§13.3](#133-the-planning-rules)) | 2026-09-28 |
-| Plan Q5 | An `oq` with no id, a malformed id or a repeated one is still a question, counted with no id. **Take this leaning** is not offered on 🔒 or ✅ questions, neither in review mode nor on the planning page, where 🔒 questions sit under *Blocked* with no Take or Answer…; the contents column still lists them ([§3.3](#33-questions), [§6.6](#66-question-cards)) | 2026-09-28 |
+| Plan Q5 | A question directive with no id, a malformed id or a repeated one is still a question, counted with no id. **Take this leaning** is not offered on 🔒 or ✅ questions, neither in review mode nor on the planning page, where 🔒 questions sit under *Blocked* with no Take or Answer…; the contents column still lists them ([§3.3](#33-questions), [§6.6](#66-question-cards)) | 2026-09-28 |
 | Plan Q6 | Every question the index holds is live; a `depends-on` naming a question waits only while that question is open ([§6.2](#62-sections-top-to-bottom)) | 2026-09-28 |
 | Plan Q7 | `vantage-check index` exits `3` past `max-candidates`; `check` is unaffected, because its narrow index counts nothing ([§13](#13-vantage-check-index-and-the-planning-rules)) | 2026-09-28 |
 | Plan Q9 | The checker mirrors the repository-level listing rules only; per-reader settings stay invisible to it ([§13.1](#131-the-project-root)) | 2026-09-28 |
@@ -2542,11 +2652,14 @@ git.
 | Plan Q14 | A genuine reconnect rescans a ready index and keeps it shown until the new scan lands; a page's first connection is not a reconnect ([§8.3](#83-staying-fresh-change-pushes-reconnects-and-ordering)) | 2026-09-28 |
 | Plan Q15 | A per-file refresh asks the planning endpoint for one path, never the content endpoint ([§9.2](#92-one-path-the-single-path-mode)) | 2026-09-28 |
 | Plan Q16 | One project root for both commands, the nearest ancestor holding `.git` or `.vantage.toml`; `--config` never moves it, and `index` falls back to the current directory ([§13.1](#131-the-project-root)) | 2026-09-28 |
-| Plan Q17 | An `oq` inside a raw HTML block is not a question to the index; the agreement test pins that one divergence ([§3.3](#33-questions)) | 2026-09-28 |
+| Plan Q17 | A question directive inside a raw HTML block is not a question to the index; the agreement test pins that one divergence ([§3.3](#33-questions)) | 2026-09-28 |
 | Plan Q19 | The planning module is internal to `vantage-md`; `FrontmatterDisplay`'s optional `linkIds` is the one public addition (P4) | 2026-09-28 |
 | Plan Q20 | The degenerate cases: a header that does not parse makes its file unreadable; a non-string or empty `stage` and a non-string or multi-line `next` are ignored; a single `depends-on` path is a one-entry list and a non-string entry is dropped; stage matching is exact and case-sensitive; an empty stages table is none; a `depends-on` target outside the repository, or whose id appears nowhere in it, is a finding; a skipped or unreadable roadmap does not route; an empty document badge is not drawn; `next` links only an id a question carries ([§3.4](#34-the-header-of-record-stage-next-depends-on)) | 2026-09-28 |
 | — | **Open document** lands at the top of the document, not at the question ([§6.6](#66-question-cards)) | 2026-09-28 |
 | — | **Open document** opens a new tab, as its `ExternalLink` icon says, and the planning page stays where it is; the document's name above the question opens it in this tab, with Back to the same pages and scroll. A plain click on Open document took this tab, which a reader did not expect of that icon ([§6.6](#66-question-cards)) | 2026-10-01 |
+| — | A comment pending for the agent on a question is the human's answer, whatever its text: a take, an Answer…, or a comment typed anywhere in the question. The question's card and its row in the document show it answered, and it stops counting as needing the human while it stays listed. A reviewer who does not take the leaning comments on the question, and that comment is the action the agent gets; offering Take beside it, or counting the question as still needing them, asked twice for what they had given ([§6.7](#67-answering-and-copy-answers)) | 2026-10-01 |
+| — | A question outside a list runs from its host over the blocks after it, up to the next heading, rule or question, in the scan and the page alike. The user asked for a question's controls at its end whether it is a list item, a paragraph or a title with blocks under it, and for a comment anywhere around a question to answer it; as the one block its directive stamped, such a question put its row between its title and its context, and a comment on its leaning answered nothing ([§3.3](#33-questions)) | 2026-10-01 |
+| — | The need-you numbers that keep their room, the picker's counts and the other-roadmaps line, read every review as it arrives, and every document holding a question that needs you is in the page inputs' reviews request. Reading the counted documents alone, a cold visit left out every answer in a document another roadmap routes until the reader picked another roadmap and came back ([§6.7](#67-answering-and-copy-answers)) | 2026-10-01 |
 | — | No npm dependency for the scan cache. It sits behind a storage interface; unit tests run it over an in-memory implementation written in this repository, and the Chromium end-to-end tests over real IndexedDB. Do not add `fake-indexeddb`, `idb` or any other package for it ([§11](#11-the-scan-cache)) | 2026-09-29 |
 | — | The file name wins: a tree badge takes no width from a file name, is drawn whole or not at all, and is a compact dot and count whose words are its tooltip and accessible name. It replaced a full status chip that cut long names to their first letter ([§7.2](#72-the-file-trees-badge)) | 2026-09-28 |
 | — | Referenced by is one collapsed line that says whether the roadmap routes the document and how many documents link to it, and always counts the open questions no roadmap routes; it replaced an always-open list that pushed a heavily cited document's body a screen down ([§7.1](#71-referenced-by)) | 2026-09-29 |

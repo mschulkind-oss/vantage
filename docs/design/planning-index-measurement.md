@@ -100,6 +100,7 @@ each) is inside the runs' spread
 ## Open Questions
 
 1. 💬 **OQ-PM1: Is a held document's first render one of D6's long tasks?**
+
    The harness counted 33 long tasks during builds, each, as dev-server profiles
    show, the document's first render, run in the task where
    [the hold](../reference/planning-index.md#123-the-hold) ends
@@ -111,7 +112,7 @@ each) is inside the runs' spread
      long task. That is the viewer's rendering, not the index's, and needs a
      design of its own.
 
-   <!-- vantage: oq id=OQ-PM1 leaning="A — those tasks are not D6's: a document's first render is a long task with the planning index or without it, and the hold decides only which task it runs in." -->
+   <!-- vantage: question id=OQ-PM1 leaning="A — those tasks are not D6's: a document's first render is a long task with the planning index or without it, and the hold decides only which task it runs in." -->
 
    _Leaning:_ A. The render is a long task with the planning index or without it,
    and the hold decides only which task it runs in.
@@ -120,6 +121,7 @@ each) is inside the runs' spread
    > _(empty — fill in when decided)_
 
 2. 💬 **OQ-PM2: This repository misses D2, D4's cards and D9: fix the build, or set its column again?**
+
    The reference's own build, `9507cac`, misses D2's revisit and D9 here too, and
    this build adds 0.17 MiB to D9 over it, a gap option A would fix as a defect
    ([This repository's misses](#this-repositorys-misses)).
@@ -131,7 +133,7 @@ each) is inside the runs' spread
      build.
    - **C — Drop this repository's D2, D4 and D9,** and hold only the fixture's.
 
-   <!-- vantage: oq id=OQ-PM2 leaning="A — set this repository's D2, D4 and D9 again from a run that alternates this build and 9507cac's on an idle machine, and fix any gap this build adds over 9507cac as a defect." -->
+   <!-- vantage: question id=OQ-PM2 leaning="A — set this repository's D2, D4 and D9 again from a run that alternates this build and 9507cac's on an idle machine, and fix any gap this build adds over 9507cac as a defect." -->
 
    _Leaning:_ A. D4 and D9 had never been run before, and the reference's own build
    misses too, so these say more about the column than about any change since. A

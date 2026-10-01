@@ -68,7 +68,7 @@ vantage:
 - The chip's vocabulary is \`status\`'s, exactly: \`draft | in-review | accepted | deprecated\`, lowercase. \`Draft\` renders no chip at all, silently.
 
 ### Planning documents: \`stage\`, \`next\`, \`depends-on\`
-- **Vantage reads a repository's plans as a set.** A document whose frontmatter has \`status\` or \`stage\`, or that carries an \`oq\` or \`question\` directive, is a *planning document*, and Vantage shows its state (status, stage, open questions) in a badge beside every link to it. So write each fact once, in the document it belongs to, and link to it everywhere else: a copied status or count is the one that goes stale.
+- **Vantage reads a repository's plans as a set.** A document whose frontmatter has \`status\` or \`stage\`, or that carries a \`question\` directive (or an \`oq\`, the name it replaces), is a *planning document*, and Vantage shows its state (status, stage, open questions) in a badge beside every link to it. So write each fact once, in the document it belongs to, and link to it everywhere else: a copied status or count is the one that goes stale.
 - Three top-level keys beside \`status\` hold the rest of a document's planning state. They are facts about the file, so they sit at the top level, never under \`vantage:\`:
 \`\`\`yaml
 ---
@@ -168,33 +168,58 @@ Vantage reads a few styling hints from ordinary HTML comments. Every other rende
 The steps below predate the rewrite.
 \`\`\`
 
-- **Five names**: \`section\` (the heading and everything under it), \`block\` (the one block after it), \`oq\` (one open Open Question, which review mode offers to answer), \`question\` (one blocked or answered Open Question, which nothing offers to answer), \`fallback\` (the one block after it, which Vantage 0.8 and later never show; see Inline SVG above). \`fallback\` takes no keys, and withholds only a paragraph, a list, a quote, a code block, a table, a rule or a \`<div>\`, never a heading.
+- **Four names to write**: \`section\` (the heading and everything under it), \`block\` (the one block after it), \`question\` (one Open Question, in any state; see Open questions below), \`fallback\` (the one block after it, which Vantage 0.8 and later never show; see Inline SVG above). \`fallback\` takes no keys, and withholds only a paragraph, a list, a quote, a code block, a table, a rule or a \`<div>\`, never a heading. A fifth, \`oq\`, is the name \`question\` replaces (below).
 - **The keys and values are a closed set**: \`tone\` = \`note | tip | important | warning | caution | muted\`; \`emphasis\` = \`strong | normal | quiet\`; \`badge\` = \`draft | stale | blocked | done | wip\`; \`collapsed\` = \`true | false\`. Name a *tone*, never a color — the theme decides what a warning looks like, in light mode, in dark mode, and in print.
 - **Use them sparingly.** One or two per document, on the sections that genuinely differ. A document where everything is toned says nothing, and a rainbow one is harder to read than a plain one.
 - **Anything outside those sets is silently ignored** — nothing breaks, and nothing styles either. Run \`vantage-check\` on the document: the \`vantage/*\` rules are the only thing that will ever tell you a directive did nothing.
 - **Always close the comment with \`-->\`.** Never \`--!>\`, and never leave it open: Markdown reads every line below an unclosed \`<!--\` as part of the comment, and the whole rest of the document vanishes from the page. For the same reason \`-->\` cannot appear *inside* a value — it ends the comment early and spills the remainder into the page as literal text.
 - **In a list, indent the directive inside the item**, with blank lines around it (below). At the start of a line between two items it ends the list and starts a second one, which changes the numbering and the spacing in every renderer — the one thing a directive must never do.
-- **A question's id, on \`oq\` and \`question\` alike, is \`OQ-\` then an optional short uppercase prefix then digits** — \`OQ-9\`, \`OQ-TP6\`, \`OQ-A03\`. The prefix is what keeps ids distinct once one document references another's questions, so use one in both whenever they cross-reference. \`vantage-check\` reports anything outside that shape as \`vantage/oq-id-format\`, and the same id twice in one document as \`vantage/oq-id-duplicate\` — both are silent otherwise, because the id becomes the block's anchor and a refused or duplicated one simply goes nowhere.
+- **A question's id is \`OQ-\` then an optional short uppercase prefix then digits** — \`OQ-9\`, \`OQ-TP6\`, \`OQ-A03\`. The prefix is what keeps ids distinct once one document references another's questions, so use one in both whenever they cross-reference. \`vantage-check\` reports anything outside that shape as \`vantage/oq-id-format\`, and the same id twice in one document as \`vantage/oq-id-duplicate\` — both are silent otherwise, because the id becomes the block's anchor and a refused or duplicated one simply goes nowhere.
 - **A reference is a link, or it is a lie.** An \`OQ-\` id, a \`\u00a7N\` section number and a filename all read like pointers, and written as bare prose none of them can be followed or checked — which is exactly why a stale one is never caught. Link the question to its anchor (\`[OQ-4](#OQ-4)\`, or the Decision Ledger once it is compacted), the section to its heading, the filename to the file. \`vantage-check\` reports all three (\`ref/*\`) as errors, and checks that the link points at the thing the reference names rather than merely at something. Writing a specimen rather than a reference? Put it in a fenced block, which the rules never read.
-- **Every open question (\u{1F4AC}) with a stated leaning gets an \`oq\` directive.** The convention's prose — the emoji, the \`OQ-N\` id, the \`_Leaning:_\` line, the fill-in \`**Answer:**\` — produces no button on its own. Writing the convention and stopping there is the most common way this feature goes missing: the questions look complete, review mode is on, and there is nothing to click. **\`vantage-check\` reports it as an error** (\`vantage/oq-missing\`), because a question awaiting a ruling that the reviewer cannot file is not a style preference. An open question with no leaning yet takes \`oq\` too, without \`leaning\`, so the planning index still counts it; until it states one, its button files the literal text "Take the stated leaning."
-- **A blocked (\u{1F512}) or answered (\u2705) question gets a \`question\` directive instead**: \`<!-- vantage: question id=OQ-10 -->\`, with an \`id\` and nothing else (below). Mark a question \u{1F512} if it is blocked on something upstream and cannot be answered yet, or \u2705 once it is decided, and change its directive's name in the same edit. \`question\` declares the same question with the same anchor and offers no button, since a blocked question cannot be answered yet and a decided one has been ruled. Never leave \`oq\` on one: every Vantage before 0.8 offers the one-click button on every \`oq\`, and on a question with no leaning it files the literal text "Take the stated leaning." \`vantage-check\` reports the wrong name either way (\`vantage/question-name\`). Keep the directive in every state: a question without one does not exist to Vantage's planning index (its model of a repository's plans), so nothing counts it, badges it or lists it as waiting. The directive goes when the question is compacted into the Decision Ledger, and not before.
-- **Outside a list, the directive goes above the question's title.** A question that is not a list item is the one block its directive lands on, so a directive below the bold title lands on the block after it, which carries no marker, and every viewer reads the question as open. \`vantage-check\` reports that as \`vantage/question-name\` too.
-- **A \`leaning\` restates the leaning; it is never "yes".** The one-click button in review mode files that text as a review comment, and the comment is all the agent reading it has — nobody remembers which button was clicked. \`leaning="Yes"\` beside a two-branch question is a support ticket.
-- **Put the question in its bold title, and keep the text below it short.** The planning page shows each question as a card that leads with the title and shows only the first few lines of the rest, so a question buried in a paragraph of background is one the reviewer has to dig for. Say in the title what is being decided, write beneath it only what a ruling needs, and keep background, history and cross-references in the document's own sections, linked from the question. \`vantage-check\` warns when a question's text, not counting its \`_Leaning:_\` paragraph and its \`**Answer:**\`, runs past 120 words (\`planning/question-length\`); a repository can raise the limit with \`max-words\`, or turn the rule off, under \`[check.rules]\`.
+
+### Open questions
+A question a document leaves for a human to rule on is an *Open Question*, written in a numbered list under a heading of its own.
+
+- **Write each question in its parts, never as one run-together paragraph.** Vantage lays a question out by these parts: the contents column and the planning page's card show its title as the question, and the card shows the leaning as the leaning and the Answer as the answer, so a part run into another one is read as neither. Each part is a block of its own, with a blank line before it:
+  1. **The title line**: the status marker, the id and the question itself in bold, saying what is being decided: \`\u{1F4AC} **OQ-9: Where does a job go when it re-enters the queue?**\`.
+  2. **The context**, in short paragraphs: only what a ruling needs. Background, history and cross-references belong in the document's own sections, linked from the question.
+  3. **The options as a list**, one item each, when there are options to choose between.
+  4. **\`_Leaning:_\` as a paragraph of its own**: which option, and why, in a sentence or two.
+  5. **\`**Answer:**\` as a paragraph of its own**, with the ruling below it once there is one.
 
 \`\`\`markdown
-1. **OQ-9: Queue position on re-entry.**
+## Open Questions
 
-   <!-- vantage: oq id=OQ-9 leaning="Back of the queue — the fix might interact with what merged while it was out." -->
+1. \u{1F4AC} **OQ-9: Where does a job go when it re-enters the queue?**
 
-   _Leaning:_ Back of the queue.
+   A job that fails its checks leaves the queue and comes back once it is fixed. What merged while it was out may change what it does.
 
-2. \u{1F512} **OQ-10: The retry budget.**
+   - **A — The back of the queue.** It waits its turn again.
+   - **B — Its old place.** It skips ahead of what joined since.
+
+   <!-- vantage: question id=OQ-9 leaning="A — the back of the queue: the fix might interact with what merged while it was out." -->
+
+   _Leaning:_ A. The fix might interact with what merged while it was out.
+
+   **Answer:**
+
+   > _(empty — fill in when decided)_
+
+2. \u{1F512} **OQ-10: How large is the retry budget?**
 
    <!-- vantage: question id=OQ-10 -->
 
    Waits on the load test, so there is no leaning to state yet.
 \`\`\`
+
+- **The marker is the question's state**: \u{1F4AC} open (\u{1F4AC} \u{1F937} when it is a matter of preference), \u{1F512} blocked on something upstream that has to happen first, \u2705 answered. Review mode offers a one-click **Take this leaning** on an open question, and on nothing else.
+- **Every question gets a \`question\` directive**, \`<!-- vantage: question id=OQ-9 leaning="…" -->\`, in every state, indented into its list item on a line of its own directly above the \`_Leaning:_\` paragraph, or above another of its paragraphs when it states no leaning. The directive is what makes it a question to Vantage: it gives the question its \`#OQ-9\` anchor, and Vantage's planning index (its model of a repository's plans) reads a question from nothing else, so without one nothing counts it, badges it or lists it as waiting. It goes when the question is compacted into the Decision Ledger, and not before.
+- **Changing a question's state changes its marker and nothing else.** Mark it \u{1F512} when it cannot be answered yet, and \u2705 once it is decided; the directive stays as it is, its \`leaning\` included, which nothing offers to take once the question is not open.
+- **Every open question with a stated leaning restates it as the directive's \`leaning\`.** The convention's prose — the emoji, the \`OQ-N\` id, the \`_Leaning:_\` line, the fill-in \`**Answer:**\` — produces no button on its own, and writing it and stopping there is the most common way the button goes missing: the questions look complete, review mode is on, and there is nothing to click. \`vantage-check\` reports an open question with a \`_Leaning:_\` and no directive as an error (\`vantage/oq-missing\`). An open question with no leaning yet takes the directive without \`leaning\`, so the planning index still counts it; until it states one, its button files the literal text "Take the stated leaning."
+- **A \`leaning\` restates the leaning; it is never "yes".** The one-click button in review mode files that text as a review comment, and the comment is all the agent reading it has — nobody remembers which button was clicked. \`leaning="Yes"\` beside a two-branch question is a support ticket.
+- **Keep the text below the title short.** The planning page shows each question as a card that leads with the title and shows only the first few lines of the rest, so a question buried in a paragraph of background is one the reviewer has to dig for. \`vantage-check\` warns when a question's text, not counting its \`_Leaning:_\` paragraph and its \`**Answer:**\`, runs past 120 words (\`planning/question-length\`), and when a leaning shares a paragraph with other text (\`vantage/question-layout\`); a repository can raise the limit with \`max-words\`, or turn either rule off, under \`[check.rules]\`.
+- **Write a question as a list item.** Outside a list, a question runs from the block its directive lands on through the blocks after it, up to the next heading (for a question written as a heading, the next one of its level or higher), the next rule or the next question, so whatever prose follows it before then is read as part of it. There the directive goes above the question's title, since every viewer reads the question's marker from the block it lands on: a directive below the bold title lands on the block after it, which carries no marker, so every viewer reads the question as open. \`vantage-check\` reports that as \`vantage/question-name\`.
+- **\`oq\` is the name \`question\` replaces.** Vantage keeps reading \`<!-- vantage: oq id=OQ-9 leaning="…" -->\` as it always has, and \`vantage-check\` warns on it (\`vantage/oq-deprecated\`) with the \`question\` to write instead, keys unchanged. Vantage before 0.8 drops \`question\` whole, so a reader still on 0.7 gets no one-click answer and no anchor on a question written with it, and misreads nothing. So keep an \`oq\` on an open question unless you know every reader of the repository is on 0.8 or later; a repository whose readers are still on 0.7 keeps its \`oq\`s and turns the warning off in \`.vantage.toml\`, with \`"vantage/oq-deprecated" = "off"\` under \`[check.rules]\`, which a \`vantage-check\` before 0.8 rejects as a rule it does not know. **Never put \`oq\` on a \u{1F512} or \u2705 question**: every Vantage before 0.8 offers the one-click button on every \`oq\`, whatever its marker says, and on a question with no leaning it files the literal text "Take the stated leaning." \`vantage-check\` reports that as an error (\`vantage/question-name\`).
 
 ### Tables, task lists, and math
 - **Tables**: Use standard markdown tables for structured comparisons and schemas.

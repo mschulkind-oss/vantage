@@ -14,7 +14,21 @@
  * - **`affordance`**: the older viewer offers a control the notation no longer
  *   asks for. The case that made this module: 0.8.0's guide put an `oq`
  *   directive on blocked and answered questions, and every 0.7 viewer offers
- *   "Take this leaning" on every `oq` it meets.
+ *   "Take this leaning" on every `oq` it meets. Offering *fewer* controls is
+ *   no misreading: a release before 0.8 drops a `question` directive whole, so
+ *   on a question written with it, its reader gets no Take this leaning and no
+ *   anchor, which is the harmless degradation P0 allows.
+ *
+ *   From 0.8 on a viewer reads a question's state off its marker alone, and
+ *   every marker but 🔒 and ✅ reads as open (`questionOffersTake`). So a state
+ *   a later release adds must carry 🔒 or ✅ in its marker (`🔒 ⏸`), or come
+ *   as a new directive name: a new marker on its own (`⏸`, `🗑`) is offered
+ *   Take this leaning by every 0.8 viewer, which this check, run against a
+ *   0.8.x release, reports as an affordance. And once 0.8.0 is the previous
+ *   release, an `oq` on a 🔒 question is no longer one here, since that release
+ *   withholds Take by the marker: what keeps the guide from teaching one then
+ *   is `styleGuidePlanning.test.ts`, which refuses an `oq` in any of its
+ *   examples, and `vantage/question-name`, which reports one in a document.
  * - **`spill`**: the guide promises that a viewer which does not know a
  *   directive drops it, so the page reads the same without it. Here the older
  *   viewer's page reads differently with the directives it does not apply
@@ -55,9 +69,13 @@ import {
   VANTAGE_OQ_HOST_TARGETS,
   VANTAGE_OQ_STATUS,
   parseFrontmatter,
+  VANTAGE_OQ_ATTRIBUTE,
+  VANTAGE_QUESTION_ATTRIBUTE,
   parseVantageDirective,
+  questionOffersTake,
   readVantageFrontmatter,
   renderMarkdown,
+  vantageOqStatus,
   type DirectiveVocabulary,
 } from "vantage-md";
 import {
@@ -90,6 +108,17 @@ export interface Release {
    * knows its name. Absent, every directive counts as one it drops.
    */
   appliesDirective?(inner: string): boolean;
+  /**
+   * `vantageOqStatus`: the state a question's marker means to this release.
+   * Absent, this tree's reading, which every release so far has shared.
+   */
+  oqStatus?(text: string): string | null;
+  /**
+   * `questionOffersTake`: whether this release's app offers Take this leaning
+   * on a question in a state. Absent for a release that predates the export,
+   * which then gets the rule every release so far has used: open, or unmarked.
+   */
+  offersTake?(status: string | null): boolean;
 }
 
 /** This tree's `vantage-md`, read from source through the frontend's alias. */
@@ -99,6 +128,9 @@ export const THIS_TREE: Release = {
   parseFrontmatter,
   readVantageFrontmatter,
   oqHostTargets: VANTAGE_OQ_HOST_TARGETS,
+  oqStatus: vantageOqStatus,
+  offersTake: (status) =>
+    questionOffersTake(status as Parameters<typeof questionOffersTake>[0]),
   appliesDirective: (inner) => {
     const parsed = parseVantageDirective(inner);
     return (
@@ -402,21 +434,75 @@ const ANCHORABLE = [
 /** `VANTAGE_OQ_HOST_TARGETS` as it has stood since the export was added. */
 const OQ_HOSTS = ["p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote"];
 
+/** A question's title as the app reads one: a bold run opening with an id. */
+const OQ_TITLE = /^OQ-[A-Za-z0-9]*\d/;
+
+/** One line of text from something written across several. */
+function flatten(text: string | null): string {
+  return (text ?? "").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * A question's marker and title as the app reads them off the page: from the
+ * bold title opening with its id, in the list item holding the question, and
+ * the text before it; or, with no such title, the text the question opens
+ * with. `questionLabel` in `frontend/src/hooks/useDocumentOutline.ts` at 0.8.0,
+ * on a page with no heading anchors and no planning badges, which a rendered
+ * document from this package never has.
+ */
+function labelOf(stamped: Element): { marker: string; text: string } {
+  const scope = stamped.closest("li") ?? stamped;
+  for (const strong of scope.querySelectorAll("strong")) {
+    const text = flatten(strong.textContent);
+    if (!OQ_TITLE.test(text)) continue;
+    let marker = "";
+    for (const node of strong.parentElement?.childNodes ?? []) {
+      if (node === strong) break;
+      marker += node.textContent ?? "";
+    }
+    return { marker: marker.trim(), text };
+  }
+  const text = flatten(scope.textContent);
+  return { marker: /^[^\p{L}\p{N}]*/u.exec(text)?.[0].trim() ?? "", text };
+}
+
 /**
  * The file lines a review-mode reader is offered "Take this leaning" on.
  *
- * A model of the released app, which the npm package does not contain:
- * `answerableOpenQuestions` in `frontend/src/hooks/useOpenQuestionButtons.ts`
- * at v0.7.1, with `anchorBlockWithin` from `frontend/src/lib/reviewAnchor.ts`.
- * It offers the button on every `[data-vantage-oq]` block, whatever the
- * question's marker says, anchored on the first anchorable block inside it, if
- * that block is one a button can sit in. A release whose app answers that
+ * A model of the released app, which the npm package does not contain, in two
+ * generations told apart by the page itself:
+ *
+ * - **A question stamped `data-vantage-question`** comes from a release from
+ *   0.8.0 on, which stamps it on every question, whichever name declared it.
+ *   That release's app offers the button where the question's state, read off
+ *   its marker (`labelOf`, then `oqStatus`), is one it offers a take in
+ *   (`offersTake`): open, or unmarked.
+ * - **A block stamped `data-vantage-oq` alone** comes from a release before
+ *   0.8.0, whose app offers the button on every `oq` whatever its marker says:
+ *   `answerableOpenQuestions` in `frontend/src/hooks/useOpenQuestionButtons.ts`
+ *   at v0.7.1.
+ *
+ * Either way the button is anchored on the first anchorable block inside the
+ * stamped one (`anchorBlockWithin` from `frontend/src/lib/reviewAnchor.ts`), if
+ * that block is one a button can sit in. A release whose app answers this
  * differently needs this model changed with it.
  */
-function answerableLines(doc: Document, hosts: readonly string[]): number[] {
+function answerableLines(doc: Document, release: Release): number[] {
+  const hosts = release.oqHostTargets ?? OQ_HOSTS;
   const lines: number[] = [];
   const hosted = new Set<Element>();
-  for (const stamped of doc.querySelectorAll("[data-vantage-oq]")) {
+  for (const stamped of doc.querySelectorAll(
+    `[${VANTAGE_OQ_ATTRIBUTE}], [${VANTAGE_QUESTION_ATTRIBUTE}]`,
+  )) {
+    if (stamped.hasAttribute(VANTAGE_QUESTION_ATTRIBUTE)) {
+      const { marker, text } = labelOf(stamped);
+      const status = release.oqStatus ?? vantageOqStatus;
+      const state = status(marker) ?? status(text);
+      const offers = release.offersTake
+        ? release.offersTake(state)
+        : state === null || state === "open";
+      if (!offers) continue;
+    }
     const candidates = [
       ...(stamped.matches(ANCHORABLE) ? [stamped] : []),
       ...stamped.querySelectorAll(ANCHORABLE),
@@ -563,10 +649,7 @@ export async function misreadings(
   // A control the notation does not ask for.
   const scan = scanPlanningDocument("example.md", source, false);
   const questions = scan.kind === "planning" ? scan.document.questions : [];
-  for (const line of answerableLines(
-    then,
-    previous.oqHostTargets ?? OQ_HOSTS,
-  )) {
+  for (const line of answerableLines(then, previous)) {
     const question =
       questions.find((q) => q.line === line) ??
       questions.find((q) => q.unitLine <= line && line <= q.unitEndLine);
@@ -581,8 +664,11 @@ export async function misreadings(
         kind: "affordance",
         message:
           `${prev} offers "Take this leaning" on ${which}, which ${current.name} reads as ` +
-          `${STATE_WORDS[question.state]}. Its directive has to be a name ${prev} does not know, ` +
-          `so that release drops it (docs/design/checker-version-skew.md, P0).`,
+          `${STATE_WORDS[question.state]}. ` +
+          (previous.appliesDirective?.(" vantage: question ")
+            ? `${prev} reads its marker as open, so the state needs a marker ${prev} already reads as closed`
+            : `Declare it with \`question\`, a name ${prev} does not know and drops whole`) +
+          ` (docs/design/checker-version-skew.md, P0).`,
       });
     }
   }

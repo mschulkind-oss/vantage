@@ -743,7 +743,7 @@ const FULL_REQUEST = (root: string) =>
     "Stage conflict (1): the stage says ready or built, but questions are open. For each, find which is wrong, from the document and the code. If the stage is wrong, set it to DESIGN. If a question is a follow-up, propose moving it to a new document. Rule and answer nothing: where a question looks settled, tell the human what you found and ask for a ruling.",
     "- docs/e.md  (stage BUILT; open: OQ-E1)",
     "",
-    "Verify: in the repository, run `vantage-check` on every Markdown file you changed, then `vantage-check index`.",
+    "Verify: in the repository, run `vantage-check` on every Markdown file you changed, then `vantage-check index`. If the command cannot run, or exits 2 (a configuration error or a refusal), leave `.vantage.toml` as it is: the check is a quality gate, not part of the work.",
     "",
   ].join("\n");
 
@@ -790,7 +790,7 @@ describe("index --request", () => {
       .map((line) => line.slice(0, line.indexOf(":")));
     expect(heads).toEqual(["Not on a roadmap (2)", "Stage conflict (1)"]);
     expect(stdout.startsWith(`Repository: ${root}\n\n`)).toBe(true);
-    expect(stdout.endsWith("then `vantage-check index`.\n")).toBe(true);
+    expect(stdout.endsWith("not part of the work.\n")).toBe(true);
   });
 
   it("leaves out an empty section, and prints nothing when every asked one is", async () => {

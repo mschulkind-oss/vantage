@@ -392,8 +392,9 @@ export function parseTarget(value: unknown, path: string): Target | null {
  * reads one way and the checker another would let the page and the gate
  * disagree about which files are planning documents, so the rules are pinned
  * for both readers by `internal/repoconfig/testdata/planning-config.json`. A
- * key this checker does not know is ignored with a warning instead, which the
- * server does not do: `version-skew-config.json` beside it pins both answers.
+ * key this checker does not know is ignored with a warning instead, and the
+ * server of the same release does the same (OQ-VS5):
+ * `version-skew-config.json` beside it pins both answers.
  */
 function parsePlanning(
   table: Record<string, unknown>,
@@ -426,11 +427,13 @@ function parsePlanning(
             `${path}: unknown key planning.${key}. ${misplaced}`,
           );
         }
-        // The server reads this table too, and refuses the whole file over a
-        // key it does not know (docs/reference/repo-config.md §3.4), so the one
-        // reader that warns says what the other does.
+        // The server reads this table too, and from 0.8.0 it ignores a key it
+        // does not know with a warning of its own, as this checker does
+        // (docs/reference/repo-config.md §3.4). So the warning says that the
+        // planning page goes without the key as well, and that the rest of
+        // the file still applies there.
         warnings.push(
-          `${path}: unknown key planning.${key}, which ${checkerName()} does not know, so this run ignores it. Here [planning] takes roadmap, include, exclude, max-file-bytes, max-candidates and a [planning.stages] table, and ${viewerName()} ignores the whole file over a key it does not know, [starred] and theme included. ${newerOrTypo("key")}`,
+          `${path}: unknown key planning.${key}, which ${checkerName()} does not know, so this run ignores it. Here [planning] takes roadmap, include, exclude, max-file-bytes, max-candidates and a [planning.stages] table, and ${viewerName()} ignores the key too and reads the rest of the file. ${newerOrTypo("key")}`,
         );
       }
     }

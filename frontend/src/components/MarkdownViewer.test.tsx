@@ -812,19 +812,24 @@ describe("MarkdownViewer — the one-click Open Question answer", () => {
     vi.clearAllMocks();
   });
 
-  it("renders one button for a parsed directive, in a row after the block it attached to", () => {
+  it("renders one button for a parsed directive, in a row after the question's last block", () => {
     const { container } = renderDoc(OQ_DOC);
 
     expect(takeButton()).not.toBeNull();
     expect(container.querySelectorAll(".review-oq-take")).toHaveLength(1);
-    // The row is the block's next sibling, never a child of it: appended into
-    // the block the control landed after the question's last word, and nothing
-    // injected may sit inside the subtree a block hash is taken over.
+    // The row is a sibling after the question, never a child of the block the
+    // directive attached to: appended into the block the control landed after
+    // the question's last word, and nothing injected may sit inside the
+    // subtree a block hash is taken over. Outside a list the question runs on
+    // over the paragraph after it, to the end of the document here.
     const block = container.querySelector<HTMLElement>(
       'p[data-source-line="3"]',
     )!;
     expect(block.querySelector("[data-vantage-oq-button]")).toBeNull();
-    const row = block.nextElementSibling as HTMLElement;
+    const last = container.querySelector<HTMLElement>(
+      'p[data-source-line="5"]',
+    )!;
+    const row = last.nextElementSibling as HTMLElement;
     expect(row.classList.contains("review-oq-row")).toBe(true);
     expect(row.querySelector(".review-oq-take")).not.toBeNull();
   });
@@ -989,8 +994,73 @@ describe("MarkdownViewer — the one-click Open Question answer", () => {
       false,
     );
     expect(useReviewStore.getState().commentsDrifted).toBe(false);
-    // And the button is still there: a typed answer is not this leaning.
-    expect(takeButton()).not.toBeNull();
+    // A typed comment on the question is its answer: the take goes, and the
+    // row says the question is answered, waiting on the agent — not that its
+    // leaning was taken, which would offer Undo on words the reviewer typed.
+    expect(takeButton()).toBeNull();
+    expect(container.querySelector(".review-oq-taken")).toBeNull();
+    expect(container.querySelector(".review-oq-answered")).toHaveTextContent(
+      "Answered — waiting on the agent",
+    );
+  });
+
+  it("opens the comment popover from Answer…, and files the comment a click on the question would", () => {
+    const { container } = renderDoc(OQ_LIST_DOC);
+    const item = container.querySelector("li")!;
+    const row = item.lastElementChild as HTMLElement;
+    expect(row).toHaveClass("review-oq-row");
+    // The question's controls, together, at the end of its item.
+    expect(
+      Array.from(row.querySelectorAll("button")).map((b) => b.textContent),
+    ).toEqual(["Take this leaning", "Answer…"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Answer…" }));
+    const textarea = document.querySelector<HTMLTextAreaElement>(
+      'textarea[placeholder="Your comment..."]',
+    )!;
+    expect(textarea).not.toBeNull();
+    fireEvent.change(textarea, { target: { value: "Front of the queue." } });
+    act(() => {
+      fireEvent.click(screen.getByText("Save"));
+    });
+
+    const [comment] = useReviewStore.getState().comments;
+    const leaning = container.querySelector<HTMLElement>(
+      'p[data-source-line="5"]',
+    )!;
+    // The take's own anchor: the host block, whole.
+    expect(comment.anchor).toEqual({
+      source_line: 5,
+      block_text_hash: hashBlockText(blockVisibleText(leaning)),
+      selection_offset: 0,
+      selection_length: 0,
+    });
+    expect(comment.fallback_text).toBe("leaning: back of the queue.");
+    expect(comment.comment).toBe("Front of the queue.");
+    expect(container.querySelector(".review-oq-answered")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Answer…" })).toBeNull();
+  });
+
+  it("offers Take this leaning on an open question declared with `question`, and nothing on a closed one", () => {
+    const { container } = renderDoc(
+      [
+        "1. 💬 **OQ-1: Open?**",
+        "",
+        '   <!-- vantage: question id=OQ-1 leaning="Yes." -->',
+        "",
+        "   _Leaning:_ yes.",
+        "",
+        "2. ✅ **OQ-2: Closed?**",
+        "",
+        '   <!-- vantage: question id=OQ-2 leaning="Yes." -->',
+        "",
+        "   _Leaning:_ yes.",
+        "",
+      ].join("\n"),
+    );
+    const [open, closed] = Array.from(container.querySelectorAll("li"));
+    expect(open.querySelector(".review-oq-take")).not.toBeNull();
+    expect(closed.querySelector("[data-vantage-oq-button]")).toBeNull();
   });
 });
 

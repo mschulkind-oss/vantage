@@ -230,6 +230,10 @@ async function loadPrevious(): Promise<Previous> {
       (md.readVantageFrontmatter as Release["readVantageFrontmatter"]) ??
       (() => ({})),
     oqHostTargets: md.VANTAGE_OQ_HOST_TARGETS as readonly string[] | undefined,
+    // Both read off the release itself where it exports them: the state a
+    // marker means to it, and from 0.8.0 on, whether its app offers a take.
+    oqStatus: md.vantageOqStatus as Release["oqStatus"],
+    offersTake: md.questionOffersTake as Release["offersTake"],
     appliesDirective: (inner) => {
       const parsed = parseDirective?.(inner);
       return parsed?.kind === "directive" && names.includes(parsed.name ?? "");
@@ -290,9 +294,9 @@ if (previous.kind === "unreachable" && !REQUIRED) {
   // The check proved against the real release rather than a stand-in: each of
   // these is a document the suite above has to fail on, or pass.
   describe(`what the check catches, read by ${release.name}`, () => {
-    const blocked = (directive: string) =>
+    const blocked = (directive: string, marker = "\u{1F512}") =>
       [
-        "1. \u{1F512} **OQ-10: The retry budget.**",
+        `1. ${marker} **OQ-10: How large is the retry budget?**`,
         "",
         `   ${directive}`,
         "",
@@ -300,19 +304,95 @@ if (previous.kind === "unreachable" && !REQUIRED) {
         "",
       ].join("\n");
 
-    it("an oq directive on a 🔒 question, which 0.8.0's guide first taught, is offered an answer", async () => {
-      const found = await misreadings(
-        { origin: "a test", source: blocked("<!-- vantage: oq id=OQ-10 -->") },
-        release,
-      );
-      expect(found.map((m) => m.kind)).toEqual(["affordance"]);
-    });
+    // A release that predates `question` offers Take this leaning on every
+    // `oq`; from 0.8.0 on, a release reads the marker and withholds it there.
+    const predatesQuestion = !(
+      release.appliesDirective?.(" vantage: question ") ?? false
+    );
 
-    it("a question directive on the same question offers nothing: the fix", async () => {
+    it(
+      predatesQuestion
+        ? "an oq directive on a 🔒 question, which 0.8.0's guide first taught, is offered an answer"
+        : "an oq directive on a 🔒 question is offered nothing, by its marker",
+      async () => {
+        const found = await misreadings(
+          {
+            origin: "a test",
+            source: blocked("<!-- vantage: oq id=OQ-10 -->"),
+          },
+          release,
+        );
+        expect(found.map((m) => m.kind)).toEqual(
+          predatesQuestion ? ["affordance"] : [],
+        );
+      },
+    );
+
+    it(
+      predatesQuestion
+        ? "an oq directive on a ✅ question is offered an answer"
+        : "an oq directive on a ✅ question is offered nothing, by its marker",
+      async () => {
+        const found = await misreadings(
+          {
+            origin: "a test",
+            source: blocked("<!-- vantage: oq id=OQ-10 -->", "\u2705"),
+          },
+          release,
+        );
+        expect(found.map((m) => m.kind)).toEqual(
+          predatesQuestion ? ["affordance"] : [],
+        );
+      },
+    );
+
+    it("a question directive on a ✅ question, leaning and all, offers nothing", async () => {
       await expectNoMisreadings(
         {
           origin: "a test",
-          source: blocked("<!-- vantage: question id=OQ-10 -->"),
+          source: blocked(
+            '<!-- vantage: question id=OQ-10 leaning="Wait for the test." -->',
+            "\u2705",
+          ),
+        },
+        release,
+      );
+    });
+
+    it("an oq or a question directive on a 💬 🤷 question is no misreading: it is open", async () => {
+      for (const directive of [
+        '<!-- vantage: oq id=OQ-10 leaning="Either." -->',
+        '<!-- vantage: question id=OQ-10 leaning="Either." -->',
+      ]) {
+        await expectNoMisreadings(
+          {
+            origin: `a test: ${directive}`,
+            source: blocked(directive, "\u{1F4AC} \u{1F937}"),
+          },
+          release,
+        );
+      }
+    });
+
+    it("a question directive on the same question, leaning and all, offers nothing: the fix", async () => {
+      await expectNoMisreadings(
+        {
+          origin: "a test",
+          source: blocked(
+            '<!-- vantage: question id=OQ-10 leaning="Wait for the test." -->',
+          ),
+        },
+        release,
+      );
+    });
+
+    it("a question directive on an open question is no misreading, whether the release drops it or answers it", async () => {
+      await expectNoMisreadings(
+        {
+          origin: "a test",
+          source: blocked(
+            '<!-- vantage: question id=OQ-10 leaning="Wait for the test." -->',
+          ).replace("\u{1F512}", "\u{1F4AC}"),
         },
         release,
       );

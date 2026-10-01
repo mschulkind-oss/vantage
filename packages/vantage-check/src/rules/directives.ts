@@ -11,10 +11,8 @@ import {
   hasVantageSentinel,
   isQuestionDirective,
   parseVantageDirective,
-  questionDirectiveFor,
   VANTAGE_OQ_HOST_TARGETS,
   VANTAGE_OQ_STATUS,
-  VANTAGE_QUESTION_NAMES,
   VANTAGE_FALLBACK_TARGETS,
   VANTAGE_SENTINEL,
   VANTAGE_STYLE_TARGETS,
@@ -27,8 +25,8 @@ import type {
   QuestionState,
 } from "../../../vantage-md/src/planning/scan.js";
 // Where a directive lands, predicted from mdast. Shared with the planning
-// index's scan, which has to reach the same answer about which `oq` yields a
-// button (D5).
+// index's scan, which has to reach the same answer about which question
+// directive lands where a button can sit (D5).
 import {
   BLOCK_PARENTS,
   PHRASING_PARENTS,
@@ -185,17 +183,6 @@ export function checkDirectives(collector: Collector): void {
 
         const values = keys[pair.key];
         if (values === undefined) {
-          // A key the other question name takes is neither a typo nor a newer
-          // release's, so the two-branch advice would only mislead: told to
-          // keep it, an agent that renamed an `oq` to `question` keeps a dead
-          // `leaning` and concludes its readers need a newer Vantage.
-          const misnamed = isQuestionDirective(parsed.name)
-            ? questionKeyMessage(parsed.name, pair.key)
-            : undefined;
-          if (misnamed !== undefined) {
-            collector.report("vantage/unknown-key", keyAt, misnamed);
-            continue;
-          }
           collector.report(
             "vantage/unknown-key",
             keyAt,
@@ -204,8 +191,8 @@ export function checkDirectives(collector: Collector): void {
           );
           continue;
         }
-        // A free-text value — an `id`, or `oq`'s `leaning`. No closed set can
-        // cover a sentence, so there is nothing to check.
+        // A free-text value — a question's `id` or `leaning`. No closed set
+        // can cover a sentence, so there is nothing to check.
         if (values === null) continue;
 
         if (!values.includes(pair.value)) {
@@ -323,8 +310,8 @@ function swallowedTail(
  * directive above a formula styles something and must not be reported.
  *
  * Deliberately *not* added to `OQ_HOST_TARGETS`: a `<button>` inside a KaTeX span
- * is still no affordance, so an `oq` above a formula is still a finding, and so
- * is a `question`, which declares a question where an `oq` would.
+ * is still no affordance, so a question directive above a formula is still a
+ * finding, under either name.
  */
 const STYLE_TARGETS = new Set<string>([...VANTAGE_STYLE_TARGETS, "span"]);
 /**
@@ -461,28 +448,23 @@ function orphanReason(
   }
 
   // (e) The target is a block, but not one this name can stamp. The two lists
-  // differ: `oq` needs a tag that can *host the button*, so an `oq` above a
-  // list attaches to the `<ul>` and no button ever appears — and an `oq` above a
-  // fence or a table does stamp, which makes the silence worse rather than
-  // better: the author has an attribute and no affordance. A `question` never
-  // has a button, but it declares a question only where an `oq` would, so the
-  // planning index and the contents column miss it in the same places.
+  // differ: a question needs a tag that can *host the button*, so a question
+  // directive above a list attaches to the `<ul>` and no button ever appears —
+  // and one above a fence or a table does stamp, which makes the silence worse
+  // rather than better: the author has an attribute and no affordance. Neither
+  // name declares a question there, so the planning index and the contents
+  // column miss it too, in every state.
   if (names.some(isQuestionDirective) && !OQ_HOST_TARGETS.has(tag)) {
-    const answerable = names.includes("oq");
     let fix = "";
     if (tag === "ul" || tag === "ol") {
-      fix = answerable
-        ? " Indent it inside the list item instead, on its own line, directly before the paragraph that holds the leaning."
-        : " Indent it inside the list item instead, on its own line, directly before one of the question's paragraphs.";
+      fix =
+        " Indent it inside the list item instead, on its own line, directly before the question's `_Leaning:_` paragraph, or another of its paragraphs when it states none.";
     } else if (tag === "pre" || tag === "table") {
       // Both are anchorable, so the directive stamps; what fails is the button.
-      fix = answerable
-        ? " A button cannot live inside a code block or a table — inside a `<pre>` it would render as part of the code, and a `<button>` child of `<table>` is not valid HTML — so put the directive above the paragraph that introduces it."
-        : " Put the directive above the paragraph that introduces it.";
+      fix =
+        " A button cannot live inside a code block or a table — inside a `<pre>` it would render as part of the code, and a `<button>` child of `<table>` is not valid HTML — so put the directive above the paragraph that introduces it.";
     }
-    return answerable
-      ? `An Open Question button can only be attached to a ${OQ_HOST_NAMES}, and the block after this directive is a ${name}, so no button is rendered.${fix}`
-      : `A question can only be declared on a ${OQ_HOST_NAMES}, and the block after this directive is a ${name}, so neither the contents column nor the planning index counts it.${fix}`;
+    return `A question can only be declared on a ${OQ_HOST_NAMES}, and the block after this directive is a ${name}, so neither the contents column nor the planning index counts it, and review mode offers no one-click answer for it.${fix}`;
   }
   if (names.some((n) => !isQuestionDirective(n)) && !STYLE_TARGETS.has(tag)) {
     return `The block after this directive is a ${name}, which Vantage does not stamp, so this directive styles nothing.`;
@@ -1065,28 +1047,6 @@ export function unknownValueMessage(
   return `\`${value}\` is not a value \`${key}\` accepts, so ${viewerName(release)} drops that pair and nothing is styled. \`${key}\` accepts ${orList(accepted)}. The vocabulary is closed on purpose: a document names what a section *is*, never what it should look like.`;
 }
 
-/**
- * `vantage/unknown-key` for a key the *other* question name takes, or
- * `undefined` for any other key. In this release that is `leaning` on a
- * `question`, the likeliest slip when a question is marked 🔒 or ✅ and its
- * `oq` renamed: `question` offers no button, so it has no comment to file.
- */
-export function questionKeyMessage(
-  name: VantageQuestionName,
-  key: string,
-  release: string | undefined = RELEASE,
-): string | undefined {
-  const other = VANTAGE_QUESTION_NAMES.find(
-    (n) => n !== name && DIRECTIVE_VOCABULARY[n]?.[key] !== undefined,
-  );
-  if (other === undefined) return undefined;
-  const accepted = Object.keys(DIRECTIVE_VOCABULARY[name] ?? {});
-  if (key === "leaning" && name === "question") {
-    return `\`leaning\` is \`oq\`'s key, the comment Take this leaning files, and a \`question\` offers no button, so it takes ${orList(accepted)} alone and ${viewerName(release)} drops this pair. Delete the key, and keep the leaning in the question's \`_Leaning:_\` line.`;
-  }
-  return `\`${key}\` is \`${other}\`'s key, not \`${name}\`'s, so ${viewerName(release)} drops this pair. \`${name}\` accepts ${orList(accepted)}. Delete the key, or declare the question with \`${other}\` if that is the name its marker calls for.`;
-}
-
 /** The advice under each of the three: fix a typo, keep what is newer. */
 export function typoOrNewer(token: string): string {
   return `If \`${token}\` is a typo, fix it. If it comes from a newer Vantage, don't remove it: this repository's readers need that version, and a newer vantage-check checks it.`;
@@ -1149,7 +1109,8 @@ function nodeText(node: RootContent | ListItem): string {
 }
 
 /**
- * An Open Question written in the convention but carrying no `oq` directive.
+ * An Open Question written in the convention but carrying no question
+ * directive.
  *
  * The convention — a status emoji, a stable `OQ-N` id, a `_Leaning:_` line and
  * a fill-in `**Answer:**` — is *prose*. The one-click answer is a *directive*.
@@ -1183,13 +1144,12 @@ function nodeText(node: RootContent | ListItem): string {
  * ruling, with a stated leaning and no way for the reviewer to file it. That is
  * the house rule's error criterion, not a judgment about taste. A document that
  * wants the question without the button says so with its marker — 🔒 if it is
- * blocked, ✅ once it is decided — and declares it with a `question` directive
- * instead, which offers no button in any viewer and is, with `oq`, the only
+ * blocked, ✅ once it is decided — and keeps the directive, which is the only
  * thing the planning index reads a question from
- * (`docs/reference/planning-index.md` §3.3). A list item holding either name is
- * not this rule's: a `question` on an open question is `vantage/question-name`'s
- * finding. A repo that wants the whole rule advisory sets
- * `"vantage/oq-missing" = "warning"` under `[check.rules]`.
+ * (`docs/reference/planning-index.md` §3.3). A list item holding either
+ * question name is not this rule's. A repo that wants the whole rule advisory
+ * sets `"vantage/oq-missing" = "warning"` under `[check.rules]`; the id keeps
+ * the name the rule shipped with in 0.7.
  */
 export function checkOpenQuestions(collector: Collector): void {
   if (!collector.enabled("vantage/oq-missing")) return;
@@ -1229,17 +1189,16 @@ export function checkOpenQuestions(collector: Collector): void {
         line: fileLine(collector.doc, leaning.position?.start.line ?? 1),
         column: leaning.position?.start.column ?? 1,
       },
-      "This is an open question (\u{1F4AC}) with a stated leaning and no `oq` " +
-        "directive, so review mode renders no one-click answer for it and the " +
-        "reviewer has no way to file the leaning. Add " +
-        '`<!-- vantage: oq id=\u2026 leaning="\u2026" -->` beside it, indented into ' +
-        "the same list item, restating the leaning as the comment the agent will " +
-        "receive. If the question cannot be answered yet, mark it \u{1F512}; " +
-        "once it is decided, mark it \u2705. Either way it then takes " +
-        "`<!-- vantage: question id=\u2026 -->` instead, which declares the " +
-        "same question with no button: Vantage's planning index reads a " +
-        "question only from one of the two, so without one nothing counts " +
-        "it, badges it or lists it.",
+      "This is an open question (\u{1F4AC}) with a stated leaning and no " +
+        "`question` directive, so review mode renders no one-click answer for " +
+        "it and the reviewer has no way to file the leaning. Add " +
+        '`<!-- vantage: question id=\u2026 leaning="\u2026" -->` directly above ' +
+        "the `_Leaning:_` paragraph, indented into the same list item, " +
+        "restating the leaning as the comment the agent will receive. Keep it " +
+        "when the question is marked \u{1F512} blocked or \u2705 answered, " +
+        "which changes only the marker: Vantage's planning index reads a " +
+        "question only from its directive, so without one nothing counts it, " +
+        "badges it or lists it.",
     );
   });
 }
@@ -1249,8 +1208,8 @@ export function checkOpenQuestions(collector: Collector): void {
  * ------------------------------------------------------------------ */
 
 /**
- * `vantage/oq-id-format` and `vantage/oq-id-duplicate` — the two ways an `oq`
- * directive's `id` fails to become the anchor a reference needs.
+ * `vantage/oq-id-format` and `vantage/oq-id-duplicate` — the two ways a
+ * question directive's `id` fails to become the anchor a reference needs.
  *
  * Both are errors because the parsed tree settles them, and both are silent
  * without a checker. A malformed id is stamped by the plugin and then refused
@@ -1271,7 +1230,7 @@ export function checkOpenQuestionIds(collector: Collector): void {
       collector.report(
         "vantage/oq-id-format",
         collector.at(oq.node),
-        `\`${oq.id}\` is not a usable open-question id, so the block gets no ` +
+        `\`${oq.id}\` is not a usable question id, so the block gets no ` +
           "anchor and `#" +
           oq.id +
           "` links to nothing. Write `OQ-` then an " +
@@ -1311,90 +1270,102 @@ export function checkOpenQuestionIds(collector: Collector): void {
  * ------------------------------------------------------------------ */
 
 /**
- * `vantage/question-name` — a question directive whose name says the wrong
- * thing about the question's state, to some viewer.
+ * `vantage/question-name` and `vantage/oq-deprecated` — the name a question
+ * directive is written with, held to what every viewer makes of it.
  *
- * Two names declare a question (`VANTAGE_QUESTION_NAMES`), and they differ in
- * one promise: an `oq` is a question to answer, and every viewer that has ever
- * shipped offers Take this leaning on one, while a `question` is a 🔒 blocked or
- * ✅ answered one, which nothing offers to answer. So each is wrong in one
- * state, and both are errors, because each costs a reader something real:
+ * `question` declares a question in any state, and the marker says which
+ * (`VANTAGE_QUESTION_NAMES`). `oq` is the name it replaces, deprecated and
+ * never removed: every viewer since 0.7 reads it, and every viewer before 0.8
+ * offers Take this leaning on every `oq` it meets, whatever the marker says.
+ * So each `oq` gets exactly one finding:
  *
- * - **`oq` on a 🔒 or ✅ question.** A viewer from 0.8 on withholds the button
- *   by the marker, so it looks fine there. Every viewer before 0.8 reads `oq`
- *   as it has always meant and offers the button, which with no leaning set files the
+ * - **On a 🔒 or ✅ question, an error** (`vantage/question-name`). A viewer
+ *   from 0.8 on withholds the button by the marker, so it looks fine there,
+ *   but every viewer before 0.8 offers it, and with no leaning set it files the
  *   literal "Take the stated leaning." — a control that does the wrong thing,
  *   which D4 forbids. `question` is the name those viewers drop harmlessly.
- * - **`question` on an open question**, marked 💬 or not marked at all. No
- *   viewer offers to answer it: one from 0.8 on because the name says not to,
- *   older ones because they drop the name. The reviewer has no one-click answer, the
- *   failure `vantage/oq-missing` exists for.
+ * - **Anywhere else, a warning** (`vantage/oq-deprecated`) that quotes the
+ *   `question` to write, keys unchanged. The `oq` still works in every
+ *   viewer, so nothing is wrong yet; a repository whose readers are still on
+ *   0.7, which drops `question`, keeps it until they upgrade.
  *
  * The state is the planning index's own reading of the question
  * (`scanPlanningDocument`), so this rule, the index, the contents column and the
  * button can never disagree about it. Each directive comment is matched to its
- * question through the block it lands on, and judged on its own name: in a run
- * holding both, the `oq` is reported on a 🔒 question and the `question` on an
- * open one, and the fix for either is to delete it, since the other name in
- * the run already declares the question.
+ * question through the block it lands on, and judged on its own name. In a run
+ * holding both names the run is one question, so the fix for the `oq` in it is
+ * to delete it rather than to rename it into a second declaration.
  *
- * One layout reads a different state than its author wrote. Outside a list
- * item, the question is the block the directive lands on, so a bold title
- * *above* the directive — `✅ **OQ-3: …**`, then the directive, then the answer
- * — is not part of it, and every viewer reads the unmarked block below as an
- * open question. Naming a directive there would be wrong either way: `oq` is
- * what every Vantage offers to answer, and `question` is "open, so write `oq`".
- * So when the block the directive lands on carries no title and the block
- * just above it carries one marked otherwise, the finding is the placement.
+ * One layout reads a different state than its author wrote, under either name.
+ * Outside a list item, the question is the block the directive lands on, so a
+ * bold title *above* the directive — `✅ **OQ-3: …**`, then the directive, then
+ * the answer — is not part of it, and every viewer reads the unmarked block
+ * below as an open question: every Vantage offers to answer it in one click.
+ * So when the block the directive lands on carries no title and the block just
+ * above it carries one marked otherwise, the finding is the placement, an
+ * error under `vantage/question-name`.
  */
 export function checkQuestionNames(collector: Collector): void {
-  if (!collector.enabled("vantage/question-name")) return;
+  const naming = collector.enabled("vantage/question-name");
+  const deprecating = collector.enabled("vantage/oq-deprecated");
+  if (!naming && !deprecating) return;
   const doc = collector.doc;
   if (!doc.text.includes(VANTAGE_SENTINEL)) return;
 
   /** Every question directive, the file line of its target, and where it is. */
   const written: {
     name: VantageQuestionName;
-    id: string | undefined;
-    targetLine: number;
+    directive: ParsedDirective;
+    /** The file line of the block its run lands on, when the tree says. */
+    targetLine: number | undefined;
     at: FilePosition;
     /** The title just above the directive, outside the block it lands on. */
     above: TitleAbove | undefined;
-    /** Whether the question's own unit states a `_Leaning:_`. */
-    leans: boolean;
   }[] = [];
   visit(doc.mdast, "html", (node: Html, index, parent) => {
     if (!node.value.includes(VANTAGE_SENTINEL)) return;
-    if (parent === undefined || index === undefined) return;
-    if (!BLOCK_PARENTS.has(parent.type)) return;
-    const target = nextBlock(parent.children, index);
-    if (target === undefined || target === "unknown") return;
-    const line = target.position?.start.line;
-    if (line === undefined) return;
-    const unit =
-      parent.type === "listItem" || parent.type === "footnoteDefinition"
-        ? parent
-        : target;
+    let targetLine: number | undefined;
     let above: TitleAbove | undefined;
-    let leans: boolean | undefined;
+    let placed = false;
     for (const segment of scanComments(node.value)) {
       if (segment.kind !== "comment" || segment.terminator !== "-->") continue;
       const parsed = parseVantageDirective(segment.value);
       if (parsed?.kind !== "directive" || !isQuestionDirective(parsed.name)) {
         continue;
       }
-      let id: string | undefined;
-      for (const pair of parsed.pairs) if (pair.key === "id") id = pair.value;
-      above ??=
-        unit === target ? titleAbove(collector, parent, index) : undefined;
-      leans ??= statesLeaning(unit);
+      if (!placed) {
+        placed = true;
+        const target =
+          parent !== undefined &&
+          index !== undefined &&
+          BLOCK_PARENTS.has(parent.type)
+            ? nextBlock(parent.children, index)
+            : undefined;
+        const line =
+          target === undefined || target === "unknown"
+            ? undefined
+            : target.position?.start.line;
+        if (
+          target !== undefined &&
+          target !== "unknown" &&
+          line !== undefined
+        ) {
+          targetLine = fileLine(doc, line);
+          const unit =
+            parent?.type === "listItem" || parent?.type === "footnoteDefinition"
+              ? parent
+              : target;
+          if (unit === target && parent !== undefined && index !== undefined) {
+            above = titleAbove(collector, parent, index);
+          }
+        }
+      }
       written.push({
         name: parsed.name,
-        id,
-        targetLine: fileLine(doc, line),
+        directive: parsed,
+        targetLine,
         at: positionOf(collector, node, segment.offset),
         above,
-        leans,
       });
     }
   });
@@ -1402,70 +1373,75 @@ export function checkQuestionNames(collector: Collector): void {
 
   // The scan parses the file again: its reading of a question's marker walks a
   // tree it rewrites as it goes, so it cannot be handed this one. Only a file
-  // that declares a question pays for it.
-  const scanned = scanPlanningDocument(doc.display, doc.text, false);
-  if (scanned.kind !== "planning") return;
+  // whose question directives land on a block pays for it, and only for the
+  // error, which is the one finding that turns on a question's state.
   const questionAt = new Map<number, PlanningQuestion>();
-  for (const question of scanned.document.questions) {
-    questionAt.set(question.line, question);
+  if (naming && written.some((d) => d.targetLine !== undefined)) {
+    const scanned = scanPlanningDocument(doc.display, doc.text, false);
+    if (scanned.kind === "planning") {
+      for (const question of scanned.document.questions) {
+        questionAt.set(question.line, question);
+      }
+    }
   }
   /** The names each run holds, by the line of the block it lands on. */
   const namesAt = new Map<number, Set<VantageQuestionName>>();
-  for (const directive of written) {
-    const names = namesAt.get(directive.targetLine) ?? new Set();
-    names.add(directive.name);
-    namesAt.set(directive.targetLine, names);
+  for (const { name, targetLine } of written) {
+    if (targetLine === undefined) continue;
+    const names = namesAt.get(targetLine) ?? new Set();
+    names.add(name);
+    namesAt.set(targetLine, names);
   }
   /** Runs already reported for their placement: one finding for the run. */
   const misplaced = new Set<number>();
 
-  for (const directive of written) {
-    const question = questionAt.get(directive.targetLine);
-    if (question === undefined) continue;
-    const { state } = question;
+  for (const { name, directive, targetLine, at, above } of written) {
+    const question =
+      targetLine === undefined ? undefined : questionAt.get(targetLine);
 
-    // The title is outside the question, and marks it 🔒 or ✅.
-    const { above } = directive;
-    if (
-      above !== undefined &&
-      above.state !== "open" &&
-      state === "open" &&
-      !OQ_TITLE_TEXT.test(question.title)
-    ) {
-      if (misplaced.has(directive.targetLine)) continue;
-      misplaced.add(directive.targetLine);
-      collector.report(
-        "vantage/question-name",
-        directive.at,
-        titleAboveMessage(above, directive.targetLine, directive.id),
-      );
-      continue;
+    if (question !== undefined && targetLine !== undefined && naming) {
+      // The title is outside the question, and marks it 🔒 or ✅.
+      if (
+        above !== undefined &&
+        above.state !== "open" &&
+        question.state === "open" &&
+        !OQ_TITLE_TEXT.test(question.title)
+      ) {
+        if (misplaced.has(targetLine)) continue;
+        misplaced.add(targetLine);
+        collector.report(
+          "vantage/question-name",
+          at,
+          titleAboveMessage(above, targetLine, directive),
+        );
+        continue;
+      }
+
+      if (name === "oq" && question.state !== "open") {
+        collector.report(
+          "vantage/question-name",
+          at,
+          namesAt.get(targetLine)?.has("question")
+            ? redundantOqMessage(question.state)
+            : oqOnClosedMessage(question.state, directive),
+        );
+        continue;
+      }
     }
 
-    const wanted = questionDirectiveFor(statusOf(state));
-    if (directive.name === wanted) continue;
+    if (name !== "oq") continue;
     collector.report(
-      "vantage/question-name",
-      directive.at,
-      namesAt.get(directive.targetLine)?.has(wanted)
-        ? redundantNameMessage(wanted)
-        : wanted === "question"
-          ? oqOnClosedMessage(state, directive.id)
-          : questionOnOpenMessage(directive.id, directive.leans),
+      "vantage/oq-deprecated",
+      at,
+      targetLine !== undefined && namesAt.get(targetLine)?.has("question")
+        ? redundantOqMessage(null)
+        : oqDeprecatedMessage(directive),
     );
   }
 }
 
 /** A title as the scan reads one: a `strong` whose text opens with an id. */
 const OQ_TITLE_TEXT = /^OQ-[A-Za-z0-9]*\d/;
-
-function statusOf(state: QuestionState): "open" | "blocked" | "settled" {
-  return state === "open"
-    ? "open"
-    : state === "blocked"
-      ? "blocked"
-      : "settled";
-}
 
 /** A question's title in the block just above its directive. */
 interface TitleAbove {
@@ -1526,55 +1502,48 @@ function titleAbove(
   };
 }
 
-/** Whether `unit` holds a paragraph opening with the `_Leaning:_` marker. */
-function statesLeaning(unit: RootContent | Parents): boolean {
-  let found = false;
-  visit(unit, "paragraph", (paragraph) => {
-    if (LEANING_MARKER.test(nodeText(paragraph))) found = true;
-  });
-  return found;
-}
-
-/** The directive to write instead, with the id the wrong one carried. */
-function replacement(
-  name: VantageQuestionName,
-  id: string | undefined,
-  leaning = name === "oq",
-) {
-  const idPart = id === undefined || id === "" ? "" : ` id=${id}`;
-  return `\`<!-- vantage: ${name}${idPart}${leaning ? ' leaning="…"' : ""} -->\``;
+/**
+ * The `question` directive to write in place of `directive`, keys unchanged:
+ * each pair as it was written, quoted where it was quoted.
+ */
+export function asQuestion(directive: ParsedDirective): string {
+  const pairs = directive.pairs
+    .map(({ key, value, quoted }) =>
+      quoted ? ` ${key}="${value}"` : ` ${key}=${value}`,
+    )
+    .join("");
+  return `\`<!-- vantage: question${pairs} -->\``;
 }
 
 /** `oq` on a 🔒 or ✅ question. */
 export function oqOnClosedMessage(
   state: QuestionState,
-  id: string | undefined,
+  directive: ParsedDirective,
 ): string {
-  return `This question is marked ${markedWords(state)}, and an \`oq\` directive declares a question to answer in one click. Vantage withholds the button there from 0.8 on, because of the marker, but every Vantage before 0.8 offers Take this leaning on it, which with no leaning set files the literal text "Take the stated leaning." Write ${replacement("question", id)} instead: it declares the same question with the same anchor, offers no button in any viewer, and takes no \`leaning\`, so keep the leaning in the prose.`;
+  return `This question is marked ${markedWords(state)}, and every Vantage before 0.8 offers Take this leaning on every \`oq\` whatever its marker says, which with no leaning set files the literal text "Take the stated leaning." Vantage from 0.8 on withholds the button there, because of the marker. Write ${asQuestion(directive)} instead, keys unchanged: it declares the same question with the same anchor, Vantage before 0.8 drops it, and no Vantage offers to answer it while it is ${state === "blocked" ? VANTAGE_OQ_STATUS.blocked : VANTAGE_OQ_STATUS.settled}.`;
+}
+
+/** `vantage/oq-deprecated`'s id, which its own message names. */
+const OQ_DEPRECATED_RULE = "vantage/oq-deprecated";
+
+/**
+ * An `oq` anywhere a question is not 🔒 or ✅: on an open question, or one
+ * the tree cannot place.
+ */
+export function oqDeprecatedMessage(directive: ParsedDirective): string {
+  return `\`oq\` is deprecated: write ${asQuestion(directive)} instead, keys unchanged, once every reader of this repository is on Vantage 0.8 or later. \`question\` declares the same question with the same keys, in every state, and Vantage 0.8 and later offer Take this leaning on it while the question is open. Vantage before 0.8 drops it, so a reader still on 0.7 gets no one-click answer and no anchor there, and misreads nothing: keep the \`oq\` while any reader is on 0.7, and unless you know they all upgraded. A repository with readers on 0.7 turns this warning off in .vantage.toml, under [check.rules]: "${OQ_DEPRECATED_RULE}" = "off" (a vantage-check before 0.8 exits 2 on that line, as on any rule it does not know).`;
 }
 
 /**
- * `question` on an open question. `leans` says whether the question states a
- * leaning, which the `oq` is then to restate; one that states none yet gets
- * an `oq` with no `leaning`, so that the planning index still counts it.
+ * An `oq` in a run that holds a `question` too, which is one question: on a
+ * 🔒 or ✅ one (`state`) or an open one (`null`).
  */
-export function questionOnOpenMessage(
-  id: string | undefined,
-  leans = true,
-): string {
-  const opening = `This question is open (marked ${VANTAGE_OQ_STATUS.open}, or not marked, which counts as open), and a \`question\` directive declares one that cannot be answered, so no viewer offers Take this leaning for it: Vantage from 0.8 on because the name says not to, and every Vantage before 0.8 because it drops the name.`;
-  const mark = `mark the question ${VANTAGE_OQ_STATUS.blocked} or ${VANTAGE_OQ_STATUS.settled} if it is blocked or answered`;
-  if (leans) {
-    return `${opening} Write ${replacement("oq", id)} instead, restating the leaning as the comment the agent will receive, or ${mark}.`;
-  }
-  return `${opening} Write ${replacement("oq", id, false)} instead, or ${mark}. The question states no leaning yet, and until it does, Take this leaning files the literal text "Take the stated leaning."; once it has one, write it in a \`_Leaning:_\` line and restate it as the directive's \`leaning="…"\`.`;
-}
-
-/** A run holding both names, where the one reported is the extra one. */
-export function redundantNameMessage(wanted: VantageQuestionName): string {
-  return wanted === "question"
-    ? `Delete this \`oq\`: the \`question\` in the same run already declares the question, and an \`oq\` beside it is what every Vantage before 0.8 reads, which offers Take this leaning on a question its marker says cannot be answered.`
-    : `Delete this \`question\`: the \`oq\` in the same run already declares the question and offers its one-click answer, and the \`question\` beside it adds nothing any viewer reads.`;
+export function redundantOqMessage(state: QuestionState | null): string {
+  const already =
+    "Delete this `oq`: the `question` in the same run already declares the question, and while the `oq` is there only the `oq`'s keys apply, in every Vantage, so move any key you want kept onto the `question` first.";
+  return state === null || state === "open"
+    ? `${already} \`oq\` is deprecated, and a reader still on 0.7, which drops the \`question\`, is the one reason to keep it.`
+    : `${already} Every Vantage before 0.8 reads the \`oq\` alone, and offers Take this leaning on a question its marker says ${state === "blocked" ? "cannot be answered yet" : "has been answered"}.`;
 }
 
 /**
@@ -1584,10 +1553,9 @@ export function redundantNameMessage(wanted: VantageQuestionName): string {
 export function titleAboveMessage(
   above: TitleAbove,
   targetLine: number,
-  id: string | undefined,
+  directive: ParsedDirective,
 ): string {
-  const wanted = questionDirectiveFor(statusOf(above.state));
-  return `The title on line ${above.line} marks this question ${markedWords(above.state)}, but the directive lands on line ${targetLine}, the block after the title, and outside a list item that block is the whole question to every viewer. It carries no marker, so every viewer reads the question as open: every Vantage offers to answer an \`oq\` there in one click, and a \`question\` there is an open question nobody can answer. Put the directive above the title, so that it lands on it, or write the question as a list item with the directive indented inside it; then declare it with ${replacement(wanted, id)}.`;
+  return `The title on line ${above.line} marks this question ${markedWords(above.state)}, but the directive lands on line ${targetLine}, the block after the title, and outside a list item every viewer reads a question's marker from the block its directive lands on. That block carries no marker, so every viewer reads the question as open, and every Vantage offers to answer it in one click. Put the directive above the title, so that it lands on it, or write the question as a list item with the directive indented inside it; then declare it with ${asQuestion(directive)}.`;
 }
 
 function markedWords(state: QuestionState): string {

@@ -8,11 +8,7 @@
  * over every document in `docs/`, by `planningAgreement.test.tsx`.
  */
 import { describe, expect, it } from "vitest";
-import {
-  questionDirectiveFor,
-  renderMarkdown,
-  vantageOqStatus,
-} from "vantage-md";
+import { renderMarkdown } from "vantage-md";
 import {
   VANTAGE_OQ_PREFERENCE,
   normalizeLeaning,
@@ -40,19 +36,14 @@ function scan(source: string, isRoadmap = false): ScanResult {
 }
 
 /**
- * A loose list item holding one question, in the convention's layout: an open
- * question's `oq` restates its leaning, and a 🔒 or ✅ one is declared with a
- * `question` directive, which takes none.
+ * A loose list item holding one question, in the convention's layout: a
+ * `question` directive in every state, restating the question's leaning.
  */
 function item(marker: string, id: string, leaning = "Take it."): string {
-  const directive =
-    questionDirectiveFor(vantageOqStatus(marker)) === "oq"
-      ? `oq id=${id} leaning="${leaning}"`
-      : `question id=${id}`;
   return [
     `1. ${marker} **${id}: A question?**`,
     "",
-    `   <!-- vantage: ${directive} -->`,
+    `   <!-- vantage: question id=${id} leaning="${leaning}" -->`,
     "",
     `   _Leaning:_ ${leaning}`,
     "",
@@ -359,7 +350,7 @@ describe("a question (§3.3)", () => {
     // second runs 15–19.
     expect(first).toEqual({
       path: "docs/design/x.md",
-      directive: "oq",
+      directive: "question",
       id: "OQ-B1",
       state: "open",
       preference: false,
@@ -375,7 +366,8 @@ describe("a question (§3.3)", () => {
     expect(second).toMatchObject({
       directive: "question",
       id: "OQ-B2",
-      leaning: null,
+      // A 🔒 question keeps its leaning, which nothing offers to take.
+      leaning: "Take it.",
       line: 19,
       unitLine: 15,
       unitEndLine: 19,
@@ -450,7 +442,12 @@ describe("a question (§3.3)", () => {
       "", // 31
       "### \u{1F4AC} A question as a heading", // 32
       "", // 33
-      "After.", // 34
+      "After,", // 34
+      "in its section.", // 35
+      "", // 36
+      "## The next section", // 37
+      "", // 38
+      "Not the question's.", // 39
       "",
     ].join("\n");
     expect(
@@ -460,10 +457,62 @@ describe("a question (§3.3)", () => {
       ["OQ-L1", 3, 8],
       // The nearest item is the unit, not the outer one it sits in.
       ["OQ-N1", 12, 16],
-      // Outside a list the unit is the host block itself.
+      // Outside a list the unit runs from the host block up to the next
+      // question's: here, the host block alone.
       ["OQ-P1", 22, 23],
       ["OQ-Q1", 27, 28],
-      ["OQ-H1", 32, 32],
+      // A heading runs to the end of its section.
+      ["OQ-H1", 32, 35],
+    ]);
+  });
+
+  it("runs a question outside a list over the blocks after its host, up to a heading, a rule or the next question", () => {
+    const source = [
+      '<!-- vantage: question id=OQ-1 leaning="A." -->', // 1
+      "", // 2
+      "\u{1F4AC} **OQ-1: Where does a job go?**", // 3
+      "", // 4
+      "Its context.", // 5
+      "", // 6
+      "- **A — The back.**", // 7
+      "- **B — Its old place.**", // 8
+      "", // 9
+      "_Leaning:_ A.", // 10
+      "", // 11
+      "**Answer:**", // 12
+      "", // 13
+      "> _(empty — fill in when decided)_", // 14
+      "", // 15
+      "[ref]: https://example.com", // 16
+      "", // 17
+      "<!-- an editorial comment -->", // 18
+      "", // 19
+      '<!-- vantage: question id=OQ-2 leaning="B." -->', // 20
+      "", // 21
+      "\u{1F4AC} **OQ-2: The next one?**", // 22
+      "", // 23
+      "Its context.", // 24
+      "", // 25
+      "---", // 26
+      "", // 27
+      "No question's.", // 28
+      "", // 29
+      "<!-- vantage: question id=OQ-3 -->", // 30
+      "", // 31
+      "\u{1F4AC} **OQ-3: Before a heading?**", // 32
+      "", // 33
+      "#### Even a deeper one ends it", // 34
+      "",
+    ].join("\n");
+    const questions = planning(source).questions;
+    expect(
+      questions.map((q) => [q.id, q.unitLine, q.unitEndLine, q.block]),
+    ).toEqual([
+      // The link definition and the comment render nothing, so they neither
+      // belong to it nor end it; the next question's host does.
+      ["OQ-1", 3, 14, { startLine: 1, endLine: 14 }],
+      ["OQ-2", 22, 24, { startLine: 20, endLine: 24 }],
+      ["OQ-3", 32, 32, { startLine: 30, endLine: 32 }],
     ]);
   });
 
@@ -490,7 +539,9 @@ describe("a question (§3.3)", () => {
       "A question written as a plain paragraph,", // 5
       "over two lines.", // 6
       "", // 7
-      "After.", // 8
+      "---", // 8
+      "", // 9
+      "After.", // 10
       "",
     ].join("\n");
     expect(planning(source).questions[0]).toMatchObject({
@@ -723,7 +774,7 @@ describe("a question (§3.3)", () => {
       "Blocked.",
       "",
       "<!-- vantage: question id=OQ-3 -->",
-      '<!-- vantage: oq leaning="Mixed." -->',
+      '<!-- vantage: oq id=OQ-3 leaning="Mixed." -->',
       "",
       "Both.",
       "",
@@ -737,11 +788,49 @@ describe("a question (§3.3)", () => {
     ]);
   });
 
-  it("reads no leaning off a `question`, which does not accept the key", () => {
-    const source = '<!-- vantage: question id=OQ-1 leaning="Yes." -->\n\nX.\n';
-    expect(planning(source).questions).toMatchObject([
-      { id: "OQ-1", leaning: null },
-    ]);
+  it("reads a leaning off a `question`, in every state", () => {
+    for (const marker of ["", "\u{1F4AC} ", "\u{1F512} ", "✅ "]) {
+      const source = `<!-- vantage: question id=OQ-1 leaning="Yes." -->\n\n${marker}X.\n`;
+      expect(planning(source).questions, marker).toMatchObject([
+        { id: "OQ-1", directive: "question", leaning: "Yes." },
+      ]);
+    }
+  });
+
+  it("reads a run holding both names exactly as a viewer before `question` does: the `oq` alone", () => {
+    // Whichever comes first. That viewer drops the `question` whole, so a key
+    // only the `question` sets applies in no release, and the same bytes file
+    // the same Take everywhere.
+    for (const run of [
+      '<!-- vantage: question id=OQ-3 leaning="Q." -->\n<!-- vantage: oq leaning="O." -->',
+      '<!-- vantage: oq leaning="O." -->\n<!-- vantage: question id=OQ-3 leaning="Q." -->',
+    ]) {
+      expect(planning(`${run}\n\nBoth.\n`).questions, run).toMatchObject([
+        { id: null, directive: "oq", leaning: "O." },
+      ]);
+    }
+    expect(
+      planning(
+        '<!-- vantage: question leaning="Q." -->\n<!-- vantage: oq id=OQ-3 -->\n\nBoth.\n',
+      ).questions,
+    ).toMatchObject([{ id: "OQ-3", directive: "oq", leaning: null }]);
+  });
+
+  it("keeps the id a run declares on more than one of its comments", () => {
+    // One run is one declaration, whichever of its comments came first in the
+    // document: the anchor is the page's, and both releases render it.
+    for (const run of [
+      "<!-- vantage: question id=OQ-1 -->\n<!-- vantage: oq id=OQ-1 -->",
+      "<!-- vantage: oq id=OQ-1 -->\n<!-- vantage: question id=OQ-1 -->",
+      "<!-- vantage: oq id=OQ-1 -->\n<!-- vantage: oq id=OQ-1 -->",
+    ]) {
+      const doc = planning(`${run}\n\nBoth.\n`);
+      expect(
+        doc.questions.map((q) => q.id),
+        run,
+      ).toEqual(["OQ-1"]);
+      expect(doc.directiveIds, run).toEqual(["OQ-1"]);
+    }
   });
 
   it("keeps one namespace of ids across `oq` and `question`", () => {

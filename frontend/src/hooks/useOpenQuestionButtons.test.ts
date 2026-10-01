@@ -1,16 +1,27 @@
-import { createElement } from "react";
+import { createElement, useLayoutEffect } from "react";
 import { cleanup, render, renderHook, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { MarkdownViewer } from "vantage-md/react";
 import {
+  OQ_ANSWERED_HINT,
+  OQ_ANSWERED_LABEL,
   OQ_ANSWERED_TITLE,
+  OQ_ANSWER_LABEL,
   OQ_DEFAULT_LEANING,
   OQ_LABEL,
+  OQ_TAKEN_DISMISSED_HINT,
+  OQ_TAKEN_DISMISSED_LABEL,
   OQ_TAKEN_LABEL,
+  OQ_TAKEN_REPLIED_LABEL,
   OQ_UNDO_LABEL,
+  commentsOnQuestions,
   documentQuestions,
   leaningComment,
+  questionOffer,
+  questionUnit,
+  questionUnitBlocks,
   useOpenQuestionButtons,
+  type AnswerQuestion,
   type TakeLeaning,
   type UndoLeaning,
 } from "./useOpenQuestionButtons";
@@ -53,6 +64,11 @@ const LEANING =
  * - a stamped multi-paragraph `<blockquote>`, whose `data-source-line` its first
  *   paragraph shares: the case where anchoring on the stamped element itself
  *   would hash the wrong text.
+ *
+ * A thematic break separates the root-level blocks, so each question outside
+ * the list is the one block its directive stamped: a question outside a list
+ * runs over the blocks after its host up to the next break, heading or
+ * question (`questionUnitBlocks`), which the tests of that say so themselves.
  */
 const DOC_HTML = `
 <ol data-source-line="3">
@@ -62,9 +78,13 @@ const DOC_HTML = `
 </li>
 </ol>
 <p data-source-line="11" data-vantage-oq="true">Should the retry budget be shared?</p>
+<hr data-source-line="13">
 <p data-source-line="15">An ordinary paragraph.</p>
+<hr data-source-line="17">
 <pre data-source-line="19" data-vantage-oq="true"><code>x := 1</code></pre>
+<hr data-source-line="21">
 <blockquote data-source-line="23" data-vantage-oq="true" data-vantage-leaning="Quote it"><p data-source-line="23">Quoted question?</p><p data-source-line="25">And a second paragraph.</p></blockquote>
+<hr data-source-line="27">
 <table data-source-line="29" data-vantage-oq="true" data-vantage-leaning="Tabulate it"><tbody><tr data-source-line="29"><td>a</td><td>b</td></tr></tbody></table>
 `;
 
@@ -79,13 +99,7 @@ const blockAt = (line: number) =>
 const takeButtons = () =>
   Array.from(container.querySelectorAll<HTMLButtonElement>(".review-oq-take"));
 
-/**
- * The action row the pass inserts *after* the block at `line`, if any.
- *
- * The affordances are a sibling of the question, not a child of it, so every
- * assertion about placement goes through here — and a regression that appends
- * back into the block fails every one of them at once.
- */
+/** The row inserted as the next sibling of the block at `line`, if any. */
 const rowAfter = (line: number): HTMLElement | null => {
   const next = blockAt(line).nextElementSibling;
   return next instanceof HTMLElement && next.classList.contains("review-oq-row")
@@ -93,12 +107,39 @@ const rowAfter = (line: number): HTMLElement | null => {
     : null;
 };
 
+/**
+ * The row of the question whose host is the block at `line`, if any: at the
+ * END of the question's unit — the last child of its list item or quote, or
+ * the next sibling of the last block of a question outside a list. Every
+ * assertion about a question's controls goes through here, and the placement
+ * tests below say where that is in so many words.
+ */
+const rowAt = (line: number): HTMLElement | null => {
+  const host = blockAt(line);
+  const question = documentQuestions(container).find((q) => q.block === host);
+  if (question === undefined) return null;
+  const blocks = questionUnitBlocks(question.stamped, container);
+  const last = blocks[blocks.length - 1]!;
+  const candidate =
+    blocks.length === 1 && last !== host && last.contains(host)
+      ? last.lastElementChild
+      : last.nextElementSibling;
+  return candidate instanceof HTMLElement &&
+    candidate.classList.contains("review-oq-row")
+    ? candidate
+    : null;
+};
+
 const takeAt = (line: number) =>
-  rowAfter(line)?.querySelector<HTMLButtonElement>(".review-oq-take") ?? null;
+  rowAt(line)?.querySelector<HTMLButtonElement>(".review-oq-take") ?? null;
 const chipAt = (line: number) =>
-  rowAfter(line)?.querySelector<HTMLElement>(".review-oq-taken") ?? null;
+  rowAt(line)?.querySelector<HTMLElement>(".review-oq-taken") ?? null;
 const undoAt = (line: number) =>
-  rowAfter(line)?.querySelector<HTMLButtonElement>(".review-oq-undo") ?? null;
+  rowAt(line)?.querySelector<HTMLButtonElement>(".review-oq-undo") ?? null;
+const answeredAt = (line: number) =>
+  rowAt(line)?.querySelector<HTMLElement>(".review-oq-answered") ?? null;
+const answerAt = (line: number) =>
+  rowAt(line)?.querySelector<HTMLButtonElement>(".review-oq-answer") ?? null;
 
 /** An agent turn, so a taken leaning reads as a live thread. */
 const agentAddressed = (): CommentReaction => ({
@@ -219,27 +260,201 @@ describe("useOpenQuestionButtons — what renders", () => {
     expect(container.querySelectorAll(".review-oq-row")).toHaveLength(3);
   });
 
-  it("puts the row after the block review anchors resolve, never inside it", () => {
+  it("puts the row at the end of the question's unit, never inside its host block", () => {
     renderOq();
 
-    // The stamped paragraph inside the list item, not the <ol> or the <li>.
+    // The stamped paragraph inside the list item, not the <ol> or the <li>,
+    // hosts the take; the row is the item's last child, so it stays indented
+    // with its question rather than breaking out to the document's left edge.
     expect(takeAt(7)).not.toBeNull();
-    // A sibling, not a child. The row is why no injected node can perturb the
-    // text a block hash is taken over — and why the control no longer lands
-    // after the question's last word.
+    const item = blockAt(7).closest("li")!;
+    expect(item.lastElementChild).toBe(rowAt(7));
+    // Never a child of the host. The row is why no injected node can perturb
+    // the text a block hash is taken over — and why the control no longer
+    // lands after the question's last word.
     expect(blockAt(7).querySelector("[data-vantage-oq-button]")).toBeNull();
-    // Still inside the list item, so it stays indented with its question rather
-    // than breaking out to the document's left edge.
-    expect(rowAfter(7)!.closest("li")).not.toBeNull();
+
+    // A question that is one paragraph gets the row as its next sibling.
+    expect(rowAfter(11)).toBe(rowAt(11));
 
     // A stamped blockquote shares its source line with its first paragraph, and
-    // that paragraph is what the highlighter resolves for the line.
+    // that paragraph is what the highlighter resolves for the line; the quote
+    // is the unit, so the row is inside it, after its LAST paragraph — clear of
+    // typography's generated closing quotation mark, drawn as a paragraph's
+    // ::after, and after everything the question says.
     expect(takeAt(23)).not.toBeNull();
     expect(blockAt(23).querySelector("[data-vantage-oq-button]")).toBeNull();
-    // Inside the quote, after its first paragraph — which is also what keeps it
-    // clear of typography's generated closing quotation mark, drawn as that
-    // paragraph's ::after.
-    expect(rowAfter(23)!.closest("blockquote")).not.toBeNull();
+    const quote = container.querySelector("blockquote")!;
+    expect(quote.lastElementChild).toBe(rowAt(23));
+    expect(rowAfter(23)).toBeNull();
+  });
+
+  it("puts the row after the leaning and the Answer, at the end of a question as the style guide writes it", async () => {
+    const { html } = await renderMarkdown(
+      [
+        "1. 💬 **OQ-9: Where does a job go when it re-enters the queue?**",
+        "",
+        "   A job that fails its checks leaves the queue.",
+        "",
+        "   - **A — The back of the queue.**",
+        "   - **B — Its old place.**",
+        "",
+        '   <!-- vantage: question id=OQ-9 leaning="A — the back of the queue." -->',
+        "",
+        "   _Leaning:_ A.",
+        "",
+        "   **Answer:**",
+        "",
+        "   > _(empty — fill in when decided)_",
+        "",
+        "2. 💬 **OQ-10: The next one.**",
+        "",
+        "   Context.",
+        "",
+      ].join("\n"),
+    );
+    container.innerHTML = html;
+    renderOq();
+
+    const item = container.querySelector<HTMLElement>("li")!;
+    const row = item.lastElementChild as HTMLElement;
+    expect(row.classList.contains("review-oq-row")).toBe(true);
+    // After the Answer's quote, not between the leaning and the Answer, where
+    // the directive's block is.
+    expect(row.previousElementSibling?.tagName).toBe("BLOCKQUOTE");
+    expect(row.querySelector(".review-oq-take")).toHaveTextContent(OQ_LABEL);
+    // The next question is untouched by it.
+    expect(item.nextElementSibling?.querySelector(".review-oq-row")).toBeNull();
+  });
+
+  it("runs a question that is a heading to the end of its section, and puts the row there", async () => {
+    const { html } = await renderMarkdown(
+      [
+        '<!-- vantage: question id=OQ-6 leaning="Yes." -->',
+        "",
+        "### 💬 OQ-6: A question as a heading?",
+        "",
+        "Its context.",
+        "",
+        "#### A deeper heading, still the question's",
+        "",
+        "_Leaning:_ yes.",
+        "",
+        "### The next section",
+        "",
+        "Not the question's.",
+        "",
+      ].join("\n"),
+    );
+    container.innerHTML = html;
+    renderOq();
+
+    const heading = container.querySelector("h3")!;
+    expect(heading.querySelector("[data-vantage-oq-button]")).toBeNull();
+    const rows = container.querySelectorAll(".review-oq-row");
+    expect(rows).toHaveLength(1);
+    // After the leaning, the section's last block, and before the next
+    // heading of the same level.
+    expect(rows[0]!.previousElementSibling).toHaveTextContent("Leaning: yes.");
+    expect(rows[0]!.nextElementSibling?.tagName).toBe("H3");
+  });
+
+  it("runs a question outside a list over its context, options, leaning and Answer, up to the next question", async () => {
+    // The style guide's question, written as paragraphs instead of a list
+    // item: the title paragraph is the host, and the question is every block
+    // after it up to the next question's host.
+    const { html } = await renderMarkdown(
+      [
+        '<!-- vantage: question id=OQ-1 leaning="A." -->',
+        "",
+        "💬 **OQ-1: Where does a job go?**",
+        "",
+        "Its context, in a paragraph of its own.",
+        "",
+        "- **A — The back.**",
+        "- **B — Its old place.**",
+        "",
+        "_Leaning:_ A.",
+        "",
+        "**Answer:**",
+        "",
+        "> _(empty — fill in when decided)_",
+        "",
+        "<!-- vantage: question id=OQ-2 -->",
+        "",
+        "💬 **OQ-2: The next one?**",
+        "",
+        "---",
+        "",
+        "After a rule, no question's.",
+        "",
+      ].join("\n"),
+    );
+    container.innerHTML = html;
+    renderOq();
+
+    const [first, second] = documentQuestions(container);
+    const blocks = questionUnitBlocks(first!.stamped, container);
+    expect(blocks.map((b) => b.tagName)).toEqual([
+      "P",
+      "P",
+      "UL",
+      "P",
+      "P",
+      "BLOCKQUOTE",
+    ]);
+    // The second question stops at the rule.
+    expect(questionUnitBlocks(second!.stamped, container)).toEqual([
+      second!.stamped,
+    ]);
+    const rows = Array.from(container.querySelectorAll(".review-oq-row"));
+    expect(rows).toHaveLength(2);
+    // After the Answer's quote, not between the title and its context.
+    expect(rows[0]!.previousElementSibling).toBe(blocks[5]);
+    expect(rows[0]!.nextElementSibling).toBe(second!.stamped);
+    expect(rows[1]!.previousElementSibling).toBe(second!.stamped);
+    expect(rows[1]!.nextElementSibling?.tagName).toBe("HR");
+  });
+
+  it("takes a comment on any block of a question outside a list as its answer", async () => {
+    const { html } = await renderMarkdown(
+      [
+        '<!-- vantage: question id=OQ-1 leaning="A." -->',
+        "",
+        "💬 **OQ-1: Where does a job go?**",
+        "",
+        "_Leaning:_ A.",
+        "",
+        "## Afterword",
+        "",
+        "Not the question's.",
+        "",
+      ].join("\n"),
+    );
+    container.innerHTML = html;
+    const leaning = container.querySelectorAll("p")[1]!;
+    const afterword = container.querySelectorAll("p")[2]!;
+    const on = (block: HTMLElement): ReviewComment => ({
+      ...commentAt(Number(block.getAttribute("data-source-line"))),
+      id: `c${block.getAttribute("data-source-line")}`,
+    });
+
+    const questions = documentQuestions(container);
+    const scoped = commentsOnQuestions(container, questions, [
+      on(leaning),
+      on(afterword),
+    ]);
+    expect(scoped.get(questions[0]!)?.map((c) => c.id)).toEqual([
+      `c${leaning.getAttribute("data-source-line")}`,
+    ]);
+
+    renderOq([on(leaning)]);
+    const row = container.querySelector(".review-oq-row")!;
+    expect(row.previousElementSibling).toBe(leaning);
+    expect(row.querySelector(".review-oq-answered")).toHaveTextContent(
+      OQ_ANSWERED_LABEL,
+    );
+    expect(row.querySelector(".review-oq-take")).toBeNull();
   });
 
   it("never renders inside a pre", () => {
@@ -434,9 +649,10 @@ describe("useOpenQuestionButtons — idempotence", () => {
     expect(takeButtons()).toHaveLength(2);
   });
 
-  it("keeps the button when a different comment exists on the same block", () => {
-    // D4(b): typing an answer never removes the button, and the button never
-    // removes typing.
+  it("says the question is answered when a different comment is on the same block", () => {
+    // A comment typed on the question is its answer (the user's ruling of
+    // 2026-10-01), so the take is no longer on offer. It is not the take's
+    // chip, which would offer Undo on words the reviewer typed.
     const { rerender } = renderOq();
     fireEvent.click(takeAt(7)!);
     rerender({
@@ -444,8 +660,10 @@ describe("useOpenQuestionButtons — idempotence", () => {
       on: true,
     });
 
-    expect(takeAt(7)).not.toBeNull();
+    expect(takeAt(7)).toBeNull();
     expect(chipAt(7)).toBeNull();
+    expect(undoAt(7)).toBeNull();
+    expect(answeredAt(7)).toHaveTextContent(OQ_ANSWERED_LABEL);
   });
 
   it("removes everything on unmount", () => {
@@ -503,68 +721,103 @@ describe("useOpenQuestionButtons — the state tree after a take", () => {
     name: string;
     /** Applied to the comment the click created. */
     patch: Partial<ReviewComment>;
-    chip: boolean;
+    /** The take's chip, by its label, or `null` for none. */
+    chip: string | null;
     undo: boolean;
     take: boolean;
+    /** Answer… is offered: the question needs the human again. */
+    answer: boolean;
   }
 
   const rows: Row[] = [
     {
       name: "fresh — the take is the whole thread",
       patch: {},
-      chip: true,
+      chip: OQ_TAKEN_LABEL,
       undo: true,
       take: false,
+      answer: false,
     },
     {
-      name: "dismissed — resolved is ignored, so the chip stays",
+      name: "dismissed — no longer the answer, so Answer… is back, and Take is not",
       patch: { resolved: true },
-      chip: true,
+      chip: OQ_TAKEN_DISMISSED_LABEL,
       undo: true,
       take: false,
+      answer: true,
     },
     {
       name: "reopened — the same state as fresh again",
       patch: { resolved: false },
-      chip: true,
+      chip: OQ_TAKEN_LABEL,
       undo: true,
       take: false,
+      answer: false,
     },
     {
       name: "answered by the agent — no Undo, because it would take the reply",
       patch: { reactions: [agentAddressed()] },
-      chip: true,
+      chip: OQ_TAKEN_REPLIED_LABEL,
       undo: false,
       take: false,
+      answer: true,
     },
     {
       name: "answered and then dismissed — still no Undo",
       patch: { reactions: [agentAddressed()], resolved: true },
-      chip: true,
+      chip: OQ_TAKEN_REPLIED_LABEL,
       undo: false,
       take: false,
+      answer: true,
     },
     {
-      name: "reworded — the body is the take's identity, so it re-arms",
+      name: "reworded — no longer the take, but still the question's answer",
       patch: { comment: "Actually, front of the queue." },
-      chip: false,
+      chip: null,
       undo: false,
-      take: true,
+      take: false,
+      answer: false,
     },
   ];
 
   for (const row of rows) {
     it(row.name, () => {
-      const { rerender, created } = take();
+      const ref = { current: container };
+      const onAnswer = vi.fn();
+      const { rerender } = renderHook(
+        ({ cs, on }: Props) =>
+          useOpenQuestionButtons(
+            ref,
+            cs,
+            on,
+            "doc content",
+            onTake,
+            onUndo,
+            undefined,
+            onAnswer,
+          ),
+        { initialProps: { cs: [] as ReviewComment[], on: true } },
+      );
+      fireEvent.click(takeAt(7)!);
+      const created = commentFromClick();
       rerender({ cs: [{ ...created, ...row.patch }], on: true });
 
-      expect(chipAt(7) !== null).toBe(row.chip);
+      expect(chipAt(7)?.textContent ?? null).toBe(row.chip);
       expect(undoAt(7) !== null).toBe(row.undo);
       expect(takeAt(7) !== null).toBe(row.take);
-      // Never both. A chip and a live button on one question is the incoherence
-      // the shared NEIGHBOR_RADIUS exists to prevent, and it must not be
-      // reachable by any other route either.
-      expect([chipAt(7), takeAt(7)].filter(Boolean)).toHaveLength(1);
+      expect(answerAt(7) !== null).toBe(row.answer);
+      // What the row offers is the one rule the card and the counts read.
+      expect(
+        questionOffer(created.anchor!, created.comment, [
+          { ...created, ...row.patch },
+        ]).kind,
+      ).toBe(row.chip === null ? "answered" : row.answer ? "retake" : "taken");
+      // Exactly one. A chip and a live button on one question is the
+      // incoherence the shared NEIGHBOR_RADIUS exists to prevent, and it must
+      // not be reachable by any other route either.
+      expect(
+        [chipAt(7), takeAt(7), answeredAt(7)].filter(Boolean),
+      ).toHaveLength(1);
     });
   }
 
@@ -575,6 +828,8 @@ describe("useOpenQuestionButtons — the state tree after a take", () => {
       rerender({ cs: [{ ...created, resolved }], on: true });
       expect(chipAt(7)).not.toBeNull();
       expect(takeAt(7)).toBeNull();
+      // Dismissed, the take says so and why; the question needs an answer.
+      expect(chipAt(7)!.title).toBe(resolved ? OQ_TAKEN_DISMISSED_HINT : "");
     }
 
     // Only deleting it re-arms — and Undo is what deletes it.
@@ -720,16 +975,24 @@ describe("useOpenQuestionButtons — drift, and agreeing with the highlighter", 
     expect(row.querySelector(".review-oq-taken")).toBeNull();
   });
 
-  it("re-arms when the question's own text changes", () => {
+  it("answers the question, but is no longer its take, when the question's own text changes", () => {
     // The hash is the block's identity. Reword the question and the stored
     // anchor describes text that is no longer there, which the highlighter shows
-    // as a divergent comment — so the leaning on offer is a different leaning.
+    // as a divergent comment — so the leaning on offer is a different leaning,
+    // and the take's chip goes. The comment is still on the question, and
+    // still pending, so the question is still answered.
     const { rerender, created } = take();
     blockAt(7).textContent = "Leaning: front of the queue, actually.";
     rerender({ cs: [created], on: true });
 
-    expect(takeAt(7)).not.toBeNull();
     expect(chipAt(7)).toBeNull();
+    expect(takeAt(7)).toBeNull();
+    expect(answeredAt(7)).not.toBeNull();
+
+    // Once the agent has answered it, the question offers the new leaning.
+    rerender({ cs: [{ ...created, reactions: [agentAddressed()] }], on: true });
+    expect(takeAt(7)).not.toBeNull();
+    expect(answeredAt(7)).toBeNull();
   });
 
   it("keeps two identical leanings on distant blocks independent", () => {
@@ -759,11 +1022,12 @@ describe("useOpenQuestionButtons — the row and the tone rule", () => {
     // A section's rule is a slice per stamped member bled upward to meet its
     // predecessor. An unstamped row inserted between two members is a gap the
     // bleed cannot span, so the row copies the tone and marks itself `middle` —
-    // the same thing insertInlineCommentAfter does with a comment card.
+    // the same thing insertInlineCommentAfter does with a comment card. The
+    // closer is another question, which is where the first one ends.
     container.innerHTML = `
 <p data-source-line="3" data-vantage-tone="note" data-vantage-run="start">Toned opener.</p>
 <p data-source-line="5" data-vantage-oq="true" data-vantage-tone="note" data-vantage-run="middle">A question inside the section?</p>
-<p data-source-line="7" data-vantage-tone="note" data-vantage-run="end">Toned closer.</p>
+<p data-source-line="7" data-vantage-question="true" data-vantage-tone="note" data-vantage-run="end">Another question, closing it?</p>
 `;
     renderOq();
 
@@ -927,14 +1191,16 @@ describe("useOpenQuestionButtons — only open questions offer a take (Q5)", () 
     container.innerHTML = (await renderMarkdown(source)).html;
   };
 
-  /** The row after the question whose directive carries `id`, if any. */
+  /** The row of the question whose directive carries `id`, if any. */
   const rowFor = (id: string): HTMLElement | null => {
     const stamped = container.querySelector<HTMLElement>(`#${id}`)!;
     const block = anchorBlockWithin(stamped)!;
-    const next = block.nextElementSibling;
-    return next instanceof HTMLElement &&
-      next.classList.contains("review-oq-row")
-      ? next
+    const unit = questionUnit(stamped, container);
+    const last =
+      unit !== block ? unit.lastElementChild : block.nextElementSibling;
+    return last instanceof HTMLElement &&
+      last.classList.contains("review-oq-row")
+      ? last
       : null;
   };
 
@@ -1025,13 +1291,13 @@ describe("useOpenQuestionButtons — only open questions offer a take (Q5)", () 
 });
 
 /**
- * A `question` directive declares a 🔒 or ✅ question: the same host, the same
- * anchor, listed by the column — and never a take, whatever its marker says,
- * because the name is the author's statement that nothing here is answerable
- * (`VANTAGE_QUESTION_NAMES`). The marker still wins over an `oq`, which
- * `vantage/question-name` reports but a document can carry.
+ * `question` declares a question in any state, and its marker alone is the
+ * state (`docs/reference/inline-markup.md`): an open one offers the take
+ * exactly as an `oq` does, and a 🔒 or ✅ one offers nothing, whichever name
+ * declared it. The marker wins over an `oq` too, which `vantage/question-name`
+ * reports but a document can carry.
  */
-describe("useOpenQuestionButtons — a `question` directive offers nothing", () => {
+describe("useOpenQuestionButtons — the state decides, never the name", () => {
   const QUESTIONS_HTML = `
 <p data-source-line="3" data-vantage-question="true" id="OQ-1">🔒 Blocked, as written.</p>
 <p data-source-line="5" data-vantage-question="true" id="OQ-2">💬 Open, under the closed name.</p>
@@ -1043,7 +1309,7 @@ describe("useOpenQuestionButtons — a `question` directive offers nothing", () 
     container.innerHTML = QUESTIONS_HTML;
   });
 
-  it("renders a row for the open `oq` alone, and counts that one", () => {
+  it("renders a row for each open question, under either name, and counts those", () => {
     const onCount = vi.fn();
     const ref = { current: container };
     renderHook(() =>
@@ -1060,11 +1326,11 @@ describe("useOpenQuestionButtons — a `question` directive offers nothing", () 
 
     expect([3, 5, 7, 9].map((line) => takeAt(line) !== null)).toEqual([
       false,
-      false,
+      true,
       false,
       true,
     ]);
-    expect(onCount).toHaveBeenLastCalledWith(1);
+    expect(onCount).toHaveBeenLastCalledWith(2);
   });
 
   it("is still a question to the shared walk and to the column", () => {
@@ -1077,7 +1343,7 @@ describe("useOpenQuestionButtons — a `question` directive offers nothing", () 
         .map((entry) => [entry.id, entry.status, entry.oneClick]),
     ).toEqual([
       ["OQ-1", "blocked", false],
-      ["OQ-2", "open", false],
+      ["OQ-2", "open", true],
       ["OQ-3", "blocked", false],
       ["OQ-4", "open", true],
     ]);
@@ -1101,5 +1367,232 @@ describe("useOpenQuestionButtons — a `question` directive offers nothing", () 
     expect(question?.stamped.id).toBe("OQ-7");
     expect(question?.block.tagName).toBe("P");
     expect(takeButtons()).toHaveLength(0);
+  });
+});
+
+/**
+ * A comment on a question is its answer (the user's ruling of 2026-10-01): a
+ * comment still pending for the agent anywhere in the question's unit — a
+ * take, an Answer…, or any comment typed on one of its blocks — and the row
+ * says the question is answered instead of offering the take.
+ */
+describe("useOpenQuestionButtons — a comment on a question is its answer", () => {
+  /** An open question as the style guide writes it, nested one inside another. */
+  const NESTED_HTML = `
+<ol data-source-line="3">
+<li data-source-line="3">
+<p data-source-line="3">💬 <strong>OQ-1: The outer question.</strong> Context.</p>
+<p data-source-line="5" data-vantage-question="true" id="OQ-1" data-vantage-leaning="Outer."><em>Leaning:</em> outer.</p>
+<p data-source-line="7"><strong>Answer:</strong></p>
+<blockquote data-source-line="9"><p data-source-line="9">(empty)</p></blockquote>
+<ol data-source-line="11">
+<li data-source-line="11">
+<p data-source-line="11">💬 <strong>OQ-2: The nested question.</strong></p>
+<p data-source-line="13" data-vantage-question="true" id="OQ-2" data-vantage-leaning="Inner."><em>Leaning:</em> inner.</p>
+</li>
+</ol>
+</li>
+</ol>
+<p data-source-line="17">A paragraph after both.</p>
+`;
+
+  const renderWith = (comments: ReviewComment[], onCount = vi.fn()) => {
+    const ref = { current: container };
+    renderHook(() =>
+      useOpenQuestionButtons(
+        ref,
+        comments,
+        true,
+        "doc content",
+        onTake,
+        onUndo,
+        onCount,
+      ),
+    );
+    return onCount;
+  };
+
+  beforeEach(() => {
+    container.innerHTML = NESTED_HTML;
+  });
+
+  it("answers the question a comment on its title is on", () => {
+    const onCount = renderWith([commentAt(3)]);
+
+    expect(answeredAt(5)).toHaveTextContent(OQ_ANSWERED_LABEL);
+    expect(answeredAt(5)).toHaveAttribute("title", OQ_ANSWERED_HINT);
+    expect(takeAt(5)).toBeNull();
+    // No Undo: a comment the reviewer typed is not the row's to delete.
+    expect(undoAt(5)).toBeNull();
+    // The nested question is a question of its own, and still open.
+    expect(takeAt(13)).not.toBeNull();
+    // The Review toggle counts the takes still on offer.
+    expect(onCount).toHaveBeenLastCalledWith(1);
+  });
+
+  it("answers it from any block of its unit, the Answer's quote included", () => {
+    renderWith([commentAt(9)]);
+    expect(answeredAt(5)).not.toBeNull();
+    expect(takeAt(13)).not.toBeNull();
+  });
+
+  it("gives a comment in a nested question to the nested one, the innermost unit", () => {
+    const onCount = renderWith([commentAt(11)]);
+
+    expect(answeredAt(13)).not.toBeNull();
+    expect(takeAt(13)).toBeNull();
+    // The outer item holds the nested one, and is not answered by it.
+    expect(takeAt(5)).not.toBeNull();
+    expect(answeredAt(5)).toBeNull();
+    expect(onCount).toHaveBeenLastCalledWith(1);
+  });
+
+  it("answers nothing with a comment outside every question", () => {
+    const onCount = renderWith([commentAt(17)]);
+    expect(container.querySelector(".review-oq-answered")).toBeNull();
+    expect(onCount).toHaveBeenLastCalledWith(2);
+  });
+
+  it.each([
+    ["dismissed", { resolved: true }],
+    ["answered by the agent", { reactions: [agentAddressed()] }],
+  ])("offers the take again once the comment is %s", (_, patch) => {
+    const onCount = renderWith([{ ...commentAt(3), ...patch }]);
+    expect(answeredAt(5)).toBeNull();
+    expect(takeAt(5)).not.toBeNull();
+    expect(onCount).toHaveBeenLastCalledWith(2);
+  });
+
+  it("keeps a take's own chip and Undo when another comment answers it too", () => {
+    container.innerHTML = DOC_HTML;
+    const h = renderOq();
+    fireEvent.click(takeAt(7)!);
+    h.rerender({ cs: [commentFromClick(), commentAt(3)], on: true });
+
+    expect(chipAt(7)).toHaveTextContent(OQ_TAKEN_LABEL);
+    expect(undoAt(7)).not.toBeNull();
+    expect(answeredAt(7)).toBeNull();
+  });
+
+  it("is read the same with review mode off, for the count", () => {
+    const onCount = vi.fn();
+    const ref = { current: container };
+    renderHook(() =>
+      useOpenQuestionButtons(
+        ref,
+        [commentAt(3)],
+        false,
+        "doc content",
+        onTake,
+        onUndo,
+        onCount,
+      ),
+    );
+    expect(onCount).toHaveBeenLastCalledWith(1);
+    expect(container.querySelector("[data-vantage-oq-button]")).toBeNull();
+  });
+
+  it("is the planning card's reading too: one owner per comment", () => {
+    const questions = documentQuestions(container);
+    const on = commentsOnQuestions(container, questions, [
+      commentAt(3),
+      commentAt(11),
+      commentAt(17),
+    ]);
+    expect(questions.map((q) => (on.get(q) ?? []).map((c) => c.id))).toEqual([
+      ["c3"],
+      ["c11"],
+    ]);
+  });
+});
+
+describe("useOpenQuestionButtons — Answer…", () => {
+  let onAnswer: ReturnType<typeof vi.fn> & AnswerQuestion;
+
+  const renderAnswer = (comments: ReviewComment[] = []) => {
+    const ref = { current: container };
+    return renderHook(
+      ({ cs }: { cs: ReviewComment[] }) =>
+        useOpenQuestionButtons(
+          ref,
+          cs,
+          true,
+          "doc content",
+          onTake,
+          onUndo,
+          undefined,
+          onAnswer,
+        ),
+      { initialProps: { cs: comments } },
+    );
+  };
+
+  beforeEach(() => {
+    onAnswer = vi.fn() as ReturnType<typeof vi.fn> & AnswerQuestion;
+  });
+
+  it("stands after the take, in the same row, as on the planning card", () => {
+    renderAnswer();
+    const row = rowAt(7)!;
+    const [take, answer] = Array.from(row.children);
+    expect(take).toHaveClass("review-oq-take");
+    expect(answer).toHaveClass("review-oq-answer");
+    expect(answer.tagName).toBe("BUTTON");
+    expect(answer).toHaveTextContent(OQ_ANSWER_LABEL);
+    expect(answer.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("opens the popover on the take's own anchor and fallback text", () => {
+    renderAnswer();
+    fireEvent.click(answerAt(7)!);
+    fireEvent.click(takeAt(7)!);
+
+    expect(onAnswer).toHaveBeenCalledTimes(1);
+    const [anchor, fallback, rect] = onAnswer.mock.calls[0];
+    const [takeAnchor, , takeFallback] = onTake.mock.calls[0];
+    expect(anchor).toEqual(takeAnchor);
+    expect(fallback).toBe(takeFallback);
+    expect(typeof rect.top).toBe("number");
+  });
+
+  it("does not let the click reach the comment popover", () => {
+    renderAnswer();
+    const outer = vi.fn();
+    container.addEventListener("click", outer);
+    fireEvent.click(answerAt(7)!);
+    expect(outer).not.toHaveBeenCalled();
+  });
+
+  it("goes once the question is answered, or its leaning taken", () => {
+    const { rerender } = renderAnswer();
+    fireEvent.click(takeAt(7)!);
+    rerender({ cs: [commentFromClick()] });
+    expect(answerAt(7)).toBeNull();
+    rerender({ cs: [commentAt(3)] });
+    expect(answerAt(7)).toBeNull();
+    expect(answeredAt(7)).not.toBeNull();
+  });
+
+  it("is not offered without a way to open the popover", () => {
+    renderOq();
+    expect(container.querySelector(".review-oq-answer")).toBeNull();
+  });
+});
+
+describe("useOpenQuestionButtons — the row paints with the document", () => {
+  it("is in the DOM before any passive effect, so it is in the first paint", () => {
+    // A layout effect runs before the browser paints; a passive one, after. A
+    // row added by a passive effect pushed the question's next block down a
+    // frame after the document painted: a layout shift on every load in
+    // review mode.
+    const seen: (Element | null)[] = [];
+    const ref = { current: container };
+    renderHook(() => {
+      useOpenQuestionButtons(ref, [], true, "doc content", onTake, onUndo);
+      useLayoutEffect(() => {
+        seen.push(container.querySelector(".review-oq-row"));
+      });
+    });
+    expect(seen[0]).not.toBeNull();
   });
 });

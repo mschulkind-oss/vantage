@@ -42,9 +42,20 @@
  * whether there is one.
  *
  * Its controls follow its state (Plan Q5): an open question offers Take this
- * leaning (when it has a leaning), Answer… and Open document; an answered one
- * Answer… and Open document; a blocked one, which only Blocked lists, Open
- * document alone.
+ * leaning, Answer… and Open document; an answered one (✅) Answer… and Open
+ * document; a blocked one, which only Blocked lists, Open document alone.
+ * Whichever name declared it: the state is the marker's. Take this leaning
+ * files the directive's leaning, or the in-page row's default text when the
+ * question states none, exactly as the row does.
+ *
+ * **A comment on the question is its answer.** What the question offers next
+ * is the in-page row's own rule (`questionOffer`), over the comments the row
+ * reads as on it (`commentsOnQuestions`), so the card and the row never offer
+ * different controls for one question: while its take is pending for the
+ * agent, *Leaning taken* and Undo (while the take is the whole thread); while
+ * any other comment on it is, *Answered — waiting on the agent* alone; once a
+ * take is no longer pending, a chip saying what became of it, with Answer…
+ * and, while it is the whole thread, Undo.
  *
  * Open document opens the document in a new tab, as its icon says, so the
  * planning page stays where it is in its own and saves nothing on the way
@@ -80,20 +91,26 @@ import { PlanningBadgeChip } from "./PlanningBadge";
 import { ReviewCommentPopover } from "./ReviewCommentPopover";
 import { AppLink } from "./AppLink";
 import {
+  OQ_ANSWERED_HINT,
+  OQ_ANSWERED_LABEL,
+  OQ_ANSWERED_TITLE,
+  OQ_ANSWER_LABEL,
   OQ_LABEL,
+  OQ_TAKEN_DISMISSED_HINT,
+  OQ_TAKEN_DISMISSED_LABEL,
   OQ_TAKEN_LABEL,
+  OQ_TAKEN_REPLIED_LABEL,
+  OQ_UNDO_LABEL,
+  commentsOnQuestions,
   documentQuestions,
-  findTaken,
   leaningComment,
+  questionOffer,
+  questionUnitBlocks,
+  takeUndoable,
   type DocumentQuestion,
+  type QuestionOffer,
 } from "../hooks/useOpenQuestionButtons";
-import {
-  NEIGHBOR_RADIUS,
-  blockAtLine,
-  buildWholeBlockAnchor,
-  findHashNeighbor,
-  indexBlocks,
-} from "../lib/reviewAnchor";
+import { buildWholeBlockAnchor, indexBlocks } from "../lib/reviewAnchor";
 import { isStaticMode } from "../lib/staticMode";
 import {
   CARD_CLAMP_LINES,
@@ -187,6 +204,12 @@ interface PlanningQuestionCardProps {
   onOpenHere?: () => void;
   /** File a comment on `path`; rejects when it could not be saved. */
   onFile: (path: string, comment: ReviewComment) => Promise<void>;
+  /**
+   * Delete the comment `id` from `path`'s review: Undo on a take this card's
+   * question still holds. Rejects when it could not be deleted. Without it
+   * the card offers no Undo.
+   */
+  onUndo?: (path: string, id: string) => Promise<void>;
   /** The card's key on its page, which `onScoped` reports it by. */
   cardKey?: string;
   /**
@@ -331,24 +354,15 @@ const FoldButton: React.FC<{
 const lineOf = (el: Element): number =>
   Number.parseInt(el.getAttribute("data-source-line") ?? "", 10);
 
-/** The question's host in `root`: the block the in-page button anchors on. */
+/**
+ * The question's host among `questions`, every question in the card's block:
+ * the block the in-page button anchors on.
+ */
 function hostIn(
-  root: HTMLElement,
+  questions: readonly DocumentQuestion[],
   question: PlanningQuestion,
 ): DocumentQuestion | undefined {
-  return documentQuestions(root).find(
-    ({ block }) => lineOf(block) === question.line,
-  );
-}
-
-/**
- * The question's unit: the list item holding it, or its host outside a list —
- * the element the contents column scrolls to, which the planning index's
- * `unitLine` names (`planningAgreement.test.tsx` holds the two equal).
- */
-function unitOf(root: HTMLElement, host: DocumentQuestion): HTMLElement {
-  const item = host.stamped.closest<HTMLElement>("li");
-  return item !== null && root.contains(item) ? item : host.stamped;
+  return questions.find(({ block }) => lineOf(block) === question.line);
 }
 
 /**
@@ -371,17 +385,24 @@ function sweep(root: HTMLElement): void {
 }
 
 /**
- * Show only `unit`: mark it and every element between it and `root`, and let
- * the stylesheet hide every child of a marked element that is neither. A rule
- * rather than a hidden attribute on each sibling, so a node another pass adds
- * later (a link badge) is hidden or shown by where it is, not by when.
+ * Show only the question's unit: mark each of its blocks and every element
+ * between them and `root`, and let the stylesheet hide every child of a
+ * marked element that is neither. A rule rather than a hidden attribute on
+ * each sibling, so a node another pass adds later (a link badge) is hidden or
+ * shown by where it is, not by when. A unit of several blocks — a question
+ * outside a list, with its context, leaning and Answer after its title — marks
+ * each one `block`, which the stylesheet spaces as the blocks of one unit.
  *
  * A hidden list item does not advance its list's counter, so the third item
  * would read `1.` alone. Each list item on the way gets its number in the
  * document as an explicit `value` first.
  */
-function isolate(root: HTMLElement, unit: HTMLElement): void {
-  unit.setAttribute(CARD_UNIT_ATTR, "");
+function isolate(root: HTMLElement, blocks: readonly HTMLElement[]): void {
+  const unit = blocks[0];
+  if (unit === undefined) return;
+  for (const block of blocks) {
+    block.setAttribute(CARD_UNIT_ATTR, blocks.length > 1 ? "block" : "");
+  }
   for (let el: HTMLElement | null = unit; el && el !== root;) {
     const parent: HTMLElement | null = el.parentElement;
     if (el.tagName === "LI" && parent?.tagName === "OL") {
@@ -396,38 +417,16 @@ function isolate(root: HTMLElement, unit: HTMLElement): void {
   }
 }
 
-/**
- * The block a comment's anchor resolves to, as the highlighter resolves it:
- * the block at its line when the hash agrees, else a block with its hash
- * within `NEIGHBOR_RADIUS` lines, else the block at its line anyway.
- */
-function resolveAnchor(
-  index: ReturnType<typeof indexBlocks>,
-  comment: ReviewComment,
-): HTMLElement | null {
-  const anchor = comment.anchor;
-  if (!anchor) return null;
-  const atLine = blockAtLine(index, anchor.source_line, anchor.block_text_hash);
-  if (atLine?.getAttribute("data-block-hash") === anchor.block_text_hash) {
-    return atLine;
-  }
-  return (
-    findHashNeighbor(
-      index,
-      anchor.block_text_hash,
-      anchor.source_line,
-      NEIGHBOR_RADIUS,
-    ) ?? atLine
-  );
-}
-
 interface CardState {
   /** Whether the question's host is in the card: without it, nothing files. */
   found: boolean;
   /** The ids of the comments on this question, in the document's order. */
   scoped: readonly string[];
-  /** The comment an earlier take filed, if the leaning has been taken. */
-  takenId: string | null;
+  /**
+   * What the question offers (`questionOffer`), from the comments on it, or
+   * `null` while it has no host to anchor on.
+   */
+  offer: QuestionOffer | null;
   /** The unit was laid out (`markCardParts`): false leaves it as rendered. */
   laidOut: boolean;
   /** The bold title is hidden in the unit, for the headline to show. */
@@ -441,7 +440,7 @@ interface CardState {
 const EMPTY_STATE: CardState = {
   found: false,
   scoped: [],
-  takenId: null,
+  offer: null,
   laidOut: false,
   titled: false,
   leaning: false,
@@ -450,13 +449,23 @@ const EMPTY_STATE: CardState = {
 
 const sameState = (a: CardState, b: CardState): boolean =>
   a.found === b.found &&
-  a.takenId === b.takenId &&
+  sameOffer(a.offer, b.offer) &&
   a.laidOut === b.laidOut &&
   a.titled === b.titled &&
   a.leaning === b.leaning &&
   a.more === b.more &&
   a.scoped.length === b.scoped.length &&
   a.scoped.every((id, i) => b.scoped[i] === id);
+
+const sameOffer = (a: QuestionOffer | null, b: QuestionOffer | null): boolean =>
+  a === b ||
+  (a !== null &&
+    b !== null &&
+    a.kind === b.kind &&
+    ("comment" in a ? a.comment : null) ===
+      ("comment" in b ? b.comment : null) &&
+    ("replied" in a ? a.replied : null) ===
+      ("replied" in b ? b.replied : null));
 
 /** Marks a Mermaid diagram that was not drawn when its card painted. */
 const LATE_DIAGRAM_ATTR = "data-planning-mermaid-frame";
@@ -546,6 +555,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   href,
   onOpenHere,
   onFile,
+  onUndo,
   cardKey = "",
   onScoped,
   unfoldedByDefault = false,
@@ -646,35 +656,27 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
       return;
     }
     sweep(root);
-    const host = hostIn(root, question);
+    const questions = documentQuestions(root);
+    const host = hostIn(questions, question);
     if (host === undefined) {
       setState((prev) => (sameState(prev, EMPTY_STATE) ? prev : EMPTY_STATE));
       onScoped?.(cardKey, null);
       return;
     }
-    const unit = unitOf(root, host);
+    const unit = questionUnitBlocks(host.stamped, root, questions);
 
     // Before the siblings are hidden, so every block hashes as it does in its
-    // document, where nothing is.
+    // document, where nothing is. Every question in the block, so a comment
+    // on a question nested in this one's item is that question's.
     const index = indexBlocks(root);
-    const scoped = (comments ?? [])
-      .filter((c) => {
-        const block = resolveAnchor(index, c);
-        return block !== null && unit.contains(block);
-      })
-      .map((c) => c.id);
+    const onIt =
+      commentsOnQuestions(root, questions, comments ?? [], index).get(host) ??
+      [];
+    const scoped = onIt.map((c) => c.id);
 
     isolate(root, unit);
 
     const built = buildWholeBlockAnchor(host.block);
-    const taken =
-      built === null
-        ? undefined
-        : findTaken(
-            (comments ?? []).filter((c) => scoped.includes(c.id)),
-            built.anchor,
-            leaningComment(host.stamped),
-          );
     // Last, once everything above has read the unit as its document has it.
     const parts = markCardParts(
       root,
@@ -691,7 +693,10 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
     const next: CardState = {
       found: built !== null,
       scoped,
-      takenId: taken?.id ?? null,
+      offer:
+        built === null
+          ? null
+          : questionOffer(built.anchor, leaningComment(host.stamped), onIt),
       laidOut: true,
       titled: parts.titled,
       leaning: parts.leaning,
@@ -827,7 +832,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   const anchorNow = useCallback(() => {
     const root = bodyRef.current;
     if (!root) return null;
-    const host = hostIn(root, question);
+    const host = hostIn(documentQuestions(root), question);
     if (host === undefined) return null;
     const built = buildWholeBlockAnchor(host.block);
     return built === null ? null : { host, ...built };
@@ -855,16 +860,32 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   );
 
   const writable = !isStaticMode() && state.found;
-  // Only an `oq` is a question to answer in one click: a `question` offers
-  // nothing whatever its marker says, as the in-page pass offers nothing on
-  // one (`offersTake`).
-  const canTake =
-    writable &&
-    question.directive === "oq" &&
-    question.state === "open" &&
-    question.leaning !== null;
-  const canAnswer =
+  // What the question offers is the in-page row's rule (`questionOffer`): an
+  // open question, whichever name declared it, as the row offers the take
+  // (`offersTake`), and Answer… on an open or an answered one; once a comment
+  // answers it, the chip instead (`docs/reference/planning-index.md` §6.7).
+  const answerable =
     writable && (question.state === "open" || question.state === "answered");
+  const offer = answerable ? state.offer : null;
+  const canTake = offer?.kind === "take" && question.state === "open";
+  const canAnswer =
+    answerable && offer?.kind !== "taken" && offer?.kind !== "answered";
+  const take =
+    offer?.kind === "taken" || offer?.kind === "retake" ? offer : null;
+  const canUndo =
+    take !== null && onUndo !== undefined && takeUndoable(take.comment);
+  const undo = useCallback(async () => {
+    if (take === null || onUndo === undefined) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onUndo(question.path, take.comment.id);
+    } catch (e) {
+      setError(commandErrorMessage(e, "Could not undo the take"));
+    } finally {
+      setBusy(false);
+    }
+  }, [take, onUndo, question.path]);
 
   const listed = (comments ?? []).filter((c) => state.scoped.includes(c.id));
   const listOpen = open ?? !commentsLate;
@@ -996,26 +1017,64 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
             Show question
           </button>
         )}
-        {canTake &&
-          (state.takenId !== null ? (
-            <span className="review-oq-taken">{OQ_TAKEN_LABEL}</span>
-          ) : (
-            <button
-              type="button"
-              className="review-oq-take"
-              disabled={busy}
-              onClick={() => {
-                if (busy) return;
-                void file((host) => leaningComment(host.stamped));
-              }}
-            >
-              {OQ_LABEL}
-            </button>
-          ))}
+        {offer?.kind === "answered" && (
+          <span className="review-oq-answered" title={OQ_ANSWERED_HINT}>
+            {OQ_ANSWERED_LABEL}
+          </span>
+        )}
+        {take !== null && (
+          <span
+            className={
+              take.kind === "taken"
+                ? "review-oq-taken"
+                : "review-oq-taken review-oq-taken--past"
+            }
+            title={
+              !takeUndoable(take.comment)
+                ? OQ_ANSWERED_TITLE
+                : take.kind === "retake"
+                  ? OQ_TAKEN_DISMISSED_HINT
+                  : undefined
+            }
+          >
+            {take.kind === "taken"
+              ? OQ_TAKEN_LABEL
+              : take.replied
+                ? OQ_TAKEN_REPLIED_LABEL
+                : OQ_TAKEN_DISMISSED_LABEL}
+          </span>
+        )}
+        {canUndo && (
+          <button
+            type="button"
+            className="review-oq-undo"
+            title="Delete the review comment the take filed"
+            disabled={busy}
+            onClick={() => {
+              if (busy) return;
+              void undo();
+            }}
+          >
+            {OQ_UNDO_LABEL}
+          </button>
+        )}
+        {canTake && (
+          <button
+            type="button"
+            className="review-oq-take"
+            disabled={busy}
+            onClick={() => {
+              if (busy) return;
+              void file((host) => leaningComment(host.stamped));
+            }}
+          >
+            {OQ_LABEL}
+          </button>
+        )}
         {canAnswer && (
           <button
             type="button"
-            className="inline-flex items-center gap-1 rounded border border-slate-300 px-2.5 py-0.5 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
+            className="review-oq-answer"
             disabled={busy}
             onClick={(e) => {
               const now = anchorNow();
@@ -1027,7 +1086,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
             }}
           >
             <MessageSquarePlus size={12} aria-hidden="true" />
-            Answer…
+            {OQ_ANSWER_LABEL}
           </button>
         )}
         {/* A new tab, as its icon says: the page stays where it is. */}

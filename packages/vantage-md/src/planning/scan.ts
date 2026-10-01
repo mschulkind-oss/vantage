@@ -45,12 +45,12 @@ import {
   type VantageAlert,
 } from "../rehypeVantageAlerts.js";
 import {
-  DIRECTIVE_VOCABULARY,
   VANTAGE_OQ_HOST_TARGETS,
   VANTAGE_OQ_ID,
   VANTAGE_OQ_PREFERENCE,
   VANTAGE_SENTINEL,
   isQuestionDirective,
+  mergeQuestionRun,
   normalizeLeaning,
   parseVantageDirective,
   vantageOqStatus,
@@ -65,17 +65,17 @@ import { resolveRepoLink } from "./links.js";
 export type QuestionState = "open" | "blocked" | "answered";
 
 /**
- * One question: an `oq` or `question` directive on a block that could host a
+ * One question: a `question` or `oq` directive on a block that could host a
  * button (§3.3).
  */
 export interface PlanningQuestion {
   path: string;
   /**
-   * The name that declared it: `oq`, a question review mode offers to answer
-   * in one click, or `question`, one it never does (`VANTAGE_QUESTION_NAMES`).
-   * A run holding both is an `oq`, as it is to a viewer that predates
-   * `question`. Only an `oq` gets Take this leaning, on the page and on its
-   * card alike.
+   * The name that declared it: `question`, or `oq`, the deprecated name every
+   * viewer before 0.8 offers Take this leaning on whatever the question's
+   * state (`VANTAGE_QUESTION_NAMES`). A run holding both is an `oq`, as it is
+   * to a viewer that predates `question`. Whether review mode offers Take this
+   * leaning is the state's to say (`questionOffersTake`), never the name's.
    */
   directive: VantageQuestionName;
   /**
@@ -93,8 +93,8 @@ export interface PlanningQuestion {
   /** The bold `OQ-…` title, flattened; else the flattened text of its scope. */
   title: string;
   /**
-   * `normalizeLeaning(leaning=)`; `null` when absent or empty. Only an `oq`
-   * carries one: `question` does not accept the key.
+   * `normalizeLeaning(leaning=)`, from either name; `null` when absent or
+   * empty. A 🔒 or ✅ question may carry one, which nothing offers to take.
    */
   leaning: string | null;
   /** File line of the block the in-page button anchors on. */
@@ -105,10 +105,11 @@ export interface PlanningQuestion {
    */
   unitLine: number;
   /**
-   * File line of the unit's last line: where that `<li>` ends, or the host
-   * block's last line when there is none. With `unitLine` it spans the
-   * question's unit, which is how a comment is placed on a question whose card
-   * has not been rendered (`docs/reference/planning-index.md` §6.7).
+   * File line of the unit's last line: where that `<li>` ends; outside one,
+   * the last line of the blocks the question runs over (`unitEnd`). With
+   * `unitLine` it spans the question's unit, which is how a comment is placed
+   * on a question whose card has not been rendered
+   * (`docs/reference/planning-index.md` §6.7).
    */
   unitEndLine: number;
   /**
@@ -519,6 +520,10 @@ interface ScanState {
   rawIds: (string | undefined)[];
   /** The comment whose `id=` that merged id is, by `commentKey`. */
   idKeys: (string | undefined)[];
+  /** Every comment of each question's run, by `commentKey`. */
+  runKeys: string[][];
+  /** Each question's host block, and where it sits. */
+  hosts: { target: RootContent; context: Context }[];
   /** Footnote definitions, walked last because they render last. */
   footnotes: Context[];
   /**
@@ -678,9 +683,9 @@ function withheldRaw(
 
 /**
  * Record `target` as a question when the run holds a question directive and
- * the target could host a button. A `question` never gets one, but it declares
- * a question in exactly the places an `oq` does, so that a question changing
- * state changes its directive's name and nothing else.
+ * the target could host a button. Both names declare a question in exactly the
+ * same places, in every state, so a question that changes state is found where
+ * it was.
  */
 function question(
   target: RootContent,
@@ -689,22 +694,12 @@ function question(
   context: Context,
   state: ScanState,
 ): void {
-  // Merged per run, last key wins, as `stampRun` merges them: the two names
-  // share one key map, each keeps only the keys it accepts, and `oq` wins.
-  let name: VantageQuestionName | undefined;
-  const keys = new Map<string, string>();
-  let idKey: string | undefined;
-  for (const { directive, key } of run) {
-    if (!isQuestionDirective(directive.name)) continue;
-    if (name !== "oq") name = directive.name;
-    const accepted = DIRECTIVE_VOCABULARY[directive.name] ?? {};
-    for (const pair of directive.pairs) {
-      if (accepted[pair.key] === undefined) continue;
-      keys.set(pair.key, pair.value);
-      if (pair.key === "id") idKey = key;
-    }
-  }
-  if (name === undefined) return;
+  // Merged per run as `stampRun` merges it, by the one function both call.
+  const merged = mergeQuestionRun(run.map(({ directive }) => directive));
+  if (merged === undefined) return;
+  const { name, keys } = merged;
+  const idSource = merged.sources.get("id");
+  const idKey = idSource === undefined ? undefined : run[idSource]?.key;
   if (!BLOCK_PARENTS.has(context.parent.type)) return;
 
   const tag = targetTag(target);
@@ -778,6 +773,57 @@ function question(
   });
   state.rawIds.push(keys.get("id"));
   state.idKeys.push(idKey);
+  state.runKeys.push(run.map(({ key }) => key));
+  state.hosts.push({ target, context });
+}
+
+/**
+ * Where a question that is not in a list item ends: the last line of the
+ * blocks it runs over. Such a question is its host block and the blocks after
+ * it in the same parent — its context, its options, its leaning, its Answer —
+ * up to the first of these, which it does not include:
+ *
+ * - a heading: any heading, or, when the host is a heading itself, one of the
+ *   same or a higher level, so a question written as a heading runs to the
+ *   end of its section;
+ * - a thematic break;
+ * - a block that is, or holds, another question's host.
+ *
+ * The app's `questionUnitBlocks` finds the same blocks in the rendered page
+ * (`planningAgreement.test.tsx` holds the two equal). Comments, link
+ * definitions, footnote definitions and what a `fallback` withholds render
+ * nowhere here, so they neither end a question nor belong to one.
+ */
+function unitEnd(
+  target: RootContent,
+  parent: Parents,
+  hosts: ReadonlySet<Nodes>,
+  withheld: ReadonlySet<Nodes>,
+): number {
+  const holdsHost = (node: Nodes): boolean =>
+    hosts.has(node) ||
+    ("children" in node && (node.children as Nodes[]).some(holdsHost));
+  const children = parent.children as RootContent[];
+  const depth = target.type === "heading" ? target.depth : undefined;
+  let end = target.position?.end.line ?? 1;
+  for (let k = children.indexOf(target) + 1; k < children.length; k++) {
+    const node = children[k];
+    if (node === undefined) break;
+    if (node.type === "definition" || node.type === "footnoteDefinition") {
+      continue;
+    }
+    if (withheld.has(node)) continue;
+    if (node.type === "html" && isCommentOnly(node.value)) continue;
+    if (
+      node.type === "heading" &&
+      (depth === undefined || node.depth <= depth)
+    ) {
+      break;
+    }
+    if (node.type === "thematicBreak" || holdsHost(node)) break;
+    end = node.position?.end.line ?? end;
+  }
+  return end;
 }
 
 /**
@@ -1195,6 +1241,8 @@ export function scanPlanningDocument(
     questions: [],
     rawIds: [],
     idKeys: [],
+    runKeys: [],
+    hosts: [],
     footnotes: [],
     withheld: new Set(),
   };
@@ -1214,6 +1262,25 @@ export function scanPlanningDocument(
     const footnote = state.footnotes[i];
     if (footnote !== undefined) walkBlocks(footnote, state);
   }
+  // Once every host is known, a question outside a list item runs over the
+  // blocks after its host, up to the next question among them (`unitEnd`).
+  // Its card block, at the root, runs as far, so the card holds the whole of
+  // it.
+  const hostBlocks = new Set<Nodes>(state.hosts.map(({ target }) => target));
+  state.questions.forEach((question, index) => {
+    const host = state.hosts[index];
+    if (host === undefined || host.context.unit !== undefined) return;
+    const end =
+      unitEnd(host.target, host.context.parent, hostBlocks, state.withheld) +
+      state.bodyLineOffset;
+    question.unitEndLine = end;
+    if (host.context.rootChild === undefined) {
+      question.block = {
+        startLine: question.block.startLine,
+        endLine: Math.max(question.block.endLine, end),
+      };
+    }
+  });
 
   const cards = cutCardBlocks(
     source,
@@ -1231,8 +1298,15 @@ export function scanPlanningDocument(
   const questions: PlanningQuestion[] = state.questions.map((q, index) => {
     const raw = state.rawIds[index];
     const key = state.idKeys[index];
+    // A run is one declaration: its id stands when the first comment in the
+    // document to declare it is one of the run's own, whichever of the run's
+    // comments that is (a `question` and the `oq` beside it may both carry it).
+    const declaredBy = raw === undefined ? undefined : first.get(raw);
     const id =
-      raw !== undefined && key !== undefined && first.get(raw) === key
+      raw !== undefined &&
+      key !== undefined &&
+      declaredBy !== undefined &&
+      (state.runKeys[index] ?? []).includes(declaredBy)
         ? raw
         : null;
     const cardChars = chars.get(`${q.block.startLine}:${q.block.endLine}`) ?? 0;

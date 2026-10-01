@@ -127,9 +127,9 @@ describe("nearestAnchor", () => {
 });
 
 describe("open question anchors", () => {
-  const OQ = '<!-- vantage: oq id=OQ-4 leaning="Yes." -->';
+  const OQ = '<!-- vantage: question id=OQ-4 leaning="Yes." -->';
 
-  it("counts a well-formed oq id as a link target", async () => {
+  it("counts a well-formed question id as a link target", async () => {
     const root = makeTree({
       "docs/index.md": `# Anchors\n\n${OQ}\n\nA question.\n\nSee [OQ-4](#OQ-4).\n`,
     });
@@ -150,7 +150,7 @@ describe("open question anchors", () => {
     expect(ruleIds(report)).toEqual([]);
   });
 
-  it("still reports a fragment no oq declares", async () => {
+  it("still reports a fragment no question declares", async () => {
     const root = makeTree({
       "docs/index.md": `# Anchors\n\n${OQ}\n\nA question.\n\nSee [OQ-9](#OQ-9).\n`,
     });
@@ -167,7 +167,7 @@ describe("open question anchors", () => {
   it("does not count a malformed id", async () => {
     const root = makeTree({
       "docs/index.md":
-        '# Anchors\n\n<!-- vantage: oq id=OQ-nope leaning="Yes." -->\n\nA question.\n\nSee [OQ-nope](#OQ-nope).\n',
+        '# Anchors\n\n<!-- vantage: question id=OQ-nope leaning="Yes." -->\n\nA question.\n\nSee [OQ-nope](#OQ-nope).\n',
     });
 
     const report = await checkTree(root);

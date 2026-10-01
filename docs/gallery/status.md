@@ -88,14 +88,13 @@ or the done fade has gone too far.
 The [documentation convention](../../userguide/reference/style-guide.md) marks an
 Open Question's state with an emoji and a stable ID. Those are ordinary text, so
 they render everywhere — the question is whether they are enough on their own,
-beside the chips and boxes above. The open question carries an `oq` directive,
-which review mode offers to answer in one click; the answered and the blocked
-one carry a `question` directive, which declares them without offering
-anything.
+beside the chips and boxes above. Each carries a `question` directive, in
+whatever state it is in: review mode offers to answer the open one in one click,
+and declares the answered and the blocked one without offering anything.
 
 1. 💬 **OQ-1: Does the emoji carry enough weight next to a chip?**
 
-   <!-- vantage: oq id=OQ-1 leaning="Probably not on a long page — an emoji is one glyph in a paragraph, and a chip is a colored object beside a heading." -->
+   <!-- vantage: question id=OQ-1 leaning="Probably not on a long page — an emoji is one glyph in a paragraph, and a chip is a colored object beside a heading." -->
 
    _Leaning:_ probably not on a long page.
 
@@ -135,7 +134,7 @@ judged as a set rather than one token at a time.
 | `status:` frontmatter | four document states | the whole file | a chip above the metadata card |
 | `tone=` | six roles | a section or a block | a rule in the gutter, or a wash |
 | `> [!KIND]` | five callout kinds | one blockquote | a bordered, washed box with a title |
-| `oq` | this is answerable | one block | a button, in review mode only |
+| `question` | this is a question, in the marker's state | one block | an anchor, and a button on an open one in review mode only |
 
 The overlap is deliberate and mostly harmless — `badge=done` and `- [x]` say the
 same thing at different scopes.

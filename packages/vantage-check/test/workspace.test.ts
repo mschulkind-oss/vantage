@@ -21,7 +21,7 @@ describe("Workspace.offer", () => {
     "",
     '<a id="notes"></a>',
     "",
-    '<!-- vantage: oq id=OQ-4 leaning="Yes." -->',
+    '<!-- vantage: question id=OQ-4 leaning="Yes." -->',
     "",
     "A question.",
     "",

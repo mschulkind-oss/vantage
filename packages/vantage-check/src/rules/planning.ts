@@ -2,6 +2,7 @@ import { realpathSync, statSync } from "node:fs";
 import { dirname, join, parse, relative, sep } from "node:path";
 import {
   PLANNING_SECTION_TITLES,
+  QUESTION_SHAPE,
   derivePlanningSections,
   findDocument,
   hasRoadmapName,
@@ -468,7 +469,7 @@ class PlanningPass {
       report(
         rule,
         question.unitLine,
-        `Question ${name} runs to ${words} words, not counting its leaning and its Answer, past the limit of ${limit}. Its card on the planning page leads with the bold title and shows only the first few lines of the rest, so put the question itself in the title and keep the text to what a ruling needs: move background, history and cross-references into the document's sections and link to them.`,
+        `Question ${name} runs to ${words} words, not counting its leaning and its Answer, past the limit of ${limit}. Its card on the planning page leads with the bold title and shows only the first few lines of the rest, so put the question itself in the title and keep the text to what a ruling needs: move background, history and cross-references into the document's sections and link to them. ${QUESTION_SHAPE} A leaning or an Answer run into another paragraph counts here as the question's own words.`,
       );
     }
   }

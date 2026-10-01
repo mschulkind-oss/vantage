@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -455,4 +455,161 @@ test.describe("several roadmaps", () => {
       "1 open question not on any roadmap",
     );
   });
+
+  /** A comment typed on `id`'s title in `doc`, filed on the real server. */
+  const fileOnTitle = async (doc: string, id: string) => {
+    const lines = readFileSync(path.join(FIXTURE, doc), "utf8").split("\n");
+    const line = lines.findIndex((l) => l.includes(`**${id}:`)) + 1;
+    const response = await fetch(
+      `${backend}/api/review/comments?path=${encodeURIComponent(doc)}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: `typed-${id}`,
+          comment: `My answer to ${id}.`,
+          fallback_text: "",
+          created_at: 0,
+          anchor: {
+            source_line: line,
+            block_text_hash: "00000000",
+            selection_offset: 0,
+            selection_length: 0,
+          },
+        }),
+      },
+    );
+    expect(response.ok).toBe(true);
+  };
+  const clear = (doc: string) =>
+    fetch(`${backend}/api/review?path=${encodeURIComponent(doc)}`, {
+      method: "DELETE",
+    });
+
+  // A comment on a question is its answer (planning-index.md §6.7): it comes
+  // off the picker's counts and the other-roadmaps line, and its card is
+  // marked, while the question stays listed. The counts change in room kept
+  // for them, so nothing painted moves.
+  test("takes a question answered by a comment off the need-you counts, moving nothing", async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      interface Entry extends PerformanceEntry {
+        value: number;
+        hadRecentInput: boolean;
+        sources: { node: Node | null }[];
+      }
+      const shifts: { value: number; nodes: string[] }[] = [];
+      (window as unknown as { __shifts: typeof shifts }).__shifts = shifts;
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries() as Entry[]) {
+          if (entry.hadRecentInput) continue;
+          const nodes = entry.sources.map((source) => {
+            const el =
+              source.node instanceof Element
+                ? source.node
+                : (source.node?.parentElement ?? null);
+            if (el?.closest('[data-testid="sidebar"]')) return "sidebar";
+            return el === null
+              ? "(none)"
+              : `${el.tagName} ${el.className} "${(el.textContent ?? "").slice(0, 40)}"`;
+          });
+          if (nodes.length > 0 && nodes.every((n) => n === "sidebar")) {
+            continue;
+          }
+          shifts.push({ value: entry.value, nodes });
+        }
+      }).observe({ type: "layout-shift", buffered: true });
+    });
+    try {
+      await fileOnTitle("designs/alpha.md", "OQ-A1");
+      await fileOnTitle("designs/beta.md", "OQ-B1");
+      await page.goto(`/.vantage/planning?roadmap=roadmap.md`);
+      const a1 = page.getByRole("article", { name: /^OQ-A1:/ });
+      await expect(a1.getByText("Answered — waiting on the agent")).toBeVisible();
+      // Still listed where it was.
+      await cardsIn(page, "Needs you").toEqual([
+        "OQ-A1: Which way does alpha go?",
+        "OQ-A2: How soon does alpha ship?",
+      ]);
+      // Both comments came with the sections, so both roadmaps' counts drop.
+      await expect(picker(page).locator("option")).toHaveText([
+        "roadmap.md (1 needs you)",
+        `${NESTED} (3 need you)`,
+      ]);
+      // Beta is on no page this roadmap shows, and its comment counts all
+      // the same: its questions need you on the other roadmap, so its reviews
+      // come with the sections.
+      await expect(page.getByTestId("pending-answers")).toHaveText("2");
+      await expect(page.getByTestId("other-roadmaps")).toHaveText(
+        "2 more questions need you on other roadmaps.",
+      );
+      const shifts = await page.evaluate(
+        () =>
+          new Promise((resolve) =>
+            requestAnimationFrame(() =>
+              requestAnimationFrame(() =>
+                resolve((window as unknown as { __shifts: unknown }).__shifts),
+              ),
+            ),
+          ),
+      );
+      expect(shifts).toEqual([]);
+
+      await picker(page).selectOption(NESTED);
+      await expect(
+        page
+          .getByRole("article", { name: /^OQ-B1:/ })
+          .getByText("Answered — waiting on the agent"),
+      ).toBeVisible();
+      await expect(picker(page).locator("option")).toHaveText([
+        "roadmap.md (1 needs you)",
+        `${NESTED} (3 need you)`,
+      ]);
+      // OQ-A1, answered, was the one question only roadmap.md routes.
+      await expect(page.getByTestId("other-roadmaps")).toHaveText(
+        "No more questions need you on other roadmaps.",
+      );
+    } finally {
+      await clear("designs/alpha.md");
+      await clear("designs/beta.md");
+    }
+  });
+
+  // A cold visit: every answer filed before the page was ever opened, on
+  // questions of both roadmaps and of none. Each need-you number is right from
+  // the first paint, under either roadmap, with nothing picked in between.
+  for (const chosen of ["roadmap.md", NESTED]) {
+    test(`counts every answer on a cold visit to ${chosen}`, async ({
+      page,
+    }) => {
+      const all: [string, string][] = [
+        ["designs/alpha.md", "OQ-A1"],
+        ["designs/alpha.md", "OQ-A2"],
+        ["designs/beta.md", "OQ-B1"],
+        ["designs/beta.md", "OQ-B2"],
+        ["designs/beta.md", "OQ-B3"],
+        ["designs/gamma.md", "OQ-G1"],
+      ];
+      try {
+        for (const [doc, id] of all) await fileOnTitle(doc, id);
+        await page.goto(
+          `/.vantage/planning?roadmap=${encodeURIComponent(chosen)}`,
+        );
+        await expect(page.getByTestId("pending-answers")).toHaveText("6");
+        await expect(picker(page).locator("option")).toHaveText([
+          "roadmap.md (0 need you)",
+          `${NESTED} (0 need you)`,
+        ]);
+        await expect(page.getByTestId("other-roadmaps")).toHaveText(
+          "No more questions need you on other roadmaps.",
+        );
+        await expect(page.getByTestId("nothing-needs-you")).toContainText(
+          "Every open question has your answer, waiting on the agent.",
+        );
+      } finally {
+        for (const doc of new Set(all.map(([doc]) => doc))) await clear(doc);
+      }
+    });
+  }
 });

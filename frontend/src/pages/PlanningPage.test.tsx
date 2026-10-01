@@ -49,7 +49,10 @@ import {
 } from "vantage-md/planning";
 import { PlanningPage } from "./PlanningPage";
 import { AppShell } from "../components/AppShell";
-import { resetPlanningReviews } from "../hooks/usePlanningReviews";
+import {
+  fetchPlanningReviews,
+  resetPlanningReviews,
+} from "../hooks/usePlanningReviews";
 import { resetRepoRootsForTests } from "../hooks/useRepoRoot";
 import {
   prefetchPlanningPage,
@@ -1484,12 +1487,24 @@ describe("the reviews, in one request (planning-index.md §9.3)", () => {
   });
 
   it("reads every other listed document in one more POST once the sections have painted", async () => {
+    // A document whose one question is blocked, on Waiting's last page: the
+    // one listed document the first request leaves out.
+    seed({
+      ...TREE,
+      "plans/waits.md": doc("stage: DESIGN", q("OQ-W9", BLOCKED)),
+    });
     setPlanningLimitsForTests({ pageEntries: 1 });
     await renderPage();
     expect(reviewRequests()).toHaveLength(2);
     const first = new Set(pathsOf(0));
     const rest = pathsOf(1);
     expect(rest.filter((path) => first.has(path))).toEqual([]);
+    // The first holds the shown pages' documents and every one holding a
+    // question that needs you, on any page: plans/answered.md's OQ-A1 is on
+    // Needs you's second page, and its answers are what the need-you numbers
+    // painted with the sections read.
+    expect(first.has("plans/answered.md")).toBe(true);
+    expect(rest).toEqual(["plans/waits.md"]);
     expect(new Set([...first, ...rest])).toEqual(
       new Set([
         "plans/design.md",
@@ -1498,6 +1513,7 @@ describe("the reviews, in one request (planning-index.md §9.3)", () => {
         "plans/disagrees.md",
         "plans/deps.md",
         "plans/ready.md",
+        "plans/waits.md",
         "plans/built.md",
       ]),
     );
@@ -1609,6 +1625,10 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
   // §15: the second request comes after the sections painted, so a line
   // above them would move them. Copy answers says it where nothing moves.
   it("says so, and keeps Copy answers disabled, when the second reviews request fails", async () => {
+    seed({
+      ...TREE,
+      "plans/waits.md": doc("stage: DESIGN", q("OQ-W9", BLOCKED)),
+    });
     setPlanningLimitsForTests({ pageEntries: 1 });
     const real = vi.mocked(axios.post).getMockImplementation()!;
     let requests = 0;
@@ -3907,5 +3927,295 @@ describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
     expect(
       screen.queryByRole("button", { name: /^(Expand all|Collapse all)$/ }),
     ).toBeNull();
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * A comment on a question is its answer (§6.7)
+ * ------------------------------------------------------------------ */
+
+describe("a comment on a question is its answer (§6.7)", () => {
+  /**
+   * A pending comment typed on `id`'s title in its document, the first line
+   * of its unit — not the leaning's block, which a take anchors on.
+   */
+  function typedOnTitle(
+    tree: Record<string, string>,
+    id: string,
+    patch: Partial<ReviewComment> = {},
+  ): { path: string; comment: ReviewComment } {
+    const question = readyOf(tree)
+      .index.documents.flatMap((d) => d.questions)
+      .find((x) => x.id === id)!;
+    expect(question.unitLine).not.toBe(question.line);
+    return {
+      path: question.path,
+      comment: {
+        id: `typed-${id}`,
+        comment: `My answer to ${id}.`,
+        created_at: 0,
+        reactions: [],
+        anchor: {
+          source_line: question.unitLine,
+          block_text_hash: "00000000",
+          selection_offset: 0,
+          selection_length: 0,
+        },
+        ...patch,
+      },
+    };
+  }
+
+  function answer(tree: Record<string, string>, ...ids: string[]): void {
+    for (const id of ids) {
+      const { path, comment } = typedOnTitle(tree, id);
+      reviews[path] = [...(reviews[path] ?? []), comment];
+    }
+  }
+
+  const ANSWERED_CHIP = "Answered — waiting on the agent";
+
+  it("marks the card answered where Take stood, keeps it listed, and copies it", async () => {
+    seed();
+    answer(TREE, "OQ-D1");
+    await renderPage();
+
+    const card = cardFor("OQ-D1");
+    expect(within(card).getByText(ANSWERED_CHIP)).toHaveClass(
+      "review-oq-answered",
+    );
+    expect(
+      within(card).queryByRole("button", { name: "Take this leaning" }),
+    ).toBeNull();
+    // Still listed, where it was: the human sees what they answered.
+    expect(cardsIn("Needs you")).toEqual([
+      "OQ-D1: Question OQ-D1?",
+      "OQ-D3: Question OQ-D3?",
+      "OQ-A1: Question OQ-A1?",
+    ]);
+    // Its sibling in the same list is not answered by it.
+    expect(
+      within(cardFor("OQ-D3")).getByRole("button", {
+        name: "Take this leaning",
+      }),
+    ).toBeTruthy();
+    // And Copy answers holds it.
+    expect(screen.getByTestId("pending-answers")).toHaveTextContent("1");
+  });
+
+  it("does not take a comment the agent has answered for the human's answer", async () => {
+    seed();
+    const { path, comment } = typedOnTitle(TREE, "OQ-D1", {
+      reactions: [
+        {
+          actor: "agent",
+          kind: "addressed",
+          summary: "Done.",
+          before_text: "",
+          after_text: "",
+          timestamp: Date.now() / 1000 + 10,
+        },
+      ],
+    });
+    reviews[path] = [comment];
+    await renderPage();
+    expect(within(cardFor("OQ-D1")).queryByText(ANSWERED_CHIP)).toBeNull();
+    expect(screen.getByTestId("pending-answers")).toHaveTextContent("0");
+  });
+
+  it("says Nothing needs you at the head of the sections once every open question has its answer", async () => {
+    seed();
+    // Every open question outside the done role, but one.
+    answer(TREE, "OQ-D1", "OQ-D3", "OQ-U1");
+    await renderPage();
+    expect(screen.queryByTestId("nothing-needs-you")).toBeNull();
+
+    // The last one, answered from its card: filed here, so it counts at once.
+    await act(async () => {
+      fireEvent.click(
+        within(cardFor("OQ-X1")).getByRole("button", {
+          name: "Take this leaning",
+        }),
+      );
+    });
+    await settle();
+    const line = screen.getByTestId("nothing-needs-you");
+    expect(line).toHaveTextContent(PLANNING_NOTICES.nothingNeedsYou);
+    expect(line).toHaveTextContent(
+      "Every open question has your answer, waiting on the agent.",
+    );
+    // In the sections' region, which fills in one commit, never among the
+    // notices the frame painted before the sections.
+    expect(
+      document.querySelector("[data-planning-sections]")!.firstElementChild,
+    ).toBe(line);
+    // Every card is still listed, each marked.
+    expect(cardsIn("Needs you")).toHaveLength(3);
+    expect(screen.getAllByText(ANSWERED_CHIP)).toHaveLength(3);
+    expect(within(cardFor("OQ-X1")).getByText("Leaning taken")).toBeTruthy();
+  });
+
+  it("draws it with the first sections when every answer is in their documents' reviews", async () => {
+    seed();
+    answer(TREE, "OQ-D1", "OQ-D3", "OQ-U1", "OQ-X1");
+    await renderPage();
+    expect(screen.getByTestId("nothing-needs-you")).toBeTruthy();
+    // One line, not the index's and this one both.
+    expect(screen.getAllByTestId("nothing-needs-you")).toHaveLength(1);
+  });
+
+  it("says beside each section's count how many of its entries are answered", async () => {
+    // So "Nothing needs you" above a section titled Needs you 3 reads as
+    // three answered, not three waiting.
+    seed();
+    answer(TREE, "OQ-D1", "OQ-D3", "OQ-U1", "OQ-X1");
+    await renderPage();
+    const heading = (name: string) =>
+      screen.getByRole("heading", { level: 2, name: new RegExp(`^${name}`) });
+    expect(heading("Needs you")).toHaveTextContent(
+      /Needs you\s*3\s*\(2 answered\)/,
+    );
+    expect(heading("Not on a roadmap")).toHaveTextContent(
+      /Not on a roadmap\s*2\s*\(2 answered\)/,
+    );
+    const bar = screen.getByRole("navigation", { name: "Sections" });
+    expect(
+      within(bar).getByRole("link", { name: /^Needs you/ }),
+    ).toHaveTextContent(/Needs you\s*3\s*\(2 answered\)/);
+    // A section none of whose entries is answered says nothing more.
+    expect(
+      within(bar).getByRole("link", { name: /^Blocked/ }),
+    ).not.toHaveTextContent("answered");
+  });
+
+  describe("with several roadmaps", () => {
+    const NESTED = "docs/plans/roadmap.md";
+    const TWO: Record<string, string> = {
+      ...TREE,
+      [NESTED]: [
+        "# Plans",
+        "",
+        "## Later",
+        "",
+        "1. [Not on a roadmap until now](../../plans/unrouted.md)",
+        "2. [One of the design's](../../plans/design.md#OQ-D3)",
+        "",
+      ].join("\n"),
+    };
+    const picker = () =>
+      screen.getByRole("combobox", { name: "Roadmap" }) as HTMLSelectElement;
+    const options = () =>
+      Array.from(picker().options, (option) => option.textContent);
+
+    it("takes the answered questions off the picker's counts and the other-roadmaps line", async () => {
+      seed(TWO);
+      answer(TWO, "OQ-D1", "OQ-U1");
+      // Held before the page opens, as a visit earlier in the tab leaves them.
+      await act(async () => {
+        await fetchPlanningReviews("", [
+          "plans/design.md",
+          "plans/unrouted.md",
+        ]);
+      });
+      await renderPage();
+
+      expect(options()).toEqual([
+        "roadmap.md (2 need you)",
+        "docs/plans/roadmap.md (1 needs you)",
+      ]);
+      const shown = screen.getByTestId("roadmap-shown");
+      expect(shown).toHaveTextContent("roadmap.md (2 need you)");
+      // Room for the count the index gives, so a count lowered later moves
+      // nothing.
+      expect(shown.querySelector(".hdr-reserve")).toHaveAttribute(
+        "data-reserve",
+        "(3 needs you)",
+      );
+      const others = screen.getByTestId("other-roadmaps");
+      expect(others).toHaveTextContent(
+        "No more questions need you on other roadmaps.",
+      );
+      expect(others).toHaveAttribute(
+        "data-reserve",
+        PLANNING_NOTICES.otherRoadmaps(1),
+      );
+      // Both still listed where they were, each marked answered.
+      expect(cardsIn("Needs you")).toContain("OQ-D1: Question OQ-D1?");
+      expect(within(cardFor("OQ-D1")).getByText(ANSWERED_CHIP)).toBeTruthy();
+    });
+
+    it("counts an answer on another roadmap's question on a cold visit, from the first paint", async () => {
+      seed(TWO);
+      // OQ-U1 is on no page shown under roadmap.md, and nothing read its
+      // document's reviews before this visit: they come with the page inputs,
+      // since its question needs you on the other roadmap.
+      answer(TWO, "OQ-U1");
+      await renderPage();
+      expect(screen.getByTestId("pending-answers")).toHaveTextContent("1");
+      expect(options()).toEqual([
+        "roadmap.md (3 need you)",
+        "docs/plans/roadmap.md (1 needs you)",
+      ]);
+      expect(screen.getByTestId("other-roadmaps")).toHaveTextContent(
+        "No more questions need you on other roadmaps.",
+      );
+    });
+
+    it("lowers the reserved counts at once when an answer's reviews arrive late, and draws Nothing needs you only with the next sections", async () => {
+      // Every open question answered, OQ-U1's in a document whose reviews
+      // come past the deadline, after the sections painted.
+      setPlanningLimitsForTests({ reviewsDeadlineMs: 10 });
+      const done = { ...TWO };
+      delete done["plans/disagrees.md"];
+      seed(done);
+      answer(done, "OQ-D1", "OQ-D3", "OQ-U1");
+      await act(async () => {
+        await fetchPlanningReviews("", ["plans/design.md"]);
+      });
+      const real = vi.mocked(axios.post).getMockImplementation()!;
+      let release = () => {};
+      vi.mocked(axios.post).mockImplementation((url, body, config) => {
+        const paths = (body as { paths?: string[] } | undefined)?.paths ?? [];
+        if (
+          String(url).endsWith("/planning/reviews") &&
+          paths.includes("plans/unrouted.md")
+        ) {
+          return new Promise((resolve) => {
+            release = () => resolve(real(url, body, config));
+          });
+        }
+        return real(url, body, config);
+      });
+      await renderPage();
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      });
+      await settle();
+      // Painted before OQ-U1's answer was known.
+      expect(screen.getByTestId("other-roadmaps")).toHaveTextContent(
+        PLANNING_NOTICES.otherRoadmaps(1),
+      );
+      expect(screen.queryByTestId("nothing-needs-you")).toBeNull();
+
+      await act(async () => {
+        release();
+      });
+      await settle();
+      // The reserved counts follow at once, within the room they kept.
+      expect(options()).toEqual([
+        "roadmap.md (1 needs you)",
+        "docs/plans/roadmap.md (0 need you)",
+      ]);
+      expect(screen.getByTestId("other-roadmaps")).toHaveTextContent(
+        "No more questions need you on other roadmaps.",
+      );
+      // The line that would move the sections waits for the next commit.
+      expect(screen.queryByTestId("nothing-needs-you")).toBeNull();
+      await act(async () => {
+        fireEvent.change(picker(), { target: { value: NESTED } });
+      });
+      await settle();
+      expect(screen.getByTestId("nothing-needs-you")).toBeTruthy();
+    });
   });
 });

@@ -26,6 +26,18 @@ Read by `e2e/question_names.spec.ts`, and by nothing else.
 
    **Answer:** yes.
 
+4. 💬 **OQ-4: Does an open question under the new name take a leaning?**
+
+   Its context, in a paragraph of its own.
+
+   <!-- vantage: question id=OQ-4 leaning="Take the second way." -->
+
+   _Leaning:_ the second way.
+
+   **Answer:**
+
+   > _(empty — fill in when decided)_
+
 <!-- vantage: section tone=note -->
 
 ## A toned section

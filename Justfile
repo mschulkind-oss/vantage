@@ -419,7 +419,10 @@ release version:
         echo "this tree's notation (above). Nothing has been tagged." >&2
         exit 1
     fi
-    just web-sync
+    # The bundle the tag carries is the one `go install` embeds, so it names
+    # its release for the review payload, as publish.yml's own build does
+    # (docs/design/checker-version-skew.md §5).
+    VANTAGE_RELEASE="{{version}}" just web-sync
     # Built with plumbing, against a scratch index, so the working tree and HEAD
     # are never touched. Checking out a commit that tracks web/dist and then
     # leaving it would delete the bundle from disk on the way back — and the

@@ -8,7 +8,7 @@ The order is the one thing this file holds that no other document can. Each entr
 
 ## 📦 Up Next
 
-1. [Forward-compatible notation for 0.8.0](docs/design/checker-version-skew.md), first, because nothing 0.8.0 teaches may be misread by an older viewer from the day it is tagged, and [`OQ-VS1`](docs/design/checker-version-skew.md#OQ-VS1) and [`OQ-VS5`](docs/design/checker-version-skew.md#OQ-VS5) have to be ruled before then.
+1. [Forward-compatible notation for 0.8.0](docs/design/checker-version-skew.md), first, because 0.8.0 is tagged next and the author's agent instructions outside this repository still teach the old question names until [their owner updates them](docs/design/checker-version-skew-plan.md#hand-off-agent-instructions-outside-this-repository). Once the tag is out, the design graduates into a reference.
 
 2. [Measuring the planning index at scale](docs/design/planning-index-measurement.md), ahead of the rest, because 0.8.0 is the first release to carry the index and it has not been measured at scale.
 

@@ -46,9 +46,10 @@ export interface OutlineEntry {
   status: VantageOqStatus | null;
   /**
    * Whether review mode offers Take this leaning on it (`offersTake`): an open
-   * question declared with `oq`. Always `false` for a heading. Not derivable
-   * from `status`, since a `question` directive on an open question offers
-   * nothing, and the tally must not promise a button the page lacks.
+   * question, or one with no marker, whichever name declared it. Always
+   * `false` for a heading. It says what the question's state offers, before
+   * any comment: the tally must not promise a button the page lacks, and
+   * review mode's row is that button until a comment answers the question.
    */
   oneClick: boolean;
   /** 1–6 for a heading, as in h1–h6; one step deeper for a question. */
@@ -107,8 +108,8 @@ export function collectOutline(container: HTMLElement): OutlineEntry[] {
   )) {
     const depth = HEADING_LEVELS[el.tagName];
     // A heading a question directive stamped is a question first:
-    // `documentQuestions` finds it, and an `oq` one hosts the button while it
-    // is open. Listed as a heading, the column fell one question short on any
+    // `documentQuestions` finds it, and it hosts the button while it is
+    // open. Listed as a heading, the column fell one question short on any
     // document that writes one that way: short of the buttons, and of the
     // planning index, which counts it too.
     if (depth !== undefined && !questions.has(el)) {
@@ -116,7 +117,7 @@ export function collectOutline(container: HTMLElement): OutlineEntry[] {
       // question with no id is not, because unlike a heading it is *the thing
       // the reader is looking for*. The column lists every question
       // `documentQuestions` finds, in every state, and review mode's buttons
-      // are that same set less its 🔒, ✅ and `question` ones (Plan Q5) — so a
+      // are that same set less its 🔒 and ✅ ones (Plan Q5) — so a
       // column dropping an id-less question would list fewer open questions
       // than there are buttons, the disagreement the shared walk prevents.
       if (!el.id) continue;
@@ -182,8 +183,9 @@ const HEADING_LEVELS: Record<string, number | undefined> = {
  *
  * ```html
  * <li>
- *   <p>💬 <strong>OQ-B1: The generator's command surface.</strong> …</p>
- *   <p data-vantage-oq="true" id="OQ-B1"><em>Leaning:</em> …</p>
+ *   <p>💬 <strong>OQ-B1: What is the generator's command surface?</strong></p>
+ *   <p>…</p>
+ *   <p data-vantage-question="true" id="OQ-B1"><em>Leaning:</em> …</p>
  * </li>
  * ```
  *
