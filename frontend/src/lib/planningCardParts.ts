@@ -21,6 +21,11 @@
  *   lines while the card is folded. **`more`**: every later one, hidden while
  *   the card is folded. The card's Show full question unfolds both.
  *
+ * Where the folded card hides some of its question — the `clamp` block runs
+ * past its lines, or there is `more` — the end of the `clamp` block is **the
+ * cut**: the stylesheet fades its last line, and the card puts Show full
+ * question directly under it (`cutState`, `cutSlot`).
+ *
  * Attributes only, and one text node, so nothing here moves a node React
  * owns. The one text node is the status marker before the title (`💬 `),
  * which the headline shows instead: it is emptied, and put back by
@@ -50,8 +55,19 @@ export const CARD_PARTS = [
 ] as const;
 export type CardPart = (typeof CARD_PARTS)[number];
 
-/** Marks the `clamp` block while its content runs past the clamp. */
+/**
+ * Marks the `clamp` block while the folded card hides some of its question:
+ * the block runs past the clamp, or later blocks are folded away. The
+ * stylesheet fades its last line, which is the cut.
+ */
 export const CARD_OVERFLOW_ATTR = "data-planning-card-overflow";
+
+/**
+ * Marks the element the card inserts directly after the `clamp` block, at the
+ * cut, to hold Show full question. `REVIEW_UI_SELECTOR` names it, so no block's
+ * text or hash reads it, wherever it sits.
+ */
+export const CARD_CUT_ATTR = "data-planning-card-cut";
 
 /** How many lines of the `clamp` block a folded card shows. */
 export const CARD_CLAMP_LINES = 3;
@@ -327,6 +343,49 @@ export function overflowsClamp(el: HTMLElement, folded: boolean): boolean {
   return Number.isFinite(line) && el.scrollHeight > line * CARD_CLAMP_LINES + 1;
 }
 
+/** What a card draws at its cut, from what its question hides and its fold. */
+export interface CutState {
+  /** The `clamp` block fades at its last line: there is more to see. */
+  fade: boolean;
+  /**
+   * The fold's control: Show full question at the cut while the card is
+   * folded, Show less after the question while it is not, or none when the
+   * whole question fits its lines and nothing is folded away.
+   */
+  control: "expand" | "collapse" | null;
+}
+
+/**
+ * What the card draws at its cut. `more` is whether blocks after the `clamp`
+ * are folded away, and `overflows` whether the `clamp` block runs past its
+ * lines (`overflowsClamp`, measured against the lines it would have folded
+ * while the card is unfolded). Only a question that hides something, folded,
+ * fades or offers a control; one that fits shows neither.
+ */
+export function cutState(
+  hidden: { more: boolean; overflows: boolean },
+  unfolded: boolean,
+): CutState {
+  const foldable = hidden.more || hidden.overflows;
+  return {
+    fade: foldable && !unfolded,
+    control: !foldable ? null : unfolded ? "collapse" : "expand",
+  };
+}
+
+/**
+ * The element a card keeps for its cut: one per card, moved to the end of each
+ * `clamp` block the card lays out, and empty, which the stylesheet does not
+ * draw, until Show full question is rendered into it. Outside the prose's
+ * typography, which styles the document's own elements.
+ */
+export function cutSlot(): HTMLElement {
+  const slot = document.createElement("div");
+  slot.setAttribute(CARD_CUT_ATTR, "");
+  slot.className = "not-prose";
+  return slot;
+}
+
 /** One card's measurement: what it reads of the layout, and what it writes. */
 export interface ClampMeasure {
   read: () => boolean;
@@ -334,6 +393,8 @@ export interface ClampMeasure {
 }
 
 const pendingMeasures: ClampMeasure[] = [];
+/** What waits for the pending measurements to be written (`afterClampMeasures`). */
+const afterMeasures: (() => void)[] = [];
 
 /**
  * Measure a card's clamp at the end of the task, with every other card's
@@ -354,9 +415,27 @@ export function measureClampSoon(job: ClampMeasure): void {
 /** Run every pending measurement now: what the microtask does, and a test. */
 export function flushClampMeasures(): void {
   const jobs = pendingMeasures.splice(0);
-  if (jobs.length === 0) return;
-  const answers = jobs.map((job) => job.read());
-  flushSync(() => {
-    jobs.forEach((job, i) => job.write(answers[i]!));
-  });
+  if (jobs.length > 0) {
+    const answers = jobs.map((job) => job.read());
+    flushSync(() => {
+      jobs.forEach((job, i) => job.write(answers[i]!));
+    });
+  }
+  for (const then of afterMeasures.splice(0)) then();
+}
+
+/**
+ * Run `then` once the measurements pending now are written, and whether there
+ * were any to wait for; with none, `then` is not run.
+ *
+ * A card's fold control at its cut is drawn by that write, so until it runs,
+ * every card committed with the measurements is shorter than it paints. What
+ * places something below such cards on screen — the planning page landing a
+ * jump or a link on a card — places it now and again from here, still before
+ * the paint, so it lands where the cards above it settle.
+ */
+export function afterClampMeasures(then: () => void): boolean {
+  if (pendingMeasures.length === 0) return false;
+  afterMeasures.push(then);
+  return true;
 }

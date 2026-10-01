@@ -13,11 +13,26 @@
  * The card then lays the unit out to be read (`planningCardParts.ts`): the
  * question's bold title becomes the card's headline, its leaning a block of
  * its own, an empty `Answer:` placeholder is not shown, and the rest of the
- * question is cut to `CARD_CLAMP_LINES` lines behind Show full question. All
- * of it is decided in the same layout pass that isolates the unit, before the
- * card paints, and Show full question has a slot of fixed width in the control
- * row whether or not there is anything to unfold, so nothing the card paints
- * moves later (§12). Unfolding is the reader's own action, so it may.
+ * question is cut to `CARD_CLAMP_LINES` lines. All of it is decided in the
+ * same layout pass that isolates the unit, before the card paints, so nothing
+ * the card paints moves later (§12).
+ *
+ * **The fold.** A question that hides something while folded — its first
+ * block runs past its lines, or later blocks are folded away — fades at the
+ * cut, the last line shown, and offers Show full question directly under it,
+ * in an element the card keeps at the cut inside the rendered question
+ * (`cutSlot`); unfolded, it offers Show less after the question instead. A
+ * question that fits shows neither. Whether it hides anything is measured
+ * before the card paints, as the fold it opens with is chosen: the page's
+ * Expand all / Collapse all preference (`unfoldedByDefault`), unless the
+ * reader set this card's own fold earlier in the visit (`folds`). Folding and
+ * unfolding are the reader's own action, so they may move what is below the
+ * card, and they keep the card's top where it was on screen — unless folding
+ * would leave all of the card above the pane, when its top comes into view.
+ * The focus a control had goes to what its press revealed: unfolding, the
+ * question itself, where reading goes on into what was hidden; folding, Show
+ * full question at the cut. A link the folded card cuts off that the reader
+ * tabs to unfolds the card, so the focus is never on text it hides.
  *
  * Answering files a comment that is indistinguishable from one filed with the
  * in-page button: the anchor is built from the card's own rendered host with
@@ -47,7 +62,8 @@
  * with it, so the focus it had goes to the card.
  */
 import React, { useCallback, useLayoutEffect, useRef, useState } from "react";
-import { Eye } from "lucide-react";
+import { createPortal } from "react-dom";
+import { ChevronDown, ChevronUp, Eye } from "lucide-react";
 import type {
   CardBlock,
   PlanningBadge,
@@ -77,6 +93,8 @@ import { isStaticMode } from "../lib/staticMode";
 import {
   CARD_CLAMP_LINES,
   CARD_OVERFLOW_ATTR,
+  cutSlot,
+  cutState,
   headlineMarker,
   markCardParts,
   measureClampSoon,
@@ -106,6 +124,14 @@ export const CARD_ATTR = "data-planning-question";
 
 /** The text shown beside a comment the agent has not answered yet. */
 export const WAITING_LABEL = "waiting on the agent";
+
+/**
+ * The folds the reader set on this visit's cards, by card key, so a card that
+ * mounts again — its page flipped away and back — opens as it was left. The
+ * page replaces it on each Expand all and Collapse all, which is what tells
+ * every card on screen to drop its own fold for the page's.
+ */
+export type CardFolds = Map<string, boolean>;
 
 /**
  * Which of a document's comments are on one question, as its card read them
@@ -165,7 +191,133 @@ interface PlanningQuestionCardProps {
    * its page to the next.
    */
   onScoped?: (key: string, report: ScopedReport | null) => void;
+  /**
+   * Whether a card opens unfolded: the page's remembered Expand all /
+   * Collapse all. Read as the card mounts, and again only when `folds` is
+   * replaced, so a change from another tab opens later cards its way and
+   * moves none on screen.
+   */
+  unfoldedByDefault?: boolean;
+  /** This visit's per-card folds; replaced to bring every card to the page's. */
+  folds?: CardFolds;
 }
+
+/** Where a fold left the card's top on screen, and what it was asked from. */
+interface FoldAnchor {
+  /** The card's top in the viewport, before the fold. */
+  top: number;
+  /** What scrolls the card: the app shell's pane. */
+  pane: HTMLElement | null;
+  /** The control that was pressed had the focus. */
+  focused: boolean;
+}
+
+/** Room left above a card that folding brings back into view. */
+const FOLD_TOP_MARGIN_PX = 16;
+
+/**
+ * Put the card's top back where the fold found it: the browser's own scroll
+ * anchoring would keep the first block on screen instead, which, from a cut
+ * near the top of the viewport, is a block below the card's top. Folding a
+ * card read far down, which would leave the card — Show full question and all
+ * — above the pane, brings its top into view instead.
+ */
+function keepCardTop(
+  article: HTMLElement | null,
+  before: FoldAnchor,
+  unfolded: boolean,
+): void {
+  const pane = before.pane;
+  if (pane === null) return;
+  if (article !== null) {
+    const top = article.getBoundingClientRect().top;
+    let by = top - before.top;
+    if (!unfolded) {
+      const paneTop = pane.getBoundingClientRect().top;
+      const control = article.querySelector("[data-planning-card-fold]");
+      const controlTop =
+        control === null ? null : control.getBoundingClientRect().top - by;
+      if (controlTop !== null && controlTop < paneTop) {
+        by = top - (paneTop + FOLD_TOP_MARGIN_PX);
+      }
+    }
+    if (by !== 0) pane.scrollTop += by;
+  }
+  // The browser anchors again once the fold has painted.
+  const resume = () => {
+    pane.style.removeProperty("overflow-anchor");
+  };
+  if (typeof requestAnimationFrame !== "function") resume();
+  else requestAnimationFrame(() => requestAnimationFrame(resume));
+}
+
+/** Whether any of `el` is inside the pane's visible rows. */
+function inPane(el: Element, pane: HTMLElement): boolean {
+  const box = el.getBoundingClientRect();
+  const view = pane.getBoundingClientRect();
+  return box.bottom > view.top && box.top < view.bottom;
+}
+
+/**
+ * Give the focus the pressed control had to what the fold revealed. Unfolded,
+ * that is the question, `body`: the control at the cut went with the cut, and
+ * Show less at the end of the question would put reading on past the text it
+ * just showed — and, with the card's top kept, often below the pane. It takes
+ * the focus for as long as it holds it, and no longer, so a click in it does
+ * not. Folded, it is Show full question, at the cut. Either one is kept in
+ * the pane: brought into it, the nearest way, if the fold left all of it out.
+ */
+function focusAfterFold(
+  article: HTMLElement | null,
+  body: HTMLElement | null,
+  unfolded: boolean,
+  pane: HTMLElement | null,
+): void {
+  let target: HTMLElement | null | undefined;
+  if (unfolded && body !== null) {
+    target = body;
+    body.setAttribute("tabindex", "-1");
+    body.addEventListener("blur", () => body.removeAttribute("tabindex"), {
+      once: true,
+    });
+  } else {
+    target = article?.querySelector<HTMLElement>("[data-planning-card-fold]");
+  }
+  if (target == null) return;
+  target.focus({ preventScroll: true });
+  if (pane !== null && !inPane(target, pane)) {
+    target.scrollIntoView?.({ block: "nearest" });
+  }
+}
+
+/**
+ * The fold's control, at the cut while folded and after the question while
+ * not. Every card's has the same name, so it is described by its card's
+ * headline, which a list of the page's buttons tells them apart by.
+ */
+const FoldButton: React.FC<{
+  unfolded: boolean;
+  controls: string;
+  describedBy: string | undefined;
+  onToggle: (e: React.MouseEvent<HTMLButtonElement>) => void;
+}> = ({ unfolded, controls, describedBy, onToggle }) => (
+  <button
+    type="button"
+    aria-expanded={unfolded}
+    aria-controls={controls}
+    aria-describedby={describedBy}
+    data-planning-card-fold
+    onClick={onToggle}
+    className="inline-flex items-center gap-0.5 rounded text-[13px] leading-5 font-medium text-blue-600 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 dark:text-blue-400"
+  >
+    {unfolded ? "Show less" : "Show full question"}
+    {unfolded ? (
+      <ChevronUp size={14} aria-hidden="true" />
+    ) : (
+      <ChevronDown size={14} aria-hidden="true" />
+    )}
+  </button>
+);
 
 const lineOf = (el: Element): number =>
   Number.parseInt(el.getAttribute("data-source-line") ?? "", 10);
@@ -335,10 +487,14 @@ const STATE_LABEL: Record<PlanningQuestion["state"], string> = {
  * The card's headline: the question's status marker and its bold title, as
  * the planning index read them, so it is there at first paint.
  */
-const Headline: React.FC<{ question: PlanningQuestion }> = ({ question }) => {
+const Headline: React.FC<{ question: PlanningQuestion; id: string }> = ({
+  question,
+  id,
+}) => {
   const marker = headlineMarker(question.marker);
   return (
     <h3
+      id={id}
       data-planning-card-headline
       className="mt-0 mb-1.5 text-[17px] leading-snug font-semibold text-slate-900 dark:text-slate-100"
     >
@@ -383,6 +539,8 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   onFile,
   cardKey = "",
   onScoped,
+  unfoldedByDefault = false,
+  folds,
 }: PlanningQuestionCardProps) {
   // Show question's answer, for the question it was fetched for.
   const [shown, setShown] = useState<{
@@ -397,9 +555,16 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
       ? (full as CardBlock)
       : given;
   const [showFailed, setShowFailed] = useState(false);
-  // Folded unless the reader unfolds it; a question shown from its preview was
-  // asked for whole, so it arrives unfolded.
-  const [unfolded, setUnfolded] = useState(false);
+  // The fold it opens with: the reader's own from earlier in the visit, else
+  // the page's. Replaced `folds` is an Expand all or a Collapse all, which
+  // every card takes, in the render that brings it, before anything paints.
+  const foldFor = () => folds?.get(cardKey) ?? unfoldedByDefault;
+  const [fold, setFold] = useState(() => ({ folds, unfolded: foldFor() }));
+  let unfolded = fold.unfolded;
+  if (fold.folds !== folds) {
+    unfolded = foldFor();
+    setFold({ folds, unfolded });
+  }
   const showQuestion = useCallback(() => {
     if (onShowQuestion === undefined) return;
     setShowFailed(false);
@@ -409,8 +574,9 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
         setShown((prev) =>
           prev?.question === question ? { question, block } : prev,
         );
+        // Asked for whole, so it arrives unfolded.
         if (block === null) setShowFailed(true);
-        else setUnfolded(true);
+        else setFold((prev) => ({ ...prev, unfolded: true }));
       },
       () => {
         setShown(null);
@@ -434,7 +600,15 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   const [state, setState] = useState<CardState>(EMPTY_STATE);
   /** The block `markCardParts` cut short, which Show full question measures. */
   const clampRef = useRef<HTMLElement | null>(null);
+  /** Blocks after it are folded away (`CardParts.more`). */
+  const moreRef = useRef(false);
   const [overflowing, setOverflowing] = useState(false);
+  /** The element at the cut, which Show full question is rendered into. */
+  const [cut] = useState(cutSlot);
+  /** A fold the reader just asked for, which the next layout settles. */
+  const foldAnchorRef = useRef<FoldAnchor | null>(null);
+  /** What the reader tabbed to past the cut, which unfolded the card. */
+  const revealRef = useRef<HTMLElement | null>(null);
   const [answering, setAnswering] = useState<{
     rect: DOMRect;
     text: string;
@@ -454,6 +628,9 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   useLayoutEffect(() => {
     const root = bodyRef.current;
     clampRef.current = null;
+    moreRef.current = false;
+    // Out of the question before anything reads it.
+    cut.remove();
     if (!root || markdown === null) {
       setState((prev) => (sameState(prev, EMPTY_STATE) ? prev : EMPTY_STATE));
       onScoped?.(cardKey, null);
@@ -498,6 +675,10 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
       question.marker,
     );
     clampRef.current = parts.clamp;
+    moreRef.current = parts.more;
+    // The cut is the end of the block cut short. A rule of the stylesheet
+    // keeps it shown where the card hides its unit's siblings.
+    parts.clamp?.after(cut);
     const next: CardState = {
       found: built !== null,
       scoped,
@@ -513,7 +694,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
       cardKey,
       built === null ? null : { ids: scoped, question, comments },
     );
-  }, [markdown, question, comments, cardKey, onScoped]);
+  }, [markdown, question, comments, cardKey, onScoped, cut]);
 
   // Every diagram as the card first painted it, and every one it becomes: a
   // diagram MarkdownViewer draws late replaces its element's content, and one
@@ -528,10 +709,10 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
     return () => observer.disconnect();
   }, [markdown]);
 
-  // Whether the cut-short block runs past its lines, which decides whether
-  // Show full question is offered: measured before the card paints, and again
-  // whenever the block's size changes (a wider page, a font that loaded). Its
-  // slot is always there, so the answer changing later moves nothing.
+  // Whether the cut-short block runs past its lines, which with the blocks
+  // folded after it decides whether the card fades at the cut and offers Show
+  // full question there: measured before the card paints, and again whenever
+  // the block's size changes, which a reader's resize does.
   //
   // The first measurement waits for the end of the task, with every other
   // card committed alongside (`measureClampSoon`), so a page of cards is laid
@@ -543,10 +724,20 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
       return;
     }
     let live = true;
-    const read = () => live && el.isConnected && overflowsClamp(el, !unfolded);
+    const read = () => {
+      if (!live || !el.isConnected) return false;
+      // Folded again, the block takes back the scroll it had as the clamp,
+      // with no scroll event to say so (`unscroll`, below).
+      if (!unfolded && el.scrollTop !== 0) el.scrollTop = 0;
+      return overflowsClamp(el, !unfolded);
+    };
     const write = (over: boolean) => {
       if (!live) return;
-      el.toggleAttribute(CARD_OVERFLOW_ATTR, over && !unfolded);
+      const { fade } = cutState(
+        { more: moreRef.current, overflows: over },
+        unfolded,
+      );
+      el.toggleAttribute(CARD_OVERFLOW_ATTR, fade);
       setOverflowing(over);
     };
     measureClampSoon({ read, write });
@@ -555,12 +746,73 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
         ? null
         : new ResizeObserver(() => write(read()));
     observer?.observe(el);
+    // The clamp clips what it cuts off, and nothing scrolls it there — not
+    // the focus, not a search — so a folded card always opens on the start
+    // of its question.
+    const unscroll = () => {
+      if (el.scrollTop !== 0) el.scrollTop = 0;
+    };
+    el.addEventListener("scroll", unscroll);
     return () => {
       live = false;
       observer?.disconnect();
+      el.removeEventListener("scroll", unscroll);
     };
     // The layout pass's own inputs, since each run of it marks the block anew.
   }, [markdown, question, comments, cardKey, onScoped, unfolded]);
+
+  // A fold the reader asked for, once it is laid out: the card's top back
+  // where it was, and the focus the pressed control had on what the fold
+  // revealed (`focusAfterFold`). Or, unfolded by a link tabbed to past the
+  // cut, that link, whole, in view.
+  useLayoutEffect(() => {
+    const revealed = revealRef.current;
+    revealRef.current = null;
+    if (revealed !== null && unfolded && document.activeElement === revealed) {
+      revealed.scrollIntoView?.({ block: "nearest" });
+    }
+    const anchor = foldAnchorRef.current;
+    if (anchor === null) return;
+    foldAnchorRef.current = null;
+    const article = articleRef.current;
+    keepCardTop(article, anchor, unfolded);
+    if (anchor.focused) {
+      focusAfterFold(article, bodyRef.current, unfolded, anchor.pane);
+    }
+  }, [unfolded]);
+
+  // The focus on something the folded card cuts off — a link in its first
+  // block, below its last line — unfolds it: the reader tabbed to text they
+  // cannot see. Unfolding moves only what is below the card, and the focus
+  // was their own. Where it lies is read as the block lays it out: the
+  // browser may already have scrolled the clamp to it, which unfolding undoes.
+  const revealFocused = (e: React.FocusEvent<HTMLDivElement>) => {
+    const clamp = clampRef.current;
+    const target = e.target;
+    if (unfolded || clamp === null || target === clamp) return;
+    if (!clamp.contains(target)) return;
+    const cut = clamp.getBoundingClientRect().bottom;
+    const bottom = target.getBoundingClientRect().bottom + clamp.scrollTop;
+    if (bottom <= cut + 1) return;
+    revealRef.current = target;
+    folds?.set(cardKey, true);
+    setFold({ folds, unfolded: true });
+  };
+
+  const toggleFold = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const next = !unfolded;
+    const article = articleRef.current;
+    const pane = article?.closest<HTMLElement>("[data-content-scroll]") ?? null;
+    foldAnchorRef.current = {
+      top: article?.getBoundingClientRect().top ?? 0,
+      pane,
+      focused: document.activeElement === e.currentTarget,
+    };
+    // Until the fold has painted: `keepCardTop` places the card.
+    pane?.style.setProperty("overflow-anchor", "none");
+    folds?.set(cardKey, next);
+    setFold({ folds, unfolded: next });
+  };
 
   /** The anchor and fallback text the in-page button would send, from the card. */
   const anchorNow = useCallback(() => {
@@ -610,6 +862,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
 
   const id = planningCardId(question.path, question.id, question.unitLine);
   const bodyId = `${id}-body`;
+  const headlineId = `${id}-title`;
   // The rendered question leads with its title only once the layout pass has
   // taken it out of the unit; the index's question is all a card without a
   // rendered question has.
@@ -620,7 +873,9 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
     state.laidOut && !state.leaning && question.leaning !== null
       ? question.leaning
       : null;
-  const foldable = state.laidOut && (state.more || overflowing);
+  const { control } = state.laidOut
+    ? cutState({ more: state.more, overflows: overflowing }, unfolded)
+    : { control: null };
 
   return (
     <article
@@ -645,12 +900,13 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
         {badge !== null && <PlanningBadgeChip badge={badge} />}
       </div>
 
-      {headed && <Headline question={question} />}
+      {headed && <Headline question={question} id={headlineId} />}
 
       <div
         ref={bodyRef}
         id={bodyId}
-        className="planning-card-body"
+        className="planning-card-body rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-500"
+        onFocus={revealFocused}
         data-planning-card-headed={state.titled ? "" : undefined}
         data-planning-card-unfolded={unfolded ? "" : undefined}
         style={
@@ -685,7 +941,35 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
         </p>
       )}
 
-      <div className="mt-2 flex flex-wrap items-center gap-2">
+      {/* At the cut, inside the rendered question, while folded. */}
+      {createPortal(
+        control === "expand" ? (
+          <FoldButton
+            unfolded={false}
+            controls={bodyId}
+            describedBy={headed ? headlineId : undefined}
+            onToggle={toggleFold}
+          />
+        ) : null,
+        cut,
+      )}
+      {/* After the question, while unfolded. */}
+      {control === "collapse" && (
+        <div data-planning-card-fold-end className="mt-1.5 flex print:hidden">
+          <FoldButton
+            unfolded
+            controls={bodyId}
+            describedBy={headed ? headlineId : undefined}
+            onToggle={toggleFold}
+          />
+        </div>
+      )}
+
+      {/* Screen controls, which paper has no use for. */}
+      <div
+        data-planning-card-controls
+        className="mt-2 flex flex-wrap items-center gap-2 print:hidden"
+      >
         {previewing && onShowQuestion !== undefined && (
           <button
             type="button"
@@ -762,47 +1046,23 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
             Could not load the question.
           </span>
         )}
-        <span className="ml-auto inline-flex items-center gap-2">
-          {/* Always there, at a fixed width, so whether the question runs
-              past its lines, which is known only once it is laid out, moves
-              nothing (§12). */}
-          <span
-            data-planning-fold-slot
-            className="inline-flex w-32 justify-end"
-          >
-            {foldable && (
-              <button
-                type="button"
-                aria-expanded={unfolded}
-                aria-controls={bodyId}
-                data-planning-card-fold
-                onClick={() => setUnfolded(!unfolded)}
-                className="rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
-              >
-                {unfolded ? "Show less" : "Show full question"}
-              </button>
-            )}
-          </span>
-          {/* Always there, at a fixed width, so a count that arrives late
-              moves nothing (§12.2). */}
-          <span
-            data-planning-comment-slot
-            className="inline-flex w-28 justify-end"
-          >
-            {listed.length > 0 && (
-              <button
-                type="button"
-                aria-expanded={listOpen}
-                data-planning-comment-count
-                onClick={() => setOpen(!listOpen)}
-                className="rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-600 tabular-nums transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
-              >
-                {listed.length === 1
-                  ? "1 comment"
-                  : `${listed.length} comments`}
-              </button>
-            )}
-          </span>
+        {/* Always there, at a fixed width, so a count that arrives late
+            moves nothing (§12.2). */}
+        <span
+          data-planning-comment-slot
+          className="ml-auto inline-flex w-28 justify-end"
+        >
+          {listed.length > 0 && (
+            <button
+              type="button"
+              aria-expanded={listOpen}
+              data-planning-comment-count
+              onClick={() => setOpen(!listOpen)}
+              className="rounded px-1.5 py-0.5 text-[11px] font-medium text-slate-600 tabular-nums transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
+            >
+              {listed.length === 1 ? "1 comment" : `${listed.length} comments`}
+            </button>
+          )}
         </span>
       </div>
 

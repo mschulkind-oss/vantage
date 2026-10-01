@@ -3323,3 +3323,196 @@ describe("the planning outline (§6.9)", () => {
     ).toHaveTextContent("and 1 more document");
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * Expand all and Collapse all (user direction, 2026-10-01)
+ * ------------------------------------------------------------------ */
+
+describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
+  const KEY = "vantage:planningCardsExpanded";
+  const UNFOLDED = "data-planning-card-unfolded";
+
+  /** A question with a second paragraph, which a folded card folds away. */
+  const long = (id: string) =>
+    [
+      `1. ${OPEN} **${id}: Question ${id}?** Some background.`,
+      "",
+      `   More of ${id}, folded away.`,
+      "",
+      `   ${questionDirective(OPEN, id, "Yes.")}`,
+      "",
+      "   _Leaning:_ Yes.",
+      "",
+    ].join("\n");
+  const FOLDING: Record<string, string> = {
+    "roadmap.md": "# Roadmap\n\n1. [The design](plans/design.md) first.\n",
+    "plans/design.md": doc(
+      "status: in-review\nstage: DESIGN",
+      long("OQ-L1"),
+      long("OQ-L2"),
+      long("OQ-L3"),
+    ),
+    "plans/unrouted.md": doc("stage: DESIGN", long("OQ-U1")),
+  };
+
+  // Needs you on two pages, of two cards and one, and Unrouted on one.
+  beforeEach(() => {
+    setPlanningLimitsForTests({ pageEntries: 2 });
+    seed(FOLDING);
+  });
+
+  const toggle = () =>
+    screen.getByRole("button", { name: /^(Expand all|Collapse all)$/ });
+  const press = async (button: HTMLElement) => {
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    await settle();
+  };
+  /** Every card on screen, by question, and whether it is unfolded. */
+  const folds = () =>
+    Object.fromEntries(
+      screen
+        .getAllByRole("article")
+        .map((a) => [
+          a.getAttribute("aria-label")!.split(":")[0],
+          a.querySelector(".planning-card-body")!.hasAttribute(UNFOLDED),
+        ]),
+    );
+  const foldOf = (id: string) =>
+    within(cardFor(id)).getByRole("button", {
+      name: /^Show (full question|less)$/,
+    });
+  const flip = async (label: "Next ›" | "‹ Previous") =>
+    press(
+      within(
+        screen.getByRole("navigation", { name: "Needs you pages" }),
+      ).getByRole("button", { name: label }),
+    );
+
+  it("sits at the end of the section bar's line, and folds and unfolds every card on the page", async () => {
+    await renderPage();
+    const button = toggle();
+    expect(button).toHaveTextContent("Expand all");
+    // On the section bar's own line, after the bar.
+    const bar = screen.getByRole("navigation", { name: "Sections" });
+    expect(button.parentElement).toBe(bar.parentElement);
+    expect(
+      bar.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": false, "OQ-U1": false });
+
+    await press(button);
+    expect(folds()).toEqual({ "OQ-L1": true, "OQ-L2": true, "OQ-U1": true });
+    expect(toggle()).toHaveTextContent("Collapse all");
+    expect(readPreference(KEY)).toBe("true");
+
+    await press(toggle());
+    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": false, "OQ-U1": false });
+    expect(toggle()).toHaveTextContent("Expand all");
+    expect(readPreference(KEY)).toBe("false");
+  });
+
+  it("opens every card rendered later its way: another page, and the next visit, from its first render", async () => {
+    const view = await renderPage();
+    await press(toggle());
+    await flip("Next ›");
+    expect(folds()).toEqual({ "OQ-L3": true, "OQ-U1": true });
+    view.unmount();
+
+    // The next visit: every card is unfolded when it is put on the page, so
+    // none of them unfolds after.
+    const flipped: MutationRecord[] = [];
+    const observer = new MutationObserver((records) =>
+      flipped.push(...records),
+    );
+    observer.observe(document.body, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: [UNFOLDED],
+    });
+    await renderPage();
+    flipped.push(...observer.takeRecords());
+    observer.disconnect();
+    expect(folds()).toEqual({ "OQ-L1": true, "OQ-L2": true, "OQ-U1": true });
+    expect(flipped).toEqual([]);
+    expect(toggle()).toHaveTextContent("Collapse all");
+  });
+
+  it("lets a card's own fold win until the next Expand all or Collapse all, across a flip away and back", async () => {
+    await renderPage();
+    await press(toggle());
+    await press(foldOf("OQ-L1"));
+    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": true, "OQ-U1": true });
+
+    // Flipped away and back, it is as the reader left it.
+    await flip("Next ›");
+    await flip("‹ Previous");
+    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": true, "OQ-U1": true });
+
+    // The next press brings every card to the page's, its own included.
+    await press(toggle());
+    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": false, "OQ-U1": false });
+    await press(toggle());
+    expect(folds()).toEqual({ "OQ-L1": true, "OQ-L2": true, "OQ-U1": true });
+    // And forgets the card's own fold.
+    await flip("Next ›");
+    await flip("‹ Previous");
+    expect(folds()).toEqual({ "OQ-L1": true, "OQ-L2": true, "OQ-U1": true });
+  });
+
+  it("follows another tab's choice for the cards it renders later, and moves none on screen", async () => {
+    await renderPage();
+    localStorage.setItem(KEY, "true");
+    await act(async () => {
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: KEY,
+          newValue: "true",
+          storageArea: localStorage,
+        }),
+      );
+    });
+    await settle();
+    expect(folds()).toEqual({ "OQ-L1": false, "OQ-L2": false, "OQ-U1": false });
+    // Named for what a press does to the cards on screen, which the other
+    // tab's choice left folded.
+    expect(toggle()).toHaveTextContent("Expand all");
+    await flip("Next ›");
+    expect(folds()).toEqual({ "OQ-L3": true, "OQ-U1": false });
+    expect(toggle()).toHaveTextContent("Expand all");
+    // So the first press here does what it says.
+    await press(toggle());
+    expect(folds()).toEqual({ "OQ-L3": true, "OQ-U1": true });
+    expect(toggle()).toHaveTextContent("Collapse all");
+    expect(readPreference(KEY)).toBe("true");
+    await press(toggle());
+    expect(folds()).toEqual({ "OQ-L3": false, "OQ-U1": false });
+    expect(readPreference(KEY)).toBe("false");
+  });
+
+  it("tells a screen reader what a press did, and nothing before one", async () => {
+    await renderPage();
+    const status = document.querySelector("[data-planning-cards-status]")!;
+    expect(status).toHaveAttribute("aria-live", "polite");
+    expect(status).toHaveTextContent(/^$/);
+    await press(toggle());
+    expect(status).toHaveTextContent("Every question is shown in full.");
+    await press(toggle());
+    expect(status).toHaveTextContent(
+      "Every question is folded to its first lines.",
+    );
+  });
+
+  it("is not offered on a page with no question cards", async () => {
+    seed({
+      "roadmap.md": "# Roadmap\n",
+      "plans/ready.md": doc("status: accepted\nstage: DECIDED", "Decided."),
+    });
+    await renderPage();
+    expect(documentsIn("Ready")).toEqual(["plans/ready.md"]);
+    expect(
+      screen.queryByRole("button", { name: /^(Expand all|Collapse all)$/ }),
+    ).toBeNull();
+  });
+});

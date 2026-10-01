@@ -1,0 +1,7 @@
+# The question card's fold, end to end (docs/reference/planning-index.md §6.6),
+# served by planning_card_fold.spec.ts's own server and read by no other spec.
+[planning]
+roadmap = "roadmap.md"
+
+[planning.stages]
+DESIGN = "open"

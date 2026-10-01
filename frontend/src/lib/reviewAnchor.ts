@@ -34,6 +34,11 @@ import type { CommentAnchor } from "../types";
  * a count changing in another document would move every anchor on a roadmap
  * line that links to it.
  *
+ * A planning card's cut (`CARD_CUT_ATTR` in `planningCardParts.ts`) holds Show
+ * full question inside the rendered question, beside the block it folds, so it
+ * is listed like the rest: a card's answer must hash its question as its
+ * document does.
+ *
  * The collapse caret is listed even though it carries no text of its own — its
  * glyph is drawn by CSS `content`, precisely so a heading's hash cannot depend on
  * whether the toggle JS ran — because "injected UI is not document" is the rule,
@@ -55,7 +60,7 @@ import type { CommentAnchor } from "../types";
 export const NEIGHBOR_RADIUS = 10;
 
 export const REVIEW_UI_SELECTOR =
-  "[data-review-inline-comment], .review-revision-badge, .review-addressed-badge, [data-vantage-oq-button], [data-vantage-collapse-caret], [data-vantage-planning-badge]";
+  "[data-review-inline-comment], .review-revision-badge, .review-addressed-badge, [data-vantage-oq-button], [data-vantage-collapse-caret], [data-vantage-planning-badge], [data-planning-card-cut]";
 
 /**
  * Tags a comment may anchor to, as a selector that also requires

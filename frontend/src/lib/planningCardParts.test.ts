@@ -8,13 +8,21 @@
 import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  CARD_CUT_ATTR,
   CARD_OVERFLOW_ATTR,
   CARD_PARTS,
   CARD_PART_ATTR,
+  afterClampMeasures,
+  cutSlot,
+  cutState,
+  flushClampMeasures,
   headlineMarker,
   markCardParts,
+  measureClampSoon,
+  overflowsClamp,
   unmarkCardParts,
 } from "./planningCardParts";
+import { REVIEW_UI_SELECTOR, blockVisibleText } from "./reviewAnchor";
 
 const root = document.createElement("div");
 afterEach(() => {
@@ -200,6 +208,122 @@ describe("markCardParts", () => {
   });
 });
 
+describe("cutState", () => {
+  const hides = (more: boolean, overflows: boolean) => ({ more, overflows });
+
+  it("fades the cut and offers Show full question while a folded card hides anything", () => {
+    for (const hidden of [
+      hides(true, false),
+      hides(false, true),
+      hides(true, true),
+    ]) {
+      expect(cutState(hidden, false)).toEqual({
+        fade: true,
+        control: "expand",
+      });
+    }
+  });
+
+  it("offers Show less, and fades nothing, once the card is unfolded", () => {
+    for (const hidden of [hides(true, false), hides(false, true)]) {
+      expect(cutState(hidden, true)).toEqual({
+        fade: false,
+        control: "collapse",
+      });
+    }
+  });
+
+  it("shows neither a fade nor a control for a question that fits its lines", () => {
+    expect(cutState(hides(false, false), false)).toEqual({
+      fade: false,
+      control: null,
+    });
+    expect(cutState(hides(false, false), true)).toEqual({
+      fade: false,
+      control: null,
+    });
+  });
+});
+
+describe("overflowsClamp", () => {
+  /** A block `tall` px high, showing `shown` of it, in lines of `line`. */
+  function block(tall: number, shown: number, line = "20px"): HTMLElement {
+    const el = document.createElement("p");
+    el.style.lineHeight = line;
+    document.body.appendChild(el);
+    Object.defineProperty(el, "scrollHeight", { value: tall });
+    Object.defineProperty(el, "clientHeight", { value: shown });
+    return el;
+  }
+  afterEach(() => document.body.replaceChildren());
+
+  it("measures a folded block against the clamp, past a pixel of rounding", () => {
+    expect(overflowsClamp(block(61, 60), true)).toBe(false);
+    expect(overflowsClamp(block(62, 60), true)).toBe(true);
+  });
+
+  it("measures an unfolded block against the lines it would fold to", () => {
+    expect(overflowsClamp(block(61, 61), false)).toBe(false);
+    expect(overflowsClamp(block(80, 80), false)).toBe(true);
+  });
+
+  it("says nothing overflows where there is no line height to measure by", () => {
+    expect(overflowsClamp(block(500, 500, "normal"), false)).toBe(false);
+  });
+});
+
+describe("afterClampMeasures", () => {
+  afterEach(() => flushClampMeasures());
+
+  it("runs once the pending measurements are written, after every write", () => {
+    const order: string[] = [];
+    measureClampSoon({
+      read: () => true,
+      write: () => order.push("write"),
+    });
+    expect(afterClampMeasures(() => order.push("then"))).toBe(true);
+    expect(order).toEqual([]);
+    flushClampMeasures();
+    expect(order).toEqual(["write", "then"]);
+    // Once.
+    flushClampMeasures();
+    expect(order).toEqual(["write", "then"]);
+  });
+
+  it("runs nothing, and says so, when no measurement is pending", () => {
+    let ran = false;
+    expect(afterClampMeasures(() => (ran = true))).toBe(false);
+    flushClampMeasures();
+    expect(ran).toBe(false);
+  });
+
+  it("runs at the end of the task, with the measurements, when nothing flushes them sooner", async () => {
+    const order: string[] = [];
+    measureClampSoon({ read: () => false, write: () => order.push("write") });
+    afterClampMeasures(() => order.push("then"));
+    await Promise.resolve();
+    expect(order).toEqual(["write", "then"]);
+  });
+});
+
+describe("cutSlot", () => {
+  it("is outside the prose's typography, and no block's text", () => {
+    const slot = cutSlot();
+    expect(slot.hasAttribute(CARD_CUT_ATTR)).toBe(true);
+    expect(slot.classList.contains("not-prose")).toBe(true);
+    expect(slot.matches(REVIEW_UI_SELECTOR)).toBe(true);
+    const p = document.createElement("p");
+    p.textContent = "The question.";
+    slot.textContent = "Show full question";
+    p.append(slot);
+    expect(blockVisibleText(p)).toBe("The question.");
+  });
+
+  it("is a new element for each card", () => {
+    expect(cutSlot()).not.toBe(cutSlot());
+  });
+});
+
 describe("headlineMarker", () => {
   it("keeps a status marker and drops anything with words in it", () => {
     expect(headlineMarker("💬 🤷")).toBe("💬 🤷");
@@ -226,6 +350,67 @@ describe("the stylesheet", () => {
   it("cuts the clamp at the card's own line count", () => {
     expect(css.includes("var(--planning-card-clamp-lines, 3) * 1lh")).toBe(
       true,
+    );
+  });
+
+  /** Every rule whose selector names `needle`, with its declarations. */
+  const rulesNaming = (needle: string) =>
+    Array.from(css.matchAll(/([^{}]+)\{([^{}]*)\}/g))
+      .filter((m) => m[1]!.includes(needle))
+      .map((m) => ({ selector: m[1]!.trim(), body: m[2]! }));
+
+  it("fades the cut with a mask, which restates no color of the card's", () => {
+    const [fade] = rulesNaming(`[${CARD_OVERFLOW_ATTR}]`).filter((r) =>
+      r.body.includes("mask-image"),
+    );
+    expect(fade).toBeDefined();
+    // From opaque to nearly clear over the last line, and nothing painted
+    // over it.
+    expect(fade!.body.replace(/\s+/g, " ")).toContain(
+      "#000 calc(100% - 1lh), rgb(0 0 0 / 0.15)",
+    );
+    expect(fade!.body).not.toMatch(/background|var\(--color/);
+  });
+
+  it("keeps the cut shown where the card hides its unit's siblings, and draws it only with a control in it", () => {
+    const [hide] = rulesNaming(":not([data-planning-card-unit])");
+    expect(hide!.selector.replace(/\s+/g, "")).toContain(
+      `:not([${CARD_CUT_ATTR}])`,
+    );
+    const empty = rulesNaming(`[${CARD_CUT_ATTR}]:empty`);
+    expect(empty.map((r) => r.body.trim())).toEqual([
+      "display: none !important;",
+    ]);
+  });
+
+  it("drops the fade in forced colors, where it would dim the reader's own contrast", () => {
+    const forced = css.slice(
+      css.indexOf(
+        "@media (forced-colors: active)",
+        css.indexOf("Forced colors (Windows High Contrast) keep"),
+      ),
+    );
+    const block = forced.slice(0, forced.indexOf("\n}\n"));
+    expect(block).toContain('[data-planning-card-part="clamp"]');
+    expect(block).toContain("-webkit-mask-image: none !important");
+    expect(block).toMatch(/[^-]mask-image: none !important/);
+  });
+
+  it("prints every card unfolded, with no fade and no fold's control", () => {
+    const print = css.slice(
+      css.indexOf(
+        "@media print",
+        css.indexOf("Paper has no Show full question"),
+      ),
+    );
+    const block = print.slice(0, print.indexOf("\n}\n"));
+    expect(block).toContain('[data-planning-card-part="more"]');
+    expect(block).toContain("max-height: none !important");
+    expect(block).toContain("mask-image: none !important");
+    expect(block).toMatch(
+      new RegExp(
+        `\\[${CARD_CUT_ATTR}\\],\\s*\\[data-planning-card-fold\\]\\s*\\{\\s*display: none !important`,
+      ),
     );
   });
 });
