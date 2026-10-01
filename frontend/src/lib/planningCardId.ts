@@ -5,8 +5,9 @@
  *
  * One function, shared by the card that carries the id and every surface that
  * looks it up, so the two can never spell it differently. A question appears on
- * the page at most once: Needs you and Unrouted hold open or answered
- * questions, and Waiting holds blocked ones, so the id is unique on the page.
+ * the page at most once: Needs you and Not on a roadmap hold open or
+ * answered questions, and Blocked holds blocked ones, so the id is unique on
+ * the page.
  *
  * - **The path is percent-encoded,** so a `/`, a space or a `#` in it cannot
  *   collide with the separator or break a fragment. Look the element up with

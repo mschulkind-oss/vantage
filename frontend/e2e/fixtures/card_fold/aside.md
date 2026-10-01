@@ -6,7 +6,7 @@ stage: DESIGN
 # An aside the roadmap does not mention
 
 Its question is open and nothing routes it, so the planning page lists it
-under Unrouted, a section of its own below Needs you.
+under Not on a roadmap, a section of its own below Needs you.
 
 1. 💬 **OQ-A1: Does a card in another section open the same way?** Its first
    paragraph runs well past the three lines a folded card shows, so the card

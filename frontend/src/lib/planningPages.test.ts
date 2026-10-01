@@ -4,8 +4,15 @@
  * in the limits module, never by growing a tree to a default.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import type { PlanningConfig } from "vantage-md/planning";
 import {
+  PLANNING_SECTION_GUIDE,
+  PLANNING_SECTION_IDS,
+  PLANNING_SECTION_TITLES,
+  type PlanningConfig,
+} from "vantage-md/planning";
+import {
+  SECTION_IDS,
+  SECTION_TITLES,
   chooseRoadmap,
   isPreview,
   layoutPlanningPage,
@@ -62,7 +69,7 @@ const STAGES: PlanningConfig["stages"] = {
   BUILT: "built",
 };
 
-/** Every tree has a roadmap that routes nothing, so its questions are Unrouted. */
+/** Every tree has a roadmap that routes nothing, so none of its questions is on a roadmap. */
 const ROADMAP = { "roadmap.md": "# Roadmap\n" };
 
 function layoutOf(
@@ -87,6 +94,31 @@ const titles = (s: LaidOutSection) =>
   (s.items as CardEntry[]).map((e) =>
     e.kind === "question" ? e.question.id : `doc ${e.path}`,
   );
+
+describe("each section's title and explanation", () => {
+  it("are the shared planning module's, which vantage-check index prints", () => {
+    expect(SECTION_IDS).toBe(PLANNING_SECTION_IDS);
+    expect(SECTION_TITLES).toBe(PLANNING_SECTION_TITLES);
+    const layout = layoutOf({
+      "a.md": doc("stage: DESIGN", separate("OQ-A", 1)),
+      "built.md": doc("stage: BUILT", "Built."),
+    });
+    expect(
+      layout.sections.map(({ id, title, explanation }) => ({
+        id,
+        title,
+        explanation,
+      })),
+    ).toEqual(
+      (["unrouted", "graduate"] as const).map((id) => ({
+        id,
+        title: PLANNING_SECTION_GUIDE[id].title,
+        explanation: PLANNING_SECTION_GUIDE[id].explanation,
+      })),
+    );
+    expect(section(layout, "graduate").title).toBe("Ready to graduate");
+  });
+});
 
 describe("a card section's pages", () => {
   const TREE = {
@@ -161,7 +193,7 @@ describe("a card section's pages", () => {
     expect(unrouted.items).toHaveLength(4);
   });
 
-  it("counts a Waiting document row as one entry and no Markdown", () => {
+  it("counts a Blocked document row as one entry and no Markdown", () => {
     const tree = {
       "blocked.md": doc("stage: DESIGN", separate("OQ-B", 2, 0, BLOCKED)),
       "open.md": doc("stage: DESIGN", separate("OQ-O", 1)),
@@ -194,7 +226,7 @@ describe("the other sections' pages", () => {
     expect(ready.items).toEqual(["r2.md", "r3.md"]);
   });
 
-  it("holds pageLines lines a page of Skipped and Could not read", () => {
+  it("holds pageLines lines a page of Too large and Unreadable", () => {
     const index = indexOf({});
     const skipped = Array.from({ length: 3 }, (_, i) => ({
       path: `big${i}.md`,

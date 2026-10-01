@@ -90,4 +90,25 @@ export type {
   RoutedQuestion,
   WaitingEntry,
 } from "./sections.js";
+export {
+  PLANNING_AGENT_SECTION_IDS,
+  PLANNING_SECTION_GUIDE,
+  PLANNING_SECTION_IDS,
+  PLANNING_SECTION_TITLES,
+  agentSectionCount,
+  agentSectionsWithEntries,
+  dependsOnLabel,
+  isPlanningAgentSectionId,
+  planningAgentRequest,
+  planningSectionGuide,
+  sectionExplanation,
+} from "./guide.js";
+export type {
+  PlanningActor,
+  PlanningAgentRequestOptions,
+  PlanningAgentSectionId,
+  PlanningSectionGuide,
+  PlanningSectionId,
+  PlanningSectionKey,
+} from "./guide.js";
 export { cardBlockFor } from "./cardSource.js";

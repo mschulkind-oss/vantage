@@ -13,6 +13,13 @@
  * entries, with the page in the URL (`lib/planningPages.ts`). A flip replaces
  * the history entry, so Back from a document returns to the same pages.
  *
+ * Every section says under its heading what its entries are and who acts on
+ * them, in the shared planning module's words (`vantage-md/planning`'s guide),
+ * which `vantage-check index` prints too. A section that is an agent's work
+ * has Copy agent request, and the section bar's line Copy all agent requests:
+ * the request for every entry of the section, or of every such section, on
+ * every page, generated from the index on screen when it is pressed.
+ *
  * Several roadmaps (`planning-index.md` §6.8): when two or more route, the
  * roadmap line above the section bar offers a picker, and *Needs you* follows
  * the chosen one. The choice is in the URL as `?roadmap=`, and a pick is
@@ -65,9 +72,12 @@ import {
   PLANNING_NOTICES,
   badgeFor,
   findDocument,
+  isPlanningAgentSectionId,
+  planningAgentRequest,
   type CardBlock,
   type DependsOn,
   type PlanningBadge,
+  type PlanningAgentSectionId,
   type PlanningConfig,
   type PlanningIndex,
   type PlanningQuestion,
@@ -101,6 +111,7 @@ import {
 import { CONTENTS_COLUMN_QUERY, useMediaQuery } from "../hooks/useMediaQuery";
 import { usePersistentFlag } from "../hooks/usePersistentFlag";
 import { usePlanningReviews } from "../hooks/usePlanningReviews";
+import { repoLabel, useRepoRoot } from "../hooks/useRepoRoot";
 import { scrollToAnchorElement } from "../lib/anchorScroll";
 import { copyTextOrWarn } from "../lib/clipboard";
 import { planningCardId } from "../lib/planningCardId";
@@ -289,9 +300,9 @@ const USER_SCROLL_EVENTS = [
 ] as const;
 
 /**
- * What a Disagrees row's stage claims, in the checker's word for the same
- * finding (`planning/stage-disagrees`): Disagrees holds both the `ready` and
- * the `built` role (§6.2).
+ * What a Stage conflict row's stage claims, in the checker's word for the same
+ * finding (`planning/stage-disagrees`): Stage conflict holds both the `ready`
+ * and the `built` role (§6.2).
  */
 function builtOrDecided(index: PlanningIndex | null, path: string): string {
   const stages = index?.config.stages;
@@ -406,6 +417,78 @@ function formatSize(bytes: number): string {
 type OnFlip = (id: SectionId, page: number, place: PagerPlace) => void;
 /** Ask for the inputs of a section's page ahead of a flip to it. */
 type OnPrefetch = (id: SectionId, page: number) => void;
+/**
+ * The agent request for the agent sections `ids` names, every one when it is
+ * absent, generated from the index on screen at the moment it is asked for;
+ * `null` when none of them holds an entry.
+ */
+type AgentRequestOf = (
+  ids?: readonly PlanningAgentSectionId[],
+) => string | null;
+
+/** How long Copied stands in for a copy button's label. */
+const COPIED_MS = 2000;
+
+/**
+ * Copy agent request, or Copy all agent requests: copies the text `request`
+ * generates when pressed, from the index already on screen, so it needs no
+ * network and nothing selected. Confirmed as Copy answers is, its label
+ * turning to Copied for two seconds in room kept for the longer of the two,
+ * so the confirmation moves nothing, and said once to a screen reader, since
+ * a button's new label is not read out. Never printed.
+ */
+const CopyRequestButton: React.FC<{
+  label: string;
+  /** Its accessible name: the label, and what it copies. */
+  name: string;
+  /** Its tooltip. */
+  hint: string;
+  /** What a screen reader is told once it has copied. */
+  done: string;
+  request: () => string | null;
+  className?: string;
+}> = ({ label, name, hint, done, request, className }) => {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), COPIED_MS);
+    return () => clearTimeout(timer);
+  }, [copied]);
+  return (
+    <>
+      <button
+        type="button"
+        data-planning-agent-request
+        aria-label={name}
+        title={hint}
+        onClick={() => {
+          const text = request();
+          if (text === null) return;
+          void copyTextOrWarn(text).then((ok) => {
+            if (ok) setCopied(true);
+          });
+        }}
+        className={cn(
+          "inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 print:hidden dark:text-slate-300 dark:hover:bg-slate-700",
+          className,
+        )}
+      >
+        {copied ? (
+          <Check size={14} aria-hidden="true" />
+        ) : (
+          <ClipboardCopy size={14} aria-hidden="true" />
+        )}
+        {/* As wide as its label, so Copied moves nothing. */}
+        <span className="hdr-reserve" data-reserve={label}>
+          {copied ? "Copied" : label}
+        </span>
+      </button>
+      <span className="sr-only" aria-live="polite" aria-atomic="true">
+        {copied && done}
+      </span>
+    </>
+  );
+};
 
 const Section: React.FC<{
   /** The section as it is on screen. */
@@ -419,9 +502,19 @@ const Section: React.FC<{
   onPrefetch?: OnPrefetch;
   /** A flip of this section is still waiting for its page. */
   busy?: boolean;
+  /** The agent request of an agent section, which has Copy agent request. */
+  requestOf?: AgentRequestOf;
   children: React.ReactNode;
-}> = ({ section, asked = section, onFlip, onPrefetch, busy, children }) => {
-  const { id, title, total, pageCount } = section;
+}> = ({
+  section,
+  asked = section,
+  onFlip,
+  onPrefetch,
+  busy,
+  requestOf,
+  children,
+}) => {
+  const { id, title, explanation, total, pageCount } = section;
   // Said once a flip of this section lands, and not for the page it opened
   // on: a reader who flipped hears where it went, and focus left on Next
   // says nothing of the entries that changed below it.
@@ -444,20 +537,42 @@ const Section: React.FC<{
         busy={busy}
       />
     );
+  const aboutId = `about-${id}`;
   return (
-    <section aria-labelledby={id} className="mb-10">
-      {/* Focusable from script alone: a jump from the section bar, or a flip
-          from the bottom pager, brings the focus here with the scroll. */}
-      <h2
-        id={id}
-        tabIndex={-1}
-        className="mb-3 scroll-mt-4 text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
+    <section aria-labelledby={id} aria-describedby={aboutId} className="mb-10">
+      <div className="flex flex-wrap items-center gap-x-3">
+        {/* Focusable from script alone: a jump from the section bar, or a
+            flip from the bottom pager, brings the focus here with the
+            scroll. */}
+        <h2
+          id={id}
+          tabIndex={-1}
+          className="scroll-mt-4 text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
+        >
+          {title}{" "}
+          <span className="ml-1 font-normal tabular-nums">
+            {total.toLocaleString("en-US")}
+          </span>
+        </h2>
+        {requestOf !== undefined && isPlanningAgentSectionId(id) && (
+          <CopyRequestButton
+            label="Copy agent request"
+            name={`Copy agent request for ${title}`}
+            hint={`Copy an instruction for an agent covering ${total === 1 ? "the 1 entry" : `all ${total.toLocaleString("en-US")} entries`} of ${title}, on every page`}
+            done={`Copied the agent request for ${title}.`}
+            request={() => requestOf([id])}
+            // Taller than the heading, and kept from making its line so.
+            className="-my-1 ml-auto"
+          />
+        )}
+      </div>
+      <p
+        id={aboutId}
+        data-planning-section-about
+        className="mt-0.5 mb-3 text-[13px] text-slate-500 dark:text-slate-400"
       >
-        {title}{" "}
-        <span className="ml-1 font-normal tabular-nums">
-          {total.toLocaleString("en-US")}
-        </span>
-      </h2>
+        {explanation}
+      </p>
       {pageCount > 1 && (
         <span className="sr-only" aria-live="polite" aria-atomic="true">
           {landed.flipped &&
@@ -473,7 +588,8 @@ const Section: React.FC<{
 
 /**
  * One line naming each non-empty section with its exact count, from the index
- * (`docs/reference/planning-index.md` §6.3). Each entry scrolls to its
+ * (`docs/reference/planning-index.md` §6.3), and the line under its heading
+ * as its tooltip. Each entry scrolls to its
  * section and moves the focus to its heading, so Tab goes on from there, and
  * adds no history entry. Its link is still the section's `#id`, which a new
  * tab opened on it scrolls to once the sections are in.
@@ -495,6 +611,7 @@ const SectionBar: React.FC<{ layout: PlanningLayout }> = ({ layout }) => (
         )}
         <a
           href={`#${section.id}`}
+          title={section.explanation}
           onClick={(e) => {
             e.preventDefault();
             bringSectionIntoView(section.id);
@@ -516,7 +633,7 @@ const SectionBar: React.FC<{ layout: PlanningLayout }> = ({ layout }) => (
  * folded, and every card rendered after it opened the same way — on another
  * page, in another section, on the next visit — until it is pressed again
  * (§6.6). It sits at the end of the section bar's line, the page's own line of
- * controls over its cards, from the frame's first paint.
+ * controls over its sections, from the frame's first paint.
  *
  * `expanded` is what the last press here, or the page's opening, brought the
  * cards on screen to, so the label names what a press does to them. A screen
@@ -541,7 +658,7 @@ const CardsToggle: React.FC<{ expanded: boolean; onToggle: () => void }> = ({
             ? "Fold every question to its first lines, and open the cards shown later folded"
             : "Show every question in full, and open the cards shown later unfolded"
         }
-        className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 print:hidden dark:text-slate-300 dark:hover:bg-slate-700"
+        className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 print:hidden dark:text-slate-300 dark:hover:bg-slate-700"
       >
         {expanded ? (
           <ChevronsDownUp size={14} aria-hidden="true" />
@@ -1259,6 +1376,21 @@ export const PlanningPage: React.FC = () => {
   // The planning outline (§6.9): drawn from the frame's index, so it paints
   // with the section bar and changes when it does.
   const frameIndex = shown?.inputs.index ?? index;
+
+  // The agent requests, generated when a Copy agent request button is
+  // pressed, from the frame's index and sections, which are the ones on
+  // screen. They name the repository by its root, which `/info` reports.
+  useRepoRoot(onThisRepo ? repo : null, isMultiRepo);
+  const requestOf = useCallback<AgentRequestOf>(
+    (ids) =>
+      frameIndex === null || frameSections === null || repo === null
+        ? null
+        : planningAgentRequest(frameIndex, frameSections, {
+            repository: repoLabel(repo),
+            ids,
+          }),
+    [frameIndex, frameSections, repo],
+  );
   const outline = useMemo(
     () =>
       outlineShown &&
@@ -1642,19 +1774,35 @@ export const PlanningPage: React.FC = () => {
                     key={
                       frameReady && frameLayout !== null ? "bar" : "progress"
                     }
-                    className="mb-6 flex min-h-7 items-center gap-3"
+                    className="mb-6 flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1"
                   >
                     {frameReady && frameLayout !== null ? (
                       <>
                         <SectionBar layout={frameLayout} />
-                        {frameLayout.sections.some(
-                          (s) => s.kind === "cards",
-                        ) && (
-                          <CardsToggle
-                            expanded={cardsBrought}
-                            onToggle={toggleCards}
-                          />
-                        )}
+                        {/* The page's controls over its sections, at the
+                            end of the line, or of a line of their own when
+                            the section bar leaves no room for them. */}
+                        <div className="ml-auto flex shrink-0 items-center gap-1 print:hidden">
+                          {frameLayout.sections.some((s) =>
+                            isPlanningAgentSectionId(s.id),
+                          ) && (
+                            <CopyRequestButton
+                              label="Copy all agent requests"
+                              name="Copy all agent requests"
+                              hint="Copy one instruction for an agent covering every entry of every section an agent works on, on every page"
+                              done="Copied every agent request."
+                              request={() => requestOf()}
+                            />
+                          )}
+                          {frameLayout.sections.some(
+                            (s) => s.kind === "cards",
+                          ) && (
+                            <CardsToggle
+                              expanded={cardsBrought}
+                              onToggle={toggleCards}
+                            />
+                          )}
+                        </div>
                       </>
                     ) : (
                       <ProgressLine
@@ -1698,6 +1846,7 @@ export const PlanningPage: React.FC = () => {
                           onFlip={flip}
                           onPrefetch={prefetch}
                           busy={busy}
+                          requestOf={requestOf}
                         />
                       </>
                     ) : inputs.slow ? (
@@ -1759,7 +1908,7 @@ const DocumentRow: React.FC<{
   );
 };
 
-/** What a waiting document waits on: each entry, linked, with its badge. */
+/** What a blocked document waits on: each entry, linked, with its badge. */
 const WaitingOn: React.FC<{
   from: string;
   entries: readonly DependsOn[];
@@ -1777,7 +1926,7 @@ const WaitingOn: React.FC<{
             });
       return (
         <li key={`${entry.raw}\n${entry.line}`}>
-          waits on{" "}
+          blocked on{" "}
           {entry.target === null ? (
             <code>{entry.raw}</code>
           ) : (
@@ -1811,6 +1960,7 @@ const Sections: React.FC<{
   onFlip: OnFlip;
   onPrefetch?: OnPrefetch;
   busy: ReadonlySet<SectionId>;
+  requestOf: AgentRequestOf;
 }> = ({
   layout,
   asked,
@@ -1821,6 +1971,7 @@ const Sections: React.FC<{
   onFlip,
   onPrefetch,
   busy,
+  requestOf,
 }) => {
   const entry = (section: SectionId, item: CardEntry) =>
     item.kind === "question" ? (
@@ -1851,6 +2002,7 @@ const Sections: React.FC<{
           onFlip={onFlip}
           onPrefetch={onPrefetch}
           busy={busy.has(section.id)}
+          requestOf={requestOf}
         >
           {section.kind === "cards" ? (
             section.items.map((item) => entry(section.id, item))

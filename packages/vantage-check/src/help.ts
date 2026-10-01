@@ -1,8 +1,29 @@
+import {
+  PLANNING_AGENT_SECTION_IDS,
+  PLANNING_SECTION_TITLES,
+} from "../../vantage-md/src/planning/index.js";
 import { RULES } from "./rules/registry.js";
 import { COMMIT, DEVELOPMENT_BUILD, RELEASE, knownCommit } from "./version.js";
 
 /** The id column is as wide as the longest id, plus two spaces. */
 const RULE_WIDTH = Math.max(...RULES.map((rule) => rule.id.length)) + 2;
+
+/**
+ * The sections `--request` takes, each id with the title the page shows it
+ * under, since the two differ (*Stage conflict* is `disagrees`): one per
+ * line of the index options' description column.
+ */
+const REQUEST_ID_WIDTH =
+  Math.max(...PLANNING_AGENT_SECTION_IDS.map((id) => id.length)) + 2;
+const REQUEST_SECTION_LIST = PLANNING_AGENT_SECTION_IDS.map(
+  (id) =>
+    `${" ".repeat(39)}${id.padEnd(REQUEST_ID_WIDTH)}${PLANNING_SECTION_TITLES[id]}`,
+).join("\n");
+
+/** The same, in one line, for a usage error: `unrouted (Not on a roadmap), …`. */
+export const REQUEST_SECTIONS = PLANNING_AGENT_SECTION_IDS.map(
+  (id) => `${id} (${PLANNING_SECTION_TITLES[id]})`,
+).join(", ");
 
 const RULE_LIST = RULES.map(
   (rule) => `  ${rule.id.padEnd(RULE_WIDTH)}${rule.summary}`,
@@ -13,9 +34,10 @@ export const USAGE = `vantage-check — Vantage's Markdown conventions, and a ch
 Usage:
   vantage-check <path>...            check files and directories (the default command)
   vantage-check check <path>...      the same thing, said explicitly
-  vantage-check index                print the project's planning index: what
-                                     needs a ruling, what waits, and the chosen
-                                     roadmap with each link's badge
+  vantage-check index                print the project's planning index: each
+                                     section, what it means and who acts on it,
+                                     then the chosen roadmap with each link's
+                                     badge
   vantage-check style-guide          print the Vantage Markdown style guide
   vantage-check version              print the version
   vantage-check help                 print this message
@@ -34,9 +56,15 @@ Options for check:
 
 Options for index:
   --format text|json                 output format (default: text)
+  --request [<section>...]           print instead the request to give an agent
+                                     for these sections, as the planning page's
+                                     Copy agent request buttons copy it
+                                     (default: all four):
+${REQUEST_SECTION_LIST}
   --roadmap <path>                   the roadmap Needs you follows, relative to
-                                     the project root (default: the roadmap
-                                     nearest the root that routes)
+                                     the project root (default: the one nearest
+                                     the root that can be read and has no stage
+                                     with the done role)
   --config <path>                    use this .vantage.toml
   --no-config                        ignore .vantage.toml entirely
 

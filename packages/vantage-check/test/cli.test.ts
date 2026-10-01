@@ -82,6 +82,86 @@ describe("parseArgs", () => {
     });
   });
 
+  it("parses index's --request: the sections after it, none meaning all", () => {
+    expect(parseArgs(["index", "--request"])).toEqual({
+      kind: "index",
+      options: { format: "text", request: [] },
+    });
+    expect(
+      parseArgs([
+        "index",
+        "--request",
+        "graduate",
+        "ready",
+        "--roadmap",
+        "r.md",
+        "--request=disagrees",
+        "graduate",
+      ]),
+    ).toEqual({
+      kind: "index",
+      options: {
+        format: "text",
+        roadmap: "r.md",
+        // In the order given, each once; the output is in page order.
+        request: ["graduate", "ready", "disagrees"],
+      },
+    });
+    expect(parseArgs(["index", "--format", "text", "--request"])).toEqual({
+      kind: "index",
+      options: { format: "text", request: [] },
+    });
+  });
+
+  it.each([
+    [
+      ["index", "--request", "needs-you"],
+      "--request takes the sections an agent works on: unrouted (Not on a roadmap), ready (Ready to build), graduate (Ready to graduate), disagrees (Stage conflict) (got needs-you)",
+    ],
+    [
+      ["index", "--request=Ready to build"],
+      "--request takes the sections an agent works on: unrouted (Not on a roadmap), ready (Ready to build), graduate (Ready to graduate), disagrees (Stage conflict) (got Ready to build)",
+    ],
+    [
+      ["index", "--request", "--format", "json"],
+      "--request prints text, so it takes no --format json",
+    ],
+    [
+      ["index", "--format=json", "--request", "ready"],
+      "--request prints text, so it takes no --format json",
+    ],
+  ])("refuses %j", (argv, message) => {
+    expect(parseArgs(argv)).toEqual({ kind: "usage-error", message });
+  });
+
+  // The ids are what --request takes and the titles are what the page shows,
+  // and they differ (Stage conflict is `disagrees`), so the help pairs them.
+  it("lists each section --request takes by its id and its title", async () => {
+    const { USAGE } = await import("../src/help.js");
+
+    expect(USAGE).toContain(
+      [
+        "                                     (default: all four):",
+        "                                       unrouted   Not on a roadmap",
+        "                                       ready      Ready to build",
+        "                                       graduate   Ready to graduate",
+        "                                       disagrees  Stage conflict",
+        "  --roadmap <path>",
+      ].join("\n"),
+    );
+  });
+
+  // A section id is a word only straight after --request; anywhere else it
+  // is a path, and index takes none.
+  it("refuses a section id that does not follow --request", () => {
+    expect(
+      parseArgs(["index", "--request", "--roadmap", "r.md", "graduate"]),
+    ).toMatchObject({
+      kind: "usage-error",
+      message: expect.stringContaining("index takes no paths"),
+    });
+  });
+
   // `index` scans the project the working directory is in, so a path would
   // be a second answer to a question the project root already settles.
   it.each([[["index", "docs"]], [["index", "--", "docs"]]])(
@@ -192,12 +272,14 @@ describe("run", () => {
     await run(["help"], io);
     const help = io.stdout.replace(/\s+/g, " ");
 
+    // In plain words: "routes" is a term the help has no room to define.
     expect(help).toMatch(
-      /planning\/unrouted +An open question no roadmap routes, directly or through its document/,
+      /planning\/unrouted +An open question no roadmap links to, directly or through its document/,
     );
     expect(help).toContain(
-      "(default: the roadmap nearest the root that routes)",
+      "(default: the one nearest the root that can be read and has no stage with the done role)",
     );
+    expect(help).not.toMatch(/\brout(e|es|ed)\b/);
     expect(help).toContain(
       "every roadmap.md the planning index reads is a roadmap (one in a hidden directory, matched by .vantageignore, or ruled out by include or exclude is not)",
     );

@@ -43,7 +43,7 @@
  *
  * Its controls follow its state (Plan Q5): an open question offers Take this
  * leaning (when it has a leaning), Answer… and Open document; an answered one
- * Answer… and Open document; a blocked one, which only Waiting lists, Open
+ * Answer… and Open document; a blocked one, which only Blocked lists, Open
  * document alone.
  *
  * Every card keeps a fixed-width *N comments* count in its control row

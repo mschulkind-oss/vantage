@@ -1,6 +1,6 @@
 import { EXIT_OK, EXIT_USAGE } from "./exit.js";
 import type { Io } from "./io.js";
-import { USAGE, versionLine } from "./help.js";
+import { REQUEST_SECTIONS, USAGE, versionLine } from "./help.js";
 import { styleGuideCommand } from "./commands/styleGuide.js";
 import {
   checkCommand,
@@ -9,6 +9,7 @@ import {
 } from "./commands/check.js";
 import type { RunShard } from "./core/parallel.js";
 import { indexCommand, type IndexOptions } from "./commands/index.js";
+import { isPlanningAgentSectionId } from "../../vantage-md/src/planning/index.js";
 
 export type Invocation =
   | { kind: "check"; options: CheckOptions }
@@ -154,17 +155,42 @@ function parseCheck(argv: string[]): Invocation {
 }
 
 /**
- * `index [--format text|json] [--roadmap <path>] [--config <path> |
- * --no-config]`. It takes no paths: it scans the project the working
- * directory belongs to, so a path would be a second answer to a question the
- * root already settles. `--roadmap` chooses which roadmap Needs you follows,
- * and given twice, the last wins, as `--config` does.
+ * `index [--format text|json] [--request [<section>...]] [--roadmap <path>]
+ * [--config <path> | --no-config]`. It takes no paths: it scans the project
+ * the working directory belongs to, so a path would be a second answer to a
+ * question the root already settles. `--roadmap` chooses which roadmap Needs
+ * you follows, and given twice, the last wins, as `--config` does.
+ *
+ * `--request` takes the words after it, up to the next option, as agent
+ * section ids, none meaning all four; given twice, the ids add up. It prints
+ * text, so it refuses `--format json`.
  */
 function parseIndex(argv: string[]): Invocation {
   const options: IndexOptions = { format: "text" };
+  let format: string | undefined;
+  /** Whether a bare word is a section id: only straight after `--request`'s. */
+  let requesting = false;
+  /** Add one `--request` section, or say why it is not one. */
+  const request = (word: string): Invocation | null => {
+    if (!isPlanningAgentSectionId(word)) {
+      return {
+        kind: "usage-error",
+        message: `--request takes the sections an agent works on: ${REQUEST_SECTIONS} (got ${word})`,
+      };
+    }
+    options.request ??= [];
+    if (!options.request.includes(word)) options.request.push(word);
+    return null;
+  };
 
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index] as string;
+    if (requesting && !arg.startsWith("-")) {
+      const refused = request(arg);
+      if (refused !== null) return refused;
+      continue;
+    }
+    requesting = false;
     if (!arg.startsWith("-") || arg === "--") {
       return {
         kind: "usage-error",
@@ -191,6 +217,7 @@ function parseIndex(argv: string[]): Invocation {
           };
         }
         options.format = value;
+        format = value;
         break;
       }
       case "--config": {
@@ -204,6 +231,14 @@ function parseIndex(argv: string[]): Invocation {
       case "--no-config":
         options.noConfig = true;
         break;
+      case "--request": {
+        options.request ??= [];
+        requesting = true;
+        // `--request=graduate` names its first section inline.
+        const refused = inlineValue === undefined ? null : request(inlineValue);
+        if (refused !== null) return refused;
+        break;
+      }
       case "--roadmap": {
         const value = takeValue();
         if (value === undefined) {
@@ -220,6 +255,12 @@ function parseIndex(argv: string[]): Invocation {
     }
   }
 
+  if (options.request !== undefined && format === "json") {
+    return {
+      kind: "usage-error",
+      message: "--request prints text, so it takes no --format json",
+    };
+  }
   return { kind: "index", options };
 }
 

@@ -66,7 +66,7 @@ Vantage never writes into a document.
 
 | Component | Lives in |
 | :--- | :--- |
-| The scan, the index model, badges, routing and sections, card blocks, the `[planning]` resolution and the pattern matcher | `packages/vantage-md/src/planning/` (`scanPlanningDocument`, `PlanningIndex`, `derivePlanningSections`, `badgeFor`, `PlanningConfig`, `compileIgnorePatterns`) |
+| The scan, the index model, badges, routing and sections, the section guide and agent requests, card blocks, the `[planning]` resolution and the pattern matcher | `packages/vantage-md/src/planning/` (`scanPlanningDocument`, `PlanningIndex`, `derivePlanningSections`, `PLANNING_SECTION_GUIDE`, `planningAgentRequest`, `badgeFor`, `PlanningConfig`, `compileIgnorePatterns`) |
 | Candidates, the stream, the single-path mode, reads and the content hash | `internal/planning` (`Matcher`, `Stream`, `Lookup`) |
 | The four HTTP endpoints | `internal/api` (`PlanningStream`, `PlanningSources`, `PlanningReviews`, `PlanningServerID`) |
 | `[planning]` as the server reads it, and the roadmap test | `internal/repoconfig` (`PlanningSettings`, `Planning.IsRoadmap`) |
@@ -219,6 +219,10 @@ is in git; this is now where the terms are defined.
 | **Default roadmap** | The first roadmap in roadmap order that routes | the first entry of a configured list | the planning-index design |
 | **Routed** (question) | One some roadmap links, directly or through its document ([§4.3](#43-routing)) | *on the page*: an unrouted question is listed too | the planning-index design |
 | **Chosen roadmap** | The one roadmap *Needs you* follows: the reader's pick, `--roadmap`, or the default | a merge of every roadmap | the planning-index design |
+| **Section guide** | Each section's title, the one line that explains it, and its actor, kept once in `packages/vantage-md/src/planning/guide.ts` ([§6.2](#62-sections-top-to-bottom)) | the section ids, which never change | the section retitling, 2026-10-01 |
+| **Actor** (of a section) | Who acts next on its entries: `you`, the reader; `agent`, an agent given its request; or `nobody` | who wrote the documents | the section retitling, 2026-10-01 |
+| **Agent section** | A section whose actor is `agent`: *Not on a roadmap*, *Ready to build*, *Ready to graduate* and *Stage conflict* | the only sections an agent reads: `index` prints every one | the section retitling, 2026-10-01 |
+| **Agent request** | The self-contained instruction, for every entry of one or more agent sections, that the page copies and `vantage-check index --request` prints ([§6.2](#62-sections-top-to-bottom)) | a stored prompt: it is generated from the index each time it is asked for | the section retitling, 2026-10-01 |
 | **Roadmap line** | The line of the planning page's frame holding the roadmap picker, shown only when two or more roadmaps route ([§6.8](#68-several-roadmaps-on-the-page)) | the roadmap notice, which says why none routes | the planning-index design |
 | **App shell** | The frame the viewer draws around a document — sidebar, pickers, dialogs, shortcuts — which the planning page is drawn in too ([§6.1](#61-the-url-the-route-and-the-app-shell)) | the header alone | the planning-index design |
 | **Planning outline** | What the contents column shows on the planning page, in place of a document's table of contents ([§6.9](#69-the-planning-outline)) | the section bar, though it is drawn from the same index | the planning-index design |
@@ -435,14 +439,14 @@ own words onto them under `[planning.stages]`:
 | Role | Meaning | On the planning page |
 | :--- | :--- | :--- |
 | `open` | still being decided | nothing extra |
-| `ready` | decided, not built | **Ready**, when it has no open questions |
-| `built` | built | **Graduate**, when it has no live questions |
+| `ready` | decided, not built | **Ready to build**, when it has no open questions |
+| `built` | built | **Ready to graduate**, when it has no live questions |
 | `done` | not a live proposal | **contributes to no section:** its questions are not routed and appear nowhere on the page, a `depends-on` naming it never makes its dependent wait, and a roadmap with this role routes nothing. Badges, Referenced by and the file tree still show it |
 
 A document with no `stage`, or whose repository declares no stages (no
 `[planning.stages]` table, or an empty one), has no role. It still appears under
-*Needs you*, *Unrouted* and *Waiting*, because those sections depend only on
-questions and links.
+*Needs you*, *Not on a roadmap* and *Blocked*, because those sections depend only
+on questions and links.
 
 ### 3.5 What writers are told
 
@@ -490,7 +494,7 @@ Markdown parsing, so the server may apply it without breaking P4.
 
 > [!WARNING]
 > **A stray `roadmap.md` — a vendored package's, a test fixture's, an old plan's —
-> becomes a roadmap and takes the questions it routes off *Unrouted*.** That is
+> becomes a roadmap and takes the questions it routes off *Not on a roadmap*.** That is
 > accepted: every roadmap is listed by the picker and by `vantage-check index`, so
 > a stray one is visible; `exclude` hides it, and a `done` stage retires one kept
 > on purpose.
@@ -509,9 +513,9 @@ Each roadmap has one **state** (`RoadmapState`, `roadmapsOf` in
 | State | When | Routes |
 | :--- | :--- | :--- |
 | `routes` | read as a planning document, and its stage has no `done` role | yes |
-| `done` | read, but its stage has the `done` role | no. This is how an archived roadmap stays in the tree without holding questions off *Unrouted* |
+| `done` | read, but its stage has the `done` role | no. This is how an archived roadmap stays in the tree without holding questions off *Not on a roadmap* |
 | `skipped` | over `max-file-bytes` | no |
-| `unreadable` | under *Could not read* | no |
+| `unreadable` | under *Unreadable* | no |
 | `missing` | listed, and the index holds nothing at that path: it does not exist, or the server does not list it | no. A roadmap found by name is never missing |
 
 ### 4.3 Routing
@@ -656,17 +660,78 @@ full-width toggles, the breadcrumb with the page's name, and **Copy answers**.
 
 ### 6.2 Sections, top to bottom
 
-`derivePlanningSections` in `packages/vantage-md/src/planning/sections.ts`:
+`derivePlanningSections` in `packages/vantage-md/src/planning/sections.ts` decides
+what each section holds, and `guide.ts` beside it holds the *section guide*: each
+section's title, the line that explains it, and its actor.
 
-| Section | Contains | Order |
-| :--- | :--- | :--- |
-| **Needs you** | Questions the chosen roadmap routes whose state is *open* or *answered* | the chosen roadmap's order |
-| **Unrouted** | Open questions no roadmap routes | path, then document order |
-| **Waiting** | Blocked questions; also documents with a `depends-on` entry that still waits. An entry naming a question waits while that question is open (💬); one naming a document waits while that document has an open question | path |
-| **Ready** | Documents whose stage has the `ready` role and no open questions | path |
-| **Graduate** | Documents whose stage has the `built` role and no live questions | path |
-| **Disagrees** | Documents whose stage says `ready` or `built` while they still have open questions | path |
-| **Skipped** / **Could not read** | [§16](#16-limits-and-bounds), [§15](#15-failure-modes) | path |
+| Section (id) | Contains | Order | Actor |
+| :--- | :--- | :--- | :--- |
+| **Needs you** (`needs-you`) | Questions the chosen roadmap routes whose state is *open* or *answered* | the chosen roadmap's order | you |
+| **Not on a roadmap** (`unrouted`) | Open questions no roadmap routes | path, then document order | agent |
+| **Blocked** (`waiting`) | Blocked questions; also documents with a `depends-on` entry that still waits. An entry naming a question waits while that question is open (💬); one naming a document waits while that document has an open question | path | nobody |
+| **Ready to build** (`ready`) | Documents whose stage has the `ready` role and no open questions, *Blocked* or not | path | agent |
+| **Ready to graduate** (`graduate`) | Documents whose stage has the `built` role and no live questions, *Blocked* or not | path | agent |
+| **Stage conflict** (`disagrees`) | Documents whose stage says `ready` or `built` while they still have open questions | path | agent |
+| **Too large** (`skipped`) / **Unreadable** (`could-not-read`) | [§16](#16-limits-and-bounds), [§15](#15-failure-modes) | path | you |
+
+- **A title completes "these …" and is display text; the id is the interface.**
+  URLs, heading anchors, the outline, `--request` and the JSON carry the id, and
+  it never changes, because a release never gives existing notation a new meaning
+  ([`checker-version-skew.md`](../design/checker-version-skew.md), P0). The titles
+  were Needs you, Unrouted, Waiting, Ready, Graduate, Disagrees, Skipped and Could
+  not read until 2026-10-01; the ids are those names still.
+- **Every section explains itself** in one line under its heading, painted with
+  it (`sectionExplanation`), such as *Built, with no questions left. An agent
+  turns it into a reference doc.* With no roadmap chosen, *Needs you*'s line is
+  *Open questions, by document. Rule each, then Copy answers.*, since there is no
+  roadmap order for it to follow.
+- **Each agent section has an agent request** (`planningAgentRequest`), generated
+  from the index each time it is asked for, so it names what the documents say
+  now in the stage words `[planning.stages]` declares now, in code-unit order. It
+  names the repository, then for each agent section that holds an entry what the
+  section means, what to do and every entry on every page — a question by path,
+  line, id and title, a document by path and stage, a *Stage conflict* document
+  with its open questions' ids — and ends with how to verify: `vantage-check` on
+  every changed Markdown file, then `vantage-check index`. Markdown only, because
+  `vantage-check` reads any file it is given as Markdown, so a code file's `§N`
+  comments would read as broken references. What each asks:
+
+  | Section | The agent is asked to |
+  | :--- | :--- |
+  | Not on a roadmap | propose each question's place on a roadmap, with a one-clause reason, and leave priority to the human: show the proposals, and edit a roadmap only once they confirm the order |
+  | Ready to build | build each from its plan and give it a `built` stage; or, if one should not be built, ask the human and only with their agreement give it the `done` stage they choose |
+  | Ready to graduate | write each as a reference document of the system as built, verified against the code, saying what it covers and the commit it was verified at, with the stage the repository's other reference documents carry (the `done` words are listed) or none; delete the design document and any plan written for it, repoint every link and citation of them in documents, code comments and tests, and keep every question id other documents cite resolvable |
+  | Stage conflict | find which is wrong, the stage or the questions, and fix a wrong stage with an `open` one, or propose moving a follow-up question to a new document; rule and answer nothing, and ask the human for rulings |
+
+  **A blocked document is marked, not left out.** *Ready to build* and *Ready to
+  graduate* keep a document *Blocked* also lists, because `sections.ready` and
+  `sections.graduate` mean that in the JSON and a published key keeps its
+  meaning (P0). So the request says what holds it, as `(stage DECIDED; blocked
+  on docs/a.md, 🔒 line 20)`: each `depends-on` entry that still waits, then
+  each 🔒 question of its own. When one of a section's entries is so marked, the
+  section's paragraph ends *Skip any entry marked blocked: it waits on something
+  else first.*
+
+  **The `done` role holds words that differ in meaning,** such as this
+  repository's CURRENT for a reference and SUPERSEDED for a replaced design, so
+  no request offers them as one choice: retiring a design leaves the word to the
+  human, or names it when only one is declared, and a new reference document
+  follows the repository's other reference documents.
+
+  Each agent section that holds an entry has a **Copy agent request** button for
+  its own entries, at the end of its heading's line, and the page a **Copy all
+  agent requests** for every agent section at once, on the section bar's line
+  before Expand all / Collapse all, which paints with the bar: beside Copy
+  answers it would arrive after the header had painted, and move it. Both copy
+  the request built in the browser from the index in hand when pressed, so they
+  work offline and with nothing selected, and print hides them. Their label
+  reads *Copied* for two seconds in room kept for the longer label, so nothing
+  moves. The request names the repository by the root path `/info` reports,
+  asked for once when the page opens and read only when a button is pressed;
+  until it answers, by the repository's name in daemon mode, or `.`.
+  `vantage-check index --request` prints the same text, naming the project root
+  ([§13.2](#132-vantage-check-index)), so the two agree wherever the server
+  serves a repository's root.
 
 - An empty section is not shown.
 - A document whose stage has the `done` role appears in no section.
@@ -674,12 +739,12 @@ full-width toggles, the breadcrumb with the page's name, and **Copy answers**.
   **Nothing needs you**. That line can sit above a *Needs you* holding only ✅
   answered questions, which await compaction rather than a ruling.
 - **A question only another roadmap routes** is in neither *Needs you* nor
-  *Unrouted*: it is routed, just not by the chosen roadmap. The page counts those
+  *Not on a roadmap*: it is routed, just not by the chosen roadmap. The page counts those
   questions beside its roadmap picker rather than listing them in a section of
   their own.
 - If no roadmap routes — there is none, or every one is `done`, `skipped`,
   `unreadable` or `missing` — *Needs you* lists every open question grouped by
-  document, *Unrouted* disappears, and a single line says what the page looked
+  document, *Not on a roadmap* disappears, and a single line says what the page looked
   for and how to point it at a roadmap ([§6.8](#68-several-roadmaps-on-the-page)).
 - If no stages are declared, the three stage sections disappear, and a single
   line says how to declare stages.
@@ -702,7 +767,7 @@ and it commits inside the transition at once.
   route; then the section bar and the notices (*Nothing needs you*, no roadmap, a
   listed roadmap not read, no stages, refused).
 - **The section bar** names each non-empty section and its count, for example
-  `Needs you 143 · Unrouted 12 · Waiting 7 · Ready 3 · Skipped 1`. Each entry
+  `Needs you 143 · Not on a roadmap 12 · Blocked 7 · Ready to build 3 · Too large 1`. Each entry
   jumps to its section without adding a history entry and moves the keyboard's
   focus to the section's heading. Its link is the section's `#id`, so a page
   opened on one scrolls to that section once the sections render, unless the visit
@@ -727,9 +792,9 @@ Each section shows one page of its entries:
 
 | Sections | A page holds |
 | :--- | :--- |
-| Needs you, Unrouted, Waiting | a handful of entries, and stops early before its cards' Markdown passes a budget. A Waiting document row counts as one entry and as no Markdown; a preview card counts as none |
-| Ready, Graduate, Disagrees | a couple of dozen document rows |
-| Skipped, Could not read | a few dozen lines |
+| Needs you, Not on a roadmap, Blocked | a handful of entries, and stops early before its cards' Markdown passes a budget. A Blocked document row counts as one entry and as no Markdown; a preview card counts as none |
+| Ready to build, Ready to graduate, Stage conflict | a couple of dozen document rows |
+| Too large, Unreadable | a few dozen lines |
 
 The exact sizes are in [Current values](#current-values).
 
@@ -758,7 +823,7 @@ The exact sizes are in [Current values](#current-values).
   ready, then swaps it in one commit. The bottom pager then scrolls its section's
   heading into view and moves the focus to it, unless the reader has put the focus
   outside the section meanwhile; the top pager leaves both alone. A polite live
-  region in the section says where the flip went (*Unrouted, page 2 of 3, entries
+  region in the section says where the flip went (*Not on a roadmap, page 2 of 3, entries
   11–20 of 27*), and says nothing for the page a visit opens on.
 - **Prefetch:** the next page's inputs when the pointer or focus reaches a pager.
   Page 1's inputs on the `g` of `g p`, and on hover or focus of the sidebar's
@@ -845,7 +910,7 @@ Each question appears as a card:
   leaning** (only when an `oq` declared it and states a leaning), **Answer…** and
   **Open document**. A ✅
   answered question has been ruled, so it offers **Answer…** and **Open
-  document**. A 🔒 blocked question, listed under *Waiting*, cannot be answered yet
+  document**. A 🔒 blocked question, listed under *Blocked*, cannot be answered yet
   and offers only **Open document**.
 - **Any comments already filed on it,** each marked *waiting on the agent* while
   it is still pending, painted with the card through the gate of
@@ -922,7 +987,7 @@ header and shows how many answers are pending, in a slot reserved for a few digi
 in tabular numerals that shows `–` until the count is known. It copies every
 comment still pending for the agent on a question listed on the page — on every
 page, not only the shown ones, and under every roadmap: *Needs you* under each
-roadmap that routes, *Unrouted* and *Waiting* — grouped by document. Choosing
+roadmap that routes, *Not on a roadmap* and *Blocked* — grouped by document. Choosing
 another roadmap therefore never changes what it copies or its count. Each group
 is the block that document's own Copy produces, and one set of responding
 instructions closes the payload; a one-document payload is byte-identical to that
@@ -1001,8 +1066,8 @@ a `done` stage, the remedy is its stage, since the path is right and finding by
 name would find the same file. When at least one roadmap routes and a *listed* one
 is `missing`, `skipped` or `unreadable`, a line under the section bar names it; a
 `done` listed roadmap gets no such line, since a `done` stage is a deliberate
-retirement, and neither does one found by name, since *Skipped* and *Could not
-read* already list it. The words are `PLANNING_NOTICES.roadmapNotice` and
+retirement, and neither does one found by name, since *Too large* and
+*Unreadable* already list it. The words are `PLANNING_NOTICES.roadmapNotice` and
 `ROADMAP_STATE_PHRASES`.
 
 ### 6.9 The planning outline
@@ -1016,7 +1081,7 @@ paints with the section bar and changes when it does
 - **Under a section of cards or rows,** the documents it lists, in the section's
   order, up to a cap and then a line with how many more. Each shows its file name,
   the folder under it, and how many of its questions the section holds, or under
-  *Disagrees* how many are open. Clicking one flips its section to the page
+  *Stage conflict* how many are open. Clicking one flips its section to the page
   holding the document's first entry, with no history entry, then scrolls to that
   entry, 16 px below the pane's top as the contents column brings a heading
   (`ANCHOR_MARGIN`), and focuses it. The cards a flip puts above the entry draw
@@ -1080,18 +1145,20 @@ to three parts, joined by *·* in this order (`referenceSummary` in
 | :--- | :--- | :--- |
 | Count | A planning document links here | *Referenced by N documents* |
 | Roadmap | A roadmap routes the document or one of its questions | With one roadmap that routes: *on the roadmap under Building*, naming the roadmap heading of the first link that routes it, or *on the roadmap* when that link sits above every heading. With several: *on plans/roadmap.md under Building*, naming the first roadmap in roadmap order that routes it, then *and N other roadmaps* when more do |
-| Unrouted | The document has open questions no roadmap routes | *K open questions not routed by the roadmap*, in the warning tone; with several roadmaps, *…not routed by any roadmap* |
+| Not on a roadmap | The document has open questions no roadmap routes | *K open questions not on the roadmap*, in the warning tone; with several roadmaps, *…not on any roadmap*. The page's section of that name lists the same questions |
 
-- **The unrouted part says what the roadmap leaves out, not that the document is
-  off it,** because both can be true at once: a roadmap may link the document only
-  by heading, which routes nothing, and a roadmap's own page holds questions it
-  does not route without being off itself. When nothing links to the document the
-  unrouted part stands alone, because the line is then the only place the document
-  says so.
+- **The not-on-a-roadmap part says what the roadmap leaves out, not that the
+  document is off it,** because both can be true at once: a roadmap may link the
+  document only by heading, which routes nothing, and a roadmap's own page holds
+  questions it does not route without being off itself. It counts questions, not
+  the document, which is why *K open questions not on the roadmap* can follow
+  *on the roadmap under Building* on one line. When nothing links to the
+  document the part stands alone, because the line is then the only place the
+  document says so.
 - **N** counts the planning documents that link to this one or to one of its
   questions, once each however many links they hold; each roadmap counts as one.
   The document's links to itself are not counted. When nothing links to it and
-  nothing in it is unrouted, there is no line.
+  every one of its open questions is routed, there is no line.
 - **Routing is read exactly as the planning page reads it,** so the line and the
   page cannot disagree. A `done` document contributes nothing, so its line is the
   count alone, and so is every line when no roadmap routes. A roadmap is never on
@@ -1843,8 +1910,8 @@ when moving between documents in the app, or the app's shell on a first load.
 
 ### 13.1 The project root
 
-`vantage-check index [--format text|json] [--roadmap <path>] [--config <path> |
---no-config]` scans the **project root**: the nearest ancestor of the current
+`vantage-check index [--format text|json] [--request [<section>…]] [--roadmap <path>]
+[--config <path> | --no-config]` scans the **project root**: the nearest ancestor of the current
 directory holding `.git` or `.vantage.toml`, or the current directory itself when
 there is none (`repositoryRoot` in `packages/vantage-check/src/core/projectRoot.ts`).
 `check` finds its roadmaps from the same kind of root, looking up from each file it
@@ -1873,8 +1940,22 @@ page does not. This walk is not `discover`, which takes `.markdown`, descends in
 
 ### 13.2 `vantage-check index`
 
-`index` prints the planning page's sections as text, followed by the chosen roadmap's
-own source with each link's badge written inline in brackets. With `--format json` it
+`index` prints the planning page's sections as text, each under its title and count
+with its explanation line beneath, unindented, so only an entry is ever indented. A
+section whose actor is `you` adds *· for the human* to its heading, as in *Needs you
+(4) · for the human*: on the page *you* is the reader, and this output's reader is
+usually an agent, which must not take *Rule each* as meant for it:
+
+```text
+Ready to graduate (1)
+Built, with no questions left. An agent turns it into a reference doc.
+  docs/d.md  [accepted · BUILT]
+```
+
+A *Blocked* document's line names what it waits on, as `docs/c.md  blocked on
+docs/a.md`. When an agent section holds an entry, a line after the sections says
+`Agent requests: vantage-check index --request`. Then comes the chosen roadmap's own
+source with each link's badge written inline in brackets. With `--format json` it
 prints the whole index plus those sections, with a format `version`, which is not the
 tool's: the tool's version is `toolVersion`. It exits `0` when it ran, `2` for bad
 arguments or a bad config, and `3` when it could not run, which includes a project
@@ -1898,12 +1979,12 @@ the page, with no memory between runs:
   ```text
   Roadmaps (3)
     roadmap.md  3 need you  (chosen)
-    docs/old/roadmap.md  does not route: has a stage with the done role
+    docs/old/roadmap.md  ignored: has a stage with the done role
     docs/plans/roadmap.md  4 need you
   ```
 
-  A roadmap that does not route says why: *does not route* for one a `done` stage
-  retires, which was read, and *not read* for one that is `missing`, `skipped` or
+  A roadmap that does not route says why: *ignored* for one a `done` stage retires,
+  which was read, and *not read* for one that is `missing`, `skipped` or
   `unreadable`. The other roadmaps' sources are not printed; `--roadmap` prints any
   one of them.
 - **JSON** is format version 2:
@@ -1929,6 +2010,16 @@ the page, with no memory between runs:
       "unrouted": [],
       "…": "…"
     },
+    "sectionGuide": [
+      {
+        "id": "needs-you",
+        "key": "needsYou",
+        "title": "Needs you",
+        "explanation": "Open or answered questions on this roadmap, in its order. Rule each open one, then Copy answers.",
+        "actor": "you"
+      },
+      { "id": "unrouted", "key": "unrouted", "title": "Not on a roadmap", "…": "…" }
+    ],
     "roadmaps": [
       { "path": "roadmap.md", "state": "routes", "chosen": true, "links": [] },
       { "path": "docs/old/roadmap.md", "state": "done", "chosen": false, "links": [] },
@@ -1944,9 +2035,27 @@ the page, with no memory between runs:
   the questions the page counts beside its picker, each with the first roadmap that
   routes it. The top-level `roadmaps` has one entry per entry of `sections.roadmaps`,
   in the same order, each with its links, badges included, and `links` empty unless
-  the file was read, which is the `routes` and `done` states. A refused project prints
-  `null` for both `sections` and `roadmaps`. Version 1 had a single top-level
-  `roadmap` and `index.config.roadmap`; a change to the shape bumps the version.
+  the file was read, which is the `routes` and `done` states. `sectionGuide` is
+  `planningSectionGuide`: every section in page order with its `id`, the `key` of
+  `sections` that holds its entries, its `title`, its `explanation` line and its
+  `actor` (`you`, `agent` or `nobody`). A refused project prints `null` for
+  `sections`, `sectionGuide` and `roadmaps`. Version 1 had a single top-level
+  `roadmap` and `index.config.roadmap`. A change to an existing key's shape or meaning
+  bumps the version; a new key does not, which is why `sectionGuide` came in version 2.
+
+**`--request` prints an agent request instead** ([§6.2](#62-sections-top-to-bottom)):
+for the agent sections named after it — `unrouted`, `ready`, `graduate`,
+`disagrees`, by id — or for all four when none is named, the words up to the next
+option. The text is `planningAgentRequest` over the index the command built, with the
+project root as the repository, then a newline: exactly what the page's buttons copy
+for the same tree when the server reports the same root. Sections are covered in page
+order however they are named, and an empty one is left out; when no section asked for
+has an entry, being empty or not shown for want of a roadmap or of stages, stdout stays
+empty, as the page shows no button, and stderr says so, with exit `0`. Any other word
+after `--request` and `--format json` are bad arguments (exit `2`); the help and that
+message pair each id with its title, since the two differ.
+`--roadmap` is checked as usual, though no request depends on it: the agent sections are
+the same under every roadmap.
 
 ### 13.3 The planning rules
 
@@ -1957,8 +2066,8 @@ the page, with no memory between runs:
 | :--- | :--- |
 | `planning/stage-vocabulary` | a `stage` outside the declared words; inert when no stages are declared, even at `error` |
 | `planning/depends-on-missing` | a `depends-on` entry whose target does not exist or lies outside the repository, or whose `#OQ-…` id appears nowhere in its target |
-| `planning/stage-disagrees` | the page's *Disagrees* section |
-| `planning/unrouted` | an open question no roadmap routes. Off by default; this repository runs it as a warning, so the gate lists unrouted questions without failing |
+| `planning/stage-disagrees` | the page's *Stage conflict* section |
+| `planning/unrouted` | the page's *Not on a roadmap* section: an open question no roadmap routes. Off by default; this repository runs it as a warning, so the gate lists those questions without failing |
 | `planning/question-length` | a question whose text, less its leaning and its Answer, runs past `max-words`, well past the few lines its card shows folded. The default's calibration is in `rules/questionLength.ts` and the [vantage-check guide](../../userguide/guides/vantage-check.md#what-it-checks); a repository whose questions run longer raises `max-words` or turns the rule off |
 
 The first four are the same derivations the page uses, so the page and the gate cannot
@@ -1980,9 +2089,14 @@ disagree (P7); the fifth measures the questions the same scan finds.
   with the listing's one-path test. With nothing listed, the pass walks the project
   root's listing once and reads only the candidates named `roadmap.md` — and only when
   `planning/unrouted` is on and a checked document has an open question and no `done`
-  stage. The walk counts nothing and refuses nothing. The message names the roadmap,
-  *not routed by the roadmap (roadmap.md)*, or with several, *not routed by any
-  roadmap (roadmap.md, docs/plans/roadmap.md)*.
+  stage. The walk counts nothing and refuses nothing. The message says routing in
+  plain words and names the roadmap, *is not on a roadmap: the roadmap (roadmap.md)
+  links neither to it nor to this document as a whole*, or with several, *no roadmap
+  (roadmap.md, docs/plans/roadmap.md) links to it or to this document as a whole*.
+  It then leaves the placing to the human and points at `vantage-check index --request
+  unrouted`, since a roadmap's order is theirs to decide; `planning/stage-disagrees`
+  likewise says *Have it ruled*, never *Rule it*, because the agent reading it may not
+  rule.
 - **A bad value in `[planning]` fails every `check` with exit 2**, as a bad `[check]`
   value does. An unknown key is warned about and ignored ([§14](#14-configuration)).
 
@@ -2084,7 +2198,7 @@ declares its stage vocabulary; and runs `planning/unrouted` as a warning.
 | The server id changed (another repository on the same port, a tunnel to another machine) | Every store cleared before anything is read or sent; one cold build |
 | The server id cannot be had | That build reads and writes no cache: cold, with no `have` |
 | Another tab cleared the database (newer code, or another server) | This tab's next read or write is refused, and it runs without the cache until it reloads |
-| One file cannot be read, or its frontmatter does not parse | Listed under *Could not read* and contributing nothing, its `oq` directives included. Everything else is unaffected |
+| One file cannot be read, or its frontmatter does not parse | Listed under *Unreadable* and contributing nothing, its `oq` directives included. Everything else is unaffected |
 | A file changes between the stream and the next push | The stream line carries its own hash; the push refreshes it |
 | A card block comes back `stale` | The path refreshes; the previous page stays until it lands |
 | A card's document is gone from the index | The card says it is not in the planning index any more |
@@ -2102,7 +2216,7 @@ declares its stage vocabulary; and runs `planning/unrouted` as a warning.
 ## 16. Limits and bounds
 
 **Two limits, both `[planning]` settings.** A candidate larger than `max-file-bytes`
-is stat'ed and never opened: it is listed under *Skipped* on the planning page and by
+is stat'ed and never opened: it is listed under *Too large* on the planning page and by
 `vantage-check index`. Past `max-candidates` there is no scan at all and the refusal
 is visible. Both are decided before any read, and every answer about many files is
 written one file at a time, since thousands of files at the size limit is a valid
@@ -2251,7 +2365,9 @@ is the only place most of the numbers are stated.
 | Stage roles | `open`, `ready`, `built`, `done` | `STAGE_ROLES` |
 | Planning page URL | `/.vantage/planning`, `/.vantage/planning/<repo>` | `PLANNING_ROUTE` in `frontend/src/lib/planningRoute.ts` |
 | Keyboard chord | `g p` | `useKeyboardShortcuts` |
-| Section URL parameters | `needs-you`, `unrouted`, `waiting`, `ready`, `graduate`, `disagrees`, `skipped`, `could-not-read`; `roadmap` | `SECTION_IDS` in `frontend/src/lib/planningPages.ts` |
+| Section ids, which are the URL parameters | `needs-you`, `unrouted`, `waiting`, `ready`, `graduate`, `disagrees`, `skipped`, `could-not-read`; and `roadmap` | `PLANNING_SECTION_IDS` in `packages/vantage-md/src/planning/guide.ts` |
+| Section titles | Needs you, Not on a roadmap, Blocked, Ready to build, Ready to graduate, Stage conflict, Too large, Unreadable | `PLANNING_SECTION_GUIDE`, same file |
+| Agent sections | `unrouted`, `ready`, `graduate`, `disagrees` | `PLANNING_AGENT_SECTION_IDS`, same file |
 | Remembered roadmap | `localStorage` key `vantage:planningRoadmap:<repo>` | `PLANNING_ROADMAP_FAMILY` in `frontend/src/lib/preferences.ts` |
 | Cards open unfolded | `localStorage` key `vantage:planningCardsExpanded`, `"true"` or `"false"`; absent, folded | `PREFERENCE_KEYS` in `frontend/src/lib/preferences.ts` |
 | Lines a folded card shows | 3 | `CARD_CLAMP_LINES` in `frontend/src/lib/planningCardParts.ts` |
@@ -2273,9 +2389,9 @@ is the only place most of the numbers are stated.
 | In-memory card blocks, without a cache and for roadmaps | 8 Mi characters, least recently used out | `memoryCardChars` |
 | Inline client's slice | 8 ms | `sliceMs` |
 | Helpers | after 2 MiB unscanned; each queue 2 MiB; at most 3; 2 cores reserved | `helperThresholdBytes`, `helperQueueBytes`, `maxHelpers`, `helperReservedCores` |
-| Page of Needs you, Unrouted, Waiting | 10 entries, or fewer before 32 Ki characters of card Markdown | `pageEntries`, `pageMarkdownChars` |
-| Page of Ready, Graduate, Disagrees | 25 rows | `pageRows` |
-| Page of Skipped, Could not read | 50 lines | `pageLines` |
+| Page of Needs you, Not on a roadmap, Blocked | 10 entries, or fewer before 32 Ki characters of card Markdown | `pageEntries`, `pageMarkdownChars` |
+| Page of Ready to build, Ready to graduate, Stage conflict | 25 rows | `pageRows` |
+| Page of Too large, Unreadable | 50 lines | `pageLines` |
 | Page select offered from | 5 pages | `pageSelectFrom` |
 | One commit of the sections | at most 30 cards and 96 Ki characters | `commitCards`, `commitMarkdownChars` |
 | Spinner delay | 150 ms | `spinnerMs` |
@@ -2313,7 +2429,7 @@ git.
 | Plan Q2 | A listed roadmap is read whenever it exists, even when `include` or `exclude` rules it out — per entry, since several roadmaps ([§4.1](#41-which-files-are-roadmaps)) | 2026-09-28 |
 | Plan Q3 | A static export gets no badges and no planning index; its planning page says so ([§15](#15-failure-modes)) | 2026-09-28 |
 | Plan Q4 | This repository runs `planning/unrouted` as a warning ([§13.3](#133-the-planning-rules)) | 2026-09-28 |
-| Plan Q5 | An `oq` with no id, a malformed id or a repeated one is still a question, counted with no id. **Take this leaning** is not offered on 🔒 or ✅ questions, neither in review mode nor on the planning page, where 🔒 questions sit under *Waiting* with no Take or Answer…; the contents column still lists them ([§3.3](#33-questions), [§6.6](#66-question-cards)) | 2026-09-28 |
+| Plan Q5 | An `oq` with no id, a malformed id or a repeated one is still a question, counted with no id. **Take this leaning** is not offered on 🔒 or ✅ questions, neither in review mode nor on the planning page, where 🔒 questions sit under *Blocked* with no Take or Answer…; the contents column still lists them ([§3.3](#33-questions), [§6.6](#66-question-cards)) | 2026-09-28 |
 | Plan Q6 | Every question the index holds is live; a `depends-on` naming a question waits only while that question is open ([§6.2](#62-sections-top-to-bottom)) | 2026-09-28 |
 | Plan Q7 | `vantage-check index` exits `3` past `max-candidates`; `check` is unaffected, because its narrow index counts nothing ([§13](#13-vantage-check-index-and-the-planning-rules)) | 2026-09-28 |
 | Plan Q9 | The checker mirrors the repository-level listing rules only; per-reader settings stay invisible to it ([§13.1](#131-the-project-root)) | 2026-09-28 |

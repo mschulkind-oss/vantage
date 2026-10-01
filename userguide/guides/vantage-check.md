@@ -444,7 +444,7 @@ scan, so the gate and the page of one release cannot disagree.
 | `planning/stage-vocabulary` | A `stage` outside the words `[planning.stages]` declares | error, once stages are declared |
 | `planning/depends-on-missing` | A `depends-on` entry whose target does not exist or lies outside the repository, or whose `#OQ-…` id appears nowhere in it | error |
 | `planning/stage-disagrees` | A document whose stage has the `ready` or `built` role while it still has open questions | warning |
-| `planning/unrouted` | An open question no roadmap [routes](planning.md#the-roadmap), directly or through its document | **off** |
+| `planning/unrouted` | An open question no roadmap [links to](planning.md#the-roadmap), directly or through its document | **off** |
 | `planning/question-length` | A question whose text, not counting its leaning and its Answer, runs past 120 words | warning |
 
 They run once, after every document in the run has been checked, and each one
@@ -460,14 +460,19 @@ asked to check.
 
 - **`planning/stage-vocabulary` does nothing without `[planning.stages]`**,
   whatever its severity: with no vocabulary declared, every word is allowed.
-- **`planning/unrouted` is off until you turn it on.** It asks whether any
-  roadmap has placed a question at all, which is only worth asking of a
-  repository that keeps a roadmap. Set it to `"warning"` to have `check` list
-  those questions without failing on them. A question in a document whose
-  stage has the `done` role is never reported, and neither is anything when no
-  roadmap routes. The message names the roadmap, as *not routed by the roadmap
-  (roadmap.md)*, or with several, *not routed by any roadmap (roadmap.md,
-  docs/plans/roadmap.md)*.
+- **`planning/unrouted` is off until you turn it on.** It reports what the
+  planning page lists under *Not on a roadmap*: an open question no roadmap
+  links to, neither at its `#OQ-…` anchor nor through a link to its whole
+  document, which is only worth asking of a repository that keeps a roadmap.
+  Set it to `"warning"` to have `check` list those questions without failing on
+  them. A question in a document whose stage has the `done` role is never
+  reported, and neither is anything when no roadmap can be read. The message
+  names the roadmap, as *is not on a roadmap: the roadmap (roadmap.md) links
+  neither to it nor to this document as a whole*, or with several, *no roadmap
+  (roadmap.md, docs/plans/roadmap.md) links to it or to this document as a
+  whole*. It then says where the question goes is yours to confirm, and points
+  at `vantage-check index --request unrouted`, which asks an agent for a
+  proposal rather than a placement.
 - **`planning/question-length` keeps a question readable on its card.** The
   planning page shows each question as a card that leads with its bold title
   and shows only the first few lines of the text below it, so a question
@@ -618,21 +623,24 @@ yourself.
 ## `vantage-check index`
 
 ```bash
-vantage-check index [--format text|json] [--roadmap <path>] [--config <path> | --no-config]
+vantage-check index [--format text|json] [--request [<section>…]] [--roadmap <path>] [--config <path> | --no-config]
 ```
 
 Prints the repository's [planning index](planning.md): the sections that say
-which questions need a ruling, which ones no roadmap has placed, what waits on
-what, and which documents are ready to build or to graduate, then the chosen
-roadmap with each link's badge written inline. It is how an agent sees what a
-person sees on the [planning page](planning.md#the-planning-page), with no
-server running. How it works:
+which questions need a ruling, which ones no roadmap has placed, what is
+blocked, and which documents are ready to build or to graduate, each with a line
+saying what it means and who acts on it, then the chosen roadmap with each
+link's badge written inline. With `--request`, it prints instead the
+[request to hand an agent](#agent-requests) for the sections an agent works
+on. It is how an agent sees what a person sees on the
+[planning page](planning.md#the-planning-page), with no server running. How it works:
 [`planning-index.md` §13](../../docs/reference/planning-index.md#13-vantage-check-index-and-the-planning-rules).
 
 | Option | Effect |
 | :--- | :--- |
 | `--format text\|json` | Output format. Default `text`. |
-| `--roadmap <path>` | The roadmap *Needs you* follows, and whose source is printed. Relative to the project root, with one leading `./` dropped; given twice, the last wins. Default: the roadmap nearest the root that routes. |
+| `--request [<section>…]` | Print the [agent request](#agent-requests) for these sections instead: `unrouted` (*Not on a roadmap*), `ready` (*Ready to build*), `graduate` (*Ready to graduate*) or `disagrees` (*Stage conflict*), any of them, separated by spaces. Default: all four. Takes no `--format json`. |
+| `--roadmap <path>` | The roadmap *Needs you* follows, and whose source is printed. Relative to the project root, with one leading `./` dropped; given twice, the last wins. Default: the nearest the root of the roadmaps it can follow, which are those it can read whose stage has no `done` role. |
 | `--config <path>` | Read this `.vantage.toml`. It never changes which project is scanned. |
 | `--no-config` | Ignore `.vantage.toml` and use the built-in defaults. |
 
@@ -646,13 +654,14 @@ the two commands agree on the project.
 
 **With several roadmaps**, `index` lists them all and follows one, as the
 planning page does, with no memory between runs: the one `--roadmap` names,
-else the one nearest the root that routes, which is the one with the fewest
-directories in its path, the first by path among equals. A question is routed
-when any roadmap routes it, so *Unrouted* holds only what none of them routes, and a
-question only another roadmap routes is counted in one line instead:
+else the one nearest the root that it can follow, a roadmap it can read whose
+stage has no `done` role: the one with the fewest directories in its path, the
+first by path among equals. *Not on a roadmap* holds
+only the open questions no roadmap links to, and a question only another roadmap
+links to is counted in one line instead:
 *3 more questions need you on other roadmaps. Choose one with --roadmap
-\<path\>.* A `--roadmap` that names no roadmap that routes is a bad argument,
-and the message lists the ones that do.
+\<path\>.* A `--roadmap` that names no roadmap it can follow is a bad
+argument, and the message lists the ones it can.
 
 > [!NOTE]
 > **`index` is a command word.** `vantage-check index` used to check a file or
@@ -672,19 +681,37 @@ set, `index` can list a file that the viewer does not.
 
 ### Output
 
-The text form lists each non-empty section in order, one indented line per
-entry, with the notes the [Planning Documents](planning.md#its-sections) guide
-describes: no roadmap, and what was looked for; a listed roadmap that could not
-be read; questions on other roadmaps; no stages; or nothing that needs you.
+The text form lists each non-empty section in order: its title and count, the
+line that explains it, then one indented line per entry. The sections are the
+planning page's, with the same titles and lines
+([Planning Documents](planning.md#its-sections)). On the page, *you* is the
+person reading it; an agent reads this output, so the heading of a section that
+is the person's to act on says so, as in *Needs you (4) · for the human*, and
+an agent does not take *Rule each* as meant for it:
+
+```text
+Ready to graduate (2)
+Built, with no questions left. An agent turns it into a reference doc.
+  docs/design/agent-cli.md  [accepted · BUILT]
+  docs/design/repo-config.md  [accepted · BUILT]
+```
+
+A *Blocked* document's line names what it waits on, as
+`docs/c.md  blocked on docs/a.md`. Before the sections come the notes the
+guide describes: no roadmap, and what was looked for; a listed roadmap that
+could not be read; questions on other roadmaps; or nothing that needs you.
+With no stages declared, the line saying so stands where the stage sections
+would be, after *Blocked*. After the sections, when a section an agent works
+on has an entry, one line points at `--request`.
 With two or more roadmaps, in any state, a block before *Needs you* lists them,
-nearest the root first. A roadmap that does not route says why: *does not
-route* for one retired by a `done` stage, which was read, and *not read* for
-one that is missing, too large or unreadable.
+nearest the root first. A roadmap it cannot follow says why: *ignored* for one
+retired by a `done` stage, which was read, and *not read* for one that is
+missing, too large or unreadable.
 
 ```text
 Roadmaps (3)
   roadmap.md  3 need you  (chosen)
-  docs/old/roadmap.md  does not route: has a stage with the done role
+  docs/old/roadmap.md  ignored: has a stage with the done role
   docs/plans/roadmap.md  4 need you
 ```
 
@@ -692,11 +719,11 @@ Then it prints the chosen roadmap's own source, with each link that has a badge
 followed by that badge in brackets, as in
 `[the plan](docs/design/x-plan.md) [in-review · DECIDED]`. The other roadmaps'
 sources are not printed; `--roadmap` prints any one of them. With one roadmap,
-or none, there is no block. *Skipped* and *Could not read* are listed in both
+or none, there is no block. *Too large* and *Unreadable* are listed in both
 forms.
 
 `--format json` prints the whole index as one object, shown here with its
-three large fields emptied:
+four large fields emptied:
 
 ```json
 {
@@ -706,6 +733,7 @@ three large fields emptied:
   "root": "/home/me/project",
   "index": {},
   "sections": {},
+  "sectionGuide": [],
   "roadmaps": []
 }
 ```
@@ -716,8 +744,8 @@ three large fields emptied:
 - **`root`** is the project root that was scanned.
 - **`index`** holds the effective `[planning]` config, the candidate count, and
   every planning document with its header, its questions and its links, the
-  links narrowed to those that point at another candidate. *Skipped* and
-  *Could not read* are here too. Each question carries the file lines it spans,
+  links narrowed to those that point at another candidate. *Too large* and
+  *Unreadable* are here too. Each question carries the file lines it spans,
   `unitLine` to `unitEndLine`, and `cardChars`, the length of the Markdown its
   card shows on the planning page, which is what the page's
   [pages](planning.md#pages) are cut by. Its `directive` is the name that
@@ -728,27 +756,74 @@ three large fields emptied:
   with its `path`, its `state` (`routes`, `done`, `skipped`, `unreadable`, or,
   for a listed one the index does not hold, `missing`) and its
   `needsYouCount`, the length of *Needs you* when it is chosen.
-  `sections.chosenRoadmap` is the one followed, or `null` when none routes.
-  `sections.onOtherRoadmaps` holds the open and answered questions another
-  roadmap routes and the chosen one does not, each once, with the first
-  roadmap that routes it.
+  `sections.chosenRoadmap` is the one followed, or `null` when there is none
+  to follow. `sections.onOtherRoadmaps` holds the open and answered questions
+  another roadmap links to and the chosen one does not, each once, with the
+  first roadmap that links to it. Its keys are the sections' ids in camel case, and
+  `unreadable` is *Unreadable*'s.
+- **`sectionGuide`** lists every section in page order, as the page shows it:
+  its `id` (`needs-you`, `unrouted`, `waiting`, `ready`, `graduate`,
+  `disagrees`, `skipped`, `could-not-read`), the `key` of `sections` holding its
+  entries, its `title`, its `explanation` line, and its `actor`: `you`,
+  `agent` or `nobody`, whoever acts next on its entries.
 - **`roadmaps`** has one entry per entry of `sections.roadmaps`, in the same
   order: its `path`, its `state`, whether it is `chosen`, and its `links`, one
   per link in it with its line, its target and the badge it gets. `links` is
   empty unless the file was read, which is the `routes` and `done` states.
 
-A refused project prints `null` for both `sections` and `roadmaps`. Version 2
-replaced version 1's `sections.roadmap` and top-level `roadmap` when a
-repository could have several roadmaps, and `index.config.roadmap` became
-`index.config.roadmaps`: the listed paths, or `null` when roadmaps are found
-by name.
+A refused project prints `null` for `sections`, `sectionGuide` and
+`roadmaps`. Version 2 replaced version 1's `sections.roadmap` and top-level
+`roadmap` when a repository could have several roadmaps, and
+`index.config.roadmap` became `index.config.roadmaps`: the listed paths, or
+`null` when roadmaps are found by name. A new key, such as `sectionGuide`,
+keeps the version; a changed one bumps it.
+
+A section's title is display text, and its id is what a script should read:
+the ids, the JSON keys and the rule ids never change when a title does. That
+is why some differ from their titles, such as `waiting` for *Blocked*: they are
+the sections' names from before the titles were settled.
+
+### Agent requests
+
+Four sections are work for an agent: *Not on a roadmap* (`unrouted`), *Ready to
+build* (`ready`), *Ready to graduate* (`graduate`) and *Stage conflict*
+(`disagrees`). `vantage-check index --request` prints, for each of them that
+holds an entry, what it means, what to do and every entry, on every page, then
+how to check the work: the planning page's **Copy agent request** and **Copy
+all agent requests** buttons copy exactly this text. Name sections to narrow
+it, as in `vantage-check index --request graduate`.
+
+```text
+Repository: /home/me/project
+
+Ready to graduate (1): built, with no questions left. For each, write a reference document of the system as built, where the repository keeps those: verify every claim against the code, and say what it covers and the commit it was verified at (if you use a system-doc skill, use it). Give it the stage the repository's other reference documents carry (one with the done role: CURRENT, GRADUATED, SUPERSEDED), or none. Then delete the design document and any plan written for it, repoint every link to them and citation of them, in documents, code comments and tests, at the new one, and keep every question id other documents cite resolvable.
+- docs/design/agent-cli.md  (stage BUILT)
+
+Verify: in the repository, run `vantage-check` on every Markdown file you changed, then `vantage-check index`.
+```
+
+| Section | The agent is asked to |
+| :--- | :--- |
+| Not on a roadmap | propose each question's place on a roadmap with a one-clause reason, and leave the order to you: it shows you the proposals and edits a roadmap only once you confirm |
+| Ready to build | build each document's plan and give it a stage with the `built` role, or, if one should not be built, ask you, and only with your agreement give it the stage with the `done` role you choose. It skips a document marked blocked, which *Blocked* lists too |
+| Ready to graduate | write each as a reference document of the system as built, with the stage the repository's other reference documents carry; delete the design document and any plan written for it; and repoint every link and citation of them, in documents, code comments and tests |
+| Stage conflict | find which is wrong, the stage or the questions, and fix a wrong stage, or propose moving a follow-up question to a new document; it rules and answers nothing, and asks you for rulings |
+
+The request is generated when it is asked for, from the documents and
+`[planning.stages]` as they are then, so it names the stage words the
+repository declares. A document *Blocked* lists too, which *Ready to build* and
+*Ready to graduate* can hold, is marked with what it waits on, and the agent is
+told to skip it. The check it ends with names Markdown files only, because
+`vantage-check` reads any file it is given as Markdown, and a section number
+cited in a code comment would read as a broken reference. With nothing in the sections asked for,
+it prints nothing, says so on stderr, and exits `0`.
 
 ### Exit codes
 
 | Code | Meaning |
 | :--- | :--- |
 | `0` | It ran. |
-| `2` | Bad arguments, a `--roadmap` that names no roadmap that routes, or a config file that cannot be trusted. |
+| `2` | Bad arguments, a `--roadmap` that names no roadmap it can follow, or a config file that cannot be trusted. |
 | `3` | It could not run, which includes a project with more candidates than `max-candidates`, whatever `--roadmap` says. It prints how many there are, and nothing is scanned. |
 
 It never exits `1`: `index` reports and does not judge. Failing a build on what
