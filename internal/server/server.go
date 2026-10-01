@@ -354,7 +354,7 @@ func (s *Server) newRepoServices(rc config.RepoConfig) *repoServices {
 //
 // Wired to api.Deps.Promoted. It runs on every GET /starred, which the viewer
 // issues on mount, on reconnect and after every change push — so the cheap path
-// has to stay cheap: a literal promote line never touches the filesystem, and
+// has to stay cheap: a literal promote line never lists the repository, and
 // ListAllFiles is passed as a closure that only a pattern calls.
 func (s *Server) promoted() []starred.Listed {
 	var repoRows []starred.Listed
@@ -854,7 +854,7 @@ func (s *Server) retireRepos() []string {
 // retired — watch it, in case it is still there as a plain folder, a clone
 // that lost its .git. The loose project lists such a folder's files at once,
 // but its watcher never entered the clone and heard nothing from inside it
-// (docs/design/serve-clones-directory.md §3). A directory that is gone is left
+// (docs/reference/serve-clones-directory.md §4.2). A directory that is gone is left
 // alone by the watcher.
 func (s *Server) handToLooseProject(dir string) {
 	for _, rs := range s.repoList() {
@@ -1051,7 +1051,7 @@ func (s *Server) repoInfo(rs *repoServices, repos []*repoServices) model.RepoInf
 // that another served project is rooted at — a clone, reached by its own name
 // or through a symlink that resolves to it — to that project's name, or nil when
 // there is none. The loose project refuses every path inside those
-// directories (docs/design/serve-clones-directory.md §3); this is what lets the
+// directories (docs/reference/serve-clones-directory.md §4.3); this is what lets the
 // viewer send a loose note's link into a clone to the clone's own project. It
 // costs one directory listing, which the discovery rescan pays already.
 func cloneProjects(loose *repoServices, repos []*repoServices) map[string]string {

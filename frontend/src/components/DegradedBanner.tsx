@@ -34,15 +34,16 @@ interface DegradedBannerProps {
  * Says what is degraded when the open project is too big for one of the
  * server's limits — live reload out of watches, recents out of time — which
  * otherwise only ever reached the server's log. See
- * docs/design/serve-clones-directory.md §7.
+ * docs/reference/serve-clones-directory.md §7.4.
  *
- * It floats at the bottom of the viewer pane rather than taking a place in the
- * page's flow: the list arrives after the page has painted, and a banner
- * pushing content down at that point would move what the reader is already
- * reading. Instead the pane reserves room below its content (see
- * `onSpaceChange`), which only lengthens what can be scrolled. Placed in the
- * pane, not the viewport, it never covers the sidebar, and it comes after the
- * content in the tab order, as it does on screen.
+ * It floats at the bottom of the app shell's main pane (the viewer's and the
+ * planning page's) rather than taking a place in the page's flow: the list
+ * arrives after the page has painted, and a banner pushing content down at
+ * that point would move what the reader is already reading. Instead the pane
+ * reserves room below its content (see `onSpaceChange`), which only lengthens
+ * what can be scrolled. Placed in the pane, not the viewport, it never covers
+ * the sidebar, and it comes after the content in the tab order, as it does on
+ * screen.
  *
  * The live region is mounted, empty, from the first render: one inserted
  * already filled is not reliably announced.

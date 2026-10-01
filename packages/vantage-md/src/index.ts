@@ -6,6 +6,9 @@
 //
 // Directives (`<!-- vantage: … -->`), the render chain and the sanitizer —
 // architecture and invariants: docs/reference/inline-markup.md
+// `renderMarkdown`'s `tree` option, which lets vantage-check's rules share the
+// parse of each file — architecture and invariants:
+// docs/reference/check-performance.md
 
 export { renderMarkdown } from "./renderMarkdown.js";
 // GFM alerts: the vocabulary and its labels, so a consumer styling them reads

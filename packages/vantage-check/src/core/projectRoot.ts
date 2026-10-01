@@ -16,8 +16,9 @@ import { dirname, join } from "node:path";
  * config file would scan the wrong tree.
  *
  * `.git` is checked as a plain directory entry rather than by asking git, so
- * this still works in a bare checkout with no git on PATH (P1). A linked
- * worktree's `.git` is a file, and it counts too: the worktree is its own root.
+ * this still works in a bare checkout with no git on PATH (P1 of
+ * docs/reference/agent-cli.md). A linked worktree's `.git` is a file, and it
+ * counts too: the worktree is its own root.
  */
 export function repositoryRoot(from: string): string | undefined {
   let current = from;

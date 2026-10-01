@@ -1,3 +1,4 @@
+// Architecture and invariants: docs/reference/contents-open-questions.md
 import React, { type RefObject } from "react";
 import { cn } from "../lib/utils";
 import { scrollToAnchorElement } from "../lib/anchorScroll";

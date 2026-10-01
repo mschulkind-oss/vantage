@@ -1,3 +1,4 @@
+// Architecture and invariants: docs/reference/contents-open-questions.md
 import {
   useCallback,
   useEffect,
@@ -189,7 +190,8 @@ const HEADING_LEVELS: Record<string, number | undefined> = {
  * Reading the label off `stamped` yields "Leaning: back of the queue" for every
  * entry in the column — plausible-looking and uniformly useless. So the search
  * is scoped to the enclosing list item and looks for the bold run that opens
- * with the id, which is the same declaration site `linked-references.md` names.
+ * with the id, which is the definition site `ref/unlinked-oq` recognizes
+ * (docs/reference/linked-references.md).
  *
  * A question written as a bare paragraph has no title to find; it falls back to
  * its own text, which the column clamps.

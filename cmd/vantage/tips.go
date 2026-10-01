@@ -25,7 +25,8 @@ import (
 const serviceProbeTimeout = 200 * time.Millisecond
 
 // serviceState is what `serve` learns about the per-user background service
-// that install-service sets up, for its startup tip.
+// that install-service sets up, for its startup tip. Architecture and
+// invariants: docs/reference/serve-clones-directory.md §5.
 type serviceState struct {
 	// GOOS decides the start command; a platform install-service does not
 	// support gets no tip at all.

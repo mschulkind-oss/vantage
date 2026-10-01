@@ -1212,7 +1212,7 @@ function respondingInstructions(
     // this block is copied into the agent's context on every single review
     // turn, so it reaches whatever environment the agent has, needs no setup
     // from the user, and arrives at the one moment it is useful — just before
-    // the work goes back.
+    // the work goes back (P3 of docs/reference/agent-cli.md).
     //
     // Exit 2 is named because the checker did run there: a configuration error,
     // or a refusal from a checker older than the repository's `target`

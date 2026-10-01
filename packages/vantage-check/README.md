@@ -14,8 +14,8 @@ guide it prints are that release's, and a local build is a development build
 that can be newer than every release. Which one to run for readers on an older
 viewer: [Which release it writes for](../../userguide/guides/vantage-check.md#which-release-it-writes-for).
 
-Design: [`../../docs/design/agent-cli.md`](../../docs/design/agent-cli.md).
-User documentation: [`../../userguide/vantage-check.md`](../../userguide/guides/vantage-check.md).
+How it works, and why it is shaped this way: [`../../docs/reference/agent-cli.md`](../../docs/reference/agent-cli.md).
+User documentation: [`../../userguide/guides/vantage-check.md`](../../userguide/guides/vantage-check.md).
 
 ## Why this package is shaped the way it is
 
@@ -61,7 +61,8 @@ manifest's placeholder version, so it prints
 `vantage-check development build (<commit>)` instead, and so does every other
 place that would name a version, such as the first line of `style-guide`.
 
-bun cross-compiles, so **one host builds every platform** — that is why the
-release job is a single runner rather than one per OS. Release CI wraps each
+bun cross-compiles, so **one host builds every platform** — that is why every
+build leg of the release runs on a Linux runner, one leg per target, rather than
+each on a runner of its target's OS. Release CI wraps each
 binary in a platform wheel ([`../../scripts/build-wheel.py`](../../scripts/build-wheel.py)) so `uvx vantage-check`
 works, and attaches the archives to a GitHub release for the `curl` path.

@@ -472,7 +472,8 @@ log:
 
 The banner shows the open project's reports only, and the dismiss button hides it
 until the page is reloaded. Serving a directory of clones as one project with
-`--one-project` is the usual way to reach the first limit.
+`--one-project` puts every clone's working tree under one watcher, and only the
+directory's own `.vantageignore` applies to it, not any clone's.
 
 ## Environment Variables
 

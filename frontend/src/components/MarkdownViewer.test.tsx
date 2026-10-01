@@ -142,7 +142,7 @@ describe("MarkdownViewer", () => {
   });
 
   // The loose project refuses every path inside a clone, which is a project of
-  // its own (docs/design/serve-clones-directory.md §3), so an index note's
+  // its own (docs/reference/serve-clones-directory.md §4.3), so an index note's
   // relative link into a clone is sent to the clone's project. Links to the
   // loose project's own files stay where they are.
   it("sends a loose note's links and images into a clone to the clone's project", () => {

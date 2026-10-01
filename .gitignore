@@ -16,7 +16,7 @@
 # `go install` still works at a tag, because `just release` builds the bundle
 # into a commit that exists only on the tag. On main there is no bundle: run
 # `just web-sync` (or `just build`) to make one locally. It stays ignored.
-# See docs/design/pypi-distribution.md §4.1.
+# See docs/reference/pypi-distribution.md §5.
 web/dist/*
 !web/dist/.gitkeep
 

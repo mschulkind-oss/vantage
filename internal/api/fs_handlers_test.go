@@ -118,8 +118,8 @@ func TestContentImageMissingFile404(t *testing.T) {
 }
 
 // The loose project beside a directory of clones refuses every path inside a
-// repository the way it refuses a missing file (docs/design/serve-clones-directory.md
-// §3), and the image branch answers with raw bytes, so it has to refuse too:
+// repository the way it refuses a missing file (docs/reference/serve-clones-directory.md
+// §4.1), and the image branch answers with raw bytes, so it has to refuse too:
 // it used to serve a clone's pictures, and a linked worktree's, which no
 // project serves at all.
 func TestContentImageStopsAtRepositories(t *testing.T) {

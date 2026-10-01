@@ -23,6 +23,8 @@ import { isMarkdown } from "../core/workspace.js";
  * the parsed tree has settled. Fenced code and inline code that is plainly a
  * command are structurally out of reach, and a reference already inside a link
  * is the state the rules want.
+ *
+ * Architecture and invariants: docs/reference/linked-references.md
  */
 
 /** `OQ-` then an optional short uppercase prefix then digits. */
@@ -204,9 +206,11 @@ function pathOf(url: string): string {
  * requires a *fragment*, not the id, and leaves proving the fragment resolves
  * to `link/dead-section-anchor`, which already does exactly that.
  *
- * The question's own definition site is not a reference to itself: every id
- * this document declares is excluded, because the text naming it is the thing
- * being named.
+ * A question's own definition site is not a reference to itself: its bold
+ * title (`**OQ-4: …**`) and the id cell of a Decision Ledger row are excused,
+ * each recognized by its shape. An id the document merely declares is not —
+ * the document may refer to its own question further down, and that reference
+ * needs a link like any other.
  */
 export function checkOqReferences(collector: Collector): void {
   if (!collector.enabled("ref/unlinked-oq")) return;

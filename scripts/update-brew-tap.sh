@@ -12,6 +12,8 @@
 # Each archive carries BOTH binaries — the `vantage` server and the
 # `vantage-check` CLI — so one formula, one url and one sha install both. That is
 # polyclav's shape, and it is why there is no second `resource` block here.
+#
+# Architecture and invariants: docs/reference/pypi-distribution.md
 set -euo pipefail
 
 VERSION="${1:?usage: update-brew-tap.sh <version> <tap-dir>}"

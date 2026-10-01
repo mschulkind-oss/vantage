@@ -169,7 +169,7 @@ type Config struct {
 	// enter one, and a path inside one is refused like a missing file. It is
 	// set for the project holding the Markdown beside a directory of clones,
 	// whose clones are each served as a project of their own (see
-	// docs/design/serve-clones-directory.md §3). Linked worktrees are pruned
+	// docs/reference/serve-clones-directory.md §4.1). Linked worktrees are pruned
 	// whether or not it is set.
 	StopAtRepos bool
 }
@@ -784,7 +784,7 @@ func readableDir(dir string) bool {
 // path of the regular file it names. ok is false when there is no file to serve
 // there: nothing exists, it is not a regular file, or it lies inside a
 // repository boundary ([Config.StopAtRepos]), which is refused exactly the way
-// a missing file is (docs/design/serve-clones-directory.md §3). A path that
+// a missing file is (docs/reference/serve-clones-directory.md §4.1). A path that
 // fails validation returns a *PathError. Every read of a file's bytes goes
 // through it, so no branch can serve what the listing leaves out.
 func (s *FileSystemService) ResolveFile(path string) (full string, ok bool, err error) {
