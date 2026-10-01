@@ -8,7 +8,7 @@ The order is the one thing this file holds that no other document can. Each entr
 
 ## 📦 Up Next
 
-1. [Checker version skew](docs/design/checker-version-skew.md), first, because [`OQ-VS1`](docs/design/checker-version-skew.md#OQ-VS1) has to be ruled before 0.8.0 is tagged.
+1. [Checker version skew](docs/design/checker-version-skew.md), first, because [`OQ-VS4`](docs/design/checker-version-skew.md#OQ-VS4) and [`OQ-VS1`](docs/design/checker-version-skew.md#OQ-VS1) have to be ruled before 0.8.0 is tagged.
 
 2. [Measuring the planning index at scale](docs/design/planning-index-measurement.md), ahead of the rest, because 0.8.0 is the first release to carry the index and it has not been measured at scale.
 
