@@ -14,7 +14,12 @@ summary: "An agent's checker is whatever PyPI released last, so it teaches Markd
 
 > **In short.** Nothing today stops an agent's checker from being newer than its readers' viewer, because the checker writes for its own version. The fix is to tell the newest checker which viewers the readers run and have it write for the oldest, not to pin an old checker, which can't see what came after it.
 
-**Why it matters.** 0.8.0 is the first incident. Its guide teaches two features that a 0.7.1 viewer renders wrong, and every 0.7.x viewer's review payload sends agents to that guide within about ten minutes of the upload. Agent instructions in circulation already teach conventions that exist only in 0.8.0.
+**Why it matters.** Vantage's notation is built to be forward compatible: a viewer drops a directive name it doesn't know, and an unknown key or value one pair at a time. It shows unknown frontmatter keys as plain metadata, and skips config tables it doesn't own. So most of what 0.8.0 adds reads fine on a 0.7.1 viewer ([§2.2](#22-what-a-080-agent-writes-and-what-a-071-viewer-does-with-it)). Two things don't:
+
+- **One genuine break, which the guide made:** 0.8.0 repurposes `oq`, giving the directive to blocked and answered questions too. A 0.7.1 viewer reads it the old way and offers "Take this leaning" on them. New meaning was given to old notation, which [P0](#1-verdict-and-the-principles) forbids, and [OQ-VS4](#OQ-VS4) undoes before the tag.
+- **One new capability:** inline SVG is not notation. Older viewers, like GitHub, drop the drawing.
+
+The rest of this design is for capabilities like that one, and for the conventions that rely on badges an older viewer lacks.
 
 **The shape.** Two declarations of which Vantage the readers run: `target` in `.vantage.toml`, and `VANTAGE_VIEWER` from the review payload or a machine's environment. The newest checker reads both, and checks against a feature table and an archive of every released style guide.
 
@@ -22,7 +27,7 @@ summary: "An agent's checker is whatever PyPI released last, so it teaches Markd
 
 **Start at [§4.2](#42-choosing-the-effective-target):** how the checker picks the version it writes for.
 
-**Needs your ruling:** [OQ-VS1](#OQ-VS1) (before 0.8.0 is tagged), [OQ-VS2](#OQ-VS2), [OQ-VS3](#OQ-VS3).
+**Needs your ruling:** [OQ-VS4](#OQ-VS4) and [OQ-VS1](#OQ-VS1) (both before 0.8.0 is tagged), [OQ-VS2](#OQ-VS2), [OQ-VS3](#OQ-VS3).
 
 **Reads with:** [`checker-version-skew-plan.md`](checker-version-skew-plan.md) (the implementation sketch, incomplete while questions are open), [`agent-cli.md`](agent-cli.md) (whose R6 this replaces), [`repo-config.md`](repo-config.md) (the file the key lives in), [`inline-markup.md`](../reference/inline-markup.md) (whose D3 this amends, [§4.1](#41-the-key)), and [`agent-bootstrap.md`](agent-bootstrap.md) (whose [`OQ-B6`](agent-bootstrap.md#decision-ledger) wording this amends, [§5.1](#51-the-review-payload)).
 
@@ -37,8 +42,9 @@ summary: "An agent's checker is whatever PyPI released last, so it teaches Markd
 - **An unconfigured repository.** With no `target`, no `VANTAGE_VIEWER` on the machine, and no review payload, nothing stops an agent from getting a newer checker than the viewer, under [OQ-VS2](#OQ-VS2)'s leaning. The checker only says which version it checked for.
 - **0.7.x viewers.** No mechanism can reach them. Their payloads are already shipped, and they carry no version. For those users, 0.8.0's remedies are only the CHANGELOG and the user guide.
 
-Five principles carry the design. The words **target** *(coined here)*, **feature table** *(coined here)* and **`VANTAGE_VIEWER`** *(coined here)* are defined where they are introduced, in [§4.1](#41-the-key), [§4.4](#44-the-feature-table) and [§5](#5-the-viewers-version-goes-to-the-newest-checker).
+Six principles carry the design, and the first comes before any machinery. The words **target** *(coined here)*, **feature table** *(coined here)* and **`VANTAGE_VIEWER`** *(coined here)* are defined where they are introduced, in [§4.1](#41-the-key), [§4.4](#44-the-feature-table) and [§5](#5-the-viewers-version-goes-to-the-newest-checker).
 
+- **P0. Notation is forward compatible.** A release never gives existing notation a new meaning: a new meaning gets a new directive name, key or value, which older viewers already drop without harm. Code review enforces this when the notation is designed, before any checker gets involved. What the rest of this design handles is what P0 can't: new *capabilities* that older renderers lack (inline SVG), and conventions that rely on derived displays (badges) an older viewer doesn't draw.
 - **P1. Readers are declared, and the checker writes for the oldest one.** A repository declares its oldest reader once, in config. That's Go's `go` line in `go.mod`, not a stamp in each document. A reviewer's viewer, or a machine's viewer, declares itself.
 - **P2. The newest checker implements every target back to a floor.** Nobody installs an old checker to write for an old viewer. As Go puts it, the newest tool is the best implementation of every older version. The one exception: a version below the floor has no newer implementation, and neither does any version before the target release ships. For those, the viewer's own checker is the only implementation there is.
 - **P3. A mismatch fails once, clearly, and names the fix.** One message saying which version is needed replaces a flood of `vantage/unknown-name` errors or a false pass.
@@ -422,6 +428,19 @@ These edits land when this design is accepted, except where noted.
 8. In 0.8.0, a `vantage/unknown-name` message names 0.8.0 and gives no upgrade command. An unknown rule id says not to remove it. A `just cli` build calls itself a development build.
 
 ## 14. Open Questions
+
+0. 💬 **OQ-VS4: Before tagging 0.8.0, give blocked and answered questions a directive of their own instead of `oq`?** 0.8.0 changes `oq` to mean "any question", against [P0](#1-verdict-and-the-principles), so a 0.7.x viewer offers "Take this leaning" on blocked and answered ones. It's free to fix only before the tag.
+
+   - **A — A new directive name for questions that aren't answerable.** `oq` keeps its 0.7 meaning, and 0.7.x viewers drop the new name harmlessly. Costs about half a day before the tag: the scan, the outline, `vantage/oq-missing`, the style guide and this repository's 🔒/✅ directives.
+   - **B — Keep `oq` on every question, as built.** No delay; 0.7.x reviewers see the wrong control.
+   - **C — Directives on open questions only.** The planning index loses blocked questions.
+
+   <!-- vantage: oq id=OQ-VS4 leaning="A — give blocked and answered questions a new directive name before the tag, so oq keeps its 0.7 meaning and 0.7.x viewers drop the new one harmlessly." -->
+
+   _Leaning:_ A. It's the only option that keeps P0 whole, and it can only be done cheaply before the tag.
+
+   **Answer:**
+   > _(empty — fill in when decided)_
 
 1. 💬 **OQ-VS1: Tag 0.8.0 now, or hold it for the `VANTAGE_VIEWER` payload?** 0.8.0 is already the first incident, since every 0.7.x viewer's payload is bare. This question decides whether 0.8.0 viewers become the second: whether their payloads carry the variable a later checker needs in order to write for them. Nothing added in a later release reaches a viewer that has already shipped.
 
