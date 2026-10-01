@@ -5,7 +5,7 @@ import {
   waitFor,
   act,
 } from "@testing-library/react";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import axios from "axios";
 import { MarkdownViewer } from "./MarkdownViewer";
@@ -465,6 +465,89 @@ describe("MarkdownViewer — a `#slug` link into a collapsed section", () => {
 
     expect(target.getAttribute("data-vantage-collapsed")).toBe("false");
     expect(scrollTo).toHaveBeenCalled();
+  });
+});
+
+/**
+ * A static export runs under HashRouter, where the route is the URL's
+ * fragment. A bare `#slug` there replaces the route: the heading link that
+ * wrote https://docs.yolo-jail.mschulkind.dev/#other-ways-to-get-nix into the
+ * address bar left the document for a route that matches none. So every href
+ * this viewer renders names its route — the attribute is what "Copy link", a
+ * middle-click and "Open in new tab" read — and the address bar gets the same.
+ */
+describe("MarkdownViewer — links in a static export", () => {
+  const DOC = [
+    "# Getting Started",
+    "",
+    "See [the Nix section](#other-ways-to-get-nix), [setup](../guides/setup.md#install)",
+    "and [elsewhere](https://example.com/#top).",
+    "",
+    "### Other ways to get Nix",
+    "",
+  ].join("\n");
+
+  const renderDoc = () =>
+    render(
+      <BrowserRouter>
+        <MarkdownViewer content={DOC} currentPath="docs/getting-started.md" />
+      </BrowserRouter>,
+    );
+  const linkTo = (text: string) => screen.getByText(text).closest("a")!;
+  const headingAnchor = (container: HTMLElement) =>
+    container.querySelector<HTMLAnchorElement>(
+      "#other-ways-to-get-nix a.heading-anchor",
+    )!;
+
+  afterEach(() => {
+    delete window.__VANTAGE_STATIC__;
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("names the document in every fragment it hands out", () => {
+    window.__VANTAGE_STATIC__ = true;
+    const { container } = renderDoc();
+    const here = "#/docs/getting-started.md#other-ways-to-get-nix";
+
+    expect(headingAnchor(container)).toHaveAttribute("href", here);
+    expect(linkTo("the Nix section")).toHaveAttribute("href", here);
+
+    fireEvent.click(headingAnchor(container));
+    expect(window.location.hash).toBe(here);
+  });
+
+  it("writes a link to another document as the export's route, `..` resolved", () => {
+    window.__VANTAGE_STATIC__ = true;
+    renderDoc();
+    expect(linkTo("setup")).toHaveAttribute(
+      "href",
+      "#/guides/setup.md#install",
+    );
+    expect(linkTo("elsewhere")).toHaveAttribute(
+      "href",
+      "https://example.com/#top",
+    );
+    // A click still navigates by route, as it always has.
+    fireEvent.click(linkTo("setup"));
+    expect(mockNavigate).toHaveBeenCalledWith(
+      "/docs/../guides/setup.md#install",
+    );
+  });
+
+  it("keeps the bare fragments and path routes live, which the browser resolves", () => {
+    const { container } = renderDoc();
+    expect(headingAnchor(container)).toHaveAttribute(
+      "href",
+      "#other-ways-to-get-nix",
+    );
+    expect(linkTo("the Nix section")).toHaveAttribute(
+      "href",
+      "#other-ways-to-get-nix",
+    );
+    expect(linkTo("setup")).toHaveAttribute(
+      "href",
+      "/docs/../guides/setup.md#install",
+    );
   });
 });
 

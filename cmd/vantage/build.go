@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
@@ -43,15 +42,11 @@ func newBuildCmd() *cobra.Command {
 				return fmt.Errorf("resolving output: %w", err)
 			}
 
-			if frontendDist != "" {
-				fmt.Fprintln(os.Stderr,
-					"note: --frontend-dist is ignored; the embedded frontend bundle is always used")
-			}
-
 			if err := static.Build(static.Config{
-				Source:   src,
-				Output:   out,
-				RepoName: name,
+				Source:       src,
+				Output:       out,
+				RepoName:     name,
+				FrontendDist: frontendDist,
 			}); err != nil {
 				return err
 			}
@@ -79,7 +74,7 @@ func newBuildCmd() *cobra.Command {
 	f := cmd.Flags()
 	f.StringVarP(&output, "output", "o", "", "Output directory for the static site (required)")
 	f.StringVarP(&name, "name", "n", "", "Repository display name (defaults to source directory name)")
-	f.StringVar(&frontendDist, "frontend-dist", "", "Pre-built frontend dist directory (override; currently ignored)")
+	f.StringVar(&frontendDist, "frontend-dist", "", "Built frontend to use instead of the embedded one (a Vite build's output directory)")
 	_ = cmd.MarkFlagRequired("output")
 
 	return cmd

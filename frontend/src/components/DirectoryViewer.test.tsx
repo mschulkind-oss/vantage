@@ -91,6 +91,53 @@ describe("DirectoryViewer", () => {
     });
   });
 
+  // A fragment on a folder's URL is a heading in the README beneath its
+  // listing, as github.com/owner/repo#section is on GitHub — and a static
+  // export's bare `#section` arrives as just that, on the root route.
+  it("scrolls to the README heading the URL's fragment names, once", async () => {
+    const scrollTo = vi.fn();
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+    (axios.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      data: { content: "# Readme", path: "path/README.md" },
+    });
+    // The README's heading, standing in for the mocked viewer's rendering.
+    const heading = document.createElement("h2");
+    heading.id = "install";
+    heading.scrollIntoView = scrollTo;
+    document.body.append(heading);
+    window.history.replaceState(null, "", "/path#install");
+    try {
+      const { rerender } = renderWithRouter(
+        <DirectoryViewer nodes={mockNodes} currentPath="path" />,
+      );
+      await waitFor(() => expect(scrollTo).toHaveBeenCalledTimes(1));
+
+      // A live reload of the README is not a new arrival: the reader stays
+      // wherever they have scrolled to since.
+      (axios.get as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+        data: { content: "# Readme, edited", path: "path/README.md" },
+      });
+      rerender(
+        <BrowserRouter>
+          <DirectoryViewer nodes={[...mockNodes]} currentPath="path" />
+        </BrowserRouter>,
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId("markdown-viewer")).toHaveTextContent(
+          "edited",
+        ),
+      );
+      expect(scrollTo).toHaveBeenCalledTimes(1);
+    } finally {
+      heading.remove();
+      window.history.replaceState(null, "", "/");
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("handles navigation on row click", () => {
     (axios.get as unknown as ReturnType<typeof vi.fn>).mockImplementation(
       () => new Promise(() => {}),

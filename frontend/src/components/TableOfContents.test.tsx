@@ -90,7 +90,7 @@ function Harness({
   const ref = useRef<HTMLDivElement>(null);
   return (
     <div>
-      <TableOfContents containerRef={ref} open={open} />
+      <TableOfContents containerRef={ref} open={open} route="/doc.md" />
       <div ref={ref} dangerouslySetInnerHTML={{ __html: html }} />
     </div>
   );
@@ -611,7 +611,7 @@ function LiveHeading({ text, id }: { text: string; id: string }) {
   const ref = useRef<HTMLDivElement>(null);
   return (
     <div>
-      <TableOfContents containerRef={ref} open />
+      <TableOfContents containerRef={ref} open route="/doc.md" />
       <div ref={ref}>
         <h2 id={id}>{text}</h2>
       </div>
@@ -629,7 +629,7 @@ function LiveQuestion({ tagged }: { tagged: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   return (
     <div>
-      <TableOfContents containerRef={ref} open />
+      <TableOfContents containerRef={ref} open route="/doc.md" />
       <div ref={ref}>
         <h2 id="questions">Questions</h2>
         <ul>
@@ -702,6 +702,27 @@ describe("TableOfContents", () => {
     replaceState.mockRestore();
   });
 
+  // In a static export the route is the URL's fragment, so a bare `#second`
+  // would replace it: "Copy link" on an entry, or the address bar after a
+  // click, opened the export's front page instead of this document.
+  it("names the document in its links and the URL in a static export", () => {
+    window.__VANTAGE_STATIC__ = true;
+    const replaceState = vi.spyOn(window.history, "replaceState");
+    try {
+      render(<Harness />);
+      const entry = screen.getByRole("link", { name: "Second section" });
+      expect(entry).toHaveAttribute("href", "#/doc.md#second");
+
+      act(() => {
+        fireEvent.click(entry);
+      });
+      expect(replaceState).toHaveBeenCalledWith(null, "", "#/doc.md#second");
+    } finally {
+      replaceState.mockRestore();
+      delete window.__VANTAGE_STATIC__;
+    }
+  });
+
   it("carries no surface of its own — no panel, border or background", () => {
     render(<Harness />);
     const toc = screen.getByTestId("table-of-contents");
@@ -732,7 +753,7 @@ describe("TableOfContents", () => {
       const ref = useRef<HTMLDivElement>(null);
       return (
         <div>
-          <TableOfContents containerRef={ref} open />
+          <TableOfContents containerRef={ref} open route="/doc.md" />
           <div ref={ref}>
             <p>Just prose.</p>
           </div>
@@ -823,7 +844,7 @@ describe("the column beside review mode's buttons (Q5)", () => {
     useOpenQuestionButtons(ref, [], true, html, vi.fn(), vi.fn());
     return (
       <div>
-        <TableOfContents containerRef={ref} open />
+        <TableOfContents containerRef={ref} open route="/doc.md" />
         <div ref={ref} dangerouslySetInnerHTML={{ __html: html }} />
       </div>
     );

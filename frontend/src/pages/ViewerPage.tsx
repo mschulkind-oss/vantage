@@ -1416,6 +1416,7 @@ export const ViewerPage: React.FC = () => {
             <TableOfContents
               containerRef={contentRef}
               open={tocOpen && tocAvailable}
+              route={location.pathname}
             />
             <div
               className={cn(
@@ -1440,12 +1441,13 @@ export const ViewerPage: React.FC = () => {
                       {currentPath}
                     </p>
                   )}
-                  {connected && (
+                  {connected && !isStaticMode() && (
                     // Both errors that land here — a document that is gone and
                     // a repository the daemon has retired — are re-checked on
                     // the live socket, so this page loads by itself the moment
                     // the thing returns. Saying so stops the reader reaching
-                    // for a reload that does nothing extra.
+                    // for a reload that does nothing extra. A static export has
+                    // no socket, so nothing there comes back by itself.
                     <p className="text-sm text-slate-500 dark:text-slate-400 mt-3">
                       Waiting — this page loads it automatically if it comes
                       back.
