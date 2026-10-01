@@ -3,7 +3,7 @@ title: "The planning index — planning facts written once, and shown wherever t
 status: accepted
 stage: CURRENT
 verified: 2026-09-30
-verified_commit: 9507cac
+verified_commit: 0a872d9
 covers:
   - packages/vantage-md/src/planning/
   - internal/planning/
@@ -39,10 +39,10 @@ summary: "Vantage reads a repository's planning documents as a set — frontmatt
 
 # The planning index — planning facts written once, and shown wherever they are linked
 
-**Status:** Verified 2026-09-30 against `9507cac`. The commit that added this
-document changed only comments and the tests that read these documents inside the
-`covers:` perimeter, repointing them here, so a perimeter diff from `9507cac`
-shows those and nothing else. **UNMEASURED at scale:** of the scale targets in
+**Status:** Verified 2026-09-30 against `0a872d9`, the commit that added this
+document. Inside the `covers:` perimeter it changed only comments and the tests that
+read these documents, repointing them here, so the code it describes is `9507cac`'s,
+unchanged. **UNMEASURED at scale:** of the scale targets in
 [§18](#18-scale-targets-and-what-has-been-measured), only D1 and D2 have been run
 against the build, on this repository's own tree; D8, D11, D12 and D13 are held
 by tests, and the rest have never been run. Reading the code proves the
@@ -2161,7 +2161,7 @@ roadmap places.
 
 ## Current values
 
-Verified at `9507cac`. The prose above explains what each of these is for; this table
+Verified at `0a872d9`. The prose above explains what each of these is for; this table
 is the only place most of the numbers are stated.
 
 | Value | Setting | Defined in |
