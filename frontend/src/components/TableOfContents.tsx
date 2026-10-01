@@ -1,6 +1,7 @@
 import React, { type RefObject } from "react";
 import { cn } from "../lib/utils";
 import { scrollToAnchorElement } from "../lib/anchorScroll";
+import { fragmentHref } from "../lib/staticMode";
 import {
   entryAccessibleName,
   tallyQuestions,
@@ -14,6 +15,11 @@ interface TableOfContentsProps {
   containerRef: RefObject<HTMLElement | null>;
   /** Whether the table of contents is showing. Closed means no DOM observers run at all. */
   open: boolean;
+  /**
+   * The route of the page the document is on, which an entry's link names in a
+   * static export, where a bare `#id` would replace it (`fragmentHref`).
+   */
+  route: string;
 }
 
 /** Levels deeper than this share the deepest indent rather than marching off the edge. */
@@ -42,6 +48,7 @@ const MAX_INDENT = 3;
 export const TableOfContents: React.FC<TableOfContentsProps> = ({
   containerRef,
   open,
+  route,
 }) => {
   const { entries, activeId } = useDocumentOutline(containerRef, open);
 
@@ -111,6 +118,7 @@ export const TableOfContents: React.FC<TableOfContentsProps> = ({
               active={entry.id !== "" && entry.id === activeId}
               indent={8 + Math.min(entry.level - topLevel, MAX_INDENT) * 12}
               containerRef={containerRef}
+              route={route}
             />
           ))
         )}
@@ -137,7 +145,8 @@ const OutlineLink: React.FC<{
   active: boolean;
   indent: number;
   containerRef: RefObject<HTMLElement | null>;
-}> = ({ entry, active, indent, containerRef }) => {
+  route: string;
+}> = ({ entry, active, indent, containerRef, route }) => {
   const question = entry.kind === "question";
 
   // `entry.element` and not `#${entry.id}`: for a question the anchor sits on the
@@ -209,14 +218,15 @@ const OutlineLink: React.FC<{
     );
   }
 
+  const href = fragmentHref(route, entry.id);
   return (
     <a
       {...shared}
-      href={`#${entry.id}`}
+      href={href}
       aria-label={question ? entryAccessibleName(entry) : undefined}
       onClick={(e) => {
         e.preventDefault();
-        window.history.replaceState(null, "", `#${entry.id}`);
+        window.history.replaceState(null, "", href);
         go();
       }}
     >

@@ -1,3 +1,5 @@
+import { routeHref } from "./staticMode";
+
 /**
  * Determines if a click event should be handled as internal SPA navigation.
  * Returns false if the user is trying to open a link in a new tab/window
@@ -33,7 +35,11 @@ export function isNewTabEnter(
   );
 }
 
-/** Open an SPA route in a new tab, without handing it a reference to this one. */
-export function openInNewTab(href: string): void {
-  window.open(href, "_blank", "noopener");
+/**
+ * Open an SPA route in a new tab, without handing it a reference to this one.
+ * The route is written as the router reads it — in a static export, the hash
+ * route `#/docs/a.md` rather than a path the host has no file at (`routeHref`).
+ */
+export function openInNewTab(route: string): void {
+  window.open(routeHref(route), "_blank", "noopener");
 }

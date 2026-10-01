@@ -89,4 +89,16 @@ describe("openInNewTab", () => {
     expect(open).toHaveBeenCalledWith("/repo/docs/a.md", "_blank", "noopener");
     open.mockRestore();
   });
+
+  it("opens the hash route in a static export, not a path its host lacks", () => {
+    window.__VANTAGE_STATIC__ = true;
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    try {
+      openInNewTab("/docs/a.md");
+      expect(open).toHaveBeenCalledWith("#/docs/a.md", "_blank", "noopener");
+    } finally {
+      open.mockRestore();
+      delete window.__VANTAGE_STATIC__;
+    }
+  });
 });

@@ -139,6 +139,16 @@ checker to take these when you choose; see
   moment.
 - A document reloaded when only its attributes changed, as Spotlight and backup
   tools do.
+- On a site made with `vantage build`, the address a heading's `#` link left
+  in the address bar, such as `…/#other-ways-to-get-nix`, opened a blank page.
+  Every link on such a site now names its document, as in
+  `…/#/getting-started.md#other-ways-to-get-nix`, including **Copy link** and a
+  middle-click. A link of the old form opens the front page, at that heading if
+  the README has it. A page the site does not have shows **Go to Home** instead
+  of a blank page. Rebuild and redeploy the site to get this. See
+  [Page URLs](userguide/guides/static-sites.md#page-urls).
+- `vantage build --frontend-dist DIR` builds the site with the frontend in
+  `DIR`. It used to ignore the option.
 
 ### Contributors
 

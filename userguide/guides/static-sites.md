@@ -30,6 +30,23 @@ The `vantage build` command:
 
 The result is a completely static site. No backend, no server process, no WebSocket — just files.
 
+## Page URLs
+
+A static host serves files, not pages, so an exported site keeps the page you are on in the part of the URL after `#`:
+
+| URL                           | Opens                                                        |
+| ----------------------------- | ------------------------------------------------------------ |
+| `…/#/`                        | The front page: the top folder, with its `README.md` below   |
+| `…/#/guides/setup.md`         | That document                                                |
+| `…/#/guides/setup.md#install` | That document, scrolled to its **Install** heading           |
+| `…/#install`                  | The front page, scrolled to the README's **Install** heading |
+
+Every link Vantage gives out has the third form: a heading's `#` link, the contents panel, a link to another document, and **Copy link** or a middle-click on any of them. GitHub links a heading of a repository's README as `github.com/owner/repo#install`, so the fourth form makes a link written that way work here too.
+
+Sites built with an older Vantage gave out the fourth form for every heading, even one in another document. Such a link now opens the front page, at the heading if the README has one by that name. The link does not say which document it came from, so it cannot open that document.
+
+A page the site does not have, such as `…/#/no-such-page.md`, shows **Failed to load file content** and a **Go to Home** button, even on a host that answers a missing file with the site's `index.html`.
+
 ## Deployment Examples
 
 ### Cloudflare Workers
@@ -128,12 +145,12 @@ SPA fallback comes from `404.html`, which mirrors `index.html`. On Cloudflare Wo
 
 ## Options Reference
 
-| Option            | Default            | Description                                |
-| ----------------- | ------------------ | ------------------------------------------ |
-| `PATH`            | `.` (current dir)  | Source directory with Markdown files       |
-| `--output`, `-o`  | _required_         | Where to write the static site             |
-| `--name`, `-n`    | Directory name     | Display name shown in the UI header        |
-| `--frontend-dist` | _(embedded)_       | Override the embedded frontend bundle (ignored) |
+| Option            | Default           | Description                                                                                 |
+| ----------------- | ----------------- | ------------------------------------------------------------------------------------------- |
+| `PATH`            | `.` (current dir) | Source directory with Markdown files                                                        |
+| `--output`, `-o`  | _required_        | Where to write the static site                                                              |
+| `--name`, `-n`    | Directory name    | Display name shown in the UI header                                                         |
+| `--frontend-dist` | _(embedded)_      | Use this built frontend (a Vite build's output folder) instead of the one inside the binary |
 
 ## Limitations
 
