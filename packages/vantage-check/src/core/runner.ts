@@ -15,6 +15,7 @@ import { checkReferences } from "../rules/references.js";
 import { checkMath } from "../rules/math.js";
 import { checkMarkdownHygiene } from "../rules/markdown.js";
 import { checkMermaid } from "../rules/mermaid.js";
+import { checkProse } from "../rules/prose.js";
 import { checkQuestionLayout } from "../rules/questionLayout.js";
 import { checkPipeline } from "../rules/render.js";
 import { checkVantageFrontmatter } from "../rules/vantageFrontmatter.js";
@@ -62,6 +63,7 @@ export async function checkFiles(
     filesChecked++;
     checkLinks(collector);
     checkReferences(collector);
+    checkProse(collector);
     checkFrontmatter(collector);
     // After `checkFrontmatter`, not before: the block has to have been judged
     // as frontmatter before anything reads what is inside it.

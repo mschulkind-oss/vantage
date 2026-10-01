@@ -101,7 +101,8 @@ choose.** Check a file named `index` as `vantage-check ./index`, since `index`
 is now a command. `planning/depends-on-missing` and `vantage/question-name`,
 which reports an `oq` on a 🔒 or ✅ question, are errors.
 `planning/question-length` warns past 120 words, failing `--strict`, as do the
-new `vantage/oq-deprecated` and `vantage/question-layout` warnings, and
+new `vantage/oq-deprecated` and `vantage/question-layout` warnings and
+`prose/inline-list`, on a paragraph that runs `(a) (b) (c)` together.
 `vantage/oq-missing` reads more ways of writing a leaning.
 
 ### Fixed
