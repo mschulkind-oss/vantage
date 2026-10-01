@@ -148,6 +148,13 @@ expect_checks "the test setup file" "M frontend/src/test/setup.ts" \
 expect_checks "a Playwright spec" "M frontend/e2e/basic.spec.ts" "docs eslint:frontend"
 expect_checks "an e2e fixture document" "M frontend/e2e/fixtures/test_repo/page1.md" "docs vitest:vantage-check"
 expect_checks "the frontend's index.html" "M frontend/index.html" "docs"
+expect_checks "a measurement harness module" "M frontend/perf/planning/run.ts" \
+    "docs prettier eslint:frontend tsc:frontend"
+expect_files "a measurement harness module" "M frontend/perf/planning/run.ts" prettier \
+    "frontend/perf/planning/run.ts"
+expect_checks "a deleted harness module" "D frontend/perf/planning/run.ts" "docs tsc:frontend"
+expect_checks "the harness's README" "M frontend/perf/planning/README.md" "docs vitest:vantage-check"
+expect_checks "the harness's tsconfig" "M frontend/tsconfig.perf.json" "docs full"
 
 # A rename arrives as a deletion and an addition, because check-fast.sh reads
 # the staged set with --no-renames.

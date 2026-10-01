@@ -3,7 +3,7 @@ title: "Measuring the planning index at scale"
 date: 2026-09-30
 status: accepted
 stage: DECIDED
-next: "Build the harness and the scale fixture again, then run D1 and D2 on the fixture at all four sizes"
+next: "Run D1 and D2 on the scale fixture at all four sizes, with just planning-perf"
 tags: [planning, performance, measurement]
 summary: "The planning index is built and has graduated into a reference, but of its thirteen scale targets only D1 and D2 have been run against the build, and only on this repository's tree. This is the work of running the rest, in order, and what each result changes."
 ---
@@ -33,9 +33,11 @@ D8, D11, D12 and D13 are held by tests, so they are not owed here.
 
 ## Stops, in order
 
-1. **Build the harness and the scale fixture again.** Neither is in the tree. The
-   fixture never holds more than 60 documents, so no run builds a large input.
-   Check its averages against
+1. **Build the harness and the scale fixture.** Done: both are in the tree,
+   behind `just planning-perf`
+   ([`frontend/perf/planning/`](../../frontend/perf/planning/README.md)). The
+   fixture never holds more than 60 documents, so no run builds a large input,
+   and every run checks its averages against
    [§18](../reference/planning-index.md#18-scale-targets-and-what-has-been-measured)'s
    before measuring anything, because D3 and D9 are slopes over that mix.
 2. **D1 and D2 on the fixture**, in all three scenarios at each size. They come
