@@ -112,6 +112,19 @@ e2e:
     sh scripts/e2e-fixture.sh
     cd frontend && npx playwright test
 
+# The planning index's scale targets (docs/reference/planning-index.md §18), on
+# the production bundle in headless Chromium: the scale fixture at 15, 30, 45 and
+# 60 documents, written to a temporary directory and never committed, or a
+# repository named with --repo. It rebuilds web/dist, which is ignored, and
+# writes its raw results to the OS temp directory unless --out says where, so it
+# leaves tracked files unchanged. Not part of the gate or CI: timings on a busy
+# machine are noise. frontend/perf/planning/README.md says what each target
+# reads; `just planning-perf --help` lists the options.
+
+# Measure the planning index's scale targets (§18) on the production bundle; --help for options.
+planning-perf *args:
+    node frontend/perf/planning/run.ts {{args}}
+
 # P0 of docs/design/checker-version-skew.md, as a check: a release never gives
 # existing notation a new meaning. This renders every example the style guide
 # shows, every directive form the vocabulary accepts and every `vantage:`

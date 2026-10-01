@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "format": "prettier --write 'src/**/*.{ts,tsx,js,jsx,css}'",
-    "format:check": "prettier --check 'src/**/*.{ts,tsx,js,jsx,css}'",
+    "format": "prettier --write 'src/**/*.{ts,tsx,js,jsx,css}' 'perf/**/*.ts'",
+    "format:check": "prettier --check 'src/**/*.{ts,tsx,js,jsx,css}' 'perf/**/*.ts'",
     "lint": "eslint . --max-warnings 0",
     "preview": "vite preview",
     "test": "vitest run",

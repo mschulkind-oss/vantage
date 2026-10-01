@@ -62,6 +62,7 @@ emit() {
 prettier_glob() {
     case $1 in
     frontend/src/*.ts | frontend/src/*.tsx | frontend/src/*.js | frontend/src/*.jsx | frontend/src/*.css) return 0 ;;
+    frontend/perf/*.ts) return 0 ;;
     packages/vantage-md/src/*.ts | packages/vantage-md/src/*.tsx) return 0 ;;
     packages/vantage-md/*/*) return 1 ;;
     packages/vantage-md/*.ts | packages/vantage-md/*.js | packages/vantage-md/*.json) return 0 ;;
@@ -209,6 +210,13 @@ select_path() {
     # document check reads them.
     frontend/e2e/*) lint frontend ;;
     frontend/README.md | frontend/index.html | frontend/.gitignore) ;;
+    # The measurement harness (`just planning-perf`): `eslint .` lints it,
+    # prettier formats it, and `tsc --build` type-checks it through
+    # tsconfig.perf.json. No test runs it, and nothing in src/ imports it.
+    frontend/perf/*)
+        lint frontend
+        typecheck frontend
+        ;;
     # Anything else in frontend/ is its configuration: the manifest, the
     # tsconfigs, and the eslint, vite, vitest, playwright, postcss and tailwind
     # configs. A directory the table has never met lands here too.
