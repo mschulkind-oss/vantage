@@ -5,8 +5,9 @@
  *
  * The same column as the table of contents, drawn the same way: beside the
  * page's column, with no surface of its own, and `sticky` so it stays in
- * reach while the page scrolls. It names each section with its count and,
- * under it, the documents the section lists, each with its questions there.
+ * reach while the page scrolls. It names each section with its count, and
+ * the line under the section's heading as its tooltip, and, under it, the
+ * documents the section lists, each with its questions there.
  * A section goes to its heading; a document goes to its first card or row
  * in the section, flipping the section to the page that holds it first.
  *
@@ -152,6 +153,7 @@ const OutlineSectionLink: React.FC<{
   <a
     href={`#${section.id}`}
     data-testid="outline-section"
+    title={section.explanation}
     aria-current={active ? "location" : undefined}
     onClick={(e) => follow(e, onGo)}
     className={cn(

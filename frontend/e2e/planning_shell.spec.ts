@@ -4,7 +4,7 @@ import { test, expect, type Page } from "@playwright/test";
 // contents column (docs/reference/planning-index.md §6.9), in a real browser.
 // The fixture is test_repo's plans/, as planning_page.spec.ts reads it: Needs
 // you holds design.md's two questions and paged.md's twelve, ten to a page,
-// Unrouted holds 27 questions over two pages, and Graduate one document.
+// Not on a roadmap holds 27 questions over two pages, and Ready to graduate one document.
 
 const section = (page: Page, name: string) =>
   page.getByRole("region", { name: new RegExp(`^${name}`) });
@@ -65,9 +65,9 @@ test.describe("the planning page in the app shell", () => {
   }) => {
     await openWithOutline(page);
     // A section: its heading comes into view with the focus.
-    await outlineSection(page, "Graduate").focus();
+    await outlineSection(page, "Ready to graduate").focus();
     await page.keyboard.press("Enter");
-    const graduate = section(page, "Graduate").getByRole("heading", {
+    const graduate = section(page, "Ready to graduate").getByRole("heading", {
       level: 2,
     });
     await expect(graduate).toBeFocused();
@@ -78,13 +78,13 @@ test.describe("the planning page in the app shell", () => {
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\?unrouted=2$/);
     await expect(
-      section(page, "Unrouted").getByRole("link", {
+      section(page, "Not on a roadmap").getByRole("link", {
         name: "tree-badges/bake-images.md",
       }),
     ).not.toHaveCount(0);
     // Its first card, found by the id every card carries (planningCardId),
     // is brought into view with the focus on its first control.
-    const card = section(page, "Unrouted")
+    const card = section(page, "Not on a roadmap")
       .locator('article[id^="pq-tree-badges%2Fbake-images.md--"]')
       .first();
     await expect(card).toBeInViewport();
@@ -95,7 +95,7 @@ test.describe("the planning page in the app shell", () => {
     // A document's row: in view, with its link focused.
     await outlineDocument(page, "plans/shipped.md").focus();
     await page.keyboard.press("Enter");
-    const row = section(page, "Graduate").locator(
+    const row = section(page, "Ready to graduate").locator(
       '[data-planning-document="plans/shipped.md"]',
     );
     await expect(row).toBeInViewport();
@@ -112,7 +112,7 @@ test.describe("the planning page in the app shell", () => {
     );
     // Scrolled to the end, the last section is the one on screen.
     await pane(page).evaluate((el) => el.scrollTo(0, el.scrollHeight));
-    await expect(outlineSection(page, "Graduate")).toHaveAttribute(
+    await expect(outlineSection(page, "Ready to graduate")).toHaveAttribute(
       "aria-current",
       "location",
     );
@@ -120,10 +120,10 @@ test.describe("the planning page in the app shell", () => {
       "aria-current",
     );
     // And a section's heading at the top of the pane marks that section.
-    await section(page, "Unrouted")
+    await section(page, "Not on a roadmap")
       .getByRole("heading", { level: 2 })
       .evaluate((el) => el.scrollIntoView({ block: "start" }));
-    await expect(outlineSection(page, "Unrouted")).toHaveAttribute(
+    await expect(outlineSection(page, "Not on a roadmap")).toHaveAttribute(
       "aria-current",
       "location",
     );

@@ -18,6 +18,7 @@ import {
   type PlanningConfig,
   type StageRole,
 } from "./config.js";
+import { PLANNING_SECTION_TITLES } from "./guide.js";
 import { findDocument, type PlanningIndex } from "./model.js";
 import type {
   DependsOn,
@@ -147,8 +148,8 @@ export const PLANNING_NOTICES: {
     );
     if (unread.length < roadmaps.length) {
       // One routes. Only a listed roadmap that could not be read is named: a
-      // `done` stage is a deliberate retirement, and Skipped and Could not
-      // read already list a roadmap found by name.
+      // `done` stage is a deliberate retirement, and Too large and Unreadable
+      // already list a roadmap found by name.
       if (config.roadmaps === null) return null;
       const failed = unread.filter((r) => r.state !== "done");
       if (failed.length === 0) return null;
@@ -192,8 +193,7 @@ export const PLANNING_NOTICES: {
     count === 1
       ? "1 more question needs you on another roadmap."
       : `${count.toLocaleString("en-US")} more questions need you on other roadmaps.`,
-  noStages:
-    "No stages are declared, so Ready, Graduate and Disagrees are not shown. Declare them under [planning.stages] in .vantage.toml.",
+  noStages: `No stages are declared, so ${PLANNING_SECTION_TITLES.ready}, ${PLANNING_SECTION_TITLES.graduate} and ${PLANNING_SECTION_TITLES.disagrees} are not shown. Declare them under [planning.stages] in .vantage.toml.`,
   refused: (candidateCount, maxCandidates) =>
     `This repository has ${candidateCount.toLocaleString("en-US")} candidate files, more than max-candidates (${maxCandidates.toLocaleString("en-US")}), so nothing was scanned. Narrow include under [planning] in .vantage.toml, or raise max-candidates.`,
 };
@@ -365,9 +365,9 @@ export function roadmapsOf(index: PlanningIndex): PlanningRoadmap[] {
 }
 
 /**
- * The open questions of `docs` that `routed` does not hold (§6.2 *Unrouted*),
- * by document, then line. `docs` are live documents: a `done` one has no
- * questions to leave unrouted.
+ * The open questions of `docs` that `routed` does not hold (§6.2 *Not on a
+ * roadmap*), by document, then line. `docs` are live documents: a `done` one
+ * has no questions to leave unrouted.
  */
 function unroutedIn(
   docs: readonly PlanningDocument[],
@@ -549,8 +549,8 @@ export interface ReferenceSummary {
   onRoadmaps: { roadmap: string; heading: string | null }[];
   /**
    * Its open questions no roadmap routes: what the planning page lists for it
-   * under *Unrouted* (§6.2). `0` when no roadmap routes, where there is no
-   * such section, and for a `done` document, which contributes to none.
+   * under *Not on a roadmap* (§6.2). `0` when no roadmap routes, where there
+   * is no such section, and for a `done` document, which contributes to none.
    */
   unrouted: number;
   /**

@@ -11,6 +11,7 @@
  */
 import {
   findDocument,
+  sectionExplanation,
   type PlanningIndex,
   type PlanningQuestion,
   type PlanningSections,
@@ -29,7 +30,7 @@ export interface OutlineDocument {
   path: string;
   /**
    * How many of its questions the section holds: its cards there, or, under
-   * *Disagrees*, the open questions that put it there. `0` when the section
+   * *Stage conflict*, the open questions that put it there. `0` when the section
    * holds none of its questions, as a stage row or a waiting document.
    */
   questions: number;
@@ -46,11 +47,13 @@ export interface OutlineDocument {
 export interface OutlineSection {
   id: SectionId;
   title: string;
+  /** The line under its heading on the page, which its link's tooltip says. */
+  explanation: string;
   /** Entries in the whole section, as its heading counts them. */
   total: number;
   /**
    * Its documents, at most `planningLimits.outlineDocuments` of them; none
-   * under *Skipped* and *Could not read*, whose lines name files that are
+   * under *Too large* and *Unreadable*, whose lines name files that are
    * not planning documents.
    */
   documents: readonly OutlineDocument[];
@@ -109,6 +112,7 @@ export function planningOutline(
     return {
       id: section.id,
       title: SECTION_TITLES[section.id],
+      explanation: sectionExplanation(section.id, sections),
       total: section.entries.length,
       documents: documents.slice(0, shown),
       more: Math.max(0, documents.length - shown),

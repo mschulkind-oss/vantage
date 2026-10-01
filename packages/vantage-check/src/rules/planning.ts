@@ -1,6 +1,7 @@
 import { realpathSync, statSync } from "node:fs";
 import { dirname, join, parse, relative, sep } from "node:path";
 import {
+  PLANNING_SECTION_TITLES,
   derivePlanningSections,
   findDocument,
   hasRoadmapName,
@@ -201,10 +202,10 @@ class PlanningPass {
     }
     if (checked.size === 0) return;
 
-    // Without a project there is no roadmap, and Unrouted is not shown
-    // without one (§6.2), so `unrouted` reports nothing. A roadmap may be one
-    // of the run's files already, read and left out only because no rule
-    // could report on it; routing still needs it.
+    // Without a project there is no roadmap, and Not on a roadmap is not
+    // shown without one (§6.2), so `unrouted` reports nothing. A roadmap may
+    // be one of the run's files already, read and left out only because no
+    // rule could report on it; routing still needs it.
     if (
       listing !== null &&
       unroutable &&
@@ -222,10 +223,12 @@ class PlanningPass {
     const routing = sections.roadmaps
       .filter((roadmap) => roadmap.state === "routes")
       .map((roadmap) => roadmap.path);
-    const unroutedBy =
+    // Routing (§4.3) in plain words: a link to the question's anchor, or to
+    // its document as a whole, never to one of its headings.
+    const missing =
       routing.length === 1
-        ? `the roadmap (${routing.join("")}). Link it, or this document, from there`
-        : `any roadmap (${routing.join(", ")}). Link it, or this document, from one of them`;
+        ? `the roadmap (${routing.join("")}) links neither to it nor to this document as a whole`
+        : `no roadmap (${routing.join(", ")}) links to it or to this document as a whole`;
     for (const [rel, file] of checked) {
       const doc = findDocument(index, rel);
       if (doc === undefined) continue;
@@ -242,7 +245,9 @@ class PlanningPass {
         report(
           "planning/unrouted",
           question?.unitLine ?? ref.line,
-          `Open question ${name} is not routed by ${unroutedBy}, so the planning page lists it under Needs you rather than Unrouted.`,
+          // Where it goes is an order, and the order is the human's: the
+          // message points at the request, which proposes and never places.
+          `Open question ${name} is not on a roadmap: ${missing}, so the planning page lists it under ${PLANNING_SECTION_TITLES.unrouted}. Where it goes is the human's to confirm; \`vantage-check index --request unrouted\` asks an agent for a proposal.`,
         );
       }
     }
@@ -412,7 +417,7 @@ class PlanningPass {
     }
   }
 
-  /** The page's Disagrees section: a ready or built stage with open questions. */
+  /** The page's Stage conflict section: ready or built, with open questions. */
   private stageDisagrees(
     doc: PlanningDocument,
     sections: PlanningSections,
@@ -427,7 +432,7 @@ class PlanningPass {
     report(
       "planning/stage-disagrees",
       doc.stageLine ?? 1,
-      `Stage \`${doc.stage}\` says this document is ${role === "built" ? "built" : "decided"}, but ${open.length} question${one ? " is" : "s are"} still open${ids.length > 0 ? ` (${ids.join(", ")})` : ""}. Rule ${one ? "it" : "them"}, or set a stage that is still open.`,
+      `Stage \`${doc.stage}\` says this document is ${role === "built" ? "built" : "decided"}, but ${open.length} question${one ? " is" : "s are"} still open${ids.length > 0 ? ` (${ids.join(", ")})` : ""}. Have ${one ? "it" : "them"} ruled, or set a stage that is still open.`,
     );
   }
 

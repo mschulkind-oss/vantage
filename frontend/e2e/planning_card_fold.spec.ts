@@ -16,7 +16,7 @@ import { serveFixture } from "./ownServer";
 // run past the lines a folded card shows, OQ-F1 with a link in what it cuts
 // off, OQ-F2 fits with its options folded away after it, the rest fit and fold
 // nothing — then later.md's long OQ-L1 and short OQ-L2, on the second page
-// below OQ-F11, and under Unrouted aside.md's long OQ-A1, in a list, and
+// below OQ-F11, and under Not on a roadmap aside.md's long OQ-A1, in a list, and
 // OQ-A2, a paragraph outside one, which is one block the card cuts short
 // itself.
 

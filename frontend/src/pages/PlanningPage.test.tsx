@@ -17,6 +17,15 @@ import {
   screen,
   within,
 } from "@testing-library/react";
+import {
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { useLayoutEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -30,18 +39,25 @@ import {
 import axios from "axios";
 import {
   PLANNING_NOTICES,
+  PLANNING_SECTION_GUIDE,
   buildPlanningIndex,
+  derivePlanningSections,
+  planningAgentRequest,
+  sectionExplanation,
   type PlanningConfig,
   type PlanningSources,
 } from "vantage-md/planning";
 import { PlanningPage } from "./PlanningPage";
 import { AppShell } from "../components/AppShell";
 import { resetPlanningReviews } from "../hooks/usePlanningReviews";
+import { resetRepoRootsForTests } from "../hooks/useRepoRoot";
 import {
   prefetchPlanningPage,
   resetPlanningPageInputs,
 } from "../hooks/usePlanningPageInputs";
 import { clearMermaidCache } from "../../../packages/vantage-md/src/mermaidCache";
+import { run } from "../../../packages/vantage-check/src/cli";
+import { bufferIo } from "../../../packages/vantage-check/src/io";
 import {
   STATIC_MESSAGE,
   resetPlanningTrackers,
@@ -523,9 +539,9 @@ describe("the sections, top to bottom (§6.2)", () => {
     ]);
   });
 
-  it("lists open questions nothing routes under Unrouted, a done document's aside", async () => {
+  it("lists open questions nothing routes under Not on a roadmap, a done document's aside", async () => {
     await renderPage();
-    expect(cardsIn("Unrouted")).toEqual([
+    expect(cardsIn("Not on a roadmap")).toEqual([
       "OQ-X1: Question OQ-X1?",
       "OQ-U1: Question OQ-U1?",
     ]);
@@ -534,11 +550,11 @@ describe("the sections, top to bottom (§6.2)", () => {
     ).toBeNull();
   });
 
-  it("lists blocked questions and waiting documents under Waiting", async () => {
+  it("lists blocked questions and waiting documents under Blocked", async () => {
     await renderPage();
-    expect(cardsIn("Waiting")).toEqual(["OQ-D2: Question OQ-D2?"]);
-    expect(documentsIn("Waiting")).toEqual(["plans/deps.md"]);
-    const waits = within(section("Waiting")).getByText(/waits on/);
+    expect(cardsIn("Blocked")).toEqual(["OQ-D2: Question OQ-D2?"]);
+    expect(documentsIn("Blocked")).toEqual(["plans/deps.md"]);
+    const waits = within(section("Blocked")).getByText(/blocked on/);
     expect(
       within(waits).getByRole("link", { name: "design.md#OQ-D1" }),
     ).toHaveAttribute("href", "/plans/design.md#OQ-D1");
@@ -547,15 +563,15 @@ describe("the sections, top to bottom (§6.2)", () => {
     ).toBeTruthy();
   });
 
-  // §6.2's Disagrees holds both roles, and the checker's matching finding
+  // §6.2's Stage conflict holds both roles, and the checker's matching finding
   // tells them apart; the page said "decided" for both.
-  it("says a Disagrees row's stage is built or decided, by its role", async () => {
+  it("says a Stage conflict row's stage is built or decided, by its role", async () => {
     seed({
       ...TREE,
       "plans/built-open.md": doc("stage: BUILT", q("OQ-Y1", OPEN)),
     });
     await renderPage();
-    const rows = section("Disagrees");
+    const rows = section("Stage conflict");
     const rowOf = (path: string) =>
       rows.querySelector(`[data-planning-document="${path}"]`)!.textContent;
     expect(rowOf("plans/built-open.md")).toContain(
@@ -566,23 +582,25 @@ describe("the sections, top to bottom (§6.2)", () => {
     );
   });
 
-  it("lists Ready, Graduate and Disagrees by stage", async () => {
+  it("lists Ready to build, Ready to graduate and Stage conflict by stage", async () => {
     await renderPage();
-    expect(documentsIn("Ready")).toEqual(["plans/ready.md"]);
-    expect(documentsIn("Graduate")).toEqual(["plans/built.md"]);
-    expect(documentsIn("Disagrees")).toEqual(["plans/disagrees.md"]);
+    expect(documentsIn("Ready to build")).toEqual(["plans/ready.md"]);
+    expect(documentsIn("Ready to graduate")).toEqual(["plans/built.md"]);
+    expect(documentsIn("Stage conflict")).toEqual(["plans/disagrees.md"]);
     // Each by name, with its badge.
     expect(
-      within(section("Ready")).getByRole("link", { name: "plans/ready.md" }),
+      within(section("Ready to build")).getByRole("link", {
+        name: "plans/ready.md",
+      }),
     ).toHaveAttribute("href", "/plans/ready.md");
     expect(
-      within(section("Ready")).getByRole("img", {
+      within(section("Ready to build")).getByRole("img", {
         name: "accepted, decided",
       }),
     ).toBeTruthy();
   });
 
-  it("lists Skipped and Could not read", async () => {
+  it("lists Too large and Unreadable", async () => {
     seed(
       TREE,
       { stages: STAGES },
@@ -592,12 +610,10 @@ describe("the sections, top to bottom (§6.2)", () => {
       },
     );
     await renderPage();
-    expect(section("Skipped")).toHaveTextContent(
+    expect(section("Too large")).toHaveTextContent(
       "docs/huge.md 2.0 MiB, over max-file-bytes (1.0 MiB)",
     );
-    expect(section("Could not read")).toHaveTextContent(
-      "docs/latin1.md not UTF-8",
-    );
+    expect(section("Unreadable")).toHaveTextContent("docs/latin1.md not UTF-8");
   });
 
   it("puts the sections in the reference's order", async () => {
@@ -616,13 +632,13 @@ describe("the sections, top to bottom (§6.2)", () => {
         .map((h) => h.textContent?.replace(/ [\d,]+$/, "")),
     ).toEqual([
       "Needs you",
-      "Unrouted",
-      "Waiting",
-      "Ready",
-      "Graduate",
-      "Disagrees",
-      "Skipped",
-      "Could not read",
+      "Not on a roadmap",
+      "Blocked",
+      "Ready to build",
+      "Ready to graduate",
+      "Stage conflict",
+      "Too large",
+      "Unreadable",
     ]);
   });
 
@@ -640,13 +656,13 @@ describe("empty and degenerate states", () => {
     await renderPage();
     for (const name of [
       "Needs you",
-      "Unrouted",
-      "Waiting",
-      "Ready",
-      "Graduate",
-      "Disagrees",
-      "Skipped",
-      "Could not read",
+      "Not on a roadmap",
+      "Blocked",
+      "Ready to build",
+      "Ready to graduate",
+      "Stage conflict",
+      "Too large",
+      "Unreadable",
     ]) {
       expect(querySection(name), name).toBeNull();
     }
@@ -667,7 +683,7 @@ describe("empty and degenerate states", () => {
     ).toBeTruthy();
   });
 
-  it("without a roadmap, lists every open question under Needs you by document, and drops Unrouted", async () => {
+  it("without a roadmap, lists every open question under Needs you by document, and drops Not on a roadmap", async () => {
     const { "roadmap.md": _, ...noRoadmap } = TREE;
     void _;
     seed(noRoadmap);
@@ -676,7 +692,7 @@ describe("empty and degenerate states", () => {
     expect(screen.getByTestId("roadmap-notice")).toHaveTextContent(
       PLANNING_NOTICES.roadmapNotice(planningConfig({ stages: STAGES }), [])!,
     );
-    expect(querySection("Unrouted")).toBeNull();
+    expect(querySection("Not on a roadmap")).toBeNull();
     expect(cardsIn("Needs you")).toEqual([
       "OQ-D1: Question OQ-D1?",
       "OQ-D3: Question OQ-D3?",
@@ -694,7 +710,7 @@ describe("empty and degenerate states", () => {
         { path: "plans/roadmap.md", state: "missing", needsYouCount: 0 },
       ])!,
     );
-    expect(querySection("Unrouted")).toBeNull();
+    expect(querySection("Not on a roadmap")).toBeNull();
   });
 
   it("names each roadmap it found by name and why none routes", async () => {
@@ -722,7 +738,7 @@ describe("empty and degenerate states", () => {
       ])!,
     );
     expect(screen.queryByRole("combobox", { name: "Roadmap" })).toBeNull();
-    expect(querySection("Unrouted")).toBeNull();
+    expect(querySection("Not on a roadmap")).toBeNull();
     expect(cardsIn("Needs you")).toContain("OQ-U1: Question OQ-U1?");
   });
 
@@ -733,7 +749,7 @@ describe("empty and degenerate states", () => {
     expect(screen.getByTestId("roadmap-notice")).toHaveTextContent(
       PLANNING_NOTICES.roadmapNotice(planningConfig(config), [])!,
     );
-    expect(querySection("Unrouted")).toBeNull();
+    expect(querySection("Not on a roadmap")).toBeNull();
   });
 
   it("names a listed roadmap it could not read while another routes", async () => {
@@ -762,12 +778,12 @@ describe("empty and degenerate states", () => {
     seed(TREE, { stages: null });
     await renderPage();
     expect(screen.getByText(PLANNING_NOTICES.noStages)).toBeTruthy();
-    expect(querySection("Ready")).toBeNull();
-    expect(querySection("Graduate")).toBeNull();
-    expect(querySection("Disagrees")).toBeNull();
-    // Needs you, Unrouted and Waiting need only questions and links.
+    expect(querySection("Ready to build")).toBeNull();
+    expect(querySection("Ready to graduate")).toBeNull();
+    expect(querySection("Stage conflict")).toBeNull();
+    // Needs you, Not on a roadmap and Blocked need only questions and links.
     expect(querySection("Needs you")).not.toBeNull();
-    expect(querySection("Waiting")).not.toBeNull();
+    expect(querySection("Blocked")).not.toBeNull();
   });
 
   it("says how many files there are, and nothing else, past max-candidates", async () => {
@@ -832,7 +848,7 @@ describe("empty and degenerate states", () => {
     await settle();
     expect(inPage().queryByRole("status")).toBeNull();
     expect(screen.getByRole("navigation", { name: "Sections" })).toBeTruthy();
-    expect(cardsIn("Unrouted")).toHaveLength(2);
+    expect(cardsIn("Not on a roadmap")).toHaveLength(2);
   });
 
   // D6 (planning-index.md §6.10, §18): the pipeline's first run in a
@@ -862,21 +878,21 @@ describe("empty and degenerate states", () => {
     expect(screen.queryAllByRole("article")).toHaveLength(0);
     await act(async () => warmed());
     await settle();
-    expect(cardsIn("Unrouted")).toHaveLength(2);
+    expect(cardsIn("Not on a roadmap")).toHaveLength(2);
     expect(warming.runs).toBe(1);
   });
 
   it("runs no warm-up on a page opened with its index ready", async () => {
     seed();
     await renderPage();
-    expect(cardsIn("Unrouted")).toHaveLength(2);
+    expect(cardsIn("Not on a roadmap")).toHaveLength(2);
     expect(warming.runs).toBe(0);
   });
 });
 
 describe("pages (planning-index.md §6.4)", () => {
-  // Needs you holds three cards, and Unrouted two, so at two a page Needs you
-  // has two pages and Unrouted one.
+  // Needs you holds three cards, and Not on a roadmap two, so at two a page Needs you
+  // has two pages and Not on a roadmap one.
   beforeEach(() => {
     setPlanningLimitsForTests({ pageEntries: 2 });
     seed();
@@ -921,9 +937,9 @@ describe("pages (planning-index.md §6.4)", () => {
 
   it("gives a section of one page no pager", async () => {
     await renderPage();
-    expect(cardsIn("Unrouted")).toHaveLength(2);
+    expect(cardsIn("Not on a roadmap")).toHaveLength(2);
     expect(
-      screen.queryByRole("navigation", { name: /^Unrouted pages/ }),
+      screen.queryByRole("navigation", { name: /^Not on a roadmap pages/ }),
     ).toBeNull();
   });
 
@@ -1054,7 +1070,7 @@ describe("pages (planning-index.md §6.4)", () => {
   // While a flip waits for its page, the pager goes on from the page asked
   // for: a second Next is not lost, and the select does not jump back.
   it("goes on from the page asked for while the one shown waits", async () => {
-    // Unrouted holds four questions of four documents, so each page asks
+    // Not on a roadmap holds four questions of four documents, so each page asks
     // for a block no other page holds.
     const tree = {
       ...TREE,
@@ -1074,16 +1090,21 @@ describe("pages (planning-index.md §6.4)", () => {
     }));
     setLoad(readyOf(tree));
     await renderPage();
-    const first = cardsIn("Unrouted");
+    const first = cardsIn("Not on a roadmap");
     hold = true;
     const select = () =>
-      within(pager("Unrouted")).getByRole<HTMLSelectElement>("combobox", {
-        name: "Unrouted page",
-      });
+      within(pager("Not on a roadmap")).getByRole<HTMLSelectElement>(
+        "combobox",
+        {
+          name: "Not on a roadmap page",
+        },
+      );
     const next = async () => {
       await act(async () => {
         fireEvent.click(
-          within(pager("Unrouted")).getByRole("button", { name: "Next ›" }),
+          within(pager("Not on a roadmap")).getByRole("button", {
+            name: "Next ›",
+          }),
         );
       });
       await settle();
@@ -1091,15 +1112,15 @@ describe("pages (planning-index.md §6.4)", () => {
     await next();
     expect(router.location).toBe("/.vantage/planning?unrouted=2");
     // Still page 1 on screen, and page 2 in the select.
-    expect(cardsIn("Unrouted")).toEqual(first);
-    expect(pager("Unrouted")).toHaveTextContent("1–1 of 4");
+    expect(cardsIn("Not on a roadmap")).toEqual(first);
+    expect(pager("Not on a roadmap")).toHaveTextContent("1–1 of 4");
     expect(select().value).toBe("2");
     await next();
     expect(router.location).toBe("/.vantage/planning?unrouted=3");
     expect(select().value).toBe("3");
     for (const release of releases) release();
     await settle();
-    expect(pager("Unrouted")).toHaveTextContent("3–3 of 4");
+    expect(pager("Not on a roadmap")).toHaveTextContent("3–3 of 4");
     expect(select().value).toBe("3");
   });
 
@@ -1119,8 +1140,10 @@ describe("pages (planning-index.md §6.4)", () => {
     });
     await settle();
     expect(cardsIn("Needs you")).toEqual(["OQ-A1: Question OQ-A1?"]);
-    // Unrouted has two pages, fewer than a select is offered from.
-    expect(within(pager("Unrouted")).queryByRole("combobox")).toBeNull();
+    // Not on a roadmap has two pages, fewer than a select is offered from.
+    expect(
+      within(pager("Not on a roadmap")).queryByRole("combobox"),
+    ).toBeNull();
   });
 
   it("returns from Open document to the same pages, at the same scroll", async () => {
@@ -1162,7 +1185,7 @@ describe("a flip's scroll position", () => {
     await settle();
     // A link that saves nothing on its way out.
     fireEvent.click(
-      within(section("Waiting")).getByRole("link", { name: "design.md#OQ-D1" }),
+      within(section("Blocked")).getByRole("link", { name: "design.md#OQ-D1" }),
     );
     expect(screen.getByTestId("viewer")).toBeTruthy();
     act(() => router.navigate!(-1));
@@ -1185,11 +1208,11 @@ describe("the section bar (planning-index.md §6.3)", () => {
         .map((a) => a.textContent),
     ).toEqual([
       "Needs you 3",
-      "Unrouted 2",
-      "Waiting 2",
-      "Ready 1",
-      "Graduate 1",
-      "Disagrees 1",
+      "Not on a roadmap 2",
+      "Blocked 2",
+      "Ready to build 1",
+      "Ready to graduate 1",
+      "Stage conflict 1",
     ]);
   });
 
@@ -1198,10 +1221,10 @@ describe("the section bar (planning-index.md §6.3)", () => {
     Element.prototype.scrollIntoView = scrolled;
     try {
       await renderPage();
-      const link = within(bar()).getByRole("link", { name: /^Waiting/ });
+      const link = within(bar()).getByRole("link", { name: /^Blocked/ });
       link.focus();
       fireEvent.click(link);
-      const heading = within(section("Waiting")).getByRole("heading", {
+      const heading = within(section("Blocked")).getByRole("heading", {
         level: 2,
       });
       expect(scrolled.mock.contexts[0]).toBe(heading);
@@ -1220,10 +1243,10 @@ describe("the section bar (planning-index.md §6.3)", () => {
       await renderPage("/.vantage/planning#graduate");
       expect(scrolled).toHaveBeenCalledTimes(1);
       expect(scrolled.mock.contexts[0]).toBe(
-        within(section("Graduate")).getByRole("heading", { level: 2 }),
+        within(section("Ready to graduate")).getByRole("heading", { level: 2 }),
       );
       expect(
-        within(bar()).getByRole("link", { name: /^Graduate/ }),
+        within(bar()).getByRole("link", { name: /^Ready to graduate/ }),
       ).toHaveAttribute("href", "#graduate");
     } finally {
       delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
@@ -1235,8 +1258,9 @@ describe("the section bar (planning-index.md §6.3)", () => {
   it("changes its counts in the commit that changes the sections, not before", async () => {
     await renderPage();
     const unroutedCount = () =>
-      within(bar()).getByRole("link", { name: /^Unrouted/ }).textContent;
-    expect(unroutedCount()).toBe("Unrouted 2");
+      within(bar()).getByRole("link", { name: /^Not on a roadmap/ })
+        .textContent;
+    expect(unroutedCount()).toBe("Not on a roadmap 2");
     // One more unrouted question, whose page is held back.
     const tree = {
       ...TREE,
@@ -1251,12 +1275,16 @@ describe("the section bar (planning-index.md §6.3)", () => {
     }));
     setLoad(readyOf(tree));
     await settle();
-    expect(section("Unrouted")).toHaveAccessibleName("Unrouted 2");
-    expect(unroutedCount()).toBe("Unrouted 2");
+    expect(section("Not on a roadmap")).toHaveAccessibleName(
+      "Not on a roadmap 2",
+    );
+    expect(unroutedCount()).toBe("Not on a roadmap 2");
     release();
     await settle();
-    expect(section("Unrouted")).toHaveAccessibleName("Unrouted 3");
-    expect(unroutedCount()).toBe("Unrouted 3");
+    expect(section("Not on a roadmap")).toHaveAccessibleName(
+      "Not on a roadmap 3",
+    );
+    expect(unroutedCount()).toBe("Not on a roadmap 3");
   });
 
   it("writes every count in one number format, in the heading's name too", async () => {
@@ -1273,13 +1301,13 @@ describe("the section bar (planning-index.md §6.3)", () => {
     );
     await renderPage();
     expect(
-      within(bar()).getByRole("link", { name: /^Skipped/ }),
-    ).toHaveTextContent("Skipped 1,200");
+      within(bar()).getByRole("link", { name: /^Too large/ }),
+    ).toHaveTextContent("Too large 1,200");
     expect(
-      within(section("Skipped")).getByRole("heading", { level: 2 }),
-    ).toHaveAccessibleName("Skipped 1,200");
+      within(section("Too large")).getByRole("heading", { level: 2 }),
+    ).toHaveAccessibleName("Too large 1,200");
     expect(
-      screen.getByRole("navigation", { name: "Skipped pages" }),
+      screen.getByRole("navigation", { name: "Too large pages" }),
     ).toHaveTextContent("1–5 of 1,200");
   });
 });
@@ -1346,7 +1374,7 @@ describe("the cards' blocks, from the scanner client (planning-index.md §10.4)"
     expect(screen.queryByLabelText("Loading this page's cards")).toBeNull();
     release();
     await settle();
-    expect(cardsIn("Unrouted")).toEqual([
+    expect(cardsIn("Not on a roadmap")).toEqual([
       "OQ-X1: Question OQ-X1?",
       "OQ-U1: Question OQ-U1?",
     ]);
@@ -1543,7 +1571,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
       await new Promise((resolve) => setTimeout(resolve, 30));
     });
     await settle();
-    expect(cardsIn("Unrouted")).toHaveLength(2);
+    expect(cardsIn("Not on a roadmap")).toHaveLength(2);
     expect(commentsOn("OQ-U1")).toBeNull();
 
     held.release();
@@ -1567,7 +1595,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
     await settle();
     const region = screen.getByRole("alert");
     expect(region).toHaveTextContent("Comments could not be loaded.");
-    expect(cardsIn("Unrouted")).toHaveLength(2);
+    expect(cardsIn("Not on a roadmap")).toHaveLength(2);
     expect(screen.getByRole("button", { name: /Copy answers/ })).toBeDisabled();
     expect(screen.getByTestId("pending-answers")).toHaveTextContent("–");
   });
@@ -1679,7 +1707,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
     expect(screen.getByTestId("viewer")).toBeTruthy();
     // No settling: what the first render commits.
     act(() => router.navigate!(-1));
-    expect(cardsIn("Unrouted")).toHaveLength(2);
+    expect(cardsIn("Not on a roadmap")).toHaveLength(2);
   });
 
   // D1 (§6.3, §18): on `g p`, the `g` has asked for page 1's inputs, which
@@ -1705,7 +1733,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
     expect(screen.getByRole("navigation", { name: "Sections" })).toBeTruthy();
     expect(screen.queryAllByRole("article")).toHaveLength(0);
     await releaseFrames();
-    expect(cardsIn("Unrouted")).toHaveLength(2);
+    expect(cardsIn("Not on a roadmap")).toHaveLength(2);
     expect(warming.runs).toBe(0);
   });
 
@@ -1727,7 +1755,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
     expect(vi.mocked(axios.post).mock.calls.length).toBeLessThanOrEqual(
       posts + 1,
     );
-    expect(cardsIn("Unrouted")).toHaveLength(2);
+    expect(cardsIn("Not on a roadmap")).toHaveLength(2);
   });
 
   it("reserves the pending count four digits, and shows – until every listed document is counted", async () => {
@@ -1934,7 +1962,7 @@ describe("several roadmaps (§6.8)", () => {
       "",
       "## Later",
       "",
-      "1. [Unrouted until now](../../plans/unrouted.md)",
+      "1. [Not on a roadmap until now](../../plans/unrouted.md)",
       "2. [One of the design's](../../plans/design.md#OQ-D3)",
       "",
     ].join("\n"),
@@ -2036,8 +2064,8 @@ describe("several roadmaps (§6.8)", () => {
       "OQ-A1: Question OQ-A1?",
     ]);
     // OQ-U1 is routed, by the other roadmap: neither Needs you here nor
-    // Unrouted, and counted on the line instead.
-    expect(cardsIn("Unrouted")).toEqual(["OQ-X1: Question OQ-X1?"]);
+    // Not on a roadmap, and counted on the line instead.
+    expect(cardsIn("Not on a roadmap")).toEqual(["OQ-X1: Question OQ-X1?"]);
     expect(screen.getByTestId("other-roadmaps")).toHaveTextContent(
       PLANNING_NOTICES.otherRoadmaps(1),
     );
@@ -2095,7 +2123,7 @@ describe("several roadmaps (§6.8)", () => {
       "OQ-U1: Question OQ-U1?",
       "OQ-D3: Question OQ-D3?",
     ]);
-    expect(cardsIn("Unrouted")).toEqual(["OQ-X1: Question OQ-X1?"]);
+    expect(cardsIn("Not on a roadmap")).toEqual(["OQ-X1: Question OQ-X1?"]);
     expect(screen.getByTestId("other-roadmaps")).toHaveTextContent(
       PLANNING_NOTICES.otherRoadmaps(2),
     );
@@ -2197,7 +2225,7 @@ describe("several roadmaps (§6.8)", () => {
     expect(screen.queryByRole("combobox", { name: "Roadmap" })).toBeNull();
     expect(search().has("roadmap")).toBe(false);
     expect(cardsIn("Needs you")[0]).toBe("OQ-D1: Question OQ-D1?");
-    expect(cardsIn("Unrouted")).toEqual([
+    expect(cardsIn("Not on a roadmap")).toEqual([
       "OQ-X1: Question OQ-X1?",
       "OQ-U1: Question OQ-U1?",
     ]);
@@ -2329,9 +2357,9 @@ describe("in daemon mode", () => {
 describe("each card's controls follow its state (Plan Q5)", () => {
   beforeEach(() => seed());
 
-  it("gives a blocked card under Waiting Open document alone", async () => {
+  it("gives a blocked card under Blocked Open document alone", async () => {
     await renderPage();
-    const card = within(section("Waiting")).getByRole("article");
+    const card = within(section("Blocked")).getByRole("article");
     expect(card).toHaveAccessibleName("OQ-D2: Question OQ-D2?");
     expect(
       within(card).getByRole("link", { name: "Open document" }),
@@ -2683,7 +2711,7 @@ describe("Copy answers across pages (planning-index.md §6.7)", () => {
     reviews["plans/scoped.md"] = [
       pendingAt("moved-0001", "On the note", lineOf(SCOPED, "OQ-S1"), hash),
     ];
-    // Unrouted is OQ-X1, OQ-S1, OQ-U1: at one a page, OQ-S1 is on page 2.
+    // Not on a roadmap is OQ-X1, OQ-S1, OQ-U1: at one a page, OQ-S1 is on page 2.
     setPlanningLimitsForTests({ pageEntries: 1 });
     seed(SCOPED);
     await renderPage();
@@ -2699,7 +2727,7 @@ describe("Copy answers across pages (planning-index.md §6.7)", () => {
     reviews["plans/scoped.md"] = [
       pendingAt("moved-0001", "On the note", lineOf(SCOPED, "OQ-S1"), hash),
     ];
-    // Unrouted's first page is OQ-X1 and OQ-S1, its second OQ-U1.
+    // Not on a roadmap's first page is OQ-X1 and OQ-S1, its second OQ-U1.
     setPlanningLimitsForTests({ pageEntries: 2 });
     seed(SCOPED);
     await renderPage();
@@ -2708,7 +2736,7 @@ describe("Copy answers across pages (planning-index.md §6.7)", () => {
       await act(async () => {
         fireEvent.click(
           within(
-            screen.getByRole("navigation", { name: "Unrouted pages" }),
+            screen.getByRole("navigation", { name: "Not on a roadmap pages" }),
           ).getByRole("button", { name: label }),
         );
       });
@@ -2733,7 +2761,7 @@ describe("Copy answers across pages (planning-index.md §6.7)", () => {
     await act(async () => {
       fireEvent.click(
         within(
-          screen.getByRole("navigation", { name: "Unrouted pages" }),
+          screen.getByRole("navigation", { name: "Not on a roadmap pages" }),
         ).getByRole("button", { name: "Next ›" }),
       );
     });
@@ -2750,6 +2778,340 @@ describe("Copy answers across pages (planning-index.md §6.7)", () => {
     );
     await settle();
     expect(pendingCount()).toBe("2");
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * What each section means, and the agent requests
+ * ------------------------------------------------------------------ */
+
+describe("each section's explanation, and Copy agent request", () => {
+  const ROOT = "/home/me/repo";
+
+  /** Answer `/info` with `root` (a rejection when `null`), on top of the rest. */
+  function serveInfo(root: string | null, base = "/api"): void {
+    const rest = vi.mocked(axios.get).getMockImplementation()!;
+    vi.mocked(axios.get).mockImplementation(async (url, config) => {
+      if (String(url) !== `${base}/info`) return rest(url, config);
+      if (root === null) throw new Error("no /info");
+      return { data: { name: "repo", root_path: root } };
+    });
+  }
+
+  /** The index the page shows, and its sections, for the default roadmap. */
+  function shownState(repo = "") {
+    const load = usePlanningStore.getState().byRepo[repo];
+    if (load?.status !== "ready") throw new Error("no ready index");
+    return {
+      index: load.index,
+      sections: derivePlanningSections(load.index),
+    };
+  }
+
+  const copyFor = (title: string) =>
+    screen.getByRole("button", { name: `Copy agent request for ${title}` });
+  const copyAll = () =>
+    screen.getByRole("button", { name: "Copy all agent requests" });
+  const agentButtons = () =>
+    screen
+      .queryAllByRole("button", { name: /agent request/ })
+      .map((b) => b.getAttribute("aria-label"));
+
+  async function press(button: HTMLElement): Promise<void> {
+    await act(async () => {
+      fireEvent.click(button);
+    });
+  }
+
+  beforeEach(() => {
+    resetRepoRootsForTests();
+    seed();
+    serveInfo(ROOT);
+  });
+
+  it("says under each heading what its entries are and who acts, in the shared guide's words", async () => {
+    await renderPage();
+    const shown = [
+      "needs-you",
+      "unrouted",
+      "waiting",
+      "ready",
+      "graduate",
+      "disagrees",
+    ] as const;
+    for (const id of shown) {
+      const { title, explanation } = PLANNING_SECTION_GUIDE[id];
+      const region = section(title);
+      expect(region, id).toHaveAccessibleDescription(explanation);
+      // Directly under the heading's line, ahead of every entry.
+      const about = region.querySelector("[data-planning-section-about]")!;
+      expect(about.textContent, id).toBe(explanation);
+      expect(
+        about.previousElementSibling?.contains(
+          within(region).getByRole("heading", { level: 2 }),
+        ),
+      ).toBe(true);
+      // And the section bar's entry says it on hover.
+      expect(
+        within(screen.getByRole("navigation", { name: "Sections" })).getByRole(
+          "link",
+          { name: new RegExp(`^${title} \\d`) },
+        ),
+      ).toHaveAttribute("title", explanation);
+    }
+    expect(section("Needs you")).toHaveAccessibleDescription(
+      "Open or answered questions on this roadmap, in its order. Rule each open one, then Copy answers.",
+    );
+  });
+
+  it("gives the contents column's section entries the same line on hover", async () => {
+    localStorage.setItem("vantage:tocOpen", "true");
+    await renderPage();
+    const entries = within(
+      screen.getByRole("navigation", { name: "Planning outline" }),
+    ).getAllByTestId("outline-section");
+    expect(entries.map((a) => a.getAttribute("title"))).toEqual(
+      (
+        [
+          "needs-you",
+          "unrouted",
+          "waiting",
+          "ready",
+          "graduate",
+          "disagrees",
+        ] as const
+      ).map((id) => PLANNING_SECTION_GUIDE[id].explanation),
+    );
+  });
+
+  it("says what Needs you holds when no roadmap routes", async () => {
+    const { "roadmap.md": _roadmap, ...tree } = TREE;
+    seed(tree);
+    await renderPage();
+    expect(section("Needs you")).toHaveAccessibleDescription(
+      sectionExplanation("needs-you", { chosenRoadmap: null }),
+    );
+  });
+
+  it("gives each agent section Copy agent request, and the section bar's line Copy all agent requests", async () => {
+    await renderPage();
+    expect(agentButtons()).toEqual([
+      "Copy all agent requests",
+      "Copy agent request for Not on a roadmap",
+      "Copy agent request for Ready to build",
+      "Copy agent request for Ready to graduate",
+      "Copy agent request for Stage conflict",
+    ]);
+    for (const title of ["Needs you", "Blocked"]) {
+      expect(
+        within(section(title)).queryByRole("button", { name: /agent/ }),
+      ).toBeNull();
+    }
+    // Labelled concisely, named in full, and never printed.
+    expect(copyFor("Ready to graduate")).toHaveTextContent(
+      /^Copy agent request$/,
+    );
+    expect(copyFor("Ready to graduate")).toHaveClass("print:hidden");
+    // On the section bar's line, before Expand all.
+    const bar = screen.getByRole("navigation", { name: "Sections" });
+    const toggle = screen.getByRole("button", { name: "Expand all" });
+    expect(copyAll().parentElement).toBe(toggle.parentElement);
+    expect(copyAll().parentElement?.parentElement).toBe(bar.parentElement);
+    expect(
+      copyAll().compareDocumentPosition(toggle) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(copyAll().parentElement).toHaveClass("print:hidden");
+  });
+
+  it("copies the request for every entry of its section, on every page, with nothing selected and no network", async () => {
+    // One entry a page, so Not on a roadmap's second question is not shown.
+    setPlanningLimitsForTests({ pageEntries: 1 });
+    await renderPage();
+    expect(cardsIn("Not on a roadmap")).toHaveLength(1);
+    // Nothing more is fetched for it.
+    vi.mocked(axios.get).mockRejectedValue(new Error("offline"));
+    vi.mocked(axios.post).mockRejectedValue(new Error("offline"));
+    const { index, sections } = shownState();
+    await press(copyFor("Not on a roadmap"));
+    const copied = writeText.mock.calls[0][0] as string;
+    expect(copied).toBe(
+      planningAgentRequest(index, sections, {
+        repository: ROOT,
+        ids: ["unrouted"],
+      }),
+    );
+    expect(copied).toContain(`Repository: ${ROOT}`);
+    expect(copied).toContain("plans/unrouted.md");
+    expect(copied).toContain("plans/disagrees.md");
+    expect(copied).not.toContain("plans/built.md");
+    // Confirmed in the label's own room, and once to a screen reader.
+    expect(copyFor("Not on a roadmap")).toHaveTextContent(/^Copied$/);
+    expect(
+      within(section("Not on a roadmap")).getByText(
+        "Copied the agent request for Not on a roadmap.",
+      ),
+    ).toBeTruthy();
+
+    await press(copyFor("Ready to graduate"));
+    expect(writeText.mock.calls[1][0]).toBe(
+      planningAgentRequest(index, sections, {
+        repository: ROOT,
+        ids: ["graduate"],
+      }),
+    );
+  });
+
+  it("copies every agent section's request in one, as vantage-check index --request prints it by default", async () => {
+    await renderPage();
+    const { index, sections } = shownState();
+    await press(copyAll());
+    const copied = writeText.mock.calls[0][0] as string;
+    expect(copied).toBe(
+      planningAgentRequest(index, sections, { repository: ROOT }),
+    );
+    for (const title of [
+      "Not on a roadmap",
+      "Ready to build",
+      "Ready to graduate",
+      "Stage conflict",
+    ]) {
+      expect(copied).toContain(title);
+    }
+    expect(copyAll()).toHaveTextContent(/^Copied$/);
+    expect(screen.getByText("Copied every agent request.")).toBeTruthy();
+  });
+
+  it("shows neither button when no section is an agent's work", async () => {
+    seed(
+      {
+        "roadmap.md": "# Roadmap\n\n1. [Design](plans/design.md)\n",
+        "plans/design.md": doc(
+          "stage: DESIGN",
+          q("OQ-D1", OPEN),
+          q("OQ-D2", BLOCKED),
+        ),
+      },
+      {},
+    );
+    await renderPage();
+    expect(section("Needs you")).toBeTruthy();
+    expect(section("Blocked")).toBeTruthy();
+    expect(agentButtons()).toEqual([]);
+  });
+
+  it("names the repository `.` when /info has not reported its root", async () => {
+    resetRepoRootsForTests();
+    serveInfo(null);
+    await renderPage();
+    const { index, sections } = shownState();
+    await press(copyAll());
+    expect(writeText.mock.calls[0][0]).toBe(
+      planningAgentRequest(index, sections, { repository: "." }),
+    );
+  });
+
+  it("names a daemon's repository by its own root", async () => {
+    useRepoStore.setState({
+      isMultiRepo: true,
+      currentRepo: "alpha",
+      repos: [{ name: "alpha" }] as never,
+    });
+    serveTree(TREE, "/api/r/alpha");
+    setLoad(readyOf(TREE), "alpha");
+    serveInfo("/srv/alpha", "/api/r/alpha");
+    await renderPage("/.vantage/planning/alpha");
+    const { index, sections } = shownState("alpha");
+    await press(copyFor("Ready to build"));
+    expect(writeText.mock.calls[0][0]).toBe(
+      planningAgentRequest(index, sections, {
+        repository: "/srv/alpha",
+        ids: ["ready"],
+      }),
+    );
+  });
+
+  // P7, end to end: what a button copies is what the CLI prints for the same
+  // files on disk, the same roadmap chosen and the same sections asked for,
+  // with the CLI's own newline the only difference. The CLI reads the tree
+  // from a directory and its stages from a `.vantage.toml`, as an agent's run
+  // does; the page reads the same tree through its scanner.
+  it("copies exactly what vantage-check index --request prints for the same tree and roadmap", async () => {
+    const NESTED = "docs/plans/roadmap.md";
+    const tree: Record<string, string> = {
+      ...TREE,
+      [NESTED]: [
+        "# Plans",
+        "",
+        "## Later",
+        "",
+        "1. [One of the design's](../../plans/design.md#OQ-D3)",
+        "",
+      ].join("\n"),
+    };
+    const root = realpathSync(mkdtempSync(join(tmpdir(), "vantage-agree-")));
+    try {
+      const files: Record<string, string> = {
+        ...tree,
+        ".git/HEAD": "ref: refs/heads/main\n",
+        ".vantage.toml": [
+          "[planning.stages]",
+          ...Object.entries(STAGES ?? {}).map(([w, r]) => `${w} = "${r}"`),
+          "",
+        ].join("\n"),
+      };
+      for (const [path, content] of Object.entries(files)) {
+        mkdirSync(dirname(join(root, path)), { recursive: true });
+        writeFileSync(join(root, path), content);
+      }
+      const cli = async (...args: string[]) => {
+        const io = bufferIo(root);
+        const code = await run(["index", ...args], io);
+        expect(code, args.join(" ")).toBe(0);
+        return io.stdout;
+      };
+
+      resetRepoRootsForTests();
+      seed(tree);
+      serveInfo(root);
+      await renderPage(`/.vantage/planning?roadmap=${NESTED}`);
+      expect(
+        (
+          screen.getByRole("combobox", {
+            name: "Roadmap",
+          }) as HTMLSelectElement
+        ).value,
+      ).toBe(NESTED);
+
+      const pressed: [HTMLElement, string[]][] = [
+        [copyAll(), []],
+        [copyFor("Not on a roadmap"), ["unrouted"]],
+        [copyFor("Ready to build"), ["ready"]],
+        [copyFor("Ready to graduate"), ["graduate"]],
+        [copyFor("Stage conflict"), ["disagrees"]],
+      ];
+      for (const [i, [button, ids]] of pressed.entries()) {
+        await press(button);
+        const copied = writeText.mock.calls[i][0] as string;
+        const printed = await cli("--request", ...ids, "--roadmap", NESTED);
+        expect(`${copied}\n`, ids.join(" ") || "all").toBe(printed);
+        expect(copied.startsWith(`Repository: ${root}\n\n`)).toBe(true);
+      }
+      // And the default roadmap's run prints the same: no request depends on
+      // which roadmap Needs you follows.
+      expect(await cli("--request")).toBe(
+        `${writeText.mock.calls[0][0] as string}\n`,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("says a blocked document is blocked on what it waits on", async () => {
+    await renderPage();
+    expect(
+      within(section("Blocked")).getByText(/^blocked on/),
+    ).toHaveTextContent("blocked on design.md#OQ-D1");
   });
 });
 
@@ -2807,7 +3169,7 @@ describe("Open document, then Back (§6.6)", () => {
       await settle();
       // A link that saves nothing on its way out.
       fireEvent.click(
-        within(section("Waiting")).getByRole("link", {
+        within(section("Blocked")).getByRole("link", {
           name: "design.md#OQ-D1",
         }),
       );
@@ -3016,25 +3378,25 @@ describe("the planning outline (§6.9)", () => {
     await renderPage();
     expect(outlineSections()).toEqual([
       "Needs you 3",
-      "Unrouted 2",
-      "Waiting 2",
-      "Ready 1",
-      "Graduate 1",
-      "Disagrees 1",
+      "Not on a roadmap 2",
+      "Blocked 2",
+      "Ready to build 1",
+      "Ready to graduate 1",
+      "Stage conflict 1",
     ]);
     expect(outlineDocuments("Needs you")).toEqual([
       "plans/design.md, 2 questions",
       "plans/answered.md, 1 question",
     ]);
-    expect(outlineDocuments("Unrouted")).toEqual([
+    expect(outlineDocuments("Not on a roadmap")).toEqual([
       "plans/disagrees.md, 1 question",
       "plans/unrouted.md, 1 question",
     ]);
-    expect(outlineDocuments("Waiting")).toEqual(
+    expect(outlineDocuments("Blocked")).toEqual(
       expect.arrayContaining(["plans/design.md, 1 question", "plans/deps.md"]),
     );
-    expect(outlineDocuments("Ready")).toEqual(["plans/ready.md"]);
-    expect(outlineDocuments("Disagrees")).toEqual([
+    expect(outlineDocuments("Ready to build")).toEqual(["plans/ready.md"]);
+    expect(outlineDocuments("Stage conflict")).toEqual([
       "plans/disagrees.md, 1 question",
     ]);
     // By file name, with its folders apart from it.
@@ -3053,8 +3415,8 @@ describe("the planning outline (§6.9)", () => {
     try {
       await renderPage();
       scrolled.mockClear();
-      fireEvent.click(outlineEntry("Waiting"));
-      const heading = within(section("Waiting")).getByRole("heading", {
+      fireEvent.click(outlineEntry("Blocked"));
+      const heading = within(section("Blocked")).getByRole("heading", {
         level: 2,
       });
       expect(scrolled.mock.contexts[0]).toBe(heading);
@@ -3075,15 +3437,15 @@ describe("the planning outline (§6.9)", () => {
     Element.prototype.scrollIntoView = scrolled;
     try {
       await renderPage("/.vantage/planning", ["/plans/roadmap.md"]);
-      expect(documentsIn("Ready")).toEqual(["plans/ready.md"]);
+      expect(documentsIn("Ready to build")).toEqual(["plans/ready.md"]);
       scrolled.mockClear();
       await act(async () => {
-        fireEvent.click(outlineDocument("Ready", "plans/ready2.md"));
+        fireEvent.click(outlineDocument("Ready to build", "plans/ready2.md"));
       });
       await settle();
       expect(router.location).toBe("/.vantage/planning?ready=2");
-      expect(documentsIn("Ready")).toEqual(["plans/ready2.md"]);
-      const row = section("Ready").querySelector(
+      expect(documentsIn("Ready to build")).toEqual(["plans/ready2.md"]);
+      const row = section("Ready to build").querySelector(
         '[data-planning-document="plans/ready2.md"]',
       )!;
       expect(row.id).toBe(planningRowId("ready", "plans/ready2.md"));
@@ -3096,7 +3458,7 @@ describe("the planning outline (§6.9)", () => {
       );
       // Already on its page, a document is brought into view at once.
       scrolled.mockClear();
-      fireEvent.click(outlineDocument("Ready", "plans/ready2.md"));
+      fireEvent.click(outlineDocument("Ready to build", "plans/ready2.md"));
       expect(scrolled.mock.contexts).toContain(row);
       // The flip replaced the entry it was on.
       act(() => router.navigate!(-1));
@@ -3234,7 +3596,7 @@ describe("the planning outline (§6.9)", () => {
       "href",
       `/.vantage/planning?needs-you=3#${planningCardId("plans/answered.md", "OQ-A1", question!.unitLine)}`,
     );
-    expect(outlineEntry("Waiting")).toHaveAttribute("href", "#waiting");
+    expect(outlineEntry("Blocked")).toHaveAttribute("href", "#waiting");
     fireEvent.click(answered, { ctrlKey: true });
     await settle();
     expect(router.location).toBe("/.vantage/planning");
@@ -3250,7 +3612,7 @@ describe("the planning outline (§6.9)", () => {
       );
       expect(scrolled).toHaveBeenCalledTimes(1);
       expect(scrolled.mock.contexts[0]).toBe(
-        section("Ready").querySelector(
+        section("Ready to build").querySelector(
           '[data-planning-document="plans/ready.md"]',
         ),
       );
@@ -3295,7 +3657,7 @@ describe("the planning outline (§6.9)", () => {
         scroller().dispatchEvent(new Event("scroll"));
       });
       await settle();
-      expect(current()).toEqual(["Ready 1", "plans/ready.md"]);
+      expect(current()).toEqual(["Ready to build 1", "plans/ready.md"]);
 
       scrolledBy =
         placed.indexOf(document.getElementById("disagrees")!) * 100 - 50;
@@ -3303,7 +3665,7 @@ describe("the planning outline (§6.9)", () => {
         scroller().dispatchEvent(new Event("scroll"));
       });
       await settle();
-      expect(current()).toEqual(["Disagrees 1"]);
+      expect(current()).toEqual(["Stage conflict 1"]);
     } finally {
       rect.mockRestore();
     }
@@ -3355,7 +3717,7 @@ describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
     "plans/unrouted.md": doc("stage: DESIGN", long("OQ-U1")),
   };
 
-  // Needs you on two pages, of two cards and one, and Unrouted on one.
+  // Needs you on two pages, of two cards and one, and Not on a roadmap on one.
   beforeEach(() => {
     setPlanningLimitsForTests({ pageEntries: 2 });
     seed(FOLDING);
@@ -3396,7 +3758,7 @@ describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
     expect(button).toHaveTextContent("Expand all");
     // On the section bar's own line, after the bar.
     const bar = screen.getByRole("navigation", { name: "Sections" });
-    expect(button.parentElement).toBe(bar.parentElement);
+    expect(button.parentElement?.parentElement).toBe(bar.parentElement);
     expect(
       bar.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
@@ -3510,7 +3872,7 @@ describe("Expand all and Collapse all (planning-index.md §6.6)", () => {
       "plans/ready.md": doc("status: accepted\nstage: DECIDED", "Decided."),
     });
     await renderPage();
-    expect(documentsIn("Ready")).toEqual(["plans/ready.md"]);
+    expect(documentsIn("Ready to build")).toEqual(["plans/ready.md"]);
     expect(
       screen.queryByRole("button", { name: /^(Expand all|Collapse all)$/ }),
     ).toBeNull();

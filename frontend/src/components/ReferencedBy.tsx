@@ -1,8 +1,9 @@
 /**
  * Referenced by (`docs/reference/planning-index.md` §7): one line under a planning
  * document's frontmatter card saying how many documents link to it, whether the
- * roadmap routes it, and how many of its open questions the roadmap does not,
- * and, behind that line, those documents.
+ * roadmap routes it, and how many of its open questions the roadmap does not
+ * (in the line's words, are *not on the roadmap*), and, behind that line,
+ * those documents.
  *
  * With several roadmaps that route, the line names the first in roadmap order
  * that routes the document, by the fewest trailing directories that tell it
@@ -83,11 +84,12 @@ export interface SummaryLine {
    */
   roadmap: string | null;
   /**
-   * `K open questions not routed by the roadmap`, in the warning tone, or
-   * `null` when there are none; `…not routed by any roadmap` with several that
-   * route. Worded so that it stays true of a document the roadmap links only
-   * by heading, which routes nothing (§4.3), and of the roadmap itself: it
-   * says what the roadmap leaves out, never that the document is off it.
+   * `K open questions not on the roadmap`, in the warning tone, or `null`
+   * when there are none; `…not on any roadmap` with several that route: the
+   * planning page's *Not on a roadmap*, in its words. Of questions, so it
+   * stays true of a document the roadmap links only by heading, which routes
+   * nothing (§4.3), and of the roadmap itself: it says what the roadmap leaves
+   * out, never that the document is off it.
    */
   unrouted: string | null;
 }
@@ -97,7 +99,7 @@ export interface SummaryLine {
  * nothing in it is unrouted. The roadmap's answer comes before the unrouted
  * count, and does not replace it: a document the roadmap routes one question
  * of can still hold another it does not, which the planning page lists under
- * *Unrouted*, and this line is where the document's own page says so.
+ * *Not on a roadmap*, and this line is where the document's own page says so.
  */
 // eslint-disable-next-line react-refresh/only-export-components -- the component's own wording, exported for its tests
 export function summaryLine(summary: ReferenceSummary): SummaryLine | null {
@@ -121,7 +123,7 @@ export function summaryLine(summary: ReferenceSummary): SummaryLine | null {
   }
   const unrouted =
     summary.unrouted > 0
-      ? `${counted(summary.unrouted, "open question", "open questions")} not routed by ${several ? "any roadmap" : "the roadmap"}`
+      ? `${counted(summary.unrouted, "open question", "open questions")} not on ${several ? "any roadmap" : "the roadmap"}`
       : null;
   if (count === null && roadmap === null && unrouted === null) return null;
   return { count, roadmap, unrouted };

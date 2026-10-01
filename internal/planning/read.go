@@ -24,7 +24,7 @@ const (
 )
 
 // Reasons a file could not be read. These reach the planning page's
-// *Could not read* list, so each says what is wrong with the file in words a
+// *Unreadable* list, so each says what is wrong with the file in words a
 // reader can act on, and none carries an absolute path.
 const (
 	reasonNotUTF8    = "not UTF-8"

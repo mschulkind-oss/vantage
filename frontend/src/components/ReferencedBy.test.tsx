@@ -102,12 +102,10 @@ describe("the line (§7)", () => {
     expect(summaryLine(summary)).toEqual({
       count: "Referenced by 1 document",
       roadmap: null,
-      unrouted: "2 open questions not routed by the roadmap",
+      unrouted: "2 open questions not on the roadmap",
     });
     renderLine(summary);
-    const status = screen.getByText(
-      "2 open questions not routed by the roadmap",
-    );
+    const status = screen.getByText("2 open questions not on the roadmap");
     expect(status.className).toContain("--vantage-tone-warning-ink");
     expect(
       screen.getByText(/Referenced by 1 document/).className,
@@ -122,19 +120,17 @@ describe("the line (§7)", () => {
     expect(summaryLine(summary)).toEqual({
       count: null,
       roadmap: null,
-      unrouted: "1 open question not routed by the roadmap",
+      unrouted: "1 open question not on the roadmap",
     });
     renderLine(summary);
-    expect(surface()).toHaveTextContent(
-      /^1 open question not routed by the roadmap$/,
-    );
+    expect(surface()).toHaveTextContent(/^1 open question not on the roadmap$/);
     expect(screen.queryByRole("button")).toBeNull();
     expect(screen.queryByRole("list")).toBeNull();
   });
 
   it("says a partly routed document is on the roadmap and still counts what is not", () => {
     // The roadmap routed OQ-T1, and OQ-T2 was written after it: the planning
-    // page lists OQ-T2 under Unrouted, and so does this line.
+    // page lists OQ-T2 under Not on a roadmap, and so does this line.
     const summary = summaryOf({
       [TARGET]: planning(questions("T", 2)),
       "roadmap.md":
@@ -143,17 +139,17 @@ describe("the line (§7)", () => {
     expect(summaryLine(summary)).toEqual({
       count: "Referenced by 1 document",
       roadmap: "on the roadmap under Now",
-      unrouted: "1 open question not routed by the roadmap",
+      unrouted: "1 open question not on the roadmap",
     });
     renderLine(summary);
     expect(toggle()).toHaveTextContent(
-      /^Referenced by 1 document · on the roadmap under Now · 1 open question not routed by the roadmap$/,
+      /^Referenced by 1 document · on the roadmap under Now · 1 open question not on the roadmap$/,
     );
     expect(
       screen.getByText("on the roadmap under Now").className,
     ).not.toContain("warning");
     expect(
-      screen.getByText("1 open question not routed by the roadmap").className,
+      screen.getByText("1 open question not on the roadmap").className,
     ).toContain("--vantage-tone-warning-ink");
   });
 
@@ -169,7 +165,7 @@ describe("the line (§7)", () => {
     expect(line).toEqual({
       count: "Referenced by 1 document",
       roadmap: null,
-      unrouted: "1 open question not routed by the roadmap",
+      unrouted: "1 open question not on the roadmap",
     });
   });
 
@@ -198,7 +194,7 @@ describe("the line (§7)", () => {
     expect(summaryLine(summary)).toEqual({
       count: "Referenced by 1 document",
       roadmap: null,
-      unrouted: "2 open questions not routed by the roadmap",
+      unrouted: "2 open questions not on the roadmap",
     });
   });
 
@@ -291,7 +287,7 @@ describe("the line with several roadmaps (§7)", () => {
     expect(summaryLine(summary)).toEqual({
       count: "Referenced by 1 document",
       roadmap: "on plans/roadmap.md under Later",
-      unrouted: "1 open question not routed by any roadmap",
+      unrouted: "1 open question not on any roadmap",
     });
   });
 

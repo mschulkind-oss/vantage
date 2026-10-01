@@ -352,7 +352,7 @@ describe("planning/stage-disagrees", () => {
       ["planning/stage-disagrees", "warning", 3],
     ]);
     expect(payload.findings[0]?.message).toBe(
-      "Stage `DECIDED` says this document is decided, but 1 question is still open (OQ-A1). Rule it, or set a stage that is still open.",
+      "Stage `DECIDED` says this document is decided, but 1 question is still open (OQ-A1). Have it ruled, or set a stage that is still open.",
     );
   });
 
@@ -360,7 +360,7 @@ describe("planning/stage-disagrees", () => {
     expect(
       await messages(tree("BUILT", questions("A", OPEN, OPEN)), "a.md"),
     ).toEqual([
-      "Stage `BUILT` says this document is built, but 2 questions are still open (OQ-A1, OQ-A2). Rule them, or set a stage that is still open.",
+      "Stage `BUILT` says this document is built, but 2 questions are still open (OQ-A1, OQ-A2). Have them ruled, or set a stage that is still open.",
     ]);
   });
 
@@ -414,7 +414,7 @@ describe("planning/unrouted", () => {
       "docs/a.md:14 planning/unrouted",
     ]);
     expect(await messages(root, "docs/a.md")).toEqual([
-      "Open question OQ-A2 is not routed by the roadmap (roadmap.md). Link it, or this document, from there, so the planning page lists it under Needs you rather than Unrouted.",
+      "Open question OQ-A2 is not on a roadmap: the roadmap (roadmap.md) links neither to it nor to this document as a whole, so the planning page lists it under Not on a roadmap. Where it goes is the human's to confirm; `vantage-check index --request unrouted` asks an agent for a proposal.",
     ]);
   });
 
@@ -449,7 +449,7 @@ describe("planning/unrouted", () => {
     expect(await planning(root, "docs/a.md")).toEqual([]);
   });
 
-  // The page hides Unrouted without a roadmap, and so does the gate. A
+  // The page hides Not on a roadmap without a roadmap, and so does the gate. A
   // skipped roadmap counts as missing (Plan Q20).
   it("is quiet when the roadmap is missing or too large", async () => {
     const missing = repo({
@@ -487,7 +487,7 @@ describe("planning/unrouted", () => {
 
     expect(await messages(root, "docs/a.md")).toEqual([
       expect.stringContaining(
-        "OQ-A2 is not routed by the roadmap (plans/next.md)",
+        "OQ-A2 is not on a roadmap: the roadmap (plans/next.md) links neither",
       ),
     ]);
   });
@@ -515,7 +515,7 @@ describe("planning/unrouted, with several roadmaps", () => {
       "docs/a.md:20 planning/unrouted",
     ]);
     expect(await messages(root, "docs/a.md")).toEqual([
-      "Open question OQ-A3 is not routed by any roadmap (roadmap.md, docs/plans/roadmap.md). Link it, or this document, from one of them, so the planning page lists it under Needs you rather than Unrouted.",
+      "Open question OQ-A3 is not on a roadmap: no roadmap (roadmap.md, docs/plans/roadmap.md) links to it or to this document as a whole, so the planning page lists it under Not on a roadmap. Where it goes is the human's to confirm; `vantage-check index --request unrouted` asks an agent for a proposal.",
     ]);
   });
 
@@ -536,10 +536,10 @@ describe("planning/unrouted, with several roadmaps", () => {
 
     expect(await messages(root, "docs/a.md")).toEqual([
       expect.stringContaining(
-        "OQ-A2 is not routed by the roadmap (roadmap.md)",
+        "OQ-A2 is not on a roadmap: the roadmap (roadmap.md) links neither",
       ),
       expect.stringContaining(
-        "OQ-A3 is not routed by the roadmap (roadmap.md)",
+        "OQ-A3 is not on a roadmap: the roadmap (roadmap.md) links neither",
       ),
     ]);
   });
@@ -551,10 +551,10 @@ describe("planning/unrouted, with several roadmaps", () => {
 
     expect(await messages(root, "docs/a.md")).toEqual([
       expect.stringContaining(
-        "OQ-A1 is not routed by the roadmap (docs/plans/roadmap.md)",
+        "OQ-A1 is not on a roadmap: the roadmap (docs/plans/roadmap.md) links neither",
       ),
       expect.stringContaining(
-        "OQ-A3 is not routed by the roadmap (docs/plans/roadmap.md)",
+        "OQ-A3 is not on a roadmap: the roadmap (docs/plans/roadmap.md) links neither",
       ),
     ]);
   });
@@ -1000,7 +1000,8 @@ describe("the narrow index agrees with the full one", () => {
   const rules = '"planning/unrouted" = "warning"\n';
 
   // For every candidate, checked alone, the gate's findings are exactly that
-  // file's membership in the full index's Unrouted and Disagrees.
+  // file's membership in the full index's Not on a roadmap and Stage
+  // conflict.
   it("for every file in the full fixture, checked alone", async () => {
     const root = fullTree();
     writeFileSync(
