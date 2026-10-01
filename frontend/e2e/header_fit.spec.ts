@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
+import { drawnIn, sameBox } from "./drawnIn";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -33,6 +34,45 @@ const SUBJECT =
 const LABELS = ["2 commits", "Path", "Raw", "Review", "Dismiss 3 answered"];
 const MINUTE = 60_000;
 
+const forPath = (pathname: string) => (url: URL) =>
+  url.pathname === pathname && url.searchParams.get("path") === PATH;
+
+/**
+ * The document's review: `count` comments, all answered by the agent (the
+ * toolbar then says "Dismiss 3 answered") or none (then "Dismiss 3", which
+ * asks to be confirmed, and "Copy 3"). Routed again, it replaces the review
+ * routed before: the latest route is the one that answers.
+ */
+async function routeReview(page: Page, count: number, answered: boolean) {
+  const comment = (i: number) => ({
+    id: `${String(i).padStart(8, "0")}-0000-4000-8000-000000000000`,
+    comment: `comment ${i}`,
+    created_at: 1,
+    anchor: null,
+    fallback_text: "One paragraph for the review comments to anchor on.",
+    reactions: answered
+      ? [
+          {
+            actor: "agent",
+            kind: "addressed",
+            summary: "Done",
+            before_text: "",
+            after_text: "",
+            timestamp: 2,
+          },
+        ]
+      : [],
+  });
+  await page.route(forPath("/api/review"), (route) =>
+    route.fulfill({
+      json: {
+        file_path: PATH,
+        comments: Array.from({ length: count }, (_, i) => comment(i + 1)),
+      },
+    }),
+  );
+}
+
 async function routeHeaderData(page: Page) {
   const now = Date.now();
   const commit = (i: number, message: string) => ({
@@ -42,25 +82,6 @@ async function routeHeaderData(page: Page) {
     date: new Date(now - 12 * MINUTE - i * 90 * MINUTE).toISOString(),
     message,
   });
-  const answered = (i: number) => ({
-    id: `0000000${i}-0000-4000-8000-000000000000`,
-    comment: `comment ${i}`,
-    created_at: 1,
-    anchor: null,
-    fallback_text: "One paragraph for the review comments to anchor on.",
-    reactions: [
-      {
-        actor: "agent",
-        kind: "addressed",
-        summary: "Done",
-        before_text: "",
-        after_text: "",
-        timestamp: 2,
-      },
-    ],
-  });
-  const forPath = (pathname: string) => (url: URL) =>
-    url.pathname === pathname && url.searchParams.get("path") === PATH;
 
   await page.route(forPath("/api/git/status"), (route) =>
     route.fulfill({
@@ -72,11 +93,7 @@ async function routeHeaderData(page: Page) {
       json: [commit(0, SUBJECT), commit(1, "docs(design): first draft")],
     }),
   );
-  await page.route(forPath("/api/review"), (route) =>
-    route.fulfill({
-      json: { file_path: PATH, comments: [1, 2, 3].map(answered) },
-    }),
-  );
+  await routeReview(page, 3, true);
 }
 
 /** What the header shows at the current width, read in one layout. */
@@ -799,6 +816,77 @@ test.describe("viewer header under width pressure", () => {
     }
   });
 
+  // A button keeping room for its longer label once drew the shorter one at
+  // the left of that room, with all of the rest after it: on Review's purple
+  // background and ring in review mode, plainly off center. The icon and the
+  // label are centered in it together, and the click that changes the label
+  // still moves nothing. Every button that keeps such room is here, in both
+  // of its states: whichever label is the shorter, it is the one with room.
+  test("a label keeping room for a longer one is centered in it, with its icon", async ({
+    page,
+    context,
+  }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    // Comments the agent has not answered, so Dismiss asks to be confirmed
+    // ("Dismiss 12" → "Confirm?") and Copy is there to click. Twelve, so each
+    // of Copy's two labels is a few pixels from the other's width, and
+    // Dismiss's longer label is its first.
+    await routeReview(page, 12, false);
+    await page.reload();
+    const header = page.getByTestId("viewer-header");
+    await expect(header.getByTestId("commit-subject")).toHaveText(SUBJECT);
+    await expect(header.getByText("2 commits")).toHaveCount(1);
+    await expect(header.getByText("Copy 12", { exact: true })).toHaveCount(1);
+    await expect(header).not.toHaveAttribute("data-yield", /\blabels\b/);
+    // In review mode: the background and the ring that showed it worst.
+    await expect(
+      header.getByRole("button", { name: "Review", exact: true }),
+    ).toHaveAttribute("title", "Exit review mode");
+
+    // Raw goes last: raw view has no Review toggle, and with the toggle gone
+    // the toolbar's end-packed items move, though Raw keeps its size.
+    for (const [name, after, staysPut] of [
+      ["Review", "End review?", true],
+      ["Path", "Copied!", true],
+      ["Dismiss 12", "Confirm?", true],
+      ["Copy 12", "Copied!", true],
+      ["Raw", "Rendered", false],
+    ] as const) {
+      const button = (await header
+        .getByRole("button", { name, exact: true })
+        .elementHandle())!;
+      const was = await drawnIn(button);
+      expect(
+        Math.abs(was.before - was.after),
+        `${name}: ${JSON.stringify(was)}`,
+      ).toBeLessThanOrEqual(1);
+
+      await button.click();
+      await expect(header.getByText(after, { exact: true })).toHaveCount(1);
+      const now = await drawnIn(button);
+      expect(now.text).toBe(after);
+      expect(
+        sameBox(now.box, was.box, { place: staysPut }),
+        `${name} → ${after}: ${JSON.stringify(was.box)} → ${JSON.stringify(now.box)}`,
+      ).toBe(true);
+      expect(
+        Math.abs(now.before - now.after),
+        `${after}: ${JSON.stringify(now)}`,
+      ).toBeLessThanOrEqual(1);
+      // The two labels are not as wide as each other, so one of them had room
+      // kept for the other, or this proved nothing.
+      expect(
+        Math.abs(now.before - was.before),
+        `${name} → ${after}: ${JSON.stringify(was)} → ${JSON.stringify(now)}`,
+      ).toBeGreaterThan(0.5);
+      if (name !== "Raw") {
+        await expect(header.getByText(after, { exact: true })).toHaveCount(0, {
+          timeout: 10_000,
+        });
+      }
+    }
+  });
+
   test("icon-only buttons keep their names", async ({ page }) => {
     await narrowInto(page, "labels");
     const s = await snapshot(page, LABELS, DIRS);
@@ -808,6 +896,21 @@ test.describe("viewer header under width pressure", () => {
       await expect(header.getByRole("button", { name })).toBeVisible();
     }
     await expect(header.getByRole("link", { name: "2 commits" })).toBeVisible();
+    // The room a label keeps for a longer one goes with the label: each is its
+    // icon alone, with the padding either side and nothing beside it.
+    for (const name of ["Path", "Raw", "Review", "Dismiss 3 answered"]) {
+      const icon = await drawnIn(
+        (await header
+          .getByRole("button", { name, exact: true })
+          .elementHandle())!,
+      );
+      expect(icon.box.width, `${name}: ${JSON.stringify(icon)}`).toBeCloseTo(
+        2 * icon.padding + 14,
+        0,
+      );
+      expect(Math.abs(icon.before - icon.padding)).toBeLessThanOrEqual(0.5);
+      expect(Math.abs(icon.after - icon.padding)).toBeLessThanOrEqual(0.5);
+    }
     // The name is drawn as two flex items, stem and extension, which a
     // screen reader would read as two words; it is given the name whole.
     const nav = await header.locator("nav").ariaSnapshot();

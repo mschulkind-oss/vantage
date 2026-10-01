@@ -1338,6 +1338,66 @@ describe("ViewerPage", () => {
     });
   });
 
+  // A click that changes a toolbar label must not change the button's width
+  // (index.css, "A button whose label changes on click"), so each keeps the
+  // room of every label it can show: the one drawn, and a ghost of each other.
+  // Where they sit is measured in header_fit.spec.ts; this pins which labels.
+  describe("a toolbar button whose label changes on click", () => {
+    /** Every label `button` keeps room for, the drawn one among them. */
+    const room = (button: HTMLElement) =>
+      [
+        button.querySelector(".hdr-reserve-face")?.textContent,
+        ...Array.from(button.querySelectorAll("[data-reserve]"), (ghost) =>
+          ghost.getAttribute("data-reserve"),
+        ),
+      ].sort();
+    const buttons = (name: string) =>
+      screen.getAllByRole("button", { name, exact: true });
+
+    beforeEach(() => {
+      gitStore.mockReturnValue({ ...gitStore(), repoRootPath: "/repo" });
+      useReviewStore.setState({
+        isReviewMode: true,
+        filePath: "path/to/file.md",
+        comments: [
+          {
+            id: "11111111-2222-3333-4444-555555555555",
+            anchor: null,
+            fallback_text: "some text",
+            reactions: [],
+            comment: "please fix",
+            created_at: 0,
+          },
+        ],
+      });
+    });
+
+    it("keeps the room of both of its labels, before the click and after it", () => {
+      renderPage();
+      for (const [name, after, labels] of [
+        ["Path", null, ["Copied!", "Path"]],
+        ["Copy 1", null, ["Copied!", "Copy 1"]],
+        ["Review", "End review?", ["End review?", "Review"]],
+        ["Dismiss 1", "Confirm?", ["Confirm?", "Dismiss 1"]],
+        // Last: raw view has no Review toggle.
+        ["Raw", "Rendered", ["Raw", "Rendered"]],
+      ] as const) {
+        const before = buttons(name);
+        expect(before.length, name).toBeGreaterThan(0);
+        for (const button of before) {
+          // The ghosts add nothing to what the button says.
+          expect(button.textContent, name).toBe(name);
+          expect(room(button), name).toEqual(labels);
+        }
+        if (after === null) continue;
+        fireEvent.click(before[0]);
+        const [clicked] = buttons(after);
+        expect(clicked.textContent, after).toBe(after);
+        expect(room(clicked), after).toEqual(labels);
+      }
+    });
+  });
+
   describe("document-changed indicator", () => {
     const indicators = () =>
       screen.queryAllByLabelText(
