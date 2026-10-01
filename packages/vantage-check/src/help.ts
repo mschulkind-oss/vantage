@@ -1,5 +1,5 @@
 import { RULES } from "./rules/registry.js";
-import { VERSION } from "./version.js";
+import { COMMIT, DEVELOPMENT_BUILD, RELEASE, knownCommit } from "./version.js";
 
 /** The id column is as wide as the longest id, plus two spaces. */
 const RULE_WIDTH = Math.max(...RULES.map((rule) => rule.id.length)) + 2;
@@ -88,6 +88,16 @@ not); roadmap names exactly the ones to read instead, as one path or a list:
 Everything works offline against files on disk: no server, no port, no network.
 `;
 
-export function versionLine(): string {
-  return `vantage-check ${VERSION}\n`;
+/**
+ * `vantage-check 0.8.0` for a release, and `vantage-check development build
+ * (2a179b7)` for anything else — never the manifest's placeholder, which is no
+ * release at all (`docs/design/checker-version-skew.md` §4.2).
+ */
+export function versionLine(
+  release: string | undefined = RELEASE,
+  commit: string = COMMIT,
+): string {
+  if (release !== undefined) return `vantage-check ${release}\n`;
+  const at = knownCommit(commit);
+  return `vantage-check ${DEVELOPMENT_BUILD}${at === undefined ? "" : ` (${at})`}\n`;
 }

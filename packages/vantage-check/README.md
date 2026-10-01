@@ -6,8 +6,13 @@ renderer expects, and checks that a document really renders.
 ```console
 $ vantage-check docs/                       # check every Markdown file under docs/
 $ vantage-check check docs/design/api.md --format json
-$ vantage-check style-guide                 # print the conventions
+$ vantage-check style-guide                 # print this release's conventions
 ```
+
+Every command speaks for the binary's own release: the checks it runs and the
+guide it prints are that release's, and a local build is a development build
+that can be newer than every release. Which one to run for readers on an older
+viewer: [Which release it writes for](../../userguide/guides/vantage-check.md#which-release-it-writes-for).
 
 Design: [`../../docs/design/agent-cli.md`](../../docs/design/agent-cli.md).
 User documentation: [`../../userguide/vantage-check.md`](../../userguide/guides/vantage-check.md).
@@ -48,6 +53,13 @@ $ bun ./scripts/build.ts --target bun-darwin-arm64   # or any other platform
 one file, with the version and commit inlined at compile time. The size is the
 runtime; it is the price of a tool that runs in a sandbox with nothing
 installed.
+
+Only the release workflow builds a release: it stamps the tag into
+[`package.json`](./package.json) first, and `version` then prints
+`vantage-check 0.8.0`. Every other build, this one included, has only the
+manifest's placeholder version, so it prints
+`vantage-check development build (<commit>)` instead, and so does every other
+place that would name a version, such as the first line of `style-guide`.
 
 bun cross-compiles, so **one host builds every platform** — that is why the
 release job is a single runner rather than one per OS. Release CI wraps each

@@ -225,10 +225,34 @@ _self-check: cli
     set -euo pipefail
     bin=./packages/vantage-check/dist/vantage-check
     paths=({{doc_paths}} CHANGELOG.md)
-    cfg=$(mktemp) one=$(mktemp) many=$(mktemp)
-    trap 'rm -f "$cfg" "$one" "$many"' EXIT
-    "$bin" version
-    test -n "$("$bin" style-guide)" || { echo "style-guide printed nothing"; exit 1; }
+    cfg=$(mktemp) one=$(mktemp) many=$(mktemp) stamped=$(mktemp)
+    trap 'rm -f "$cfg" "$one" "$many" "$stamped"' EXIT
+    # `just cli` is not the release workflow, so it stamps no release and the
+    # binary must say it is a development build. It printed the manifest's
+    # placeholder, 0.1.0, until checker-version-skew.md §4.2 — and the unit
+    # tests cannot see this, because only bun's --define puts the stamp there.
+    version=$("$bin" version)
+    echo "$version"
+    case "$version" in
+        "vantage-check development build"*) ;;
+        *) echo "a just cli build must call itself a development build, not a release"; exit 1 ;;
+    esac
+    guide=$("$bin" style-guide)
+    test -n "$guide" || { echo "style-guide printed nothing"; exit 1; }
+    case "${guide%%$'\n'*}" in
+        *"development build"*) ;;
+        *) echo "style-guide's first line must say it is a development build"; exit 1 ;;
+    esac
+    # And what a release stamps, built the way publish.yml builds it but with a
+    # version standing in for the tag. Only this sees the stamp travel through
+    # bun's --define into a compiled binary; publish.yml's smoke test sees it
+    # too, but after the tag is pushed, and a tag is never moved.
+    ( cd packages/vantage-check && bun ./scripts/build.ts --manifest-version 9.9.9 --outfile "$stamped" ) > /dev/null
+    test "$("$stamped" version)" = "vantage-check 9.9.9" \
+        || { echo "a release build must print its release: got '$("$stamped" version)'"; exit 1; }
+    guide=$("$stamped" style-guide)
+    test "${guide%%$'\n'*}" = "Vantage 9.9.9's conventions: for readers on 9.9.9 or later." \
+        || { echo "a release build's style-guide must open by naming its release"; exit 1; }
     # A reader that stops early, as `index | head` does, closes the pipe, and
     # the binary's next write fails with EPIPE. It must still exit with its own
     # code. `true` reads nothing, so the pipe is closed before the first write,

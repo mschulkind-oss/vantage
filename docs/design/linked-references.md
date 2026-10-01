@@ -66,7 +66,7 @@ Verified against the code 2026-09-04.
 
 | Piece | Where | What it does |
 | :--- | :--- | :--- |
-| `vantage/oq-missing` | [`directives.ts:980`](../../packages/vantage-check/src/rules/directives.ts#L980) | Errors on a 💬 question with a leaning and no `oq` directive |
+| `vantage/oq-missing` | [`directives.ts:1024`](../../packages/vantage-check/src/rules/directives.ts#L1024) | Errors on a 💬 question with a leaning and no `oq` directive |
 | `link/dead-section-anchor` | [`links.ts`](../../packages/vantage-check/src/rules/links.ts) | Errors on a `#fragment` matching no heading in the target |
 | `link/missing-target` | [`links.ts`](../../packages/vantage-check/src/rules/links.ts) | Errors on a relative link whose target is not on disk |
 | `documentAnchors` | [`slugs.ts:67`](../../packages/vantage-check/src/core/slugs.ts#L67) | Heading slugs + hand-written HTML ids — the set a fragment may target |

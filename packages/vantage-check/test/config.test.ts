@@ -223,6 +223,99 @@ describe("parseConfig", () => {
     expect(() => parseConfig(source)).toThrow(/unknown key/);
   });
 
+  // checker-version-skew.md §6.2. An unknown key or rule id is a typo, or the
+  // configuration of a newer vantage-check than this one, and an agent told
+  // only "unknown" deletes the line. So each names this checker, says to run a
+  // newer one and keep the line, and says to fix a typo.
+  it.each([
+    [
+      "[check]\nfuture-key = 1\n",
+      "unknown key check.future-key, which this development build of vantage-check does not know.",
+      "key",
+    ],
+    [
+      '[planning]\nroadmaps = "r.md"\n',
+      "unknown key planning.roadmaps. In this development build of vantage-check, [planning] takes",
+      "key",
+    ],
+    [
+      '[check.rules]\n"future/rule" = "error"\n',
+      'unknown rule "future/rule", which this development build of vantage-check does not have.',
+      "rule",
+    ],
+    [
+      '[check.rules]\n"planning/question-length" = { future-key = 1 }\n',
+      'unknown key "future-key" for rule "planning/question-length", which in this development build of vantage-check takes severity and',
+      "key",
+    ],
+  ])(
+    "names the checker and says to keep %j if it is newer",
+    (source, opening, what) => {
+      let message = "";
+      try {
+        parseConfig(source);
+      } catch (error) {
+        expect(error).toBeInstanceOf(ConfigError);
+        message = (error as Error).message;
+      }
+
+      expect(message).toContain(opening);
+      expect(message).toContain(
+        `If this repository is configured for a newer vantage-check, run one (for example, \`uvx vantage-check@latest\`) and don't remove the ${what}; if it is a typo, fix it.`,
+      );
+    },
+  );
+
+  // A rule a later release gives options to takes a table there, and none here.
+  it("names the checker and says to keep a rule's table if it is newer", () => {
+    expect(() =>
+      parseConfig(
+        '[check.rules]\n"link/missing-target" = { future-key = 1 }\n',
+      ),
+    ).toThrow(
+      'rule "link/missing-target" takes only a severity, "error", "warning" or "off", and no table in this development build of vantage-check. If this repository is configured for a newer vantage-check, run one (for example, `uvx vantage-check@latest`) and don\'t remove the table; if it is a mistake, write the severity alone.',
+    );
+  });
+
+  // The viewer's own names, written below a table header, are neither a typo
+  // nor a newer checker's key: "keep it and run a newer checker" would leave a
+  // `theme` where it does nothing. The fix is where it is written, and the
+  // opening is still the one the user guide's theme pages quote.
+  it.each([
+    [
+      '[check]\nstrict = true\ntheme = "solarized-dark"\n',
+      "unknown key check.theme.",
+      "move it above the first [table]",
+    ],
+    [
+      '[check.rules]\n"link/*" = "error"\ntheme = "solarized-dark"\n',
+      'unknown rule "theme".',
+      "move it above the first [table]",
+    ],
+    [
+      '[planning]\nexclude = []\ntheme = "solarized-dark"\n',
+      "unknown key planning.theme.",
+      "move it above the first [table]",
+    ],
+    [
+      '[check.starred]\npromote = ["roadmap.md"]\n',
+      "unknown key check.starred.",
+      "write it as a top-level [starred] table",
+    ],
+  ])("says where the viewer's key goes: %j", (source, opening, fix) => {
+    let message = "";
+    try {
+      parseConfig(source);
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConfigError);
+      message = (error as Error).message;
+    }
+
+    expect(message).toContain(opening);
+    expect(message).toContain(fix);
+    expect(message).not.toMatch(/newer vantage-check|don't remove/);
+  });
+
   // A typo that silently disables nothing is the quiet kind of wrong a checker
   // cannot afford, so every one of these is an error rather than a warning.
   it.each([

@@ -4,6 +4,11 @@ import { describe, expect, it } from "vitest";
 import { renderMarkdown } from "../../vantage-md/src/renderMarkdown.js";
 import { STYLE_GUIDE } from "../../vantage-md/src/styleGuide.js";
 import { parseConfig } from "../src/core/config.js";
+import {
+  unknownKeyMessage,
+  unknownNameMessage,
+  unknownValueMessage,
+} from "../src/rules/directives.js";
 import type { Settings } from "../src/core/settings.js";
 import { checkTree, makeTree, ruleIds } from "./helpers.js";
 
@@ -302,6 +307,55 @@ describe("vantage/unknown-*", () => {
     ]) {
       expect(report.findings[0]?.message).toContain(`\`${tone}\``);
     }
+  });
+
+  // checker-version-skew.md §6.2. An unknown name can be a typo or markup from
+  // a newer Vantage than this checker, so each message says what a viewer at
+  // the checker's own version does with it, and the advice keeps both cases
+  // apart. No upgrade command: upgrading silences the finding whether or not
+  // the reader's viewer renders the markup.
+  it.each([
+    ["<!-- vantage: callout -->\n\n## H\n", "vantage/unknown-name", "callout"],
+    [
+      "<!-- vantage: section bogus=zzz -->\n\n## H\n",
+      "vantage/unknown-key",
+      "bogus",
+    ],
+    [
+      "<!-- vantage: section tone=purple -->\n\n## H\n",
+      "vantage/unknown-value",
+      "purple",
+    ],
+  ])(
+    "says what this version's viewer does with %j, and to keep it if it is newer",
+    async (markdown, rule, token) => {
+      const report = await one(markdown);
+      const [finding] = report.findings;
+
+      expect(ruleIds(report)).toEqual([rule]);
+      // Running from source is a development build.
+      expect(finding?.message).toContain(
+        "a viewer from this development build drops",
+      );
+      expect(finding?.detail).toBe(
+        `If \`${token}\` is a typo, fix it. If it comes from a newer Vantage, don't remove it: this repository's readers need that version, and a newer vantage-check checks it.`,
+      );
+      expect(`${finding?.message} ${finding?.detail}`).not.toMatch(
+        /uvx|@latest|upgrade|install/i,
+      );
+    },
+  );
+
+  it("names the release whose viewer it describes", () => {
+    expect(unknownNameMessage("callout", "0.8.0")).toBe(
+      "`callout` is not a directive name, so a Vantage 0.8.0 viewer drops the whole directive and nothing is styled. It knows `section`, `block` or `oq`.",
+    );
+    expect(unknownKeyMessage("section", "bogus", ["tone"], "0.8.0")).toBe(
+      "`bogus` is not a key `section` accepts, so a Vantage 0.8.0 viewer drops that pair while the directive's other keys still apply. `section` accepts `tone`.",
+    );
+    expect(unknownValueMessage("tone", "purple", ["note"], "0.8.0")).toMatch(
+      /^`purple` is not a value `tone` accepts, so a Vantage 0\.8\.0 viewer drops that pair and nothing is styled\. `tone` accepts `note`\./,
+    );
   });
 
   it("reports the P2 attack shape as one unknown value, never a crash", async () => {

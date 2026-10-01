@@ -10,7 +10,7 @@ summary: "An agent's checker is whatever PyPI released last, so it teaches Markd
 
 # The checker writes for the oldest viewer, not for itself
 
-**Status:** 2026-09-30. Nothing is built. The evidence was checked against `bb7f67f` (main) and against the published 0.7.1 packages on the same day.
+**Status:** 2026-09-30. The checker's part of the 0.8.0 slice ([§11](#11-what-ships-when)) is built: the two-branch messages, the development-build name, the `style-guide` header line and the user-guide edits. Nothing for a later release is built. The evidence was checked against `bb7f67f` (main) and against the published 0.7.1 packages on the same day.
 
 > **In short.** Nothing today stops an agent's checker from being newer than its readers' viewer, because the checker writes for its own version. The fix is to tell the newest checker which viewers the readers run and have it write for the oldest, not to pin an old checker, which can't see what came after it.
 
@@ -76,7 +76,7 @@ Rows 1, 3 and 4 were checked by rendering a probe with the published `vantage-md
 ### 2.3 The other direction: an old checker and a newer repository
 
 - **Every published checker exits 2 on this repository's own `.vantage.toml`.** Every version tested (0.5.10, 0.6.2, 0.7.0 and 0.7.1) reports `unknown rule "planning/unrouted"`. So bare `uvx` can't check this repository until 0.8.0 ships.
-- **A newer key or rule id is fatal to an older checker.** Unknown `check.*` and `planning.*` keys exit 2 ([`config.ts:232`](../../packages/vantage-check/src/core/config.ts#L232), [`:279`](../../packages/vantage-check/src/core/config.ts#L279)). So do unknown rule ids (`assertRuleId`, [`:393`](../../packages/vantage-check/src/core/config.ts#L393)), unless their namespace is `markdown`.
+- **A newer key or rule id is fatal to an older checker.** Unknown `check.*` and `planning.*` keys exit 2 ([`config.ts:242`](../../packages/vantage-check/src/core/config.ts#L242), [`:294`](../../packages/vantage-check/src/core/config.ts#L294)). So do unknown rule ids (`assertRuleId`, [`:412`](../../packages/vantage-check/src/core/config.ts#L412)), unless their namespace is `markdown`.
 - **A newer directive name is an error in an older checker.** `vantage/unknown-name` defaults to `error` ([`registry.ts:134`](../../packages/vantage-check/src/rules/registry.ts#L134)). Its message says "Vantage knows `section`, `block` or `oq`" without saying which Vantage. Most hits are typos, which is why it is an error.
 - **The two style guides contradict each other.** The 0.7.1 guide says blocked and answered questions need no directive. The 0.8.0 planning index counts a question only when it has one ([`scan.ts:59`](../../packages/vantage-md/src/planning/scan.ts#L59)). In `git diff v0.7.1 HEAD -- packages/vantage-md/src/styleGuide.ts`, that rule is the only line changed rather than added.
 - **An old checker passes what a new one catches.** 0.7.1 passes a `depends-on:` that points at a missing file, while the current build reports `planning/depends-on-missing`.
@@ -117,7 +117,7 @@ target = "0.8"
   - Anything else is a configuration error (exit 2), and the message lists the accepted forms. That includes a TOML number (`target = 0.8`), `"latest"`, a range, a leading `v`, and a pre-release.
   - Ranges are rejected because the checker would have to choose a point in the range, and it would choose its own version. That's the choice this design exists to stop.
 - **Placement.** A top-level scalar, next to `theme`, **above the first `[table]`**. Every example shows it there, for two reasons:
-  - **Readers that don't know the key ignore it.** The checker reads only `[check]` and `[planning]` ([`config.ts:192`](../../packages/vantage-check/src/core/config.ts#L192)). The server polices only the tables it claims ([`repoconfig.go:467`](../../internal/repoconfig/repoconfig.go#L467)).
+  - **Readers that don't know the key ignore it.** The checker reads only `[check]` and `[planning]` ([`config.ts:194`](../../packages/vantage-check/src/core/config.ts#L194)). The server polices only the tables it claims ([`repoconfig.go:467`](../../internal/repoconfig/repoconfig.go#L467)).
   - **TOML moves a key written after a table header into that table.** Appended to this repository's file, the key becomes `planning.stages.target`, which the 0.8 server rejects along with the whole file ([`repo-config.md` §2.3](repo-config.md#23-rejected-whole-never-half)). Placed after `[check.rules]`, it becomes `unknown rule "target"`, which makes every checker exit 2. A checker that knows the key reports a version-shaped `target` inside any table with "move `target` above the first [table]".
 - **One writer.** Only a human edits `target`. No Vantage tool writes it or offers to.
 - **This amends D3; it doesn't keep it.** [`inline-markup.md` D3](../reference/inline-markup.md) says "no version negotiation, no minimum-version key", without limiting it to documents. Its premise is D2: an older Vantage meeting newer markup renders it plain. 0.8.0 broke that premise twice:
@@ -128,9 +128,9 @@ target = "0.8"
 
 ### 4.2 Choosing the effective target
 
-**The target is read per repository root, from the same file the viewer reads.** That's the root's own `.vantage.toml` and nothing above it, the same way `[planning]` is read today (`planningConfigFor`, [`config.ts:160`](../../packages/vantage-check/src/core/config.ts#L160)).
+**The target is read per repository root, from the same file the viewer reads.** That's the root's own `.vantage.toml` and nothing above it, the same way `[planning]` is read today (`planningConfigFor`, [`config.ts:162`](../../packages/vantage-check/src/core/config.ts#L162)).
 
-- **`check` finds `[check]` differently, and the target must not use that search.** For `[check]`, `check` walks up from the first path it's given ([`check.ts:70`](../../packages/vantage-check/src/commands/check.ts#L70)) all the way to `/`, and never stops at `.git` ([`config.ts:75`](../../packages/vantage-check/src/core/config.ts#L75)). A target found that way could come from a parent directory's file, or from the first of several repositories in the run.
+- **`check` finds `[check]` differently, and the target must not use that search.** For `[check]`, `check` walks up from the first path it's given ([`check.ts:70`](../../packages/vantage-check/src/commands/check.ts#L70)) all the way to `/`, and never stops at `.git` ([`config.ts:77`](../../packages/vantage-check/src/core/config.ts#L77)). A target found that way could come from a parent directory's file, or from the first of several repositories in the run.
 - **`index` already reads the root's own file** ([`index.ts:88`](../../packages/vantage-check/src/commands/index.ts#L88)).
 - **`style-guide` reads no config today.** It finds the root from the working directory, and its header names the file it read.
 - **A file under no repository root** has no config target, unless `--config` names one.
