@@ -543,11 +543,15 @@ a glance. Above it, the card names the document, with that document's badge.
   a list, follows it.
 - **Its leaning is a block of its own,** set off in color, and an answer
   already written in is shown whole.
-- **The rest is cut to three lines** while the card is folded, and faded at
-  the cut when there is more. **Show full question**, at the end of the card's
-  row of buttons, unfolds all of it, and **Show less** folds it again. A
-  question opened with Show question from its preview card, below, arrives
-  unfolded.
+- **The rest is cut to three lines** while the card is folded. When that
+  hides anything, the last line shown fades out and **Show full question**
+  sits right under it, where the question stops; unfolded, **Show less** at
+  the end of the question folds it again. The card's top stays where it was
+  on the screen either way, and from the keyboard the focus goes to what you
+  revealed: the question, unfolded, or Show full question, folded. Tabbing to
+  a link in the hidden lines unfolds the card. A question that fits its lines
+  shows neither. A question opened with Show question from its preview card,
+  below, arrives unfolded, and a printout shows every card unfolded.
 - **An empty answer is not shown:** the convention's `**Answer:**` over
   `_(empty — fill in when decided)_` is left out until someone fills it in.
 - **The badges on links inside the question are quiet,** with no colored box,
@@ -558,6 +562,14 @@ Nothing is summarized or rewritten: every word on the card is the document's
 own. A question with no bold title, such as a bare paragraph, shows as its
 document renders it, with its directive's leaning beside it when it writes none
 out.
+
+**Expand all**, at the end of the line naming the sections, unfolds every card
+on the page, and **Collapse all** folds them again. Either one also decides how
+cards open from then on: on the section's next page, in the other sections, and
+the next time you open the page. Vantage remembers it in this browser, as it
+remembers [full width](../features.md#full-width). Unfolding or folding one card
+yourself wins for that card, even after you flip to another page and back, until
+you next press Expand all or Collapse all.
 
 What the card offers follows the question's state:
 
@@ -728,7 +740,9 @@ It also keeps **the roadmap you chose** on the planning page
 followed by the repository's name, which is empty when Vantage serves one
 repository. It holds the roadmap's path and nothing else, and only a choice
 made in the menu writes it. Clearing the site data removes it too; without it,
-the page opens on the roadmap nearest the root.
+the page opens on the roadmap nearest the root. Whether cards open unfolded
+([Expand all](#a-questions-card)) is kept the same way, under
+`vantage:planningCardsExpanded`; without it, they open folded.
 
 A browser without IndexedDB, or whose IndexedDB is full, disabled or failing,
 as in some private windows, keeps nothing. Vantage then fetches and scans

@@ -1922,10 +1922,13 @@ th.review-block-hovered {
    marks its unit and every element between the unit and the card, and this
    hides every other child of a marked element. A rule rather than an attribute
    on each hidden sibling, so a node another pass adds later — a link badge —
-   is hidden or shown by where it sits. */
+   is hidden or shown by where it sits. The card's own cut, which follows a
+   question that is one block, is the one sibling it keeps. */
 .planning-card-body
   [data-planning-card-path]
-  > :not([data-planning-card-path]):not([data-planning-card-unit]) {
+  > :not([data-planning-card-path]):not([data-planning-card-unit]):not(
+    [data-planning-card-cut]
+  ) {
   display: none !important;
 }
 /* The block's own vertical margin would push the question away from the card's
@@ -1991,11 +1994,17 @@ th.review-block-hovered {
   padding-inline-start: 0;
   margin-inline-start: 0;
 }
-/* Folded, the question shows its first block cut to a few lines, faded at the
-   cut while there is more of it, and nothing after it but its leaning and a
-   filled-in answer. The line count is the card's, from `CARD_CLAMP_LINES`.
-   The clamp is on from the first paint, and only the fade waits for the
-   measurement, which moves nothing. */
+/* Folded, the question shows its first block cut to a few lines, and nothing
+   after it but its leaning and a filled-in answer. The line count is the
+   card's, from `CARD_CLAMP_LINES`. The clamp is on from the first paint.
+
+   While the folded card hides anything — the block runs past its lines, or
+   blocks after it are folded away — the block's last line fades out: the cut.
+   It is a mask, not a color painted over the text, so the line dissolves into
+   whatever the card is drawn on, in light, dark and every color theme, and no
+   color is restated here to drift from the card's: the gradient's `#000` is
+   full opacity, not black. It stops short of transparent, so a cut that is a
+   question's only line, with its options folded away after it, still reads. */
 .planning-card-body:not([data-planning-card-unfolded])
   [data-planning-card-part="more"] {
   display: none !important;
@@ -2011,9 +2020,42 @@ th.review-block-hovered {
   -webkit-mask-image: linear-gradient(
     to bottom,
     #000 calc(100% - 1.5em),
-    transparent
+    rgb(0 0 0 / 0.15)
   );
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 1.5em), transparent);
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - 1lh),
+    rgb(0 0 0 / 0.15)
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - 1.5em),
+    rgb(0 0 0 / 0.15)
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 calc(100% - 1lh),
+    rgb(0 0 0 / 0.15)
+  );
+}
+/* Forced colors (Windows High Contrast) keep the reader's own contrast: a
+   mask would dim the last line against the background they chose. Show full
+   question at the cut still says where the question stops. */
+@media (forced-colors: active) {
+  .planning-card-body [data-planning-card-part="clamp"] {
+    -webkit-mask-image: none !important;
+    mask-image: none !important;
+  }
+}
+/* Show full question, directly under the faded line, where the reader sees
+   the question stop. The element is the card's own (`cutSlot`), drawn only
+   while it holds the control; the block after it keeps its own top margin. */
+.planning-card-body [data-planning-card-cut] {
+  display: flex;
+  margin: 0.125rem 0 0 !important;
+}
+.planning-card-body [data-planning-card-cut]:empty {
+  display: none !important;
 }
 /* The leaning, as a block of its own: the document's `Leaning:` paragraph, or
    the directive's leaning when the question writes none out. */
@@ -2054,11 +2096,16 @@ th.review-block-hovered {
   filter: grayscale(1);
   opacity: 0.85;
 }
-/* Paper has no Show full question: a card prints unfolded. */
+/* Paper has no Show full question: a card prints unfolded, with no fold's
+   control and no fade. */
 @media print {
   .planning-card-body:not([data-planning-card-unfolded])
     [data-planning-card-part="more"] {
     display: revert !important;
+  }
+  .planning-card-body [data-planning-card-cut],
+  [data-planning-card-fold] {
+    display: none !important;
   }
   .planning-card-body [data-planning-card-part="clamp"] {
     max-height: none !important;

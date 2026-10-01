@@ -34,7 +34,11 @@ import {
 } from "vantage-md/planning";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { planningBadgeElement } from "./PlanningBadge";
-import { PlanningQuestionCard, WAITING_LABEL } from "./PlanningQuestionCard";
+import {
+  PlanningQuestionCard,
+  WAITING_LABEL,
+  type CardFolds,
+} from "./PlanningQuestionCard";
 import {
   OQ_DEFAULT_LEANING,
   documentQuestions,
@@ -51,8 +55,13 @@ import {
 } from "../../../packages/vantage-md/src/mermaidCache";
 import { readRepoFile, sourcesOf } from "../test/planning";
 import { planningCardId } from "../lib/planningCardId";
-import { blockVisibleText, hashBlockText } from "../lib/reviewAnchor";
 import {
+  REVIEW_UI_SELECTOR,
+  blockVisibleText,
+  hashBlockText,
+} from "../lib/reviewAnchor";
+import {
+  CARD_CUT_ATTR,
   CARD_PART_ATTR,
   flushClampMeasures,
   type CardPart,
@@ -506,6 +515,12 @@ const headline = () =>
   screen.queryByRole("heading", { level: 3 })?.textContent ?? null;
 const foldButton = () =>
   screen.queryByRole("button", { name: /^Show (full question|less)$/ });
+/** The element the card keeps at its cut, wherever it is. */
+const cutIn = (container: HTMLElement) =>
+  container.querySelector<HTMLElement>(`[${CARD_CUT_ATTR}]`);
+/** The card's row of controls. */
+const controlRow = () =>
+  screen.getByRole("article").querySelector("[data-planning-card-controls]")!;
 
 describe("the card is laid out to be read", () => {
   it("leads with the question's bold title as its headline, and hides it in the question", () => {
@@ -573,36 +588,223 @@ describe("the card is laid out to be read", () => {
     expect(answer[1]).toHaveTextContent("Yes: one broker per host.");
   });
 
-  it("folds the rest of the question behind Show full question, which the reader opens and closes", () => {
+  it("folds the rest of the question behind Show full question, at the cut, which the reader opens and closes", () => {
     const { container } = renderCard(jailById("OQ-J1"));
     // The first block is cut to a few lines, and every later one is hidden
     // until the card is unfolded.
-    expect(partsIn(container, "clamp")).toHaveLength(1);
+    const [clamp] = partsIn(container, "clamp");
     expect(partsIn(container, "more").map((el) => el.textContent)).toEqual([
       "The options are one session per jail, or one per profile.",
     ]);
     const body = container.querySelector(".planning-card-body")!;
     expect(body).not.toHaveAttribute("data-planning-card-unfolded");
+    // Something is folded away, so the cut fades whatever the block measures
+    // (here, where there is no layout, nothing).
+    act(() => flushClampMeasures());
+    expect(clamp).toHaveAttribute("data-planning-card-overflow");
+    // Show full question is at the cut: directly after the block it cuts
+    // short, inside the question, and not in the row of controls.
+    const cut = cutIn(container)!;
+    expect(clamp!.nextElementSibling).toBe(cut);
     const fold = foldButton()!;
+    expect(cut).toContainElement(fold);
+    expect(controlRow()).not.toContainElement(fold);
     expect(fold).toHaveTextContent("Show full question");
     expect(fold).toHaveAttribute("aria-expanded", "false");
     expect(fold).toHaveAttribute("aria-controls", body.id);
 
     fireEvent.click(fold);
+    act(() => flushClampMeasures());
     expect(body).toHaveAttribute("data-planning-card-unfolded");
-    expect(fold).toHaveTextContent("Show less");
-    expect(fold).toHaveAttribute("aria-expanded", "true");
+    expect(clamp).not.toHaveAttribute("data-planning-card-overflow");
+    // Show less is at the end of the question, and the cut is empty.
+    const less = foldButton()!;
+    expect(less).toHaveTextContent("Show less");
+    expect(less).toHaveAttribute("aria-expanded", "true");
+    expect(less).toHaveAttribute("aria-controls", body.id);
+    expect(cut.childNodes).toHaveLength(0);
+    expect(less.closest("[data-planning-card-fold-end]")).not.toBeNull();
+    expect(
+      body.compareDocumentPosition(less) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(controlRow()).not.toContainElement(less);
 
-    fireEvent.click(fold);
+    fireEvent.click(less);
+    act(() => flushClampMeasures());
     expect(body).not.toHaveAttribute("data-planning-card-unfolded");
-    expect(fold).toHaveTextContent("Show full question");
+    expect(clamp).toHaveAttribute("data-planning-card-overflow");
+    expect(cut).toContainElement(foldButton());
+    expect(foldButton()).toHaveTextContent("Show full question");
+  });
+
+  it("is a button in the tab order, and its focus goes to what its press revealed", () => {
+    const { container } = renderCard(jailById("OQ-J1"));
+    const body = container.querySelector<HTMLElement>(".planning-card-body")!;
+    const fold = foldButton()!;
+    expect(fold.tagName).toBe("BUTTON");
+    expect(fold).toHaveAttribute("type", "button");
+    expect(fold).not.toHaveAttribute("tabindex");
+    expect(fold).toBeEnabled();
+    // The question takes the focus only from a fold.
+    expect(body).not.toHaveAttribute("tabindex");
+    fold.focus();
+    fireEvent.click(fold);
+    // Show full question went with the cut, and Show less is past what it
+    // revealed: the focus is on the question, where reading goes on.
+    expect(foldButton()).toHaveTextContent("Show less");
+    expect(document.activeElement).toBe(body);
+    expect(body).toHaveAttribute("tabindex", "-1");
+    expect(body.id).toBe(foldButton()!.getAttribute("aria-controls"));
+    // Folding gives it to Show full question at the cut, and the question
+    // leaves the tab order again.
+    foldButton()!.focus();
+    expect(body).not.toHaveAttribute("tabindex");
+    fireEvent.click(foldButton()!);
+    expect(document.activeElement).toBe(foldButton());
+    expect(foldButton()).toHaveTextContent("Show full question");
+    expect(cutIn(container)).toContainElement(foldButton());
+  });
+
+  it("moves no focus that the press did not have", () => {
+    const { container } = renderCard(jailById("OQ-J1"));
+    const body = container.querySelector<HTMLElement>(".planning-card-body")!;
+    fireEvent.click(foldButton()!);
+    expect(document.activeElement).toBe(document.body);
+    expect(body).not.toHaveAttribute("tabindex");
+  });
+
+  it("is described by its card's headline, which tells one card's apart from another's", () => {
+    renderCard(jailById("OQ-J1"));
+    const title = screen.getByRole("heading", { level: 3 });
+    expect(title.id).not.toBe("");
+    expect(foldButton()).toHaveAttribute("aria-describedby", title.id);
+    // The marker is hidden from it, as it is from the heading's name.
+    expect(foldButton()).toHaveAccessibleDescription(
+      "OQ-J1: Should the broker mint credentials per profile?",
+    );
+    fireEvent.click(foldButton()!);
+    expect(foldButton()).toHaveAttribute("aria-describedby", title.id);
+  });
+
+  describe("a link the folded card cuts off", () => {
+    afterEach(() => vi.restoreAllMocks());
+    /** The clamp's last line ends 60px down; `below` lies past it. */
+    function laidOut(below: string) {
+      const own = HTMLElement.prototype.getBoundingClientRect;
+      vi.spyOn(
+        HTMLElement.prototype,
+        "getBoundingClientRect",
+      ).mockImplementation(function (this: HTMLElement) {
+        if (this.getAttribute(CARD_PART_ATTR) === "clamp") {
+          return { top: 0, bottom: 60 } as DOMRect;
+        }
+        if (this.textContent === below) {
+          return { top: 80, bottom: 100 } as DOMRect;
+        }
+        if (this.tagName === "A") return { top: 0, bottom: 20 } as DOMRect;
+        return own.call(this);
+      });
+    }
+
+    it("unfolds the card when the reader tabs to it, and keeps it in view", () => {
+      laidOut("the plan");
+      const folds: CardFolds = new Map();
+      const { container } = renderCard(jailById("OQ-J1"), {
+        folds,
+        cardKey: "k",
+      });
+      const body = container.querySelector(".planning-card-body")!;
+      const into = vi.fn();
+      const link = screen.getByRole("link", { name: "the plan" });
+      link.scrollIntoView = into;
+      act(() => link.focus());
+      expect(body).toHaveAttribute("data-planning-card-unfolded");
+      expect(document.activeElement).toBe(link);
+      expect(into).toHaveBeenCalledWith({ block: "nearest" });
+      // The reader's own fold, as a press of Show full question records it.
+      expect(folds.get("k")).toBe(true);
+      expect(foldButton()).toHaveTextContent("Show less");
+    });
+
+    it("unfolds it too when the browser has scrolled the clamp to the link first", () => {
+      // Shown 40px down, in a clamp scrolled by 72px: 112px down as laid out.
+      laidOut("nothing");
+      const { container } = renderCard(jailById("OQ-J1"));
+      const [clamp] = partsIn(container, "clamp") as HTMLElement[];
+      clamp!.scrollTop = 72;
+      const link = screen.getByRole("link", { name: "the plan" });
+      vi.spyOn(link, "getBoundingClientRect").mockReturnValue({
+        top: 20,
+        bottom: 40,
+      } as DOMRect);
+      act(() => link.focus());
+      const body = container.querySelector(".planning-card-body")!;
+      expect(body).toHaveAttribute("data-planning-card-unfolded");
+    });
+
+    it("leaves the card folded for a link on a line it shows", () => {
+      laidOut("the plan");
+      const { container } = renderCard(jailById("OQ-J1"));
+      const body = container.querySelector(".planning-card-body")!;
+      act(() => screen.getByRole("link", { name: "the auth design" }).focus());
+      expect(body).not.toHaveAttribute("data-planning-card-unfolded");
+      // Nor does a focus outside the question, the card's own controls.
+      act(() => screen.getByRole("link", { name: "Open document" }).focus());
+      expect(body).not.toHaveAttribute("data-planning-card-unfolded");
+    });
+
+    it("never scrolls the clamp, which would open the card on the middle of its question", () => {
+      const { container } = renderCard(jailById("OQ-J1"));
+      const [clamp] = partsIn(container, "clamp") as HTMLElement[];
+      clamp!.scrollTop = 96;
+      expect(clamp!.scrollTop).toBe(96);
+      fireEvent.scroll(clamp!);
+      expect(clamp!.scrollTop).toBe(0);
+      // Folded again, a browser gives the block back the scroll it had as
+      // the clamp, and says nothing: it is taken back off as it is measured.
+      fireEvent.click(foldButton()!);
+      act(() => flushClampMeasures());
+      clamp!.scrollTop = 72;
+      fireEvent.click(foldButton()!);
+      act(() => flushClampMeasures());
+      expect(clamp!.scrollTop).toBe(0);
+    });
+  });
+
+  it("keeps the cut out of the question's text, which an answer's anchor hashes", () => {
+    const { container } = renderCard(jailById("OQ-J1"));
+    const cut = cutIn(container)!;
+    expect(cut.matches(REVIEW_UI_SELECTOR)).toBe(true);
+    expect(cut).toHaveTextContent("Show full question");
+    const unit = unitIn(container);
+    expect(blockVisibleText(unit)).not.toContain("Show full question");
+  });
+
+  it("puts nothing in its row of controls for the fold", () => {
+    renderCard(byId("OQ-B3"));
+    expect(foldButton()).toBeNull();
+    expect(
+      screen.getByRole("article").querySelector("[data-planning-fold-slot]"),
+    ).toBeNull();
+    expect(controlRow().querySelector("[data-planning-card-fold]")).toBeNull();
   });
 
   describe("with a layout to measure", () => {
-    /** Every cut-short block runs to `tall` px, of which the clamp shows 60. */
+    /**
+     * Every cut-short block runs to `tall` px, in lines of 20px, of which the
+     * clamp shows three.
+     */
     function measured(tall: number) {
       const clamped = (el: HTMLElement) =>
         el.getAttribute(CARD_PART_ATTR) === "clamp";
+      const computed = window.getComputedStyle.bind(window);
+      vi.spyOn(window, "getComputedStyle").mockImplementation((el, pseudo) => {
+        const style = computed(el, pseudo);
+        if (el instanceof HTMLElement && clamped(el)) {
+          Object.defineProperty(style, "lineHeight", { value: "20px" });
+        }
+        return style;
+      });
       vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
         function (this: HTMLElement) {
           return clamped(this) ? tall : 0;
@@ -623,15 +825,36 @@ describe("the card is laid out to be read", () => {
     it("offers Show full question when the first block runs past its lines, and fades it at the cut", () => {
       measured(200);
       const { container } = renderCard(byId("OQ-B4"));
+      // Nothing is folded away after it, so only the measurement says.
+      expect(foldButton()).toBeNull();
       measureNow();
       expect(partsIn(container, "more")).toHaveLength(0);
       const [clamp] = partsIn(container, "clamp");
       expect(clamp).toHaveAttribute("data-planning-card-overflow");
       expect(foldButton()).toHaveTextContent("Show full question");
-      // Unfolded, the block is whole, and has no fade to show.
+      expect(clamp!.nextElementSibling).toBe(cutIn(container));
+      expect(cutIn(container)).toContainElement(foldButton());
+      // Unfolded, the block is whole, and has no fade to show; measured
+      // against the lines it would fold to, it still offers to fold.
       fireEvent.click(foldButton()!);
+      expect(foldButton()).toHaveTextContent("Show less");
       measureNow();
       expect(clamp).not.toHaveAttribute("data-planning-card-overflow");
+      expect(foldButton()).toHaveTextContent("Show less");
+    });
+
+    it("puts the cut right after a question that is one block, where the card keeps it shown", () => {
+      measured(200);
+      const { container } = renderCard(galleryById("OQ-4"));
+      measureNow();
+      const unit = unitIn(container);
+      expect(unit).toHaveAttribute(CARD_PART_ATTR, "clamp");
+      const cut = cutIn(container)!;
+      // A sibling of the unit, in the element the card hides every other
+      // child of, which the stylesheet exempts it from.
+      expect(unit.nextElementSibling).toBe(cut);
+      expect(cut.parentElement).toHaveAttribute("data-planning-card-path");
+      expect(cut).toContainElement(foldButton());
     });
 
     // A page of cards is measured in one pass, every read before any write,
@@ -681,24 +904,21 @@ describe("the card is laid out to be read", () => {
       height.mockRestore();
     });
 
-    it("offers nothing to unfold when the question fits its lines", () => {
+    it("offers nothing to unfold, and fades nothing, when the question fits its lines", () => {
       measured(40);
       const { container } = renderCard(byId("OQ-B4"));
       measureNow();
       const [clamp] = partsIn(container, "clamp");
       expect(clamp).not.toHaveAttribute("data-planning-card-overflow");
       expect(foldButton()).toBeNull();
+      // The cut is there, empty, which the stylesheet does not draw.
+      expect(cutIn(container)!.childNodes).toHaveLength(0);
+      // Unfolded by the page, it offers no Show less either.
+      cleanup();
+      renderCard(byId("OQ-B4"), { unfoldedByDefault: true });
+      measureNow();
+      expect(foldButton()).toBeNull();
     });
-  });
-
-  it("keeps the fold's slot, at its width, when there is nothing to unfold", () => {
-    renderCard(byId("OQ-B3"));
-    expect(foldButton()).toBeNull();
-    const slot = screen
-      .getByRole("article")
-      .querySelector("[data-planning-fold-slot]");
-    expect(slot).toHaveClass("w-32");
-    expect(slot!.childNodes).toHaveLength(0);
   });
 
   it("drops the question's number, which the headline makes redundant, and keeps it in the DOM", () => {
@@ -815,6 +1035,210 @@ describe("the card is laid out to be read", () => {
     unmount();
     renderCard(question, { card: null });
     expect(headline()).toBe(`\u{1F4AC} ${question.title}`);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * The fold a card opens with, and where folding leaves the page
+ * (user direction, 2026-10-01)
+ * ------------------------------------------------------------------ */
+
+describe("the fold a card opens with (planning-index.md §6.6)", () => {
+  const UNFOLDED = "data-planning-card-unfolded";
+  const KEY = "docs/jail.md\n3";
+  const bodyOf = (container: HTMLElement) =>
+    container.querySelector(".planning-card-body")!;
+  const cardWith = (
+    props: Partial<React.ComponentProps<typeof PlanningQuestionCard>> = {},
+  ) => {
+    const question = jailById("OQ-J1");
+    return (
+      <PlanningQuestionCard
+        question={question}
+        card={blockOf(question)}
+        badge={null}
+        comments={[]}
+        href={`/${question.path}`}
+        onFile={async () => {}}
+        cardKey={KEY}
+        {...props}
+      />
+    );
+  };
+  const renderWith = (
+    props: Partial<React.ComponentProps<typeof PlanningQuestionCard>> = {},
+  ) => {
+    const view = render(<BrowserRouter>{cardWith(props)}</BrowserRouter>);
+    return {
+      ...view,
+      rerenderWith: (
+        next: Partial<React.ComponentProps<typeof PlanningQuestionCard>>,
+      ) => view.rerender(<BrowserRouter>{cardWith(next)}</BrowserRouter>),
+    };
+  };
+  /** How often the fold flipped on an element already on the page. */
+  function flipsDuring(run: () => void): number {
+    const observer = new MutationObserver(() => {});
+    observer.observe(document.body, {
+      subtree: true,
+      attributes: true,
+      attributeFilter: [UNFOLDED],
+    });
+    run();
+    const flips = observer.takeRecords().length;
+    observer.disconnect();
+    return flips;
+  }
+
+  it("opens folded, or unfolded when the page says so, from its first render", () => {
+    let folded!: ReturnType<typeof renderWith>;
+    expect(flipsDuring(() => (folded = renderWith()))).toBe(0);
+    expect(bodyOf(folded.container)).not.toHaveAttribute(UNFOLDED);
+    folded.unmount();
+
+    let unfolded!: ReturnType<typeof renderWith>;
+    expect(
+      flipsDuring(() => (unfolded = renderWith({ unfoldedByDefault: true }))),
+    ).toBe(0);
+    expect(bodyOf(unfolded.container)).toHaveAttribute(UNFOLDED);
+    expect(foldButton()).toHaveTextContent("Show less");
+    expect(cutIn(unfolded.container)!.childNodes).toHaveLength(0);
+    expect(partsIn(unfolded.container, "clamp")[0]).not.toHaveAttribute(
+      "data-planning-card-overflow",
+    );
+  });
+
+  it("records the reader's fold in the visit's folds, which a card mounting again opens with", () => {
+    const folds: CardFolds = new Map();
+    const first = renderWith({ folds });
+    fireEvent.click(foldButton()!);
+    expect([...folds]).toEqual([[KEY, true]]);
+    first.unmount();
+    // Its page flipped away and back: as the reader left it, whatever the
+    // page's default.
+    const again = renderWith({ folds, unfoldedByDefault: false });
+    expect(bodyOf(again.container)).toHaveAttribute(UNFOLDED);
+    fireEvent.click(foldButton()!);
+    expect(folds.get(KEY)).toBe(false);
+    again.unmount();
+    const third = renderWith({ folds, unfoldedByDefault: true });
+    expect(bodyOf(third.container)).not.toHaveAttribute(UNFOLDED);
+  });
+
+  it("keeps its own fold over the page's until the page replaces its folds", () => {
+    const visit: CardFolds = new Map();
+    const view = renderWith({ folds: visit });
+    const body = bodyOf(view.container);
+    fireEvent.click(foldButton()!);
+    expect(body).toHaveAttribute(UNFOLDED);
+    view.rerenderWith({ folds: visit });
+    expect(body).toHaveAttribute(UNFOLDED);
+    // Collapse all: new folds, and the page's default, which every card takes.
+    view.rerenderWith({ folds: new Map(), unfoldedByDefault: false });
+    expect(body).not.toHaveAttribute(UNFOLDED);
+    expect(foldButton()).toHaveTextContent("Show full question");
+    // Expand all.
+    const expanded: CardFolds = new Map();
+    view.rerenderWith({ folds: expanded, unfoldedByDefault: true });
+    expect(body).toHaveAttribute(UNFOLDED);
+    // The reader's own fold wins again, until the next one.
+    fireEvent.click(foldButton()!);
+    expect(body).not.toHaveAttribute(UNFOLDED);
+    view.rerenderWith({ folds: expanded, unfoldedByDefault: true });
+    expect(body).not.toHaveAttribute(UNFOLDED);
+  });
+
+  it("moves nothing on screen when only the default changes, which another tab's choice does", () => {
+    const folds: CardFolds = new Map();
+    const view = renderWith({ folds, unfoldedByDefault: false });
+    const body = bodyOf(view.container);
+    expect(
+      flipsDuring(() => view.rerenderWith({ folds, unfoldedByDefault: true })),
+    ).toBe(0);
+    expect(body).not.toHaveAttribute(UNFOLDED);
+    view.unmount();
+    // A card rendered later opens with it.
+    const later = renderWith({ folds, unfoldedByDefault: true });
+    expect(bodyOf(later.container)).toHaveAttribute(UNFOLDED);
+  });
+
+  describe("where folding leaves the page", () => {
+    const rect = (top: number) => ({ top }) as DOMRect;
+    /** The card in a pane scrolled to 500px, with the card's top as given. */
+    function inPane(
+      props: Partial<React.ComponentProps<typeof PlanningQuestionCard>> = {},
+    ) {
+      const view = render(
+        <BrowserRouter>
+          <div data-content-scroll>{cardWith(props)}</div>
+        </BrowserRouter>,
+      );
+      const pane = view.container.querySelector<HTMLElement>(
+        "[data-content-scroll]",
+      )!;
+      let scrollTop = 500;
+      Object.defineProperty(pane, "scrollTop", {
+        configurable: true,
+        get: () => scrollTop,
+        set: (value: number) => {
+          scrollTop = value;
+        },
+      });
+      const top = vi.spyOn(
+        screen.getByRole("article"),
+        "getBoundingClientRect",
+      );
+      return { top, scrollTop: () => scrollTop };
+    }
+    afterEach(() => vi.restoreAllMocks());
+    /** Where the fold's control is, wherever the card puts it. */
+    function controlAt(y: number) {
+      const own = HTMLElement.prototype.getBoundingClientRect;
+      vi.spyOn(
+        HTMLElement.prototype,
+        "getBoundingClientRect",
+      ).mockImplementation(function (this: HTMLElement) {
+        return this.hasAttribute("data-planning-card-fold")
+          ? rect(y)
+          : own.call(this);
+      });
+    }
+
+    it("keeps the card's top where it was when it unfolds", () => {
+      const { top, scrollTop } = inPane();
+      // Read as the reader asks, and again once the unfolded card is laid
+      // out, 30px higher, as the browser's own anchoring would leave it.
+      top.mockReturnValueOnce(rect(-50)).mockReturnValueOnce(rect(-80));
+      fireEvent.click(foldButton()!);
+      expect(scrollTop()).toBe(470);
+    });
+
+    it("leaves the scroll alone when nothing moved the card's top", () => {
+      const { top, scrollTop } = inPane();
+      top.mockReturnValueOnce(rect(120)).mockReturnValueOnce(rect(120));
+      fireEvent.click(foldButton()!);
+      expect(scrollTop()).toBe(500);
+    });
+
+    it("keeps the card's top where it was when it folds with its control in view", () => {
+      const { top, scrollTop } = inPane({ unfoldedByDefault: true });
+      top.mockReturnValueOnce(rect(-40)).mockReturnValueOnce(rect(-40));
+      controlAt(60);
+      fireEvent.click(foldButton()!);
+      expect(foldButton()).toHaveTextContent("Show full question");
+      expect(scrollTop()).toBe(500);
+    });
+
+    it("brings the card's top into view when folding would leave all of it above the pane", () => {
+      const { top, scrollTop } = inPane({ unfoldedByDefault: true });
+      top.mockReturnValueOnce(rect(-300)).mockReturnValueOnce(rect(-300));
+      // Show full question, once the card is folded, 200px above the pane.
+      controlAt(-200);
+      fireEvent.click(foldButton()!);
+      expect(foldButton()).toHaveTextContent("Show full question");
+      // The pane's top is 0, and the card comes to 16px below it.
+      expect(scrollTop()).toBe(500 - 316);
+    });
   });
 });
 
