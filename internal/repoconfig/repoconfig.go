@@ -15,10 +15,10 @@
 //
 // `[planning]` is the one table both own. Each reader validates all of it, and
 // one fixture (testdata/planning-config.json) holds the two to the same answer
-// for every value, so a value one of them would refuse is refused by both. They
-// part over a key one of them does not know: the checker ignores it with a
-// warning, since it may be a newer release's, and this package refuses the
-// whole file. testdata/version-skew-config.json pins each reader's answer.
+// for every value, so a value one of them would refuse is refused by both. A key
+// one of them does not know is ignored with a warning by both, since it may be a
+// newer release's (docs/design/checker-version-skew.md, OQ-VS5), and
+// testdata/version-skew-config.json pins each reader's answer to it.
 //
 // # The nesting trap
 //
@@ -45,6 +45,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -53,6 +54,8 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/mschulkind-oss/vantage/internal/buildinfo"
 )
 
 // FileName is the repository-level config file, shared with `vantage-check`.
@@ -72,8 +75,8 @@ const maxSize = 200 * 1024
 // Settings is what the server takes from the file. Everything else in it —
 // `[check]`, another tool's table — is read past.
 //
-// Fields are the server's own tables only. Unknown keys *within* them are an
-// error (see [Parse]); unknown tables outside them are not ours.
+// Fields are the server's own tables only. An unknown key *within* them is
+// ignored with a warning (see [Parse]); unknown tables outside them are not ours.
 type Settings struct {
 	// Starred promotes documents into the viewer's Starred section.
 	Starred StarredSettings `toml:"starred"`
@@ -425,37 +428,110 @@ func (s Settings) IsZero() bool {
 	return len(s.Starred.Promote) == 0 && s.Theme == "" && s.Planning.IsZero()
 }
 
-// Parse decodes the server's settings from TOML.
+// Parse decodes the server's settings from TOML, and returns a warning for each
+// key it ignores.
 //
-// Rejected **whole, never half**: a syntax error, a wrong type, or an unknown key
-// inside one of the server's own tables yields an error and no settings. Half a
-// config is worse than none, and it is the discipline the checker already holds
-// for this file.
+// Rejected **whole, never half**: a syntax error, a wrong type, a value a key it
+// knows cannot take, or one of the file's own top-level names written inside one
+// of the server's tables yields an error and no settings. Half a config is worse
+// than none.
 //
-// Unknown keys are refused by inspecting the decoder's leftovers, which is the
-// one thing [config.LoadDaemonFile] does not do — it discards the metadata, so a
-// typo in the daemon config is silently dropped today. Copying that here would
-// mean `promotes = [...]` doing nothing at all with no way to find out, and
-// silence is the failure mode this whole file exists to avoid.
-func Parse(data []byte) (Settings, error) {
+// An unknown key inside one of the server's tables is the exception, and is
+// ignored with a warning (OQ-VS5, docs/design/checker-version-skew.md §3.3). To a
+// server older than the key, every key a later release adds looks exactly like a
+// typo, and refusing the file over it would make every newer `[planning]` key a
+// breaking change for every older server, its stars and theme included. The
+// warning says both what to do if the key is newer and what to do if it is a
+// typo, so a typo is still said out loud rather than dropped: `promotes = [...]`
+// doing nothing with no way to find out is the silence this file exists to
+// avoid. vantage-check answers a key it does not know in `[planning]` the same
+// way, and testdata/version-skew-config.json holds the two to it.
+//
+// Unknown keys are found by inspecting the decoder's leftovers, which is the one
+// thing [config.LoadDaemonFile] does not do — it discards the metadata, so a
+// typo in the daemon config is silently dropped today.
+func Parse(data []byte) (Settings, []string, error) {
 	var s Settings
 	meta, err := toml.Decode(string(data), &s)
 	if err != nil {
-		return Settings{}, fmt.Errorf("%s: %w", FileName, err)
+		return Settings{}, nil, fmt.Errorf("%s: %w", FileName, err)
 	}
 
+	var warnings []string
+	seen := map[string]bool{}
 	for _, key := range meta.Undecoded() {
 		// Only the server's own names are policed. A top-level table nobody here
 		// claims belongs to the checker or to another tool.
-		if len(key) == 0 || !ours(key[0]) {
+		if len(key) < 2 || !ours(key[0]) {
 			continue
 		}
-		return Settings{}, fmt.Errorf("%s: unknown key %q", FileName, key.String())
+		// An unknown sub-table leaves its own keys undecoded too, listed after
+		// it; the table is the one thing to name.
+		name := toml.Key{key[0], key[1]}
+		if seen[name.String()] {
+			continue
+		}
+		seen[name.String()] = true
+		if advice := misplaced(key[1]); advice != "" {
+			return Settings{}, nil, fmt.Errorf("%s: unknown key %s. %s", FileName, name, advice)
+		}
+		warnings = append(warnings, unknownKeyWarning(name))
 	}
 	if err := s.Planning.validate(meta); err != nil {
-		return Settings{}, err
+		return Settings{}, nil, err
 	}
-	return s, nil
+	return s, warnings, nil
+}
+
+// tableKeys is what each of the server's tables takes, for the warning about a
+// key it does not.
+var tableKeys = map[string]string{
+	"starred":  "only promote",
+	"planning": "roadmap, include, exclude, max-file-bytes, max-candidates and a [planning.stages] table",
+}
+
+// unknownKeyWarning is what the server says about a key it ignores in one of
+// its tables: what it did, which release it is, and the two-branch advice
+// vantage-check gives for a key it does not know (docs/design/checker-version-skew.md
+// §6.2). A newer key is kept, because the release it came from reads it; a typo
+// is fixed.
+func unknownKeyWarning(name toml.Key) string {
+	return fmt.Sprintf("%s: unknown key %s, which %s does not know, so this server ignores it and reads the rest of the file. Here [%s] takes %s. If this repository is configured for a newer Vantage, keep the key; if it is a typo, fix it.",
+		FileName, name, serverName(buildinfo.Release()), name[0], tableKeys[name[0]])
+}
+
+// serverName is this server, named mid-sentence: `Vantage 0.8.0`, or `this
+// development build of Vantage`, which names no release because it is at or
+// ahead of every one (docs/design/checker-version-skew.md §4.2).
+func serverName(release string) string {
+	if release == "" {
+		return "this development build of Vantage"
+	}
+	return "Vantage " + release
+}
+
+// misplaced is the advice for one of the file's own top-level names written
+// inside one of the server's tables, or "" for any other name.
+//
+// Three names belong at the top of this file: `theme` and `target`, keys, and
+// `[starred]`, a table. TOML reads a bare key written after a `[table]` header
+// as part of that table, so a `theme` line below `[starred]` arrives here as
+// `starred.theme`. None of them is a typo or a newer release's key, and the
+// advice for those (keep the line, or fix its spelling) would leave it where it
+// does nothing, so this stays an error while an unknown key is a warning. A
+// misplaced `target` matters most: no checker reads it there, so none could
+// refuse a repository it is too old for. The words are vantage-check's own
+// (`viewerKeyAdvice` in packages/vantage-check/src/core/config.ts), so both
+// readers say the same thing about the same line.
+func misplaced(name string) string {
+	switch name {
+	case "theme", "target":
+		return "`" + name + "` is a top-level key, and TOML reads a key written after a [table] header as part of that table: move it above the first [table]."
+	case "starred":
+		return "`starred` is the viewer's own table, not part of this one: write it as a top-level [starred] table."
+	default:
+		return ""
+	}
 }
 
 // ours reports whether a top-level table is one this package claims, and is
@@ -473,9 +549,9 @@ func Parse(data []byte) (Settings, error) {
 // to run under (docs/design/checker-version-skew.md §4). The server reserves
 // nothing for it and reads nothing from it, so it steps over the key, in any
 // form, as it does over any top-level name it does not claim. A `target`
-// written below `[starred]` or `[planning]` lands inside that table and is
-// refused there like any unknown key, which testdata/version-skew-config.json
-// pins for both readers.
+// written below `[starred]` or `[planning]` lands inside that table, where it is
+// misplaced rather than unknown, and is refused there ([misplaced]), which
+// testdata/version-skew-config.json pins for both readers.
 func ours(table string) bool { return table == "starred" || table == "planning" }
 
 // Config is one repository's settings, reloaded lazily as the file changes.
@@ -483,6 +559,9 @@ func ours(table string) bool { return table == "starred" || table == "planning" 
 // Safe for concurrent use.
 type Config struct {
 	path string
+	// logger is where the file's warnings go. Nil means the process's default
+	// logger, looked up when a warning is logged, which is the server's own.
+	logger *slog.Logger
 
 	mu        sync.Mutex
 	settings  Settings
@@ -505,6 +584,11 @@ func (c *Config) Path() string { return c.path }
 
 // Settings returns the repository's settings, and the error that made them
 // empty, if any.
+//
+// What the file holds and the server ignores, an unknown key in one of its
+// tables, is not returned: it is logged once, as a warning, when the file is
+// read, and again only when the file changes. Settings runs on every request
+// that needs the file, so a warning there would repeat on every page load.
 //
 // A missing file is not an error: it yields the zero value and a nil error,
 // because having no config is the normal case rather than a problem. A file that
@@ -570,7 +654,16 @@ func (c *Config) maybeReload(force bool) {
 		c.settings, c.err = Settings{}, err
 		return
 	}
-	c.settings, c.err = Parse(data)
+	var warnings []string
+	c.settings, warnings, c.err = Parse(data)
+	logger := c.logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	for _, w := range warnings {
+		logger.Warn("repoconfig: ignoring a key in the repository config",
+			"path", c.path, "warning", w)
+	}
 }
 
 // readGuarded reads the file, refusing what a config file cannot be.

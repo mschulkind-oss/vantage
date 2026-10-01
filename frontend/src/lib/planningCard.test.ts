@@ -306,6 +306,9 @@ async function expectCardMatches(
  * ------------------------------------------------------------------ */
 
 describe("the scan's card blocks and the parse-based cut", () => {
+  // The file's first test, so it also pays for warming the scanner up: under
+  // 1 s on an idle machine, and past vitest's default 5 s once on a loaded
+  // one, with nothing wrong, as planningAgreement.test.tsx's first test was.
   it("has a corpus with questions in it to agree on", () => {
     // An empty corpus would agree trivially.
     const total = Object.entries(ON_DISK).reduce(
@@ -314,7 +317,7 @@ describe("the scan's card blocks and the parse-based cut", () => {
     );
     expect(Object.keys(ON_DISK).length).toBeGreaterThan(40);
     expect(total).toBeGreaterThan(30);
-  });
+  }, 30_000);
 
   it.each(Object.keys(CORPUS))(
     "cuts every card of %s as the second parse did",
@@ -389,16 +392,20 @@ describe("the scan's card blocks and the parse-based cut", () => {
       "inline/directive-run.md",
       DIRECTIVE_RUN,
     );
-    expect(question.block).toEqual({ startLine: 5, endLine: 9 });
+    // It runs to "After.", the last block before the end of the document,
+    // as a question outside a list runs over the blocks after its host.
+    expect(question.block).toEqual({ startLine: 5, endLine: 11 });
     expect(card).toEqual({
       startLine: 5,
-      endLine: 9,
+      endLine: 11,
       markdown: [
         "<!-- vantage: oq id=OQ-4 -->",
         "",
         '<!-- vantage: oq leaning="A paragraph." -->',
         "",
         "A question as a plain paragraph.",
+        "",
+        "After.",
         "",
       ].join("\n"),
       lineOffset: 4,

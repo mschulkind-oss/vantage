@@ -139,6 +139,21 @@ function titleIn(unit: HTMLElement, title: string): HTMLElement | null {
   return null;
 }
 
+/** `titleIn` over each of a unit's blocks, in order. */
+function titleInAll(
+  blocks: readonly HTMLElement[],
+  title: string,
+): HTMLElement | null {
+  for (const block of blocks) {
+    const found =
+      block.tagName === "STRONG" && flatText(block) === title
+        ? block
+        : titleIn(block, title);
+    if (found !== null) return found;
+  }
+  return null;
+}
+
 /** Whether `node` holds nothing a reader would see: blank text, a badge, a break. */
 function blank(node: ChildNode): boolean {
   if (node.nodeType === Node.TEXT_NODE) return !/\S/.test(node.nodeValue ?? "");
@@ -206,27 +221,41 @@ const mark = (el: Element, part: CardPart) =>
   el.setAttribute(CARD_PART_ATTR, part);
 
 /**
- * Sort the question's `unit` into its parts, after the card has isolated it.
- * `host` is the block an answer's anchor is built from, which keeps every one
- * of its text nodes; `title` and `marker` are the planning index's.
+ * Sort the question's unit into its parts, after the card has isolated it:
+ * one element (a list item, or a question that is one block), or the blocks
+ * of a question outside a list that runs over several (`questionUnitBlocks`),
+ * which are read as the blocks of one unit. `host` is the block an answer's
+ * anchor is built from, which keeps every one of its text nodes; `title` and
+ * `marker` are the planning index's.
  */
 export function markCardParts(
   root: HTMLElement,
-  unit: HTMLElement,
+  given: HTMLElement | readonly HTMLElement[],
   host: HTMLElement,
   title: string,
   marker: string,
 ): CardParts {
   unmarkCardParts(root);
-  const leaf = isLeaf(unit);
+  const blocks: readonly HTMLElement[] = Array.isArray(given)
+    ? given
+    : [given as HTMLElement];
+  // A unit of several blocks has no element of its own: its blocks are its
+  // children, and none of them is the unit.
+  const unit: HTMLElement | null = blocks.length === 1 ? blocks[0]! : null;
+  const leaf = unit !== null && isLeaf(unit);
 
   // The title, and the block it opens.
   let titled = false;
   let lede: HTMLElement | null = null;
   let ledeLeaning = false;
-  const strong = titleIn(unit, title);
+  const strong = titleInAll(blocks, title);
   if (strong !== null) {
-    const holder = leaf ? unit : childHolding(unit, strong);
+    const holder =
+      unit === null
+        ? (blocks.find((block) => block.contains(strong)) ?? strong)
+        : leaf
+          ? unit
+          : childHolding(unit, strong);
     const parent = strong.parentElement!;
     const before = strong.previousSibling;
     // The marker is the text before the title, alone at the start of the
@@ -269,7 +298,7 @@ export function markCardParts(
   }
 
   // A question that is one block: it is the body, unless it is a leaning.
-  if (leaf) {
+  if (leaf && unit !== null) {
     const isLeaning = !titled && LEANING_MARKER.test(flatText(unit));
     if (isLeaning) mark(unit, "leaning");
     else mark(unit, "clamp");
@@ -283,7 +312,7 @@ export function markCardParts(
 
   let leaning = false;
   const body: HTMLElement[] = [];
-  const children = Array.from(unit.children).filter(
+  const children = (unit === null ? blocks : Array.from(unit.children)).filter(
     (el): el is HTMLElement =>
       el instanceof HTMLElement &&
       !el.matches(REVIEW_UI_SELECTOR) &&

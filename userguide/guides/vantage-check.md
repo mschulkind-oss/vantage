@@ -106,8 +106,8 @@ So run the newest checker even when your readers have not upgraded.
 
 ### When your readers are on 0.7
 
-0.8.0 is the first release where this matters. A 0.7.x viewer cannot show one
-thing the 0.8.0 guide teaches:
+0.8.0 is the first release where this matters. A 0.7.x viewer cannot show two
+things the 0.8.0 guide teaches:
 
 - **An inline `<svg>` drawing.** The drawing is dropped, and the words of its
   `<text>` elements are left behind as loose text, with those of any `<title>`
@@ -116,16 +116,28 @@ thing the 0.8.0 guide teaches:
   [fallback block](../../docs/reference/inline-markup.md#fallback-blocks),
   which a 0.7.x viewer shows, so its reader is at least told what is missing,
   and it names a drawing with `aria-label` rather than `<title>`.
+- **The one-click answer on an open question.** A `question` directive, which
+  0.8.0 writes on every question, is dropped like any directive name a viewer
+  does not know, so there the question has no anchor and no *Take this
+  leaning*; it is never misread. A repository whose readers are still on 0.7
+  keeps the `oq` that 0.7.x offers *Take this leaning* on, on its open
+  questions, until they upgrade, and never on a 🔒 blocked or ✅ answered one,
+  which every 0.7.x viewer would offer to answer (`vantage/question-name`).
+  `vantage/oq-deprecated` warns on each `oq` it keeps, and fails a `--strict`
+  run, so turn it off for the repository while its readers are on 0.7:
+
+  ```toml
+  [check.rules]
+  "vantage/oq-deprecated" = "off"
+  ```
+
+  A checker before 0.8 exits `2` on that line, as on any rule it does not
+  know, which is one more reason not to run one (below).
 
 The rest of what 0.8.0 adds, a 0.7.x viewer shows without its meaning or
 ignores. The `stage` and `next` frontmatter are plain metadata rows, the
 `depends-on` paths are tags rather than links, and the `[planning]` table is
-ignored. A `question` directive, which 0.8.0 puts on 🔒 blocked and ✅ answered
-questions, is dropped like any directive name a viewer does not know, so there
-the question has no anchor and no button, as it had none before. That is why
-0.8.0 gave those questions a name of their own rather than the `oq` that
-0.7.x offers *Take this leaning* on, and `vantage/question-name` reports an
-`oq` on either. One [roadmap](planning.md#the-roadmap) convention costs more than that.
+ignored. One [roadmap](planning.md#the-roadmap) convention costs more than that.
 A roadmap written the 0.8.0 way copies no status into it, because 0.8.0 shows
 the status in a [badge](planning.md#badges-on-links) beside each link. A 0.7.x
 viewer draws no badges, so its reader sees no status at all.
@@ -246,8 +258,9 @@ tree print the same bytes and a report can be diffed against the previous one.
 
 A finding can also carry `detail`, which is what does not fit on the message's
 one line: a renderer's own error text, the values a key accepts, or what to do
-about the finding. For a `vantage/unknown-*` finding, `detail` is where it says
-not to remove a name that comes from a newer Vantage. Text output prints
+about the finding. For a `vantage/unknown-*` or `vantage/frontmatter-value`
+finding, `detail` is where it says not to remove a name or a value that comes
+from a newer Vantage. Text output prints
 `detail` indented under the message, so a consumer that shows a finding should
 show both.
 
@@ -340,16 +353,18 @@ will ever tell you.
 | :--- | :--- | :--- |
 | `vantage/unterminated` | A `<!-- vantage:` comment with no `-->`, which deletes the rest of the document from the render | error |
 | `vantage/malformed` | A `<!-- vantage: … -->` comment that does not parse, so it is ignored | error |
-| `vantage/unknown-name` | A name outside `section`, `block`, `oq`, `question` and `fallback` — the whole directive is dropped | error |
+| `vantage/unknown-name` | A name outside `section`, `block`, `question`, `oq` and `fallback` — the whole directive is dropped | error |
 | `vantage/unknown-key` | A key the closed vocabulary does not contain | error |
 | `vantage/unknown-value` | A value outside the closed token set for its key | error |
 | `vantage/list-split` | A directive between two list items, which ends the list and starts a second one | error |
 | `vantage/block-split` | A directive that restructures the document around it — a table losing its remaining rows, a paragraph cut in two, a setext heading losing its underline | error |
 | `vantage/duplicate-key` | The same key twice in one directive, or across a run of them, which merges the same way — the last one wins, so a warning | warning |
-| `vantage/oq-missing` | An open question (💬) in a list item, with an `OQ-…` id and a `_Leaning:_` line but no `oq` directive, so review mode offers no one-click answer for it | error |
-| `vantage/question-name` | An `oq` directive on a 🔒 blocked or ✅ answered question, which every Vantage before 0.8 offers to answer in one click, or a `question` directive on an open one, which no Vantage does, or either one below a 🔒 or ✅ title outside a list, where it lands on an unmarked block and the question reads as open | error |
+| `vantage/oq-missing` | An open question (💬) in a list item, with an `OQ-…` id and a `_Leaning:_` line but no `question` directive, so review mode offers no one-click answer for it | error |
+| `vantage/question-name` | An `oq` directive on a 🔒 blocked or ✅ answered question, which every Vantage before 0.8 offers to answer in one click, or a question directive below a 🔒 or ✅ title outside a list, where it lands on an unmarked block and the question reads as open | error |
+| `vantage/oq-deprecated` | Any other `oq` directive: it still works in every Vantage, and the message quotes the `question` directive to write instead, keys unchanged | warning |
+| `vantage/question-layout` | A question's `_Leaning:_` run into a paragraph with other text — after the title or the context, or followed by its `**Answer:**` — which neither the page nor the planning card can lay out as its leaning | warning |
 | `vantage/oq-id-format` | A question directive's id that is not `OQ-`, an optional uppercase prefix and digits, which the sanitizer refuses, so the question gets no anchor | error |
-| `vantage/oq-id-duplicate` | The same id on two questions in one document, on `oq` or `question` directives, so every `#OQ-…` link to it lands on the first (one run of directives is one question) | error |
+| `vantage/oq-id-duplicate` | The same id on two questions in one document, on `question` or `oq` directives, so every `#OQ-…` link to it lands on the first (one run of directives is one question) | error |
 | `vantage/orphan` | A directive with no block it can attach to, so it styles nothing, or a `fallback` above a heading or a raw `<img>`, `<figure>` or `<details>`, which it never withholds, or merged with another directive, which goes with its block | warning |
 | `vantage/frontmatter-shape` | A `vantage:` frontmatter key that is not a table of keys, so it configures nothing | warning |
 | `vantage/frontmatter-key` | A key under `vantage:` this build does not know | warning |
@@ -378,7 +393,7 @@ and it reports first when both apply.
 top level, and the **whole enclosing top-level block** for one indented inside a
 list item, a block quote or a footnote definition — so the cost is one re-parse
 of that block per directive. That is normally nothing, and it is not nothing for
-the document `oq` exists for: an Open Questions list is one long top-level list
+the documents the question directives exist for: an Open Questions list is one long top-level list
 with a directive in every item, and a 40-question list measures 171 ms where the
 same document with the rule off measures 0.3 ms. It grows as the square of the
 question count. If you ever have a document where that matters, switching the
@@ -399,8 +414,9 @@ just as silent: a mistyped `status-chip: Draft` renders no chip and says nothing
 `vantage/frontmatter-key` is a warning while `vantage/frontmatter-value` is an
 error, and the asymmetry is deliberate. An unknown *key* is what a document
 written for a newer Vantage looks like to an older checker, and that must not
-fail a gate. An unknown *value* for a key this build does know is a typo in the
-vocabulary this build itself defines. `vantage/status-chip-stale` covers the two
+fail a gate. An unknown *value* for a key this build does know is usually a typo
+in the vocabulary this build itself defines, and its `detail` gives the same two
+branches as the directive findings: fix a typo, keep a newer Vantage's value. `vantage/status-chip-stale` covers the two
 ways a chip goes stale rather than wrong: a `status-chip: true` with no `status:`
 to show, and a literal `status-chip: accepted` sitting above a `status: draft` —
 which is why `status-chip: true`, the form that cannot disagree, is the one the
@@ -490,11 +506,13 @@ asked to check.
   spaces that holds a letter or a digit: the status emoji is none, a link
   counts its label alone, and a path in a code span is one word. A question in
   a document whose stage has the `done` role is never measured, since the page
-  shows no card for it. A question found by a heading whose `oq` directive sits
+  shows no card for it. A question found by a heading whose directive sits
   directly above its leaning is read as that leaning alone, as its card shows
   it, so it measures nothing however long the text under the heading is. A
   finding names a question by its `id=`, or by the first 100 characters of its
-  title.
+  title, and says how a question is written in parts, since a leaning run into
+  another paragraph counts here as the question's own words
+  (`vantage/question-layout` reports that on its own).
 
   The limit of **120 words** was calibrated on 2026-09-30 against the 54
   questions Vantage's own repository had written to the convention over its
@@ -570,8 +588,8 @@ The same file's `[planning]` table
 the planning rules and by `index`, and it is held to the same standard: a role
 outside the four, or a limit that is not a whole number of at least 1, **fails
 every run with exit `2`**, `check` included, not only the planning rules. An
-unknown key there is warned about and ignored, while the server ignores the
-whole file over it.
+unknown key there is warned about and ignored, and the server of the same
+release does the same.
 
 A `target` at the top of the file names the oldest Vantage release your
 readers use, and a checker older than it refuses to run
@@ -749,8 +767,8 @@ four large fields emptied:
   `unitLine` to `unitEndLine`, and `cardChars`, the length of the Markdown its
   card shows on the planning page, which is what the page's
   [pages](planning.md#pages) are cut by. Its `directive` is the name that
-  declared it, `oq` or `question`, and only an `oq` is offered to answer in one
-  click.
+  declared it, `question` or the deprecated `oq`; whether a question is offered
+  to answer in one click is its `state`'s to say, never the name's.
 - **`sections`** holds the same lists the text form prints, for the chosen
   roadmap. `sections.roadmaps` lists every roadmap nearest the root first, each
   with its `path`, its `state` (`routes`, `done`, `skipped`, `unreadable`, or,
@@ -799,7 +817,7 @@ Repository: /home/me/project
 Ready to graduate (1): built, with no questions left. For each, write a reference document of the system as built, where the repository keeps those: verify every claim against the code, and say what it covers and the commit it was verified at (if you use a system-doc skill, use it). Give it the stage the repository's other reference documents carry (one with the done role: CURRENT, GRADUATED, SUPERSEDED), or none. Then delete the design document and any plan written for it, repoint every link to them and citation of them, in documents, code comments and tests, at the new one, and keep every question id other documents cite resolvable.
 - docs/design/api.md  (stage BUILT)
 
-Verify: in the repository, run `vantage-check` on every Markdown file you changed, then `vantage-check index`.
+Verify: in the repository, run `vantage-check` on every Markdown file you changed, then `vantage-check index`. If the command cannot run, or exits 2 (a configuration error or a refusal), leave `.vantage.toml` as it is: the check is a quality gate, not part of the work.
 ```
 
 | Section | The agent is asked to |
@@ -815,7 +833,9 @@ repository declares. A document *Blocked* lists too, which *Ready to build* and
 *Ready to graduate* can hold, is marked with what it waits on, and the agent is
 told to skip it. The check it ends with names Markdown files only, because
 `vantage-check` reads any file it is given as Markdown, and a section number
-cited in a code comment would read as a broken reference. With nothing in the sections asked for,
+cited in a code comment would read as a broken reference. The planning page of
+a released Vantage names its release there, as its review payload does:
+`VANTAGE_VIEWER=0.8.0 uvx vantage-check`. With nothing in the sections asked for,
 it prints nothing, says so on stderr, and exits `0`.
 
 ### Exit codes
@@ -841,6 +861,14 @@ delivering — a quality gate, not a delivery dependency, so an agent without
 command cannot run, or exits `2` (a configuration error, or a checker older
 than your [`target`](../reference/configuration.md#the-oldest-release-your-readers-use)
 refusing to run), the agent delivers anyway and leaves `.vantage.toml` as it is.
+
+From 0.8.0 a released Vantage also names itself in that command:
+`VANTAGE_VIEWER=0.8.0 uvx vantage-check <this file>`. The variable tells
+the checker which release your viewer runs, so a later checker can hold the
+document to what that viewer renders. No checker reads it yet, and one that
+does not read it ignores it, so the agent runs the command as written. A
+Vantage you built yourself (`just build`, `just deploy`) names no release and
+sends the bare command, since it is at least as new as every release.
 
 That channel needs no setup from you, it reaches whatever environment the agent
 happens to have, and it arrives at the moment it is useful — just before the

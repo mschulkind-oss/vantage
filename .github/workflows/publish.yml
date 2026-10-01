@@ -206,10 +206,14 @@ jobs:
           fi
           echo "web/dist present in the tag: $(git ls-tree -r --name-only HEAD -- web/dist | wc -l) files"
 
+      # VANTAGE_RELEASE bakes the release into the bundle, and the review
+      # payload names it as VANTAGE_VIEWER=<version> in front of its checker
+      # command (docs/design/checker-version-skew.md §5). Without it the
+      # bundle is a development build and the payload names no release.
       - name: Build and bundle the frontend
         run: |
           set -euo pipefail
-          npm run build --workspace frontend
+          VANTAGE_RELEASE="${{ steps.ver.outputs.version }}" npm run build --workspace frontend
           rm -rf web/dist && cp -r frontend/dist web/dist
           test -f web/dist/index.html # an empty embed ships a placeholder page
 

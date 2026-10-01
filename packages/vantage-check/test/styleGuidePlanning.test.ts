@@ -8,6 +8,7 @@ import {
   questionWords,
 } from "../src/rules/questionLength.js";
 import { ruleMeta } from "../src/rules/registry.js";
+import { QUESTION_SHAPE } from "../../vantage-md/src/planning/leaning.js";
 import {
   isStageRole,
   scanPlanningDocument,
@@ -50,46 +51,115 @@ describe("the style guide's roadmaps", () => {
   });
 });
 
-describe("the style guide's blocked question", () => {
-  it("carries a question directive, so the index counts it", () => {
+describe("the style guide's questions", () => {
+  it("declares every question, open and blocked, with `question`", () => {
     // A question with no directive does not exist to the index (§3.3), so the
     // guide's old advice, that a 🔒 question needs none, hid every one of them.
-    // And not an `oq`, which every viewer before 0.8 offers to answer.
-    const blocked = exampleQuestions().filter(
-      (question) => question.state === "blocked",
-    );
-
-    expect(blocked).toHaveLength(1);
-    expect(blocked[0]).toMatchObject({
-      id: "OQ-10",
-      directive: "question",
-      leaning: null,
-    });
-  });
-
-  it("declares its open question with an oq", () => {
-    const open = exampleQuestions().filter((q) => q.state === "open");
-    expect(open.map((q) => [q.id, q.directive])).toEqual([["OQ-9", "oq"]]);
+    // And never with an `oq`, the name `question` replaces, which every viewer
+    // before 0.8 offers to answer whatever the question's state.
+    const questions = exampleQuestions();
+    expect(
+      questions.map((q) => [q.id, q.state, q.directive, q.leaning !== null]),
+    ).toEqual([
+      ["OQ-9", "open", "question", true],
+      ["OQ-10", "blocked", "question", false],
+    ]);
+    expect(STYLE_GUIDE).not.toMatch(/```markdown[^`]*<!-- vantage: oq/);
   });
 
   it("no longer says a blocked or answered question needs no directive", () => {
     expect(STYLE_GUIDE).not.toMatch(/needs no directive/);
   });
 
-  it("says a blocked or answered question takes `question`, which offers no button", () => {
-    // Review mode offers Take this leaning on open questions only (Plan Q5,
-    // planning-index.md §6.6), and only on an `oq`. An agent re-marking a
-    // question needs telling that the directive's name changes with it, and
-    // why leaving `oq` there is not harmless.
+  it("says a question's state is its marker, and its directive stays", () => {
     const guide = STYLE_GUIDE.replace(/\s+/g, " ");
     expect(guide).toContain(
-      "A blocked (\u{1F512}) or answered (\u2705) question gets a `question` directive instead",
+      "Changing a question's state changes its marker and nothing else.",
     );
-    expect(guide).toContain("offers no button");
+    expect(guide).toContain("Every question gets a `question` directive");
+  });
+
+  it("calls `oq` the name `question` replaces, and never to be put on a 🔒 or ✅ question", () => {
+    const guide = STYLE_GUIDE.replace(/\s+/g, " ");
+    expect(guide).toContain("`oq` is the name `question` replaces.");
+    expect(guide).toContain("`vantage/oq-deprecated`");
+    expect(guide).toContain("Never put `oq` on a \u{1F512} or \u2705 question");
     expect(guide).toContain(
       "every Vantage before 0.8 offers the one-click button on every `oq`",
     );
     expect(guide).toContain("`vantage/question-name`");
+    // What `question` costs a reader still on 0.7, stated once, and how a
+    // repository whose readers are on 0.7 keeps its `oq`s without the warning.
+    expect(guide).toContain(
+      "a reader still on 0.7 gets no one-click answer and no anchor on a question written with it, and misreads nothing",
+    );
+    expect(guide).toContain(
+      "keep an `oq` on an open question unless you know every reader of the repository is on 0.8 or later",
+    );
+    expect(guide).toContain(
+      '`"vantage/oq-deprecated" = "off"` under `[check.rules]`',
+    );
+  });
+
+  it("says to write a question as a list item, and what a question outside one runs over", () => {
+    const guide = STYLE_GUIDE.replace(/\s+/g, " ");
+    expect(guide).toContain("**Write a question as a list item.**");
+    expect(guide).toContain(
+      "up to the next heading (for a question written as a heading, the next one of its level or higher), the next rule or the next question",
+    );
+  });
+});
+
+/**
+ * How a question is written (`QUESTION_SHAPE`): the parts the page and the
+ * planning card lay it out by. The guide teaches them at length and the
+ * checker's findings quote them in a sentence, so they must name the same
+ * parts.
+ */
+describe("the style guide's question shape", () => {
+  it("says never to write a question as one run-together paragraph", () => {
+    const guide = STYLE_GUIDE.replace(/\s+/g, " ");
+    expect(guide).toContain(
+      "Write each question in its parts, never as one run-together paragraph.",
+    );
+    expect(guide).toContain("`vantage/question-layout`");
+    expect(QUESTION_SHAPE).toContain("never one run-together paragraph");
+  });
+
+  it("names the same parts as the sentence the checker quotes", () => {
+    const guide = STYLE_GUIDE.replace(/\s+/g, " ");
+    for (const [inGuide, inShape] of [
+      [
+        "**The title line**",
+        "a title line with its marker, its id and the question in bold",
+      ],
+      ["**The context**, in short paragraphs", "context in short paragraphs"],
+      ["**The options as a list**", "the options as a list"],
+      [
+        "**`_Leaning:_` as a paragraph of its own**",
+        "`_Leaning:_ …` as a paragraph of its own",
+      ],
+      [
+        "**`**Answer:**` as a paragraph of its own**",
+        "`**Answer:**` as a paragraph of its own",
+      ],
+    ]) {
+      expect(guide).toContain(inGuide);
+      expect(QUESTION_SHAPE).toContain(inShape);
+    }
+  });
+
+  it("gives an open question in every part", () => {
+    const open = fences("markdown").find((body) => body.includes("OQ-9"));
+    expect(open).toBeDefined();
+    for (const part of [
+      "1. \u{1F4AC} **OQ-9:",
+      "\n   - **A — ",
+      "\n   _Leaning:_ ",
+      "\n   **Answer:**\n",
+    ]) {
+      expect(open).toContain(part);
+    }
   });
 });
 

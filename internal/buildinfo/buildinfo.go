@@ -7,8 +7,10 @@
 package buildinfo
 
 import (
+	"regexp"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -30,6 +32,29 @@ func Version() string {
 		}
 	}
 	return "dev"
+}
+
+// Release returns the Vantage release this binary is, as "X.Y.Z", or "" for a
+// development build.
+//
+// A release is a [Version] that is a plain X.Y.Z once one leading "v" is
+// dropped: publish.yml stamps "0.8.0" into a release archive, and a
+// `go install …@v0.8.0` build reports the module version "v0.8.0". Everything
+// else is a development build: `just build` and `just deploy` stamp no version,
+// so they report a Go pseudo-version or "dev", and a pre-release is no release
+// either (docs/design/checker-version-skew.md §4.2). A development build is at
+// or ahead of every release, so a caller that would name a release names none.
+func Release() string { return releaseOf(Version()) }
+
+// releaseForm is X.Y.Z with no leading zeros, as a version is written.
+var releaseForm = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
+
+func releaseOf(version string) string {
+	v := strings.TrimPrefix(version, "v")
+	if releaseForm.MatchString(v) {
+		return v
+	}
+	return ""
 }
 
 // ShortCommit returns the short git SHA the binary was built from, or

@@ -547,7 +547,7 @@ func TestPlanningStreamStopsReadingWhenTheRequestEnds(t *testing.T) {
 func TestABadPlanningTableServesTheDefaultsAndSaysSo(t *testing.T) {
 	e := newPlanningEnv(t, map[string]string{
 		"docs/gallery/status.md": "---\nstatus: accepted\n---\n",
-		".vantage.toml":          "[planning]\nexclude = [\"docs/gallery/**\"]\nroadmaps = \"x.md\"\n",
+		".vantage.toml":          "[planning]\nexclude = [\"docs/gallery/**\"]\nmax-candidates = 0\n",
 	})
 	var logs bytes.Buffer
 	prev := slog.Default()
@@ -557,7 +557,30 @@ func TestABadPlanningTableServesTheDefaultsAndSaysSo(t *testing.T) {
 	config, paths := e.served(t)
 	require.Equal(t, repoconfig.DefaultPlanning(), config)
 	require.Equal(t, []string{"docs/gallery/status.md"}, paths)
-	require.Contains(t, logs.String(), "planning.roadmaps")
+	require.Contains(t, logs.String(), "planning.max-candidates")
+	require.Contains(t, logs.String(), filepath.Join(e.dir, ".vantage.toml"))
+}
+
+// A key the server does not know in [planning] is a warning, not a refusal
+// (OQ-VS5): it may be a newer release's, so the planning index is served with
+// the rest of the table, the exclusions kept, and the key is named in the
+// server's log once, however often the index is asked for.
+func TestAnUnknownPlanningKeyIsIgnoredWithAWarning(t *testing.T) {
+	e := newPlanningEnv(t, map[string]string{
+		"a.md":                   "# A\n",
+		"docs/gallery/status.md": "---\nstatus: accepted\n---\n",
+		".vantage.toml":          "[planning]\nexclude = [\"docs/gallery/**\"]\nroadmaps = \"x.md\"\n",
+	})
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	config, paths := e.served(t)
+	require.Equal(t, []string{"docs/gallery/**"}, config.Exclude)
+	require.Equal(t, []string{"a.md"}, paths)
+	_, _ = e.served(t)
+	require.Equal(t, 1, strings.Count(logs.String(), "unknown key planning.roadmaps"), logs.String())
 	require.Contains(t, logs.String(), filepath.Join(e.dir, ".vantage.toml"))
 }
 

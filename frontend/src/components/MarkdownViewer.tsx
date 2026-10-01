@@ -24,7 +24,10 @@ import {
   useReviewHighlights,
   type InlineReviewActions,
 } from "../hooks/useReviewHighlights";
-import { useOpenQuestionButtons } from "../hooks/useOpenQuestionButtons";
+import {
+  useOpenQuestionButtons,
+  type AnswerQuestion,
+} from "../hooks/useOpenQuestionButtons";
 import {
   MARKDOWN_LINK_ATTR,
   linkTargetAttributes,
@@ -409,6 +412,20 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   // a leaning writes one comment and Undo removes it, so the pair is symmetric
   // and nothing new reaches the server. The hook offers Undo only while the
   // comment carries no reactions, so this can never discard a reply.
+  //
+  // Answer… opens the popover a click on the question's host block opens, at
+  // the button: the same anchor and fallback text, so what it files is the
+  // comment the planning card's Answer… files.
+  const answerQuestion = useCallback<AnswerQuestion>(
+    (anchor, fallbackText, rect) =>
+      setPendingSelection({
+        anchor,
+        rect,
+        displayText: fallbackText,
+        clamped: false,
+      }),
+    [setPendingSelection],
+  );
   useOpenQuestionButtons(
     containerRef,
     comments,
@@ -417,6 +434,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     addComment,
     deleteComment,
     onOpenQuestionCount,
+    answerQuestion,
   );
 
   // Build a CapturedSelection from the current window selection or a

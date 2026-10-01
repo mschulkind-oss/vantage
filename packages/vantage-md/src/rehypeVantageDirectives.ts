@@ -29,7 +29,7 @@ import type { Element, Parents, Properties, RootContent, Root } from "hast";
 import type { Plugin } from "unified";
 import {
   DIRECTIVE_VOCABULARY,
-  isQuestionDirective,
+  mergeQuestionRun,
   normalizeLeaning,
   parseVantageDirective,
   VANTAGE_ANCHOR_TARGETS,
@@ -104,19 +104,19 @@ const POINT_PROPERTIES = new Map([["badge", "dataVantageBadge"]]);
 
 const RUN_PROPERTY = "dataVantageRun";
 /**
- * What each question name stamps: `data-vantage-oq` on an open question, the
- * one the review button hangs off, and `data-vantage-question` on a blocked or
- * answered one, which nothing offers to answer.
+ * What a question stamps, whichever name declared it: `data-vantage-question`
+ * on every question, and `data-vantage-oq` besides on one an `oq` declared
+ * (`VANTAGE_QUESTION_ATTRIBUTE`, `VANTAGE_OQ_ATTRIBUTE`).
  *
- * Two attributes rather than one with two values, so that every consumer of
- * this package's markup that has ever read `[data-vantage-oq]` as "a question to
- * answer" — the app's button pass among them — keeps reading exactly that
- * (`VANTAGE_QUESTION_NAMES`). Whoever wants every question asks for both.
+ * Two attributes, and neither one ever means more than it says. Every release
+ * since 0.7 stamps `data-vantage-oq` on an `oq` and on nothing else, so a
+ * reader of this package's markup that has ever read it keeps reading exactly
+ * what it read; `data-vantage-question` is the one to read for "a question",
+ * and the question's state, from its marker, is what decides whether anything
+ * offers to answer it (`questionOffersTake`).
  */
-const QUESTION_PROPERTIES: Readonly<Record<VantageQuestionName, string>> = {
-  oq: "dataVantageOq",
-  question: "dataVantageQuestion",
-};
+const QUESTION_PROPERTY = "dataVantageQuestion";
+const OQ_PROPERTY = "dataVantageOq";
 const LEANING_PROPERTY = "dataVantageLeaning";
 /**
  * The id, carried as a `data-` attribute rather than written straight to `id`.
@@ -360,7 +360,8 @@ function stampQuestion(
   // The string, never the boolean: `rehype-stringify` emits a bare
   // `data-vantage-oq` for `true` while react-markdown emits `="true"`, and D5
   // requires every renderer to emit the same markup.
-  setProperty(target, QUESTION_PROPERTIES[name], "true");
+  setProperty(target, QUESTION_PROPERTY, "true");
+  if (name === "oq") setProperty(target, OQ_PROPERTY, "true");
 
   // `id` becomes the block's anchor, so `[OQ-4](#OQ-4)` scrolls to the question.
   // Verbatim, case intact: heading slugs are lowercased by `github-slugger` and
@@ -372,10 +373,10 @@ function stampQuestion(
   const id = pairs.get("id");
   if (id !== undefined && id !== "") setProperty(target, OQ_ID_PROPERTY, id);
 
-  // Only an `oq` has a leaning to carry: `question` does not accept the key, so
-  // the run's merge has already dropped one written there.
+  // On either name, in every state: whether the leaning is offered is the
+  // viewer's reading of the question's state, never the renderer's.
   const leaning = pairs.get("leaning");
-  if (name !== "oq" || leaning === undefined) return;
+  if (leaning === undefined) return;
   // A wrapped directive puts newlines and indentation in the value, and this is
   // about to become the body of a review comment, so collapse and cap it — the
   // same normalization the planning index reports a question's leaning with.
@@ -400,42 +401,30 @@ function stampRun(
 ) {
   const target = children[targetIndex] as Element;
   const style = new Map<string, string>();
-  const question = new Map<string, string>();
   // The last style directive in the run decides the extent, on the same
   // last-one-wins principle that resolves a repeated key.
   let styleName: string | undefined;
-  // One question per run, whichever names declared it, and `oq` wins over
-  // `question` wherever it appears in the run: a viewer that predates
-  // `question` drops it and reads the `oq`, so a run holding one is an
-  // answerable question to every viewer, this one included.
-  let questionName: VantageQuestionName | undefined;
 
   for (const directive of run) {
     if (directive.name === "section" || directive.name === "block") {
       styleName = directive.name;
       for (const pair of directive.pairs) style.set(pair.key, pair.value);
-    } else if (isQuestionDirective(directive.name)) {
-      if (questionName !== "oq") questionName = directive.name;
-      // The two names share one key map, last key wins, as `section` and
-      // `block` share theirs. A pair its own name does not accept drops here
-      // (D2), so a `leaning` written on a `question` reaches nothing.
-      for (const pair of directive.pairs) {
-        if (accepts(directive.name, pair.key, pair.value)) {
-          question.set(pair.key, pair.value);
-        }
-      }
     }
-    // Any other name drops the whole directive: there is no target semantics
-    // without a name. A `fallback` reaching this point is one whose target is
-    // not a block it may withhold — a heading — so it is inert here too, and
-    // the rest of its run stamps as if it were not there.
+    // A question directive is merged below, and any other name drops the
+    // whole directive: there is no target semantics without a name. A
+    // `fallback` reaching this point is one whose target is not a block it may
+    // withhold — a heading — so it is inert here too, and the rest of its run
+    // stamps as if it were not there.
   }
 
   if (styleName !== undefined) {
     stampStyle(children, targetIndex, styleName, style, state);
   }
-  if (questionName !== undefined && ANCHOR_TARGET_TAGS.has(target.tagName)) {
-    stampQuestion(target, questionName, question);
+  // One question per run, whichever names declared it, merged as every reader
+  // of a run merges it (`mergeQuestionRun`).
+  const question = mergeQuestionRun(run);
+  if (question !== undefined && ANCHOR_TARGET_TAGS.has(target.tagName)) {
+    stampQuestion(target, question.name, question.keys);
   }
 }
 

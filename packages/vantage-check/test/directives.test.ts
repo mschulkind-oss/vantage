@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { renderMarkdown } from "../../vantage-md/src/renderMarkdown.js";
 import { STYLE_GUIDE } from "../../vantage-md/src/styleGuide.js";
+import { QUESTION_SHAPE } from "../../vantage-md/src/planning/leaning.js";
 import { parseConfig } from "../src/core/config.js";
 import {
   unknownKeyMessage,
@@ -53,7 +54,7 @@ describe("vantage/* on documents that are right", () => {
       "",
       "1. **OQ-9: Queue position on re-entry.**",
       "",
-      '   <!-- vantage: oq id=OQ-9 leaning="Back of the queue — it might interact." -->',
+      '   <!-- vantage: question id=OQ-9 leaning="Back of the queue — it might interact." -->',
       "",
       "   _Leaning:_ Back of the queue.",
       "",
@@ -67,7 +68,7 @@ describe("vantage/* on documents that are right", () => {
     expect(html).toContain('data-vantage-tone="warning"');
     expect(html).toContain('data-vantage-badge="stale"');
     expect(html).toContain('data-vantage-tone="important"');
-    expect(html).toContain('data-vantage-oq="true"');
+    expect(html).toContain('data-vantage-question="true"');
     expect(html).toContain('data-vantage-collapse-toggle="1"');
   });
 
@@ -143,13 +144,13 @@ describe("vantage/* on documents that are right", () => {
     }
   });
 
-  it("treats `oq`'s id and leaning as free text, quotes and dashes included", async () => {
+  it("treats a question's id and leaning as free text, quotes and dashes included", async () => {
     expect(
       await check(
         [
           "1. **OQ-B1: whether to re-run it**",
           "",
-          '   <!-- vantage: oq id=OQ-B1 leaning="Back of the queue — the fix might interact." -->',
+          '   <!-- vantage: question id=OQ-B1 leaning="Back of the queue — the fix might interact." -->',
           "",
           "   _Leaning:_ later.",
           "",
@@ -258,7 +259,7 @@ describe("vantage/malformed", () => {
   it("reports a `-->` inside a quoted value, which truncates the comment", async () => {
     // Measured: the comment ends at the first `-->`, so ` b" -->` leaks into
     // the page as literal text and the directive never parses.
-    const markdown = '<!-- vantage: oq leaning="a --> b" -->\n\npara\n';
+    const markdown = '<!-- vantage: question leaning="a --> b" -->\n\npara\n';
 
     expect(await check(markdown)).toEqual(["vantage/malformed"]);
     expect(await render(markdown)).toContain('b" -->');
@@ -288,7 +289,7 @@ describe("vantage/unknown-*", () => {
     expect(report.findings[0]?.message).toContain("`section` accepts");
   });
 
-  it("reports `id` on `section`, which belongs to `oq` alone", async () => {
+  it("reports `id` on `section`, which belongs to a question alone", async () => {
     expect(await check("<!-- vantage: section id=OQ-9 -->\n\n## H\n")).toEqual([
       "vantage/unknown-key",
     ]);
@@ -471,13 +472,13 @@ describe("vantage/duplicate-key", () => {
     );
   });
 
-  it("warns on an `oq` key a later `oq` in the run overrides", async () => {
+  it("warns on a question key a later question directive in the run overrides", async () => {
     const report = await one(
       [
         "1. **OQ-1: x**",
         "",
-        '   <!-- vantage: oq id=OQ-1 leaning="first" -->',
-        '   <!-- vantage: oq leaning="second" -->',
+        '   <!-- vantage: question id=OQ-1 leaning="first" -->',
+        '   <!-- vantage: question leaning="second" -->',
         "",
         "   _Leaning:_ y",
         "",
@@ -489,15 +490,16 @@ describe("vantage/duplicate-key", () => {
   });
 
   it("keeps the two merge families apart", async () => {
-    // `oq` has its own map in `stampRun`, so an `oq` key never collides with a
-    // `section` key — and `leaning` is not a key `section` has at all.
+    // A question has its own map in `stampRun`, so a question key never
+    // collides with a `section` key — and `leaning` is not a key `section` has
+    // at all.
     expect(
       await check(
         [
           "1. **OQ-1: x**",
           "",
           "   <!-- vantage: section tone=note -->",
-          '   <!-- vantage: oq id=OQ-1 leaning="x" -->',
+          '   <!-- vantage: question id=OQ-1 leaning="x" -->',
           "",
           "   _Leaning:_ y",
           "",
@@ -608,8 +610,9 @@ describe("vantage/orphan", () => {
     expect(await render(markdown)).toContain('data-vantage-tone="note"');
   });
 
-  it("warns about an `oq` above a list, where no button can be rendered", async () => {
-    const markdown = "<!-- vantage: oq id=OQ-1 -->\n\n- item one\n- item two\n";
+  it("warns about a question directive above a list, where no button can be rendered", async () => {
+    const markdown =
+      "<!-- vantage: question id=OQ-1 -->\n\n- item one\n- item two\n";
     const report = await one(markdown);
 
     expect(ruleIds(report)).toEqual(["vantage/orphan"]);
@@ -619,20 +622,20 @@ describe("vantage/orphan", () => {
     );
     // Measured: `ul` is not a tag the review system can anchor on, so the
     // plugin stamps nothing at all.
-    expect(await render(markdown)).not.toContain("data-vantage-oq");
+    expect(await render(markdown)).not.toContain("data-vantage-question");
   });
 
-  it("warns about an `oq` above a horizontal rule", async () => {
-    expect(await check("<!-- vantage: oq -->\n\n---\n\npara\n")).toEqual([
+  it("warns about a question directive above a horizontal rule", async () => {
+    expect(await check("<!-- vantage: question -->\n\n---\n\npara\n")).toEqual([
       "vantage/orphan",
     ]);
   });
 
-  it("says nothing about an `oq` above a quote or a heading", async () => {
+  it("says nothing about a question directive above a quote or a heading", async () => {
     for (const target of ["> quoted", "## H"]) {
-      const markdown = `<!-- vantage: oq -->\n\n${target}\n`;
+      const markdown = `<!-- vantage: question -->\n\n${target}\n`;
       expect(await check(markdown)).toEqual([]);
-      expect(await render(markdown)).toContain('data-vantage-oq="true"');
+      expect(await render(markdown)).toContain('data-vantage-question="true"');
     }
   });
 
@@ -641,8 +644,8 @@ describe("vantage/orphan", () => {
   // the button (`OQ_HOST_TAGS` in `useOpenQuestionButtons`), so the directive
   // stamps and no affordance ever appears. That is exactly the silence this
   // family exists to break.
-  it("warns about an `oq` above a code block, which cannot host a button", async () => {
-    const markdown = "<!-- vantage: oq -->\n\n```ts\nconst x = 1;\n```\n";
+  it("warns about a question directive above a code block, which cannot host a button", async () => {
+    const markdown = "<!-- vantage: question -->\n\n```ts\nconst x = 1;\n```\n";
     const report = await one(markdown);
 
     expect(ruleIds(report)).toEqual(["vantage/orphan"]);
@@ -651,23 +654,23 @@ describe("vantage/orphan", () => {
       "put the directive above the paragraph",
     );
     // Measured: the stamp lands, which is why nothing else says a word.
-    expect(await render(markdown)).toContain('data-vantage-oq="true"');
+    expect(await render(markdown)).toContain('data-vantage-question="true"');
   });
 
-  it("warns about an `oq` above a table, which cannot host a button", async () => {
+  it("warns about a question directive above a table, which cannot host a button", async () => {
     const markdown =
-      "<!-- vantage: oq -->\n\n| a | b |\n| - | - |\n| 1 | 2 |\n";
+      "<!-- vantage: question -->\n\n| a | b |\n| - | - |\n| 1 | 2 |\n";
     const report = await one(markdown);
 
     expect(ruleIds(report)).toEqual(["vantage/orphan"]);
     expect(report.findings[0]?.message).toContain("table");
-    expect(await render(markdown)).toContain('data-vantage-oq="true"');
+    expect(await render(markdown)).toContain('data-vantage-question="true"');
   });
 
-  it("does not offer `code block` or `table` as legal `oq` hosts", async () => {
+  it("does not offer `code block` or `table` as legal question hosts", async () => {
     // The message enumerated both while the button refused both, so a reader of
     // the finding was told the shape that does not work is the fix.
-    const report = await one("<!-- vantage: oq -->\n\n- item\n");
+    const report = await one("<!-- vantage: question -->\n\n- item\n");
 
     expect(report.findings[0]?.message).not.toContain("code block");
     expect(report.findings[0]?.message).not.toContain("table");
@@ -687,10 +690,12 @@ describe("vantage/orphan", () => {
     expect(await render(markdown)).toContain('data-vantage-tone="note"');
   });
 
-  it("still warns about an `oq` above a `$$` math block, which hosts no button", async () => {
+  it("still warns about a question directive above a `$$` math block, which hosts no button", async () => {
     // The formula is stamped; what it cannot do is hold the button. The two
     // target lists differ for exactly this kind of case.
-    const report = await one("<!-- vantage: oq -->\n\n$$\nE = mc^2\n$$\n");
+    const report = await one(
+      "<!-- vantage: question -->\n\n$$\nE = mc^2\n$$\n",
+    );
 
     expect(ruleIds(report)).toEqual(["vantage/orphan"]);
     expect(report.findings[0]?.message).toContain("`$$` math block");
@@ -775,7 +780,7 @@ describe("the `fallback` directive", () => {
   it("warns about a directive merged onto a fallback block, which goes with it", async () => {
     const markdown = [
       "<!-- vantage: block tone=note -->",
-      '<!-- vantage: oq id=OQ-1 leaning="Yes." -->',
+      '<!-- vantage: question id=OQ-1 leaning="Yes." -->',
       "<!-- vantage: fallback -->",
       "",
       "Withheld.",
@@ -786,7 +791,7 @@ describe("the `fallback` directive", () => {
     const report = await one(markdown);
 
     expect(ruleIds(report)).toEqual(["vantage/orphan"]);
-    expect(report.findings[0]?.message).toContain("`block` or `oq`");
+    expect(report.findings[0]?.message).toContain("`block` or `question`");
     expect(report.findings[0]?.line).toBe(1);
     expect(await render(markdown)).not.toContain("data-vantage-");
   });
@@ -888,7 +893,7 @@ describe("the `fallback` directive", () => {
 describe("vantage/list-split", () => {
   it("reports a directive between two numbered items", async () => {
     const markdown =
-      "9. Question nine\n\n<!-- vantage: oq -->\n\n10. Question ten\n";
+      "9. Question nine\n\n<!-- vantage: question -->\n\n10. Question ten\n";
     const report = await one(markdown);
 
     expect(ruleIds(report)).toEqual(["vantage/list-split"]);
@@ -901,7 +906,7 @@ describe("vantage/list-split", () => {
     expect(html).toContain('<ol start="9"');
     expect(html).toContain('<ol start="10"');
     expect(
-      await render(markdown.replace("<!-- vantage: oq -->\n\n", "")),
+      await render(markdown.replace("<!-- vantage: question -->\n\n", "")),
     ).not.toContain('start="10"');
   });
 
@@ -934,12 +939,12 @@ describe("vantage/list-split", () => {
   });
 
   it("prefers the placement finding over the orphan it also causes", async () => {
-    // An `oq` between numbered items attaches to the second `<ol>`, which is not
+    // A question between numbered items attaches to the second `<ol>`, which is not
     // anchor-capable, so both rules have something to say. One mistake, one fix,
     // one finding.
-    expect(await check("1. one\n\n<!-- vantage: oq -->\n\n2. two\n")).toEqual([
-      "vantage/list-split",
-    ]);
+    expect(
+      await check("1. one\n\n<!-- vantage: question -->\n\n2. two\n"),
+    ).toEqual(["vantage/list-split"]);
   });
 });
 
@@ -1062,7 +1067,7 @@ describe("vantage/block-split", () => {
       // Between two paragraphs, which stay two paragraphs.
       "one\n\n<!-- vantage: block tone=note -->\n\ntwo\n",
       // A6's authoring form: indented inside a loose list item.
-      "1. **OQ-B1: x**\n\n   <!-- vantage: oq id=OQ-B1 -->\n\n   _Leaning:_ y\n",
+      "1. **OQ-B1: x**\n\n   <!-- vantage: question id=OQ-B1 -->\n\n   _Leaning:_ y\n",
       "- one\n\n  <!-- vantage: block tone=note -->\n\n  two\n",
       // Inside a block quote, above its own paragraph.
       "> <!-- vantage: block tone=note -->\n>\n> quoted para\n",
@@ -1112,7 +1117,7 @@ describe("vantage/block-split", () => {
    *
    * A directive at the top level re-parses its two neighboring blocks, which is
    * free. A directive *nested* inside a list item re-parses the whole enclosing
-   * top-level block — and A6 makes that nesting the only legal `oq` placement,
+   * top-level block — and A6 makes that nesting the only legal question placement,
    * so an Open Questions document pays the enclosing list twice per question.
    * Before the gate, `off` paid every parse and there was no way out.
    *
@@ -1142,7 +1147,7 @@ describe("vantage/block-split", () => {
       lines.push(
         `${i}. **OQ-${i}: Question ${i}.**`,
         "",
-        `${pad}<!-- vantage: oq id=OQ-${i} leaning="Probably yes." -->`,
+        `${pad}<!-- vantage: question id=OQ-${i} leaning="Probably yes." -->`,
         "",
         `${pad}_Leaning:_ the leaning for question ${i}, at some length.`,
         "",
@@ -1247,13 +1252,14 @@ describe("a run of directives across two comments", () => {
     expect(report.findings[0]?.line).toBe(3);
   });
 
-  it("keeps the whole run's names, so a later `oq` is still checked", async () => {
-    // The run merges onto the `<ul>`: legal for `section`, no anchor for `oq`.
+  it("keeps the whole run's names, so a later question directive is still checked", async () => {
+    // The run merges onto the `<ul>`: legal for `section`, no anchor for a
+    // question.
     // Reporting from the first node has to carry the second node's name.
     const report = await one(
       [
         "<!-- vantage: section tone=note -->",
-        "<!-- vantage: oq id=OQ-1 -->",
+        "<!-- vantage: question id=OQ-1 -->",
         "",
         "- item one",
         "- item two",
@@ -1262,7 +1268,9 @@ describe("a run of directives across two comments", () => {
     );
 
     expect(ruleIds(report)).toEqual(["vantage/orphan"]);
-    expect(report.findings[0]?.message).toContain("Open Question button");
+    expect(report.findings[0]?.message).toContain(
+      "A question can only be declared on",
+    );
   });
 });
 
@@ -1307,27 +1315,32 @@ describe("vantage/oq-missing", () => {
     expect(report.findings[0]?.severity).toBe("error");
   });
 
-  it("tells an author who re-marks the question which directive it then takes", async () => {
+  it("names the `question` directive to write, and says it stays in every state", async () => {
     // The planning index reads a question from its directive alone
-    // (planning-index.md §3.3). The old message offered 🔒 and ✅ as ways out,
-    // "mark it 🔒 instead of 💬", and an author who took one and left the
-    // directive off had a question nothing counted, badged or listed. A re-marked
-    // question takes `question`, never `oq`, which every viewer before 0.8
-    // offers to answer (vantage/question-name).
+    // (planning-index.md §3.3), so the message must not offer re-marking the
+    // question as a way out: a re-marked question keeps its directive, and
+    // only its marker changes.
     const message = (await one(question("💬"))).findings[0]?.message ?? "";
 
-    expect(message).toContain("`<!-- vantage: question id=\u2026 -->` instead");
-    expect(message).toContain("with no button");
+    expect(message).toContain(
+      '`<!-- vantage: question id=… leaning="…" -->` directly above the `_Leaning:_` paragraph',
+    );
+    expect(message).toContain("which changes only the marker");
     expect(message).toContain("planning index");
+    expect(message).not.toContain("`oq`");
   });
 
-  it("leaves an open question written with `question` to vantage/question-name", async () => {
-    // One mistake, one finding: the directive is there, under the wrong name.
-    const misnamed = question("💬").replace(
-      "   _Leaning:_",
-      "   <!-- vantage: question id=OQ-1 -->\n\n   _Leaning:_",
-    );
-    expect(await check(misnamed)).toEqual(["vantage/question-name"]);
+  it("says nothing once either name declares the question", async () => {
+    for (const name of ["question", "oq"]) {
+      const declared = question("💬").replace(
+        "   _Leaning:_",
+        `   <!-- vantage: ${name} id=OQ-1 leaning="On push." -->\n\n   _Leaning:_`,
+      );
+      // An `oq` is the deprecated name, and only that is reported about it.
+      expect(await check(declared), name).toEqual(
+        name === "oq" ? ["vantage/oq-deprecated"] : [],
+      );
+    }
   });
 
   it("says nothing about a question blocked on something upstream", async () => {
@@ -1343,14 +1356,6 @@ describe("vantage/oq-missing", () => {
     // build. A document *about* the convention trips them and should not fail.
     const noId = question("💬").replace("**OQ-1: ", "**");
     expect(await check(noId)).toEqual([]);
-  });
-
-  it("says nothing once the directive is there", async () => {
-    const withDirective = question("💬").replace(
-      "   _Leaning:_",
-      '   <!-- vantage: oq id=OQ-1 leaning="On push, because a red main costs more than a slow push." -->\n\n   _Leaning:_',
-    );
-    expect(await check(withDirective)).toEqual([]);
   });
 
   it("says nothing about a question already marked answered", async () => {
@@ -1420,7 +1425,7 @@ describe("vantage/oq-missing", () => {
     // would call a doc with one directive and nine questions fully covered.
     const covered = question("💬").replace(
       "   _Leaning:_",
-      '   <!-- vantage: oq id=OQ-1 leaning="Yes." -->\n\n   _Leaning:_',
+      '   <!-- vantage: question id=OQ-1 leaning="Yes." -->\n\n   _Leaning:_',
     );
     expect(
       await check(covered + question("💬").replace("OQ-1", "OQ-2")),
@@ -1455,95 +1460,147 @@ describe("vantage/oq-missing", () => {
   });
 });
 
+/** One question in a loose list item, declared by `directive`. */
+const declared = (marker: string, directive: string) =>
+  [
+    `1. ${marker} **OQ-1: Should the gate run on push?**`,
+    "",
+    `   <!-- vantage: ${directive} -->`,
+    "",
+    "   _Leaning:_ on push.",
+    "",
+  ].join("\n");
+
 /**
- * `vantage/question-name` — the name a question is declared with, held to its
- * state (`VANTAGE_QUESTION_NAMES`). `oq` means "answer this in one click" to
- * every viewer that has shipped, so it belongs on an open question alone, and
- * `question` is the name for a 🔒 or ✅ one, which older viewers drop.
+ * The `question` directive: one name for a question in every state
+ * (`VANTAGE_QUESTION_NAMES`). Its marker says which state, and its name never
+ * has to change with it.
  */
-describe("vantage/question-name", () => {
-  /** One question in a loose list item, declared by `directive`. */
-  const declared = (marker: string, directive: string) =>
-    [
-      `1. ${marker} **OQ-1: Should the gate run on push?**`,
-      "",
-      `   <!-- vantage: ${directive} -->`,
-      "",
-      "   _Leaning:_ on push.",
-      "",
-    ].join("\n");
+describe("the `question` directive", () => {
+  const blocked = (directive: string, body = "Waits on the load test.") =>
+    `1. 🔒 **OQ-1: The retry budget.**\n\n   <!-- vantage: ${directive} -->\n\n   ${body}\n`;
 
   it.each([
-    ["an open question", "💬", 'oq id=OQ-1 leaning="On push."'],
-    ["a preference", "💬 🤷", 'oq id=OQ-1 leaning="On push."'],
-    ["an unmarked question, which counts as open", "", "oq id=OQ-1"],
+    ["an open question", "💬", 'question id=OQ-1 leaning="On push."'],
+    ["a preference", "💬 🤷", 'question id=OQ-1 leaning="On push."'],
+    ["an unmarked question, which counts as open", "", "question id=OQ-1"],
     ["a blocked question", "🔒", "question id=OQ-1"],
     ["an answered question", "✅", "question id=OQ-1"],
-  ])(
-    "is silent on %s with the right name",
-    async (_name, marker, directive) => {
-      expect(await check(declared(marker, directive))).toEqual([]);
-    },
-  );
+    ["a blocked question with a leaning", "🔒", 'question id=OQ-1 leaning="x"'],
+    [
+      "an answered question with a leaning",
+      "✅",
+      'question id=OQ-1 leaning="x"',
+    ],
+  ])("is silent on %s", async (_name, marker, directive) => {
+    expect(await check(declared(marker, directive))).toEqual([]);
+  });
 
+  it("anchors its question and carries its leaning, with no `oq` stamp", async () => {
+    const html = await render(
+      declared("💬", 'question id=OQ-1 leaning="On push."'),
+    );
+    expect(html).toContain('data-vantage-question="true"');
+    expect(html).toContain('id="OQ-1"');
+    expect(html).toContain('data-vantage-leaning="On push."');
+    expect(html).not.toContain("data-vantage-oq");
+  });
+
+  it("carries a 🔒 question's leaning too, which nothing offers to take", async () => {
+    // A question that changes state changes its marker and nothing else, so
+    // the leaning stays where it was; whether it is offered is the viewer's
+    // reading of the state (`questionOffersTake`).
+    const html = await render(blocked('question id=OQ-1 leaning="Yes."'));
+    expect(html).toContain('data-vantage-leaning="Yes."');
+  });
+
+  it("is a live target for a link to its id", async () => {
+    const markdown = `See [OQ-1](#OQ-1).\n\n${blocked("question id=OQ-1")}`;
+    expect(await check(markdown)).toEqual([]);
+  });
+
+  it("holds its id to the grammar, in one namespace with `oq`", async () => {
+    expect(await check(blocked("question id=OQ-nope"))).toEqual([
+      "vantage/oq-id-format",
+    ]);
+    const twice = `${blocked("question id=OQ-1")}\n2. 💬 **OQ-2: Another.**\n\n   <!-- vantage: question id=OQ-1 -->\n\n   _Leaning:_ yes.\n`;
+    expect(await check(twice)).toEqual(["vantage/oq-id-duplicate"]);
+  });
+
+  it("takes exactly `oq`'s keys, and reports any other as unknown", async () => {
+    const report = await one(blocked("question id=OQ-1 state=blocked"));
+    expect(ruleIds(report)).toEqual(["vantage/unknown-key"]);
+    expect(report.findings[0]?.message).toContain(
+      "`question` accepts `id` or `leaning`",
+    );
+  });
+
+  it("is reported where it would declare nothing", async () => {
+    const report = await one(
+      "<!-- vantage: question id=OQ-1 -->\n\n- item one\n- item two\n",
+    );
+    expect(ruleIds(report)).toEqual(["vantage/orphan"]);
+    expect(report.findings[0]?.message).toContain(
+      "A question can only be declared on a paragraph",
+    );
+  });
+});
+
+/**
+ * `vantage/question-name` — an `oq` on a question every viewer before 0.8
+ * would offer to answer although its marker says it cannot be, and a question
+ * directive placed where every viewer reads the question as open.
+ */
+describe("vantage/question-name", () => {
   it.each([
     ["blocked", "🔒"],
     ["answered", "✅"],
   ])(
-    "reports an `oq` on a %s question, at the directive",
+    "reports an `oq` on a %s question, at the directive, and nothing else",
     async (word, marker) => {
       const report = await one(
         declared(marker, 'oq id=OQ-1 leaning="On push."'),
       );
 
+      // One finding per `oq`: the error, and no deprecation warning beside it.
       expect(ruleIds(report)).toEqual(["vantage/question-name"]);
       const finding = report.findings[0];
       expect(finding?.severity).toBe("error");
       expect([finding?.line, finding?.column]).toEqual([3, 4]);
       expect(finding?.message).toContain(`marked ${marker} ${word}`);
-      // What every viewer before 0.8 does with it, and the exact fix.
-      expect(finding?.message).toContain("every Vantage before 0.8 offers");
+      // What every viewer before 0.8 does with it, and the exact fix, keys
+      // unchanged.
       expect(finding?.message).toContain(
-        "Write `<!-- vantage: question id=OQ-1 -->` instead",
+        "every Vantage before 0.8 offers Take this leaning on every `oq`",
+      );
+      expect(finding?.message).toContain(
+        'Write `<!-- vantage: question id=OQ-1 leaning="On push." -->` instead, keys unchanged',
       );
     },
   );
 
-  it.each([
-    ["an open question", "💬"],
-    ["an unmarked question", ""],
-  ])("reports a `question` on %s", async (_name, marker) => {
-    const report = await one(declared(marker, "question id=OQ-1"));
-
-    expect(ruleIds(report)).toEqual(["vantage/question-name"]);
-    expect(report.findings[0]?.message).toContain(
-      'Write `<!-- vantage: oq id=OQ-1 leaning="…" -->` instead',
-    );
-    expect(report.findings[0]?.message).toContain("or mark the question");
+  it("is silent on a `question` on an open question, which it no longer reports", async () => {
+    for (const marker of ["💬", ""]) {
+      expect(await check(declared(marker, "question id=OQ-1")), marker).toEqual(
+        [],
+      );
+    }
   });
 
-  it("judges each comment of a mixed run on its own name, and says to delete the extra one", async () => {
-    // A run holding both is one question, and an `oq` in it wins, as it does
-    // to a viewer that drops `question`. So on a 🔒 question the `oq` is the
-    // mistake, and on an open one the `question` is; either way the other name
-    // already declares the question, so the fix is to delete this one rather
-    // than to rename it into a second declaration.
-    const both = (marker: string) =>
-      declared(marker, "question id=OQ-1 -->\n   <!-- vantage: oq");
-    const blocked = await one(both("🔒"));
-    expect(ruleIds(blocked)).toEqual(["vantage/question-name"]);
-    expect(blocked.findings[0]?.line).toBe(4);
-    expect(blocked.findings[0]?.message).toContain(
+  it("tells a mixed run on a 🔒 question to delete its `oq`, not rename it", async () => {
+    // A run holding both is one question, and the `oq` in it wins, as it does
+    // to a viewer that drops `question`. On a 🔒 question that `oq` is the
+    // mistake, and the `question` already declares the question, so the fix
+    // is to delete it rather than to rename it into a second declaration.
+    const both = declared("🔒", "question id=OQ-1 -->\n   <!-- vantage: oq");
+    const report = await one(both);
+    expect(ruleIds(report)).toEqual(["vantage/question-name"]);
+    expect(report.findings[0]?.line).toBe(4);
+    expect(report.findings[0]?.message).toContain(
       "Delete this `oq`: the `question` in the same run already declares the question",
     );
-    expect(blocked.findings[0]?.message).not.toContain("Write");
-
-    const open = await one(both("💬"));
-    expect(ruleIds(open)).toEqual(["vantage/question-name"]);
-    expect(open.findings[0]?.line).toBe(3);
-    expect(open.findings[0]?.message).toContain(
-      "Delete this `question`: the `oq` in the same run already declares the question",
-    );
+    expect(report.findings[0]?.message).toContain("cannot be answered yet");
+    expect(report.findings[0]?.message).not.toContain("Write");
   });
 
   it("does not call one run's shared id a duplicate", async () => {
@@ -1557,27 +1614,6 @@ describe("vantage/question-name", () => {
       "vantage/duplicate-key",
       "vantage/question-name",
     ]);
-  });
-
-  it("names no leaning for an open question that states none", async () => {
-    const bare = [
-      "1. 💬 **OQ-1: Should the gate run on push?**",
-      "",
-      "   <!-- vantage: question id=OQ-1 -->",
-      "",
-      "   Nobody has a view yet.",
-      "",
-    ].join("\n");
-    const report = await one(bare);
-    expect(ruleIds(report)).toEqual(["vantage/question-name"]);
-    const message = report.findings[0]?.message ?? "";
-    expect(message).toContain("Write `<!-- vantage: oq id=OQ-1 -->` instead");
-    expect(message).not.toContain("restating the leaning");
-    expect(message).toContain("The question states no leaning yet");
-    // And an `oq` with no leaning is the right name for it.
-    expect(await check(bare.replace("question id=OQ-1", "oq id=OQ-1"))).toEqual(
-      [],
-    );
   });
 
   /**
@@ -1597,11 +1633,12 @@ describe("vantage/question-name", () => {
       ].join("\n");
 
     it.each([
-      ["an answered paragraph", "✅", 'oq id=OQ-3 leaning="x"', ""],
-      ["a blocked paragraph", "🔒", "oq id=OQ-3", ""],
-      ["an answered paragraph in a quote", "✅", "oq id=OQ-3", "> "],
+      ["an answered paragraph", "✅", 'question id=OQ-3 leaning="x"', ""],
+      ["a blocked paragraph", "🔒", "question id=OQ-3", ""],
+      ["an answered paragraph in a quote", "✅", "question id=OQ-3", "> "],
+      ["a blocked paragraph, as an `oq`", "🔒", "oq id=OQ-3", ""],
     ])(
-      "reports an `oq` below %s, naming the placement rather than a name",
+      "reports a directive below %s, naming the placement rather than a name",
       async (_name, marker, directive, quote) => {
         const report = await one(below(marker, directive, quote));
         expect(ruleIds(report)).toEqual(["vantage/question-name"]);
@@ -1609,17 +1646,9 @@ describe("vantage/question-name", () => {
         expect(message).toContain("The title on line 1 marks this question");
         expect(message).toContain("the directive lands on line 5");
         expect(message).toContain("Put the directive above the title");
-        expect(message).toContain("`<!-- vantage: question id=OQ-3 -->`");
+        expect(message).toContain("`<!-- vantage: question id=OQ-3");
       },
     );
-
-    it("reports a `question` there too, and never tells it to become an `oq`", async () => {
-      const report = await one(below("🔒", "question id=OQ-3"));
-      expect(ruleIds(report)).toEqual(["vantage/question-name"]);
-      const message = report.findings[0]?.message ?? "";
-      expect(message).toContain("Put the directive above the title");
-      expect(message).not.toContain("Write `<!-- vantage: oq");
-    });
 
     it("is one finding for a run of two", async () => {
       const report = await one(
@@ -1629,7 +1658,9 @@ describe("vantage/question-name", () => {
     });
 
     it("is silent on an open title, and on a directive above the title", async () => {
-      expect(await check(below("💬", 'oq id=OQ-3 leaning="x"'))).toEqual([]);
+      expect(await check(below("💬", 'question id=OQ-3 leaning="x"'))).toEqual(
+        [],
+      );
       const above = [
         "<!-- vantage: question id=OQ-3 -->",
         "",
@@ -1661,10 +1692,110 @@ describe("vantage/question-name", () => {
     expect(ruleIds(await checkTree(root))).toEqual(["vantage/question-name"]);
   });
 
-  it("can be switched off", async () => {
+  it("leaves an `oq` it is switched off for to the deprecation warning", async () => {
+    // Each `oq` gets one finding, and with the error off the `oq` is still
+    // the deprecated name.
     const tree = makeTree({ "index.md": declared("🔒", "oq id=OQ-1") });
     const loaded = parseConfig(
       '[check.rules]\n"vantage/question-name" = "off"\n',
+      "/x/.vantage.toml",
+    );
+    expect(ruleIds(await checkTree(tree, ["."], loaded.settings))).toEqual([
+      "vantage/oq-deprecated",
+    ]);
+  });
+});
+
+/**
+ * `vantage/oq-deprecated` — `oq`, the name `question` replaces. It keeps its
+ * 0.7 meaning in every viewer, so it is a warning, and its message is the
+ * directive to write instead, keys unchanged.
+ */
+describe("vantage/oq-deprecated", () => {
+  it.each([
+    ["an open question", "💬", 'oq id=OQ-1 leaning="On push."'],
+    ["a preference", "💬 🤷", 'oq id=OQ-1 leaning="On push."'],
+    ["an unmarked question, which counts as open", "", "oq id=OQ-1"],
+  ])(
+    "warns on an `oq` on %s, quoting the `question` to write",
+    async (_name, marker, directive) => {
+      const report = await one(declared(marker, directive));
+      expect(ruleIds(report)).toEqual(["vantage/oq-deprecated"]);
+      const finding = report.findings[0];
+      expect(finding?.severity).toBe("warning");
+      expect([finding?.line, finding?.column]).toEqual([3, 4]);
+      expect(finding?.message).toContain(
+        `\`oq\` is deprecated: write \`<!-- vantage: ${directive.replace(/^oq/, "question")} -->\` instead, keys unchanged, once every reader of this repository is on Vantage 0.8 or later.`,
+      );
+      // What the move costs a reader still on 0.7, and that it is no misreading.
+      expect(finding?.message).toContain(
+        "a reader still on 0.7 gets no one-click answer and no anchor there, and misreads nothing",
+      );
+      // Keeping it is the default an agent cannot rule out, and the way to
+      // keep it quietly is named, with what it costs an older checker.
+      expect(finding?.message).toContain(
+        "keep the `oq` while any reader is on 0.7, and unless you know they all upgraded",
+      );
+      expect(finding?.message).toContain(
+        'under [check.rules]: "vantage/oq-deprecated" = "off" (a vantage-check before 0.8 exits 2 on that line',
+      );
+    },
+  );
+
+  it("keeps every key as it was written, quoted where it was quoted", async () => {
+    const report = await one(
+      [
+        "1. 💬 **OQ-B1: whether to re-run it**",
+        "",
+        "   <!-- vantage: oq",
+        '        id=OQ-B1 leaning="Back of the queue — the fix might interact." -->',
+        "",
+        "   _Leaning:_ later.",
+        "",
+      ].join("\n"),
+    );
+    expect(report.findings[0]?.message).toContain(
+      '`<!-- vantage: question id=OQ-B1 leaning="Back of the queue — the fix might interact." -->`',
+    );
+  });
+
+  it("warns on an `oq` that lands nowhere a question can be, beside the placement finding", async () => {
+    // The orphan is the placement; the name is deprecated wherever it stands.
+    expect(await check("<!-- vantage: oq -->\n\n---\n\npara\n")).toEqual([
+      "vantage/orphan",
+      "vantage/oq-deprecated",
+    ]);
+  });
+
+  it("tells an `oq` beside a `question` on an open question to go", async () => {
+    const report = await one(
+      declared("💬", "question id=OQ-1 -->\n   <!-- vantage: oq"),
+    );
+    expect(ruleIds(report)).toEqual(["vantage/oq-deprecated"]);
+    expect(report.findings[0]?.line).toBe(4);
+    expect(report.findings[0]?.message).toContain(
+      "Delete this `oq`: the `question` in the same run already declares the question",
+    );
+  });
+
+  it("says nothing about an `oq` in a fence, which is a specimen", async () => {
+    expect(
+      await check("```markdown\n<!-- vantage: oq id=OQ-1 -->\n```\n"),
+    ).toEqual([]);
+  });
+
+  it("still renders an `oq` exactly as 0.7 did, with the question stamp besides", async () => {
+    const html = await render(declared("💬", 'oq id=OQ-1 leaning="On push."'));
+    expect(html).toContain('data-vantage-oq="true"');
+    expect(html).toContain('data-vantage-question="true"');
+    expect(html).toContain('data-vantage-leaning="On push."');
+    expect(html).toContain('id="OQ-1"');
+  });
+
+  it("can be switched off", async () => {
+    const tree = makeTree({ "index.md": declared("💬", "oq id=OQ-1") });
+    const loaded = parseConfig(
+      '[check.rules]\n"vantage/oq-deprecated" = "off"\n',
       "/x/.vantage.toml",
     );
     expect(ruleIds(await checkTree(tree, ["."], loaded.settings))).toEqual([]);
@@ -1672,69 +1803,105 @@ describe("vantage/question-name", () => {
 });
 
 /**
- * A `question` directive is checked as an `oq` is wherever the two promise the
- * same thing — the id grammar, one namespace of ids, the anchor, the placement —
- * and takes `id` alone.
+ * `vantage/question-layout` — a leaning run into a paragraph with other text,
+ * which neither the page nor the planning card can lay out as the leaning.
  */
-describe("the `question` directive", () => {
-  const blocked = (directive: string, body = "Waits on the load test.") =>
-    `1. 🔒 **OQ-1: The retry budget.**\n\n   <!-- vantage: ${directive} -->\n\n   ${body}\n`;
+describe("vantage/question-layout", () => {
+  /** A question in a list item, its body written as `body`. */
+  const item = (...body: string[]) =>
+    [
+      "1. 💬 **OQ-1: Should the gate run on push?**",
+      "",
+      "   <!-- vantage: question id=OQ-1 -->",
+      "",
+      ...body.flatMap((paragraph) => [`   ${paragraph}`, ""]),
+    ].join("\n");
 
-  it("anchors its question, with no button and no leaning", async () => {
-    const html = await render(blocked("question id=OQ-1"));
-    expect(html).toContain('data-vantage-question="true"');
-    expect(html).toContain('id="OQ-1"');
-    expect(html).not.toContain("data-vantage-oq");
-    expect(html).not.toContain("data-vantage-leaning");
-  });
-
-  it("is a live target for a link to its id", async () => {
-    const markdown = `See [OQ-1](#OQ-1).\n\n${blocked("question id=OQ-1")}`;
-    expect(await check(markdown)).toEqual([]);
-  });
-
-  it("reports a `leaning`, which only an `oq` carries, as `oq`'s key and not a newer one", async () => {
-    const report = await one(blocked('question id=OQ-1 leaning="Yes."'));
-    expect(ruleIds(report)).toEqual(["vantage/unknown-key"]);
-    const finding = report.findings[0];
-    expect(finding?.message).toContain("`leaning` is `oq`'s key");
-    expect(finding?.message).toContain("it takes `id` alone");
-    expect(finding?.message).toContain("Delete the key");
-    // Not the two-branch advice, which would say to keep it.
-    expect(finding?.detail).toBeUndefined();
-    expect(
-      await render(blocked('question id=OQ-1 leaning="Yes."')),
-    ).not.toContain("data-vantage-leaning");
-  });
-
-  it("holds its id to the grammar, in one namespace with `oq`", async () => {
-    expect(await check(blocked("question id=OQ-nope"))).toEqual([
-      "vantage/oq-id-format",
-    ]);
-    const twice = `${blocked("question id=OQ-1")}\n2. 💬 **OQ-2: Another.**\n\n   <!-- vantage: oq id=OQ-1 -->\n\n   _Leaning:_ yes.\n`;
-    expect(await check(twice)).toEqual(["vantage/oq-id-duplicate"]);
-  });
-
-  it("merges its keys with an `oq` in the same run", async () => {
-    // One question, so one `id`: the second is lost, as a second `id` on two
-    // `oq` comments is. The question is unmarked, so open, and the `question`
-    // in its run is the wrong name for it too.
+  it("is silent on a question written in its parts", async () => {
     expect(
       await check(
-        "<!-- vantage: question id=OQ-1 -->\n<!-- vantage: oq id=OQ-2 -->\n\nA question.\n",
+        item(
+          "The tradeoff is latency against a red main.",
+          "_Leaning:_ on push, because a red main costs more.",
+          "**Answer:**",
+          "> _(empty — fill in when decided)_",
+        ),
       ),
-    ).toEqual(["vantage/duplicate-key", "vantage/question-name"]);
+    ).toEqual([]);
   });
 
-  it("is reported where it would declare nothing", async () => {
-    const report = await one(
-      "<!-- vantage: question id=OQ-1 -->\n\n- item one\n- item two\n",
+  it.each([
+    [
+      "after the context, in emphasis",
+      "The tradeoff is latency against a red main. _Leaning:_ on push.",
+    ],
+    [
+      "after the context, in bold, with no full stop",
+      "The tradeoff is latency against a red main **Leaning:** on push.",
+    ],
+    [
+      "after the context, written bare",
+      "The tradeoff is latency against a red main. Leaning: on push.",
+    ],
+    [
+      "on a line of its own inside the paragraph",
+      "The tradeoff is latency against a red main\n   Leaning — on push.",
+    ],
+    [
+      "followed by its Answer",
+      "_Leaning:_ on push. **Answer:** _(empty — fill in when decided)_",
+    ],
+  ])("warns on a leaning %s, quoting the shape", async (_name, paragraph) => {
+    const report = await one(item(paragraph));
+    expect(ruleIds(report)).toEqual(["vantage/question-layout"]);
+    const finding = report.findings[0];
+    expect(finding?.severity).toBe("warning");
+    expect(finding?.line).toBe(5);
+    expect(finding?.message).toContain(
+      "This question's leaning shares a paragraph with other text",
     );
-    expect(ruleIds(report)).toEqual(["vantage/orphan"]);
-    expect(report.findings[0]?.message).toContain(
-      "A question can only be declared on a paragraph",
+    expect(finding?.message).toContain(QUESTION_SHAPE);
+  });
+
+  it("warns on a whole question run into its title's paragraph, with no directive", async () => {
+    const markdown =
+      "1. 💬 **OQ-1: Should the gate run on push?** The tradeoff is latency. _Leaning:_ on push. **Answer:** pending.\n";
+    expect(await check(markdown)).toEqual(["vantage/question-layout"]);
+  });
+
+  it("warns outside a list, where the title is the block above", async () => {
+    const markdown = [
+      "💬 **OQ-1: Should the gate run on push?**",
+      "",
+      "The tradeoff is latency against a red main. _Leaning:_ on push.",
+      "",
+    ].join("\n");
+    expect(await check(markdown)).toEqual(["vantage/question-layout"]);
+  });
+
+  it.each([
+    ["prose that mentions a leaning", "My leaning: depends on the benchmark."],
+    ["a marker quoted as code", "Write the `_Leaning:_` paragraph last."],
+    ["a lowercase word after a sentence", "It works. leaning: no."],
+  ])("is silent on %s", async (_name, paragraph) => {
+    expect(await check(item(paragraph))).toEqual([]);
+  });
+
+  it("is silent where no question is named", async () => {
+    expect(
+      await check("Some context. _Leaning:_ the writer has one.\n"),
+    ).toEqual([]);
+  });
+
+  it("can be switched off", async () => {
+    const tree = makeTree({
+      "index.md": item("Context. _Leaning:_ on push."),
+    });
+    const loaded = parseConfig(
+      '[check.rules]\n"vantage/question-layout" = "off"\n',
+      "/x/.vantage.toml",
     );
-    expect(report.findings[0]?.message).not.toContain("button");
+    expect(ruleIds(await checkTree(tree, ["."], loaded.settings))).toEqual([]);
   });
 });
 
@@ -1742,7 +1909,7 @@ describe("vantage/oq-id-format", () => {
   it("fires on an id outside the grammar", async () => {
     const root = makeTree({
       "docs/index.md":
-        '# Q\n\n<!-- vantage: oq id=OQ-nope leaning="Yes." -->\n\nA question.\n',
+        '# Q\n\n<!-- vantage: question id=OQ-nope leaning="Yes." -->\n\nA question.\n',
     });
 
     const report = await checkTree(root);
@@ -1753,7 +1920,7 @@ describe("vantage/oq-id-format", () => {
 
   it.each(["OQ-9", "OQ-TP6", "OQ-A03"])("accepts %s", async (id) => {
     const root = makeTree({
-      "docs/index.md": `# Q\n\n<!-- vantage: oq id=${id} leaning="Yes." -->\n\nA question.\n`,
+      "docs/index.md": `# Q\n\n<!-- vantage: question id=${id} leaning="Yes." -->\n\nA question.\n`,
     });
 
     const report = await checkTree(root);
@@ -1763,7 +1930,7 @@ describe("vantage/oq-id-format", () => {
 
   it.each(["OQ-tp6", "OQ-", "OQ-4x", "oq-4"])("rejects %s", async (id) => {
     const root = makeTree({
-      "docs/index.md": `# Q\n\n<!-- vantage: oq id=${id} leaning="Yes." -->\n\nA question.\n`,
+      "docs/index.md": `# Q\n\n<!-- vantage: question id=${id} leaning="Yes." -->\n\nA question.\n`,
     });
 
     const report = await checkTree(root);
@@ -1774,7 +1941,7 @@ describe("vantage/oq-id-format", () => {
   it("says nothing about a directive with no id at all", async () => {
     const root = makeTree({
       "docs/index.md":
-        '# Q\n\n<!-- vantage: oq leaning="Yes." -->\n\nA question.\n',
+        '# Q\n\n<!-- vantage: question leaning="Yes." -->\n\nA question.\n',
     });
 
     const report = await checkTree(root);
@@ -1789,8 +1956,8 @@ describe("vantage/oq-id-duplicate", () => {
   it("fires on the second use and names the first", async () => {
     const root = makeTree({
       "docs/index.md":
-        '# Q\n\n<!-- vantage: oq id=OQ-4 leaning="One." -->\n\nFirst.\n\n' +
-        '<!-- vantage: oq id=OQ-4 leaning="Two." -->\n\nSecond.\n',
+        '# Q\n\n<!-- vantage: question id=OQ-4 leaning="One." -->\n\nFirst.\n\n' +
+        '<!-- vantage: question id=OQ-4 leaning="Two." -->\n\nSecond.\n',
     });
 
     const report = await checkTree(root);
@@ -1804,8 +1971,8 @@ describe("vantage/oq-id-duplicate", () => {
   it("leaves distinct ids alone", async () => {
     const root = makeTree({
       "docs/index.md":
-        '# Q\n\n<!-- vantage: oq id=OQ-4 leaning="One." -->\n\nFirst.\n\n' +
-        '<!-- vantage: oq id=OQ-5 leaning="Two." -->\n\nSecond.\n',
+        '# Q\n\n<!-- vantage: question id=OQ-4 leaning="One." -->\n\nFirst.\n\n' +
+        '<!-- vantage: question id=OQ-5 leaning="Two." -->\n\nSecond.\n',
     });
 
     const report = await checkTree(root);
@@ -1816,8 +1983,8 @@ describe("vantage/oq-id-duplicate", () => {
   it("does not double-report a malformed id as a duplicate", async () => {
     const root = makeTree({
       "docs/index.md":
-        '# Q\n\n<!-- vantage: oq id=OQ-bad leaning="One." -->\n\nFirst.\n\n' +
-        '<!-- vantage: oq id=OQ-bad leaning="Two." -->\n\nSecond.\n',
+        '# Q\n\n<!-- vantage: question id=OQ-bad leaning="One." -->\n\nFirst.\n\n' +
+        '<!-- vantage: question id=OQ-bad leaning="Two." -->\n\nSecond.\n',
     });
 
     const report = await checkTree(root);

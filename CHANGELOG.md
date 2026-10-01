@@ -36,9 +36,20 @@ exports render black. GitHub and Vantage 0.7 drop it, so follow it with a
 0.8 hides. See
 [Inline SVG](docs/reference/inline-markup.md#inline-svg).
 
-**Mark a blocked (🔒) or answered (✅) question with a `question` directive
-instead of `oq`.** Neither Vantage 0.8 nor 0.7 then offers to answer it in one
-click. See [Planning Documents](userguide/guides/planning.md#what-vantage-reads).
+**One `question` directive declares a question in any state, and `oq` is
+deprecated.** Its marker says the state, and `oq` still works. `vantage-check`
+warns on each `oq` with the `question` to write instead. Vantage 0.7 drops a
+`question`, losing its one-click answer, so while your readers are on 0.7, keep
+`oq` on open questions and turn the warning off with
+`"vantage/oq-deprecated" = "off"` under `[check.rules]`. See
+[When Your Readers Are on 0.7](userguide/guides/vantage-check.md#when-your-readers-are-on-07).
+
+**A comment on a question is its answer,** whether you take its leaning, use
+**Answer…**, or comment anywhere in it. The question then shows that it is
+answered (_Leaning taken_, or _Answered — waiting on the agent_) in the
+document, where its controls now sit at its end, and on its planning card, and
+stops counting as needing you. See
+[Planning Documents](userguide/guides/planning.md#a-comment-on-a-question-is-your-answer).
 
 ### Changed
 
@@ -52,6 +63,22 @@ checker's release, instead of exiting `2`.** A top-level `target = "0.8"` is
 reserved for the oldest release your readers use, and a checker older than it
 refuses to run. See
 [Keys From a Newer Release](userguide/reference/configuration.md#keys-from-a-newer-release).
+
+**A `[starred]` key the server does not know no longer makes it ignore the
+whole file.** It logs a warning and ignores the key, as it does an unknown
+`[planning]` key; a wrong value for a key it knows still makes it ignore the
+file. See
+[Keys From a Newer Release](userguide/reference/configuration.md#keys-from-a-newer-release).
+
+**The review prompt's check command names your release,** as
+`VANTAGE_VIEWER=0.8.0 uvx vantage-check <file>`, and so does the planning
+page's agent request, so a later checker can write for the viewer you run. See
+[How agents find out about it](userguide/guides/vantage-check.md#how-agents-find-out-about-it).
+
+**The style guide says how to write a question:** a list item with a bold
+title line, short context, the options as a list, and the leaning and the
+Answer as paragraphs of their own, never one run-together paragraph. See
+[Style Guide for Agents](userguide/reference/style-guide.md#questions).
 
 **Hand-written HTML and Mermaid can no longer draw over Vantage's own page.**
 Vantage keeps a `class` only where Markdown puts one, drops a `style` whose
@@ -73,7 +100,8 @@ behavior, shows review comments left on that Markdown. See
 choose.** Check a file named `index` as `vantage-check ./index`, since `index`
 is now a command. `planning/depends-on-missing` and `vantage/question-name`,
 which reports an `oq` on a 🔒 or ✅ question, are errors.
-`planning/question-length` warns past 120 words, failing `--strict`, and
+`planning/question-length` warns past 120 words, failing `--strict`, as do the
+new `vantage/oq-deprecated` and `vantage/question-layout` warnings, and
 `vantage/oq-missing` reads more ways of writing a leaning.
 
 ### Fixed

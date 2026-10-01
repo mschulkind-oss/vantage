@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { checkTree, makeTree, ruleIds } from "./helpers.js";
 
-const OQ = '<!-- vantage: oq id=OQ-4 leaning="Yes." -->';
+const OQ = '<!-- vantage: question id=OQ-4 leaning="Yes." -->';
 
 describe("ref/unlinked-oq", () => {
   it("fires on an id written as prose", async () => {

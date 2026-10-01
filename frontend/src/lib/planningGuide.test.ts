@@ -207,7 +207,7 @@ describe("agent requests", () => {
         "Stage conflict (1): the stage says ready or built, but questions are open. For each, find which is wrong, from the document and the code. If the stage is wrong, set it to DESIGN or SKETCH. If a question is a follow-up, propose moving it to a new document. Rule and answer nothing: where a question looks settled, tell the human what you found and ask for a ruling.",
         "- docs/e.md  (stage BUILT; open: OQ-E1)",
         "",
-        "Verify: in the repository, run `vantage-check` on every Markdown file you changed, then `vantage-check index`.",
+        "Verify: in the repository, run `vantage-check` on every Markdown file you changed, then `vantage-check index`. If the command cannot run, or exits 2 (a configuration error or a refusal), leave `.vantage.toml` as it is: the check is a quality gate, not part of the work.",
       ].join("\n"),
     );
   });
@@ -225,6 +225,27 @@ describe("agent requests", () => {
       "",
       expect.stringMatching(/^Verify: /),
     ]);
+  });
+
+  it("names a release viewer's release in its checker command, and only then", () => {
+    // A request is text an agent acts on, frozen into the viewer that ships
+    // it, so a release viewer names itself as the review payload does
+    // (docs/design/checker-version-skew.md §5); the CLI and a development
+    // build name none, and stay byte-identical.
+    const sections = derivePlanningSections(index);
+    const last = (viewer?: string) =>
+      planningAgentRequest(index, sections, {
+        repository: REPO,
+        ids: ["graduate"],
+        ...(viewer === undefined ? {} : { viewer }),
+      })
+        ?.split("\n")
+        .at(-1);
+    expect(last("0.8.0")).toBe(
+      "Verify: in the repository, run `VANTAGE_VIEWER=0.8.0 uvx vantage-check` on every Markdown file you changed, then `VANTAGE_VIEWER=0.8.0 uvx vantage-check index`. If the command cannot run, or exits 2 (a configuration error or a refusal), leave `.vantage.toml` as it is: the check is a quality gate, not part of the work.",
+    );
+    expect(last()).toBe(request(index, ["graduate"])?.split("\n").at(-1));
+    expect(last()).toMatch(/^Verify: in the repository, run `vantage-check` /);
   });
 
   it("covers the asked sections in page order, each once", () => {

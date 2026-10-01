@@ -626,7 +626,8 @@ func TestLoadUserStarred(t *testing.T) {
 
 	// The file is the daemon's own config, full of keys that are none of this
 	// reader's business. Policing them would reject every real config in
-	// existence — which is the opposite of repoconfig.Parse's rule, on purpose.
+	// existence — which is the opposite of repoconfig.Parse's rule for the
+	// tables it owns, on purpose.
 	t.Run("reads past everything else in the file", func(t *testing.T) {
 		home := setHome(t)
 		writeUserConfig(t, home, `

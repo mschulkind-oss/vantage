@@ -10,6 +10,7 @@ import {
   type PreferenceName,
 } from "../lib/preferences";
 import { isStaticMode } from "../lib/staticMode";
+import { VIEWER_RELEASE } from "../lib/viewerRelease";
 import type {
   CommentAnchor,
   CommentReaction,
@@ -255,6 +256,28 @@ export async function postCommentTo(
   const { data } = await axios.post<ReviewData | null>(
     `${base}/review/comments`,
     createCommentBody(comment),
+    { params: { path } },
+  );
+  return data ?? null;
+}
+
+/**
+ * Delete the comment `id` from the review of the document at `path`, which
+ * need not be the one on screen: the planning card's Undo on a take, the
+ * request `deleteComment` sends. Resolves to the review the server persisted,
+ * and rejects as `postCommentTo` does.
+ */
+export async function deleteCommentFrom(
+  path: string,
+  id: string,
+): Promise<ReviewData | null> {
+  const base = getApiBase();
+  if (!base) throw new Error("no repository is selected");
+  if (isStaticMode()) {
+    throw new Error("this is a static export, with no server to save to");
+  }
+  const { data } = await axios.delete<ReviewData | null>(
+    `${base}/review/comments/${encodeURIComponent(id)}`,
     { params: { path } },
   );
   return data ?? null;
@@ -1146,6 +1169,31 @@ function shellWord(word: string): string {
   return `'${word.replace(/'/g, `'\\''`)}'`;
 }
 
+/**
+ * The checker command the payload asks the agent to run on `paths`.
+ *
+ * A release viewer puts `VANTAGE_VIEWER=<its release>` in front of it, so the
+ * checker that runs knows which release the reader's viewer renders with
+ * (docs/design/checker-version-skew.md §5). No 0.8.0 checker reads the
+ * variable; it is here because a payload is frozen into every viewer that
+ * ships it, so a later checker that can write for an older viewer would have
+ * nothing to read from one that shipped without it. An environment variable,
+ * and not a flag, because a checker that does not know a flag exits 2, while
+ * one that does not read a variable never notices it. A development build
+ * names no release and keeps the bare command, which is right for it: it is
+ * at or ahead of every release.
+ *
+ * It is a constant of the build, not a probe of any state, so the payload is
+ * still a pure function of the document and the build (agent-bootstrap.md P6).
+ */
+export function checkCommand(
+  paths: readonly string[],
+  release: string | undefined = VIEWER_RELEASE,
+): string {
+  const viewer = release === undefined ? "" : `VANTAGE_VIEWER=${release} `;
+  return `${viewer}uvx vantage-check ${paths.map(shellWord).join(" ")}`;
+}
+
 function respondingInstructions(
   targets: readonly DeliveryTarget[],
   batch: readonly ReviewComment[] = [],
@@ -1220,7 +1268,7 @@ function respondingInstructions(
     // reports" would otherwise "fix" a refusal by editing `.vantage.toml`, and
     // this sentence is frozen into every viewer that ships it, so it is here
     // before any release relies on a refusal.
-    `**Before delivering, check the ${single ? "document" : "documents"}.** From the root of this repository run \`uvx vantage-check ${paths.map(shellWord).join(" ")}\` — no install, no server — and fix what it reports. A broken link or a diagram that does not parse is cheaper to find here than in the next review round. If the command cannot run, or exits 2 (a configuration error or a refusal), deliver anyway and leave \`.vantage.toml\` as it is — this is a quality gate, not a delivery dependency.`,
+    `**Before delivering, check the ${single ? "document" : "documents"}.** From the root of this repository run \`${checkCommand(paths)}\` — no install, no server — and fix what it reports. A broken link or a diagram that does not parse is cheaper to find here than in the next review round. If the command cannot run, or exits 2 (a configuration error or a refusal), deliver anyway and leave \`.vantage.toml\` as it is — this is a quality gate, not a delivery dependency.`,
     "",
     single
       ? "After addressing your comments: **save the document first**, then deliver your responses with a single command from the root of this document's repository:"

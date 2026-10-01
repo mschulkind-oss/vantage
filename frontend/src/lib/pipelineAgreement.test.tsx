@@ -366,6 +366,9 @@ describe("every renderer runs the same chain", () => {
       'p data-vantage-run="end"',
       'p data-vantage-collapsed="true"',
       'p data-vantage-collapse-group="1"',
+      // An `oq` stamps the question attribute every question carries, and
+      // its own besides.
+      'p data-vantage-question="true"',
       'p data-vantage-oq="true"',
       'p data-vantage-leaning="Back of the queue"',
     ];

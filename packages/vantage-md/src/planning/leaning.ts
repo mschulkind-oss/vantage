@@ -14,3 +14,17 @@
  * a stated leaning by it.
  */
 export const LEANING_MARKER = /^\s*leaning\s*(?:\([^)]*\)\s*)?(?::|—|–)/i;
+
+/**
+ * How a question is written, in one sentence of Markdown: the parts the page
+ * and the planning card lay a question out by, each a block of its own.
+ *
+ * The two `vantage-check` findings about a question's text quote it —
+ * `vantage/question-layout`, where a leaning runs into other text, and
+ * `planning/question-length`, where a question runs long, which is most often
+ * the same mistake — and the style guide teaches the same parts at length, in
+ * its Open questions section. `styleGuidePlanning.test.ts` holds the two
+ * together.
+ */
+export const QUESTION_SHAPE =
+  "Write a question in parts, each a block of its own with a blank line between: a title line with its marker, its id and the question in bold (`💬 **OQ-9: Where does a job go when it re-enters the queue?**`), then context in short paragraphs, the options as a list, `_Leaning:_ …` as a paragraph of its own, and `**Answer:**` as a paragraph of its own — never one run-together paragraph.";

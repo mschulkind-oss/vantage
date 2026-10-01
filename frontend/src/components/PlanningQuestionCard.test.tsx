@@ -40,8 +40,15 @@ import {
   type CardFolds,
 } from "./PlanningQuestionCard";
 import {
+  OQ_ANSWERED_HINT,
+  OQ_ANSWERED_LABEL,
   OQ_DEFAULT_LEANING,
+  OQ_TAKEN_DISMISSED_LABEL,
+  OQ_TAKEN_LABEL,
+  OQ_TAKEN_REPLIED_LABEL,
+  OQ_UNDO_LABEL,
   documentQuestions,
+  questionUnitBlocks,
 } from "../hooks/useOpenQuestionButtons";
 import {
   resetPlanningTrackers,
@@ -58,6 +65,7 @@ import { planningCardId } from "../lib/planningCardId";
 import {
   REVIEW_UI_SELECTOR,
   blockVisibleText,
+  buildWholeBlockAnchor,
   hashBlockText,
 } from "../lib/reviewAnchor";
 import {
@@ -297,10 +305,15 @@ function fileInPage(question: PlanningQuestion): Filed {
     ({ block }) => lineOf(block) === question.line,
   );
   expect(host, "the in-page host").toBeDefined();
-  const take =
-    host!.block.nextElementSibling?.querySelector<HTMLElement>(
-      ".review-oq-take",
-    );
+  // The row is at the end of the question's unit: the last child of its list
+  // item or quote, or after the last block of a question outside a list.
+  const blocks = questionUnitBlocks(host!.stamped, container);
+  const last = blocks[blocks.length - 1]!;
+  const row =
+    blocks.length === 1 && last !== host!.block && last.contains(host!.block)
+      ? last.lastElementChild
+      : last.nextElementSibling;
+  const take = row?.querySelector<HTMLElement>(".review-oq-take");
   expect(take, "the in-page button").toBeTruthy();
   act(() => {
     fireEvent.click(take!);
@@ -369,16 +382,10 @@ describe("an answer from the card is the in-page button's (§6.7)", () => {
     const inPage = fileInPage(question);
     const { onFile } = renderCard(question);
 
+    // With no leaning, the card offers Take as the in-page row does, and both
+    // file the row's default text (§6.6).
     if (question.leaning === null) {
-      // No leaning, so no Take on the card (§6.6). The in-page button files
-      // the default; Answer… files what is typed, on the same anchor.
-      expect(screen.queryByRole("button", { name: "Take this leaning" })).toBe(
-        null,
-      );
       expect(inPage.comment).toBe(OQ_DEFAULT_LEANING);
-      const answered = await answerOnCard(onFile, "My own answer.");
-      expect(answered).toEqual({ ...inPage, comment: "My own answer." });
-      return;
     }
 
     await act(async () => {
@@ -1465,30 +1472,55 @@ describe("the card's controls follow the question's state (Plan Q5)", () => {
     expect(screen.getByRole("link", { name: OPEN_DOCUMENT })).toBeTruthy();
   });
 
-  it("offers no Take on a question a `question` directive declared, whatever its state", () => {
-    // Only an `oq` is a question to answer in one click: the in-page pass
-    // offers nothing on a `question`, and neither does its card, even on an
-    // open one, which `vantage/question-name` reports.
-    const open = ofState("open");
-    renderCard(
-      { ...open, directive: "question" },
-      { card: blockOf(open, status) },
-    );
+  it("offers Take on an open question whichever name declared it, and none on a closed one", () => {
+    // The state is the marker's, never the name's: `question` declares a
+    // question in any state, and the in-page pass offers the take on an open
+    // one exactly as on an `oq`, so the card does too.
+    const source = [
+      "# Named",
+      "",
+      "1. \u{1F4AC} **OQ-N1: Open, under the new name?**",
+      "",
+      '   <!-- vantage: question id=OQ-N1 leaning="Yes." -->',
+      "",
+      "   _Leaning:_ yes.",
+      "",
+      "2. \u{1F512} **OQ-N2: Blocked, with a leaning?**",
+      "",
+      '   <!-- vantage: question id=OQ-N2 leaning="Later." -->',
+      "",
+      "   _Leaning:_ later.",
+      "",
+    ].join("\n");
+    const result = scanPlanningDocument("docs/named.md", source, false);
+    if (result.kind !== "planning") throw new Error("docs/named.md");
+    const [open, blocked] = result.document.questions;
+    expect(open.directive).toBe("question");
+    const { unmount } = renderCard(open, { card: blockOf(open, source) });
+    expect(
+      screen.getByRole("button", { name: "Take this leaning" }),
+    ).toBeTruthy();
+    unmount();
+    renderCard(blocked, { card: blockOf(blocked, source) });
     expect(screen.queryByRole("button", { name: "Take this leaning" })).toBe(
       null,
     );
-    expect(screen.getByRole("button", { name: "Answer…" })).toBeTruthy();
   });
 
-  it("offers no Take without a leaning, and nothing that writes in a static export", () => {
+  it("offers Take without a leaning, as the row does, and nothing that writes in a static export", async () => {
     const noLeaning = questionsOf("docs/gallery/open-questions.md").find(
       (q) => q.id === "OQ-7",
     )!;
-    const { unmount } = renderCard(noLeaning);
-    expect(screen.queryByRole("button", { name: "Take this leaning" })).toBe(
-      null,
-    );
+    expect(noLeaning.leaning).toBe(null);
+    const { unmount, onFile } = renderCard(noLeaning);
     expect(screen.getByRole("button", { name: "Answer…" })).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Take this leaning" }),
+      );
+    });
+    // The row's default text, which a 0.7 viewer files for an `oq` too.
+    expect(filedBy(onFile).comment).toBe(OQ_DEFAULT_LEANING);
     unmount();
 
     window.__VANTAGE_STATIC__ = true;
@@ -1560,6 +1592,172 @@ describe("the comments already filed on a question", () => {
     expect(screen.queryByRole("button", { name: "Take this leaning" })).toBe(
       null,
     );
+  });
+
+  /**
+   * A comment typed on the first block of `question`'s unit — its title — as
+   * a click on it in its document's review mode would anchor it.
+   */
+  function typedOn(
+    question: PlanningQuestion,
+    patch: Partial<ReviewComment> = {},
+  ): ReviewComment {
+    const { container, unmount } = render(
+      <BrowserRouter>
+        <MarkdownViewer
+          content={CORPUS[question.path]}
+          currentPath={question.path}
+        />
+      </BrowserRouter>,
+    );
+    const host = documentQuestions(container).find(
+      ({ block }) => lineOf(block) === question.line,
+    )!;
+    const [unit] = questionUnitBlocks(host.stamped, container);
+    const title = unit!.querySelector<HTMLElement>("p") ?? unit!;
+    const built = buildWholeBlockAnchor(title)!;
+    unmount();
+    return {
+      id: `typed-${question.id}`,
+      anchor: built.anchor,
+      comment: "No: front of the queue.",
+      fallback_text: built.fallbackText,
+      created_at: 0,
+      reactions: [],
+      ...patch,
+    };
+  }
+
+  it("says the question is answered where Take stood, once a comment typed on it is pending", () => {
+    const question = byId("OQ-B3");
+    const typed = typedOn(question);
+    // The title is not the leaning's paragraph the take anchors on.
+    expect(typed.anchor!.source_line).toBe(question.unitLine);
+    expect(typed.anchor!.source_line).not.toBe(question.line);
+    renderCard(question, { comments: [typed] });
+
+    const chip = screen.getByText(OQ_ANSWERED_LABEL);
+    expect(chip).toHaveClass("review-oq-answered");
+    expect(chip).toHaveAttribute("title", OQ_ANSWERED_HINT);
+    expect(screen.queryByRole("button", { name: "Take this leaning" })).toBe(
+      null,
+    );
+    // Nor Answer…, as in the document's row: the answer is filed, and the
+    // comment is listed as the answer it is.
+    expect(screen.queryByRole("button", { name: "Answer…" })).toBe(null);
+    expect(
+      screen.getByRole("list", { name: "Comments on this question" }),
+    ).toHaveTextContent("No: front of the queue.");
+  });
+
+  it("offers Take again once the agent has answered the comment", () => {
+    const question = byId("OQ-B3");
+    renderCard(question, {
+      comments: [
+        typedOn(question, {
+          reactions: [
+            {
+              actor: "agent",
+              kind: "addressed",
+              summary: "Done.",
+              before_text: "",
+              after_text: "",
+              timestamp: Date.now() / 1000 + 10,
+            },
+          ],
+        }),
+      ],
+    });
+    expect(screen.queryByText(OQ_ANSWERED_LABEL)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Take this leaning" }),
+    ).toBeTruthy();
+  });
+
+  it("answers no sibling with it, though its card holds the sibling", () => {
+    const typed = typedOn(byId("OQ-B3"));
+    for (const id of ["OQ-B2", "OQ-B4"]) {
+      const { unmount } = renderCard(byId(id), { comments: [typed] });
+      expect(screen.queryByText(OQ_ANSWERED_LABEL), id).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Take this leaning" }),
+        id,
+      ).toBeTruthy();
+      unmount();
+    }
+  });
+
+  it("shows its take as taken, never as answered, when both are on it", async () => {
+    const question = byId("OQ-B3");
+    const taken = await takenOn(question);
+    renderCard(question, { comments: [taken, typedOn(question)] });
+    expect(screen.getByText("Leaning taken")).toBeTruthy();
+    expect(screen.queryByText(OQ_ANSWERED_LABEL)).toBeNull();
+  });
+
+  it("offers the controls the document's row offers, in every state of its take", async () => {
+    // One rule for both surfaces (`questionOffer`): the row's table in
+    // useOpenQuestionButtons.test.ts, read here off the card.
+    const question = byId("OQ-B3");
+    const taken = await takenOn(question);
+    const reply = {
+      actor: "agent" as const,
+      kind: "addressed" as const,
+      summary: "Done.",
+      before_text: "",
+      after_text: "",
+      timestamp: Date.now() / 1000 + 10,
+    };
+    const cases: [string, ReviewComment, string, boolean, boolean][] = [
+      // name, the take, its chip, Undo, Answer…
+      ["pending", taken, OQ_TAKEN_LABEL, true, false],
+      [
+        "dismissed",
+        { ...taken, resolved: true },
+        OQ_TAKEN_DISMISSED_LABEL,
+        true,
+        true,
+      ],
+      [
+        "replied",
+        { ...taken, reactions: [reply] },
+        OQ_TAKEN_REPLIED_LABEL,
+        false,
+        true,
+      ],
+    ];
+    for (const [name, take, chip, undo, answer] of cases) {
+      const onUndo = vi.fn(async () => {});
+      const { unmount } = renderCard(question, { comments: [take], onUndo });
+      expect(screen.getByText(chip), name).toBeTruthy();
+      expect(
+        screen.queryByRole("button", { name: "Take this leaning" }),
+        name,
+      ).toBe(null);
+      expect(
+        screen.queryByRole("button", { name: OQ_UNDO_LABEL }) !== null,
+        name,
+      ).toBe(undo);
+      expect(
+        screen.queryByRole("button", { name: "Answer…" }) !== null,
+        name,
+      ).toBe(answer);
+      if (undo) {
+        await act(async () => {
+          fireEvent.click(screen.getByRole("button", { name: OQ_UNDO_LABEL }));
+        });
+        expect(onUndo, name).toHaveBeenCalledWith(question.path, take.id);
+      }
+      unmount();
+    }
+  });
+
+  it("offers no Undo where the page cannot delete", async () => {
+    const question = byId("OQ-B3");
+    const taken = await takenOn(question);
+    renderCard(question, { comments: [taken] });
+    expect(screen.getByText(OQ_TAKEN_LABEL)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: OQ_UNDO_LABEL })).toBe(null);
   });
 
   it("lists none of a sibling question's comments, though its card holds the sibling", async () => {

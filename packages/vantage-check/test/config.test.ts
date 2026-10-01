@@ -270,14 +270,17 @@ describe("parseConfig", () => {
     },
   );
 
-  // The server refuses the whole file over a [planning] key it does not know,
-  // so the checker, which only warns, says what the viewer does with it.
-  it("says that a viewer of its release ignores the file over an unknown [planning] key", () => {
+  // The server reads [planning] too, and from 0.8.0 it ignores a key it does
+  // not know there with a warning, as this checker does (OQ-VS5). The warning
+  // says so, so nobody expects the planning page to act on the key either, nor
+  // to drop the rest of the file over it.
+  it("says that a viewer of its release ignores an unknown [planning] key and reads the rest", () => {
     const { warnings } = parseConfig('[planning]\nroadmaps = "r.md"\n');
 
     expect(warnings[0]).toContain(
-      "a viewer from this development build ignores the whole file over a key it does not know, [starred] and theme included.",
+      "a viewer from this development build ignores the key too and reads the rest of the file.",
     );
+    expect(warnings[0]).not.toContain("whole file");
   });
 
   it("applies what it knows around what it ignores", () => {
@@ -580,7 +583,7 @@ describe("[planning], as planning-config.json pins it for both readers", () => {
 interface VersionSkewCase {
   name: string;
   toml: string;
-  server: "accepts" | "refuses";
+  server: "accepts" | "warns" | "refuses";
   checker: "accepts" | "warns" | "refuses";
   target?: string | null;
   says?: string;
@@ -588,20 +591,31 @@ interface VersionSkewCase {
 }
 
 // The server's internal/repoconfig test reads the same cases and asserts its
-// own answer, which differs from this one where the fixture says so: this
-// checker ignores a key it does not know with a warning, and the server still
-// refuses the whole file over one in [starred] or [planning].
+// own answer. Both readers ignore a key they do not know in a table they read
+// with a warning, so they answer alike for [planning], which both read, and
+// differ where the fixture says so: where one of them does not read a table at
+// all, and over target, which only this checker reads.
 describe("a file written for another release, as version-skew-config.json pins it", () => {
   const { cases } = JSON.parse(
     readFileSync(testdata("version-skew-config.json"), "utf8"),
   ) as { cases: VersionSkewCase[] };
 
-  it("holds every answer this reader gives, and cases where the readers part", () => {
+  it("holds every answer this reader gives, and cases where the readers agree and part", () => {
     const answers = new Set(cases.map((c) => c.checker));
     expect([...answers].sort()).toEqual(["accepts", "refuses", "warns"]);
+    // [planning], which both read: an unknown key is a warning to both.
     expect(
-      cases.some((c) => c.checker === "warns" && c.server === "refuses"),
+      cases.some(
+        (c) =>
+          c.checker === "warns" &&
+          c.server === "warns" &&
+          c.toml.startsWith("[planning"),
+      ),
     ).toBe(true);
+    // No reader refuses a file over a key it merely does not know.
+    expect(
+      cases.filter((c) => c.checker === "warns" && c.server === "refuses"),
+    ).toEqual([]);
     expect(
       cases.some((c) => c.checker === "refuses" && c.server === "accepts"),
     ).toBe(true);

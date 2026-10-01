@@ -735,9 +735,10 @@ export const sanitizeSchema: Schema = {
       ["dataVantageCollapseGroup", COLLAPSE_GROUP_ID],
       ["dataVantageCollapseToggle", COLLAPSE_GROUP_ID],
       ["dataVantageRun", ...VANTAGE_RUNS],
+      // A question declared with `oq`, the name every release since 0.7 has
+      // stamped this for, and a question under either name: the second is the
+      // one to read for "a question" (`VANTAGE_QUESTION_ATTRIBUTE`).
       ["dataVantageOq", "true"],
-      // A blocked or answered question, which a `question` directive declares:
-      // the same anchor as an `oq`, and no control (`VANTAGE_QUESTION_NAMES`).
       ["dataVantageQuestion", "true"],
       // The Open Question's id on its way to becoming a real `id`, pattern-
       // allowlisted like the collapse-group counters above rather than left

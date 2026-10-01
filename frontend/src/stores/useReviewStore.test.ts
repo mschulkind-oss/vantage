@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { MockInstance } from "vitest";
 import {
   answersPayload,
+  checkCommand,
   hasAgentReaction,
   isAnsweredByAgent,
   isAwaitingFirstResponse,
@@ -1272,6 +1273,12 @@ describe("useReviewStore", () => {
       seedNested();
       const payload = await copiedPayload();
       expect(payload).toContain("uvx vantage-check docs/design/guide.md");
+      // A development build names no viewer release: the bare command
+      // (viewerReleasePayload.test.ts covers a release build).
+      expect(payload).toContain(
+        "From the root of this repository run `uvx vantage-check docs/design/guide.md` — no install",
+      );
+      expect(payload).not.toContain("VANTAGE_VIEWER");
       // The checker must never be able to block a delivery.
       expect(payload).toContain("not a delivery dependency");
       expect(payload).toContain("**Before delivering, check the document.**");
@@ -2199,6 +2206,30 @@ describe("the planning page's review writes and payload", () => {
       const b = newReviewComment(commentAnchor, "n", "f");
       expect(a.id).not.toBe(b.id);
       expect(a.reactions).toEqual([]);
+    });
+  });
+
+  // docs/design/checker-version-skew.md §5: a release viewer names itself in
+  // front of the command, and every other build sends the bare command.
+  describe("checkCommand", () => {
+    it("names a release viewer in front of the checker", () => {
+      expect(checkCommand(["docs/a.md", "b.md"], "0.8.0")).toBe(
+        "VANTAGE_VIEWER=0.8.0 uvx vantage-check docs/a.md b.md",
+      );
+    });
+
+    it("is the bare command for a development build", () => {
+      expect(checkCommand(["docs/a.md"], undefined)).toBe(
+        "uvx vantage-check docs/a.md",
+      );
+      // The tests run as a development build, so that is the default here.
+      expect(checkCommand(["docs/a.md"])).toBe("uvx vantage-check docs/a.md");
+    });
+
+    it("still quotes each path as one shell word", () => {
+      expect(checkCommand(["docs/a b.md"], "0.8.0")).toBe(
+        "VANTAGE_VIEWER=0.8.0 uvx vantage-check 'docs/a b.md'",
+      );
     });
   });
 
