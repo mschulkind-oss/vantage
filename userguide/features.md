@@ -325,8 +325,9 @@ they meant:
 
 - **The style guide.** Settings (⚙) → **Agent Style Guide** shows the
   conventions Vantage's renderer expects, with a copy button for pasting into an
-  agent's context. The same text comes out of `vantage-check style-guide`. See
-  [Style Guide for Agents](reference/style-guide.md).
+  agent's context. For the same release, the same text comes out of
+  `vantage-check style-guide`, which prints the checker's own release's guide.
+  See [Style Guide for Agents](reference/style-guide.md).
 - **The checker.** `vantage-check <path>` verifies a document against the
   repository on disk: relative links that resolve, `#L42` anchors that are
   inside their file, `#section` anchors that match a real heading, frontmatter

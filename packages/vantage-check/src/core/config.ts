@@ -14,6 +14,7 @@ import {
   type PlanningConfig,
   type StageRole,
 } from "../../../vantage-md/src/planning/index.js";
+import { checkerName } from "../version.js";
 import { Settings, type RuleOptions } from "./settings.js";
 import type { RuleSetting } from "./types.js";
 
@@ -236,8 +237,14 @@ export function parseConfig(
         }
         break;
       }
-      default:
-        throw new ConfigError(`${path}: unknown key check.${key}`);
+      default: {
+        const misplaced = viewerKeyAdvice(key);
+        throw new ConfigError(
+          misplaced === undefined
+            ? `${path}: unknown key check.${key}, which ${checkerName()} does not know. ${newerOrTypo("key")}`
+            : `${path}: unknown key check.${key}. ${misplaced}`,
+        );
+      }
     }
   }
 
@@ -282,10 +289,14 @@ function parsePlanning(
       case "stages":
         planning.stages = asStages(value, path);
         break;
-      default:
+      default: {
+        const misplaced = viewerKeyAdvice(key);
         throw new ConfigError(
-          `${path}: unknown key planning.${key}. [planning] takes roadmap, include, exclude, max-file-bytes, max-candidates and a [planning.stages] table`,
+          misplaced === undefined
+            ? `${path}: unknown key planning.${key}. In ${checkerName()}, [planning] takes roadmap, include, exclude, max-file-bytes, max-candidates and a [planning.stages] table. ${newerOrTypo("key")}`
+            : `${path}: unknown key planning.${key}. ${misplaced}`,
         );
+      }
     }
   }
   return planning;
@@ -404,9 +415,60 @@ function assertRuleId(id: string, path: string): void {
   const namespace = id.endsWith("/*") ? id.slice(0, -2) : undefined;
   if (namespace && ruleNamespaces().includes(namespace)) return;
 
+  const misplaced = viewerKeyAdvice(id);
   throw new ConfigError(
-    `${path}: unknown rule "${id}". Run \`vantage-check help\` for the list; a whole family is "${ruleNamespaces()[0]}/*".`,
+    misplaced === undefined
+      ? `${path}: unknown rule "${id}", which ${checkerName()} does not have. ${newerOrTypo("rule")} \`vantage-check help\` lists every rule, and a whole family is "${ruleNamespaces()[0]}/*".`
+      : `${path}: unknown rule "${id}". ${misplaced}`,
   );
+}
+
+/**
+ * The advice after an unknown `check.*` or `planning.*` key or an unknown rule
+ * id (`docs/design/checker-version-skew.md` §6.2), including a key in a rule's
+ * table and a table for a rule that takes none.
+ *
+ * Each is exit 2 and usually a typo. It is also what every checker older than
+ * a repository's configuration says: a key, a rule or a rule's option added in
+ * a later release is unknown to all the releases before it. An agent told only
+ * "unknown rule" tends to "fix" it by deleting the line, which breaks the
+ * repository for the newer checker it was written for. So the message names
+ * this checker's version and says to keep the key. Unlike a finding about a
+ * document, this one may name an upgrade: here a newer checker is the fix, not
+ * a way to silence one.
+ */
+function newerOrTypo(what: "key" | "rule" | "table"): string {
+  const otherwise =
+    what === "table"
+      ? "if it is a mistake, write the severity alone"
+      : "if it is a typo, fix it";
+  return `If this repository is configured for a newer vantage-check, run one (for example, \`uvx vantage-check@latest\`) and don't remove the ${what}; ${otherwise}.`;
+}
+
+/**
+ * What an exit-2 error says instead of `newerOrTypo` when the unknown key is
+ * one of the viewer's own, written inside a table this checker reads.
+ *
+ * The viewer reads two names at the top of this file: `theme`, a key, and
+ * `[starred]`, a table (userguide/reference/configuration.md). TOML reads a
+ * bare key written after a `[table]` header as part of that table, so a `theme`
+ * line below `[check]` arrives here as `check.theme`, below `[check.rules]` as a
+ * rule id, and below `[planning]` as `planning.theme`: the mistake the user
+ * guide's theme pages warn about. Neither is a typo or a newer checker's key,
+ * and the advice for those (fix the spelling, or keep the line and run a newer
+ * checker) leaves it where it does nothing. Each message still opens as any
+ * unknown key or rule does, and the guide quotes that opening
+ * (`unknown key check.theme`) as the symptom to look for.
+ */
+function viewerKeyAdvice(key: string): string | undefined {
+  switch (key) {
+    case "theme":
+      return "`theme` is a top-level key, and TOML reads a key written after a [table] header as part of that table: move it above the first [table].";
+    case "starred":
+      return "`starred` is the viewer's own table, not part of this one: write it as a top-level [starred] table.";
+    default:
+      return undefined;
+  }
 }
 
 /**
@@ -426,7 +488,7 @@ function asRuleTable(
   const names = known === undefined ? [] : Object.keys(known);
   if (names.length === 0) {
     throw new ConfigError(
-      `${path}: rule "${id}" takes only a severity, "error", "warning" or "off", and no table`,
+      `${path}: rule "${id}" takes only a severity, "error", "warning" or "off", and no table in ${checkerName()}. ${newerOrTypo("table")}`,
     );
   }
   let setting: RuleSetting | undefined;
@@ -438,7 +500,7 @@ function asRuleTable(
     }
     if (!names.includes(key)) {
       throw new ConfigError(
-        `${path}: unknown key ${JSON.stringify(key)} for rule "${id}", which takes severity and ${names.join(", ")}`,
+        `${path}: unknown key ${JSON.stringify(key)} for rule "${id}", which in ${checkerName()} takes severity and ${names.join(", ")}. ${newerOrTypo("key")}`,
       );
     }
     if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {

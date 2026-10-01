@@ -24,7 +24,12 @@ export interface Finding {
   line: number;
   /** 1-based column. */
   column: number;
-  /** The delegate's own words, when a delegate produced this. */
+  /**
+   * More than fits on the message's one line: a delegate's own words, the
+   * values a key accepts, or advice on the fix (the `vantage/unknown-*`
+   * findings say there what to do about a name from a newer Vantage). Text
+   * output prints it indented under the message; JSON carries it as is.
+   */
   detail?: string;
 }
 
