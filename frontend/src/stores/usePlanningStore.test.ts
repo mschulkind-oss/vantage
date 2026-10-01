@@ -41,6 +41,7 @@ import type { ScanStore } from "../planningScan/store";
 import {
   contentHash,
   planningConfig,
+  questionDirective,
   scannedOf,
   sourcesOf,
 } from "../test/planning";
@@ -184,7 +185,7 @@ const question = (id: string, marker = "\u{1F4AC}") =>
   [
     `1. ${marker} **${id}: A question?**`,
     "",
-    `   <!-- vantage: oq id=${id} leaning="Yes." -->`,
+    `   ${questionDirective(marker, id, "Yes.")}`,
     "",
     "   _Leaning:_ yes.",
     "",

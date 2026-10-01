@@ -94,10 +94,11 @@ export function htmlAnchors(mdast: Root): string[] {
  * Every fragment a link can legitimately target in this document.
  *
  * Three sources, and Open Question ids are the one that is not HTML at all:
- * `<!-- vantage: oq id=OQ-4 -->` becomes `id="OQ-4"` on the block it marks
- * (`rehypeVantageAnchors`), so `#OQ-4` navigates and a reference of the form
- * `[OQ-4](#OQ-4)` is checkable. Only well-formed ids count — the sanitizer
- * refuses the rest, so counting one would accept a fragment that goes nowhere.
+ * `<!-- vantage: oq id=OQ-4 -->`, or `question id=OQ-4`, becomes `id="OQ-4"`
+ * on the block it marks (`rehypeVantageAnchors`), so `#OQ-4` navigates and a
+ * reference of the form `[OQ-4](#OQ-4)` is checkable. Only well-formed ids
+ * count — the sanitizer refuses the rest, so counting one would accept a
+ * fragment that goes nowhere.
  */
 export function documentAnchors(mdast: Root): Set<string> {
   return indexDocument(mdast).anchors;

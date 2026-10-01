@@ -7,7 +7,9 @@
 # Two test suites parse this file and assert complementary halves:
 #
 #   - internal/repoconfig (Go)            reads [starred], reads past [check]
-#   - packages/vantage-check/test (TS)    reads [check], reads past [starred]
+#                                         and target
+#   - packages/vantage-check/test (TS)    reads [check] and target, reads past
+#                                         [starred]
 #
 # [planning] is the one table both read: the server for include, exclude and
 # the two limits, the checker for all of it. Each suite asserts the part it
@@ -20,6 +22,11 @@
 #
 # Keep the two tables' values distinctive, so a reader that picked up the wrong
 # table would assert against a value it cannot have got right by chance.
+
+# The checker's top-level key, which the server steps over: the oldest Vantage
+# release anyone reading the repository uses. Above every table, where TOML
+# keeps it top-level.
+target = "0.8"
 
 [check]
 strict = true

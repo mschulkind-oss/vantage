@@ -1,7 +1,7 @@
 ---
 title: "Gallery — open questions"
 status: accepted
-summary: "The `oq` directive and its one-click review button, and where the button will and will not appear."
+summary: "The `oq` directive and its one-click review button, where the button will and will not appear, and the `question` directive that declares a question without one."
 ---
 
 # Open questions
@@ -119,6 +119,35 @@ still reads as "this button belongs to that heading".
 default comment instead — which is usually not what you want, because the
 comment is all the agent reading it ever sees. Nobody remembers which button was
 clicked.
+
+## Blocked or answered: `question`
+
+A question that cannot be answered yet, or already has been, is declared with a
+`question` directive instead. It anchors and counts exactly as an `oq` does, so
+the contents column lists both of these and a link to either id scrolls here,
+and review mode must render **no** row under either: no button, no chip, no
+Undo.
+
+1. 🔒 **OQ-9: Is a blocked question declared without a button?**
+
+   <!-- vantage: question id=OQ-9 -->
+
+   It waits on the specimens above, so there is no leaning to take yet.
+
+2. ✅ **OQ-10: And an answered one?**
+
+   <!-- vantage: question id=OQ-10 -->
+
+   _Leaning:_ yes.
+
+   **Answer:**
+
+   > Yes: neither offers Take this leaning.
+
+`oq` would be the wrong name for either, and `vantage-check` says so. Every
+Vantage before 0.8 offers the button on every `oq` it meets, while `question`
+is a name those viewers drop whole, so they show these two as ordinary list
+items with nothing to click.
 
 ## Where the button will not appear
 

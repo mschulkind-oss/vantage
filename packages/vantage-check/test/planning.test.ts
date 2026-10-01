@@ -13,6 +13,10 @@ import { RULES, ruleMeta } from "../src/rules/registry.js";
 import { PLANNING_RULES } from "../src/rules/planning.js";
 import { QUESTION_WORDS_DEFAULT } from "../src/rules/questionLength.js";
 import type { PlanningSections } from "../../vantage-md/src/planning/index.js";
+import {
+  questionDirectiveFor,
+  vantageOqStatus,
+} from "../../vantage-md/src/vantageDirectives.js";
 import { makeTree } from "./helpers.js";
 import {
   ANSWERED,
@@ -593,7 +597,9 @@ describe("planning/question-length", () => {
       "",
       `   ${prose(words - 3)}`,
       "",
-      `   <!-- vantage: oq id=${id} leaning="The last." -->`,
+      questionDirectiveFor(vantageOqStatus(marker)) === "oq"
+        ? `   <!-- vantage: oq id=${id} leaning="The last." -->`
+        : `   <!-- vantage: question id=${id} -->`,
       "",
       `   _Leaning:_ ${prose(leaning)}`,
       "",

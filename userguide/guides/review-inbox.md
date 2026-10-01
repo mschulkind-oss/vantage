@@ -37,8 +37,9 @@ document first, then deliver **one file per response**, carrying one JSON line
 per comment it acted on. Before delivering, it is also told to **check the
 document with [`vantage-check`](vantage-check.md)** (`uvx vantage-check
 <document>`, run from the repo root) and fix what it reports — the payload
-notes that this is a quality gate, not a delivery dependency: if `uvx` is
-unavailable, the agent proceeds. The payload hands over a ready-to-run command
+notes that this is a quality gate, not a delivery dependency: if the command
+cannot run, or exits `2` (a configuration error or a refusal), the agent
+proceeds and leaves `.vantage.toml` as it is. The payload hands over a ready-to-run command
 that writes the delivery to a `.writing` scratch name and then renames it onto
 a `.jsonl` file named after the document (path separators flattened to `__`)
 with a random suffix:

@@ -914,11 +914,12 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
         ) : plannedByFrontmatter ? (
           (referencedBy ?? <ReservedLine />)
         ) : body.includes(VANTAGE_SENTINEL) ? (
-          // A planning document by its `oq` directives alone, which are
-          // known only once they have rendered: the stylesheet reserves the
-          // line when the prose holds one, so the first paint has it or not,
-          // and what fills it later is shown only where it was reserved.
-          <div className="hidden group-has-[[data-vantage-oq]]/prose:contents">
+          // A planning document by its question directives alone, `oq` or
+          // `question`, which are known only once they have rendered: the
+          // stylesheet reserves the line when the prose holds one, so the first
+          // paint has it or not, and what fills it later is shown only where
+          // it was reserved.
+          <div className="hidden group-has-[[data-vantage-oq]]/prose:contents group-has-[[data-vantage-question]]/prose:contents">
             {referencedBy ?? <ReservedLine />}
           </div>
         ) : null)}

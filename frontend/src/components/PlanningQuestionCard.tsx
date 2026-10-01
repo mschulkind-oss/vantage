@@ -61,10 +61,10 @@ import { AppLink } from "./AppLink";
 import {
   OQ_LABEL,
   OQ_TAKEN_LABEL,
-  answerableOpenQuestions,
+  documentQuestions,
   findTaken,
   leaningComment,
-  type AnswerableOpenQuestion,
+  type DocumentQuestion,
 } from "../hooks/useOpenQuestionButtons";
 import {
   NEIGHBOR_RADIUS,
@@ -174,8 +174,8 @@ const lineOf = (el: Element): number =>
 function hostIn(
   root: HTMLElement,
   question: PlanningQuestion,
-): AnswerableOpenQuestion | undefined {
-  return answerableOpenQuestions(root).find(
+): DocumentQuestion | undefined {
+  return documentQuestions(root).find(
     ({ block }) => lineOf(block) === question.line,
   );
 }
@@ -185,7 +185,7 @@ function hostIn(
  * the element the contents column scrolls to, which the planning index's
  * `unitLine` names (`planningAgreement.test.tsx` holds the two equal).
  */
-function unitOf(root: HTMLElement, host: AnswerableOpenQuestion): HTMLElement {
+function unitOf(root: HTMLElement, host: DocumentQuestion): HTMLElement {
   const item = host.stamped.closest<HTMLElement>("li");
   return item !== null && root.contains(item) ? item : host.stamped;
 }
@@ -573,7 +573,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   }, [question]);
 
   const file = useCallback(
-    async (text: (host: AnswerableOpenQuestion) => string) => {
+    async (text: (host: DocumentQuestion) => string) => {
       const now = anchorNow();
       if (now === null) return;
       setBusy(true);
@@ -594,8 +594,14 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   );
 
   const writable = !isStaticMode() && state.found;
+  // Only an `oq` is a question to answer in one click: a `question` offers
+  // nothing whatever its marker says, as the in-page pass offers nothing on
+  // one (`offersTake`).
   const canTake =
-    writable && question.state === "open" && question.leaning !== null;
+    writable &&
+    question.directive === "oq" &&
+    question.state === "open" &&
+    question.leaning !== null;
   const canAnswer =
     writable && (question.state === "open" || question.state === "answered");
 

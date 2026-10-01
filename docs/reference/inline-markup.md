@@ -50,6 +50,7 @@ says what a section means and each theme decides how it looks.
 | Collapse: DOM half and React half | `frontend` (`lib/collapseSections.ts`, `hooks/useCollapseSections.ts`) |
 | Comment-body sanitization | `frontend` (`lib/commentMarkdown.ts` — `renderCommentMarkdown`) |
 | Validation | `vantage-check` (`rules/directives.ts`, `rules/vantageFrontmatter.ts`) |
+| Withholding a fallback block, and predicting it from the parse | `vantage-md` (`withholdFallbacks` in `rehypeVantageDirectives.ts`; `isFallbackTarget` in `directiveTargets.ts`, read by the planning scan and the checker) |
 
 **Reads with:** [`../design/agent-cli.md`](../design/agent-cli.md) (the checker
 that validates this markup),
@@ -66,7 +67,11 @@ Cited by number from code comments and from the rest of this doc.
 - **P1. The document is the artifact; markup annotates it.** A directive may
   change how a block *looks* or what affordances hang off it, never what the
   document *says*. Delete every directive and the prose is unchanged — that is
-  the test, and it is a real test in `vantageDirectives.test.ts`.
+  the test, and it is a real test in `vantageDirectives.test.ts`. The one
+  bounded exception is `fallback`, which withholds a block written for the
+  renderers that cannot show what Vantage shows in its place; deleting it shows
+  that block and changes nothing else, and that is its test
+  ([Fallback blocks](#fallback-blocks)).
 - **P2. Values are semantic tokens — never styles, never colors.** A directive
   names what a section *is*, never what it should look like. The theme owns the
   token-to-color mapping, so one document renders correctly in light, in dark,
@@ -107,9 +112,14 @@ a bug, not a trade-off.
    siblings. In the stylesheet this is the cascade's job — an unset custom
    property with no fallback — not an enumeration in every selector.
 3. **D3 — Forward compatible.** An older Vantage meeting a newer directive hits
-   D2 and renders plain. No version negotiation, no minimum-version key. The
-   mirror case matters equally: newer CSS meeting an older plugin's output, which
-   is why the run selector is positive rather than negated.
+   D2 and renders plain, which holds because a release never gives an existing
+   name, key or value a new meaning: a new meaning gets new notation
+   ([`checker-version-skew.md` P0](../design/checker-version-skew.md#1-verdict-and-the-principles)).
+   No renderer negotiates versions or reads a minimum-version key; the
+   repository's `target` is read by the checker alone
+   ([§4.1](../design/checker-version-skew.md#41-the-key)). The mirror case
+   matters equally: newer CSS meeting an older plugin's output, which is why the
+   run selector is positive rather than negated.
 4. **D4 — Review affordances are additive, and never lie.** They appear only in
    review mode and never remove an existing path. **A control that cannot work
    must not render**, which means an explicit static-mode gate for anything that
@@ -168,7 +178,7 @@ viewer and the checker cannot disagree about what a token means (**D5**).
 
 Two different jobs. **Position picks the target; the name picks the extent.**
 
-The name set is closed and is exactly three, in `DIRECTIVE_NAMES`:
+The name set is closed, in `DIRECTIVE_NAMES`:
 
 | Name | Target | Extent |
 | :--- | :--- | :--- |
@@ -176,6 +186,20 @@ The name set is closed and is exactly three, in `DIRECTIVE_NAMES`:
 | `section` before a **non-heading** | next sibling element, stampable tags only | that one block |
 | `block` | next sibling element, stampable tags only | that one block, even in front of a heading |
 | `oq` | next sibling element, **anchor-capable** tags only | that one block |
+| `question` | next sibling element, **anchor-capable** tags only | that one block |
+| `fallback` | next sibling element, stampable tags **except headings** | that one block, which is withheld rather than stamped ([Fallback blocks](#fallback-blocks)) |
+
+`oq` and `question` are the two **question directives** *(a term this
+reference uses for either)*, and they differ in one promise. An `oq` is an open
+question, the one review mode offers to answer in one click; a `question` is a
+🔒 blocked or ✅ answered one, which nothing offers to answer. Both take `id`,
+with one grammar and one namespace, and both become the block's anchor; only an
+`oq` takes `leaning`. A run holding both is one question, and an `oq` in it wins,
+because a viewer that predates `question` drops it and reads the `oq`.
+`question` is a name of its own, rather than `oq` read by its marker, because a
+release never gives existing notation a new meaning: every viewer before 0.8
+offers the button on every `oq`
+([`checker-version-skew.md` OQ-VS4](../design/checker-version-skew.md#decision-ledger)).
 
 An unknown *name* drops the whole directive — there is no target semantics
 without a name. An unknown *key* or *value* drops only that pair.
@@ -448,6 +472,114 @@ has a zero-height box, so the scroll lands somewhere wrong with no cue. The shar
 helper is `anchorScroll.ts`; the callers are the `#L` line anchor, in-document
 `#slug` links, the heading hover anchor, and the review highlighter.
 
+## Fallback blocks
+
+`<!-- vantage: fallback -->` marks the block after it as a **fallback block**
+*(a term coined here)*: a block written for the renderers that cannot show
+something Vantage shows, and never rendered by a Vantage that knows the name.
+The something is an inline `<svg>` today, which needs Vantage 0.8 or later
+([Inline SVG](#inline-svg)):
+
+```markdown
+<div>
+<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40" role="img" aria-label="A circle">
+  <circle cx="20" cy="20" r="18" fill="none" stroke="currentColor"/>
+</svg>
+</div>
+
+<!-- vantage: fallback -->
+
+A circle. This drawing needs Vantage 0.8 or later.
+```
+
+**It works because the name is new.** Every renderer that does not know a
+directive name drops the comment, by **P3**, and shows the block after it like
+any other: GitHub, every other Markdown renderer, and every Vantage before
+0.8.0. Measured on 2026-10-01 by rendering this example through the published
+`vantage-md@0.7.1`, which drew nothing for the drawing and showed the fallback
+paragraph. That is the forward-compatibility rule doing what it is for: a new
+meaning goes on a new name, which an older viewer already drops harmlessly. A
+release must never give `fallback` a second meaning, and a key a later release
+adds to it is dropped by this one pair by pair (**D2**), so the block is still
+withheld.
+
+What it may target is `VANTAGE_FALLBACK_TARGETS`: every stampable tag but the
+six headings, which is a paragraph, a list, a quote, a code block, a table, a
+rule or a `<div>`. A heading is the document's structure, not a stand-in for
+anything — the contents column lists it, other documents link to its slug, and
+the planning index reads the section under it — so a fallback heading would be
+an anchor that exists on GitHub and nowhere in Vantage. Above a heading the
+directive withholds nothing, and the rest of its run stamps the heading as if
+it were not there. Inline, in a tight list item, or with nothing after it, it
+is inert for the same reasons any directive is.
+
+**Raw HTML counts by the element it opens with**, the one `rehype-raw` builds
+there. A `<div>` with blank lines inside it is several Markdown blocks between
+its opening and closing tags, and one element after `rehype-raw`, so the
+fallback withholds all of it, up to the `</div>` that closes it. A raw `<img>`,
+`<figure>`, `<details>` or anything else off the list is not withheld: Vantage
+shows it beside what it stands in for, and `vantage/orphan` says to wrap it in a
+`<div>`. **The list is closed, and it is notation.** A later release that
+withheld an `<img>` would hide, for the same bytes, what every release before
+it shows — a new meaning for existing notation, which **P0** forbids — so a
+stand-in that is not on the list is wrapped, never added.
+
+**One fallback is one block.** To stand in with more than one, wrap them in a
+blockquote, which is what the [gallery](../gallery/inline-svg.md) does to put
+a chart's data table under its description, or give each block its own
+directive. A drawing in a sentence gets its fallback after the paragraph
+holding it.
+
+### Withheld first, with its run
+
+`withholdFallbacks` runs over the whole tree **before** anything is stamped,
+finding each run the way the stamping pass does — the same skip rules, the same
+first-element target — and removes the run and its block from their parent.
+Both halves of that are load-bearing:
+
+- **First, because a `section` reaches forward.** Stamped in one pass, a toned
+  section counted a fallback block after it among its members: the withheld
+  block would carry the run's `end` marker, and the last block anyone sees would
+  be marked `middle`. A collapse group would count it as a member. Withheld
+  first, it was never there for the section's extent, its run markers, a
+  collapse group, a review anchor, a `data-source-line` or a contents entry.
+- **With its run, because a run merges.** A `block tone=…` or an `oq` written in
+  the same run as the `fallback` belongs to the withheld block. Left behind, the
+  comments would merge onto the next block and style it, or offer an answer on
+  it, for nobody's reason. Nothing is lost by removing them here: the sanitizer
+  deletes every comment a few plugins later.
+
+The block is gone from the tree, so it is gone from every renderer that shares
+the plugin (**D5**) — the live viewer, the package's viewer, the static export
+and the checker's render — and from print, review mode and the outline alike.
+Nothing reaches the DOM: no attribute marks where it was, and the sanitizer
+allowlists nothing for it.
+
+### Who else reads a withheld block
+
+- **The planning index reads nothing from it.** A question in it, or one merged
+  onto it, is no question, and a link in it routes nothing and badges nothing
+  ([`planning-index.md` §3.3](planning-index.md#33-questions)). The scan predicts
+  the plugin from the parse with `isFallbackTarget`, and a raw block with
+  `rawOpeningTag` and `rawElementEnd`, which find the element's tag and the
+  sibling that closes it; `planningAgreement.test.tsx` holds the prediction to
+  the rendered contents column, a raw `<div>` with Markdown inside included.
+- **The checker still checks it.** GitHub shows the block, so a dead link in it
+  is a dead link to that reader: `link/*` and `ref/*` read it like any other.
+  `vantage/orphan` reports a fallback above a heading or above raw HTML off the
+  list, a run that merges another directive onto a fallback block, and a
+  fallback with no block, saying that Vantage then shows the block it was
+  meant to withhold. A key on `fallback` is `vantage/unknown-key`, with
+  "`fallback` takes no keys."
+
+> [!IMPORTANT]
+> **This is not a way to hide content.** What a fallback withholds is a stand-in
+> for something Vantage shows in its place, so a Vantage reader loses nothing a
+> GitHub reader gets. It is also the one conditional in the vocabulary, and it
+> is closed: its one condition, "this renderer is a Vantage that knows the
+> name", is fixed by the name rather than written in a key, and it can only
+> withhold a block, never insert or replace one. See [Non-goals](#non-goals--what-this-does-not-license).
+
 ## The one-click Open Question answer
 
 An `oq` directive on an open question renders one button in review mode,
@@ -455,7 +587,10 @@ labeled **"Take this leaning"**. Clicking it calls the same `addComment` the
 comment popover calls, with an anchor identical in shape to what click-and-type
 produces. The comment text is the `leaning` value, or a fixed default when
 absent. A 🔒 blocked or ✅ answered question gets no button
-([below](#the-count-and-why-the-gate-needed-one)).
+([below](#the-count-and-why-the-gate-needed-one)), and it is declared with a
+`question` directive, which stamps `data-vantage-question` instead of
+`data-vantage-oq`, so no reader of `[data-vantage-oq]` takes it for a question
+to answer.
 
 **The affordance sits in its own row, inserted as the question block's next
 sibling** — never appended into the block. Appended, it landed after the
@@ -493,7 +628,7 @@ anchor and the same fallback text. The planning index requires that
 ([`planning-index.md` §6.7](planning-index.md#67-answering-and-copy-answers)),
 and the card meets it by taking this button's route rather than a second one.
 It renders the question's block through the viewer's own pipeline, finds the
-question's host in it with `answerableOpenQuestions`, builds the anchor with
+question's host in it with `documentQuestions`, builds the anchor with
 `buildWholeBlockAnchor` over that host, and reads the body with
 `leaningComment` off the stamped element: the calls this pass makes, over the
 same rendered block. The request is the one `addComment` sends, posted for the
@@ -538,7 +673,7 @@ reads as an unread badge on a toolbar that has no other notification, so it
 claimed more urgency than "this document has answerable questions" deserves; the
 sentence in the tooltip says the same thing and says what it is for.
 
-`answerableOpenQuestions` is exported and **shared with the render pass**, so the
+`documentQuestions` is exported and **shared with the render pass**, so the
 count and the buttons cannot disagree. A count of five against three buttons
 would send the reader hunting for controls that were never there — and five is
 what a naive count of `[data-vantage-oq]` gives on a document that also stamps a
@@ -553,17 +688,17 @@ a blocked or answered question is still one a reader of the document wants to
 see. What the column must not do is promise an action the page does not offer,
 so its tally's tooltip says how many of its questions can be answered in one
 click, the number the Review toggle gives, rather than implying that all of them
-can. It still takes its list from `answerableOpenQuestions` rather than
-re-querying the attribute, so it never lists a stamped `pre` or `table`, which
+can. It still takes its list from `documentQuestions` rather than re-querying
+the attributes, so it never lists a stamped `pre` or `table`, which
 has no button in any state and is no question to the planning index either. The
 planning page's card is the fourth caller, finding its question's host
 ([above](#the-same-comment-from-the-planning-page)).
 
-The button renders only when **all four** hold: review mode is on, the directive
-parsed, static mode is off, and the question is open. The static gate is not
-optional — an exported site runs review mode with every write silently coerced
-into a GET, so an ungated button would look live and do nothing, which is worse
-than no button.
+The button renders only when **all five** hold: review mode is on, the directive
+parsed, an `oq` declared the question rather than a `question`, static mode is
+off, and the question is open. The static gate is not optional — an exported
+site runs review mode with every write silently coerced into a GET, so an
+ungated button would look live and do nothing, which is worse than no button.
 
 **Open** means marked 💬, or carrying no marker, which counts as open. A 🔒
 question cannot be answered yet and a ✅ one has been ruled, so neither has a
@@ -574,9 +709,10 @@ for the page and the viewer alike (*Plan Q5*, kept in the reference's
 [`planning-index.md` §6.6](planning-index.md#66-question-cards)).
 The state is read as the table of contents reads it, from the question's title
 and then its marker (`questionLabel`), so the column's glyph and the button can
-never disagree about which state a question is in. The filter runs after
-`answerableOpenQuestions`, never inside it, because the column lists from that
-function.
+never disagree about which state a question is in. The marker is read even on
+an `oq`, which `vantage/question-name` reports on a 🔒 or ✅ question but a
+document can still carry. The filter runs after `documentQuestions`, never
+inside it, because the column lists from that function.
 
 There is exactly one button and it is **affirmative only**. A rejection almost
 always needs a reason, which means typing anyway, so a Reject button would mostly
@@ -878,10 +1014,15 @@ ordinary link, protocol-filtered like a Markdown link. Gradients and patterns
 are unsupported because they are reachable only through `url(#id)`, and the
 sanitizer prefixes every `id`. SVG child elements require an `svg` ancestor.
 
-**Inline SVG is Vantage-only.** GitHub drops the drawing, leaves the words of
-its `<text>` elements as loose text, and prints a `<title>` as literal markup, so
-for a document read on GitHub, commit the drawing as a file and embed it with
-`![alt](file.svg)`.
+**Inline SVG is Vantage-only, and it needs Vantage 0.8 or later.** GitHub and
+every older Vantage drop the drawing and leave the words of its `<text>`
+elements as loose text. They print a `<title>` and a `<desc>` too, GitHub with
+the tags, while Vantage removes both, so name a drawing with `aria-label` and
+never with either, and keep `<text>` to labels a reader can bear to see as
+loose words. Pair every drawing with a [fallback block](#fallback-blocks) that
+says what it shows, which every one of those readers sees in its place. For a document read
+mostly on GitHub, commit the drawing as a file and embed it with
+`![alt](file.svg)` instead.
 
 **Write a drawing as a `<div>` on a line of its own around the `<svg>`, with no
 blank line anywhere inside it.** Markdown decides where raw HTML ends before the
@@ -1069,7 +1210,9 @@ every example the style guide tells agents to copy.
 ## Non-goals — what this does not license
 
 - **Not a template language, and never text-changing.** No variables, no
-  conditionals, no includes, no `<!-- vantage: replace … -->`.
+  conditionals, no includes, no `<!-- vantage: replace … -->`. `fallback` is
+  the one closed exception, and it only withholds
+  ([Fallback blocks](#fallback-blocks)).
 - **Not a styling API, and not a palette.** No CSS, no class-name passthrough, no
   `style=`, and **no color names at all**. Extending the vocabulary is a code
   change with a review.
@@ -1078,6 +1221,8 @@ every example the style guide tells agents to copy.
 - **Not a layout engine.** No columns, no floats, no positioning, no widths.
 - **Not a way to hide content.** `collapsed` hides nothing the reader cannot
   reveal, nothing in print, and nothing at all where the toggle JS did not run.
+  A fallback block is a stand-in for what Vantage shows in its place, not
+  content Vantage hides.
 - **Not frontmatter's replacement.** File-scoped chrome lives under one
   frontmatter key; the comment carrier exists for what frontmatter cannot address.
 - **Not a GitHub-rendering change.** Readers are never asked to install anything.
@@ -1085,6 +1230,10 @@ every example the style guide tells agents to copy.
 
 ## Known gaps
 
+- **Nothing reports a drawing with no fallback block.** The style guide tells
+  agents to pair every inline `<svg>` with one, and no rule checks that they
+  did, so a drawing without one reads on GitHub and in an older Vantage as
+  its loose `<text>` words and nothing else.
 - **A block the app inserts into a run after render is the app's to bridge.**
   The pipeline stamps every element it can see, but review mode adds inline
   comment cards as siblings *inside* a stamped run, and those are stamped by
@@ -1118,7 +1267,8 @@ table is the only place the values themselves are stated.
 | Per-tone properties | `accent`, `wash`, `chip`, `ink` — light on `:root`, dark under `.dark` | `styles/directives.css` |
 | Collapse group id format | digits only | `COLLAPSE_GROUP_ID`, `sanitize.ts` |
 | Max `leaning` length carried to the DOM | 500 characters, whitespace-collapsed | `rehypeVantageDirectives.ts` |
-| Directive attribute names | `data-vantage-` + `tone`/`emphasis`/`badge`/`collapsed`/`collapse-group`/`collapse-toggle`/`run`/`oq`/`leaning` | `sanitize.ts` |
+| Directive attribute names | `data-vantage-` + `tone`/`emphasis`/`badge`/`collapsed`/`collapse-group`/`collapse-toggle`/`run`/`oq`/`question`/`leaning` | `sanitize.ts` |
+| Blocks a `fallback` withholds | every stampable tag but `h1`–`h6`, raw HTML by the element it opens with; none is marked in the DOM | `VANTAGE_FALLBACK_TARGETS`, `vantageDirectives.ts` |
 | Elements that keep no `style` | `input` | `UNSTYLED_TAGS`, `sanitize.ts` |
 | `display` values a `style` may set | `none`, `block`, `inline`, `inline-block`, `flow-root`, `flex`, `inline-flex`, `grid`, `inline-grid`, `table`, `inline-table`, `table-row`, `table-row-group`, `table-header-group`, `table-footer-group`, `table-cell`, `table-column`, `table-column-group`, `table-caption`, `list-item`; each may end in `!important` | `DISPLAY_VALUES`, `sanitize.ts` |
 | Classes a document may write | `code`: `language-*`; `ul` and `ol`: `contains-task-list`; `li`: `task-list-item`; `section`: `footnotes`; `h2`: `sr-only`; `a`: `data-footnote-backref`; `div`: `vantage-alert-title`; none on any other element | `PIPELINE_CLASSES`, `sanitize.ts` |

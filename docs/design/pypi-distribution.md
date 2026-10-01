@@ -369,7 +369,7 @@ is repeatable, and `publish.yml` passes `--alias vantage-md`
 | Human, Go toolchain | `go install` | `go install …/cmd/vantage@latest` |
 | Human, Python-first machine | **PyPI wheel** | `uvx vantage-md <path>` for a one-shot, or `uv tool install vantage-md` for `vantage` on `PATH` ([§4.3](#43-the-command-is-vantage-the-one-shot-pays-for-it)) |
 | Human, neither | release archive | download and untar |
-| **Agent** | **PyPI wheel** | `uvx vantage-check <file>` — its own project, at the repo's shared version |
+| **Agent** | **PyPI wheel** | `uvx vantage-check <file>` — its own project. Bare `uvx` runs the newest release, so it matches the server's version only when pinned ([`checker-version-skew.md` §2.1](checker-version-skew.md#21-how-an-agent-gets-its-checker)) |
 | Frontend / library consumer | npm | `npm i vantage-md` |
 
 The server's PyPI presence is a convenience for the Python-first case, never the

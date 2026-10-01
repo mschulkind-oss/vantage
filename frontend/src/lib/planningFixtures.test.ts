@@ -75,7 +75,6 @@ describe("planning-config.json", () => {
       "a roadmap written as a table",
       "roadmaps written as an array of tables",
       "a roadmap that is a boolean",
-      "an unknown key",
     ]) {
       expect(cases.find((c) => c.name === name)?.ok, name).toBe(false);
     }

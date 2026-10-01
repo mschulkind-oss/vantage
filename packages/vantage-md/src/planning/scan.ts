@@ -4,10 +4,11 @@
  *
  * The parse is the viewer's own remark half (`buildRemarkPlugins`), so a link
  * or a directive means here what it means on the page. Where the viewer
- * decides something only after rendering — which `oq` directive yields a
- * button, what a question's status marker says — this file predicts it from
- * mdast with the rules `vantage/orphan` uses (`directiveTargets.ts`) and the
- * contents column's own reading of a question (`questionLabel` in the app's
+ * decides something only after rendering — which question directive (`oq` or
+ * `question`) lands on a block that could host a button, what a question's
+ * status marker says — this file predicts it from mdast with the rules
+ * `vantage/orphan` uses (`directiveTargets.ts`) and the contents column's own
+ * reading of a question (`questionLabel` in the app's
  * `useDocumentOutline.ts`). `planningAgreement.test.tsx` holds the prediction
  * to the rendered page over every document in `docs/`.
  */
@@ -28,7 +29,11 @@ import { isMap, isScalar, isSeq, parseDocument } from "yaml";
 import {
   BLOCK_PARENTS,
   isCommentOnly,
+  isFallbackTarget,
+  isRawFallbackTarget,
   listIsLoose,
+  rawElementEnd,
+  rawOpeningTag,
   targetTag,
 } from "../directiveTargets.js";
 import { parseFrontmatter, type ParsedFrontmatter } from "../frontmatter.js";
@@ -40,14 +45,17 @@ import {
   type VantageAlert,
 } from "../rehypeVantageAlerts.js";
 import {
+  DIRECTIVE_VOCABULARY,
   VANTAGE_OQ_HOST_TARGETS,
   VANTAGE_OQ_ID,
   VANTAGE_OQ_PREFERENCE,
   VANTAGE_SENTINEL,
+  isQuestionDirective,
   normalizeLeaning,
   parseVantageDirective,
   vantageOqStatus,
   type ParsedDirective,
+  type VantageQuestionName,
 } from "../vantageDirectives.js";
 import { isDocStatus, type DocStatus } from "../vantageFrontmatter.js";
 import { cutCardBlocks, outlineOf } from "./cardSource.js";
@@ -56,9 +64,20 @@ import { resolveRepoLink } from "./links.js";
 /** A question's state. `answered` is ✅: ruled, awaiting compaction. */
 export type QuestionState = "open" | "blocked" | "answered";
 
-/** One question: an `oq` directive that yields a button (§3.3). */
+/**
+ * One question: an `oq` or `question` directive on a block that could host a
+ * button (§3.3).
+ */
 export interface PlanningQuestion {
   path: string;
+  /**
+   * The name that declared it: `oq`, a question review mode offers to answer
+   * in one click, or `question`, one it never does (`VANTAGE_QUESTION_NAMES`).
+   * A run holding both is an `oq`, as it is to a viewer that predates
+   * `question`. Only an `oq` gets Take this leaning, on the page and on its
+   * card alike.
+   */
+  directive: VantageQuestionName;
   /**
    * The directive's `id=`, when it is well-formed and the first question in
    * this document to carry it; otherwise `null`, and no `#OQ-…` link can name
@@ -73,7 +92,10 @@ export interface PlanningQuestion {
   marker: string;
   /** The bold `OQ-…` title, flattened; else the flattened text of its scope. */
   title: string;
-  /** `normalizeLeaning(leaning=)`; `null` when absent or empty. */
+  /**
+   * `normalizeLeaning(leaning=)`; `null` when absent or empty. Only an `oq`
+   * carries one: `question` does not accept the key.
+   */
   leaning: string | null;
   /** File line of the block the in-page button anchors on. */
   line: number;
@@ -176,10 +198,11 @@ export interface PlanningDocument {
   /** Unique `OQ-…`-shaped tokens anywhere in the text, first-seen order. */
   ids: string[];
   /**
-   * The ids a well-formed `oq` directive carries, unique, in document order,
-   * whether or not the directive became a question: an orphan's, and one in
-   * raw HTML (Plan Q17), are here too. A link to such an id is to no question
-   * and to nothing compacted either (§5.2).
+   * The ids a well-formed question directive (`oq` or `question`) carries,
+   * unique, in document order, whether or not the directive became a
+   * question: an orphan's, and one in raw HTML (Plan Q17), are here too. A
+   * link to such an id is to no question and to nothing compacted either
+   * (§5.2).
    */
   directiveIds: string[];
 }
@@ -359,16 +382,22 @@ interface Context {
  * a comment, blocking text, or whitespace it skips. Raw HTML is split into its
  * comments and the text between them, as `rehype-raw` splits it.
  */
-type Token =
+type Token = { child: number } & (
   | { kind: "element"; node: RootContent }
-  | { kind: "raw" }
+  | {
+      kind: "raw";
+      /** The element it opens (`rawOpeningTag`), and where in its node. */
+      tag: string | undefined;
+      offset: number;
+    }
   | { kind: "text" }
   | {
       kind: "comment";
       directive: ParsedDirective | undefined;
       line: number;
       key: string;
-    };
+    }
+);
 
 /** One comment's identity in the tree: its node's offset, then its own. */
 const commentKey = (node: RootContent, offset: number): string =>
@@ -376,14 +405,14 @@ const commentKey = (node: RootContent, offset: number): string =>
 
 function tokensOf(children: RootContent[]): Token[] {
   const tokens: Token[] = [];
-  for (const child of children) {
+  for (const [index, child] of children.entries()) {
     // Neither renders where it is written: a definition renders nothing, and a
     // footnote definition is hoisted to the end of the document.
     if (child.type === "definition" || child.type === "footnoteDefinition") {
       continue;
     }
     if (child.type !== "html") {
-      tokens.push({ kind: "element", node: child });
+      tokens.push({ kind: "element", node: child, child: index });
       continue;
     }
     const start = child.position?.start.line ?? 1;
@@ -397,7 +426,16 @@ function tokensOf(children: RootContent[]): Token[] {
         if (rest === "") continue;
         // A tag is an element `rehype-raw` will build, which mdast cannot
         // see into (Plan Q17); anything else is text that ends a run.
-        tokens.push({ kind: rest.startsWith("<") ? "raw" : "text" });
+        tokens.push(
+          rest.startsWith("<")
+            ? {
+                kind: "raw",
+                tag: rawOpeningTag(rest),
+                offset: segment.offset,
+                child: index,
+              }
+            : { kind: "text", child: index },
+        );
         continue;
       }
       for (let k = counted; k < segment.offset; k++) {
@@ -414,6 +452,7 @@ function tokensOf(children: RootContent[]): Token[] {
         directive: parsed?.kind === "directive" ? parsed : undefined,
         line,
         key: commentKey(child, segment.offset),
+        child: index,
       });
     }
   }
@@ -482,12 +521,17 @@ interface ScanState {
   idKeys: (string | undefined)[];
   /** Footnote definitions, walked last because they render last. */
   footnotes: Context[];
+  /**
+   * The blocks a `fallback` run withholds, which the page never shows: no
+   * question and no link is read from one (`withholds`).
+   */
+  withheld: Set<Nodes>;
 }
 
 /**
  * The plugin's `processChildren`, over one block parent's children: find each
- * run of directives, the element it lands on, and — for a run holding `oq` —
- * whether that element yields a button.
+ * run of directives, the element it lands on, and — for a run holding a
+ * question directive — whether that element could host a button.
  */
 function walkBlocks(context: Context, state: ScanState): void {
   const tokens = tokensOf(context.parent.children as RootContent[]);
@@ -496,7 +540,7 @@ function walkBlocks(context: Context, state: ScanState): void {
     const token = tokens[i];
     if (token === undefined) break;
     if (token.kind === "element") {
-      descend(token.node, context, state);
+      if (!state.withheld.has(token.node)) descend(token.node, context, state);
       i++;
       continue;
     }
@@ -513,7 +557,17 @@ function walkBlocks(context: Context, state: ScanState): void {
     let target: RootContent | undefined;
     for (; j < tokens.length; j++) {
       const next = tokens[j];
-      if (next === undefined || next.kind === "raw" || next.kind === "text") {
+      if (next === undefined || next.kind === "text") break;
+      if (next.kind === "raw") {
+        // A run that lands on raw HTML withholds the element it opens, and
+        // with blank lines inside it that element spans siblings.
+        const end = withheldRaw(next, run, context, state);
+        if (end === next.child) {
+          // Closed in its own node, which may go on past it.
+          j++;
+        } else if (end !== undefined) {
+          while (j < tokens.length && (tokens[j]?.child ?? 0) <= end) j++;
+        }
         break;
       }
       if (next.kind === "element") {
@@ -524,7 +578,10 @@ function walkBlocks(context: Context, state: ScanState): void {
         run.push({ directive: next.directive, key: next.key });
       }
     }
-    if (target !== undefined) question(target, run, firstLine, context, state);
+    if (target !== undefined) {
+      if (withholds(target, run, context)) state.withheld.add(target);
+      else question(target, run, firstLine, context, state);
+    }
     i = j;
   }
   // A footnote definition is skipped above, for it is not where it is written.
@@ -572,7 +629,59 @@ interface KeyedDirective {
   key: string;
 }
 
-/** Record `target` as a question when the run holds `oq` and it hosts a button. */
+/**
+ * Does this run withhold `target`? The plugin's `withholdFallbacks`, predicted:
+ * any `fallback` in the run, a target on its list, and not a paragraph that a
+ * tight list item unwraps into bare text. A withheld block takes the rest of
+ * its run with it, so a question directive merged onto it declares nothing.
+ */
+function withholds(
+  target: RootContent,
+  run: KeyedDirective[],
+  context: Context,
+): boolean {
+  if (!run.some(({ directive }) => directive.name === "fallback")) return false;
+  if (!BLOCK_PARENTS.has(context.parent.type)) return false;
+  if (!isFallbackTarget(targetTag(target))) return false;
+  return !(
+    target.type === "paragraph" &&
+    context.parent.type === "listItem" &&
+    context.list !== undefined &&
+    !listIsLoose(context.list)
+  );
+}
+
+/**
+ * Does this run withhold the raw-HTML element `raw` opens? The plugin's
+ * `withholdFallbacks` again, for the element `rehype-raw` builds there: when
+ * it does, every sibling from the opening node to the one that closes the
+ * element is withheld, and the index of the last is returned, so that nothing
+ * inside it — a link, or a question — is read.
+ */
+function withheldRaw(
+  raw: Extract<Token, { kind: "raw" }>,
+  run: KeyedDirective[],
+  context: Context,
+  state: ScanState,
+): number | undefined {
+  if (!run.some(({ directive }) => directive.name === "fallback")) return;
+  if (!BLOCK_PARENTS.has(context.parent.type)) return;
+  if (!isRawFallbackTarget(raw.tag) || raw.tag === undefined) return;
+  const children = context.parent.children as RootContent[];
+  const end = rawElementEnd(children, raw.child, raw.tag, raw.offset);
+  for (let k = raw.child; k <= end; k++) {
+    const child = children[k];
+    if (child !== undefined) state.withheld.add(child);
+  }
+  return end;
+}
+
+/**
+ * Record `target` as a question when the run holds a question directive and
+ * the target could host a button. A `question` never gets one, but it declares
+ * a question in exactly the places an `oq` does, so that a question changing
+ * state changes its directive's name and nothing else.
+ */
 function question(
   target: RootContent,
   run: KeyedDirective[],
@@ -580,19 +689,22 @@ function question(
   context: Context,
   state: ScanState,
 ): void {
-  // Merged per run, last key wins, as `stampRun` merges them.
-  let hasOq = false;
+  // Merged per run, last key wins, as `stampRun` merges them: the two names
+  // share one key map, each keeps only the keys it accepts, and `oq` wins.
+  let name: VantageQuestionName | undefined;
   const keys = new Map<string, string>();
   let idKey: string | undefined;
   for (const { directive, key } of run) {
-    if (directive.name !== "oq") continue;
-    hasOq = true;
+    if (!isQuestionDirective(directive.name)) continue;
+    if (name !== "oq") name = directive.name;
+    const accepted = DIRECTIVE_VOCABULARY[directive.name] ?? {};
     for (const pair of directive.pairs) {
+      if (accepted[pair.key] === undefined) continue;
       keys.set(pair.key, pair.value);
       if (pair.key === "id") idKey = key;
     }
   }
-  if (!hasOq) return;
+  if (name === undefined) return;
   if (!BLOCK_PARENTS.has(context.parent.type)) return;
 
   const tag = targetTag(target);
@@ -653,6 +765,7 @@ function question(
 
   const leaning = normalizeLeaning(keys.get("leaning") ?? "");
   state.questions.push({
+    directive: name,
     state: stateOf(marker, title),
     preference: marker.includes(VANTAGE_OQ_PREFERENCE),
     marker,
@@ -699,10 +812,11 @@ function markerBefore(
 }
 
 /**
- * Each well-formed id's first `oq` directive, by `commentKey`, in document
- * order and counting every directive in raw HTML — orphans, inline ones and
- * those inside a raw block too — as `vantage/oq-id-duplicate` counts them.
- * Only the question read from that directive keeps the id (§3.3).
+ * Each well-formed id's first question directive, `oq` or `question`, by
+ * `commentKey`, in document order and counting every directive in raw HTML —
+ * orphans, inline ones and those inside a raw block too — as
+ * `vantage/oq-id-duplicate` counts them. Only the question read from that
+ * directive keeps the id (§3.3).
  */
 function firstOqIds(root: Root): Map<string, string> {
   const first = new Map<string, string>();
@@ -712,7 +826,9 @@ function firstOqIds(root: Root): Map<string, string> {
       for (const segment of scanComments(node.value)) {
         if (segment.kind !== "comment" || segment.terminator === null) continue;
         const parsed = parseVantageDirective(segment.value);
-        if (parsed?.kind !== "directive" || parsed.name !== "oq") continue;
+        if (parsed?.kind !== "directive" || !isQuestionDirective(parsed.name)) {
+          continue;
+        }
         let id: string | undefined;
         for (const pair of parsed.pairs) if (pair.key === "id") id = pair.value;
         if (id === undefined || !VANTAGE_OQ_ID.test(id) || first.has(id)) {
@@ -730,8 +846,11 @@ function firstOqIds(root: Root): Map<string, string> {
   return first;
 }
 
-/** Every `oq` directive anywhere in raw HTML, inline or not — orphans too. */
-function hasOqDirective(root: Root): boolean {
+/**
+ * Whether any question directive, `oq` or `question`, is anywhere in raw HTML,
+ * inline or not — orphans too.
+ */
+function hasQuestionDirective(root: Root): boolean {
   let found = false;
   const walk = (node: Nodes): void => {
     if (found) return;
@@ -740,7 +859,7 @@ function hasOqDirective(root: Root): boolean {
       for (const segment of scanComments(node.value)) {
         if (segment.kind !== "comment" || segment.terminator === null) continue;
         const parsed = parseVantageDirective(segment.value);
-        if (parsed?.kind === "directive" && parsed.name === "oq") {
+        if (parsed?.kind === "directive" && isQuestionDirective(parsed.name)) {
           found = true;
           return;
         }
@@ -755,12 +874,17 @@ function hasOqDirective(root: Root): boolean {
   return found;
 }
 
-/** Every rendered Markdown link that names a path in the repository. */
+/**
+ * Every rendered Markdown link that names a path in the repository. A link in
+ * a block a `fallback` withholds is not rendered, so it routes nothing and
+ * badges nothing.
+ */
 function linksOf(
   root: Root,
   path: string,
   bodyLineOffset: number,
   bodyOffset: number,
+  withheld: ReadonlySet<Nodes>,
 ): PlanningLink[] {
   const definitions = new Map<string, string>();
   const collect = (node: Nodes): void => {
@@ -780,6 +904,7 @@ function linksOf(
   const links: PlanningLink[] = [];
   let heading: string | null = null;
   const walk = (node: Nodes): void => {
+    if (withheld.has(node)) return;
     if (node.type === "heading") heading = flatten(textOf(node));
     let url: string | undefined;
     if (node.type === "link") url = node.url;
@@ -1033,10 +1158,10 @@ function problemReason(parsed: ParsedFrontmatter): string | undefined {
  * scanning for it should; no other caller passes it.
  *
  * Only a planning document contributes: one whose frontmatter has `status` or
- * `stage`, or that holds an `oq` directive, or a roadmap (§3.1). A
- * file whose frontmatter does not parse is unreadable, since what it would
- * have said is unknown (§15). Anything else is dropped before its body is
- * parsed, which is what keeps a full scan cheap (§3.1).
+ * `stage`, or that holds a question directive (`oq` or `question`), or a
+ * roadmap (§3.1). A file whose frontmatter does not parse is unreadable, since
+ * what it would have said is unknown (§15). Anything else is dropped before
+ * its body is parsed, which is what keeps a full scan cheap (§3.1).
  *
  * A planning document comes with its questions' card blocks, cut from the same
  * parse, so nothing has to parse a document a second time for its cards.
@@ -1057,7 +1182,7 @@ export function scanPlanningDocument(
   }
 
   const root = parseBody(parsed.body);
-  if (!isRoadmap && !keyed && !hasOqDirective(root)) {
+  if (!isRoadmap && !keyed && !hasQuestionDirective(root)) {
     return { kind: "not-planning" };
   }
   // Before `readAlerts`, which rewrites blockquotes in place: the cards are
@@ -1071,6 +1196,7 @@ export function scanPlanningDocument(
     rawIds: [],
     idKeys: [],
     footnotes: [],
+    withheld: new Set(),
   };
   walkBlocks(
     {
@@ -1122,7 +1248,13 @@ export function scanPlanningDocument(
       status: isDocStatus(status) ? status : null,
       ...readHeader(path, source, parsed),
       questions,
-      links: linksOf(root, path, parsed.bodyLineOffset, bodyOffset),
+      links: linksOf(
+        root,
+        path,
+        parsed.bodyLineOffset,
+        bodyOffset,
+        state.withheld,
+      ),
       ids: idsOf(source),
       directiveIds: [...first.keys()],
     },

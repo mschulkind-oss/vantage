@@ -21,7 +21,12 @@ import {
   type PlanningRoadmap,
   type QuestionRef,
 } from "vantage-md/planning";
-import { indexOf, planningConfig, sourcesOf } from "../test/planning";
+import {
+  indexOf,
+  planningConfig,
+  questionDirective,
+  sourcesOf,
+} from "../test/planning";
 
 /** A loose list of questions, `OQ-<prefix>1`, `OQ-<prefix>2`, …, one per marker. */
 function questions(prefix: string, ...markers: string[]): string {
@@ -30,7 +35,7 @@ function questions(prefix: string, ...markers: string[]): string {
       [
         `1. ${marker} **OQ-${prefix}${i + 1}: Question ${i + 1}?**`,
         "",
-        `   <!-- vantage: oq id=OQ-${prefix}${i + 1} leaning="Yes." -->`,
+        `   ${questionDirective(marker, `OQ-${prefix}${i + 1}`, "Yes.")}`,
         "",
         "   _Leaning:_ yes.",
         "",

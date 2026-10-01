@@ -16,21 +16,35 @@
  * no block after it does nothing at all (P3/D2/D6). The comment node is left
  * where it is: the sanitizer removes it, which is why no Vantage-specific
  * markup other than these attributes ever reaches the DOM.
+ *
+ * A `fallback` run is the one exception, and it stamps nothing: the run and
+ * the block it lands on are removed from the tree, in a pass of their own that
+ * runs before any stamping (`withholdFallbacks`). Removing the run's comments
+ * with the block is what keeps a `block tone=…` written in the same run from
+ * re-targeting the block after it, and nothing is lost, because the sanitizer
+ * would have deleted those comments a few plugins later.
  */
 
 import type { Element, Parents, Properties, RootContent, Root } from "hast";
 import type { Plugin } from "unified";
 import {
   DIRECTIVE_VOCABULARY,
+  isQuestionDirective,
   normalizeLeaning,
   parseVantageDirective,
   VANTAGE_ANCHOR_TARGETS,
+  VANTAGE_FALLBACK_TARGETS,
   VANTAGE_STYLE_TARGETS,
 } from "./vantageDirectives.js";
-import type { KeyVocabulary, ParsedDirective } from "./vantageDirectives.js";
+import type {
+  KeyVocabulary,
+  ParsedDirective,
+  VantageQuestionName,
+} from "./vantageDirectives.js";
 
 /**
- * What a `section`/`block` and an `oq` directive may **target**.
+ * What a `section`/`block` and a question directive (`oq`, `question`) may
+ * **target**.
  *
  * Both lists live in `vantageDirectives.ts`, with the reasoning for each tag,
  * because the CLI checker resolves the same question over mdast and must reach
@@ -40,6 +54,8 @@ import type { KeyVocabulary, ParsedDirective } from "./vantageDirectives.js";
  */
 const STYLE_TARGET_TAGS = new Set<string>(VANTAGE_STYLE_TARGETS);
 const ANCHOR_TARGET_TAGS = new Set<string>(VANTAGE_ANCHOR_TARGETS);
+/** What a `fallback` may withhold: every style target but a heading. */
+const FALLBACK_TARGET_TAGS = new Set<string>(VANTAGE_FALLBACK_TARGETS);
 
 const HEADING_DEPTHS = new Map([
   ["h1", 1],
@@ -87,7 +103,20 @@ const RANGE_PROPERTIES = new Map([
 const POINT_PROPERTIES = new Map([["badge", "dataVantageBadge"]]);
 
 const RUN_PROPERTY = "dataVantageRun";
-const OQ_PROPERTY = "dataVantageOq";
+/**
+ * What each question name stamps: `data-vantage-oq` on an open question, the
+ * one the review button hangs off, and `data-vantage-question` on a blocked or
+ * answered one, which nothing offers to answer.
+ *
+ * Two attributes rather than one with two values, so that every consumer of
+ * this package's markup that has ever read `[data-vantage-oq]` as "a question to
+ * answer" — the app's button pass among them — keeps reading exactly that
+ * (`VANTAGE_QUESTION_NAMES`). Whoever wants every question asks for both.
+ */
+const QUESTION_PROPERTIES: Readonly<Record<VantageQuestionName, string>> = {
+  oq: "dataVantageOq",
+  question: "dataVantageQuestion",
+};
 const LEANING_PROPERTY = "dataVantageLeaning";
 /**
  * The id, carried as a `data-` attribute rather than written straight to `id`.
@@ -323,11 +352,15 @@ function stampStyle(
   }
 }
 
-function stampOq(target: Element, pairs: Map<string, string>) {
+function stampQuestion(
+  target: Element,
+  name: VantageQuestionName,
+  pairs: Map<string, string>,
+) {
   // The string, never the boolean: `rehype-stringify` emits a bare
   // `data-vantage-oq` for `true` while react-markdown emits `="true"`, and D5
   // requires every renderer to emit the same markup.
-  setProperty(target, OQ_PROPERTY, "true");
+  setProperty(target, QUESTION_PROPERTIES[name], "true");
 
   // `id` becomes the block's anchor, so `[OQ-4](#OQ-4)` scrolls to the question.
   // Verbatim, case intact: heading slugs are lowercased by `github-slugger` and
@@ -339,8 +372,10 @@ function stampOq(target: Element, pairs: Map<string, string>) {
   const id = pairs.get("id");
   if (id !== undefined && id !== "") setProperty(target, OQ_ID_PROPERTY, id);
 
+  // Only an `oq` has a leaning to carry: `question` does not accept the key, so
+  // the run's merge has already dropped one written there.
   const leaning = pairs.get("leaning");
-  if (leaning === undefined) return;
+  if (name !== "oq" || leaning === undefined) return;
   // A wrapped directive puts newlines and indentation in the value, and this is
   // about to become the body of a review comment, so collapse and cap it — the
   // same normalization the planning index reports a question's leaning with.
@@ -365,29 +400,42 @@ function stampRun(
 ) {
   const target = children[targetIndex] as Element;
   const style = new Map<string, string>();
-  const oq = new Map<string, string>();
+  const question = new Map<string, string>();
   // The last style directive in the run decides the extent, on the same
   // last-one-wins principle that resolves a repeated key.
   let styleName: string | undefined;
-  let hasOq = false;
+  // One question per run, whichever names declared it, and `oq` wins over
+  // `question` wherever it appears in the run: a viewer that predates
+  // `question` drops it and reads the `oq`, so a run holding one is an
+  // answerable question to every viewer, this one included.
+  let questionName: VantageQuestionName | undefined;
 
   for (const directive of run) {
     if (directive.name === "section" || directive.name === "block") {
       styleName = directive.name;
       for (const pair of directive.pairs) style.set(pair.key, pair.value);
-    } else if (directive.name === "oq") {
-      hasOq = true;
-      for (const pair of directive.pairs) oq.set(pair.key, pair.value);
+    } else if (isQuestionDirective(directive.name)) {
+      if (questionName !== "oq") questionName = directive.name;
+      // The two names share one key map, last key wins, as `section` and
+      // `block` share theirs. A pair its own name does not accept drops here
+      // (D2), so a `leaning` written on a `question` reaches nothing.
+      for (const pair of directive.pairs) {
+        if (accepts(directive.name, pair.key, pair.value)) {
+          question.set(pair.key, pair.value);
+        }
+      }
     }
     // Any other name drops the whole directive: there is no target semantics
-    // without a name.
+    // without a name. A `fallback` reaching this point is one whose target is
+    // not a block it may withhold — a heading — so it is inert here too, and
+    // the rest of its run stamps as if it were not there.
   }
 
   if (styleName !== undefined) {
     stampStyle(children, targetIndex, styleName, style, state);
   }
-  if (hasOq && ANCHOR_TARGET_TAGS.has(target.tagName)) {
-    stampOq(target, oq);
+  if (questionName !== undefined && ANCHOR_TARGET_TAGS.has(target.tagName)) {
+    stampQuestion(target, questionName, question);
   }
 }
 
@@ -403,7 +451,7 @@ function directiveOf(node: RootContent): ParsedDirective | undefined {
  *
  * The whole tree, not just the root: `rehype-raw` leaves comment nodes inside
  * `blockquote`, inside `li`, inside `td` and inline inside `p`, and the real
- * Open Questions layout puts the `oq` directive inside a list item — so a
+ * Open Questions layout puts the question directive inside a list item — so a
  * root-only walk finds none of them.
  *
  * Pass order is also what resolves a nested section: an inner heading's
@@ -449,8 +497,76 @@ function processChildren(parent: Parents, state: CollapseState) {
   }
 }
 
+/**
+ * Remove every block a `fallback` run lands on, with the run itself.
+ *
+ * A fallback block is written for the renderers that cannot show something
+ * Vantage shows — "This drawing needs Vantage 0.8 or later", beside an inline
+ * `<svg>`. Every renderer that does not know the name drops the comment and
+ * shows the block; this one never renders it, in any mode, in print, or
+ * through any of the renderers that share this plugin (D5).
+ *
+ * The run is found exactly as `processChildren` finds one — the same skip
+ * rules, the same first-element target, the same whole-tree walk — and it
+ * withholds when any directive in it is a `fallback` and the target is on
+ * `VANTAGE_FALLBACK_TARGETS`. Anything else is left for the stamping pass,
+ * where a `fallback` is inert.
+ *
+ * A pass of its own, and first, because a `section` reaches *forward* over its
+ * siblings: stamped in one pass, a toned section would count a fallback block
+ * after it among its members, give it the run's last `end` marker, and leave
+ * the last block anyone sees marked `middle`. Withheld first, the block was
+ * never there for any later decision — the section's extent, its run markers,
+ * a collapse group's members, a review anchor or an outline entry.
+ */
+function withholdFallbacks(parent: Parents) {
+  const children = parent.children;
+  let i = 0;
+  while (i < children.length) {
+    const node = children[i];
+    if (node.type === "element") {
+      withholdFallbacks(node);
+      i++;
+      continue;
+    }
+
+    const first = directiveOf(node);
+    if (first === undefined) {
+      i++;
+      continue;
+    }
+
+    let withholds = first.name === "fallback";
+    let j = i + 1;
+    let targetIndex = -1;
+    for (; j < children.length; j++) {
+      const next = children[j];
+      if (next.type === "element") {
+        targetIndex = j;
+        break;
+      }
+      if (!isSkippable(next)) break;
+      if (directiveOf(next)?.name === "fallback") withholds = true;
+    }
+
+    const target = targetIndex >= 0 ? children[targetIndex] : undefined;
+    if (
+      withholds &&
+      target?.type === "element" &&
+      FALLBACK_TARGET_TAGS.has(target.tagName)
+    ) {
+      // `i` now indexes whatever followed the block, which may start a run of
+      // its own.
+      children.splice(i, targetIndex - i + 1);
+      continue;
+    }
+    i = j; // resume at the target, or at the blocker — never inside the run
+  }
+}
+
 const rehypeVantageDirectives: Plugin<[], Root> = () => {
   return (tree: Root) => {
+    withholdFallbacks(tree);
     processChildren(tree, { nextGroup: 1 });
   };
 };

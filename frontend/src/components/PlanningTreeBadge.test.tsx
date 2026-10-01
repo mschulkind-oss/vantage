@@ -22,7 +22,7 @@ import {
   usePlanningStore,
 } from "../stores/usePlanningStore";
 import { useRepoStore } from "../stores/useRepoStore";
-import { indexOf } from "../test/planning";
+import { indexOf, questionDirective } from "../test/planning";
 import type { FileNode } from "../types";
 
 vi.mock("axios");
@@ -31,7 +31,7 @@ const question = (id: string, marker: string) =>
   [
     `1. ${marker} **${id}: A question?**`,
     "",
-    `   <!-- vantage: oq id=${id} leaning="Yes." -->`,
+    `   ${questionDirective(marker, id, "Yes.")}`,
     "",
     "   _Leaning:_ yes.",
     "",

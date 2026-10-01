@@ -88,7 +88,10 @@ or the done fade has gone too far.
 The [documentation convention](../../userguide/reference/style-guide.md) marks an
 Open Question's state with an emoji and a stable ID. Those are ordinary text, so
 they render everywhere — the question is whether they are enough on their own,
-beside the chips and boxes above.
+beside the chips and boxes above. The open question carries an `oq` directive,
+which review mode offers to answer in one click; the answered and the blocked
+one carry a `question` directive, which declares them without offering
+anything.
 
 1. 💬 **OQ-1: Does the emoji carry enough weight next to a chip?**
 
@@ -102,7 +105,7 @@ beside the chips and boxes above.
 
 1. ✅ **OQ-2: Should an answered question look different from an open one?**
 
-   <!-- vantage: oq id=OQ-2 leaning="Yes, and it already can: a section badge says it at heading level while the emoji says it at item level." -->
+   <!-- vantage: question id=OQ-2 -->
 
    _Leaning:_ yes, and the badge vocabulary already covers it.
 
@@ -112,7 +115,7 @@ beside the chips and boxes above.
 
 1. 🔒 **OQ-3: Is a blocked question distinguishable from a merely open one?**
 
-   <!-- vantage: oq id=OQ-3 leaning="Only by the emoji today. A badge=blocked on the section is the stronger signal, but it is section-level and a question is item-level." -->
+   <!-- vantage: question id=OQ-3 -->
 
    _Leaning:_ only by the emoji today.
 

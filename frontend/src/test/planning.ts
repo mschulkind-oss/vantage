@@ -9,6 +9,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { questionDirectiveFor, vantageOqStatus } from "vantage-md";
 import {
   DEFAULT_PLANNING_CONFIG,
   buildPlanningIndex,
@@ -37,6 +38,25 @@ export function repoPath(rel: string, from: string = here): string {
 /** A file's text, named relative to the repository root. */
 export function readRepoFile(rel: string): string {
   return readFileSync(repoPath(rel), "utf8");
+}
+
+/**
+ * The directive a question marked `marker` is declared with, as the convention
+ * writes it: an open or unmarked question's `oq`, restating `leaning` when it
+ * has one, and a 🔒 or ✅ one's `question`, which takes none
+ * (`questionDirectiveFor`).
+ */
+export function questionDirective(
+  marker: string,
+  id: string,
+  leaning: string | null = null,
+): string {
+  if (questionDirectiveFor(vantageOqStatus(marker)) === "question") {
+    return `<!-- vantage: question id=${id} -->`;
+  }
+  return leaning === null
+    ? `<!-- vantage: oq id=${id} -->`
+    : `<!-- vantage: oq id=${id} leaning="${leaning}" -->`;
 }
 
 /** A shared planning fixture from `internal/repoconfig/testdata/`. */

@@ -13,7 +13,7 @@ import {
 } from "vantage-md";
 
 import { COLLAPSED_ATTR } from "../lib/collapseSections";
-import { answerableOpenQuestions } from "./useOpenQuestionButtons";
+import { documentQuestions, offersTake } from "./useOpenQuestionButtons";
 
 /**
  * One entry in the table of contents: a heading, or an Open Question in any
@@ -43,6 +43,13 @@ export interface OutlineEntry {
   marker: string;
   /** The state that marker names, or `null` when the question carries none. */
   status: VantageOqStatus | null;
+  /**
+   * Whether review mode offers Take this leaning on it (`offersTake`): an open
+   * question declared with `oq`. Always `false` for a heading. Not derivable
+   * from `status`, since a `question` directive on an open question offers
+   * nothing, and the tally must not promise a button the page lacks.
+   */
+  oneClick: boolean;
   /** 1–6 for a heading, as in h1–h6; one step deeper for a question. */
   level: number;
   /**
@@ -88,27 +95,27 @@ export function collectOutline(container: HTMLElement): OutlineEntry[] {
   // Two collectors merged afterwards would have to reconstruct that order, and
   // would reconstruct it from positions the browser had already computed.
   const questions = new Set<HTMLElement>();
-  for (const { stamped } of answerableOpenQuestions(container)) {
+  for (const { stamped } of documentQuestions(container)) {
     questions.add(stamped);
   }
 
   const out: OutlineEntry[] = [];
   let lastHeadingLevel = 0;
   for (const el of container.querySelectorAll<HTMLElement>(
-    "h1, h2, h3, h4, h5, h6, [data-vantage-oq]",
+    "h1, h2, h3, h4, h5, h6, [data-vantage-oq], [data-vantage-question]",
   )) {
     const depth = HEADING_LEVELS[el.tagName];
-    // A heading an `oq` directive stamped is a question first:
-    // `answerableOpenQuestions` finds it, and it hosts the button while it is
-    // open. Listed as a heading, the column fell one question short on any
+    // A heading a question directive stamped is a question first:
+    // `documentQuestions` finds it, and an `oq` one hosts the button while it
+    // is open. Listed as a heading, the column fell one question short on any
     // document that writes one that way: short of the buttons, and of the
     // planning index, which counts it too.
     if (depth !== undefined && !questions.has(el)) {
       // Headings with no id are skipped — there is nothing to link to. A
       // question with no id is not, because unlike a heading it is *the thing
       // the reader is looking for*. The column lists every question
-      // `answerableOpenQuestions` finds, in every state, and review mode's
-      // buttons are that same set less its 🔒 and ✅ questions (Plan Q5) — so a
+      // `documentQuestions` finds, in every state, and review mode's buttons
+      // are that same set less its 🔒, ✅ and `question` ones (Plan Q5) — so a
       // column dropping an id-less question would list fewer open questions
       // than there are buttons, the disagreement the shared walk prevents.
       if (!el.id) continue;
@@ -119,13 +126,14 @@ export function collectOutline(container: HTMLElement): OutlineEntry[] {
         text: headingText(el),
         marker: "",
         status: null,
+        oneClick: false,
         level: depth,
         element: el,
       });
       continue;
     }
 
-    // A stamped element `answerableOpenQuestions` does not return: a `pre` or
+    // A stamped element `documentQuestions` does not return: a `pre` or
     // a `table`, which can host no button in any state and is no question to
     // the planning index either, or one of two directives resolving to a
     // single block, whose question the other already lists. The column's 🔒
@@ -140,6 +148,7 @@ export function collectOutline(container: HTMLElement): OutlineEntry[] {
       text,
       marker,
       status: vantageOqStatus(marker) ?? vantageOqStatus(text),
+      oneClick: offersTake(el),
       // One step under the heading it falls beneath, so the outline stays
       // truthful about where in the document the question lives. A question
       // before any heading sits at the top level, because it is under nothing.
@@ -273,6 +282,8 @@ export interface QuestionTally {
   /** The glyph to show, or `"•"` when the document wrote none. */
   glyph: string;
   count: number;
+  /** How many of them review mode offers Take this leaning on. */
+  oneClick: number;
 }
 
 /**
@@ -296,9 +307,13 @@ export function tallyQuestions(entries: OutlineEntry[]): QuestionTally[] {
     null,
   ];
   const counts = new Map<VantageOqStatus | null, number>();
+  const oneClick = new Map<VantageOqStatus | null, number>();
   for (const entry of entries) {
     if (entry.kind !== "question") continue;
     counts.set(entry.status, (counts.get(entry.status) ?? 0) + 1);
+    if (entry.oneClick) {
+      oneClick.set(entry.status, (oneClick.get(entry.status) ?? 0) + 1);
+    }
   }
   return order
     .filter((status) => (counts.get(status) ?? 0) > 0)
@@ -306,6 +321,7 @@ export function tallyQuestions(entries: OutlineEntry[]): QuestionTally[] {
       status,
       glyph: status === null ? "•" : VANTAGE_OQ_STATUS[status],
       count: counts.get(status) ?? 0,
+      oneClick: oneClick.get(status) ?? 0,
     }));
 }
 
@@ -313,17 +329,15 @@ export function tallyQuestions(entries: OutlineEntry[]): QuestionTally[] {
  * The tally in words, for the header's tooltip and its accessible name.
  *
  * It says how many of the questions can be answered in one click, because that
- * is the part a reader cannot see. Only the open ones can: review mode offers
- * Take this leaning on an open or unmarked question and never on a 🔒 or ✅ one
- * (Plan Q5), and the column, which lists every state, must not promise a button
- * the document does not have — the same number the Review toggle's tooltip
- * gives.
+ * is the part a reader cannot see. Only the open `oq` ones can: review mode
+ * offers Take this leaning on an open or unmarked question an `oq` declared,
+ * and never on a 🔒 or ✅ one or on a `question` (Plan Q5), and the column,
+ * which lists every state, must not promise a button the document does not
+ * have — the same number the Review toggle's tooltip gives.
  */
 export function tallySentence(tallies: QuestionTally[]): string {
   const total = tallies.reduce((sum, t) => sum + t.count, 0);
-  const oneClick = tallies
-    .filter((t) => t.status === "open" || t.status === null)
-    .reduce((sum, t) => sum + t.count, 0);
+  const oneClick = tallies.reduce((sum, t) => sum + t.oneClick, 0);
   const plural = (n: number) => (n === 1 ? "" : "s");
   const stateWord = (status: VantageOqStatus | null) =>
     status === null
@@ -336,11 +350,12 @@ export function tallySentence(tallies: QuestionTally[]): string {
     // A single group already says its own state in the glyph beside the number.
     return tallies.length > 1 ? `${head} — ${parts.join(", ")}` : head;
   }
-  // One group that cannot be answered in one click names its state in words.
-  if (tallies.length === 1) {
-    return `${total} ${stateWord(tallies[0].status)} question${plural(total)} here`;
-  }
-  const head = `${total} questions here — ${parts.join(", ")}`;
+  // One group that is not all answerable in one click names its state in
+  // words.
+  const head =
+    tallies.length === 1
+      ? `${total} ${stateWord(tallies[0].status)} question${plural(total)} here`
+      : `${total} questions here — ${parts.join(", ")}`;
   return oneClick > 0
     ? `${head}; ${oneClick} can be answered in one click`
     : head;
@@ -472,15 +487,22 @@ export function useDocumentOutline(
     // label pointing at a slug the document no longer has would sit in the
     // list until something else happened to trigger a rescan.
     //
-    // `data-vantage-oq` is the same case one step further on: adding a
-    // directive above a paragraph that is already there stamps the attribute
-    // onto the existing element, so a question would not appear in the column
-    // until something unrelated happened to trigger a rescan.
+    // `data-vantage-oq` and `data-vantage-question` are the same case one step
+    // further on: adding a directive above a paragraph that is already there
+    // stamps the attribute onto the existing element, so a question would not
+    // appear in the column until something unrelated happened to trigger a
+    // rescan.
     observer.observe(el, {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ["class", COLLAPSED_ATTR, "id", "data-vantage-oq"],
+      attributeFilter: [
+        "class",
+        COLLAPSED_ATTR,
+        "id",
+        "data-vantage-oq",
+        "data-vantage-question",
+      ],
       characterData: true,
     });
 

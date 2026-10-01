@@ -35,7 +35,7 @@ import { useReviewStore } from "../stores/useReviewStore";
 import { blockVisibleText, hashBlockText } from "../lib/reviewAnchor";
 import { collectOutline } from "./useDocumentOutline";
 import { LINK_FRAGMENT_ATTR, LINK_TARGET_ATTR } from "./usePlanningLinkBadges";
-import { indexOf } from "../test/planning";
+import { indexOf, questionDirective } from "../test/planning";
 import { layout } from "../test/layout";
 import type { ReviewComment } from "../types";
 
@@ -71,7 +71,7 @@ const question = (id: string, marker: string) =>
   [
     `1. ${marker} **${id}: A question?**`,
     "",
-    `   <!-- vantage: oq id=${id} leaning="Yes." -->`,
+    `   ${questionDirective(marker, id, "Yes.")}`,
     "",
     "   _Leaning:_ yes.",
     "",

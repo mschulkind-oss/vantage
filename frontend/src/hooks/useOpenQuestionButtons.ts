@@ -5,7 +5,9 @@
  * `rehypeVantageDirectives` compiles `<!-- vantage: oq leaning="…" -->` into
  * `data-vantage-oq` / `data-vantage-leaning` on the block that follows it. This
  * post-render pass finds those blocks and hangs one button off each, whose click
- * calls the `addComment` the comment popover already calls. Nothing downstream
+ * calls the `addComment` the comment popover already calls. A blocked or
+ * answered question is declared with `<!-- vantage: question … -->` instead,
+ * which stamps `data-vantage-question`, and never gets one. Nothing downstream
  * is new: the comment rides `runCommand` to `POST /review/comments`, appears in
  * the panel, and reaches the agent through the ordinary clipboard payload.
  *
@@ -25,7 +27,7 @@ import {
 } from "../lib/reviewAnchor";
 import { isStaticMode } from "../lib/staticMode";
 import type { CommentAnchor, ReviewComment } from "../types";
-// A cycle, and an inert one: the outline imports `answerableOpenQuestions` from
+// A cycle, and an inert one: the outline imports `documentQuestions` from
 // here, and both modules export only functions, which neither calls at load.
 // The column's reading of a question's state is the one this pass must share,
 // so it is imported rather than written a second time.
@@ -196,8 +198,14 @@ function claimClick(e: Event): void {
   e.preventDefault();
 }
 
+/**
+ * The two attributes a question directive stamps: `oq`'s, on an open question,
+ * and `question`'s, on a blocked or answered one (`VANTAGE_QUESTION_NAMES`).
+ */
+const QUESTION_SELECTOR = "[data-vantage-oq], [data-vantage-question]";
+
 /** A stamped directive and the block that will host its affordance. */
-export interface AnswerableOpenQuestion {
+export interface DocumentQuestion {
   /** The element the directive stamped — where `data-vantage-leaning` lives. */
   stamped: HTMLElement;
   /** The block the affordance hangs off, and a review anchor resolves to. */
@@ -205,8 +213,11 @@ export interface AnswerableOpenQuestion {
 }
 
 /**
- * Every Open Question in `el` whose block can host a button: each `oq`
- * directive on a host the button can live in, one per block.
+ * Every Open Question in `el`, whichever directive declared it, on a block that
+ * could host a button: each `oq` or `question` directive on a host the button
+ * can live in, one per block. A `question` never gets the button, but it
+ * declares a question in exactly the places an `oq` does, so the two are found
+ * by one walk.
  *
  * Exported and shared, because three callers ask this question and they must
  * not answer it differently. The contents column lists every result, in every
@@ -215,19 +226,17 @@ export interface AnswerableOpenQuestion {
  * a question's host inside its card with it. A count that disagrees with the
  * number of buttons is worse than no count — it sends the reader looking for a
  * control that was never there — which is why the count is taken after the
- * state filter and the column's list before it.
+ * `offersTake` filter and the column's list before it.
  *
  * Deliberately free of the review-mode and static gates, and of state. The gates decide
  * whether the *affordance* renders (D4); this decides what exists in the
  * document, which is true either way and is exactly what a reader with review
  * mode off needs told.
  */
-export function answerableOpenQuestions(
-  el: HTMLElement,
-): AnswerableOpenQuestion[] {
-  const found: AnswerableOpenQuestion[] = [];
+export function documentQuestions(el: HTMLElement): DocumentQuestion[] {
+  const found: DocumentQuestion[] = [];
   const hosted = new Set<HTMLElement>();
-  for (const stamped of el.querySelectorAll<HTMLElement>("[data-vantage-oq]")) {
+  for (const stamped of el.querySelectorAll<HTMLElement>(QUESTION_SELECTOR)) {
     // Not `stamped` itself. A stamped `blockquote` or `li` shares its
     // `data-source-line` with its own first paragraph, and the highlighter
     // indexes blocks by line with last-write-wins — so it resolves the inner
@@ -264,24 +273,32 @@ export function leaningComment(stamped: HTMLElement): string {
 }
 
 /**
- * Whether a question offers Take this leaning: it is open, or carries no
- * marker, which counts as open (Plan Q5, `docs/reference/planning-index.md`
- * §6.6). A 🔒 question cannot be answered yet and a ✅ one has been ruled, so
- * neither has a leaning left to take.
+ * Whether a question offers Take this leaning: an `oq` directive declared it,
+ * and it is open, or carries no marker, which counts as open (Plan Q5,
+ * `docs/reference/planning-index.md` §6.6). A 🔒 question cannot be answered
+ * yet and a ✅ one has been ruled, so neither has a leaning left to take.
+ *
+ * Both tests, and neither alone. The name is the author's statement, and a
+ * `question` is never answerable whatever its marker says, which is the
+ * promise that let it be a name of its own (`VANTAGE_QUESTION_NAMES`). The
+ * marker still wins over an `oq`, which `vantage-check` reports
+ * (`vantage/question-name`) but a document can carry: this viewer withholds the
+ * button there, though every viewer before `question` existed offers it.
  *
  * The state is read exactly as the contents column reads it (`questionLabel`,
  * then the marker before the text), so the column's glyph and the button can
  * never disagree about which state a question is in.
  */
 export function offersTake(stamped: HTMLElement): boolean {
+  if (!stamped.hasAttribute("data-vantage-oq")) return false;
   const { marker, text } = questionLabel(stamped);
   const status = vantageOqStatus(marker) ?? vantageOqStatus(text);
   return status === null || status === "open";
 }
 
 /**
- * Render the "Take this leaning" affordance for every `[data-vantage-oq]` block
- * in the prose container.
+ * Render the "Take this leaning" affordance for every open `[data-vantage-oq]`
+ * block in the prose container.
  *
  * Idempotent by construction: the pass removes its own previous output before
  * adding any, so a store write (which re-runs it) replaces the buttons rather
@@ -310,12 +327,12 @@ export function useOpenQuestionButtons(
     // left behind (D4(a): no button and no trace of one).
     sweep(el);
 
-    // Every answerable question except the 🔒 and ✅ ones (Plan Q5). Filtered
-    // here and never inside `answerableOpenQuestions`, which the contents
-    // column lists from: the column keeps every state, and only the take is
-    // withheld. A skipped question gets no row at all — no button, no taken
-    // chip, no Undo.
-    const questions = answerableOpenQuestions(el).filter(({ stamped }) =>
+    // Every open `oq` question, and none of the 🔒, ✅ or `question` ones
+    // (Plan Q5). Filtered here and never inside `documentQuestions`, which the
+    // contents column lists from: the column keeps every state, and only the
+    // take is withheld. A skipped question gets no row at all — no button, no
+    // taken chip, no Undo.
+    const questions = documentQuestions(el).filter(({ stamped }) =>
       offersTake(stamped),
     );
     // After the filter, because this count is the buttons': the Review toggle

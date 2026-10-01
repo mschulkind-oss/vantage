@@ -708,14 +708,31 @@ describe("index past max-candidates", () => {
 describe("index's exit 2", () => {
   it("refuses a bad [planning] table", async () => {
     const root = makeTree({
-      ".vantage.toml": "[planning]\nroadmaps = 1\n",
+      ".vantage.toml": "[planning]\nmax-candidates = 0\n",
       "a.md": "# A\n",
     });
     const { code, stdout, stderr } = await index(root);
 
     expect(code).toBe(EXIT_USAGE);
     expect(stdout).toBe("");
-    expect(stderr).toContain("unknown key planning.roadmaps");
+    expect(stderr).toContain("planning.max-candidates");
+  });
+
+  // A key from a newer release is ignored with a warning, and the scan goes
+  // on under the rest of the table (core/config.ts).
+  it("warns about a [planning] key it does not know, and scans under the rest", async () => {
+    const root = makeTree({
+      ".vantage.toml": '[planning]\nexclude = ["b.md"]\nroadmaps = 1\n',
+      "a.md": "# A\n",
+      "b.md": "# B\n",
+    });
+    const { code, stderr, payload } = await indexJson(root);
+
+    expect(code).toBe(EXIT_OK);
+    expect(stderr).toMatch(
+      /^vantage-check: warning: \.vantage\.toml: unknown key planning\.roadmaps/,
+    );
+    expect(payload.index.candidateCount).toBe(1);
   });
 
   it("refuses a --config that is not there", async () => {

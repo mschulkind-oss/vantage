@@ -275,7 +275,9 @@ async function renderDocument(source: string): Promise<HTMLElement> {
 
 /** The stamped host whose block starts on `line`, and its text. */
 function hostAt(root: HTMLElement, line: number): string | undefined {
-  for (const stamped of root.querySelectorAll("[data-vantage-oq]")) {
+  for (const stamped of root.querySelectorAll(
+    "[data-vantage-oq], [data-vantage-question]",
+  )) {
     if (Number(stamped.getAttribute("data-source-line")) === line) {
       return (stamped.textContent ?? "").replace(/\s+/g, " ").trim();
     }

@@ -18,8 +18,11 @@ Vantage supports the full [GitHub Flavored Markdown](https://github.github.com/g
 - Horizontal rules
 - Images and links
 - HTML (sanitized), including [inline SVG](../docs/reference/inline-markup.md#inline-svg)
-  as static drawing, which is Vantage-only: GitHub drops it, so embed a drawing
-  as `![alt](file.svg)` in a document read there
+  as static drawing, from Vantage 0.8. It is Vantage-only: GitHub drops it, so
+  pair each drawing with a
+  [fallback block](../docs/reference/inline-markup.md#fallback-blocks) that
+  GitHub shows instead, or embed it as `![alt](file.svg)` in a document read
+  mostly there
 
 ### Math with KaTeX
 
@@ -200,8 +203,9 @@ decision from you says so before you read a word of it. A tally beside
 scrolls to the question itself, and the link it copies is the question's own
 `#OQ-…` anchor, which is what a reference from another document uses.
 
-Every question carrying an [`oq` directive](reference/style-guide.md) appears,
-in whatever state it is in: open, blocked or answered. A question written
+Every question carrying a [question directive](reference/style-guide.md), an
+`oq` on an open one or a `question` on a blocked or answered one, appears, in
+whatever state it is in. A question written
 without one is not listed, and nothing else in Vantage counts it either
 ([Planning Documents](guides/planning.md#what-vantage-reads)).
 

@@ -112,6 +112,24 @@ e2e:
     sh scripts/e2e-fixture.sh
     cd frontend && npx playwright test
 
+# P0 of docs/design/checker-version-skew.md, as a check: a release never gives
+# existing notation a new meaning. This renders every example the style guide
+# shows, every directive form the vocabulary accepts and every `vantage:`
+# frontmatter value through the previous release's *published* vantage-md, and
+# fails where that release's viewer would read one differently from this tree.
+#
+# It installs that release from npm into a temporary directory of its own, never
+# into the workspace, so it needs the network. That is why check-ci, which must
+# pass offline, does not run it; CI runs it as the compat-previous job. Offline
+# it skips and says so, and in CI a failed fetch fails it. The previous release
+# is the newest release tag npm has, or CHANGELOG.md's newest such version in a
+# clone without tags; name a version to compare with that one instead. See
+# frontend/src/compat/notation.ts for what counts as a misreading.
+
+# Fail where the previous release's viewer would misread this tree's notation (needs the network).
+compat-previous version="":
+    cd frontend && VANTAGE_COMPAT_PREVIOUS='{{version}}' npx vitest run --config src/test/compat/vitest.config.ts
+
 # The whole gate, read-only. `just done` and CI run it; a commit runs it only when check-fast falls back.
 check-ci: _deps-match
     #!/usr/bin/env bash
@@ -371,6 +389,19 @@ release version:
         echo "" >&2
         echo "refusing to cut v{{version}} until its CHANGELOG.md section reads like something" >&2
         echo "a person would want to read. Nothing has been tagged." >&2
+        exit 1
+    fi
+    # P0 (docs/design/checker-version-skew.md): a release never gives existing
+    # notation a new meaning, and once tagged its notation is frozen for good,
+    # so the previous release's viewer is asked one last time before the tag.
+    # CI runs this as the compat-previous job, but nothing ties a tag to a
+    # green run of it, and the commit being tagged may never have been pushed.
+    # CI=true makes a fetch that fails a failure rather than a skip: a tag needs
+    # the network anyway.
+    if ! CI=true just compat-previous; then
+        echo "" >&2
+        echo "refusing to cut v{{version}}: the previous release's viewer would misread" >&2
+        echo "this tree's notation (above). Nothing has been tagged." >&2
         exit 1
     fi
     just web-sync

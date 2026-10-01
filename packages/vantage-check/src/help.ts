@@ -51,7 +51,8 @@ Exit codes:
   0  nothing to fix; for index, it ran
   1  findings that fail the run (never from index, which reports and does not
      judge)
-  2  bad arguments, a bad .vantage.toml, or a path that does not exist
+  2  bad arguments, a bad .vantage.toml, a .vantage.toml whose target is
+     newer than this checker, or a path that does not exist
   3  a check could not run — the documents were not fully checked, so the
      result is unknown rather than clean. For index: the project has more
      candidate files than [planning] max-candidates, so nothing was scanned
@@ -84,6 +85,15 @@ not); roadmap names exactly the ones to read instead, as one path or a list:
   DECIDED = "ready"
   BUILT = "built"
   SUPERSEDED = "done"
+
+A top-level target, written above the first [table], names the oldest Vantage
+release this repository's readers use. A checker older than it refuses to run
+and names the release it needs; any other says on stderr that it read it.
+
+  target = "0.8"
+
+A key, rule id or rule option this checker does not know is ignored with a
+warning on stderr, since a newer vantage-check may know it.
 
 Everything works offline against files on disk: no server, no port, no network.
 `;

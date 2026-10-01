@@ -736,6 +736,9 @@ export const sanitizeSchema: Schema = {
       ["dataVantageCollapseToggle", COLLAPSE_GROUP_ID],
       ["dataVantageRun", ...VANTAGE_RUNS],
       ["dataVantageOq", "true"],
+      // A blocked or answered question, which a `question` directive declares:
+      // the same anchor as an `oq`, and no control (`VANTAGE_QUESTION_NAMES`).
+      ["dataVantageQuestion", "true"],
       // The Open Question's id on its way to becoming a real `id`, pattern-
       // allowlisted like the collapse-group counters above rather than left
       // name-only: `rehypeVantageAnchors` writes this value straight into the

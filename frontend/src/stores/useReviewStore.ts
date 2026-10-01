@@ -1213,7 +1213,14 @@ function respondingInstructions(
     // turn, so it reaches whatever environment the agent has, needs no setup
     // from the user, and arrives at the one moment it is useful — just before
     // the work goes back.
-    `**Before delivering, check the ${single ? "document" : "documents"}.** From the root of this repository run \`uvx vantage-check ${paths.map(shellWord).join(" ")}\` — no install, no server — and fix what it reports. A broken link or a diagram that does not parse is cheaper to find here than in the next review round. If \`uvx\` is not available, deliver anyway — this is a quality gate, not a delivery dependency.`,
+    //
+    // Exit 2 is named because the checker did run there: a configuration error,
+    // or a refusal from a checker older than the repository's `target`
+    // (docs/design/checker-version-skew.md §5). An agent told only "fix what it
+    // reports" would otherwise "fix" a refusal by editing `.vantage.toml`, and
+    // this sentence is frozen into every viewer that ships it, so it is here
+    // before any release relies on a refusal.
+    `**Before delivering, check the ${single ? "document" : "documents"}.** From the root of this repository run \`uvx vantage-check ${paths.map(shellWord).join(" ")}\` — no install, no server — and fix what it reports. A broken link or a diagram that does not parse is cheaper to find here than in the next review round. If the command cannot run, or exits 2 (a configuration error or a refusal), deliver anyway and leave \`.vantage.toml\` as it is — this is a quality gate, not a delivery dependency.`,
     "",
     single
       ? "After addressing your comments: **save the document first**, then deliver your responses with a single command from the root of this document's repository:"
