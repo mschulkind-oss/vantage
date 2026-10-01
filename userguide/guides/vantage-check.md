@@ -272,7 +272,7 @@ one list.
 
 ## What it checks
 
-Four groups, and the difference between them is the whole idea.
+Five groups, and the difference between them is the whole idea.
 
 **Our rules** need *this repository on disk* and Vantage's routing semantics. No
 general-purpose Markdown linter can answer them, which is why they are written
@@ -536,6 +536,30 @@ asked to check.
 - **The roadmaps are found from the file's [project root](#vantage-check-index)**,
   the same root `index` scans. With no root, the per-document rules still run,
   and `planning/unrouted` finds no roadmap and reports nothing.
+
+**Prose** is the fifth group, and its rule is a warning: it reports how a
+paragraph reads, which can be meant, rather than something that does not work.
+
+| Rule | Catches | Default |
+| :--- | :--- | :--- |
+| `prose/inline-list` | A paragraph that runs three or more enumerators together, as `(a) … (b) … (c)`, instead of a list | warning |
+
+`prose/inline-list` reads every paragraph, in a list item, a quote or a
+footnote as much as at the top level, and fires on one that holds a run of
+three or more parenthesized enumerators: `(a) (b) (c)`, `(A) (B) (C)`,
+`(1) (2) (3)` or `(i) (ii) (iii)`, each the next in its sequence from the
+first, in the order they are written, and each after some text of the item
+before it. So a lone `(c) 2026`, a reference to `(1)`, a call such as `f(a)`
+and the two terms of "either (a) or (b)" are all left alone. So are terms with
+nothing but punctuation, `and`, `or` or `nor` between them, as in "certified
+(a), (b) or (c)", which name items written somewhere else rather than write
+them, and a run that already sets each term after the first on a line of its
+own with a hard line break or a `<br>`. It reports a paragraph once, at the
+first term of its run, and fixes nothing, because rewriting a sentence into a
+list is the author's call. Headings and table cells are never read (GFM cannot
+put a list in a cell), and neither are code blocks, math, HTML blocks, link
+destinations or the text of inline code, whether in backticks or in a
+`<code>`, `<kbd>` or `<samp>` tag, so a specimen written as code is safe.
 
 ---
 

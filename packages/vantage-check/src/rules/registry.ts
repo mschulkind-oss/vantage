@@ -291,6 +291,15 @@ export const RULES: readonly RuleMeta[] = [
       },
     },
   },
+  // `prose/*` — how a paragraph reads, where the parsed tree settles it. A
+  // warning, because it reports a shape rather than a fault, and a shape can
+  // be meant (`rules/prose.ts`).
+  {
+    id: "prose/inline-list",
+    summary:
+      "A paragraph that runs three or more enumerators together, as `(a) … (b) … (c)`, instead of a list",
+    default: "warning",
+  },
   {
     id: "render/pipeline",
     summary:
