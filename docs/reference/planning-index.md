@@ -45,12 +45,14 @@ read these documents, repointing them here, so the code it describes is `9507cac
 unchanged. The Post-pass row in [§2](#2-terms) and the post-pass paragraph in
 [§13.3](#133-the-planning-rules), which said the post-pass runs after every file,
 were corrected on 2026-10-01 and re-verified against `7fa8cbf`; nothing else was.
-**UNMEASURED at scale:** of the scale targets in
-[§18](#18-scale-targets-and-what-has-been-measured), only D1 and D2 have been run
-against the build, on this repository's own tree; D8, D11, D12 and D13 are held
-by tests, and the rest have never been run. Reading the code proves the
-mechanisms exist, not that they meet those targets. Running the rest is
-[its own piece of work](../design/planning-index-measurement.md).
+**MEASURED at scale on 2026-10-01**, against `46c4091`'s code: every scale target
+in [§18](#18-scale-targets-and-what-has-been-measured) has been run against the
+build, or is held by a test. The scale fixture meets every target but D6 as the
+harness counts it and D3's cold slope, which the runs cannot resolve, and this
+repository misses D2, D4's cards and D9. Each of those waits on a ruling or a run
+in [its own piece of work](../design/planning-index-measurement.md).
+The note in [§12.3](#123-the-hold) and the record of what has been run were
+rewritten from those runs; nothing else was re-verified.
 
 The **planning index** is Vantage's model of a repository's planning documents:
 their frontmatter, their open questions and the links between them. It is
@@ -1913,9 +1915,19 @@ already in hand waits for nothing. While it holds, the previous document stays u
 when moving between documents in the app, or the app's shell on a first load.
 
 > [!NOTE]
-> **The hold is measured before it is kept.** If, on the scale fixture, the index and
-> the git data are already in hand when the content arrives on nearly every warm load,
-> the hold is to be removed. That measurement has not been made
+> **Measured, and kept.** The hold was to be removed if, on warm loads of the scale
+> fixture, the index and the git data were nearly always in hand when the content
+> arrived. On 2026-10-01 they never were. On 60 warm loads (15 at each size: the
+> roadmap's reload and the first copy of each source document), the index was set
+> ready 18 to 57 ms after the content arrived, 35 at the median. Git status, history,
+> the recent-files list and `/info` were in hand on 3, 12, 0 and 8 of the 60 loads,
+> and otherwise arrived within 7 ms. Every datum arrived inside the hold, so all 60
+> first paints held the index and the header's git data. Without the hold, each
+> would have painted without them, and its link badges in the blocks on screen would
+> have waited for the next render
+> ([§12.2](#122-every-late-datum-and-where-its-space-comes-from)). The hold costs that
+> wait, and it moves the held document's first render into the task that sets the
+> index ready, which is where D6's counted tasks come from
 > ([§18](#18-scale-targets-and-what-has-been-measured)).
 
 ---
@@ -2328,9 +2340,9 @@ measurements, so the exact numbers are stated in the table.
   slopes over that mix, so a fixture of another mix measures something else.
 - **Both are in the tree.** The harness writes the scale fixture to a temporary
   directory on every run, from four documents read at a pinned commit, and checks
-  its averages and its sections before it measures anything. The runs recorded
-  below came before either, from scratch scripts and fixtures kept in worktrees of
-  their own.
+  its averages and its sections before it measures anything. The 2026-09-30 run
+  recorded below came before either, from scratch scripts and fixtures kept in
+  worktrees of their own.
 
 | # | Target | This repository | Scale fixture |
 | :--- | :--- | :--- | :--- |
@@ -2350,6 +2362,79 @@ measurements, so the exact numbers are stated in the table.
 
 **What has been run against the build:**
 
+- **Every target not held by a test, on 2026-10-01,** with `just planning-perf` on
+  `46c4091`'s code (the harness's own commit changes no app code). The machine has
+  32 cores and is shared with other agents. Every batch but one began below a
+  one-minute load average of 4; one of the two first-build batches began at 4.55.
+  Other agents' Vitest and Playwright runs overlapped some batches. The browser
+  was headless Chromium 151. A cell is a median of three runs
+  unless it names more, cold / revisit / warm, at 15 · 30 · 45 · 60 documents on
+  the fixture; times are in ms. A heap is in MiB (2²⁰ bytes), the unit this project's
+  earlier heap readings used. *Over* counts the runs past the target. This
+  repository's tree held 19 planning documents of 47 candidates.
+
+| # | Scale fixture | This repository | Result |
+| :--- | :--- | :--- | :--- |
+| D1 | 29 / 10 / 16 · 30 / 11 / 16 · 27 / 13 / 14 · 30 / 14 / 14, from 3 runs at 15 and 30 and 21 at 45 and 60; over: 0 of 144 | 28.5 / 13.0 / 14.9 over 15 runs: 3 alone, 6 alternating with `9507cac`, and 6 alternating with this build serving `9507cac`'s tree; over: 1 cold (50.3) | Met |
+| D2 | 160 / 123 / 117 · 170 / 130 / 128 · 172 / 133 / 133 · 176 / 135 / 138, from the same runs; over: 1 of 144 (259, cold at 45) | 131.9 / 110.9 / 109.1 over the same 15 runs; over: 8, 13 and 7 of 15 | Met on the fixture. **Missed** here, cold and revisit; warm met, just under its line |
+| D3 | 0.27 / 0.12 / 0.35 ms per document from the 21 runs a size without the heap step, one size after the other; −1.48 / 0.33 / 0.03 from 40 runs a size alternating 45 and 60 | — | Met for revisit and warm. **Not resolved** for cold (below) |
+| D4 | Frame 78 / 64 / 71 · 76 / 85 / 86 · 94 / 87 / 95 · 73 / 71 / 92; cards 397 / 330 / 346 · 372 / 324 / 370 · 401 / 337 / 370 · 364 / 302 / 364; over: 0 | Frame 82 / 94 / 75, over: 1 of 9; cards 319 / 324 / 292, over: 9 of 9 | Met on the fixture. **Cards missed** here |
+| D5 | 25 · 15 · 15 · 15; over: 0 | 26; over: 0 | Met; the index was still building in every run |
+| D6 | No long task in the first 180 `g p`, nor in 12 while the index built; 4 in 240 more (below). During builds, 33 tasks of 50 to 100 ms, each handling the scan worker's messages: in 25 of 48 warm loads of planning documents, and in 8 of 60 cold loads of the roadmap | The same kind, in 8 of 11 cold loads, 52 to 144 ms | **Missed as the harness counts it.** Profiles on the dev server put none in the scan, index assembly or a section commit (below) |
+| D7 | Cold 251 · 380 · 486 · 650 with one thread and no helper; warm 43 · 44 · 33 · 51 | Cold 561 over 11 runs, the first build's; over: 3 (776, 939 and 1,263, the last two during another agent's Vitest run); warm 37 | Met |
+| D9 | 12.1 / 12.6 / 12.1 · 12.7 / 13.1 / 12.7 · 13.0 / 13.4 / 13.0 · 13.2 / 13.5 / 13.1; from 15 to 60, 0.020 to 0.024 per document | 12.2 / 12.6 / 12.2; every run over | Met on the fixture in MiB only: in 10⁶-byte MB the revisit at 60 is over (below). **Missed** here in either unit |
+| D10 | 1,598 · 1,881 · 1,976 · 1,986, in every scenario | 1,838 | Met |
+| First build | — | 561 over 11 cold loads; over a second: 1 | Met |
+
+- **D1 and D2 come from runs without D9's heap step.** Two batches read D9 and D10
+  in the same flow as D1 and D2, and D9's garbage collection slows every later `g p`
+  of the page: in paired runs at 15 and 60 documents, six a cell, it added about 34
+  ms to warm D2, 18 to 26 to revisit D2 and 14 to 17 to warm D1, while cold, read
+  before the first collection, was unaffected. Those batches' D1 and D2 are left
+  out: the fixture's cells above come from the batches without the step, and this
+  repository's from 15 of its 18 runs. The harness now reads D9 and D10 in a flow of
+  their own.
+- **D3 takes many runs, and cold cannot yet be read from medians.** The 95%
+  intervals, bootstrapped from the runs, are −0.21 to 0.28 ms per document for
+  revisit in the first pool and −0.51 to 0.59 in the alternating run (−0.10 to
+  0.49 taken as the median of each run's own difference); for warm, −0.16 to 1.80
+  and −0.40 to 0.33. Cold D2 has two modes, near 140 and near 180 ms, and the share
+  of runs in each moves the slope more than 15 documents do: −0.65 to 1.73 in the
+  first pool, and −2.38 to −0.16 in the second, where 22 of 40 cold runs at 60 fell
+  in the lower mode against 14 of 40 at 45. A three-run cell cannot resolve any of
+  the three: five batches of three or nine runs read from −0.52 to 2.43.
+- **The alternating run,** 40 runs a size at 45 and 60 on the same code, with the
+  harness as it now is, began at a load average of 2.5 and ended at 8.9, so other work
+  reached the machine before it finished; its 39th run was its slowest.
+  Its D1 medians were 30 / 13 / 15 and 27 / 13 / 15, none over. Its D2 medians were
+  179 / 130 / 138 and 156 / 135 / 138, and 4 of its 240 `g p` were over 250, all
+  cold: 267 and 293 at 45, and both sizes' in that 39th run. Each of those four ran
+  a long task of 51 to 68 ms after the `p`, in React's scheduler, which is the
+  planning page's own render and counts against D6. CLS was 0 throughout.
+- **What D6's counted tasks hold is known from the dev server.** The production
+  runs show only that each counted task's script is the scan worker's message
+  handler. Profiles of three warm loads of fixture documents, made on the Vite dev
+  server rather than the production bundle, show that task to be the document's
+  own first render: react-markdown and, in a document with a diagram, Mermaid,
+  with planning code's share under 3 ms. It runs in the task that sets the index
+  ready, or that brings a cold build's `started`, because that is where the hold
+  ends ([§12.3](#123-the-hold)). In production, when the content arrives after the
+  hold has ended, the same render is a task of 42 to 57 ms that the harness does
+  not count.
+- **The build this reference was verified at, `9507cac`,** run in alternation with
+  this one on this repository through the harness's own flow, misses D2's revisit
+  and D9 too. Over six runs each, it measured D2 at 116.7 / 105.4 / 103.8 against
+  this build's 122.0 / 110.0 / 105.5, a gap inside the runs' spread. Over three
+  runs each, with the planning page open, it measured D9 at 12.03 to 12.05 against
+  this build's 12.20 to 12.22: this build adds 0.17, and the two ranges do not
+  overlap. The 2026-09-30 run's own script, run on that build on 2026-10-01, read
+  D2 at 129 / 108 / 108, where on 2026-09-30 it recorded 104 / 86 / 87 for the
+  build then current.
+- **D9 in 10⁶-byte megabytes** puts the fixture's revisit at 60 documents at 14.2,
+  over its target; every other fixture cell stays under.
+- **CLS** was 0 after all 243 `g p` of the first batches, on the production and the
+  dev server alike, and after the alternating run's 240.
+- **The hold** was measured too, and stays ([§12.3](#123-the-hold)).
 - **D1 and D2, on this repository's tree only,** on 2026-09-30, after the page moved
   into the app shell: twelve runs a scenario, interleaved with the build before the
   shell (`372fef3`), on one shared machine. D1's medians were 13 ms warm and revisit
@@ -2359,16 +2444,12 @@ measurements, so the exact numbers are stated in the table.
   (D8), the page's and the reviews hook's tests (D11),
   `frontend/e2e/stable_paint.spec.ts` and `planning_page.spec.ts` (D12), and a Go
   stream test with `max-file-bytes` and the flush interval configured down (D13).
-- **Never run:** D1 and D2 on the scale fixture, and D3, D4, D5, D6, D7, D9 and D10
-  anywhere. Nor has the hold's keep-or-remove measurement
-  ([§12.3](#123-the-hold)) been made.
 
-The first design also set this repository's first build at under a second, and the
-main-thread scan it was measured on met it; the worker build has not been timed
-against it.
+The first build's target, under a second for this repository, is the first
+design's; the main-thread scan it was set against met it too.
 
-Running these, in order, and what each result changes is
-[its own piece of work](../design/planning-index-measurement.md), which the
+D6, D3's cold slope, and D2, D4 and D9 on this repository wait on rulings or runs
+in [the measurement work](../design/planning-index-measurement.md), which the
 roadmap places.
 
 ---
