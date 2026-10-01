@@ -9,6 +9,123 @@ commit log.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-09-30
+
+`vantage-check index` shows an agent what a repository's plans still need, the
+viewer gains a planning page and badges on planning links, and `vantage ~/code`
+serves each clone as its own project.
+
+### Added
+
+**`vantage-check index` and five planning rules.** `vantage-check index` prints
+what a repository's planning documents still owe: the questions that need a
+ruling, the ones no roadmap has placed, what waits on what, and which documents
+are ready to build. It needs no server, and `--format json` gives a script the
+whole index. `check` gains five `planning/*` rules, and the style guide teaches
+agents the `stage`, `next` and `depends-on` keys they read. See
+[`vantage-check index`](userguide/guides/vantage-check.md#vantage-check-index).
+
+**The planning page, and badges on planning links.** A link to a document with a
+`status`, a `stage` or open questions gets a badge with their current values,
+such as `in-review · DESIGN · 💬 5`. Press `g p` for the planning page: the
+questions waiting on someone, in your roadmap's order. You can answer an open
+question from its card, and **Copy answers** hands every answer to the agent at
+once. See [Planning Documents](userguide/guides/planning.md).
+
+**Roadmaps are found by name.** Every `roadmap.md`, in any folder, is a roadmap,
+and with several the planning page lets you pick one. To limit them, list yours
+in `roadmap` under `[planning]` in `.vantage.toml`. A build of `main` whose
+`[planning]` `include` or `exclude` ruled out the root `roadmap.md` read it
+anyway; Vantage now shows _No roadmap_ until you add `roadmap = "roadmap.md"`.
+A roadmap whose stage has the `done` role places no questions, even one you
+list: give it a stage without that role, or list another. See
+[The roadmap](userguide/guides/planning.md#the-roadmap).
+
+**Inline SVG.** An `<svg>` in a document renders as a drawing, with scripts,
+images and `url(…)` references refused. Wrap it in a `<div>` on its own line,
+with no blank line inside. Colors written in `style`, as Inkscape and matplotlib
+write them, are dropped, so their exports render black. See
+[Inline SVG](docs/reference/inline-markup.md#inline-svg).
+
+### Changed
+
+**If your readers stay on 0.7, pin your agents' checker.** Bare `uvx
+vantage-check` runs the newest release, and two things its style guide teaches
+render wrong in a 0.7.x viewer. An inline `<svg>` loses its drawing, and its
+text runs together as a paragraph. An `oq` directive, which the guide now
+requires on blocked (🔒) and answered (✅) questions too, makes 0.7.x review
+mode offer **Take this leaning** on them. Upgrade the viewer, or run
+`uvx vantage-check@0.7.1` for `check` and `style-guide` until you do. See
+[Which release it writes for](userguide/guides/vantage-check.md#which-release-it-writes-for).
+
+**`vantage-check` names its release.** The first line of `style-guide` names the
+release it writes for, and `check` names it beside a directive name,
+`.vantage.toml` key or rule it does not know, so you can tell a typo from markup
+a newer Vantage wrote.
+
+**A document can no longer draw over Vantage's own page.** If you write HTML or
+Mermaid by hand, four changes affect how it renders:
+
+- Vantage keeps a `class` only where Markdown puts one itself: a code block's
+  language, task lists, footnotes and alert titles. The app's own utility
+  classes no longer style a document.
+- Vantage accepts `display` only as one listed keyword, never `contents`. As
+  with any refused declaration, the element loses its whole `style`.
+- Vantage ignores a Mermaid diagram's `themeCSS`, `fontFamily` and
+  `altFontFamily`, `themeVariables.fontFamily` included. Its `theme` and its
+  other `themeVariables` still apply.
+- A task-list checkbox keeps no `style`.
+
+`vantage-check` reports none of these yet, so look at the rendered page. See
+[Security](docs/reference/inline-markup.md#security).
+
+**`vantage ~/code` serves each clone as its own project.** When the directory
+you name is not inside a git repository and holds clones, Vantage serves it the
+way the daemon serves a `source_dirs` entry, plus one project for any Markdown
+outside the clones. As a single project, no clone's `.gitignore` applied and
+git status stayed blank. `--one-project` keeps the old behavior, and only it
+shows the review comments you left on Markdown outside the clones. See
+[Serve a directory of clones](userguide/getting-started.md#serve-a-directory-of-clones).
+
+**A startup tip.** When `vantage` starts in a terminal, it prints one line about
+the background service, such as `vantage install-service --source-dir ~/code`
+for a directory of clones. Set `VANTAGE_NO_TIPS=1`, or `tips = false` in your
+config, to turn it off.
+
+**Checker changes a CI job can notice.** `vantage-check index` now runs the new
+command, so to check a file or folder named `index`, write `vantage-check
+./index`. `vantage/oq-missing` now also reads a leaning written
+`_Leaning (note):_` or `Leaning —`, so it can report a question 0.7.1 passed.
+`planning/question-length` warns on a question past 120 words, which fails a
+`--strict` run, and `planning/depends-on-missing` is an error. Pin the checker
+to take these when you choose; see
+[In CI](userguide/guides/vantage-check.md#in-ci).
+
+### Fixed
+
+- On macOS, a request for any case of `.git` or `.vantage`, such as
+  `.GIT/config`, which can hold a token, read the real file; so did
+  `docs/../.vantage/…` on every platform. Vantage refuses both now.
+- Review mode's **Copy** quotes each path it hands the agent, so a file name
+  holding `$(…)` or a backtick cannot run a command.
+- A file changing while you clicked a link could leave the address on the new
+  document and the page on the old one.
+- The file name is the last thing in the document header to give up room, where
+  it used to be the first, even in a wide window.
+- When the folder holding the document you are reading is renamed, the page
+  follows the document to its new address, with your place and your comments.
+- A page in a project or folder named `api` opens on a reload or from a
+  bookmark, instead of showing a JSON 404.
+- On macOS, a large tree could use up the server's open files and stop it, and
+  a folder could go unwatched for good when a file in it vanished at the wrong
+  moment.
+- A document reloaded when only its attributes changed, as Spotlight and backup
+  tools do.
+
+### Contributors
+
+Thanks to Eduardo Hidalgo ([@edus44](https://github.com/edus44)) for inline SVG.
+
 ## [0.7.1] - 2026-09-27
 
 ### Added
