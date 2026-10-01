@@ -50,8 +50,8 @@ On macOS, `Cmd+Enter` works as `Ctrl+Enter` does.
 
 `r` and `Shift+R` open the same list of recently changed files, with who changed
 each one, in which commit, and when. `r` lists the current project's; `Shift+R`
-lists every project's, with each file's project shown beside its folder. When
-the list is open:
+lists every project's, with each file's project shown beside its folder, and so
+does `r` on the project list, where no project is chosen. When the list is open:
 
 | Key                         | Action                                 |
 | --------------------------- | -------------------------------------- |
