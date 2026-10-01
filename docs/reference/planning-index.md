@@ -2314,7 +2314,9 @@ measurement is held to; code and tests cite them by id. They are requirements, n
 measurements, so the exact numbers are stated in the table.
 
 - **The harness** is the production bundle in headless Chromium at 1440×900, three
-  runs per cell.
+  runs per cell: `just planning-perf`, in
+  [`frontend/perf/planning/`](../../frontend/perf/planning/README.md), whose README
+  says how each target is read and what it cannot see.
 - **The scenarios** D1 and D2 name all start from a document whose index is ready.
   **Cold** is `g p` in a new browser profile, so the scan cache was empty;
   **revisit** is `g p` again after going back to that document in the same tab; and
@@ -2324,9 +2326,11 @@ measurements, so the exact numbers are stated in the table.
   more, so no run builds a large input. Each document is a renamed copy of one of
   four real documents, 20.4 KB and 3.75 cards per document on average. D3 and D9 are
   slopes over that mix, so a fixture of another mix measures something else.
-- **Neither is in the tree.** The runs so far used scratch scripts and fixtures kept
-  in worktrees of their own, so the first step of any new run is to build them
-  again.
+- **Both are in the tree.** The harness writes the scale fixture to a temporary
+  directory on every run, from four documents read at a pinned commit, and checks
+  its averages and its sections before it measures anything. The runs recorded
+  below came before either, from scratch scripts and fixtures kept in worktrees of
+  their own.
 
 | # | Target | This repository | Scale fixture |
 | :--- | :--- | :--- | :--- |
