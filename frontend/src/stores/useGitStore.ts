@@ -36,7 +36,7 @@ export interface PathGitStatus {
    * It is still an answer — a first paint waiting on it stops waiting — but
    * not a status: an answer with no commit reads as an untracked file, which
    * is a guess about a file that may well be tracked
-   * (`docs/design/planning-index-at-scale.md` §11.1, L3). The next push for
+   * (`docs/reference/planning-index.md` §12.1, L3). The next push for
    * the path, or the next visit to it, asks again.
    */
   failed?: true;
@@ -57,7 +57,7 @@ interface GitState {
    * the repository asked about last. A path that is absent has no answer yet:
    * its status is not known, and the viewer's header shows nothing that
    * depends on it — above all not *Untracked file*, which is what an absent
-   * commit used to read as (`docs/design/planning-index-at-scale.md` §11.1,
+   * commit used to read as (`docs/reference/planning-index.md` §12.1,
    * L3). Kept per path rather than as one current answer so that asking about
    * the next document, which the viewer does together with its content, leaves
    * the header of the document still on screen alone.
@@ -79,7 +79,7 @@ interface GitState {
   /**
    * Whether `/info` has been asked for and has not answered yet: the header's
    * Path button is on its way, which a document's first paint waits for
-   * briefly (`docs/design/planning-index-at-scale.md` §11.3).
+   * briefly (`docs/reference/planning-index.md` §12.3).
    */
   isRepoInfoLoading: boolean;
 

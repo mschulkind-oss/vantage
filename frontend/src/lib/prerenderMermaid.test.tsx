@@ -1,6 +1,6 @@
 /**
  * Drawing a Mermaid diagram before the card that holds it renders
- * (`docs/design/planning-index-at-scale.md` §10.3): the planning page reads
+ * (`docs/reference/planning-index.md` §6.5): the planning page reads
  * each fence out of a card block with `mermaidFences`, draws it with
  * `prerenderMermaid` into the SVG cache `MermaidDiagram` reads on mount, and
  * only then commits the card, so the diagram is at its full size on its first

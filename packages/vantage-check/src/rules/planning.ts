@@ -32,9 +32,9 @@ import type { EnvironmentFailure, Finding } from "../core/types.js";
 import { questionWords } from "./questionLength.js";
 
 /**
- * The planning rules (`docs/design/planning-index.md` §8), run once in the
- * main thread after every file has been checked: the *post-pass*, a term the
- * implementation plan coined.
+ * The planning rules (`docs/reference/planning-index.md` §13), run once in the
+ * main thread after every file has been checked: the *post-pass*, a term
+ * that document defines in §2.
  *
  * Not per file, as every other rule is, for two reasons. A worker is handed
  * rule settings and hands back findings, and nothing else crosses: the
@@ -46,7 +46,7 @@ import { questionWords } from "./questionLength.js";
  * `planning/question-length` to measure, which reads the questions the scan
  * found, so it measures exactly the ones the page shows a card for.
  *
- * The rules read a *narrow index* (also the plan's term): the index built from
+ * The rules read a *narrow index* (also defined there): the index built from
  * the roadmaps plus the run's own candidates. Every rule needs only a document
  * and the roadmaps, and the page's sections, derived from that batch, give
  * each of the run's documents exactly the membership the full index would.
@@ -57,7 +57,7 @@ import { questionWords } from "./questionLength.js";
  * by name cannot be known without listing the tree, so the pass walks the
  * project root's listing once for them, and only when `planning/unrouted` is
  * on and one of the run's documents has an open question it could report
- * (design §8). The walk counts nothing and refuses nothing.
+ * (§13). The walk counts nothing and refuses nothing.
  */
 
 export const PLANNING_RULES = [
@@ -177,9 +177,9 @@ class PlanningPass {
       }
     };
 
-    // Only candidates are planning documents (design §3.1). A repository
+    // Only candidates are planning documents (§3.1). A repository
     // whose files use `stage` for something else excludes them, and that has
-    // to quiet these rules too (§13).
+    // to quiet these rules too (§3.1).
     const listing = this.root === null ? null : new Listing(this.root);
     const checked = new Map<string, string>();
     // Whether a checked document has an open question `unrouted` could
@@ -269,7 +269,7 @@ class PlanningPass {
   }
 
   /**
-   * The paths the project's roadmaps may be at, candidates all (design §6.1):
+   * The paths the project's roadmaps may be at, candidates all (§4.1):
    * each listed one the listing holds, whatever `include` and `exclude` say,
    * or, with none listed, every candidate named `roadmap.md`, found by the
    * one walk of the listing this pass makes.
@@ -297,7 +297,7 @@ class PlanningPass {
   private mayFire(content: string): boolean {
     const { frontmatter, problem } = parseFrontmatter(content);
     // A header that does not parse makes the document unreadable to the
-    // index, and it contributes nothing (design §3.6).
+    // index, and it contributes nothing (§15).
     if (problem !== undefined) return false;
     const has = (key: string) => Object.hasOwn(frontmatter, key);
     const enabled = (rule: PlanningRule) => this.settings.enabled(rule);
@@ -469,7 +469,7 @@ class PlanningPass {
    * Whether a file with no project root is a candidate. There is no listing
    * to consult, and no repository to anchor `include` and `exclude` to, so
    * they are read against the working directory, the tree `index` scans when
-   * there is no root (§8). A file outside it is matched by its extension
+   * there is no root (§13). A file outside it is matched by its extension
    * alone.
    */
   private candidateWithoutRoot(file: string, rel: string): boolean {

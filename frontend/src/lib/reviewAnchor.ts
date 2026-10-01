@@ -30,7 +30,7 @@ import type { CommentAnchor } from "../types";
  * silently drifts.
  *
  * A planning badge is the sharpest case of that rule
- * (`docs/design/planning-index.md` §13): its text is its target's live state, so
+ * (`docs/reference/planning-index.md` §5.3): its text is its target's live state, so
  * a count changing in another document would move every anchor on a roadmap
  * line that links to it.
  *

@@ -603,8 +603,8 @@ which questions need a ruling, which ones no roadmap has placed, what waits on
 what, and which documents are ready to build or to graduate, then the chosen
 roadmap with each link's badge written inline. It is how an agent sees what a
 person sees on the [planning page](planning.md#the-planning-page), with no
-server running. Design background:
-[`planning-index.md` §8](../../docs/design/planning-index.md#8-vantage-check-index-and-the-planning-rules).
+server running. How it works:
+[`planning-index.md` §13](../../docs/reference/planning-index.md#13-vantage-check-index-and-the-planning-rules).
 
 | Option | Effect |
 | :--- | :--- |

@@ -13,8 +13,8 @@ import (
 )
 
 // The server id is what keeps one server's scan results from being sent to
-// another answering at the same address (docs/design/planning-index-at-scale.md
-// §8.2), so every part of what it names has to move it: the host, which is
+// another answering at the same address (docs/reference/planning-index.md
+// §11.2), so every part of what it names has to move it: the host, which is
 // what differs behind one local tunnel port, and the root key, which is what
 // differs between two repositories started on the same port.
 func TestTheServerIDNamesTheHostAndTheInvocation(t *testing.T) {

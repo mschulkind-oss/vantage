@@ -1,11 +1,11 @@
 // Package planning serves the planning index its sources: which Markdown files
 // are candidates, and the text of each one, within the limits `[planning]`
-// sets. Design: docs/design/planning-index.md §3, and for the stream and the
-// content hash docs/design/planning-index-at-scale.md §6.
+// sets. Architecture and invariants: docs/reference/planning-index.md, which
+// covers candidates in §3.1 and the stream and the content hash in §9.
 //
 // The server lists, filters and reads. It never parses Markdown: the planning
 // scan lives in vantage-md and runs in the viewer and in vantage-check, so that
-// one parser decides what a document says (the design's principle P4). What
+// one parser decides what a document says (the reference's principle P4). What
 // this package decides is only what the scan is given.
 //
 // # Candidates
@@ -27,7 +27,7 @@
 // roadmap is sent whole, never as `same`. The stream marks no line as a
 // roadmap; its header carries the config, and the browser applies the same
 // test to it. testdata/planning-roadmaps.json in internal/repoconfig holds the
-// two tests to one answer. Design: docs/design/planning-index.md §6.1.
+// two tests to one answer. Reference: docs/reference/planning-index.md §4.1.
 //
 // # Limits
 //

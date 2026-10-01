@@ -115,7 +115,7 @@ describe("FrontmatterDisplay", () => {
 });
 
 describe("FrontmatterDisplay — `next` links its question ids", () => {
-  // docs/design/planning-index.md §4: a bare `OQ-…` id in `next` links to this
+  // docs/reference/planning-index.md §3.4: a bare `OQ-…` id in `next` links to this
   // document's question when one of its questions carries that id.
   const nextCell = () =>
     screen.getByText("next").closest("tr")!.querySelectorAll("td")[1];
@@ -177,7 +177,7 @@ describe("FrontmatterDisplay — `next` links its question ids", () => {
     expect(screen.getByText("Rule OQ-1")).toBeInTheDocument();
   });
 
-  // §4 ignores a `next` that is not one line, as the index does, so its ids
+  // §3.4 ignores a `next` that is not one line, as the index does, so its ids
   // are not the header's to link.
   it("links nothing in a `next` that runs over several lines", () => {
     render(

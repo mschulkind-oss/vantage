@@ -1,6 +1,6 @@
 /**
  * One candidate file, read into what it gives the planning index
- * (`docs/design/planning-index.md` §3.1–§3.3 and §4).
+ * (`docs/reference/planning-index.md` §3.1–§3.3 and §3.4).
  *
  * The scan lives in `packages/vantage-md/src/planning/scan.ts`, which has no
  * suite of its own; this runs it through the frontend's `vantage-md/planning`
@@ -583,7 +583,7 @@ describe("a question (§3.3)", () => {
   });
 });
 
-describe("the header of record (§4, Plan Q20)", () => {
+describe("the header of record (§3.4, Plan Q20)", () => {
   // `status` on line 2 makes each a planning document, since `next` and
   // `depends-on` alone do not (§3.1); the key under test starts on line 3.
   const header = (yaml: string) =>

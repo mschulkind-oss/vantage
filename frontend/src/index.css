@@ -127,7 +127,7 @@ code {
    late then goes into room the toolbar already had: nothing to its right
    moves, and neither does the toolbar's own box, which, sized to its items,
    grew leftward and was a layout shift of its own even though it draws
-   nothing (docs/design/planning-index-at-scale.md §11.2). `safe` sends an
+   nothing (docs/reference/planning-index.md §12.2). `safe` sends an
    overflow off the far end, where the fit measures it; where it is not
    supported, the fit checks the near end too. */
 .hdr-tools {
@@ -1789,7 +1789,7 @@ th.review-block-hovered {
 }
 
 /* ──────────────────────────────────────────
-   Planning badges (docs/design/planning-index.md §5)
+   Planning badges (docs/reference/planning-index.md §5)
    ────────────────────────────────────────── */
 /* A badge sits after a link as its own element and says what the link's target
    says about itself: its status chip, its stage and its open questions, or one
@@ -1831,14 +1831,14 @@ th.review-block-hovered {
 .vantage-planning-badge__part--answered {
   color: var(--vantage-tone-tip-ink);
 }
-/* A stage outside the declared words (§4), and a question that is not there. */
+/* A stage outside the declared words (§3.4), and a question that is not there. */
 .vantage-planning-badge__part--warning {
   color: var(--vantage-tone-warning-ink);
   font-weight: 600;
 }
 
 /* ──────────────────────────────────────────
-   Planning state in the file tree (docs/design/planning-index.md §7)
+   Planning state in the file tree (docs/reference/planning-index.md §7)
    ────────────────────────────────────────── */
 /* The file name wins. The slot after the name has a flex basis of zero, so the
    row lays the name out exactly as if the slot were not there: it keeps the
@@ -1893,7 +1893,7 @@ th.review-block-hovered {
   border-radius: 9999px;
   background-color: var(--vantage-chip-ink, var(--vantage-tone-muted-ink));
 }
-/* A stage outside the declared words (§4) takes the warning tone, and a ring
+/* A stage outside the declared words (§3.4) takes the warning tone, and a ring
    rather than a dot, so it does not read as `in-review`, which is warning too. */
 .vantage-tree-badge__dot--undeclared {
   box-sizing: border-box;
@@ -1915,7 +1915,7 @@ th.review-block-hovered {
 }
 
 /* ──────────────────────────────────────────
-   The planning page's question card (planning-index.md §6.3)
+   The planning page's question card (planning-index.md §6.6)
    ────────────────────────────────────────── */
 /* A card renders the root-level block holding its question, which is usually
    the whole Open Questions list, and then shows only the question: the card
@@ -2067,7 +2067,7 @@ th.review-block-hovered {
   }
 }
 /* A Mermaid diagram that was not drawn when its card painted
-   (planning-index-at-scale.md §10.3) draws later into a frame of fixed height,
+   (planning-index.md §6.5) draws later into a frame of fixed height,
    scaled to fit, so its arrival moves nothing; so does the error box of one
    that cannot be drawn. The card sets the height from the limits module. */
 .planning-card-body [data-planning-mermaid-frame] {

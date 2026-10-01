@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 /**
- * The *project root* (a term coined in `docs/design/planning-index.md` §8):
+ * The *project root* (a term defined in `docs/reference/planning-index.md` §13.1):
  * the nearest ancestor of a directory that holds `.git` or `.vantage.toml`.
  *
  * One definition for every command that needs to know which repository a file

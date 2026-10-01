@@ -73,7 +73,7 @@ export default defineConfig(({ mode }) => {
     // The planning scan worker (src/planningScan/worker.ts): a module worker,
     // bundled with an instance of the scanner-id plugin of its own, which
     // serves it the id and fails a build whose worker bundle holds code the id
-    // does not hash (docs/design/planning-index-at-scale.md §8.2). Rolldown
+    // does not hash (docs/reference/planning-index.md §11.2). Rolldown
     // takes the plugins as a function, one fresh set per worker bundle.
     worker: {
       format: "es",
@@ -89,7 +89,7 @@ export default defineConfig(({ mode }) => {
       alias: [
         // The planning index, which is internal to vantage-md: it is not in the
         // package's exports and never reaches its dist/, so this alias is the only
-        // way in (docs/design/planning-index.md, P4).
+        // way in (docs/reference/planning-index.md, P4).
         {
           find: /^vantage-md\/planning$/,
           replacement: path.resolve(
@@ -117,7 +117,7 @@ export default defineConfig(({ mode }) => {
         // page's pre-bundled dependencies, so one build has to serve both: the
         // package's own "worker" and "default" one, a lookup table, which is
         // what vantage-check already runs. So the worker, the viewer and the
-        // checker decode references alike (docs/design/planning-index-at-scale.md §7.1).
+        // checker decode references alike (docs/reference/planning-index.md §10.1).
         {
           find: /^decode-named-character-reference$/,
           replacement: createRequire(import.meta.url).resolve(

@@ -43,10 +43,10 @@ type read struct {
 	reason  string // KindUnreadable only
 }
 
-// contentHash is the design's *content hash* of a file's bytes: the first 128
+// contentHash is the *content hash* of a file's bytes: the first 128
 // bits of SHA-256, as 32 lowercase hex digits. The browser keeps each file's
 // scan result under it and names it back in the stream's `have`, so the two
-// sides must spell it one way. Design: docs/design/planning-index-at-scale.md §3.
+// sides must spell it one way. Reference: docs/reference/planning-index.md §2.
 //
 // Only a file read whole has one. A skipped file was never opened, and an
 // unreadable one has no text a scan could be kept for.

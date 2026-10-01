@@ -1,6 +1,6 @@
 /**
  * A planning document's state in the file tree, in the tree's compact form
- * (`docs/design/planning-index.md` §7): a dot in its status chip's tone, or in
+ * (`docs/reference/planning-index.md` §7): a dot in its status chip's tone, or in
  * the warning tone, as a ring, when its stage is not a declared one, and
  * `💬 N` while it has open questions. The full phrasing is the badge's
  * accessible name, said once, and the tooltip of its slot; the full chip is for links and the document

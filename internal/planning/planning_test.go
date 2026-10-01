@@ -89,8 +89,8 @@ func TestMatcherGivesTheRoadmapsFixturesAnswers(t *testing.T) {
 	}
 }
 
-// A listed roadmap is a candidate whatever include and exclude say (design
-// §3.1, Plan Q2, now per entry), and only a listed one: the rule is an exact
+// A listed roadmap is a candidate whatever include and exclude say
+// (docs/reference/planning-index.md §3.1, Plan Q2, now per entry), and only a listed one: the rule is an exact
 // path, not a pattern.
 func TestAListedRoadmapIsAlwaysACandidate(t *testing.T) {
 	m := NewMatcher(repoconfig.Planning{
@@ -111,7 +111,7 @@ func TestAListedRoadmapIsAlwaysACandidate(t *testing.T) {
 }
 
 // A roadmap found by its name is a roadmap because it is a candidate, so the
-// patterns are how a reader hides one (design §3.1): with roadmaps null nothing
+// patterns are how a reader hides one (§3.1): with roadmaps null nothing
 // is exempt, and with [] nothing is either.
 func TestARoadmapFoundByNameHasNoExemption(t *testing.T) {
 	for _, roadmaps := range [][]string{nil, {}} {
@@ -399,7 +399,7 @@ const (
 	roadmapHash = "eae710439b6ab1e8e034479e4785fddf" // "# Roadmap\n"
 )
 
-// The content hash is the design's: the first 128 bits of SHA-256 over the
+// The content hash is the reference's: the first 128 bits of SHA-256 over the
 // file's bytes, as 32 lowercase hex digits. The browser computes none of its
 // own, but it keys its scan cache by this string and sends it back as `have`,
 // so its spelling is a contract.

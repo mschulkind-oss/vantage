@@ -1,6 +1,6 @@
 /**
- * The scanner id's Vite plugin (`docs/design/planning-index-at-scale.md`
- * §8.2): the source hash, the virtual module, the dev server's invalidation,
+ * The scanner id's Vite plugin (`docs/reference/planning-index.md`
+ * §11.2): the source hash, the virtual module, the dev server's invalidation,
  * and the build guard over the worker's bundle.
  *
  * The hash is proven over a scratch tree of a few small files, never over a

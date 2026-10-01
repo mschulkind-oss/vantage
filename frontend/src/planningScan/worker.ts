@@ -1,9 +1,9 @@
 /**
- * The scan worker (`docs/design/planning-index-at-scale.md` §7): one dedicated
+ * The scan worker (`docs/reference/planning-index.md` §10): one dedicated
  * worker per tab, running the scanner's core over the scan cache in
  * IndexedDB. A thin `onmessage` adapter; everything it does is `core.ts`'s.
  *
- * A worker of this chunk is a **helper** instead (§7.5) when its first message
+ * A worker of this chunk is a **helper** instead (§10.5) when its first message
  * is a `helper` start: it then scans what comes in through that message's port
  * and does nothing else. It never makes the core, so it never opens the cache
  * or posts to the page. The two share one chunk, so a helper runs exactly the
@@ -90,5 +90,5 @@ scope.onmessage = ({ data }) => {
 
 // Loaded, as the scan worker or as a helper: the main thread counts a worker
 // that fails before this as one whose code never loaded, so the tab moves to
-// the inline client, or the build goes on without that helper (§7.1, §7.5).
+// the inline client, or the build goes on without that helper (§10.1, §10.5).
 post({ type: "hello" });

@@ -34,7 +34,7 @@ export interface LoadedConfig {
   /**
    * `[planning]`, resolved: defaults applied, `stages` null when the table is
    * absent or empty. `index` and the planning rules read it
-   * (`docs/design/planning-index.md` §9).
+   * (`docs/reference/planning-index.md` §14).
    */
   planning: PlanningConfig;
 }
@@ -259,7 +259,7 @@ export function parseConfig(
 /**
  * `[planning]`, the one table both readers of this file parse: the server for
  * `include`, `exclude` and the two limits, the checker for all of it
- * (`docs/design/planning-index.md` §9).
+ * (`docs/reference/planning-index.md` §14).
  *
  * Refused whole, as `[check]` is. A table the server reads one way and the
  * checker another would let the page and the gate disagree about which files
@@ -303,7 +303,7 @@ function parsePlanning(
 }
 
 /**
- * `roadmap`, as a list (design §9): a string is a list of one, and a list
+ * `roadmap`, as a list (§14): a string is a list of one, and a list
  * names exactly those roadmaps, in the order written, `[]` none. Anything else
  * is refused, and so is a list holding anything but text or one path twice.
  * smol-toml hands an inline table and `[[planning.roadmap]]` over as a table
@@ -383,7 +383,7 @@ function asLimit(value: unknown, key: string, path: string): number {
   return value;
 }
 
-/** Stage word → role. An empty table is no table (design §9). */
+/** Stage word → role. An empty table is no table (§14). */
 function asStages(
   value: unknown,
   path: string,

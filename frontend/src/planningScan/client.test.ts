@@ -1,5 +1,5 @@
 /**
- * The scanner client (`docs/design/planning-index-at-scale.md` §7): the worker
+ * The scanner client (`docs/reference/planning-index.md` §10): the worker
  * client's messages, over a stand-in worker that runs the real core behind
  * the real `onmessage` handler and copies every message as `postMessage`
  * would; the inline client; and the tab's one instance.
@@ -507,7 +507,7 @@ describe("the worker client", () => {
     }
   });
 
-  it("answers a refresh after its worker died with no build out, under the config it is sent (§7.1)", async () => {
+  it("answers a refresh after its worker died with no build out, under the config it is sent (§10.1)", async () => {
     const { client, workers, server } = workerSetup();
     await buildAll(client);
     workers[0]?.die();

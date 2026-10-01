@@ -245,7 +245,7 @@ function leadingMarker(text: string): string {
 
 /**
  * Text the viewer adds beside what the document wrote: a planning badge after
- * a link (`docs/design/planning-index.md` §5.3). An entry's label is the
+ * a link (`docs/reference/planning-index.md` §5.3). An entry's label is the
  * document's own words, and a badge's text is another document's state.
  */
 const VIEWER_TEXT = "[data-vantage-planning-badge]";

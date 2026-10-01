@@ -85,8 +85,8 @@ type Settings struct {
 	Theme string `toml:"theme"`
 
 	// Planning is the `[planning]` table: which files the planning index reads,
-	// and the limits past which it reads fewer or none. Design:
-	// docs/design/planning-index.md §9.
+	// and the limits past which it reads fewer or none. Reference:
+	// docs/reference/planning-index.md §14.
 	//
 	// It is the one table both readers of this file parse in full. The server
 	// uses the roadmaps, include, exclude and the two limits, to decide what the
@@ -117,8 +117,8 @@ type PlanningSettings struct {
 	// Roadmap is `roadmap` as written: the repo-relative paths of the roadmaps,
 	// the files whose links set an order on the planning page, as one path or a
 	// list of them. Nil when the key is absent, which makes every candidate
-	// named [RoadmapFileName] a roadmap instead. Design:
-	// docs/design/planning-index.md §6.1.
+	// named [RoadmapFileName] a roadmap instead. Reference:
+	// docs/reference/planning-index.md §4.1.
 	Roadmap *RoadmapSetting `toml:"roadmap"`
 	// Include and Exclude are gitignore-syntax lines, matched the way
 	// `[starred] promote` matches its patterns. A candidate is a listed Markdown
@@ -220,7 +220,7 @@ func tomlList(list []any) string {
 	return "[" + strings.Join(parts, ", ") + "]"
 }
 
-// The `[planning]` defaults (design §9). A repository that never wrote the table
+// The `[planning]` defaults (§14). A repository that never wrote the table
 // still gets an index: everything Markdown is included, nothing is excluded,
 // and every candidate named [RoadmapFileName] is a roadmap.
 const (
@@ -233,7 +233,7 @@ const (
 // segment ([Planning.IsRoadmap]).
 const RoadmapFileName = "roadmap.md"
 
-// StageRoles is the closed set of stage roles, in the order the design lists
+// StageRoles is the closed set of stage roles, in the order the reference lists
 // them. A role is what a stage word means to the planning page; a repository
 // maps its own words onto these, and a role outside them rejects the file.
 var StageRoles = []string{"open", "ready", "built", "done"}
@@ -345,7 +345,7 @@ func (p PlanningSettings) validate(meta toml.MetaData) error {
 // IsRoadmap is the roadmap test: rel is one of Roadmaps, compared exactly, or,
 // with Roadmaps nil, its last "/"-separated segment is [RoadmapFileName]
 // compared ASCII case-insensitively. rel is repo-relative and slash-separated,
-// as the listing spells it. Design: docs/design/planning-index.md §6.1.
+// as the listing spells it. Reference: docs/reference/planning-index.md §4.1.
 //
 // It does not ask whether rel is a candidate. A listed roadmap is one whatever
 // include and exclude say, and a roadmap found by name is one only if it is a

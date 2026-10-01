@@ -147,7 +147,7 @@ func TestSameIsOnlyForAnEqualHash(t *testing.T) {
 }
 
 // A roadmap is never `same`, so whether a file is a roadmap never has to be
-// part of what the browser keeps under a hash (design §8.1).
+// part of what the browser keeps under a hash (§11.1).
 func TestTheRoadmapIsSentWholeWhateverHaveSays(t *testing.T) {
 	svc, _ := repo(t, map[string]string{"roadmap.md": "# Roadmap\n", "plans/road.md": "test"})
 	cfg := repoconfig.DefaultPlanning()
@@ -165,7 +165,7 @@ func TestTheRoadmapIsSentWholeWhateverHaveSays(t *testing.T) {
 
 // Every roadmap is sent whole, not only one: each file found by its name, in
 // any directory and any case, or each one listed. A path the roadmap test does
-// not pick is `same` as any other file is (planning-index-at-scale.md §6.1).
+// not pick is `same` as any other file is (planning-index.md §9.1).
 func TestEveryRoadmapIsSentWhole(t *testing.T) {
 	svc, _ := repo(t, map[string]string{
 		"roadmap.md":            "# Roadmap\n",
@@ -204,7 +204,7 @@ func TestEveryRoadmapIsSentWhole(t *testing.T) {
 // found by its name, from the stream and from the single-path mode alike. A
 // listed one is read whatever the patterns say (Plan Q2, per entry), but only
 // if the listing yields it: in a hidden directory it is not read, whatever the
-// list says (design §3.1).
+// list says (§3.1).
 func TestExcludeHidesAFoundRoadmapAndNotAListedOne(t *testing.T) {
 	svc, _ := repo(t, map[string]string{
 		"roadmap.md":          "# Roadmap\n",
@@ -233,7 +233,7 @@ func TestExcludeHidesAFoundRoadmapAndNotAListedOne(t *testing.T) {
 
 // The header's config is the stream's whole roadmap marking, so `roadmaps` has
 // to reach the browser as the resolved table spells it: null, a list, or [],
-// each as itself (planning-index-at-scale.md §6.1). No other line gains a field.
+// each as itself (planning-index.md §9.1). No other line gains a field.
 func TestTheHeaderCarriesTheRoadmapsAsResolved(t *testing.T) {
 	svc, _ := repo(t, map[string]string{"roadmap.md": "# Roadmap\n", "b/roadmap.md": "# B\n"})
 	for _, tc := range []struct {
@@ -329,7 +329,7 @@ func TestTheHeaderIsFlushedBeforeAnyFileIsRead(t *testing.T) {
 	require.True(t, strings.HasPrefix(first, `{"kind":"header",`), first)
 }
 
-// The design's D13 bound, proven with both of its numbers configured down: no
+// The reference's D13 bound, proven with both of its numbers configured down: no
 // more than 64 KiB and one line is ever written and not flushed, so the server
 // never buffers the corpus, whatever its size. Here the 64 KiB is 1 KiB and
 // max-file-bytes is 256 B, so a dozen small files force several flushes.
@@ -409,7 +409,7 @@ func (c *cancelAtFlush) Flush() error {
 // The request's context ending stops the reading before the next candidate,
 // however many lines the writer below would still accept. Behind gzip no write
 // fails until the next 64 KiB flush, so a failed write alone would read a small
-// repository's whole corpus for a client that has gone (design §6.1).
+// repository's whole corpus for a client that has gone (§9.1).
 func TestTheStreamStopsWhenItsContextEnds(t *testing.T) {
 	svc, root := repo(t, map[string]string{"a.md": "# A\n", "b.md": "# B\n", "c.md": "# C\n"})
 	have := map[string]string{"b.md": testHash}
@@ -439,7 +439,7 @@ func TestTheStreamStopsWhenItsContextEnds(t *testing.T) {
 
 // Wants accepts only an entry that could make a line `same`, so a have kept to
 // what it accepts writes the very stream the whole have writes. That is what
-// lets the handler drop the rest as it reads the body (design §6.4).
+// lets the handler drop the rest as it reads the body (§9.4).
 func TestWantsKeepsOnlyWhatCouldBeSame(t *testing.T) {
 	svc, _ := repo(t, map[string]string{
 		"roadmap.md": "# Roadmap\n", "a.md": "test", "b.md": "test", "notes.txt": "test",
@@ -564,8 +564,8 @@ func (brokenFlush) Flush() error                { return errors.New("client went
 // writer that changes a byte on the wire has to change the file, and with it
 // the reader's side of the contract.
 //
-// The tree mirrors the design's example (§6.1): AGENTS.md holds "test" and is
-// named by the hash the design shows for it; docs/big.md is over a
+// The tree mirrors the reference's example (§9.1): AGENTS.md holds "test" and is
+// named by the hash the reference shows for it; docs/big.md is over a
 // max-file-bytes configured down to 96; the roadmap is named in have by its
 // true hash and is sent whole anyway. The file's text carries a newline, a quote, `<`, `>`, `&`
 // and characters outside ASCII, so the file pins how each is written.

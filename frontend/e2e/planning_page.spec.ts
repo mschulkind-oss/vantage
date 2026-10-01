@@ -2,10 +2,10 @@ import { test, expect, type Page } from "@playwright/test";
 import { planningIndexReady } from "./planningIndex";
 
 // The planning page in a real browser, against the real planning endpoint and
-// the real review store (docs/design/planning-index.md §6, §15). The fixture
+// the real review store (docs/reference/planning-index.md §6). The fixture
 // is `fixtures/test_repo/plans/`, whose roadmap `.vantage.toml` names: it
 // routes design.md's two questions and paged.md's twelve, so Needs you holds
-// more than its first page (planning-index-at-scale.md §10.2), and not
+// more than its first page (planning-index.md §6.4), and not
 // unrouted.md's one, or oversized.md's, whose card is past the size a card
 // renders unasked.
 test.describe("the planning page", () => {

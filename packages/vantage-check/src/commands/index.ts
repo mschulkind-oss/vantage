@@ -28,7 +28,7 @@ import { VERSION } from "../version.js";
 
 /**
  * `vantage-check index`: the planning page, for an agent
- * (`docs/design/planning-index.md` §8).
+ * (`docs/reference/planning-index.md` §13).
  *
  * It scans the *project root* (the nearest ancestor of the working directory
  * holding `.git` or `.vantage.toml`, else the working directory itself), builds
@@ -39,7 +39,7 @@ import { VERSION } from "../version.js";
  *
  * With several roadmaps it lists them all and chooses one as the page does,
  * with no memory between runs: `--roadmap`, else the one nearest the root
- * (design §8).
+ * (§13).
  *
  * It reports and does not judge, so it never exits 1: 0 when it ran, 2 for bad
  * arguments or a bad config, 3 when it could not run, which includes a project
@@ -148,7 +148,7 @@ export function indexCommand(options: IndexOptions, io: Io): number {
 /**
  * Every candidate under `root`, read the way the planning endpoint reads it,
  * into one batch, and the index built from that batch. Past `max-candidates`
- * nothing is opened at all, as the server opens nothing (design §3.5).
+ * nothing is opened at all, as the server opens nothing (§16).
  */
 function scanProject(
   root: string,
@@ -205,7 +205,7 @@ interface RoadmapLink {
 /**
  * The index as the JSON prints it. The index keeps every repo-relative link,
  * because a target's candidacy can change between scans; the output narrows
- * each document's links to what design §3.2 calls a link, one to another
+ * each document's links to what §3.2 calls a link, one to another
  * candidate.
  */
 function narrowed(project: ScannedProject): PlanningIndex {
@@ -221,7 +221,7 @@ function narrowed(project: ScannedProject): PlanningIndex {
   };
 }
 
-/** One roadmap's links, or none when it was not read (design §8). */
+/** One roadmap's links, or none when it was not read (§13). */
 function roadmapLinks(
   project: ScannedProject,
   narrowedIndex: PlanningIndex,
@@ -246,7 +246,7 @@ function roadmapLinks(
 }
 
 /**
- * The machine-readable index, format version 2 (design §8). A refused project
+ * The machine-readable index, format version 2 (§13). A refused project
  * has no sections and no roadmaps to show, so both are `null` there, and
  * `index.refused` and `index.candidateCount` say why.
  *

@@ -89,7 +89,7 @@ describe("useGitStore", () => {
   // The viewer asks for a document's status together with its content, while
   // the previous document is still on screen, and its header must neither show
   // the next document's commit nor lose its own
-  // (docs/design/planning-index-at-scale.md §11.2).
+  // (docs/reference/planning-index.md §12.2).
   describe("fetchStatus", () => {
     it("keeps the answer under its path", async () => {
       const mockCommit = commit("Test commit");

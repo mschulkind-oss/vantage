@@ -1,6 +1,6 @@
 /**
  * How a question's card on the planning page lays out the question it
- * rendered (`docs/design/planning-index.md` §6.3).
+ * rendered (`docs/reference/planning-index.md` §6.6).
  *
  * A card renders its question through the viewer's own pipeline, so it holds
  * exactly the DOM its document holds, and a question written by the

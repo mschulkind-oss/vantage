@@ -126,7 +126,7 @@ describe("useKeyboardShortcuts", () => {
     expect(mockCallbacks.onNavigate).toHaveBeenCalledWith("/recent");
   });
 
-  // docs/design/planning-index.md §6: `g p`, beside `g h` and `g r`.
+  // docs/reference/planning-index.md §6: `g p`, beside `g h` and `g r`.
   it("navigates to the planning page on g then p sequence", () => {
     renderHook(() => useKeyboardShortcuts(mockCallbacks));
     fireKey("g");
@@ -149,7 +149,7 @@ describe("useKeyboardShortcuts", () => {
     );
   });
 
-  // planning-index-at-scale.md §10.2: page 1's inputs are asked for on the
+  // planning-index.md §6.4: page 1's inputs are asked for on the
   // `g`, and the gap before the `p` hides the requests.
   it("asks for the planning page's first page on the g of a chord", () => {
     renderHook(() => useKeyboardShortcuts(mockCallbacks));

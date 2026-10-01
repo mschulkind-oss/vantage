@@ -200,7 +200,7 @@ const ShellFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [bannerSpace, setBannerSpace] = useState(0);
 
   // Page 1 of the planning page, asked for when the pointer or focus reaches
-  // the sidebar's planning entry (planning-index-at-scale.md §10.2), so the
+  // the sidebar's planning entry (planning-index.md §6.4), so the
   // click finds its inputs in hand. Nothing is asked before the index is
   // ready, nor in daemon mode with no repository open.
   const planningRepo = isMultiRepo ? currentRepo : "";

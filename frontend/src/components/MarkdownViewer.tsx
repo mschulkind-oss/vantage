@@ -762,12 +762,12 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     [remarkPlugins, rehypePlugins, transformImageUri, markdownComponents, body],
   );
 
-  // Link badges (docs/design/planning-index.md §5). Ungated like the collapse
+  // Link badges (docs/reference/planning-index.md §5). Ungated like the collapse
   // pass: a badge is how a link reads, not a review affordance. Until the index
   // is ready, and whenever it failed, the pass only sweeps, so a failed build
   // leaves the document as it renders today; an index that lands after the
   // first paint badges only what has not been on screen (the hook's own
-  // comment, and planning-index-at-scale.md §11.2). After
+  // comment, and planning-index.md §12.2). After
   // `markdownComponents`, because a new one remounts every link.
   const planning = usePlanningIndex();
   const planningIndex = planning.status === "ready" ? planning.index : null;
@@ -779,7 +779,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     markdownComponents,
   );
 
-  // The ids `next` may link (planning-index.md §4): those this document's own
+  // The ids `next` may link (planning-index.md §3.4): those this document's own
   // questions carry, never a bare id found only in its text, which is how a
   // compacted question is kept. Until the index is ready `next` is plain text.
   const planningDocument = planningIndex
@@ -791,7 +791,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     [planningDocument],
   );
 
-  // Referenced by (§7), for a planning document only: the design puts the line
+  // Referenced by (§7), for a planning document only: the reference puts the line
   // below a planning document's card, and a plain document has no card to be
   // below in the index's sense.
   const referenceSummaryHere = useMemo(
@@ -948,7 +948,7 @@ export const REFERENCED_BY_RESERVED_ATTR =
 
 /**
  * The line Referenced by fills when the index lands after a document's first
- * paint (`docs/design/planning-index-at-scale.md` §11.2): as tall as its one
+ * paint (`docs/reference/planning-index.md` §12.2): as tall as its one
  * line and its margin, and the line that fills it is kept to one line at every
  * width, so filling it moves nothing; left empty when the index has nothing
  * to say. Built like the line, from nothing the document's

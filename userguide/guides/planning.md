@@ -14,8 +14,8 @@ on someone onto one [planning page](#the-planning-page). Vantage never writes
 into a document.
 
 The terms this page defines (*planning document*, *stage role*, *routed* and
-the rest) are Vantage's own, from its
-[planning-index design](../../docs/design/planning-index.md).
+the rest) are Vantage's own, defined in the
+[planning index reference](../../docs/reference/planning-index.md#2-terms).
 
 ---
 

@@ -1,19 +1,19 @@
 /**
- * The scanner's core (`docs/design/planning-index-at-scale.md` §5, §7): the
+ * The scanner's core (`docs/reference/planning-index.md` §8, §10): the
  * planning stream read one line at a time, each candidate scanned once and its
  * result kept in the scan cache, and the answers to refreshes, card requests
  * and quote requests. The scan worker runs it behind `worker.ts`, and the
  * inline client runs it on the main thread; both are thin adapters, so this is
  * the one implementation and the one the unit tests drive.
  *
- * It makes no ordering decision (§5.4). It answers each request, and the
+ * It makes no ordering decision (§8.3). It answers each request, and the
  * planning store decides which answer wins. The one exception is that a build
  * supersedes an earlier build of the same repository, which the store would
  * discard whole anyway: it is cancelled rather than read to its end. What it
  * writes to the cache does follow the store's numbering, so the cache keeps
- * the answer the store keeps (§8.3).
+ * the answer the store keeps (§11.3).
  *
- * A cold build can share its scanning with **helpers** (§7.5): extra workers
+ * A cold build can share its scanning with **helpers** (§10.5): extra workers
  * the main thread makes when the scan worker asks, each reached through a
  * channel of its own, which scan the `file` lines they are handed and answer
  * with results only. The scan worker still writes the cache and posts every
@@ -52,7 +52,7 @@ import type { StoredDocument } from "./store";
  * reports nothing more.
  */
 export type BuildEvent =
-  /** `warm`: the cache held at least one result for the repository (§3). */
+  /** `warm`: the cache held at least one result for the repository (§2). */
   | { type: "started"; warm: boolean }
   | {
       type: "header";
@@ -97,7 +97,7 @@ export interface RefreshRequest {
    * once its index is ready, else the last header the caller relayed for the
    * repository: what the file is scanned under when this core has seen no
    * header of the repository, as a worker made after one died has not
-   * (§7.1). A header this core has seen wins over it.
+   * (§10.1). A header this core has seen wins over it.
    */
   config?: PlanningConfig | null;
 }
@@ -124,9 +124,9 @@ export interface CardWant {
  *
  * - a block;
  * - `stale`: the file no longer has that hash, or no block starts at that
- *   line in it, so the page refreshes the path (§10.3);
+ *   line in it, so the page refreshes the path (§6.5);
  * - `preview`: the block is past `cardChars` and was not asked for in full,
- *   so the page draws a preview card (§10.4).
+ *   so the page draws a preview card (§6.6).
  */
 export type CardAnswer =
   | { path: string; block: CardBlock }
@@ -150,7 +150,7 @@ export type Quotes = Record<string, Record<number, string>>;
 /**
  * A stream that is not the planning stream's own shape, or is cut short.
  * `shape` says its first line was not a header: a static host answering with
- * its `index.html`, not a broken stream (§12).
+ * its `index.html`, not a broken stream (§15).
  */
 export class StreamError extends Error {
   readonly shape: boolean;
@@ -164,7 +164,7 @@ export class StreamError extends Error {
 /**
  * Hand each line of `body` to `onLine`, decoded as UTF-8, and read the next
  * chunk only once every line of this one has been handled, so a slow line
- * holds the server back instead of anything buffering (§7.3). What is held is
+ * holds the server back instead of anything buffering (§10.3). What is held is
  * the chunk being handled and the start of the next line.
  *
  * A byte sequence that is not UTF-8 throws. A last line with no newline after
@@ -210,14 +210,14 @@ export async function readLines(
  * Yielding
  * ------------------------------------------------------------------ */
 
-/** A yield that lets the page paint: the inline client's (§7.6). */
+/** A yield that lets the page paint: the inline client's (§10.6). */
 export const timeoutYield = (): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, 0));
 
 /**
  * A yield that lets the worker's next message in, with none of a nested
  * timer's 4 ms clamp: the scan worker's, so a refresh sent during a build
- * waits at most one slice (§5.4).
+ * waits at most one slice (§8.3).
  */
 export function messageYield(): () => Promise<void> {
   const channel = new MessageChannel();
@@ -231,7 +231,7 @@ export function messageYield(): () => Promise<void> {
 }
 
 /* ------------------------------------------------------------------ *
- * Helpers (§7.5)
+ * Helpers (§10.5)
  * ------------------------------------------------------------------ */
 
 /** One file the scan worker hands a helper to scan. */
@@ -273,7 +273,7 @@ export interface HelperStart {
 
 /**
  * Where a build's helpers come from: the scan worker's, which asks the main
- * thread for them (§7.5). The core has none without it, as the inline client
+ * thread for them (§10.5). The core has none without it, as the inline client
  * has none: a page that cannot make the scan worker cannot make a helper.
  */
 export interface HelperSupply {
@@ -289,7 +289,7 @@ export interface HelperSupply {
 /**
  * How many helpers a cold build may have on a machine reporting `cores`
  * cores: `maxHelpers`, less what the main thread and the scan worker need,
- * which leaves none on two cores or fewer (§7.5).
+ * which leaves none on two cores or fewer (§10.5).
  */
 export function helpersFor(cores: number): number {
   const { maxHelpers, helperReservedCores } = planningLimits;
@@ -370,7 +370,7 @@ interface ScanPool {
 }
 
 /**
- * The pool of one cold build (§7.5). Each job goes to whichever lane has the
+ * The pool of one cold build (§10.5). Each job goes to whichever lane has the
  * fewest characters queued and room for it, a helper before the scan worker
  * on a tie, since the scan worker also reads the stream, writes the cache and
  * posts the events.
@@ -385,7 +385,7 @@ interface ScanPool {
  * room is freed only once its result is taken, so what is held never grows
  * past the queues' caps however slow the cache is. A line handed to a helper
  * is held by that helper alone: the scan worker keeps only what taking its
- * result back needs, so a helper's queue is never held twice (§13). That is
+ * result back needs, so a helper's queue is never held twice (§16). That is
  * also what reads a line again, by path, when its helper turns out never to
  * have loaded (`lose`).
  */
@@ -484,7 +484,7 @@ function scanPool(options: {
   let rereading = 0;
   /**
    * The re-reads, one at a time, so what they hold is one file's content
-   * waiting for a lane, as a stream line is (§13).
+   * waiting for a lane, as a stream line is (§16).
    */
   let rereads: Promise<void> = Promise.resolve();
 
@@ -644,7 +644,7 @@ export interface ScannerCore {
   attachHelpers(repo: string, seq: number, ports: readonly HelperPort[]): void;
   /**
    * The helper at `at` among build `seq`'s ports failed to load: it is handed
-   * nothing more, and what it was handed is read again by path (§7.5).
+   * nothing more, and what it was handed is read again by path (§10.5).
    */
   helperLost(repo: string, seq: number, at: number): void;
   /** The path's scanned entry, with no card blocks in it; `null` when it failed. */
@@ -690,7 +690,7 @@ function deferred<T>(): Deferred<T> {
 
 /**
  * Which request a kept result answers, and so whether it may replace what the
- * cache holds for its path (§8.3):
+ * cache holds for its path (§11.3):
  *
  * - `build`: a record of build `seq`, queued in its writer;
  * - `refresh`: the answer to refresh `seq`;
@@ -727,10 +727,10 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
   let background: Promise<void> = Promise.resolve();
 
   /*
-   * The request numbers the cache's writes answer (§8.3). The planning store
+   * The request numbers the cache's writes answer (§11.3). The planning store
    * numbers builds and refreshes from one sequence per repository, discards
    * an answer to a request older than the latest build, and lays a refresh
-   * newer than a build in flight over that build's index (§5.4). A write is
+   * newer than a build in flight over that build's index (§8.3). A write is
    * kept only where the store would keep its answer, so the cache ends up
    * holding the version of each file the index on screen holds, whichever
    * answer comes back last.
@@ -751,7 +751,7 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
    * Refreshes whose answer has arrived, so that what is left of each is one
    * body read, one scan and one write. A build lets them finish before it
    * scans its next file, so a push made during a build waits for at most one
-   * file's scan and its own round trip (§5.4); without that, each of those
+   * file's scan and its own round trip (§8.3); without that, each of those
    * steps would wait out a scan of its own.
    */
   const ahead = new Set<Promise<unknown>>();
@@ -818,7 +818,7 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
     readEntry(await askEntry(apiBase, path, signal), path);
 
   /**
-   * The server id of the server answering at `apiBase` (§6.5), or `null` when
+   * The server id of the server answering at `apiBase` (§9.5), or `null` when
    * it cannot be had: the build then reads nothing from the cache and writes
    * nothing to it, since a result is never used, or offered as `have`,
    * without knowing which server it came from. A static host's page, or any
@@ -847,10 +847,10 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
 
   /**
    * Keep one scanned file: a record in the store, or, for a roadmap, which is
-   * never stored because the stream never answers `same` for one (§8.1), its
+   * never stored because the stream never answers `same` for one (§11.1), its
    * blocks in memory. Which files are roadmaps is `isRoadmapPath` of the
    * config, the header's test the server applies too (planning-index.md
-   * §6.1). Nothing is kept when a newer request than the one it answers has
+   * §4.1). Nothing is kept when a newer request than the one it answers has
    * been kept for its path; a build's record is asked again as its batch is
    * written.
    */
@@ -912,7 +912,7 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
     const { repo, apiBase, bypassCache } = request;
     // Asked on every build, never remembered: the server at this origin may
     // have changed since the last one, and a `have` built for another server
-    // would tell this one every path and hash the other has (§8.2).
+    // would tell this one every path and hash the other has (§11.2).
     if (cache.enabled) {
       const serverId = await serverIdAt(apiBase, run.controller.signal);
       if (run.cancelled) return;
@@ -1030,10 +1030,10 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
     /**
      * A file the server says is unchanged. Its stored result is used when it
      * is there under that hash; if another tab collected it meanwhile, or the
-     * server named a hash this build never sent, it is read again (§5.2). So
+     * server named a hash this build never sent, it is read again (§8.2). So
      * is a roadmap, whatever is stored for it: an agreeing server never
      * answers `same` for one, and a stored result is never a roadmap's, so
-     * using it would put a plain document where a roadmap belongs (§6.1).
+     * using it would put a plain document where a roadmap belongs (§9.1).
      */
     const takeSame = async (
       config: PlanningConfig,
@@ -1090,7 +1090,7 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
         configs.set(repo, line.config);
         run.header.resolve(line.config);
         const { config, candidateCount, refused } = line;
-        // Helpers are for a cold build only (§7.5): a warm one scans little.
+        // Helpers are for a cold build only (§10.5): a warm one scans little.
         const count = helpers === undefined ? 0 : helpersFor(helpers.cores);
         if (!warm && !refused && count > 0) {
           run.pool = scanPool({
@@ -1157,7 +1157,7 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
     send({ type: "ready" });
 
     // Once idle: what the stream no longer names is gone. A refused stream
-    // names nothing, so it collects nothing (§8.3).
+    // names nothing, so it collects nothing (§11.3).
     if (!refused) {
       background = background.then(() =>
         cache.collect(repo, keptAfter(repo, run.seq, keep)),
@@ -1194,7 +1194,7 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
           });
         }
       } finally {
-        // Its helpers end with it, ready, failed or cancelled (§7.5).
+        // Its helpers end with it, ready, failed or cancelled (§10.5).
         run.pool?.stop();
         run.header.resolve(null);
         if (runs.get(repo) === run) runs.delete(repo);
@@ -1318,7 +1318,7 @@ export function scannerCore(options: ScannerCoreOptions): ScannerCore {
 
     async quotes({ apiBase, want }) {
       // The text is fetched, its asked lines kept, and the rest dropped: the
-      // main thread never holds a document's text (§10.5).
+      // main thread never holds a document's text (§6.7).
       const picked = await Promise.all(
         want.map(async ({ path, lines }) => {
           const entry = await fetchEntry(apiBase, path);
@@ -1348,7 +1348,7 @@ function cancelRun(run: Run): void {
 /**
  * A build's results gathered into `documents` messages of at most
  * `chunkEntries` entries and `chunkBytes` of facts, measured as the length of
- * their JSON. A single entry larger than that travels alone (§5.2).
+ * their JSON. A single entry larger than that travels alone (§8.2).
  */
 function chunker(send: (event: BuildEvent) => void) {
   let docs: { document: PlanningDocument; hash: string }[] = [];
@@ -1399,18 +1399,18 @@ function chunker(send: (event: BuildEvent) => void) {
 }
 
 /* ------------------------------------------------------------------ *
- * The worker's messages (§7.2)
+ * The worker's messages (§10.2)
  * ------------------------------------------------------------------ */
 
 /** What the main thread sends the scan worker. */
 export type WorkerRequest =
   | ({ type: "build" } & BuildRequest)
   | { type: "cancel"; repo: string; seq: number }
-  /** The helpers a build asked for: one port each, transferred (§7.5). */
+  /** The helpers a build asked for: one port each, transferred (§10.5). */
   | { type: "helpers"; repo: string; seq: number; ports: HelperPort[] }
   /**
    * The helper whose port was `at`, counted from 0 in the order this build's
-   * ports were sent, failed to load: it will answer nothing (§7.5).
+   * ports were sent, failed to load: it will answer nothing (§10.5).
    */
   | { type: "helper-lost"; repo: string; seq: number; at: number }
   | ({ type: "refresh"; id: number } & RefreshRequest)
@@ -1428,7 +1428,7 @@ export type WorkerReply =
   /**
    * Posted once, as the worker's code finishes loading, by the scan worker
    * and by a helper alike: a worker that fails before it has said this could
-   * not be created (§7.1, §7.5).
+   * not be created (§10.1, §10.5).
    */
   | { type: "hello" }
   | { type: "build"; repo: string; seq: number; event: BuildEvent }

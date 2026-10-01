@@ -1,6 +1,6 @@
 /**
- * The planning page's review comments (`docs/design/planning-index.md` §6.3,
- * `docs/design/planning-index-at-scale.md` §6.3 and §10.5): many documents
+ * The planning page's review comments (`docs/reference/planning-index.md` §6.6,
+ * §6.7 and §9.3): many documents
  * in one `POST …/planning/reviews`, kept for the tab, and one document read
  * again with `GET /review` when a `review_changed` push for it bumps the
  * planning store's epoch.

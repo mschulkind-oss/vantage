@@ -1,7 +1,6 @@
 /**
  * The review comments of the documents the planning page lists
- * (`docs/design/planning-index.md` §6.3, and §6.3 and §10.5 of
- * `docs/design/planning-index-at-scale.md`).
+ * (`docs/reference/planning-index.md` §6.6, §6.7 and §9.3).
  *
  * The page shows the comments already filed on each question, and hands every
  * pending one to the agent with Copy answers. It stores nothing of its own:

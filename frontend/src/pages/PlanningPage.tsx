@@ -1,5 +1,5 @@
 /**
- * The planning page (`docs/design/planning-index.md` §6): every section the
+ * The planning page (`docs/reference/planning-index.md` §6): every section the
  * planning index derives for one repository, top to bottom, with each question
  * rendered as its document renders it and answerable where it stands.
  *
@@ -8,25 +8,25 @@
  * The order is `derivePlanningSections`' alone, so filing an answer never
  * reorders the page; the page changes only when the documents do.
  *
- * Paged (`docs/design/planning-index-at-scale.md` §10.2): a section bar names
+ * Paged (`docs/reference/planning-index.md` §6.4): a section bar names
  * every section with its exact count, and each section shows one page of its
  * entries, with the page in the URL (`lib/planningPages.ts`). A flip replaces
  * the history entry, so Back from a document returns to the same pages.
  *
- * Several roadmaps (`planning-index.md` §6.4): when two or more route, the
+ * Several roadmaps (`planning-index.md` §6.8): when two or more route, the
  * roadmap line above the section bar offers a picker, and *Needs you* follows
  * the chosen one. The choice is in the URL as `?roadmap=`, and a pick is
  * remembered for the repository in this browser; picking is a flip of
  * *Needs you* to its first page.
  *
- * Frame first (§10.1, §10.3): the route's first render is the header, the
+ * Frame first (§6.3, §6.5): the route's first render is the header, the
  * section bar and the notices, with no card in it. The sections fill the
  * region below in one later commit, from a complete set of page inputs —
  * blocks, reviews and diagrams (`hooks/usePlanningPageInputs.ts`) — and a set
  * stays on screen until the next one is complete. Nothing that arrives after
  * that moves what is painted: late comments go into each card's reserved
  * count, a late diagram into a fixed frame, and the pending count into a slot
- * kept for four digits (§11.2).
+ * kept for four digits (§12.2).
  *
  * Its URL is `/.vantage/planning`, and `/.vantage/planning/<repo>` in daemon
  * mode. Viewer URLs are `/<path>` and `/<repo>/<path>`, and the server never
@@ -157,7 +157,7 @@ import type { ReviewComment } from "../types";
 /**
  * Each visit's scroll position, by history entry. Module state, so it outlives
  * the page's own unmount: going Back from a document the page opened returns
- * to the same entry, with the same key, and the page restores it (§6.3). The
+ * to the same entry, with the same key, and the page restores it (§6.6). The
  * router keeps no scroll position of its own.
  */
 const scrollPositions = new Map<string, number>();
@@ -180,7 +180,7 @@ const RESTORE_SETTLE_MS = 2000;
  *
  * Once per visit: a flip replaces the history entry, and a replaced entry has
  * a key of its own, so the position carries over to the new key rather than
- * being restored there (`docs/design/planning-index-at-scale.md` §10.2). Back
+ * being restored there (`docs/reference/planning-index.md` §6.4). Back
  * from a document opened after the flip then finds it.
  */
 function useScrollRestore(
@@ -302,7 +302,7 @@ const refKey = (ref: QuestionRef): string => `${ref.path}\n${ref.line}`;
 /**
  * The lines Copy answers quotes, for each pending group: each anchor line and
  * the context either side, from the scanner client, which drops the rest of
- * the document (`docs/design/planning-index-at-scale.md` §10.5). A group's
+ * the document (`docs/reference/planning-index.md` §6.7). A group's
  * payload is what its document's whole text would give.
  *
  * Asked for when the pending set changes, so a click copies at once; while
@@ -374,7 +374,7 @@ function useQuotedText(
 /**
  * A document's badge, drawn once per index version: the same object every
  * render, so a memoized card that shows it renders again only when its index
- * does (§10.4).
+ * does (§6.6).
  */
 const badges = new WeakMap<PlanningIndex, Map<string, PlanningBadge | null>>();
 function badgeOf(index: PlanningIndex, path: string): PlanningBadge | null {
@@ -469,7 +469,7 @@ const Section: React.FC<{
 
 /**
  * One line naming each non-empty section with its exact count, from the index
- * (`docs/design/planning-index-at-scale.md` §10.1). Each entry scrolls to its
+ * (`docs/reference/planning-index.md` §6.3). Each entry scrolls to its
  * section and moves the focus to its heading, so Tab goes on from there, and
  * adds no history entry. Its link is still the section's `#id`, which a new
  * tab opened on it scrolls to once the sections are in.
@@ -571,7 +571,7 @@ const ProgressLine: React.FC<{
 /**
  * The notices under the section bar (§6.2): each only when it applies. The
  * roadmap notice names what the page looked for when no roadmap routes, or a
- * listed roadmap it could not read while another routes (§6.4).
+ * listed roadmap it could not read while another routes (§6.8).
  */
 const Notices: React.FC<{
   sections: PlanningSections;
@@ -608,7 +608,7 @@ const roadmapOption = (roadmap: PlanningRoadmap): string =>
   `${roadmap.path} ${needYouCount(roadmap.needsYouCount)}`;
 
 /**
- * The roadmap line (§6.4): above the section bar, and only when two or more
+ * The roadmap line (§6.8): above the section bar, and only when two or more
  * roadmaps route. A native select labelled Roadmap offers each by its full
  * path, never shortened, since every one is named roadmap.md, with its
  * *Needs you* count; after it, as text, how many questions need you only on
@@ -636,7 +636,7 @@ const RoadmapLine: React.FC<{
   onPick: (path: string) => void;
   /**
    * Drawn at the head of the planning outline, its parts one under another,
-   * rather than as a line above the section bar (§6.5).
+   * rather than as a line above the section bar (§6.9).
    */
   stacked?: boolean;
 }> = ({ roadmaps, value, others, busy, onPick, stacked = false }) => {
@@ -797,7 +797,7 @@ export const PlanningPage: React.FC = () => {
   const [search, setSearch] = useSearchParams();
 
   // The roadmap this browser remembers for the repository, read once per
-  // visit (§6.4): another tab's pick never changes a page already on screen.
+  // visit (§6.8): another tab's pick never changes a page already on screen.
   // Read again only when the page's repository changes, and set by a pick.
   const pageRepo = onThisRepo ? repo : null;
   const [remembered, setRemembered] = useState(() => ({
@@ -831,7 +831,7 @@ export const PlanningPage: React.FC = () => {
     [index, chosenRoadmap],
   );
 
-  // The pages, from the URL (§10.2).
+  // The pages, from the URL (§6.4).
   const request = useMemo(() => readPageRequest(search), [search]);
   const layout = useMemo(
     () =>
@@ -879,7 +879,7 @@ export const PlanningPage: React.FC = () => {
     },
     [setSearch],
   );
-  // Picking a roadmap is a flip (§6.4): the URL's roadmap replaced with no
+  // Picking a roadmap is a flip (§6.8): the URL's roadmap replaced with no
   // history entry, Needs you back on its first page, and the pick
   // remembered for the repository.
   const pickRoadmap = useCallback(
@@ -906,7 +906,7 @@ export const PlanningPage: React.FC = () => {
     [onThisRepo, repo, request, chosenRoadmap],
   );
 
-  // The inputs of the pages shown (§10.3). The sections render only from a
+  // The inputs of the pages shown (§6.5). The sections render only from a
   // complete set, and keep the last one on screen until the next is complete.
   const inputs = usePlanningPageInputs(onThisRepo ? repo : null, ready, layout);
   const shown =
@@ -930,7 +930,7 @@ export const PlanningPage: React.FC = () => {
   );
 
   // Opened while the index was still building: the progress line stays until
-  // the section bar and the sections replace it in one commit (§10.6).
+  // the section bar and the sections replace it in one commit (§6.10).
   const [openedBuilding, setOpenedBuilding] = useState(false);
   if (
     !openedBuilding &&
@@ -968,7 +968,7 @@ export const PlanningPage: React.FC = () => {
   // reads it from its rendered question and reports it, by question, and its
   // report outlives the card: flipped off the page, it still holds for as
   // long as the question and its document's comments are the ones it read.
-  // Every other question places its document's comments by line (§10.5).
+  // Every other question places its document's comments by line (§6.7).
   const [scoped, setScoped] = useState<Readonly<Record<string, ScopedReport>>>(
     {},
   );
@@ -996,7 +996,7 @@ export const PlanningPage: React.FC = () => {
     [],
   );
 
-  // Copy answers (§6.3, and §10.5 of the scale design): every comment still
+  // Copy answers (§6.7): every comment still
   // pending for the agent on a question listed on any page, grouped by
   // document — built from the reviews, never from the cards, so a comment
   // two cards could both see appears once. A card's own report decides for
@@ -1057,12 +1057,12 @@ export const PlanningPage: React.FC = () => {
     [pendingGroups, linesOf],
   );
   const pendingCount = pending.reduce((n, g) => n + g.comments.length, 0);
-  // Exact only once every listed document's reviews are in (§10.5).
+  // Exact only once every listed document's reviews are in (§6.7).
   const countKnown = index !== null && reviews.known;
   // The request for the listed documents no shown page holds failed after
   // the sections painted. A line above them would move them, so it is said
   // where nothing moves: the button's own icon and tooltip, and once to a
-  // screen reader. A failure before they painted has its line (§12).
+  // screen reader. A failure before they painted has its line (§15).
   const reviewsFailed = reviews.failed;
   const restFailed = reviewsFailed && shown?.inputs.reviewsFailed !== true;
   const [copied, setCopied] = useState(false);
@@ -1095,7 +1095,7 @@ export const PlanningPage: React.FC = () => {
 
   // The frame follows the sections on screen once there are any: an index
   // update changes the section bar and the notices in the commit that
-  // changes the sections, not before it (§10.3). Before, it is the index's.
+  // changes the sections, not before it (§6.5). Before, it is the index's.
   const frameLayout = shown?.inputs.layout ?? layout;
   const frameSections =
     shown !== null
@@ -1103,7 +1103,7 @@ export const PlanningPage: React.FC = () => {
       : sections;
   const frameConfig = (shown?.inputs.index ?? index)?.config ?? null;
   // The roadmap line's options, from the frame; its value, the roadmap asked
-  // for, as soon as it is asked for (§6.4).
+  // for, as soon as it is asked for (§6.8).
   const frameRoutes =
     frameSections === null ? [] : routingRoadmaps(frameSections.roadmaps);
   const pickerValue =
@@ -1164,7 +1164,7 @@ export const PlanningPage: React.FC = () => {
     }
   }, [sectionsIn, location.hash, location.key]);
 
-  // The planning outline (§6.5): drawn from the frame's index, so it paints
+  // The planning outline (§6.9): drawn from the frame's index, so it paints
   // with the section bar and changes when it does.
   const frameIndex = shown?.inputs.index ?? index;
   const outline = useMemo(
@@ -1252,7 +1252,7 @@ export const PlanningPage: React.FC = () => {
   );
 
   // Show question on a preview card: the whole block, which only a request
-  // naming it in full is answered with (§10.4), with its diagrams drawn.
+  // naming it in full is answered with (§6.6), with its diagrams drawn.
   const shownHashes = shown?.inputs.hashes ?? null;
   const showQuestion = useCallback(
     async (question: PlanningQuestion): Promise<CardBlock | null> => {
@@ -1313,9 +1313,9 @@ export const PlanningPage: React.FC = () => {
 
   const headerRef = useHeaderFit();
 
-  // The roadmap picker (§6.4), and only one of it: at the head of the
+  // The roadmap picker (§6.8), and only one of it: at the head of the
   // planning outline while the outline is drawn, else on its line above the
-  // section bar (§6.5). Its options are the frame's.
+  // section bar (§6.9). Its options are the frame's.
   const picker =
     frameReady &&
     frameSections !== null &&
@@ -1531,7 +1531,7 @@ export const PlanningPage: React.FC = () => {
                 </Notice>
               ) : (
                 <>
-                  {/* The frame (§10.1): the roadmap line when two or more
+                  {/* The frame (§6.3): the roadmap line when two or more
                 roadmaps route, the section bar, or the progress line in
                 their place, then the notices. It paints first; the
                 sections fill the region below it in one later commit. */}
@@ -1542,7 +1542,7 @@ export const PlanningPage: React.FC = () => {
                           moved down, which the browser scores as a layout
                           shift on every cold load of a page with a picker,
                           though nothing painted under it moved
-                          (planning-index-at-scale.md §10.6). Replaced, it is
+                          (planning-index.md §6.10). Replaced, it is
                           a removal and an insertion, which score nothing. */}
                   <div
                     key={

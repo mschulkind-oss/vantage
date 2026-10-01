@@ -1,9 +1,9 @@
 /**
- * One question on the planning page (`docs/design/planning-index.md` §6.3).
+ * One question on the planning page (`docs/reference/planning-index.md` §6.6).
  *
  * The question is rendered by the viewer's own pipeline: an embedded
  * `MarkdownViewer` over its card block, the root-level block that holds it as
- * the scan cut it (`docs/design/planning-index-at-scale.md` §7.4), at the
+ * the scan cut it (`docs/reference/planning-index.md` §10.4), at the
  * document's own source lines. That block usually holds the question's
  * siblings too — an Open Questions list is one block — so once it renders,
  * everything outside the question's own unit (its `<li>`, or its host block
@@ -17,7 +17,7 @@
  * of it is decided in the same layout pass that isolates the unit, before the
  * card paints, and Show full question has a slot of fixed width in the control
  * row whether or not there is anything to unfold, so nothing the card paints
- * moves later (§11). Unfolding is the reader's own action, so it may.
+ * moves later (§12). Unfolding is the reader's own action, so it may.
  *
  * Answering files a comment that is indistinguishable from one filed with the
  * in-page button: the anchor is built from the card's own rendered host with
@@ -32,14 +32,14 @@
  * document alone.
  *
  * Every card keeps a fixed-width *N comments* count in its control row
- * (`docs/design/planning-index-at-scale.md` §11.2), which toggles the list of
+ * (`docs/reference/planning-index.md` §12.2), which toggles the list of
  * comments on the question. Comments in hand when the page painted are listed
  * at once; comments that came later go only into the count until the reader
  * opens it, so their arrival moves nothing. A Mermaid diagram that was not
  * drawn when the card painted draws into a fixed frame, scaled to fit.
  *
  * A question whose block is too large to render unasked is a **preview card**
- * (`docs/design/planning-index-at-scale.md` §10.4): its file name and badge,
+ * (`docs/reference/planning-index.md` §6.6): its file name and badge,
  * the question's marker, title, state and leaning, and Show question and Open
  * document. Take this leaning and Answer… need the rendered host block for
  * their anchor, so they appear once Show question has rendered the whole card
@@ -112,8 +112,8 @@ export const WAITING_LABEL = "waiting on the agent";
  * from the rendered question, and what it read them from: the question and
  * the document's comments, as the card was given them. The report stands for
  * the rest of the visit, after the card has left the page too, and is true
- * while both are still the page's (`docs/design/planning-index-at-scale.md`
- * §10.5).
+ * while both are still the page's (`docs/reference/planning-index.md`
+ * §6.7).
  */
 export interface ScopedReport {
   /** The ids of the comments on the question, in the document's order. */
@@ -130,7 +130,7 @@ interface PlanningQuestionCardProps {
    * fetches it.
    */
   card: CardBlock | null;
-  /** The block is past the size a card renders unasked (§10.4). */
+  /** The block is past the size a card renders unasked (§6.6). */
   preview?: boolean;
   /**
    * Fetch the whole block of a preview card's question, for Show question;
@@ -159,7 +159,7 @@ interface PlanningQuestionCardProps {
    * question, each time the question or its document's comments change;
    * `null` while the card has no rendered question to read them from (a
    * preview, a block without its host, a document gone from the index), so
-   * the page places them by line instead (§10.5). A card that leaves the page
+   * the page places them by line instead (§6.7). A card that leaves the page
    * says nothing: what it reported last is still true of what it read. One
    * callback for every card, so a card's props stay equal from one render of
    * its page to the next.
@@ -366,7 +366,7 @@ const PreviewBody: React.FC<{ question: PlanningQuestion }> = ({
 
 /**
  * Memoized: a card renders again only when its own question, block, badge or
- * document's comments change (§10.4), so a review answer for one document
+ * document's comments change (§6.6), so a review answer for one document
  * renders none of another's cards. Every prop its page passes is stable for
  * that reason.
  */
@@ -759,7 +759,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
         <span className="ml-auto inline-flex items-center gap-2">
           {/* Always there, at a fixed width, so whether the question runs
               past its lines, which is known only once it is laid out, moves
-              nothing (§11). */}
+              nothing (§12). */}
           <span
             data-planning-fold-slot
             className="inline-flex w-32 justify-end"
@@ -778,7 +778,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
             )}
           </span>
           {/* Always there, at a fixed width, so a count that arrives late
-              moves nothing (§11.2). */}
+              moves nothing (§12.2). */}
           <span
             data-planning-comment-slot
             className="inline-flex w-28 justify-end"

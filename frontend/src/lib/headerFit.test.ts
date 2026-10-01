@@ -263,7 +263,7 @@ function lateHeader(width: number) {
 }
 
 // Late data takes only the room the header has left
-// (docs/design/planning-index-at-scale.md §11.2). A commit that arrived after
+// (docs/reference/planning-index.md §12.2). A commit that arrived after
 // the first paint once took the `dirs` step, collapsing painted folders and
 // moving the file name 80px, or folded painted actions into the "⋯".
 describe("fitHeader with a late item", () => {

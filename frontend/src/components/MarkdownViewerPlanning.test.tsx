@@ -1,8 +1,8 @@
 /**
  * The viewer's planning surfaces other than link badges
- * (`docs/design/planning-index.md`): the `next` link in the document's header
- * (§4), Referenced by (§7), the embedded viewer the planning page renders each
- * question card with (§6.3), and what the index costs a document's render.
+ * (`docs/reference/planning-index.md`): the `next` link in the document's header
+ * (§3.4), Referenced by (§7), the embedded viewer the planning page renders each
+ * question card with (§6.6), and what the index costs a document's render.
  * Badges have their own suite, `usePlanningLinkBadges.test.tsx`.
  *
  * Renders the app's real `MarkdownViewer` against a planning store seeded with
@@ -112,7 +112,7 @@ beforeEach(() => {
   });
 });
 
-describe("the `next` link (§4)", () => {
+describe("the `next` link (§3.4)", () => {
   it("is plain text until the index is ready", () => {
     renderViewer(DOC, "docs/design.md");
     expect(
@@ -193,7 +193,7 @@ describe("sourceLineOffset", () => {
   });
 });
 
-describe("an embedded viewer (§6.3's question card)", () => {
+describe("an embedded viewer (§6.6's question card)", () => {
   const CARD = [
     "---",
     "status: in-review",
@@ -481,7 +481,7 @@ describe("Referenced by (§7)", () => {
     expect(surface()).toBeNull();
   });
 
-  describe("when the index lands after the first paint (scale design §11.2)", () => {
+  describe("when the index lands after the first paint (§12.2)", () => {
     const reserved = () =>
       document.querySelector<HTMLElement>(`[${REFERENCED_BY_RESERVED_ATTR}]`);
     const view = (content: string, path: string) => (

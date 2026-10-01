@@ -1,6 +1,6 @@
 /**
  * What a link to a planning document or question says about its target
- * (design §5).
+ * (`docs/reference/planning-index.md` §5).
  *
  * A badge is derived, never written: the viewer draws one after a rendered link
  * and `vantage-check index` prints one inline in brackets, and both ask this

@@ -4,7 +4,7 @@
  * `[planning] include` and `exclude` use the matcher `[starred] promote`
  * already uses — `sabhiram/go-gitignore`'s `CompileIgnoreLines` — so that a
  * pattern means the same thing to the server, the checker and `promote`
- * (design §3.1, Plan Q1). That matcher is not git's, and its quirks are part of
+ * (`docs/reference/planning-index.md` §3.1, Plan Q1). That matcher is not git's, and its quirks are part of
  * what is being matched, so this is a port rather than a library:
  *
  * - `?` is a literal character, not a one-character wildcard.

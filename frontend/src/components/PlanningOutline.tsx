@@ -1,7 +1,7 @@
 /**
  * The planning outline (`lib/planningOutline.ts`): the planning page's
  * contents column, in the place a document's table of contents takes in the
- * viewer (`docs/design/planning-index.md` §6.5).
+ * viewer (`docs/reference/planning-index.md` §6.9).
  *
  * The same column as the table of contents, drawn the same way: beside the
  * page's column, with no surface of its own, and `sticky` so it stays in

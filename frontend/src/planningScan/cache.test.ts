@@ -1,6 +1,6 @@
 /**
  * The scan cache's policy over the in-memory scan store
- * (`docs/design/planning-index-at-scale.md` §8): the scanner id and the
+ * (`docs/reference/planning-index.md` §11): the scanner id and the
  * server id, two tabs over one database, batching, the card limit, and
  * running on without a store once it fails.
  */

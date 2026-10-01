@@ -8,13 +8,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Link badges in a real browser, against the real planning endpoint
-// (docs/design/planning-index.md §5, §15). The fixture is
+// (docs/reference/planning-index.md §5, §8.3). The fixture is
 // `fixtures/test_repo/plans/`, whose roadmap `.vantage.toml` names.
 //
 // Each test opens the roadmap with the index already built, as a reader who
 // arrives at it from another page does: an index that lands after a document
 // painted badges only what has not been on screen
-// (planning-index-at-scale.md §11.2), and the whole roadmap is.
+// (planning-index.md §12.2), and the whole roadmap is.
 test.describe("planning badges", () => {
   // One test edits a fixture the others read, so they run one at a time.
   test.describe.configure({ mode: "serial" });
@@ -56,7 +56,7 @@ test.describe("planning badges", () => {
     );
   });
 
-  // §15's first bullet: answering a question and letting the agent compact it
+  // §5.2 and §8.3: answering a question and letting the agent compact it
   // turns its badge to ruled without a reload. Compaction deletes the
   // directive and keeps the id in the text.
   test("a compacted question's badge turns to ruled without a reload", async ({

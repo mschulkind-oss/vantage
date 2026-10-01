@@ -11,7 +11,7 @@ import {
  * This repository's own `.vantage.toml`, read the way `check` and `index`
  * read it. The gate runs with it, so what it excludes is what this
  * repository's planning index and planning rules see
- * (`docs/design/planning-index.md` §9).
+ * (`docs/reference/planning-index.md` §14).
  */
 
 // import.meta.dirname, not a URL's pathname, which percent-encodes a space in
@@ -63,7 +63,7 @@ describe("this repository's .vantage.toml", () => {
   });
 
   it("still reads the real planning documents and the roadmap", () => {
-    expect(isCandidate("docs/design/planning-index.md")).toBe(true);
+    expect(isCandidate("docs/reference/planning-index.md")).toBe(true);
     expect(isCandidate("docs/design/agent-bootstrap.md")).toBe(true);
     expect(isCandidate("roadmap.md")).toBe(true);
   });

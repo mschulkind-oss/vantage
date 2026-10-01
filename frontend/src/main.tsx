@@ -13,7 +13,7 @@ initStaticMode();
 
 // The planning scan worker starts now, beside the app's first requests, so it
 // is up by the time a surface asks for the planning index
-// (docs/design/planning-index-at-scale.md §7.1). A static export has no server
+// (docs/reference/planning-index.md §10.1). A static export has no server
 // to scan, so it never makes one.
 if (!isStaticMode()) startPlanningScanner(sourceHash);
 

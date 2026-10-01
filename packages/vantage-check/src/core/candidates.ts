@@ -15,7 +15,7 @@ import {
 
 /**
  * Which files are planning candidates, found the way the server finds them
- * (`docs/design/planning-index.md` §3.1, §8).
+ * (`docs/reference/planning-index.md` §3.1, §13).
  *
  * A candidate is a Markdown file the server lists that `[planning] include`
  * matches and `exclude` does not. The server's list is `fs.ListAllFiles`

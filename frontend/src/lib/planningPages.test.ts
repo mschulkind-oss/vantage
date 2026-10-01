@@ -1,5 +1,5 @@
 /**
- * The planning page's pages (`docs/design/planning-index-at-scale.md` §10.2),
+ * The planning page's pages (`docs/reference/planning-index.md` §6.4),
  * laid out from the index alone. Every limit is proven by configuring it down
  * in the limits module, never by growing a tree to a default.
  */
@@ -285,7 +285,7 @@ describe("rewriting the URL", () => {
   });
 });
 
-describe("placement (planning-index-at-scale.md §10.5)", () => {
+describe("placement (planning-index.md §6.7)", () => {
   const NESTED = doc(
     "stage: DESIGN",
     [
@@ -328,7 +328,7 @@ describe("placement (planning-index-at-scale.md §10.5)", () => {
   });
 });
 
-describe("the chosen roadmap (planning-index.md §6.4)", () => {
+describe("the chosen roadmap (planning-index.md §6.8)", () => {
   // Both found by name. roadmap.md routes a.md's questions, and
   // docs/plans/roadmap.md b.md's and one of a.md's.
   const TWO = {

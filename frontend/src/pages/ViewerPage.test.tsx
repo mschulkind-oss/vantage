@@ -326,7 +326,7 @@ describe("ViewerPage", () => {
     });
   });
 
-  // docs/design/planning-index.md §6: reached from a toolbar entry as well as
+  // docs/reference/planning-index.md §6: reached from a toolbar entry as well as
   // with `g p`.
   describe("the planning page's toolbar entry", () => {
     it("navigates to the planning page", () => {
@@ -352,7 +352,7 @@ describe("ViewerPage", () => {
       );
     });
 
-    // planning-index-at-scale.md §10.2: page 1's inputs are asked for on
+    // planning-index.md §6.4: page 1's inputs are asked for on
     // hover or focus of the entry, so the click finds them in hand.
     it("asks for the planning page's first page on hover and on focus", () => {
       renderPage();
@@ -382,7 +382,7 @@ describe("ViewerPage", () => {
     });
   });
 
-  // docs/design/planning-index-at-scale.md §11: the header's git facts are
+  // docs/reference/planning-index.md §12: the header's git facts are
   // asked for with the content, and nothing is said before git has answered.
   describe("the header's git facts", () => {
     const repo = () => useRepoStore as unknown as ReturnType<typeof vi.fn>;
@@ -513,7 +513,7 @@ describe("ViewerPage", () => {
     });
   });
 
-  // The hold (docs/design/planning-index-at-scale.md §11.3).
+  // The hold (docs/reference/planning-index.md §12.3).
   describe("a document's first paint", () => {
     const repo = () => useRepoStore as unknown as ReturnType<typeof vi.fn>;
     /** The store once `path`'s content has landed. */
@@ -694,7 +694,7 @@ describe("ViewerPage", () => {
       expect(screen.queryByTitle(/click to view diff$/)).toBeNull();
     });
 
-    // §11.2: what the first paint lacked is late data, which the header fit
+    // §12.2: what the first paint lacked is late data, which the header fit
     // draws only where it moves nothing already drawn (lib/headerFit.ts).
     it("marks the header's git items late when git answered after the first paint", () => {
       loaded("a.md");

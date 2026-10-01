@@ -1,6 +1,6 @@
 /**
  * Every number the planning index at scale fixes, in one object
- * (`docs/design/planning-index-at-scale.md`; the plan calls this file the
+ * (`docs/reference/planning-index.md`, whose §2 calls this file the
  * *limits module*). The scan worker, its client and cache read theirs here,
  * and so do the planning page and the document page's first paint, so no
  * surface carries a copy of a number another one enforces.
@@ -17,7 +17,7 @@
  */
 
 export interface PlanningLimits {
-  /* ---- The scan worker (§5.2, §7, §8) ---- */
+  /* ---- The scan worker (§8.2, §10, §11) ---- */
 
   /** Entries per `documents` message: documents, unreadable and skipped. */
   chunkEntries: number;
@@ -33,19 +33,19 @@ export interface PlanningLimits {
   /**
    * The longest card block kept, in characters (`CardBlock.markdown.length`).
    * A longer one is never stored and is answered only when asked for in full;
-   * the page draws a preview card for it (§7.4, §10.4).
+   * the page draws a preview card for it (§10.4, §6.6).
    */
   cardChars: number;
   /**
    * Characters of card blocks a scanner holds in memory when there is no scan
-   * cache, least recently used first out (§8.4). Every roadmap's are held here
+   * cache, least recently used first out (§11.4). Every roadmap's are held here
    * even with a cache, since no roadmap is ever stored.
    */
   memoryCardChars: number;
-  /** How long a scan runs before it lets other work in, in ms (§7.6). */
+  /** How long a scan runs before it lets other work in, in ms (§10.6). */
   sliceMs: number;
 
-  /* ---- Helpers, for a cold build (§7.5) ---- */
+  /* ---- Helpers, for a cold build (§10.5) ---- */
 
   /** Content received and not yet scanned past which helpers are asked for. */
   helperThresholdBytes: number;
@@ -56,7 +56,7 @@ export interface PlanningLimits {
   /** Cores left to the main thread and the scan worker before any helper. */
   helperReservedCores: number;
 
-  /* ---- The planning page (§10) ---- */
+  /* ---- The planning page (§6) ---- */
 
   /** Entries per page of Needs you, Unrouted and Waiting. */
   pageEntries: number;
@@ -71,8 +71,8 @@ export interface PlanningLimits {
   pageLines: number;
   /**
    * Pages in a section from which its pager also offers a page select. The
-   * design says only "a long section" (§10.2), so this number is coined here,
-   * not taken from it.
+   * design said only "a long section" (§6.4 still does), so this number is
+   * coined here, not taken from it.
    */
   pageSelectFrom: number;
   /** The most cards one commit of the sections renders. */
@@ -100,13 +100,13 @@ export interface PlanningLimits {
    */
   outlineDocuments: number;
 
-  /* ---- A document's first paint (§11.3) ---- */
+  /* ---- A document's first paint (§12.3) ---- */
 
   /** The longest a first paint waits for data already on its way, in ms. */
   holdMs: number;
 }
 
-/** The design's numbers. */
+/** The defaults, as the reference's Current values table lists them. */
 export const DEFAULT_PLANNING_LIMITS: Readonly<PlanningLimits> = Object.freeze({
   chunkEntries: 100,
   chunkBytes: 256 * 1024,

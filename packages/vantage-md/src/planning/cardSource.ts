@@ -1,7 +1,7 @@
 /**
- * The Markdown a question's card on the planning page renders (design §6.3),
+ * The Markdown a question's card on the planning page renders (§6.6),
  * cut from the parse the scan has already made
- * (`docs/design/planning-index-at-scale.md` §7.4).
+ * (`docs/reference/planning-index.md` §10.4).
  *
  * The card shows the question exactly as the viewer renders it in its
  * document, so it renders a slice of the document through the viewer's own

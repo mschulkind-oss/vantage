@@ -1,7 +1,7 @@
 /**
  * `[planning] include` and `exclude` mean what the server's matcher says they
- * mean (design §3.1, Plan Q1), and a path is a roadmap exactly when the
- * server's roadmap test says it is (§6.1).
+ * mean (§3.1, Plan Q1), and a path is a roadmap exactly when the
+ * server's roadmap test says it is (§4.1).
  *
  * The expected answers are not written here. They live in fixtures shared
  * with the server's suite, and every pattern answer was produced by running
@@ -42,8 +42,8 @@ describe("the planning pattern matcher", () => {
     },
   );
 
-  it("covers the quirks the design names, so the fixture cannot lose them", () => {
-    // Each of these is a row the plan requires; a fixture regenerated without
+  it("covers the quirks the reference names, so the fixture cannot lose them", () => {
+    // Each of these is a row the matcher's quirks require; a fixture regenerated without
     // one would still pass the loop above.
     const includes = fixture.cases.map((c) => c.include.join("\n"));
     for (const pattern of [
@@ -91,7 +91,7 @@ describe("candidateMatcher", () => {
     );
     expect(matches("docs/gallery/status.md")).toBe(false);
     expect(matches("frontend/e2e/fixtures/test_repo/plans/a.md")).toBe(false);
-    expect(matches("docs/design/planning-index.md")).toBe(true);
+    expect(matches("docs/reference/planning-index.md")).toBe(true);
   });
 
   it("makes a listed roadmap a candidate even when include or exclude rules it out (Plan Q2)", () => {
@@ -116,7 +116,7 @@ describe("candidateMatcher", () => {
     expect(matches("x/a.md")).toBe(false);
   });
 
-  // §6.1: a roadmap found by name is one because it is a candidate, so the
+  // §4.1: a roadmap found by name is one because it is a candidate, so the
   // patterns are how a reader hides one.
   it("gives a roadmap found by name no exemption", () => {
     const matches = candidateMatcher(config({ exclude: ["vendor/**"] }));
@@ -149,7 +149,7 @@ describe("the roadmap test, as planning-roadmaps.json pins it for both readers",
     },
   );
 
-  it("covers the cases the plan names, so the fixture cannot lose them", () => {
+  it("covers the cases it exists for, so the fixture cannot lose them", () => {
     const byName = cases.filter((c) => c.roadmaps === null);
     for (const [path, roadmap] of [
       ["ROADMAP.md", true],
@@ -175,7 +175,7 @@ describe("the roadmap test, as planning-roadmaps.json pins it for both readers",
   });
 });
 
-describe("the roadmap name, and roadmap order (§6.1)", () => {
+describe("the roadmap name, and roadmap order (§4.1, §4.2)", () => {
   it("is roadmap.md, compared ASCII case-insensitively on the last segment", () => {
     expect(ROADMAP_FILE_NAME).toBe("roadmap.md");
     for (const path of ["roadmap.md", "a/b/RoadMap.MD", "docs/ROADMAP.md"]) {
