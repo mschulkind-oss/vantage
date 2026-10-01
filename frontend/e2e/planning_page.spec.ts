@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { drawnIn, sameBox } from "./drawnIn";
 import { planningIndexReady } from "./planningIndex";
 
 // The planning page in a real browser, against the real planning endpoint and
@@ -514,6 +515,62 @@ test.describe("the planning page", () => {
       page.locator("[data-planning-agent-request]:visible"),
     ).toHaveCount(0);
     await expect(about).toBeVisible();
+  });
+
+  // A copy button keeps the room of its longer label, so Copied moves
+  // nothing, and draws what it says centered in that room: its icon, its
+  // label and, on Copy answers, the count, with as much room before them as
+  // after. Copy answers once left its count outside that room, so "Copied"
+  // centered its icon and label in the room and drew the count at the end,
+  // with three times as much room before the icon as after the count.
+  test("draws Copy answers and Copy agent request centered in their room, before the click and after it", async ({
+    page,
+    context,
+  }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    await page.goto("/.vantage/planning");
+    // An answer waiting on the agent, so Copy answers has one to copy.
+    await card(page, "OQ-U1: Is anyone tracking this?")
+      .getByRole("button", { name: "Take this leaning" })
+      .click();
+    const count = page.getByTestId("pending-answers");
+    await expect(count).toHaveText("1");
+    await expect(page.getByTestId("planning-header")).not.toHaveAttribute(
+      "data-yield",
+      /\blabels\b/,
+    );
+
+    const request = page.getByRole("button", {
+      name: "Copy agent request for Not on a roadmap",
+    });
+    // Measured where the click will find it, so the click scrolls nothing.
+    await request.scrollIntoViewIfNeeded();
+    for (const [button, rest] of [
+      [page.locator("button", { has: count }), "Copy answers1"],
+      [request, "Copy agent request"],
+    ] as const) {
+      const handle = (await button.elementHandle())!;
+      const was = await drawnIn(handle);
+      expect(was.text).toBe(rest);
+      expect(
+        Math.abs(was.before - was.after),
+        `${rest}: ${JSON.stringify(was)}`,
+      ).toBeLessThanOrEqual(1);
+
+      await handle.click();
+      await expect(button).toContainText("Copied");
+      const now = await drawnIn(handle);
+      expect(
+        sameBox(now.box, was.box),
+        `${rest} → Copied: ${JSON.stringify(was.box)} → ${JSON.stringify(now.box)}`,
+      ).toBe(true);
+      expect(
+        Math.abs(now.before - now.after),
+        `${rest} → Copied: ${JSON.stringify(now)}`,
+      ).toBeLessThanOrEqual(1);
+      // Copied is the shorter label by far, so it has room either side.
+      expect(now.before, JSON.stringify(now)).toBeGreaterThan(now.padding + 5);
+    }
   });
 
   test("moves nothing painted on a load that has to build the index first", async ({

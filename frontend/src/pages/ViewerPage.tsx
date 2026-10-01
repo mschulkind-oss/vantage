@@ -21,6 +21,7 @@ import {
 import { useShellPage, type PageShortcuts } from "../hooks/useShellPage";
 import { CollapsedFolders } from "../components/CollapsedFolders";
 import { HeaderOverflow } from "../components/HeaderOverflow";
+import { RESERVED_ICON_SIZE, ReservedLabel } from "../components/ReservedLabel";
 import { useWebSocket } from "../hooks/useWebSocket";
 import {
   Clock,
@@ -271,6 +272,13 @@ export const ViewerPage: React.FC = () => {
   const [reviewCopied, setReviewCopied] = useState(false);
   const [reviewExitConfirm, setReviewExitConfirm] = useState(false);
   const [reviewDismissConfirm, setReviewDismissConfirm] = useState(false);
+  // What Copy and Dismiss say until a click turns them to "Copied!" and
+  // "Confirm?"; each keeps the room of both (ReservedLabel).
+  const copyReviewLabel = `Copy ${pendingReviewCount}`;
+  const dismissReviewLabel =
+    answeredReviewCount > 0
+      ? `Dismiss ${answeredReviewCount} answered`
+      : `Dismiss ${activeReviewCount}`;
 
   // Raw view can't host the inline highlights review mode is made of; a static
   // export can't save a comment at all — `vantage build` emits no review
@@ -1047,17 +1055,21 @@ export const ViewerPage: React.FC = () => {
                     )}
                     title={`Copy absolute path: ${repoRootPath}/${currentPath}`}
                   >
-                    {pathCopied ? (
-                      <Check size={14} className="text-green-500" />
-                    ) : (
-                      <Copy size={14} />
-                    )}
-                    <span
-                      className="hdr-label hdr-reserve"
-                      data-reserve="Copied!"
-                    >
-                      {pathCopied ? "Copied!" : "Path"}
-                    </span>
+                    <ReservedLabel
+                      icon={
+                        pathCopied ? (
+                          <Check
+                            size={RESERVED_ICON_SIZE}
+                            className="text-green-500"
+                          />
+                        ) : (
+                          <Copy size={RESERVED_ICON_SIZE} />
+                        )
+                      }
+                      label={pathCopied ? "Copied!" : "Path"}
+                      reserve={["Path", "Copied!"]}
+                      labelClassName="hdr-label"
+                    />
                   </button>
                 )}
                 {currentPath && currentPath.toLowerCase().endsWith(".md") && (
@@ -1074,13 +1086,12 @@ export const ViewerPage: React.FC = () => {
                     )}
                     title={showRaw ? "View rendered" : "View raw markdown"}
                   >
-                    <Code size={14} />
-                    <span
-                      className="hdr-label hdr-reserve"
-                      data-reserve="Rendered"
-                    >
-                      {showRaw ? "Rendered" : "Raw"}
-                    </span>
+                    <ReservedLabel
+                      icon={<Code size={RESERVED_ICON_SIZE} />}
+                      label={showRaw ? "Rendered" : "Raw"}
+                      reserve={["Raw", "Rendered"]}
+                      labelClassName="hdr-label"
+                    />
                   </button>
                 )}
                 {/* Raw view can't host inline highlights, but the review
@@ -1102,27 +1113,20 @@ export const ViewerPage: React.FC = () => {
                         )}
                         title={reviewToggleTitle}
                       >
-                        <MessageSquarePlus size={14} />
-                        <span
-                          className="hdr-label hdr-reserve"
-                          data-reserve="End review?"
-                        >
-                          {reviewExitConfirm ? "End review?" : "Review"}
-                        </span>
+                        <ReservedLabel
+                          icon={<MessageSquarePlus size={RESERVED_ICON_SIZE} />}
+                          label={reviewExitConfirm ? "End review?" : "Review"}
+                          reserve={["Review", "End review?"]}
+                          labelClassName="hdr-label"
+                        />
                       </button>
                     )}
                     {isReviewMode && (
                       <>
-                        {/* The min-width reserves room for the longest label
-                              so arming the confirm doesn't resize the button
-                              under the reviewer's finger. It is sm:-only
-                              because the label is: below that it reserved
-                              100px of blank pill beside a 14px icon, on the
-                              screen with the least room to spare. */}
                         {activeReviewCount > 0 && (
                           <button
                             onClick={handleReviewDismiss}
-                            className={`hdr-dismiss flex items-center gap-1.5 text-xs rounded-lg sm:min-w-[100px] px-2 py-1.5 transition-colors cursor-pointer ${
+                            className={`flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer ${
                               reviewDismissConfirm
                                 ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50"
                                 : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600/50"
@@ -1137,14 +1141,16 @@ export const ViewerPage: React.FC = () => {
                                     : `Dismiss all ${activeReviewCount} comments`
                             }
                           >
-                            <Check size={14} />
-                            <span className="hdr-label">
-                              {reviewDismissConfirm
-                                ? "Confirm?"
-                                : answeredReviewCount > 0
-                                  ? `Dismiss ${answeredReviewCount} answered`
-                                  : `Dismiss ${activeReviewCount}`}
-                            </span>
+                            <ReservedLabel
+                              icon={<Check size={RESERVED_ICON_SIZE} />}
+                              label={
+                                reviewDismissConfirm
+                                  ? "Confirm?"
+                                  : dismissReviewLabel
+                              }
+                              reserve={[dismissReviewLabel, "Confirm?"]}
+                              labelClassName="hdr-label"
+                            />
                           </button>
                         )}
                         {commentsDrifted && <CommentsDriftedIndicator />}
@@ -1160,19 +1166,18 @@ export const ViewerPage: React.FC = () => {
                             className="flex items-center gap-1.5 text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg px-2 py-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors cursor-pointer"
                             title={`Copy ${pendingReviewCount} ${plural(pendingReviewCount, "comment")} to clipboard`}
                           >
-                            {reviewCopied ? (
-                              <Check size={14} />
-                            ) : (
-                              <ClipboardCopy size={14} />
-                            )}
-                            <span
-                              className="hdr-label hdr-reserve"
-                              data-reserve="Copied!"
-                            >
-                              {reviewCopied
-                                ? "Copied!"
-                                : `Copy ${pendingReviewCount}`}
-                            </span>
+                            <ReservedLabel
+                              icon={
+                                reviewCopied ? (
+                                  <Check size={RESERVED_ICON_SIZE} />
+                                ) : (
+                                  <ClipboardCopy size={RESERVED_ICON_SIZE} />
+                                )
+                              }
+                              label={reviewCopied ? "Copied!" : copyReviewLabel}
+                              reserve={[copyReviewLabel, "Copied!"]}
+                              labelClassName="hdr-label"
+                            />
                           </button>
                         )}
                         <button
@@ -1240,17 +1245,21 @@ export const ViewerPage: React.FC = () => {
                     )}
                     title={`Copy absolute path: ${repoRootPath}/${currentPath}`}
                   >
-                    {pathCopied ? (
-                      <Check size={14} className="text-green-500" />
-                    ) : (
-                      <Copy size={14} />
-                    )}
-                    <span
-                      className="hdr-label hdr-reserve"
-                      data-reserve="Copied!"
-                    >
-                      {pathCopied ? "Copied!" : "Path"}
-                    </span>
+                    <ReservedLabel
+                      icon={
+                        pathCopied ? (
+                          <Check
+                            size={RESERVED_ICON_SIZE}
+                            className="text-green-500"
+                          />
+                        ) : (
+                          <Copy size={RESERVED_ICON_SIZE} />
+                        )
+                      }
+                      label={pathCopied ? "Copied!" : "Path"}
+                      reserve={["Path", "Copied!"]}
+                      labelClassName="hdr-label"
+                    />
                   </button>
                 )}
                 <button
@@ -1266,13 +1275,12 @@ export const ViewerPage: React.FC = () => {
                   )}
                   title={showRaw ? "View rendered" : "View raw markdown"}
                 >
-                  <Code size={14} />
-                  <span
-                    className="hdr-label hdr-reserve"
-                    data-reserve="Rendered"
-                  >
-                    {showRaw ? "Rendered" : "Raw"}
-                  </span>
+                  <ReservedLabel
+                    icon={<Code size={RESERVED_ICON_SIZE} />}
+                    label={showRaw ? "Rendered" : "Raw"}
+                    reserve={["Raw", "Rendered"]}
+                    labelClassName="hdr-label"
+                  />
                 </button>
                 {/* Same as the wide toolbar: review controls survive raw view. */}
                 <>
@@ -1289,13 +1297,12 @@ export const ViewerPage: React.FC = () => {
                       )}
                       title={reviewToggleTitle}
                     >
-                      <MessageSquarePlus size={14} />
-                      <span
-                        className="hdr-label hdr-reserve"
-                        data-reserve="End review?"
-                      >
-                        {reviewExitConfirm ? "End review?" : "Review"}
-                      </span>
+                      <ReservedLabel
+                        icon={<MessageSquarePlus size={RESERVED_ICON_SIZE} />}
+                        label={reviewExitConfirm ? "End review?" : "Review"}
+                        reserve={["Review", "End review?"]}
+                        labelClassName="hdr-label"
+                      />
                     </button>
                   )}
                   {isReviewMode && (
@@ -1303,7 +1310,7 @@ export const ViewerPage: React.FC = () => {
                       {activeReviewCount > 0 && (
                         <button
                           onClick={handleReviewDismiss}
-                          className={`hdr-dismiss flex items-center gap-1.5 text-xs rounded-lg sm:min-w-[100px] px-2 py-1.5 transition-colors cursor-pointer ${
+                          className={`flex items-center gap-1.5 text-xs rounded-lg px-2 py-1.5 transition-colors cursor-pointer ${
                             reviewDismissConfirm
                               ? "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50"
                               : "text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600/50"
@@ -1318,14 +1325,16 @@ export const ViewerPage: React.FC = () => {
                                   : `Dismiss all ${activeReviewCount} comments`
                           }
                         >
-                          <Check size={14} />
-                          <span className="hdr-label">
-                            {reviewDismissConfirm
-                              ? "Confirm?"
-                              : answeredReviewCount > 0
-                                ? `Dismiss ${answeredReviewCount} answered`
-                                : `Dismiss ${activeReviewCount}`}
-                          </span>
+                          <ReservedLabel
+                            icon={<Check size={RESERVED_ICON_SIZE} />}
+                            label={
+                              reviewDismissConfirm
+                                ? "Confirm?"
+                                : dismissReviewLabel
+                            }
+                            reserve={[dismissReviewLabel, "Confirm?"]}
+                            labelClassName="hdr-label"
+                          />
                         </button>
                       )}
                       {commentsDrifted && <CommentsDriftedIndicator />}
@@ -1341,19 +1350,18 @@ export const ViewerPage: React.FC = () => {
                           className="flex items-center gap-1.5 text-xs text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/30 rounded-lg px-2 py-1.5 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors cursor-pointer"
                           title={`Copy ${pendingReviewCount} ${plural(pendingReviewCount, "comment")} to clipboard`}
                         >
-                          {reviewCopied ? (
-                            <Check size={14} />
-                          ) : (
-                            <ClipboardCopy size={14} />
-                          )}
-                          <span
-                            className="hdr-label hdr-reserve"
-                            data-reserve="Copied!"
-                          >
-                            {reviewCopied
-                              ? "Copied!"
-                              : `Copy ${pendingReviewCount}`}
-                          </span>
+                          <ReservedLabel
+                            icon={
+                              reviewCopied ? (
+                                <Check size={RESERVED_ICON_SIZE} />
+                              ) : (
+                                <ClipboardCopy size={RESERVED_ICON_SIZE} />
+                              )
+                            }
+                            label={reviewCopied ? "Copied!" : copyReviewLabel}
+                            reserve={[copyReviewLabel, "Copied!"]}
+                            labelClassName="hdr-label"
+                          />
                         </button>
                       )}
                       <button
