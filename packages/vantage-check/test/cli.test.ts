@@ -3,6 +3,7 @@ import { parseArgs, run } from "../src/cli.js";
 import { bufferIo } from "../src/io.js";
 import { EXIT_OK, EXIT_USAGE } from "../src/exit.js";
 import { STYLE_GUIDE } from "../../vantage-md/src/styleGuide.js";
+import { styleGuideHeader } from "../src/commands/styleGuide.js";
 
 describe("parseArgs", () => {
   it("shows help when given nothing", () => {
@@ -116,13 +117,27 @@ describe("parseArgs", () => {
 });
 
 describe("run", () => {
-  it("prints the shared style guide verbatim", async () => {
+  // The first line names the release whose conventions follow
+  // (checker-version-skew.md §6.1), and is the checker's own: everything after
+  // it is the guide the app's modal and the npm export carry, byte for byte.
+  it("prints one line naming its release, then the shared style guide verbatim", async () => {
     const io = bufferIo();
     const code = await run(["style-guide"], io);
+    const newline = io.stdout.indexOf("\n");
 
     expect(code).toBe(EXIT_OK);
-    expect(io.stdout).toBe(`${STYLE_GUIDE.trim()}\n`);
+    expect(io.stdout.slice(0, newline)).toBe(styleGuideHeader());
+    expect(io.stdout.slice(newline + 1)).toBe(`${STYLE_GUIDE.trim()}\n`);
     expect(io.stderr).toBe("");
+  });
+
+  it("says a development build's guide is no release's", async () => {
+    const io = bufferIo();
+    await run(["style-guide"], io);
+
+    expect(io.stdout.split("\n")[0]).toMatch(
+      /^A Vantage development build's conventions: /,
+    );
   });
 
   it("emits a style guide an agent can act on", async () => {
@@ -198,11 +213,13 @@ describe("run", () => {
     }
   });
 
-  it("prints a version", async () => {
+  // Running from source is a development build, and says so rather than
+  // printing a version no release ever had (checker-version-skew.md §4.2).
+  it("prints a version, which from source is a development build", async () => {
     const io = bufferIo();
     const code = await run(["version"], io);
 
     expect(code).toBe(EXIT_OK);
-    expect(io.stdout).toMatch(/^vantage-check \S+\n$/);
+    expect(io.stdout).toBe("vantage-check development build\n");
   });
 });

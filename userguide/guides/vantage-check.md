@@ -9,9 +9,14 @@ the second one never reached it at all, because nothing checked the result.
 
 ```console
 $ uvx vantage-check docs/            # check that documents really render
-$ uvx vantage-check style-guide      # print the conventions Vantage expects
+$ uvx vantage-check style-guide      # print this release's conventions
 $ uvx vantage-check index            # list what the planning documents still owe
 ```
+
+Both the checks and the conventions are those of the checker's own release, and
+`uvx vantage-check` with no version runs the newest one. When your readers'
+viewer is older than that, see
+[Which release it writes for](#which-release-it-writes-for).
 
 It is a single compiled file with its own runtime inside it: no Node, no npm,
 no `node_modules`, nothing to install on the machine that runs it. And it never
@@ -33,6 +38,15 @@ uvx vantage-check docs/
 `uv` fetches a wheel carrying the binary for your platform, caches it, and runs
 it. This is the form the review payload puts in front of agents, because it
 works in a sandbox that has nothing but Python tooling.
+
+With no version, `uv` looks for a newer release on every run, so a new release
+reaches an agent running bare `uvx vantage-check` within minutes of its upload,
+unless its machine is offline or has installed a version with `uv tool install`.
+Name a version to run exactly that one:
+
+```bash
+uvx vantage-check@0.8.0 docs/
+```
 
 ### `curl` — download the binary
 
@@ -61,10 +75,81 @@ The binary is roughly 90 MB, nearly all of which is the runtime it carries so
 that nothing has to be installed next to it. It starts in about a tenth of a
 second.
 
+A binary built this way is a **development build**: the checker's name for any
+binary the release workflow did not produce. It says so wherever a release
+would name its version, and it checks and teaches whatever the checkout holds,
+which can be newer than every release.
+
 > [!NOTE]
 > Every platform's binary is cross-compiled from a single host with
 > `bun build --compile`, so a release needs one runner rather than one per
 > operating system.
+
+---
+
+## Which release it writes for
+
+A checker checks and teaches for **its own release**. Its rules accept the
+markup that release's viewer renders, and `style-guide` prints that release's
+guide. It reads no setting and asks no server about the viewer your readers
+run, so the checker's version is the version your agents write for.
+
+That goes wrong when the checker is newer than your readers' viewer: it calls a
+document clean that the older viewer renders wrongly. Bare `uvx vantage-check`
+makes that the usual case for anyone who has not upgraded yet, because it runs
+the newest release.
+
+### When your readers are on 0.7
+
+0.8.0 is the first release where this matters. A 0.7.x viewer renders two
+things the 0.8.0 guide teaches wrongly:
+
+- **An inline `<svg>` drawing.** The drawing is dropped, and the text of its
+  `<title>`, `<desc>` and `<text>` elements runs together as a paragraph.
+- **An `oq` directive on a 🔒 blocked or ✅ answered question**, which the
+  0.8.0 guide requires. In review mode a 0.7.x viewer offers *Take this
+  leaning* on it, and on a question with no leaning that button files the
+  literal comment *Take the stated leaning.*
+
+The rest of what 0.8.0 adds, a 0.7.x viewer shows without its meaning or
+ignores. The `stage` and `next` frontmatter are plain metadata rows, the
+`depends-on` paths are tags rather than links, and the `[planning]` table is
+ignored. One [roadmap](planning.md#the-roadmap) convention costs more than that.
+A roadmap written the 0.8.0 way copies no status into it, because 0.8.0 shows
+the status in a [badge](planning.md#badges-on-links) beside each link. A 0.7.x
+viewer draws no badges, so its reader sees no status at all.
+
+Upgrade the viewer, or run the 0.7.1 checker for `check` and `style-guide`
+until you do:
+
+```bash
+uvx vantage-check@0.7.1 style-guide
+uvx vantage-check@0.7.1 docs/
+```
+
+The 0.7.1 checker knows no `planning/*` rule, so a `.vantage.toml` that names
+one makes it exit `2`. `--no-config` runs it with its defaults.
+
+### How to tell
+
+- **The checker's release** is the first line of `style-guide`'s output from
+  0.8.0 on, and `vantage-check version` prints it too. A
+  [development build](#from-source) says so instead of naming a release.
+- **The viewer's release** is what `vantage --version` prints. That names the
+  binary installed on the machine, and a service started before an upgrade still
+  runs the binary it started with.
+
+When the checker's release is newer than the viewer's, run the viewer's release
+of the checker, `uvx vantage-check@<version>`. Where the version has to stay
+put, pin it, and name the same pin for your agents, as [In CI](#in-ci) shows.
+
+### A checker older than the repository
+
+The other direction fails loudly. To an older checker, a `.vantage.toml` key, a
+rule id or a rule's option from a newer release looks like a typo, and it exits
+`2`; a directive name from a newer release is a `vantage/unknown-name` error.
+When the repository was written for a newer Vantage, run a newer checker, and
+leave the key or the directive where it is.
 
 ---
 
@@ -129,7 +214,7 @@ tree print the same bytes and a report can be diffed against the previous one.
 ```json
 {
   "tool": "vantage-check",
-  "version": "0.1.0",
+  "version": "0.8.0",
   "filesChecked": 2,
   "summary": { "errors": 1, "warnings": 0, "failures": 0 },
   "findings": [
@@ -145,6 +230,13 @@ tree print the same bytes and a report can be diffed against the previous one.
   "failures": []
 }
 ```
+
+A finding can also carry `detail`, which is what does not fit on the message's
+one line: a renderer's own error text, the values a key accepts, or what to do
+about the finding. For a `vantage/unknown-*` finding, `detail` is where it says
+not to remove a name that comes from a newer Vantage. Text output prints
+`detail` indented under the message, so a consumer that shows a finding should
+show both.
 
 `failures` is a sibling of `findings` rather than mixed into it, so a consumer
 cannot mistake "we could not check this" for "this is broken" by looping over
@@ -252,9 +344,9 @@ will ever tell you.
 
 The grammar, the vocabulary and the list of blocks a directive can attach to are
 all imported from the viewer's own module, so the checker cannot disagree with
-the renderer about what a directive means. And like links, directives come from
-the parsed document — a `<!-- vantage: … -->` inside a fenced block or backticks
-is a code sample, not a finding.
+the renderer of the same release about what a directive means. And like links,
+directives come from the parsed document — a `<!-- vantage: … -->` inside a
+fenced block or backticks is a code sample, not a finding.
 
 `vantage/block-split` is the one rule that does not read the document so much as
 *experiment* on it. A directive is invisible, so the one thing it must never do is
@@ -331,7 +423,7 @@ does.
 rather than one page's rendering: each document's `stage` and `depends-on`
 frontmatter, its `oq` directives, and the roadmaps' links, all as the
 [planning index](planning.md) reads them. The viewer's badges come from the same
-scan, so the gate and the page cannot disagree.
+scan, so the gate and the page of one release cannot disagree.
 
 | Rule | Catches | Default |
 | :--- | :--- | :--- |
@@ -461,21 +553,42 @@ planning rules.
 
 ## `vantage-check style-guide`
 
-Prints the canonical Vantage Markdown conventions: relative-link rules, line
-anchors, frontmatter and the [planning](planning.md) keys, Mermaid label
-quoting, code and diff fences, callouts, tables, and the `$$...$$` math rule.
+Prints the Vantage Markdown conventions of the checker's own release:
+relative-link rules, line anchors, frontmatter and the [planning](planning.md)
+keys, Mermaid label quoting, code and diff fences, callouts, tables, and the
+`$$...$$` math rule. Its first line names that release.
+[Which release it writes for](#which-release-it-writes-for) says what to do
+when your readers' viewer is older.
 
-```bash
-uvx vantage-check style-guide >> AGENTS.md      # or pipe it anywhere you like
+Point your agent instructions at the command rather than pasting its output
+into them:
+
+```text
+Before writing Vantage documents, read the style guide:
+`uvx vantage-check style-guide`
 ```
 
-The same text is available in the browser: **Settings (⚙) → Agent Style Guide**
-opens a modal with a copy button, for pasting into an agent's context by hand.
-Both read one string in the `vantage-md` package, so the modal and the command
-can never disagree. See [Style Guide for Agents](../reference/style-guide.md).
+When your CI pins the checker, put the same version in that command
+([In CI](#in-ci)).
+
+A copy pasted into `AGENTS.md` is frozen at the release that printed it. It
+goes on teaching that release's conventions after your readers upgrade, and a
+copy printed by a checker newer than their viewer teaches them conventions
+their viewer does not have. If you keep a copy anyway, print it with a
+published release rather than a [development build](#from-source), keep its
+first line so that it says which release it froze, and print it again when your
+readers' viewer moves to a new release.
+
+The app shows the guide too: **Settings (⚙) → Agent Style Guide** opens a modal
+with a copy button, for pasting into an agent's context by hand. The modal shows
+the viewer's own release's guide and the command shows the checker's, so they
+are the same text when the two are the same release. Both read one string in
+the `vantage-md` package, so within one release they can never disagree. See
+[Style Guide for Agents](../reference/style-guide.md).
 
 Nothing writes to your `AGENTS.md`, `CLAUDE.md` or `.gitignore` on your behalf.
-If you want the guide in an agent's system prompt, put it there yourself.
+If you want an agent to read the guide, point its instructions at the command
+yourself.
 
 ---
 
@@ -678,7 +791,7 @@ a short run as a clean one.
 
 ```yaml
 - name: Check the documentation
-  run: uvx vantage-check docs/ userguide/
+  run: uvx vantage-check@0.8.0 docs/ userguide/
 ```
 
 Non-zero on findings, so it fails the job. Add `--strict` to fail on warnings
@@ -686,16 +799,33 @@ too, or set `exit-code = 0` in config for an advisory run that reports without
 failing anything. On a small runner, pin the thread count with
 `VANTAGE_CHECK_JOBS` — see [Large corpora](#large-corpora).
 
+**Pin the version.** Without one, the job runs whichever release is newest, so
+a release with a new rule can turn it red on a commit that changed nothing, and
+it checks for the newest viewer rather than the one your readers run.
+
+**Name the same pin for your agents**, in `AGENTS.md` or wherever their
+instructions live:
+
+```text
+Check Vantage documents with `uvx vantage-check@0.8.0 <paths>`, the version CI
+runs, and read the style guide with `uvx vantage-check@0.8.0 style-guide`.
+```
+
+Otherwise an agent on a newer checker can write configuration only that checker
+knows, such as a new rule id in `[check.rules]`, and the pinned job fails on it
+with exit `2`. Raise both pins together, deliberately.
+
 ---
 
 ## How it stays accurate
 
 `vantage-check` imports the viewer's Markdown pipeline — the `vantage-md`
 package — by relative path from source, rather than depending on a published
-copy, so `check` runs the code the browser runs. Its KaTeX and Mermaid versions
-are pinned to the viewer's by a test in the package (`test/deps.test.ts`) that
-fails the gate if the two `node_modules` trees drift. A second implementation
-would drift invisibly and pass documents the viewer breaks on.
+copy, so `check` runs the code the browser runs in a viewer of the same
+release. Its KaTeX and Mermaid versions are pinned to the viewer's by a test in
+the package (`test/deps.test.ts`) that fails the gate if the two `node_modules`
+trees drift. A second implementation would drift invisibly and pass documents
+the viewer breaks on.
 
 ---
 

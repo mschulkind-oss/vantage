@@ -33,6 +33,7 @@ import type { DeclaredOq } from "../core/openQuestions.js";
 import type { CommentSegment, Segment } from "../core/comments.js";
 import type { Collector, FilePosition } from "../core/collector.js";
 import { fileLine, parseMarkdown } from "../core/document.js";
+import { RELEASE, viewerName } from "../version.js";
 
 /**
  * Vantage's own `<!-- vantage: … -->` directives, checked with the viewer's
@@ -145,7 +146,8 @@ export function checkDirectives(collector: Collector): void {
         collector.report(
           "vantage/unknown-name",
           innerAt(parsed.nameOffset),
-          `\`${parsed.name}\` is not a directive name, so the whole directive is dropped and nothing is styled. Vantage knows ${orList(Object.keys(DIRECTIVE_VOCABULARY))}.`,
+          unknownNameMessage(parsed.name),
+          typoOrNewer(parsed.name),
         );
         continue;
       }
@@ -173,7 +175,8 @@ export function checkDirectives(collector: Collector): void {
           collector.report(
             "vantage/unknown-key",
             keyAt,
-            `\`${pair.key}\` is not a key \`${parsed.name}\` accepts, so that pair is dropped while the directive's other keys still apply. \`${parsed.name}\` accepts ${orList(Object.keys(keys))}.`,
+            unknownKeyMessage(parsed.name, pair.key, Object.keys(keys)),
+            typoOrNewer(pair.key),
           );
           continue;
         }
@@ -185,7 +188,8 @@ export function checkDirectives(collector: Collector): void {
           collector.report(
             "vantage/unknown-value",
             innerAt(pair.valueOffset),
-            `\`${pair.value}\` is not a value \`${pair.key}\` accepts, so that pair is dropped and nothing is styled. \`${pair.key}\` accepts ${orList(values)}. The vocabulary is closed on purpose: a document names what a section *is*, never what it should look like.`,
+            unknownValueMessage(pair.key, pair.value, values),
+            typoOrNewer(pair.value),
           );
         }
       }
@@ -872,6 +876,55 @@ function positionOf(
     line: fileLine(collector.doc, (start?.line ?? 1) + newlines),
     column: newlines === 0 ? (start?.column ?? 1) + offset : 1,
   };
+}
+
+/*
+ * The three `vantage/unknown-*` messages, and the advice under them
+ * (`docs/design/checker-version-skew.md` §6.2).
+ *
+ * A name, key or value this checker does not know is usually a typo, which is
+ * why each is an error. But it can also be markup from a newer Vantage than
+ * this checker — a pinned install, or an agent whose checker is a release
+ * behind its readers' viewer — and there, deleting it to make the finding go
+ * away removes something the readers' viewer renders. So each message says what
+ * a viewer at *this checker's* version does with the markup, which is the only
+ * viewer it can speak for, and the advice under it names both cases.
+ *
+ * None of them gives an upgrade command. Most hits are typos, and "upgrade" is
+ * the wrong fix for a document: a newer checker silences the finding whether or
+ * not the reader's viewer renders the markup. These strings are frozen into
+ * every pinned install of a release, so they have to stay right for as long as
+ * one runs.
+ */
+
+export function unknownNameMessage(
+  name: string,
+  release: string | undefined = RELEASE,
+): string {
+  return `\`${name}\` is not a directive name, so ${viewerName(release)} drops the whole directive and nothing is styled. It knows ${orList(Object.keys(DIRECTIVE_VOCABULARY))}.`;
+}
+
+export function unknownKeyMessage(
+  name: string,
+  key: string,
+  accepted: readonly string[],
+  release: string | undefined = RELEASE,
+): string {
+  return `\`${key}\` is not a key \`${name}\` accepts, so ${viewerName(release)} drops that pair while the directive's other keys still apply. \`${name}\` accepts ${orList(accepted)}.`;
+}
+
+export function unknownValueMessage(
+  key: string,
+  value: string,
+  accepted: readonly string[],
+  release: string | undefined = RELEASE,
+): string {
+  return `\`${value}\` is not a value \`${key}\` accepts, so ${viewerName(release)} drops that pair and nothing is styled. \`${key}\` accepts ${orList(accepted)}. The vocabulary is closed on purpose: a document names what a section *is*, never what it should look like.`;
+}
+
+/** The advice under each of the three: fix a typo, keep what is newer. */
+export function typoOrNewer(token: string): string {
+  return `If \`${token}\` is a typo, fix it. If it comes from a newer Vantage, don't remove it: this repository's readers need that version, and a newer vantage-check checks it.`;
 }
 
 /**
