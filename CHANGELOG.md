@@ -44,19 +44,36 @@ list: give it a stage without that role, or list another. See
 **Inline SVG.** An `<svg>` in a document renders as a drawing, with scripts,
 images and `url(…)` references refused. Wrap it in a `<div>` on its own line,
 with no blank line inside. Colors written in `style`, as Inkscape and matplotlib
-write them, are dropped, so their exports render black. See
-[Inline SVG](docs/reference/inline-markup.md#inline-svg).
+write them, are dropped, so their exports render black. GitHub and Vantage 0.7
+drop the drawing, so follow it with a `<!-- vantage: fallback -->` line and a
+paragraph saying what it shows: Vantage 0.8 hides that paragraph, and every
+other reader shows it. See [Inline SVG](docs/reference/inline-markup.md#inline-svg)
+and [Fallback blocks](docs/reference/inline-markup.md#fallback-blocks).
+
+**A `question` directive for blocked and answered questions.** An open question
+keeps its `<!-- vantage: oq … -->`, and review mode offers to answer it in one
+click. A blocked (🔒) or answered (✅) question gets
+`<!-- vantage: question id=OQ-… -->` instead, which offers no button. The
+contents panel, the planning page and `vantage-check index` count both. Vantage
+0.7 drops the new directive, so it never offers to answer a blocked or answered
+question. See [Planning Documents](userguide/guides/planning.md#what-vantage-reads).
 
 ### Changed
 
-**If your readers stay on 0.7, pin your agents' checker.** Bare `uvx
-vantage-check` runs the newest release, and two things its style guide teaches
-render wrong in a 0.7.x viewer. An inline `<svg>` loses its drawing, and its
-text runs together as a paragraph. An `oq` directive, which the guide now
-requires on blocked (🔒) and answered (✅) questions too, makes 0.7.x review
-mode offer **Take this leaning** on them. Upgrade the viewer, or run
-`uvx vantage-check@0.7.1` for `check` and `style-guide` until you do. See
+**Readers still on 0.7 need no pinned checker.** Every directive the 0.8.0
+style guide adds is one a 0.7.x viewer drops, and a drawing shows them its
+fallback paragraph instead, so keep running bare `uvx vantage-check`. Don't run
+the 0.7.1 checker on these documents: it reports `question` and `fallback` as
+unknown names. See
 [Which release it writes for](userguide/guides/vantage-check.md#which-release-it-writes-for).
+
+**`.vantage.toml` keys from a newer release warn instead of failing.**
+`vantage-check` now warns about a key, rule or rule option it does not know,
+ignores it, and checks with the rest, where it used to exit `2`. A typo in a
+key is a warning too. A wrong value for a key it knows still exits `2`. A
+top-level `target = "0.8"` is reserved for the oldest release your readers
+use: a checker older than it refuses to run and names the release it needs.
+See [Keys From a Newer Release](userguide/reference/configuration.md#keys-from-a-newer-release).
 
 **`vantage-check` names its release.** The first line of `style-guide` names the
 release it writes for, and `check` names it beside a directive name,
@@ -97,8 +114,9 @@ command, so to check a file or folder named `index`, write `vantage-check
 ./index`. `vantage/oq-missing` now also reads a leaning written
 `_Leaning (note):_` or `Leaning —`, so it can report a question 0.7.1 passed.
 `planning/question-length` warns on a question past 120 words, which fails a
-`--strict` run, and `planning/depends-on-missing` is an error. Pin the checker
-to take these when you choose; see
+`--strict` run, and `planning/depends-on-missing` is an error, as is
+`vantage/question-name`, which reports an `oq` on a 🔒 or ✅ question. Pin the
+checker to take these when you choose; see
 [In CI](userguide/guides/vantage-check.md#in-ci).
 
 ### Fixed
