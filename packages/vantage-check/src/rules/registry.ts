@@ -149,7 +149,7 @@ export const RULES: readonly RuleMeta[] = [
   {
     id: "vantage/unknown-name",
     summary:
-      "A directive name outside `section`, `block`, `oq`, `question` and `fallback` — the whole directive is dropped",
+      "A directive name outside `section`, `block`, `question`, `oq` and `fallback` — the whole directive is dropped",
     default: "error",
   },
   {
@@ -183,14 +183,26 @@ export const RULES: readonly RuleMeta[] = [
   {
     id: "vantage/oq-missing",
     summary:
-      "An open question (💬) with a stated leaning and no `oq` directive, so the reviewer cannot file it",
+      "An open question (💬) with a stated leaning and no `question` directive, so the reviewer cannot file it",
     default: "error",
   },
   {
     id: "vantage/question-name",
     summary:
-      "An `oq` directive on a 🔒 or ✅ question, which viewers before 0.8 offer to answer, or a `question` directive on an open one, which no viewer does, or either below a 🔒 or ✅ title outside a list, where the question reads as open",
+      "An `oq` directive on a 🔒 or ✅ question, which every viewer before 0.8 offers to answer, or a question directive below a 🔒 or ✅ title outside a list, where the question reads as open",
     default: "error",
+  },
+  {
+    id: "vantage/oq-deprecated",
+    summary:
+      "An `oq` directive anywhere else: it still works, and `question` is the name to write, keys unchanged",
+    default: "warning",
+  },
+  {
+    id: "vantage/question-layout",
+    summary:
+      "A question's `_Leaning:_` run into a paragraph with other text, which the page and the planning card cannot lay out as its leaning",
+    default: "warning",
   },
   {
     id: "vantage/oq-id-format",
@@ -201,7 +213,7 @@ export const RULES: readonly RuleMeta[] = [
   {
     id: "vantage/oq-id-duplicate",
     summary:
-      "The same question id on two questions in one document, on `oq` or `question` — `#id` resolves to the first, so references to the second land on the wrong question",
+      "The same question id on two questions in one document, on `question` or `oq` — `#id` resolves to the first, so references to the second land on the wrong question",
     default: "error",
   },
   {

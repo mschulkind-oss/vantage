@@ -22,3 +22,32 @@ func TestBuildVersionStableAndNonEmpty(t *testing.T) {
 	require.NotEmpty(t, got)
 	require.Equal(t, got, BuildVersion(), "BuildVersion must be stable within a process")
 }
+
+// A test binary is a development build, so it names no release.
+func TestReleaseIsEmptyForADevelopmentBuild(t *testing.T) {
+	require.Empty(t, Release())
+}
+
+// Only a plain X.Y.Z is a release, with or without the "v" a module version
+// carries. A Go pseudo-version, a dirty build, a pre-release and "dev" are all
+// development builds (docs/design/checker-version-skew.md §4.2, §5).
+func TestReleaseOfTakesOnlyAPlainVersion(t *testing.T) {
+	for version, want := range map[string]string{
+		"0.8.0":                                "0.8.0",
+		"v0.8.0":                               "0.8.0",
+		"10.20.3":                              "10.20.3",
+		"v0.8.1-0.20260930120000-abcdef123456": "",
+		"v0.8.1-0.20260930120000-abcdef123456+dirty": "",
+		"v0.8.0+dirty": "",
+		"0.9.0-rc.1":   "",
+		"vv0.8.0":      "",
+		"0.08.0":       "",
+		"0.8":          "",
+		"0.8.0.1":      "",
+		"dev":          "",
+		"(devel)":      "",
+		"":             "",
+	} {
+		require.Equal(t, want, releaseOf(version), version)
+	}
+}

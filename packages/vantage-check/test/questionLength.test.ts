@@ -158,7 +158,7 @@ describe("questionWords", () => {
     ]);
   });
 
-  it("measures a question on a bare paragraph by that paragraph alone", () => {
+  it("measures a question on a bare paragraph by that paragraph alone, up to a rule", () => {
     const source = [
       "---",
       "status: draft",
@@ -170,11 +170,41 @@ describe("questionWords", () => {
       "",
       "A question written as a plain paragraph, five more words here.",
       "",
+      "---",
+      "",
       "A second paragraph, which is not part of the question.",
       "",
     ].join("\n");
 
     expect(wordsOf(source)).toBe(11);
+  });
+
+  it("measures a question outside a list over the blocks it runs over, leaning and Answer aside", () => {
+    const source = [
+      "# Title",
+      "",
+      '<!-- vantage: question id=OQ-4 leaning="A." -->',
+      "",
+      "\u{1F4AC} **OQ-4: Three words here?**", // 4 words
+      "",
+      "Context of five words here.", // 5
+      "",
+      "- **A — One.**", // 2
+      "- **B — Two.**", // 2
+      "",
+      "_Leaning:_ A, for reasons that do not count.",
+      "",
+      "**Answer:**",
+      "",
+      "> _(empty — fill in when decided)_",
+      "",
+      "## Next",
+      "",
+      "Not the question's, many words here that would count.",
+      "",
+    ].join("\n");
+
+    expect(wordsOf(source)).toBe(13);
   });
 
   it("measures a question in a blockquote by the quote, leaning aside", () => {

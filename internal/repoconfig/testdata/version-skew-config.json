@@ -1,9 +1,9 @@
 {
   "description": [
     "How each reader of .vantage.toml answers a file written for another release: a key or a rule id it does not know, and the top-level target (docs/design/checker-version-skew.md).",
-    "`server` is internal/repoconfig's answer and `checker` is vantage-check's: `accepts`, `warns` (accepts, with exactly one warning, which contains `says`, and ignores what it warns about) or `refuses` (an error containing `says`; the server logs it and serves the repository as though the file were absent, and vantage-check exits 2). `target` is the target vantage-check reads, null for none, on every case it does not refuse. `planning`, where present, is what every reader that does not refuse the file resolves its [planning] table to, as vantage-md's PlanningConfig.",
-    "Forward compatible, as vantage-check uses the words, means that a file written for a newer vantage-check reads in an older one without failing: a key in [check] or [planning], a rule id or a rule's option that it does not know is ignored with a warning. A value it cannot take for a key it knows is still an error, and so is one of the file's top-level names written inside one of its tables, which it knows to be misplaced.",
-    "The server is not forward compatible in that sense: it refuses the whole file over a key it does not know in a table it owns, [starred] or [planning]. Where the two readers part, the case says so in its two answers, rather than holding one of them to the other's.",
+    "`server` is internal/repoconfig's answer and `checker` is vantage-check's: `accepts`, `warns` (accepts, with exactly one warning, which contains `says`, and ignores what it warns about; the server logs it, and vantage-check prints it on stderr) or `refuses` (an error, which contains `says` in vantage-check; the server logs it and serves the repository as though the file were absent, and vantage-check exits 2). `target` is the target vantage-check reads, null for none, on every case it does not refuse. `planning`, where present, is what every reader that does not refuse the file resolves its [planning] table to, as vantage-md's PlanningConfig.",
+    "Forward compatible, as both readers use the words, means that a file written for a newer release reads in an older one without failing: a key that a reader does not know in a table it reads is ignored with a warning. For vantage-check that is a key in [check] or [planning], a rule id or a rule's option; for the server it is a key in [starred] or [planning] (docs/design/checker-version-skew.md, OQ-VS5). A value a reader cannot take for a key it knows is still an error, and so is one of the file's top-level names (theme, target, starred) written inside one of its tables, which it knows to be misplaced.",
+    "So the two readers answer alike for [planning], the one table both read, and part only where one of them does not read a table at all, or over target, which only vantage-check reads. Where they part, the case says so in its two answers, rather than holding one of them to the other's.",
     "target is the oldest Vantage release anyone reading the repository uses, written as \"X.Y\" or \"X.Y.Z\" above the first [table]. The server steps over it, as over any top-level key it does not decode. vantage-check validates it, and refuses to run when it names a release newer than its own, which is a decision about the checker's release and so is pinned by vantage-check's own suite rather than here: to this fixture, \"999.0\" is a target like any other.",
     "Read by the server's internal/repoconfig test and by vantage-check's config test."
   ],
@@ -256,7 +256,7 @@
     {
       "name": "an unknown key",
       "toml": "[planning]\nexclude = [\"docs/gallery/**\"]\nroadmaps = \"roadmap.md\"\n",
-      "server": "refuses",
+      "server": "warns",
       "checker": "warns",
       "target": null,
       "says": "unknown key planning.roadmaps",
@@ -276,7 +276,7 @@
     {
       "name": "an unknown sub-table",
       "toml": "[planning.roles]\nDESIGN = \"open\"\n",
-      "server": "refuses",
+      "server": "warns",
       "checker": "warns",
       "target": null,
       "says": "unknown key planning.roles",
@@ -294,9 +294,10 @@
     {
       "name": "an unknown [starred] key",
       "toml": "[starred]\npromote = [\"roadmap.md\"]\npinned = [\"notes.md\"]\n",
-      "server": "refuses",
+      "server": "warns",
       "checker": "accepts",
-      "target": null
+      "target": null,
+      "says": "unknown key starred.pinned"
     },
     {
       "name": "an unknown top-level key",

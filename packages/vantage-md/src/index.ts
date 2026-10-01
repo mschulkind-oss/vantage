@@ -46,8 +46,18 @@ export {
   hasVantageSentinel,
   isQuestionDirective,
   parseVantageDirective,
-  questionDirectiveFor,
+  questionOffersTake,
   vantageOqStatus,
+} from "./vantageDirectives.js";
+// The rendered-attribute contract for questions, which the viewer and any
+// other reader of this package's markup find a question by: every question
+// carries `data-vantage-question`, one declared with `oq` carries
+// `data-vantage-oq` besides, and its leaning is `data-vantage-leaning`.
+export {
+  VANTAGE_LEANING_ATTRIBUTE,
+  VANTAGE_OQ_ATTRIBUTE,
+  VANTAGE_QUESTION_ATTRIBUTE,
+  VANTAGE_QUESTION_SELECTOR,
 } from "./vantageDirectives.js";
 export type {
   DirectiveParse,

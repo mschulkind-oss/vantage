@@ -50,14 +50,15 @@ these rules it out:
 
 **Planning documents.** A candidate is a **planning document** when its
 frontmatter has a `status` or a `stage` key, or when it contains at least one
-question directive: an `oq` (the markup that makes an open question answerable
-in one click) or a `question` (the same for a blocked or answered one, with no
-button; see [Style Guide for Agents](../reference/style-guide.md)). Every roadmap
+question directive: a `question` (the markup that declares a question, in any
+state, and makes an open one answerable in one click; see
+[Style Guide for Agents](../reference/style-guide.md)), or an `oq`, the
+deprecated name it replaces. Every roadmap
 ([below](#the-roadmap)) is one too. Every other candidate is read, found to
 be neither, and dropped. Only planning documents contribute to the index: their
 header, their questions and their links.
 
-**Questions.** A question is an `oq` or a `question` directive, identified by
+**Questions.** A question is a `question` or an `oq` directive, identified by
 its document and its `id`. Its state comes from the emoji before its bold
 title:
 
@@ -69,17 +70,16 @@ title:
 | ✅ | answered, and waiting to be compacted |
 | none | open |
 
-A question written without a directive does not exist to the index. That is
-why a 🔒 or ✅ question gets one too: a `question` directive, with an `id` and
-no `leaning`, which counts it exactly as an `oq` would and offers no button.
-It is a name of its own because an `oq` is a question to answer in one click
-to every Vantage that has shipped, and a viewer before 0.8 offers the button on
-every `oq` it meets; `vantage-check` reports an `oq` on a 🔒 or ✅ question, and
-a `question` on an open one, as `vantage/question-name`. An open question with
-no leaning yet takes an `oq` with no `leaning`. Outside a list, write the
-directive above the question's title: below it, the directive lands on the
-block after the title, which carries no marker, so the question reads as open,
-and `vantage/question-name` says so.
+A question written without a directive does not exist to the index, so a
+question keeps its `question` directive in every state, and changing its state
+changes its marker and nothing else. An open question with no leaning yet takes
+the directive with no `leaning`. `oq` is the name `question` replaces: every
+Vantage still reads it, and a viewer before 0.8 offers the button on every `oq`
+it meets, so `vantage-check` reports an `oq` on a 🔒 or ✅ question as
+`vantage/question-name` and any other as `vantage/oq-deprecated`. Outside a
+list, write the directive above the question's title: below it, the directive
+lands on the block after the title, which carries no marker, so the question
+reads as open, and `vantage/question-name` says so.
 
 A question stops counting when its directive is removed, and that is normally
 when it is **compacted**: once a question is ruled, the design-document
@@ -446,7 +446,9 @@ Two cases change the sections:
 
 When no document has an open question, `done` documents aside, the page says
 **Nothing needs you**. That line can sit above a *Needs you* holding only ✅
-answered questions: those await compaction, not a ruling.
+answered questions: those await compaction, not a ruling. It says so too once
+every open question has your answer waiting on the agent
+([below](#a-comment-on-a-question-is-your-answer)).
 
 Past the candidate limit ([below](#limits)) there are no sections at all, only a
 line saying how many candidates there are and to narrow `include`.
@@ -457,13 +459,16 @@ When two or more roadmaps route, a **Roadmap** menu sits above the section bar,
 or at the head of the [contents column](#the-contents-column) while that is
 shown. There is only ever one.
 It lists each by its full path, nearest the repository root first, with how
-many of its questions need you, such as `docs/plans/roadmap.md (4 need you)`.
+many of its questions need you, such as `docs/plans/roadmap.md (4 need you)`:
+a question you have already answered with a comment, waiting on the agent, is
+not counted.
 The path is never shortened: on a narrow screen the closed menu wraps it onto a
 second line rather than cut off its end.
 *Needs you* follows the one shown, in its order, and after the menu a line says
 how many more questions need you only on the others, such as *3 more questions
-need you on other roadmaps.* Those questions are on a roadmap, so they are not
-under *Not on a roadmap*: choose their roadmap to see them.
+need you on other roadmaps.*, again leaving out those you have answered. Those
+questions are on a roadmap, so they are not under *Not on a roadmap*: choose
+their roadmap to see them.
 
 - **The address says which roadmap is shown,** as
   `?roadmap=docs/plans/roadmap.md` (the `/` may be escaped as `%2F`; both
@@ -592,15 +597,16 @@ What the card offers follows the question's state:
 
 | State | Take this leaning | Answer… | Open document |
 | :--- | :--- | :--- | :--- |
-| 💬 open, or no marker | when its `oq` directive has a leaning | yes | yes |
+| 💬 open, or no marker | yes | yes | yes |
 | ✅ answered | no: it has been ruled | yes | yes |
 | 🔒 blocked, under *Blocked* | no | no: it cannot be answered yet | yes |
 
 - **Take this leaning** files the question's leaning as a review comment on
   it: the same comment review mode's own **Take this leaning** button files in
-  the document, with the same text, anchored to the same place. Once it is
-  filed, the card says *Leaning taken*. To take it back, open the document,
-  where review mode offers Undo until someone replies.
+  the document, with the same text, anchored to the same place, and *Take the
+  stated leaning.* when its directive states none. Once it is filed, the card
+  says *Leaning taken*, with **Undo**, which deletes the comment, until someone
+  replies.
 - **Answer…** opens the comment box, and what you type is filed on the
   question the same way.
 - **Open document** opens the question's document in a new tab, as its icon
@@ -616,6 +622,34 @@ A comment filed from a card is filed in the question's own document, exactly as
 if you had filed it there: that document's Review panel lists it, its own Copy
 includes it, and the agent answers it through the
 [review inbox](review-inbox.md) as usual. Filing never reorders the page.
+
+#### A comment on a question is your answer
+
+Any comment on a question that is still waiting on the agent is your answer to
+it: Take this leaning, Answer…, or a comment you typed on any part of the
+question in its document — its title, an option, the leaning, the Answer. The
+card then says so where Take this leaning stood: *Leaning taken* for the
+leaning you took, otherwise *Answered — waiting on the agent*. The question
+stays where it is, so you can see what you answered, and Copy answers includes
+the comment, but not Answer…: your answer is filed. It no longer counts as
+needing you: the roadmap menu's counts, the line counting the questions on
+other roadmaps and *Nothing needs you* leave it out, and its section's count
+says how many it lists are answered, as *Needs you 3 (2 answered)*. Nothing is
+written into the document: `vantage-check index`, which reads documents and no
+comments, counts it as before.
+
+Once the agent replies, or you dismiss the comment, the question needs you
+again until its document says it is settled, and its card offers Answer…
+again. A take says what became of it, *Leaning taken — the agent replied* or
+*Leaning taken — dismissed*, and is not offered again, since that would send
+the agent the same leaning twice: answer with Answer…, or, while nobody has
+replied, Undo the take and take it afresh. Review mode in the document offers
+the same, in the row at the end of the question.
+
+An answer counts from the moment the page opens, whichever roadmap's question
+it answers. Only when its document's comments take longer than a second to load
+does *Nothing needs you* wait for your next page flip or roadmap choice, so
+nothing moves under you while you read.
 
 When comments are filed on that question, and only on it, the card's row of
 buttons ends with their count, such as *2 comments*, which shows or hides
@@ -822,8 +856,8 @@ every candidate on every page load, and everything else works the same.
   Everything else is unaffected.
 - **A `[planning]` table that is wrong,** such as a role outside the four: the
   server logs it and falls back to the defaults, and `vantage-check` refuses
-  the file and exits `2`. An unknown key is wrong to the server in the same
-  way, while `vantage-check` warns about it and ignores it, since it may come
+  the file and exits `2`. An unknown key is not wrong in that way: both warn
+  about it and ignore it, and read the rest of the table, since it may come
   from a newer release
   ([Configuration](../reference/configuration.md#planning-documents)).
 

@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 import { createRequire } from "node:module";
 import path from "path";
 import { planningScannerId } from "./src/planningScan/scannerId";
+import { releaseFrom } from "./src/lib/viewerRelease";
 
 /**
  * Drop legacy font formats (.ttf, .woff) from the build.
@@ -70,6 +71,15 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), dropLegacyFonts(), planningScannerId({ repoRoot })],
+    define: {
+      // The Vantage release this bundle is, which the review payload names
+      // (src/lib/viewerRelease.ts). Only a release's builders set
+      // VANTAGE_RELEASE: publish.yml and `just release`. Any other build bakes
+      // in "", a development build, whose payload names no release.
+      __VANTAGE_RELEASE__: JSON.stringify(
+        releaseFrom(process.env.VANTAGE_RELEASE) ?? "",
+      ),
+    },
     // The planning scan worker (src/planningScan/worker.ts): a module worker,
     // bundled with an instance of the scanner-id plugin of its own, which
     // serves it the id and fails a build whose worker bundle holds code the id

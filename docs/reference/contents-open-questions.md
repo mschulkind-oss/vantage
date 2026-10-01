@@ -21,10 +21,17 @@ summary: "The viewer's table of contents lists every question a directive declar
 
 **Status:** Verified 2026-10-01 against `fced33d`, the commit that added this
 document. Inside the `covers:` perimeter it changed only comments, repointing them
-here, so the code it describes is `7fa8cbf`'s, unchanged. MEASURED: CI's
-end-to-end suite drives the column in a real browser (`frontend/e2e/toc.spec.ts`);
-nobody watched it by hand for this verification. [§8](#8-known-gaps) lists where
-the code breaks an invariant below.
+here, so the code it describes is `7fa8cbf`'s, unchanged. Amended 2026-10-01,
+in the commit after `936e24b`, and read from that commit's code: the
+question-directive row of [§2](#2-terms), the first bullet of
+[§3.1](#31-which-questions), the example HTML in
+[§3.3](#33-the-label-read-from-the-title-not-from-the-stamped-element), the
+`oq` row of [§6](#6-failure-modes), the question attributes in
+[Current values](#current-values), and [OQ-C1](#why-its-this-way) and its note
+in [Why it's this way](#why-its-this-way); nothing else was re-verified.
+MEASURED: CI's end-to-end suite drives the column in a real browser
+(`frontend/e2e/toc.spec.ts`); nobody watched it by hand for this verification.
+[§8](#8-known-gaps) lists where the code breaks an invariant below.
 
 The **contents column** is the table of contents Vantage draws in the margin to
 the left of a rendered Markdown document, shown and hidden from the header.
@@ -89,7 +96,8 @@ These are what a maintainer breaks by accident. Each is held by a test.
   ([known gaps](#8-known-gaps)).
 - **A question's state is the marker its author wrote, and is never inferred from
   its directive.** An `oq` left on a question marked ✅ is listed as answered and
-  offers no button. `vantage-check` reports the mismatch as `vantage/question-name`.
+  offers no button. `vantage-check` reports that `oq` as `vantage/question-name`,
+  because every viewer before 0.8 would offer the button on it.
 - **The element an entry scrolls to is the element the active highlight
   measures** ([§4.2](#42-the-scroll-and-the-active-entry)).
 - **The column and the planning index agree on every question and its state,**
@@ -111,7 +119,7 @@ now where the term is defined.
 | Term | Means | Is not | Origin |
 | :--- | :--- | :--- | :--- |
 | **Contents column** | The table of contents drawn in the margin beside a rendered Markdown document, listing its headings and its questions | the planning outline, which the same column shows on the planning page ([planning outline](planning-index.md#69-the-planning-outline)) | Vantage's own; the name dates from 2026-09-18 (`50c0762`), when the existing table of contents moved into the reading band's margin |
-| **Question**, **question directive** | Defined in [the planning index's terms](planning-index.md#2-terms): an `oq` or a `question` directive, on a block that could host the one-click button | a prose question with no directive | that reference |
+| **Question**, **question directive** | Defined in [the planning index's terms](planning-index.md#2-terms): a `question` directive, or an `oq`, the deprecated name it replaces, on a block that could host the one-click button | a prose question with no directive | that reference |
 | **Stamped element** | The block a directive's attributes and `id` land on: the block after the directive, which in the layout the convention prescribes is the question's *leaning* paragraph ([names, position, and extent](inline-markup.md#names-position-and-extent)) | the question's list item | the directive vocabulary |
 | **Title** (of a question) | The bold run whose text opens with the question's `OQ-` id, which is how the documentation convention names a question in prose | a heading above the question | the documentation convention (`vantage-check style-guide`) |
 | **Marker** | The status emoji written before a title, which may be two glyphs (`💬 🤷`) | the directive's name | the documentation convention |
@@ -128,8 +136,8 @@ now where the term is defined.
 
 The column lists every question `documentQuestions` finds, in every state:
 
-- **Declared by a question directive.** That is an `oq` on an open or unmarked
-  question, or a `question` on a blocked or answered one
+- **Declared by a question directive.** That is a `question`, in any state, or
+  an `oq`, the deprecated name it replaces
   ([names, position, and extent](inline-markup.md#names-position-and-extent)). A
   question written without a directive is not listed, and nothing else in Vantage
   counts it either. The column never infers a question from prose and never
@@ -191,8 +199,9 @@ therefore the *leaning* paragraph:
 
 ```html
 <li>
-  <p>💬 <strong>OQ-B1: The generator's command surface.</strong> …</p>
-  <p data-vantage-oq="true" id="OQ-B1"><em>Leaning:</em> …</p>
+  <p>💬 <strong>OQ-B1: What is the generator's command surface?</strong></p>
+  <p>…</p>
+  <p data-vantage-question="true" data-vantage-leaning="…" id="OQ-B1"><em>Leaning:</em> …</p>
 </li>
 ```
 
@@ -344,7 +353,7 @@ Review toggle and no buttons, the tooltip still states that number
 | :--- | :--- |
 | A question directive with no `id=` | Lists the question as a focusable entry with the link role and no address, whose accessible name is the title alone; it is never the active entry |
 | A question with no bold title | Labels it with its own text, clamped; the marker is whatever precedes the first letter or digit |
-| A marker that disagrees with the directive's name | Shows the marker's state, and counts no one-click answer for an `oq` marked ✅ or 🔒; `vantage-check` reports `vantage/question-name` |
+| An `oq` on a question marked ✅ or 🔒 | Shows the marker's state, and counts no one-click answer; `vantage-check` reports `vantage/question-name`, since every viewer before 0.8 offers one |
 | A question directive above a code block or a table | Lists nothing; `vantage-check` reports `vantage/orphan` |
 | A question in a closed collapsed section | Lists it; skips it when finding the active entry; a click opens the section on the way |
 | Live reload, or a Mermaid diagram arriving late | Rebuilds the outline on the next frame |
@@ -395,7 +404,7 @@ table is the only place the values themselves are stated.
 | :--- | :--- | :--- |
 | Active band | 96 px below the top of the document's scroll pane | `ACTIVE_BAND` in `useDocumentOutline.ts` |
 | Title test | `^OQ-[A-Za-z0-9]*\d`, on the bold run's text | `OQ_TITLE` in `useDocumentOutline.ts`, mirrored by `OQ_TITLE` in the planning scan (`packages/vantage-md/src/planning/scan.ts`) and `OQ_TITLE_TEXT` in `vantage-check` (`packages/vantage-check/src/rules/directives.ts`); no test holds the three equal |
-| Question attributes | `data-vantage-oq` (an `oq`), `data-vantage-question` (a `question`) | `QUESTION_SELECTOR` in `useOpenQuestionButtons.ts` |
+| Question attributes | `data-vantage-question` on every question; `data-vantage-oq` besides on one an `oq` declared | `QUESTION_SELECTOR` in `useOpenQuestionButtons.ts`, which reads either |
 | Blocks a question can be declared on | `p`, `h1`–`h6`, `li`, `blockquote` | `VANTAGE_OQ_HOST_TARGETS` in `vantage-md` |
 | State glyphs | 💬 open, ✅ answered (`settled`), 🔒 blocked | `VANTAGE_OQ_STATUS` in `vantage-md` |
 | State words | Open question, Answered question, Blocked question | `VANTAGE_OQ_STATUS_LABEL` in `vantage-md` |
@@ -417,12 +426,13 @@ design was ruled, by two rulings recorded in the planning index's table: Plan Q5
 ([planning-index.md](planning-index.md#why-its-this-way)), which narrowed review
 mode's button to open questions and kept the column listing every state, and
 [OQ-VS4](planning-index.md#why-its-this-way), which gave 🔒 and ✅ questions a
-`question` directive of their own. Each amended row says which, and states the
+`question` directive of their own, since made the name for every question by
+[OQ-VS6](planning-index.md#why-its-this-way). Each amended row says which, and states the
 ruling as it now stands.
 
 | ID | Ruling | Date |
 | :--- | :--- | :--- |
-| OQ-C1 | List only what a question directive declares, in every state: an `oq`, or a `question` on a 🔒 or ✅ question. The author's directive is the signal, and the column never infers a question from prose, nor drops one because review mode offers it no button ([§3.1](#31-which-questions)) | 2026-09-20; amended 2026-09-28 (Plan Q5) and 2026-09-30 ([OQ-VS4](planning-index.md#why-its-this-way)) |
+| OQ-C1 | List only what a question directive declares, in every state: a `question`, or an `oq`, the deprecated name it replaces. The author's directive is the signal, and the column never infers a question from prose, nor drops one because review mode offers it no button ([§3.1](#31-which-questions)) | 2026-09-20; amended 2026-09-28 (Plan Q5), 2026-09-30 ([OQ-VS4](planning-index.md#why-its-this-way)) and 2026-10-01 ([OQ-VS6](planning-index.md#why-its-this-way)) |
 | OQ-C2 | Mint no anchor for any question. One without a directive is not listed, and a 🔒 or ✅ one is reached through its own `question` directive's id ([§7](#7-non-goals)) | 2026-09-20; amended 2026-09-30 ([OQ-VS4](planning-index.md#why-its-this-way)) |
 | OQ-C3 | Take the questions from the walk review mode's buttons use (`documentQuestions`), before their one-click filter, rather than re-deriving the set; a fresh query of the attributes would list a stamped code block or table that has no button and is no question. The list is not gated on review mode, because what a document holds is true either way ([§1.1](#11-invariants), [§3.1](#31-which-questions)) | 2026-09-20; amended 2026-09-28 (Plan Q5) |
 | OQ-C4 | Collect headings and questions in one document-order pass into one entry list; a second collector would have to reproduce the order, the nesting, the active tracking and the collapsed-section handling ([§3.2](#32-order-and-nesting)) | 2026-09-20 |

@@ -203,9 +203,9 @@ decision from you says so before you read a word of it. A tally beside
 scrolls to the question itself, and the link it copies is the question's own
 `#OQ-…` anchor, which is what a reference from another document uses.
 
-Every question carrying a [question directive](reference/style-guide.md), an
-`oq` on an open one or a `question` on a blocked or answered one, appears, in
-whatever state it is in. A question written
+Every question carrying a [question directive](reference/style-guide.md), a
+`question` in any state or an `oq`, the deprecated name it replaces, appears,
+in whatever state it is in. A question written
 without one is not listed, and nothing else in Vantage counts it either
 ([Planning Documents](guides/planning.md#what-vantage-reads)).
 
@@ -309,6 +309,7 @@ Manually listed `[[repos]]` take precedence — duplicates are skipped. See [Con
 Vantage includes a built-in review mode for annotating documents:
 
 - **Inline comments** — attach a comment to any block of rendered Markdown: hover it and click, or drag-select a phrase inside it. Tables are commentable cell by cell — point at a cell for that cell, or beside the table for the table as a whole
+- **Answering an Open Question** — at the end of each open question, a row offers **Take this leaning**, which files the question's stated leaning as your comment, and **Answer…**, which opens the comment box on the question. A comment anywhere in the question — its title, an option, the leaning, the Answer — is your answer too: once one is waiting on the agent, the row says *Answered — waiting on the agent* (or *Leaning taken*, with an Undo, for a leaning you took), the Review toggle stops counting the question as one to answer, and the [planning page](guides/planning.md#a-comment-on-a-question-is-your-answer) marks its card the same way
 - **Copy for the agent** — copy pending comments to the clipboard as a prompt that tells the agent exactly how to respond
 - **Agent responses** — after editing the document, the agent delivers a per-comment summary by appending a JSON line to `.vantage/inbox/` in the repo; Vantage consumes it and shows the response inline next to the comment
 - **Paste box** — for chat agents that cannot write files, paste their `- [<id>] <summary>` bullet reply into the Review panel instead

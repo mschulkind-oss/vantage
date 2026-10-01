@@ -14,6 +14,10 @@
  * decides whether a take is offered), and the same lines — `line` is the
  * block the in-page button anchors on and `unitLine` the list item it belongs
  * to, both of which the planning page uses to find a question inside its card.
+ * Over the same render it places a comment on every block both ways — the
+ * page's question units (`commentsOnQuestions`), and the index's `unitLine` to
+ * `unitEndLine` (`placeComment`) — and asserts the same question for each, which
+ * is what lets the planning page count a question answered without its card.
  *
  * The corpus is every Markdown file under `docs/`, read from disk so a new
  * document is covered the day it lands, plus inline fixtures for the shapes the
@@ -32,7 +36,16 @@ import { BrowserRouter } from "react-router-dom";
 import { scanPlanningDocument } from "vantage-md/planning";
 import { MarkdownViewer } from "../components/MarkdownViewer";
 import { collectOutline } from "../hooks/useDocumentOutline";
-import { documentQuestions } from "../hooks/useOpenQuestionButtons";
+import {
+  commentsOnQuestions,
+  documentQuestions,
+} from "../hooks/useOpenQuestionButtons";
+import {
+  ANCHORABLE_BLOCK_SELECTOR,
+  buildWholeBlockAnchor,
+} from "./reviewAnchor";
+import { placeComment } from "./planningPages";
+import type { ReviewComment } from "../types";
 import { readRepoFile, repoPath } from "../test/planning";
 
 // Store writes fire command requests through axios; the viewer pulls the store in.
@@ -79,6 +92,14 @@ const lineOf = (el: Element | null | undefined): number =>
 
 /** What the contents column lists for `content`, rendered as the app renders it. */
 function column(path: string, content: string): Seen[] {
+  return columnOf(path, content).seen;
+}
+
+/** `column`, with the page it read, for a second reading of the same render. */
+function columnOf(
+  path: string,
+  content: string,
+): { seen: Seen[]; container: HTMLElement } {
   const { container } = render(
     <BrowserRouter>
       <MarkdownViewer content={content} currentPath={path} />
@@ -93,7 +114,7 @@ function column(path: string, content: string): Seen[] {
   expect(entries).toHaveLength(hosts.length);
 
   const ids = new Set<string>();
-  return entries.map((entry, index) => {
+  const seen = entries.map((entry, index) => {
     const id = entry.id !== "" && !ids.has(entry.id) ? entry.id : null;
     if (id !== null) ids.add(id);
     const status = entry.status ?? "open";
@@ -108,6 +129,67 @@ function column(path: string, content: string): Seen[] {
       marker: entry.marker,
     };
   });
+  return { seen, container };
+}
+
+/**
+ * Which question a comment on each block of the rendered page is on, by the
+ * question's host line, read two ways: the page's (`commentsOnQuestions`,
+ * over the rendered units) and the planning index's placement by line
+ * (`placeComment`, over `unitLine` to `unitEndLine`). The planning page
+ * counts and copies answers by the second wherever a card has not been
+ * rendered, so the two must name the same question for every block. A block
+ * in the footnotes section is left out: it renders at the end of the page
+ * under the line of a definition written anywhere.
+ */
+function placements(
+  path: string,
+  content: string,
+  rendered?: HTMLElement,
+): { page: (number | null)[]; index: (number | null)[] } {
+  const container =
+    rendered ??
+    render(
+      <BrowserRouter>
+        <MarkdownViewer content={content} currentPath={path} />
+      </BrowserRouter>,
+    ).container;
+  const blocks = Array.from(
+    container.querySelectorAll<HTMLElement>(ANCHORABLE_BLOCK_SELECTOR),
+  ).filter((block) => block.closest("section[data-footnotes]") === null);
+  const comments: ReviewComment[] = blocks.flatMap((block, i) => {
+    const built = buildWholeBlockAnchor(block);
+    return built === null
+      ? []
+      : [
+          {
+            id: String(i),
+            anchor: built.anchor,
+            comment: "",
+            fallback_text: built.fallbackText,
+            created_at: 0,
+            reactions: [],
+          },
+        ];
+  });
+  const questions = documentQuestions(container);
+  const owner = new Map<string, number>();
+  for (const [question, on] of commentsOnQuestions(
+    container,
+    questions,
+    comments,
+  )) {
+    for (const c of on) owner.set(c.id, lineOf(question.block));
+  }
+  const result = scanPlanningDocument(path, content, false);
+  const indexed = result.kind === "planning" ? result.document.questions : [];
+  if (rendered === undefined) cleanup();
+  return {
+    page: comments.map((c) => owner.get(c.id) ?? null),
+    index: comments.map(
+      (c) => placeComment(indexed, c.anchor!.source_line)?.line ?? null,
+    ),
+  };
 }
 
 /** What the planning index holds for the same source. */
@@ -153,9 +235,14 @@ describe("the planning index and the contents column (§3.3)", () => {
     expect(total).toBeGreaterThan(10);
   }, 30_000);
 
+  // One render per document for both readings: the column's list, and
+  // where a comment on each of its blocks is placed.
   it.each(corpus)("agree on %s", (path) => {
     const content = readRepoFile(path);
-    expect(index(path, content)).toEqual(column(path, content));
+    const { seen, container } = columnOf(path, content);
+    expect(index(path, content)).toEqual(seen);
+    const { page, index: byLine } = placements(path, content, container);
+    expect(byLine, "where a comment on each block is placed").toEqual(page);
   });
 
   const fixtures: Record<string, string> = {
@@ -270,6 +357,63 @@ describe("the planning index and the contents column (§3.3)", () => {
       "No id at all.",
       "",
     ].join("\n"),
+    "questions outside a list, over the blocks after their hosts": [
+      "# Questions",
+      "",
+      '<!-- vantage: question id=OQ-P1 leaning="A." -->',
+      "",
+      "\u{1F4AC} **OQ-P1: Written as paragraphs?**",
+      "",
+      "Its context.",
+      "",
+      "- **A — One.**",
+      "- **B — Two.**",
+      "",
+      "_Leaning:_ A.",
+      "",
+      "**Answer:**",
+      "",
+      "> _(empty — fill in when decided)_",
+      "",
+      "<!-- vantage: question id=OQ-P2 -->",
+      "",
+      "\u{1F512} **OQ-P2: Up to a rule?**",
+      "",
+      "Its context.",
+      "",
+      "---",
+      "",
+      "No question's.",
+      "",
+      '<!-- vantage: question id=OQ-P3 leaning="Yes." -->',
+      "",
+      "### \u{1F4AC} OQ-P3: A heading, to its section's end?",
+      "",
+      "Its context.",
+      "",
+      "#### Deeper, and still its own",
+      "",
+      "_Leaning:_ yes.",
+      "",
+      "### The next section",
+      "",
+      "No question's.",
+      "",
+    ].join("\n"),
+    "one id on both names in a run, and on two `oq`s": [
+      "<!-- vantage: question id=OQ-D1 -->",
+      "<!-- vantage: oq id=OQ-D1 -->",
+      "",
+      "\u{1F4AC} Both names.",
+      "",
+      "---",
+      "",
+      "<!-- vantage: oq id=OQ-D2 -->",
+      "<!-- vantage: oq id=OQ-D2 -->",
+      "",
+      "\u{1F4AC} Two of the old name.",
+      "",
+    ].join("\n"),
     "a question in a footnote, whose unit is the footnote's <li>": [
       "Text with a note.[^1]",
       "",
@@ -347,7 +491,28 @@ describe("the planning index and the contents column (§3.3)", () => {
   it.each(Object.entries(fixtures))("agree on %s", (_, content) => {
     const questions = index("docs/fixture.md", content);
     expect(questions.length).toBeGreaterThan(0);
-    expect(questions).toEqual(column("docs/fixture.md", content));
+    const { seen, container } = columnOf("docs/fixture.md", content);
+    expect(questions).toEqual(seen);
+    const { page, index: byLine } = placements(
+      "docs/fixture.md",
+      content,
+      container,
+    );
+    expect(byLine, "where a comment on each block is placed").toEqual(page);
+  });
+
+  it("place the blocks after a host outside a list on its question, up to where it ends", () => {
+    const content =
+      fixtures["questions outside a list, over the blocks after their hosts"]!;
+    const { page, index: byLine } = placements("docs/fixture.md", content);
+    expect(byLine).toEqual(page);
+    // Title, context, the list's two items, leaning, Answer label, and the
+    // Answer's quote with its paragraph: eight blocks on OQ-P1 (line 5);
+    // OQ-P2 (line 20) holds its title and context; OQ-P3 (line 30) its
+    // heading, context, deeper heading and leaning; the rest none.
+    const count = (line: number) => page.filter((at) => at === line).length;
+    expect([count(5), count(20), count(30)]).toEqual([8, 2, 4]);
+    expect(page.filter((at) => at === null).length).toBeGreaterThan(0);
   });
 
   it("both leave out a question a fallback withholds", () => {

@@ -35,11 +35,11 @@ export const VANTAGE_SENTINEL = "vantage:";
  * pair (D2 is per-key).
  *
  * Position picks the target; the name picks the extent. `section` before a
- * heading reaches the heading's whole section, `block` reaches one block, `oq`
- * marks one answerable question, and `question` one that is not answerable
- * yet or any more (`VANTAGE_QUESTION_NAMES`). The name cannot disagree with
- * position — it only says how far the stamp reaches — so §4.2's refusal of a
- * `scope=` key stands.
+ * heading reaches the heading's whole section, `block` reaches one block, and
+ * `question` declares one question in any state, as `oq`, the name it
+ * replaces, still does (`VANTAGE_QUESTION_NAMES`). The name cannot disagree
+ * with position — it only says how far the stamp reaches — so §4.2's refusal
+ * of a `scope=` key stands.
  *
  * `fallback` is the one name that stamps nothing: it withholds the block after
  * it, which is written for the renderers that cannot show something Vantage
@@ -57,34 +57,65 @@ export const DIRECTIVE_NAMES = [
 ] as const;
 
 /**
- * The two names that declare a question, and the one thing that separates
- * them: whether review mode may offer to answer it.
+ * The two names that declare a question: `question`, the one to write, and
+ * `oq`, which it replaces and which every Vantage keeps reading.
  *
- * - **`oq`** is an *open* question, marked 💬, 💬 🤷 or nothing at all, and the
- *   only one that gets Take this leaning. That is what it has meant since the
- *   name shipped, and what it still means to every viewer that predates
- *   `question`, which offers the button on every `oq` it meets.
- * - **`question`** is a 🔒 blocked or ✅ answered one. It is declared, anchored
- *   and counted exactly like an `oq` — the same `id=` grammar, the same anchor,
- *   the same place in the planning index and the contents column — and it never
- *   carries a control. A viewer that predates it drops it whole, as it drops
- *   every name it does not know, so it offers nothing where nothing can be
- *   answered.
+ * - **`question`** declares a question in any state: open (💬, 💬 🤷 or no
+ *   marker at all), 🔒 blocked or ✅ answered. The state comes from the marker
+ *   and never from the name, so a question that changes state changes its
+ *   marker and nothing else. A viewer from 0.8 on offers Take this leaning on
+ *   an open one, and never on a 🔒 or ✅ one.
+ * - **`oq`** is deprecated, never removed. It keeps the meaning it shipped
+ *   with in 0.7, an open question to answer in one click, because documents
+ *   outlive releases and a release never gives existing notation a new
+ *   meaning (`docs/design/checker-version-skew.md`, P0). Every viewer before
+ *   0.8 offers the button on every `oq` it meets, whatever its marker says,
+ *   so `vantage-check` reports one on a 🔒 or ✅ question as an error and any
+ *   other as a warning that names the `question` to write.
  *
- * Two names rather than one name whose meaning follows the marker, because a
- * release never gives existing notation a new meaning
- * (`docs/design/checker-version-skew.md`, P0). An `oq` on a 🔒 question would
- * read, to every viewer before 0.8, as a question to answer in one click.
+ * The two take the same keys, `id` and `leaning`, with one grammar. A viewer
+ * that predates `question` drops it whole, as it drops every name it does not
+ * know, so on a question written with it that viewer offers no button and no
+ * anchor: it does less, and misreads nothing. A run holding both names is one
+ * question, read as such a viewer reads it: where both set a key, the `oq`'s
+ * value wins.
  */
 export const VANTAGE_QUESTION_NAMES = ["oq", "question"] as const;
 
 /** `oq` or `question`: a directive that declares a question. */
 export type VantageQuestionName = (typeof VANTAGE_QUESTION_NAMES)[number];
 
-/** Whether `name` declares a question, answerable or not. */
+/** Whether `name` declares a question, `question` or the deprecated `oq`. */
 export function isQuestionDirective(name: string): name is VantageQuestionName {
   return name === "oq" || name === "question";
 }
+
+/**
+ * The attribute every question carries in the rendered page, whichever name
+ * declared it, with the value `"true"`. It is how a reader of this package's
+ * markup finds every question: `[data-vantage-question]`
+ * (`VANTAGE_QUESTION_SELECTOR`).
+ */
+export const VANTAGE_QUESTION_ATTRIBUTE = "data-vantage-question";
+
+/** `[data-vantage-question]`: every question in a rendered page. */
+export const VANTAGE_QUESTION_SELECTOR = `[${VANTAGE_QUESTION_ATTRIBUTE}]`;
+
+/**
+ * The attribute a question declared with `oq` carries besides
+ * `VANTAGE_QUESTION_ATTRIBUTE`, with the value `"true"`. It means what it has
+ * meant since 0.7, "declared with `oq`", and nothing more: whether a question
+ * offers Take this leaning is read from its state (`questionOffersTake`),
+ * never from this attribute.
+ */
+export const VANTAGE_OQ_ATTRIBUTE = "data-vantage-oq";
+
+/**
+ * The attribute that carries a question's `leaning=`, normalized
+ * (`normalizeLeaning`), on the element `VANTAGE_QUESTION_ATTRIBUTE` is on,
+ * whichever name declared it. Absent when the directive states none.
+ */
+export const VANTAGE_LEANING_ATTRIBUTE = "data-vantage-leaning";
 
 /**
  * The `tone` vocabulary: GitHub's alert words plus `muted`.
@@ -203,7 +234,7 @@ export const VANTAGE_FALLBACK_TARGETS = VANTAGE_STYLE_TARGETS.filter(
  * `tr`, `hr` and `div` are in neither, so a button on one of them would build
  * an anchor no review pass can find — the "mis-wired button" D6 forbids.
  *
- * The gap between this list and `VANTAGE_STYLE_TARGETS` is why an `oq`
+ * The gap between this list and `VANTAGE_STYLE_TARGETS` is why a question
  * directive at column 0 above a list silently does nothing: the target is the
  * `<ul>`, not the `<li>`. The checker says so.
  */
@@ -222,12 +253,11 @@ export const VANTAGE_ANCHOR_TARGETS = [
 ] as const;
 
 /**
- * The tags a `<!-- vantage: oq … -->` directive actually yields a *button* on —
- * `VANTAGE_ANCHOR_TARGETS` minus `pre` and `table`, written as an explicit
- * subtraction so the narrowing stays visible. A `question` directive declares a
- * question on exactly these tags too, although it never yields a button: the
- * two names declare the same questions in the same places, so a question that
- * changes state changes its directive's name and nothing else.
+ * The tags a question directive declares a question on, and so the only ones
+ * an open question's *button* can sit on — `VANTAGE_ANCHOR_TARGETS` minus `pre`
+ * and `table`, written as an explicit subtraction so the narrowing stays
+ * visible. One list for both names and every state, so a question that changes
+ * state is declared in exactly the same place.
  *
  * Anchorable and button-hosting are different questions, and this is the second
  * one. A comment *can* be anchored on a `<pre>` or a `<table>` — both are in
@@ -235,11 +265,12 @@ export const VANTAGE_ANCHOR_TARGETS = [
  * button renders as part of the code, and a `<button>` child of `<table>` is not
  * valid HTML at all, so the parser hoists it out.
  *
- * Both consumers read it from here: `OQ_HOST_TAGS` in the app's
- * `useOpenQuestionButtons`, and the `oq` branch of the checker's
- * `vantage/orphan`. They were two hand-written lists that disagreed — the
- * checker called an `oq` above a fence fine while the app rendered no button
- * and said nothing, which is the D5 break this module exists to prevent.
+ * Every consumer reads it from here: `OQ_HOST_TAGS` in the app's
+ * `useOpenQuestionButtons`, the planning index's scan, and the question branch
+ * of the checker's `vantage/orphan`. They were two hand-written lists that
+ * disagreed — the checker called an `oq` above a fence fine while the app
+ * rendered no button and said nothing, which is the D5 break this module
+ * exists to prevent.
  */
 export const VANTAGE_OQ_HOST_TARGETS = VANTAGE_ANCHOR_TARGETS.filter(
   (tag) => tag !== "pre" && tag !== "table",
@@ -282,12 +313,11 @@ export const VANTAGE_OQ_ID = /^OQ-(?:[A-Z][A-Z0-9]{0,5})?[0-9]+$/;
  * the second consumer arrived.
  *
  * `open` is the only state that wants a one-click answer, so it is the only one
- * an `oq` directive declares. `settled` and `blocked` are declared with a
- * `question` directive, which carries no control — a control offering to answer
- * a question that is already decided, or that cannot be answered yet, is a lie
- * (`questionDirectiveFor`). The checker keys on the distinction rather than on
- * the word "Leaning:" alone. Either non-open marker wins when both appear on one
- * item.
+ * a viewer offers Take this leaning on (`questionOffersTake`). A `settled` or
+ * `blocked` question carries no control — a control offering to answer a
+ * question that is already decided, or that cannot be answered yet, is a lie.
+ * The checker keys on the distinction rather than on the word "Leaning:"
+ * alone. Either non-open marker wins when both appear on one item.
  */
 export const VANTAGE_OQ_STATUS = {
   /** 💬 — an active decision awaiting a ruling. */
@@ -331,17 +361,18 @@ export function vantageOqStatus(text: string): VantageOqStatus | null {
 }
 
 /**
- * The directive a question in this state is declared with: `oq` for an open
- * question, or one with no marker, which counts as open; `question` for a
- * blocked or an answered one (`VANTAGE_QUESTION_NAMES`).
+ * Whether a question in this state offers Take this leaning in review mode: an
+ * open one, marked 💬 or 💬 🤷, or one carrying no marker, which counts as
+ * open. A 🔒 question cannot be answered yet and a ✅ one has been ruled, so
+ * neither has a leaning left to take, whatever its directive's name.
  *
- * The checker's `vantage/question-name` holds every question directive to it,
- * and the style guide teaches it, so the two cannot drift.
+ * One home for the rule, because every surface that answers it must agree:
+ * the page's button and the planning card, the counts of questions waiting on
+ * a human, and `vantage-check`, which reports an `oq` on a question this says
+ * no to, since every viewer before 0.8 offers the button there anyway.
  */
-export function questionDirectiveFor(
-  status: VantageOqStatus | null,
-): VantageQuestionName {
-  return status === null || status === "open" ? "oq" : "question";
+export function questionOffersTake(status: VantageOqStatus | null): boolean {
+  return status === null || status === "open";
 }
 
 /** `null` for a key the grammar accepts but no closed set covers. */
@@ -366,17 +397,17 @@ const STYLE_KEYS: KeyTable = {
  * Name → key → the closed value set for that key.
  *
  * `section` and `block` share their keys: they differ in *extent*, not in what
- * they can say. `oq`'s two keys are the design's only values with no closed set
- * — `id` is a token an author chose and `leaning` is a sentence (§8.3) — so
- * neither can be value-allowlisted, which is recorded here as `null` rather
- * than left to a caller to guess.
+ * they can say. The two question names share theirs too, and they are the
+ * design's only values with no closed set — `id` is a token an author chose
+ * and `leaning` is a sentence (§8.3) — so neither can be value-allowlisted,
+ * which is recorded here as `null` rather than left to a caller to guess.
  *
- * `question` takes `id` alone. A `leaning` is the body of the comment Take this
- * leaning files, and a `question` offers no such control, so on one it would
- * say nothing to anybody; the question's prose keeps its `_Leaning:_` line for
- * the reader. Starting narrow is the forward-compatible choice: a key added
- * later is one older viewers drop pair by pair, while a key accepted now could
- * never be given a meaning (P0).
+ * `question` takes exactly `oq`'s keys and nothing more. Starting narrow is
+ * the forward-compatible choice: a key added later is one older viewers drop
+ * pair by pair, while a key accepted now could never be given a meaning (P0).
+ * A `leaning` on a 🔒 or ✅ question is allowed and simply not offered
+ * (`questionOffersTake`), so changing a question's state changes only its
+ * marker.
  *
  * `fallback` takes no keys: whether a block is withheld is the whole of what
  * it says, and a key added later is dropped pair by pair by this release, as
@@ -386,9 +417,69 @@ export const DIRECTIVE_VOCABULARY: DirectiveVocabulary = {
   section: STYLE_KEYS,
   block: STYLE_KEYS,
   oq: { id: null, leaning: null },
-  question: { id: null },
+  question: { id: null, leaning: null },
   fallback: {},
 };
+
+/**
+ * The one question a run of directives declares, merged: the name that won,
+ * and its keys.
+ */
+export interface QuestionRun {
+  /** `oq` when the run holds one, otherwise `question`. */
+  name: VantageQuestionName;
+  /** Every key the winning name's directives set that it accepts, merged. */
+  keys: Map<string, string>;
+  /** Which directive of the run, by index, each merged key's value came from. */
+  sources: Map<string, number>;
+}
+
+/**
+ * Merge the question directives of one run — the comments up to the block they
+ * land on — into the one question they declare, or `undefined` when the run
+ * holds none. Directives of any other name are skipped.
+ *
+ * A run holding an `oq` is read exactly as a viewer that predates `question`
+ * reads it: that viewer drops every `question` and reads the `oq` alone, so
+ * the `oq` wins wherever it appears in the run, and only its keys apply — a
+ * key only a `question` in the same run sets applies nowhere, in no release.
+ * That is the one reading every viewer agrees on (`VANTAGE_QUESTION_NAMES`),
+ * so the same bytes file the same Take in 0.7 and in 0.8. Within one name, the
+ * last value of a key wins, as `section` and `block` resolve theirs. A pair
+ * its name does not accept, or a value outside a closed set, is dropped (D2).
+ *
+ * One function for every reader of a run: the plugin that stamps the question
+ * and the planning index that reads it, which the checker reads a question
+ * through, so none can disagree about which leaning or which id a run carries
+ * (D5).
+ */
+export function mergeQuestionRun(
+  run: readonly {
+    name: string;
+    pairs: readonly { key: string; value: string }[];
+  }[],
+): QuestionRun | undefined {
+  let name: VantageQuestionName | undefined;
+  for (const directive of run) {
+    if (!isQuestionDirective(directive.name)) continue;
+    if (name !== "oq") name = directive.name;
+  }
+  if (name === undefined) return undefined;
+  const accepted = DIRECTIVE_VOCABULARY[name] ?? {};
+  const keys = new Map<string, string>();
+  const sources = new Map<string, number>();
+  run.forEach((directive, index) => {
+    if (directive.name !== name) return;
+    for (const pair of directive.pairs) {
+      const values = accepted[pair.key];
+      if (values === undefined) continue;
+      if (values !== null && !values.includes(pair.value)) continue;
+      keys.set(pair.key, pair.value);
+      sources.set(pair.key, index);
+    }
+  });
+  return { name, keys, sources };
+}
 
 export interface DirectivePair {
   key: string;
@@ -570,7 +661,8 @@ export function parseVantageDirective(comment: string): DirectiveParse {
 export const VANTAGE_OQ_PREFERENCE = "\u{1F937}";
 
 /**
- * The longest leaning an `oq` directive carries into the page, in characters.
+ * The longest leaning a question directive carries into the page, in
+ * characters.
  *
  * A leaning becomes the body of a review comment, not prose, so it is bounded;
  * 500 is generous for the one sentence the convention asks for.
@@ -578,8 +670,8 @@ export const VANTAGE_OQ_PREFERENCE = "\u{1F937}";
 export const MAX_LEANING = 500;
 
 /**
- * An `oq` directive's `leaning=` value as the page carries it: whitespace runs
- * collapsed to one space, trimmed, and capped at `MAX_LEANING`.
+ * A question directive's `leaning=` value as the page carries it: whitespace
+ * runs collapsed to one space, trimmed, and capped at `MAX_LEANING`.
  *
  * A wrapped directive puts newlines and indentation into the value. Two readers
  * need the result and must agree on it: `rehypeVantageDirectives`, which stamps

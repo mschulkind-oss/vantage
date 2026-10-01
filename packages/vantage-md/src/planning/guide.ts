@@ -225,7 +225,26 @@ export interface PlanningAgentRequestOptions {
    * left out.
    */
   ids?: readonly PlanningAgentSectionId[];
+  /**
+   * The Vantage release of the viewer handing the request over, as `X.Y.Z`,
+   * or absent for a development build and for `vantage-check index
+   * --request`, which name none. With one, the checker command the request
+   * ends with runs `uvx vantage-check` with `VANTAGE_VIEWER=<release>` in
+   * front of it, as the review payload's does
+   * (`docs/design/checker-version-skew.md` §5): a request is text an agent
+   * acts on, frozen into the viewer that ships it, so it names the viewer's
+   * release now, for the checkers that read it later.
+   */
+  viewer?: string;
 }
+
+/**
+ * What every request says after its checker command: the review payload's
+ * exit-2 sentence, since a refusal is the one exit an agent is tempted to
+ * "fix" by editing `.vantage.toml`.
+ */
+const VERIFY_CAUTION =
+  "If the command cannot run, or exits 2 (a configuration error or a refusal), leave `.vantage.toml` as it is: the check is a quality gate, not part of the work.";
 
 /**
  * The request to hand an agent for the agent sections `options.ids` names:
@@ -252,8 +271,18 @@ export function planningAgentRequest(
     ...blocks,
     // Only Markdown: `vantage-check` reads any file it is given as Markdown,
     // so a code file's `§N` comments would read as broken references.
-    "Verify: in the repository, run `vantage-check` on every Markdown file you changed, then `vantage-check index`.",
+    `Verify: in the repository, run \`${checker(options.viewer)}\` on every Markdown file you changed, then \`${checker(options.viewer)} index\`. ${VERIFY_CAUTION}`,
   ].join("\n\n");
+}
+
+/**
+ * The checker command a request names: `vantage-check`, or, from a release
+ * viewer, `uvx vantage-check` with the viewer's release in front of it.
+ */
+function checker(viewer: string | undefined): string {
+  return viewer === undefined
+    ? "vantage-check"
+    : `VANTAGE_VIEWER=${viewer} uvx vantage-check`;
 }
 
 /**

@@ -1,10 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { makeTree } from "./helpers.js";
-import {
-  questionDirectiveFor,
-  vantageOqStatus,
-} from "../../vantage-md/src/vantageDirectives.js";
 
 /**
  * Planning fixtures shared by the `index` and planning-rule suites: small
@@ -15,21 +11,17 @@ import {
 /**
  * A loose list of questions, `OQ-<prefix>1`, `OQ-<prefix>2`, …, one per
  * marker, each with a directive and a leaning, as the design-doc convention
- * writes them: an open question's `oq` restates the leaning, and a 🔒 or ✅
- * one is declared with a `question` directive, which takes none.
+ * writes them: a `question` directive in every state, restating the leaning,
+ * which only an open question offers to take.
  */
 export function questions(prefix: string, ...markers: string[]): string {
   return markers
     .map((marker, i) => {
       const id = `OQ-${prefix}${i + 1}`;
-      const directive =
-        questionDirectiveFor(vantageOqStatus(marker)) === "oq"
-          ? `oq id=${id} leaning="Yes."`
-          : `question id=${id}`;
       return [
         `${i + 1}. ${marker} **${id}: Question ${prefix}${i + 1}?**`,
         "",
-        `   <!-- vantage: ${directive} -->`,
+        `   <!-- vantage: question id=${id} leaning="Yes." -->`,
         "",
         "   _Leaning:_ yes.",
         "",

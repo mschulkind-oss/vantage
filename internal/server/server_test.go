@@ -1329,7 +1329,7 @@ func TestAUsersBookmarkBeatsAPromotionOfTheSameDocument(t *testing.T) {
 func TestABrokenRepositoryConfigIsIgnoredNotFatal(t *testing.T) {
 	isolateUserDirs(t)
 	root := initRepo(t, map[string]string{"doc.md": "# Doc\n"})
-	writeRepoConfig(t, root, "[starred]\npromotes = [\"doc.md\"]\n")
+	writeRepoConfig(t, root, "[starred]\npromote = \"doc.md\"\n")
 
 	cfg := config.Defaults()
 	cfg.TargetRepo = root
@@ -1338,6 +1338,32 @@ func TestABrokenRepositoryConfigIsIgnoredNotFatal(t *testing.T) {
 	require.NoError(t, err, "a bad repository config must not fail startup")
 
 	require.Empty(t, starredRows(t, srv.Handler()))
+}
+
+// A key from a newer release in the server's own table costs a warning and
+// nothing else (OQ-VS5): the repository's stars and theme still apply, where
+// the whole file used to be ignored over it. The warning is logged once,
+// however many requests read the file.
+func TestARepositoryConfigWithANewerKeyStillApplies(t *testing.T) {
+	isolateUserDirs(t)
+	root := initRepo(t, map[string]string{"doc.md": "# Doc\n"})
+	writeRepoConfig(t, root, "theme = \"lila\"\n\n[starred]\npromote = [\"doc.md\"]\npinned = [\"doc.md\"]\n")
+	var logs strings.Builder
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	cfg := config.Defaults()
+	cfg.TargetRepo = root
+	require.NoError(t, cfg.Resolve())
+	srv, err := NewServer(cfg)
+	require.NoError(t, err)
+	h := srv.Handler()
+
+	require.Equal(t, []string{"doc.md=repo"}, starredRows(t, h))
+	require.Equal(t, map[string]string{"": "lila"}, repoThemeDefaults(t, h))
+	require.Equal(t, []string{"doc.md=repo"}, starredRows(t, h))
+	require.Equal(t, 1, strings.Count(logs.String(), "unknown key starred.pinned"), logs.String())
 }
 
 // In daemon mode each repository promotes only its own, and every row says which
@@ -1531,7 +1557,7 @@ func TestABrokenRepositoryConfigDoesNotHideAnothersTheme(t *testing.T) {
 	isolateUserDirs(t)
 	broken := initRepo(t, map[string]string{"a.md": "# A\n"})
 	good := initRepo(t, map[string]string{"b.md": "# B\n"})
-	writeRepoConfig(t, broken, "[starred]\npromotes = [\"a.md\"]\n")
+	writeRepoConfig(t, broken, "theme = \"catppuccin\"\n\n[starred]\npromote = \"a.md\"\n")
 	writeRepoConfig(t, good, "theme = \"lila\"\n")
 
 	cfg := config.Defaults()

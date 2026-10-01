@@ -10,7 +10,7 @@ import {
   readVantageFrontmatter,
 } from "../../../vantage-md/src/vantageFrontmatter.js";
 import type { Collector } from "../core/collector.js";
-import { orList } from "./directives.js";
+import { orList, typoOrNewer } from "./directives.js";
 
 /**
  * Vantage's own `vantage:` frontmatter key — file-scoped chrome, checked with
@@ -58,11 +58,17 @@ export function checkVantageFrontmatter(collector: Collector): void {
 
       case "bad-value": {
         const suggestion = nearMiss(issue.value, issue.legal);
+        // A string is what a later release could add to the set, so it gets
+        // the advice every unknown name, key and value gets: fix a typo, keep a
+        // newer Vantage's (docs/design/checker-version-skew.md §6.2). A list or
+        // a table is a shape no release accepts, so it gets the set alone.
+        const branches =
+          typeof issue.value === "string" ? ` ${typoOrNewer(issue.value)}` : "";
         collector.report(
           "vantage/frontmatter-value",
           at,
           `${describe(issue.value)} is not a value \`${issue.key}\` accepts, so no chip is rendered.${suggestion === undefined ? "" : ` Did you mean \`${suggestion}\`?`}`,
-          `\`${issue.key}\` accepts ${orList([...issue.legal])}. \`true\` shows the document's own \`status:\` and is the form that cannot disagree with it.`,
+          `\`${issue.key}\` accepts ${orList([...issue.legal])}. \`true\` shows the document's own \`status:\` and is the form that cannot disagree with it.${branches}`,
         );
         break;
       }

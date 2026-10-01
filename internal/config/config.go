@@ -791,9 +791,10 @@ type userStarredFile struct {
 // from serve mode would flip a single-repo process into daemon mode as a
 // side-effect of reading one list.
 //
-// And it does not reject unknown keys, where [repoconfig.Parse] does. This file is
-// the daemon's own config, full of keys that are none of this reader's business;
-// policing them here would reject every real daemon config in existence.
+// And it does not police unknown keys, where [repoconfig.Parse] warns about one
+// in the tables it owns. This file is the daemon's own config, full of keys that
+// are none of this reader's business; policing them here would reject, or warn
+// about, every real daemon config in existence.
 func LoadUserStarred() (UserStarred, error) {
 	path, err := UserFilePath("config.toml")
 	if err != nil {

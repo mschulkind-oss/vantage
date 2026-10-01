@@ -6,8 +6,8 @@
  * if its tag is on the name's target list. Two callers have to predict that
  * answer from an mdast tree, where there is no hast to ask: the checker's
  * `vantage/orphan`, which reports a directive that stamps nothing, and the
- * planning index's scan, which counts a question directive (`oq` or
- * `question`) as a question only where an `oq` would yield a button. If the two
+ * planning index's scan, which counts a question directive (`question` or
+ * `oq`) as a question only where an open one would yield a button. If the two
  * predicted differently, the gate would pass a
  * question the index could not see, or the reverse, so they share these
  * helpers (D5).
@@ -116,7 +116,8 @@ export function isCommentOnly(raw: string): boolean {
  * and this checker's own parser do — a `$$…$$` block renders as
  * `<span class="katex-display">`. That span *is* stamped (see `STYLE_TARGETS`),
  * so predicting it is not about reporting an orphan any more; it is about naming
- * the shape in the `oq` message, where a formula is still no host for a button.
+ * the shape in the question message, where a formula is still no host for a
+ * button.
  * Measured, not assumed.
  */
 export function targetTag(node: RootContent): string | undefined {

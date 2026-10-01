@@ -292,8 +292,8 @@ leading `v` and a pre-release.
 > one, TOML reads it as part of that table, where no reader looks for it.
 > `vantage-check` reports a `target` it finds inside one of its own tables or
 > inside `[starred]`, with *move it above the first [table]*, and exits `2`.
-> Below `[planning]` or `[starred]` it is also an unknown key to the server,
-> which then ignores the whole file.
+> The server says the same about one below `[planning]` or `[starred]`, and
+> ignores the whole file until it moves.
 
 What each reader does with it, from 0.8.0:
 
@@ -334,19 +334,24 @@ know:
 | --- | --- | --- |
 | At the top level, or in a table that is not Vantage's | Ignores it | Ignores it |
 | In `[check]`, as a rule id in `[check.rules]`, or as a rule's option | Ignores it with a warning on stderr, and the run goes on | Ignores it, since the table is the checker's |
-| In `[planning]` | Ignores it with a warning on stderr, and the run goes on | **Ignores the whole file**, and logs a warning naming it |
-| In `[starred]` | Ignores it, since the table is the server's, except a `target`, which is an error that says to move it | **Ignores the whole file**, and logs a warning naming it |
+| In `[planning]` | Ignores it with a warning on stderr, and the run goes on | Ignores it with a warning in its log, and reads the rest of the file |
+| In `[starred]` | Ignores it, since the table is the server's, except a `target`, which is an error that says to move it | Ignores it with a warning in its log, and reads the rest of the file |
 
-`vantage-check`'s warning names its own release. It says to keep the key and
-run a newer checker if the repository is configured for one, and to fix the
-key if it is a typo. A warning changes no exit code, not even with `--strict`.
+Each reader's warning names its own release. It says to keep the key if the
+repository is configured for a newer release (and, from `vantage-check`, to
+run a newer checker), and to fix the key if it is a typo. A `vantage-check`
+warning changes no exit code, not even with `--strict`. The server logs its
+warning once when it reads the file, and again only after the file changes.
+A server older than 0.8.0 is stricter: it ignores the whole file over an
+unknown key in `[starred]`, and does not read `[planning]` at all.
 
 A key a reader does know, with a value it cannot take, is still an error to
 that reader: a severity that is not `"error"`, `"warning"` or `"off"` to
 `vantage-check`, and a `max-candidates` of 0 to both. So is one of the file's
-top-level names (`theme`, `target` or `starred`) written inside one of the
-checker's tables, since the checker knows it is misplaced rather than
-unknown.
+top-level names (`theme`, `target` or `starred`) written inside one of a
+reader's own tables, since that reader knows it is misplaced rather than
+unknown: the checker's for `[check]` and `[planning]`, and the server's for
+`[starred]` and `[planning]`.
 
 ## Planning Documents
 
@@ -437,9 +442,8 @@ that is not a whole number of at least 1 makes the file untrustworthy:
   bad `[check]` value.
 
 An unknown key in `[planning]` (`roadmaps` among them: the key is `roadmap` in
-both forms) is where the two readers part. The server ignores the whole file
-over it, as above. `vantage-check` warns, ignores the key and reads the rest of
-the table, because the key may come from a newer release
+both forms) is not refused. Both readers warn, ignore the key and read the
+rest of the file, because the key may come from a newer release
 ([Keys From a Newer Release](#keys-from-a-newer-release)).
 
 A change to the file applies at once: an open page rescans the repository.

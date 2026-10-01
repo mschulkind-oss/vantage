@@ -545,22 +545,27 @@ vocabulary still in flight has to be redone.
 Settled questions move to the [Decision Ledger](#decision-ledger) above.
 
 1. 💬 **OQ-CT6: May a repository ship theme _files_, not just name one?**
+
    [§2.5](#25-a-repository-may-offer-a-default) lets a repository name a theme,
    which means the palette it wants must already be in the reader's themes folder
    or in the bundle — so the case that motivates the key at all, a project whose
    diagrams and screenshots are drawn in its own palette, is the one it cannot
-   serve. Serving a stylesheet committed in the repository would close that — from
-   a folder the key names, since `.vantage/` is transient state a repository is
+   serve.
+
+   Serving a stylesheet committed in the repository would close that — from a
+   folder the key names, since `.vantage/` is transient state a repository is
    told to gitignore — and it moves the trust boundary: every stylesheet Vantage
    serves today is one the reader wrote in their own config directory, which is
    the whole of why [§8](#8-risks) notes that hazard rather than mitigating it. A
    CSS file can fetch remote fonts and images, so a themed `git clone` would reach
    the network on first paint, from the reader's address, with nothing on the page
-   that looks like a request. What this decides is whether a repository's palette
-   is a suggestion the reader already holds or a file of the repository's that the
-   reader's browser fetches on its behalf.
+   that looks like a request.
 
-   <!-- vantage: oq id=OQ-CT6 leaning="Read and list a repository's theme files, but do not apply one until the reader has accepted it once for that repository — a repository-supplied stylesheet fetches remote fonts and images from the reader's address, which is a different trust question from a file in their own config directory. Consent rather than sanitizing: stripping url() and @import means a CSS parser of our own." -->
+   What this decides is whether a repository's palette is a suggestion the reader
+   already holds or a file of the repository's that the reader's browser fetches
+   on its behalf.
+
+   <!-- vantage: question id=OQ-CT6 leaning="Read and list a repository's theme files, but do not apply one until the reader has accepted it once for that repository — a repository-supplied stylesheet fetches remote fonts and images from the reader's address, which is a different trust question from a file in their own config directory. Consent rather than sanitizing: stripping url() and @import means a CSS parser of our own." -->
 
    _Leaning:_ the mechanism yes, unasked no. List a repository's theme files and
    apply one only once the reader has accepted it for that repository — the shape

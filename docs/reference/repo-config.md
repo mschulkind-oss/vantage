@@ -6,6 +6,7 @@ verified: 2026-10-01
 verified_commit: fced33d
 covers:
   - internal/repoconfig/repoconfig.go
+  - internal/buildinfo/buildinfo.go
   - internal/repoconfig/testdata/shared-config.toml
   - internal/repoconfig/testdata/version-skew-config.json
   - internal/starred/promote.go
@@ -24,7 +25,7 @@ covers:
   - frontend/src/types/index.ts
   - frontend/src/hooks/useWebSocket.ts
 tags: [config, starred, vantage-check, server, viewer]
-summary: "A repository configures Vantage in one committed file, .vantage.toml, which the server and vantage-check both read, each parsing only its own tables. The server reads it from the repository root only, guards the read as hostile input, and ignores the whole file when it cannot use it. Its [starred] promote list adds documents to the Starred section, merged with the same list from the user's own config: never stored as bookmarks, and never shown as starred."
+summary: "A repository configures Vantage in one committed file, .vantage.toml, which the server and vantage-check both read, each parsing only its own tables. The server reads it from the repository root only, guards the read as hostile input, ignores the whole file when it cannot use it, and warns about and ignores a key it does not know in its own tables. Its [starred] promote list adds documents to the Starred section, merged with the same list from the user's own config: never stored as bookmarks, and never shown as starred."
 ---
 
 # Repository config — one `.vantage.toml`, two readers, and the documents it promotes into Starred
@@ -38,7 +39,10 @@ included, so a perimeter diff flags them when they change for unrelated reasons
 too. MEASURED: both readers' test suites parse the shared fixtures in every
 `just check-ci`. UNMEASURED: the swap window in
 [§3.3](#33-the-servers-read-is-guarded) was read from the code, not raced.
-[§8](#8-known-gaps) lists where the code breaks a ruling below.
+[§8](#8-known-gaps) lists where the code breaks a ruling below. Amended
+2026-10-01, in the commit after `936e24b`, for the server's unknown keys
+([§3.4](#34-a-file-the-server-cannot-use-is-ignored-whole)), read from that
+commit's code and its tests.
 
 `.vantage.toml`, committed at a repository's root, is the one file in which a
 repository configures Vantage. Two programs read it. `vantage-check` reads its rule
@@ -120,7 +124,8 @@ These are the rules a change breaks by accident. Each has its ruling's id in
 4. **The server reads the repository root's file and nothing above it**
    ([§3.2](#32-the-server-reads-the-repository-roots-file-only)).
 5. **A file the server cannot use is ignored whole.** Never fatal, and never half
-   applied ([§3.4](#34-a-file-the-server-cannot-use-is-ignored-whole)).
+   applied. A key it does not know in its own tables is not such a file: it is
+   warned about and ignored ([§3.4](#34-a-file-the-server-cannot-use-is-ignored-whole)).
 6. **The file is hostile input** from the moment someone opens an untrusted
    repository ([§3.3](#33-the-servers-read-is-guarded)).
 7. **A promoted row is never stored.** The label saying where a row came from exists
@@ -245,11 +250,12 @@ the theme route from being a path traversal.
 all, for any of:
 
 - a TOML syntax error, or a value of the wrong type (`[theme]` as a table, say);
-- an unknown key inside a table the server claims, `[starred]` or `[planning]`,
-  found from the decoder's list of keys it did not decode, so a typo such as
-  `promotes = […]` is an error rather than silence;
 - a `[planning]` value the planning rules refuse
-  ([`planning-index.md` §14](planning-index.md#14-configuration)).
+  ([`planning-index.md` §14](planning-index.md#14-configuration));
+- one of the file's own top-level names, `theme`, `target` or `starred`, written
+  inside `[starred]` or `[planning]`, where TOML puts a key written after that
+  table's header. It is misplaced rather than unknown, and the message says where it
+  goes in the checker's own words, "move it above the first [table]" (`misplaced`).
 
 A refused file is not fatal. Each consumer logs a warning naming the repository, the
 file and the reason, and serves the repository as though it had no file: no
@@ -262,13 +268,23 @@ so there is one.
 The warning is logged by each request that reads the file, not once per edit, so a
 broken file keeps saying so for as long as it is broken.
 
-> [!NOTE]
-> **The checker answers an unknown key differently.** It warns about an unknown key in
-> `[check]` or `[planning]` and reads the rest
-> ([§3.7](#37-where-the-readers-part-and-what-pins-them)), while the server refuses the
-> file. Whether the server should warn and ignore too is
-> [OQ-VS5](../design/checker-version-skew.md#OQ-VS5), open on the roadmap. A bad value
-> for a known key is an error to both.
+**An unknown key in a table the server claims is not such a file.** `Parse` finds it
+from the decoder's list of keys it did not decode, ignores it, returns a warning for
+it, and the rest of the file applies: stars, theme and `[planning]` alike. An unknown
+sub-table, such as `[planning.extra]`, is one key, named once. `Config` logs each
+warning through the process's default logger when it parses a version of the file,
+so once per version rather than on every request. The warning names the server's
+release (`buildinfo.Release`), or calls it a development build, says what each table
+takes, and gives the checker's two branches: keep a newer release's key, fix a typo.
+
+To a server older than the key, every key a later release adds looks exactly like a
+typo, so refusing the file over one would make every new `[planning]` key a breaking
+change for every older server, its stars and theme included, and a server reads no
+`target` that could refuse clearly instead
+([OQ-VS5](../design/checker-version-skew.md#decision-ledger)). A typo is still said out
+loud rather than dropped: `promotes = […]` doing nothing with no way to find out is
+the silence this file exists to avoid. A bad value for a key the server knows is an
+error, as it is to the checker.
 
 ### 3.5 Reload, and the change push
 
@@ -327,11 +343,12 @@ rest of the configuration ([`agent-cli.md` §6](agent-cli.md#6-configuration)).
 
 ### 3.7 Where the readers part, and what pins them
 
-The two readers agree on every value of `[planning]` and part over a key one of them
-does not know. The checker warns about an unknown key in `[check]` or `[planning]` and
-reads the rest, because to a checker older than the key every key a later release adds
-looks like a typo; the server refuses the whole file over an unknown key in
-`[starred]` or `[planning]` ([§3.4](#34-a-file-the-server-cannot-use-is-ignored-whole)).
+The two readers agree on every value of `[planning]`, and on a key either does not
+know: each warns about it, ignores it and reads the rest, the checker in `[check]` and
+`[planning]` and the server in `[starred]` and `[planning]`, because to a reader older
+than the key every key a later release adds looks like a typo
+([§3.4](#34-a-file-the-server-cannot-use-is-ignored-whole)). They part only where one
+of them does not read a table at all, and over `target`, which only the checker reads.
 The user guide's [Keys From a Newer Release](../../userguide/reference/configuration.md#keys-from-a-newer-release)
 tabulates each reader's answer, table by table.
 
@@ -345,8 +362,8 @@ Three shared fixtures hold the readers to those answers. Each is read by the ser
 - [`planning-config.json`](../../internal/repoconfig/testdata/planning-config.json)
   holds both to one resolved `[planning]` table for every file they agree on.
 - [`version-skew-config.json`](../../internal/repoconfig/testdata/version-skew-config.json)
-  holds each reader's own answer where they differ: an unknown key, and `target` in
-  each place it can be written.
+  holds each reader's own answer to a key it does not know, where the two now agree,
+  and to `target` in each place it can be written, where they differ.
 
 ---
 
@@ -527,7 +544,8 @@ every `starred_changed` push, which every bookmark change in any browser sends.
 | Failure | Behavior |
 | :--- | :--- |
 | No `.vantage.toml` at the repository root | No settings and no warning: the normal case |
-| A syntax error, a wrong type, an unknown key in `[starred]` or `[planning]`, or a bad `[planning]` value | The server ignores the whole file and logs a warning per request that reads it: no promotions, no theme offer, the default `[planning]`. In the run's own file, the checker exits `2` for a syntax error, or a bad value in `[check]`, `[planning]` or `target`, and warns and reads on for an unknown key in `[check]` or `[planning]`; in another project root's file, the same problems are a `planning` failure for that root's files, exit `3`, except a bad `target`, which exits `2` ([§3.6](#36-how-the-checker-reads-it)). It reads nothing else in `[starred]` and never reads `theme`, so a bad value or an unknown key there passes it silently, a `target` misplaced in `[starred]` aside |
+| A key the server does not know in `[starred]` or `[planning]` | The server ignores the key, logs one warning for it when it parses that version of the file, and applies the rest. The checker warns about one in `[planning]` or `[check]` and reads on, and steps over `[starred]` |
+| A syntax error, a wrong type, a bad `[planning]` value, or `theme`, `target` or `starred` written inside `[starred]` or `[planning]` | The server ignores the whole file and logs a warning per request that reads it: no promotions, no theme offer, the default `[planning]`. In the run's own file, the checker exits `2` for a syntax error, or a bad value in `[check]`, `[planning]` or `target`; in another project root's file, the same problems are a `planning` failure for that root's files, exit `3`, except a bad `target`, which exits `2` ([§3.6](#36-how-the-checker-reads-it)). It reads nothing else in `[starred]` and never reads `theme`, so a bad value or an unknown key there passes it silently, a `target` misplaced in `[starred]` aside |
 | The file is a symlink or not a regular file, or past the size cap | The server ignores it whole, as above, except a symlink to a regular file swapped in between its stat and its open, which it reads ([§8](#8-known-gaps)). The checker exits `2` for a run's own file past the cap |
 | A literal `promote` line that is absolute, holds `..`, names `.git` or `.vantage`, or resolves outside the repository | That line is dropped and logged; every other line still promotes. A path a pattern matched that fails the same checks is dropped without a log line |
 | A pattern that matches more rows than the cap | The first rows by path are kept, and the overflow is logged as one refused line |
@@ -629,8 +647,8 @@ is the only place the values themselves are stated.
 
 Rulings a maintainer reading only the text above might undo on purpose, each with the
 id that sibling documents cite. All were ruled in the design this document replaced;
-[OQ-RC5](#why-its-this-way) is also the subject of an open question in
-[`checker-version-skew.md`](../design/checker-version-skew.md#OQ-VS5). Ids not listed
+[OQ-RC5](#why-its-this-way) was amended on 2026-10-01 by
+[`checker-version-skew.md`'s OQ-VS5](../design/checker-version-skew.md#decision-ledger). Ids not listed
 were absorbed into the text above or are in git.
 
 | ID | Ruling | Date |
@@ -639,7 +657,7 @@ were absorbed into the text above or are in git.
 | OQ-RC2 | The server's tables and keys are top level, never under `[check]`; the table is `[starred]` with one `promote` key, the same in the repository's file and the user config. Not `[server]`: the name says what the table is for, not which binary reads it, which survives both binaries reading more of the file ([§3.1](#31-who-reads-what)) | 2026-09-20 |
 | OQ-RC3 | Neither reader validates the other's tables; shared fixtures pin that each reads a file holding both. The one exception is the checker refusing the viewer's own names misplaced in a table, `starred.target` included ([§3.6](#36-how-the-checker-reads-it), [§3.7](#37-where-the-readers-part-and-what-pins-them)) | 2026-09-20 |
 | OQ-RC4 | The server reads the repository root's file only, with no upward walk ([§3.2](#32-the-server-reads-the-repository-roots-file-only)) | 2026-09-20 |
-| OQ-RC5 | A file the server cannot use is ignored whole: logged, and the repository served as though it had none. Never fatal, never half applied. An unknown key in the server's own tables is such a file; whether it should be warned about and ignored instead is [OQ-VS5](../design/checker-version-skew.md#OQ-VS5) ([§3.4](#34-a-file-the-server-cannot-use-is-ignored-whole)) | 2026-09-20 |
+| OQ-RC5 | A file the server cannot use is ignored whole: logged, and the repository served as though it had none. Never fatal, never half applied. An unknown key in the server's own tables is not such a file: it is warned about and ignored, and the rest applies ([OQ-VS5](../design/checker-version-skew.md#decision-ledger), [§3.4](#34-a-file-the-server-cannot-use-is-ignored-whole)) | 2026-09-20; amended 2026-10-01 |
 | OQ-RC6 | The read is guarded: regular files only, size-capped, and never following a symlink. The code holds the last only for a symlink in place when it stats the file ([§3.3](#33-the-servers-read-is-guarded), [§8](#8-known-gaps)) | 2026-09-20 |
 | OQ-RC7 | The server re-stats the file at most once per reload interval and re-parses only on a change, rather than reading once or per request. The file's edit is pushed, and the planning endpoints read past the interval; Starred and the theme offer pick an edit up at their next request ([§3.5](#35-reload-and-the-change-push)) | 2026-09-20 |
 | OQ-RC8 | A promoted row exists only on the wire; the stored entry and the bookmark file's format are unchanged ([§4.4](#44-the-starred-response)) | 2026-09-20 |

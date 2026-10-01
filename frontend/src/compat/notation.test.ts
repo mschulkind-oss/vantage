@@ -4,7 +4,7 @@
  * against the real previous release is `src/test/compat/`.
  */
 import { describe, expect, it } from "vitest";
-import { STYLE_GUIDE } from "vantage-md";
+import { STYLE_GUIDE, vantageOqStatus } from "vantage-md";
 import {
   THIS_TREE,
   frontmatterExamples,
@@ -45,6 +45,35 @@ function withholding(marker: string, line: number): Release {
 }
 
 const STAND_IN = "<!-- vantage: stand-in -->";
+
+/** Whether a directive's comment text names `question`. */
+const namesQuestion = (inner: string) =>
+  /^\s*vantage:\s*question\b/.test(inner);
+
+/**
+ * This tree as a release before 0.8.0 reads it, the way `vantage-md@0.7.1`
+ * does: it drops a `question` directive whole, and it stamps no
+ * `data-vantage-question`, so its app offers Take this leaning on every `oq`
+ * whatever the question's marker says.
+ */
+const PREDATES_QUESTION: Release = {
+  ...THIS_TREE,
+  name: "the release before `question`",
+  appliesDirective: (inner) =>
+    !namesQuestion(inner) && THIS_TREE.appliesDirective!(inner),
+  oqStatus: undefined,
+  offersTake: undefined,
+  renderMarkdown: async (content) => {
+    const { html } = await THIS_TREE.renderMarkdown(
+      withoutDirectives(content, (inner) => !namesQuestion(inner)),
+    );
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    for (const el of doc.querySelectorAll("[data-vantage-question]")) {
+      el.removeAttribute("data-vantage-question");
+    }
+    return { html: doc.body.innerHTML };
+  },
+};
 
 /**
  * This tree, with every drawing dropped as a release before 0.8 drops it: a
@@ -130,9 +159,9 @@ describe("guideExamples", () => {
   it("finds directive examples and frontmatter examples in the real guide, so the run cannot pass by finding nothing", () => {
     const examples = guideExamples(STYLE_GUIDE);
     const markdown = examples.filter((e) => e.origin.includes("```markdown"));
-    expect(markdown.some((e) => e.source.includes("<!-- vantage: oq"))).toBe(
-      true,
-    );
+    expect(
+      markdown.some((e) => e.source.includes("<!-- vantage: question")),
+    ).toBe(true);
     expect(
       examples.filter((e) => e.origin.startsWith("the frontmatter")).length,
     ).toBeGreaterThanOrEqual(2);
@@ -216,12 +245,15 @@ describe("misreadings", () => {
         origin: "a test",
         source: question("\u{1F512} ", "<!-- vantage: oq id=OQ-10 -->"),
       },
-      THIS_TREE,
+      PREDATES_QUESTION,
     );
     expect(found).toHaveLength(1);
     expect(found[0]?.kind).toBe("affordance");
     expect(found[0]?.message).toContain('offers "Take this leaning" on OQ-10');
     expect(found[0]?.message).toContain("blocked");
+    expect(found[0]?.message).toContain(
+      "Declare it with `question`, a name the release before `question` does not know",
+    );
   });
 
   it("flags one on a ✅ question too", async () => {
@@ -230,7 +262,7 @@ describe("misreadings", () => {
         origin: "a test",
         source: question("✅ ", "<!-- vantage: oq id=OQ-10 -->"),
       },
-      THIS_TREE,
+      PREDATES_QUESTION,
     );
     expect(found.map((m) => m.kind)).toEqual(["affordance"]);
     expect(found[0]?.message).toContain("answered");
@@ -239,9 +271,61 @@ describe("misreadings", () => {
   it("passes one on an open question, marked or not", async () => {
     for (const marker of ["\u{1F4AC} ", "\u{1F4AC} \u{1F937} ", ""]) {
       expect(
-        await kinds(question(marker, "<!-- vantage: oq id=OQ-10 -->")),
+        await kinds(
+          question(marker, "<!-- vantage: oq id=OQ-10 -->"),
+          PREDATES_QUESTION,
+        ),
       ).toEqual([]);
     }
+  });
+
+  // The degradation P0 allows: a release before `question` drops it whole, so
+  // its reader gets no Take this leaning and no anchor, and misreads nothing.
+  it("passes a `question` in every state, with a leaning, which a release before it drops", async () => {
+    for (const marker of ["\u{1F4AC} ", "", "\u{1F512} ", "✅ "]) {
+      const source = question(
+        marker,
+        '<!-- vantage: question id=OQ-10 leaning="Wait for the test." -->',
+      );
+      expect(await kinds(source, PREDATES_QUESTION), marker).toEqual([]);
+      // And it really is dropped there: no stamp, no anchor.
+      const { html } = await PREDATES_QUESTION.renderMarkdown(source);
+      expect(html).not.toContain("data-vantage-");
+      expect(html).not.toContain('id="OQ-10"');
+    }
+  });
+
+  it("passes an oq directive on a 🔒 question to a release that reads the marker", async () => {
+    // From 0.8.0 on, every question carries `data-vantage-question`, and the
+    // app offers a take by the question's state, never by its name.
+    expect(
+      await kinds(question("\u{1F512} ", "<!-- vantage: oq id=OQ-10 -->")),
+    ).toEqual([]);
+  });
+
+  it("flags a question a release that reads the marker reads as open, where this tree does not", async () => {
+    // A later release that gives a marker a new state would be read by 0.8.0
+    // as open: the case the second generation of the model is there for.
+    const blind: Release = {
+      ...THIS_TREE,
+      name: "the doctored release",
+      oqStatus: (text) =>
+        text.includes("\u{1F512}") ? null : vantageOqStatus(text),
+    };
+    const found = await misreadings(
+      {
+        origin: "a test",
+        source: question(
+          "\u{1F512} ",
+          '<!-- vantage: question id=OQ-10 leaning="x" -->',
+        ),
+      },
+      blind,
+    );
+    expect(found.map((m) => m.kind)).toEqual(["affordance"]);
+    expect(found[0]?.message).toContain(
+      "the doctored release reads its marker as open",
+    );
   });
 
   it("flags a button where this tree reads no question at all", async () => {

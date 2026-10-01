@@ -134,7 +134,6 @@ import {
   chooseRoadmap,
   layoutPlanningPage,
   listedQuestions as listedQuestionsOf,
-  placeComment,
   planningSearch,
   readPageRequest,
   readRememberedRoadmap,
@@ -164,10 +163,16 @@ import {
 } from "../stores/usePlanningStore";
 import {
   answersPayload,
-  isPendingForAgent,
+  deleteCommentFrom,
   postCommentTo,
   type LineLookup,
 } from "../stores/useReviewStore";
+import { VIEWER_RELEASE } from "../lib/viewerRelease";
+import {
+  answeredPerSection,
+  needYou,
+  pendingAnswers,
+} from "../lib/planningAnswers";
 import type { ReviewComment } from "../types";
 
 /**
@@ -508,6 +513,8 @@ const Section: React.FC<{
   busy?: boolean;
   /** The agent request of an agent section, which has Copy agent request. */
   requestOf?: AgentRequestOf;
+  /** How many of its entries a pending comment answers (§6.7). */
+  answered?: number;
   children: React.ReactNode;
 }> = ({
   section,
@@ -516,6 +523,7 @@ const Section: React.FC<{
   onPrefetch,
   busy,
   requestOf,
+  answered = 0,
   children,
 }) => {
   const { id, title, explanation, total, pageCount } = section;
@@ -557,6 +565,17 @@ const Section: React.FC<{
           <span className="ml-1 font-normal tabular-nums">
             {total.toLocaleString("en-US")}
           </span>
+          {answered > 0 && (
+            <>
+              {" "}
+              <span
+                data-planning-section-answered
+                className="font-normal tracking-normal normal-case tabular-nums"
+              >
+                {answeredCount(answered)}
+              </span>
+            </>
+          )}
         </h2>
         {requestOf !== undefined && isPlanningAgentSectionId(id) && (
           <CopyRequestButton
@@ -598,7 +617,11 @@ const Section: React.FC<{
  * adds no history entry. Its link is still the section's `#id`, which a new
  * tab opened on it scrolls to once the sections are in.
  */
-const SectionBar: React.FC<{ layout: PlanningLayout }> = ({ layout }) => (
+const SectionBar: React.FC<{
+  layout: PlanningLayout;
+  /** How many of each section's entries a pending comment answers, by id. */
+  answered?: ReadonlyMap<string, number>;
+}> = ({ layout, answered }) => (
   <nav
     aria-label="Sections"
     className="flex flex-wrap items-center gap-x-2 text-sm text-slate-600 dark:text-slate-300"
@@ -626,6 +649,14 @@ const SectionBar: React.FC<{ layout: PlanningLayout }> = ({ layout }) => (
           <span className="tabular-nums">
             {section.total.toLocaleString("en-US")}
           </span>
+          {(answered?.get(section.id) ?? 0) > 0 && (
+            <>
+              {" "}
+              <span className="tabular-nums">
+                {answeredCount(answered?.get(section.id) ?? 0)}
+              </span>
+            </>
+          )}
         </a>
       </React.Fragment>
     ))}
@@ -792,13 +823,39 @@ const Notices: React.FC<{
   );
 };
 
+/**
+ * `(3 answered)`: beside a section's count of entries, how many of them a
+ * comment pending for the agent answers, so a section that still lists them
+ * does not read as saying they need you (§6.7).
+ */
+const answeredCount = (n: number): string =>
+  `(${n.toLocaleString("en-US")} answered)`;
+
 /** `(4 need you)`, or `(1 needs you)`: a roadmap's count in the picker. */
 const needYouCount = (n: number): string =>
   `(${n.toLocaleString("en-US")} ${n === 1 ? "needs" : "need"} you)`;
 
+/**
+ * The widest a roadmap's count can read once answers are taken off it: its
+ * count in the index, as `needs`, the longer word. Answers only ever lower a
+ * count, so the room this reserves holds every count it can become, and a
+ * count lowered after the line painted moves nothing (§12, L1).
+ */
+const needYouRoom = (n: number): string =>
+  `(${n.toLocaleString("en-US")} needs you)`;
+
 /** What the picker says of a roadmap: its full path, then its count. */
-const roadmapOption = (roadmap: PlanningRoadmap): string =>
-  `${roadmap.path} ${needYouCount(roadmap.needsYouCount)}`;
+const roadmapOption = (roadmap: PlanningRoadmap, count: number): string =>
+  `${roadmap.path} ${needYouCount(count)}`;
+
+/**
+ * The line after the picker, for `count` questions that need you only on
+ * other roadmaps; with every one answered, that none is left.
+ */
+const otherRoadmapsLine = (count: number): string =>
+  count === 0
+    ? "No more questions need you on other roadmaps."
+    : PLANNING_NOTICES.otherRoadmaps(count);
 
 /**
  * The roadmap line (§6.8): above the section bar, and only when two or more
@@ -823,8 +880,17 @@ const roadmapOption = (roadmap: PlanningRoadmap): string =>
  */
 const RoadmapLine: React.FC<{
   roadmaps: readonly PlanningRoadmap[];
+  /**
+   * Each roadmap's count of questions that need you, less those a pending
+   * comment answers (`lib/planningAnswers.ts`); the index's count where it
+   * has none.
+   */
+  needYou?: ReadonlyMap<string, number>;
   value: string;
+  /** Questions that need you only on other roadmaps, as the index counts them. */
   others: number;
+  /** The same, less those a pending comment answers. */
+  othersLeft?: number;
   busy: boolean;
   onPick: (path: string) => void;
   /**
@@ -832,9 +898,20 @@ const RoadmapLine: React.FC<{
    * rather than as a line above the section bar (§6.9).
    */
   stacked?: boolean;
-}> = ({ roadmaps, value, others, busy, onPick, stacked = false }) => {
+}> = ({
+  roadmaps,
+  needYou,
+  value,
+  others,
+  othersLeft = others,
+  busy,
+  onPick,
+  stacked = false,
+}) => {
   const id = React.useId();
   const chosen = roadmaps.find((roadmap) => roadmap.path === value);
+  const countOf = (roadmap: PlanningRoadmap) =>
+    needYou?.get(roadmap.path) ?? roadmap.needsYouCount;
   return (
     <div
       data-testid="roadmap-line"
@@ -864,7 +941,19 @@ const RoadmapLine: React.FC<{
             data-testid="roadmap-shown"
             className="min-w-0 [overflow-wrap:anywhere]"
           >
-            {chosen === undefined ? value : roadmapOption(chosen)}
+            {chosen === undefined ? (
+              value
+            ) : (
+              <>
+                {chosen.path}{" "}
+                <span
+                  className="hdr-reserve tabular-nums"
+                  data-reserve={needYouRoom(chosen.needsYouCount)}
+                >
+                  {needYouCount(countOf(chosen))}
+                </span>
+              </>
+            )}
           </span>
           <ChevronDown
             aria-hidden="true"
@@ -880,7 +969,7 @@ const RoadmapLine: React.FC<{
           >
             {roadmaps.map((roadmap) => (
               <option key={roadmap.path} value={roadmap.path}>
-                {roadmapOption(roadmap)}
+                {roadmapOption(roadmap, countOf(roadmap))}
               </option>
             ))}
           </select>
@@ -898,9 +987,15 @@ const RoadmapLine: React.FC<{
           )}
         </span>
       </span>
+      {/* As wide as the index's count says, so answers lowering it after
+          the line painted move nothing (§12, L1). */}
       {others > 0 && (
-        <span data-testid="other-roadmaps">
-          {PLANNING_NOTICES.otherRoadmaps(others)}
+        <span
+          data-testid="other-roadmaps"
+          className="hdr-reserve"
+          data-reserve={PLANNING_NOTICES.otherRoadmaps(others)}
+        >
+          {otherRoadmapsLine(othersLeft)}
         </span>
       )}
     </div>
@@ -1213,48 +1308,47 @@ export const PlanningPage: React.FC = () => {
   // document — built from the reviews, never from the cards, so a comment
   // two cards could both see appears once. A card's own report decides for
   // it; placement decides for a question with none, never both.
-  const pendingGroups = useMemo(() => {
-    const byPath = new Map<string, PlanningQuestion[]>();
-    for (const question of listedQuestions) {
-      const list = byPath.get(question.path);
-      if (list === undefined) byPath.set(question.path, [question]);
-      else list.push(question);
+  const pendingGroups = useMemo(
+    () => pendingAnswers(listedQuestions, reviews.byPath, scoped).groups,
+    [scoped, listedQuestions, reviews.byPath],
+  );
+
+  // The documents whose reviews the page's need-you numbers read (§6.7, §12):
+  // those held when the page opened, then every one held when a set of
+  // sections commits — the first, a flip, a roadmap picked, an index update —
+  // and the document of an answer filed here. A document whose reviews first
+  // arrive after its sections painted waits for the next such commit, so
+  // what it answers moves nothing on screen (L1); a counted document's
+  // reviews changing is a change of data, which applies at once (L2).
+  // Kept per repository: another one's documents count for nothing here.
+  const shownInputs = shown?.inputs ?? null;
+  const [counted, setCounted] = useState<{
+    repo: string | null;
+    inputs: typeof shownInputs;
+    paths: ReadonlySet<string>;
+  }>(() => ({
+    repo,
+    inputs: shownInputs,
+    paths: new Set(Object.keys(reviews.byPath)),
+  }));
+  if (counted.repo !== repo || counted.inputs !== shownInputs) {
+    setCounted({
+      repo,
+      inputs: shownInputs,
+      paths: new Set([
+        ...(counted.repo === repo ? counted.paths : []),
+        ...Object.keys(reviews.byPath),
+      ]),
+    });
+  }
+  const countedReviews = useMemo(() => {
+    const out: Record<string, readonly ReviewComment[]> = {};
+    for (const path of counted.paths) {
+      const comments = reviews.byPath[path];
+      if (comments !== undefined) out[path] = comments;
     }
-    return [...byPath.keys()]
-      .sort()
-      .map((path) => {
-        const questions = byPath.get(path) ?? [];
-        const comments = reviews.byPath[path];
-        const reported = new Set<string>();
-        const reports = new Set<string>();
-        for (const question of questions) {
-          const report = scoped[refKey(question)];
-          // A report read from another version of the question, or before
-          // its document's comments last changed, says nothing of them now.
-          if (
-            report === undefined ||
-            report.question !== question ||
-            report.comments !== comments
-          ) {
-            continue;
-          }
-          reported.add(refKey(question));
-          for (const id of report.ids) reports.add(id);
-        }
-        const placed = (c: ReviewComment): boolean => {
-          const line = c.anchor?.source_line;
-          const question = line ? placeComment(questions, line) : undefined;
-          return question !== undefined && !reported.has(refKey(question));
-        };
-        return {
-          path,
-          comments: (comments ?? []).filter(
-            (c) => isPendingForAgent(c) && (reports.has(c.id) || placed(c)),
-          ),
-        };
-      })
-      .filter((group) => group.comments.length > 0);
-  }, [scoped, listedQuestions, reviews.byPath]);
+    return out;
+  }, [counted.paths, reviews.byPath]);
   const { linesOf, loading: quotesLoading } = useQuotedText(
     onThisRepo ? repo : null,
     hashes,
@@ -1293,6 +1387,19 @@ export const PlanningPage: React.FC = () => {
   const fileComment = useCallback(
     async (path: string, comment: ReviewComment) => {
       adopt(path, await postCommentTo(path, comment));
+      // Filed here, so the reader caused it: what it answers counts at once.
+      setCounted((prev) =>
+        prev.paths.has(path)
+          ? prev
+          : { ...prev, paths: new Set([...prev.paths, path]) },
+      );
+    },
+    [adopt],
+  );
+  // Undo on a card's take: the same request the in-page Undo sends.
+  const undoComment = useCallback(
+    async (path: string, id: string) => {
+      adopt(path, await deleteCommentFrom(path, id));
     },
     [adopt],
   );
@@ -1381,6 +1488,42 @@ export const PlanningPage: React.FC = () => {
   // with the section bar and changes when it does.
   const frameIndex = shown?.inputs.index ?? index;
 
+  // What still needs the human, on the frame's index: the counts the index
+  // gives, less every question a pending comment answers (§6.7). The
+  // picker's counts and the other-roadmaps line keep the room of the index's
+  // count, which an answer only lowers, so they read every review held, the
+  // moment it arrives; *Nothing needs you*, which adds a line, reads the
+  // counted documents' reviews alone, so it changes only with the sections.
+  const frameNeedYou = useMemo(() => {
+    if (frameIndex === null || frameSections === null) return null;
+    const listed = listedQuestionsOf(frameIndex, frameSections);
+    const held = needYou(
+      frameIndex,
+      frameSections,
+      pendingAnswers(listed, reviews.byPath, scoped).answered,
+    );
+    const countedAnswered = pendingAnswers(
+      listed,
+      countedReviews,
+      scoped,
+    ).answered;
+    const counted = needYou(frameIndex, frameSections, countedAnswered);
+    return {
+      ...held,
+      nothing: counted.nothing,
+      // Beside each section's count of entries: how many a comment answers.
+      // Counted, as the line is, so a late answer moves nothing painted.
+      sections: answeredPerSection(frameSections, countedAnswered),
+    };
+  }, [frameIndex, frameSections, reviews.byPath, countedReviews, scoped]);
+  // *Nothing needs you* because every open question is answered: drawn at
+  // the head of the sections, in the commit that draws them, rather than
+  // among the notices the frame painted before them, which it would move.
+  const answeredAll =
+    frameSections !== null &&
+    !frameSections.nothingNeedsYou &&
+    frameNeedYou?.nothing === true;
+
   // The agent requests, generated when a Copy agent request button is
   // pressed, from the frame's index and sections, which are the ones on
   // screen. They name the repository by its root, which `/info` reports.
@@ -1392,6 +1535,7 @@ export const PlanningPage: React.FC = () => {
         : planningAgentRequest(frameIndex, frameSections, {
             repository: repoLabel(repo),
             ids,
+            viewer: VIEWER_RELEASE,
           }),
     [frameIndex, frameSections, repo],
   );
@@ -1516,6 +1660,7 @@ export const PlanningPage: React.FC = () => {
         href={buildPath(question.path)}
         onOpenHere={saveScroll}
         onFile={fileComment}
+        onUndo={undoComment}
         cardKey={key}
         onScoped={reportScoped}
         unfoldedByDefault={cardsExpanded}
@@ -1554,8 +1699,10 @@ export const PlanningPage: React.FC = () => {
       ? (stacked: boolean) => (
           <RoadmapLine
             roadmaps={frameRoutes}
+            needYou={frameNeedYou?.roadmaps}
             value={pickerValue}
             others={frameSections.onOtherRoadmaps.length}
+            othersLeft={frameNeedYou?.others}
             busy={roadmapSwapSlow}
             onPick={pickRoadmap}
             stacked={stacked}
@@ -1788,7 +1935,10 @@ export const PlanningPage: React.FC = () => {
                   >
                     {frameReady && frameLayout !== null ? (
                       <>
-                        <SectionBar layout={frameLayout} />
+                        <SectionBar
+                          layout={frameLayout}
+                          answered={frameNeedYou?.sections}
+                        />
                         {/* The page's controls over its sections, at the
                             end of the line, or of a line of their own when
                             the section bar leaves no room for them. */}
@@ -1846,6 +1996,18 @@ export const PlanningPage: React.FC = () => {
                             Comments could not be loaded.
                           </p>
                         )}
+                        {answeredAll && (
+                          <p
+                            data-testid="nothing-needs-you"
+                            className="mb-6 text-base font-medium text-slate-700 dark:text-slate-200"
+                          >
+                            {PLANNING_NOTICES.nothingNeedsYou}{" "}
+                            <span className="text-sm font-normal text-slate-500 dark:text-slate-400">
+                              Every open question has your answer, waiting on
+                              the agent.
+                            </span>
+                          </p>
+                        )}
                         <Sections
                           layout={shown.inputs.layout}
                           index={shown.inputs.index}
@@ -1857,6 +2019,7 @@ export const PlanningPage: React.FC = () => {
                           onPrefetch={prefetch}
                           busy={busy}
                           requestOf={requestOf}
+                          answered={frameNeedYou?.sections}
                         />
                       </>
                     ) : inputs.slow ? (
@@ -1971,6 +2134,8 @@ const Sections: React.FC<{
   onPrefetch?: OnPrefetch;
   busy: ReadonlySet<SectionId>;
   requestOf: AgentRequestOf;
+  /** How many of each section's entries a pending comment answers, by id. */
+  answered?: ReadonlyMap<string, number>;
 }> = ({
   layout,
   asked,
@@ -1982,6 +2147,7 @@ const Sections: React.FC<{
   onPrefetch,
   busy,
   requestOf,
+  answered,
 }) => {
   const entry = (section: SectionId, item: CardEntry) =>
     item.kind === "question" ? (
@@ -2013,6 +2179,7 @@ const Sections: React.FC<{
           onPrefetch={onPrefetch}
           busy={busy.has(section.id)}
           requestOf={requestOf}
+          answered={answered?.get(section.id)}
         >
           {section.kind === "cards" ? (
             section.items.map((item) => entry(section.id, item))

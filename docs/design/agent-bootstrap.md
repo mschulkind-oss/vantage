@@ -200,10 +200,14 @@ in the diff, in `git blame`, on GitHub — in order to save those tokens.
 
 **Ruling: no version, no token, no conditionality — P6.** What idempotence buys
 is not elegance but debuggability: an unconditional payload is a pure function
-of the document, so the builder is readable and every agent demonstrably saw the
-same text. A conditional one has variants, and *"why didn't it get the line?"*
-becomes unanswerable after the fact, because the state that decided it is
-already gone.
+of the document and the build, so the builder is readable and every agent
+briefed by one viewer demonstrably saw the same text. The build's part is the
+viewer's own release, which a release viewer puts in front of the checker
+command as `VANTAGE_VIEWER=<its release>`
+([`checker-version-skew.md` §5](checker-version-skew.md#5-the-viewers-version-in-the-review-payload)):
+a constant of the build, which probes no state of the document or the agent. A
+conditional payload has variants, and *"why didn't it get the line?"* becomes
+unanswerable after the fact, because the state that decided it is already gone.
 
 > [!NOTE]
 > **There is one legitimate version here, and this is not it.** If the generator
@@ -431,17 +435,19 @@ happen automatically next time."*
 | ID | Ruling / Decision | Date | Settled in |
 | :--- | :--- | :--- | :--- |
 | OQ-B6 | No schema version, token, or conditionality in the payload. Raised and settled the same day: the state it would probe is unobservable, and `inline-markup.md` **D3** already forbids version negotiation | 2026-09-01 | [§3.1](#31-why-the-payload-never-asks-whether-the-agent-already-knows), **P6** |
+| — | [OQ-B6](#decision-ledger) amended: the payload is a pure function of the document *and the build*. A release viewer's own release, a constant of the build that probes no state, rides in front of the checker command as `VANTAGE_VIEWER` ([`checker-version-skew.md` §5](checker-version-skew.md#5-the-viewers-version-in-the-review-payload), [OQ-VS1](checker-version-skew.md#decision-ledger) B) | 2026-10-01 | [§3.1](#31-why-the-payload-never-asks-whether-the-agent-already-knows), **P6** |
 
 ## Open Questions
 
 Settled questions move to the [Decision Ledger](#decision-ledger) above.
 
-1. 💬 **OQ-B1: The generator's command surface.** `vantage-check init`?
-   `install-guide`? A flag on the existing command
+1. 💬 **OQ-B1: What is the generator's command surface?**
+
+   `vantage-check init`? `install-guide`? A flag on the existing command
    (`style-guide --format skill`)? This decides what the payload sentence says,
    so it is upstream of step 4.
 
-   <!-- vantage: oq id=OQ-B1 leaning="`init`, printing to stdout, with `--format agents-md|skill` — it reads as setup rather than as another check, and it keeps `style-guide` meaning exactly one thing." -->
+   <!-- vantage: question id=OQ-B1 leaning="`init`, printing to stdout, with `--format agents-md|skill` — it reads as setup rather than as another check, and it keeps `style-guide` meaning exactly one thing." -->
 
    _Leaning:_ `init`, printing to stdout, with `--format agents-md|skill`. It
    reads as setup rather than as another check, and it keeps `style-guide`
@@ -452,14 +458,17 @@ Settled questions move to the [Decision Ledger](#decision-ledger) above.
    > _(empty — fill in when decided)_
 
 2. 💬 **OQ-B2: Does the proactive line ask the agent to write, or only to
-   read?** "Run `vantage-check init >> AGENTS.md`" persists the pointer without
-   the human ever opting in — we would be instructing an agent to modify a repo
-   on the strength of a paragraph the human pasted for a different purpose.
+   read?**
+
+   "Run `vantage-check init >> AGENTS.md`" persists the pointer without the
+   human ever opting in — we would be instructing an agent to modify a repo on
+   the strength of a paragraph the human pasted for a different purpose.
+
    "Run `vantage-check style-guide` before your next document" persists nothing
    and relies on the agent's own memory. This is the closure question for
    [§3](#3-fixative-and-proactive) and gates step 5.
 
-   <!-- vantage: oq id=OQ-B2 leaning="Read-only in the payload, with `--write` as a human-invoked convenience. A pasted review comment is thin consent for a config write, and R3 is the kind of surprise that gets a tool uninstalled." -->
+   <!-- vantage: question id=OQ-B2 leaning="Read-only in the payload, with `--write` as a human-invoked convenience. A pasted review comment is thin consent for a config write, and R3 is the kind of surprise that gets a tool uninstalled." -->
 
    _Leaning:_ read-only in the payload; `--write` exists but is a
    human-invoked convenience. A pasted review comment is thin consent for a
@@ -469,10 +478,12 @@ Settled questions move to the [Decision Ledger](#decision-ledger) above.
 
    > _(empty — fill in when decided)_
 
-3. 💬 **OQ-B3: Which formats does the generator emit?** `AGENTS.md` stanza only,
-   `SKILL.md` only, both, or a broader set as conventions multiply.
+3. 💬 **OQ-B3: Which formats does the generator emit?**
 
-   <!-- vantage: oq id=OQ-B3 leaning="Both, and stop there. They cover the portable case and the progressive-disclosure case; a third is a maintenance surface with no distinct reach." -->
+   `AGENTS.md` stanza only, `SKILL.md` only, both, or a broader set as
+   conventions multiply.
+
+   <!-- vantage: question id=OQ-B3 leaning="Both, and stop there. They cover the portable case and the progressive-disclosure case; a third is a maintenance surface with no distinct reach." -->
 
    _Leaning:_ both, and stop there. They cover the portable case and the
    progressive-disclosure case; a third is a maintenance surface with no
@@ -482,13 +493,14 @@ Settled questions move to the [Decision Ledger](#decision-ledger) above.
 
    > _(empty — fill in when decided)_
 
-4. 💬 **OQ-B4: Register `vantage-check` on PyPI now, under that name?** The name
-   is unclaimed (404 as of 2026-09-01) and the window closes at first publish
-   (**R5**). The tool is already growing commands that are not checks, so the
-   name is arguably slightly narrow — but it is the name the payload, the
-   userguide, and the wheel builder all hardcode.
+4. 💬 **OQ-B4: Register `vantage-check` on PyPI now, under that name?**
 
-   <!-- vantage: oq id=OQ-B4 leaning="Register as-is. `check` is the load-bearing command, and a marginally narrow name costs less than a rename across three surfaces plus a squatted PyPI project." -->
+   The name is unclaimed (404 as of 2026-09-01) and the window closes at first
+   publish (**R5**). The tool is already growing commands that are not checks,
+   so the name is arguably slightly narrow — but it is the name the payload,
+   the userguide, and the wheel builder all hardcode.
+
+   <!-- vantage: question id=OQ-B4 leaning="Register as-is. `check` is the load-bearing command, and a marginally narrow name costs less than a rename across three surfaces plus a squatted PyPI project." -->
 
    _Leaning:_ register as-is. `check` is the load-bearing command; a marginally
    narrow name costs less than a rename across three surfaces plus a squatted
@@ -501,11 +513,12 @@ Settled questions move to the [Decision Ledger](#decision-ledger) above.
 
    > _(empty — fill in when decided)_
 
-5. 💬 🤷 **OQ-B5: How much payload budget does the proactive line get?** One
-   sentence, or a short block with the install command spelled out per format?
-   Pure judgment about a prompt you read more often than I do.
+5. 💬 🤷 **OQ-B5: How much payload budget does the proactive line get?**
 
-   <!-- vantage: oq id=OQ-B5 leaning="One sentence. The fixative paragraph is already the longest non-protocol block in the payload, and R2 compounds every turn." -->
+   One sentence, or a short block with the install command spelled out per
+   format? Pure judgment about a prompt you read more often than I do.
+
+   <!-- vantage: question id=OQ-B5 leaning="One sentence. The fixative paragraph is already the longest non-protocol block in the payload, and R2 compounds every turn." -->
 
    _Leaning:_ one sentence. The fixative paragraph is already the longest
    non-protocol block in the payload, and **R2** compounds every turn.
@@ -515,6 +528,7 @@ Settled questions move to the [Decision Ledger](#decision-ledger) above.
    > _(empty — fill in when decided)_
 
 6. 🔒 **OQ-B7: One PyPI distribution for both entry points, or two? — MOVED.**
+
    This is now [`OQ-P2`](../reference/pypi-distribution.md#why-its-this-way) in [`pypi-distribution.md`](../reference/pypi-distribution.md), which
    owns the packaging ground and can price it against the server's wheel path
    rather than in the abstract. The ID stays here because commits and [§5.1](#51-where-the-packaging-actually-stands) cite

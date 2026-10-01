@@ -28,7 +28,12 @@ summary: "Vantage-only markup carried in HTML comments with a `vantage:` sentine
 **Status:** CURRENT as of 2026-09-01, verified against `3134838`. The plugin
 chain's diagram and ordering rules, in
 [Where the plugin runs](#where-the-plugin-runs), were re-verified on 2026-10-01
-against `7fa8cbf`; nothing else was.
+against `7fa8cbf`. Amended 2026-10-01, in the commit after `936e24b`, and read
+from that commit's code: the `question` and `oq` rows and the paragraphs after
+them in [Names, position, and extent](#names-position-and-extent), the
+question attributes in [Current values](#current-values), and
+[The one-click Open Question answer](#the-one-click-open-question-answer) with
+its subsections. Nothing else was re-verified.
 
 A **directive** is an HTML comment carrying a `vantage:` sentinel —
 `<!-- vantage: section tone=warning -->` — that Vantage compiles into
@@ -188,21 +193,62 @@ The name set is closed, in `DIRECTIVE_NAMES`:
 | `section` before a **heading** | next sibling element, stampable tags only | the heading and **every** following sibling element until the first heading of same-or-shallower depth |
 | `section` before a **non-heading** | next sibling element, stampable tags only | that one block |
 | `block` | next sibling element, stampable tags only | that one block, even in front of a heading |
-| `oq` | next sibling element, **anchor-capable** tags only | that one block |
 | `question` | next sibling element, **anchor-capable** tags only | that one block |
+| `oq` (deprecated: the name `question` replaces) | next sibling element, **anchor-capable** tags only | that one block |
 | `fallback` | next sibling element, stampable tags **except headings** | that one block, which is withheld rather than stamped ([Fallback blocks](#fallback-blocks)) |
 
-`oq` and `question` are the two **question directives** *(a term this
-reference uses for either)*, and they differ in one promise. An `oq` is an open
-question, the one review mode offers to answer in one click; a `question` is a
-🔒 blocked or ✅ answered one, which nothing offers to answer. Both take `id`,
-with one grammar and one namespace, and both become the block's anchor; only an
-`oq` takes `leaning`. A run holding both is one question, and an `oq` in it wins,
-because a viewer that predates `question` drops it and reads the `oq`.
-`question` is a name of its own, rather than `oq` read by its marker, because a
-release never gives existing notation a new meaning: every viewer before 0.8
-offers the button on every `oq`
-([`checker-version-skew.md` OQ-VS4](../design/checker-version-skew.md#decision-ledger)).
+`question` and `oq` are the two **question directives** *(a term this
+reference uses for either)*. `question` declares one question in any state:
+open (💬, 💬 🤷 or no marker at all), 🔒 blocked or ✅ answered. **The state
+comes from the marker, never from the name**, so a question that changes state
+changes its marker and nothing else. `oq` is the name it replaces, deprecated
+and never removed: every Vantage reads it with the meaning it shipped with in
+0.7, an open question to answer in one click, because documents outlive
+releases and a release never gives existing notation a new meaning
+([`checker-version-skew.md` P0](../design/checker-version-skew.md#1-verdict-and-the-principles)).
+Every viewer before 0.8 offers the button on every `oq`, whatever its marker
+says, which is why `vantage-check` reports an `oq` on a 🔒 or ✅ question as an
+error (`vantage/question-name`) and any other `oq` as a warning that quotes the
+`question` to write (`vantage/oq-deprecated`).
+
+The two take the same keys with one grammar: `id`, the question's anchor, and
+`leaning`, the comment **Take this leaning** files. Both are optional, and
+nothing else is accepted, so a key added later is one older viewers drop pair by
+pair. A `leaning` on a 🔒 or ✅ question is allowed and simply not offered. A run
+holding both names is one question, read exactly as a viewer that predates
+`question` reads it: that viewer drops every `question` in the run and reads the
+`oq` alone, so the run counts as an `oq` and only the `oq`'s keys apply,
+wherever it stands in the run; a key only a `question` beside it sets applies in
+no release (`mergeQuestionRun`, which the plugin and the planning index both
+call, so the page and the index cannot disagree about a run). The same bytes
+therefore file the same Take in 0.7 and in 0.8.
+
+**What a 0.7.x viewer loses:** on a question written with `question`, which it
+drops whole, the Take button and the anchor; it never misreads one, and a
+repository whose readers are still on 0.7 keeps `oq` on its open questions with
+`"vantage/oq-deprecated" = "off"` under `[check.rules]`.
+
+**The rendered contract.** Every question carries `data-vantage-question="true"`
+(`VANTAGE_QUESTION_ATTRIBUTE`, found by `VANTAGE_QUESTION_SELECTOR`), whichever
+name declared it, and that is the attribute to read for "a question". One
+declared with `oq` carries `data-vantage-oq="true"` besides
+(`VANTAGE_OQ_ATTRIBUTE`), which means what it has meant since 0.7, "declared
+with `oq`", and nothing more. Its leaning, normalized, is
+`data-vantage-leaning` (`VANTAGE_LEANING_ATTRIBUTE`) under either name and in
+every state, and its id becomes the element's `id`. `data-vantage-leaning` says
+what Take this leaning would file, never that it is offered: whether a question
+offers it is read from its state, by `questionOffersTake`, open or unmarked,
+which counts as open. All four constants and the function are exported from
+`vantage-md`.
+
+**A state added later carries 🔒 or ✅ in its marker, or comes as a new
+name.** From 0.8 every marker but 🔒 and ✅ reads as open, the unmarked
+question included, and the marker is all a viewer reads a state from. So a
+non-open state a later release adds as a new marker on its own (⏸ deferred, 🗑
+withdrawn) would be offered Take this leaning by every 0.8 viewer, and counted
+as needing the human. It writes 🔒 or ✅ into its marker (`🔒 ⏸`), or it comes
+as a new directive name, which 0.8 drops whole
+([P0](../design/checker-version-skew.md#1-verdict-and-the-principles)).
 
 An unknown *name* drops the whole directive — there is no target semantics
 without a name. An unknown *key* or *value* drops only that pair.
@@ -553,7 +599,7 @@ Both halves of that are load-bearing:
   be marked `middle`. A collapse group would count it as a member. Withheld
   first, it was never there for the section's extent, its run markers, a
   collapse group, a review anchor, a `data-source-line` or a contents entry.
-- **With its run, because a run merges.** A `block tone=…` or an `oq` written in
+- **With its run, because a run merges.** A `block tone=…` or a `question` written in
   the same run as the `fallback` belongs to the withheld block. Left behind, the
   comments would merge onto the next block and style it, or offer an answer on
   it, for nobody's reason. Nothing is lost by removing them here: the sanitizer
@@ -592,28 +638,55 @@ allowlists nothing for it.
 
 ## The one-click Open Question answer
 
-An `oq` directive on an open question renders one button in review mode,
-labeled **"Take this leaning"**. Clicking it calls the same `addComment` the
-comment popover calls, with an anchor identical in shape to what click-and-type
-produces. The comment text is the `leaning` value, or a fixed default when
-absent. A 🔒 blocked or ✅ answered question gets no button
-([below](#the-count-and-why-the-gate-needed-one)), and it is declared with a
-`question` directive, which stamps `data-vantage-question` instead of
-`data-vantage-oq`, so no reader of `[data-vantage-oq]` takes it for a question
-to answer.
+A question directive on an open question — `question`, or the deprecated `oq`
+— gives the question one row of controls in review mode: **"Take this
+leaning"** and **"Answer…"**. Take this leaning calls the same `addComment`
+the comment popover calls, with an anchor identical in shape to what
+click-and-type produces: the whole block the directive stamped. The comment
+text is the `leaning` value, or a fixed default when absent. Answer… opens that
+popover on the same block, so what it files is what a click on the block files,
+and what the planning card's Answer… files. A 🔒 blocked or ✅ answered question
+gets no row ([below](#the-count-and-why-the-gate-needed-one)), whichever name
+declared it: the state is the marker's to say (`questionOffersTake`), never the
+attribute's.
 
-**The affordance sits in its own row, inserted as the question block's next
-sibling** — never appended into the block. Appended, it landed after the
-question's last word, and inside a blockquote it landed *before* typography's
-generated closing quotation mark (`content: close-quote` on the paragraph's
-`::after`), reading as part of the quote. The row is also what gives the taken
-state room for two controls side by side, and it keeps every injected node out of
-the subtree a block hash is taken over.
+**The row sits at the end of the question** — after everything the question
+says, its options, its leaning and its `**Answer:**` — and never inside a block.
+The question is its **unit**, the span the planning index names with `unitLine`
+and `unitEndLine` (`questionUnitBlocks`): the list item holding it; or, outside
+a list, the block its directive stamped and the blocks after it in the same
+parent, up to the first heading (for a question written as a heading, the first
+of its level or higher, so it runs to the end of its section), thematic break,
+or block that is or holds another question's host. Link definitions, comments
+and a withheld fallback render nothing there, so they neither end a question
+nor belong to one. So the row is the list item's last child, or the last child
+of a quote that is the whole question and whose first paragraph is the host, or
+the next sibling of the question's last block. Until 2026-10-01 the
+row was the host block's next sibling, and the host is the block under the
+directive, which in the layout the style guide prescribes is the `_Leaning:_`
+paragraph: the controls stood between the leaning and the Answer, in the middle
+of the question, which the user reported as the button not appearing in quite
+the right place.
 
-The row stays inside its parent, so a question in a list item keeps the item's
-indentation, and it copies a toned block's `data-vantage-tone`/`run` the way
-`insertInlineCommentAfter` does — an unstamped sibling between two members of a
-section is a gap the rule's upward bleed cannot span.
+The row keeps every injected node out of the subtree a block hash is taken
+over, and out of the sentence: appended to its block, the control landed after
+the question's last word, and inside a blockquote it landed *before*
+typography's generated closing quotation mark (`content: close-quote` on the
+paragraph's `::after`), reading as part of the quote. Inside its list item it
+keeps the item's indentation; as a block's next sibling it copies a toned
+block's `data-vantage-tone`/`run` the way `insertInlineCommentAfter` does — an
+unstamped sibling between two members of a section is a gap the rule's upward
+bleed cannot span.
+
+**It looks like the planning card's control row**: the same buttons, styled by
+the same classes (`review-oq-take`, `review-oq-answer`), 8px apart, one line
+high in every state. **It paints with the document.** The pass is a layout
+effect, so a row is in the document's first paint rather than pushing the
+question's next block down a frame later, and the comments that arrive after the
+document change only what the row holds: every state of it is one line of the
+same height, and the controls a later state drops are the row's last, so nothing
+painted after them moves
+([`planning-index.md` §12](planning-index.md#12-late-data-never-moves-painted-content)).
 
 > [!WARNING]
 > **Not the gutter.** A per-block gutter control was built and deleted
@@ -656,18 +729,22 @@ document on screen. **Answer…** files typed text on the same anchor.
 > rendered element, as the button reads it, the body is equal by construction.
 > The index's `leaning` only decides whether the card offers a take.
 
-The card differs from the button in two ways. It offers **Take this leaning**
-only when the question states a leaning, as the planning design specifies,
-where the button falls back to its default text. And it offers no Undo: a taken
-leaning shows as the chip alone, and Undo is in the document.
-`PlanningQuestionCard.test.tsx` files from the card and from the in-page button
-over the same documents and asserts the two comments equal, question by
-question.
+**The card offers what the row offers**, in every state, by the row's own rule
+(`questionOffer`, below): Take this leaning on an open question, with the row's
+default text when it states no leaning; the chips; Undo while a take is the
+whole thread, which deletes it with `deleteCommentFrom`, the request
+`deleteComment` sends, for the card's document; and Answer… exactly where the
+row has it. Until 2026-10-01 the two differed in three ways, which a reviewer
+saw as the same question offering different things on two surfaces: the card
+offered no take without a leaning, no Undo, and Answer… beside a question
+already answered. `PlanningQuestionCard.test.tsx` files from the card and from
+the in-page button over the same documents and asserts the two comments equal,
+question by question, and walks the take's states on both.
 
 ### The count, and why the gate needed one
 
 The button renders only in review mode, which is correct and was also, on its
-own, a dead end: a document carrying three `oq` directives with leanings
+own, a dead end: a document carrying three question directives with leanings
 rendered as three ordinary paragraphs, and **nothing anywhere said the affordance
 existed**. The reader had to already know.
 
@@ -686,7 +763,7 @@ sentence in the tooltip says the same thing and says what it is for.
 `documentQuestions` is exported and **shared with the render pass**, so the
 count and the buttons cannot disagree. A count of five against three buttons
 would send the reader hunting for controls that were never there — and five is
-what a naive count of `[data-vantage-oq]` gives on a document that also stamps a
+what a naive count of `[data-vantage-question]` gives on a document that also stamps a
 `pre` and a `table`.
 
 The table of contents is a third caller, and it takes the list *before* the
@@ -706,11 +783,17 @@ has no button in any state and is no question to the planning index either. The
 planning page's card is the fourth caller, finding its question's host
 ([above](#the-same-comment-from-the-planning-page)).
 
-The button renders only when **all five** hold: review mode is on, the directive
-parsed, an `oq` declared the question rather than a `question`, static mode is
-off, and the question is open. The static gate is not optional — an exported
-site runs review mode with every write silently coerced into a GET, so an
-ungated button would look live and do nothing, which is worse than no button.
+The take renders only when **all five** hold: review mode is on, the directive
+parsed, static mode is off, the question is open, and no comment answers it yet
+([below](#a-comment-on-a-question-is-its-answer)). Which name declared the
+question plays no part. The static gate is not optional — an exported site runs
+review mode with every write silently coerced into a GET, so an ungated button
+would look live and do nothing, which is worse than no button.
+
+The count follows the takes: a question already answered, or whose leaning is
+taken, is not one the reader can answer in one click, so the Review toggle does
+not count it. The contents column's tally does: it reads the document's
+questions and their markers, before any comment.
 
 **Open** means marked 💬, or carrying no marker, which counts as open. A 🔒
 question cannot be answered yet and a ✅ one has been ruled, so neither has a
@@ -726,9 +809,55 @@ an `oq`, which `vantage/question-name` reports on a 🔒 or ✅ question but a
 document can still carry. The filter runs after `documentQuestions`, never
 inside it, because the column lists from that function.
 
-There is exactly one button and it is **affirmative only**. A rejection almost
-always needs a reason, which means typing anyway, so a Reject button would mostly
-produce content-free rejections the agent then has to chase.
+There is exactly one one-click button and it is **affirmative only**. A
+rejection almost always needs a reason, which means typing anyway, so a Reject
+button would mostly produce content-free rejections the agent then has to chase.
+Answer… is the typing, one click closer.
+
+### A comment on a question is its answer
+
+The user's ruling of 2026-10-01: a reviewer who does not take the leaning picks
+a spot in the question and comments there, and that comment is the human's
+answer, to go to the agent. So **a comment still pending for the agent anywhere
+in a question's unit answers the question**, whatever its text: a take, an
+Answer…, or a comment typed on the title, an option, the leaning or the Answer's
+quote. *Pending for the agent* is `isPendingForAgent`: not dismissed, and not yet
+answered by the agent, so once the agent replies the ball is back with the human
+and the question offers its controls again.
+
+What an open question offers follows from that, by one rule, `questionOffer`,
+which the row and the planning card both read, and whose chips stand exactly
+while a comment on the question is pending, which is when the planning page's
+need-you counts leave it out:
+
+| The question's comments | It offers | It needs the human |
+| :--- | :--- | :--- |
+| none pending, and no take | **Take this leaning** and **Answer…** | yes |
+| its take, pending | *Leaning taken*, and Undo while the take is the whole thread | no |
+| another comment, pending | *Answered — waiting on the agent* (`OQ_ANSWERED_LABEL`), alone | no |
+| its take, no longer pending: the agent replied, or the reviewer dismissed it | *Leaning taken — the agent replied* or *Leaning taken — dismissed*, in the quiet ink of a past event; Undo while the take is the whole thread; and **Answer…** | yes |
+
+- **The chip says what happened.** *Answered — waiting on the agent* is styled
+  as the take's chip is, and its tooltip says the comment is the answer and
+  where to change it. It has no Undo: a comment the reviewer typed is not the
+  row's to delete. A take keeps its own chip and its Undo rule
+  ([below](#taken-and-the-way-back-out)) while it is pending, whatever else is
+  on the question.
+- **A take no longer pending is not offered again.** A second take would file a
+  duplicate of the first, so the question offers Answer… instead, and Undo,
+  which deletes the take and brings Take this leaning back.
+- **Which question a comment is on** is read off the page: the block its anchor
+  resolves to, as the highlighter resolves it (`resolveCommentBlock`), and the
+  innermost question unit holding that block (`commentsOnQuestions`), so a comment
+  in a question nested inside another's list item answers the nested one. A
+  comment outside every unit answers nothing.
+- **The planning card reads it the same way**, over its own rendered block, and
+  the planning page takes an answered question off what it counts as needing the
+  human while still listing it
+  ([`planning-index.md` §6.7](planning-index.md#67-answering-and-copy-answers)).
+
+It is not notation. Nothing is written into the document, and a question is
+answered for exactly as long as its comment is pending.
 
 ### Taken, and the way back out
 
@@ -744,9 +873,11 @@ saying where the thread is. D4: a control that would destroy something
 unrecoverable must not be the one offered.
 
 > [!WARNING]
-> **`resolved` is deliberately ignored**, so dismissing a taken leaning does not
-> re-arm the button — otherwise the reviewer gets a fresh duplicate for a thread
-> they closed. That is why Undo has to exist *here*. Before it did, dismissing
+> **`resolved` is deliberately ignored in finding the take**, so dismissing a
+> taken leaning does not re-arm the button — otherwise the reviewer gets a fresh
+> duplicate for a thread they closed. It does take the question back: a
+> dismissed take is no longer pending, so the chip says *dismissed* and Answer…
+> returns beside it. That is why Undo has to exist *here*. Before it did, dismissing
 > was the only thing that looked like an undo, and it left an inert chip with no
 > tooltip beside the question while the comment moved to a collapsed section at
 > the top of the document, the minimap mark disappeared and the toolbar count
@@ -771,7 +902,7 @@ one document, keep separate buttons.
 > **D1** violation. Indent the directive inside the list item instead. This is why
 > the plugin walks the whole tree rather than only the root — in a real Open
 > Questions list the comment is a child of an `<li>`, and a root-only walk finds
-> no `oq` directives at all. `vantage/list-split` and `vantage/block-split` catch
+> no question directives at all. `vantage/list-split` and `vantage/block-split` catch
 > it.
 
 > [!WARNING]
@@ -1280,6 +1411,7 @@ table is the only place the values themselves are stated.
 | Collapse group id format | digits only | `COLLAPSE_GROUP_ID`, `sanitize.ts` |
 | Max `leaning` length carried to the DOM | 500 characters, whitespace-collapsed | `rehypeVantageDirectives.ts` |
 | Directive attribute names | `data-vantage-` + `tone`/`emphasis`/`badge`/`collapsed`/`collapse-group`/`collapse-toggle`/`run`/`oq`/`question`/`leaning` | `sanitize.ts` |
+| Question attributes | `data-vantage-question="true"` on every question; `data-vantage-oq="true"` besides on one an `oq` declared; `data-vantage-leaning` under either name | `VANTAGE_QUESTION_ATTRIBUTE`, `VANTAGE_OQ_ATTRIBUTE`, `VANTAGE_LEANING_ATTRIBUTE`, `vantageDirectives.ts` |
 | Blocks a `fallback` withholds | every stampable tag but `h1`–`h6`, raw HTML by the element it opens with; none is marked in the DOM | `VANTAGE_FALLBACK_TARGETS`, `vantageDirectives.ts` |
 | Elements that keep no `style` | `input` | `UNSTYLED_TAGS`, `sanitize.ts` |
 | `display` values a `style` may set | `none`, `block`, `inline`, `inline-block`, `flow-root`, `flex`, `inline-flex`, `grid`, `inline-grid`, `table`, `inline-table`, `table-row`, `table-row-group`, `table-header-group`, `table-footer-group`, `table-cell`, `table-column`, `table-column-group`, `table-caption`, `list-item`; each may end in `!important` | `DISPLAY_VALUES`, `sanitize.ts` |
@@ -1298,3 +1430,4 @@ cited from code comments.
 | OQ-3 | **Semantic, never chromatic.** A document that names a color has decided how it looks in every theme, including ones that do not exist yet. The theme owns the mapping. |
 | OQ-4 | **One button, affirmative only,** labeled to match the `leaning=` key. |
 | OQ-10 | **Settled.** The alert gap was filed rather than fixed, and now is fixed: `rehypeVantageAlerts` compiles `> [!WARNING]` into `data-vantage-alert` and consumes the tone palette rather than building a second one — which is what the gap entry said whoever fixed it should do. See [GFM alerts](#gfm-alerts). |
+| — | **A question outside a list runs over the blocks after its host** (2026-10-01), up to the next heading, rule or question, in the planning index and the page alike. The user asked for a question's controls at its end whether it is a list item, a paragraph or a title with blocks under it, and for a comment anywhere around a question to be its answer. As the one block its directive stamped, such a question had its row between its title and its context, and a comment on its leaning or its Answer answered nothing. See [The one-click Open Question answer](#the-one-click-open-question-answer). |

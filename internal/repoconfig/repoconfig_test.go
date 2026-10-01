@@ -1,7 +1,9 @@
 package repoconfig
 
 import (
+	"bytes"
 	"encoding/json"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,7 +28,7 @@ func write(t *testing.T, body string) string {
 }
 
 func TestParseReadsTheStarredTable(t *testing.T) {
-	s, err := Parse([]byte("[starred]\npromote = [\"roadmap.md\", \"docs/*.md\"]\n"))
+	s, _, err := Parse([]byte("[starred]\npromote = [\"roadmap.md\", \"docs/*.md\"]\n"))
 	require.NoError(t, err)
 	require.Equal(t, []string{"roadmap.md", "docs/*.md"}, s.Starred.Promote)
 	require.False(t, s.IsZero())
@@ -35,7 +37,7 @@ func TestParseReadsTheStarredTable(t *testing.T) {
 // The theme a repository offers is a top-level key, so a file that says only
 // that is still a file the server acts on.
 func TestParseReadsTheThemeKey(t *testing.T) {
-	s, err := Parse([]byte("theme = \"catppuccin\"\n"))
+	s, _, err := Parse([]byte("theme = \"catppuccin\"\n"))
 	require.NoError(t, err)
 	require.Equal(t, "catppuccin", s.Theme)
 	require.False(t, s.IsZero(),
@@ -49,7 +51,7 @@ func TestParseReadsTheThemeKey(t *testing.T) {
 // polices its own table's keys, so `check.theme` fails a run loudly rather than
 // doing nothing.
 func TestAThemeUnderTheCheckersTableIsNotOurs(t *testing.T) {
-	s, err := Parse([]byte("[check]\nstrict = true\ntheme = \"catppuccin\"\n"))
+	s, _, err := Parse([]byte("[check]\nstrict = true\ntheme = \"catppuccin\"\n"))
 	require.NoError(t, err, "another tool's keys are not ours to reject")
 	require.Empty(t, s.Theme)
 }
@@ -64,7 +66,7 @@ func TestParseRejectsAThemeTable(t *testing.T) {
 		"dotted": "theme.name = \"catppuccin\"\n",
 	} {
 		t.Run(name, func(t *testing.T) {
-			s, err := Parse([]byte(body))
+			s, _, err := Parse([]byte(body))
 			require.Error(t, err)
 			require.True(t, s.IsZero(), "a rejected file must yield nothing, not half")
 		})
@@ -74,25 +76,88 @@ func TestParseRejectsAThemeTable(t *testing.T) {
 // The whole point of sharing the file: the checker's table is not ours to read,
 // and it is not ours to reject either.
 func TestParseReadsPastTheCheckersTable(t *testing.T) {
-	s, err := Parse([]byte("[check]\nstrict = true\n\n[check.rules]\n\"link/x\" = \"off\"\n"))
+	s, _, err := Parse([]byte("[check]\nstrict = true\n\n[check.rules]\n\"link/x\" = \"off\"\n"))
 	require.NoError(t, err)
 	require.True(t, s.IsZero())
 }
 
 // Nor another tool's.
 func TestParseReadsPastAnotherToolsTable(t *testing.T) {
-	s, err := Parse([]byte("[tool.ruff]\nline-length = 100\n\n[starred]\npromote = [\"a.md\"]\n"))
+	s, _, err := Parse([]byte("[tool.ruff]\nline-length = 100\n\n[starred]\npromote = [\"a.md\"]\n"))
 	require.NoError(t, err)
 	require.Equal(t, []string{"a.md"}, s.Starred.Promote)
 }
 
-// Inside our own table, a typo is an error. `promotes = [...]` doing nothing at
-// all with no way to find out is the silence this package exists to break.
-func TestParseRejectsAnUnknownKeyInOurTable(t *testing.T) {
-	_, err := Parse([]byte("[starred]\npromotes = [\"roadmap.md\"]\n"))
+// Inside our own table, a key this server does not know is ignored with a
+// warning, and the rest of the file applies (OQ-VS5). It may be a newer
+// release's, and refusing the file over it would cost the repository its stars,
+// its theme and its planning table on every older server. It may also be a
+// typo, so the warning is not silence: it names the key, the release that does
+// not know it, what the table does take, and both fixes.
+func TestParseIgnoresAnUnknownKeyInOurTableWithAWarning(t *testing.T) {
+	s, warnings, err := Parse([]byte("theme = \"catppuccin\"\n\n[starred]\npromote = [\"a.md\"]\npromotes = [\"roadmap.md\"]\n"))
+	require.NoError(t, err)
+	require.Equal(t, []string{"a.md"}, s.Starred.Promote)
+	require.Equal(t, "catppuccin", s.Theme)
+	require.Equal(t, []string{
+		".vantage.toml: unknown key starred.promotes, which this development build of Vantage does not know, so this server ignores it and reads the rest of the file. Here [starred] takes only promote. If this repository is configured for a newer Vantage, keep the key; if it is a typo, fix it.",
+	}, warnings)
+
+	s, warnings, err = Parse([]byte("[planning]\nexclude = [\"docs/gallery/**\"]\nfuture-key = 1\n\n[planning.future]\nkey = 1\nother = 2\n"))
+	require.NoError(t, err)
+	require.Equal(t, []string{"docs/gallery/**"}, s.Planning.Resolved().Exclude)
+	require.Len(t, warnings, 2, "one warning per unknown key, and an unknown sub-table is one key")
+	require.Contains(t, warnings[0], "unknown key planning.future-key, which this development build of Vantage does not know")
+	require.Contains(t, warnings[0], "Here [planning] takes roadmap, include, exclude, max-file-bytes, max-candidates and a [planning.stages] table.")
+	require.Contains(t, warnings[1], "unknown key planning.future, which")
+}
+
+// A key that needs quoting is named the way TOML writes it, so the warning
+// points at the line as written.
+func TestParseNamesAQuotedKeyAsTOMLWritesIt(t *testing.T) {
+	_, warnings, err := Parse([]byte("[planning]\n\"max files\" = 3\n"))
+	require.NoError(t, err)
+	require.Len(t, warnings, 1)
+	require.Contains(t, warnings[0], `unknown key planning."max files",`)
+}
+
+// A release names itself in the warning, so whoever reads the log can tell a
+// key from a newer release from a typo; a development build names no release.
+func TestServerNameIsTheReleaseOrADevelopmentBuild(t *testing.T) {
+	require.Equal(t, "Vantage 0.8.0", serverName("0.8.0"))
+	require.Equal(t, "this development build of Vantage", serverName(""))
+}
+
+// One of the file's own top-level names written inside one of the server's
+// tables is not unknown but misplaced: TOML reads a key written after a [table]
+// header as part of that table. Ignoring it would leave the line doing nothing,
+// so it still refuses the file, and says where the line goes, in vantage-check's
+// words for the same mistake.
+func TestParseRefusesATopLevelNameInsideOurTable(t *testing.T) {
+	move := "move it above the first [table]."
+	for body, want := range map[string]string{
+		"[starred]\npromote = [\"a.md\"]\ntheme = \"catppuccin\"\n": "unknown key starred.theme. `theme` is a top-level key, and TOML reads a key written after a [table] header as part of that table: " + move,
+		"[starred]\npromote = [\"a.md\"]\ntarget = \"0.8\"\n":       "unknown key starred.target. `target` is a top-level key",
+		"[planning]\nexclude = []\ntheme = \"catppuccin\"\n":        "unknown key planning.theme. `theme` is a top-level key",
+		"[planning]\nexclude = []\ntarget = \"0.8\"\n":              "unknown key planning.target. `target` is a top-level key",
+		"[planning]\n[planning.starred]\npromote = [\"a.md\"]\n":    "unknown key planning.starred. `starred` is the viewer's own table, not part of this one: write it as a top-level [starred] table.",
+	} {
+		s, warnings, err := Parse([]byte(body))
+		require.Error(t, err, body)
+		require.Contains(t, err.Error(), want, body)
+		require.True(t, s.IsZero(), "a rejected file must yield nothing, not half")
+		require.Empty(t, warnings)
+	}
+}
+
+// A known key with a value it cannot take still refuses the whole file, an
+// unknown key beside it notwithstanding: only the unknown key is forgiven.
+func TestParseStillRefusesABadValueBesideAnUnknownKey(t *testing.T) {
+	s, warnings, err := Parse([]byte("theme = \"catppuccin\"\n\n[planning]\nfuture-key = 1\nmax-candidates = 0\n"))
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "unknown key")
-	require.Contains(t, err.Error(), "starred.promotes")
+	require.Contains(t, err.Error(), "planning.max-candidates")
+	require.True(t, s.IsZero())
+	require.Empty(t, warnings)
 }
 
 func TestParseRejectsBadSyntaxAndTypes(t *testing.T) {
@@ -106,7 +171,7 @@ func TestParseRejectsBadSyntaxAndTypes(t *testing.T) {
 		"theme list":     "theme = [\"catppuccin\"]\n",
 	} {
 		t.Run(name, func(t *testing.T) {
-			s, err := Parse([]byte(body))
+			s, _, err := Parse([]byte(body))
 			require.Error(t, err)
 			require.True(t, s.IsZero(), "a rejected file must yield nothing, not half")
 		})
@@ -120,8 +185,39 @@ func TestMissingFileIsNotAnError(t *testing.T) {
 	require.True(t, s.IsZero())
 }
 
+// An unknown key reaches the server's log once per version of the file, not
+// once per request: Settings runs on every page load that needs the file, and
+// the same line on each would bury it. An edit is a new version, warned about
+// anew if the key is still there.
+func TestConfigLogsAnUnknownKeyOncePerVersionOfTheFile(t *testing.T) {
+	root := write(t, "[starred]\npromote = [\"a.md\"]\npinned = [\"b.md\"]\n")
+	var log bytes.Buffer
+	c := New(root)
+	c.logger = slog.New(slog.NewTextHandler(&log, nil))
+	clock := time.Unix(1700000000, 0)
+	c.now = func() time.Time { return clock }
+
+	for range 3 {
+		s, err := c.Settings()
+		require.NoError(t, err)
+		require.Equal(t, []string{"a.md"}, s.Starred.Promote, "the rest of the file applies")
+		clock = clock.Add(reloadInterval + time.Second)
+	}
+	_, err := c.SettingsNow()
+	require.NoError(t, err)
+	require.Equal(t, 1, strings.Count(log.String(), "level=WARN"), log.String())
+	require.Contains(t, log.String(), "unknown key starred.pinned")
+	require.Contains(t, log.String(), "path="+c.Path())
+
+	require.NoError(t, os.WriteFile(c.Path(),
+		[]byte("[starred]\npromote = [\"a.md\"]\npinned = [\"b.md\", \"c.md\"]\n"), 0o644))
+	_, err = c.SettingsNow()
+	require.NoError(t, err)
+	require.Equal(t, 2, strings.Count(log.String(), "level=WARN"), log.String())
+}
+
 func TestSettingsSurfacesTheParseError(t *testing.T) {
-	c := New(write(t, "[starred]\npromotes = [\"a.md\"]\n"))
+	c := New(write(t, "[starred]\npromote = \"a.md\"\n"))
 	s, err := c.Settings()
 	require.Error(t, err)
 	require.True(t, s.IsZero(),
@@ -265,8 +361,9 @@ func TestSharedFixtureIsReadableByThisReader(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("testdata", "shared-config.toml"))
 	require.NoError(t, err)
 
-	s, err := Parse(data)
+	s, warnings, err := Parse(data)
 	require.NoError(t, err, "the checker's own sections, and its target, must not make this file unreadable")
+	require.Empty(t, warnings, "the checker's own sections are not ours to warn about")
 	require.Contains(t, string(data), "\ntarget = \"0.8\"\n", "the fixture must hold the checker's top-level key")
 	require.Equal(t, []string{"roadmap.md", "docs/design/*.md"}, s.Starred.Promote)
 
@@ -319,13 +416,14 @@ func TestPlanningFixtureResolvesAsTheCheckerDoes(t *testing.T) {
 
 	for _, tc := range fixture.Cases {
 		t.Run(tc.Name, func(t *testing.T) {
-			s, err := Parse([]byte(tc.TOML))
+			s, warnings, err := Parse([]byte(tc.TOML))
 			if !tc.OK {
 				require.Error(t, err)
 				require.True(t, s.IsZero(), "a rejected file must yield nothing, not half")
 				return
 			}
 			require.NoError(t, err)
+			require.Empty(t, warnings, "this fixture holds only keys both readers know")
 			require.NotNil(t, tc.Planning, "an accepted case must say what it resolves to")
 			require.NotEmpty(t, tc.Planning.Roadmaps, "an accepted case must say what roadmaps resolves to, null included")
 			// null decodes to a nil slice and [] to an empty one, and the
@@ -385,6 +483,7 @@ type versionSkewCase struct {
 	TOML     string `json:"toml"`
 	Server   string `json:"server"`
 	Checker  string `json:"checker"`
+	Says     string `json:"says"`
 	Planning *struct {
 		Roadmaps      json.RawMessage   `json:"roadmaps"`
 		Include       []string          `json:"include"`
@@ -396,11 +495,12 @@ type versionSkewCase struct {
 }
 
 // The Go half of the version-skew conformance check. vantage-check's config
-// test reads the same cases and asserts its own answer to each, which differs
-// from this one where the fixture says so: the checker ignores a key it does
-// not know with a warning, and the server still refuses the whole file over
-// one in a table it owns. The top-level `target` is the checker's, and the
-// server steps over it in every form, a malformed one included.
+// test reads the same cases and asserts its own answer to each. Both readers
+// ignore a key they do not know in a table they read with a warning, `[planning]`
+// above all, which both read; they differ where the fixture says so, which is
+// where one of them does not read a table at all. The top-level `target` is the
+// checker's, and the server steps over it in every form, a malformed one
+// included.
 func TestVersionSkewFixtureIsAnsweredAsTheServerShould(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("testdata", "version-skew-config.json"))
 	require.NoError(t, err)
@@ -414,16 +514,21 @@ func TestVersionSkewFixtureIsAnsweredAsTheServerShould(t *testing.T) {
 	for _, tc := range fixture.Cases {
 		t.Run(tc.Name, func(t *testing.T) {
 			answers[tc.Server] = true
-			s, err := Parse([]byte(tc.TOML))
+			s, warnings, err := Parse([]byte(tc.TOML))
 			switch tc.Server {
 			case "accepts":
 				require.NoError(t, err)
+				require.Empty(t, warnings)
+			case "warns":
+				require.NoError(t, err)
+				require.Len(t, warnings, 1)
+				require.Contains(t, warnings[0], tc.Says)
 			case "refuses":
 				require.Error(t, err)
 				require.True(t, s.IsZero(), "a rejected file must yield nothing, not half")
 				return
 			default:
-				t.Fatalf("server must be accepts or refuses, not %q", tc.Server)
+				t.Fatalf("server must be accepts, warns or refuses, not %q", tc.Server)
 			}
 			if tc.Planning == nil {
 				return
@@ -440,7 +545,7 @@ func TestVersionSkewFixtureIsAnsweredAsTheServerShould(t *testing.T) {
 			}, s.Planning.Resolved())
 		})
 	}
-	require.True(t, answers["accepts"] && answers["refuses"], "the fixture must hold both answers")
+	require.True(t, answers["accepts"] && answers["warns"] && answers["refuses"], "the fixture must hold every answer")
 }
 
 // The cases the version-skew fixture exists for are asserted to be there, so
@@ -457,16 +562,18 @@ func TestVersionSkewFixtureKeepsItsEdgeCases(t *testing.T) {
 		byName[tc.Name] = tc
 	}
 	for name, want := range map[string]string{
-		"a target above every table":       "accepts",
-		"a target written as a number":     "accepts",
-		"a target below [check]":           "accepts",
-		"a target below [planning]":        "refuses",
-		"a target below [planning.stages]": "refuses",
-		"an unknown [check] key":           "accepts",
-		"an unknown rule":                  "accepts",
-		"an unknown key":                   "refuses",
-		"an unknown sub-table":             "refuses",
-		"an unknown [starred] key":         "refuses",
+		"a target above every table":                         "accepts",
+		"a target written as a number":                       "accepts",
+		"a target below [check]":                             "accepts",
+		"a target below [planning]":                          "refuses",
+		"a target below [planning.stages]":                   "refuses",
+		"a target below [starred]":                           "refuses",
+		"an unknown [check] key":                             "accepts",
+		"an unknown rule":                                    "accepts",
+		"an unknown key":                                     "warns",
+		"an unknown sub-table":                               "warns",
+		"an unknown [starred] key":                           "warns",
+		"a known [planning] key with a value it cannot take": "refuses",
 	} {
 		tc, ok := byName[name]
 		require.True(t, ok, "version-skew-config.json lost the case %q", name)
@@ -486,12 +593,12 @@ func TestParseStepsOverTheTarget(t *testing.T) {
 		"target = \"latest\"\n",
 		"[target]\nversion = \"0.8\"\n",
 	} {
-		s, err := Parse([]byte(body))
+		s, _, err := Parse([]byte(body))
 		require.NoError(t, err, body)
 		require.True(t, s.IsZero(), "%q: the server acts on nothing in it", body)
 	}
 
-	s, err := Parse([]byte("target = \"0.9\"\ntheme = \"catppuccin\"\n\n[starred]\npromote = [\"a.md\"]\n"))
+	s, _, err := Parse([]byte("target = \"0.9\"\ntheme = \"catppuccin\"\n\n[starred]\npromote = [\"a.md\"]\n"))
 	require.NoError(t, err)
 	require.Equal(t, "catppuccin", s.Theme)
 	require.Equal(t, []string{"a.md"}, s.Starred.Promote)
@@ -501,7 +608,7 @@ func TestParseStepsOverTheTarget(t *testing.T) {
 // `theme` included: whole-or-nothing is this file's discipline, and a planning
 // typo is no exception to it.
 func TestABadPlanningTableRejectsTheWholeFile(t *testing.T) {
-	s, err := Parse([]byte("theme = \"catppuccin\"\n\n[starred]\npromote = [\"a.md\"]\n\n[planning]\nmax-candidates = 0\n"))
+	s, _, err := Parse([]byte("theme = \"catppuccin\"\n\n[starred]\npromote = [\"a.md\"]\n\n[planning]\nmax-candidates = 0\n"))
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "planning.max-candidates")
 	require.True(t, s.IsZero())
@@ -519,23 +626,23 @@ func TestPlanningStagesMustBeATable(t *testing.T) {
 		"empty array":     "[planning]\nstages = []\n",
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := Parse([]byte(body))
+			_, _, err := Parse([]byte(body))
 			require.Error(t, err)
 		})
 	}
 
-	s, err := Parse([]byte("[planning]\nstages = { DESIGN = \"open\" }\n"))
+	s, _, err := Parse([]byte("[planning]\nstages = { DESIGN = \"open\" }\n"))
 	require.NoError(t, err)
 	require.Equal(t, map[string]string{"DESIGN": "open"}, s.Planning.Resolved().Stages)
 }
 
 // A file that says only [planning] is a file the server acts on.
 func TestAPlanningTableAloneIsNotEmpty(t *testing.T) {
-	s, err := Parse([]byte("[planning]\nexclude = [\"docs/gallery/**\"]\n"))
+	s, _, err := Parse([]byte("[planning]\nexclude = [\"docs/gallery/**\"]\n"))
 	require.NoError(t, err)
 	require.False(t, s.IsZero())
 
-	s, err = Parse([]byte("[planning]\n\n[planning.stages]\n"))
+	s, _, err = Parse([]byte("[planning]\n\n[planning.stages]\n"))
 	require.NoError(t, err)
 	require.True(t, s.IsZero(), "an empty table resolves to the defaults, so it said nothing")
 }
@@ -572,18 +679,18 @@ func TestResolvedRoadmapsKeepNullEmptyAndAListApart(t *testing.T) {
 		"[planning]\nroadmap = \"./plans/roadmap.md\"\n":         `["plans/roadmap.md"]`,
 		"[planning]\nroadmap = [\"b.md\", \"./a/roadmap.md\"]\n": `["b.md","a/roadmap.md"]`,
 	} {
-		s, err := Parse([]byte(toml))
+		s, _, err := Parse([]byte(toml))
 		require.NoError(t, err, toml)
 		body, err := json.Marshal(s.Planning.Resolved().Roadmaps)
 		require.NoError(t, err)
 		require.JSONEq(t, want, string(body), toml)
 	}
 
-	s, err := Parse([]byte("[planning]\nroadmap = []\n"))
+	s, _, err := Parse([]byte("[planning]\nroadmap = []\n"))
 	require.NoError(t, err)
 	require.False(t, s.IsZero(), "naming no roadmap is not saying nothing")
 
-	listed, err := Parse([]byte("[planning]\nroadmap = [\"a.md\"]\n"))
+	listed, _, err := Parse([]byte("[planning]\nroadmap = [\"a.md\"]\n"))
 	require.NoError(t, err)
 	first := listed.Planning.Resolved()
 	first.Roadmaps[0] = "edited.md"
@@ -610,7 +717,7 @@ func TestARefusedRoadmapNamesTheEntryAndItsValue(t *testing.T) {
 		"[planning]\nroadmap = true\n":                                  {"planning.roadmap", "a path or a list of paths", "true"},
 		"[planning]\nroadmap = 3\n":                                     {"planning.roadmap", "a path or a list of paths", "3"},
 	} {
-		s, err := Parse([]byte(toml))
+		s, _, err := Parse([]byte(toml))
 		require.Error(t, err, toml)
 		require.True(t, s.IsZero(), "a rejected file must yield nothing, not half: %s", toml)
 		for _, fragment := range want {

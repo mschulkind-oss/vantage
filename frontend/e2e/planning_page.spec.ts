@@ -328,10 +328,12 @@ test.describe("the planning page", () => {
       page.getByRole("navigation", { name: "Sections" }),
     ).toContainText("Needs you 1");
 
-    // A visit reads its reviews in two requests, and no document's alone.
-    await expect.poll(() => reads.length).toBe(2);
+    // A visit reads its reviews in two requests at most, and no document's
+    // alone: the first holds the shown pages' documents and every one with a
+    // question that needs you, which here is every listed document.
+    await expect.poll(() => reads.length).toBeGreaterThan(0);
     await page.waitForTimeout(500);
-    expect(reads).toEqual(["POST", "POST"]);
+    expect(reads).toEqual(["POST"]);
 
     // D12: nothing painted moved.
     const shifts = await shifted(page);
@@ -348,7 +350,7 @@ test.describe("the planning page", () => {
     ).toHaveCount(0);
     // Flipping read nothing more, and nothing one document at a time.
     await page.waitForTimeout(300);
-    expect(reads).toEqual(["POST", "POST"]);
+    expect(reads).toEqual(["POST"]);
 
     // The reader scrolls, then opens a page-2 card's document where it stands,
     // in this tab, by its name.

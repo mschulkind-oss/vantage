@@ -1662,20 +1662,75 @@ th.review-block-hovered {
 }
 
 /* The one-click Open Question answer (design §5.2).
-   The affordances sit in their own row below the question, inserted as the
-   block's next sibling — never appended into the block. Appended, the control
-   landed after the question's last word, and inside a blockquote it landed
-   before typography's generated closing quote (`content: close-quote` on the
-   paragraph's ::after), reading as part of the quotation. The row is also what
-   gives the taken state room for a chip and an Undo button side by side.
-   `margin-top` is negative against the block's own bottom margin so the row
-   reads as belonging to the question above it rather than floating between two
-   paragraphs. */
+   The question's controls sit in one row of their own at the END of the
+   question (useOpenQuestionButtons' `rowPlace`): the last child of its list
+   item or quote, or the next sibling of the last block of a question outside
+   a list — never appended into a block. Appended, the control landed after the question's
+   last word, and inside a blockquote it landed before typography's generated
+   closing quote (`content: close-quote` on the paragraph's ::after), reading
+   as part of the quotation. The row is the planning card's control row in the
+   prose: the same buttons, the same 8px gap, and every state of it one line of
+   one height, so the comments that arrive after it change what it holds and
+   move nothing. `margin-top` is negative against the block above's own bottom
+   margin so the row reads as belonging to the question rather than floating
+   between two paragraphs. */
 .review-oq-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin: -0.5em 0 1.25em;
+  line-height: 1.5;
+  font-style: normal;
+}
+/* At the end of a list item or quote: under the question's last block, at its
+   indent, closer to it than the next question is, so it reads as that
+   question's. Whatever the last block is — a paragraph, the Answer's quote, an
+   option list, an inline comment card — its own bottom margin gives way to the
+   row's top one, so the gap is the same under every shape. */
+.review-oq-row.review-oq-row-end {
+  margin: 0.625em 0 1.25em;
+}
+.prose :where(li, blockquote) > :has(+ .review-oq-row-end),
+.prose :where(li, blockquote) > :has(+ .review-oq-row-end) > :last-child {
+  margin-bottom: 0;
+}
+/* The card's Answer…: a quiet outline beside the take, with lucide's
+   message-square-plus, which the card draws as a component. */
+.review-oq-answer {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgb(71 85 105);
+  background: none;
+  border: 1px solid rgb(203 213 225);
+  border-radius: 4px;
+  padding: 2px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
+}
+.review-oq-answer:hover {
+  background: rgb(241 245 249);
+}
+.review-oq-answer:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.dark .review-oq-answer {
+  color: rgb(203 213 225);
+  border-color: rgb(71 85 105);
+}
+.dark .review-oq-answer:hover {
+  background: rgb(51 65 85);
+}
+.review-oq-answer > svg {
+  flex-shrink: 0;
 }
 /* It shares the Copy/Reopen outline treatment: like them it carries a thread
    forward rather than terminating one. */
@@ -1706,22 +1761,37 @@ th.review-block-hovered {
   background: rgb(59 130 246 / 0.15);
   border-color: rgb(96 165 250 / 0.7);
 }
-/* Already taken. A chip rather than a disabled button: there is no :disabled
-   treatment anywhere in this stylesheet, so a disabled button would keep the
-   live look and read as clickable. */
-.review-oq-taken {
+/* Already taken, or answered by another comment on the question: the human's
+   part is done either way, so one chip says both. A chip rather than a
+   disabled button: there is no :disabled treatment anywhere in this
+   stylesheet, so a disabled button would keep the live look and read as
+   clickable. Green-700 on white, about 5:1, since 11px text needs 4.5:1. */
+.review-oq-taken,
+.review-oq-answered {
   font-size: 11px;
   font-weight: 500;
-  color: rgb(22 163 74);
+  color: rgb(21 128 61);
   border: 1px solid rgb(34 197 94 / 0.5);
   border-radius: 4px;
   padding: 2px 10px;
   white-space: nowrap;
   cursor: default;
 }
-.dark .review-oq-taken {
+.dark .review-oq-taken,
+.dark .review-oq-answered {
   color: rgb(74 222 128);
   border-color: rgb(74 222 128 / 0.5);
+}
+/* A take that no longer answers the question — the agent replied, or the
+   reviewer dismissed it — says what became of it in the quiet ink of a past
+   event, beside the Answer… that the question offers again. */
+.review-oq-taken.review-oq-taken--past {
+  color: rgb(71 85 105);
+  border-color: rgb(203 213 225);
+}
+.dark .review-oq-taken.review-oq-taken--past {
+  color: rgb(203 213 225);
+  border-color: rgb(71 85 105);
 }
 /* Undo, beside the chip. Deliberately quieter than both the take button and the
    chip: it is the way back out of a one-click action, not a peer of it, and it
@@ -2025,6 +2095,23 @@ th.review-block-hovered {
 .planning-card-body [data-planning-card-unit] > :last-child {
   margin-bottom: 0;
 }
+/* A question outside a list runs over several blocks of its parent, each
+   marked `block`: spaced as the blocks of one unit are, by the later one's
+   top margin alone, so a block the card hides leaves no gap behind it. */
+.planning-card-body [data-planning-card-unit="block"] {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.planning-card-body
+  [data-planning-card-unit="block"]
+  ~ [data-planning-card-unit="block"] {
+  margin-top: 0.75em;
+}
+.planning-card-body
+  [data-planning-card-part="lede"]
+  + [data-planning-card-unit="block"] {
+  margin-top: 0;
+}
 
 /* The card's layout of its question (`planningCardParts.ts`). The bold title
    is the card's headline, so it is hidden here, with the paragraph it opens
@@ -2039,7 +2126,7 @@ th.review-block-hovered {
 /* With the headline leading the card, the question's number in its list says
    nothing more, and its indent would set the question off from its headline. */
 .planning-card-body[data-planning-card-headed]
-  :is(ol, ul, li):is([data-planning-card-path], [data-planning-card-unit]) {
+  :is(ol, ul, li):is([data-planning-card-path], [data-planning-card-unit=""]) {
   list-style: none;
   padding-inline-start: 0;
   margin-inline-start: 0;
@@ -2523,6 +2610,8 @@ th.review-block-hovered {
   .review-oq-row,
   .review-oq-take,
   .review-oq-taken,
+  .review-oq-answered,
+  .review-oq-answer,
   .review-oq-undo {
     display: none !important;
   }

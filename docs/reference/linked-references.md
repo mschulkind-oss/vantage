@@ -144,7 +144,7 @@ What a maintainer breaks by accident.
 | Term | Means | Is not | Origin |
 | :--- | :--- | :--- | :--- |
 | **Reference** | Text that names something findable elsewhere: an Open Question id, a section number written as the section sign followed by digits, or a filename | any mention of a concept; and not necessarily a link — whether it is one is what the rules check | coined by the design this document replaced, 2026-09-04 |
-| **Question directive** | An `oq` or `question` directive, which declares a question and its id | the prose convention around it | the [planning index's terms](planning-index.md#2-terms) |
+| **Question directive** | A `question` directive, or an `oq`, the deprecated name it replaces, which declares a question and its id | the prose convention around it | the [planning index's terms](planning-index.md#2-terms) |
 | **Question anchor** | The `id` a question directive's id becomes on the block the directive marks | a heading slug, which is lowercased and derived from text | coined here |
 | **Definition site** | Where an id is declared rather than referred to: the question's own bold title, or the id cell of a Decision Ledger row | the directive, an HTML comment that no `ref/*` rule reads | coined by the design this document replaced |
 | **Decision Ledger** | The table where a design document records its settled questions, one row per ruling, its first column the question's id | the Open Questions list, where a question lives while it is being decided | the `design-doc` convention this repository's planning documents follow |
@@ -158,7 +158,7 @@ What a maintainer breaks by accident.
 
 ```mermaid
 flowchart TD
-  src["<!-- vantage: oq id=OQ-TP4 -->"] --> plugin["rehypeVantageDirectives<br/>(before the sanitizer)"]
+  src["<!-- vantage: question id=OQ-TP4 -->"] --> plugin["rehypeVantageDirectives<br/>(before the sanitizer)"]
   plugin -->|"data-vantage-oq-id='OQ-TP4'"| san["rehype-sanitize<br/>(admits the value only if it fits the grammar)"]
   san --> promote["rehypeVantageAnchors<br/>(after the sanitizer)"]
   promote -->|"id='OQ-TP4'"| slug["rehype-slug<br/>(skips an element that has an id)"]
@@ -215,9 +215,11 @@ so the two namespaces cannot collide by accident.
 | Two directives in one directive run declaring different ids | One question, whose anchor is the id written last in the run | `vantage/duplicate-key` warns, and both ids count as anchors (a [known gap](#known-gaps)) |
 
 A question directive's id reaches the anchor the same way whichever name
-declares it: `oq` on an open question, `question` on a 🔒 or ✅ one. Directives
-that merge onto one block declare one question with one anchor, its keys merged
-across the run with the last value of each winning.
+declares it: `question`, in any state, or `oq`, the deprecated name it replaces.
+Directives that merge onto one block declare one question with one anchor, its
+keys merged across the run with the last value of each winning, except that in a
+run holding both names an `oq`'s value wins over a `question`'s, as it does to a
+viewer that drops `question` (`mergeQuestionRun`).
 
 In the viewer, `anchorTarget`
 ([`anchorScroll.ts`](../../frontend/src/lib/anchorScroll.ts)) resolves a
@@ -446,7 +448,7 @@ Resolution is against the document's directory only, never the repository root
 ## The declaration-side rules
 
 Two rules in the `vantage/*` family, because their subject is Vantage's own
-markup. Both read every question directive, `oq` and `question` alike, and both
+markup. Both read every question directive, `question` and `oq` alike, and both
 are silent without a checker: the page renders correctly either way.
 
 - **`vantage/oq-id-format`** reports a question directive whose id falls outside
