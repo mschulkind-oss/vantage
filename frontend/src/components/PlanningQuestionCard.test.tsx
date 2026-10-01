@@ -37,7 +37,7 @@ import { planningBadgeElement } from "./PlanningBadge";
 import { PlanningQuestionCard, WAITING_LABEL } from "./PlanningQuestionCard";
 import {
   OQ_DEFAULT_LEANING,
-  answerableOpenQuestions,
+  documentQuestions,
 } from "../hooks/useOpenQuestionButtons";
 import {
   resetPlanningTrackers,
@@ -157,7 +157,7 @@ const DENSE = [
   "",
   "2. \u2705 **OQ-J0: Serialize refreshes?**",
   "",
-  '   <!-- vantage: oq id=OQ-J0 leaning="Yes." -->',
+  "   <!-- vantage: question id=OQ-J0 -->",
   "",
   "   _Leaning:_ yes.",
   "",
@@ -281,7 +281,7 @@ function fileInPage(question: PlanningQuestion): Filed {
       />
     </BrowserRouter>,
   );
-  const host = answerableOpenQuestions(container).find(
+  const host = documentQuestions(container).find(
     ({ block }) => lineOf(block) === question.line,
   );
   expect(host, "the in-page host").toBeDefined();
@@ -1006,6 +1006,21 @@ describe("the card's controls follow the question's state (Plan Q5)", () => {
     );
     expect(screen.queryByRole("button", { name: "Answer…" })).toBe(null);
     expect(screen.getByRole("link", { name: "Open document" })).toBeTruthy();
+  });
+
+  it("offers no Take on a question a `question` directive declared, whatever its state", () => {
+    // Only an `oq` is a question to answer in one click: the in-page pass
+    // offers nothing on a `question`, and neither does its card, even on an
+    // open one, which `vantage/question-name` reports.
+    const open = ofState("open");
+    renderCard(
+      { ...open, directive: "question" },
+      { card: blockOf(open, status) },
+    );
+    expect(screen.queryByRole("button", { name: "Take this leaning" })).toBe(
+      null,
+    );
+    expect(screen.getByRole("button", { name: "Answer…" })).toBeTruthy();
   });
 
   it("offers no Take without a leaning, and nothing that writes in a static export", () => {

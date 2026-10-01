@@ -51,28 +51,45 @@ describe("the style guide's roadmaps", () => {
 });
 
 describe("the style guide's blocked question", () => {
-  it("carries an oq directive, so the index counts it", () => {
+  it("carries a question directive, so the index counts it", () => {
     // A question with no directive does not exist to the index (§3.3), so the
     // guide's old advice, that a 🔒 question needs none, hid every one of them.
+    // And not an `oq`, which every viewer before 0.8 offers to answer.
     const blocked = exampleQuestions().filter(
       (question) => question.state === "blocked",
     );
 
     expect(blocked).toHaveLength(1);
-    expect(blocked[0]).toMatchObject({ id: "OQ-10", leaning: null });
+    expect(blocked[0]).toMatchObject({
+      id: "OQ-10",
+      directive: "question",
+      leaning: null,
+    });
+  });
+
+  it("declares its open question with an oq", () => {
+    const open = exampleQuestions().filter((q) => q.state === "open");
+    expect(open.map((q) => [q.id, q.directive])).toEqual([["OQ-9", "oq"]]);
   });
 
   it("no longer says a blocked or answered question needs no directive", () => {
     expect(STYLE_GUIDE).not.toMatch(/needs no directive/);
   });
 
-  it("says a blocked or answered question gets no one-click answer", () => {
+  it("says a blocked or answered question takes `question`, which offers no button", () => {
     // Review mode offers Take this leaning on open questions only (Plan Q5,
-    // planning-index.md §6.6). An agent told to keep a directive that renders
-    // no button needs telling that is expected, not a mistake to fix.
-    expect(STYLE_GUIDE).toContain(
-      "Neither state gets the one-click button in review mode",
+    // planning-index.md §6.6), and only on an `oq`. An agent re-marking a
+    // question needs telling that the directive's name changes with it, and
+    // why leaving `oq` there is not harmless.
+    const guide = STYLE_GUIDE.replace(/\s+/g, " ");
+    expect(guide).toContain(
+      "A blocked (\u{1F512}) or answered (\u2705) question gets a `question` directive instead",
     );
+    expect(guide).toContain("offers no button");
+    expect(guide).toContain(
+      "every Vantage before 0.8 offers the one-click button on every `oq`",
+    );
+    expect(guide).toContain("`vantage/question-name`");
   });
 });
 

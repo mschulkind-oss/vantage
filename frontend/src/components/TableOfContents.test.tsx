@@ -47,7 +47,7 @@ function documentHTML(): string {
 /**
  * One Open Question, in the list layout the convention prescribes.
  *
- * `data-source-line` on every block is not decoration: `answerableOpenQuestions`
+ * `data-source-line` on every block is not decoration: `documentQuestions`
  * resolves the block a review comment would anchor to, and a block without a
  * source line is not anchorable at all — so a fixture missing it yields no
  * question, no button and no entry, for a reason that has nothing to do with the
@@ -221,7 +221,7 @@ describe("collectOutline", () => {
   });
 
   it("lists a question whose directive carried no id, with nothing to link to", () => {
-    // The set has to match the buttons: `answerableOpenQuestions` renders one for
+    // The set has to match the buttons: `documentQuestions` renders one for
     // this question, so a column that dropped it would disagree with the page.
     const container = document.createElement("div");
     container.innerHTML = `<ol>${questionHTML("", "💬", "OQ-8: Unanchored?")}</ol>`;
@@ -368,26 +368,34 @@ read?</strong></p>
 });
 
 describe("tallyQuestions", () => {
-  /** A question entry in `status`, which is all the tally reads. */
-  function q(status: OutlineEntry["status"]): OutlineEntry {
+  /**
+   * A question entry in `status`, which with `oneClick` is all the tally
+   * reads. An open or unmarked one offers a take unless told otherwise, as an
+   * `oq` does.
+   */
+  function q(
+    status: OutlineEntry["status"],
+    oneClick = status === "open" || status === null,
+  ): OutlineEntry {
     return {
       kind: "question",
       id: "OQ-1",
       text: "A question?",
       marker: "",
       status,
+      oneClick,
       level: 2,
       element: document.createElement("li"),
     };
   }
 
   it("counts only questions, and only states that occur", () => {
-    const heading = { ...q(null), kind: "heading" as const };
+    const heading = { ...q(null), kind: "heading" as const, oneClick: false };
     expect(
       tallyQuestions([heading, q("open"), q("open"), q("blocked")]),
     ).toEqual([
-      { status: "open", glyph: "💬", count: 2 },
-      { status: "blocked", glyph: "🔒", count: 1 },
+      { status: "open", glyph: "💬", count: 2, oneClick: 2 },
+      { status: "blocked", glyph: "🔒", count: 1, oneClick: 0 },
     ]);
   });
 
@@ -401,7 +409,7 @@ describe("tallyQuestions", () => {
 
   it("gives an unmarked question a neutral glyph rather than borrowing one", () => {
     expect(tallyQuestions([q(null)])).toEqual([
-      { status: null, glyph: "•", count: 1 },
+      { status: null, glyph: "•", count: 1, oneClick: 1 },
     ]);
   });
 
@@ -434,6 +442,17 @@ describe("tallyQuestions", () => {
     );
     expect(tallySentence(tallyQuestions([q("settled"), q("blocked")]))).toBe(
       "2 questions here — 1 answered, 1 blocked",
+    );
+  });
+
+  // Only an `oq` offers the take: an open question a `question` directive
+  // declares has no button, so the column must not promise one either.
+  it("claims no click for an open question declared with `question`", () => {
+    expect(tallySentence(tallyQuestions([q("open", false)]))).toBe(
+      "1 open question here",
+    );
+    expect(tallySentence(tallyQuestions([q("open"), q("open", false)]))).toBe(
+      "2 open questions here; 1 can be answered in one click",
     );
   });
 });

@@ -339,7 +339,7 @@ command remains available for anyone who wants to wire it in earlier.
 | **R3. Two-implementation drift** if the Go binary also grows checks | Don't. Per **P2**, TypeScript owns it. If the Go binary ever needs to check, it shells out or does nothing. |
 | **R4. Release-matrix maintenance** — five platform binaries per release | One-time CI wiring into a release pipeline that already exists; no per-user cost. Accepted deliberately over shipping two runtimes. |
 | **R5. Binary size** if full Mermaid coverage needs a DOM shim | Weigh jsdom against dropping to grammar-error matching ([§5.2](#52-a-delegates-failure-is-not-automatically-a-finding)). Decide with a measurement, not a guess. |
-| **R6. Version skew** — agent runs a newer binary against an older server | Checks describe the *format*, which is stable, not server behavior. |
+| **R6. Version skew** — agent runs a newer binary against an older server | Checks describe the *format*, not server behavior, and the format stays readable by older viewers because a release never gives existing notation a new meaning. How that is kept, and what a checker does with a repository newer than itself: [`checker-version-skew.md`](checker-version-skew.md). |
 | **R7. Scope gravity** — "the CLI could also…" is how this becomes a second product | [§7](#7-non-goals--what-this-does-not-license) is the defense. Every proposed command justifies itself against **P1**. |
 
 **What it costs us.** A cross-compile release matrix, a published command

@@ -288,7 +288,7 @@ class PlanningPass {
    *
    * The parse is nearly all of this pass's cost, and most documents in a run
    * cannot be reported by any of the five rules: without `stage` or
-   * `depends-on` in the header, and without an `oq` directive in the body,
+   * `depends-on` in the header, and without a question directive in the body,
    * none of them has anything to say. Leaving such a document out of the
    * narrow index changes nothing for the others, since each rule reads only
    * its own document and the roadmap. The test only ever says yes too often:

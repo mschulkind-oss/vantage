@@ -40,8 +40,9 @@
  *
  * It sits inside the prose container, directly after the frontmatter card, so
  * it is built from elements nothing there reads as the document: no heading,
- * which the contents column would list; no `[data-vantage-oq]`; no `p` or `li`,
- * which review mode's hover would offer to comment on; and no `data-source-line`,
+ * which the contents column would list; no `[data-vantage-oq]` or
+ * `[data-vantage-question]`; no `p` or `li`, which review mode's hover would
+ * offer to comment on; and no `data-source-line`,
  * so no review anchor can land on it. `not-prose` keeps typography's list and
  * paragraph styles off it, as they are off the frontmatter card.
  */

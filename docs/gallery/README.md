@@ -66,9 +66,9 @@ Two switches change what these pages are showing you:
 | [Badges and chips](./badges-and-chips.md) | all five `badge` tokens, every heading level, the frontmatter status chip | does the chip stay legible small and stay a chip when large? |
 | [Sections and the run](./sections.md) | one toned section across nine block types; adjacent runs; the unstampable hole | is the stripe continuous, and does it stop where the section stops? |
 | [Collapse](./collapse.md) | `collapsed=true`, nesting, the caret, the three gates | does the caret work by keyboard, and does everything print open? |
-| [Open questions](./open-questions.md) | `oq`, the one-click button, and where it will not appear | one affirmative button per question, and nothing when review mode is off? |
+| [Open questions](./open-questions.md) | `oq`, the one-click button, where it will not appear, and `question` | one affirmative button per open question, none on a blocked or answered one, and nothing when review mode is off? |
 | [Status at a glance](./status.md) | task lists, badges and chips together, in the shapes a roadmap uses | can you tell what still needs you *without reading*? |
-| [Inline SVG](./inline-svg.md) | a night scene, a chart, an icon in a sentence and a drawing in a toned section, in both themes and in print | did every shape the source draws reach the page, and does it read in both themes? |
+| [Inline SVG](./inline-svg.md) | a night scene, a chart, an icon in a sentence and a drawing in a toned section, in both themes and in print, each with a `fallback` block | did every shape the source draws reach the page, does it read in both themes, and is every fallback block withheld? |
 
 Each page opens with its own "what to look at" list. Those lists are the point —
 they are what turns "this looks a bit off" into a specific claim about a

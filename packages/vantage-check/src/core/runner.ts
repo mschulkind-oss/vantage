@@ -7,6 +7,7 @@ import {
   checkDirectives,
   checkOpenQuestionIds,
   checkOpenQuestions,
+  checkQuestionNames,
 } from "../rules/directives.js";
 import { checkFrontmatter } from "../rules/frontmatter.js";
 import { checkLinks } from "../rules/links.js";
@@ -66,6 +67,7 @@ export async function checkFiles(
     checkVantageFrontmatter(collector);
     checkDirectives(collector);
     checkOpenQuestions(collector);
+    checkQuestionNames(collector);
     checkOpenQuestionIds(collector);
     checkMath(collector);
     await checkMermaid(collector);

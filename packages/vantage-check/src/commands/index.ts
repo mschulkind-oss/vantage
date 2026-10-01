@@ -19,7 +19,13 @@ import {
 } from "../../../vantage-md/src/planning/index.js";
 import { VANTAGE_OQ_STATUS } from "../../../vantage-md/src/vantageDirectives.js";
 import { Listing, listCandidates, readCandidate } from "../core/candidates.js";
-import { ConfigError, loadConfig } from "../core/config.js";
+import {
+  ConfigError,
+  configPathFor,
+  loadConfig,
+  type LoadOptions,
+} from "../core/config.js";
+import { declaredTargets, noteTargets, refuseTargets } from "../core/target.js";
 import { repositoryRoot } from "../core/projectRoot.js";
 import { oneLine } from "../core/text.js";
 import { EXIT_ENVIRONMENT, EXIT_OK, EXIT_USAGE } from "../exit.js";
@@ -84,20 +90,31 @@ export function indexCommand(options: IndexOptions, io: Io): number {
   // The root's own config and nothing above it, the one file the server
   // reads for this repository (repo-config.md §2.2), so the page and this
   // command read the same `[planning]` (P7).
+  const load: LoadOptions = {
+    from: root,
+    stopAt: root,
+    cwd: io.cwd,
+    ...(options.configPath === undefined
+      ? {}
+      : { explicitPath: resolve(io.cwd, options.configPath) }),
+    ...(options.noConfig === undefined ? {} : { noConfig: options.noConfig }),
+  };
   let loaded;
+  let targets;
   try {
-    loaded = loadConfig({
-      from: root,
-      stopAt: root,
-      ...(options.configPath === undefined
-        ? {}
-        : { explicitPath: resolve(io.cwd, options.configPath) }),
-      ...(options.noConfig === undefined ? {} : { noConfig: options.noConfig }),
-    });
+    // The target first, as `check` reads it (core/target.ts).
+    targets = declaredTargets([configPathFor(load)], io.cwd);
+    const refused = refuseTargets(targets, io);
+    if (refused !== undefined) return refused;
+    loaded = loadConfig(load);
   } catch (error) {
     if (!(error instanceof ConfigError)) throw error;
     io.err(`vantage-check: ${error.message}\n`);
     return EXIT_USAGE;
+  }
+  noteTargets(targets, io);
+  for (const warning of loaded.warnings) {
+    io.err(`vantage-check: warning: ${warning}\n`);
   }
 
   const project = scanProject(root, loaded.planning);

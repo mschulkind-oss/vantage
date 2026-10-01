@@ -27,12 +27,16 @@ import {
   VANTAGE_RUNS,
   VANTAGE_OQ_STATUS,
   VANTAGE_OQ_STATUS_LABEL,
+  VANTAGE_QUESTION_NAMES,
   VANTAGE_SENTINEL,
   VANTAGE_TONES,
   hasVantageSentinel,
+  isQuestionDirective,
+  questionDirectiveFor,
   vantageOqStatus,
   parseVantageDirective,
   renderMarkdown,
+  STYLE_GUIDE,
 } from "vantage-md";
 
 /** Render the real chain and hand back a queryable DOM. */
@@ -210,8 +214,14 @@ describe("the directive grammar", () => {
 });
 
 describe("the closed vocabulary", () => {
-  it("is exactly three names", () => {
-    expect([...DIRECTIVE_NAMES]).toEqual(["section", "block", "oq"]);
+  it("is exactly five names", () => {
+    expect([...DIRECTIVE_NAMES]).toEqual([
+      "section",
+      "block",
+      "oq",
+      "question",
+      "fallback",
+    ]);
     expect(Object.keys(DIRECTIVE_VOCABULARY).sort()).toEqual(
       [...DIRECTIVE_NAMES].sort(),
     );
@@ -246,6 +256,23 @@ describe("the closed vocabulary", () => {
     // `id` and `leaning` are the design's only values with no closed set, which
     // is why they are the only ones the sanitizer cannot value-allowlist.
     expect(DIRECTIVE_VOCABULARY.oq).toEqual({ id: null, leaning: null });
+    // Withholding a block is the whole of what `fallback` says.
+    expect(DIRECTIVE_VOCABULARY.fallback).toEqual({});
+    // A `question` offers no control, so it has no comment body to carry.
+    expect(DIRECTIVE_VOCABULARY.question).toEqual({ id: null });
+  });
+
+  it("names the two question directives, and which state takes which", () => {
+    expect([...VANTAGE_QUESTION_NAMES]).toEqual(["oq", "question"]);
+    expect(DIRECTIVE_NAMES.filter(isQuestionDirective)).toEqual([
+      ...VANTAGE_QUESTION_NAMES,
+    ]);
+    // `oq` means "answer this in one click" to every viewer that has shipped,
+    // so it is the open question's name alone.
+    expect(questionDirectiveFor("open")).toBe("oq");
+    expect(questionDirectiveFor(null)).toBe("oq");
+    expect(questionDirectiveFor("blocked")).toBe("question");
+    expect(questionDirectiveFor("settled")).toBe("question");
   });
 });
 
@@ -1140,6 +1167,328 @@ describe("the `oq` directive", () => {
     expect(markup).toContain('id="OQ-9"');
     // The carrier attribute does not outlive the promotion.
     expect(markup).not.toContain("data-vantage-oq-id");
+  });
+});
+
+/**
+ * `question` — a 🔒 blocked or ✅ answered question. It anchors and counts as an
+ * `oq` does and carries no control, so it stamps an attribute of its own: every
+ * reader of `[data-vantage-oq]` keeps reading "a question to answer".
+ */
+describe("the `question` directive", () => {
+  it("anchors its block and stamps no answerable question", async () => {
+    const markup = await html("<!-- vantage: question id=OQ-9 -->\n\nBody.\n");
+
+    expect(markup).toContain('data-vantage-question="true"');
+    expect(markup).toContain('id="OQ-9"');
+    expect(markup).not.toContain("data-vantage-oq");
+  });
+
+  it("drops a `leaning`, which only an `oq` carries", async () => {
+    const host = await render(
+      '<!-- vantage: question id=OQ-9 leaning="Yes." -->\n\nBody.\n',
+    );
+
+    expect(stamped(host.querySelector("p"))).toEqual({
+      "data-vantage-question": "true",
+    });
+    expect(host.querySelector("p")?.id).toBe("OQ-9");
+  });
+
+  it("gives way to an `oq` anywhere in the same run", async () => {
+    // One run is one question, and a viewer that predates `question` drops it
+    // and reads the `oq`. So the run is an answerable question to every viewer,
+    // whichever comes first, and the two names' keys merge.
+    for (const run of [
+      '<!-- vantage: question id=OQ-9 -->\n<!-- vantage: oq leaning="Yes." -->',
+      '<!-- vantage: oq leaning="Yes." -->\n<!-- vantage: question id=OQ-9 -->',
+    ]) {
+      const host = await render(`${run}\n\nBody.\n`);
+      expect(stamped(host.querySelector("p")), run).toEqual({
+        "data-vantage-oq": "true",
+        "data-vantage-leaning": "Yes.",
+      });
+      expect(host.querySelector("p")?.id, run).toBe("OQ-9");
+    }
+  });
+
+  it("lands only where an `oq` would", async () => {
+    // Above a list it reaches the `<ul>`, which no review anchor resolves.
+    const host = await render(
+      "<!-- vantage: question id=OQ-9 -->\n\n- one\n- two\n",
+    );
+    expect(host.querySelector("[data-vantage-question]")).toBeNull();
+    expect(host.querySelector("#OQ-9")).toBeNull();
+  });
+
+  it("is dropped whole by a viewer that does not know it", () => {
+    // What a viewer before 0.8 does with it: an unknown name drops the whole
+    // directive. Pinned against the parser, which hands every caller the name
+    // unchanged, so only the vocabulary decides.
+    const parsed = parseVantageDirective(" vantage: question id=OQ-9 ");
+    expect(parsed).toMatchObject({ kind: "directive", name: "question" });
+  });
+});
+
+describe("the `fallback` directive", () => {
+  /** A drawing, then the block every other renderer shows in its place. */
+  const DRAWING = [
+    "Before.", // 1
+    "", // 2
+    "<div>", // 3
+    '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" role="img" aria-label="A dot">', // 4
+    '  <circle cx="10" cy="10" r="5" fill="currentColor"/>', // 5
+    "</svg>", // 6
+    "</div>", // 7
+    "", // 8
+    "<!-- vantage: fallback -->", // 9
+    "", // 10
+    "This drawing needs Vantage 0.8 or later.", // 11
+    "", // 12
+    "After.", // 13
+  ].join("\n");
+
+  it("withholds the block after it, and only that block", async () => {
+    const host = await render(DRAWING);
+
+    expect(host.textContent).not.toContain("needs Vantage");
+    expect(host.querySelector("svg")).not.toBeNull();
+    expect(
+      Array.from(host.querySelectorAll("p")).map((p) => p.textContent),
+    ).toEqual(["Before.", "After."]);
+    // Every block that remains keeps its own line, so anchors elsewhere in
+    // the document are untouched.
+    expect(
+      Array.from(host.querySelectorAll("[data-source-line]")).map((el) =>
+        el.getAttribute("data-source-line"),
+      ),
+    ).toEqual(["1", "3", "13"]);
+    expect(await html(DRAWING)).not.toContain("<!--");
+  });
+
+  it("is what P1 permits it to be: deleting it shows the block and changes nothing else", async () => {
+    // The one directive that changes what Vantage shows, and only by
+    // withholding a stand-in written for other renderers. Deleted, the
+    // stand-in appears and the rest of the document is byte-identical.
+    const deleted = DRAWING.replace("<!-- vantage: fallback -->", "");
+    const withIt = await html(DRAWING);
+    const without = await html(deleted);
+
+    expect(prose(without)).toContain(
+      "This drawing needs Vantage 0.8 or later.",
+    );
+    expect(
+      without
+        .replace(
+          /<p data-source-line="11">This drawing needs Vantage 0\.8 or later\.<\/p>/,
+          "",
+        )
+        .replace(/\s+/g, " ")
+        .trim(),
+    ).toBe(withIt.replace(/\s+/g, " ").trim());
+  });
+
+  it("withholds every block shape a stand-in is written as", async () => {
+    for (const block of [
+      "A paragraph with [a link](./chart.svg).",
+      "- a list\n- of two",
+      "> a quote",
+      "> [!NOTE]\n> an alert",
+      "```text\n+---+\n| A |\n+---+\n```",
+      "| a | b |\n| - | - |\n| 1 | 2 |",
+      "$$\nx^2\n$$",
+      "<div>raw <em>HTML</em></div>",
+      "---",
+    ]) {
+      const host = await render(
+        `Kept.\n\n<!-- vantage: fallback -->\n\n${block}\n\nAlso kept.\n`,
+      );
+      expect(
+        Array.from(host.children).map((el) => el.textContent?.trim()),
+        block,
+      ).toEqual(["Kept.", "Also kept."]);
+    }
+  });
+
+  it("withholds a raw <div> that holds Markdown, nested ones and all, up to its closing tag", async () => {
+    const host = await render(
+      [
+        "Kept.",
+        "",
+        "<!-- vantage: fallback -->",
+        "",
+        "<div>",
+        "",
+        "Inside, [a link](./plan.md).",
+        "",
+        "<div>",
+        "",
+        "Nested.",
+        "",
+        "</div>",
+        "",
+        "Still inside.",
+        "",
+        "</div>",
+        "",
+        "Also kept.",
+        "",
+      ].join("\n"),
+    );
+    expect(
+      Array.from(host.children).map((el) => el.textContent?.trim()),
+    ).toEqual(["Kept.", "Also kept."]);
+  });
+
+  // The list of what a fallback withholds is notation, frozen once released
+  // (P0): a later release that withheld these would hide what every release
+  // before it shows. So they stay shown, and `vantage-check` says to wrap one
+  // in a `<div>` instead.
+  it("shows a raw <img>, <figure> or <details>, which are not on its list", async () => {
+    for (const [block, tag] of [
+      ['<img src="chart.png" alt="The chart" width="300">', "img"],
+      [
+        '<figure><img src="chart.png" alt="The chart"><figcaption>Needs 0.8</figcaption></figure>',
+        "figure",
+      ],
+      ["<details><summary>The chart</summary>Needs 0.8.</details>", "details"],
+    ] as const) {
+      const host = await render(
+        `Kept.\n\n<!-- vantage: fallback -->\n\n${block}\n\nAlso kept.\n`,
+      );
+      expect(host.querySelector(tag), block).not.toBeNull();
+    }
+    // Wrapped in a <div>, the same stand-in is withheld.
+    const wrapped = await render(
+      'Kept.\n\n<!-- vantage: fallback -->\n\n<div>\n<img src="chart.png" alt="The chart">\n</div>\n\nAlso kept.\n',
+    );
+    expect(wrapped.querySelector("img")).toBeNull();
+  });
+
+  it("never withholds a heading, which is structure rather than a stand-in", async () => {
+    // The contents column lists it, other documents link to its slug, and the
+    // planning index reads sections under it. The rest of the run still
+    // applies.
+    const host = await render(
+      "<!-- vantage: section tone=note -->\n<!-- vantage: fallback -->\n\n## Kept\n\nBody.\n",
+    );
+
+    expect(host.querySelector("h2")?.textContent).toBe("Kept");
+    expect(stamped(host.querySelector("h2"))).toEqual({
+      "data-vantage-tone": "note",
+      "data-vantage-run": "start",
+    });
+  });
+
+  it("is inert where it has no block: inline, in a tight list item, or last", async () => {
+    // The same three places every other name stamps nothing, for the same
+    // reasons: inline, the next element is phrasing; in a tight item, the
+    // paragraph is bare text; last, there is nothing after it.
+    for (const [markdown, expected] of [
+      [
+        "Some prose <!-- vantage: fallback --> <em>kept</em> too.\n",
+        "Some prose kept too.",
+      ],
+      ["- one\n  <!-- vantage: fallback -->\n  kept\n- two\n", "one kept two"],
+      ["Kept.\n\n<!-- vantage: fallback -->\n", "Kept."],
+    ]) {
+      expect(prose(await html(markdown)), markdown).toBe(expected);
+    }
+  });
+
+  it("withholds inside a list item and a quote, never past its own parent", async () => {
+    const host = await render(
+      [
+        "1. Item.",
+        "",
+        "   <!-- vantage: fallback -->",
+        "",
+        "   Withheld.",
+        "",
+        "   Kept in the item.",
+        "",
+        "> <!-- vantage: fallback -->",
+        ">",
+        "> Withheld too.",
+        "",
+        "After the quote.",
+      ].join("\n"),
+    );
+
+    expect(host.textContent).not.toContain("Withheld");
+    expect(host.querySelector("li")?.textContent).toContain(
+      "Kept in the item.",
+    );
+    expect(host.querySelector("blockquote")).not.toBeNull();
+    expect(host.textContent).toContain("After the quote.");
+  });
+
+  it("takes the rest of its run with it, so nothing re-targets the next block", async () => {
+    // A tone or a question merged onto the withheld block goes with it. Left
+    // behind, the run would land on the block after it and style — or offer
+    // an answer on — something nobody wrote it for.
+    const markup = await html(
+      [
+        "<!-- vantage: block tone=warning -->",
+        '<!-- vantage: oq id=OQ-7 leaning="Yes." -->',
+        "<!-- vantage: fallback -->",
+        "",
+        "Withheld.",
+        "",
+        "Next.",
+      ].join("\n"),
+    );
+
+    expect(prose(markup)).toBe("Next.");
+    expect(markup).not.toContain("data-vantage-");
+    expect(markup).not.toContain('id="OQ-7"');
+  });
+
+  it("is never a member of the section around it", async () => {
+    // Withheld before anything is stamped, so the last block the reader sees
+    // closes the section's rule and a collapse group counts only what is
+    // there.
+    const host = await render(
+      [
+        "<!-- vantage: section tone=tip collapsed=true -->",
+        "",
+        "## Toned",
+        "",
+        "Seen.",
+        "",
+        "<!-- vantage: fallback -->",
+        "",
+        "Withheld.",
+        "",
+        "## Next",
+      ].join("\n"),
+    );
+
+    expect(runs(host, "[data-vantage-tone]")).toEqual(["start", "end"]);
+    expect(host.querySelectorAll("[data-vantage-collapsed]")).toHaveLength(1);
+    expect(host.textContent).not.toContain("Withheld");
+  });
+
+  it("does what the style guide says its inline SVG example does", async () => {
+    // The guide tells agents to pair every drawing with a fallback block; its
+    // example has to draw here and show nothing else.
+    const example = [...STYLE_GUIDE.matchAll(/```markdown\n([\s\S]*?)```/g)]
+      .map((match) => match[1] ?? "")
+      .find((body) => body.includes("<svg"));
+    expect(example).toContain("<!-- vantage: fallback -->");
+
+    const host = await render(example!);
+    expect(host.querySelectorAll("svg *")).toHaveLength(3);
+    expect(host.textContent?.trim()).toBe("");
+  });
+
+  it("still withholds with an unknown key, which drops pair by pair (D2)", async () => {
+    // A key a later release adds must not make this release show the block.
+    const host = await render(
+      "<!-- vantage: fallback for=svg -->\n\nWithheld.\n\nKept.\n",
+    );
+
+    expect(host.textContent).not.toContain("Withheld");
   });
 });
 

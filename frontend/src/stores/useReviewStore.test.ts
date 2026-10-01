@@ -1277,6 +1277,18 @@ describe("useReviewStore", () => {
       expect(payload).toContain("**Before delivering, check the document.**");
     });
 
+    // Frozen into every viewer that ships it, and the one way a later
+    // release's refusal reaches an agent this viewer briefs: exit 2 means the
+    // checker ran, so the agent is told not to "fix" the config it refused
+    // (docs/design/checker-version-skew.md §5).
+    it("tells the agent that exit 2 is no reason to edit .vantage.toml", async () => {
+      seedNested();
+      const payload = await copiedPayload();
+      expect(payload).toContain(
+        "If the command cannot run, or exits 2 (a configuration error or a refusal), deliver anyway and leave `.vantage.toml` as it is — this is a quality gate, not a delivery dependency.",
+      );
+    });
+
     it("instructs saving the document before delivering", async () => {
       seedNested();
       const payload = await copiedPayload();

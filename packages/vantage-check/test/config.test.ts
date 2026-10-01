@@ -114,7 +114,7 @@ describe("parseConfig", () => {
       "testdata",
       "shared-config.toml",
     );
-    const { policy, settings } = parseConfig(
+    const { policy, settings, target, warnings } = parseConfig(
       readFileSync(fixture, "utf8"),
       fixture,
     );
@@ -123,6 +123,8 @@ describe("parseConfig", () => {
     expect(policy.strict).toBe(true);
     expect(policy.exitCode).toBe(3);
     expect(settings.severity("link/dead-section-anchor")).toBe("warning");
+    expect(target?.written).toBe("0.8");
+    expect(warnings).toEqual([]);
   });
 
   // [planning] is the one table both readers parse, and the checker reads all
@@ -225,56 +227,89 @@ describe("parseConfig", () => {
 
   // checker-version-skew.md §6.2. An unknown key or rule id is a typo, or the
   // configuration of a newer vantage-check than this one, and an agent told
-  // only "unknown" deletes the line. So each names this checker, says to run a
-  // newer one and keep the line, and says to fix a typo.
+  // only "unknown" deletes the line. So each is ignored with a warning that
+  // names this checker, says to run a newer one and keep the line, and says to
+  // fix a typo; the rest of the file still applies.
   it.each([
     [
-      "[check]\nfuture-key = 1\n",
-      "unknown key check.future-key, which this development build of vantage-check does not know.",
+      "[check]\nstrict = true\nfuture-key = 1\n",
+      "unknown key check.future-key, which this development build of vantage-check does not know, so this run ignores it.",
       "key",
     ],
     [
-      '[planning]\nroadmaps = "r.md"\n',
-      "unknown key planning.roadmaps. In this development build of vantage-check, [planning] takes",
+      '[check]\nstrict = true\n\n[planning]\nroadmaps = "r.md"\n',
+      "unknown key planning.roadmaps, which this development build of vantage-check does not know, so this run ignores it. Here [planning] takes",
       "key",
     ],
     [
-      '[check.rules]\n"future/rule" = "error"\n',
-      'unknown rule "future/rule", which this development build of vantage-check does not have.',
+      '[check]\nstrict = true\n\n[check.rules]\n"future/rule" = "error"\n',
+      'unknown rule "future/rule", which this development build of vantage-check does not have, so this run ignores it.',
       "rule",
     ],
     [
-      '[check.rules]\n"planning/question-length" = { future-key = 1 }\n',
-      'unknown key "future-key" for rule "planning/question-length", which in this development build of vantage-check takes severity and',
+      '[check]\nstrict = true\n\n[check.rules]\n"planning/question-length" = { future-key = 1 }\n',
+      'unknown key "future-key" for rule "planning/question-length", which in this development build of vantage-check takes severity and max-words, so this run ignores the key.',
+      "key",
+    ],
+    [
+      '[check]\nstrict = true\n\n[check.rules]\n"link/missing-target" = { future-key = 1 }\n',
+      'unknown key "future-key" for rule "link/missing-target", which in this development build of vantage-check takes only a severity, so this run ignores the key.',
       "key",
     ],
   ])(
-    "names the checker and says to keep %j if it is newer",
+    "ignores %j with a warning that says to keep it if it is newer",
     (source, opening, what) => {
-      let message = "";
-      try {
-        parseConfig(source);
-      } catch (error) {
-        expect(error).toBeInstanceOf(ConfigError);
-        message = (error as Error).message;
-      }
+      const { policy, warnings } = parseConfig(source);
 
-      expect(message).toContain(opening);
-      expect(message).toContain(
+      expect(policy.strict).toBe(true);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain(opening);
+      expect(warnings[0]).toContain(
         `If this repository is configured for a newer vantage-check, run one (for example, \`uvx vantage-check@latest\`) and don't remove the ${what}; if it is a typo, fix it.`,
       );
     },
   );
 
-  // A rule a later release gives options to takes a table there, and none here.
-  it("names the checker and says to keep a rule's table if it is newer", () => {
-    expect(() =>
-      parseConfig(
-        '[check.rules]\n"link/missing-target" = { future-key = 1 }\n',
-      ),
-    ).toThrow(
-      'rule "link/missing-target" takes only a severity, "error", "warning" or "off", and no table in this development build of vantage-check. If this repository is configured for a newer vantage-check, run one (for example, `uvx vantage-check@latest`) and don\'t remove the table; if it is a mistake, write the severity alone.',
+  // The server refuses the whole file over a [planning] key it does not know,
+  // so the checker, which only warns, says what the viewer does with it.
+  it("says that a viewer of its release ignores the file over an unknown [planning] key", () => {
+    const { warnings } = parseConfig('[planning]\nroadmaps = "r.md"\n');
+
+    expect(warnings[0]).toContain(
+      "a viewer from this development build ignores the whole file over a key it does not know, [starred] and theme included.",
     );
+  });
+
+  it("applies what it knows around what it ignores", () => {
+    const { settings, planning, warnings } = parseConfig(
+      [
+        "[check.rules]",
+        '"future/rule" = "error"',
+        '"link/dead-section-anchor" = "warning"',
+        '"planning/question-length" = { severity = "error", max-words = 90, max-sentences = 3 }',
+        "",
+        "[planning]",
+        'exclude = ["docs/gallery/**"]',
+        "future-key = true",
+      ].join("\n"),
+    );
+
+    expect(warnings).toHaveLength(3);
+    expect(settings.setting("link/dead-section-anchor")).toBe("warning");
+    expect(settings.setting("planning/question-length")).toBe("error");
+    expect(settings.option("planning/question-length", "max-words")).toBe(90);
+    expect(planning.exclude).toEqual(["docs/gallery/**"]);
+  });
+
+  // A rule a later release gives options to takes a table there, so a table
+  // here is read for its severity, and any other key in it is warned about.
+  it("reads a severity-only table for a rule with no options, and warns about nothing", () => {
+    const { settings, warnings } = parseConfig(
+      '[check.rules]\n"link/missing-target" = { severity = "warning" }\n',
+    );
+
+    expect(warnings).toEqual([]);
+    expect(settings.setting("link/missing-target")).toBe("warning");
   });
 
   // The viewer's own names, written below a table header, are neither a typo
@@ -316,13 +351,11 @@ describe("parseConfig", () => {
     expect(message).not.toMatch(/newer vantage-check|don't remove/);
   });
 
-  // A typo that silently disables nothing is the quiet kind of wrong a checker
-  // cannot afford, so every one of these is an error rather than a warning.
+  // A value this checker cannot take for a key it knows is never a newer
+  // release's key, so every one of these is an error rather than a warning.
   it.each([
-    ['[check.rules]\n"link/no-such-rule" = "error"\n', "unknown rule"],
     ['[check]\nstrict = "yes"\n', "must be true or false"],
     ["[check]\nexit-code = 999\n", "between 0 and 125"],
-    ["[check]\nunexpected = 1\n", "unknown key"],
     ['[check.rules]\n"link/*" = "loud"\n', "must be"],
     ["[check\n", ""],
   ])("rejects %j", (source, fragment) => {
@@ -392,21 +425,29 @@ describe("a rule written as a table", () => {
     [rules("{ max-words = 0 }"), "whole number of 1 or more"],
     [rules("{ max-words = 1.5 }"), "whole number of 1 or more"],
     [rules('{ max-words = "150" }'), "whole number of 1 or more"],
-    [rules("{ max-chars = 150 }"), 'unknown key "max-chars"'],
     [rules('{ severity = "loud" }'), "must be"],
-    [
-      '[check.rules]\n"link/missing-target" = { severity = "error" }\n',
-      "takes only a severity",
-    ],
     [
       '[check.rules]\n"planning/*" = { max-words = 150 }\n',
       "takes only a severity",
     ],
-    ['[check.rules]\n"planning/nope" = { max-words = 150 }\n', "unknown rule"],
+    [
+      '[check.rules]\n"*" = { severity = "warning" }\n',
+      "takes only a severity",
+    ],
     [rules("1979-05-27"), "must be"],
   ])("rejects %j", (source, fragment) => {
     expect(() => parseConfig(source)).toThrow(ConfigError);
     expect(() => parseConfig(source)).toThrow(fragment);
+  });
+
+  it.each([
+    [rules("{ max-chars = 150 }"), 'unknown key "max-chars"'],
+    ['[check.rules]\n"planning/nope" = { max-words = 150 }\n', "unknown rule"],
+  ])("ignores %j with a warning", (source, fragment) => {
+    const { warnings } = parseConfig(source);
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain(fragment);
   });
 });
 
@@ -472,7 +513,6 @@ describe("[planning], as planning-config.json pins it for both readers", () => {
   });
 
   it.each([
-    ["[planning]\nroadmaps = 1\n", "unknown key planning.roadmaps"],
     ['[planning.stages]\nX = "shipped"\n', '"open", "ready", "built", "done"'],
     ["[planning]\nmax-candidates = 0\n", "whole number of 1 or more"],
     ['[planning]\nroadmap = "../r.md"\n', "inside the repository"],
@@ -537,6 +577,117 @@ describe("[planning], as planning-config.json pins it for both readers", () => {
   });
 });
 
+interface VersionSkewCase {
+  name: string;
+  toml: string;
+  server: "accepts" | "refuses";
+  checker: "accepts" | "warns" | "refuses";
+  target?: string | null;
+  says?: string;
+  planning?: PlanningConfig;
+}
+
+// The server's internal/repoconfig test reads the same cases and asserts its
+// own answer, which differs from this one where the fixture says so: this
+// checker ignores a key it does not know with a warning, and the server still
+// refuses the whole file over one in [starred] or [planning].
+describe("a file written for another release, as version-skew-config.json pins it", () => {
+  const { cases } = JSON.parse(
+    readFileSync(testdata("version-skew-config.json"), "utf8"),
+  ) as { cases: VersionSkewCase[] };
+
+  it("holds every answer this reader gives, and cases where the readers part", () => {
+    const answers = new Set(cases.map((c) => c.checker));
+    expect([...answers].sort()).toEqual(["accepts", "refuses", "warns"]);
+    expect(
+      cases.some((c) => c.checker === "warns" && c.server === "refuses"),
+    ).toBe(true);
+    expect(
+      cases.some((c) => c.checker === "refuses" && c.server === "accepts"),
+    ).toBe(true);
+    expect(new Set(cases.map((c) => c.name)).size).toBe(cases.length);
+  });
+
+  it.each(cases.map((c) => [c.name, c] as const))("%s", (_name, c) => {
+    if (c.checker === "refuses") {
+      expect(() => parseConfig(c.toml)).toThrow(ConfigError);
+      if (c.says !== undefined)
+        expect(() => parseConfig(c.toml)).toThrow(c.says);
+      return;
+    }
+    const parsed = parseConfig(c.toml);
+    expect(parsed.target?.written ?? null).toBe(c.target);
+    if (c.checker === "warns") {
+      expect(parsed.warnings).toHaveLength(1);
+      expect(parsed.warnings[0]).toContain(c.says);
+    } else {
+      expect(parsed.warnings).toEqual([]);
+    }
+    if (c.planning !== undefined) expect(parsed.planning).toEqual(c.planning);
+  });
+});
+
+describe("target", () => {
+  it.each([
+    ["0.8", [0, 8, 0]],
+    ["0.8.1", [0, 8, 1]],
+    ["1.0", [1, 0, 0]],
+    ["0.10", [0, 10, 0]],
+    ["0.0", [0, 0, 0]],
+  ])("reads %s as a release", (written, version) => {
+    expect(parseConfig(`target = "${written}"\n`).target).toEqual({
+      written,
+      version,
+    });
+  });
+
+  it("is null when the file declares none, and with no file at all", () => {
+    expect(parseConfig("[check]\nstrict = true\n").target).toBeNull();
+    expect(defaultConfig().target).toBeNull();
+  });
+
+  it("names the forms it takes, and what it got", () => {
+    expect(() => parseConfig("target = 0.8\n")).toThrow(
+      'target must name one Vantage release as text, "X.Y" or "X.Y.Z", such as target = "0.8" (got 0.8).',
+    );
+    expect(() => parseConfig('target = "v0.8"\n')).toThrow('(got "v0.8")');
+  });
+
+  // §4.1: appended to a file that ends in a table, the key lands in it.
+  it.each([
+    ['[check]\ntarget = "0.8"\n', "unknown key check.target."],
+    ['[check.rules]\ntarget = "0.8"\n', 'unknown rule "target".'],
+    ['[planning]\ntarget = "0.8"\n', "unknown key planning.target."],
+    [
+      '[planning.stages]\nDESIGN = "open"\ntarget = "0.8"\n',
+      "planning.stages.target is a release, not a stage's role.",
+    ],
+    ["[planning.stages]\ntarget = 0.8\n", "planning.stages.target"],
+    [
+      '[check.rules."planning/question-length"]\ntarget = "0.8"\n',
+      'unknown key "target" for rule "planning/question-length".',
+    ],
+    // The server's table, whose other keys this checker never reads.
+    [
+      '[starred]\npromote = ["roadmap.md"]\ntarget = "0.8"\n',
+      "unknown key starred.target.",
+    ],
+  ])("says to move a target written below a table: %j", (source, opening) => {
+    let message = "";
+    try {
+      parseConfig(source);
+    } catch (error) {
+      expect(error).toBeInstanceOf(ConfigError);
+      message = (error as Error).message;
+    }
+
+    expect(message).toContain(opening);
+    expect(message).toContain(
+      "`target` is a top-level key, and TOML reads a key written after a [table] header as part of that table: move it above the first [table].",
+    );
+  });
+});
+
 describe("discovery", () => {
   it("walks up from the target to the repository root", () => {
     const root = makeTree({
@@ -590,14 +741,109 @@ describe("check with configuration", () => {
   it("reports a broken config instead of checking with half of it", async () => {
     const io = bufferIo(
       makeTree({
-        ".vantage.toml": '[check.rules]\n"link/nope" = "error"\n',
+        ".vantage.toml": '[check.rules]\n"link/*" = "loud"\n',
         "index.md": "# Title\n",
       }),
     );
 
     expect(await run(["check", "."], io)).toBe(EXIT_USAGE);
-    expect(io.stderr).toContain("unknown rule");
+    expect(io.stderr).toContain('rule "link/*" must be');
     expect(io.stdout).toBe("");
+  });
+
+  // Forward compatible (checker-version-skew.md): a rule from a newer release
+  // is warned about on stderr and the run goes on under the rest of the file,
+  // with the exit code its findings earn and nothing in the report about it.
+  it("warns about a rule it does not know, and checks under the rest", async () => {
+    const io = bufferIo(
+      makeTree({
+        ".vantage.toml":
+          '[check.rules]\n"future/rule" = "error"\n"link/missing-target" = "off"\n',
+        "index.md": "[Gone](./nowhere.md)\n",
+      }),
+    );
+
+    expect(await run(["check", "."], io)).toBe(EXIT_OK);
+    expect(io.stderr).toMatch(
+      /^vantage-check: warning: \.vantage\.toml: unknown rule "future\/rule"/,
+    );
+    expect(io.stderr.split("\n").filter(Boolean)).toHaveLength(1);
+    expect(io.stdout).not.toContain("future/rule");
+  });
+
+  // §3.3: a warning about the checker's own age is not a finding about the
+  // documents, so neither way of asking for strictness counts it.
+  it.each([
+    ["--strict", "", ["check", "--strict", "--format", "json", "."]],
+    ["check.strict", "strict = true\n", ["check", "--format", "json", "."]],
+  ])(
+    "never lets a config warning change the exit code, under %s",
+    async (_name, strict, argv) => {
+      const io = bufferIo(
+        makeTree({
+          ".vantage.toml": `[check]\n${strict}future-key = 1\n\n[check.rules]\n"future/rule" = "error"\n`,
+          "index.md": "# Title\n\nClean.\n",
+        }),
+      );
+
+      expect(await run(argv, io)).toBe(EXIT_OK);
+      const warnings = io.stderr.split("\n").filter(Boolean);
+      expect(warnings).toHaveLength(2);
+      expect(warnings.join("\n")).toContain("unknown key check.future-key");
+      expect(warnings.join("\n")).toContain('unknown rule "future/rule"');
+      const report = JSON.parse(io.stdout) as {
+        summary: { warnings: number; errors: number };
+      };
+      expect(report.summary.warnings).toBe(0);
+      expect(report.summary.errors).toBe(0);
+      expect(io.stdout).not.toContain("future");
+    },
+  );
+
+  it("names the file one way in everything a run says about it", async () => {
+    // A note about its target and a warning about its keys, in one run, both
+    // relative to where the run was started; and an error the same way.
+    const io = bufferIo(
+      makeTree({
+        ".vantage.toml": 'target = "0.8"\n\n[check]\nfuture-key = 1\n',
+        "index.md": "# Title\n",
+      }),
+    );
+    expect(await run(["check", "."], io)).toBe(EXIT_OK);
+    const lines = io.stderr.split("\n").filter(Boolean);
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatch(
+      /^vantage-check: \.vantage\.toml targets Vantage 0\.8/,
+    );
+    expect(lines[1]).toMatch(
+      /^vantage-check: warning: \.vantage\.toml: unknown key check\.future-key/,
+    );
+
+    const bad = bufferIo(
+      makeTree({ ".vantage.toml": "target = 0.8\n", "index.md": "# Title\n" }),
+    );
+    expect(await run(["check", "."], bad)).toBe(EXIT_USAGE);
+    expect(bad.stderr).toMatch(
+      /^vantage-check: \.vantage\.toml: target must name/,
+    );
+  });
+
+  it("warns once about a key in a root's own file that the run also reads", async () => {
+    const outer = makeTree({
+      "one/.git/HEAD": "ref: refs/heads/main\n",
+      "one/.vantage.toml": "[planning]\nfuture-key = 1\n",
+      "one/a.md": "# A\n",
+      "two/.git/HEAD": "ref: refs/heads/main\n",
+      "two/.vantage.toml": "[planning]\nanother-key = 1\n",
+      "two/b.md": "# B\n",
+    });
+    const io = bufferIo(outer);
+
+    expect(await run(["check", "one/a.md", "two/b.md"], io)).toBe(EXIT_OK);
+    const warnings = io.stderr.split("\n").filter(Boolean);
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]).toContain("unknown key planning.future-key");
+    expect(warnings[1]).toContain("unknown key planning.another-key");
   });
 
   // The design wants a bad [planning] to fail loudly rather than be read as

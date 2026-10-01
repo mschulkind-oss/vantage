@@ -8,14 +8,17 @@
 //
 // The division is strict in both directions. This package reads the tables the
 // server owns and steps over everything else; the checker reads `[check]` and
-// steps over everything else. Neither validates the other's keys, because the two
-// ship as separate artifacts and version skew between them is the normal state —
-// a checker that policed the server's keys would turn a contributor's CI red for
-// a key that is not its business.
+// the top-level `target`, and steps over everything else. Neither validates the
+// other's keys, because the two ship as separate artifacts and version skew
+// between them is the normal state — a checker that policed the server's keys
+// would turn a contributor's CI red for a key that is not its business.
 //
 // `[planning]` is the one table both own. Each reader validates all of it, and
 // one fixture (testdata/planning-config.json) holds the two to the same answer
-// for every file, so a table one of them would refuse is refused by both.
+// for every value, so a value one of them would refuse is refused by both. They
+// part over a key one of them does not know: the checker ignores it with a
+// warning, since it may be a newer release's, and this package refuses the
+// whole file. testdata/version-skew-config.json pins each reader's answer.
 //
 // # The nesting trap
 //
@@ -464,6 +467,15 @@ func Parse(data []byte) (Settings, error) {
 // (`[theme]`, or `theme.name = "…"`) is refused by the decoder's own type check
 // before this loop runs, which is the same whole-or-nothing outcome by another
 // route.
+//
+// The other top-level scalar, `target`, is the checker's: the oldest Vantage
+// release the repository's readers use, which a checker older than it refuses
+// to run under (docs/design/checker-version-skew.md §4). The server reserves
+// nothing for it and reads nothing from it, so it steps over the key, in any
+// form, as it does over any top-level name it does not claim. A `target`
+// written below `[starred]` or `[planning]` lands inside that table and is
+// refused there like any unknown key, which testdata/version-skew-config.json
+// pins for both readers.
 func ours(table string) bool { return table == "starred" || table == "planning" }
 
 // Config is one repository's settings, reloaded lazily as the file changes.

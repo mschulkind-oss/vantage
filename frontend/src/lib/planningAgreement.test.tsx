@@ -5,12 +5,13 @@
  *
  * They read the same questions two ways. The column reads the rendered page —
  * which blocks `rehypeVantageDirectives` stamped, which of those host a button
- * (`answerableOpenQuestions`), and each one's marker (`questionLabel`). The index
+ * (`documentQuestions`), and each one's marker (`questionLabel`). The index
  * reads the source, with no renderer, so it can run over a whole repository
  * without rendering it. This test renders each document through the app's own
  * `MarkdownViewer`, runs the column's `collectOutline` over the result, scans the
  * same source, and asserts the same questions in the same order, each with the
- * same id, the same state, the same marker, and the same lines — `line` is the
+ * same id, the same state, the same marker, the same directive name (which
+ * decides whether a take is offered), and the same lines — `line` is the
  * block the in-page button anchors on and `unitLine` the list item it belongs
  * to, both of which the planning page uses to find a question inside its card.
  *
@@ -31,7 +32,7 @@ import { BrowserRouter } from "react-router-dom";
 import { scanPlanningDocument } from "vantage-md/planning";
 import { MarkdownViewer } from "../components/MarkdownViewer";
 import { collectOutline } from "../hooks/useDocumentOutline";
-import { answerableOpenQuestions } from "../hooks/useOpenQuestionButtons";
+import { documentQuestions } from "../hooks/useOpenQuestionButtons";
 import { readRepoFile, repoPath } from "../test/planning";
 
 // Store writes fire command requests through axios; the viewer pulls the store in.
@@ -65,6 +66,8 @@ afterEach(cleanup);
 
 interface Seen {
   id: string | null;
+  /** `oq` where the page stamped `data-vantage-oq`, else `question`. */
+  directive: "oq" | "question";
   state: "open" | "blocked" | "answered";
   line: number;
   unitLine: number;
@@ -83,7 +86,7 @@ function column(path: string, content: string): Seen[] {
   );
   // The column's entries and the button pass's hosts are the same set in the
   // same document order, so the second gives each entry its anchor block.
-  const hosts = answerableOpenQuestions(container);
+  const hosts = documentQuestions(container);
   const entries = collectOutline(container).filter(
     (entry) => entry.kind === "question",
   );
@@ -96,6 +99,9 @@ function column(path: string, content: string): Seen[] {
     const status = entry.status ?? "open";
     return {
       id,
+      directive: hosts[index]?.stamped.hasAttribute("data-vantage-oq")
+        ? "oq"
+        : "question",
       state: status === "settled" ? "answered" : status,
       line: lineOf(hosts[index]?.block),
       unitLine: lineOf(entry.element),
@@ -109,8 +115,9 @@ function index(path: string, content: string): Seen[] {
   const result = scanPlanningDocument(path, content, false);
   if (result.kind !== "planning") return [];
   return result.document.questions.map(
-    ({ id, state, line, unitLine, marker }) => ({
+    ({ id, directive, state, line, unitLine, marker }) => ({
       id,
+      directive,
       state,
       line,
       unitLine,
@@ -161,15 +168,42 @@ describe("the planning index and the contents column (§3.3)", () => {
       "",
       "1. ✅ **OQ-2: Answered?**",
       "",
-      '   <!-- vantage: oq id=OQ-2 leaning="Yes." -->',
+      "   <!-- vantage: question id=OQ-2 -->",
       "",
       "   _Leaning:_ yes.",
+      "",
+    ].join("\n"),
+    "both names, and a run holding both": [
+      "1. \u{1F512} **OQ-Q1: Blocked, as written?**",
+      "",
+      "   <!-- vantage: question id=OQ-Q1 -->",
+      "",
+      "   Waits on the load test.",
+      "",
+      "1. \u{1F512} **OQ-Q2: Blocked, but under the old name?**",
+      "",
+      '   <!-- vantage: oq id=OQ-Q2 leaning="Stale." -->',
+      "",
+      "   _Leaning:_ stale.",
+      "",
+      "1. \u{1F4AC} **OQ-Q3: Open, with both names in one run?**",
+      "",
+      "   <!-- vantage: question id=OQ-Q3 -->",
+      '   <!-- vantage: oq leaning="Mixed." -->',
+      "",
+      "   _Leaning:_ mixed.",
+      "",
+      "1. \u{1F4AC} **OQ-Q4: Open, under the closed name?**",
+      "",
+      "   <!-- vantage: question id=OQ-Q4 -->",
+      "",
+      "   _Leaning:_ none offered.",
       "",
     ].join("\n"),
     "a bare paragraph": [
       "# Questions",
       "",
-      '<!-- vantage: oq id=OQ-4 leaning="Plain." -->',
+      "<!-- vantage: question id=OQ-4 -->",
       "",
       "\u{1F512} A question written as a plain paragraph,",
       "on two lines.",
@@ -182,13 +216,13 @@ describe("the planning index and the contents column (§3.3)", () => {
       ">",
       "> With a second paragraph.",
       "",
-      '<!-- vantage: oq id=OQ-6 leaning="Heading." -->',
+      "<!-- vantage: question id=OQ-6 -->",
       "",
       "### ✅ A question as a heading",
       "",
       "Its body.",
       "",
-      '<!-- vantage: oq id=OQ-9 leaning="Alert." -->',
+      "<!-- vantage: question id=OQ-9 -->",
       "",
       "> [!WARNING]",
       "> \u{1F512} A question in an alert.",
@@ -205,7 +239,7 @@ describe("the planning index and the contents column (§3.3)", () => {
       "",
       "     - \u{1F512} **OQ-N2: Nested two levels?**",
       "",
-      '       <!-- vantage: oq id=OQ-N2 leaning="Still." -->',
+      "       <!-- vantage: question id=OQ-N2 -->",
       "",
       "       _Leaning:_ still.",
       "",
@@ -241,7 +275,7 @@ describe("the planning index and the contents column (§3.3)", () => {
       "",
       "[^1]: The note.",
       "",
-      '    <!-- vantage: oq id=OQ-FN1 leaning="Later." -->',
+      "    <!-- vantage: question id=OQ-FN1 -->",
       "",
       "    \u{1F512} **OQ-FN1: Written in a footnote?**",
       "",
@@ -250,6 +284,49 @@ describe("the planning index and the contents column (§3.3)", () => {
       '<!-- vantage: oq id=OQ-H2 leaning="Heading." -->',
       "",
       "### \u{1F4AC} **OQ-H2: A question as a bold heading?**",
+      "",
+    ].join("\n"),
+    "a question in a block a fallback withholds": [
+      // The page never shows the withheld list, so neither the column nor the
+      // index lists its question; the one after it is listed by both.
+      "<!-- vantage: fallback -->",
+      "",
+      "1. \u{1F4AC} **OQ-W1: Withheld?**",
+      "",
+      '   <!-- vantage: oq id=OQ-W1 leaning="Gone." -->',
+      "",
+      "   _Leaning:_ gone.",
+      "",
+      "Between.",
+      "",
+      "1. \u{1F4AC} **OQ-W2: Shown?**",
+      "",
+      '   <!-- vantage: oq id=OQ-W2 leaning="Yes." -->',
+      "",
+      "   _Leaning:_ yes.",
+      "",
+    ].join("\n"),
+    "a question in a raw <div> a fallback withholds": [
+      // With blank lines inside it, the `<div>` is several Markdown blocks,
+      // which `rehype-raw` builds into one element, and the fallback above it
+      // withholds the lot; the question after it is listed by both.
+      "<!-- vantage: fallback -->",
+      "",
+      "<div>",
+      "",
+      "1. \u{1F4AC} **OQ-W3: Inside a withheld div?**",
+      "",
+      '   <!-- vantage: oq id=OQ-W3 leaning="Gone." -->',
+      "",
+      "   _Leaning:_ gone.",
+      "",
+      "</div>",
+      "",
+      "1. \u{1F4AC} **OQ-W4: After it?**",
+      "",
+      '   <!-- vantage: oq id=OQ-W4 leaning="Yes." -->',
+      "",
+      "   _Leaning:_ yes.",
       "",
     ].join("\n"),
     "frontmatter shifting every line": [
@@ -271,6 +348,26 @@ describe("the planning index and the contents column (§3.3)", () => {
     const questions = index("docs/fixture.md", content);
     expect(questions.length).toBeGreaterThan(0);
     expect(questions).toEqual(column("docs/fixture.md", content));
+  });
+
+  it("both leave out a question a fallback withholds", () => {
+    const content = fixtures["a question in a block a fallback withholds"]!;
+    expect(index("docs/fixture.md", content).map((q) => q.id)).toEqual([
+      "OQ-W2",
+    ]);
+    expect(column("docs/fixture.md", content).map((q) => q.id)).toEqual([
+      "OQ-W2",
+    ]);
+  });
+
+  it("both leave out a question in a raw <div> a fallback withholds", () => {
+    const content = fixtures["a question in a raw <div> a fallback withholds"]!;
+    expect(index("docs/fixture.md", content).map((q) => q.id)).toEqual([
+      "OQ-W4",
+    ]);
+    expect(column("docs/fixture.md", content).map((q) => q.id)).toEqual([
+      "OQ-W4",
+    ]);
   });
 
   it("disagree only on a directive written inside a raw HTML block (Plan Q17)", () => {
@@ -298,5 +395,12 @@ describe("the planning index and the contents column (§3.3)", () => {
  * `rehype-raw` built, with the line it gave the paragraph.
  */
 const RAW_HTML_COLUMN: Seen[] = [
-  { id: "OQ-H1", state: "open", line: 5, unitLine: 5, marker: "\u{1F4AC}" },
+  {
+    id: "OQ-H1",
+    directive: "oq",
+    state: "open",
+    line: 5,
+    unitLine: 5,
+    marker: "\u{1F4AC}",
+  },
 ];

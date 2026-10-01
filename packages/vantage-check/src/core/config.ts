@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { parse as parseToml } from "smol-toml";
 import {
   isKnownRule,
@@ -14,7 +14,7 @@ import {
   type PlanningConfig,
   type StageRole,
 } from "../../../vantage-md/src/planning/index.js";
-import { checkerName } from "../version.js";
+import { checkerName, viewerName } from "../version.js";
 import { Settings, type RuleOptions } from "./settings.js";
 import type { RuleSetting } from "./types.js";
 
@@ -37,6 +37,32 @@ export interface LoadedConfig {
    * (`docs/reference/planning-index.md` §14).
    */
   planning: PlanningConfig;
+  /**
+   * The top-level `target`, or `null` when the file declares none. Read and
+   * validated here, and acted on by `core/target.ts`: in this release a
+   * checker older than it refuses to run, and any other only says it read it.
+   */
+  target: Target | null;
+  /**
+   * One message per key or rule id this checker does not know, each of which
+   * it ignored (`docs/design/checker-version-skew.md`). The commands print
+   * them on stderr; they are about the configuration, never about a document,
+   * so they are not findings and change no exit code.
+   */
+  warnings: string[];
+}
+
+/**
+ * A `target` as written, and the release it names. `"0.8"` names `0.8.0`.
+ *
+ * The **target** is the oldest Vantage release that anyone reading the
+ * repository renders it with (`docs/design/checker-version-skew.md` §4.1).
+ */
+export interface Target {
+  /** As written: `0.8` or `0.8.1`. */
+  written: string;
+  /** Major, minor and patch, the patch `0` when the target names none. */
+  version: readonly [number, number, number];
 }
 
 /** A config file that cannot be trusted. Never silently ignored. */
@@ -54,6 +80,8 @@ export function defaultConfig(): LoadedConfig {
     settings: Settings.defaults(),
     policy: { ...DEFAULT_POLICY },
     planning: defaultPlanning(),
+    target: null,
+    warnings: [],
   };
 }
 
@@ -87,6 +115,17 @@ export function findConfig(from: string, stopAt?: string): string | undefined {
   }
 }
 
+/**
+ * A path as a run names it: relative to the working directory when it is
+ * inside it, else as given. Every message about a config file names it this
+ * way, a refusal and a warning in one run alike.
+ */
+export function shownPath(path: string, cwd: string | undefined): string {
+  if (cwd === undefined) return path;
+  const rel = relative(cwd, path);
+  return rel === "" || rel.startsWith("..") || isAbsolute(rel) ? path : rel;
+}
+
 export interface LoadOptions {
   /** An explicit `--config` path. Missing is an error, not a fallback. */
   explicitPath?: string;
@@ -96,18 +135,25 @@ export interface LoadOptions {
   from: string;
   /** The last directory discovery looks in; by default it walks to `/`. */
   stopAt?: string;
+  /** Where the run was started, which messages name the file from. */
+  cwd?: string;
+}
+
+/** The file `loadConfig` reads for these options, or none. */
+export function configPathFor(options: LoadOptions): string | undefined {
+  if (options.noConfig) return undefined;
+  return options.explicitPath
+    ? resolve(options.explicitPath)
+    : findConfig(options.from, options.stopAt);
 }
 
 export function loadConfig(options: LoadOptions): LoadedConfig {
-  if (options.noConfig) return defaultConfig();
-
-  const path = options.explicitPath
-    ? resolve(options.explicitPath)
-    : findConfig(options.from, options.stopAt);
+  const path = configPathFor(options);
 
   if (!path) return defaultConfig();
+  const named = shownPath(options.explicitPath ?? path, options.cwd);
   if (options.explicitPath && !existsSync(path)) {
-    throw new ConfigError(`no config file at ${options.explicitPath}`);
+    throw new ConfigError(`no config file at ${named}`);
   }
 
   // Every way the read can fail becomes a ConfigError, because the caller maps
@@ -129,7 +175,7 @@ export function loadConfig(options: LoadOptions): LoadedConfig {
   }
   if (size > MAX_CONFIG_BYTES) {
     throw new ConfigError(
-      `${options.explicitPath ?? path}: larger than ${MAX_CONFIG_BYTES} bytes, more than the server reads`,
+      `${named}: larger than ${MAX_CONFIG_BYTES} bytes, more than the server reads`,
     );
   }
 
@@ -141,10 +187,10 @@ export function loadConfig(options: LoadOptions): LoadedConfig {
       (error as NodeJS.ErrnoException).code === "EISDIR"
         ? "is a directory, not a config file"
         : `could not be read: ${(error as Error).message}`;
-    throw new ConfigError(`${options.explicitPath ?? path} ${reason}`);
+    throw new ConfigError(`${named} ${reason}`);
   }
 
-  return { path, ...parseConfig(source, path) };
+  return { path, ...parseConfig(source, shownPath(path, options.cwd)) };
 }
 
 /**
@@ -163,20 +209,41 @@ export function planningConfigFor(
   loaded: LoadedConfig,
   explicit: boolean,
   root: string | null,
+  /** Handed the warnings of a root's own file, when that file is read here. */
+  warn: (message: string) => void = () => {},
+  /** Where the run was started, which messages name the file from. */
+  cwd?: string,
 ): PlanningConfig {
   if (explicit || root === null) return loaded.planning;
   if (loaded.path === join(resolve(root), CONFIG_FILENAME)) {
     return loaded.planning;
   }
-  return loadConfig({ from: root, stopAt: root }).planning;
+  const own = loadConfig({
+    from: root,
+    stopAt: root,
+    ...(cwd === undefined ? {} : { cwd }),
+  });
+  for (const message of own.warnings) warn(message);
+  return own.planning;
 }
 
 /**
  * Parse and validate a config file.
  *
- * Unknown keys and unknown rule ids are errors rather than warnings. A typo in
- * a rule name that silently disables nothing is exactly the kind of quiet
- * wrongness a checker cannot afford, and the fix is one line either way.
+ * **Forward compatible**, as this checker uses the words: a file written for a
+ * newer vantage-check reads in this one without failing. A key in `[check]` or
+ * `[planning]`, a rule id, or a rule's option that this release does not know
+ * is ignored with a warning (`warnings`), because to an older checker every
+ * key a later release adds looks exactly like a typo, and an exit 2 there made
+ * the newest repository uncheckable by every checker before it
+ * (`docs/design/checker-version-skew.md` §2.3). The warning names this release
+ * and says both what to do if the key is newer and what to do if it is a
+ * typo, so a typo is still said out loud rather than dropped.
+ *
+ * What stays an error is a key this checker does know: a value it cannot take
+ * (a severity that is not a severity, a limit below 1, a malformed `target`),
+ * and one of the viewer's top-level names written inside one of this
+ * checker's tables, which it knows to be misplaced (`viewerKeyAdvice`).
  */
 export function parseConfig(
   source: string,
@@ -192,6 +259,18 @@ export function parseConfig(
   }
 
   const root = asTable(parsed, path, "");
+  const target = parseTarget(root["target"], path);
+  // `[starred]` is the server's table, not this checker's, so nothing else in
+  // it is read here. A `target` appended to a file that ends in it lands in
+  // it, though, and that one this checker knows: left there, no checker reads
+  // it, so none could refuse a repository it is too old for (§4.1).
+  const starred = root["starred"];
+  if (isTable(starred) && Object.hasOwn(starred, "target")) {
+    throw new ConfigError(
+      `${path}: unknown key starred.target. ${viewerKeyAdvice("target")}`,
+    );
+  }
+  const warnings: string[] = [];
   // Vantage's own config lives in this file too; other tools' sections are not
   // ours to police.
   const check =
@@ -226,12 +305,16 @@ export function parseConfig(
       case "rules": {
         const rules = asTable(value, path, "check.rules");
         for (const [id, setting] of Object.entries(rules)) {
-          assertRuleId(id, path);
+          const unknown = unknownRule(id, path);
+          if (unknown !== undefined) {
+            warnings.push(unknown);
+            continue;
+          }
           if (!isTable(setting)) {
             overrides.set(id, asSetting(setting, id, path));
             continue;
           }
-          const table = asRuleTable(setting, id, path);
+          const table = asRuleTable(setting, id, path, warnings);
           if (table.setting !== undefined) overrides.set(id, table.setting);
           options.set(id, table.options);
         }
@@ -239,10 +322,13 @@ export function parseConfig(
       }
       default: {
         const misplaced = viewerKeyAdvice(key);
-        throw new ConfigError(
-          misplaced === undefined
-            ? `${path}: unknown key check.${key}, which ${checkerName()} does not know. ${newerOrTypo("key")}`
-            : `${path}: unknown key check.${key}. ${misplaced}`,
+        if (misplaced !== undefined) {
+          throw new ConfigError(
+            `${path}: unknown key check.${key}. ${misplaced}`,
+          );
+        }
+        warnings.push(
+          `${path}: unknown key check.${key}, which ${checkerName()} does not know, so this run ignores it. ${newerOrTypo("key")}`,
         );
       }
     }
@@ -251,9 +337,49 @@ export function parseConfig(
   const planning =
     root["planning"] === undefined
       ? defaultPlanning()
-      : parsePlanning(asTable(root["planning"], path, "planning"), path);
+      : parsePlanning(
+          asTable(root["planning"], path, "planning"),
+          path,
+          warnings,
+        );
 
-  return { settings: new Settings(overrides, options), policy, planning };
+  return {
+    settings: new Settings(overrides, options),
+    policy,
+    planning,
+    target,
+    warnings,
+  };
+}
+
+/**
+ * A target's form (§4.1): a release, `X.Y` or `X.Y.Z`, numbers written
+ * without leading zeros as a version's are.
+ */
+const TARGET_FORM = /^(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\.(0|[1-9]\d*))?$/;
+
+/**
+ * The top-level `target`, validated: `null` when it is absent, and a
+ * `ConfigError` for anything that does not name one release.
+ *
+ * The form is strict because a target is a floor. A range would leave the
+ * checker to choose a point in it, a leading `v` or a pre-release names no
+ * release a reader runs, and `target = 0.8` is a TOML number, which cannot
+ * tell `0.10` from `0.1`. A form a later release adds is therefore an error
+ * here, as any value of a known key this checker cannot take is.
+ */
+export function parseTarget(value: unknown, path: string): Target | null {
+  if (value === undefined) return null;
+  const match = typeof value === "string" ? TARGET_FORM.exec(value) : null;
+  if (typeof value !== "string" || match === null) {
+    throw new ConfigError(
+      `${path}: target must name one Vantage release as text, "X.Y" or "X.Y.Z", such as target = "0.8" (got ${JSON.stringify(value)}). It is the oldest release anyone reading this repository uses, so a number, a range, "latest", a leading v and a pre-release are not targets.`,
+    );
+  }
+  return {
+    written: value,
+    version: [Number(match[1]), Number(match[2]), Number(match[3] ?? "0")],
+  };
 }
 
 /**
@@ -261,14 +387,17 @@ export function parseConfig(
  * `include`, `exclude` and the two limits, the checker for all of it
  * (`docs/reference/planning-index.md` §14).
  *
- * Refused whole, as `[check]` is. A table the server reads one way and the
- * checker another would let the page and the gate disagree about which files
- * are planning documents, so the rules are pinned for both readers by
- * `internal/repoconfig/testdata/planning-config.json`.
+ * A bad value is refused whole, as one in `[check]` is. A table the server
+ * reads one way and the checker another would let the page and the gate
+ * disagree about which files are planning documents, so the rules are pinned
+ * for both readers by `internal/repoconfig/testdata/planning-config.json`. A
+ * key this checker does not know is ignored with a warning instead, which the
+ * server does not do: `version-skew-config.json` beside it pins both answers.
  */
 function parsePlanning(
   table: Record<string, unknown>,
   path: string,
+  warnings: string[],
 ): PlanningConfig {
   const planning = defaultPlanning();
   for (const [key, value] of Object.entries(table)) {
@@ -291,10 +420,16 @@ function parsePlanning(
         break;
       default: {
         const misplaced = viewerKeyAdvice(key);
-        throw new ConfigError(
-          misplaced === undefined
-            ? `${path}: unknown key planning.${key}. In ${checkerName()}, [planning] takes roadmap, include, exclude, max-file-bytes, max-candidates and a [planning.stages] table. ${newerOrTypo("key")}`
-            : `${path}: unknown key planning.${key}. ${misplaced}`,
+        if (misplaced !== undefined) {
+          throw new ConfigError(
+            `${path}: unknown key planning.${key}. ${misplaced}`,
+          );
+        }
+        // The server reads this table too, and refuses the whole file over a
+        // key it does not know (docs/design/repo-config.md §2.3), so the one
+        // reader that warns says what the other does.
+        warnings.push(
+          `${path}: unknown key planning.${key}, which ${checkerName()} does not know, so this run ignores it. Here [planning] takes roadmap, include, exclude, max-file-bytes, max-candidates and a [planning.stages] table, and ${viewerName()} ignores the whole file over a key it does not know, [starred] and theme included. ${newerOrTypo("key")}`,
         );
       }
     }
@@ -391,6 +526,13 @@ function asStages(
   const table = asTable(value, path, "planning.stages");
   let stages: Record<string, StageRole> | null = null;
   for (const [word, role] of Object.entries(table)) {
+    // `target` appended to a file that ends in this table lands here (§4.1).
+    // A stage word may be spelled `target`, but its role is never a release.
+    if (word === "target" && looksLikeRelease(role)) {
+      throw new ConfigError(
+        `${path}: planning.stages.target is a release, not a stage's role. ${viewerKeyAdvice("target")}`,
+      );
+    }
     if (!isStageRole(role)) {
       throw new ConfigError(
         `${path}: planning.stages.${JSON.stringify(word)} must be one of ${STAGE_ROLES.map((r) => `"${r}"`).join(", ")} (got ${JSON.stringify(role)})`,
@@ -409,61 +551,77 @@ function asStages(
   return stages;
 }
 
-function assertRuleId(id: string, path: string): void {
-  if (id === "*" || isKnownRule(id) || isOpenNamespace(id)) return;
+/**
+ * The warning for a rule id this checker does not know, or `undefined` for one
+ * it does: an exact rule, a family it has, `*`, or any id in a family whose
+ * names are somebody else's (`markdown/*`). One of the viewer's own top-level
+ * names in its place is misplaced rather than unknown, and is an error.
+ */
+function unknownRule(id: string, path: string): string | undefined {
+  if (id === "*" || isKnownRule(id) || isOpenNamespace(id)) return undefined;
 
   const namespace = id.endsWith("/*") ? id.slice(0, -2) : undefined;
-  if (namespace && ruleNamespaces().includes(namespace)) return;
+  if (namespace && ruleNamespaces().includes(namespace)) return undefined;
 
   const misplaced = viewerKeyAdvice(id);
-  throw new ConfigError(
-    misplaced === undefined
-      ? `${path}: unknown rule "${id}", which ${checkerName()} does not have. ${newerOrTypo("rule")} \`vantage-check help\` lists every rule, and a whole family is "${ruleNamespaces()[0]}/*".`
-      : `${path}: unknown rule "${id}". ${misplaced}`,
+  if (misplaced !== undefined) {
+    throw new ConfigError(`${path}: unknown rule "${id}". ${misplaced}`);
+  }
+  return `${path}: unknown rule "${id}", which ${checkerName()} does not have, so this run ignores it. ${newerOrTypo("rule")} \`vantage-check help\` lists every rule, and a whole family is "${ruleNamespaces()[0]}/*".`;
+}
+
+/** A family, `link/*`, or every rule, `*`: ids that take a severity only. */
+function isFamily(id: string): boolean {
+  return id === "*" || id.endsWith("/*");
+}
+
+/** A value someone meant as a release: a number, or text such as `0.8`. */
+function looksLikeRelease(value: unknown): boolean {
+  return (
+    typeof value === "number" ||
+    (typeof value === "string" && /^v?\d+(\.\d+)*$/.test(value))
   );
 }
 
 /**
- * The advice after an unknown `check.*` or `planning.*` key or an unknown rule
- * id (`docs/design/checker-version-skew.md` §6.2), including a key in a rule's
- * table and a table for a rule that takes none.
+ * The advice after an unknown `check.*` or `planning.*` key, an unknown rule
+ * id, or an unknown key in a rule's table
+ * (`docs/design/checker-version-skew.md` §6.2).
  *
- * Each is exit 2 and usually a typo. It is also what every checker older than
- * a repository's configuration says: a key, a rule or a rule's option added in
- * a later release is unknown to all the releases before it. An agent told only
+ * Each is ignored with a warning, and is either a typo or a key from a later
+ * release, which every release before it does not know. An agent told only
  * "unknown rule" tends to "fix" it by deleting the line, which breaks the
  * repository for the newer checker it was written for. So the message names
  * this checker's version and says to keep the key. Unlike a finding about a
  * document, this one may name an upgrade: here a newer checker is the fix, not
  * a way to silence one.
  */
-function newerOrTypo(what: "key" | "rule" | "table"): string {
-  const otherwise =
-    what === "table"
-      ? "if it is a mistake, write the severity alone"
-      : "if it is a typo, fix it";
-  return `If this repository is configured for a newer vantage-check, run one (for example, \`uvx vantage-check@latest\`) and don't remove the ${what}; ${otherwise}.`;
+function newerOrTypo(what: "key" | "rule"): string {
+  return `If this repository is configured for a newer vantage-check, run one (for example, \`uvx vantage-check@latest\`) and don't remove the ${what}; if it is a typo, fix it.`;
 }
 
 /**
- * What an exit-2 error says instead of `newerOrTypo` when the unknown key is
- * one of the viewer's own, written inside a table this checker reads.
+ * What an exit-2 error says instead of a warning when the unknown key is one of
+ * the file's own top-level names, written inside a table this checker reads.
  *
- * The viewer reads two names at the top of this file: `theme`, a key, and
+ * Three names belong at the top of this file: `theme` and `target`, keys, and
  * `[starred]`, a table (userguide/reference/configuration.md). TOML reads a
  * bare key written after a `[table]` header as part of that table, so a `theme`
  * line below `[check]` arrives here as `check.theme`, below `[check.rules]` as a
  * rule id, and below `[planning]` as `planning.theme`: the mistake the user
- * guide's theme pages warn about. Neither is a typo or a newer checker's key,
- * and the advice for those (fix the spelling, or keep the line and run a newer
- * checker) leaves it where it does nothing. Each message still opens as any
- * unknown key or rule does, and the guide quotes that opening
- * (`unknown key check.theme`) as the symptom to look for.
+ * guide's theme pages warn about. None is a typo or a newer checker's key, and
+ * the advice for those (fix the spelling, or keep the line and run a newer
+ * checker) leaves it where it does nothing, so this stays an error while an
+ * unknown key is a warning. A misplaced `target` matters most: no checker
+ * reads it there, so none could refuse a repository it is too old for. Each
+ * message still opens as any unknown key or rule does, and the guide quotes
+ * that opening (`unknown key check.theme`) as the symptom to look for.
  */
 function viewerKeyAdvice(key: string): string | undefined {
   switch (key) {
     case "theme":
-      return "`theme` is a top-level key, and TOML reads a key written after a [table] header as part of that table: move it above the first [table].";
+    case "target":
+      return `\`${key}\` is a top-level key, and TOML reads a key written after a [table] header as part of that table: move it above the first [table].`;
     case "starred":
       return "`starred` is the viewer's own table, not part of this one: write it as a top-level [starred] table.";
     default:
@@ -473,24 +631,29 @@ function viewerKeyAdvice(key: string): string | undefined {
 
 /**
  * A rule written as a table, `{ severity = "warning", max-words = 150 }`: the
- * form that sets a rule's options, which only a rule the registry gives
- * options takes. `severity` is optional, and without it the rule keeps the
- * severity the family, `*` or the registry gives it. An option is a whole
- * number of at least 1, and a key that is neither is refused, as an unknown
- * rule is.
+ * form that sets a rule's options. `severity` is optional, and without it the
+ * rule keeps the severity the family, `*` or the registry gives it. An option
+ * is a whole number of at least 1.
+ *
+ * Any one rule takes the form, including one with no options in this release,
+ * since a later release can give it some: a key the rule does not have here is
+ * ignored with a warning, as an unknown rule is. A family or `*` takes a
+ * severity only, because options are set on one rule by its exact id, so a
+ * table there is an error.
  */
 function asRuleTable(
   table: Record<string, unknown>,
   id: string,
   path: string,
+  warnings: string[],
 ): { setting: RuleSetting | undefined; options: RuleOptions } {
-  const known = ruleMeta(id)?.options;
-  const names = known === undefined ? [] : Object.keys(known);
-  if (names.length === 0) {
+  if (isFamily(id)) {
     throw new ConfigError(
-      `${path}: rule "${id}" takes only a severity, "error", "warning" or "off", and no table in ${checkerName()}. ${newerOrTypo("table")}`,
+      `${path}: "${id}" names ${id === "*" ? "every rule" : "a family"}, which takes only a severity, "error", "warning" or "off", and no table: an option is set on one rule by its exact id.`,
     );
   }
+  const known = ruleMeta(id)?.options;
+  const names = known === undefined ? [] : Object.keys(known);
   let setting: RuleSetting | undefined;
   const options: Record<string, number> = {};
   for (const [key, value] of Object.entries(table)) {
@@ -499,9 +662,20 @@ function asRuleTable(
       continue;
     }
     if (!names.includes(key)) {
-      throw new ConfigError(
-        `${path}: unknown key ${JSON.stringify(key)} for rule "${id}", which in ${checkerName()} takes severity and ${names.join(", ")}. ${newerOrTypo("key")}`,
+      const misplaced = viewerKeyAdvice(key);
+      if (misplaced !== undefined) {
+        throw new ConfigError(
+          `${path}: unknown key ${JSON.stringify(key)} for rule "${id}". ${misplaced}`,
+        );
+      }
+      const takes =
+        names.length === 0
+          ? "takes only a severity"
+          : `takes severity and ${names.join(", ")}`;
+      warnings.push(
+        `${path}: unknown key ${JSON.stringify(key)} for rule "${id}", which in ${checkerName()} ${takes}, so this run ignores the key. ${newerOrTypo("key")}`,
       );
+      continue;
     }
     if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
       throw new ConfigError(

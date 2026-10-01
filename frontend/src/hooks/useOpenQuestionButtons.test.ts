@@ -8,7 +8,7 @@ import {
   OQ_LABEL,
   OQ_TAKEN_LABEL,
   OQ_UNDO_LABEL,
-  answerableOpenQuestions,
+  documentQuestions,
   leaningComment,
   useOpenQuestionButtons,
   type TakeLeaning,
@@ -866,13 +866,11 @@ describe("useOpenQuestionButtons — the answerable count", () => {
     // Belt and braces on the same invariant, stated against the exported
     // helper so a future second caller inherits it.
     renderWithCount(true);
-    expect(answerableOpenQuestions(container)).toHaveLength(
-      takeButtons().length,
-    );
+    expect(documentQuestions(container)).toHaveLength(takeButtons().length);
   });
 });
 
-describe("answerableOpenQuestions — an inline SVG inside the question", () => {
+describe("documentQuestions — an inline SVG inside the question", () => {
   /**
    * The HTML inside an SVG `desc`, `title` or `foreignObject` used to survive
    * as a descendant of the `svg`, still carrying `data-source-line`. React
@@ -902,7 +900,7 @@ describe("answerableOpenQuestions — an inline SVG inside the question", () => 
     ].join("\n");
     const { container } = render(createElement(MarkdownViewer, { content }));
     try {
-      const questions = answerableOpenQuestions(container);
+      const questions = documentQuestions(container);
       expect(questions).toHaveLength(1);
       expect(questions[0].block.tagName).toBe("P");
       expect(questions[0].block).toBe(questions[0].stamped);
@@ -1023,5 +1021,85 @@ describe("useOpenQuestionButtons — only open questions offer a take (Q5)", () 
   it("files the leaning a take would file, or the default without one", () => {
     expect(leaningComment(blockAt(7))).toBe(LEANING);
     expect(leaningComment(blockAt(11))).toBe(OQ_DEFAULT_LEANING);
+  });
+});
+
+/**
+ * A `question` directive declares a 🔒 or ✅ question: the same host, the same
+ * anchor, listed by the column — and never a take, whatever its marker says,
+ * because the name is the author's statement that nothing here is answerable
+ * (`VANTAGE_QUESTION_NAMES`). The marker still wins over an `oq`, which
+ * `vantage/question-name` reports but a document can carry.
+ */
+describe("useOpenQuestionButtons — a `question` directive offers nothing", () => {
+  const QUESTIONS_HTML = `
+<p data-source-line="3" data-vantage-question="true" id="OQ-1">🔒 Blocked, as written.</p>
+<p data-source-line="5" data-vantage-question="true" id="OQ-2">💬 Open, under the closed name.</p>
+<p data-source-line="7" data-vantage-oq="true" id="OQ-3">🔒 Blocked, under the old name.</p>
+<p data-source-line="9" data-vantage-oq="true" id="OQ-4">💬 Open, as written.</p>
+`;
+
+  beforeEach(() => {
+    container.innerHTML = QUESTIONS_HTML;
+  });
+
+  it("renders a row for the open `oq` alone, and counts that one", () => {
+    const onCount = vi.fn();
+    const ref = { current: container };
+    renderHook(() =>
+      useOpenQuestionButtons(
+        ref,
+        [],
+        true,
+        "doc content",
+        onTake,
+        onUndo,
+        onCount,
+      ),
+    );
+
+    expect([3, 5, 7, 9].map((line) => takeAt(line) !== null)).toEqual([
+      false,
+      false,
+      false,
+      true,
+    ]);
+    expect(onCount).toHaveBeenLastCalledWith(1);
+  });
+
+  it("is still a question to the shared walk and to the column", () => {
+    expect(
+      documentQuestions(container).map(({ stamped }) => stamped.id),
+    ).toEqual(["OQ-1", "OQ-2", "OQ-3", "OQ-4"]);
+    expect(
+      collectOutline(container)
+        .filter((entry) => entry.kind === "question")
+        .map((entry) => [entry.id, entry.status, entry.oneClick]),
+    ).toEqual([
+      ["OQ-1", "blocked", false],
+      ["OQ-2", "open", false],
+      ["OQ-3", "blocked", false],
+      ["OQ-4", "open", true],
+    ]);
+  });
+
+  it("is stamped by the real chain where an `oq` would be", async () => {
+    const { html } = await renderMarkdown(
+      [
+        "1. 🔒 **OQ-7: The retry budget.**",
+        "",
+        "   <!-- vantage: question id=OQ-7 -->",
+        "",
+        "   Waits on the load test.",
+        "",
+      ].join("\n"),
+    );
+    container.innerHTML = html;
+    renderOq();
+
+    const [question] = documentQuestions(container);
+    expect(question?.stamped.id).toBe("OQ-7");
+    expect(question?.block.tagName).toBe("P");
+    expect(takeButtons()).toHaveLength(0);
   });
 });
