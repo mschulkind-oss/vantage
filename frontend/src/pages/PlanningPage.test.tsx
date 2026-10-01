@@ -517,6 +517,14 @@ const cardsIn = (name: string) =>
     .map((a) => a.getAttribute("aria-label"));
 const cardFor = (id: string) =>
   screen.getByRole("article", { name: `${id}: Question ${id}?` });
+/**
+ * The document's name at the top of a card, which opens the document in this
+ * tab and saves the page's place first; Open document opens a new tab.
+ */
+const nameLink = (id: string, path: string) =>
+  within(cardFor(id)).getByRole("link", { name: path });
+/** Open document's accessible name, which says what its icon does. */
+const OPEN_DOCUMENT = "Open document (opens in a new tab)";
 /** The documents a section lists, by path. */
 const documentsIn = (name: string) =>
   Array.from(section(name).querySelectorAll("[data-planning-document]"), (el) =>
@@ -1146,13 +1154,11 @@ describe("pages (planning-index.md §6.4)", () => {
     ).toBeNull();
   });
 
-  it("returns from Open document to the same pages, at the same scroll", async () => {
+  it("returns from a card's document name to the same pages, at the same scroll", async () => {
     await renderPage();
     await flip("Next ›");
     scroller().scrollTop = 640;
-    fireEvent.click(
-      within(cardFor("OQ-A1")).getByRole("link", { name: "Open document" }),
-    );
+    fireEvent.click(nameLink("OQ-A1", "plans/answered.md"));
     expect(screen.getByTestId("viewer")).toBeTruthy();
     act(() => router.navigate!(-1));
     await settle();
@@ -1171,7 +1177,7 @@ describe("a flip's scroll position", () => {
 
   // A replaced entry has a key of its own, so the position the reader flipped
   // at goes with it: Back from any link on the new page returns there, not
-  // only from Open document, which saves as it leaves.
+  // only from a card's document name, which saves as it leaves.
   it("carries over to the replaced history entry", async () => {
     await renderPage();
     scroller().scrollTop = 300;
@@ -1701,9 +1707,7 @@ describe("page inputs, and one commit (planning-index.md §6.5)", () => {
       </MemoryRouter>,
     );
     await settle();
-    fireEvent.click(
-      within(cardFor("OQ-U1")).getByRole("link", { name: "Open document" }),
-    );
+    fireEvent.click(nameLink("OQ-U1", "plans/unrouted.md"));
     expect(screen.getByTestId("viewer")).toBeTruthy();
     // No settling: what the first render commits.
     act(() => router.navigate!(-1));
@@ -1903,7 +1907,7 @@ describe("a preview card (planning-index.md §6.6)", () => {
       within(card).getByRole("button", { name: "Show question" }),
     ).toBeTruthy();
     expect(
-      within(card).getByRole("link", { name: "Open document" }),
+      within(card).getByRole("link", { name: OPEN_DOCUMENT }),
     ).toBeTruthy();
     // Both need the rendered host for their anchor.
     expect(
@@ -2330,8 +2334,12 @@ describe("in daemon mode", () => {
     setLoad(readyOf(TREE), "alpha");
     await renderPage("/.vantage/planning/alpha");
     expect(
-      within(cardFor("OQ-D1")).getByRole("link", { name: "Open document" }),
+      within(cardFor("OQ-D1")).getByRole("link", { name: OPEN_DOCUMENT }),
     ).toHaveAttribute("href", "/alpha/plans/design.md");
+    expect(nameLink("OQ-D1", "plans/design.md")).toHaveAttribute(
+      "href",
+      "/alpha/plans/design.md",
+    );
     expect(vi.mocked(axios.post)).toHaveBeenCalledWith(
       "/api/r/alpha/planning/reviews",
       { paths: expect.arrayContaining(["plans/design.md"]) },
@@ -2362,7 +2370,7 @@ describe("each card's controls follow its state (Plan Q5)", () => {
     const card = within(section("Blocked")).getByRole("article");
     expect(card).toHaveAccessibleName("OQ-D2: Question OQ-D2?");
     expect(
-      within(card).getByRole("link", { name: "Open document" }),
+      within(card).getByRole("link", { name: OPEN_DOCUMENT }),
     ).toBeTruthy();
     expect(
       within(card).queryByRole("button", { name: "Take this leaning" }),
@@ -2376,7 +2384,7 @@ describe("each card's controls follow its state (Plan Q5)", () => {
     expect(section("Needs you")).toContainElement(card);
     expect(within(card).getByRole("button", { name: "Answer…" })).toBeTruthy();
     expect(
-      within(card).getByRole("link", { name: "Open document" }),
+      within(card).getByRole("link", { name: OPEN_DOCUMENT }),
     ).toBeTruthy();
     expect(
       within(card).queryByRole("button", { name: "Take this leaning" }),
@@ -2391,7 +2399,7 @@ describe("each card's controls follow its state (Plan Q5)", () => {
     ).toBeTruthy();
     expect(within(card).getByRole("button", { name: "Answer…" })).toBeTruthy();
     expect(
-      within(card).getByRole("link", { name: "Open document" }),
+      within(card).getByRole("link", { name: OPEN_DOCUMENT }),
     ).toBeTruthy();
   });
 });
@@ -2446,9 +2454,7 @@ describe("filing from the page", () => {
   it("opens the document without touching its review-mode preference", async () => {
     localStorage.setItem(reviewModePreferenceKey("plans/design.md"), "on");
     await renderPage();
-    fireEvent.click(
-      within(cardFor("OQ-D1")).getByRole("link", { name: "Open document" }),
-    );
+    fireEvent.click(nameLink("OQ-D1", "plans/design.md"));
     expect(screen.getByTestId("viewer")).toBeTruthy();
     expect(readPreference(reviewModePreferenceKey("plans/design.md"))).toBe(
       "on",
@@ -3115,7 +3121,7 @@ describe("each section's explanation, and Copy agent request", () => {
   });
 });
 
-describe("Open document, then Back (§6.6)", () => {
+describe("a card's document name, then Back (§6.6)", () => {
   beforeEach(() => seed());
 
   function BackButton() {
@@ -3140,11 +3146,10 @@ describe("Open document, then Back (§6.6)", () => {
     );
     await settle();
 
-    // The reader scrolls the pane down to a card, then opens its document.
+    // The reader scrolls the pane down to a card, then opens its document
+    // in this tab by its name.
     scroller().scrollTop = 640;
-    fireEvent.click(
-      within(cardFor("OQ-U1")).getByRole("link", { name: "Open document" }),
-    );
+    fireEvent.click(nameLink("OQ-U1", "plans/unrouted.md"));
     expect(screen.getByRole("button", { name: "Go back" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Go back" }));
@@ -3190,6 +3195,32 @@ describe("Open document, then Back (§6.6)", () => {
     } finally {
       scrolled.restore();
     }
+  });
+});
+
+describe("Open document (§6.6)", () => {
+  beforeEach(() => seed());
+
+  // Its icon is the one for a link that opens elsewhere, and a reader who
+  // clicked it expected a new tab (user direction, 2026-10-01). The page
+  // stays as it was in its own.
+  it("opens the card's document in a new tab, and leaves the page where it is", async () => {
+    await renderPage();
+    scroller().scrollTop = 640;
+    const link = within(cardFor("OQ-U1")).getByRole("link", {
+      name: OPEN_DOCUMENT,
+    });
+    // The document's top: no fragment.
+    expect(link).toHaveAttribute("href", "/plans/unrouted.md");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    // Not prevented: the browser opens the tab, and this one stays.
+    expect(fireEvent.click(link)).toBe(true);
+    await settle();
+    expect(router.location).toBe("/.vantage/planning");
+    expect(screen.queryByTestId("viewer")).toBeNull();
+    expect(cardFor("OQ-U1")).toBeTruthy();
+    expect(scroller().scrollTop).toBe(640);
   });
 });
 

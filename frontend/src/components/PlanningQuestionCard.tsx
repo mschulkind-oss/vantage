@@ -46,6 +46,11 @@
  * Answer… and Open document; a blocked one, which only Blocked lists, Open
  * document alone.
  *
+ * Open document opens the document in a new tab, as its icon says, so the
+ * planning page stays where it is in its own and saves nothing on the way
+ * out. The document's name above the question is the way to open it in this
+ * tab: it calls `onOpenHere` first, so the page saves its place for Back.
+ *
  * Every card keeps a fixed-width *N comments* count in its control row
  * (`docs/reference/planning-index.md` §12.2), which toggles the list of
  * comments on the question. Comments in hand when the page painted are listed
@@ -174,8 +179,12 @@ interface PlanningQuestionCardProps {
   commentsLate?: boolean;
   /** The viewer URL of the document, without a fragment. */
   href: string;
-  /** Called before Open document follows its link. */
-  onOpenDocument?: () => void;
+  /**
+   * Called before the document's name opens the document in this tab, so the
+   * page can save its place for Back. Open document, which opens a new tab,
+   * never calls it.
+   */
+  onOpenHere?: () => void;
   /** File a comment on `path`; rejects when it could not be saved. */
   onFile: (path: string, comment: ReviewComment) => Promise<void>;
   /** The card's key on its page, which `onScoped` reports it by. */
@@ -535,7 +544,7 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
   comments,
   commentsLate = false,
   href,
-  onOpenDocument,
+  onOpenHere,
   onFile,
   cardKey = "",
   onScoped,
@@ -888,10 +897,11 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
       className="rounded-xl border border-slate-200 bg-white px-5 pt-3 pb-4 shadow-sm dark:border-slate-700 dark:bg-slate-800"
     >
       <div className="mb-1 flex flex-wrap items-baseline gap-x-2 text-xs text-slate-500 dark:text-slate-400">
+        {/* This tab, which the page saves its place in first. */}
         <AppLink
           to={href}
           onBeforeNavigate={() => {
-            onOpenDocument?.();
+            onOpenHere?.();
           }}
           className="font-medium text-blue-600 no-underline hover:underline dark:text-blue-400"
         >
@@ -1020,15 +1030,17 @@ export const PlanningQuestionCard = React.memo(function PlanningQuestionCard({
             Answer…
           </button>
         )}
+        {/* A new tab, as its icon says: the page stays where it is. */}
         <AppLink
           to={href}
-          onBeforeNavigate={() => {
-            onOpenDocument?.();
-          }}
+          target="_blank"
+          rel="noopener noreferrer"
           className="inline-flex items-center gap-1 rounded border border-slate-300 px-2.5 py-0.5 text-[11px] font-medium text-slate-600 no-underline transition-colors hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-700"
         >
+          {/* The icon says where it opens to the eye; the hidden text, to a
+              screen reader. */}
           <ExternalLink size={12} aria-hidden="true" />
-          Open document
+          Open document <span className="sr-only">(opens in a new tab)</span>
         </AppLink>
         {error !== null && (
           <span
