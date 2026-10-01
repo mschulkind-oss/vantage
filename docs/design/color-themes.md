@@ -304,10 +304,10 @@ A repository names a theme with a **top-level** `theme = "…"` in
 `.vantage.toml`, beside the `[starred]` table the server already reads there. Top
 level because a key under the checker's own table is an `unknown key`, exit 2,
 for that repository's own check run — see
-[`repo-config.md` §1.1](repo-config.md#11-the-checker-already-tolerates-it-by-construction),
+[`repo-config.md` §3](../reference/repo-config.md#3-the-file-and-its-two-readers),
 which is also where the rest of this reader's behavior is settled: the
 repository root only, no upward walk, a malformed file
-[rejected whole rather than half](repo-config.md#23-rejected-whole-never-half),
+[rejected whole rather than half](../reference/repo-config.md#34-a-file-the-server-cannot-use-is-ignored-whole),
 and a re-stat at most once every two seconds rather than a read per request.
 
 > [!WARNING]

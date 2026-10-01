@@ -24,7 +24,7 @@ summary: "An agent's checker is whatever PyPI released last, and its readers' vi
 
 **Needs your ruling:** [OQ-VS1](#OQ-VS1) and [OQ-VS5](#OQ-VS5), both before 0.8.0 is tagged, then [OQ-VS2](#OQ-VS2) and [OQ-VS3](#OQ-VS3).
 
-**Reads with:** [`checker-version-skew-plan.md`](checker-version-skew-plan.md) (the implementation sketch, incomplete while questions are open), [`inline-markup.md`](../reference/inline-markup.md) (the directive vocabulary, whose D3 this amends), [`repo-config.md`](repo-config.md) (whose [OQ-RC5](repo-config.md#6-decision-ledger) [OQ-VS5](#OQ-VS5) reopens), [`agent-cli.md`](agent-cli.md) (whose R6 this replaces), and [`agent-bootstrap.md`](agent-bootstrap.md) (whose [OQ-B6](agent-bootstrap.md#decision-ledger) wording the payload amends).
+**Reads with:** [`checker-version-skew-plan.md`](checker-version-skew-plan.md) (the implementation sketch, incomplete while questions are open), [`inline-markup.md`](../reference/inline-markup.md) (the directive vocabulary, whose D3 this amends), [`repo-config.md`](../reference/repo-config.md) (whose [OQ-RC5](../reference/repo-config.md#why-its-this-way) [OQ-VS5](#OQ-VS5) reopens), [`agent-cli.md`](../reference/agent-cli.md#why-its-this-way) (whose R6 this replaces), and [`agent-bootstrap.md`](agent-bootstrap.md) (whose [OQ-B6](agent-bootstrap.md#decision-ledger) wording the payload amends).
 
 ---
 
@@ -44,7 +44,7 @@ The principles, numbered so other documents can cite them. **target** *(coined h
 - **P2. What can't be retrofitted ships first.** Whatever a released viewer or checker freezes ships before the machinery that will rely on it: what the payload says, what a config reader does with a key it doesn't know, the refusal. Nothing added later reaches a release that has already shipped.
 - **P3. A mismatch fails once, clearly, and names the fix.** One message saying which version is needed replaces a flood of `vantage/unknown-name` errors or a false pass.
 - **P4. Whoever knows the viewer's version passes it along, and never pins a checker to it.** An old checker can't see what came after it, so the newest checker gets the viewer's version as an input ([§5](#5-the-viewers-version-in-the-review-payload)).
-- **P5. The checker never asks anyone.** [`agent-cli.md` P1](agent-cli.md#1-verdict-up-front) holds: no server, no network, and no fetching of a different version.
+- **P5. The checker never asks anyone.** [`agent-cli.md` P1](../reference/agent-cli.md#11-principles) holds: no server, no network, and no fetching of a different version.
 
 **What this does not ensure:**
 
@@ -163,7 +163,7 @@ Ruled 2026-09-30.
   - `theme`, `starred` or `target` written inside one of the checker's tables, and `target` written inside `[starred]`, the server's, where appending it to a file that ends in that table puts it. This checker knows each of them, and knows the line does nothing where it stands. The message says where it goes.
 - **The cost:** a typo is a warning on every run rather than a failure. Usually the rule the typo meant to silence keeps firing, which shows the typo up anyway.
 - **What this means for later releases.** A config value from a closed set, such as a stage role or a severity, can't gain a member without breaking every older checker. So in `.vantage.toml`, a new meaning is always a new key and never a new value.
-- **`[planning]` is the one table the server reads too.** The checker treats an unknown key there as it does one in `[check]`: it warns, ignores the key and reads the rest of the table, and the warning says that a server of the same release ignores the whole file over it. The 0.8.0 server, as built, still does ([OQ-RC5](repo-config.md#6-decision-ledger)), and whether it should warn and ignore too is [OQ-VS5](#OQ-VS5). The two readers' answers are pinned side by side, file by file, in [`version-skew-config.json`](../../internal/repoconfig/testdata/version-skew-config.json), and [`planning-config.json`](../../internal/repoconfig/testdata/planning-config.json) holds the files they agree on.
+- **`[planning]` is the one table the server reads too.** The checker treats an unknown key there as it does one in `[check]`: it warns, ignores the key and reads the rest of the table, and the warning says that a server of the same release ignores the whole file over it. The 0.8.0 server, as built, still does ([OQ-RC5](../reference/repo-config.md#why-its-this-way)), and whether it should warn and ignore too is [OQ-VS5](#OQ-VS5). The two readers' answers are pinned side by side, file by file, in [`version-skew-config.json`](../../internal/repoconfig/testdata/version-skew-config.json), and [`planning-config.json`](../../internal/repoconfig/testdata/planning-config.json) holds the files they agree on.
 - **A top-level key the server doesn't decode is already ignored.** The server polices only the tables it claims ([`repoconfig.go:479`](../../internal/repoconfig/repoconfig.go#L479)), so a top-level `target` reaches the server and does nothing.
 
 ### 3.4 The compatibility test
@@ -387,15 +387,15 @@ These land with the 0.8.0 work, except where noted. Done with the build, after `
 - [`inline-markup.md`](../reference/inline-markup.md): the names gain `question` and `fallback`. `fallback` is the one directive that removes its block, and D1 still holds for it. D3's "no version negotiation, no minimum-version key" is scoped to renderers ([§4.1](#41-the-key)).
 - [`planning-index.md`](../reference/planning-index.md): a question is declared by `oq` or by `question`.
 - The style guide ([`styleGuide.ts`](../../packages/vantage-md/src/styleGuide.ts)): [§6.1](#61-the-style-guide-names-its-release)'s last bullet.
-- [`agent-cli.md`](agent-cli.md): R6 ("checks describe the format, which is stable") links here instead.
-- [`pypi-distribution.md`](pypi-distribution.md): the agent row's "at the repo's shared version" holds only with a pin, since bare `uvx` runs the newest release.
+- [`agent-cli.md`](../reference/agent-cli.md#why-its-this-way): R6 ("checks describe the format, which is stable") links here instead.
+- [`pypi-distribution.md`](../reference/pypi-distribution.md#3-the-channels): the agent row's "at the repo's shared version" holds only with a pin, since bare `uvx` runs the newest release.
 - [`vantage-check.md`](../../userguide/guides/vantage-check.md): "Which release it writes for" drops the `uvx vantage-check@0.7.1` remedy, since a 0.7.1 checker reports 0.8.0's `question` and `fallback` as errors. It documents the config warnings and the refusal instead.
 - [`configuration.md`](../../userguide/reference/configuration.md) documents `target`.
 - [`CHANGELOG.md`](../../CHANGELOG.md): 0.8.0's paragraph for readers on 0.7 says they need no pinned checker ([§11](#11-what-ships-when)), and the section names `question`, `fallback`, the config warnings and `target`.
 
 Still to do:
 
-- [`repo-config.md`](repo-config.md): [OQ-RC5](repo-config.md#6-decision-ledger) is amended for unknown keys if [OQ-VS5](#OQ-VS5) is A.
+- [`repo-config.md`](../reference/repo-config.md): [OQ-RC5](../reference/repo-config.md#why-its-this-way) is amended for unknown keys if [OQ-VS5](#OQ-VS5) is A.
 - [`agent-bootstrap.md`](agent-bootstrap.md): P6 and [OQ-B6](agent-bootstrap.md#decision-ledger) gain [§5](#5-the-viewers-version-in-the-review-payload)'s line, if [OQ-VS1](#OQ-VS1) is B.
 
 ## 14. What done looks like
@@ -426,7 +426,7 @@ Still to do:
    > _(empty — fill in when decided)_
 
 2. 💬 **OQ-VS5: Does the 0.8.0 server ignore an unknown key in its own tables, as the checker now does?**
-   [OQ-RC5](repo-config.md#6-decision-ledger) rejects the whole file for one unknown `[starred]` or `[planning]` key, citing the checker's discipline, which the config ruling ended: the checker now warns and ignores one ([§3.3](#33-config-an-older-checker-can-read)). 0.8.0 is the first server to read `[planning]`, and what it does with a newer key, every 0.8.0 server does for good. This blocks the tag.
+   [OQ-RC5](../reference/repo-config.md#why-its-this-way) rejects the whole file for one unknown `[starred]` or `[planning]` key, citing the checker's discipline, which the config ruling ended: the checker now warns and ignores one ([§3.3](#33-config-an-older-checker-can-read)). 0.8.0 is the first server to read `[planning]`, and what it does with a newer key, every 0.8.0 server does for good. This blocks the tag.
 
    - **A — The server warns and ignores it too.** A bad known value still rejects the file; three fixture cases flip.
    - **B — The server stays strict, or both do.** A later `[planning]` key makes every 0.8.0 server drop the whole file, theme and stars included.

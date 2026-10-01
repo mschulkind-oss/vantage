@@ -256,10 +256,15 @@ export const VANTAGE_OQ_HOST_TARGETS = VANTAGE_ANCHOR_TARGETS.filter(
  * reference means. It is optional because most documents never leave their own
  * file, and requiring it everywhere would fire on every single-doc sketch.
  *
- * Three consumers read it from here and none of them may re-spell it: the
- * plugin that stamps the anchor, the sanitizer that allowlists the value, and
- * the checker's `vantage/oq-id-format`. A fourth copy is how the checker starts
- * calling a working anchor malformed.
+ * Read from here, never re-spelled, by the sanitizer that allowlists the value,
+ * by the checker's `collectOqIds` (which feeds `vantage/oq-id-format` and the
+ * anchors the checker accepts) and by the planning index. The directive plugin
+ * that stamps the anchor deliberately does not test it: it stamps any non-empty
+ * id and leaves refusing a malformed one to the sanitizer. A re-spelled copy is
+ * how the checker starts calling a working anchor malformed — and the patterns
+ * that look for an id in text (`OQ_REFERENCE` and `OQ_EXACT` in the checker's
+ * `rules/references.ts`, `OQ_TOKEN` in `planning/scan.ts` and in
+ * `FrontmatterDisplay.tsx`) restate this shape, so they change with it.
  */
 export const VANTAGE_OQ_ID = /^OQ-(?:[A-Z][A-Z0-9]{0,5})?[0-9]+$/;
 

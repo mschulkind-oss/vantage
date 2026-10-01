@@ -1,10 +1,10 @@
 /**
  * Exit codes.
  *
- * The split between 1 and 3 is the whole point of the design's P2: a run that
- * *could not check* must never look like a run that *found nothing*. Callers
- * (and agents) can treat 1 as "fix your document" and 3 as "fix my
- * environment", and neither as green.
+ * The split between 1 and 3 is the whole point of P2 in
+ * docs/reference/agent-cli.md: a run that *could not check* must never look
+ * like a run that *found nothing*. Callers (and agents) can treat 1 as "fix
+ * your document" and 3 as "fix my environment", and neither as green.
  */
 export const EXIT_OK = 0;
 /** The run produced findings that fail it. */

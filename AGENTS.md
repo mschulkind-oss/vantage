@@ -15,7 +15,7 @@ all discoverable, so they are deliberately not here.
   fresh clone gets until `just web-sync` runs. It was tracked until 2026-09-01
   to spare `go install …@latest` that fate; **`just release` now carries the
   bundle in a commit reachable only from the tag**, which is where `go install`
-  reads it from. Rationale: [`docs/design/pypi-distribution.md` §4.1](docs/design/pypi-distribution.md#41-the-frontend-has-to-be-there-at-build-time-and-today-it-often-isnt).
+  reads it from. Rationale: [`docs/reference/pypi-distribution.md` §5](docs/reference/pypi-distribution.md#5-the-frontend-bundle-is-in-the-tag-never-on-main).
 - `packages/vantage-md` is consumed **from TypeScript source, never from
   `dist/`**: the frontend resolves it through a Vite alias
   ([`frontend/vite.config.ts`](frontend/vite.config.ts)), and `packages/vantage-check` imports it by
@@ -23,14 +23,18 @@ all discoverable, so they are deliberately not here.
   copy pipeline code into `frontend/src` — one implementation, three consumers.
 - The three packages are **one npm workspace** with a single root
   [`package-lock.json`](package-lock.json). `npm ci` at the root installs all of them; there is no
-  per-package lockfile and no per-package install. This is what makes `katex`
-  and `mermaid` resolve to one hoisted copy shared by the viewer and the CLI —
+  per-package lockfile and no per-package install. This is what makes
+  `mermaid` resolve to one hoisted copy shared by the viewer and the CLI —
   the checker's whole claim is that it validates with the engines the viewer
   renders with, and [`packages/vantage-check/test/deps.test.ts`](packages/vantage-check/test/deps.test.ts) asserts they are
-  literally the same file, not merely the same version string.
+  literally the same file, not merely the same version string. **`katex` is not
+  shared:** the checker and `vantage-md` resolve the hoisted copy, but the viewer
+  renders math through `rehype-katex`, which brings an older copy of its own,
+  and the test does not resolve from there
+  ([`docs/reference/agent-cli.md` §11](docs/reference/agent-cli.md#11-known-gaps)).
 - `packages/vantage-check` ships as one compiled binary (~92 MB per platform)
-  and is never published to npm. Design: [`docs/design/agent-cli.md`](docs/design/agent-cli.md);
-  what a run spends its time on: [`docs/design/check-performance.md`](docs/design/check-performance.md).
+  and is never published to npm. How it works: [`docs/reference/agent-cli.md`](docs/reference/agent-cli.md);
+  what a run spends its time on: [`docs/reference/check-performance.md`](docs/reference/check-performance.md).
 - **A `check` worker thread runs [`packages/vantage-check/src/main.ts`](packages/vantage-check/src/main.ts) again, and a worker
   module of its own cannot replace it.** `bun build --compile` puts every module
   *inside* the executable, so a second build entry point lands in the bundle
@@ -39,7 +43,7 @@ all discoverable, so they are deliberately not here.
   addressable from inside the bundle *and* a real file when the program is run
   from source, which is why it branches on `isMainThread` and hands
   `core/parallel.ts` its own URL rather than letting that module derive one.
-  Rationale: [`docs/design/check-performance.md` §4.2](docs/design/check-performance.md#42-the-worker-is-this-programs-own-entry-point).
+  Rationale: [`docs/reference/check-performance.md` §5.3](docs/reference/check-performance.md#53-the-worker-is-this-programs-own-entry-point).
 
 ## Ports
 
@@ -208,4 +212,4 @@ Since v0.5.4 (2026-09-01) all three registries carry that version: PyPI has
 `vantage-md` and `vantage-check`, the first release to register the CLI at all,
 and npm has `vantage-md`. npm sat at `0.1.7` from April until then — not from
 repeated failures but because `36a75506` moved it onto a `vantage-md@*` tag that
-was never pushed. See [`docs/design/pypi-distribution.md`](docs/design/pypi-distribution.md).
+was never pushed. See [`docs/reference/pypi-distribution.md`](docs/reference/pypi-distribution.md).

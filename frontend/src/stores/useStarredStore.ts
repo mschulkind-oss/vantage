@@ -22,6 +22,9 @@ import type { StarredEntry } from "../types";
  * GET. Nothing is emitted for bookmarks there, so every action below is a
  * no-op: without the guard the star would appear to toggle and then revert on
  * reload.
+ *
+ * Promoted rows, and why `isStarred` counts only the user's own:
+ * docs/reference/repo-config.md.
  */
 const API_BASE = "/api";
 

@@ -20,6 +20,8 @@ name: Publish
 #
 # A manual dispatch re-runs only the tap update (the binaries must already be on
 # the release), to backfill or recover a formula without cutting a release.
+#
+# Architecture and invariants: docs/reference/pypi-distribution.md
 on:
   push:
     tags:
@@ -110,12 +112,16 @@ jobs:
       matrix:
         include:
           # `server_pytags` is the set of PyPI platform tags the Go binary is
-          # valid for, space-separated: CGO_ENABLED=0 makes it static, so one
-          # Linux binary satisfies glibc and musl both — a second tag, not a
-          # second build — and the manylinux floor is as low as PyPI accepts
-          # because nothing is linked. `cli_pytag` is higher (2_28) because bun's
-          # runtime does link glibc. macOS claims 11_0 on both arches, which is
-          # Go's own floor; 10_9 would install on machines it cannot run on.
+          # published under, space-separated: CGO_ENABLED=0 makes it static, so
+          # one Linux binary satisfies glibc and musl both — a second tag, not a
+          # second build. Its manylinux floor (2_17, manylinux2014's, the oldest
+          # that covers aarch64) is a choice, not a requirement: nothing is
+          # linked. `cli_pytag` is higher (2_28) because bun's runtime does link
+          # glibc. macOS claims 11_0 on both arches, and that is too low: the
+          # 0.7.1 binaries declare a minimum of macOS 12.0 (the server, Go's
+          # floor) and 13.0 (the CLI, bun's), so these wheels install on Macs
+          # the binaries do not support. Raising them is outstanding
+          # (docs/reference/pypi-distribution.md §6.3).
           - goos: linux
             goarch: amd64
             bun_target: bun-linux-x64
@@ -187,7 +193,8 @@ jobs:
       # hash on first fetch, so re-pointing it turns a placeholder into a hard
       # checksum failure for everyone.
       #
-      # Fail here instead, before anything is published.
+      # Fail here instead, before any artifact is published. The GitHub release,
+      # with its notes, already exists by now.
       - name: Assert the tag carries the frontend bundle
         run: |
           set -euo pipefail
@@ -240,7 +247,7 @@ jobs:
 
       # Each wheel wraps the binary that was just archived, rather than a second
       # build of it, so PyPI and the release carry the same bytes
-      # (docs/design/pypi-distribution.md §4.5).
+      # (docs/reference/pypi-distribution.md §6.1).
       - name: Build the wheels
         run: |
           set -euo pipefail
@@ -299,7 +306,7 @@ jobs:
   # Publish both projects to PyPI — `vantage-md` (the server) and `vantage-check`
   # (the CLI). Separate distributions on purpose: one name identifies one
   # artifact, and an agent linting a file should not fetch a server
-  # (docs/design/pypi-distribution.md §6). They share this one version.
+  # (docs/reference/pypi-distribution.md §7). They share this one version.
   #
   # Trusted publishing (OIDC), no token. Both projects must name THIS workflow
   # file (`publish.yml`) and the `pypi` environment as a trusted publisher.
@@ -324,9 +331,9 @@ jobs:
 
       - uses: astral-sh/setup-uv@v7
 
-      # One invocation per project: a minted token is scoped to the project it
-      # was minted for, so mixing both projects' wheels into one upload cannot
-      # work.
+      # One step per project, for a step and a log each. One call would also
+      # work: a token minted by trusted publishing covers every project whose
+      # publisher matches this workflow, and both projects' do.
       - name: Publish vantage-md
         run: uv publish wheels/vantage_md-*.whl --check-url https://pypi.org/simple/
 

@@ -80,14 +80,14 @@ type Options struct {
 	// are never walked and git work is never delegated to it. It is set for
 	// the project that holds the Markdown beside a directory of clones, where
 	// each clone is served as a project of its own (see
-	// docs/design/serve-clones-directory.md §3).
+	// docs/reference/serve-clones-directory.md §4.1).
 	StopAtRepos bool
 	// OnWalk, when set, hears how each untracked-file walk behind a reader's
 	// recent files ended (see [WalkReport]) — the one walk here whose cap
 	// silently drops results. A walk that failed some other way is not
 	// reported, and neither is one for [GitService.RecentsUnreported]. The
 	// server turns a timeout into a banner and a later finished walk of the
-	// same kind into its removal (see docs/design/serve-clones-directory.md §7).
+	// same kind into its removal (see docs/reference/serve-clones-directory.md §7.1).
 	OnWalk func(WalkReport)
 }
 

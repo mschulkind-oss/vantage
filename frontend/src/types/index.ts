@@ -4,7 +4,7 @@ export interface RepoInfo {
   /**
    * Listed ahead of every other project in both sort orders. Only the project
    * holding the Markdown beside a directory of clones sets it; absent means
-   * false. See docs/design/serve-clones-directory.md §3.
+   * false. See docs/reference/serve-clones-directory.md §4.
    */
   pinned?: boolean;
   /**
@@ -50,7 +50,7 @@ export interface FileContent {
 
 /**
  * One way a project is being served worse than normal because it is too big
- * for a limit — GET /api/degraded. See docs/design/serve-clones-directory.md §7.
+ * for a limit — GET /api/degraded. See docs/reference/serve-clones-directory.md §7.3.
  */
 export interface Degradation {
   /** The project's name, "" in single-repo mode. */

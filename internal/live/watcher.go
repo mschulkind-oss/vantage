@@ -270,7 +270,7 @@ func (w *Watcher) RepoName() string { return w.repoName }
 // It is for a directory that has stopped being a repository while the loose
 // project's watcher, which never entered it, heard nothing from inside: the
 // server calls it when it retires a clone that lost its .git
-// (docs/design/serve-clones-directory.md §3). It does not block; a request the
+// (docs/reference/serve-clones-directory.md §4.2). It does not block; a request the
 // loop has no room for is dropped and logged.
 func (w *Watcher) Rescan(dir string) {
 	select {
@@ -307,7 +307,7 @@ func (w *Watcher) rescanDir(dir string, found func(rel string)) {
 // .git directory, or a linked worktree — a boundary the watch set never enters,
 // including one that becomes a repository while the watcher runs. It is set for
 // the project holding the Markdown beside a directory of clones, whose clones
-// each have a watcher of their own (docs/design/serve-clones-directory.md §3).
+// each have a watcher of their own (docs/reference/serve-clones-directory.md §4.1).
 // Call it before Start.
 func (w *Watcher) SetStopAtRepos(stop bool) {
 	w.mu.Lock()

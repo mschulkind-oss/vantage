@@ -34,18 +34,21 @@ import { questionWords } from "./questionLength.js";
 
 /**
  * The planning rules (`docs/reference/planning-index.md` §13), run once in the
- * main thread after every file has been checked: the *post-pass*, a term
- * that document defines in §2.
+ * main thread, apart from the per-file rules: the *post-pass*, a term that
+ * document defines in §2. They run while the worker threads check, or before
+ * the per-file rules in a one-thread run, and their findings join the report
+ * after the files' (`docs/reference/check-performance.md` §5.1).
  *
  * Not per file, as every other rule is, for two reasons. A worker is handed
  * rule settings and hands back findings, and nothing else crosses: the
  * `[planning]` table does not, and `planning/unrouted` needs the roadmaps,
- * which are rarely among the files a shard was given. And running once after
- * both the sequential and the parallel path is what keeps `--jobs 1` and
- * `--jobs 4` byte-identical. The cost is a second parse of each planning
- * document the run checks, and a third of each one holding a question for
- * `planning/question-length` to measure, which reads the questions the scan
- * found, so it measures exactly the ones the page shows a card for.
+ * which are rarely among the files a shard was given. And running once, outside
+ * both the sequential and the parallel path, with findings joined after theirs
+ * either way, is what keeps `--jobs 1` and `--jobs 4` byte-identical. The cost
+ * is a second parse of each planning document the run checks, and a third of
+ * each one holding a question for `planning/question-length` to measure, which
+ * reads the questions the scan found, so it measures exactly the ones the page
+ * shows a card for.
  *
  * The rules read a *narrow index* (also defined there): the index built from
  * the roadmaps plus the run's own candidates. Every rule needs only a document

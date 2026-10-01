@@ -17,7 +17,8 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// SourceDirsEdit reports what [AddSourceDirs] did to a config file.
+// SourceDirsEdit reports what [AddSourceDirs] did to a config file. Architecture
+// and invariants of the edit: docs/reference/serve-clones-directory.md §6.1.
 type SourceDirsEdit struct {
 	// Path is the config file written (or, when nothing was added, left alone),
 	// as the caller named it.

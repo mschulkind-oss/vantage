@@ -66,13 +66,14 @@ export const MIN_FILES_PER_JOB = 12;
  *
  * | files | 1 thread | 3      | 6      | 8      | 16     | 32      |
  * | ----: | -------: | -----: | -----: | -----: | -----: | ------: |
- * |    36 |   1261ms | 1008ms | 1202ms |   1304 |      — |       — |
+ * |    36 |   1261ms | 1008ms | 1202ms | 1304ms |      — |       — |
  * |   110 |   4378ms | 2318ms | 1966ms | 2238ms | 3778ms |  7995ms |
  * |   750 |  22857ms |      — | 6153ms | 6485ms | 9123ms | 17901ms |
  *
- * Six is the best or within 1% of the best at every size, which is why `auto`
- * does not simply take the core count. A machine whose runtime scales further
- * than this one's is what `--jobs` is for.
+ * Six is the best at every size large enough for `auto` to reach it, 110 and
+ * 750 files here, which is why `auto` does not simply take the core count. At
+ * 36 files three is the best, and three is what `auto` asks for there. A
+ * machine whose runtime scales further than this one's is what `--jobs` is for.
  */
 export const MAX_AUTO_JOBS = 6;
 

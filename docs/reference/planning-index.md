@@ -42,7 +42,10 @@ summary: "Vantage reads a repository's planning documents as a set — frontmatt
 **Status:** Verified 2026-09-30 against `0a872d9`, the commit that added this
 document. Inside the `covers:` perimeter it changed only comments and the tests that
 read these documents, repointing them here, so the code it describes is `9507cac`'s,
-unchanged. **UNMEASURED at scale:** of the scale targets in
+unchanged. The Post-pass row in [§2](#2-terms) and the post-pass paragraph in
+[§13.3](#133-the-planning-rules), which said the post-pass runs after every file,
+were corrected on 2026-10-01 and re-verified against `7fa8cbf`; nothing else was.
+**UNMEASURED at scale:** of the scale targets in
 [§18](#18-scale-targets-and-what-has-been-measured), only D1 and D2 have been run
 against the build, on this repository's own tree; D8, D11, D12 and D13 are held
 by tests, and the rest have never been run. Reading the code proves the
@@ -76,7 +79,7 @@ Vantage never writes into a document.
 | Link badges, Referenced by, the tree badge | `frontend/src/hooks/usePlanningLinkBadges.ts`, `frontend/src/components/ReferencedBy.tsx`, `frontend/src/components/PlanningTreeBadge.tsx` |
 | The CLI and the planning rules | `packages/vantage-check/src/commands/index.ts`, `packages/vantage-check/src/rules/planning.ts` |
 
-**Reads with:** [`repo-config.md`](../design/repo-config.md) (the `.vantage.toml`
+**Reads with:** [`repo-config.md`](repo-config.md) (the `.vantage.toml`
 file both readers share), [`inline-markup.md`](inline-markup.md) (the `oq` and
 `question` directives this index counts, and the one-click answer it reuses),
 [`technical_spec.md`](../design/technical_spec.md) (where the planning routes and
@@ -229,7 +232,7 @@ is in git; this is now where the terms are defined.
 | **Project root** | The nearest ancestor of a directory holding `.git` or `.vantage.toml` ([§13.1](#131-the-project-root)) | the directory a `--config` file sits in | the planning-index design |
 | **Unit** (of a question) | The element at the question's start: its list item, or the host block outside a list | the card block, which can hold several units | the first implementation plan |
 | **Single-path mode** | The planning endpoint answering for one `?path=` ([§9.2](#92-one-path-the-single-path-mode)) | the content endpoint, which it deliberately is not | the first implementation plan |
-| **Post-pass** | The planning rules' one run in `check`'s main thread, after the per-file work ([§13.3](#133-the-planning-rules)) | a per-file rule | the first implementation plan |
+| **Post-pass** | The planning rules' one run in `check`'s main thread, apart from the per-file work, whose findings join the report after it ([§13.3](#133-the-planning-rules)) | a per-file rule | the first implementation plan |
 | **Narrow index** | The index `check` builds from the roadmaps plus the run's own files, with no count of the tree | the full index `index` builds | the first implementation plan |
 | **Content hash** | The first 128 bits of [SHA-256](https://csrc.nist.gov/pubs/fips/180-4/upd1/final) over a file's bytes, as 32 lowercase hex digits | a modification time | the at-scale amendment |
 | **The stream** | `POST …/planning/stream`'s answer, [NDJSON](https://github.com/ndjson/ndjson-spec): one JSON object per line ([§9.1](#91-the-stream)) | the old batch, which was one JSON object | the at-scale amendment |
@@ -1934,7 +1937,7 @@ file kept outside the tree — the gate's `_self-check` passes one from `mktemp`
 not move the scan with it. Without `--config` or `--no-config`, both commands read
 `[planning]` from the project root's own `.vantage.toml` and nothing above it, the one
 file the server reads for the repository
-([`repo-config.md` §2.2](../design/repo-config.md#22-the-repository-root-only--no-upward-walk)).
+([`repo-config.md` §3.2](repo-config.md#32-the-server-reads-the-repository-roots-file-only)).
 `check` still finds its own `[check]` table by walking up from its first target, and a
 file found that way above the root rules nothing about this project's planning.
 
@@ -2085,11 +2088,15 @@ The first four are the same derivations the page uses, so the page and the gate 
 disagree (P7); the fifth measures the questions the same scan finds.
 
 - **They run in the post-pass** (`checkPlanning` in
-  `packages/vantage-check/src/rules/planning.ts`), once, in `check`'s main thread, after
-  every file: a worker shard is handed rule settings and hands back findings, and
-  neither the `[planning]` table nor the roadmaps cross, and running once after both
-  the sequential and the parallel path keeps `--jobs 1` and `--jobs 4` byte-identical.
-  The cost is a second parse of each planning document the run checks. Findings are
+  `packages/vantage-check/src/rules/planning.ts`), once, in `check`'s main thread, apart
+  from the per-file rules: while the worker threads check the files, or before the
+  per-file rules in a one-thread run, and their findings join the report after the
+  files' ([`check-performance.md` §5.1](check-performance.md#51-how-a-run-is-arranged)).
+  A worker shard is handed rule settings and hands back findings, and
+  neither the `[planning]` table nor the roadmaps cross, and running once, outside both
+  the sequential and the parallel path, keeps `--jobs 1` and `--jobs 4` byte-identical.
+  The cost is a second parse of each planning document the run checks, and a third of
+  each one with a question for `planning/question-length` to measure. Findings are
   reported only for the run's own files, and a pass that throws reports an environment
   failure rather than reading as clean.
 - **They read a narrow index**: the roadmaps plus the run's own candidates, with no

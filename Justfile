@@ -32,8 +32,8 @@ setup: _hooks
 dev path=".":
     TARGET_REPO={{path}} overmind start
 
-# Refreshes the tracked export first, so this is the one recipe that may modify
-# tracked files — see web-sync.
+# Rebuilds the frontend first (web-sync), which writes only ignored files, so the
+# binary always embeds the current frontend/ sources.
 
 # Build the vantage binary with a freshly built frontend embedded.
 build: web-sync build-bin
@@ -323,7 +323,7 @@ _check-docs:
     printf '[check.rules]\n"ref/unlinked-file" = "off"\n' > "$changelog"
     "$bin" check --config "$changelog" CHANGELOG.md
 
-# Refresh web/dist — the tracked frontend export — from frontend/ sources.
+# Refresh web/dist — the local, ignored frontend export — from frontend/ sources.
 #
 # web/dist is ignored (see .gitignore), so this writes only untracked files and
 # there is nothing to commit afterwards. //go:embed accepts an empty directory,
@@ -363,6 +363,8 @@ web-sync:
 # checksum database records a tag's tree hash the first time anyone fetches it;
 # re-pointing the tag makes every later fetch fail with a mismatch. A workflow
 # triggered *by* the tag push is already too late to add anything to it.
+#
+# Architecture and invariants: docs/reference/pypi-distribution.md
 
 # Build the frontend into a tag-only commit and push the tag.
 release version:

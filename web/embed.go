@@ -1,8 +1,10 @@
 // Package web embeds the built frontend single-page application.
 //
-// The real assets are produced by `just bundle-frontend` (Vite build copied
-// into web/dist). A committed .gitkeep keeps the directory present so this
-// package always compiles; a production build fills it with the real bundle.
+// The real assets are produced by `just web-sync` (Vite build copied into
+// web/dist). A committed .gitkeep keeps the directory present so this package
+// always compiles; a production build fills it with the real bundle.
+//
+// Architecture and invariants: docs/reference/pypi-distribution.md
 package web
 
 import (

@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 /**
  * A project too big for one of the server's limits says so in the browser
- * (docs/design/serve-clones-directory.md §7). The server side — a watch budget
+ * (docs/reference/serve-clones-directory.md §7.4). The server side — a watch budget
  * configured down, a walk timeout of a nanosecond — is covered by the Go
  * suite; this spec pins what the reader sees, with the list the server would
  * return stubbed in, since reaching a real limit here would mean building a

@@ -2,7 +2,7 @@
  * Where a repository-relative path resolved inside project `repo` is served.
  *
  * The loose project — the one holding the Markdown beside a directory of clones
- * (docs/design/serve-clones-directory.md §3) — refuses every path inside a
+ * (docs/reference/serve-clones-directory.md §4.3) — refuses every path inside a
  * clone, because each clone is served as a project of its own. So a path whose
  * first folder is one of its `clones` (directory name → project name, from
  * `/api/repos`) belongs to that clone's project, with the folder dropped. `.`

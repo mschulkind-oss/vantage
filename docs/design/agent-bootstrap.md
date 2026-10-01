@@ -12,13 +12,13 @@ summary: "Vantage cannot initiate contact with an agent. The review payload is n
 **Status:** DESIGN SKETCH, 2026-08-31, amended 2026-09-01 with [§3.1](#31-why-the-payload-never-asks-whether-the-agent-already-knows) and **P6**,
 then again the same day: [§5.1](#51-where-the-packaging-actually-stands)'s packaging facts were wrong, and the packaging
 question they raised now has its own doc,
-[`pypi-distribution.md`](pypi-distribution.md), which this design **depends
+[`pypi-distribution.md`](../reference/pypi-distribution.md), which this design **depends
 on**. Nothing built. Extends
-[`agent-cli.md`](agent-cli.md), which is DECIDED and whose **P1**–**P3** hold
-unchanged here. Every claim about existing code was verified against the tree on
+[`agent-cli.md`](../reference/agent-cli.md), now built and described as a reference, whose
+[**P1**–**P3**](../reference/agent-cli.md#11-principles) hold unchanged here. Every claim about existing code was verified against the tree on
 2026-08-31.
 
-**The short version.** [`agent-cli.md`](agent-cli.md) [§6](agent-cli.md#6-how-the-agent-finds-out-any-of-this-exists) put the pointer to
+**The short version.** [`agent-cli.md` §7](../reference/agent-cli.md#7-how-an-agent-finds-the-checker) put the pointer to
 `vantage-check` in the review-comment payload and recorded one limitation: a
 document drafted before any review round gets no pointer. That framing
 undersells the channel. Vantage is a browser app and the agent is a process on a
@@ -37,10 +37,10 @@ which is the reframing everything else follows from, **and
 the packaging question and turns out to depend on a detail of how the wheel is
 built.
 
-**Reads with:** [`pypi-distribution.md`](pypi-distribution.md) (**the
+**Reads with:** [`pypi-distribution.md`](../reference/pypi-distribution.md) (**the
 dependency** — the checker is not installable until that lands, and it owns the
 distribution question this doc used to carry),
-[`agent-cli.md`](agent-cli.md) (the CLI this extends, and the
+[`agent-cli.md`](../reference/agent-cli.md) (the CLI this extends, and the
 principles it fixed), [`review-state-architecture.md`](review-state-architecture.md)
 (why the payload exists at all), and the user-facing
 [`../../userguide/vantage-check.md`](../../userguide/guides/vantage-check.md) and
@@ -54,7 +54,7 @@ and humans are told today).
 Keep the payload as the only channel. Make it carry two instructions instead of
 one, and build the second one as a subcommand of the binary we already ship.
 
-Two principles join [`agent-cli.md`](agent-cli.md)'s **P1**–**P3**, numbered to
+Two principles join [`agent-cli.md`](../reference/agent-cli.md#11-principles)'s **P1**–**P3**, numbered to
 continue that doc's sequence so either can cite either:
 
 - **P4. The payload is a bootstrap, not a reminder.** Vantage cannot call the
@@ -64,8 +64,9 @@ continue that doc's sequence so either can cite either:
   *"a note attached to this review."*
 - **P5. Persist pointers, never copies.** Anything we help an agent write into
   its own configuration must **fetch** the style guide, not embed it.
-  [`agent-cli.md`](agent-cli.md) [§2](agent-cli.md#2-what-exists-today-precisely) recorded an out-of-tree copy of the guide
-  that exists precisely because there was no way to fetch it; a generator that
+  The checker's design recorded an out-of-tree copy of the guide that exists
+  precisely because there was no way to fetch it
+  ([`agent-cli.md` §3.2](../reference/agent-cli.md#32-style-guide) keeps the rule it led to); a generator that
   emitted the guide's text would be a copy *factory*, with our name on the
   drift.
 - **P6. The payload is idempotent, not a handshake.** It says the same thing
@@ -98,7 +99,7 @@ sequenceDiagram
 
 Step 5 is the first moment any Vantage-authored text reaches the agent. Before
 it there is no channel at all — not a late one, not a weak one, *none*. So the
-honest reading of [`agent-cli.md`](agent-cli.md) [§6](agent-cli.md#6-how-the-agent-finds-out-any-of-this-exists)'s limitation is not "the
+honest reading of [`agent-cli.md` §7](../reference/agent-cli.md#7-how-an-agent-finds-the-checker)'s limitation is not "the
 pointer arrives too late." It is:
 
 - **Document #1 is unreachable by anything.** No mechanism we could build
@@ -136,7 +137,7 @@ what each one is allowed to cost.
 The asymmetry that matters: the fixative instruction needs no state anywhere,
 which is why it was safe to ship as an unconditional line. The proactive one
 necessarily *persists something*, and persistence is where
-[`agent-cli.md`](agent-cli.md) [§7](agent-cli.md#7-non-goals--what-this-does-not-license)'s hard line lives — Vantage writes nothing to
+[`agent-cli.md` §10](../reference/agent-cli.md#10-non-goals)'s hard line lives — Vantage writes nothing to
 anyone's `AGENTS.md`, `CLAUDE.md`, or `.gitignore` on their behalf.
 
 That line is narrower than it first reads, and the userguide already phrases it
@@ -234,7 +235,8 @@ Thin wins on the property that actually matters here. An embedded copy is
 correct on the day it is generated and silently wrong after the next edit to
 [`styleGuide.ts`](../../packages/vantage-md/src/styleGuide.ts), with nothing to
 notice the drift — which is exactly the failure
-[`agent-cli.md`](agent-cli.md) [§2](agent-cli.md#2-what-exists-today-precisely) documented in the wild. A pointer is correct
+the checker's design documented in the wild
+([`agent-cli.md` §3.2](../reference/agent-cli.md#32-style-guide)). A pointer is correct
 forever and needs no regeneration. It costs one command invocation at writing
 time, and it inherits the fixative line's existing fallback: if the command is
 not available, carry on.
@@ -259,7 +261,7 @@ repo builds its wheel.
 
 Verified against the tree 2026-08-31; the PyPI facts re-checked against
 pypi.org on 2026-09-01, which is where the original of this section was wrong.
-[`pypi-distribution.md`](pypi-distribution.md) now owns this ground in full —
+[`pypi-distribution.md`](../reference/pypi-distribution.md) now owns this ground in full —
 what follows is only what this design depends on.
 
 - **No `vantage-check` release exists.** `git tag` lists only the app's `v*`
@@ -269,7 +271,7 @@ what follows is only what this design depends on.
   publisher naming this repo's
   [`publish.yml`](../../.github/workflows/publish.yml), which is an owner action
   outside this repo; the exact fields are in
-  [`pypi-distribution.md`](pypi-distribution.md) [§9](pypi-distribution.md#9-what-i-would-do-in-order).
+  [`pypi-distribution.md`](../reference/pypi-distribution.md) [§7.1](../reference/pypi-distribution.md#71-trusted-publishers).
 - **A `vantage-md` PyPI project does exist, and it is the *server's* half of the
   name.** npm `vantage-md` carries the library, PyPI `vantage-md` carries the
   executable server: one product name, one registry each, by design. What is
@@ -280,14 +282,14 @@ what follows is only what this design depends on.
 > [!WARNING]
 > **`uvx vantage-md` today installs a program that is not in this tree** — a
 > viewer four months behind `v0.5.3`, with a backend that was deleted. That is
-> **R7**, and its fix, its yank, and its `go-to-wheel` shape all live in
-> [`pypi-distribution.md`](pypi-distribution.md). Do not re-derive them here.
+> **R7**, and its fix and its yank both live in
+> [`pypi-distribution.md`](../reference/pypi-distribution.md). Do not re-derive them here.
 
 What no distribution shape changes is that **the payload already tells every
 agent to run `uvx vantage-check`, and that promise resolves to nothing today.**
 That is [R1](#7-risks), it is live right now, and it is independent of everything
 else in this doc. *How* it resolves is
-[`pypi-distribution.md`](pypi-distribution.md) [`OQ-P2`](pypi-distribution.md#decision-ledger); that it must resolve is
+[`pypi-distribution.md`](../reference/pypi-distribution.md) [`OQ-P2`](../reference/pypi-distribution.md#why-its-this-way); that it must resolve is
 not open.
 
 ### 5.2 How `uvx` actually selects what to run
@@ -330,7 +332,7 @@ and a build backend, undoing the choice above.
 | **Subcommand** | One branch in `parseArgs` ([`cli.ts:20-52`](../../packages/vantage-check/src/cli.ts#L20-L52)) and one file under `src/commands/`. Ships with a release that already ships |
 
 Folding this into the Go `vantage` binary is rejected for the reasons already
-recorded as **R3** in [`agent-cli.md`](agent-cli.md) — a second implementation
+recorded as **R3** in [`agent-cli.md`](../reference/agent-cli.md#why-its-this-way) — a second implementation
 that drifts from the renderer invisibly — with the added point that the Go
 binary has no PyPI presence to attach an entrypoint to in the first place.
 
@@ -356,7 +358,7 @@ depends on, which is [§8](#8-what-i-would-build-in-order) step 2.
 - **Not a longer payload than it has to be.** Every line is prompt tokens on
   every review turn, forever.
 - **Not a change to the inbox protocol.** The `reply` wrapper stays iceboxed
-  where [`agent-cli.md`](agent-cli.md) [§10](agent-cli.md#10-icebox) left it.
+  where [`agent-cli.md`'s OQ-4](../reference/agent-cli.md#why-its-this-way) left it.
 
 ## 7. Risks
 
@@ -368,7 +370,7 @@ depends on, which is [§8](#8-what-i-would-build-in-order) step 2.
 | **R4. A persisted pointer outlives the tool's reach** — a skill that says "run `uvx …`" in a sandbox without `uvx` is a dead end on every future document, not just once | The generated text carries the same fallback the fixative line does: if it is not available, carry on |
 | **R5. Name lock-in** — the distribution name is unclaimed today and permanent after first publish, while the tool is growing commands that are not checks | Settle it before step 2, not after. [OQ-B4](#open-questions) |
 | **R6. Two-mode confusion** — an agent runs the generator instead of the check, or treats the check as setup | Distinct verbs, one sentence each, and the fixative line keeps its current position and wording |
-| **R7. A dead distribution still answers to a name we use** — `uvx vantage-md` installs the retired Python app ([§5.1](#51-where-the-packaging-actually-stands)). An agent guessing the name, or a human following an old README, gets working-but-abandoned software, which is worse than the 404 `vantage-check` gives | Owned by [`pypi-distribution.md`](pypi-distribution.md) ([`OQ-P1`](pypi-distribution.md#decision-ledger) and [§4.2](pypi-distribution.md#42-version-continuity-and-why-the-yank-is-not-cosmetic) there). Not a blocker for anything in this doc |
+| **R7. A dead distribution still answers to a name we use** — `uvx vantage-md` installs the retired Python app ([§5.1](#51-where-the-packaging-actually-stands)). An agent guessing the name, or a human following an old README, gets working-but-abandoned software, which is worse than the 404 `vantage-check` gives | Owned by [`pypi-distribution.md`](../reference/pypi-distribution.md) ([`OQ-P1`](../reference/pypi-distribution.md#why-its-this-way) and [§6.4](../reference/pypi-distribution.md#64-the-yanked-python-releases) there). Not a blocker for anything in this doc |
 
 **What this deletes.** The premise that a document's quality depends on a review
 round having already happened to it. And the last remaining reason for an
@@ -388,8 +390,8 @@ happen automatically next time."*
    the reason step 3's output must stay a pointer (**P5**) rather than a copy.
 2. **Make `uvx vantage-check` resolve.** Clears **R1**, and it is the one step
    this design cannot do for itself: it is
-   [`pypi-distribution.md`](pypi-distribution.md) step 4, gated by that doc's
-   [`OQ-P2`](pypi-distribution.md#decision-ledger) (own project or a seat in `vantage-md`) and by
+   [`pypi-distribution.md`](../reference/pypi-distribution.md) [§7.1](../reference/pypi-distribution.md#71-trusted-publishers), gated by that doc's
+   [`OQ-P2`](../reference/pypi-distribution.md#why-its-this-way) (own project or a seat in `vantage-md`) and by
    [OQ-B4](#open-questions) here if the answer is a new name, since publishing is
    what makes a name permanent. Nothing below is worth much while the command the
    payload names cannot be installed.
@@ -411,7 +413,7 @@ happen automatically next time."*
   project; here it costs ~92 MB duplicated per wheel or the build backend
   `build-wheel.py` deliberately refuses ([§5.3](#53-why-a-second-entrypoint-is-expensive-and-a-subcommand-is-free)).
 - **Hang it off the Go `vantage` binary.** Rejected on
-  [`agent-cli.md`](agent-cli.md) **R3**, and it has no PyPI presence anyway.
+  [`agent-cli.md`](../reference/agent-cli.md#why-its-this-way) **R3**, and it has no PyPI presence anyway.
 - **Embed the style guide in the generated artifact.** Rejected on **P5**. This
   is the copy that already drifted once.
 - **A schema version or handshake token the agent stamps into the document**, so
@@ -419,9 +421,9 @@ happen automatically next time."*
   state Vantage cannot observe, and it rebuilds the document-as-message-channel
   protocol the directive contract retired.
 - **Have Vantage detect and write agent config directly** — scan for `.claude/`
-  or `AGENTS.md` on server start. Rejected: [`agent-cli.md`](agent-cli.md) [§7](agent-cli.md#7-non-goals--what-this-does-not-license),
+  or `AGENTS.md` on server start. Rejected: [`agent-cli.md` §10](../reference/agent-cli.md#10-non-goals),
   and it needs Vantage running to help an agent, against the spirit of **P1**.
-- **An MCP server.** Rejected in [`agent-cli.md`](agent-cli.md) [§11](agent-cli.md#11-alternatives-considered) and nothing
+- **An MCP server.** Rejected in [`agent-cli.md` §10](../reference/agent-cli.md#10-non-goals) and nothing
   here changes it.
 
 ## Decision Ledger
@@ -491,8 +493,8 @@ Settled questions move to the [Decision Ledger](#decision-ledger) above.
    _Leaning:_ register as-is. `check` is the load-bearing command; a marginally
    narrow name costs less than a rename across three surfaces plus a squatted
    PyPI project. The owner action is a repeat, not a first: [§5.1](#51-where-the-packaging-actually-stands) shows it was
-   done once for `vantage-md`. Downstream of [`OQ-P2`](pypi-distribution.md#decision-ledger) in
-   [`pypi-distribution.md`](pypi-distribution.md), which decides whether a second
+   done once for `vantage-md`. Downstream of [`OQ-P2`](../reference/pypi-distribution.md#why-its-this-way) in
+   [`pypi-distribution.md`](../reference/pypi-distribution.md), which decides whether a second
    name is needed at all.
 
    **Answer:**
@@ -513,7 +515,7 @@ Settled questions move to the [Decision Ledger](#decision-ledger) above.
    > _(empty — fill in when decided)_
 
 6. 🔒 **OQ-B7: One PyPI distribution for both entry points, or two? — MOVED.**
-   This is now [`OQ-P2`](pypi-distribution.md#decision-ledger) in [`pypi-distribution.md`](pypi-distribution.md), which
+   This is now [`OQ-P2`](../reference/pypi-distribution.md#why-its-this-way) in [`pypi-distribution.md`](../reference/pypi-distribution.md), which
    owns the packaging ground and can price it against the server's wheel path
    rather than in the abstract. The ID stays here because commits and [§5.1](#51-where-the-packaging-actually-stands) cite
    it; the deliberation, the options, and the leaning (its own project) live
@@ -521,4 +523,4 @@ Settled questions move to the [Decision Ledger](#decision-ledger) above.
 
    **Answer:**
 
-   > _(see [`OQ-P2`](pypi-distribution.md#decision-ledger) in [`pypi-distribution.md`](pypi-distribution.md))_
+   > _(see [`OQ-P2`](../reference/pypi-distribution.md#why-its-this-way) in [`pypi-distribution.md`](../reference/pypi-distribution.md))_

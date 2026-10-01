@@ -186,7 +186,8 @@ const serviceStartWait = 3 * time.Second
 // installServiceWithSourceDirs adds dirs to the user config's source_dirs,
 // then writes the service definition and starts it — restarting it when it is
 // already running, since the daemon reads source_dirs only at startup. It
-// prints what it changed and what it ran.
+// prints what it changed and what it ran. Architecture and invariants:
+// docs/reference/serve-clones-directory.md §6.
 func installServiceWithSourceDirs(out io.Writer, in serviceInstall, dirs []string) error {
 	// The candidate is checked before it replaces anything, so a config the
 	// daemon would refuse is never left behind.

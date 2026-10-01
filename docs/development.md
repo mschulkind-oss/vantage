@@ -31,7 +31,7 @@ internal/             Backend packages (not importable outside the module)
   ignore/             .gitignore-style exclusion matching
 web/                  Go embed of the built frontend
   embed.go            //go:embed all:dist
-  dist/               Built SPA bundle (produced by bundle-frontend)
+  dist/               Built SPA bundle (ignored; produced by just web-sync)
 frontend/             React frontend (Vite + TypeScript)
   src/components/     UI components
   src/stores/         Zustand state management (repo, git, review)

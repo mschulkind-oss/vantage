@@ -923,7 +923,7 @@ describe("useRepoStore", () => {
   });
 
   // The loose project beside a directory of clones is listed first in both
-  // sort orders (docs/design/serve-clones-directory.md §3).
+  // sort orders (docs/reference/serve-clones-directory.md §4).
   describe("sortedRepos", () => {
     const repos = [
       { name: "beta", last_activity: "2026-09-02T00:00:00Z" },
