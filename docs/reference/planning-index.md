@@ -813,10 +813,11 @@ The exact sizes are in [Current values](#current-values).
   so a second Next during that wait asks for the page after the one asked for.
 - **The URL carries the pages**, `/.vantage/planning?needs-you=3&waiting=2`,
   1-based, with page 1 left out, and the chosen roadmap as `roadmap=` when there
-  is a choice. A flip replaces the history entry, so Back from Open document
-  returns to the same pages and scroll position, and Back from the planning page
-  leaves it rather than stepping back through pages. A replace navigation gets a
-  new `location.key`, so a flip carries the saved scroll position over.
+  is a choice. A flip replaces the history entry, so Back from a document the
+  page opened in this tab returns to the same pages and scroll position, and
+  Back from the planning page leaves it rather than stepping back through pages.
+  A replace navigation gets a new `location.key`, so a flip carries the saved
+  scroll position over.
 - **Out of range:** a page past the end is clamped to the last one, a malformed
   value reads as 1, and either rewrites the URL in place.
 - **A flip** keeps the current page on screen until the next page's inputs are
@@ -905,7 +906,10 @@ Each question appears as a card:
   lines that the reader tabs to unfolds the card, and nothing scrolls the folded
   block itself, so a folded card always opens on the start of its question. Paper
   prints every card unfolded, with no fade and no controls.
-- **Its document,** by name, with that document's badge.
+- **Its document,** by name, with that document's badge. The name opens the
+  document in this tab, at its top, and saves the page's scroll position first
+  (the card's `onOpenHere`), so **Back** returns to the same pages at the same
+  scroll.
 - **Its controls, which follow its state.** An open question offers **Take this
   leaning** (only when an `oq` declared it and states a leaning), **Answer…** and
   **Open document**. A ✅
@@ -949,12 +953,19 @@ the reader's own action, so the page may grow. Show question goes away with the
 preview, so the focus it had moves to the card; while the block loads, the button
 is inert rather than disabled.
 
-**Open document lands at the top of the document**, not at the question. A
-question that cannot be answered from its own card usually needs the wider
-document, and no anchor can point at "the context"; from the top, the contents
-column lists the question one click away. Opening a document neither sets nor
-clears its persisted review mode, and **Back** returns to the planning page at its
-previous scroll position.
+**Open document opens the document in a new tab, at its top**, not at the
+question. A new tab, because its icon, lucide's `ExternalLink`, says the link
+opens elsewhere, and that is what a reader expects of it: it is a link with
+`target="_blank"` and `rel="noopener noreferrer"`, whose accessible name adds a
+visually hidden *(opens in a new tab)*. The planning page stays where it is in
+its own tab, so Open document saves nothing on the way out; the document's name
+above the question is the way to open it in this tab, with Back to return.
+`AppLink` leaves a link with any `target` but `_self` to the browser, so a click
+never navigates this tab as well. At the top, because a question that cannot be
+answered from its own card usually needs the wider document, and no anchor can
+point at "the context"; from the top, the contents column lists the question one
+click away. Opening a document either way neither sets nor clears its persisted
+review mode.
 
 > [!WARNING]
 > **A card's DOM holds its block's other questions.** A card renders the whole
@@ -2443,6 +2454,7 @@ git.
 | Plan Q19 | The planning module is internal to `vantage-md`; `FrontmatterDisplay`'s optional `linkIds` is the one public addition (P4) | 2026-09-28 |
 | Plan Q20 | The degenerate cases: a header that does not parse makes its file unreadable; a non-string or empty `stage` and a non-string or multi-line `next` are ignored; a single `depends-on` path is a one-entry list and a non-string entry is dropped; stage matching is exact and case-sensitive; an empty stages table is none; a `depends-on` target outside the repository, or whose id appears nowhere in it, is a finding; a skipped or unreadable roadmap does not route; an empty document badge is not drawn; `next` links only an id a question carries ([§3.4](#34-the-header-of-record-stage-next-depends-on)) | 2026-09-28 |
 | — | **Open document** lands at the top of the document, not at the question ([§6.6](#66-question-cards)) | 2026-09-28 |
+| — | **Open document** opens a new tab, as its `ExternalLink` icon says, and the planning page stays where it is; the document's name above the question opens it in this tab, with Back to the same pages and scroll. A plain click on Open document took this tab, which a reader did not expect of that icon ([§6.6](#66-question-cards)) | 2026-10-01 |
 | — | No npm dependency for the scan cache. It sits behind a storage interface; unit tests run it over an in-memory implementation written in this repository, and the Chromium end-to-end tests over real IndexedDB. Do not add `fake-indexeddb`, `idb` or any other package for it ([§11](#11-the-scan-cache)) | 2026-09-29 |
 | — | The file name wins: a tree badge takes no width from a file name, is drawn whole or not at all, and is a compact dot and count whose words are its tooltip and accessible name. It replaced a full status chip that cut long names to their first letter ([§7.2](#72-the-file-trees-badge)) | 2026-09-28 |
 | — | Referenced by is one collapsed line that says whether the roadmap routes the document and how many documents link to it, and always counts the open questions no roadmap routes; it replaced an always-open list that pushed a heavily cited document's body a screen down ([§7.1](#71-referenced-by)) | 2026-09-29 |

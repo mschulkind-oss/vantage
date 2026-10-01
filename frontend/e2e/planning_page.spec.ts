@@ -27,6 +27,10 @@ test.describe("the planning page", () => {
   // The pane, which is what scrolls in the app shell.
   const pane = (page: Page) => page.locator("[data-content-scroll]");
   const paneTop = (page: Page) => pane(page).evaluate((el) => el.scrollTop);
+  // The document's name at the top of a card, which opens the document in
+  // this tab; Open document opens a new one.
+  const nameLink = (page: Page, title: string, path: string) =>
+    card(page, title).getByRole("link", { name: path, exact: true });
 
   test("loads by its URL, listing the fixture's unrouted question under Not on a roadmap", async ({
     page,
@@ -92,11 +96,13 @@ test.describe("the planning page", () => {
     expect(builds).toHaveLength(1);
   });
 
-  // The usual way onto the page is g p from a document. The viewer the card's
-  // link mounts used to reload the document the store still named on its
-  // socket's first connection, which superseded the route's load: the URL was
-  // right and the content was still the roadmap's.
-  test("Open document after g p from a document shows the card's document", async ({
+  // The usual way onto the page is g p from a document. The viewer a card's
+  // link mounts in this tab, its document's name, used to reload the document
+  // the store still named on its socket's first connection, which superseded
+  // the route's load: the URL was right and the content was still the
+  // roadmap's. It was found through Open document, which opened its document
+  // in this tab until 2026-10-01.
+  test("a card's document name after g p from a document shows the card's document", async ({
     page,
   }) => {
     const title = page.locator("[data-content-scroll] .prose h1");
@@ -114,9 +120,11 @@ test.describe("the planning page", () => {
         await route.continue();
       },
     );
-    await card(page, "OQ-U1: Is anyone tracking this?")
-      .getByRole("link", { name: "Open document" })
-      .click();
+    await nameLink(
+      page,
+      "OQ-U1: Is anyone tracking this?",
+      "plans/unrouted.md",
+    ).click();
     await expect(page).toHaveURL(/\/plans\/unrouted\.md$/);
     // Long enough for the held document, and a reload the socket triggered,
     // to land.
@@ -124,7 +132,7 @@ test.describe("the planning page", () => {
     await expect(title).toContainText("A plan the roadmap does not mention");
   });
 
-  test("takes a leaning that Open document shows as the in-page button's own", async ({
+  test("takes a leaning that its document, opened from the card, shows as the in-page button's own", async ({
     page,
   }) => {
     await page.goto("/.vantage/planning");
@@ -138,7 +146,9 @@ test.describe("the planning page", () => {
     await expect(comments).toContainText("waiting on the agent");
     await expect(page.getByTestId("pending-answers")).toHaveText("1");
 
-    await unrouted.getByRole("link", { name: "Open document" }).click();
+    await unrouted
+      .getByRole("link", { name: "plans/unrouted.md", exact: true })
+      .click();
     await expect(page).toHaveURL(/\/plans\/unrouted\.md$/);
     const prose = page.locator("[data-content-scroll] .prose");
     // The document opens in review mode by the existing rule for a document
@@ -158,7 +168,7 @@ test.describe("the planning page", () => {
     await expect(prose.locator(".review-oq-take")).toHaveCount(0);
   });
 
-  test("Open document lands at the top, and Back returns to the same scroll position", async ({
+  test("a card's document name lands at the top, and Back returns to the same scroll position", async ({
     page,
   }) => {
     // Short enough that both the page and the document scroll.
@@ -181,9 +191,9 @@ test.describe("the planning page", () => {
 
     // Followed where it stands: a real click would scroll the link into view
     // first, and the reader would then be returning somewhere else.
-    await card(page, "OQ-E2: How soon?")
-      .getByRole("link", { name: "Open document" })
-      .dispatchEvent("click");
+    await nameLink(page, "OQ-E2: How soon?", "plans/design.md").dispatchEvent(
+      "click",
+    );
     await expect(page).toHaveURL(/\/plans\/design\.md$/);
     await expect(
       page.getByRole("heading", { name: "The fixture design" }),
@@ -198,6 +208,50 @@ test.describe("the planning page", () => {
       last.getByRole("list", { name: "Comments on this question" }),
     ).toBeVisible();
     await expect.poll(() => paneTop(page)).toBeCloseTo(before, 0);
+  });
+
+  // Its icon is the one for a link that opens elsewhere, and a reader who
+  // clicked it expected a new tab (user direction, 2026-10-01).
+  test("Open document opens its document in a new tab, at its top, and leaves the page as it was", async ({
+    page,
+    context,
+  }) => {
+    // Short enough that the page scrolls.
+    await page.setViewportSize({ width: 1280, height: 360 });
+    await page.goto("/.vantage/planning");
+    const open = card(page, "OQ-E2: How soon?").getByRole("link", {
+      name: "Open document (opens in a new tab)",
+      exact: true,
+    });
+    // Brought into view first, so that the click itself scrolls nothing.
+    await open.scrollIntoViewIfNeeded();
+    await page.waitForTimeout(100);
+    const before = await paneTop(page);
+    const at = page.url();
+
+    const opened = context.waitForEvent("page");
+    await open.click();
+    const tab = await opened;
+    await expect(
+      tab.getByRole("heading", { name: "The fixture design" }),
+    ).toBeVisible();
+    // The top of the document, not the question: no fragment, no scroll.
+    const url = new URL(tab.url());
+    expect(url.pathname).toBe("/plans/design.md");
+    expect(url.hash).toBe("");
+    await expect
+      .poll(() =>
+        tab.locator("[data-content-scroll]").evaluate((el) => el.scrollTop),
+      )
+      .toBe(0);
+    // With no handle on the planning page's tab.
+    expect(await tab.evaluate(() => window.opener)).toBeNull();
+
+    // And the planning page is where it was, in its own tab.
+    expect(page.url()).toBe(at);
+    await expect(card(page, "OQ-E2: How soon?")).toBeVisible();
+    expect(await paneTop(page)).toBe(before);
+    await tab.close();
   });
 
   /**
@@ -295,13 +349,14 @@ test.describe("the planning page", () => {
     await page.waitForTimeout(300);
     expect(reads).toEqual(["POST", "POST"]);
 
-    // The reader scrolls, then opens a page-2 card's document where it stands.
+    // The reader scrolls, then opens a page-2 card's document where it stands,
+    // in this tab, by its name.
     await pane(page).evaluate((el) => el.scrollTo(0, 200));
     await expect.poll(() => paneTop(page)).toBe(200);
     // The page saves as the reader scrolls, one frame behind.
     await page.waitForTimeout(100);
     await last
-      .getByRole("link", { name: "Open document" })
+      .getByRole("link", { name: "plans/paged.md", exact: true })
       .dispatchEvent("click");
     await expect(page).toHaveURL(/\/plans\/paged\.md$/);
     await expect(

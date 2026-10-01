@@ -74,6 +74,40 @@ describe("AppLink", () => {
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 
+  // A link meant for another tab is the browser's to follow. Navigating this
+  // tab as well would take the reader's page away as the new tab opens.
+  it("leaves a target=_blank link to the browser, and navigates nothing here", () => {
+    const onBefore = vi.fn();
+    renderWithRouter(
+      <AppLink
+        to="/docs/readme.md"
+        target="_blank"
+        rel="noopener noreferrer"
+        onBeforeNavigate={onBefore}
+      >
+        Link
+      </AppLink>,
+    );
+    const link = screen.getByText("Link");
+    expect(link).toHaveAttribute("href", "/docs/readme.md");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    // Not prevented: the browser opens the new tab.
+    expect(fireEvent.click(link)).toBe(true);
+    expect(mockNavigate).not.toHaveBeenCalled();
+    expect(onBefore).not.toHaveBeenCalled();
+  });
+
+  it("navigates this tab by route for target=_self, as with no target", () => {
+    renderWithRouter(
+      <AppLink to="/docs/readme.md" target="_self">
+        Link
+      </AppLink>,
+    );
+    expect(fireEvent.click(screen.getByText("Link"))).toBe(false);
+    expect(mockNavigate).toHaveBeenCalledWith("/docs/readme.md");
+  });
+
   it("calls onBeforeNavigate before navigating", () => {
     const onBefore = vi.fn();
     renderWithRouter(

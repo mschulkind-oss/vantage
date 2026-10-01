@@ -1510,7 +1510,7 @@ export const PlanningPage: React.FC = () => {
         comments={reviews.byPath[question.path]}
         commentsLate={shown?.reviewed.has(question.path) !== true}
         href={buildPath(question.path)}
-        onOpenDocument={saveScroll}
+        onOpenHere={saveScroll}
         onFile={fileComment}
         cardKey={key}
         onScoped={reportScoped}

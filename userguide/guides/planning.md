@@ -421,7 +421,9 @@ rests on a section's name, and `vantage-check index` prints it under each
 heading. A section that is an agent's work has **Copy agent request**
 ([below](#agent-requests)).
 
-Clicking a document's name opens it, as **Open document** does
+Clicking a document's name opens it in this tab, and **Back** returns to the
+planning page with the same [pages](#pages), at the same scroll position. A
+card's **Open document** opens it in a new tab instead
 ([below](#a-questions-card)).
 
 Two cases change the sections:
@@ -510,10 +512,11 @@ quickly for a thousand documents as for ten:
 - **The address carries the pages,** as in
   `/.vantage/planning?needs-you=3&waiting=2`, with page 1 left out. A flip
   replaces the history entry rather than adding one, so Back from a document
-  you opened returns to the same pages at the same scroll position, and Back
-  from the planning page leaves it rather than stepping back through its
-  pages. A page past a section's end shows its last page, a value that is not
-  a page number shows page 1, and either way the address is corrected in place.
+  you opened in this tab returns to the same pages at the same scroll
+  position, and Back from the planning page leaves it rather than stepping
+  back through its pages. A page past a section's end shows its last page, a
+  value that is not a page number shows page 1, and either way the address is
+  corrected in place.
 
 Paging decides only what is drawn. Every question is still counted in the
 section bar and reachable through its section's pager, and
@@ -549,7 +552,8 @@ stays above the section bar.
 ### A question's card
 
 A card shows the question as its document renders it, laid out to be read at
-a glance. Above it, the card names the document, with that document's badge.
+a glance. Above it, the card names the document, with that document's badge;
+clicking the name opens the document in this tab.
 
 - **The question's bold title is the card's headline,** after its status
   emoji, and the rest of its list item, or of its own block when it is not in
@@ -599,12 +603,14 @@ What the card offers follows the question's state:
   where review mode offers Undo until someone replies.
 - **Answer…** opens the comment box, and what you type is filed on the
   question the same way.
-- **Open document** opens the question's document at its top, not at the
-  question: a question you could not answer from its card usually needs the
-  rest of the document, and its table of contents lists the question one click
-  away. Opening it leaves the document's review mode as it was. **Back**
-  returns to the planning page with the same [pages](#pages), at the same
-  scroll position.
+- **Open document** opens the question's document in a new tab, as its icon
+  says, and the planning page stays as it was in its own. It opens at the
+  document's top, not at the question: a question you could not answer from
+  its card usually needs the rest of the document, and its table of contents
+  lists the question one click away. To open the document in this tab instead,
+  click its name above the question; **Back** then returns to the planning
+  page with the same [pages](#pages), at the same scroll position. Either way,
+  opening it leaves the document's review mode as it was.
 
 A comment filed from a card is filed in the question's own document, exactly as
 if you had filed it there: that document's Review panel lists it, its own Copy
