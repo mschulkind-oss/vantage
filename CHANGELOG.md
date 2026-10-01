@@ -156,6 +156,8 @@ checker to take these when you choose; see
   [Page URLs](userguide/guides/static-sites.md#page-urls).
 - `vantage build --frontend-dist DIR` builds the site with the frontend in
   `DIR`. It used to ignore the option.
+- `r` on the project list opens every project's recent files. It used to open
+  an empty list, because no project was chosen.
 
 ### Contributors
 

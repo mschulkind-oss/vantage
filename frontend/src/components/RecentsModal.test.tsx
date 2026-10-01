@@ -4,6 +4,7 @@ import { RecentsModal } from "./RecentsModal";
 import { BrowserRouter, MemoryRouter, useLocation } from "react-router-dom";
 import axios from "axios";
 import { useAllRecentsStore } from "../stores/useAllRecentsStore";
+import { useRepoStore } from "../stores/useRepoStore";
 
 // Mock stores
 const mockUseGitStore = vi.fn();
@@ -466,6 +467,33 @@ describe("RecentsModal", () => {
         "noopener",
       );
       open.mockRestore();
+    });
+
+    // On the project list no project is chosen, so `r` has no project to
+    // list; it lists every project's rather than nothing.
+    it("lists every project's on the project list, where r has no project", async () => {
+      vi.mocked(useRepoStore).mockReturnValue({
+        isMultiRepo: true,
+        currentRepo: null,
+      });
+      try {
+        render(
+          <MemoryRouter initialEntries={["/"]}>
+            <RecentsModal isOpen={true} onClose={mockOnClose} scope="project" />
+          </MemoryRouter>,
+        );
+        await screen.findByText("plan.md");
+        expect(mockedAxios.get).toHaveBeenCalledWith(
+          "/api/recent/all?limit=50",
+        );
+        expect(screen.getByText("All projects")).toBeInTheDocument();
+        expect(defaultStoreState.fetchRecentFiles).not.toHaveBeenCalled();
+      } finally {
+        vi.mocked(useRepoStore).mockReturnValue({
+          isMultiRepo: false,
+          currentRepo: null,
+        });
+      }
     });
 
     // Single-repo mode answers /recent/all with repo "", which is the root.
