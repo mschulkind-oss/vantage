@@ -101,6 +101,7 @@ import {
   type CardFolds,
   type ScopedReport,
 } from "../components/PlanningQuestionCard";
+import { RESERVED_ICON_SIZE, ReservedLabel } from "../components/ReservedLabel";
 import { useWebSocket } from "../hooks/useWebSocket";
 import { focusIsIdle, useShellPage } from "../hooks/useShellPage";
 import { useHeaderFit } from "../hooks/useHeaderFit";
@@ -473,15 +474,18 @@ const CopyRequestButton: React.FC<{
           className,
         )}
       >
-        {copied ? (
-          <Check size={14} aria-hidden="true" />
-        ) : (
-          <ClipboardCopy size={14} aria-hidden="true" />
-        )}
         {/* As wide as its label, so Copied moves nothing. */}
-        <span className="hdr-reserve" data-reserve={label}>
-          {copied ? "Copied" : label}
-        </span>
+        <ReservedLabel
+          icon={
+            copied ? (
+              <Check size={RESERVED_ICON_SIZE} aria-hidden="true" />
+            ) : (
+              <ClipboardCopy size={RESERVED_ICON_SIZE} aria-hidden="true" />
+            )
+          }
+          label={copied ? "Copied" : label}
+          reserve={[label, "Copied"]}
+        />
       </button>
       <span className="sr-only" aria-live="polite" aria-atomic="true">
         {copied && done}
@@ -1647,30 +1651,36 @@ export const PlanningPage: React.FC = () => {
             }
             className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
           >
-            {copied ? (
-              <Check size={14} aria-hidden="true" />
-            ) : reviewsFailed ? (
-              <AlertCircle
-                size={14}
-                aria-hidden="true"
-                data-testid="reviews-failed"
-                className="text-amber-600 dark:text-amber-400"
-              />
-            ) : (
-              <ClipboardCopy size={14} aria-hidden="true" />
-            )}
-            {/* As wide as its longer label, so Copied moves nothing. */}
-            <span className="hdr-label hdr-reserve" data-reserve="Copy answers">
-              {copied ? "Copied" : "Copy answers"}
-            </span>
-            {/* Room for four digits, so the count arriving moves nothing. */}
-            <span
-              data-testid="pending-answers"
-              className="inline-block text-right tabular-nums text-slate-500 dark:text-slate-400"
-              style={{ minWidth: `${planningLimits.pendingCountDigits}ch` }}
-            >
-              {countKnown ? pendingCount : "–"}
-            </span>
+            {/* As wide as its longer label, so Copied moves nothing, and the
+                count inside that room, so it centers with the icon and the
+                label: room for four digits, so the count arriving moves
+                nothing either. */}
+            <ReservedLabel
+              icon={
+                copied ? (
+                  <Check size={RESERVED_ICON_SIZE} aria-hidden="true" />
+                ) : reviewsFailed ? (
+                  <AlertCircle
+                    size={RESERVED_ICON_SIZE}
+                    aria-hidden="true"
+                    data-testid="reviews-failed"
+                    className="text-amber-600 dark:text-amber-400"
+                  />
+                ) : (
+                  <ClipboardCopy size={RESERVED_ICON_SIZE} aria-hidden="true" />
+                )
+              }
+              label={copied ? "Copied" : "Copy answers"}
+              reserve={["Copy answers", "Copied"]}
+              labelClassName="hdr-label"
+              trailing={{
+                text: countKnown ? String(pendingCount) : "–",
+                testId: "pending-answers",
+                className:
+                  "inline-block text-right tabular-nums text-slate-500 dark:text-slate-400",
+                style: { minWidth: `${planningLimits.pendingCountDigits}ch` },
+              }}
+            />
           </button>
         </HeaderOverflow>
       </div>
