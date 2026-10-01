@@ -93,6 +93,30 @@ describe("FileTree", () => {
     expect(mockNavigate).toHaveBeenCalledWith("/file1.txt");
   });
 
+  // What "Copy link" and a middle-click read. In a static export the route is
+  // the URL's fragment, so a path-style href names a file the host lacks.
+  it("links each entry by its route: a path live, the hash route in an export", () => {
+    const { unmount } = renderWithRouter(<FileTree nodes={mockNodes} />);
+    expect(screen.getByText("file1.txt").closest("a")).toHaveAttribute(
+      "href",
+      "/file1.txt",
+    );
+    unmount();
+
+    window.__VANTAGE_STATIC__ = true;
+    try {
+      renderWithRouter(<FileTree nodes={mockNodes} />);
+      expect(screen.getByText("file1.txt").closest("a")).toHaveAttribute(
+        "href",
+        "#/file1.txt",
+      );
+      fireEvent.click(screen.getByText("file1.txt"));
+      expect(mockNavigate).toHaveBeenCalledWith("/file1.txt");
+    } finally {
+      delete window.__VANTAGE_STATIC__;
+    }
+  });
+
   it("toggles directory expansion on arrow click", async () => {
     renderWithRouter(<FileTree nodes={mockNodes} />);
 

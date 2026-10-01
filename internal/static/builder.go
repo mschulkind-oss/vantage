@@ -68,14 +68,20 @@ type Config struct {
 	Concurrency int
 	// Logger receives progress and per-file warnings. Nil uses slog.Default().
 	Logger *slog.Logger
+	// FrontendDist is a directory holding a built frontend — a Vite build's
+	// output, index.html at its top — copied in place of the bundle embedded
+	// in the binary. Empty uses the embedded bundle. It is how a site is built
+	// from frontend sources newer than the binary, which is what the
+	// static-export browser tests do (frontend/e2e/static_export.spec.ts).
+	FrontendDist string
 }
 
 // Build generates the static site described by cfg. It copies the embedded
-// frontend, pre-renders every API JSON file via the shared api.Build* builders,
-// patches index.html into static mode, and writes the SPA host config
-// (_headers, 404.html). Per-file git/content failures are logged
-// and skipped rather than aborting the build; a failure to copy the frontend or
-// write a top-level file is returned.
+// frontend (or cfg.FrontendDist), pre-renders every API JSON file via the
+// shared api.Build* builders, patches index.html into static mode, and writes
+// the SPA host config (_headers, 404.html). Per-file git/content failures are
+// logged and skipped rather than aborting the build; a failure to copy the
+// frontend or write a top-level file is returned.
 func Build(cfg Config) error {
 	logger := cfg.Logger
 	if logger == nil {
@@ -101,14 +107,22 @@ func Build(cfg Config) error {
 		repoName = filepath.Base(src)
 	}
 
+	// Before anything is written: a frontend that is not there fails the
+	// build without leaving a half-made site behind.
+	dist, err := frontendBundle(cfg.FrontendDist)
+	if err != nil {
+		return err
+	}
+
 	logger.Info("static: building site", "source", src, "output", out)
 
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return fmt.Errorf("static: create output dir: %w", err)
 	}
 
-	// 1. Copy the embedded frontend bundle.
-	if err := copyFrontend(out); err != nil {
+	// 1. Copy the frontend bundle: the embedded one, or the directory named
+	//    by FrontendDist.
+	if err := copyFrontend(out, dist); err != nil {
 		return fmt.Errorf("static: copy frontend: %w", err)
 	}
 
@@ -143,10 +157,27 @@ func Build(cfg Config) error {
 	return nil
 }
 
-// copyFrontend writes every file in the embedded web.Dist() bundle into out,
-// preserving the directory layout.
-func copyFrontend(out string) error {
-	dist := web.Dist()
+// frontendBundle returns the frontend to copy into the site: the bundle
+// embedded in the binary, or the directory dir when it is set. A directory
+// without an index.html is refused, because the site would build and then
+// serve nothing at all.
+func frontendBundle(dir string) (fs.FS, error) {
+	if dir == "" {
+		return web.Dist(), nil
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, fmt.Errorf("static: resolve frontend dist: %w", err)
+	}
+	if _, err := os.Stat(filepath.Join(abs, "index.html")); err != nil {
+		return nil, fmt.Errorf("static: frontend dist %s has no index.html: %w", abs, err)
+	}
+	return os.DirFS(abs), nil
+}
+
+// copyFrontend writes every file in the dist bundle (see frontendBundle) into
+// out, preserving the directory layout.
+func copyFrontend(out string, dist fs.FS) error {
 	return fs.WalkDir(dist, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -157,7 +188,7 @@ func copyFrontend(out string) error {
 		}
 		data, err := fs.ReadFile(dist, p)
 		if err != nil {
-			return fmt.Errorf("read embedded %s: %w", p, err)
+			return fmt.Errorf("read frontend %s: %w", p, err)
 		}
 		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 			return err

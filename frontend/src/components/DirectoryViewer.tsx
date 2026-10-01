@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { Folder, File } from "lucide-react";
 import { FileNode, FileContent } from "../types";
 import { RelativeTime } from "./RelativeTime";
@@ -6,6 +7,7 @@ import { MarkdownViewer } from "./MarkdownViewer";
 import axios from "axios";
 import { useRepoStore } from "../stores/useRepoStore";
 import { AppLink } from "./AppLink";
+import { scrollToAnchor } from "../lib/anchorScroll";
 
 interface DirectoryViewerProps {
   nodes: FileNode[];
@@ -61,6 +63,27 @@ export const DirectoryViewer: React.FC<DirectoryViewerProps> = ({ nodes }) => {
       isMounted = false;
     };
   }, [nodes, getApiBase]);
+
+  // A fragment on a folder's URL is a heading in the README shown beneath its
+  // listing, as on GitHub, where github.com/owner/repo#section is a section of
+  // the README on the repository's front page. So a link pasted from there
+  // lands where it pointed, on the root folder of a live server or a static
+  // export alike (an export's bare `#section` arrives here as the root route's
+  // fragment, lib/staticMode.ts). Once per README and fragment: a live reload
+  // of the README leaves the reader where they have scrolled to since.
+  const { hash } = useLocation();
+  const scrolledTo = useRef("");
+  useEffect(() => {
+    const fragment = hash.slice(1);
+    if (fragment === "") scrolledTo.current = "";
+    if (!readme || fragment === "") return;
+    const key = `${readme.path}#${fragment}`;
+    if (scrolledTo.current === key) return;
+    scrolledTo.current = key;
+    // One frame, so the README's markdown has rendered — as the document
+    // view's own arrival at `other.md#slug` waits.
+    requestAnimationFrame(() => scrollToAnchor(fragment));
+  }, [readme, hash]);
 
   return (
     <div className="space-y-6">

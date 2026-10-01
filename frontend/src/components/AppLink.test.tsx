@@ -28,6 +28,22 @@ describe("AppLink", () => {
     expect(link).toHaveAttribute("href", "/docs/readme.md");
   });
 
+  // In a static export the route is the URL's fragment: a path-style href is
+  // a file the host does not have, so "Copy link" and a middle-click opened
+  // the export's front page, or nothing at all, instead of the document.
+  it("writes the hash route in a static export, and navigates by route", () => {
+    window.__VANTAGE_STATIC__ = true;
+    try {
+      renderWithRouter(<AppLink to="/docs/readme.md">Link</AppLink>);
+      const link = screen.getByText("Link");
+      expect(link).toHaveAttribute("href", "#/docs/readme.md");
+      fireEvent.click(link);
+      expect(mockNavigate).toHaveBeenCalledWith("/docs/readme.md");
+    } finally {
+      delete window.__VANTAGE_STATIC__;
+    }
+  });
+
   it("uses SPA navigation on normal click", () => {
     renderWithRouter(<AppLink to="/docs/readme.md">Link</AppLink>);
     fireEvent.click(screen.getByText("Link"));

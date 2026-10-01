@@ -312,7 +312,27 @@ embedded SPA is copied alongside, and `index.html` is patched into static mode
 The per-file JSON is produced by the same `api.Build*` response builders the
 live server uses, so the live and static payloads cannot drift. The output path
 scheme is the producer side of a contract with the frontend's static-mode axios
-interceptor (`frontend/src/lib/staticMode.ts`).
+interceptor (`frontend/src/lib/staticMode.ts`). `--frontend-dist` copies a
+built frontend from a directory in place of the embedded one, which is how the
+static-export browser tests build a site from this tree's sources.
+
+An export has no server to route paths, so it runs under HashRouter: the page's
+route is the URL's fragment, and a heading's fragment rides after it, as in
+`#/guides/setup.md#install`. Three rules in `staticMode.ts` keep the site's
+URLs working ([user guide](../../userguide/guides/static-sites.md#page-urls)):
+
+- Every in-app `href` is written as the router reads it (`routeHref`,
+  `fragmentHref`), because **Copy link** and a middle-click read the attribute,
+  not the click handler. A bare `#install` would replace the route, and a
+  path-style `/guides/setup.md` names a file the host does not have.
+- A bare fragment arriving in the URL is a heading in the README on the front
+  page, as `github.com/owner/repo#install` is on GitHub. It is rewritten to the
+  root route's fragment (`#/#install`) before the router reads it, and the
+  directory view scrolls its README to it.
+- An API request a host answers with a page, as Cloudflare's
+  `not_found_handling = "single-page-application"` does with index.html and a
+  200, fails as the 404 it stands for, so a route that matches no document shows
+  the error view rather than a crash.
 
 ---
 

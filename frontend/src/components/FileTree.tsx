@@ -16,6 +16,7 @@ import { shouldHandleInternalNavigation } from "../lib/navigation";
 import { useEnsurePlanningIndex } from "../stores/usePlanningStore";
 import { usePlanningTreeBadge } from "../hooks/usePlanningTreeBadge";
 import { PlanningTreeBadge } from "./PlanningTreeBadge";
+import { routeHref } from "../lib/staticMode";
 
 interface FileTreeProps {
   nodes: FileNode[];
@@ -145,7 +146,9 @@ const FileTreeNodeInner: React.FC<FileTreeNodeProps> = ({ node }) => {
   const clearHoverOverlay = useCallback(() => setHoverOverlay(null), []);
 
   const isActive = currentPath === node.path;
-  const nodeHref = buildPath(node.path);
+  // What "Copy link" and a middle-click read, so in a static export it is the
+  // hash route a click navigates to (`routeHref`).
+  const nodeHref = routeHref(buildPath(node.path));
   const isDimmed = node.is_dir && node.has_markdown === false;
   const gitStatus = node.git_status;
   const hasGitChange =

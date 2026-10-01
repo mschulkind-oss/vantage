@@ -1195,6 +1195,31 @@ describe("ViewerPage", () => {
       expect(screen.queryByText(/loads it automatically/i)).toBeNull();
       useConnectionStore.setState({ connected: true, disconnectedAt: null });
     });
+
+    // A static export has no socket, and its connection store never leaves
+    // its starting `connected: true` — so the promise was made on every
+    // not-found page of every export, where nothing ever comes back by itself.
+    it("promises nothing in a static export, which has no socket", () => {
+      // An export is a single repository, at a route no document has.
+      installRepoStore({
+        repos: [],
+        isMultiRepo: false,
+        currentRepo: null,
+        currentPath: "other-ways-to-get-nix",
+        error: "Failed to load directory",
+      });
+      useConnectionStore.setState({ connected: true });
+      window.__VANTAGE_STATIC__ = true;
+      try {
+        renderPage();
+        expect(
+          screen.getByText("Failed to load directory"),
+        ).toBeInTheDocument();
+        expect(screen.queryByText(/loads it automatically/i)).toBeNull();
+      } finally {
+        delete window.__VANTAGE_STATIC__;
+      }
+    });
   });
 
   describe("review toolbar copy button", () => {

@@ -82,7 +82,7 @@ vantage build [PATH] --output DIR [--name NAME] [--frontend-dist DIR]
 | `PATH`            | `.` (current dir)  | Directory containing Markdown files                    |
 | `--output`, `-o`  | _required_         | Output directory                                       |
 | `--name`, `-n`    | Directory name     | Display name shown in the UI                            |
-| `--frontend-dist` | _(embedded)_       | Override the embedded frontend bundle (currently ignored) |
+| `--frontend-dist` | _(embedded)_       | Use this built frontend (a Vite build's output folder) instead of the one inside the binary |
 
 See [Static Sites](../guides/static-sites.md) for a full guide on this workflow.
 

@@ -1,6 +1,7 @@
 import React, { useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { shouldHandleInternalNavigation } from "../lib/navigation";
+import { routeHref } from "../lib/staticMode";
 
 interface AppLinkProps extends Omit<
   React.AnchorHTMLAttributes<HTMLAnchorElement>,
@@ -47,8 +48,10 @@ export const AppLink: React.FC<AppLinkProps> = ({
     [navigate, to, onBeforeNavigate],
   );
 
+  // The route as the router reads it: in a static export, the hash route, so
+  // that "Copy link" and a middle-click reach what a click does (`routeHref`).
   return (
-    <a href={to} onClick={handleClick} {...props}>
+    <a href={routeHref(to)} onClick={handleClick} {...props}>
       {children}
     </a>
   );

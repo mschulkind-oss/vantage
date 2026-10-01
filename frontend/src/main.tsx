@@ -4,12 +4,20 @@ import { BrowserRouter, HashRouter } from "react-router-dom";
 import "./index.css";
 import App from "./App.tsx";
 import { sourceHash } from "virtual:planning-scanner-id";
-import { initStaticMode, isStaticMode } from "./lib/staticMode";
+import {
+  followBareFragments,
+  initStaticMode,
+  isStaticMode,
+} from "./lib/staticMode";
 import { followColorTheme, initColorTheme } from "./lib/colorTheme";
 import { startPlanningScanner } from "./planningScan/client";
 
 // Initialize static mode interceptor before any API calls
 initStaticMode();
+
+// And, in an export, turn a bare `#heading` URL into one the router can read
+// before it reads it (lib/staticMode.ts, `routeForBareFragment`).
+followBareFragments();
 
 // The planning scan worker starts now, beside the app's first requests, so it
 // is up by the time a surface asks for the planning index

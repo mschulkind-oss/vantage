@@ -251,6 +251,46 @@ func TestInjectStaticModeIdempotent(t *testing.T) {
 	require.Equal(t, 1, strings.Count(string(raw), "window.__VANTAGE_STATIC__"))
 }
 
+// TestBuildCopiesFrontendDist confirms FrontendDist replaces the embedded
+// bundle: the site carries that directory's files, and its index.html is the
+// one patched into static mode. It needs no embedded bundle, which is the
+// point — the static-export browser tests build the frontend from source and
+// hand it over this way.
+func TestBuildCopiesFrontendDist(t *testing.T) {
+	src := t.TempDir()
+	out := t.TempDir()
+	dist := t.TempDir()
+	writeFile(t, src, "README.md", "# Readme\n")
+	writeFile(t, dist, "index.html",
+		`<!doctype html><html><head><script type="module" src="/assets/app-1.js"></script></head><body>from-dist</body></html>`)
+	writeFile(t, dist, "assets/app-1.js", "console.log('from-dist')\n")
+
+	require.NoError(t, Build(Config{Source: src, Output: out, FrontendDist: dist, Logger: testLogger()}))
+
+	raw, err := os.ReadFile(filepath.Join(out, "index.html"))
+	require.NoError(t, err)
+	require.Contains(t, string(raw), "from-dist")
+	require.Contains(t, string(raw), sentinelScript)
+	require.Contains(t, string(raw), `src="./assets/app-1.js"`)
+	asset, err := os.ReadFile(filepath.Join(out, "assets", "app-1.js"))
+	require.NoError(t, err)
+	require.Equal(t, "console.log('from-dist')\n", string(asset))
+}
+
+// TestBuildRefusesFrontendDistWithoutIndex confirms a FrontendDist with no
+// index.html fails the build before anything is written, rather than producing
+// a site that serves nothing.
+func TestBuildRefusesFrontendDistWithoutIndex(t *testing.T) {
+	src := t.TempDir()
+	out := filepath.Join(t.TempDir(), "site")
+	writeFile(t, src, "README.md", "# Readme\n")
+
+	err := Build(Config{Source: src, Output: out, FrontendDist: t.TempDir(), Logger: testLogger()})
+	require.ErrorContains(t, err, "has no index.html")
+	_, statErr := os.Stat(out)
+	require.True(t, os.IsNotExist(statErr), "no output directory is created")
+}
+
 // readJSON decodes the JSON file at path into v.
 func readJSON(t *testing.T, path string, v any) {
 	t.Helper()

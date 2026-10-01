@@ -16,6 +16,7 @@ import { cn } from "../lib/utils";
 import { scrollToAnchor } from "../lib/anchorScroll";
 import { projectFor } from "../lib/cloneLinks";
 import { shouldHandleInternalNavigation } from "../lib/navigation";
+import { fragmentHref, routeHref } from "../lib/staticMode";
 import { readPreference, writePreference } from "../lib/preferences";
 import { useRepoStore } from "../stores/useRepoStore";
 import { useDeltaFlash } from "../hooks/useDeltaFlash";
@@ -296,18 +297,25 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
     [currentPath, contentUrl],
   );
 
-  // Helper to resolve relative link paths to absolute paths
+  // This document's own route, which a link to one of its sections names in
+  // an export (`fragmentHref`).
+  const documentRoute = buildPath(currentPath);
+
+  // The `href` a link renders with: a relative path resolved to the route it
+  // reaches, and both written the way the router reads them (`routeHref`), so
+  // that "Copy link" and a middle-click get the URL a click navigates to.
   const resolveHref = useCallback(
     (href: string | undefined): string => {
       if (!href) return "";
       // An embedded viewer shows a slice of `currentPath` on another page,
       // where the fragment's target is not, so it names the document.
       if (href.startsWith("#") && embedded)
-        return buildPath(currentPath) + href;
+        return routeHref(documentRoute + href);
+      if (href.startsWith("#"))
+        return fragmentHref(documentRoute, href.slice(1));
       if (
         href.startsWith("http") ||
         href.startsWith("mailto:") ||
-        href.startsWith("#") ||
         href.startsWith("/")
       ) {
         return href;
@@ -322,9 +330,11 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       const dir = parts.join("/");
       const cleanHref = pathPart.replace(/^\.\//, "");
       const resolvedPath = dir ? `${dir}/${cleanHref}` : cleanHref;
-      return buildPath(resolvedPath) + (hashPart ? `#${hashPart}` : "");
+      return routeHref(
+        buildPath(resolvedPath) + (hashPart ? `#${hashPart}` : ""),
+      );
     },
-    [currentPath, buildPath, embedded],
+    [currentPath, buildPath, embedded, documentRoute],
   );
 
   // Delta flash: highlight only changed blocks on live updates
@@ -655,13 +665,20 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
         <Tag id={id} className="group relative" {...props}>
           {id && (
             <a
-              href={`#${id}`}
+              // Naming the document in an export, where a bare `#id` would
+              // replace its route (`fragmentHref`).
+              href={fragmentHref(documentRoute, id)}
               className="heading-anchor"
               aria-label="Link to this heading"
               onClick={(e) => {
                 e.preventDefault();
-                // Update URL hash without scrolling
-                window.history.replaceState(null, "", `#${id}`);
+                // Update URL hash without scrolling. The address bar is what
+                // a reader copies, so it gets the same URL as the href.
+                window.history.replaceState(
+                  null,
+                  "",
+                  fragmentHref(documentRoute, id),
+                );
                 // Scroll to the heading, opening the section it sits in if a
                 // `collapsed=true` ancestor is hiding it.
                 scrollToAnchor(id);
@@ -676,7 +693,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
       Component.displayName = Tag.toUpperCase();
       return Component;
     },
-    [],
+    [documentRoute],
   );
 
   // Memoize markdown components to prevent unnecessary re-renders
