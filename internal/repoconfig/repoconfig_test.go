@@ -266,7 +266,8 @@ func TestSharedFixtureIsReadableByThisReader(t *testing.T) {
 	require.NoError(t, err)
 
 	s, err := Parse(data)
-	require.NoError(t, err, "the checker's own sections must not make this file unreadable")
+	require.NoError(t, err, "the checker's own sections, and its target, must not make this file unreadable")
+	require.Contains(t, string(data), "\ntarget = \"0.8\"\n", "the fixture must hold the checker's top-level key")
 	require.Equal(t, []string{"roadmap.md", "docs/design/*.md"}, s.Starred.Promote)
 
 	// [planning] is the table both readers parse, so this half asserts all of
@@ -360,7 +361,6 @@ func TestPlanningFixtureKeepsItsEdgeCases(t *testing.T) {
 		"an empty [planning.stages] table is no stages",
 		"an explicitly empty include is kept, not defaulted",
 		"stages that are not a table",
-		"an unknown key",
 		"a role outside the four",
 		"a limit of zero",
 		"no [planning] table",
@@ -375,6 +375,126 @@ func TestPlanningFixtureKeepsItsEdgeCases(t *testing.T) {
 	} {
 		require.True(t, names[want], "planning-config.json lost the case %q", want)
 	}
+}
+
+// versionSkewCase is one row of testdata/version-skew-config.json: how each
+// reader answers a file written for another release. Only `server`, and
+// `planning` where the server accepts the file, are this reader's half.
+type versionSkewCase struct {
+	Name     string `json:"name"`
+	TOML     string `json:"toml"`
+	Server   string `json:"server"`
+	Checker  string `json:"checker"`
+	Planning *struct {
+		Roadmaps      json.RawMessage   `json:"roadmaps"`
+		Include       []string          `json:"include"`
+		Exclude       []string          `json:"exclude"`
+		MaxFileBytes  int64             `json:"maxFileBytes"`
+		MaxCandidates int               `json:"maxCandidates"`
+		Stages        map[string]string `json:"stages"`
+	} `json:"planning"`
+}
+
+// The Go half of the version-skew conformance check. vantage-check's config
+// test reads the same cases and asserts its own answer to each, which differs
+// from this one where the fixture says so: the checker ignores a key it does
+// not know with a warning, and the server still refuses the whole file over
+// one in a table it owns. The top-level `target` is the checker's, and the
+// server steps over it in every form, a malformed one included.
+func TestVersionSkewFixtureIsAnsweredAsTheServerShould(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("testdata", "version-skew-config.json"))
+	require.NoError(t, err)
+	var fixture struct {
+		Cases []versionSkewCase `json:"cases"`
+	}
+	require.NoError(t, json.Unmarshal(data, &fixture))
+	require.NotEmpty(t, fixture.Cases)
+
+	answers := map[string]bool{}
+	for _, tc := range fixture.Cases {
+		t.Run(tc.Name, func(t *testing.T) {
+			answers[tc.Server] = true
+			s, err := Parse([]byte(tc.TOML))
+			switch tc.Server {
+			case "accepts":
+				require.NoError(t, err)
+			case "refuses":
+				require.Error(t, err)
+				require.True(t, s.IsZero(), "a rejected file must yield nothing, not half")
+				return
+			default:
+				t.Fatalf("server must be accepts or refuses, not %q", tc.Server)
+			}
+			if tc.Planning == nil {
+				return
+			}
+			var roadmaps []string
+			require.NoError(t, json.Unmarshal(tc.Planning.Roadmaps, &roadmaps))
+			require.Equal(t, Planning{
+				Roadmaps:      roadmaps,
+				Include:       tc.Planning.Include,
+				Exclude:       tc.Planning.Exclude,
+				MaxFileBytes:  tc.Planning.MaxFileBytes,
+				MaxCandidates: tc.Planning.MaxCandidates,
+				Stages:        tc.Planning.Stages,
+			}, s.Planning.Resolved())
+		})
+	}
+	require.True(t, answers["accepts"] && answers["refuses"], "the fixture must hold both answers")
+}
+
+// The cases the version-skew fixture exists for are asserted to be there, so
+// trimming it cannot quietly drop one.
+func TestVersionSkewFixtureKeepsItsEdgeCases(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("testdata", "version-skew-config.json"))
+	require.NoError(t, err)
+	var fixture struct {
+		Cases []versionSkewCase `json:"cases"`
+	}
+	require.NoError(t, json.Unmarshal(data, &fixture))
+	byName := map[string]versionSkewCase{}
+	for _, tc := range fixture.Cases {
+		byName[tc.Name] = tc
+	}
+	for name, want := range map[string]string{
+		"a target above every table":       "accepts",
+		"a target written as a number":     "accepts",
+		"a target below [check]":           "accepts",
+		"a target below [planning]":        "refuses",
+		"a target below [planning.stages]": "refuses",
+		"an unknown [check] key":           "accepts",
+		"an unknown rule":                  "accepts",
+		"an unknown key":                   "refuses",
+		"an unknown sub-table":             "refuses",
+		"an unknown [starred] key":         "refuses",
+	} {
+		tc, ok := byName[name]
+		require.True(t, ok, "version-skew-config.json lost the case %q", name)
+		require.Equal(t, want, tc.Server, name)
+	}
+}
+
+// The top-level `target` is the checker's key (docs/design/checker-version-skew.md
+// §4.1): the server accepts a file that holds one, in any form, and reads
+// nothing from it. A misplaced one is another matter, and the fixture above
+// pins that.
+func TestParseStepsOverTheTarget(t *testing.T) {
+	for _, body := range []string{
+		"target = \"0.8\"\n",
+		"target = \"0.8.1\"\n",
+		"target = 0.8\n",
+		"target = \"latest\"\n",
+		"[target]\nversion = \"0.8\"\n",
+	} {
+		s, err := Parse([]byte(body))
+		require.NoError(t, err, body)
+		require.True(t, s.IsZero(), "%q: the server acts on nothing in it", body)
+	}
+
+	s, err := Parse([]byte("target = \"0.9\"\ntheme = \"catppuccin\"\n\n[starred]\npromote = [\"a.md\"]\n"))
+	require.NoError(t, err)
+	require.Equal(t, "catppuccin", s.Theme)
+	require.Equal(t, []string{"a.md"}, s.Starred.Promote)
 }
 
 // A rejected [planning] table takes the rest of the file with it, [starred] and

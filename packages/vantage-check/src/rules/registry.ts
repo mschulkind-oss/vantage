@@ -148,7 +148,7 @@ export const RULES: readonly RuleMeta[] = [
   {
     id: "vantage/unknown-name",
     summary:
-      "A directive name outside `section`, `block` and `oq` — the whole directive is dropped",
+      "A directive name outside `section`, `block`, `oq`, `question` and `fallback` — the whole directive is dropped",
     default: "error",
   },
   {
@@ -186,21 +186,27 @@ export const RULES: readonly RuleMeta[] = [
     default: "error",
   },
   {
+    id: "vantage/question-name",
+    summary:
+      "An `oq` directive on a 🔒 or ✅ question, which viewers before 0.8 offer to answer, or a `question` directive on an open one, which no viewer does, or either below a 🔒 or ✅ title outside a list, where the question reads as open",
+    default: "error",
+  },
+  {
     id: "vantage/oq-id-format",
     summary:
-      "An `oq` id outside `OQ-<prefix?><digits>`, which the sanitizer refuses, so the question gets no anchor",
+      "A question directive's id outside `OQ-<prefix?><digits>`, which the sanitizer refuses, so the question gets no anchor",
     default: "error",
   },
   {
     id: "vantage/oq-id-duplicate",
     summary:
-      "The same `oq` id twice in one document — `#id` resolves to the first, so references to the second land on the wrong question",
+      "The same question id on two questions in one document, on `oq` or `question` — `#id` resolves to the first, so references to the second land on the wrong question",
     default: "error",
   },
   {
     id: "vantage/orphan",
     summary:
-      "A directive with no block it can attach to, so it styles nothing — it resolves, so a warning",
+      "A directive with no block it can attach to, so it styles nothing, or a `fallback` above a heading or raw HTML it never withholds, or merged with another directive — it resolves, so a warning",
     default: "warning",
   },
   // The same family, one scope up: the reserved `vantage:` frontmatter key. It

@@ -1,7 +1,7 @@
 ---
 title: "Gallery — inline SVG"
 status: accepted
-summary: "A lighthouse at night, a chart, an icon in a sentence and a drawing in a toned section, drawn only with what the sanitizer admits."
+summary: "A lighthouse at night, a chart, an icon in a sentence and a drawing in a toned section, drawn only with what the sanitizer admits, each paired with the fallback block other readers see instead."
 ---
 
 # Inline SVG
@@ -13,6 +13,12 @@ these drawings use only what it keeps: shapes, paths, `text` and `tspan`, groups
 with a `transform`, hex paint, and opacity. Nothing here was written expecting
 to lose anything, so any shape missing from the page is one the sanitizer
 refused.
+
+Inline SVG needs Vantage 0.8 or later, so each drawing is paired with a
+[fallback block](../reference/inline-markup.md#fallback-blocks): a block after
+it, under a `<!-- vantage: fallback -->` directive, that says what the drawing
+shows. Vantage 0.8 and later never show a fallback block, and every other
+reader shows it in the drawing's place.
 
 ## What to look at
 
@@ -39,16 +45,21 @@ refused.
   [Finding north](#finding-north-from-the-lamp-room), the section's accent must
   run unbroken from the heading, down the side of the star map, to the last
   paragraph. The `<div>` around the drawing is the section's member and draws
-  that part of the rule.
+  that part of the rule. The section also holds the star map's fallback block,
+  which is withheld before the section is stamped, so it leaves no gap either.
+- **No fallback block shows.** Each drawing has one, and all four say they
+  need Vantage 0.8 or later. One on the page is a viewer older than 0.8, or a
+  fallback that withheld nothing, which `vantage-check` reports.
 - **Print.** In print preview the drawings print in their own colors, the night
   sky included, because the print stylesheet asks for exact color. Text in
   `currentColor` prints near-black like the prose around it, and the section's
   rule prints gray.
 - **GitHub renders none of the drawings.** It drops each `<svg>` and leaves the
   words of its `<text>` elements behind as loose text, so on GitHub this page is
-  a scatter of captions and axis numbers. See
+  a scatter of captions and axis numbers, each followed by the fallback block
+  that says what was drawn there. A Vantage older than 0.8 shows the same. See
   [Inline SVG](../reference/inline-markup.md#inline-svg) for the file-based form
-  to use in a document read there.
+  to use in a document read mostly there.
 
 ## A lighthouse at night
 
@@ -184,6 +195,12 @@ refused.
 </svg>
 </div>
 
+<!-- vantage: fallback -->
+
+> **A lighthouse at night** is drawn here in inline SVG, which needs Vantage 0.8
+> or later: a striped lighthouse on a cliff, its beam crossing a starry sky above
+> the sea, where a small sailboat carries a lantern.
+
 How it is built, since each choice is a thing the sanitizer would otherwise
 have taken away:
 
@@ -254,6 +271,16 @@ have taken away:
 </svg>
 </div>
 
+<!-- vantage: fallback -->
+
+> **A bar chart** is drawn here in inline SVG, which needs Vantage 0.8 or later.
+> It shows the sea monsters sighted from the lamp room each week; week 7 was a
+> full moon.
+>
+> | Week | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+> | :--- | -: | -: | -: | -: | -: | -: | -: | -: |
+> | Sightings | 2 | 3 | 1 | 5 | 4 | 7 | 13 | 6 |
+
 One series, so no legend: the title names it. The bars are one blue that holds
 at least 3:1 against both the light and the dark page, since a paint attribute
 takes one hex color and cannot follow the theme. Everything that must follow it
@@ -262,6 +289,14 @@ is `currentColor`. The only value labeled is the one worth a second look.
 ## An icon in a sentence
 
 The keeper marks every night the lamp was lit with a small <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 16 16" role="img" aria-label="lighthouse"><path d="M1 2 L5 3.5 M1 7 L5 5.5 M15 2 L11 3.5 M15 7 L11 5.5" stroke="#e3a008" stroke-width="1.2" stroke-linecap="round"/><path d="M6 3 L8 1 L10 3 Z" fill="currentColor"/><rect x="6.5" y="3" width="3" height="3" fill="#e3a008"/><path d="M5.5 15 L6.8 6 H9.2 L10.5 15 Z" fill="currentColor"/><path d="M6.1 10.5 H9.9" stroke="#c43d3d" stroke-width="1.6"/><path d="M3 15.25 H13" stroke="currentColor" stroke-linecap="round"/></svg> in the log, and the mark sits on the line like a word. It is `1em` square, so it scales with the text around it, and it is a drawing inside a paragraph, which the stylesheet keeps inline. The same drawing inside a `<div>` of its own would be a block.
+
+<!-- vantage: fallback -->
+
+> **The mark in that sentence** is a lighthouse icon drawn in inline SVG, which
+> needs Vantage 0.8 or later.
+
+A fallback block is a block, so the icon's comes after the paragraph holding
+the icon rather than inside the sentence.
 
 ## A drawing in a toned section
 
@@ -305,9 +340,17 @@ is Polaris.
 </svg>
 </div>
 
+<!-- vantage: fallback -->
+
+> **A star map** is drawn here in inline SVG, which needs Vantage 0.8 or later:
+> the Plough, whose two pointer stars, Merak and Dubhe, lead to Polaris, about
+> five times the gap between them away.
+
 The drawing sits in a `<div>`, which is the form the reference recommends, and
 the `<div>` is what the section stamps and what draws the rule beside it. The
-line to Polaris is solid at 30% opacity, where a paper chart would dash it.
+line to Polaris is solid at 30% opacity, where a paper chart would dash it. The
+fallback block between them is withheld before the section is stamped, so the
+section's members are the heading, the paragraphs and the drawing alone.
 
 ## Counting what arrived
 

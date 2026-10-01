@@ -67,6 +67,7 @@ import { setPlanningLimitsForTests } from "../planningScan/limits";
 import {
   contentHash,
   planningConfig,
+  questionDirective,
   readRepoFile,
   sourcesOf,
 } from "../test/planning";
@@ -150,9 +151,7 @@ const q = (id: string, marker: string, leaning: string | null = "Yes.") =>
   [
     `1. ${marker} **${id}: Question ${id}?**`,
     "",
-    leaning === null
-      ? `   <!-- vantage: oq id=${id} -->`
-      : `   <!-- vantage: oq id=${id} leaning="${leaning}" -->`,
+    `   ${questionDirective(marker, id, leaning)}`,
     "",
     `   _Leaning:_ ${leaning ?? "none"}`,
     "",

@@ -50,14 +50,16 @@ these rules it out:
 
 **Planning documents.** A candidate is a **planning document** when its
 frontmatter has a `status` or a `stage` key, or when it contains at least one
-`oq` directive (the markup that makes an Open Question answerable in one click;
-see [Style Guide for Agents](../reference/style-guide.md)). Every roadmap
+question directive: an `oq` (the markup that makes an open question answerable
+in one click) or a `question` (the same for a blocked or answered one, with no
+button; see [Style Guide for Agents](../reference/style-guide.md)). Every roadmap
 ([below](#the-roadmap)) is one too. Every other candidate is read, found to
 be neither, and dropped. Only planning documents contribute to the index: their
 header, their questions and their links.
 
-**Questions.** A question is an `oq` directive, identified by its document and
-its `id`. Its state comes from the emoji before its bold title:
+**Questions.** A question is an `oq` or a `question` directive, identified by
+its document and its `id`. Its state comes from the emoji before its bold
+title:
 
 | Marker | State |
 | :--- | :--- |
@@ -67,9 +69,17 @@ its `id`. Its state comes from the emoji before its bold title:
 | ✅ | answered, and waiting to be compacted |
 | none | open |
 
-A question written without an `oq` directive does not exist to the index. That
-is why a 🔒 question gets a directive too, with no `leaning` needed: without
-one, nothing counts it.
+A question written without a directive does not exist to the index. That is
+why a 🔒 or ✅ question gets one too: a `question` directive, with an `id` and
+no `leaning`, which counts it exactly as an `oq` would and offers no button.
+It is a name of its own because an `oq` is a question to answer in one click
+to every Vantage that has shipped, and a viewer before 0.8 offers the button on
+every `oq` it meets; `vantage-check` reports an `oq` on a 🔒 or ✅ question, and
+a `question` on an open one, as `vantage/question-name`. An open question with
+no leaning yet takes an `oq` with no `leaning`. Outside a list, write the
+directive above the question's title: below it, the directive lands on the
+block after the title, which carries no marker, so the question reads as open,
+and `vantage/question-name` says so.
 
 A question stops counting when its directive is removed, and that is normally
 when it is **compacted**: once a question is ruled, the design-document
@@ -109,7 +119,8 @@ depends-on:
 
 A value of the wrong shape, such as a `stage` that is a number or a list, or a
 `next` that runs over several lines, is ignored. A header that does not parse
-at all makes the whole file unreadable to the index, `oq` directives included.
+at all makes the whole file unreadable to the index, question directives
+included.
 
 **`stage:` is the only place Vantage reads a stage.** A repository that also
 writes the word in a prose `**Status:**` line has a second copy that no tool
@@ -329,7 +340,7 @@ every heading; the line always prints.
 When a document opens before the index is ready, the line's room is kept for
 it in the first paint, so the line fills in later without pushing the document
 down, and stays blank if it turns out to have nothing to say. The room is kept
-when the document's own `status` or `stage` key, or an `oq` directive in it,
+when the document's own `status` or `stage` key, or a question directive in it,
 already shows it is a planning document. A roadmap with neither shows its line
 the next time it is opened.
 
@@ -552,7 +563,7 @@ What the card offers follows the question's state:
 
 | State | Take this leaning | Answer… | Open document |
 | :--- | :--- | :--- | :--- |
-| 💬 open, or no marker | when it has a leaning | yes | yes |
+| 💬 open, or no marker | when its `oq` directive has a leaning | yes | yes |
 | ✅ answered | no: it has been ruled | yes | yes |
 | 🔒 blocked, under *Waiting* | no | no: it cannot be answered yet | yes |
 
@@ -741,9 +752,11 @@ every candidate on every page load, and everything else works the same.
 - **One file cannot be read,** or its frontmatter does not parse: it is listed
   under *Could not read* and contributes nothing, its questions included.
   Everything else is unaffected.
-- **A `[planning]` table that is wrong,** such as an unknown key or a role
-  outside the four: the server logs it and falls back to the defaults, and
-  `vantage-check` refuses the file and exits `2`
+- **A `[planning]` table that is wrong,** such as a role outside the four: the
+  server logs it and falls back to the defaults, and `vantage-check` refuses
+  the file and exits `2`. An unknown key is wrong to the server in the same
+  way, while `vantage-check` warns about it and ignores it, since it may come
+  from a newer release
   ([Configuration](../reference/configuration.md#planning-documents)).
 
 ## Related

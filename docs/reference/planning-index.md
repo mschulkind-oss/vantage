@@ -77,8 +77,8 @@ Vantage never writes into a document.
 | The CLI and the planning rules | `packages/vantage-check/src/commands/index.ts`, `packages/vantage-check/src/rules/planning.ts` |
 
 **Reads with:** [`repo-config.md`](../design/repo-config.md) (the `.vantage.toml`
-file both readers share), [`inline-markup.md`](inline-markup.md) (the `oq`
-directive and the one-click answer this index counts and reuses),
+file both readers share), [`inline-markup.md`](inline-markup.md) (the `oq` and
+`question` directives this index counts, and the one-click answer it reuses),
 [`technical_spec.md`](../design/technical_spec.md) (where the planning routes and
 the scan worker sit in the whole system), and
 [the brainstorm](../brainstorm/planning-index.md) (the ideas this was chosen from,
@@ -106,8 +106,8 @@ Numbered because code comments and sibling documents cite them.
   what an author wrote, and may build pages that are not documents. It never
   writes into a document, never transcludes one document into another, and has
   no template language.
-- **P3. Only markup with a fixed meaning.** That means frontmatter keys, the `oq`
-  directive, and Markdown links. Prose conventions, such as the `**Status:**`
+- **P3. Only markup with a fixed meaning.** That means frontmatter keys, the
+  question directives `oq` and `question`, and Markdown links. Prose conventions, such as the `**Status:**`
   line, a roadmap's tables, or a Decision Ledger's columns, are never parsed.
 - **P4. One parser.** The planning scan lives in `vantage-md` and is shared by
   the viewer and `vantage-check`. It is internal to that package: both consume
@@ -174,7 +174,8 @@ the code, and each is the first thing to check when changing the area it names.
 - **The server and the planning module apply one roadmap test and one candidate
   matcher.** `internal/repoconfig/testdata/` holds the shared fixtures
   (`planning-patterns.json`, `planning-config.json`, `planning-roadmaps.json`,
-  `planning-candidates.json`) that both readers' suites run, and
+  `planning-candidates.json`, `version-skew-config.json`) that both readers' suites
+  run, and
   `internal/planning/testdata/stream-lines.ndjson` holds the stream's line shapes
   to one spelling on both ends.
 - **A badge is never part of the text a review anchor hashes**
@@ -206,8 +207,9 @@ is in git; this is now where the terms are defined.
 | :--- | :--- | :--- | :--- |
 | **Planning index** | The model of a repository's planning documents that every planning surface reads ([§3](#3-the-planning-index-what-it-reads-and-holds)) | a stored database; it is assembled anew on each page load | the brainstorm, 2026-09-25 |
 | **Candidate** | A Markdown file the server lists that `[planning]` includes ([§3.1](#31-candidates-and-planning-documents)) | every file in the tree | the planning-index design |
-| **Planning document** | A candidate with a `status` or `stage` key, or an `oq` directive, or that is a roadmap | any Markdown file | the planning-index design |
-| **Question** | An `oq` directive that yields an answerable question, identified by document path and id ([§3.3](#33-questions)) | a prose question with no directive | the planning-index design |
+| **Planning document** | A candidate with a `status` or `stage` key, or a question directive, or that is a roadmap | any Markdown file | the planning-index design |
+| **Question directive** | An `oq` directive, on an open question, or a `question` directive, on a blocked or answered one ([§3.3](#33-questions)) | the prose convention around it | [`checker-version-skew.md` OQ-VS4](../design/checker-version-skew.md#decision-ledger), 2026-09-30 |
+| **Question** | A question directive on a block that could host the one-click button, identified by document path and id ([§3.3](#33-questions)) | a prose question with no directive | the planning-index design |
 | **Live** (question) | Every question the index holds, whatever its state; compaction, which deletes the directive, is what ends it | *open*, which is one state of a live question | the planning-index design |
 | **Stage role** | What a stage word means to the planning page: `open`, `ready`, `built` or `done` ([§3.4](#34-the-header-of-record-stage-next-depends-on)) | the stage word itself, which is the repository's own | the planning-index design |
 | **Roadmap** | A planning document whose links set an order ([§4.1](#41-which-files-are-roadmaps)) | the only roadmap: a repository may have several | the planning-index design |
@@ -294,8 +296,8 @@ between threads or printed as JSON without translation.
   matcher means a pattern means the same thing to the server, the checker and
   `promote`.
 - **Planning document:** a candidate whose frontmatter has `status` or `stage`,
-  or that contains at least one `oq` directive. Every roadmap is a planning
-  document, even with neither.
+  or that contains at least one question directive, `oq` or `question`. Every
+  roadmap is a planning document, even with neither.
 - Only planning documents contribute anything: facts, questions, or links. Any
   other candidate is read, found to be neither, and dropped before its body is
   parsed, which is what keeps a full scan cheap: the scan tests the frontmatter
@@ -329,9 +331,9 @@ has never configured this still gets an index; it opts files out with `exclude`.
 | `status` | frontmatter `status` | kept only when it is one of the four statuses; the key's presence still makes the file a planning document |
 | `stage`, `next`, `dependsOn` | frontmatter ([§3.4](#34-the-header-of-record-stage-next-depends-on)) | each with its problems in `headerProblems` |
 | `questions` | every question, in document order | [§3.3](#33-questions) |
-| `links` | every Markdown link to a path inside the repository, with the nearest heading above it | links in code and HTML comments are not links; links to itself are kept in the index and dropped by every reader |
+| `links` | every Markdown link to a path inside the repository, with the nearest heading above it | links in code and HTML comments are not links, and neither is a link in a block a [fallback](inline-markup.md#fallback-blocks) withholds, which the page never shows; links to itself are kept in the index and dropped by every reader |
 | `ids` | every `OQ-…`-shaped token anywhere in the text | only to tell *ruled* from *not found* ([§5.2](#52-what-a-badge-says)) |
-| `directiveIds` | every id a well-formed `oq` directive carries, a question's or not | only to tell *not a question* from *ruled* |
+| `directiveIds` | every id a well-formed question directive carries, a question's or not | only to tell *not a question* from *ruled* |
 
 The index keeps every repo-relative link, because a target's candidacy can change
 between scans; `vantage-check index` narrows each document's links to other
@@ -340,24 +342,46 @@ candidates only when it prints them.
 ### 3.3 Questions
 
 A question is identified by **(document path, id)** and carries a **state**, a
-**title**, a **leaning** (the directive's `leaning=`, which may be absent), and
-the lines it spans.
+**title**, the **directive** that declared it (`oq` or `question`), a
+**leaning** (an `oq`'s `leaning=`, which may be absent), and the lines it
+spans.
 
 - **State** is read from the emoji before its bold title, with the map the
   directive vocabulary already defines: 💬 is *open*, 💬 🤷 is *open* flagged as
   a preference, 🔒 is *blocked*, and ✅ is *answered*, awaiting compaction. A
   question with no marker counts as *open*.
-- **A question with no `oq` directive does not exist to the index.** That is why
-  🔒 and ✅ questions keep their directive until compaction.
+- **Two names declare a question, and they differ in one promise.** An `oq` is
+  an open question, the one review mode and the card offer to answer in one
+  click; a `question` is a 🔒 or ✅ one, declared, anchored and counted the same
+  way, with the same id grammar, and offered to nobody. A `question` takes no
+  `leaning`, so its leaning is always absent. A run holding both is an `oq`, as
+  it is to a viewer that predates `question`. The name is not read from the
+  marker: the index holds what the document declares, and `vantage-check`
+  reports a name that disagrees with the state (`vantage/question-name`).
+- **A question with no question directive does not exist to the index.** That
+  is why 🔒 and ✅ questions keep a directive, a `question`, until compaction.
 - **No id, a malformed id, or a repeated one** still makes a question. It is
   counted, badged and listed like any other, with no id: a link to its document
   routes it, but no `#OQ-…` link can name it. The first occurrence of a repeated
   id keeps that id.
 - **Inside a raw HTML block,** where the directive and the paragraph after it are
-  written as HTML and Markdown sees one opaque block, an `oq` directive is not a
-  question to the index, although the viewer stamps that paragraph and the
+  written as HTML and Markdown sees one opaque block, a question directive is not
+  a question to the index, although the viewer stamps that paragraph and the
   contents column lists it. That is the one disagreement allowed between the
   index and the column, and the agreement test names it.
+- **In a withheld block,** one a `<!-- vantage: fallback -->` run lands on, a
+  question is no question: Vantage never renders the block
+  ([fallback blocks](inline-markup.md#fallback-blocks)), so the page shows no
+  button, the contents column no entry, and the planning page no card. An `oq`
+  directive written in the same run as the `fallback` goes with the block. A
+  raw `<div>` with blank lines inside it is withheld whole, so the questions and
+  links between its opening and closing tags are read by neither.
+- **Outside a list item, the question is the block its directive lands on.** A
+  directive written below a bold title marked ✅ lands on the block
+  after it, so the index, like the column, reads that block's marker, which is
+  none, and the question as open. `vantage-check` reports that layout under
+  `vantage/question-name` when the title above is marked 🔒 or ✅, and says to
+  put the directive above the title.
 - **Live.** Every question the index holds is live, whatever its state.
   Compacting a question deletes its directive, so the index no longer holds it,
   and that is the only way a question stops being live.
@@ -425,8 +449,8 @@ questions and links.
 Vantage's style guide (`vantage-check style-guide`, generated from
 `packages/vantage-md/src/styleGuide.ts`) and the user guide's style-guide page
 state these conventions to whoever writes the documents: `stage`, `next` and
-`depends-on` as top-level keys, frontmatter as the stage's one home, an `oq`
-directive on 🔒 and ✅ questions too, a roadmap as ordered links with a
+`depends-on` as top-level keys, frontmatter as the stage's one home, a
+`question` directive on 🔒 and ✅ questions, a roadmap as ordered links with a
 one-clause reason each, and the `[planning]` table, including that a file named
 `roadmap.md` is a roadmap wherever it sits unless `roadmap` lists them instead.
 `packages/vantage-check/test/styleGuidePlanning.test.ts` holds that text to this
@@ -792,7 +816,8 @@ Each question appears as a card:
   offered, so nothing moves afterwards.
 - **Its document,** by name, with that document's badge.
 - **Its controls, which follow its state.** An open question offers **Take this
-  leaning** (only when a leaning exists), **Answer…** and **Open document**. A ✅
+  leaning** (only when an `oq` declared it and states a leaning), **Answer…** and
+  **Open document**. A ✅
   answered question has been ruled, so it offers **Answer…** and **Open
   document**. A 🔒 blocked question, listed under *Waiting*, cannot be answered yet
   and offers only **Open document**.
@@ -835,10 +860,10 @@ previous scroll position.
 > place in the document.
 
 **The viewer's review mode follows the same rule.** It offers **Take this
-leaning** on open questions only, never on a 🔒 or ✅ one, and the Review toggle's
-count of questions answerable in one click counts only the questions that offer
-it. The contents column still lists every question, in every state; the filter
-runs after `answerableOpenQuestions`, never inside it
+leaning** on open `oq` questions only, never on a 🔒 or ✅ one or a `question`,
+and the Review toggle's count of questions answerable in one click counts only
+the questions that offer it. The contents column still lists every question, in
+every state; the filter runs after `documentQuestions`, never inside it
 ([`inline-markup.md`](inline-markup.md#the-same-comment-from-the-planning-page)).
 
 ### 6.7 Answering, and Copy answers
@@ -846,7 +871,7 @@ runs after `answerableOpenQuestions`, never inside it
 **Answering** files a comment on the question in its own document. That comment is
 **indistinguishable from one filed with the in-page button**: the same body, the
 same anchor and the same fallback text, because the card takes that button's
-route — `answerableOpenQuestions` over the rendered card, `buildWholeBlockAnchor`
+route — `documentQuestions` over the rendered card, `buildWholeBlockAnchor`
 over the host, the body read off the stamped element, and the request `addComment`
 sends, posted for the card's document by `postCommentTo`. Filing does not reorder
 the page.
@@ -1912,7 +1937,8 @@ disagree (P7); the fifth measures the questions the same scan finds.
   stage. The walk counts nothing and refuses nothing. The message names the roadmap,
   *not routed by the roadmap (roadmap.md)*, or with several, *not routed by any
   roadmap (roadmap.md, docs/plans/roadmap.md)*.
-- **A bad `[planning]` fails every `check` with exit 2**, as a bad `[check]` key does.
+- **A bad value in `[planning]` fails every `check` with exit 2**, as a bad `[check]`
+  value does. An unknown key is warned about and ignored ([§14](#14-configuration)).
 
 ---
 
@@ -1940,20 +1966,26 @@ BUILT = "built"
 SUPERSEDED = "done"
 ```
 
-- **Validation is whole-or-nothing.** An unknown key in `[planning]`, a role outside
-  the four, or a limit below 1 rejects the whole file in both readers, `[starred]`
-  and `theme` included. The server logs it and falls back to the defaults; the checker
-  exits `2`, as it does for bad `[check]` keys.
+- **Validation is whole-or-nothing for a value.** A role outside the four, or a limit
+  below 1, rejects the whole file in both readers, `[starred]` and `theme` included.
+  The server logs it and falls back to the defaults; the checker exits `2`, as it does
+  for bad `[check]` values.
+- **An unknown key is where the readers part.** The server rejects the whole file over
+  it, as over a bad value. The checker warns, ignores the key and reads the rest,
+  because to a checker older than the key every key a later release adds looks like a
+  typo ([Keys From a Newer Release](../../userguide/reference/configuration.md#keys-from-a-newer-release)).
 - An empty `[planning.stages]` table is the same as none.
 - `planning-config.json` holds both readers to one answer for every case, and each
-  reader words its errors in its own voice.
+  reader words its errors in its own voice. `version-skew-config.json` holds each
+  reader's own answer to a key it does not know and to the top-level `target`, where
+  the two differ.
 
 **`roadmap` takes a string or a list, and both readers hold it to one set of rules:**
 
 - **Absent** means found by name. **A string** is a list of one, so a file written
   before lists existed keeps its meaning. **A list of strings** names exactly those
   roadmaps, and `[]` names none. The key stays `roadmap` in both forms; `roadmaps` is
-  an unknown key, an error like any other.
+  an unknown key, which the server rejects the file over and the checker warns about.
 - **Each path** is text, with one leading `./` dropped, and must then be non-empty,
   must not start with `/`, and must hold no `..` segment.
 - **No path twice.** Two entries that are one path once `./` is dropped are an error.
@@ -2184,7 +2216,7 @@ is the only place most of the numbers are stated.
 | Compiled matchers kept | 16 | `matchersKept` |
 | The old batch's `410` detail | "The planning index moved to a stream; reload the page." | `planningBatchGone` in `internal/api/planning_handlers.go` |
 | Scan cache database | `vantage-planning`; stores `meta`, `stamps`, `documents`, `cards` | `SCAN_DATABASE` in `frontend/src/planningScan/store.ts` |
-| Scan cache schema number | 1 | `SCAN_CACHE_SCHEMA` in `cache.ts` |
+| Scan cache schema number | 2 | `SCAN_CACHE_SCHEMA` in `cache.ts` |
 | Scanner id roots | `packages/vantage-md/src/`, `frontend/src/planningScan/`, `package-lock.json` | `scannerRoots` in `scannerId.ts` |
 | `documents` chunk | 100 entries or 256 KiB of facts | `chunkEntries`, `chunkBytes` in `limits.ts` |
 | `progress` interval | 100 ms | `progressMs` |
@@ -2228,6 +2260,7 @@ git.
 | OQ-PL4 | One **Copy answers** button on the planning page, grouped by document: answering three documents from one page must not take three trips ([§6.7](#67-answering-and-copy-answers)) | 2026-09-28 |
 | OQ-PS1 | The browser keeps each file's derived facts *and* its card blocks, under the content hash, cleared when the owner changes and never used without a matching hash. Keeping facts but no card text would cost a fetch and scan of each shown page's documents on every first visit; keeping nothing makes every load cold ([§11.1](#111-what-it-keeps-and-under-which-key)) | 2026-09-29 |
 | OQ-PS2 | No byte sieve in Go: every candidate is streamed, and the scan stays the only judge of what a planning document is. Ruled an implementation matter, on the condition that the reader's experience does not degrade for it ([§9.1](#91-the-stream)) | 2026-09-29 |
+| OQ-VS4 | A 🔒 or ✅ question is declared with a `question` directive, never an `oq`, which every viewer before 0.8 offers to answer in one click. A release never gives existing notation a new meaning, so the closed states got a name older viewers drop ([`checker-version-skew.md`](../design/checker-version-skew.md#decision-ledger), [§3.3](#33-questions)) | 2026-09-30 |
 | Plan Q1 | Patterns keep the server's matcher, its quirks and RE2 dialect included; the checker ports it, and one shared fixture pins both readers ([§3.1](#31-candidates-and-planning-documents)) | 2026-09-28 |
 | Plan Q2 | A listed roadmap is read whenever it exists, even when `include` or `exclude` rules it out — per entry, since several roadmaps ([§4.1](#41-which-files-are-roadmaps)) | 2026-09-28 |
 | Plan Q3 | A static export gets no badges and no planning index; its planning page says so ([§15](#15-failure-modes)) | 2026-09-28 |

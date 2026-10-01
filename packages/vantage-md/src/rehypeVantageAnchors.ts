@@ -15,10 +15,11 @@
  * first is what lets a question written as a heading keep `OQ-4` instead of
  * acquiring a heading slug. Where both could apply, the Open Question id wins.
  *
- * The data attribute is removed on the way through. Nothing downstream reads it
- * — the review button finds its block by `[data-vantage-oq]` — and leaving a
- * second copy of the id in the markup invites a future reader to use the wrong
- * one.
+ * The data attribute is removed on the way through. Nothing downstream reads
+ * it — the review button finds its block by `[data-vantage-oq]`, and the
+ * contents column finds every question by that or `[data-vantage-question]` —
+ * and leaving a second copy of the id in the markup invites a future reader to
+ * use the wrong one.
  */
 
 import type { Root, Element } from "hast";

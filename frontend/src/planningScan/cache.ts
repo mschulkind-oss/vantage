@@ -39,9 +39,10 @@ import type {
 
 /**
  * The scanner id's first part: bumped by hand whenever a stored shape
- * changes, so no result of the old shape is ever read as the new one.
+ * changes, so no result of the old shape is ever read as the new one. 2: a
+ * question carries the `directive` that declared it.
  */
-export const SCAN_CACHE_SCHEMA = 1;
+export const SCAN_CACHE_SCHEMA = 2;
 
 /**
  * The scanner id (§11.2): the schema, the hash of the source the scan is built

@@ -9,7 +9,7 @@ import {
   badgeText,
   type PlanningBadge,
 } from "vantage-md/planning";
-import { indexOf } from "../test/planning";
+import { indexOf, questionDirective } from "../test/planning";
 
 /** A loose list of questions, one per marker, ids `OQ-1`, `OQ-2`, … */
 function questions(...markers: string[]): string {
@@ -18,7 +18,7 @@ function questions(...markers: string[]): string {
       [
         `1. ${marker} **OQ-${i + 1}: Question ${i + 1}?**`,
         "",
-        `   <!-- vantage: oq id=OQ-${i + 1} leaning="Yes." -->`,
+        `   ${questionDirective(marker, `OQ-${i + 1}`, "Yes.")}`,
         "",
         "   _Leaning:_ yes.",
         "",

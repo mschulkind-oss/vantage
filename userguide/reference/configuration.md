@@ -269,6 +269,85 @@ In daemon mode the project is resolved from the first segment of the URL, which
 every document page has (`/notes/README.md` is the `notes` project). The project
 list at `/` has no project and so no offer to apply.
 
+## The Oldest Release Your Readers Use
+
+A project can say which Vantage release the oldest of its readers runs, in a
+`target` key at the top of the same `.vantage.toml`:
+
+```toml
+# .vantage.toml, committed at the repository root
+target = "0.8"
+
+[planning]
+exclude = ["docs/gallery/**"]
+```
+
+The value is one release, written as text: `"X.Y"` or `"X.Y.Z"`, where
+`"0.8"` means 0.8.0. Anything else makes `vantage-check` exit `2` and say which
+forms it takes. That includes a number (`target = 0.8`), `"latest"`, a range, a
+leading `v` and a pre-release.
+
+> [!IMPORTANT]
+> **Like `theme`, the key goes before any `[table]` header.** Written after
+> one, TOML reads it as part of that table, where no reader looks for it.
+> `vantage-check` reports a `target` it finds inside one of its own tables or
+> inside `[starred]`, with *move it above the first [table]*, and exits `2`.
+> Below `[planning]` or `[starred]` it is also an unknown key to the server,
+> which then ignores the whole file.
+
+What each reader does with it, from 0.8.0:
+
+- **A `vantage-check` older than the target refuses to run.** Every command
+  that reads the repository (`check`, `index` and `style-guide`) exits `2`
+  with one message. It names the file, its own release and the release it
+  needs, and it reads and prints nothing else. Keep the target, and run a newer
+  checker. A [development build](../guides/vantage-check.md#from-source) never
+  refuses.
+- **Any other `vantage-check` says on stderr that it read the target,** and
+  then checks and teaches its own release whatever the target says. It does
+  not yet hold documents to an older target. When your readers are older than
+  the checker, [Which release it writes for](../guides/vantage-check.md#which-release-it-writes-for)
+  says what to do.
+- **The server** accepts the key and ignores it.
+- **Checkers and servers released before 0.8.0** ignore it, as they ignore any
+  top-level key they do not read.
+
+`check` reads the target of the config it runs under, and of the
+`.vantage.toml` at the root of each repository its files are in, so a run
+that spans repositories refuses if any of them needs a newer checker.
+`--config` makes the named file the only one it answers to, and `--no-config`
+leaves it none.
+
+**Why declare it before it changes what is checked:** a later release may
+need a newer checker for some repositories. Declaring the target now means
+every checker from 0.8.0 on refuses those repositories with one clear message,
+rather than checking them under rules from before that release. A checker
+that shipped before the key can never learn to read it.
+
+## Keys From a Newer Release
+
+The same `.vantage.toml` is read by releases older and newer than the one it
+was written for, so each reader decides what to do with a key it does not
+know:
+
+| Where the key is | `vantage-check` | The server |
+| --- | --- | --- |
+| At the top level, or in a table that is not Vantage's | Ignores it | Ignores it |
+| In `[check]`, as a rule id in `[check.rules]`, or as a rule's option | Ignores it with a warning on stderr, and the run goes on | Ignores it, since the table is the checker's |
+| In `[planning]` | Ignores it with a warning on stderr, and the run goes on | **Ignores the whole file**, and logs a warning naming it |
+| In `[starred]` | Ignores it, since the table is the server's, except a `target`, which is an error that says to move it | **Ignores the whole file**, and logs a warning naming it |
+
+`vantage-check`'s warning names its own release. It says to keep the key and
+run a newer checker if the repository is configured for one, and to fix the
+key if it is a typo. A warning changes no exit code, not even with `--strict`.
+
+A key a reader does know, with a value it cannot take, is still an error to
+that reader: a severity that is not `"error"`, `"warning"` or `"off"` to
+`vantage-check`, and a `max-candidates` of 0 to both. So is one of the file's
+top-level names (`theme`, `target` or `starred`) written inside one of the
+checker's tables, since the checker knows it is misplaced rather than
+unknown.
+
 ## Planning Documents
 
 The `[planning]` table in `.vantage.toml` says which files Vantage reads as the
@@ -347,17 +426,21 @@ matcher:
   [RE2](https://github.com/google/re2/wiki/Syntax) regular expression, and a
   line RE2 cannot compile is ignored.
 
-The table is checked as a whole, like the rest of the file. An unknown key in
-`[planning]` (`roadmaps` among them: the key is `roadmap` in both forms), a
-`roadmap` that is neither a path nor a list of paths, a role outside the four,
-or a limit that is not a whole number of at least 1 makes the file
-untrustworthy:
+The table is checked as a whole, like the rest of the file. A `roadmap` that
+is neither a path nor a list of paths, a role outside the four, or a limit
+that is not a whole number of at least 1 makes the file untrustworthy:
 
 - **the server** logs a warning naming the file and serves the repository as
   though the file were absent, so its `[starred]` list and `theme` are dropped
   along with the table;
 - **`vantage-check`** exits `2` on every run, `check` included, as it does for a
-  bad `[check]` key.
+  bad `[check]` value.
+
+An unknown key in `[planning]` (`roadmaps` among them: the key is `roadmap` in
+both forms) is where the two readers part. The server ignores the whole file
+over it, as above. `vantage-check` warns, ignores the key and reads the rest of
+the table, because the key may come from a newer release
+([Keys From a Newer Release](#keys-from-a-newer-release)).
 
 A change to the file applies at once: an open page rescans the repository.
 

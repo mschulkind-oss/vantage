@@ -195,7 +195,9 @@ describe("the commands, as a stamped build runs them", () => {
   });
 
   // §13.8: an unknown rule id says not to remove it, and names the checker.
-  it("names the release in a config error, and says to keep the rule", async () => {
+  // It is ignored with that warning rather than failing the run, so a
+  // repository configured for a newer checker still checks in this one.
+  it("names the release in a config warning, and says to keep the rule", async () => {
     const run = await stamped("0.8.0");
     const root = makeTree({
       ".vantage.toml": '[check.rules]\n"future/rule" = "error"\n',
@@ -204,9 +206,9 @@ describe("the commands, as a stamped build runs them", () => {
 
     const { code, stderr } = await output(run, ["check", "."], root);
 
-    expect(code).toBe(2);
+    expect(code).toBe(0);
     expect(stderr).toContain(
-      'unknown rule "future/rule", which vantage-check 0.8.0 does not have.',
+      'unknown rule "future/rule", which vantage-check 0.8.0 does not have, so this run ignores it.',
     );
     expect(stderr).toContain("`uvx vantage-check@latest`");
     expect(stderr).toContain("don't remove the rule");

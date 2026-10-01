@@ -25,7 +25,7 @@ import {
   type PageRequest,
 } from "./planningPages";
 import { setPlanningLimitsForTests } from "../planningScan/limits";
-import { indexOf } from "../test/planning";
+import { indexOf, questionDirective } from "../test/planning";
 
 afterEach(() => setPlanningLimitsForTests(null));
 
@@ -44,7 +44,7 @@ function separate(prefix: string, count: number, pad = 0, marker = OPEN) {
       "",
       `1. ${marker} **${prefix}${i + 1}: Question ${prefix}${i + 1}?**`,
       "",
-      `   <!-- vantage: oq id=${prefix}${i + 1} -->`,
+      `   ${questionDirective(marker, `${prefix}${i + 1}`)}`,
       "",
       "   _Leaning:_ yes.",
       ...Array.from({ length: pad }, (_, j) => `   Line ${j} of the question.`),

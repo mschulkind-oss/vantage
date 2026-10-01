@@ -273,7 +273,9 @@ describe("vantage/unknown-*", () => {
 
     expect(ruleIds(report)).toEqual(["vantage/unknown-name"]);
     expect(report.findings[0]?.column).toBe(15);
-    expect(report.findings[0]?.message).toContain("`section`, `block` or `oq`");
+    expect(report.findings[0]?.message).toContain(
+      "`section`, `block`, `oq`, `question` or `fallback`",
+    );
   });
 
   it("drops one key and keeps its siblings", async () => {
@@ -348,7 +350,7 @@ describe("vantage/unknown-*", () => {
 
   it("names the release whose viewer it describes", () => {
     expect(unknownNameMessage("callout", "0.8.0")).toBe(
-      "`callout` is not a directive name, so a Vantage 0.8.0 viewer drops the whole directive and nothing is styled. It knows `section`, `block` or `oq`.",
+      "`callout` is not a directive name, so a Vantage 0.8.0 viewer drops the whole directive and nothing is styled. It knows `section`, `block`, `oq`, `question` or `fallback`.",
     );
     expect(unknownKeyMessage("section", "bogus", ["tone"], "0.8.0")).toBe(
       "`bogus` is not a key `section` accepts, so a Vantage 0.8.0 viewer drops that pair while the directive's other keys still apply. `section` accepts `tone`.",
@@ -721,6 +723,168 @@ describe("vantage/orphan", () => {
   });
 });
 
+describe("the `fallback` directive", () => {
+  const DRAWING = [
+    "# Drawing",
+    "",
+    "<div>",
+    '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20" role="img" aria-label="A dot">',
+    '  <circle cx="10" cy="10" r="5" fill="currentColor"/>',
+    "</svg>",
+    "</div>",
+    "",
+    "<!-- vantage: fallback -->",
+    "",
+    "This drawing needs Vantage 0.8 or later.",
+    "",
+  ].join("\n");
+
+  it("says nothing about a fallback beside a drawing, which Vantage withholds", async () => {
+    expect(await check(DRAWING)).toEqual([]);
+    expect(await render(DRAWING)).not.toContain("needs Vantage");
+  });
+
+  it("says nothing about a fallback above any block it withholds", async () => {
+    for (const block of [
+      "- a list",
+      "> a quote",
+      "```text\n+---+\n```",
+      "| a |\n| - |\n| 1 |",
+      "$$\nx^2\n$$",
+      "---",
+    ]) {
+      const markdown = `Kept.\n\n<!-- vantage: fallback -->\n\n${block}\n`;
+      expect(await check(markdown), block).toEqual([]);
+      expect(await render(markdown), block).toBe(
+        (await render("Kept.\n")).trimEnd() + "\n",
+      );
+    }
+  });
+
+  it("warns about a fallback above a heading, which Vantage shows", async () => {
+    const markdown = "<!-- vantage: fallback -->\n\n## Kept\n\nBody.\n";
+    const report = await one(markdown);
+
+    expect(ruleIds(report)).toEqual(["vantage/orphan"]);
+    expect(report.findings[0]?.message).toContain(
+      "A fallback block is never a heading",
+    );
+    expect(await render(markdown)).toContain("Kept</h2>");
+  });
+
+  it("warns about a directive merged onto a fallback block, which goes with it", async () => {
+    const markdown = [
+      "<!-- vantage: block tone=note -->",
+      '<!-- vantage: oq id=OQ-1 leaning="Yes." -->',
+      "<!-- vantage: fallback -->",
+      "",
+      "Withheld.",
+      "",
+      "Next.",
+      "",
+    ].join("\n");
+    const report = await one(markdown);
+
+    expect(ruleIds(report)).toEqual(["vantage/orphan"]);
+    expect(report.findings[0]?.message).toContain("`block` or `oq`");
+    expect(report.findings[0]?.line).toBe(1);
+    expect(await render(markdown)).not.toContain("data-vantage-");
+  });
+
+  it("reports a key, since `fallback` takes none, and still withholds", async () => {
+    const markdown = "<!-- vantage: fallback for=svg -->\n\nWithheld.\n";
+    const report = await one(markdown);
+
+    expect(ruleIds(report)).toEqual(["vantage/unknown-key"]);
+    expect(report.findings[0]?.message).toContain("`fallback` takes no keys.");
+    expect(await render(markdown)).not.toContain("Withheld");
+  });
+
+  it("still checks the links in a fallback block, which GitHub shows", async () => {
+    expect(
+      await check("<!-- vantage: fallback -->\n\n[The drawing](chart.svg)\n"),
+    ).toEqual(["link/missing-target"]);
+  });
+
+  // Raw HTML is read by the element it opens with. The list of what a
+  // fallback withholds is notation, frozen once released, so a raw block off
+  // it is a warning to rewrite, never a case for widening the list later.
+  it.each([
+    ["an <img>", '<img src="chart.png" alt="The chart" width="300">', "img"],
+    [
+      "a <figure>",
+      '<figure><img src="chart.png" alt="The chart"><figcaption>Needs 0.8</figcaption></figure>',
+      "figure",
+    ],
+    [
+      "a <details>",
+      "<details><summary>The chart</summary>Needs 0.8.</details>",
+      "details",
+    ],
+  ])(
+    "warns about a fallback above %s, which Vantage shows",
+    async (_name, block, tag) => {
+      const markdown = `Kept.\n\n<!-- vantage: fallback -->\n\n${block}\n\nAfter.\n`;
+      const report = await one(markdown);
+      expect(ruleIds(report)).toEqual(["vantage/orphan"]);
+      const message = report.findings[0]?.message ?? "";
+      expect(message).toContain(`a raw \`<${tag}>\``);
+      expect(message).toContain(
+        "Vantage shows it beside what it stands in for",
+      );
+      expect(message).toContain("Wrap it in a `<div>`");
+      expect(await render(markdown)).toContain(`<${tag}`);
+    },
+  );
+
+  it("warns about one on the same line as the raw block, too", async () => {
+    const report = await one(
+      'Kept.\n\n<!-- vantage: fallback --><img src="chart.png" alt="x">\n',
+    );
+    expect(ruleIds(report)).toEqual(["vantage/orphan"]);
+    expect(report.findings[0]?.message).toContain("a raw `<img>`");
+  });
+
+  it("says nothing about a fallback above a raw block it withholds, blank lines inside or not", async () => {
+    for (const block of [
+      '<div>\n<img src="chart.png" alt="The chart">\n</div>',
+      "<div>\n\n[The drawing](https://example.com/chart.svg)\n\n</div>",
+      "<p>A paragraph in HTML.</p>",
+      "<table><tr><td>1</td></tr></table>",
+    ]) {
+      const markdown = `Kept.\n\n<!-- vantage: fallback -->\n\n${block}\n`;
+      expect(await check(markdown), block).toEqual([]);
+      expect(await render(markdown), block).toBe(
+        (await render("Kept.\n")).trimEnd() + "\n",
+      );
+    }
+  });
+
+  it("warns about a fallback above a raw heading, as above a Markdown one", async () => {
+    const report = await one("<!-- vantage: fallback -->\n\n<h2>Kept</h2>\n");
+    expect(ruleIds(report)).toEqual(["vantage/orphan"]);
+    expect(report.findings[0]?.message).toContain(
+      "A fallback block is never a heading",
+    );
+  });
+
+  it("says what a misplaced fallback leaves on the page, not that nothing is styled", async () => {
+    for (const markdown of [
+      "Inline <!-- vantage: fallback --> here.\n",
+      "Kept.\n\n<!-- vantage: fallback -->\n",
+      "- one\n  <!-- vantage: fallback -->\n  two\n- three\n",
+    ]) {
+      const report = await one(markdown);
+      expect(ruleIds(report), markdown).toEqual(["vantage/orphan"]);
+      const message = report.findings[0]?.message ?? "";
+      expect(message, markdown).toContain(
+        "the fallback withholds nothing, so Vantage shows the block it was meant to withhold",
+      );
+      expect(message, markdown).not.toContain("styl");
+    }
+  });
+});
+
 describe("vantage/list-split", () => {
   it("reports a directive between two numbered items", async () => {
     const markdown =
@@ -1053,10 +1217,16 @@ describe("vantage/* settings", () => {
     expect(severities.get("vantage/unknown-key")).toBe("error");
   });
 
-  it("rejects a misspelled rule id, because the family is ours", async () => {
-    expect(() =>
-      parseConfig('[check.rules]\n"vantage/unkown-name" = "off"\n'),
-    ).toThrow(/unknown rule/);
+  // A family being ours does not make every id in it a typo: a later release
+  // can add a rule to it. So it is ignored with a warning, as any unknown id.
+  it("warns about a misspelled rule id, and leaves the rule as it was", async () => {
+    const { settings, warnings } = parseConfig(
+      '[check.rules]\n"vantage/unkown-name" = "off"\n',
+    );
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('unknown rule "vantage/unkown-name"');
+    expect(settings.setting("vantage/unknown-name")).toBe("error");
   });
 });
 
@@ -1137,16 +1307,27 @@ describe("vantage/oq-missing", () => {
     expect(report.findings[0]?.severity).toBe("error");
   });
 
-  it("tells an author who re-marks the question to keep its directive", async () => {
+  it("tells an author who re-marks the question which directive it then takes", async () => {
     // The planning index reads a question from its directive alone
     // (planning-index.md §3.3). The old message offered 🔒 and ✅ as ways out,
     // "mark it 🔒 instead of 💬", and an author who took one and left the
-    // directive off had a question nothing counted, badged or listed.
+    // directive off had a question nothing counted, badged or listed. A re-marked
+    // question takes `question`, never `oq`, which every viewer before 0.8
+    // offers to answer (vantage/question-name).
     const message = (await one(question("💬"))).findings[0]?.message ?? "";
 
-    expect(message).toContain("Keep the directive in either state");
-    expect(message).toContain("a 🔒 question needs no `leaning`");
+    expect(message).toContain("`<!-- vantage: question id=\u2026 -->` instead");
+    expect(message).toContain("with no button");
     expect(message).toContain("planning index");
+  });
+
+  it("leaves an open question written with `question` to vantage/question-name", async () => {
+    // One mistake, one finding: the directive is there, under the wrong name.
+    const misnamed = question("💬").replace(
+      "   _Leaning:_",
+      "   <!-- vantage: question id=OQ-1 -->\n\n   _Leaning:_",
+    );
+    expect(await check(misnamed)).toEqual(["vantage/question-name"]);
   });
 
   it("says nothing about a question blocked on something upstream", async () => {
@@ -1271,6 +1452,289 @@ describe("vantage/oq-missing", () => {
       "/x/.vantage.toml",
     );
     expect(ruleIds(await checkTree(tree, ["."], loaded.settings))).toEqual([]);
+  });
+});
+
+/**
+ * `vantage/question-name` — the name a question is declared with, held to its
+ * state (`VANTAGE_QUESTION_NAMES`). `oq` means "answer this in one click" to
+ * every viewer that has shipped, so it belongs on an open question alone, and
+ * `question` is the name for a 🔒 or ✅ one, which older viewers drop.
+ */
+describe("vantage/question-name", () => {
+  /** One question in a loose list item, declared by `directive`. */
+  const declared = (marker: string, directive: string) =>
+    [
+      `1. ${marker} **OQ-1: Should the gate run on push?**`,
+      "",
+      `   <!-- vantage: ${directive} -->`,
+      "",
+      "   _Leaning:_ on push.",
+      "",
+    ].join("\n");
+
+  it.each([
+    ["an open question", "💬", 'oq id=OQ-1 leaning="On push."'],
+    ["a preference", "💬 🤷", 'oq id=OQ-1 leaning="On push."'],
+    ["an unmarked question, which counts as open", "", "oq id=OQ-1"],
+    ["a blocked question", "🔒", "question id=OQ-1"],
+    ["an answered question", "✅", "question id=OQ-1"],
+  ])(
+    "is silent on %s with the right name",
+    async (_name, marker, directive) => {
+      expect(await check(declared(marker, directive))).toEqual([]);
+    },
+  );
+
+  it.each([
+    ["blocked", "🔒"],
+    ["answered", "✅"],
+  ])(
+    "reports an `oq` on a %s question, at the directive",
+    async (word, marker) => {
+      const report = await one(
+        declared(marker, 'oq id=OQ-1 leaning="On push."'),
+      );
+
+      expect(ruleIds(report)).toEqual(["vantage/question-name"]);
+      const finding = report.findings[0];
+      expect(finding?.severity).toBe("error");
+      expect([finding?.line, finding?.column]).toEqual([3, 4]);
+      expect(finding?.message).toContain(`marked ${marker} ${word}`);
+      // What every viewer before 0.8 does with it, and the exact fix.
+      expect(finding?.message).toContain("every Vantage before 0.8 offers");
+      expect(finding?.message).toContain(
+        "Write `<!-- vantage: question id=OQ-1 -->` instead",
+      );
+    },
+  );
+
+  it.each([
+    ["an open question", "💬"],
+    ["an unmarked question", ""],
+  ])("reports a `question` on %s", async (_name, marker) => {
+    const report = await one(declared(marker, "question id=OQ-1"));
+
+    expect(ruleIds(report)).toEqual(["vantage/question-name"]);
+    expect(report.findings[0]?.message).toContain(
+      'Write `<!-- vantage: oq id=OQ-1 leaning="…" -->` instead',
+    );
+    expect(report.findings[0]?.message).toContain("or mark the question");
+  });
+
+  it("judges each comment of a mixed run on its own name, and says to delete the extra one", async () => {
+    // A run holding both is one question, and an `oq` in it wins, as it does
+    // to a viewer that drops `question`. So on a 🔒 question the `oq` is the
+    // mistake, and on an open one the `question` is; either way the other name
+    // already declares the question, so the fix is to delete this one rather
+    // than to rename it into a second declaration.
+    const both = (marker: string) =>
+      declared(marker, "question id=OQ-1 -->\n   <!-- vantage: oq");
+    const blocked = await one(both("🔒"));
+    expect(ruleIds(blocked)).toEqual(["vantage/question-name"]);
+    expect(blocked.findings[0]?.line).toBe(4);
+    expect(blocked.findings[0]?.message).toContain(
+      "Delete this `oq`: the `question` in the same run already declares the question",
+    );
+    expect(blocked.findings[0]?.message).not.toContain("Write");
+
+    const open = await one(both("💬"));
+    expect(ruleIds(open)).toEqual(["vantage/question-name"]);
+    expect(open.findings[0]?.line).toBe(3);
+    expect(open.findings[0]?.message).toContain(
+      "Delete this `question`: the `oq` in the same run already declares the question",
+    );
+  });
+
+  it("does not call one run's shared id a duplicate", async () => {
+    // Both comments carry the id, the run is one question with one anchor, and
+    // the repeated key is vantage/duplicate-key's to report.
+    const run = declared(
+      "✅",
+      "question id=OQ-1 -->\n   <!-- vantage: oq id=OQ-1",
+    );
+    expect(await check(run)).toEqual([
+      "vantage/duplicate-key",
+      "vantage/question-name",
+    ]);
+  });
+
+  it("names no leaning for an open question that states none", async () => {
+    const bare = [
+      "1. 💬 **OQ-1: Should the gate run on push?**",
+      "",
+      "   <!-- vantage: question id=OQ-1 -->",
+      "",
+      "   Nobody has a view yet.",
+      "",
+    ].join("\n");
+    const report = await one(bare);
+    expect(ruleIds(report)).toEqual(["vantage/question-name"]);
+    const message = report.findings[0]?.message ?? "";
+    expect(message).toContain("Write `<!-- vantage: oq id=OQ-1 -->` instead");
+    expect(message).not.toContain("restating the leaning");
+    expect(message).toContain("The question states no leaning yet");
+    // And an `oq` with no leaning is the right name for it.
+    expect(await check(bare.replace("question id=OQ-1", "oq id=OQ-1"))).toEqual(
+      [],
+    );
+  });
+
+  /**
+   * Outside a list item, the question is the block its directive lands on, so
+   * a bold title above the directive is not part of it: the block below is
+   * read as unmarked, and so open, by every viewer.
+   */
+  describe("a title above the directive, outside a list item", () => {
+    const below = (marker: string, directive: string, quote = "") =>
+      [
+        `${quote}${marker} **OQ-3: Should the gate run on push?**`,
+        quote.trimEnd(),
+        `${quote}<!-- vantage: ${directive} -->`,
+        quote.trimEnd(),
+        `${quote}**Answer:** on push.`,
+        "",
+      ].join("\n");
+
+    it.each([
+      ["an answered paragraph", "✅", 'oq id=OQ-3 leaning="x"', ""],
+      ["a blocked paragraph", "🔒", "oq id=OQ-3", ""],
+      ["an answered paragraph in a quote", "✅", "oq id=OQ-3", "> "],
+    ])(
+      "reports an `oq` below %s, naming the placement rather than a name",
+      async (_name, marker, directive, quote) => {
+        const report = await one(below(marker, directive, quote));
+        expect(ruleIds(report)).toEqual(["vantage/question-name"]);
+        const message = report.findings[0]?.message ?? "";
+        expect(message).toContain("The title on line 1 marks this question");
+        expect(message).toContain("the directive lands on line 5");
+        expect(message).toContain("Put the directive above the title");
+        expect(message).toContain("`<!-- vantage: question id=OQ-3 -->`");
+      },
+    );
+
+    it("reports a `question` there too, and never tells it to become an `oq`", async () => {
+      const report = await one(below("🔒", "question id=OQ-3"));
+      expect(ruleIds(report)).toEqual(["vantage/question-name"]);
+      const message = report.findings[0]?.message ?? "";
+      expect(message).toContain("Put the directive above the title");
+      expect(message).not.toContain("Write `<!-- vantage: oq");
+    });
+
+    it("is one finding for a run of two", async () => {
+      const report = await one(
+        below("✅", "question id=OQ-3 -->\n<!-- vantage: oq"),
+      );
+      expect(ruleIds(report)).toEqual(["vantage/question-name"]);
+    });
+
+    it("is silent on an open title, and on a directive above the title", async () => {
+      expect(await check(below("💬", 'oq id=OQ-3 leaning="x"'))).toEqual([]);
+      const above = [
+        "<!-- vantage: question id=OQ-3 -->",
+        "",
+        "✅ **OQ-3: Should the gate run on push?**",
+        "",
+        "**Answer:** on push.",
+        "",
+      ].join("\n");
+      expect(await check(above)).toEqual([]);
+    });
+  });
+
+  it("finds its question under frontmatter, which shifts every line", async () => {
+    const report = await one(
+      `---\nstatus: draft\n---\n\n${declared("✅", "oq id=OQ-1")}`,
+    );
+    expect(ruleIds(report)).toEqual(["vantage/question-name"]);
+    expect(report.findings[0]?.line).toBe(7);
+  });
+
+  it("checks every document, not only the planning index's candidates", async () => {
+    // The harm is in the viewer, which renders a document whether or not
+    // `[planning]` excludes it.
+    const root = makeTree({
+      ".git/HEAD": "ref: refs/heads/main\n",
+      ".vantage.toml": '[planning]\nexclude = ["gallery/**"]\n',
+      "gallery/a.md": declared("🔒", "oq id=OQ-1"),
+    });
+    expect(ruleIds(await checkTree(root))).toEqual(["vantage/question-name"]);
+  });
+
+  it("can be switched off", async () => {
+    const tree = makeTree({ "index.md": declared("🔒", "oq id=OQ-1") });
+    const loaded = parseConfig(
+      '[check.rules]\n"vantage/question-name" = "off"\n',
+      "/x/.vantage.toml",
+    );
+    expect(ruleIds(await checkTree(tree, ["."], loaded.settings))).toEqual([]);
+  });
+});
+
+/**
+ * A `question` directive is checked as an `oq` is wherever the two promise the
+ * same thing — the id grammar, one namespace of ids, the anchor, the placement —
+ * and takes `id` alone.
+ */
+describe("the `question` directive", () => {
+  const blocked = (directive: string, body = "Waits on the load test.") =>
+    `1. 🔒 **OQ-1: The retry budget.**\n\n   <!-- vantage: ${directive} -->\n\n   ${body}\n`;
+
+  it("anchors its question, with no button and no leaning", async () => {
+    const html = await render(blocked("question id=OQ-1"));
+    expect(html).toContain('data-vantage-question="true"');
+    expect(html).toContain('id="OQ-1"');
+    expect(html).not.toContain("data-vantage-oq");
+    expect(html).not.toContain("data-vantage-leaning");
+  });
+
+  it("is a live target for a link to its id", async () => {
+    const markdown = `See [OQ-1](#OQ-1).\n\n${blocked("question id=OQ-1")}`;
+    expect(await check(markdown)).toEqual([]);
+  });
+
+  it("reports a `leaning`, which only an `oq` carries, as `oq`'s key and not a newer one", async () => {
+    const report = await one(blocked('question id=OQ-1 leaning="Yes."'));
+    expect(ruleIds(report)).toEqual(["vantage/unknown-key"]);
+    const finding = report.findings[0];
+    expect(finding?.message).toContain("`leaning` is `oq`'s key");
+    expect(finding?.message).toContain("it takes `id` alone");
+    expect(finding?.message).toContain("Delete the key");
+    // Not the two-branch advice, which would say to keep it.
+    expect(finding?.detail).toBeUndefined();
+    expect(
+      await render(blocked('question id=OQ-1 leaning="Yes."')),
+    ).not.toContain("data-vantage-leaning");
+  });
+
+  it("holds its id to the grammar, in one namespace with `oq`", async () => {
+    expect(await check(blocked("question id=OQ-nope"))).toEqual([
+      "vantage/oq-id-format",
+    ]);
+    const twice = `${blocked("question id=OQ-1")}\n2. 💬 **OQ-2: Another.**\n\n   <!-- vantage: oq id=OQ-1 -->\n\n   _Leaning:_ yes.\n`;
+    expect(await check(twice)).toEqual(["vantage/oq-id-duplicate"]);
+  });
+
+  it("merges its keys with an `oq` in the same run", async () => {
+    // One question, so one `id`: the second is lost, as a second `id` on two
+    // `oq` comments is. The question is unmarked, so open, and the `question`
+    // in its run is the wrong name for it too.
+    expect(
+      await check(
+        "<!-- vantage: question id=OQ-1 -->\n<!-- vantage: oq id=OQ-2 -->\n\nA question.\n",
+      ),
+    ).toEqual(["vantage/duplicate-key", "vantage/question-name"]);
+  });
+
+  it("is reported where it would declare nothing", async () => {
+    const report = await one(
+      "<!-- vantage: question id=OQ-1 -->\n\n- item one\n- item two\n",
+    );
+    expect(ruleIds(report)).toEqual(["vantage/orphan"]);
+    expect(report.findings[0]?.message).toContain(
+      "A question can only be declared on a paragraph",
+    );
+    expect(report.findings[0]?.message).not.toContain("button");
   });
 });
 

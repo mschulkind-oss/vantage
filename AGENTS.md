@@ -127,6 +127,22 @@ Never kill it; run test instances on other ports.
   `packages/vantage-check/dist/vantage-check <file>` is the same check locally,
   and `… style-guide` prints the conventions it enforces — cheaper before
   writing than at commit time.
+- **The gate cannot tell you that an older viewer misreads new notation.
+  `just compat-previous` can, and it needs the network.** A release never gives
+  existing notation a new meaning (P0 of
+  [`docs/design/checker-version-skew.md`](docs/design/checker-version-skew.md)),
+  and 0.8.0's guide broke that before anything checked it: it put `oq` on 🔒
+  and ✅ questions, and every 0.7 viewer offers to answer an `oq`. The recipe
+  renders every example the style guide shows, every directive form and every
+  `vantage:` frontmatter value through the previous release's *published*
+  `vantage-md`, which it installs into a temporary directory, and fails where
+  that release's viewer would read one differently.
+  [`notation.ts`](frontend/src/compat/notation.ts) says what counts. `check-ci`
+  must pass offline, so it leaves this to CI's `compat-previous` job, and a
+  local run with no network skips and says so. `just release` runs it too,
+  with `CI=true`, before it tags anything: a tag freezes its notation for
+  good. Run it after changing the style guide, the directive vocabulary or the
+  renderer.
 - **The `Workers Builds: vantage` check on every PR is Cloudflare's, and its
   build command lives in their dashboard, not here.** It ran `bash
   build-docs.sh` from 2026-05-30 — when that file was deleted — until

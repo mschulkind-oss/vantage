@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { buildPlanningIndex, type PlanningConfig } from "vantage-md/planning";
 import { setPlanningLimitsForTests } from "../planningScan/limits";
-import { indexOf, sourcesOf } from "../test/planning";
+import { indexOf, questionDirective, sourcesOf } from "../test/planning";
 import { planningCardId } from "./planningCardId";
 import {
   outlineTargetId,
@@ -33,7 +33,7 @@ function questions(prefix: string, count: number, marker = OPEN) {
       "",
       `1. ${marker} **${prefix}${i + 1}: Question ${prefix}${i + 1}?**`,
       "",
-      `   <!-- vantage: oq id=${prefix}${i + 1} -->`,
+      `   ${questionDirective(marker, `${prefix}${i + 1}`)}`,
       "",
       "   _Leaning:_ yes.",
       "",

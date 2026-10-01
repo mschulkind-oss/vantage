@@ -1,494 +1,487 @@
 ---
-title: "The checker writes for the oldest viewer, not for itself"
+title: "New meaning gets new notation, and the version machinery waits until it can't"
 date: 2026-09-30
 status: in-review
 stage: DESIGN
-next: "Rule OQ-VS1: tag 0.8.0 with the text and the messages now, or hold it for the VANTAGE_VIEWER payload"
-tags: [vantage-check, versioning, release, agents, config]
-summary: "An agent's checker is whatever PyPI released last, so it teaches Markdown the viewer its humans run may not render. Tell the newest checker who the readers are, in .vantage.toml, in the review payload and in a machine's environment, and have it write for the oldest of them."
+next: "Rule OQ-VS1 and OQ-VS5 before 0.8.0 is tagged: both decide strings frozen into every 0.8.0 viewer"
+tags: [vantage-check, versioning, release, agents, config, forward-compatibility]
+summary: "An agent's checker is whatever PyPI released last, and its readers' viewer may be releases behind. Vantage keeps them compatible by never giving existing notation a new meaning, by pairing each new capability with a fallback older viewers show, and by reserving a target key now so that the version machinery can be added the day a change truly needs it."
 ---
 
-# The checker writes for the oldest viewer, not for itself
+# New meaning gets new notation, and the version machinery waits until it can't
 
-**Status:** 2026-09-30. The checker's part of the 0.8.0 slice ([§11](#11-what-ships-when)) is built: the two-branch messages, the development-build name, the `style-guide` header line and the user-guide edits. Nothing for a later release is built. The evidence was checked against `bb7f67f` (main) and against the published 0.7.1 packages on the same day.
+**Status:** 2026-10-01. Built at `9507cac`: the `style-guide` header line, the two-branch messages and the development-build name. Ruled for 0.8.0 on 2026-09-30, and built in the commit after `958dab3`: `question`, `fallback`, config tolerance in the checker, the reserved `target`, the compatibility test (run by `just release` too) and the payload's exit-2 sentence. Open, and not built: `VANTAGE_VIEWER` in the payload ([OQ-VS1](#OQ-VS1)) and the server's unknown keys ([OQ-VS5](#OQ-VS5)). Nothing deferred is built. The evidence in [§2](#2-what-exists-today) describes `958dab3` and the published 0.7.1 packages.
 
-> **In short.** Nothing today stops an agent's checker from being newer than its readers' viewer, because the checker writes for its own version. The fix is to tell the newest checker which viewers the readers run and have it write for the oldest, not to pin an old checker, which can't see what came after it.
+> **In short.** Old viewers can read new documents because a release never gives existing notation a new meaning ([P0](#1-verdict-and-the-principles)), not because anything negotiates versions. 0.8.0 fixes its one violation, gives its one new capability a fallback, and ships the few pieces a later release can't retrofit, so the version machinery can wait until a change truly needs it.
 
-**Why it matters.** Vantage's notation is built to be forward compatible: a viewer drops a directive name it doesn't know, and an unknown key or value one pair at a time. It shows unknown frontmatter keys as plain metadata, and skips config tables it doesn't own. So most of what 0.8.0 adds reads fine on a 0.7.1 viewer ([§2.2](#22-what-a-080-agent-writes-and-what-a-071-viewer-does-with-it)). Two things don't:
+**Why it matters.** Bare `uvx vantage-check` runs the newest release within minutes of an upload ([§2.1](#21-how-an-agent-gets-its-checker)), so an agent routinely writes for a newer Vantage than its reader runs. As `958dab3` had it, 0.8.0 broke an older viewer once: an `oq` directive on a blocked question offers a 0.7.1 reviewer a button that files the wrong comment ([§2.2](#22-080s-notation-on-a-071-viewer)).
 
-- **One genuine break, which the guide made:** 0.8.0 repurposes `oq`, giving the directive to blocked and answered questions too. A 0.7.1 viewer reads it the old way and offers "Take this leaning" on them. New meaning was given to old notation, which [P0](#1-verdict-and-the-principles) forbids, and [OQ-VS4](#OQ-VS4) undoes before the tag.
-- **One new capability:** inline SVG is not notation. Older viewers, like GitHub, drop the drawing.
+**The shape.** Four things ship in 0.8.0: a `question` directive beside `oq`, a `fallback` directive, config readers that warn about keys they don't know instead of failing on them, and a reserved `target` key. A compatibility test renders the guide through the previous release, so [P0](#1-verdict-and-the-principles) is checked, not just promised.
 
-The rest of this design is for capabilities like that one, and for the conventions that rely on badges an older viewer lacks.
+**Cost.** One CI job needs the network. A typo in `.vantage.toml` warns instead of failing. Once tagged, `question`, `fallback`, `target`'s form and its refusal are permanent, and so is `VANTAGE_VIEWER` if [OQ-VS1](#OQ-VS1) puts it in the payload.
 
-**The shape.** Two declarations of which Vantage the readers run: `target` in `.vantage.toml`, and `VANTAGE_VIEWER` from the review payload or a machine's environment. The newest checker reads both, and checks against a feature table and an archive of every released style guide.
+**Start at [§3](#3-forward-compatible-notation-in-080):** what 0.8.0 changes so that it keeps P0.
 
-**Cost.** Every new Markdown feature needs a version, a proof of what older viewers do with it, and an entry the release gate checks. Once a viewer ships `VANTAGE_VIEWER`, that name is permanent.
+**Needs your ruling:** [OQ-VS1](#OQ-VS1) and [OQ-VS5](#OQ-VS5), both before 0.8.0 is tagged, then [OQ-VS2](#OQ-VS2) and [OQ-VS3](#OQ-VS3).
 
-**Start at [§4.2](#42-choosing-the-effective-target):** how the checker picks the version it writes for.
-
-**Needs your ruling:** [OQ-VS4](#OQ-VS4) and [OQ-VS1](#OQ-VS1) (both before 0.8.0 is tagged), [OQ-VS2](#OQ-VS2), [OQ-VS3](#OQ-VS3).
-
-**Reads with:** [`checker-version-skew-plan.md`](checker-version-skew-plan.md) (the implementation sketch, incomplete while questions are open), [`agent-cli.md`](agent-cli.md) (whose R6 this replaces), [`repo-config.md`](repo-config.md) (the file the key lives in), [`inline-markup.md`](../reference/inline-markup.md) (whose D3 this amends, [§4.1](#41-the-key)), and [`agent-bootstrap.md`](agent-bootstrap.md) (whose [`OQ-B6`](agent-bootstrap.md#decision-ledger) wording this amends, [§5.1](#51-the-review-payload)).
+**Reads with:** [`checker-version-skew-plan.md`](checker-version-skew-plan.md) (the implementation sketch, incomplete while questions are open), [`inline-markup.md`](../reference/inline-markup.md) (the directive vocabulary, whose D3 this amends), [`repo-config.md`](repo-config.md) (whose [OQ-RC5](repo-config.md#6-decision-ledger) [OQ-VS5](#OQ-VS5) reopens), [`agent-cli.md`](agent-cli.md) (whose R6 this replaces), and [`agent-bootstrap.md`](agent-bootstrap.md) (whose [OQ-B6](agent-bootstrap.md#decision-ledger) wording the payload amends).
 
 ---
 
 ## 1. Verdict, and the principles
 
-**Build the target, and give the viewer's version to the newest checker instead of pinning an old checker to it.** 0.8.0 needs text and three small checker changes. Whether it also carries the payload change is [OQ-VS1](#OQ-VS1). The rest ships in the next release ([§11](#11-what-ships-when)).
+**Keep the notation forward compatible, and build version machinery only for what that can't cover.** My first draft put the machinery first: a declared target, a feature table, an archive of every released guide. Review showed it was guarding mostly against a break the guide had made itself, and that undoing that break costs less than building the guard. What remains of the machinery is the part a shipped release can't acquire later. That ships now, and the rest waits ([§12](#12-deferred-until-a-capability-gap-needs-it)).
 
-**What this does not ensure.** Two cases stay unprotected, and nobody should read the design as covering them:
+| Direction | 0.8.0's answer |
+| :--- | :--- |
+| **Newer checker, older viewer** | New notation that older viewers drop harmlessly ([§3.1](#31-questions-oq-for-open-ones-question-for-the-rest)), and a fallback block for a capability they lack ([§3.2](#32-a-fallback-block-for-a-capability)). Under [OQ-VS1](#OQ-VS1), the payload names the viewer, for the checkers that come later ([§5](#5-the-viewers-version-in-the-review-payload)). |
+| **Older checker, newer repository** | An older checker warns about config keys it doesn't know instead of exiting 2 ([§3.3](#33-config-an-older-checker-can-read)), and refuses with one clear message when a repository declares a newer `target` ([§4](#4-the-target-reserved)). |
 
-- **An unconfigured repository.** With no `target`, no `VANTAGE_VIEWER` on the machine, and no review payload, nothing stops an agent from getting a newer checker than the viewer, under [OQ-VS2](#OQ-VS2)'s leaning. The checker only says which version it checked for.
-- **0.7.x viewers.** No mechanism can reach them. Their payloads are already shipped, and they carry no version. For those users, 0.8.0's remedies are only the CHANGELOG and the user guide.
+The principles, numbered so other documents can cite them. **target** *(coined here)*, **fallback block** *(coined here)* and **`VANTAGE_VIEWER`** *(coined here)* are defined where they are introduced, in [§4.1](#41-the-key), [§3.2](#32-a-fallback-block-for-a-capability) and [§5](#5-the-viewers-version-in-the-review-payload).
 
-Six principles carry the design, and the first comes before any machinery. The words **target** *(coined here)*, **feature table** *(coined here)* and **`VANTAGE_VIEWER`** *(coined here)* are defined where they are introduced, in [§4.1](#41-the-key), [§4.4](#44-the-feature-table) and [§5](#5-the-viewers-version-goes-to-the-newest-checker).
-
-- **P0. Notation is forward compatible.** A release never gives existing notation a new meaning: a new meaning gets a new directive name, key or value, which older viewers already drop without harm. Code review enforces this when the notation is designed, before any checker gets involved. What the rest of this design handles is what P0 can't: new *capabilities* that older renderers lack (inline SVG), and conventions that rely on derived displays (badges) an older viewer doesn't draw.
-- **P1. Readers are declared, and the checker writes for the oldest one.** A repository declares its oldest reader once, in config. That's Go's `go` line in `go.mod`, not a stamp in each document. A reviewer's viewer, or a machine's viewer, declares itself.
-- **P2. The newest checker implements every target back to a floor.** Nobody installs an old checker to write for an old viewer. As Go puts it, the newest tool is the best implementation of every older version. The one exception: a version below the floor has no newer implementation, and neither does any version before the target release ships. For those, the viewer's own checker is the only implementation there is.
+- **P0. Notation is forward compatible.** A release never gives existing notation a new meaning. A new meaning gets a new directive name, key or value, which older viewers already drop without harm. A 0.7.1 viewer drops an unknown directive name entirely, and an unknown key or value pair by pair (verified at v0.7.1). The same holds for `.vantage.toml`: a new meaning there gets a new key, which older readers ignore ([§3.3](#33-config-an-older-checker-can-read)). Review enforces P0 when notation is designed, and the compatibility test enforces it on every push ([§3.4](#34-the-compatibility-test)).
+- **P1. A capability older renderers lack comes with a fallback they show and newer ones swallow.** This is the `<noscript>` pattern: inline SVG isn't notation, it's a drawing an older sanitizer can't keep, so the document says in words what an older reader is missing.
+- **P2. What can't be retrofitted ships first.** Whatever a released viewer or checker freezes ships before the machinery that will rely on it: what the payload says, what a config reader does with a key it doesn't know, the refusal. Nothing added later reaches a release that has already shipped.
 - **P3. A mismatch fails once, clearly, and names the fix.** One message saying which version is needed replaces a flood of `vantage/unknown-name` errors or a false pass.
-- **P4. Whoever knows the viewer's version passes it along, and never pins a checker to it.** The review payload knows the reviewer's viewer, and a machine's environment knows the machine's viewer. Neither can know what a later release changed, so neither picks the checker.
+- **P4. Whoever knows the viewer's version passes it along, and never pins a checker to it.** An old checker can't see what came after it, so the newest checker gets the viewer's version as an input ([§5](#5-the-viewers-version-in-the-review-payload)).
 - **P5. The checker never asks anyone.** [`agent-cli.md` P1](agent-cli.md#1-verdict-up-front) holds: no server, no network, and no fetching of a different version.
+
+**What this does not ensure:**
+
+- **A capability used without its fallback.** The guide teaches the pairing, but no rule enforces it in 0.8.0. A rule would need to know whether the readers are all on 0.8, and that's the deferred machinery.
+- **0.7.x checkers.** They report `question` and `fallback` as unknown names, and exit 2 on any config key newer than they are. Nothing reaches them.
+- **A breaking change.** If a release ever breaks P0, older viewers misread the documents that use it. `target` protects only through checkers, which refuse ([§4.2](#42-which-release-a-checker-is-and-when-it-refuses)).
 
 ## 2. What exists today
 
 ### 2.1 How an agent gets its checker
 
-- **Every channel says bare `uvx vantage-check`.** That includes:
-  - the review payload ([`useReviewStore.ts:1216`](../../frontend/src/stores/useReviewStore.ts#L1216), and the same string at v0.7.1);
-  - the user guide, including its CI example and its `style-guide >> AGENTS.md` recipe ([`vantage-check.md`](../../userguide/guides/vantage-check.md));
-  - agent instructions in circulation, which include this repository author's own skills.
+- **Every channel says bare `uvx vantage-check`.** That includes the review payload ([`useReviewStore.ts:1223`](../../frontend/src/stores/useReviewStore.ts#L1223), the same command at v0.7.1), the user guide ([`vantage-check.md`](../../userguide/guides/vantage-check.md)), and agent instructions in circulation, this repository author's own skills among them.
 - **Bare `uvx` means the newest release, and the lag is short.** Measured with uv 0.12.17 on 2026-09-30:
   - uv consults the index on every run, and PyPI's simple index sends `max-age=600`.
   - A cached environment for 0.6.0 was created 14 minutes after that version was uploaded.
   - `uv tool install vantage-check==X` pins a machine, and `@latest` bypasses that pin.
-- **uv never looks at `PATH`, and no project-level uv config pins it.** A Homebrew `vantage-check` that matches the Homebrew viewer is invisible to `uvx`. `constraint-dependencies` in the working directory's `uv.toml` or `pyproject.toml` was ignored.
+- **uv never looks at `PATH`, and no project-level uv config pins it.** A Homebrew `vantage-check` that matches the Homebrew viewer is invisible to `uvx`.
 - **The two wheels don't know about each other.** [`build-wheel.py`](../../scripts/build-wheel.py) writes no `Requires-Dist` in either.
 
-### 2.2 What a 0.8.0 agent writes, and what a 0.7.1 viewer does with it
+### 2.2 0.8.0's notation on a 0.7.1 viewer
 
-Rows 1, 3 and 4 were checked by rendering a probe with the published `vantage-md@0.7.1`. Rows 2, 5 and 6 depend on the app or the server, which that package doesn't contain, so they were read from the v0.7.1 tag's code. The published `uvx vantage-check@0.7.1` passed every row except the directive name it doesn't know.
+The SVG, `stage:` and `depends-on:` rows were checked by rendering a probe with the published `vantage-md@0.7.1`. The other rows depend on the app or the server, which that package doesn't contain, so they were read from the v0.7.1 tag's code.
 
-| 0.8.0 feature | 0.7.1 viewer | 0.8.0 checker |
+| 0.8.0 notation, as `958dab3` had it | 0.7.1 viewer | 0.8.0's answer |
 | :--- | :--- | :--- |
-| Inline `<svg>` | **Wrong.** The drawing is dropped, and the text of its `<title>`, `<desc>` and `<text>` elements runs together as a paragraph | clean |
-| An `oq` directive on a 🔒 or ✅ question, which the 0.8.0 guide requires | **Wrong control, in review mode.** It offers "Take this leaning", and with no leaning set it files the literal text "Take the stated leaning." (`useOpenQuestionButtons.ts:44` and `:294` at v0.7.1) | clean |
-| `stage:`, `next:` | Plain metadata rows | clean |
-| `depends-on:` | Raw paths shown as tag chips, not as links | checks the paths exist |
-| `[planning]` in `.vantage.toml` | Ignored: `ours()` at v0.7.1 claims only `starred` (`repoconfig.go:133`) | read |
-| The roadmap convention "never copy a status into it" | The badge that stands in for the status doesn't exist, **so the reader loses the status** | taught by the guide |
+| An `oq` directive on a 🔒 or ✅ question, which that guide required | **Wrong control.** Review mode offers "Take this leaning", and with no leaning set it files the literal text "Take the stated leaning." (`useOpenQuestionButtons.ts:44` and `:294` at v0.7.1) | `question` ([§3.1](#31-questions-oq-for-open-ones-question-for-the-rest)) |
+| Inline `<svg>` | **Drawing lost.** It's dropped, and the text of its `<title>`, `<desc>` and `<text>` elements is left as loose words in the `<div>` that held it. GitHub prints the `<title>` and `<desc>` tags themselves | A fallback block, shown in place of the drawing ([§3.2](#32-a-fallback-block-for-a-capability)) |
+| `stage:`, `next:` | Plain metadata rows | none needed |
+| `depends-on:` | Raw paths, shown as tag chips rather than links | none needed |
+| `[planning]` in `.vantage.toml` | Ignored: `ours()` at v0.7.1 claims only `starred` | none needed |
+| A roadmap entry with no copied status | No badge, so the reader follows the link for the status, as on GitHub | none needed: a convenience is missing, but nothing is misread |
 
-### 2.3 The other direction: an old checker and a newer repository
+### 2.3 An older checker and a newer repository
 
-- **Every published checker exits 2 on this repository's own `.vantage.toml`.** Every version tested (0.5.10, 0.6.2, 0.7.0 and 0.7.1) reports `unknown rule "planning/unrouted"`. So bare `uvx` can't check this repository until 0.8.0 ships.
-- **A newer key or rule id is fatal to an older checker.** Unknown `check.*` and `planning.*` keys exit 2 ([`config.ts:242`](../../packages/vantage-check/src/core/config.ts#L242), [`:294`](../../packages/vantage-check/src/core/config.ts#L294)). So do unknown rule ids (`assertRuleId`, [`:412`](../../packages/vantage-check/src/core/config.ts#L412)), unless their namespace is `markdown`.
-- **A newer directive name is an error in an older checker.** `vantage/unknown-name` defaults to `error` ([`registry.ts:134`](../../packages/vantage-check/src/rules/registry.ts#L134)). Its message says "Vantage knows `section`, `block` or `oq`" without saying which Vantage. Most hits are typos, which is why it is an error.
-- **The two style guides contradict each other.** The 0.7.1 guide says blocked and answered questions need no directive. The 0.8.0 planning index counts a question only when it has one ([`scan.ts:59`](../../packages/vantage-md/src/planning/scan.ts#L59)). In `git diff v0.7.1 HEAD -- packages/vantage-md/src/styleGuide.ts`, that rule is the only line changed rather than added.
-- **An old checker passes what a new one catches.** 0.7.1 passes a `depends-on:` that points at a missing file, while the current build reports `planning/depends-on-missing`.
+- **Every published checker exits 2 on this repository's own `.vantage.toml`.** Every version tested (0.5.10, 0.6.2, 0.7.0 and 0.7.1) reports `unknown rule "planning/unrouted"`.
+- **At `958dab3`, an unknown key or rule id was still fatal.** An unknown `check.*` or `planning.*` key exited 2 (`config.ts:244` and `:296` there), and so did an unknown rule id (`:421`). [§3.3](#33-config-an-older-checker-can-read) changes that for 0.8.0.
+- **A checker before 0.8.0 reads only `[check]`** (`config.ts:124` at v0.7.1), so it ignores a top-level `target` forever.
+- **A newer directive name is an error in an older checker.** `vantage/unknown-name` defaults to `error` ([`registry.ts:149`](../../packages/vantage-check/src/rules/registry.ts#L149)). A 0.7.x checker will report `question` and `fallback` that way, saying "Vantage knows `section`, `block` or `oq`".
+- **An old checker passes what a new one catches.** 0.7.1 passes a `depends-on:` that points at a missing file, which the current build reports as `planning/depends-on-missing`.
 
 ### 2.4 Where versions are visible
 
 | Signal | What it says |
 | :--- | :--- |
-| `vantage --version` | `vantage-md, version 0.7.1` for a release build, and `v0.7.1` for a `go install` build. A local build, including `just deploy`, stamps only the commit ([`Justfile:58`](../../Justfile#L58)) and reports a Go pseudo-version older than every release. It names the installed binary, which is not always the running service. |
-| The browser | **No frontend code reads the app version.** `/api/version` returns the *served repository's* HEAD, and the WebSocket hello carries a commit or a timestamp. `GET /api/perf/diagnostics` carries `app_version` ([`perf_handlers.go:21`](../../internal/api/perf_handlers.go#L21)), but only the perf-report CLI reads it. |
-| `vantage-check version` | `vantage-check 0.7.1` for a release build. A local `just cli` build prints `vantage-check 0.1.0`, which is the manifest's placeholder, and running from source prints `0.0.0-dev`. |
-| `vantage-check style-guide` | No version anywhere. The first line is `## Markdown style guide (for Vantage viewer)`. |
-| `.vantage.toml` | No version key. |
+| `vantage --version` | `vantage-md, version 0.7.1` for a release build, and `v0.7.1` for a `go install` build. A local build, `just deploy` included, stamps only the commit ([`Justfile:58`](../../Justfile#L58)), and reports a Go pseudo-version. It names the installed binary, which isn't always the running service. |
+| The browser | **No frontend code reads the app version.** `/api/version` returns the *served repository's* HEAD. `GET /api/perf/diagnostics` carries `app_version` ([`perf_handlers.go:21`](../../internal/api/perf_handlers.go#L21)), but only the perf-report CLI reads it. |
+| `vantage-check version` | `vantage-check 0.8.0` for a release build. Any other build says `development build` with its commit ([§4.2](#42-which-release-a-checker-is-and-when-it-refuses)). |
+| `vantage-check style-guide` | Its first line names the release whose conventions follow ([§6.1](#61-the-style-guide-names-its-release)). |
+| `.vantage.toml` | No version key until `target` ([§4](#4-the-target-reserved)). |
 
-## 3. Two directions, one cause
+## 3. Forward-compatible notation, in 0.8.0
 
-Both kinds of skew have the same cause: **the checker decides what to teach and enforce from its own version, and nobody reading the documents runs that version.**
+### 3.1 Questions: `oq` for open ones, `question` for the rest
 
-| Direction | How it happens | What it costs today |
-| :--- | :--- | :--- |
-| **Newer checker, older viewer** | Bare `uvx`, and a viewer that's a release behind. A long-running viewer service keeps running the binary it started with. | The agent writes features the viewer renders wrong or ignores, and the checker calls them clean. |
-| **Older checker, newer repository** | A pinned CI job, a `uv tool install`, or a machine that hasn't been upgraded. | Exit 2 on a new key or rule id, `unknown-name` errors on new directives, and false passes on conventions the checker doesn't know. |
+Ruled [OQ-VS4](#decision-ledger) A on 2026-09-30.
 
-## 4. The target
+- **`oq` keeps its 0.7 meaning: an open question that can be answered.** That's a question marked 💬 or 💬 🤷, or carrying no marker at all. Every viewer that knows `oq` offers "Take this leaning" on it in review mode, 0.8.0 included.
+- **A 🔒 or ✅ question gets `question`:** `<!-- vantage: question id=OQ-… -->`. It's a new name, so a 0.7.x viewer drops it whole and offers nothing. It takes `id` alone: a `leaning` is the comment "Take this leaning" files, and `question` offers no such control, so on one it's a `vantage/unknown-key` error and the question's prose keeps its `_Leaning:_` line. Starting narrow keeps P0 open: a key added later is one older viewers drop pair by pair. Marking a question answered changes the marker and the directive's name, and drops its `leaning`; the checker's message quotes the directive to write.
+- **Both names declare a question**, to the planning index, the contents column, the planning outline and the checker. They share one id grammar, and the id is the anchor under either name. Ids are unique across both names in a document, so an `oq` and a `question` with one id are a duplicate. A run of directives holding both is one question, and the `oq` wins, as it does in a 0.7.x viewer, which drops the `question` and reads the `oq`.
+- **They render differently.** An `oq` stamps `data-vantage-oq`; a `question` stamps `data-vantage-question` and the same anchor. So anything that reads `[data-vantage-oq]` still means "a question to answer".
+- **The state comes from the marker, never from the name.** A mismatched name doesn't change what the index counts; it changes what an older viewer offers.
+- **The checker reports a mismatch as an error, and names the right directive:**
+  - `oq` on a 🔒 or ✅ question, because to every viewer before 0.8 `oq` means "answerable";
+  - `question` on an open question, because without `oq` nobody can answer it in one click. The fix is `oq`, or a 🔒 or ✅ marker.
+
+  Both are `vantage/question-name`, reported at the directive in every document, including folders `[planning]` excludes. It reads the question's state from the planning scan, so it can't disagree with the index. A 0.8.0 viewer still withholds the button from an `oq` marked 🔒 or ✅, as a second line of defence.
+- **The checker reads a layout an author can get wrong, and names the placement instead of a name.** Outside a list item, a question is the one block its directive lands on, so a directive written *below* a bold `✅` title lands on the block after it, which has no marker, and every viewer reads the question as open. Naming either directive there would be wrong: `oq` is what every Vantage offers to answer, and `question` on an "open" question would be told to become one. So when the block a question directive lands on has no title and the block above it carries one marked 🔒 or ✅, `vantage/question-name` says to put the directive above the title, or write the question as a list item.
+- **A run holding both names is one declaration.** The checker reports the extra name with "delete this one", never with a rewrite that would declare the question twice, and an id the two share is no duplicate.
+- **An open question with no leaning yet takes `oq` without `leaning`,** so the index counts it. Its button files 0.7's default text, "Take the stated leaning.", until the question states one; that is 0.7's own behavior, not a new meaning.
+- **What a 0.7.x viewer loses:** `question` gives it no anchor, so a link to a blocked or answered question lands at the top of the document there. That's what 0.7's own guide did, since it gave those questions no directive at all.
+
+> [!WARNING]
+> **A new key on `oq` would not have done it.** `oq state=blocked` reads like the smaller change, and it's wrong: a 0.7.x viewer drops the unknown key, keeps the `oq` and offers the button anyway. P0's "new name, key or value" has a sharper edge than it looks. When a new meaning has to *stop* an older viewer acting on notation it knows, only a new name will do, because a name is the one thing whose absence makes the whole directive drop.
+
+### 3.2 A fallback block for a capability
+
+Ruled 2026-09-30.
+
+A **fallback block** *(coined here)* is the block after a `<!-- vantage: fallback -->` directive. It's a stand-in for a reader whose renderer lacks a capability the document uses. A Vantage that knows the directive (0.8.0 on) never renders it, while a 0.7.x viewer and GitHub drop the comment and show the block. It isn't a styling directive, and it isn't a way to hide text from Vantage readers: a fallback block holds only what a reader *without* the capability needs.
+
+```markdown
+<div>
+<svg viewBox="0 0 120 40" role="img" aria-label="Weekly builds">…</svg>
+</div>
+
+<!-- vantage: fallback -->
+
+This drawing needs Vantage 0.8 or later; [view the image](weekly-builds.svg).
+```
+
+- **The target is found as `block` finds one:** the one block after the directive, with the same placement rules. It sits on its own line with a blank line after it, and it's indented inside a list item.
+- **What it withholds is a closed list, and the list is notation.** A paragraph, a list, a quote, a code block, a table, a rule or a `<div>`, and never a heading. Raw HTML counts by the element it opens with, so a `<div>` with blank lines inside it is withheld whole, up to its closing tag. A raw `<img>`, `<figure>` or `<details>` is not on the list, so Vantage shows it, and `vantage/orphan` says to wrap it in a `<div>`. Once released, the list can't grow: a later viewer that withheld an `<img>` would hide what every earlier one shows, which is a new meaning for the same bytes (P0).
+- **"Never renders" means removed, not hidden.** The block is gone from the rendered document in every Vantage renderer: the app, the static export and the npm package's renderer. So nothing in it is painted, printed, searched, copied, outlined or offered for review comments.
+- **It takes no keys.** An unknown key is dropped pair by pair (D2), so the block is still withheld, and the checker reports it as usual.
+- **It never withholds a heading,** which is the document's structure: the outline lists it, other documents link to its slug, and the planning index reads sections under it. One fallback is one block; a stand-in longer than that is a quote, or a directive per block. The checker warns (`vantage/orphan`) on a fallback above a heading, and on another directive in a fallback's run, which goes with its block.
+- **The checker still checks it.** The block's links are read by every reader who sees it, so a broken one is broken for exactly those readers.
+- **It pairs with any capability, not only SVG.** No rule requires a nearby drawing, and none reports a drawing with no fallback in 0.8.0 ([§1](#1-verdict-and-the-principles)).
+- **The style guide teaches the pairing.** It marks inline SVG as a capability that needs Vantage 0.8 or later, and tells agents to follow every inline `<svg>` with a fallback block.
+- **What the fallback can't fix:** an older viewer, and GitHub, still print the drawing's `<text>` as a run of loose words. No block can hide that, so the guide keeps `<text>` to short labels, and the fallback is what tells the reader why they're there. A `<title>` or `<desc>` is printed too (GitHub prints its tags), while 0.8 removes both, so the guide names a drawing with `aria-label` and never with either.
+- **D1 holds.** Everywhere but Vantage, the document renders exactly as it would without the directive. Without the directive, Vantage would show the drawing and also a redundant note, and lose nothing.
+
+### 3.3 Config an older checker can read
+
+Ruled 2026-09-30.
+
+- **An unknown key in a table the checker owns, or an unknown rule id, is a warning, and the checker ignores it:**
+  - an unknown key in `[check]`;
+  - an unknown rule id or family under `[check.rules]`;
+  - an unknown key in a rule's table. The rest of the table, its severity included, still applies;
+  - a table for a rule that takes no options in this release. Its severity still applies.
+- **The warning gives [§6.2](#62-what-a-checker-says-about-a-name-it-doesnt-know)'s two-branch advice.** It names this checker's version, and says that if the key belongs to a newer `vantage-check`, keep it and run one, and if it's a typo, fix it.
+- **It isn't a finding, and it never changes the exit code, under `--strict` or `check.strict` too.** It's printed on stderr, once per message per run, outside the findings. `--format json` doesn't carry it yet, which leaves the release that implements targets free to design per-root fields. `--strict` is the repository's demand about its documents, and a warning about the checker's own age isn't one. If strict counted it, every new key would turn every older pinned CI red, which is the failure this exists to end.
+- **What stays exit 2: anything wrong with a key this checker knows.**
+  - TOML that doesn't parse.
+  - A wrong type or value for a known key, or for a known rule's known option, such as `check.strict = "yes"` or a severity of `"fatal"`.
+  - `theme`, `starred` or `target` written inside one of the checker's tables, and `target` written inside `[starred]`, the server's, where appending it to a file that ends in that table puts it. This checker knows each of them, and knows the line does nothing where it stands. The message says where it goes.
+- **The cost:** a typo is a warning on every run rather than a failure. Usually the rule the typo meant to silence keeps firing, which shows the typo up anyway.
+- **What this means for later releases.** A config value from a closed set, such as a stage role or a severity, can't gain a member without breaking every older checker. So in `.vantage.toml`, a new meaning is always a new key and never a new value.
+- **`[planning]` is the one table the server reads too.** The checker treats an unknown key there as it does one in `[check]`: it warns, ignores the key and reads the rest of the table, and the warning says that a server of the same release ignores the whole file over it. The 0.8.0 server, as built, still does ([OQ-RC5](repo-config.md#6-decision-ledger)), and whether it should warn and ignore too is [OQ-VS5](#OQ-VS5). The two readers' answers are pinned side by side, file by file, in [`version-skew-config.json`](../../internal/repoconfig/testdata/version-skew-config.json), and [`planning-config.json`](../../internal/repoconfig/testdata/planning-config.json) holds the files they agree on.
+- **A top-level key the server doesn't decode is already ignored.** The server polices only the tables it claims ([`repoconfig.go:479`](../../internal/repoconfig/repoconfig.go#L479)), so a top-level `target` reaches the server and does nothing.
+
+### 3.4 The compatibility test
+
+Ruled 2026-09-30. This turns P0 from a promise into a mechanism. It renders what the current style guide teaches through the previous release's published renderer, and fails when the old viewer would misread any of it. It's `just compat-previous [version]`, and [`notation.ts`](../../frontend/src/compat/notation.ts) defines what counts as a misreading.
+
+- **What it renders:**
+  - every example in the current guide that shows notation: a directive, frontmatter, and inline SVG with its fallback;
+  - one case for each directive name, key and value in the current vocabulary, and for each frontmatter key the guide teaches.
+
+  A name, key or value that no case covers fails the test, so a new form can't arrive untested.
+- **Through what:** the published `vantage-md` of the **previous release**, which is the newest `v[0-9]*` tag whose version npm has published, passing over a tag npm doesn't have yet. A clone without tags reads `CHANGELOG.md`'s version headings instead, and never npm's `latest`, which a patch to an older line moves. So before 0.8.0 is tagged it's 0.7.1, and right after 0.8.0 is published it's 0.8.0, which is what every later commit has to stay readable by. `just compat-previous X.Y.Z` asks for another. It's fetched at test time, with its own dependencies, into the test's own scratch directory. It is never a dependency in any manifest or in the lockfile.
+- **What fails:**
+  1. **A new affordance.** The old renderer stamps an `oq` on a question that the current scan reads as blocked or answered. The stamp stands for the button: the app isn't in the package, but at v0.7.1 it offers "Take this leaning" on every stamped `oq` in review mode.
+  2. **Leaked text.** The old render shows text that the current one doesn't, other than a fallback block's text, which only older readers should see, and a listed capability's text (below). A dropped directive whose text leaks, or a frontmatter key that lands in the body, fails here.
+  3. **A changed meaning.** The old renderer puts a `data-vantage-*` stamp on a block, and the current renderer doesn't put the same stamp with the same value on the same block.
+
+  The built test also fails on a directive the old release drops whose comment still spills into the page (a `-->` inside a value), on an `id` the two renders set differently, and on frontmatter the old release reads differently. The app's button logic isn't in the package, so the affordance check is a written model of it at v0.7.1.
+- **Capabilities are listed, each with the release it arrived in.** 0.8.0's list is inline SVG. A capability's case passes only when the guide marks it with that release and its example pairs it with a fallback block, which the old render has to show. A previous release that draws the capability itself has no gap to fill, so the case is skipped; otherwise the job would turn red on `main` the moment 0.8.0 became the previous release.
+- **Where it runs:** in a recipe of its own, as a CI job of its own on every push to `main` and every pull request, and in `just release`, which runs it with `CI=true` before anything is tagged, so a tag can't be cut from a commit the job never passed. It's outside `check-ci` and `check-fast`, so `just done` stays able to run offline. Branch protection should list the job as required; that's repository settings, not this tree.
+- **Offline:** a local run that can't fetch the package skips, with one message naming the package and version it couldn't fetch. In CI, the same failure fails the job, because a skipped check that shows green is a false pass.
+- **What it doesn't cover:** the server's config handling and the app's other controls, which aren't in the package. [§3.3](#33-config-an-older-checker-can-read)'s tests cover the config side.
+- **When it fails, change the notation, not the test.** Express the change as new notation (P0), or give the capability a fallback (P1). If neither is possible, declare a breaking change ([§12](#12-deferred-until-a-capability-gap-needs-it)).
+
+## 4. The target, reserved
 
 ### 4.1 The key
 
 ```toml
 # At the top of .vantage.toml, above the first [table].
-# The oldest Vantage release anyone reading this repository uses.
+# The Vantage release this repository's documents are written for.
 target = "0.8"
 ```
 
-- **Meaning.** The **target** *(coined here)* is the oldest Vantage release that any reader of the repository renders it with. It sets a floor across all the readers, and it isn't a pin on any tool.
-  - For a feature that only adds something, readers on newer viewers see exactly what they'd have seen without the target.
-  - **A feature whose meaning changed between releases is the exception.** At a target below the change, no markup is right for every reader ([§4.4](#44-the-feature-table), [OQ-VS3](#OQ-VS3)).
-- **Form.** A string, either `"X.Y"` or `"X.Y.Z"`. `"0.8"` means `0.8.0`.
+Ruled 2026-09-30. 0.8.0 reserves the key so that a later breaking change can rely on every checker from 0.8.0 on to refuse correctly. Without that refusal, a breaking change could rely only on the checkers released after it.
+
+- **Meaning.** The **target** *(coined here)* is the Vantage release a repository's documents are written for, which is the oldest release its readers use. Checkers older than the target refuse to check them. It isn't a pin on any tool, and no viewer reads it.
+- **Form.** A string, either `"X.Y"` or `"X.Y.Z"`, where `"0.8"` means `0.8.0`.
   - Anything else is a configuration error (exit 2), and the message lists the accepted forms. That includes a TOML number (`target = 0.8`), `"latest"`, a range, a leading `v`, and a pre-release.
-  - Ranges are rejected because the checker would have to choose a point in the range, and it would choose its own version. That's the choice this design exists to stop.
-- **Placement.** A top-level scalar, next to `theme`, **above the first `[table]`**. Every example shows it there, for two reasons:
-  - **Readers that don't know the key ignore it.** The checker reads only `[check]` and `[planning]` ([`config.ts:194`](../../packages/vantage-check/src/core/config.ts#L194)). The server polices only the tables it claims ([`repoconfig.go:467`](../../internal/repoconfig/repoconfig.go#L467)).
-  - **TOML moves a key written after a table header into that table.** Appended to this repository's file, the key becomes `planning.stages.target`, which the 0.8 server rejects along with the whole file ([`repo-config.md` §2.3](repo-config.md#23-rejected-whole-never-half)). Placed after `[check.rules]`, it becomes `unknown rule "target"`, which makes every checker exit 2. A checker that knows the key reports a version-shaped `target` inside any table with "move `target` above the first [table]".
-- **One writer.** Only a human edits `target`. No Vantage tool writes it or offers to.
-- **This amends D3; it doesn't keep it.** [`inline-markup.md` D3](../reference/inline-markup.md) says "no version negotiation, no minimum-version key", without limiting it to documents. Its premise is D2: an older Vantage meeting newer markup renders it plain. 0.8.0 broke that premise twice:
-  - Inline SVG isn't a directive. It's HTML that the 0.7.1 sanitizer mangles.
-  - The directive on a 🔒 or ✅ question is an existing directive with a new meaning. 0.7.1 renders it as a control that files the wrong comment, which is exactly what D4 forbids ("a control that cannot work must not render").
+  - **The form is permanent.** A later release that needs more than one version gets a new key ([§3.3](#33-config-an-older-checker-can-read)).
+- **Placement.** It's a top-level scalar, next to `theme`, **above the first `[table]`**. Every example shows it there, because TOML moves a key written after a table header into that table.
+  - Appended to this repository's file, it would become stage word `target` under `[planning.stages]`, with a role that isn't one. Both readers refuse that file.
+  - Below `[check.rules]`, it would become a rule id.
 
-  So D2 and D3 hold for new directive names, keys and values, and the target exists for everything else. What stays forbidden is negotiation by a renderer: only the checker reads the target, and no viewer renders differently because of it. [§12](#12-what-this-changes-in-other-documents) lists the amendment.
+  A checker that knows the key exits 2 on a `target` written inside `[check]`, `[check.rules]`, a rule's table or `[planning]`, on a release-shaped one inside `[planning.stages]`, where `target` could also be a stage word, and on one inside `[starred]`, the server's table. The message ends "TOML reads a key written after a [table] header as part of that table: move it above the first [table]" ([§3.3](#33-config-an-older-checker-can-read)). Another tool's table is not the checker's to police.
+- **One writer: a human.** No Vantage tool writes `target` or offers to, and agent instructions say never to change it ([§6.3](#63-what-agent-instructions-must-say)).
+- **Readers.** From 0.8.0, the checker reads it. The server accepts it and ignores it ([§3.3](#33-config-an-older-checker-can-read)), and checkers before 0.8.0 ignore it ([§2.3](#23-an-older-checker-and-a-newer-repository)).
+- **This amends D3.** [`inline-markup.md`](../reference/inline-markup.md)'s "no version negotiation, no minimum-version key" is scoped to renderers. Only checkers read `target`, and no viewer renders differently because of it.
 
-### 4.2 Choosing the effective target
+### 4.2 Which release a checker is, and when it refuses
 
-**The target is read per repository root, from the same file the viewer reads.** That's the root's own `.vantage.toml` and nothing above it, the same way `[planning]` is read today (`planningConfigFor`, [`config.ts:162`](../../packages/vantage-check/src/core/config.ts#L162)).
+- **A release checker is one that the release workflow stamped** with the tag's version. Every other build is a **development build** and says so wherever a version is printed: `just cli`, `npm run build`, and running from source. Built at `9507cac`.
+- **A release checker refuses a target newer than itself.** The comparison is by major, minor and patch: `"X.Y"` counts as `X.Y.0`, and a pre-release checker counts as the release it leads to, whose notation it knows. When it refuses:
+  - it exits 2, with one message, before reading any document, and prints nothing about documents;
+  - once the file parses, the comparison comes before every other config check, because a newer checker may accept what this one would call an error.
+- **The message** names each file whose target is too new, the target, this checker's version and the version needed. It shows one way to get that version, as an example only, because the checker can't tell how it was installed. It says not to change `target`, because an agent told its checker is too old will otherwise "fix" the file. The rest of the wording is the implementer's.
 
-- **`check` finds `[check]` differently, and the target must not use that search.** For `[check]`, `check` walks up from the first path it's given ([`check.ts:70`](../../packages/vantage-check/src/commands/check.ts#L70)) all the way to `/`, and never stops at `.git` ([`config.ts:77`](../../packages/vantage-check/src/core/config.ts#L77)). A target found that way could come from a parent directory's file, or from the first of several repositories in the run.
-- **`index` already reads the root's own file** ([`index.ts:88`](../../packages/vantage-check/src/commands/index.ts#L88)).
-- **`style-guide` reads no config today.** It finds the root from the working directory, and its header names the file it read.
-- **A file under no repository root** has no config target, unless `--config` names one.
+  ```text
+  vantage-check: .vantage.toml targets Vantage 0.9, and this is vantage-check 0.8.3, which is older: it knows nothing a newer release added, so it can neither check that release's documents nor teach its notation, and stops here. Run vantage-check 0.9.0 or later (for example, `uvx vantage-check@latest`), and leave target as it is.
+  ```
 
-For each root, the checker picks one **effective target**, taking the first of these that applies:
+- **Which commands refuse, and which files they read:**
+  - `check` reads `target` from every `.vantage.toml` the run reads: the file `[check]` comes from, and each root's own file for `[planning]`.
+  - `index` reads the root's own file.
+  - `style-guide` reads `target` alone, from the working directory's repository root. If it can't read or parse that file, it prints the guide, because reporting config errors is `check`'s job. A malformed `target` exits 2, as it does everywhere.
+  - `version` and `help` never refuse.
+  - `--no-config` reads no file, so it reads no target. `--config` names the file.
+- **A development build never refuses.** It checks, and notes the target as [§4.3](#43-a-target-the-checker-meets) describes, calling itself a development build.
+- **The refusal is hard, not a warning.** A warning followed by findings from a checker that can't know the newer vocabulary is the misleading output P3 replaces. Go 1.21 made its toolchains refuse for the same reason.
 
-1. `--target X` on the command line. This applies to every root, and its source is `flag`. An explicit question overrides anything read from the surroundings.
-2. Otherwise, the lower of the root's `target` and `VANTAGE_VIEWER` ([§5](#5-the-viewers-version-goes-to-the-newest-checker)), with source `config` or `viewer`. When the viewer is older than the configured target, one line says so: that reviewer's viewer is below the floor the repository declared.
-3. Otherwise, the default, which [OQ-VS2](#OQ-VS2) decides, with source `default`. The rest of this doc assumes the leaning: the checker's own version.
+### 4.3 A target the checker meets
 
-`VANTAGE_VIEWER` takes the same forms as `target`. An empty value counts as unset. Any other invalid value exits 2 and names the variable.
+That is a target at or below the checker's release, or any target on a development build.
 
-Then these rules apply, in this order:
+- **The checker notes it,** one line on stderr for each file that declares one, from `check`, `index` and `style-guide` alike. The report itself, text or JSON, is unchanged, which leaves the release that implements targets free to design its fields.
+- **The checker changes nothing else.** It runs the same rules and teaches the same guide, and it reports the same findings. A target below the checker's release doesn't make it check for that older release, and the note says so ("checks against its own, newer release's notation whatever the target"), so nobody reads `target = "0.7"` as "checked for 0.7".
 
-| Condition | What the checker does |
-| :--- | :--- |
-| A `flag` or `config` target is newer than the checker | Refuses to run ([§4.5](#45-a-checker-older-than-the-target)). The repository may use features this checker can't tell from typos. |
-| A `viewer` target is newer than the checker | Checks as its own version, and prints one line saying a newer checker knows more of what that viewer renders. **It doesn't refuse.** The viewer's version says what one reader can render, not what the documents use, and a refusal would turn a stale offline cache into an unchecked delivery. |
-| The target is below the floor, which is **0.7.0** | Checks as 0.7.0, and prints one line naming `uvx vantage-check@<T>` for that release's exact conventions. It reports no finding for this. |
-| The checker doesn't know its own version (any build the release workflow didn't produce) | Treats itself as newer than every target, and prints "development build" wherever it would print a version. |
-| The target is one or more minor releases behind the checker | Prints one informational line: raise `target` once every reader has upgraded, or, for a `viewer` source, the viewer is behind. This isn't a finding and doesn't change the exit code. Without it, a stale target would never produce a signal, because the archived guide doesn't teach the newer features that would trigger a finding. |
+## 5. The viewer's version in the review payload
 
-**Why the floor is 0.7.0.** It's my choice, and it's cheap to move later.
+**`VANTAGE_VIEWER`** *(coined here)* is an environment variable holding the Vantage release a reader's viewer runs, as `X.Y.Z`. It's an input for whatever checker runs, never a pin. Whether 0.8.0's payload carries it is [OQ-VS1](#OQ-VS1). No 0.8.0 checker reads it; the first checker that implements targets does ([§12](#12-deferred-until-a-capability-gap-needs-it)).
 
-- The feature table has to describe every release above the floor. At 0.7.0 it starts with exactly the five 0.8.0 entries measured in [§2.2](#22-what-a-080-agent-writes-and-what-a-071-viewer-does-with-it).
-- 0.7.0 and 0.7.1 ship identical guides, so one archive entry covers the whole line.
-- 0.7.0 is the oldest release that `CHANGELOG.md` documents.
-- Lowering the floor means adding one minor line's entries, each with its proof.
-
-**The effective target and its source appear in every output:**
-
-- the text report's closing line, with one line per root when roots differ;
-- `--format json`, which carries each root's effective target and source (field names are the implementer's);
-- the first line of `style-guide` ([§6.1](#61-the-style-guide-names-its-release)).
-
-### 4.3 What the checker does at a target
-
-| Surface | At target T |
-| :--- | :--- |
-| **Findings** | A feature from the table ([§4.4](#44-the-feature-table)) that is newer than T, found in a document or in `.vantage.toml`, is reported under one of the rules below. A rule that polices one of those features, such as `planning/stage-vocabulary` for `stage:`, is **off** when its feature is newer than T, so each use is reported once. A rule tied to no feature runs at every target, because a broken link is broken on every viewer. |
-| **Style guide** | `style-guide` prints the guide shipped by the newest release at or below T, **byte for byte**, after one line naming that release. It is never a filtered version of today's guide ([§8](#8-alternatives-considered)). What follows the guide for reversed conventions is [OQ-VS3](#OQ-VS3)'s choice. |
-| **Config** | A key the *viewer* reads is a feature. A `[planning]` key newer than T is reported, because a viewer older than that key rejects the whole file ([`repo-config.md` §2.3](repo-config.md#23-rejected-whole-never-half)). Keys that only checkers read (`[check]` keys and rule ids) aren't compared with T. The checker a reader's payload runs is the newest one ([§5.1](#51-the-review-payload)). An older checker reads that config only through a pinned install, and [§6.3](#63-what-agent-instructions-must-say) covers the pin a repository chooses for its own CI. |
-| **Commands** | Every command works at every target. `index` is the checker's report, not the viewer's, so it runs at T = 0.7 as well. |
-
-| Rule | Default | Fires on a feature newer than T that a viewer at T… |
-| :--- | :--- | :--- |
-| `target/renders-wrong` | error | renders wrongly, offers a control that does the wrong thing, or treats as grounds to drop the config |
-| `target/renders-plain` | warning | ignores or shows as plain text. D2's promise holds, and the reader merely misses out |
-| `target/reversed` (if [OQ-VS3](#OQ-VS3) is A) | warning | renders wrongly, while a newer viewer needs it. The message states both harms |
-
-### 4.4 The feature table
-
-The **feature table** *(coined here)* lists every Markdown and config feature added since the floor. It also lists every existing feature whose meaning changed. Each entry records:
-
-- the release the feature arrived in, or **`unreleased`** on commits since the last tag. `just release X` refuses to cut a release while any entry still says `unreleased`. The developer commits the version, so the recipe leaves tracked files unchanged.
-- its class: `renders-wrong`, `renders-plain` or `reversed`.
-- what an older viewer does with it, in words, which the finding quotes. If older releases differ, the entry records each one's behavior, and a finding uses the behavior of the target release.
-- **what a newer reader loses when the feature is left out.** Features aren't monotone: a later release can make existing markup mean more, and then leaving the feature out costs the newer readers.
-- its proof: `npm`, `binary` or `manual` (below).
-
-> [!IMPORTANT]
-> **An entry's class comes from running the preceding release, not from reading code.** A wrong entry produces a false finding, and a false finding is the thing [`agent-cli.md` R2](agent-cli.md#8-costs-and-risks) says costs the checker its users. Each entry's proof names how it was established:
->
-> - **`npm`**: the preceding release's published `vantage-md`, installed under an npm alias. This covers the sanitizer, the directive plugin and `FrontmatterDisplay`.
-> - **`binary`**: the preceding release's published binary, run end to end. This covers the app's review controls and the server's config handling, which the npm package doesn't contain.
-> - **`manual`**: a human check, dated and recorded in the entry.
->
-> Where each proof runs (the gate, the e2e job, or the release) is the implementer's choice. An entry with no proof fails the gate.
-
-The first entries, which cover 0.8.0, measured or read against 0.7.1 ([§2.2](#22-what-a-080-agent-writes-and-what-a-071-viewer-does-with-it)):
-
-| Feature | Since | Class | Without it, a 0.8 reader… | Proof |
-| :--- | :--- | :--- | :--- | :--- |
-| Inline `<svg>` | 0.8.0 | renders-wrong | sees no drawing | npm |
-| An `oq` directive on a 🔒 or ✅ question | 0.8.0 | reversed ([OQ-VS3](#OQ-VS3)) | loses the question from the planning index, its badges and its waiting lists | binary |
-| `stage:`, `next:` frontmatter | 0.8.0 | renders-plain | loses the stage badge and the next step | npm |
-| `depends-on:` frontmatter | 0.8.0 | renders-plain | loses the dependency | npm |
-| Any `[planning]` key | 0.8.0 | renders-plain (0.7.x ignores the table) | gets the defaults | binary |
-
-**A missing entry is caught mechanically where the tree allows it.** v0.7.1's `vantage-md` already exports `DIRECTIVE_VOCABULARY`, `sanitizeSchema` and `STYLE_GUIDE` (`index.ts:32`, `:90` and `:107` at that tag). A test diffs each of them, from the previous published release against the current source, and fails in two cases:
-
-- a new directive name, key or value, or a newly allowed tag or attribute, that has no feature-table entry;
-- a changed guide that has no archive entry.
-
-Frontmatter keys and config keys aren't exported that way, so for them a missing entry is caught only by review, unless the implementer exports them too.
-
-**Conventions aren't features.** "Never copy a status into the roadmap" can't be detected in a document, so the archived guide carries it instead: at T = 0.7 the guide simply doesn't teach it. Agent instructions that restate such a convention bypass the target entirely ([§6.3](#63-what-agent-instructions-must-say)).
-
-### 4.5 A checker older than the target
-
-- **It refuses before reading any document.** It exits 2, the same code as a configuration error, with one message. The message names each root whose `flag` or `config` target is too new, the checker's own version, and the minimum version needed. It never goes on to report findings for documents; that avalanche is what Go 1.21 made its toolchains refuse to produce.
-- **The refusal is hard, not a warning.** A warning followed by findings from a checker that can't know the newer vocabulary is exactly the misleading output this replaces.
-- **The message names a version, and gives an install command only as an example.** The checker can't tell how it was installed (uvx, `uv tool install`, Homebrew or a release archive), so it names the minimum version and shows the `uvx` form as one way to get it. The rest of the wording is the implementer's.
-- **The target comparison comes first.** In a repository whose target is newer than the checker, the answer is "needs a newer checker". Where the target is at or below the checker's version, an unknown key keeps its existing meaning: a typo, exit 2.
-- **Checkers released before the key ignore it forever.** Nothing is backported. A payload from a viewer that ships `VANTAGE_VIEWER` runs the newest checker ([§5.1](#51-the-review-payload)), so the refusal matters only for pinned installs.
-
-### 4.6 Messages
-
-The implementer chooses the wording. A `target/*` finding must say five things:
-
-- the feature;
-- the release it needs;
-- the target, and where it came from;
-- what a viewer at the target does with the feature, and, for `reversed`, what a newer viewer loses without it;
-- the fix: remove the feature, or raise `target` once every reader has upgraded.
-
-**No message about a document ever suggests upgrading the checker.** An upgrade makes the finding disappear while the reader's viewer still mishandles the feature. Upgrade commands belong only to config errors and refusals.
-
-```text
-docs/plan.md:14:1  error  Inline <svg> needs Vantage 0.8.0; this repository targets 0.7 (.vantage.toml).
-  A 0.7 viewer drops the drawing and prints its <title> and <text> as a paragraph.
-  Remove it, or raise target once everyone reads with 0.8.  target/renders-wrong
-
-vantage-check: .vantage.toml targets Vantage 0.9, and this is vantage-check 0.8.3.
-  It needs vantage-check 0.9.0 or later, for example `uvx vantage-check@latest`.
-```
-
-## 5. The viewer's version goes to the newest checker
-
-**`VANTAGE_VIEWER`** *(coined here)* is an environment variable holding the Vantage release a reader's viewer runs, in the same forms as `target`.
-
-- **It's an input, not a pin.** Whatever checker runs reads it. From the release that ships the target ([§11](#11-what-ships-when)) onward, the newest checker writes for the lower of it and the repository's target ([§4.2](#42-choosing-the-effective-target)).
-- **An environment variable, because older checkers ignore it.** Every checker released before then, 0.8.0 included, ignores a variable it doesn't read, so 0.8.0's checker needs no change for it. A flag would make every checker that doesn't know it exit 2.
-- **There's a precedent.** `VANTAGE_CHECK_JOBS` is already read the same way ([`io.ts:14`](../../packages/vantage-check/src/io.ts#L14)).
-
-### 5.1 The review payload
-
-- **The rule.** If the server is a release build whose version is a plain `X.Y.Z` after removing a leading `v`, the payload says `VANTAGE_VIEWER=X.Y.Z uvx vantage-check <paths>`. Every other build keeps today's bare command. That includes `just build`, `just deploy`, a Go pseudo-version and a pre-release.
-  - Bare is the right command for those builds, not a gap: a development viewer is at or ahead of every release, so the newest checker is the right one for it.
-- **Why not `uvx vantage-check@X.Y.Z`.** An old checker can't see what came after it:
-  - The published 0.7.1 checker passes all five 0.8.0 features in [§2.2](#22-what-a-080-agent-writes-and-what-a-071-viewer-does-with-it).
-  - A pin freezes that checker's false positives into every review its viewer ever sends ([`agent-cli.md` R2](agent-cli.md#8-costs-and-risks)).
-  - The pinned checker exits 2 on any checker-only config newer than itself.
-  - The pin can fail offline when the cache lacks that exact version.
-- **The version is exact.** It's the one the browser tab was served, so it names the viewer actually rendering. That holds for a service upgraded but not yet restarted, and for a tab left open across an upgrade. `vantage --version` names the installed binary instead.
-- **The prefix asks nothing new of the agent's shell.** The payload's delivery command is already a bash heredoc.
-- **What it requires.** The browser must learn the server's release version, which no frontend code reads today ([§2.4](#24-where-versions-are-visible)). How it gets there is the implementer's choice; the sketch lists the routes. Static exports have no review payload, so they need nothing.
-- **The fallback sentence, frozen along with the payload:** "If the command cannot run, or exits 2 (a configuration error or a refusal), deliver anyway and leave `.vantage.toml` as it is. This is a quality gate, not a delivery dependency." Exit 2 means the checker did run, so the sentence has to say it. Otherwise an agent told `unknown rule` is likely to "fix" the finding by deleting the key.
-- **The wording of P6 and its ruling is amended; the reason holds.** [`agent-bootstrap.md`'s `OQ-B6`](agent-bootstrap.md#decision-ledger) ruled "no version, no token, no conditionality" on 2026-09-01. That was about a version probing whether the agent had already seen the payload, which is state nobody can observe.
-  - The release version isn't that. It's a constant of the build. Every payload from one build carries the same value, it probes nothing, and it varies with nothing observed at runtime.
-  - So P6's reason still holds: every agent demonstrably saw the same text, per build. P6's "pure function of the document" becomes "of the document and the build". [§12](#12-what-this-changes-in-other-documents) lists the edit.
-- **When several humans review.** Each reviewer's payload names that reviewer's viewer, so the newest checker checks for the person who asked. It uses the lower of that viewer and the repository's target, and says in one line when the viewer is below the target.
-- **Viewers released before this change** send the bare command. Their agents get the newest checker, at the repository's target or at its default.
-
-### 5.2 A machine's environment
-
-- **The viewer's version is a fact about the machine, not the repository.** A machine can declare it once: in a jail's config, a CI job's environment, or a shell profile.
-  - Outside review mode, this is the only mechanical protection in a repository with no target.
-  - It's also the only protection in a jail or a CI runner, which usually has no `vantage` on `PATH`.
-- **A payload's prefix overrides the machine's value for that one command.** That's ordinary shell behavior, and it's what's wanted: the reviewer's own viewer is the more exact source.
-- **A declaration goes stale the way a pin does.** When the viewer upgrades, the declaration lags behind. That's the safe direction, because the agent writes for an older viewer, and the informational line in [§4.2](#42-choosing-the-effective-target) says so.
-- **A machine running viewers of several versions** declares the oldest.
+- **The rule.** A release build whose version is a plain `X.Y.Z`, once a leading `v` is removed, sends `VANTAGE_VIEWER=X.Y.Z uvx vantage-check <paths>`. Every other build keeps today's bare command, which is right for them: a development viewer is at or ahead of every release. That covers `just build`, `just deploy`, a Go pseudo-version and a pre-release.
+- **Why it can't wait (P2).** A payload is frozen into every viewer that ships it, so a later checker has nothing to read from a viewer that shipped without the variable. Every 0.7.x viewer is already one of those.
+- **Why a variable, and not a flag or a pin.**
+  - An older checker ignores an environment variable it doesn't read. 0.8.0's checker reads only `VANTAGE_CHECK_JOBS` ([`io.ts:14`](../../packages/vantage-check/src/io.ts#L14)).
+  - A flag would make every checker that doesn't know it exit 2.
+  - A pin (`uvx vantage-check@X.Y.Z`) freezes the old checker's blindness and its bugs into every review its viewer sends (P4). The published 0.7.1 checker passes every row of [§2.2](#22-080s-notation-on-a-071-viewer).
+- **The version is exact.** It's the version the browser tab was served, so it names the viewer actually rendering, even a tab left open across an upgrade. No frontend code reads that version today ([§2.4](#24-where-versions-are-visible)), and how it reaches the browser is the implementer's choice (the sketch lists routes).
+- **The exit-2 sentence ships in 0.8.0 whatever [OQ-VS1](#OQ-VS1) decides:** "If the command cannot run, or exits 2 (a configuration error or a refusal), deliver anyway and leave `.vantage.toml` as it is — this is a quality gate, not a delivery dependency." Exit 2 means the checker did run, so the sentence has to say so, or an agent is likely to "fix" the refusal by editing the file. It doesn't depend on the variable: the refusal ships in 0.8.0, and so does every 0.8.0 viewer's payload, frozen. It replaces "If `uvx` is not available, deliver anyway", which it covers.
+- **This amends the wording of [OQ-B6](agent-bootstrap.md#decision-ledger), not its reason.** That ruling forbade a payload version that probes whether the agent has seen the payload before. A release version probes nothing: it's a constant of the build. So P6's "a pure function of the document" becomes "of the document and the build".
+- **Viewers released before this change** send the bare command.
 
 ## 6. What agents are told
 
 ### 6.1 The style guide names its release
 
-`vantage-check style-guide` prints one line before the guide: *"Vantage 0.8.0's conventions: for readers on 0.8.0 or later."* This ships in 0.8.0.
+Built at `9507cac`. `vantage-check style-guide` prints one line before the guide: *"Vantage 0.8.0's conventions: for readers on 0.8.0 or later."* A development build says that its conventions can be newer than every release.
 
-- **From the target release onward,** the line names the effective target, its source, and the `.vantage.toml` it came from.
 - **The checker prints the line.** It isn't part of the guide's text, so the in-app modal and the npm export are unchanged.
-- **A pasted copy keeps it.** A copy pasted into `AGENTS.md` carries the line, so the copy says which release it froze.
+- **A pasted copy keeps it,** so a copy in `AGENTS.md` says which release it froze.
+- **The 0.8.0 guide teaches the new names:** `oq` for open questions, `question` for 🔒 and ✅ ones, and `fallback` after every inline `<svg>`, which it marks as needing 0.8 or later. It also tells agents never to change `target`.
 
 ### 6.2 What a checker says about a name it doesn't know
 
-These strings are frozen into 0.8.0's checker, and they are what a pinned 0.8.0 install says for as long as it runs. So both branches are settled here, before the tag.
+These strings are frozen into 0.8.0's checker. They are what a pinned 0.8.0 install says for as long as it runs. Built at `9507cac`, apart from `vantage/frontmatter-value` and the config change in the second bullet, which came after `958dab3`.
 
 - **Document findings** (`vantage/unknown-name`, `unknown-key` and `unknown-value`) say what a viewer at this checker's version does with the markup. Then they say: if it's a typo, fix it; if it comes from a newer Vantage, don't remove it, because this repository's readers need that version and a newer `vantage-check` checks it.
-  - They never give an upgrade command, because most hits are typos and "upgrade" is the wrong fix for a document.
+  - They never give an upgrade command, because most hits are typos, and upgrading is the wrong fix for a document.
   - The default severity stays `error`.
-- **Config errors** (an unknown `check.*` or `planning.*` key, or an unknown rule id, all exit 2) name the checker's version. Then they say: if this repository is configured for a newer `vantage-check`, run one (for example, `uvx vantage-check@latest`) and leave the key in place; if it's a typo, fix it.
-- **A build CI didn't stamp** calls itself a development build wherever these messages would name a version.
+  - `vantage/frontmatter-value`, a `vantage:` frontmatter value outside this checker's set, says the same. It doesn't name a release yet. Its sibling `vantage/frontmatter-key` is already a warning, so that a newer document doesn't fail an older checker.
+- **An unknown config key or rule id** names the checker's version. Then it says: if this repository is configured for a newer `vantage-check`, run one (for example `uvx vantage-check@latest`) and keep the key; if it's a typo, fix it. Before 0.8.0 that was an exit-2 error. From 0.8.0 it is a warning ([§3.3](#33-config-an-older-checker-can-read)).
+- **A target newer than the checker** is the one refusal, with [§4.2](#42-which-release-a-checker-is-and-when-it-refuses)'s message.
 
 ### 6.3 What agent instructions must say
 
 This covers skills, `AGENTS.md`, and any other standing instructions to an agent.
 
-1. **Find the checker in this order:**
-   1. **A review payload's command**, run exactly as written. Put the same `VANTAGE_VIEWER=` prefix on `style-guide`.
-   2. Otherwise, if **`VANTAGE_VIEWER`** is set on the machine, bare `uvx vantage-check`.
-   3. Otherwise, if a **`vantage` on this machine** reports a release, `VANTAGE_VIEWER=<that version> uvx vantage-check`. It names the installed binary, not a running service.
-   4. Otherwise, bare `uvx vantage-check`, which says which version it checked for.
-
-   Then read the first line of `style-guide`. If it names a release newer than the reader's viewer, this checker isn't writing for that viewer. That's true of every checker before the target release, because those checkers ignore `VANTAGE_VIEWER`. In that case, `uvx vantage-check@<the viewer's version>` is the one right answer until a newer checker implements that version (the exception in P2).
-2. **A copy of the guide comes only from a published release's `style-guide` output, with its header line.** A copy made from an unreleased commit teaches conventions no reader's viewer has.
-3. **Instructions that restate a convention themselves bypass the target.** No check can tell the agent that the convention is newer than the reader's viewer. "A 🔒 question gets an id-only directive" is one example. "Don't compensate with copied status tables" is another, and it can't be detected at all. Either point at `style-guide`, or say which release the convention belongs to.
-4. **Nothing claims the guide is "correct for the Vantage in front of you".** That's true only when the reader's viewer is the latest PyPI release.
-5. **A repository that pins its checker in CI names the same pin for its agents,** in `AGENTS.md`. Otherwise an agent on a newer checker writes checker-only config, such as a new rule id, that the pinned CI then fails with exit 2.
-
-The edits these rules imply for particular skill files are in the sketch.
+1. **Run the review payload's command exactly as written.** Otherwise run bare `uvx vantage-check`. Under P0 the newest checker's notation is safe for older viewers, and a capability carries its fallback.
+2. **Never change `target`.** If the checker refuses, run the version it names.
+3. **A copy of the guide comes only from a published release's `style-guide` output, with its header line.** A copy made from an unreleased commit teaches conventions no reader's viewer has.
+4. **Instructions that restate a convention themselves say which release it belongs to.** "A 🔒 question gets a `question` directive" is 0.8.0's rule, and an instruction that states it without that release misleads every agent whose checker is older.
+5. **Nothing claims the guide is "correct for the Vantage in front of you".** It's correct for the checker's release.
+6. **A repository that pins its checker in CI names the same pin for its agents,** in `AGENTS.md`.
+7. **A checker that reports `question` or `fallback` as an unknown name is older than 0.8.0.** The fix is a newer checker, not removing the directive.
 
 ## 7. The cases
 
-| Case | Today | With this design |
-| :--- | :--- | :--- |
-| **One human, a release viewer a release behind, review mode** | The agent is taught the newest features | From the release that ships it, the payload's `VANTAGE_VIEWER` makes the newest checker write for that viewer. |
-| **The same, outside review mode** | The same | `VANTAGE_VIEWER` on the machine, a declared target, or the `vantage --version` step. **Otherwise nothing is ensured** under [OQ-VS2](#OQ-VS2)'s leaning, and the output says which version was checked for. |
-| **An agent in a jail or CI, with no viewer on `PATH`** | Bare `uvx`, the newest release | Set `VANTAGE_VIEWER` once in the jail's config or the CI environment. Otherwise, the same as the row above. |
-| **A development viewer (`just deploy`)** | Bare payload | Bare payload, correctly: the viewer is at or ahead of every release. |
-| **Several humans, on 0.7.1 and on 0.8.0** | Agents write for 0.8 | Set `target = "0.7"`. Inline SVG is an error, `stage:` is a warning, the 🔒 directive is [OQ-VS3](#OQ-VS3)'s, and agents are taught the 0.7 guide. Each reviewer's payload checks for the lower of the target and their own viewer. A human raises the target once everyone has upgraded. |
-| **CI** | `uvx vantage-check docs/` gets the newest release, so any release can turn CI red | Pin the checker in CI (`uvx vantage-check@0.8.0`), name the same pin for agents in `AGENTS.md`, and bump both deliberately. |
-| **No Vantage config at all** | Checks as the checker's own version | The same, unless [OQ-VS2](#OQ-VS2) decides otherwise, but now stated in the output. |
-| **Old checker, newer repository** | Exit 2, `unknown-name` errors, or false passes | One refusal that names the version to run. For 0.8.0 checkers, which predate the key, the two-branch messages in [§6.2](#62-what-a-checker-says-about-a-name-it-doesnt-know) apply. |
-| **0.7.x viewers, once 0.8.0 is on PyPI** | Agents get the 0.8.0 guide | Unchanged mechanically. The 0.8.0 CHANGELOG and the user guide tell these users to upgrade, or to run `uvx vantage-check@0.7.1` until they do. |
-| **This repository** | Every published checker exits 2 on its config | 0.8.0 fixes that. Add `target = "0.8"` once the key ships. |
+| Case | With this design |
+| :--- | :--- |
+| **One human, a viewer a release behind** | The agent writes the newest notation, which the viewer drops where it's new. A drawing shows its fallback. Under [OQ-VS1](#OQ-VS1), the payload names the viewer for the checkers that come later. |
+| **Several humans, on 0.7.1 and on 0.8.0** | The same as above, for each of them. Nothing makes the checker forbid what 0.7.1 can't render: that needs the deferred machinery, and with P0 and P1 holding, nothing yet does. |
+| **A development viewer (`just deploy`)** | Bare payload, correctly: the viewer is at or ahead of every release. |
+| **A pinned CI checker, and a newer repository** | From 0.8.0, a newer config key is a warning, not a red build. A document's newer directive is an error that says not to remove it. A declared `target` newer than the pin refuses, with one message, on every run. |
+| **A 0.7.x checker** | It exits 2 on any newer config key, and reports `question` and `fallback` as unknown names. Nothing reaches it; the 0.8.0 CHANGELOG says so. |
+| **A future breaking change** | Its release says so. A repository that adopts it raises `target`, and every checker from 0.8.0 on that is older than the target refuses. Raising it before every reader upgrades is the repository's call. |
+| **This repository** | Its config is readable by 0.8.0. It declares no `target` until a breaking change needs one. |
 
 ## 8. Alternatives considered
 
 | Alternative | Verdict |
 | :--- | :--- |
-| Pin the payload to the viewer's own checker (`uvx vantage-check@X.Y.Z`) | **Rejected.** An old checker can't see what came after it, and it exits 2 on newer checker-only config. A pin also makes the old checker's bugs permanent and contradicts P2 ([§5.1](#51-the-review-payload)). |
-| Put `--target X.Y.Z` in the payload, with 0.8.0 implementing a narrow version of the flag | **Rejected in favor of the variable.** It needs a 0.8.0 checker change settled under deadline, and an older checker exits 2 on the unknown flag. It also mixes two quantities: the flag is the repository's floor, and a viewer's version must be combined with that floor by taking the lower, not replace it. |
-| Pin a minor line (`vantage-check>=0.8,<0.9`) | **Rejected.** It still freezes old bugs. The guide has changed within patch lines (at v0.5.7 and v0.5.9), so this would also need a policy of no Markdown changes in patch releases. |
-| The checker asks the running server for its version | **Rejected.** It breaks [`agent-cli.md` P1](agent-cli.md#1-verdict-up-front). It also can't work from a jail, where the connection to the host's `:8000` was refused. |
-| The checker falls back to the `vantage` on `PATH` | **This is option C of [OQ-VS2](#OQ-VS2)** for the default. As an agent-instruction step it stays ([§6.3](#63-what-agent-instructions-must-say)), passed through `VANTAGE_VIEWER`. |
-| The viewer writes its version into `.vantage/` | **Rejected.** [`review-inbox.md`](../../userguide/guides/review-inbox.md) promises that Vantage doesn't create `.vantage/`, and the file would show up in `git status`. |
-| One wheel requires the other (`Requires-Dist`) | **Rejected.** `uvx vantage-check` never installs a viewer, so this would tie the checker to a viewer nobody on that machine runs. |
-| A version stamp in each document | **Rejected.** It is the document stamp that [OQ-B6](agent-bootstrap.md#decision-ledger) and D3 forbid, and it costs bytes every human reads. |
-| Filter today's guide by marking each section with the release it arrived in | **Rejected.** Changes between releases aren't only additions: the 🔒-directive rule reversed between 0.7 and 0.8. A filtered guide would contain text no release ever shipped, while the archive is verbatim and testable against the tags. |
-| Pin the checker only (`AGENTS.md`, mise, `uv tool install`) | **Kept as a supplement, rejected as the mechanism.** It fixes one toolchain, says nothing about the readers, and someone has to bump it by hand. |
-| A skew window, as kubectl has, keeping the checker within one minor version of the viewer | **Rejected.** Under P2 the newest checker supports every target, so there's no window to enforce. |
-| Make unknown names, keys and rules warnings | **Rejected.** Those errors catch typos. The target handles the forward case properly, and [§6.2](#62-what-a-checker-says-about-a-name-it-doesnt-know) makes the error say which case it might be. |
-| Land `target` and its refusal in 0.8.0 | **Rejected.** It settles the key under deadline. And without the feature table, a 0.8.0 checker would accept a lower target and then ignore it, which is the unenforced advisory field that prior art shows decays. |
-| The 0.8.0 server decodes `target`, so the viewer notice reaches 0.8.x viewers | **Deferred.** Decoding a top-level string is cheap, but it also settles the key's name and form under deadline, and the notice is a courtesy, not the mechanism. |
-| Backport a 0.7.2 that knows the target | **Rejected.** A 0.7.x viewer's payload is already shipped and names no version, so a backported checker would have nothing to read. |
-| The server keeps a file with unknown keys instead of rejecting all of it (the Kubernetes "Warn" mode) | **Deferred.** It would reverse [`repo-config.md` §2.3](repo-config.md#23-rejected-whole-never-half), and the target already keeps newer keys out of repositories whose viewers can't read them. |
+| Keep `oq` on every question, as `958dab3` had it ([OQ-VS4](#decision-ledger) B) | **Rejected 2026-09-30.** It gives old notation a new meaning, and 0.7.x reviewers see a control that files the wrong comment. |
+| Directives on open questions only ([OQ-VS4](#decision-ledger) C) | **Rejected.** The planning index reads a question only from its directive, so it would lose every blocked question. |
+| A key on `oq`, such as `oq state=blocked` | **Rejected.** A 0.7.x viewer drops the key and keeps offering the button ([§3.1](#31-questions-oq-for-open-ones-question-for-the-rest)). |
+| `block hide=true` instead of `fallback` | **Rejected.** It works mechanically, since a 0.7.x viewer drops the key and the bare `block` stamps nothing. But it makes a styling directive also mean "remove", and the name is what says what a directive does. |
+| An HTML fallback (`<noscript>`, an `<object>`'s fallback content) | **Rejected.** Sanitizers, GitHub's among them, strip or unwrap those elements. A comment is the one carrier every renderer drops the same way (D1). |
+| Commit every drawing as a file instead of inline SVG | **Kept as the guide's advice** for a document read mostly on GitHub. The fallback is for authors who inline the drawing anyway. |
+| Reserve `target` but accept and ignore it in 0.8.0 | **Rejected.** Every 0.8.x checker would then ignore a target forever, and a breaking change could rely only on the checkers released after it. |
+| Land the whole target machinery in 0.8.0 | **Deferred** ([§12](#12-deferred-until-a-capability-gap-needs-it)). Nothing 0.8.0 ships needs it, and the pieces a later release can't retrofit ship now. |
+| Make unknown names, keys and rule ids warnings | **Split.** In config, warnings, ruled 2026-09-30 ([§3.3](#33-config-an-older-checker-can-read)). In documents, errors, because typos are the usual cause, and the two-branch message says which case it might be. |
+| Pin the payload to the viewer's checker (`uvx vantage-check@X.Y.Z`) | **Rejected.** An old checker can't see what came after it, and the pin makes its bugs permanent (P4). |
+| Put `--target X.Y.Z` in the payload | **Rejected.** An older checker exits 2 on an unknown flag. And the viewer's version must be combined with the repository's target by taking the lower of the two, not replace it. |
+| Pin a minor line (`vantage-check>=0.8,<0.9`) | **Rejected.** It still freezes old bugs, and the guide has changed within patch lines. |
+| The checker asks the running server for its version | **Rejected.** It breaks P5, and it can't work from a jail. |
+| The viewer writes its version into `.vantage/` | **Rejected.** [`review-inbox.md`](../../userguide/guides/review-inbox.md) promises that Vantage doesn't create `.vantage/`. |
+| One wheel requires the other (`Requires-Dist`) | **Rejected.** `uvx vantage-check` would then install a viewer nobody on that machine runs. |
+| A version stamp in each document | **Rejected.** It's the per-document stamp that [OQ-B6](agent-bootstrap.md#decision-ledger) and D3 forbid, and every human reader pays for it. |
+| Pin the checker only, in `AGENTS.md`, mise or `uv tool install` | **Kept as a supplement.** It fixes one toolchain, and says nothing about the readers. |
+| Backport a 0.7.2 that knows `target` | **Rejected.** A 0.7.x viewer's payload is already shipped and names no version, so a backported checker would have nothing to read. |
 
 ## 9. Non-goals
 
 - **No negotiation with a running viewer.** The checker never fetches another version of itself.
-- **No viewer ever refuses, hides or re-renders a document because of the target.**
-- **Not the sanitizer gap.** The current checker passes markup the current sanitizer strips: foreign `class` names, `display: contents`, and Mermaid `themeCSS`. That's a gap in what the checker covers at every version, not version skew, and it needs its own entry.
-- **The in-app style guide modal isn't targeted.** It keeps showing the guide for the viewer's own version.
-- **Nothing reaches 0.7.x viewers except text** ([§1](#1-verdict-and-the-principles)).
+- **No viewer ever refuses, hides or re-renders a document because of `target`.** The fallback block is hidden because of a directive in the document, never because of a version.
+- **Not the sanitizer gap.** The current checker passes markup that the current sanitizer strips: foreign `class` names, `display: contents`, and Mermaid `themeCSS`. That's a gap in coverage at every version, not version skew.
+- **The in-app style guide modal isn't versioned.** It shows the guide for the viewer's own release.
+- **Nothing reaches 0.7.x checkers.**
 
 ## 10. Risks
 
 | Risk | Mitigation |
 | :--- | :--- |
-| **A wrong feature-table entry produces false findings.** | Every entry carries a proof, `npm`, `binary` or `manual`, taken against the preceding release ([§4.4](#44-the-feature-table)). |
-| **A new feature ships with no entry, so it passes silently at older targets.** | Mechanical for directive vocabulary, sanitizer schema and the guide, which are diffed against the previous published release. Frontmatter and config keys remain a review discipline, and this design doesn't pretend otherwise. |
-| **An entry's version is guessed before the release exists.** | Entries say `unreleased`, and `just release` refuses while any entry still does. |
-| **Nobody ever raises the target, so agents never use new features.** | That's the intended trade. The informational line fires once the target is a minor release behind. |
-| **At a target below 0.8, one group of readers loses something on 🔒/✅ questions.** | Under [OQ-VS3](#OQ-VS3) A, 0.7.x reviewers see a wrong button. Under B, the 0.8 planning index undercounts. Either way it lasts only until the target is raised. |
-| **An offline cache holds a checker older than `VANTAGE_VIEWER`.** | It checks as its own version and says so ([§4.2](#42-choosing-the-effective-target)). It doesn't refuse. |
-| **A machine's `VANTAGE_VIEWER` goes stale after its viewer upgrades.** | That's the safe direction, and the informational line reports it. |
-| **`target` is written below a `[table]` header.** | Every example shows it at the top. A checker that knows the key reports it with "move it above the first [table]". |
-| **A local build misreports its version (`0.1.0`) and refuses a real target.** | Development builds identify themselves as development builds ([§4.2](#42-choosing-the-effective-target)). |
+| **A new meaning slips into existing notation.** | The compatibility test fails on a new affordance or a changed stamp ([§3.4](#34-the-compatibility-test)), and every name, key and value must have a case. |
+| **The compatibility test passes against itself,** right after a tag. | Right after a publish it does compare against that release, and that's the comparison later commits need: they must stay readable by it. The release itself was compared against the one before it, by the CI job and again by `just release`. |
+| **A tag is cut from a commit the compatibility job never passed.** | `just release` runs it, with `CI=true` so that an offline run fails rather than skips. |
+| **The registry is unreachable.** | A local run skips, saying what it couldn't fetch. In CI the job fails, so a skip never shows green. |
+| **A fallback block carries content a Vantage reader needs.** | The guide says a fallback holds only the stand-in. No test can tell, so review catches this. |
+| **An older viewer prints an SVG's `<title>` and `<text>`.** | The fallback explains what is missing. The leaked text itself stays ([§3.2](#32-a-fallback-block-for-a-capability)). |
+| **A config typo only warns.** | The warning prints on every run, and the rule the typo meant to silence usually keeps firing. A bad value for a known key still exits 2. |
+| **An agent "fixes" a refusal by lowering `target`.** | The refusal says to leave it, and the guide says only a human edits it. |
+| **A local build misreports its version and refuses a real target.** | Development builds never refuse ([§4.2](#42-which-release-a-checker-is-and-when-it-refuses)). |
+| **`target` is written below a `[table]` header.** | Every example shows it at the top, and a checker that knows the key says to move it. |
+| **0.7.x checkers report `question` and `fallback` as errors.** | The 0.8.0 CHANGELOG and the user guide name the cause. That's the older-checker direction, and nothing can reach those checkers. |
 
 ## 11. What ships when
 
-| When | What | Size |
+| When | What | State |
 | :--- | :--- | :--- |
-| **0.8.0** | **Text for the first incident.** A 0.8.0 CHANGELOG paragraph names the two features a 0.7.x viewer renders wrong (inline SVG, and `oq` directives on 🔒/✅ questions). It tells 0.7.x users to upgrade the viewer, or to run `uvx vantage-check@0.7.1` for `check` and `style-guide` until they do. The user-guide edits in [§12](#12-what-this-changes-in-other-documents) ship with it. | text |
-| **0.8.0** | **Agent instructions** follow [§6.3](#63-what-agent-instructions-must-say)'s lookup order and self-check. They're edited before the tag, because the window opens at the upload. | text |
-| **0.8.0** | **The two-branch messages** ([§6.2](#62-what-a-checker-says-about-a-name-it-doesnt-know)). A local build calls itself a development build. | small |
-| **0.8.0** | **The `style-guide` header line** ([§6.1](#61-the-style-guide-names-its-release)) | tiny |
-| **0.8.0 under [OQ-VS1](#OQ-VS1) B, 0.8.1 under A** | **The `VANTAGE_VIEWER` payload** and its fallback sentence ([§5.1](#51-the-review-payload)) | small: the browser learns the release version, plus the payload string and six test sites |
-| **When 0.8.0 is on PyPI** | Guide copies in agent instructions are regenerated from the published 0.8.0 output ([§6.3](#63-what-agent-instructions-must-say)). | text |
-| **The next release** | `target` read per root, and `VANTAGE_VIEWER` read beside it. The refusal, the effective target in every output, the informational line and the misplaced-key report. The feature table with its 0.8.0 entries and their proofs, the `unreleased` gate in `just release`, and the vocabulary diff. The `target/*` rules. The guide archive from 0.7.0 onward, and `style-guide --target`. | the design |
-| **Later** | The server reads `target`, and a viewer older than it shows the reader a notice. The notice reaches only viewers from that release on; no 0.7.x or 0.8.x viewer ever shows it. It must not move content already on screen, and a development build never shows it. This repository declares `target`. | small |
+| **0.8.0** | The `style-guide` header line, the two-branch messages and the development-build name ([§6.1](#61-the-style-guide-names-its-release), [§6.2](#62-what-a-checker-says-about-a-name-it-doesnt-know)) | built |
+| **0.8.0** | `vantage/frontmatter-value` gives the same two branches ([§6.2](#62-what-a-checker-says-about-a-name-it-doesnt-know)) | designed |
+| **0.8.0** | `question` beside `oq`, across the scan, the contents column, the outline, the checker, the guide and this repository's 🔒 and ✅ questions ([§3.1](#31-questions-oq-for-open-ones-question-for-the-rest)) | built |
+| **0.8.0** | `fallback`, and the guide's SVG pairing ([§3.2](#32-a-fallback-block-for-a-capability)) | built |
+| **0.8.0** | Config tolerance in the checker, `[planning]` included ([§3.3](#33-config-an-older-checker-can-read)); the server's own unknown keys follow [OQ-VS5](#OQ-VS5) | checker built; server open |
+| **0.8.0** | `target` reserved: validated, refused, noted; the server ignores it ([§4](#4-the-target-reserved)) | built |
+| **0.8.0** | The compatibility test, as its own recipe and CI job ([§3.4](#34-the-compatibility-test)) | built |
+| **0.8.0** | The payload's exit-2 sentence ([§5](#5-the-viewers-version-in-the-review-payload)) | built |
+| **0.8.0, if [OQ-VS1](#OQ-VS1) is B** | `VANTAGE_VIEWER` in the payload ([§5](#5-the-viewers-version-in-the-review-payload)) | open |
+| **0.8.0** | **Text.** The CHANGELOG's paragraph for 0.7.x readers is rewritten: they need no pin, and a drawing shows its fallback. The user guide and the agent instructions follow [§6.3](#63-what-agent-instructions-must-say) and [§13](#13-what-this-changes-in-other-documents). | text |
+| **When 0.8.0 is on PyPI** | Guide copies in agent instructions are regenerated from the published output. | text |
+| **When a capability gap needs it** | [§12](#12-deferred-until-a-capability-gap-needs-it) | deferred |
 
-## 12. What this changes in other documents
+## 12. Deferred until a capability gap needs it
 
-These edits land when this design is accepted, except where noted.
+**The trigger** is the first change that keeps neither P0 nor P1: notation that can't get a new name, key or value, or a capability whose absence a fallback block can't explain. The compatibility test is where that shows up, because it can't be passed without one or the other. That change is a declared **breaking change**: its release notes say so, a repository that adopts it raises `target`, and every checker from 0.8.0 on that is older than the target refuses. What follows is the machinery that would make a *newer* checker write for older readers. None of it is needed until then. The full draft is this document as of `958dab3`, in its sections on the target and on the viewer's version.
 
-- [`agent-cli.md`](agent-cli.md): R6 ("checks describe the format, which is stable") is replaced by a link to this document. That claim stopped being true in 0.8.0.
-- [`pypi-distribution.md`](pypi-distribution.md): the agent row's "at the repo's shared version" is true only with a target, a `VANTAGE_VIEWER` or a pin, and should say so.
-- [`inline-markup.md`](../reference/inline-markup.md) D3, amended 2026-09-30: "no version negotiation, no minimum-version key" is scoped to renderers. Its forward-compatibility promise is scoped to new directive names, keys and values. It links here for markup the sanitizer newly admits, and for existing directives whose meaning changes ([§4.1](#41-the-key)).
-- [`agent-bootstrap.md`](agent-bootstrap.md) P6 and [`OQ-B6`](agent-bootstrap.md#decision-ledger): one line saying that a build's release version in the command isn't the payload version the ruling forbade, and that the payload is a pure function "of the document and the build" ([§5.1](#51-the-review-payload)). This lands with the payload.
-- [`style-guide.md`](../../userguide/reference/style-guide.md): "the same text" becomes "the same text for the same version", and the `uvx vantage-check style-guide` lines say that the output describes the checker's release. This ships in 0.8.0.
-- [`vantage-check.md`](../../userguide/guides/vantage-check.md), in 0.8.0:
-  - the opening examples say the same thing as `style-guide.md`;
-  - the `style-guide >> AGENTS.md` recipe becomes a pointer to the command, since an appended copy is frozen at one release;
-  - the CI example becomes pinned, and names the same pin for agents.
+- **An effective target** *(coined here)*: the release a checker writes for, as opposed to `target`, which only declares one. It's chosen per repository root: `--target`, then the lower of the root's `target` and `VANTAGE_VIEWER`, then the default that [OQ-VS2](#OQ-VS2) decides. Below a floor (0.7.0 in the draft), a checker checks as the floor and names the floor's exact checker.
+  - **Trap: read it per root, never through `[check]`'s upward walk.** That walk goes past `.git` to `/` from the first path given ([`config.ts:105`](../../packages/vantage-check/src/core/config.ts#L105)), so a target found that way could belong to a parent directory or to another repository in the run.
+  - **A `VANTAGE_VIEWER` newer than the checker doesn't refuse.** It says what one reader can render, not what the documents use, and refusing would turn a stale offline cache into an unchecked delivery.
+- **A feature table.** It lists every feature since the floor, with the release that added it, what an older viewer does with it, and what a newer reader loses without it.
+  - What an entry says an older viewer does comes from running the preceding release, never from reading code: a wrong entry is a false finding. The compatibility test's fetch is the way to run it ([§3.4](#34-the-compatibility-test)), rather than any dependency.
+  - Entries on unreleased commits say `unreleased`, and `just release` refuses while one does.
+- **`target/*` rules.** These report a feature newer than the effective target, as an error when an older viewer misrenders it and as a warning when it merely shows it plain. No message about a document ever suggests upgrading the checker.
+- **A verbatim archive of each released guide,** and `style-guide --target`. It's never a filtered copy of today's guide, which would be text no release ever shipped.
+- **`VANTAGE_VIEWER` beyond the payload.** The checker reads it, and a machine can declare it once in a jail's config, a CI job's environment or a shell profile, the only protection outside review mode for a repository with no target.
+- **The server reading `target`,** and a viewer older than it showing the reader a notice. The notice must never move content already on screen, and a development build never shows it.
 
-  Its "How agents find out about it" section changes with the payload.
-- [`configuration.md`](../../userguide/reference/configuration.md) documents `target` and `VANTAGE_VIEWER` when they're built.
+## 13. What this changes in other documents
 
-## 13. What done looks like
+These land with the 0.8.0 work, except where noted. Done with the build, after `958dab3`:
 
-1. With `target = "0.7"`, a document containing an inline `<svg>` fails with a message naming 0.8.0 and the fix. With `target = "0.8"` the same document is clean.
-2. With `target = "0.9"`, a checker that knows the key but is older than 0.9 prints one message, exits 2, and prints nothing about any document.
-3. With the target at 0.7, the output of `style-guide` after its first line is byte-identical to the output of `uvx vantage-check@0.7.1 style-guide`, apart from whatever [OQ-VS3](#OQ-VS3) appends after the guide.
-4. The payload from a release viewer says `VANTAGE_VIEWER=X.Y.Z`, where `X.Y.Z` equals that viewer's version. The payload from a development build names no version.
-5. With `VANTAGE_VIEWER=0.8.0` set and no target, a checker from the target release reports a feature newer than 0.8.0, and names 0.8.0 and `VANTAGE_VIEWER` as the effective target and its source.
-6. `--format json` carries each root's effective target and its source.
-7. `target = "0.8"` written after `[planning.stages]` is reported with "move it above the first [table]".
-8. In 0.8.0, a `vantage/unknown-name` message names 0.8.0 and gives no upgrade command. An unknown rule id says not to remove it. A `just cli` build calls itself a development build.
+- [`inline-markup.md`](../reference/inline-markup.md): the names gain `question` and `fallback`. `fallback` is the one directive that removes its block, and D1 still holds for it. D3's "no version negotiation, no minimum-version key" is scoped to renderers ([§4.1](#41-the-key)).
+- [`planning-index.md`](../reference/planning-index.md): a question is declared by `oq` or by `question`.
+- The style guide ([`styleGuide.ts`](../../packages/vantage-md/src/styleGuide.ts)): [§6.1](#61-the-style-guide-names-its-release)'s last bullet.
+- [`agent-cli.md`](agent-cli.md): R6 ("checks describe the format, which is stable") links here instead.
+- [`pypi-distribution.md`](pypi-distribution.md): the agent row's "at the repo's shared version" holds only with a pin, since bare `uvx` runs the newest release.
+- [`vantage-check.md`](../../userguide/guides/vantage-check.md): "Which release it writes for" drops the `uvx vantage-check@0.7.1` remedy, since a 0.7.1 checker reports 0.8.0's `question` and `fallback` as errors. It documents the config warnings and the refusal instead.
+- [`configuration.md`](../../userguide/reference/configuration.md) documents `target`.
 
-## 14. Open Questions
+Still to do:
 
-0. 💬 **OQ-VS4: Before tagging 0.8.0, give blocked and answered questions a directive of their own instead of `oq`?** 0.8.0 changes `oq` to mean "any question", against [P0](#1-verdict-and-the-principles), so a 0.7.x viewer offers "Take this leaning" on blocked and answered ones. It's free to fix only before the tag.
+- [`CHANGELOG.md`](../../CHANGELOG.md): 0.8.0's "If your readers stay on 0.7" paragraph is rewritten ([§11](#11-what-ships-when)), before the tag.
+- [`repo-config.md`](repo-config.md): [OQ-RC5](repo-config.md#6-decision-ledger) is amended for unknown keys if [OQ-VS5](#OQ-VS5) is A.
+- [`agent-bootstrap.md`](agent-bootstrap.md): P6 and [OQ-B6](agent-bootstrap.md#decision-ledger) gain [§5](#5-the-viewers-version-in-the-review-payload)'s line, if [OQ-VS1](#OQ-VS1) is B.
 
-   - **A — A new directive name for questions that aren't answerable.** `oq` keeps its 0.7 meaning, and 0.7.x viewers drop the new name harmlessly. Costs about half a day before the tag: the scan, the outline, `vantage/oq-missing`, the style guide and this repository's 🔒/✅ directives.
-   - **B — Keep `oq` on every question, as built.** No delay; 0.7.x reviewers see the wrong control.
-   - **C — Directives on open questions only.** The planning index loses blocked questions.
+## 14. What done looks like
 
-   <!-- vantage: oq id=OQ-VS4 leaning="A — give blocked and answered questions a new directive name before the tag, so oq keeps its 0.7 meaning and 0.7.x viewers drop the new one harmlessly." -->
+1. The compatibility job passes against the published `vantage-md@0.7.1`. Changing a 🔒 example's `question` to `oq` makes it fail, naming that example.
+2. In 0.8.0, a 🔒 question with `question` is counted by the planning index, reached by its `#OQ-…` link, and listed in the contents column, and review mode offers no button on it. Rendered through 0.7.1, it shows no directive and no button.
+3. `oq` on a ✅ question is a checker error that names `question`. `question` on a 💬 question is an error that names `oq`.
+4. A fallback paragraph after an inline `<svg>` is absent from the 0.8.0 page, its print view and the static export, and present on GitHub and in 0.7.1's render.
+5. With `"future/rule" = "off"` under `[check.rules]` and `newkey = 1` under `[check]`, a 0.8.0 checker warns twice, naming 0.8.0, ignores both, and exits 0 on clean documents, with `--strict` too. `check.strict = "yes"` still exits 2.
+6. With `target = "0.9"`, a 0.8.0 release checker prints one message naming 0.9.0, exits 2, and says nothing about any document, for `check`, `index` and `style-guide` alike. A development build checks, and notes the target.
+7. With `target = "0.8"`, a note on stderr names the target. `target = 0.8`, `"v0.8"` and `"latest"` each exit 2 and list the accepted forms. `target` written below `[planning.stages]` exits 2 with "move it above the first [table]".
+8. The server serves a repository whose `.vantage.toml` says `target = "9.9"` with its theme, stars and planning intact.
+9. Offline, the compatibility recipe skips with a message naming what it couldn't fetch.
+10. If [OQ-VS1](#OQ-VS1) is B: a release viewer's payload says `VANTAGE_VIEWER=X.Y.Z`, and a development build's names no version.
 
-   _Leaning:_ A. It's the only option that keeps P0 whole, and it can only be done cheaply before the tag.
+## 15. Open Questions
 
-   **Answer:**
-   > _(empty — fill in when decided)_
+1. 💬 **OQ-VS1: Does the 0.8.0 review payload carry `VANTAGE_VIEWER=<release>`?** A payload is frozen into every viewer that ships it, so a viewer released without the variable can never tell a later checker what it renders ([§5](#5-the-viewers-version-in-the-review-payload)). This blocks the tag.
 
-1. 💬 **OQ-VS1: Tag 0.8.0 now, or hold it for the `VANTAGE_VIEWER` payload?** 0.8.0 is already the first incident, since every 0.7.x viewer's payload is bare. This question decides whether 0.8.0 viewers become the second: whether their payloads carry the variable a later checker needs in order to write for them. Nothing added in a later release reaches a viewer that has already shipped.
+   - **A — No; ship it in 0.8.1.** No delay. Every 0.8.0 viewer installed and never upgraded sends the bare command for good, as every 0.7.x viewer does.
+   - **B — Yes, in 0.8.0.** About half a day: the browser learns the server's release version, the payload's command gains the variable, and the payload tests follow. No 0.8.0 checker reads it. The exit-2 sentence ships either way ([§5](#5-the-viewers-version-in-the-review-payload)).
 
-   - **A: Tag 0.8.0 with the text, the two-branch messages and the header, and ship the payload in 0.8.1.** Release cost: about half a day. Exposure: 0.8.0 viewers that are installed before 0.8.1 and never upgraded keep the bare payload for good, as every 0.7.x viewer already has. At September's pace of twelve checker releases, the gap is days. It also means the one permanent string isn't settled under deadline.
-   - **B: Also hold 0.8.0 for the payload.** Release cost: about another half day, for the browser learning the release version, the payload string and its fallback sentence, and six test sites. The string that gets frozen is the variable's name and meaning. The 0.8.0 checker needs no change for it.
+   <!-- vantage: oq id=OQ-VS1 leaning="B — put VANTAGE_VIEWER=<release> in the 0.8.0 payload now: the payload cannot be retrofitted into a viewer that has shipped, and no checker is harmed by a variable it doesn't read." -->
 
-   <!-- vantage: oq id=OQ-VS1 leaning="A — tag 0.8.0 with the text, the messages and the header; ship the VANTAGE_VIEWER payload in 0.8.1 once its name has had a review." -->
-
-   _Leaning:_ A. You asked for the release sooner, and A's exposure is limited to viewers installed in the gap. It also gives the one permanent string a review round instead of a deadline. B is right if another half day doesn't matter.
-
-   **Answer:**
-   > _(empty — fill in when decided)_
-
-2. 💬 **OQ-VS2: With no target declared and no `VANTAGE_VIEWER`, what does the checker assume?** This decides what every repository without a Vantage config experiences, and those are most repositories. It is also the case the original question asked about.
-
-   - **A: Its own version, named in every output.** This is today's behavior, made visible. Repositories that upgrade in lockstep lose nothing. An unconfigured repository whose viewer lags is **not protected**, outside review mode and without a machine declaration.
-   - **B: The floor (0.7.0), until someone declares otherwise.** Every unconfigured repository is protected by default. But every repository that wants the planning features, this one included, has to declare a target or set `VANTAGE_VIEWER`. Agents in unconfigured repositories are taught the 0.7 guide, and they meet [OQ-VS3](#OQ-VS3)'s reversal.
-   - **C: The `vantage` on `PATH`, if it reports a release; otherwise its own version.** This is right on a single-user machine. It's wrong in a jail or in CI, where there usually isn't one, and wrong for a service that hasn't been restarted. The same repository would also check differently on two machines.
-
-   <!-- vantage: oq id=OQ-VS2 leaning="A — the checker's own version, named in every output; the payload, a machine's VANTAGE_VIEWER and a declared target cover the cases where the viewer's version is knowable." -->
-
-   _Leaning:_ A. The checker can't know the viewer's version, but the payload, a machine and a human writing `target` can, and each has a one-line way to say it. B makes every repository do something to avoid a problem many of them don't have. If you want unconfigured repositories protected by default, B is the right choice.
+   _Leaning:_ B. The payload is the one piece that can't be retrofitted into a shipped viewer, and a variable costs older checkers nothing.
 
    **Answer:**
    > _(empty — fill in when decided)_
 
-3. 💬 **OQ-VS3: When a release changes what existing markup means, which reader does a lower target favor?** This decides what the checker enforces, and what the archived guide is followed by, at a target below 0.8 for directives on 🔒 and ✅ questions. That is the first such reversal, and it won't be the last. It is scope for the next release, and it doesn't block 0.8.0.
+2. 💬 **OQ-VS5: Does the 0.8.0 server ignore an unknown key in its own tables, as the checker now does?**
+   [OQ-RC5](repo-config.md#6-decision-ledger) rejects the whole file for one unknown `[starred]` or `[planning]` key, citing the checker's discipline, which the config ruling ended: the checker now warns and ignores one ([§3.3](#33-config-an-older-checker-can-read)). 0.8.0 is the first server to read `[planning]`, and what it does with a newer key, every 0.8.0 server does for good. This blocks the tag.
 
-   - **A: Newer readers.** Keep the directive. Below 0.8 it is a `target/reversed` warning that names the 0.7 review-mode harm, and `style-guide` follows the verbatim archived guide with a note, taken from the feature table, for each convention a later release reversed. Cost: 0.7.x reviewers see "Take this leaning" on blocked and answered questions, and the guide output is no longer only the archive.
-   - **B: The oldest reader.** Omit the directive. The 0.7 guide stays verbatim, and the directive stays a `target/renders-wrong` error below 0.8. Cost: the 0.8 planning index silently loses every blocked and answered question until the target is raised.
+   - **A — The server warns and ignores it too.** A bad known value still rejects the file; three fixture cases flip.
+   - **B — The server stays strict, or both do.** A later `[planning]` key makes every 0.8.0 server drop the whole file, theme and stars included.
 
-   <!-- vantage: oq id=OQ-VS3 leaning="A — keep the directive and warn; the 0.7 harm is a visible review-mode button a reviewer can decline, while the 0.8 harm is silent data missing from the planning index." -->
+   <!-- vantage: oq id=OQ-VS5 leaning="A — the server and the checker both warn about and ignore an unknown key in [starred] and [planning]; a known key with a bad value still rejects the whole file." -->
 
-   _Leaning:_ A. The 0.7 harm is visible, it appears only in review mode, and a reviewer can decline the button. The 0.8 harm is silent, and it strikes what the planning index exists to show.
+   _Leaning:_ A. Under B, every later `[planning]` key is a breaking change for every 0.8.0 server, and a server reads no `target`, so it can't even refuse clearly.
 
    **Answer:**
    > _(empty — fill in when decided)_
+
+3. 💬 **OQ-VS2: Once checkers implement targets, what does one assume with no `target` and no `VANTAGE_VIEWER`?** Most repositories have no Vantage config, so this is what most of them get. It doesn't block 0.8.0, because a 0.8.0 checker checks against its own release whatever is declared.
+
+   - **A — Its own release, named in every output.** Today's behavior, made visible. Outside review mode, a repository whose viewer lags is unprotected.
+   - **B — The oldest release it implements.** Protected by default, but every repository that wants newer notation has to declare `target`.
+   - **C — The `vantage` on `PATH`.** Right on a single-user machine, wrong in a jail or CI, and two machines would check one repository differently.
+
+   <!-- vantage: oq id=OQ-VS2 leaning="A — the checker's own release, named in every output; the payload, a machine and a human writing target each have a one-line way to say otherwise." -->
+
+   _Leaning:_ A. The payload, a machine and a human writing `target` each have a one-line way to say otherwise. Under P0 and P1, writing for the newest release rarely harms an older reader.
+
+   **Answer:**
+   > _(empty — fill in when decided)_
+
+4. 💬 **OQ-VS3: May a release ever change what existing notation means?** This decides whether the deferred machinery needs rules for markup that means different things to different viewers. It doesn't block 0.8.0: the one change 0.8.0 made is undone by `question` ([§3.1](#31-questions-oq-for-open-ones-question-for-the-rest)).
+
+   - **A — Never; close the question.** P0 forbids it. A change that truly can't get a new name is a declared breaking change, which is what `target` exists for ([§12](#12-deferred-until-a-capability-gap-needs-it)).
+   - **B — Allow it, and pick a side per change.** Either newer readers or the oldest win, with a `target/reversed` warning and a note after the archived guide.
+
+   <!-- vantage: oq id=OQ-VS3 leaning="A — close it: P0 forbids giving notation a new meaning, and a change that truly cannot get a new name is a declared breaking change that target exists for." -->
+
+   _Leaning:_ A. B builds machinery for something P0 already forbids.
+
+   **Answer:**
+   > _(empty — fill in when decided)_
+
+## Decision Ledger
+
+| ID | Ruling / Decision | Date | Settled in | Built |
+| :--- | :--- | :--- | :--- | :--- |
+| OQ-VS4 | A: `oq` keeps its 0.7 meaning, an open question that can be answered. 🔒 and ✅ questions get a new directive name, `question`, which 0.7.x viewers drop. Both declare a question, and only `oq` gets "Take this leaning"; the checker flags each one on the wrong state. | 2026-09-30 | [§3.1](#31-questions-oq-for-open-ones-question-for-the-rest) | 0.8.0 |
+| — | P0 binds: a release never gives existing notation a new meaning, and 0.8.0 doesn't break it on day one. | 2026-09-30 | [§1](#1-verdict-and-the-principles) | 0.8.0 |
+| — | `<!-- vantage: fallback -->` removes its block from 0.8.0 on, and the guide pairs every inline SVG with one. | 2026-09-30 | [§3.2](#32-a-fallback-block-for-a-capability) | 0.8.0 |
+| — | The checker warns about and ignores an unknown rule id or an unknown key in a table it owns; parse errors in known keys stay errors. | 2026-09-30 | [§3.3](#33-config-an-older-checker-can-read) | 0.8.0 |
+| — | `target` is reserved in 0.8.0: validated; refused when newer than a release checker, never by a development build; otherwise noted. The server accepts it and ignores it. | 2026-09-30 | [§4](#4-the-target-reserved) | 0.8.0 |
+| — | A compatibility test renders the guide's notation through the previous release's published renderer, fetched at test time, as its own job. | 2026-09-30 | [§3.4](#34-the-compatibility-test) | 0.8.0 |
 
 ## Prior art
 
-- **Go's `go` line** ([go.dev/doc/toolchain](https://go.dev/doc/toolchain)) is the model for P1.
-  - Newer toolchains reject features newer than the declared version, and `go vet`'s `stdversion` check reports them.
-  - Since 1.21, older toolchains refuse modules that declare a newer version, "so the problem is reported clearly".
-- **clippy `msrv`, ruff `target-version` and eslint-plugin-n** are linters that each hold their suggestions to a declared runtime version. Their defaults differ, and that difference is the choice [OQ-VS2](#OQ-VS2) asks you to make:
+- **HTML's `<noscript>`** ([MDN](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/noscript)) is the pattern behind P1: content that only a reader lacking a capability shows, and that a capable reader swallows.
+- **Go's `go` line** ([go.dev/doc/toolchain](https://go.dev/doc/toolchain)) is the model for `target`. Since 1.21, older toolchains refuse modules that declare a newer version, "so the problem is reported clearly", and newer ones hold features to the declared version.
+- **clippy `msrv`, ruff `target-version` and eslint-plugin-n** hold a linter's suggestions to a declared runtime version. Their defaults differ, and that difference is [OQ-VS2](#OQ-VS2):
   - clippy uses the current toolchain;
   - ruff uses a fixed, cautious version;
   - eslint-plugin-n reads the version declared in `package.json`.
-- **Browserslist** ([github.com/browserslist/browserslist](https://github.com/browserslist/browserslist)): a project declares its oldest browsers once, the newest tools compile for them, and an environment variable can supply the same answer from outside the project. That is P2 and [§5.2](#52-a-machines-environment) together.
-- **Prettier's install docs**: running `npx` with no local install "will temporarily download the latest version. That's not a good idea." Bare `uvx vantage-check` makes the same mistake.
-- **Obsidian `minAppVersion` and pip `Requires-Python`** let the consumer's version pick an older producer. That's the model the pinned payload followed, and the reason [§8](#8-alternatives-considered) rejects it: a linter isn't a library, and an old linter can't see what came after it.
+- **Browserslist** ([github.com/browserslist/browserslist](https://github.com/browserslist/browserslist)): a project declares its oldest browsers once, the newest tools compile for them, and an environment variable can supply the same answer from outside. That's the deferred machinery.
+- **Prettier's install docs** say that running `npx` with no local install "will temporarily download the latest version. That's not a good idea." Bare `uvx vantage-check` does the same, which P0 makes safe rather than wrong.
 - **The failure, in the wild**: GitHub renders Mermaid older than the syntax people write, and a VS Code extension pinned to Mermaid 8.8.0 fails on diagram syntax Copilot generates. In both cases the renderer lagged behind the authoring side, and nothing signaled it.

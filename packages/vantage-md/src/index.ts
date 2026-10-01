@@ -36,11 +36,14 @@ export {
   VANTAGE_OQ_HOST_TARGETS,
   VANTAGE_OQ_STATUS,
   VANTAGE_OQ_STATUS_LABEL,
+  VANTAGE_QUESTION_NAMES,
   VANTAGE_RUNS,
   VANTAGE_SENTINEL,
   VANTAGE_TONES,
   hasVantageSentinel,
+  isQuestionDirective,
   parseVantageDirective,
+  questionDirectiveFor,
   vantageOqStatus,
 } from "./vantageDirectives.js";
 export type {
@@ -52,6 +55,7 @@ export type {
   MalformedDirective,
   ParsedDirective,
   VantageOqStatus,
+  VantageQuestionName,
 } from "./vantageDirectives.js";
 
 export { buildPipeline, buildRemarkPlugins } from "./pipeline.js";

@@ -1,0 +1,364 @@
+{
+  "description": [
+    "How each reader of .vantage.toml answers a file written for another release: a key or a rule id it does not know, and the top-level target (docs/design/checker-version-skew.md).",
+    "`server` is internal/repoconfig's answer and `checker` is vantage-check's: `accepts`, `warns` (accepts, with exactly one warning, which contains `says`, and ignores what it warns about) or `refuses` (an error containing `says`; the server logs it and serves the repository as though the file were absent, and vantage-check exits 2). `target` is the target vantage-check reads, null for none, on every case it does not refuse. `planning`, where present, is what every reader that does not refuse the file resolves its [planning] table to, as vantage-md's PlanningConfig.",
+    "Forward compatible, as vantage-check uses the words, means that a file written for a newer vantage-check reads in an older one without failing: a key in [check] or [planning], a rule id or a rule's option that it does not know is ignored with a warning. A value it cannot take for a key it knows is still an error, and so is one of the file's top-level names written inside one of its tables, which it knows to be misplaced.",
+    "The server is not forward compatible in that sense: it refuses the whole file over a key it does not know in a table it owns, [starred] or [planning]. Where the two readers part, the case says so in its two answers, rather than holding one of them to the other's.",
+    "target is the oldest Vantage release anyone reading the repository uses, written as \"X.Y\" or \"X.Y.Z\" above the first [table]. The server steps over it, as over any top-level key it does not decode. vantage-check validates it, and refuses to run when it names a release newer than its own, which is a decision about the checker's release and so is pinned by vantage-check's own suite rather than here: to this fixture, \"999.0\" is a target like any other.",
+    "Read by the server's internal/repoconfig test and by vantage-check's config test."
+  ],
+  "cases": [
+    {
+      "name": "a target above every table",
+      "toml": "target = \"0.8\"\n\n[planning]\nexclude = [\"docs/gallery/**\"]\n",
+      "server": "accepts",
+      "checker": "accepts",
+      "target": "0.8",
+      "planning": {
+        "roadmaps": null,
+        "include": [
+          "**/*.md"
+        ],
+        "exclude": [
+          "docs/gallery/**"
+        ],
+        "maxFileBytes": 1048576,
+        "maxCandidates": 5000,
+        "stages": null
+      }
+    },
+    {
+      "name": "a target that names a patch",
+      "toml": "target = \"0.7.1\"\n",
+      "server": "accepts",
+      "checker": "accepts",
+      "target": "0.7.1",
+      "planning": {
+        "roadmaps": null,
+        "include": [
+          "**/*.md"
+        ],
+        "exclude": [],
+        "maxFileBytes": 1048576,
+        "maxCandidates": 5000,
+        "stages": null
+      }
+    },
+    {
+      "name": "a target newer than every release",
+      "toml": "target = \"999.0\"\n",
+      "server": "accepts",
+      "checker": "accepts",
+      "target": "999.0"
+    },
+    {
+      "name": "a target written as a number",
+      "toml": "target = 0.8\n",
+      "server": "accepts",
+      "checker": "refuses",
+      "says": "target must name one Vantage release"
+    },
+    {
+      "name": "a target with a leading v",
+      "toml": "target = \"v0.8\"\n",
+      "server": "accepts",
+      "checker": "refuses",
+      "says": "target must name one Vantage release"
+    },
+    {
+      "name": "a range for a target",
+      "toml": "target = \">=0.8\"\n",
+      "server": "accepts",
+      "checker": "refuses",
+      "says": "target must name one Vantage release"
+    },
+    {
+      "name": "latest for a target",
+      "toml": "target = \"latest\"\n",
+      "server": "accepts",
+      "checker": "refuses",
+      "says": "target must name one Vantage release"
+    },
+    {
+      "name": "a pre-release for a target",
+      "toml": "target = \"0.9.0-rc.1\"\n",
+      "server": "accepts",
+      "checker": "refuses",
+      "says": "target must name one Vantage release"
+    },
+    {
+      "name": "a target of four numbers",
+      "toml": "target = \"0.8.0.1\"\n",
+      "server": "accepts",
+      "checker": "refuses",
+      "says": "target must name one Vantage release"
+    },
+    {
+      "name": "a target of one number",
+      "toml": "target = \"1\"\n",
+      "server": "accepts",
+      "checker": "refuses",
+      "says": "target must name one Vantage release"
+    },
+    {
+      "name": "a target with a leading zero",
+      "toml": "target = \"0.08\"\n",
+      "server": "accepts",
+      "checker": "refuses",
+      "says": "target must name one Vantage release"
+    },
+    {
+      "name": "an empty target",
+      "toml": "target = \"\"\n",
+      "server": "accepts",
+      "checker": "refuses",
+      "says": "target must name one Vantage release"
+    },
+    {
+      "name": "a target written as a table",
+      "toml": "[target]\nversion = \"0.8\"\n",
+      "server": "accepts",
+      "checker": "refuses",
+      "says": "target must name one Vantage release"
+    },
+    {
+      "name": "a target below [check]",
+      "toml": "[check]\nstrict = true\ntarget = \"0.8\"\n",
+      "server": "accepts",
+      "checker": "refuses",
+      "says": "move it above the first [table]"
+    },
+    {
+      "name": "a target below [check.rules]",
+      "toml": "[check.rules]\n\"link/*\" = \"warning\"\ntarget = \"0.8\"\n",
+      "server": "accepts",
+      "checker": "refuses",
+      "says": "move it above the first [table]"
+    },
+    {
+      "name": "a target below a rule's own table",
+      "toml": "[check.rules.\"planning/question-length\"]\nmax-words = 150\ntarget = \"0.8\"\n",
+      "server": "accepts",
+      "checker": "refuses",
+      "says": "move it above the first [table]"
+    },
+    {
+      "name": "a target below [planning]",
+      "toml": "[planning]\nexclude = []\ntarget = \"0.8\"\n",
+      "server": "refuses",
+      "checker": "refuses",
+      "says": "move it above the first [table]"
+    },
+    {
+      "name": "a target below [planning.stages]",
+      "toml": "[planning.stages]\nDESIGN = \"open\"\ntarget = \"0.8\"\n",
+      "server": "refuses",
+      "checker": "refuses",
+      "says": "move it above the first [table]"
+    },
+    {
+      "name": "a target below [starred]",
+      "toml": "[starred]\npromote = [\"roadmap.md\"]\ntarget = \"0.8\"\n",
+      "server": "refuses",
+      "checker": "refuses",
+      "says": "move it above the first [table]"
+    },
+    {
+      "name": "a stage word spelled target",
+      "toml": "[planning.stages]\ntarget = \"open\"\n",
+      "server": "accepts",
+      "checker": "accepts",
+      "target": null,
+      "planning": {
+        "roadmaps": null,
+        "include": [
+          "**/*.md"
+        ],
+        "exclude": [],
+        "maxFileBytes": 1048576,
+        "maxCandidates": 5000,
+        "stages": {
+          "target": "open"
+        }
+      }
+    },
+    {
+      "name": "an unknown [check] key",
+      "toml": "[check]\nstrict = true\nfuture-key = 1\n",
+      "server": "accepts",
+      "checker": "warns",
+      "target": null,
+      "says": "unknown key check.future-key"
+    },
+    {
+      "name": "an unknown [check] sub-table",
+      "toml": "[check.future]\nkey = 1\n",
+      "server": "accepts",
+      "checker": "warns",
+      "target": null,
+      "says": "unknown key check.future"
+    },
+    {
+      "name": "an unknown rule",
+      "toml": "[check.rules]\n\"future/rule\" = \"error\"\n\"link/*\" = \"warning\"\n",
+      "server": "accepts",
+      "checker": "warns",
+      "target": null,
+      "says": "unknown rule \"future/rule\""
+    },
+    {
+      "name": "an unknown rule in a family this checker has",
+      "toml": "[check.rules]\n\"link/future-rule\" = \"off\"\n",
+      "server": "accepts",
+      "checker": "warns",
+      "target": null,
+      "says": "unknown rule \"link/future-rule\""
+    },
+    {
+      "name": "an unknown family",
+      "toml": "[check.rules]\n\"future/*\" = \"off\"\n",
+      "server": "accepts",
+      "checker": "warns",
+      "target": null,
+      "says": "unknown rule \"future/*\""
+    },
+    {
+      "name": "an unknown rule written as a table",
+      "toml": "[check.rules]\n\"future/rule\" = { severity = \"error\", limit = 3 }\n",
+      "server": "accepts",
+      "checker": "warns",
+      "target": null,
+      "says": "unknown rule \"future/rule\""
+    },
+    {
+      "name": "an unknown option of a rule that has options",
+      "toml": "[check.rules]\n\"planning/question-length\" = { severity = \"error\", max-words = 150, max-sentences = 3 }\n",
+      "server": "accepts",
+      "checker": "warns",
+      "target": null,
+      "says": "unknown key \"max-sentences\" for rule \"planning/question-length\""
+    },
+    {
+      "name": "an option for a rule that has none",
+      "toml": "[check.rules]\n\"link/missing-target\" = { severity = \"warning\", depth = 2 }\n",
+      "server": "accepts",
+      "checker": "warns",
+      "target": null,
+      "says": "unknown key \"depth\" for rule \"link/missing-target\""
+    },
+    {
+      "name": "a severity alone, as a table, for a rule that has no options",
+      "toml": "[check.rules]\n\"link/missing-target\" = { severity = \"warning\" }\n",
+      "server": "accepts",
+      "checker": "accepts",
+      "target": null
+    },
+    {
+      "name": "an unknown key",
+      "toml": "[planning]\nexclude = [\"docs/gallery/**\"]\nroadmaps = \"roadmap.md\"\n",
+      "server": "refuses",
+      "checker": "warns",
+      "target": null,
+      "says": "unknown key planning.roadmaps",
+      "planning": {
+        "roadmaps": null,
+        "include": [
+          "**/*.md"
+        ],
+        "exclude": [
+          "docs/gallery/**"
+        ],
+        "maxFileBytes": 1048576,
+        "maxCandidates": 5000,
+        "stages": null
+      }
+    },
+    {
+      "name": "an unknown sub-table",
+      "toml": "[planning.roles]\nDESIGN = \"open\"\n",
+      "server": "refuses",
+      "checker": "warns",
+      "target": null,
+      "says": "unknown key planning.roles",
+      "planning": {
+        "roadmaps": null,
+        "include": [
+          "**/*.md"
+        ],
+        "exclude": [],
+        "maxFileBytes": 1048576,
+        "maxCandidates": 5000,
+        "stages": null
+      }
+    },
+    {
+      "name": "an unknown [starred] key",
+      "toml": "[starred]\npromote = [\"roadmap.md\"]\npinned = [\"notes.md\"]\n",
+      "server": "refuses",
+      "checker": "accepts",
+      "target": null
+    },
+    {
+      "name": "an unknown top-level key",
+      "toml": "future-key = 1\n",
+      "server": "accepts",
+      "checker": "accepts",
+      "target": null,
+      "planning": {
+        "roadmaps": null,
+        "include": [
+          "**/*.md"
+        ],
+        "exclude": [],
+        "maxFileBytes": 1048576,
+        "maxCandidates": 5000,
+        "stages": null
+      }
+    },
+    {
+      "name": "an unknown top-level table",
+      "toml": "[future]\nkey = 1\n",
+      "server": "accepts",
+      "checker": "accepts",
+      "target": null,
+      "planning": {
+        "roadmaps": null,
+        "include": [
+          "**/*.md"
+        ],
+        "exclude": [],
+        "maxFileBytes": 1048576,
+        "maxCandidates": 5000,
+        "stages": null
+      }
+    },
+    {
+      "name": "a severity this checker does not know",
+      "toml": "[check.rules]\n\"link/*\" = \"info\"\n",
+      "server": "accepts",
+      "checker": "refuses",
+      "says": "must be \"error\", \"warning\" or \"off\""
+    },
+    {
+      "name": "a known [check] key with a value it cannot take",
+      "toml": "[check]\nstrict = \"yes\"\n",
+      "server": "accepts",
+      "checker": "refuses",
+      "says": "check.strict must be true or false"
+    },
+    {
+      "name": "a known [planning] key with a value it cannot take",
+      "toml": "[planning]\nmax-candidates = 0\n",
+      "server": "refuses",
+      "checker": "refuses",
+      "says": "planning.max-candidates must be a whole number of 1 or more"
+    },
+    {
+      "name": "a family written as a table",
+      "toml": "[check.rules]\n\"link/*\" = { severity = \"warning\" }\n",
+      "server": "accepts",
+      "checker": "refuses",
+      "says": "takes only a severity"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # Roadmap
 
-**Updated:** 2026-09-30
+**Updated:** 2026-10-01
 
 The order is the one thing this file holds that no other document can. Each entry is a link and the reason it sits where it does. What the linked document owns, its status, its stage and its open questions, is not copied here: Vantage shows it in a badge beside the link, and on GitHub it is one click away in that document's frontmatter. Prose beneath an entry holds only what has no other home. What a link here routes, and how `vantage-check index` finds the questions this file misses: [Planning Documents](userguide/guides/planning.md#the-roadmap).
 
@@ -8,7 +8,7 @@ The order is the one thing this file holds that no other document can. Each entr
 
 ## 📦 Up Next
 
-1. [Checker version skew](docs/design/checker-version-skew.md), first, because [`OQ-VS4`](docs/design/checker-version-skew.md#OQ-VS4) and [`OQ-VS1`](docs/design/checker-version-skew.md#OQ-VS1) have to be ruled before 0.8.0 is tagged.
+1. [Forward-compatible notation for 0.8.0](docs/design/checker-version-skew.md), first, because nothing 0.8.0 teaches may be misread by an older viewer from the day it is tagged, and [`OQ-VS1`](docs/design/checker-version-skew.md#OQ-VS1) and [`OQ-VS5`](docs/design/checker-version-skew.md#OQ-VS5) have to be ruled before then.
 
 2. [Measuring the planning index at scale](docs/design/planning-index-measurement.md), ahead of the rest, because 0.8.0 is the first release to carry the index and it has not been measured at scale.
 

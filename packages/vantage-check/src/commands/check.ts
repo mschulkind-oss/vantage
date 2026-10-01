@@ -1,9 +1,11 @@
 import { resolve } from "node:path";
 import {
   ConfigError,
+  configPathFor,
   loadConfig,
   planningConfigFor,
   type CheckPolicy,
+  type LoadOptions,
 } from "../core/config.js";
 import { discover } from "../core/discover.js";
 import {
@@ -15,6 +17,12 @@ import {
 } from "../core/parallel.js";
 import { checkFiles } from "../core/runner.js";
 import { checkPlanning } from "../rules/planning.js";
+import {
+  checkTargetPaths,
+  declaredTargets,
+  noteTargets,
+  refuseTargets,
+} from "../core/target.js";
 import type { RunReport } from "../core/types.js";
 import {
   EXIT_ENVIRONMENT,
@@ -64,20 +72,41 @@ export async function checkCommand(
   // One config for the run, found by walking up from the first target — so a
   // repository's severities apply however the checker was invoked, and a run
   // never silently mixes two repositories' policies.
+  const load: LoadOptions = {
+    from: resolve(io.cwd, paths[0] as string),
+    cwd: io.cwd,
+    ...(options.configPath === undefined
+      ? {}
+      : { explicitPath: resolve(io.cwd, options.configPath) }),
+    ...(options.noConfig === undefined ? {} : { noConfig: options.noConfig }),
+  };
+  const explicit =
+    options.configPath !== undefined || options.noConfig === true;
   let config;
+  let targets;
   try {
-    config = loadConfig({
-      from: resolve(io.cwd, paths[0] as string),
-      ...(options.configPath === undefined
-        ? {}
-        : { explicitPath: resolve(io.cwd, options.configPath) }),
-      ...(options.noConfig === undefined ? {} : { noConfig: options.noConfig }),
-    });
+    // Each target first, so that a checker too old for a repository says so
+    // before it says anything about the rest of that repository's file.
+    targets = declaredTargets(
+      checkTargetPaths(configPathFor(load), explicit, files),
+      io.cwd,
+    );
+    const refused = refuseTargets(targets, io);
+    if (refused !== undefined) return refused;
+    config = loadConfig(load);
   } catch (error) {
     if (!(error instanceof ConfigError)) throw error;
     io.err(`vantage-check: ${error.message}\n`);
     return EXIT_USAGE;
   }
+  noteTargets(targets, io);
+  const warned = new Set<string>();
+  const warn = (message: string) => {
+    if (warned.has(message)) return;
+    warned.add(message);
+    io.err(`vantage-check: warning: ${message}\n`);
+  };
+  config.warnings.forEach(warn);
 
   let request: JobsRequest;
   try {
@@ -102,10 +131,8 @@ export async function checkCommand(
   // report after the files', and every renderer sorts, so when they ran
   // changes nothing in the output.
   const loaded = config;
-  const explicit =
-    options.configPath !== undefined || options.noConfig === true;
   const planning = checkPlanning(files, io.cwd, config.settings, (root) =>
-    planningConfigFor(loaded, explicit, root),
+    planningConfigFor(loaded, explicit, root, warn, io.cwd),
   );
   const perFile =
     parallel === null

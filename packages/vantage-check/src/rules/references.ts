@@ -197,7 +197,8 @@ function pathOf(url: string): string {
  * `ref/unlinked-oq` — an Open Question id in prose with no link on it.
  *
  * Two lifecycle phases, and the rule has to accept both. While the question is
- * in flight it is an `oq` directive and `#OQ-4` is a live anchor, so the
+ * in flight it is a question directive (`oq`, or `question` once it is 🔒 or
+ * ✅) and `#OQ-4` is a live anchor, so the
  * reference names it directly. Once it is compacted into a Decision Ledger the
  * directive is gone and no anchor declares that id any more — so the rule
  * requires a *fragment*, not the id, and leaves proving the fragment resolves

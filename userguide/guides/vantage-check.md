@@ -91,44 +91,49 @@ which can be newer than every release.
 
 A checker checks and teaches for **its own release**. Its rules accept the
 markup that release's viewer renders, and `style-guide` prints that release's
-guide. It reads no setting and asks no server about the viewer your readers
-run, so the checker's version is the version your agents write for.
+guide. It asks no server about the viewer your readers run, and a
+[`target`](../reference/configuration.md#the-oldest-release-your-readers-use)
+in `.vantage.toml` does not yet change what it checks, so the checker's
+version is the version your agents write for.
 
-That goes wrong when the checker is newer than your readers' viewer: it calls a
-document clean that the older viewer renders wrongly. Bare `uvx vantage-check`
-makes that the usual case for anyone who has not upgraded yet, because it runs
-the newest release.
+Bare `uvx vantage-check` runs the newest release, so the checker is often
+newer than your readers' viewer. That is safe by design: a release never gives
+existing notation a new meaning. What a newer guide adds is a directive name,
+key or value that an older viewer drops without harm, and a drawing an older
+viewer cannot show comes with a fallback it shows instead
+([`checker-version-skew.md` P0 and P1](../../docs/design/checker-version-skew.md#1-verdict-and-the-principles)).
+So run the newest checker even when your readers have not upgraded.
 
 ### When your readers are on 0.7
 
-0.8.0 is the first release where this matters. A 0.7.x viewer renders two
-things the 0.8.0 guide teaches wrongly:
+0.8.0 is the first release where this matters. A 0.7.x viewer cannot show one
+thing the 0.8.0 guide teaches:
 
-- **An inline `<svg>` drawing.** The drawing is dropped, and the text of its
-  `<title>`, `<desc>` and `<text>` elements runs together as a paragraph.
-- **An `oq` directive on a 🔒 blocked or ✅ answered question**, which the
-  0.8.0 guide requires. In review mode a 0.7.x viewer offers *Take this
-  leaning* on it, and on a question with no leaning that button files the
-  literal comment *Take the stated leaning.*
+- **An inline `<svg>` drawing.** The drawing is dropped, and the words of its
+  `<text>` elements are left behind as loose text, with those of any `<title>`
+  or `<desc>` (GitHub prints those tags too). The 0.8.0 guide pairs every
+  drawing with a
+  [fallback block](../../docs/reference/inline-markup.md#fallback-blocks),
+  which a 0.7.x viewer shows, so its reader is at least told what is missing,
+  and it names a drawing with `aria-label` rather than `<title>`.
 
 The rest of what 0.8.0 adds, a 0.7.x viewer shows without its meaning or
 ignores. The `stage` and `next` frontmatter are plain metadata rows, the
 `depends-on` paths are tags rather than links, and the `[planning]` table is
-ignored. One [roadmap](planning.md#the-roadmap) convention costs more than that.
+ignored. A `question` directive, which 0.8.0 puts on 🔒 blocked and ✅ answered
+questions, is dropped like any directive name a viewer does not know, so there
+the question has no anchor and no button, as it had none before. That is why
+0.8.0 gave those questions a name of their own rather than the `oq` that
+0.7.x offers *Take this leaning* on, and `vantage/question-name` reports an
+`oq` on either. One [roadmap](planning.md#the-roadmap) convention costs more than that.
 A roadmap written the 0.8.0 way copies no status into it, because 0.8.0 shows
 the status in a [badge](planning.md#badges-on-links) beside each link. A 0.7.x
 viewer draws no badges, so its reader sees no status at all.
 
-Upgrade the viewer, or run the 0.7.1 checker for `check` and `style-guide`
-until you do:
-
-```bash
-uvx vantage-check@0.7.1 style-guide
-uvx vantage-check@0.7.1 docs/
-```
-
-The 0.7.1 checker knows no `planning/*` rule, so a `.vantage.toml` that names
-one makes it exit `2`. `--no-config` runs it with its defaults.
+Do not run the 0.7.1 checker for those readers. It reports 0.8.0's `question`
+and `fallback` directives as `vantage/unknown-name` errors, and it exits `2` on
+a `.vantage.toml` that names a `planning/*` rule. Upgrade the viewer when you
+can, and until then keep running the newest checker.
 
 ### How to tell
 
@@ -139,17 +144,25 @@ one makes it exit `2`. `--no-config` runs it with its defaults.
   binary installed on the machine, and a service started before an upgrade still
   runs the binary it started with.
 
-When the checker's release is newer than the viewer's, run the viewer's release
-of the checker, `uvx vantage-check@<version>`. Where the version has to stay
-put, pin it, and name the same pin for your agents, as [In CI](#in-ci) shows.
+Where the checker's version has to stay put, pin it, and name the same pin for
+your agents, as [In CI](#in-ci) shows.
 
 ### A checker older than the repository
 
-The other direction fails loudly. To an older checker, a `.vantage.toml` key, a
-rule id or a rule's option from a newer release looks like a typo, and it exits
-`2`; a directive name from a newer release is a `vantage/unknown-name` error.
-When the repository was written for a newer Vantage, run a newer checker, and
-leave the key or the directive where it is.
+To an older checker, a `.vantage.toml` key, a rule id or a rule's option from a
+newer release looks like a typo. From 0.8.0 it warns on stderr, names its own
+release, ignores the key and checks under the rest of the file
+([Keys From a Newer Release](../reference/configuration.md#keys-from-a-newer-release)).
+Checkers before 0.8.0 exit `2` instead. A directive name from a newer release
+is a `vantage/unknown-name` error to both. When the repository was written for
+a newer Vantage, run a newer checker, and leave the key or the directive where
+it is.
+
+A repository can say so outright, with a
+[`target`](../reference/configuration.md#the-oldest-release-your-readers-use)
+at the top of its `.vantage.toml`. A checker from 0.8.0 on that is older than
+the target refuses to run: it exits `2` with one message naming the release it
+needs, and checks nothing.
 
 ---
 
@@ -183,7 +196,7 @@ checks the working directory; `vantage-check` with no arguments prints the help.
 | :--- | :--- |
 | `0` | Nothing to fix. |
 | `1` | Findings that fail the run. Configurable — see [Configuration](#configuration). |
-| `2` | Bad arguments, a path that does not exist, or a config file that cannot be trusted. |
+| `2` | Bad arguments, a path that does not exist, a config file that cannot be trusted, or a `target` newer than the checker. |
 | `3` | **A check could not run.** The documents were not fully checked, so the result is *unknown*, not clean. |
 
 Code `3` is the one worth wiring into a script properly. A validator that cannot
@@ -327,16 +340,17 @@ will ever tell you.
 | :--- | :--- | :--- |
 | `vantage/unterminated` | A `<!-- vantage:` comment with no `-->`, which deletes the rest of the document from the render | error |
 | `vantage/malformed` | A `<!-- vantage: … -->` comment that does not parse, so it is ignored | error |
-| `vantage/unknown-name` | A name outside `section`, `block` and `oq` — the whole directive is dropped | error |
+| `vantage/unknown-name` | A name outside `section`, `block`, `oq`, `question` and `fallback` — the whole directive is dropped | error |
 | `vantage/unknown-key` | A key the closed vocabulary does not contain | error |
 | `vantage/unknown-value` | A value outside the closed token set for its key | error |
 | `vantage/list-split` | A directive between two list items, which ends the list and starts a second one | error |
 | `vantage/block-split` | A directive that restructures the document around it — a table losing its remaining rows, a paragraph cut in two, a setext heading losing its underline | error |
 | `vantage/duplicate-key` | The same key twice in one directive, or across a run of them, which merges the same way — the last one wins, so a warning | warning |
 | `vantage/oq-missing` | An open question (💬) in a list item, with an `OQ-…` id and a `_Leaning:_` line but no `oq` directive, so review mode offers no one-click answer for it | error |
-| `vantage/oq-id-format` | An `oq` id that is not `OQ-`, an optional uppercase prefix and digits, which the sanitizer refuses, so the question gets no anchor | error |
-| `vantage/oq-id-duplicate` | The same `oq` id twice in one document, so every `#OQ-…` link to it lands on the first | error |
-| `vantage/orphan` | A directive with no block it can attach to, so it styles nothing | warning |
+| `vantage/question-name` | An `oq` directive on a 🔒 blocked or ✅ answered question, which every Vantage before 0.8 offers to answer in one click, or a `question` directive on an open one, which no Vantage does, or either one below a 🔒 or ✅ title outside a list, where it lands on an unmarked block and the question reads as open | error |
+| `vantage/oq-id-format` | A question directive's id that is not `OQ-`, an optional uppercase prefix and digits, which the sanitizer refuses, so the question gets no anchor | error |
+| `vantage/oq-id-duplicate` | The same id on two questions in one document, on `oq` or `question` directives, so every `#OQ-…` link to it lands on the first (one run of directives is one question) | error |
+| `vantage/orphan` | A directive with no block it can attach to, so it styles nothing, or a `fallback` above a heading or a raw `<img>`, `<figure>` or `<details>`, which it never withholds, or merged with another directive, which goes with its block | warning |
 | `vantage/frontmatter-shape` | A `vantage:` frontmatter key that is not a table of keys, so it configures nothing | warning |
 | `vantage/frontmatter-key` | A key under `vantage:` this build does not know | warning |
 | `vantage/frontmatter-value` | A `vantage:` value outside its closed set, so the chrome silently vanishes | error |
@@ -421,7 +435,7 @@ does.
 
 **The planning rules** are the fourth group. They read a repository's plans
 rather than one page's rendering: each document's `stage` and `depends-on`
-frontmatter, its `oq` directives, and the roadmaps' links, all as the
+frontmatter, its `oq` and `question` directives, and the roadmaps' links, all as the
 [planning index](planning.md) reads them. The viewer's badges come from the same
 scan, so the gate and the page of one release cannot disagree.
 
@@ -537,17 +551,26 @@ with findings exit `0`, but it can never turn an unfinished run's `3` into a
 clean answer.
 
 > [!WARNING]
-> A config file that is present but wrong — an unknown key, a misspelled rule
-> name, a severity that is not a severity — exits `2` rather than warning. A
-> typo that silently disables nothing is the kind of quiet wrongness a checker
-> cannot afford.
+> A value the checker cannot take for a key it knows (a severity that is not a
+> severity, a `strict` that is not `true` or `false`) exits `2` rather than
+> warning. A key, rule id or rule option it does not know is different: it may
+> come from a newer release, so the checker warns on stderr, ignores it and
+> checks under the rest of the file. The warning names the checker's release
+> and says to keep the line if the repository is configured for a newer
+> checker, or to fix it if it is a typo
+> ([Keys From a Newer Release](../reference/configuration.md#keys-from-a-newer-release)).
 
 The same file's `[planning]` table
 ([Configuration](../reference/configuration.md#planning-documents)) is read by
-the planning rules and by `index`, and it is held to the same standard: an
-unknown key, a role outside the four, or a limit that is not a whole number of
-at least 1 **fails every run with exit `2`**, `check` included, not only the
-planning rules.
+the planning rules and by `index`, and it is held to the same standard: a role
+outside the four, or a limit that is not a whole number of at least 1, **fails
+every run with exit `2`**, `check` included, not only the planning rules. An
+unknown key there is warned about and ignored, while the server ignores the
+whole file over it.
+
+A `target` at the top of the file names the oldest Vantage release your
+readers use, and a checker older than it refuses to run
+([The Oldest Release Your Readers Use](../reference/configuration.md#the-oldest-release-your-readers-use)).
 
 ---
 
@@ -697,7 +720,9 @@ three large fields emptied:
   *Could not read* are here too. Each question carries the file lines it spans,
   `unitLine` to `unitEndLine`, and `cardChars`, the length of the Markdown its
   card shows on the planning page, which is what the page's
-  [pages](planning.md#pages) are cut by.
+  [pages](planning.md#pages) are cut by. Its `directive` is the name that
+  declared it, `oq` or `question`, and only an `oq` is offered to answer in one
+  click.
 - **`sections`** holds the same lists the text form prints, for the chosen
   roadmap. `sections.roadmaps` lists every roadmap nearest the root first, each
   with its `path`, its `state` (`routes`, `done`, `skipped`, `unreadable`, or,
@@ -737,7 +762,10 @@ They are told, on every review turn. The prompt Vantage copies to your clipboard
 when you [respond to review comments](review-inbox.md) opens with a line telling
 the agent to run `uvx vantage-check <this file>` and fix what it reports before
 delivering — a quality gate, not a delivery dependency, so an agent without
-`uvx` still delivers.
+`uvx` still delivers. From 0.8.0 it also says what exit `2` means: if the
+command cannot run, or exits `2` (a configuration error, or a checker older
+than your [`target`](../reference/configuration.md#the-oldest-release-your-readers-use)
+refusing to run), the agent delivers anyway and leaves `.vantage.toml` as it is.
 
 That is deliberately the only channel: it needs no setup from you, it reaches
 whatever environment the agent happens to have, and it arrives at the moment it
@@ -812,8 +840,10 @@ runs, and read the style guide with `uvx vantage-check@0.8.0 style-guide`.
 ```
 
 Otherwise an agent on a newer checker can write configuration only that checker
-knows, such as a new rule id in `[check.rules]`, and the pinned job fails on it
-with exit `2`. Raise both pins together, deliberately.
+knows, such as a new rule id in `[check.rules]`. The pinned job warns about it
+and ignores it, so the setting the agent relied on does nothing in CI, and a
+pin older than 0.8.0 fails on it with exit `2`. Raise both pins together,
+deliberately.
 
 ---
 

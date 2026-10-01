@@ -77,8 +77,9 @@ The React component includes mermaid diagram rendering (lazy-loaded), frontmatte
 
 `MarkdownViewer` draws a document's frontmatter with `FrontmatterDisplay`, which
 is also exported on its own. It takes the parsed `frontmatter` and one optional
-prop, `linkIds`: the ids of the document's own open questions, as its
-`<!-- vantage: oq id=OQ-… -->` directives name them. When it is given, each of
+prop, `linkIds`: the ids of the document's own questions, as its
+`<!-- vantage: oq id=OQ-… -->` and `<!-- vantage: question id=OQ-… -->`
+directives name them. When it is given, each of
 those ids that appears as a whole word in the top-level `next` key (a document's
 next step, one line of text) is drawn as a link to `#OQ-…`, the question's
 anchor. The rest of `next`, and every other value, stays plain text.

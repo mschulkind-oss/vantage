@@ -6,8 +6,9 @@
  * if its tag is on the name's target list. Two callers have to predict that
  * answer from an mdast tree, where there is no hast to ask: the checker's
  * `vantage/orphan`, which reports a directive that stamps nothing, and the
- * planning index's scan, which counts an `oq` directive as a question only when
- * it yields a button. If the two predicted differently, the gate would pass a
+ * planning index's scan, which counts a question directive (`oq` or
+ * `question`) as a question only where an `oq` would yield a button. If the two
+ * predicted differently, the gate would pass a
  * question the index could not see, or the reverse, so they share these
  * helpers (D5).
  *
@@ -19,6 +20,7 @@
 import type { List, RootContent } from "mdast";
 import { scanComments } from "./htmlComments.js";
 import type { Segment } from "./htmlComments.js";
+import { VANTAGE_FALLBACK_TARGETS } from "./vantageDirectives.js";
 
 /** mdast parents whose children become sibling *blocks* in hast. */
 export const BLOCK_PARENTS = new Set([
@@ -155,4 +157,92 @@ export function listIsLoose(list: List): boolean {
       ? item.children.length > 1
       : item.spread,
   );
+}
+
+/**
+ * What a `fallback` run withholds, as `targetTag` names it:
+ * `VANTAGE_FALLBACK_TARGETS` plus `span`, which is display math and nothing
+ * else. A `$$…$$` block is still a `<pre>` when the plugin runs, so a fallback
+ * withholds it, and `targetTag` names it by what `rehype-katex` makes of it
+ * afterwards.
+ *
+ * Two callers predict the plugin with it and must agree: the planning scan,
+ * which reads no question and no link from a withheld block, and the
+ * checker's `vantage/orphan`, which reports a fallback that withholds nothing.
+ */
+const FALLBACK_TAGS = new Set<string>([...VANTAGE_FALLBACK_TARGETS, "span"]);
+
+/** Does a `fallback` run withhold a block `targetTag` names `tag`? */
+export function isFallbackTarget(tag: string | undefined): boolean {
+  return tag !== undefined && FALLBACK_TAGS.has(tag);
+}
+
+/**
+ * The tag of the element raw HTML opens with, lowercased, or `undefined` when
+ * it does not open with a tag: text, a closing tag, a declaration. That
+ * element is what `rehype-raw` builds where the raw block stands, so it is
+ * what a directive above the block lands on (Plan Q17: mdast cannot see
+ * further into it).
+ */
+export function rawOpeningTag(raw: string): string | undefined {
+  return /^<([A-Za-z][A-Za-z0-9-]*)/.exec(raw.trim())?.[1]?.toLowerCase();
+}
+
+/** Does a `fallback` run withhold a raw-HTML element with this tag? */
+export function isRawFallbackTarget(tag: string | undefined): boolean {
+  return tag !== undefined && RAW_FALLBACK_TAGS.has(tag);
+}
+
+/** `VANTAGE_FALLBACK_TARGETS` as raw HTML writes them: no math there. */
+const RAW_FALLBACK_TAGS = new Set<string>(VANTAGE_FALLBACK_TARGETS);
+
+/**
+ * Tags on the fallback list whose element never reaches past its own node:
+ * `hr` is void, and a `<p>` is closed by the parser at the first block a blank
+ * line starts inside it.
+ */
+const OWN_NODE_TAGS = new Set(["hr", "p"]);
+
+/**
+ * The index of the last of `children` that the raw element opened at
+ * `start` holds, counting from `from` in that node's text.
+ *
+ * Raw HTML with blank lines in it is several mdast siblings: the `html` node
+ * that opens `<div>`, the Markdown blocks inside it, and the `html` node that
+ * closes it. `rehype-raw` builds them into one element, so a `fallback` above
+ * the opening tag withholds every one of them. The element ends where its tag
+ * closes, counting the same tag nested inside it; one never closed runs to the
+ * end of its parent, as the HTML parser keeps it open.
+ */
+export function rawElementEnd(
+  children: RootContent[],
+  start: number,
+  tag: string,
+  from = 0,
+): number {
+  if (OWN_NODE_TAGS.has(tag)) return start;
+  const open = new RegExp(`<${tag}(?=[\\s/>])[^>]*?(/?)>`, "gi");
+  const close = new RegExp(`</${tag}\\s*>`, "gi");
+  let depth = 0;
+  for (let i = start; i < children.length; i++) {
+    const child = children[i];
+    if (child?.type !== "html") continue;
+    for (const segment of scanComments(child.value)) {
+      if (segment.kind !== "text") continue;
+      if (i === start && segment.offset < from) continue;
+      const events: { at: number; delta: number }[] = [];
+      for (const match of segment.value.matchAll(open)) {
+        if (match[1] !== "/") events.push({ at: match.index, delta: 1 });
+      }
+      for (const match of segment.value.matchAll(close)) {
+        events.push({ at: match.index, delta: -1 });
+      }
+      events.sort((a, b) => a.at - b.at);
+      for (const { delta } of events) {
+        depth += delta;
+        if (depth <= 0) return i;
+      }
+    }
+  }
+  return children.length - 1;
 }

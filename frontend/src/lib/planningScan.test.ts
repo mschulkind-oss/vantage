@@ -8,7 +8,11 @@
  * over every document in `docs/`, by `planningAgreement.test.tsx`.
  */
 import { describe, expect, it } from "vitest";
-import { renderMarkdown } from "vantage-md";
+import {
+  questionDirectiveFor,
+  renderMarkdown,
+  vantageOqStatus,
+} from "vantage-md";
 import {
   VANTAGE_OQ_PREFERENCE,
   normalizeLeaning,
@@ -35,12 +39,20 @@ function scan(source: string, isRoadmap = false): ScanResult {
   return scanPlanningDocument("docs/design/x.md", source, isRoadmap);
 }
 
-/** A loose list item holding one question, in the convention's layout. */
+/**
+ * A loose list item holding one question, in the convention's layout: an open
+ * question's `oq` restates its leaning, and a 🔒 or ✅ one is declared with a
+ * `question` directive, which takes none.
+ */
 function item(marker: string, id: string, leaning = "Take it."): string {
+  const directive =
+    questionDirectiveFor(vantageOqStatus(marker)) === "oq"
+      ? `oq id=${id} leaning="${leaning}"`
+      : `question id=${id}`;
   return [
     `1. ${marker} **${id}: A question?**`,
     "",
-    `   <!-- vantage: oq id=${id} leaning="${leaning}" -->`,
+    `   <!-- vantage: ${directive} -->`,
     "",
     `   _Leaning:_ ${leaning}`,
     "",
@@ -61,6 +73,16 @@ describe("which files are planning documents (§3.1)", () => {
       '# X\n\n<!-- vantage: oq id=OQ-1 leaning="Yes." -->\n\nShould it?\n',
     );
     expect(doc.questions).toHaveLength(1);
+  });
+
+  it("counts a document holding one question directive and no frontmatter", () => {
+    const doc = planning(
+      "# X\n\n<!-- vantage: question id=OQ-1 -->\n\n\u{1F512} Waits on the load test.\n",
+    );
+    expect(doc.questions).toMatchObject([
+      { id: "OQ-1", directive: "question", state: "blocked" },
+    ]);
+    expect(doc.directiveIds).toEqual(["OQ-1"]);
   });
 
   it("counts the roadmap whatever it holds", () => {
@@ -179,6 +201,83 @@ describe("what a document contributes (§3.2)", () => {
     ]);
   });
 
+  it("collects no link from a block a fallback withholds", () => {
+    // The page never renders it, so it routes nothing and badges nothing.
+    // GitHub shows it, which is why the checker still checks it.
+    const source = [
+      "---",
+      "status: draft",
+      "---",
+      "",
+      "<!-- vantage: fallback -->",
+      "",
+      "> See [the drawing](chart.svg) and [the plan](plan.md).",
+      "",
+      "[Kept](kept.md).",
+      "",
+      // A tight item unwraps its paragraph into bare text, so this run meets
+      // text, withholds nothing, and the link is on the page.
+      "- one",
+      "  <!-- vantage: fallback -->",
+      "  [also kept](also.md)",
+      "- two",
+      "",
+    ].join("\n");
+    expect(planning(source).links.map((link) => link.target)).toEqual([
+      "docs/design/kept.md",
+      "docs/design/also.md",
+    ]);
+  });
+
+  it("collects no link from a raw-HTML block a fallback withholds, blank lines and nesting included", async () => {
+    // `rehype-raw` builds `<div>`, the Markdown inside it and `</div>` into
+    // one element, so the fallback withholds all of it, up to the `</div>`
+    // that closes the outer one; a `<p>` is closed at the first blank line,
+    // so only its own node goes.
+    const source = [
+      "---",
+      "status: draft",
+      "---",
+      "",
+      "<!-- vantage: fallback -->",
+      "",
+      "<div>",
+      "",
+      "[the plan](plan.md)",
+      "",
+      "<div>",
+      "",
+      "[nested](nested.md)",
+      "",
+      "</div>",
+      "",
+      "[still inside](inside.md)",
+      "",
+      "</div>",
+      "",
+      "[After the div](after.md).",
+      "",
+      "<!-- vantage: fallback -->",
+      "",
+      "<p>",
+      "",
+      "[after the p](p.md)",
+      "",
+      "</p>",
+      "",
+    ].join("\n");
+    expect(planning(source).links.map((link) => link.target)).toEqual([
+      "docs/design/after.md",
+      "docs/design/p.md",
+    ]);
+    const { html } = await renderMarkdown(source);
+    for (const gone of ["plan.md", "nested.md", "inside.md"]) {
+      expect(html).not.toContain(gone);
+    }
+    expect(html).toContain("after.md");
+    expect(html).toContain("p.md");
+  });
+
   it("records where each link ends in the source", () => {
     const source =
       "---\nstatus: draft\n---\n\n# X\n\nSee [the plan](b.md). Then more.\n";
@@ -260,6 +359,7 @@ describe("a question (§3.3)", () => {
     // second runs 15–19.
     expect(first).toEqual({
       path: "docs/design/x.md",
+      directive: "oq",
       id: "OQ-B1",
       state: "open",
       preference: false,
@@ -273,7 +373,9 @@ describe("a question (§3.3)", () => {
       cardChars: card.length,
     });
     expect(second).toMatchObject({
+      directive: "question",
       id: "OQ-B2",
+      leaning: null,
       line: 19,
       unitLine: 15,
       unitEndLine: 19,
@@ -423,11 +525,11 @@ describe("a question (§3.3)", () => {
 
   it("hosts a question on a blockquote and on a heading", () => {
     const source = [
-      '<!-- vantage: oq id=OQ-5 leaning="Quote." -->',
+      "<!-- vantage: question id=OQ-5 -->",
       "",
       "> \u{1F512} A question in a quote.",
       "",
-      '<!-- vantage: oq id=OQ-6 leaning="Heading." -->',
+      "<!-- vantage: question id=OQ-6 -->",
       "",
       "### ✅ A question as a heading",
       "",
@@ -474,6 +576,49 @@ describe("a question (§3.3)", () => {
     ].join("\n");
     const doc = planning(source);
     expect(doc.questions).toEqual([]);
+  });
+
+  it("reads no question from a block a fallback withholds", () => {
+    // The page never shows the block, so no button, no contents entry and no
+    // card can exist for it. One in the same run goes with it; one inside a
+    // withheld list is never reached; one under a heading the fallback
+    // cannot withhold still counts.
+    const source = [
+      "# X",
+      "",
+      '<!-- vantage: oq id=OQ-1 leaning="Gone." -->',
+      "<!-- vantage: fallback -->",
+      "",
+      "\u{1F4AC} **OQ-1: Merged onto a fallback?**",
+      "",
+      "<!-- vantage: fallback -->",
+      "",
+      item("\u{1F4AC}", "OQ-2"),
+      '<!-- vantage: oq id=OQ-3 leaning="Kept." -->',
+      "<!-- vantage: fallback -->",
+      "",
+      "### \u{1F4AC} **OQ-3: On a heading?**",
+      "",
+    ].join("\n");
+    expect(planning(source).questions.map((q) => q.id)).toEqual(["OQ-3"]);
+  });
+
+  it("keeps the question of an item whose other paragraph is withheld", () => {
+    // The fallback withholds its own block and nothing else in the item.
+    const source = [
+      "- \u{1F4AC} **OQ-1: Kept?**",
+      "",
+      '  <!-- vantage: oq id=OQ-1 leaning="Yes." -->',
+      "",
+      "  _Leaning:_ yes.",
+      "",
+      "  <!-- vantage: fallback -->",
+      "",
+      "  Withheld, in a loose item.",
+      "- Another item.",
+      "",
+    ].join("\n");
+    expect(planning(source).questions.map((q) => q.id)).toEqual(["OQ-1"]);
   });
 
   it("merges a run of directives onto one question, last key winning", () => {
@@ -562,6 +707,59 @@ describe("a question (§3.3)", () => {
     expect(planning(source).questions.map((q) => q.leaning)).toEqual([
       null,
       null,
+    ]);
+  });
+
+  it("reads which name declared each question, an `oq` in a run winning", () => {
+    // The page stamps `data-vantage-oq` for any run holding an `oq`, as a
+    // viewer that drops `question` reads it, and the index says the same.
+    const source = [
+      "<!-- vantage: oq id=OQ-1 -->",
+      "",
+      "Open.",
+      "",
+      "<!-- vantage: question id=OQ-2 -->",
+      "",
+      "Blocked.",
+      "",
+      "<!-- vantage: question id=OQ-3 -->",
+      '<!-- vantage: oq leaning="Mixed." -->',
+      "",
+      "Both.",
+      "",
+    ].join("\n");
+    expect(
+      planning(source).questions.map((q) => [q.id, q.directive, q.leaning]),
+    ).toEqual([
+      ["OQ-1", "oq", null],
+      ["OQ-2", "question", null],
+      ["OQ-3", "oq", "Mixed."],
+    ]);
+  });
+
+  it("reads no leaning off a `question`, which does not accept the key", () => {
+    const source = '<!-- vantage: question id=OQ-1 leaning="Yes." -->\n\nX.\n';
+    expect(planning(source).questions).toMatchObject([
+      { id: "OQ-1", leaning: null },
+    ]);
+  });
+
+  it("keeps one namespace of ids across `oq` and `question`", () => {
+    // The anchor is the same attribute, so a `question` that repeats an
+    // `oq`'s id lands nowhere, as a repeated `oq` does.
+    const source = [
+      "<!-- vantage: oq id=OQ-4 -->",
+      "",
+      "First.",
+      "",
+      "<!-- vantage: question id=OQ-4 -->",
+      "",
+      "Repeated.",
+      "",
+    ].join("\n");
+    expect(planning(source).questions.map((q) => [q.title, q.id])).toEqual([
+      ["First.", "OQ-4"],
+      ["Repeated.", null],
     ]);
   });
 
