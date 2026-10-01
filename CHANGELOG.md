@@ -32,6 +32,13 @@ questions waiting on someone, in your roadmap's order. You can answer an open
 question from its card, and **Copy answers** hands every answer to the agent at
 once. See [Planning Documents](userguide/guides/planning.md).
 
+**Planning sections say what to do.** Each section of the planning page and of
+`vantage-check index` is named for what it holds, such as _Ready to build_ or
+_Stage conflict_, and one line under it says what its entries are and who acts
+on them. The four an agent works on each have **Copy agent request**, which
+copies an instruction covering every entry, and `vantage-check index --request`
+prints the same text. See [Agent requests](userguide/guides/planning.md#agent-requests).
+
 **Roadmaps are found by name.** Every `roadmap.md`, in any folder, is a roadmap,
 and with several the planning page lets you pick one. To limit them, list yours
 in `roadmap` under `[planning]` in `.vantage.toml`. A build of `main` whose
