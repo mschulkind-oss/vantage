@@ -3,7 +3,7 @@ title: "Distribution — one tag, every channel, and the PyPI wheels"
 status: accepted
 stage: CURRENT
 verified: 2026-10-01
-verified_commit: 7fa8cbf
+verified_commit: 2714ee5
 covers:
   - .github/workflows/publish.yml
   - scripts/build-wheel.py
@@ -26,22 +26,25 @@ summary: "Pushing a v<semver> tag publishes everything this repository ships, at
 
 # Distribution — one tag, every channel, and the PyPI wheels
 
-**Status:** Verified 2026-10-01 against `7fa8cbf`. The commit that added this
-document changed only comments and one docstring inside the `covers:` perimeter,
-repointing them here and correcting stale ones, so the code it describes is
-`7fa8cbf`'s, unchanged. MEASURED: every release from 0.5.4 to 0.7.1 put both
-PyPI projects' wheels on pypi.org, `vantage-md` 0.4.1 and 0.4.2 are yanked there,
-every tag from v0.5.6 on carries the frontend bundle, and the published 0.7.1
-server wheel, installed into a fresh venv, runs both `vantage` and its
-`vantage-md` alias from an unrelated directory (pypi.org, `git ls-tree` and a
+**Status:** Verified 2026-10-01 against `2714ee5`. Inside the `covers:` perimeter,
+the commit that added this document, `fced33d`, changed only comments and one
+docstring, repointing them here and correcting stale ones, and the one after it
+there, `2714ee5`, added the `planning-perf` recipe to the `Justfile`, which builds
+a server of its own and has its row in
+[§5](#5-the-frontend-bundle-is-in-the-tag-never-on-main); otherwise the code it
+describes is `7fa8cbf`'s, unchanged. MEASURED: every release from 0.5.4 to 0.7.1
+put both PyPI projects' wheels on pypi.org, `vantage-md` 0.4.1 and 0.4.2 are
+yanked there, every tag from v0.5.6 on carries the frontend bundle, and the
+published 0.7.1 server wheel, installed into a fresh venv, runs both `vantage` and
+its `vantage-md` alias from an unrelated directory (pypi.org, `git ls-tree` and a
 venv, all on 2026-10-01). Also MEASURED: the minimum macOS each published 0.7.1
 macOS binary declares, read on 2026-10-01 from the field every macOS binary
 carries in its header (`LC_BUILD_VERSION`), which is higher than its wheel's tag
 ([§6.3](#63-platforms), [Current values](#current-values)). UNMEASURED: CI runs
 only the Linux x86-64 wheels before uploading, so the other wheels are wrapped
-exactly like them but never run before they ship. The `musllinux` tag rests on
-the server binary being statically linked, which was checked, not on a run under
-musl. [§9](#9-known-gaps) lists where the release breaks a rule below.
+exactly like them but never run before they ship. The `musllinux` tag rests on the
+server binary being statically linked, which was checked, not on a run under musl.
+[§9](#9-known-gaps) lists where the release breaks a rule below.
 
 Vantage ships two programs and a library. The **server** is `vantage`, the Go
 binary with the frontend embedded. The **CLI** is `vantage-check`, the
@@ -339,6 +342,7 @@ for every way the server is built:
 | `go install …@<tag>` | the tag's tree, which is the **bundle commit** |
 | `just build` | `just web-sync`, always |
 | `just build-bin` | the existing `web/dist`, or `just web-sync` first when there is no `index.html` |
+| `just planning-perf`, a measurement server in a temporary directory | `just web-sync`, unless `--no-build` finds an `index.html` already there |
 | a bare `go build` on a fresh clone | nothing: it serves the placeholder until `just web-sync` runs |
 
 `web/dist` is ignored on main apart from its `.gitkeep`. `just web-sync` rebuilds
@@ -572,7 +576,7 @@ work.
 
 ## Current values
 
-Verified at `7fa8cbf`. The prose above explains what each of these is for; this
+Verified at `2714ee5`. The prose above explains what each of these is for; this
 table is the only place most of the exact values are stated.
 
 | Value | Setting | Defined in |
