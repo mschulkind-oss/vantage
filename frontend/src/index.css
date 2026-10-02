@@ -687,6 +687,21 @@ code {
   text-underline-offset: 2px;
 }
 
+/* Inline code that wraps. A chip cut by a line break is drawn whole on each
+   line, its padding, border and rounded ends included, rather than as two
+   halves open at the break. A table cell sets its lines closer than a
+   paragraph does, so there the chip's vertical padding is halved: at the
+   paragraph's padding a chip was taller than the cell's line, and the chips
+   on one line drew over those on the next. The text's size and spacing are
+   unchanged (e2e/inline_code.spec.ts). */
+.prose :not(pre) > code {
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.prose :is(td, th) code {
+  padding-block: 0.1em;
+}
+
 /* Flash animation for content that just changed */
 @keyframes flash-update {
   0% {
