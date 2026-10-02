@@ -415,8 +415,9 @@ release version:
     # the network anyway.
     if ! CI=true just compat-previous; then
         echo "" >&2
-        echo "refusing to cut v{{version}}: the previous release's viewer would misread" >&2
-        echo "this tree's notation (above). Nothing has been tagged." >&2
+        echo "refusing to cut v{{version}}: the check against the previous release failed" >&2
+        echo "(above): its viewer would misread this tree's notation, or npm could not" >&2
+        echo "install it. Nothing has been tagged." >&2
         exit 1
     fi
     # The bundle the tag carries is the one `go install` embeds, so it names
