@@ -3,7 +3,7 @@ title: "Serving a directory of clones — one project per repository, and the lo
 status: accepted
 stage: CURRENT
 verified: 2026-10-01
-verified_commit: 7fa8cbf
+verified_commit: fced33d
 covers:
   - cmd/vantage/clones.go
   - cmd/vantage/serve.go
@@ -39,13 +39,13 @@ summary: "`vantage serve` on a directory that holds git clones serves each clone
 
 # Serving a directory of clones — one project per repository, and the loose project
 
-**Status:** Verified 2026-10-01 against `7fa8cbf`. The commit that added this
-document changed only comments inside the `covers:` perimeter, repointing them
+**Status:** Verified 2026-10-01 against `fced33d`, the commit that added this
+document. Inside the `covers:` perimeter it changed only comments, repointing them
 here and correcting stale ones, so the code it describes is `7fa8cbf`'s,
-unchanged. MEASURED: the tests behind it reach every limit by configuring it
-down, and run on Linux and macOS in CI. UNMEASURED: none starts a real
-`systemctl` or `launchctl`, none reaches a kernel's own limit, and how often one
-project over a directory of clones reaches the watch limit has not been measured
+unchanged. MEASURED: the tests behind it reach every limit by configuring it down,
+and run on Linux and macOS in CI. UNMEASURED: none starts a real `systemctl` or
+`launchctl`, none reaches a kernel's own limit, and how often one project over a
+directory of clones reaches the watch limit has not been measured
 ([§9.1](#91-what-one-project-still-does)). Those runs are owed in
 [`as-built-defects.md`](../design/as-built-defects.md#runs-nobody-has-made), and
 [§10](#10-known-gaps) lists where the code breaks a ruling below.
@@ -698,7 +698,7 @@ defect, not a ruling, and fixing it is
 
 ## Current values
 
-Verified at `7fa8cbf`. The prose above explains what each of these is for; this
+Verified at `fced33d`. The prose above explains what each of these is for; this
 table is the only place the numbers are stated, and it gathers the names the
 prose uses with where each is defined.
 

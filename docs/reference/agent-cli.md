@@ -3,7 +3,7 @@ title: "vantage-check — the agent-facing CLI, and how a check reaches its verd
 status: accepted
 stage: CURRENT
 verified: 2026-10-01
-verified_commit: 7fa8cbf
+verified_commit: 2714ee5
 covers:
   - packages/vantage-check/package.json
   - packages/vantage-check/scripts/build.ts
@@ -50,17 +50,18 @@ summary: "vantage-check is one compiled binary that hands an agent Vantage's Mar
 
 # vantage-check — the agent-facing CLI, and how a check reaches its verdict
 
-**Status:** Verified 2026-10-01 against `7fa8cbf`. The commit that added this
-document changed only comments inside the `covers:` perimeter, repointing them
-here, so the code it describes is `7fa8cbf`'s, unchanged. MEASURED: a binary
-built from the adding commit's tree, whose code is `7fa8cbf`'s (it names itself
-a development build of that commit), was run over scratch documents for this
-verification; the headless Mermaid behavior that
-[§5.4](#54-mermaid-without-a-browser) is built around was re-measured on
-2026-10-01, against the versions [Current values](#current-values) names; and
-the gate runs the same compiled checker over this repository's own documents on
-every `just check-ci`. Where the checker's verdict and the rendered page
-disagree, the rest of this document says so, and [§11](#11-known-gaps) lists
+**Status:** Verified 2026-10-01 against `2714ee5`. Inside the `covers:` perimeter,
+the commit that added this document, `fced33d`, changed only comments, repointing
+them here, and the one after it there, `2714ee5`, only added the `planning-perf`
+recipe to the `Justfile`, which this document does not describe; so the code it
+describes is `7fa8cbf`'s, unchanged. MEASURED: a binary built from the adding
+commit's tree, whose code is `7fa8cbf`'s (it names itself a development build of
+that commit), was run over scratch documents for this verification; the headless
+Mermaid behavior that [§5.4](#54-mermaid-without-a-browser) is built around was
+re-measured on 2026-10-01, against the versions [Current values](#current-values)
+names; and the gate runs the same compiled checker over this repository's own
+documents on every `just check-ci`. Where the checker's verdict and the rendered
+page disagree, the rest of this document says so, and [§11](#11-known-gaps) lists
 each case.
 
 `vantage-check` is the agent-facing half of Vantage. Vantage knows two things
@@ -778,7 +779,7 @@ price of a deliberate choice. Each says how to reproduce it.
 
 ## Current values
 
-Verified at `7fa8cbf`. The prose above explains what each of these is for; this
+Verified at `2714ee5`. The prose above explains what each of these is for; this
 table is the only place most of them are stated.
 
 | Value | Setting | Defined in |

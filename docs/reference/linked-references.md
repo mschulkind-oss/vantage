@@ -3,7 +3,7 @@ title: "Linked references — question anchors, and the rules that make a refere
 status: accepted
 stage: CURRENT
 verified: 2026-10-01
-verified_commit: 7fa8cbf
+verified_commit: fced33d
 covers:
   - packages/vantage-check/src/rules/references.ts
   - packages/vantage-check/src/core/openQuestions.ts
@@ -25,13 +25,13 @@ summary: "A question directive's id becomes a real, navigable `id` on the block 
 
 # Linked references — question anchors, and the rules that make a reference a link
 
-**Status:** Verified 2026-10-01 against `7fa8cbf`. The commit that added this
-document changed only comments inside the `covers:` perimeter, repointing them
+**Status:** Verified 2026-10-01 against `fced33d`, the commit that added this
+document. Inside the `covers:` perimeter it changed only comments, repointing them
 here and correcting two that contradicted the code, so the code it describes is
 `7fa8cbf`'s, unchanged. MEASURED: the five rules run over this repository's own
-documents in every `just check-ci`, and the anchor's path through the sanitizer
-is held by tests that render real Markdown. [Known gaps](#known-gaps) lists
-where the code breaks the invariants below.
+documents in every `just check-ci`, and the anchor's path through the sanitizer is
+held by tests that render real Markdown. [Known gaps](#known-gaps) lists where the
+code breaks the invariants below.
 
 Documents in this tree are full of **references** — an Open Question id, a
 section number, a filename — that read like pointers. This system makes each one
@@ -542,7 +542,7 @@ it.
 
 ## Current values
 
-Verified at `7fa8cbf`. The prose above explains what each of these is for; this
+Verified at `fced33d`. The prose above explains what each of these is for; this
 table is the only place most of the exact values are stated.
 
 | Value | Setting | Defined in |
