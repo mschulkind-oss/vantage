@@ -180,7 +180,10 @@ async function loadPrevious(): Promise<Previous> {
         "--ignore-scripts",
         "--no-audit",
         "--no-fund",
-        "--prefer-offline",
+        // Never --prefer-offline: it resolves a range against whatever
+        // metadata npm's cache holds, however old. A cache that last saw katex
+        // at 0.18.6 answered 0.7.1's `katex@^0.18.7` with ETARGET, and the
+        // release refused to tag over a registry it never asked.
         `vantage-md@${version}`,
       ],
       dir,
