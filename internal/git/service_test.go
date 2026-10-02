@@ -733,3 +733,31 @@ func TestClearRecentFilesCacheOfDropsOneRepositorysList(t *testing.T) {
 	require.ElementsMatch(t, []string{"a.md", "a2.md"}, paths(alphaSvc))
 	require.Equal(t, []string{"b.md"}, paths(betaSvc), "beta's list is still the cached one")
 }
+
+// A directory that is no repository but holds some, served as one project,
+// lists its recent files from those of the repositories inside it. Each of
+// theirs was cached too, under its own path, so dropping the directory's list,
+// which is all its watcher can name, kept theirs, and the next request put the
+// old list together again from them.
+func TestClearRecentFilesCacheOfADirectoryOfRepositoriesDropsTheirFilesToo(t *testing.T) {
+	ClearRecentFilesCache()
+	t.Cleanup(ClearRecentFilesCache)
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary not available")
+	}
+	parent := t.TempDir()
+	runGit(t, parent, "-c", "init.defaultBranch=main", "init", "-q", "alpha")
+	writeFile(t, parent, "alpha/a.md", "# a\n")
+	paths := func() []string {
+		var out []string
+		for _, rf := range NewService(parent, Options{}).RecentsUnreported(10, nil, true, true) {
+			out = append(out, rf.Path)
+		}
+		return out
+	}
+	require.Equal(t, []string{"alpha/a.md"}, paths())
+
+	writeFile(t, parent, "alpha/a2.md", "# a2\n")
+	ClearRecentFilesCacheOf(parent)
+	require.ElementsMatch(t, []string{"alpha/a.md", "alpha/a2.md"}, paths())
+}

@@ -974,10 +974,9 @@ test.describe("a header whose toolbar ends at the commit button", () => {
 // there was no time for the test to find. Neither is this file: it is
 // backdated three hours so that its relative time reads the same for the whole
 // run, which makes it older than every file a fresh checkout wrote. So the list
-// the header reads is routed to carry it, and the route has to stay however the
-// server caches that list: it does cache it for up to 30 seconds, and a new
-// Markdown file does not clear that, but no cache of any length would bring a
-// file this old back into it.
+// the header reads is routed to carry it, and the route has to stay however
+// fresh the server keeps that list: the push for a new Markdown file drops the
+// copy it caches, but no list of the 30 newest files holds one this old.
 test.describe("an untracked file's header", () => {
   const UNTRACKED = "header-fit-untracked.md";
   const file = path.join(__dirname, "fixtures/test_repo", UNTRACKED);

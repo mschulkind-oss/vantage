@@ -77,7 +77,12 @@ test.describe("A folder renamed under the reader", () => {
   test("follows the open document to the folder's new name, where the reader was in it", async ({
     page,
   }) => {
-    // Written now, so it is the newest file in the recent-files list.
+    // Written now, so it is the newest file in the recent-files list. In a
+    // fresh checkout it is at best the 30th newest before this, and out of the
+    // 30 once earlier specs have written files; the server keeps the list it
+    // last worked out for 30 seconds, which a page an earlier spec opened may
+    // have left: the push for this write is what drops that list
+    // (internal/live/watcher.go, flush).
     const book = path.join(before, "book.md");
     fs.writeFileSync(book, fs.readFileSync(book, "utf-8"));
 
