@@ -13,61 +13,40 @@ need, and `vantage ~/code` serves each clone as its own project.
 
 ### Added
 
-**`vantage-check index` prints what a repository's planning documents still
-owe:** questions that need a ruling, what waits on what, and which documents
-are ready to build. `--request` prints an instruction for an agent, and
-`--format json` gives a script the whole index. See
-[`vantage-check index`](userguide/guides/vantage-check.md#vantage-check-index).
-
-**Press `g p` for the planning page and answer open questions from their
-cards.** Its **Copy answers** and **Copy agent request** hand the work to an
-agent. Links to planning documents get badges such as
-`in-review · DESIGN · 💬 5`. See [Planning Documents](userguide/guides/planning.md).
-
-**Every `roadmap.md`, in any folder, is a roadmap,** and with several the
-planning page lets you pick one. List yours in `roadmap` under `[planning]` in
-`.vantage.toml` to limit them. See
-[The roadmap](userguide/guides/planning.md#the-roadmap).
+**Press `g p` for the planning page, or run `vantage-check index`, to see what
+a repository's planning documents still owe:** questions that need a ruling,
+what waits on what, and which documents are ready to build. Answer questions
+from their cards, then hand the work to an agent with **Copy answers** or
+**Copy agent request**. Links to planning documents get badges such as
+`in-review · DESIGN · 💬 5`, and with several `roadmap.md` files the page lets
+you pick one. See [Planning Documents](userguide/guides/planning.md).
 
 **An inline `<svg>`, wrapped in a `<div>` with no blank line inside, renders as
 a drawing.** Colors written in `style` are dropped, so Inkscape and matplotlib
-exports render black. GitHub and Vantage 0.7 drop it, so follow it with a
-`<!-- vantage: fallback -->` paragraph saying what it shows, which only Vantage
-0.8 hides. See
-[Inline SVG](docs/reference/inline-markup.md#inline-svg).
+exports render black. GitHub and Vantage 0.7 drop the drawing, so follow it
+with a `<!-- vantage: fallback -->` paragraph saying what it shows, which only
+Vantage 0.8 hides. See [Inline SVG](docs/reference/inline-markup.md#inline-svg).
 
-**One `question` directive declares a question in any state, and `oq` is
-deprecated.** Its marker says the state, and `oq` still works. `vantage-check`
-warns on each `oq` with the `question` to write instead. Vantage 0.7 drops a
-`question`, losing its one-click answer, so while your readers are on 0.7, keep
-`oq` on open questions and turn the warning off with
-`"vantage/oq-deprecated" = "off"` under `[check.rules]`. See
+**One `question` directive declares a question in any state, and `oq`, which
+still works, is deprecated.** Vantage 0.7 drops a `question`, losing its
+one-click answer, so keep `oq` on open questions until every reader is on 0.8,
+and turn its new warning off with `"vantage/oq-deprecated" = "off"` under
+`[check.rules]`. Keep running the newest checker meanwhile: 0.7.1 rejects that
+line and the new directives. See
 [When Your Readers Are on 0.7](userguide/guides/vantage-check.md#when-your-readers-are-on-07).
 
 **A comment on a question is its answer,** whether you take its leaning, use
-**Answer…**, or comment anywhere in it. The question then shows that it is
-answered (_Leaning taken_, or _Answered — waiting on the agent_) in the
-document, where its controls now sit at its end, and on its planning card, and
-stops counting as needing you. See
+**Answer…**, or comment anywhere in it. The question then shows as answered,
+in the document and on its planning card, and no longer counts as needing you.
+See
 [Planning Documents](userguide/guides/planning.md#a-comment-on-a-question-is-your-answer).
 
 ### Changed
 
-**Keep running bare `uvx vantage-check` for readers still on 0.7.** A 0.7.x
-viewer drops every directive the 0.8.0 style guide adds, and the 0.7.1 checker
-reports `question` and `fallback` as unknown names. See
-[Which release it writes for](userguide/guides/vantage-check.md#which-release-it-writes-for).
-
-**A `.vantage.toml` key or rule the checker does not know warns, naming the
-checker's release, instead of exiting `2`.** A top-level `target = "0.8"` is
-reserved for the oldest release your readers use, and a checker older than it
-refuses to run. See
-[Keys From a Newer Release](userguide/reference/configuration.md#keys-from-a-newer-release).
-
-**A `[starred]` key the server does not know no longer makes it ignore the
-whole file.** It logs a warning and ignores the key, as it does an unknown
-`[planning]` key; a wrong value for a key it knows still makes it ignore the
-file. See
+**An unknown `.vantage.toml` key no longer breaks the server or the checker.**
+`vantage-check` used to exit `2`, and the server ignored the whole file over
+one in `[starred]`. From 0.8.0, a checker older than a top-level `target`, the
+oldest release your readers use, refuses to run. See
 [Keys From a Newer Release](userguide/reference/configuration.md#keys-from-a-newer-release).
 
 **The review prompt's check command names your release,** as
@@ -75,35 +54,29 @@ file. See
 page's agent request, so a later checker can write for the viewer you run. See
 [How agents find out about it](userguide/guides/vantage-check.md#how-agents-find-out-about-it).
 
-**The style guide says how to write a question:** a list item with a bold
-title line, short context, the options as a list, and the leaning and the
-Answer as paragraphs of their own, never one run-together paragraph. See
-[Style Guide for Agents](userguide/reference/style-guide.md#questions).
-
 **Hand-written HTML and Mermaid can no longer draw over Vantage's own page.**
-Vantage keeps a `class` only where Markdown puts one, drops a `style` whose
-`display` is `contents` or not a listed keyword, and ignores a Mermaid
-diagram's `themeCSS` and font families. `vantage-check` reports none of these.
-See [Security](docs/reference/inline-markup.md#security).
+Vantage drops a `class` Markdown did not put there, a `style` whose `display`
+is `contents` or unlisted, and a Mermaid diagram's `themeCSS` and font families.
+`vantage-check` reports none of these. See
+[Security](docs/reference/inline-markup.md#security).
 
-**`vantage ~/code` serves each clone as its own project,** with its
-`.gitignore` and git status, and the Markdown outside them as one more, when
-the directory is not inside a git repository. Only `--one-project`, the old
-behavior, shows review comments left on that Markdown. See
+**`vantage ~/code` serves each clone as its own project,** and the Markdown
+outside them as one more, when the directory is not inside a git repository.
+Only `--one-project`, the old behavior, shows review comments left on that
+Markdown. See
 [Serve a directory of clones](userguide/getting-started.md#serve-a-directory-of-clones).
 
 **`vantage` started in a terminal prints a tip about the background service.**
 `VANTAGE_NO_TIPS=1`, or `tips = false` in your config, turns it off.
 
-**A CI job can notice these `vantage-check` changes;
+**New `vantage-check` findings can fail a CI job;
 [pin the checker](userguide/guides/vantage-check.md#in-ci) to take them when you
-choose.** Check a file named `index` as `vantage-check ./index`, since `index`
-is now a command. `planning/depends-on-missing` and `vantage/question-name`,
-which reports an `oq` on a 🔒 or ✅ question, are errors.
-`planning/question-length` warns past 120 words, failing `--strict`, as do the
-new `vantage/oq-deprecated` and `vantage/question-layout` warnings and
-`prose/inline-list`, on a paragraph that runs `(a) (b) (c)` together.
-`vantage/oq-missing` reads more ways of writing a leaning.
+choose.** `planning/depends-on-missing` and `vantage/question-name`, an `oq` on
+a 🔒 or ✅ question, are errors. The new warnings, which fail `--strict`, are
+`planning/question-length`, `vantage/oq-deprecated`, `vantage/question-layout`
+and `prose/inline-list`, on a paragraph that runs `(a) (b) (c)` together. Check
+a file named `index` as `vantage-check ./index`, since `index` is now a
+command.
 
 ### Fixed
 
@@ -112,9 +85,9 @@ new `vantage/oq-deprecated` and `vantage/question-layout` warnings and
   Vantage refuses both now.
 - Review mode's **Copy** quotes each path, so a file name holding `$(…)` or a
   backtick cannot run a command.
-- On a `vantage build` site, the address a heading's `#` link left in the
-  address bar opened a blank page. Rebuild and redeploy to get links that name
-  their document; see [Page URLs](userguide/guides/static-sites.md#page-urls).
+- On a `vantage build` site, a heading's `#` link left an address that opened a
+  blank page. Rebuild and redeploy to fix it; see
+  [Page URLs](userguide/guides/static-sites.md#page-urls).
 - On macOS, a large tree could use up the server's open files and stop it.
 - A document reloaded when only its attributes changed, as Spotlight and backup
   tools do.
