@@ -8,75 +8,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.8.0] - 2026-10-02
 
-`vantage-check index` and a planning page show what a repository's plans still
-need, and `vantage ~/code` serves each clone as its own project.
+Vantage 0.8 puts every open question in your design docs on one page, in roadmap
+order, hands your answers to an agent in one copy, and serves a whole folder of
+clones with `vantage ~/code`.
 
 ### Added
 
-**Press `g p` for the planning page, or run `vantage-check index`, to see what
-a repository's planning documents still owe:** questions that need a ruling,
-what waits on what, and which documents are ready to build. Answer questions
-from their cards, then hand the work to an agent with **Copy answers** or
-**Copy agent request**. Links to planning documents get badges such as
+**The planning page.** Press `g p`, or run `vantage-check index`, to see what a
+repository's planning documents still owe: questions that need a ruling, what
+waits on what, and which documents are ready to build. Answer questions from
+their cards, then hand the work to an agent with **Copy answers** or **Copy
+agent request**. Links to planning documents get badges such as
 `in-review · DESIGN · 💬 5`, and with several `roadmap.md` files the page lets
 you pick one. See [Planning Documents](userguide/guides/planning.md).
 
-**An inline `<svg>`, wrapped in a `<div>` with no blank line inside, renders as
-a drawing.** Colors written in `style` are dropped, so Inkscape and matplotlib
-exports render black. GitHub and Vantage 0.7 drop the drawing, so follow it
-with a `<!-- vantage: fallback -->` paragraph saying what it shows, which only
-Vantage 0.8 hides. See [Inline SVG](docs/reference/inline-markup.md#inline-svg).
+**Inline SVG.** An `<svg>` wrapped in a `<div>`, with no blank line inside,
+renders as a drawing. Colors written in `style` are dropped, so Inkscape and
+matplotlib exports render black. GitHub and Vantage 0.7 drop the drawing, so
+follow it with a `<!-- vantage: fallback -->` paragraph saying what it shows,
+which only Vantage 0.8 hides. See
+[Inline SVG](docs/reference/inline-markup.md#inline-svg).
 
-**One `question` directive declares a question in any state, and `oq`, which
-still works, is deprecated.** Vantage 0.7 drops a `question`, losing its
-one-click answer, so keep `oq` on open questions until every reader is on 0.8,
-and turn its new warning off with `"vantage/oq-deprecated" = "off"` under
-`[check.rules]`. Keep running the newest checker meanwhile: 0.7.1 rejects that
-line and the new directives. See
+**`question` replaces `oq`.** One `question` directive declares a question in
+any state, and `oq` still works but is deprecated. Vantage 0.7 drops a
+`question`, losing its one-click answer, so keep `oq` on open questions until
+every reader is on 0.8, and turn its new warning off with
+`"vantage/oq-deprecated" = "off"` under `[check.rules]`. Keep running the newest
+checker meanwhile: 0.7.1 rejects that line and the new directives. See
 [When Your Readers Are on 0.7](userguide/guides/vantage-check.md#when-your-readers-are-on-07).
 
-**A comment on a question is its answer,** whether you take its leaning, use
-**Answer…**, or comment anywhere in it. The question then shows as answered,
-in the document and on its planning card, and no longer counts as needing you.
-See
+**Answers by comment.** A comment on a question is its answer, whether you take
+its leaning, use **Answer…**, or comment anywhere in it. The question then shows
+as answered, in the document and on its planning card, and no longer counts as
+needing you. See
 [Planning Documents](userguide/guides/planning.md#a-comment-on-a-question-is-your-answer).
 
 ### Changed
 
-**An unknown `.vantage.toml` key no longer breaks the server or the checker.**
-`vantage-check` used to exit `2`, and the server ignored the whole file over
-one in `[starred]`. From 0.8.0, a checker older than a top-level `target`, the
-oldest release your readers use, refuses to run. See
+**Unknown config keys.** An unknown `.vantage.toml` key no longer breaks the
+server or the checker. `vantage-check` used to exit `2`, and the server ignored
+the whole file over one in `[starred]`. From 0.8.0, a checker older than a
+top-level `target`, the oldest release your readers use, refuses to run. See
 [Keys From a Newer Release](userguide/reference/configuration.md#keys-from-a-newer-release).
 
-**The review prompt's check command names your release,** as
-`VANTAGE_VIEWER=0.8.0 uvx vantage-check <file>`, and so does the planning
-page's agent request, so a later checker can write for the viewer you run. See
+**Your release in the review prompt.** The prompt's check command names it, as
+`VANTAGE_VIEWER=0.8.0 uvx vantage-check <file>`, and so does the planning page's
+agent request, so a later checker can write for the viewer you run. See
 [How agents find out about it](userguide/guides/vantage-check.md#how-agents-find-out-about-it).
 
-**Hand-written HTML and Mermaid can no longer draw over Vantage's own page.**
-Vantage drops a `class` Markdown did not put there, a `style` whose `display`
-is `contents` or unlisted, and a Mermaid diagram's `themeCSS` and font families.
-`vantage-check` reports none of these. See
+**Hand-written HTML.** It and Mermaid can no longer draw over Vantage's own
+page. Vantage drops a `class` Markdown did not put there, a `style` whose
+`display` is `contents` or unlisted, and a Mermaid diagram's `themeCSS` and font
+families. `vantage-check` reports none of these. See
 [Security](docs/reference/inline-markup.md#security).
 
-**`vantage ~/code` serves each clone as its own project,** and the Markdown
-outside them as one more, when the directory is not inside a git repository.
-Only `--one-project`, the old behavior, shows review comments left on that
-Markdown. See
+**A folder of clones.** `vantage ~/code` serves each clone as its own project,
+and the Markdown outside them as one more, when the directory is not inside a
+git repository. Only `--one-project`, the old behavior, shows review comments
+left on that Markdown. See
 [Serve a directory of clones](userguide/getting-started.md#serve-a-directory-of-clones).
 
-**`vantage` started in a terminal prints a tip about the background service.**
-`VANTAGE_NO_TIPS=1`, or `tips = false` in your config, turns it off.
+**A startup tip.** `vantage` started in a terminal mentions the background
+service. `VANTAGE_NO_TIPS=1`, or `tips = false` in your config, turns it off.
 
-**New `vantage-check` findings can fail a CI job;
+**New checker findings.** Some can fail a CI job, so
 [pin the checker](userguide/guides/vantage-check.md#in-ci) to take them when you
-choose.** `planning/depends-on-missing` and `vantage/question-name`, an `oq` on
-a 🔒 or ✅ question, are errors. The new warnings, which fail `--strict`, are
+choose. `planning/depends-on-missing` and `vantage/question-name`, an `oq` on a
+🔒 or ✅ question, are errors. The new warnings, which fail `--strict`, are
 `planning/question-length`, `vantage/oq-deprecated`, `vantage/question-layout`
 and `prose/inline-list`, on a paragraph that runs `(a) (b) (c)` together. Check
-a file named `index` as `vantage-check ./index`, since `index` is now a
-command.
+a file named `index` as `vantage-check ./index`, since `index` is now a command.
 
 ### Fixed
 
