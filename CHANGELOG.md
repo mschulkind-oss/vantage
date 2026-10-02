@@ -119,6 +119,7 @@ new `vantage/oq-deprecated` and `vantage/question-layout` warnings and
 - A document reloaded when only its attributes changed, as Spotlight and backup
   tools do.
 - A page in a project or folder named `api` showed a JSON 404 on a reload.
+- The sidebar's recent files could miss or misplace a document just written.
 
 ### Contributors
 

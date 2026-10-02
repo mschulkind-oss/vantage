@@ -848,9 +848,9 @@ func ClearRecentFilesCache() {
 
 // ClearRecentFilesCacheOf flushes the recent files cached for the repository
 // at repoPath alone, which is resolved the way [NewService] resolves its own.
-// The watcher calls it when a directory of its repository goes: that changes
-// the repository's recent files and no other's, and in daemon mode every served
-// repository shares the one cache.
+// The watcher calls it when it pushes a Markdown file of its repository or a
+// directory of it that went: either changes the repository's recent files and
+// no other's, and in daemon mode every served repository shares the one cache.
 func ClearRecentFilesCacheOf(repoPath string) {
 	recentFilesCache.clearRepo(canonicalRepoPath(repoPath))
 	slog.Debug("git: recent-files cache cleared for one repository", "repo", repoPath)
@@ -1295,7 +1295,10 @@ func (s *GitService) recentsNoRepo(limit int, extLower []string, showHidden, sho
 			}
 			child := NewService(childPath, childOpts)
 			prefix := name + "/"
-			for _, rf := range child.recents(limit, extLower, showHidden, showGitignored, report) {
+			// Worked out afresh rather than cached under the child's own path:
+			// this list is cached whole, under this directory's, which is all
+			// its watcher can name when it drops it.
+			for _, rf := range child.computeRecents(limit, extLower, showHidden, showGitignored, report) {
 				rf.Path = prefix + rf.Path
 				results = append(results, rf)
 				seen[rf.Path] = struct{}{}
