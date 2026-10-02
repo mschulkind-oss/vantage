@@ -225,8 +225,12 @@ therefore file the same Take in 0.7 and in 0.8.
 
 **What a 0.7.x viewer loses:** on a question written with `question`, which it
 drops whole, the Take button and the anchor; it never misreads one, and a
-repository whose readers are still on 0.7 keeps `oq` on its open questions with
-`"vantage/oq-deprecated" = "off"` under `[check.rules]`.
+repository whose readers are still on 0.7 keeps `oq` on its open questions and
+says so with a `target` before 0.8, under which `vantage-check` from 0.8.1 does
+not report them and asks for `oq` on a new open question. A 0.8.0 checker still
+warns there, so where one runs, the repository also turns
+`"vantage/oq-deprecated" = "off"` under `[check.rules]`, a line a checker before
+0.8 exits 2 on.
 
 **The rendered contract.** Every question carries `data-vantage-question="true"`
 (`VANTAGE_QUESTION_ATTRIBUTE`, found by `VANTAGE_QUESTION_SELECTOR`), whichever

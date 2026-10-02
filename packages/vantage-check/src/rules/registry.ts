@@ -195,7 +195,7 @@ export const RULES: readonly RuleMeta[] = [
   {
     id: "vantage/oq-deprecated",
     summary:
-      "An `oq` directive anywhere else: it still works, and `question` is the name to write, keys unchanged",
+      "An `oq` directive anywhere else: it still works, and `question` is the name to write, keys unchanged. Quiet under a `target` before 0.8, whose readers answer only an `oq` in one click",
     default: "warning",
   },
   {

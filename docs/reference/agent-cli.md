@@ -371,7 +371,9 @@ flowchart TD
    chose the file, the `.vantage.toml` of each project root among the files is
    also read for its `target`, and a release build too old for any of them
    refuses the whole run before the rest of the configuration is read. Unknown
-   keys become warnings on stderr.
+   keys become warnings on stderr. A root's own target before 0.8 also changes
+   what step 5 reports for that root's files
+   ([`checker-version-skew.md` §4.3](../design/checker-version-skew.md#43-a-target-the-checker-meets)).
 3. **Check each file.** A file is read once and parsed once, with the viewer's
    remark plugins and the viewer's frontmatter parser, and every rule reads that
    one tree. The few other parses, of a whole file or a slice of one, are
@@ -390,8 +392,12 @@ flowchart TD
    over the run's documents on the
    main thread while any worker threads check files
    ([`planning-index.md` §13.3](planning-index.md#133-the-planning-rules)).
-5. **Report and exit.** Findings from every thread are joined, sorted and
-   printed; the exit code follows [§3.4](#34-exit-codes).
+5. **Report and exit.** Findings from every thread are joined. Each file's
+   question findings are held to the target of its own project root, or of the
+   file `--config` names: under one before 0.8, `vantage/oq-deprecated` is
+   dropped and `vantage/oq-missing` asks for an `oq`, once, on the main thread,
+   so the report is the same at any `--jobs`. They are then sorted and printed;
+   the exit code follows [§3.4](#34-exit-codes).
 
 The workspace cache belongs to one run (one per thread, when several check), not to
 the process: it caches what the rules ask about
@@ -585,8 +591,10 @@ A `check` run reads the file in two ways:
   and it governs every file the run checks.
 - **What describes a project comes from that project's own file.** Each
   project root among the files checked is read for its `target`, so a run that
-  spans repositories refuses for any of them that needs a newer checker
-  ([`checker-version-skew.md`](../design/checker-version-skew.md)), and for
+  spans repositories refuses for any of them that needs a newer checker, and
+  so that one before 0.8 changes what is reported about that project's
+  questions
+  ([`checker-version-skew.md`](../design/checker-version-skew.md#43-a-target-the-checker-meets)); and for
   its `[planning]` table, which is the planning index's
   ([`planning-index.md` §14](planning-index.md#14-configuration)). `--config`
   and `--no-config` replace those reads with the one file they chose, or with
