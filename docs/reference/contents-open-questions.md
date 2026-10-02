@@ -3,7 +3,7 @@ title: "Open questions in the contents column — what a document still owes its
 status: accepted
 stage: CURRENT
 verified: 2026-10-01
-verified_commit: 7fa8cbf
+verified_commit: fced33d
 covers:
   - frontend/src/components/TableOfContents.tsx
   - frontend/src/hooks/useDocumentOutline.ts
@@ -19,12 +19,12 @@ summary: "The viewer's table of contents lists every question a directive declar
 
 # Open questions in the contents column — what a document still owes its reader, beside its headings
 
-**Status:** Verified 2026-10-01 against `7fa8cbf`. The commit that added this
-document changed only comments inside the `covers:` perimeter, repointing them
+**Status:** Verified 2026-10-01 against `fced33d`, the commit that added this
+document. Inside the `covers:` perimeter it changed only comments, repointing them
 here, so the code it describes is `7fa8cbf`'s, unchanged. MEASURED: CI's
-end-to-end suite drives the column in a real browser
-(`frontend/e2e/toc.spec.ts`); nobody watched it by hand for this verification.
-[§8](#8-known-gaps) lists where the code breaks an invariant below.
+end-to-end suite drives the column in a real browser (`frontend/e2e/toc.spec.ts`);
+nobody watched it by hand for this verification. [§8](#8-known-gaps) lists where
+the code breaks an invariant below.
 
 The **contents column** is the table of contents Vantage draws in the margin to
 the left of a rendered Markdown document, shown and hidden from the header.
@@ -388,7 +388,7 @@ the code, not a ruling, and fixing it is
 
 ## Current values
 
-Verified at `7fa8cbf`. The prose above explains what each of these is for; this
+Verified at `fced33d`. The prose above explains what each of these is for; this
 table is the only place the values themselves are stated.
 
 | Value | Setting | Defined in |

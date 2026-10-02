@@ -3,7 +3,7 @@ title: "A vantage-check run — the rules share each file's parse, and worker th
 status: accepted
 stage: CURRENT
 verified: 2026-10-01
-verified_commit: 7fa8cbf
+verified_commit: 2714ee5
 covers:
   - packages/vantage-check/src/main.ts
   - packages/vantage-check/src/cli.ts
@@ -32,17 +32,19 @@ summary: "How `vantage-check check` spends its time and splits its work: the per
 
 # A vantage-check run — the rules share each file's parse, and worker threads share the files
 
-**Status:** Verified 2026-10-01 against `7fa8cbf`. The commit that added this
-document changed only comments inside the `covers:` perimeter, repointing them
-here, so the code it describes is `7fa8cbf`'s, unchanged. MEASURED: the thread
-ceiling and the gain from parsing each file once were measured against the build
-the day it landed, 2026-09-20, on a 32-core machine with the compiled binary, and
-the sweep the ceiling rests on is kept beside the constant it set
-(`MAX_AUTO_JOBS`, [Current values](#current-values)). On 2026-10-01, at
-`7fa8cbf`, the shape held over this repository's `docs/` and `userguide/` on a
-32-core machine: three threads roughly halved a one-thread run, six gained
-nothing on three, and sixteen were slower than one. UNMEASURED: no machine with
-a different core count.
+**Status:** Verified 2026-10-01 against `2714ee5`. Inside the `covers:` perimeter,
+the commit that added this document, `fced33d`, changed only comments, repointing
+them here, and the one after it there, `2714ee5`, only added the `planning-perf`
+recipe to the `Justfile` and the harness's directory to `scripts/check-fast.sh`,
+neither of which this document describes; so the code it describes is `7fa8cbf`'s,
+unchanged. MEASURED: the thread ceiling and the gain from parsing each file once
+were measured against the build the day it landed, 2026-09-20, on a 32-core
+machine with the compiled binary, and the sweep the ceiling rests on is kept
+beside the constant it set (`MAX_AUTO_JOBS`, [Current values](#current-values)).
+On 2026-10-01, at `7fa8cbf`, the shape held over this repository's `docs/` and
+`userguide/` on a 32-core machine: three threads roughly halved a one-thread run,
+six gained nothing on three, and sixteen were slower than one. UNMEASURED: no
+machine with a different core count.
 
 `vantage-check check` runs every per-file rule over every file it is given, and
 the planning rules once, apart from them. Two things decide how long that takes:
@@ -550,7 +552,7 @@ number of 1 or more, so `4.0`, ` 4 ` and `0x4` all mean four threads.
 
 ## Current values
 
-Verified at `7fa8cbf`. The prose above explains what each of these is for; this
+Verified at `2714ee5`. The prose above explains what each of these is for; this
 table is the only place most of the numbers are stated.
 
 | Value | Setting | Defined in |

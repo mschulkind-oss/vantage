@@ -3,7 +3,7 @@ title: "Repository config — one .vantage.toml, two readers, and the documents 
 status: accepted
 stage: CURRENT
 verified: 2026-10-01
-verified_commit: 7fa8cbf
+verified_commit: fced33d
 covers:
   - internal/repoconfig/repoconfig.go
   - internal/repoconfig/testdata/shared-config.toml
@@ -29,16 +29,16 @@ summary: "A repository configures Vantage in one committed file, .vantage.toml, 
 
 # Repository config — one `.vantage.toml`, two readers, and the documents it promotes into Starred
 
-**Status:** Verified 2026-10-01 against `7fa8cbf`. The commit that added this
-document changed only comments inside the `covers:` perimeter, repointing them here
-and correcting stale ones, so the code it describes is `7fa8cbf`'s, unchanged.
-`covers:` names every file a claim below rests on, the large shared ones in
-`internal/server`, `internal/config`, `internal/live` and `internal/api` included,
-so a perimeter diff flags them when they change for unrelated reasons too.
-MEASURED: both readers' test suites parse the shared fixtures in every
-`just check-ci`. UNMEASURED: the swap window in [§3.3](#33-the-servers-read-is-guarded)
-was read from the code, not raced. [§8](#8-known-gaps) lists where the code breaks
-a ruling below.
+**Status:** Verified 2026-10-01 against `fced33d`, the commit that added this
+document. Inside the `covers:` perimeter it changed only comments, repointing them
+here and correcting stale ones, so the code it describes is `7fa8cbf`'s,
+unchanged. `covers:` names every file a claim below rests on, the large shared
+ones in `internal/server`, `internal/config`, `internal/live` and `internal/api`
+included, so a perimeter diff flags them when they change for unrelated reasons
+too. MEASURED: both readers' test suites parse the shared fixtures in every
+`just check-ci`. UNMEASURED: the swap window in
+[§3.3](#33-the-servers-read-is-guarded) was read from the code, not raced.
+[§8](#8-known-gaps) lists where the code breaks a ruling below.
 
 `.vantage.toml`, committed at a repository's root, is the one file in which a
 repository configures Vantage. Two programs read it. `vantage-check` reads its rule
@@ -602,7 +602,7 @@ defect, not a ruling, and fixing it is
 
 ## Current values
 
-Verified at `7fa8cbf`. The prose above explains what each of these is for; this table
+Verified at `fced33d`. The prose above explains what each of these is for; this table
 is the only place the values themselves are stated.
 
 | Value | Setting | Defined in |
