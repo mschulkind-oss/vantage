@@ -21,13 +21,16 @@ import { RELEASE, checkerName } from "../version.js";
  * under rules it predates. A checker cannot learn that later; the one that
  * shipped before the key never reads it.
  *
- * So in this release a target does two things and nothing else:
+ * So a target does three things and nothing else:
  *
  * - **newer than this checker,** it refuses the run: exit 2, one message
  *   naming the release needed, and nothing read or printed besides (§4.2);
  * - **otherwise,** it is noted on stderr, and the checker checks and teaches
- *   its own release whatever the target says. Holding documents to an older
- *   target is the next release's work.
+ *   its own release whatever the target says (§4.3);
+ * - **before 0.8,** it keeps the checker from asking for `question` where an
+ *   `oq` is what the readers answer in one click (OQ-VS7, `holdToOlderReaders`
+ *   in `rules/directives.ts`). That is the one place a target holds documents
+ *   to an older release.
  *
  * A development build never refuses, because it does not know which release it
  * is, and is at or ahead of every release it was built after (§4.2).
@@ -141,6 +144,69 @@ export function checkTargetPaths(
 }
 
 /**
+ * The `.vantage.toml` whose target the documents under one project root are
+ * held to, or `undefined` for none (OQ-VS7):
+ *
+ * - **under `--config`,** the file it names, for every document, and under
+ *   `--no-config` none;
+ * - **otherwise, the root's own file,** the one the server reads for that
+ *   project. Never one that `[check]`'s upward walk found further up, which can
+ *   belong to a parent directory or to another repository in the run
+ *   (`docs/design/checker-version-skew.md` §12);
+ * - **for a document with no root, none.** No `.vantage.toml` is above it, or
+ *   that file would make a root, so the run's config can only have come from
+ *   another path's walk, and the result would turn on the order of the paths.
+ *
+ * Each such file is one `checkTargetPaths` lists, so its target was read, and
+ * a too-new one refused, before any document was.
+ */
+export function heldConfigPath(
+  runConfig: string | undefined,
+  explicit: boolean,
+  root: string | null,
+): string | undefined {
+  if (explicit) return runConfig;
+  return root === null ? undefined : join(resolve(root), CONFIG_FILENAME);
+}
+
+/** Every file some of these documents are held to (`heldConfigPath`). */
+export function heldConfigPaths(
+  files: readonly string[],
+  runConfig: string | undefined,
+  explicit: boolean,
+): Set<string> {
+  const held = new Set<string>();
+  for (const file of files) {
+    const root = repositoryRoot(dirname(file)) ?? null;
+    const path = heldConfigPath(runConfig, explicit, root);
+    if (path !== undefined) held.add(path);
+  }
+  return held;
+}
+
+/** The target the documents under `root` are held to, from those declared. */
+export function heldTarget(
+  declared: readonly DeclaredTarget[],
+  runConfig: string | undefined,
+  explicit: boolean,
+  root: string | null,
+): Target | null {
+  const path = heldConfigPath(runConfig, explicit, root);
+  return declared.find((entry) => entry.path === path)?.target ?? null;
+}
+
+/** The release that added `question`: a viewer before it drops one whole. */
+const QUESTION_RELEASE = [0, 8, 0] as const;
+
+/**
+ * Whether a target says some of the repository's readers run a viewer before
+ * 0.8, which drops `question` and offers its one-click answer only on an `oq`.
+ */
+export function readsOnlyOq(target: Target | null): boolean {
+  return target !== null && compare(target.version, QUESTION_RELEASE) < 0;
+}
+
+/**
  * The file `style-guide` answers to: its project root's own, the one `index`
  * reads (the root is the working directory's, as `index` finds it).
  */
@@ -170,8 +236,9 @@ export function noteTargets(
   declared: readonly DeclaredTarget[],
   io: Io,
   release: string | undefined = RELEASE,
+  holds: (path: string) => boolean = () => true,
 ): void {
-  for (const note of targetNotes(declared, io.cwd, release)) {
+  for (const note of targetNotes(declared, io.cwd, release, holds)) {
     io.err(`vantage-check: ${note}\n`);
   }
 }
@@ -212,27 +279,38 @@ export function targetRefusal(
   return `this is ${checkerName(release)}, older than what these files target: ${why}.\n${lines.join("\n")}\n${fix}`;
 }
 
-/** One line for each target a command goes on under, saying what it does. */
+/**
+ * One line for each target a command goes on under, saying what it does.
+ * A target before 0.8 names its one exception only where `holds` says some
+ * document of the run is held to its file, since elsewhere the exception does
+ * not apply (`heldConfigPath`).
+ */
 export function targetNotes(
   declared: readonly DeclaredTarget[],
   cwd: string,
   release: string | undefined = RELEASE,
+  holds: (path: string) => boolean = () => true,
 ): string[] {
   const own = releaseVersion(release);
   return declared.map(({ path, target }) => {
     const file = shownPath(path, cwd);
     const { written } = target;
+    const oq = readsOnlyOq(target) && holds(path) ? ` ${OQ_EXCEPTION}` : "";
     if (own === undefined) {
-      return `${file} targets Vantage ${written}. ${capitalized(checkerName(release))} checks for its own checkout whatever the target, and never refuses one.`;
+      return `${file} targets Vantage ${written}. ${capitalized(checkerName(release))} checks for its own checkout whatever the target, and never refuses one.${oq}`;
     }
     if (compare(target.version, own) === 0) {
       return `${file} targets Vantage ${written}, the release ${checkerName(release)} checks for.`;
     }
     // Never "run an older checker": that one reports this release's notation,
     // which P0 makes safe for an older viewer, as unknown-name errors.
-    return `${file} targets Vantage ${written}, and ${checkerName(release)} checks against its own, newer release's notation whatever the target. A release never gives existing notation a new meaning, so a viewer on ${written} drops what it does not know.`;
+    return `${file} targets Vantage ${written}, and ${checkerName(release)} checks against its own, newer release's notation whatever the target. A release never gives existing notation a new meaning, so a viewer on ${written} drops what it does not know.${oq}`;
   });
 }
+
+/** What a note adds for a target before 0.8 (`holdToOlderReaders`). */
+const OQ_EXCEPTION =
+  "The one exception: a viewer before 0.8 offers its one-click answer only on an `oq`, so under this target nothing asks for an `oq` to become `question` (vantage/oq-deprecated), and a question that lacks a directive is told to take an `oq` (vantage/oq-missing).";
 
 function capitalized(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);

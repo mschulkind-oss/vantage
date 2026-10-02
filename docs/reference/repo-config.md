@@ -323,6 +323,9 @@ the checker reads `[check]`, the top-level `target`, and `[planning]`. Without
 `--config` or `--no-config`, `[planning]` always comes from the project root's own
 file, never from one the walk found above it
 ([§3.2](#32-the-server-reads-the-repository-roots-file-only), `planningConfigFor`).
+So does the `target` that `check` holds a project's questions to from 0.8.1, and a
+file in no project root is held to none (`heldConfigPath`,
+[`checker-version-skew.md` §4.3](../design/checker-version-skew.md#43-a-target-the-checker-meets)).
 
 It steps over `[starred]`, `theme` and every other tool's table, with one exception:
 a `target` that lands inside `[starred]` because it was written below that header. A

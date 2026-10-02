@@ -1732,12 +1732,12 @@ describe("vantage/oq-deprecated", () => {
         "a reader still on 0.7 gets no one-click answer and no anchor there, and misreads nothing",
       );
       // Keeping it is the default an agent cannot rule out, and the way to
-      // keep it quietly is named, with what it costs an older checker.
+      // keep it quietly is named as a human's line, not an agent's fix.
       expect(finding?.message).toContain(
         "keep the `oq` while any reader is on 0.7, and unless you know they all upgraded",
       );
       expect(finding?.message).toContain(
-        'under [check.rules]: "vantage/oq-deprecated" = "off" (a vantage-check before 0.8 exits 2 on that line',
+        'says so at the top of .vantage.toml with target = "0.7", a line for a human to write, and vantage/oq-deprecated then stays quiet there.',
       );
     },
   );

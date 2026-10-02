@@ -6,6 +6,17 @@ are summarized one section per minor line; the commit log has the rest.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-10-02
+
+If your `.vantage.toml` sets a `target` before 0.8, such as `target = "0.7"`,
+`vantage-check` no longer asks you to write `question` on an open question,
+because a viewer before 0.8 offers its one-click answer only on an `oq`: it stops
+warning on an `oq` (`vantage/oq-deprecated`), and tells a question with no
+directive to take one (`vantage/oq-missing`). An `oq` on a 🔒 or ✅ question is
+still an error. A checker before 0.8 ignores the `target` line, where 0.7.1
+rejects `"vantage/oq-deprecated" = "off"`. See
+[When Your Readers Are on 0.7](userguide/guides/vantage-check.md#when-your-readers-are-on-07).
+
 ## [0.8.0] - 2026-10-02
 
 **Highlights.** Vantage 0.8 puts every open question in your design docs on one
