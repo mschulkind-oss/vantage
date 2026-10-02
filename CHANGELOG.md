@@ -8,9 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.8.0] - 2026-10-02
 
-Vantage 0.8 puts every open question in your design docs on one page, in roadmap
-order, hands your answers to an agent in one copy, and serves a whole folder of
-clones with `vantage ~/code`.
+**Highlights.** Vantage 0.8 puts every open question in your design docs on one
+page, in roadmap order, hands your answers to an agent in one copy, and serves a
+whole folder of clones with `vantage ~/code`.
 
 ### Added
 
