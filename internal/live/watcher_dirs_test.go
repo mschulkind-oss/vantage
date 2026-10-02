@@ -89,38 +89,19 @@ func TestFlushBroadcastsRemovedDirectories(t *testing.T) {
 
 // A directory that goes away takes every recent file inside it along, and the
 // viewer refreshes its recent files on the push that says so. That list is
-// cached for half a minute and otherwise dropped only when git's own state
-// changes, which a plain `mv` never touches, so the refresh fetched the list
-// from before the rename: the old paths, and none of the new ones. Only this
-// repository's list is dropped: in daemon mode every served repository shares
-// the cache, and another's did not change.
+// cached for half a minute and was dropped only when git's own state changed,
+// which a plain `mv` never touches, so the refresh fetched the list from before
+// the rename: the old paths, and none of the new ones. Only this repository's
+// list is dropped: in daemon mode every served repository shares the cache,
+// and another's did not change.
 func TestFlushForgetsTheRecentFilesOfARemovedDirectory(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git binary not available")
-	}
-	initRepo := func(files map[string]string) string {
-		root := t.TempDir()
-		gitInit := exec.Command("git", "init", "-q")
-		gitInit.Dir = root
-		// Scrubbed, or inside the pre-commit hook, which exports GIT_DIR, this
-		// init reinitialized the repository being committed to, as a bare one.
-		gitInit.Env = append(gitenv.Scrubbed(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
-		out, err := gitInit.CombinedOutput()
-		require.NoErrorf(t, err, "git init: %s", out)
-		writeTree(t, root, files)
-		return root
-	}
-	root := initRepo(map[string]string{"docs/old/a.md": "# A\n"})
-	other := initRepo(map[string]string{"b.md": "# B\n"})
+	root := gitRepo(t, map[string]string{"docs/old/a.md": "# A\n"})
+	other := gitRepo(t, map[string]string{"b.md": "# B\n"})
 
 	gitsvc.ClearRecentFilesCache()
 	t.Cleanup(gitsvc.ClearRecentFilesCache)
 	recent := func(svc *gitsvc.GitService) []string {
-		var paths []string
-		for _, rf := range svc.RecentsUnreported(30, nil, false, true) {
-			paths = append(paths, rf.Path)
-		}
-		return paths
+		return recentPaths(svc, 30)
 	}
 	svc, otherSvc := gitsvc.NewService(root, gitsvc.Options{}), gitsvc.NewService(other, gitsvc.Options{})
 	require.Equal(t, []string{"docs/old/a.md"}, recent(svc))
@@ -133,6 +114,73 @@ func TestFlushForgetsTheRecentFilesOfARemovedDirectory(t *testing.T) {
 	w.flush([]string{"docs/old/", "docs/new/a.md"})
 	require.Equal(t, []string{"docs/new/a.md"}, recent(svc))
 	require.Equal(t, []string{"b.md"}, recent(otherSvc), "the other repository's list is still the cached one")
+}
+
+// A Markdown file written is the newest of its repository's recent files, and
+// the viewer refreshes its recent files on the push that names it. That list
+// was cached for half a minute and dropped only when git's own state changed,
+// which a write never touches, so the refresh fetched the list from before the
+// write: a file just created was not in it, and one just saved kept its old
+// place. And the viewer refetches only on a push, so the page went on showing
+// that list until something else changed. Only this repository's list is
+// dropped, as for a directory that goes.
+func TestFlushForgetsTheRecentFilesOfAWrittenMarkdownFile(t *testing.T) {
+	root := gitRepo(t, map[string]string{"old.md": "# Old\n", "mid.md": "# Mid\n", "newer.md": "# Newer\n"})
+	other := gitRepo(t, map[string]string{"b.md": "# B\n"})
+	now := time.Now()
+	age := func(rel string, by time.Duration) {
+		at := now.Add(-by)
+		require.NoError(t, os.Chtimes(filepath.Join(root, rel), at, at))
+	}
+	age("old.md", 3*time.Hour)
+	age("mid.md", 2*time.Hour)
+	age("newer.md", time.Hour)
+
+	gitsvc.ClearRecentFilesCache()
+	t.Cleanup(gitsvc.ClearRecentFilesCache)
+	svc, otherSvc := gitsvc.NewService(root, gitsvc.Options{}), gitsvc.NewService(other, gitsvc.Options{})
+	require.Equal(t, []string{"newer.md", "mid.md", "old.md"}, recentPaths(svc, 3))
+	require.Equal(t, []string{"b.md"}, recentPaths(otherSvc, 3))
+
+	w, err := NewWatcher(root, "", NewManager(quietLogger(), nil), nil, false, quietLogger())
+	require.NoError(t, err)
+	// One file created and one saved, the saved one with the same contents, as
+	// an editor's save of an unchanged buffer leaves it. The created one is
+	// the newer.
+	writeTree(t, root, map[string]string{"created.md": "# Created\n", "old.md": "# Old\n"})
+	age("old.md", time.Minute)
+	writeTree(t, other, map[string]string{"b2.md": "# B2\n"})
+	w.flush([]string{"created.md", "old.md"})
+	require.Equal(t, []string{"created.md", "old.md", "newer.md"}, recentPaths(svc, 3))
+	require.Equal(t, []string{"b.md"}, recentPaths(otherSvc, 3), "the other repository's list is still the cached one")
+}
+
+// gitRepo makes a git repository holding files, with nothing committed.
+func gitRepo(t *testing.T, files map[string]string) string {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git binary not available")
+	}
+	root := t.TempDir()
+	gitInit := exec.Command("git", "init", "-q")
+	gitInit.Dir = root
+	// Scrubbed, or inside the pre-commit hook, which exports GIT_DIR, this
+	// init reinitialized the repository being committed to, as a bare one.
+	gitInit.Env = append(gitenv.Scrubbed(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+	out, err := gitInit.CombinedOutput()
+	require.NoErrorf(t, err, "git init: %s", out)
+	writeTree(t, root, files)
+	return root
+}
+
+// recentPaths is the paths of svc's limit most recent files, as the sidebar
+// asks for them: hidden files left out, gitignored ones in.
+func recentPaths(svc *gitsvc.GitService, limit int) []string {
+	var paths []string
+	for _, rf := range svc.RecentsUnreported(limit, nil, false, true) {
+		paths = append(paths, rf.Path)
+	}
+	return paths
 }
 
 // --- the event loop ---------------------------------------------------------
