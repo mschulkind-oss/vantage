@@ -89,7 +89,8 @@ describe("the style guide's questions", () => {
     );
     expect(guide).toContain("`vantage/question-name`");
     // What `question` costs a reader still on 0.7, stated once, and how a
-    // repository whose readers are on 0.7 keeps its `oq`s without the warning.
+    // repository whose readers are on 0.7 keeps its `oq`s without the warning:
+    // its target, which a checker before 0.8 ignores rather than rejects.
     expect(guide).toContain(
       "a reader still on 0.7 gets no one-click answer and no anchor on a question written with it, and misreads nothing",
     );
@@ -97,7 +98,7 @@ describe("the style guide's questions", () => {
       "keep an `oq` on an open question unless you know every reader of the repository is on 0.8 or later",
     );
     expect(guide).toContain(
-      '`"vantage/oq-deprecated" = "off"` under `[check.rules]`',
+      'says so with a `target` before 0.8, such as `target = "0.7"`: there an open question takes `oq`, new ones included, and `vantage-check` asks for `oq` rather than `question` on one.',
     );
   });
 

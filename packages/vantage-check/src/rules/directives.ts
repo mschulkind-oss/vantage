@@ -1,3 +1,4 @@
+import { dirname, resolve } from "node:path";
 import type { Html, List, ListItem, Parents, Root, RootContent } from "mdast";
 import { visit } from "unist-util-visit";
 // The viewer's own grammar, vocabulary and target-tag lists, imported from
@@ -43,6 +44,10 @@ import type { DeclaredOq } from "../core/openQuestions.js";
 import type { CommentSegment, Segment } from "../core/comments.js";
 import type { Collector, FilePosition } from "../core/collector.js";
 import { fileLine, parseMarkdown } from "../core/document.js";
+import { readsOnlyOq } from "../core/target.js";
+import { repositoryRoot } from "../core/projectRoot.js";
+import type { Target } from "../core/config.js";
+import type { Finding } from "../core/types.js";
 import { RELEASE, viewerName } from "../version.js";
 
 /**
@@ -1189,18 +1194,88 @@ export function checkOpenQuestions(collector: Collector): void {
         line: fileLine(collector.doc, leaning.position?.start.line ?? 1),
         column: leaning.position?.start.column ?? 1,
       },
-      "This is an open question (\u{1F4AC}) with a stated leaning and no " +
-        "`question` directive, so review mode renders no one-click answer for " +
-        "it and the reviewer has no way to file the leaning. Add " +
-        '`<!-- vantage: question id=\u2026 leaning="\u2026" -->` directly above ' +
-        "the `_Leaning:_` paragraph, indented into the same list item, " +
-        "restating the leaning as the comment the agent will receive. Keep it " +
-        "when the question is marked \u{1F512} blocked or \u2705 answered, " +
-        "which changes only the marker: Vantage's planning index reads a " +
-        "question only from its directive, so without one nothing counts it, " +
-        "badges it or lists it.",
+      OQ_MISSING_MESSAGE,
     );
   });
+}
+
+/** `vantage/oq-missing`, for a repository whose readers are all on 0.8 or later. */
+export const OQ_MISSING_MESSAGE =
+  "This is an open question (\u{1F4AC}) with a stated leaning and no " +
+  "`question` directive, so review mode renders no one-click answer for " +
+  "it and the reviewer has no way to file the leaning. Add " +
+  '`<!-- vantage: question id=\u2026 leaning="\u2026" -->` directly above ' +
+  "the `_Leaning:_` paragraph, indented into the same list item, " +
+  "restating the leaning as the comment the agent will receive. Keep it " +
+  "when the question is marked \u{1F512} blocked or \u2705 answered, " +
+  "which changes only the marker: Vantage's planning index reads a " +
+  "question only from its directive, so without one nothing counts it, " +
+  "badges it or lists it.";
+
+/**
+ * `vantage/oq-missing` under a target before 0.8, whose readers' viewer drops
+ * `question` and offers the one-click answer only on an `oq`: the same fix,
+ * with the name those readers can answer, and the rename the marker then owes.
+ */
+export const OQ_MISSING_FOR_OLDER_READERS_MESSAGE =
+  "This is an open question (\u{1F4AC}) with a stated leaning and no " +
+  "question directive, so review mode renders no one-click answer for it " +
+  "and the reviewer has no way to file the leaning. This repository's " +
+  "target is before Vantage 0.8, whose viewer offers that answer only on " +
+  'an `oq`, so add `<!-- vantage: oq id=\u2026 leaning="\u2026" -->` directly ' +
+  "above the `_Leaning:_` paragraph, indented into the same list item, " +
+  "restating the leaning as the comment the agent will receive. When the " +
+  "question is marked \u{1F512} blocked or \u2705 answered, rename it to " +
+  "`question`, keys unchanged, since every viewer before 0.8 offers to " +
+  "answer an `oq` whatever its marker says (vantage/question-name), and " +
+  "keep it: Vantage's planning index reads a question only from its " +
+  "directive, so without one nothing counts it, badges it or lists it.";
+
+/**
+ * The question rules' findings, held to each document's target (OQ-VS7). Under
+ * a target before 0.8 the readers' viewer drops `question` and offers its
+ * one-click answer only on an `oq`, so there:
+ *
+ * - `vantage/oq-deprecated` has nothing to say, since the `question` it asks
+ *   for would take that answer away from them;
+ * - `vantage/oq-missing` asks for an `oq`, for the same reason.
+ *
+ * `vantage/question-name` is untouched: an `oq` on a 🔒 or ✅ question is
+ * wrong for every reader.
+ *
+ * Done once, on the run's joined report, rather than in the rules: they run
+ * in the shards, which are handed the run's settings and no project's target,
+ * and one pass over the joined report keeps `--jobs 1` and `--jobs 4`
+ * byte-identical. A finding's `file` is its document's display path, which
+ * resolves back to the path the run found it at.
+ */
+export function holdToOlderReaders(
+  findings: readonly Finding[],
+  cwd: string,
+  targetFor: (root: string | null) => Target | null,
+): Finding[] {
+  const older = new Map<string | null, boolean>();
+  const readersOnOq = (file: string) => {
+    const root = repositoryRoot(dirname(resolve(cwd, file))) ?? null;
+    let found = older.get(root);
+    if (found === undefined) {
+      found = readsOnlyOq(targetFor(root));
+      older.set(root, found);
+    }
+    return found;
+  };
+  const held: Finding[] = [];
+  for (const finding of findings) {
+    if (finding.rule === OQ_DEPRECATED_RULE && readersOnOq(finding.file)) {
+      continue;
+    }
+    held.push(
+      finding.rule === "vantage/oq-missing" && readersOnOq(finding.file)
+        ? { ...finding, message: OQ_MISSING_FOR_OLDER_READERS_MESSAGE }
+        : finding,
+    );
+  }
+  return held;
 }
 
 /* ------------------------------------------------------------------ *
@@ -1287,7 +1362,9 @@ export function checkOpenQuestionIds(collector: Collector): void {
  * - **Anywhere else, a warning** (`vantage/oq-deprecated`) that quotes the
  *   `question` to write, keys unchanged. The `oq` still works in every
  *   viewer, so nothing is wrong yet; a repository whose readers are still on
- *   0.7, which drops `question`, keeps it until they upgrade.
+ *   0.7, which drops `question`, keeps it until they upgrade, and says so with
+ *   a `target` before 0.8, under which `check` drops this warning
+ *   (`holdToOlderReaders`).
  *
  * The state is the planning index's own reading of the question
  * (`scanPlanningDocument`), so this rule, the index, the contents column and the
@@ -1531,7 +1608,7 @@ const OQ_DEPRECATED_RULE = "vantage/oq-deprecated";
  * the tree cannot place.
  */
 export function oqDeprecatedMessage(directive: ParsedDirective): string {
-  return `\`oq\` is deprecated: write ${asQuestion(directive)} instead, keys unchanged, once every reader of this repository is on Vantage 0.8 or later. \`question\` declares the same question with the same keys, in every state, and Vantage 0.8 and later offer Take this leaning on it while the question is open. Vantage before 0.8 drops it, so a reader still on 0.7 gets no one-click answer and no anchor there, and misreads nothing: keep the \`oq\` while any reader is on 0.7, and unless you know they all upgraded. A repository with readers on 0.7 turns this warning off in .vantage.toml, under [check.rules]: "${OQ_DEPRECATED_RULE}" = "off" (a vantage-check before 0.8 exits 2 on that line, as on any rule it does not know).`;
+  return `\`oq\` is deprecated: write ${asQuestion(directive)} instead, keys unchanged, once every reader of this repository is on Vantage 0.8 or later. \`question\` declares the same question with the same keys, in every state, and Vantage 0.8 and later offer Take this leaning on it while the question is open. Vantage before 0.8 drops it, so a reader still on 0.7 gets no one-click answer and no anchor there, and misreads nothing: keep the \`oq\` while any reader is on 0.7, and unless you know they all upgraded. A repository with readers on 0.7 says so at the top of .vantage.toml with target = "0.7", a line for a human to write, and ${OQ_DEPRECATED_RULE} then stays quiet there.`;
 }
 
 /**

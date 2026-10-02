@@ -339,6 +339,11 @@ count ([§5.2](#52-how-many-threads)).
   while they work, then waits for every shard and merges the reports in shard
   order ([§5.5](#55-determinism-is-structural-not-sorted)).
 
+Either way, the main thread then holds the question findings to each project's
+target (`holdToOlderReaders`), since a shard is handed the run's rule settings
+and no project's target. One pass over the joined report is what keeps it the
+same at any thread count.
+
 A worker serves exactly one shard and is terminated once it answers. There is no
 pool.
 
@@ -353,7 +358,7 @@ sequenceDiagram
     Note over M: planning post-pass, while the workers check
     A-->>M: report for shard 1, or an error
     B-->>M: report for shard N, or an error
-    Note over M: merge in shard order, render, choose the exit code
+    Note over M: merge in shard order, hold questions to each target, render, choose the exit code
 ```
 
 ### 5.2 How many threads

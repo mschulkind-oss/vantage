@@ -304,9 +304,13 @@ What each reader does with it, from 0.8.0:
   checker. A [development build](../guides/vantage-check.md#from-source) never
   refuses.
 - **Any other `vantage-check` says on stderr that it read the target,** and
-  then checks and teaches its own release whatever the target says. It does
-  not yet hold documents to an older target. When your readers are older than
-  the checker, [Which release it writes for](../guides/vantage-check.md#which-release-it-writes-for)
+  then checks and teaches its own release whatever the target says, with one
+  exception from 0.8.1: under a target before 0.8 it asks for `oq` rather than
+  `question` on an open question, because a viewer before 0.8 offers its
+  one-click answer only on an `oq`. It does not warn on an `oq` there
+  (`vantage/oq-deprecated`), and it tells a question with no directive to take
+  one (`vantage/oq-missing`). When your readers are older than the checker,
+  [Which release it writes for](../guides/vantage-check.md#which-release-it-writes-for)
   says what to do.
 - **The server** accepts the key and ignores it.
 - **Checkers and servers released before 0.8.0** ignore it, as they ignore any
@@ -316,9 +320,13 @@ What each reader does with it, from 0.8.0:
 `.vantage.toml` at the root of each repository its files are in, so a run
 that spans repositories refuses if any of them needs a newer checker.
 `--config` makes the named file the only one it answers to, and `--no-config`
-leaves it none.
+leaves it none. The `oq` exception holds each document to its own
+repository's target: the one in the `.vantage.toml` at that repository's root,
+the nearest directory above the document holding `.git` or `.vantage.toml`,
+and never one further up. `--config` holds every document to the file it
+names instead, and a document in no repository is held to none.
 
-**Why declare it before it changes what is checked:** a later release may
+**Why declare it while it changes so little:** a later release may
 need a newer checker for some repositories. Declaring the target now means
 every checker from 0.8.0 on refuses those repositories with one clear message,
 rather than checking them under rules from before that release. A checker

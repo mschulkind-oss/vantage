@@ -20,9 +20,13 @@ import { checkPlanning } from "../rules/planning.js";
 import {
   checkTargetPaths,
   declaredTargets,
+  heldConfigPaths,
+  heldTarget,
   noteTargets,
   refuseTargets,
 } from "../core/target.js";
+import { holdToOlderReaders } from "../rules/directives.js";
+import { RELEASE } from "../version.js";
 import type { RunReport } from "../core/types.js";
 import {
   EXIT_ENVIRONMENT,
@@ -82,13 +86,14 @@ export async function checkCommand(
   };
   const explicit =
     options.configPath !== undefined || options.noConfig === true;
+  const runConfig = configPathFor(load);
   let config;
   let targets;
   try {
     // Each target first, so that a checker too old for a repository says so
     // before it says anything about the rest of that repository's file.
     targets = declaredTargets(
-      checkTargetPaths(configPathFor(load), explicit, files),
+      checkTargetPaths(runConfig, explicit, files),
       io.cwd,
     );
     const refused = refuseTargets(targets, io);
@@ -99,7 +104,11 @@ export async function checkCommand(
     io.err(`vantage-check: ${error.message}\n`);
     return EXIT_USAGE;
   }
-  noteTargets(targets, io);
+  // The run's targets as the findings are held to them: each document to its
+  // own project's file, never to one the upward walk found above it.
+  const declared = targets;
+  const held = heldConfigPaths(files, runConfig, explicit);
+  noteTargets(declared, io, RELEASE, (path) => held.has(path));
   const warned = new Set<string>();
   const warn = (message: string) => {
     if (warned.has(message)) return;
@@ -140,7 +149,12 @@ export async function checkCommand(
       : await parallel;
   const report: RunReport = {
     filesChecked: perFile.filesChecked,
-    findings: [...perFile.findings, ...planning.findings],
+    findings: [
+      ...holdToOlderReaders(perFile.findings, io.cwd, (root) =>
+        heldTarget(declared, runConfig, explicit, root),
+      ),
+      ...planning.findings,
+    ],
     failures: [...perFile.failures, ...planning.failures],
   };
 

@@ -93,8 +93,9 @@ A checker checks and teaches for **its own release**. Its rules accept the
 markup that release's viewer renders, and `style-guide` prints that release's
 guide. It asks no server about the viewer your readers run, and a
 [`target`](../reference/configuration.md#the-oldest-release-your-readers-use)
-in `.vantage.toml` does not yet change what it checks, so the checker's
-version is the version your agents write for.
+in `.vantage.toml` changes only one thing it checks, which directive name it
+asks for on an open question ([below](#when-your-readers-are-on-07)), so the
+checker's version is the version your agents write for.
 
 Bare `uvx vantage-check` runs the newest release, so the checker is often
 newer than your readers' viewer. That is safe by design: a release never gives
@@ -124,15 +125,19 @@ things the 0.8.0 guide teaches:
   questions, until they upgrade, and never on a 🔒 blocked or ✅ answered one,
   which every 0.7.x viewer would offer to answer (`vantage/question-name`).
   `vantage/oq-deprecated` warns on each `oq` it keeps, and fails a `--strict`
-  run, so turn it off for the repository while its readers are on 0.7:
+  run, so say at the top of `.vantage.toml` that your readers are on 0.7:
 
   ```toml
-  [check.rules]
-  "vantage/oq-deprecated" = "off"
+  # .vantage.toml, above the first [table]
+  target = "0.7"
   ```
 
-  A checker before 0.8 exits `2` on that line, as on any rule it does not
-  know, which is one more reason not to run one (below).
+  From 0.8.1, `vantage-check` then leaves those `oq`s alone, tells an open
+  question written with no directive to take an `oq`, and still reports an
+  `oq` on a 🔒 or ✅ question. A checker before 0.8 ignores the line. A 0.8.0
+  checker reads it but still warns, so where one runs, also turn the rule off
+  with `"vantage/oq-deprecated" = "off"` under `[check.rules]`, a line a
+  checker before 0.8 exits `2` on, as on any rule it does not know.
 
 The rest of what 0.8.0 adds, a 0.7.x viewer shows without its meaning or
 ignores. The `stage` and `next` frontmatter are plain metadata rows, the
@@ -359,9 +364,9 @@ will ever tell you.
 | `vantage/list-split` | A directive between two list items, which ends the list and starts a second one | error |
 | `vantage/block-split` | A directive that restructures the document around it — a table losing its remaining rows, a paragraph cut in two, a setext heading losing its underline | error |
 | `vantage/duplicate-key` | The same key twice in one directive, or across a run of them, which merges the same way — the last one wins, so a warning | warning |
-| `vantage/oq-missing` | An open question (💬) in a list item, with an `OQ-…` id and a `_Leaning:_` line but no `question` directive, so review mode offers no one-click answer for it | error |
+| `vantage/oq-missing` | An open question (💬) in a list item, with an `OQ-…` id and a `_Leaning:_` line but no `question` directive, so review mode offers no one-click answer for it. Under a [`target`](../reference/configuration.md#the-oldest-release-your-readers-use) before 0.8 it asks for an `oq` instead | error |
 | `vantage/question-name` | An `oq` directive on a 🔒 blocked or ✅ answered question, which every Vantage before 0.8 offers to answer in one click, or a question directive below a 🔒 or ✅ title outside a list, where it lands on an unmarked block and the question reads as open | error |
-| `vantage/oq-deprecated` | Any other `oq` directive: it still works in every Vantage, and the message quotes the `question` directive to write instead, keys unchanged | warning |
+| `vantage/oq-deprecated` | Any other `oq` directive: it still works in every Vantage, and the message quotes the `question` directive to write instead, keys unchanged. Not reported under a [`target`](../reference/configuration.md#the-oldest-release-your-readers-use) before 0.8, whose readers answer only an `oq` in one click | warning |
 | `vantage/question-layout` | A question's `_Leaning:_` run into a paragraph with other text — after the title or the context, or followed by its `**Answer:**` — which neither the page nor the planning card can lay out as its leaning | warning |
 | `vantage/oq-id-format` | A question directive's id that is not `OQ-`, an optional uppercase prefix and digits, which the sanitizer refuses, so the question gets no anchor | error |
 | `vantage/oq-id-duplicate` | The same id on two questions in one document, on `question` or `oq` directives, so every `#OQ-…` link to it lands on the first (one run of directives is one question) | error |

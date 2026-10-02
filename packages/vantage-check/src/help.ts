@@ -116,7 +116,10 @@ not); roadmap names exactly the ones to read instead, as one path or a list:
 
 A top-level target, written above the first [table], names the oldest Vantage
 release this repository's readers use. A checker older than it refuses to run
-and names the release it needs; any other says on stderr that it read it.
+and names the release it needs; any other says on stderr that it read it. Under
+a target before 0.8, check asks for oq, not question, on an open question
+(vantage/oq-deprecated, vantage/oq-missing): a viewer before 0.8 answers only
+an oq in one click.
 
   target = "0.8"
 
