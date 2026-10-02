@@ -6,7 +6,7 @@ are summarized one section per minor line; the commit log has the rest.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.8.0] - 2026-09-30
+## [0.8.0] - 2026-10-02
 
 `vantage-check index` and a planning page show what a repository's plans still
 need, and `vantage ~/code` serves each clone as its own project.
