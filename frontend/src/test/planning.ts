@@ -12,13 +12,20 @@ import { fileURLToPath } from "node:url";
 import { questionOffersTake, vantageOqStatus } from "vantage-md";
 import {
   DEFAULT_PLANNING_CONFIG,
+  PLANNING_SECTION_GUIDE,
+  PLANNING_SECTION_IDS,
   buildPlanningIndex,
   scanCandidate,
   type CardBlock,
   type PlanningConfig,
+  type PlanningFilterReason,
   type PlanningIndex,
+  type PlanningSections,
   type PlanningSources,
+  type QuestionRef,
   type ScannedEntry,
+  type StageRole,
+  type WaitingEntry,
 } from "vantage-md/planning";
 
 /** This file's own URL, held in a variable so Vite does not rewrite it. */
@@ -142,4 +149,90 @@ export function scannedOf(
     if (result.kind === "planning") blocks[path] = result.cards;
   }
   return { entries, blocks };
+}
+
+/** Where the fixture of forms lives, from the repository root. */
+export const FILTER_FORMS_PATH =
+  "packages/vantage-md/src/planning/filterForms.json";
+
+/**
+ * The planning filter's fixture of forms (`docs/design/planning-filter.md`
+ * §10.4): a small index, every filter text this release reads with what it
+ * keeps there, and texts it does not understand with the term each names, or
+ * the reason where there is none.
+ *
+ * In `read`, `documents` are the kept documents, every path the index lists
+ * that one of the text's `path:` terms keeps (all of them when it has none),
+ * as `git check-ignore --no-index` answered for each term on 2026-10-05; and
+ * `keeps` are the entries the filtered sections list under the default
+ * roadmap, in page order, as `sectionEntryKeys` writes them. A later release
+ * may move an entry from `notUnderstood` to `read`, and never edit or remove a
+ * `read` entry.
+ */
+export interface PlanningFilterForms {
+  index: {
+    stages: Record<string, StageRole>;
+    /** Lower than the default, so `skipped` can be a real file on disk. */
+    maxFileBytes: number;
+    files: Record<string, string>;
+    /** Too large: on disk, a file of `size` bytes. */
+    skipped: { path: string; size: number }[];
+  };
+  read: {
+    text: string;
+    canonical: string;
+    documents: string[];
+    keeps: string[];
+    /** The canonical texts of its `path:` terms that match no listed path. */
+    unmatched: string[];
+  }[];
+  notUnderstood: (
+    | { text: string; term: string }
+    | { text: string; reason: PlanningFilterReason }
+  )[];
+}
+
+/** The fixture of forms, read fresh from disk. */
+export function filterForms(): PlanningFilterForms {
+  return JSON.parse(readRepoFile(FILTER_FORMS_PATH)) as PlanningFilterForms;
+}
+
+/** The fixture of forms' index, as the checker's walk would batch it. */
+export function filterFormsIndex(
+  forms: PlanningFilterForms = filterForms(),
+): PlanningIndex {
+  const { files, skipped, stages, maxFileBytes } = forms.index;
+  return buildPlanningIndex(
+    sourcesOf(
+      files,
+      { skipped, candidateCount: Object.keys(files).length + skipped.length },
+      { stages, maxFileBytes },
+    ),
+  );
+}
+
+/**
+ * Every entry `sections` lists, in page order, as the fixture of forms names
+ * one: `"<section id> <path>"` for a row, and `"<section id> <path>#<id>"`
+ * for a question.
+ */
+export function sectionEntryKeys(sections: PlanningSections): string[] {
+  const question = (id: string, ref: QuestionRef) =>
+    `${id} ${ref.path}#${ref.id ?? `line ${ref.line}`}`;
+  return PLANNING_SECTION_IDS.flatMap((id) => {
+    const key = PLANNING_SECTION_GUIDE[id].key;
+    const entries = (sections[key] ?? []) as readonly (
+      string | WaitingEntry | QuestionRef | { path: string }
+    )[];
+    return entries.map((entry) => {
+      if (typeof entry === "string") return `${id} ${entry}`;
+      if ("kind" in entry) {
+        return entry.kind === "document"
+          ? `${id} ${entry.path}`
+          : question(id, entry.question);
+      }
+      if ("line" in entry) return question(id, entry);
+      return `${id} ${entry.path}`;
+    });
+  });
 }
