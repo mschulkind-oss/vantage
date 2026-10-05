@@ -98,6 +98,27 @@ describe("the fixture of forms (§10.4)", () => {
       expect.arrayContaining(["roadmap.md", "x/roadmap.md"]),
     );
     expect(paths).toContain("docs/my notes.md");
+    // A trailing `/` (§5.4) is told from none only by a folder named like a
+    // file elsewhere, and a quoted leading `/` only by a root path that needs
+    // quoting, as `documentFilter` writes it for Referenced by (§7).
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        "a.md",
+        "y/a.md/inner.md",
+        "my notes.md",
+        "y/my notes.md/inner.md",
+      ]),
+    );
+    const canonicals = FORMS.read.map((entry) => entry.canonical);
+    expect(canonicals).toEqual(
+      expect.arrayContaining([
+        "path:a.md/",
+        "path:docs/design/a.md/",
+        'path:"/my notes.md"',
+        'path:"my notes.md/"',
+        'path:"docs/my notes.md/"',
+      ]),
+    );
     // NFC, kept as escapes so no editor can normalize it.
     expect(paths).toContain("docs/caf\u00e9.md");
     expect(paths.every((path) => path === path.normalize("NFC"))).toBe(true);
@@ -346,7 +367,7 @@ describe("the grammar (§5.2, §5.5)", () => {
     }
   });
 
-  it("stops at its limits, configured down, before it reads a term", () => {
+  it("stops at its limits, configured down, with the reason where it has no term to name", () => {
     const terms = { terms: 2, codePoints: 2048 };
     // Counted as written, repeats included.
     expect(parsePlanningFilter("is:open is:open is:open", terms)).toMatchObject(
@@ -358,10 +379,6 @@ describe("the grammar (§5.2, §5.5)", () => {
     expect(parsePlanningFilter("is:open is:open", terms).kind).toBe(
       "understood",
     );
-    // Before any term is read, so it is the reason a bad term gives too.
-    expect(parsePlanningFilter("OR AND NOT", terms)).toMatchObject({
-      reason: "too-many-terms",
-    });
 
     const length = { terms: 64, codePoints: 8 };
     expect(parsePlanningFilter("path:abcd", length)).toMatchObject({
@@ -373,9 +390,6 @@ describe("the grammar (§5.2, §5.5)", () => {
     const emoji = 'path:"\u{1F4AC}"';
     expect(emoji.length).toBe(9);
     expect(parsePlanningFilter(emoji, length).kind).toBe("understood");
-    expect(parsePlanningFilter("OR is:open", length)).toMatchObject({
-      reason: "too-long",
-    });
     // White space counts, but white space alone is still no filter.
     expect(parsePlanningFilter("   is:open", length)).toMatchObject({
       reason: "too-long",
@@ -383,7 +397,61 @@ describe("the grammar (§5.2, §5.5)", () => {
     expect(parsePlanningFilter(" ".repeat(9), length)).toEqual({
       kind: "none",
     });
+    // Past the code-point limit before past the term limit, and both before
+    // an unclosed quote.
+    const both = { terms: 1, codePoints: 16 };
+    expect(parsePlanningFilter("is:open is:open is:open", both)).toMatchObject({
+      term: null,
+      reason: "too-long",
+    });
+    expect(
+      parsePlanningFilter('is:open path:"a', { terms: 1, codePoints: 64 }),
+    ).toMatchObject({ reason: "too-many-terms" });
     expect(PLANNING_FILTER_LIMITS).toEqual({ terms: 64, codePoints: 2048 });
+  });
+
+  // §10.2 and §6.7: the notice names the first term it cannot read, and the
+  // reason stands in only where there is no term to name.
+  it("names the first term it cannot read in a filter past a limit", () => {
+    const terms = { terms: 2, codePoints: 2048 };
+    expect(parsePlanningFilter("OR AND NOT", terms)).toMatchObject({
+      term: "OR",
+      reason: null,
+    });
+    // Past the term limit too: every term is read.
+    expect(
+      parsePlanningFilter("is:open is:open is:open title:x", terms),
+    ).toMatchObject({ term: "title:x", reason: null });
+
+    const length = { terms: 64, codePoints: 10 };
+    expect(parsePlanningFilter("foo xxxxxxxxxxxxxxxxxxxx", length)).toEqual({
+      kind: "not-understood",
+      text: "foo xxxxxxxxxxxxxxxxxxxx",
+      term: "foo",
+      reason: null,
+    });
+    expect(parsePlanningFilter("OR is:open path:abc", length)).toMatchObject({
+      term: "OR",
+    });
+    // A term that ends exactly at the limit is read whole: the one code
+    // point after it says it ends there.
+    expect(parsePlanningFilter("is:open OR path:abc", length)).toMatchObject({
+      term: "OR",
+    });
+    // A term the limit cuts off is never named, even where what is read of
+    // it is not understood, since nothing past the limit is read.
+    expect(parsePlanningFilter("is:open TITLE:x", length)).toMatchObject({
+      term: null,
+      reason: "too-long",
+    });
+    expect(parsePlanningFilter('is:open "OR x"', length)).toMatchObject({
+      term: null,
+      reason: "too-long",
+    });
+    // Before an unclosed quote, a term is named too.
+    expect(parsePlanningFilter('OR path:"a b', terms)).toMatchObject({
+      term: "OR",
+    });
   });
 
   it("refuses each end of each excluded range inside quotes, and what lies just outside none", () => {
@@ -553,6 +621,34 @@ describe("matching (§5.3, §5.4)", () => {
     expect(compared).toBeGreaterThanOrEqual(4);
   });
 
+  // §5.4: the fixture tells git's answer for a trailing `/` from the answer
+  // without it, bare and quoted, anchored and not.
+  it("holds git's answers that a trailing / keeps only what is under it", () => {
+    const documents = (text: string) =>
+      FORMS.read.find((entry) => entry.text === text)?.documents;
+    // With the `/`, what is kept; without it, a file it keeps as well.
+    const pairs: [string, string[], string][] = [
+      ["path:a.md/", ["y/a.md/inner.md"], "a.md"],
+      ["path:docs/design/a.md/", [], "docs/design/a.md"],
+      ['path:"my notes.md/"', ["y/my notes.md/inner.md"], "my notes.md"],
+      ['path:"docs/my notes.md/"', [], "docs/my notes.md"],
+    ];
+    for (const [under, kept, file] of pairs) {
+      const plain = under.replace(/\/("?)$/, "$1");
+      expect(documents(under), under).toEqual(kept);
+      expect(documents(plain), plain).toEqual(
+        expect.arrayContaining([...kept, file]),
+      );
+    }
+    // And a quoted leading `/` from none: only the root's file.
+    expect(documents('path:"/my notes.md"')).toEqual(["my notes.md"]);
+    expect(documents('path:"my notes.md"')).toEqual([
+      "docs/my notes.md",
+      "my notes.md",
+      "y/my notes.md/inner.md",
+    ]);
+  });
+
   it("compares a quoted value code point for code point", () => {
     // The port would trim the spaces, and read `[ab]` as a class.
     expect(keeps('path:" a.md"', "a.md")).toBe(false);
@@ -657,6 +753,59 @@ describe("applying a filter to the sections (§6.1, §6.2)", () => {
     ]);
   });
 
+  // §6.2 and §5.3: the notice names each roadmap that holds a kept question,
+  // as each roadmap's needsYouCount counts it, though `onOtherRoadmaps` keeps
+  // the question once, under the first.
+  it("names every other roadmap that routes a kept question, counting the question once", () => {
+    const question = (id: string) =>
+      `---\nstatus: draft\n---\n\n# ${id}\n\n1. \u{1F4AC} **OQ-${id}1: ${id}?**\n\n   <!-- vantage: question id=OQ-${id}1 leaning="Yes." -->\n\n   _Leaning:_ yes.\n`;
+    const index = indexOf({
+      "roadmap.md": "# R\n\n- [A](docs/a.md)\n",
+      "b/roadmap.md": "# B\n\n- [C](../docs/c.md)\n- [D](../docs/d.md)\n",
+      "c/roadmap.md": "# C\n\n- [C](../docs/c.md)\n",
+      "docs/a.md": question("A"),
+      "docs/c.md": question("C"),
+      "docs/d.md": question("D"),
+    });
+    const sections = derivePlanningSections(index);
+    expect(sections.onOtherRoadmaps.map((q) => [q.id, q.roadmap])).toEqual([
+      ["OQ-C1", "b/roadmap.md"],
+      ["OQ-D1", "b/roadmap.md"],
+    ]);
+
+    const one = apply("path:docs/c.md is:open", index, sections);
+    expect(one.summary.onOtherRoadmaps).toBe(1);
+    expect(one.summary.otherRoadmaps).toEqual([
+      { path: "b/roadmap.md", count: 1 },
+      { path: "c/roadmap.md", count: 1 },
+    ]);
+    const counts = Object.fromEntries(
+      one.sections.roadmaps.map((r) => [r.path, r.needsYouCount]),
+    );
+    expect(counts).toEqual({
+      "roadmap.md": 0,
+      "b/roadmap.md": 1,
+      "c/roadmap.md": 1,
+    });
+    expect(
+      PLANNING_NOTICES.filtered(one.summary, "checker").map(noticeText)[1],
+    ).toBe(
+      "1 more question it keeps is on other roadmaps: `b/roadmap.md` (1), `c/roadmap.md` (1). Rerun with --roadmap naming one.",
+    );
+
+    const both = apply("path:docs/c.md path:docs/d.md", index, sections);
+    expect(both.summary.onOtherRoadmaps).toBe(2);
+    expect(both.summary.otherRoadmaps).toEqual([
+      { path: "b/roadmap.md", count: 2 },
+      { path: "c/roadmap.md", count: 1 },
+    ]);
+    // The chosen roadmap is never named, though it routes kept questions.
+    const onB = derivePlanningSections(index, { roadmap: "b/roadmap.md" });
+    expect(apply("path:docs", index, onB).summary.otherRoadmaps).toEqual([
+      { path: "roadmap.md", count: 1 },
+    ]);
+  });
+
   it("reads nothingNeedsYou as no open question it keeps in a live document", () => {
     expect(SECTIONS.nothingNeedsYou).toBe(false);
     expect(apply("path:notes/b.md is:open").sections.nothingNeedsYou).toBe(
@@ -724,7 +873,7 @@ describe("applying a filter to the sections (§6.1, §6.2)", () => {
     expect(apply("path:docs/design/a.md is:open").summary).toMatchObject({
       canonical: "path:docs/design/a.md is:open",
       entries: { shown: 2, of: all },
-      documents: { kept: 1, of: 16 },
+      documents: { kept: 1, of: 19 },
       openQuestions: 2,
     });
     // A ✅ question is an entry and not an open question.
@@ -734,7 +883,7 @@ describe("applying a filter to the sections (§6.1, §6.2)", () => {
     });
     expect(apply("is:open").summary).toMatchObject({
       entries: { shown: 8, of: all },
-      documents: { kept: 16, of: 16 },
+      documents: { kept: 19, of: 19 },
       openQuestions: 8,
     });
   });
@@ -992,10 +1141,10 @@ describe("the filter notice (§6.7)", () => {
     expect(first).toEqual([
       "Filtered by ",
       { code: "path:docs/design/a.md is:open" },
-      ": 2 of 18 entries, in 1 of 16 paths, 2 of them open questions.",
+      ": 2 of 18 entries, in 1 of 19 paths, 2 of them open questions.",
     ]);
     expect(checker(summary)).toEqual([
-      "Filtered by `path:docs/design/a.md is:open`: 2 of 18 entries, in 1 of 16 paths, 2 of them open questions.",
+      "Filtered by `path:docs/design/a.md is:open`: 2 of 18 entries, in 1 of 19 paths, 2 of them open questions.",
       "1 of its questions is blocked and will need you later.",
       "Run without --filter to see the other 16.",
     ]);
@@ -1006,7 +1155,7 @@ describe("the filter notice (§6.7)", () => {
     expect(
       checker(apply("path:docs/desing path:notes/e.md path:x/y").summary),
     ).toEqual([
-      "Filtered by `path:docs/desing path:notes/e.md path:x/y`: 1 of 18 entries, in 1 of 16 paths, none of them open questions.",
+      "Filtered by `path:docs/desing path:notes/e.md path:x/y`: 1 of 18 entries, in 1 of 19 paths, none of them open questions.",
       "`path:docs/desing` matches no path the index lists.",
       "`path:x/y` matches no path the index lists.",
       "Run without --filter to see the other 17.",
@@ -1016,7 +1165,7 @@ describe("the filter notice (§6.7)", () => {
   it("names the other roadmaps holding kept questions, in each reader's words", () => {
     const { summary } = apply("path:docs/design/sub/c.md is:open");
     expect(checker(summary)).toEqual([
-      "Filtered by `path:docs/design/sub/c.md is:open`: 1 of 18 entries, in 1 of 16 paths, 1 of them an open question.",
+      "Filtered by `path:docs/design/sub/c.md is:open`: 1 of 18 entries, in 1 of 19 paths, 1 of them an open question.",
       "1 more question it keeps is on another roadmap: `x/roadmap.md` (1). Rerun with --roadmap naming it.",
       "Run without --filter to see the other 17.",
     ]);
@@ -1025,6 +1174,7 @@ describe("the filter notice (§6.7)", () => {
     );
     const two: PlanningFilterSummary = {
       ...summary,
+      onOtherRoadmaps: 2,
       otherRoadmaps: [
         { path: "docs/a/roadmap.md", count: 1 },
         { path: "docs/b/roadmap.md", count: 1 },
@@ -1036,13 +1186,21 @@ describe("the filter notice (§6.7)", () => {
     expect(page(two)[1]).toBe(
       "2 more questions it keeps are on other roadmaps: `docs/a/roadmap.md` (1), `docs/b/roadmap.md` (1). Choose one to see them; the filter stays.",
     );
+    // One question both roadmaps route: counted once, and under each.
+    const shared: PlanningFilterSummary = { ...two, onOtherRoadmaps: 1 };
+    expect(checker(shared)[1]).toBe(
+      "1 more question it keeps is on other roadmaps: `docs/a/roadmap.md` (1), `docs/b/roadmap.md` (1). Rerun with --roadmap naming one.",
+    );
+    expect(page(shared)[1]).toBe(
+      "1 more question it keeps is on other roadmaps: `docs/a/roadmap.md` (1), `docs/b/roadmap.md` (1). Choose one to see it; the filter stays.",
+    );
   });
 
   it("says what waits on a document the filter leaves out, and when nothing is kept", () => {
     const { summary, sections } = apply("path:notes/b.md is:open");
     expect(sections.nothingNeedsYou).toBe(true);
     expect(checker(summary)).toEqual([
-      "Filtered by `path:notes/b.md is:open`: 0 of 18 entries, in 1 of 16 paths, none of them open questions.",
+      "Filtered by `path:notes/b.md is:open`: 0 of 18 entries, in 1 of 19 paths, none of them open questions.",
       "1 of its questions is blocked and will need you later.",
       "notes/b.md waits on docs/design/sub/c.md#OQ-C1, which this filter leaves out.",
       "Run without --filter to see the other 18.",
@@ -1060,6 +1218,7 @@ describe("the filter notice (§6.7)", () => {
       documents: { kept: 1, of: 1 },
       openQuestions: 1234,
       blockedLeftOut: 3,
+      onOtherRoadmaps: 2,
       otherRoadmaps: [{ path: "b/roadmap.md", count: 2 }],
       waitsOutside: [
         { path: "a/x.md", target: "c.md" },
