@@ -981,6 +981,7 @@ describe("the Referenced by summary (§7)", () => {
       onRoadmaps: [],
       unrouted: 1,
       roadmaps: ["roadmap.md"],
+      hasLiveQuestions: true,
     });
   });
 
@@ -1016,7 +1017,29 @@ describe("the Referenced by summary (§7)", () => {
       onRoadmaps: [],
       unrouted: 2,
       roadmaps: ["roadmap.md"],
+      hasLiveQuestions: true,
     });
+  });
+
+  // The link to the planning page filtered to the document
+  // (`docs/design/planning-filter.md` §7) is drawn on these facts alone.
+  it("says whether the document is live and holds a question", () => {
+    const has = (
+      files: Record<string, string>,
+      path: string,
+      config: Partial<PlanningConfig> = {},
+    ) => summaryOf(files, path, config).hasLiveQuestions;
+    expect(has(tree, "docs/a.md")).toBe(true);
+    // Any question counts, whatever its state.
+    const settled = doc("status: draft", questions("S", BLOCKED, ANSWERED));
+    expect(has({ "docs/s.md": settled }, "docs/s.md")).toBe(true);
+    // A stage without the done role, or none, is live.
+    const staged = doc("stage: DESIGN", questions("S", OPEN));
+    expect(has({ "docs/s.md": staged }, "docs/s.md", STAGES)).toBe(true);
+    expect(has(tree, "docs/b.md")).toBe(false);
+    const done = doc("stage: GRADUATED", questions("S", OPEN));
+    expect(has({ "docs/s.md": done }, "docs/s.md", STAGES)).toBe(false);
+    expect(has(tree, "docs/missing.md")).toBe(false);
   });
 });
 
@@ -1044,6 +1067,7 @@ describe("the Referenced by summary with several roadmaps (§7)", () => {
       ],
       unrouted: 0,
       roadmaps: ["roadmap.md", "plans/roadmap.md"],
+      hasLiveQuestions: true,
     });
   });
 
