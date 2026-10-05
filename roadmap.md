@@ -1,6 +1,6 @@
 # Roadmap
 
-**Updated:** 2026-10-01
+**Updated:** 2026-10-05
 
 The order is the one thing this file holds that no other document can. Each entry is a link and the reason it sits where it does. What the linked document owns, its status, its stage and its open questions, is not copied here: Vantage shows it in a badge beside the link, and on GitHub it is one click away in that document's frontmatter. Prose beneath an entry holds only what has no other home. What a link here routes, and how `vantage-check index` finds the questions this file misses: [Planning Documents](userguide/guides/planning.md#the-roadmap).
 
@@ -8,11 +8,13 @@ The order is the one thing this file holds that no other document can. Each entr
 
 ## 📦 Up Next
 
-1. [Forward-compatible notation for 0.8.0](docs/design/checker-version-skew.md), first, because 0.8.0 is tagged next and the author's agent instructions outside this repository still teach the old question names until [their owner updates them](docs/design/checker-version-skew-plan.md#hand-off-agent-instructions-outside-this-repository). Once the tag is out, the design graduates into a reference.
+1. [A planning page filtered to one piece of work](docs/design/planning-filter.md), first, because it is being built now.
 
-2. [Measuring the planning index at scale](docs/design/planning-index-measurement.md), ahead of the rest, because 0.8.0 is the first release to carry the index and it has not been measured at scale.
+2. [Forward-compatible notation for 0.8.0](docs/design/checker-version-skew.md), next, because 0.8.0 is tagged next and the author's agent instructions outside this repository still teach the old question names until [their owner updates them](docs/design/checker-version-skew-plan.md#hand-off-agent-instructions-outside-this-repository). Once the tag is out, the design graduates into a reference.
 
-3. [A semantic-token vocabulary](docs/design/color-themes.md#9-follow-ups), before any component moves, because every PR after the first is a mapping onto its names.
+3. [Measuring the planning index at scale](docs/design/planning-index-measurement.md), ahead of the rest, because 0.8.0 is the first release to carry the index and it has not been measured at scale.
+
+4. [A semantic-token vocabulary](docs/design/color-themes.md#9-follow-ups), before any component moves, because every PR after the first is a mapping onto its names.
 
    [`OQ-CT1`](docs/design/color-themes.md#decision-ledger) rules semantic tokens in as the layer above the color ramps — `--surface`, `--text-muted`, each defined over a ramp step — as a series of its own, one area of the app per PR so each diff stays reviewable.
 
@@ -20,7 +22,7 @@ The order is the one thing this file holds that no other document can. Each entr
 
    Themes written against today's contract keep working through the migration, because a token is defined in terms of the ramps rather than instead of them ([`color-themes.md` §5](docs/design/color-themes.md#5-why-runtime-variables-now-and-not-a-semantic-token-migration)).
 
-4. [The rest of the app's accent glyphs onto per-mode ink](frontend/src/lib/contrast.ts), because each is unreadable in one mode and no guard can catch it.
+5. [The rest of the app's accent glyphs onto per-mode ink](frontend/src/lib/contrast.ts), because each is unreadable in one mode and no guard can catch it.
 
    A handful of glyphs are painted in one accent shade for both modes, so each is chosen against one surface and unreadable on the other. Measured by the contrast guard, worst first: the folder icon for a directory containing changes and [`StarButton`](frontend/src/components/StarButton.tsx)'s star are `text-amber-400` at **1.57:1** on the light chrome, collapsed folder icons are `text-blue-400` at 2.41:1, four check marks are `text-green-500` at 2.02:1, [`RecentsPage`](frontend/src/pages/RecentsPage.tsx)'s untracked marker is `text-amber-500` at 1.95:1, and two spinners are `text-blue-600` at 2.79:1 on the dark panel.
 
@@ -28,7 +30,7 @@ The order is the one thing this file holds that no other document can. Each entr
 
    It changes the built-in look in a dozen small places at once, which is [`OQ-CT2`](docs/design/color-themes.md#decision-ledger)'s shape rather than a fix to fold into something else: a PR of its own, before/after in both modes. The guard's skip list is the work list, and each site's target ratio is in its output.
 
-5. [The review UI's literal colors onto the ramps](docs/design/color-themes.md#7-what-is-not-themed-yet), as a PR of its own, because it shifts the built-in look.
+6. [The review UI's literal colors onto the ramps](docs/design/color-themes.md#7-what-is-not-themed-yet), as a PR of its own, because it shifts the built-in look.
 
    About 300 fixed colors in [`frontend/src/index.css`](frontend/src/index.css) — comment highlights, the inline comment cards, their hover and outdated states — ignore every color theme, so under a dark theme whose surfaces are not Tailwind's slate they are the parts that look wrong. [`OQ-CT2`](docs/design/color-themes.md#decision-ledger) rules the conversion in and accepts what it costs.
 
