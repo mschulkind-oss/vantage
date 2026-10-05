@@ -17,6 +17,13 @@
  * *is this on the roadmap?* and *who depends on it?* So the line answers the
  * first in words and the second in a count, and the list waits to be asked for.
  *
+ * Its last part, for a live document holding a question, is a link to the
+ * planning page filtered to that document, *its questions on the planning
+ * page* (`docs/design/planning-filter.md` §7). It is a link of its own after
+ * the disclosure button and after the plain-text line, never inside either,
+ * since a link inside a `<button>` is invalid nested interactive content. It
+ * never shrinks: where the line is cut off, the words before it give way.
+ *
  * - **A disclosure button**, not `<details>`: `aria-expanded` and
  *   `aria-controls` on a real `<button>`, which is keyboard operable and which
  *   review mode's click handler already steps around. The list is rendered
@@ -25,19 +32,22 @@
  *   this component, and the viewer keys it by path, so expanding lasts for the
  *   visit and a different document starts collapsed.
  * - **With no document linking here** there is no list to open, so the line, if
- *   it has anything to say, is plain text rather than a button.
+ *   it has anything to say, is plain text rather than a button, and it may be
+ *   the link alone.
  * - **One line from `sm` up, wrapped below it.** Cut off at a phone's width,
  *   the line lost its end, which is the roadmap's answer and the part the line
  *   exists for, and a touch screen has no hover to show the title. Below `sm`
- *   the line wraps, and a row wraps with a hanging indent and breaks a file
+ *   the line wraps, the link taking a line of its own when it does not fit
+ *   beside the words, and a row wraps with a hanging indent and breaks a file
  *   name with nowhere else to break rather than widen the page.
  * - **One line at every width when it fills a reservation** (`oneLine`): the
  *   line the viewer reserved at first paint for an index still on its way
  *   (`docs/reference/planning-index.md` §12.2) is one line tall, and a
  *   phone's wrapped line was two, so filling it moved the whole document down
- *   a line. There it is cut off instead, for this visit only, with the whole
- *   of it in the title and the documents behind the disclosure; the next
- *   visit has the index at first paint and wraps it.
+ *   a line. There its words are cut off instead, for this visit only, with
+ *   the whole of them in the title and the documents behind the disclosure,
+ *   while the link keeps its width; the next visit has the index at first
+ *   paint and wraps it.
  *
  * It sits inside the prose container, directly after the frontmatter card, so
  * it is built from elements nothing there reads as the document: no heading,
@@ -58,6 +68,13 @@ interface ReferencedByProps {
   /** The viewer URL of a repository path, `/{repo}/…` in daemon mode. */
   hrefFor: (path: string) => string;
   /**
+   * The planning page filtered to this document, or `null` where there is no
+   * page to link: in a static export, or for a path no filter names. The line
+   * links it only when the summary says the document has live questions (see
+   * `summaryLine`).
+   */
+  planningHref?: string | null;
+  /**
    * Keep the line to one line at every width, as it must be when it fills the
    * line reserved for it at first paint. Otherwise it wraps below `sm`.
    */
@@ -73,7 +90,10 @@ export const HEADINGS_SHOWN = 4;
 const counted = (n: number, one: string, many: string) =>
   `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 
-/** What the line says: up to three parts, joined by " · " in this order. */
+/** The words of the line's link to the filtered planning page (§7). */
+const PLANNING_PART = "its questions on the planning page";
+
+/** What the line says: up to four parts, joined by " · " in this order. */
 export interface SummaryLine {
   /** `Referenced by N documents`; `null` when no document links here. */
   count: string | null;
@@ -92,17 +112,37 @@ export interface SummaryLine {
    * out, never that the document is off it.
    */
   unrouted: string | null;
+  /**
+   * `its questions on the planning page`, always last: the words of a link to
+   * the planning page filtered to this document
+   * (`docs/design/planning-filter.md` §7). Present when its stage has no
+   * `done` role and it holds at least one question, of any state, which the
+   * filter keeps (`hasLiveQuestions`), and there is a page to link
+   * (`planningHref`). Otherwise `null`, and the rest of the line is as it
+   * would be without it.
+   */
+  planning: string | null;
 }
 
 /**
- * The line for `summary` (§7), or `null` when nothing links to the document and
- * nothing in it is unrouted. The roadmap's answer comes before the unrouted
- * count, and does not replace it: a document the roadmap routes one question
- * of can still hold another it does not, which the planning page lists under
- * *Not on a roadmap*, and this line is where the document's own page says so.
+ * The line for `summary` (§7), or `null` when nothing links to the document,
+ * nothing in it is unrouted, and it has no link to the planning page. The
+ * roadmap's answer comes before the unrouted count, and does not replace it: a
+ * document the roadmap routes one question of can still hold another it does
+ * not, which the planning page lists under *Not on a roadmap*, and this line
+ * is where the document's own page says so.
+ *
+ * `planningHref` is the filtered planning page's address, or `null` where
+ * there is none; the summary decides whether the line links it. So a live
+ * document that nothing links to and that has nothing unrouted, such as one
+ * whose questions are all settled, or any in a repository no roadmap routes,
+ * gets a line holding only the link (planning-filter.md §7).
  */
 // eslint-disable-next-line react-refresh/only-export-components -- the component's own wording, exported for its tests
-export function summaryLine(summary: ReferenceSummary): SummaryLine | null {
+export function summaryLine(
+  summary: ReferenceSummary,
+  planningHref: string | null = null,
+): SummaryLine | null {
   const n = summary.sources.length;
   const count =
     n > 0 ? `Referenced by ${counted(n, "document", "documents")}` : null;
@@ -125,10 +165,20 @@ export function summaryLine(summary: ReferenceSummary): SummaryLine | null {
     summary.unrouted > 0
       ? `${counted(summary.unrouted, "open question", "open questions")} not on ${several ? "any roadmap" : "the roadmap"}`
       : null;
-  if (count === null && roadmap === null && unrouted === null) return null;
-  return { count, roadmap, unrouted };
+  const planning =
+    summary.hasLiveQuestions && planningHref !== null ? PLANNING_PART : null;
+  if (
+    count === null &&
+    roadmap === null &&
+    unrouted === null &&
+    planning === null
+  ) {
+    return null;
+  }
+  return { count, roadmap, unrouted, planning };
 }
 
+/** The parts before the link: the words a button or the plain text holds. */
 const partsOf = (line: SummaryLine) =>
   [line.count, line.roadmap, line.unrouted].filter((part) => part !== null);
 
@@ -296,6 +346,7 @@ function SourceRow({
 export function ReferencedBy({
   summary,
   hrefFor,
+  planningHref = null,
   oneLine = false,
 }: ReferencedByProps) {
   const [open, setOpen] = useState(false);
@@ -307,30 +358,43 @@ export function ReferencedBy({
   // the document body.
   const focusRow = useRef<string | null>(null);
   const listId = useId();
-  const line = summaryLine(summary);
+  const line = summaryLine(summary, planningHref);
   if (line === null) return null;
   const text = textOf(line);
+  const hasWords = partsOf(line).length > 0;
   const labels = labelsOf(summary);
   const truncate = oneLine ? "truncate" : "sm:truncate";
+  // Where the line is one line, the link keeps its width and the words before
+  // it are cut off instead (planning-filter.md §7). Below `sm`, unless it
+  // fills a reservation, the row wraps, and the link takes a line of its own
+  // when it does not fit beside the words.
+  const whole = oneLine
+    ? "shrink-0 whitespace-nowrap"
+    : "sm:shrink-0 sm:whitespace-nowrap";
 
   return (
     <div
       {...{ [REFERENCED_BY_ATTR]: "" }}
       className="not-prose mb-6 text-[13px] leading-relaxed text-slate-500 dark:text-slate-400"
     >
-      {summary.sources.length === 0 ? (
-        <div className={truncate} title={text}>
-          <LineWords line={line} />
-        </div>
-      ) : (
-        <>
+      <div
+        className={cn(
+          "flex items-start",
+          oneLine ? "flex-nowrap" : "flex-wrap sm:flex-nowrap",
+        )}
+      >
+        {!hasWords ? null : summary.sources.length === 0 ? (
+          <div className={cn("min-w-0", truncate)} title={text}>
+            <LineWords line={line} />
+          </div>
+        ) : (
           <button
             type="button"
             aria-expanded={open}
             aria-controls={listId}
             onClick={() => setOpen((was) => !was)}
             title={text}
-            className="-ml-0.5 flex max-w-full items-start gap-1 rounded px-0.5 text-left hover:text-slate-700 dark:hover:text-slate-200"
+            className="-ml-0.5 flex min-w-0 max-w-full items-start gap-1 rounded px-0.5 text-left hover:text-slate-700 dark:hover:text-slate-200"
           >
             <ChevronRight
               aria-hidden="true"
@@ -343,34 +407,54 @@ export function ReferencedBy({
               <LineWords line={line} />
             </span>
           </button>
-          <nav
-            id={listId}
-            aria-label="Referenced by"
-            hidden={!open}
-            className="mt-1 pl-[18px]"
-          >
-            <div role="list" className="flex flex-col gap-1 sm:gap-0.5">
-              {summary.sources.map((source) => (
-                <SourceRow
-                  key={source.from}
-                  source={source}
-                  name={labels.get(source.from)!}
-                  hrefFor={hrefFor}
-                  expanded={expandedRows.has(source.from)}
-                  onMore={() => {
-                    focusRow.current = source.from;
-                    setExpandedRows((rows) => new Set(rows).add(source.from));
-                  }}
-                  revealedRef={(el) => {
-                    if (el === null || focusRow.current !== source.from) return;
-                    focusRow.current = null;
-                    el.querySelector("a")?.focus();
-                  }}
-                />
-              ))}
-            </div>
-          </nav>
-        </>
+        )}
+        {line.planning !== null && planningHref !== null && (
+          <>
+            {hasWords && (
+              <span className="shrink-0 whitespace-pre">{" · "}</span>
+            )}
+            {/* A plain link, so a Ctrl or middle click opens a tab, and it
+                prints as text. */}
+            <AppLink
+              to={planningHref}
+              className={cn(
+                "text-blue-600 hover:underline dark:text-blue-400",
+                whole,
+              )}
+            >
+              {line.planning}
+            </AppLink>
+          </>
+        )}
+      </div>
+      {summary.sources.length > 0 && (
+        <nav
+          id={listId}
+          aria-label="Referenced by"
+          hidden={!open}
+          className="mt-1 pl-[18px]"
+        >
+          <div role="list" className="flex flex-col gap-1 sm:gap-0.5">
+            {summary.sources.map((source) => (
+              <SourceRow
+                key={source.from}
+                source={source}
+                name={labels.get(source.from)!}
+                hrefFor={hrefFor}
+                expanded={expandedRows.has(source.from)}
+                onMore={() => {
+                  focusRow.current = source.from;
+                  setExpandedRows((rows) => new Set(rows).add(source.from));
+                }}
+                revealedRef={(el) => {
+                  if (el === null || focusRow.current !== source.from) return;
+                  focusRow.current = null;
+                  el.querySelector("a")?.focus();
+                }}
+              />
+            ))}
+          </div>
+        </nav>
       )}
     </div>
   );
