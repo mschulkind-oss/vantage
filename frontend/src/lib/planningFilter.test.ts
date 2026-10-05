@@ -1087,6 +1087,26 @@ describe("a pasted link (§7)", () => {
     expect(readPastedPlanningLink(block)).toEqual(read);
   });
 
+  it("leaves out what a chat wraps the link in, and a sentence's punctuation after it", () => {
+    for (const pasted of [
+      `\`${link}\``,
+      `(${link})`,
+      `<http://localhost:8000${link}>`,
+      `"${link}"`,
+      `Open ${link}.`,
+      `${link}, then answer.`,
+      `\`Planning page: ${link}\``,
+    ]) {
+      expect(readPastedPlanningLink(pasted), pasted).toEqual(read);
+    }
+    // What the link writes bare is kept: `.` inside it, an escape, a `+`.
+    expect(
+      readPastedPlanningLink(
+        "/.vantage/planning?filter=path:a.md+path:%22b+c%22.",
+      ),
+    ).toEqual({ filter: 'path:a.md path:"b c"', roadmap: null });
+  });
+
   it("reads the roadmap it names, every filter value, and no filter as none", () => {
     expect(
       readPastedPlanningLink(
@@ -1108,17 +1128,12 @@ describe("a pasted link (§7)", () => {
     });
   });
 
-  it("takes the first link, and reads it up to white space only", () => {
+  it("takes the first link", () => {
     expect(
       readPastedPlanningLink(
         "see /.vantage/planning?filter=path:a /.vantage/planning?filter=path:b",
       ),
     ).toEqual({ filter: "path:a", roadmap: null });
-    // A run ends at white space alone, so a period or a backtick stays (the
-    // sketch's risk 3): the filter then reads as written.
-    expect(
-      readPastedPlanningLink("`/.vantage/planning?filter=path:a.md`"),
-    ).toEqual({ filter: "path:a.md`", roadmap: null });
   });
 
   it("finds none where no run holds the page's path", () => {

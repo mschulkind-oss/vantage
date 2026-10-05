@@ -296,7 +296,7 @@ export interface ReferenceSummary {
 
 1. **`is:"open"`.** [§5.3](planning-filter.md#53-keys-and-how-terms-combine) lists the quoted form for `path:` only. Default: not understood, the reversible reading, since a later release may move a `notUnderstood` entry to `read` and never back. Stop and ask before putting it in `read`.
 2. **A lone surrogate** in the box's text: no excluded range covers it, and `encodeURIComponent` throws on it. Default: not understood, for the same reason; pin it in the fixture.
-3. **A pasted link wrapped in backticks or followed by a period** reads up to white space ([§7](planning-filter.md#7-the-filter-line)), so its filter is not understood and the notice names it. Trimming punctuation widens the pasted-link surface for good ([§10.3](planning-filter.md#103-how-a-key-is-added-later)): stop and ask.
+3. **A pasted link wrapped in backticks or followed by a period.** Settled on 2026-10-05 in the design's [§7](planning-filter.md#7-the-filter-line): the link ends at the first character a link never holds unencoded, and loses the trailing punctuation GitHub's autolinks drop. Built in WP-1.
 4. **The release the target caution names** is not known. Default `FILTER_RELEASE = 0.9.0`, since a feature is a minor; confirm it before the tag, because a wrong value cautions the wrong repositories.
 5. **A submodule's `.git` is a file too,** so the worktree caution names a submodule a linked worktree. The design's rule is the file test: stop and ask to narrow it.
 6. **Criterion 8's long tasks.** A CI runner's long tasks are noise. Default: observe them in the e2e flow and report the figure, and keep the design's Status UNMEASURED if no stable assertion holds.
