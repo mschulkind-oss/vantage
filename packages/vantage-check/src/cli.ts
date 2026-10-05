@@ -156,14 +156,22 @@ function parseCheck(argv: string[]): Invocation {
 
 /**
  * `index [--format text|json] [--request [<section>...]] [--roadmap <path>]
- * [--config <path> | --no-config]`. It takes no paths: it scans the project
- * the working directory belongs to, so a path would be a second answer to a
- * question the root already settles. `--roadmap` chooses which roadmap Needs
- * you follows, and given twice, the last wins, as `--config` does.
+ * [--filter <text>] [--config <path> | --no-config]`. It takes no paths: it
+ * scans the project the working directory belongs to, so a path would be a
+ * second answer to a question the root already settles. `--roadmap` chooses
+ * which roadmap Needs you follows, and given twice, the last wins, as
+ * `--config` does.
  *
  * `--request` takes the words after it, up to the next option, as agent
  * section ids, none meaning all four; given twice, the ids add up. It prints
  * text, so it refuses `--format json`.
+ *
+ * `--filter` takes the next argument whatever it is, so `--filter -path:x` is
+ * a filter this release does not understand rather than an unknown option.
+ * Given twice, the values join with one space, in order, which is what typing
+ * both into the planning page's Filter box gives
+ * (`docs/design/planning-filter.md` §8.1). Whether the text is understood is
+ * the command's to say, not the parser's: it exits 2 with its own message.
  */
 function parseIndex(argv: string[]): Invocation {
   const options: IndexOptions = { format: "text" };
@@ -245,6 +253,19 @@ function parseIndex(argv: string[]): Invocation {
           return { kind: "usage-error", message: "--roadmap needs a path" };
         }
         options.roadmap = value;
+        break;
+      }
+      case "--filter": {
+        const value = takeValue();
+        if (value === undefined) {
+          return {
+            kind: "usage-error",
+            message:
+              "--filter needs a filter text, such as 'path:/docs/design/x.md is:open'",
+          };
+        }
+        options.filter =
+          options.filter === undefined ? value : `${options.filter} ${value}`;
         break;
       }
       default:

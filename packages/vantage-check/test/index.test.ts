@@ -1,4 +1,6 @@
-import { join } from "node:path";
+import { execFileSync } from "node:child_process";
+import { cpSync } from "node:fs";
+import { basename, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { run } from "../src/cli.js";
 import { INDEX_FORMAT_VERSION } from "../src/commands/index.js";
@@ -7,14 +9,20 @@ import { EXIT_ENVIRONMENT, EXIT_OK, EXIT_USAGE } from "../src/exit.js";
 import { bufferIo } from "../src/io.js";
 import { VERSION } from "../src/version.js";
 import {
+  PLANNING_FILTER_PARAM,
   PLANNING_NOTICES,
   PLANNING_SECTION_GUIDE,
+  applyPlanningFilter,
   buildPlanningIndex,
+  codeSpan,
   derivePlanningSections,
+  parsePlanningFilter,
   planningAgentRequest,
   planningSectionGuide,
+  type PlanningFilterReason,
   type PlanningIndex,
   type PlanningSources,
+  type UnderstoodPlanningFilter,
 } from "../../vantage-md/src/planning/index.js";
 import { makeTree } from "./helpers.js";
 import {
@@ -23,8 +31,13 @@ import {
   OPEN,
   STAGES_TOML,
   doc,
+  entryKeys,
+  filterForms,
+  filterFormsToml,
+  filterFormsTree,
   fullTree,
   questions,
+  type PlanningFilterForms,
 } from "./planningTree.js";
 
 /**
@@ -1087,5 +1100,659 @@ describe("the project index scans", () => {
       expect.objectContaining({ path: "roadmap.md", state: "routes" }),
     ]);
     expect(payload.sections.chosenRoadmap).toBe("roadmap.md");
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * --filter (docs/design/planning-filter.md §8)
+ * ------------------------------------------------------------------ */
+
+/**
+ * `index --filter`: the planning page's filter, parsed, applied and linked by
+ * vantage-md's planning module (F1), so what these tests prove is that the
+ * command hands it the text and the sections of the whole tree, prints what
+ * it returns where §8.3 says, and exits where §8.2 says. Without a filter,
+ * every output is byte for byte what it was, and no assertion above changed.
+ */
+
+/** A filter text the planning module reads, parsed. */
+function understood(text: string): UnderstoodPlanningFilter {
+  const filter = parsePlanningFilter(text);
+  if (filter.kind !== "understood") throw new Error(`not understood: ${text}`);
+  return filter;
+}
+
+/** Exit 2's message for a filter this release does not understand (§8.2). */
+const notUnderstood = (named: string) =>
+  `vantage-check: --filter: this checker does not understand ${named}; it reads path: and is: terms\n`;
+
+/** Exit 2's message for a term that matches no path the index lists. */
+const unmatched = (...terms: string[]) =>
+  terms
+    .map(
+      (term) =>
+        `vantage-check: --filter: ${codeSpan(term)} matches no path the index lists\n`,
+    )
+    .join("");
+
+/** What stands in for the term where a not-understood filter names none. */
+const REASON_WORDS: Record<PlanningFilterReason, string> = {
+  "unclosed-quote": "an unclosed quote",
+  "too-many-terms": "a filter past 64 terms",
+  "too-long": "a filter past 2,048 code points",
+};
+
+/** The hint line under every `Planning page:` line (§9.2), indented. */
+const PASTE_HINT =
+  "  Press / on the planning page and paste this line, or put the scheme, host and port you open Vantage at in front of the link.";
+
+/** The three outputs, each of which a filter's exits hold for. */
+const OUTPUTS: string[][] = [[], ["--format", "json"], ["--request"]];
+
+/**
+ * Past max-candidates nothing is scanned and the run exits 3, so an exit 2
+ * there proves a filter was refused before the scan.
+ */
+const refusedTree = () =>
+  makeTree({
+    ".vantage.toml": "[planning]\nmax-candidates = 1\n",
+    "a.md": doc("status: draft"),
+    "b.md": doc("status: draft"),
+  });
+
+/** The batch the server would send for the fixture of forms' index. */
+function formsSources(forms: PlanningFilterForms): PlanningSources {
+  const { files, skipped } = forms.index;
+  return {
+    config: parseConfig(filterFormsToml(forms)).planning,
+    candidateCount: Object.keys(files).length + skipped.length,
+    refused: false,
+    files: Object.entries(files).map(([path, content]) => ({ path, content })),
+    skipped,
+    unreadable: [],
+  };
+}
+
+describe("index --filter, given no filter", () => {
+  // §8.1: an empty value is no filter, and a value of white space alone, or
+  // two empty ones joined, is empty too.
+  it.each([
+    [["--filter", ""]],
+    [["--filter="]],
+    [["--filter", " \t\r\n"]],
+    [["--filter", "", "--filter", ""]],
+  ])(
+    "prints byte for byte a run without it, in text, JSON and --request: %j",
+    async (args) => {
+      const root = fullTree();
+      for (const output of OUTPUTS) {
+        const plain = await index(root, ...output);
+        const given = await index(root, ...output, ...args);
+
+        expect(given).toEqual(plain);
+      }
+    },
+  );
+});
+
+describe("index --filter, not understood", () => {
+  // F3: none of it applies, and since its meaning depends on nothing in the
+  // tree, it is refused before the scan (§8.2).
+  it.each([
+    ["path:docs/design/*.md OR is:open", "`OR`"],
+    ["Path:docs/design", "`Path:docs/design`"],
+    // `--filter` takes the next argument whatever it is: a value, never an
+    // unknown option.
+    ["-path:docs/a.md", "`-path:docs/a.md`"],
+    ['path:"docs/my notes.md', "an unclosed quote"],
+  ])(
+    "exits 2 before the scan on %j, naming %s, in all three outputs",
+    async (text, named) => {
+      const root = refusedTree();
+      for (const output of OUTPUTS) {
+        const { code, stdout, stderr } = await index(
+          root,
+          ...output,
+          "--filter",
+          text,
+        );
+
+        expect(code).toBe(EXIT_USAGE);
+        expect(stdout).toBe("");
+        expect(stderr).toBe(notUnderstood(named));
+      }
+    },
+  );
+
+  // The page's tests read the same fixture (§10.4), so the page and the
+  // checker cannot disagree about which texts are understood.
+  it.each(filterForms().notUnderstood)(
+    "exits 2 before the scan on the fixture's $text",
+    async (entry) => {
+      const { code, stdout, stderr } = await index(
+        refusedTree(),
+        "--filter",
+        entry.text,
+      );
+
+      expect(code).toBe(EXIT_USAGE);
+      expect(stdout).toBe("");
+      expect(stderr).toBe(
+        notUnderstood(
+          "term" in entry ? codeSpan(entry.term) : REASON_WORDS[entry.reason],
+        ),
+      );
+    },
+  );
+});
+
+describe("index --filter, with a term that matches nothing", () => {
+  // F5: the page applies it, keeps nothing and names it; the checker stops,
+  // because a mistyped path is the agent's likeliest mistake (§8.2).
+  it("exits 2 naming each such term, with stdout empty, in all three outputs", async () => {
+    const root = fullTree();
+    for (const output of OUTPUTS) {
+      const { code, stdout, stderr } = await index(
+        root,
+        ...output,
+        "--filter",
+        "path:docs/desing path:/docs/a.md path:notes is:open",
+      );
+
+      expect(code).toBe(EXIT_USAGE);
+      expect(stdout).toBe("");
+      expect(stderr).toBe(unmatched("path:docs/desing", "path:notes"));
+    }
+  });
+
+  it("exits 3 past max-candidates, whatever the filter says, with a null filter in JSON", async () => {
+    const root = refusedTree();
+    const refusal = `vantage-check: ${PLANNING_NOTICES.refused(2, 1)}\n`;
+    for (const output of [[], ["--request"]]) {
+      const { code, stdout, stderr } = await index(
+        root,
+        ...output,
+        "--filter",
+        "path:docs/desing",
+      );
+
+      expect(code).toBe(EXIT_ENVIRONMENT);
+      expect(stdout).toBe("");
+      expect(stderr).toBe(refusal);
+    }
+    const { code, payload, stderr } = await indexJson(
+      root,
+      "--filter",
+      "path:docs/desing",
+    );
+    expect(code).toBe(EXIT_ENVIRONMENT);
+    expect(stderr).toBe(refusal);
+    expect(Object.keys(payload).at(-1)).toBe("filter");
+    expect(payload.filter).toBeNull();
+    expect(payload.sections).toBeNull();
+  });
+});
+
+describe("index --filter, as text", () => {
+  // The golden of §8.3's order: the filter notice with its clauses, the
+  // Planning page line and its hint, then the page's layout over the
+  // filtered sections, a --request line carrying the filter, and the roadmap
+  // as it always is.
+  it("prints the notice and the link first, then the filtered page", async () => {
+    const { code, stdout, stderr } = await index(
+      fullTree(),
+      "--filter",
+      "path:docs/c.md path:./docs/e.md",
+    );
+
+    expect(code).toBe(EXIT_OK);
+    expect(stderr).toBe("");
+    expect(stdout).toBe(
+      [
+        "Filtered by `path:docs/c.md path:docs/e.md`: 4 of 13 entries, in 2 of 10 paths, 1 of them an open question.",
+        "docs/c.md waits on docs/a.md#OQ-A2, which this filter leaves out.",
+        "Run without --filter to see the other 9.",
+        "Planning page: /.vantage/planning?filter=path:docs/c.md+path:docs/e.md",
+        PASTE_HINT,
+        "",
+        "Not on a roadmap (1)",
+        "Open questions no roadmap links to. An agent proposes where each goes; you confirm.",
+        "  docs/e.md:8  💬 OQ-E1: Question E1?",
+        "",
+        "Blocked (1)",
+        "Waiting on a question, a document or an outside event. Nothing to do here.",
+        "  docs/c.md  blocked on docs/a.md#OQ-A2",
+        "",
+        "Ready to build (1)",
+        "Decided, with no open questions. An agent builds it.",
+        "  docs/c.md  [accepted · DECIDED]",
+        "",
+        "Stage conflict (1)",
+        "The stage says ready or built, but questions are open. An agent finds which is wrong.",
+        "  docs/e.md  [accepted · BUILT · 💬 1]",
+        "",
+        "Agent requests: vantage-check index --request --filter 'path:docs/c.md path:docs/e.md'",
+        "",
+        "Roadmap: roadmap.md",
+        "",
+        "# Roadmap",
+        "",
+        "## Rule these first",
+        "",
+        "- [A's first question](docs/a.md#OQ-A1) [💬 open]: it gates the rest.",
+        "- [B, all of it](docs/b.md) [draft · DESIGN · 💬 1]: small.",
+        "",
+        "## Later",
+        "",
+        "- [C's ledger](docs/c.md#decision-ledger) [accepted · DECIDED] routes nothing.",
+        "- [A compacted one](docs/a.md#OQ-A9) [⚠ not found] is not found.",
+        "- [The readme](README.md) is not a planning document.",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("counts the blocked questions is:open leaves out", async () => {
+    const { code, stdout } = await index(
+      fullTree(),
+      "--filter",
+      "path:/docs/a.md is:open",
+    );
+
+    expect(code).toBe(EXIT_OK);
+    expect(stdout.split("\n\n")[0]).toBe(
+      [
+        "Filtered by `path:docs/a.md is:open`: 2 of 13 entries, in 1 of 10 paths, 2 of them open questions.",
+        "1 of its questions is blocked and will need you later.",
+        "Run without --filter to see the other 11.",
+        "Planning page: /.vantage/planning?filter=path:docs/a.md+is:open",
+        PASTE_HINT,
+      ].join("\n"),
+    );
+    expect(stdout).toContain(
+      "Agent requests: vantage-check index --request --filter 'path:docs/a.md is:open'",
+    );
+  });
+
+  // §6.2: Nothing needs you in its filtered form, among the notices.
+  it("says nothing it keeps needs you, and lists no section it empties", async () => {
+    const { code, stdout } = await index(
+      fullTree(),
+      "--filter",
+      "path:docs/d.md",
+    );
+
+    expect(code).toBe(EXIT_OK);
+    expect(stdout.split("\n\n").slice(0, 3)).toEqual([
+      [
+        "Filtered by `path:docs/d.md`: 1 of 13 entries, in 1 of 10 paths, none of them open questions.",
+        "Run without --filter to see the other 12.",
+        "Planning page: /.vantage/planning?filter=path:docs/d.md",
+        PASTE_HINT,
+      ].join("\n"),
+      PLANNING_NOTICES.nothingFilteredNeedsYou,
+      [
+        "Ready to graduate (1)",
+        PLANNING_SECTION_GUIDE.graduate.explanation,
+        "  docs/d.md  [accepted · BUILT]",
+      ].join("\n"),
+    ]);
+    expect(stdout).not.toContain(PLANNING_NOTICES.nothingNeedsYou);
+  });
+
+  // §15 criterion 1, over a copy of the end-to-end fixture checked as its own
+  // root. Only what the criterion names is pinned: the page's other specs add
+  // documents to that fixture, which change the totals and nothing here.
+  it("prints criterion 1's page for the end-to-end fixture", async () => {
+    // Its own .git, which e2e-fixture.sh may have made, is left behind.
+    const root = makeTree({ ".git/HEAD": "ref: refs/heads/main\n" });
+    cpSync(
+      join(import.meta.dirname, "../../../frontend/e2e/fixtures/test_repo"),
+      root,
+      { recursive: true, filter: (path) => basename(path) !== ".git" },
+    );
+
+    const { code, stdout, stderr } = await index(
+      root,
+      "--filter",
+      "path:/plans/design.md is:open",
+    );
+
+    expect(code).toBe(EXIT_OK);
+    expect(stderr).toBe("");
+    const [head, needsYou, next] = stdout.split("\n\n");
+    expect(head?.split("\n")).toEqual([
+      expect.stringMatching(
+        /^Filtered by `path:plans\/design\.md is:open`: 2 of \d+ entries, in 1 of \d+ paths, 2 of them open questions\.$/,
+      ),
+      expect.stringMatching(/^Run without --filter to see the other \d+\.$/),
+      "Planning page: /.vantage/planning?filter=path:plans/design.md+is:open",
+      PASTE_HINT,
+    ]);
+    expect(needsYou).toBe(
+      [
+        "Needs you (2) · for the human",
+        PLANNING_SECTION_GUIDE["needs-you"].explanation,
+        "  plans/design.md:12  💬 OQ-E1: Which way does it go?  (Roadmap)",
+        "  plans/design.md:18  💬 OQ-E2: How soon?  (Roadmap)",
+      ].join("\n"),
+    );
+    expect(next).toBe("Roadmap: plans/roadmap.md");
+  });
+
+  it("shell-quotes the --request pointer, a ' included", async () => {
+    const root = makeTree({
+      ".git/HEAD": "",
+      ".vantage.toml": STAGES_TOML,
+      "it's.md": doc("status: accepted\nstage: BUILT"),
+      "other.md": doc("status: accepted\nstage: BUILT"),
+    });
+    const { code, stdout } = await index(root, "--filter", `path:"it's.md"`);
+
+    expect(code).toBe(EXIT_OK);
+    expect(stdout).toContain(
+      `Planning page: /.vantage/planning?filter=path:%22it%27s.md%22\n`,
+    );
+    const pointer = stdout
+      .split("\n")
+      .find((line) => line.startsWith("Agent requests: "));
+    expect(pointer).toBe(
+      `Agent requests: vantage-check index --request --filter 'path:"it'\\''s.md"'`,
+    );
+    // A shell reads the word back to exactly the canonical text.
+    const word = (pointer ?? "").slice(
+      "Agent requests: vantage-check index --request --filter ".length,
+    );
+    expect(
+      execFileSync("sh", ["-c", `printf %s ${word}`], { encoding: "utf8" }),
+    ).toBe(`path:"it's.md"`);
+  });
+
+  // §9.2: the page shows the checkout the human's Vantage serves, so a link
+  // made in a linked worktree may open other versions of these documents.
+  it("cautions under the link in a linked worktree, and only there", async () => {
+    const files = { "a.md": doc("status: draft", questions("A", OPEN)) };
+    const worktree = makeTree({
+      ...files,
+      ".git": "gitdir: /elsewhere/.git/worktrees/a\n",
+    });
+    const main = makeTree({ ...files, ".git/HEAD": "" });
+    const configOnly = makeTree({ ...files, ".vantage.toml": "" });
+    const head = async (root: string) =>
+      (await index(root, "--filter", "path:/a.md")).stdout.split("\n\n")[0];
+
+    expect(await head(worktree)).toBe(
+      [
+        "Filtered by `path:/a.md`: 1 of 1 entry, in 1 of 1 path, 1 of them an open question.",
+        "It hides no entry.",
+        "Planning page: /.vantage/planning?filter=path:/a.md",
+        PASTE_HINT,
+        `  ${worktree} is a linked worktree: the page shows the checkout your Vantage serves, which may not hold these documents as they are here.`,
+      ].join("\n"),
+    );
+    expect(await head(main)).not.toContain("linked worktree");
+    expect(await head(configOnly)).not.toContain("linked worktree");
+  });
+
+  // §9.5: a viewer before the filter's release ignores `filter=` and shows
+  // every entry, so a target before it says so under the link.
+  it.each([
+    ["0.8", true],
+    ["0.8.1", true],
+    ["0.9", false],
+    ["1.0", false],
+  ])("cautions under the link for target %s: %s", async (written, cautions) => {
+    const root = makeTree({
+      ".git/HEAD": "",
+      ".vantage.toml": `target = "${written}"\n`,
+      "a.md": doc("status: draft", questions("A", OPEN)),
+    });
+    const { code, stdout } = await index(root, "--filter", "path:a.md");
+    const caution =
+      "  A Vantage viewer before 0.9 ignores this filter and shows every entry.";
+
+    expect(code).toBe(EXIT_OK);
+    const head = stdout.split("\n\n")[0]?.split("\n") ?? [];
+    expect(head.slice(-2)).toEqual(
+      cautions ? [PASTE_HINT, caution] : [expect.any(String), PASTE_HINT],
+    );
+  });
+});
+
+describe("index --filter, with several roadmaps", () => {
+  // §9.2: the link names the chosen roadmap whenever two or more can be
+  // chosen, so the human's Needs you follows the roadmap the agent checked.
+  it("names the other roadmaps and recounts each, under the chosen one", async () => {
+    const { code, stdout } = await index(
+      makeTree(SEVERAL),
+      "--filter",
+      "path:docs/b.md",
+    );
+
+    expect(code).toBe(EXIT_OK);
+    expect(stdout).toBe(
+      [
+        "Filtered by `path:docs/b.md`: 0 of 3 entries, in 1 of 6 paths, none of them open questions.",
+        "1 more question it keeps is on another roadmap: `docs/plans/roadmap.md` (1). Rerun with --roadmap naming it.",
+        "Run without --filter to see the other 3.",
+        "Planning page: /.vantage/planning?filter=path:docs/b.md&roadmap=roadmap.md",
+        PASTE_HINT,
+        "",
+        "1 more question needs you on another roadmap. Choose one with --roadmap <path>.",
+        "",
+        "Roadmaps (3)",
+        "  roadmap.md  0 need you  (chosen)",
+        "  docs/old/roadmap.md  ignored: has a stage with the done role",
+        "  docs/plans/roadmap.md  1 needs you",
+        "",
+        "Roadmap: roadmap.md",
+        "",
+        "# Roadmap",
+        "",
+        "## Now",
+        "",
+        "- [A's first](docs/a.md#OQ-A1) [💬 open]",
+        "- [The plans](docs/plans/roadmap.md)",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("links the roadmap --roadmap names, and none where one roadmap can be chosen", async () => {
+    const chosen = await indexJson(
+      makeTree(SEVERAL),
+      "--roadmap",
+      "docs/plans/roadmap.md",
+      "--filter",
+      "path:docs/b.md",
+    );
+    expect(chosen.payload.filter.link).toBe(
+      "/.vantage/planning?filter=path:docs/b.md&roadmap=docs/plans/roadmap.md",
+    );
+    expect(chosen.payload.filter.otherRoadmaps).toEqual([]);
+    expect(chosen.payload.filter.sections.needsYou).toEqual([
+      expect.objectContaining({ path: "docs/b.md", id: "OQ-B1" }),
+    ]);
+
+    const one = await indexJson(fullTree(), "--filter", "path:docs/b.md");
+    expect(one.payload.filter.link).toBe(
+      "/.vantage/planning?filter=path:docs/b.md",
+    );
+  });
+});
+
+describe("index --filter, as JSON", () => {
+  it("keeps every existing key byte for byte, and adds the filtered view as the last key", async () => {
+    const root = fullTree();
+    const plain = await index(root, "--format", "json");
+    const { code, stdout, payload } = await indexJson(
+      root,
+      "--filter",
+      "path:/docs/a.md is:open",
+    );
+
+    expect(code).toBe(EXIT_OK);
+    const { filter, ...rest } = payload;
+    expect(`${JSON.stringify(rest, null, 2)}\n`).toBe(plain.stdout);
+    expect(stdout.startsWith(plain.stdout.replace(/\n}\n$/, ",\n"))).toBe(true);
+    expect(Object.keys(payload).at(-1)).toBe("filter");
+
+    const built = buildPlanningIndex(fullSources());
+    const applied = applyPlanningFilter(
+      built,
+      derivePlanningSections(built),
+      understood("path:/docs/a.md is:open"),
+    );
+    expect(Object.keys(filter)).toEqual([
+      "text",
+      "canonical",
+      "link",
+      "documents",
+      "entries",
+      "openQuestions",
+      "blockedLeftOut",
+      "otherRoadmaps",
+      "waitsOutside",
+      "sections",
+    ]);
+    expect(filter).toEqual({
+      text: "path:/docs/a.md is:open",
+      canonical: "path:docs/a.md is:open",
+      link: "/.vantage/planning?filter=path:docs/a.md+is:open",
+      documents: { kept: 1, of: 10 },
+      entries: { shown: 2, of: 13 },
+      openQuestions: 2,
+      blockedLeftOut: 1,
+      otherRoadmaps: [],
+      waitsOutside: [],
+      sections: applied.sections,
+    });
+    expect(filter.sections).toEqual(applied.sections);
+  });
+
+  it("carries the text as given, every --filter joined, and what it waits on outside", async () => {
+    const { payload } = await indexJson(
+      fullTree(),
+      "--filter",
+      " path:docs/c.md",
+      "--filter=path:docs/c.md",
+    );
+
+    expect(payload.filter.text).toBe(" path:docs/c.md path:docs/c.md");
+    expect(payload.filter.canonical).toBe("path:docs/c.md");
+    expect(payload.filter.waitsOutside).toEqual([
+      { path: "docs/c.md", target: "docs/a.md#OQ-A2" },
+    ]);
+  });
+});
+
+describe("index --request --filter", () => {
+  // §6.6: what Copy agent request copies on the filtered page, with its
+  // Filter: line, and blocked-on read from the unfiltered sections.
+  it("prints exactly planningAgentRequest with the filter, for any sections", async () => {
+    const root = fullTree();
+    const built = buildPlanningIndex(fullSources());
+    const sections = derivePlanningSections(built);
+    const text = "path:docs/c.md path:./docs/e.md";
+    const applied = applyPlanningFilter(built, sections, understood(text));
+    for (const ids of [[], ["ready"], ["disagrees", "unrouted"]] as const) {
+      const { code, stdout, stderr } = await index(
+        root,
+        "--request",
+        ...ids,
+        "--filter",
+        text,
+      );
+      const expected = planningAgentRequest(built, applied.sections, {
+        repository: root,
+        ...(ids.length === 0 ? {} : { ids }),
+        filter: { text: "path:docs/c.md path:docs/e.md", unfiltered: sections },
+      });
+
+      expect(code).toBe(EXIT_OK);
+      expect(stderr).toBe("");
+      expect(stdout).toBe(`${expected}\n`);
+      expect(stdout.split("\n").slice(0, 2)).toEqual([
+        `Repository: ${root}`,
+        "Filter: `path:docs/c.md path:docs/e.md`. Only the entries it keeps are listed.",
+      ]);
+    }
+  });
+
+  it("prints nothing when the filter keeps nothing to ask for, says why, and exits 0", async () => {
+    const { code, stdout, stderr } = await index(
+      fullTree(),
+      "--request",
+      "--filter",
+      "path:docs/b.md",
+    );
+
+    expect(code).toBe(EXIT_OK);
+    expect(stdout).toBe("");
+    expect(stderr).toBe(
+      "vantage-check: nothing to ask an agent: Not on a roadmap, Ready to build, Ready to graduate and Stage conflict have no entries the filter keeps\n",
+    );
+  });
+});
+
+describe("index --filter over the fixture of forms", () => {
+  // The tree on disk is the fixture's index: the checker's walk batches it as
+  // the page's tests build it, so every `keeps` holds for both (§10.4).
+  it("scans the fixture's tree into the fixture's index", async () => {
+    const forms = filterForms();
+    const { code, payload } = await indexJson(filterFormsTree(forms));
+
+    expect(code).toBe(EXIT_OK);
+    expect(payload.sections).toEqual(
+      derivePlanningSections(buildPlanningIndex(formsSources(forms))),
+    );
+  });
+
+  it.each(filterForms().read)("reads $text", async (entry) => {
+    const forms = filterForms();
+    const root = filterFormsTree(forms);
+    const json = await index(root, "--format", "json", "--filter", entry.text);
+    if (entry.unmatched.length > 0) {
+      expect(json.code).toBe(EXIT_USAGE);
+      expect(json.stdout).toBe("");
+      expect(json.stderr).toBe(unmatched(...entry.unmatched));
+      return;
+    }
+
+    expect(json.code).toBe(EXIT_OK);
+    const { filter } = JSON.parse(json.stdout);
+    expect(filter.canonical).toBe(entry.canonical);
+    expect(filter.documents.kept).toBe(entry.documents.length);
+    expect(entryKeys(filter.sections)).toEqual(entry.keeps);
+    // The page reads the link back to the canonical text, with no rewrite.
+    expect(
+      new URL(filter.link, "http://vantage.invalid").searchParams.getAll(
+        PLANNING_FILTER_PARAM,
+      ),
+    ).toEqual([entry.canonical]);
+
+    const text = await index(root, "--filter", entry.text);
+    expect(text.code).toBe(EXIT_OK);
+    expect(text.stdout.split("\n")[0]).toMatch(
+      new RegExp(
+        `^Filtered by ${codeSpan(entry.canonical).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}: `,
+      ),
+    );
+
+    // The request the page copies for the same text (§6.6), or nothing.
+    const built = buildPlanningIndex(formsSources(forms));
+    const sections = derivePlanningSections(built);
+    const applied = applyPlanningFilter(
+      built,
+      sections,
+      understood(entry.text),
+    );
+    const expected = planningAgentRequest(built, applied.sections, {
+      repository: root,
+      filter: { text: entry.canonical, unfiltered: sections },
+    });
+    const request = await index(root, "--request", "--filter", entry.text);
+    expect(request.code).toBe(EXIT_OK);
+    expect(request.stdout).toBe(expected === null ? "" : `${expected}\n`);
   });
 });

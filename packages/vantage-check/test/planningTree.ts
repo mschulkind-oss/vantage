@@ -1,5 +1,13 @@
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import {
+  PLANNING_SECTION_GUIDE,
+  PLANNING_SECTION_IDS,
+  type PlanningFilterReason,
+  type PlanningSections,
+  type QuestionRef,
+  type WaitingEntry,
+} from "../../vantage-md/src/planning/index.js";
 import { makeTree } from "./helpers.js";
 
 /**
@@ -127,4 +135,105 @@ export function fullTree(): string {
   const root = makeTree(FULL_TREE);
   writeFileSync(join(root, "docs/latin1.md"), Buffer.from([0x23, 0x20, 0xe9]));
   return root;
+}
+
+/**
+ * The planning filter's fixture of forms (`docs/design/planning-filter.md`
+ * §10.4), which the page's tests load too (`frontend/src/test/planning.ts`):
+ * a small index, every text this release reads with the documents and
+ * entries it keeps there, and texts it does not understand with the term each
+ * names, or the reason where there is none.
+ */
+export interface PlanningFilterForms {
+  index: {
+    stages: Record<string, string>;
+    maxFileBytes: number;
+    files: Record<string, string>;
+    skipped: { path: string; size: number }[];
+  };
+  read: {
+    text: string;
+    canonical: string;
+    documents: string[];
+    keeps: string[];
+    unmatched: string[];
+  }[];
+  notUnderstood: (
+    | { text: string; term: string }
+    | { text: string; reason: PlanningFilterReason }
+  )[];
+}
+
+/** Where the fixture of forms lives: in the planning module, beside its reader. */
+export const FILTER_FORMS_FILE = join(
+  import.meta.dirname,
+  "..",
+  "..",
+  "vantage-md",
+  "src",
+  "planning",
+  "filterForms.json",
+);
+
+/** The fixture of forms, read fresh from disk. */
+export function filterForms(): PlanningFilterForms {
+  return JSON.parse(
+    readFileSync(FILTER_FORMS_FILE, "utf8"),
+  ) as PlanningFilterForms;
+}
+
+/** The `.vantage.toml` the fixture of forms' index is configured by. */
+export function filterFormsToml(forms: PlanningFilterForms): string {
+  return [
+    "[planning]",
+    `max-file-bytes = ${forms.index.maxFileBytes}`,
+    "",
+    "[planning.stages]",
+    ...Object.entries(forms.index.stages).map(
+      ([word, role]) => `${word} = "${role}"`,
+    ),
+    "",
+  ].join("\n");
+}
+
+/**
+ * The fixture of forms' index written out as a repository: its files, each
+ * Too large path as a file of its size, and a `.vantage.toml` declaring its
+ * stages and its lowered `max-file-bytes`.
+ */
+export function filterFormsTree(forms: PlanningFilterForms): string {
+  const tree: Record<string, string> = {
+    ".git/HEAD": "ref: refs/heads/main\n",
+    ".vantage.toml": filterFormsToml(forms),
+    ...forms.index.files,
+  };
+  for (const { path, size } of forms.index.skipped) {
+    tree[path] = "x".repeat(size);
+  }
+  return makeTree(tree);
+}
+
+/**
+ * Every entry `sections` lists, in page order, as the fixture of forms names
+ * one: `"<section id> <path>"` for a row, and `"<section id> <path>#<id>"` for
+ * a question.
+ */
+export function entryKeys(sections: PlanningSections): string[] {
+  type Entry = string | WaitingEntry | QuestionRef | { path: string };
+  const question = (id: string, ref: QuestionRef) =>
+    `${id} ${ref.path}#${ref.id ?? `line ${ref.line}`}`;
+  return PLANNING_SECTION_IDS.flatMap((id) => {
+    const key = PLANNING_SECTION_GUIDE[id].key;
+    const entries = (sections[key] ?? []) as readonly Entry[];
+    return entries.map((entry) => {
+      if (typeof entry === "string") return `${id} ${entry}`;
+      if ("kind" in entry) {
+        return entry.kind === "document"
+          ? `${id} ${entry.path}`
+          : question(id, entry.question);
+      }
+      if ("line" in entry) return question(id, entry);
+      return `${id} ${entry.path}`;
+    });
+  });
 }

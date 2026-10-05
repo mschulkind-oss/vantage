@@ -65,6 +65,22 @@ ${REQUEST_SECTION_LIST}
                                      the project root (default: the one nearest
                                      the root that can be read and has no stage
                                      with the done role)
+  --filter <text>                    show only the entries the text keeps, as
+                                     the planning page's Filter box does, and
+                                     print a link to that page. Its terms:
+                                       path:<pattern>  a document: a file, a
+                                                       folder, or a * or **
+                                                       pattern as in
+                                                       .gitignore. Start a
+                                                       root file's path with
+                                                       /, and put a path with
+                                                       a space in "quotes"
+                                       is:open         a question still open
+                                     Terms with one key keep any of their
+                                     matches; terms with different keys must
+                                     all match. Given twice, the texts join.
+                                     Paste the link into the planning page's
+                                     Filter box: press / there.
   --config <path>                    use this .vantage.toml
   --no-config                        ignore .vantage.toml entirely
 
@@ -80,7 +96,9 @@ Exit codes:
   1  findings that fail the run (never from index, which reports and does not
      judge)
   2  bad arguments, a bad .vantage.toml, a .vantage.toml whose target is
-     newer than this checker, or a path that does not exist
+     newer than this checker, or a path that does not exist. For index, also
+     a --filter it does not understand, checked before anything is scanned,
+     or one with a path: term that matches no path
   3  a check could not run — the documents were not fully checked, so the
      result is unknown rather than clean. For index: the project has more
      candidate files than [planning] max-candidates, so nothing was scanned

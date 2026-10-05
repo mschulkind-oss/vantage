@@ -1,4 +1,5 @@
-import { resolve } from "node:path";
+import { statSync } from "node:fs";
+import { join, resolve } from "node:path";
 import {
   PLANNING_AGENT_SECTION_IDS,
   PLANNING_NOTICES,
@@ -7,16 +8,23 @@ import {
   ROADMAP_STATE_PHRASES,
   VANTAGE_OQ_PREFERENCE,
   agentSectionsWithEntries,
+  applyPlanningFilter,
   badgeFor,
   badgeText,
   buildPlanningIndex,
+  codeSpan,
   dependsOnLabel,
   derivePlanningSections,
   findDocument,
+  noticeText,
+  parsePlanningFilter,
   planningAgentRequest,
+  planningLink,
   planningSectionGuide,
   questionFor,
   sectionExplanation,
+  type FilteredPlanningSections,
+  type PlanningAgentRequestOptions,
   type PlanningAgentSectionId,
   type PlanningBadge,
   type PlanningIndex,
@@ -35,7 +43,14 @@ import {
   loadConfig,
   type LoadOptions,
 } from "../core/config.js";
-import { declaredTargets, noteTargets, refuseTargets } from "../core/target.js";
+import {
+  FILTER_RELEASE_NAME,
+  declaredTargets,
+  noteTargets,
+  predatesFilter,
+  refuseTargets,
+  type DeclaredTarget,
+} from "../core/target.js";
 import { repositoryRoot } from "../core/projectRoot.js";
 import { oneLine } from "../core/text.js";
 import { EXIT_ENVIRONMENT, EXIT_OK, EXIT_USAGE } from "../exit.js";
@@ -60,8 +75,14 @@ import { VERSION } from "../version.js";
  * with no memory between runs: `--roadmap`, else the one nearest the root
  * (§13).
  *
+ * `--filter` shows only the entries a planning filter keeps, as the page's
+ * Filter box does, and prints a root-relative link to that filtered page
+ * (`docs/design/planning-filter.md` §8). The filter is parsed, applied and
+ * linked by vantage-md's planning module, the page's own reader (F1).
+ *
  * It reports and does not judge, so it never exits 1: 0 when it ran, 2 for bad
- * arguments or a bad config, 3 when it could not run, which includes a project
+ * arguments or a bad config, a filter it does not understand or one with a
+ * term that matches nothing, 3 when it could not run, which includes a project
  * with more candidates than `max-candidates` (Plan Q7).
  */
 export interface IndexOptions {
@@ -82,6 +103,12 @@ export interface IndexOptions {
    * does.
    */
   request?: PlanningAgentSectionId[];
+  /**
+   * `--filter`: a planning filter's text, every value given joined with one
+   * space (`docs/design/planning-filter.md` §8.1). Empty, or white space
+   * alone, is no filter, and the output is byte for byte a run without it.
+   */
+  filter?: string;
 }
 
 /**
@@ -136,6 +163,20 @@ export function indexCommand(options: IndexOptions, io: Io): number {
     io.err(`vantage-check: warning: ${warning}\n`);
   }
 
+  // What a filter's text means depends on nothing in the tree, so one this
+  // release does not understand is refused before the scan, past
+  // max-candidates too, and never partly applied (F3, §8.2). The message is
+  // the whole answer, as `--roadmap`'s is: it says what this release reads.
+  const parsed =
+    options.filter === undefined ? null : parsePlanningFilter(options.filter);
+  if (parsed?.kind === "not-understood") {
+    io.err(
+      `vantage-check: --filter: ${PLANNING_NOTICES.filterNotUnderstood(parsed)}\n`,
+    );
+    return EXIT_USAGE;
+  }
+  const filter = parsed?.kind === "understood" ? parsed : null;
+
   const project = scanProject(root, loaded.planning);
   const { index } = project;
   // Past max-candidates nothing was read, so there is nothing to hold
@@ -166,12 +207,54 @@ export function indexCommand(options: IndexOptions, io: Io): number {
     }
   }
 
+  // Applied to the sections of the whole index, never to the index (F2).
+  // Past max-candidates there are no sections, so nothing is applied and no
+  // term is held to the tree: the refusal is the answer (§8.2).
+  const applied =
+    sections === null || filter === null
+      ? null
+      : appliedFilter(
+          options.filter ?? "",
+          applyPlanningFilter(index, sections, filter),
+          sections,
+        );
+  // The page applies an unmatched term, keeps nothing and names it. Here it is
+  // the agent's likeliest mistake, a mistyped path, so it stops before the
+  // human is handed an empty page (F5, §8.2).
+  if (applied !== null && applied.filtered.summary.unmatched.length > 0) {
+    for (const term of applied.filtered.summary.unmatched) {
+      io.err(
+        `vantage-check: --filter: ${codeSpan(term)} matches no path the index lists\n`,
+      );
+    }
+    return EXIT_USAGE;
+  }
+
   if (options.request !== undefined) {
-    if (sections !== null) requestOut(project, sections, options.request, io);
+    if (sections !== null) {
+      requestOut(project, sections, options.request, io, applied);
+    }
   } else if (options.format === "json") {
-    io.out(renderJson(project, sections));
+    io.out(
+      renderJson(
+        project,
+        sections,
+        filter === null ? undefined : (applied ?? null),
+      ),
+    );
   } else if (sections !== null) {
-    io.out(renderText(project, sections));
+    io.out(
+      renderText(
+        project,
+        applied?.filtered.sections ?? sections,
+        applied === null
+          ? null
+          : {
+              head: filterHead(project, applied, targets),
+              canonical: applied.filtered.summary.canonical,
+            },
+      ),
+    );
   }
 
   if (index.refused) {
@@ -231,23 +314,126 @@ function scanProject(
   };
 }
 
+/** A filter applied to a project's sections, and the link to the page it gives. */
+interface AppliedFilter {
+  /** The text as given: every `--filter` value, joined with one space. */
+  text: string;
+  filtered: FilteredPlanningSections;
+  /** The sections it was applied to, which a request's blocked-on facts read (§6.3). */
+  unfiltered: PlanningSections;
+  /**
+   * The root-relative link to the filtered planning page (§9.2), naming the
+   * chosen roadmap when two or more roadmaps can be chosen, so the human's
+   * Needs you follows the roadmap the agent checked, whatever they last picked.
+   */
+  link: string;
+}
+
+function appliedFilter(
+  text: string,
+  filtered: FilteredPlanningSections,
+  unfiltered: PlanningSections,
+): AppliedFilter {
+  const routing = unfiltered.roadmaps.filter((r) => r.state === "routes");
+  return {
+    text,
+    filtered,
+    unfiltered,
+    link: planningLink(filtered.summary.canonical, {
+      roadmap: routing.length >= 2 ? unfiltered.chosenRoadmap : null,
+    }),
+  };
+}
+
+/**
+ * The checker cannot learn the address the human opens Vantage at (§9.1), so
+ * the link is root-relative, and this says the two ways to use it.
+ */
+const PASTE_HINT =
+  "Press / on the planning page and paste this line, or put the scheme, host and port you open Vantage at in front of the link.";
+
+/**
+ * Whether `root` is a linked worktree: its `.git` is a file, not a directory.
+ * A root found by its `.vantage.toml` alone has no `.git`, and is not one.
+ */
+function isLinkedWorktree(root: string): boolean {
+  try {
+    return statSync(join(root, ".git")).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * What the text prints before everything else under a filter (§8.3): the
+ * filter notice, its clauses included, then the `Planning page:` line and its
+ * hint lines (§9.2). A second hint says when the root is a linked worktree,
+ * since the page shows the checkout the human's Vantage serves, and a third
+ * when the run's `target` names a release before the filter's (§9.5).
+ */
+function filterHead(
+  project: ScannedProject,
+  applied: AppliedFilter,
+  targets: readonly DeclaredTarget[],
+): string {
+  const lines = PLANNING_NOTICES.filtered(
+    applied.filtered.summary,
+    "checker",
+  ).map(noticeText);
+  lines.push(`Planning page: ${applied.link}`, `  ${PASTE_HINT}`);
+  if (isLinkedWorktree(project.root)) {
+    lines.push(
+      `  ${project.root} is a linked worktree: the page shows the checkout your Vantage serves, which may not hold these documents as they are here.`,
+    );
+  }
+  if (targets.some(({ target }) => predatesFilter(target))) {
+    lines.push(
+      `  A Vantage viewer before ${FILTER_RELEASE_NAME} ignores this filter and shows every entry.`,
+    );
+  }
+  return lines.join("\n");
+}
+
+/** `text` as one POSIX shell word: single-quoted, each `'` written `'\''`. */
+function shellQuote(text: string): string {
+  return `'${text.replaceAll("'", "'\\''")}'`;
+}
+
 /**
  * `--request`: exactly what the page's buttons copy for the same sections
  * (the page passes the repository's root path, as this passes the project
  * root), and a newline. With nothing to ask for, stdout stays empty, as the
  * page shows no button, and stderr says why.
+ *
+ * Under a filter, the request covers the filtered sections and carries the
+ * `Filter:` line, as Copy agent request does on the filtered page (§6.6).
  */
 function requestOut(
   project: ScannedProject,
   sections: PlanningSections,
   asked: readonly PlanningAgentSectionId[],
   io: Io,
+  applied: AppliedFilter | null,
 ): void {
   const ids = asked.length === 0 ? PLANNING_AGENT_SECTION_IDS : asked;
-  const request = planningAgentRequest(project.index, sections, {
+  const options: PlanningAgentRequestOptions = {
     repository: project.root,
     ids,
-  });
+  };
+  if (applied !== null) {
+    // The `Filter:` line carries the canonical text less its unmatched terms
+    // (§6.6). Here there are none, or the command has already exited 2.
+    const { requestText, canonical } = applied.filtered.summary;
+    options.filter = {
+      text: requestText ?? canonical,
+      unfiltered: applied.unfiltered,
+    };
+  }
+  const request = planningAgentRequest(
+    project.index,
+    applied?.filtered.sections ?? sections,
+    options,
+  );
   if (request !== null) {
     io.out(`${request}\n`);
     return;
@@ -256,7 +442,7 @@ function requestOut(
   // no stages): "has no entries" is true of both.
   const empty = PLANNING_AGENT_SECTION_IDS.filter((id) => ids.includes(id));
   io.err(
-    `vantage-check: nothing to ask an agent: ${andList(empty.map((id) => PLANNING_SECTION_TITLES[id]))} ${empty.length === 1 ? "has" : "have"} no entries\n`,
+    `vantage-check: nothing to ask an agent: ${andList(empty.map((id) => PLANNING_SECTION_TITLES[id]))} ${empty.length === 1 ? "has" : "have"} no entries${applied === null ? "" : " the filter keeps"}\n`,
   );
 }
 
@@ -331,10 +517,18 @@ function roadmapLinks(
  * `roadmaps` has one entry per entry of `sections.roadmaps`, in the same
  * order, each with the links version 1 printed as `roadmap`; they are empty
  * unless the file was read, which is the `routes` and `done` states.
+ *
+ * `filter` is the last key, and only under `--filter` (§8.3): `undefined`
+ * leaves it out, so every key before it is byte for byte a run without the
+ * flag, and `null` is a refused project's, which has no sections to filter.
+ * Every existing key keeps its meaning under a filter: `sections` and
+ * `roadmaps` are the whole index's, since `needsYouCount` and
+ * `nothingNeedsYou` are defined over it, and the filtered view is this key's.
  */
 function renderJson(
   project: ScannedProject,
   sections: PlanningSections | null,
+  filter?: AppliedFilter | null,
 ): string {
   const index = narrowed(project);
   return `${JSON.stringify(
@@ -355,10 +549,41 @@ function renderJson(
               chosen: path === sections.chosenRoadmap,
               links: roadmapLinks(project, index, path),
             })),
+      ...(filter === undefined
+        ? {}
+        : { filter: filter === null ? null : filterJson(filter) }),
     },
     null,
     2,
   )}\n`;
+}
+
+/**
+ * The JSON `filter` key's value (§8.3), in the design's key order, built key
+ * by key: the summary holds names (`requestText`, `unmatched`,
+ * `onOtherRoadmaps`) that are not keys of it, and this key's subkeys may only
+ * widen (§10.3). `link` is always root-relative.
+ */
+function filterJson(applied: AppliedFilter) {
+  const { summary, sections } = applied.filtered;
+  return {
+    text: applied.text,
+    canonical: summary.canonical,
+    link: applied.link,
+    documents: { kept: summary.documents.kept, of: summary.documents.of },
+    entries: { shown: summary.entries.shown, of: summary.entries.of },
+    openQuestions: summary.openQuestions,
+    blockedLeftOut: summary.blockedLeftOut,
+    otherRoadmaps: summary.otherRoadmaps.map(({ path, count }) => ({
+      path,
+      count,
+    })),
+    waitsOutside: summary.waitsOutside.map(({ path, target }) => ({
+      path,
+      target,
+    })),
+    sections,
+  };
 }
 
 /* ------------------------------------------------------------------ *
@@ -455,17 +680,32 @@ function roadmapLine(roadmap: PlanningRoadmap, chosen: string | null): string {
  * roadmap's source with a badge in brackets after each badged link. With two
  * or more roadmaps, in any state, a Roadmaps block lists them before Needs
  * you; with one or none there is no such block.
+ *
+ * Under a filter, `sections` are the filtered ones and `filter.head` is
+ * `filterHead`'s, printed first (§8.3). Everything after it is the same
+ * layout over the filtered sections: *Nothing needs you* in its filtered form,
+ * the Roadmaps block with the filtered counts, and a `--request` line that
+ * carries the filter, shell-quoted. The roadmap's source is the index's, and
+ * unchanged.
  */
 function renderText(
   project: ScannedProject,
   sections: PlanningSections,
+  filter: { head: string; canonical: string } | null = null,
 ): string {
   const { index } = project;
   const { config } = index;
   const blocks: (string | null)[] = [];
+  if (filter !== null) blocks.push(filter.head);
 
   const notices: string[] = [];
-  if (sections.nothingNeedsYou) notices.push(PLANNING_NOTICES.nothingNeedsYou);
+  if (sections.nothingNeedsYou) {
+    notices.push(
+      filter === null
+        ? PLANNING_NOTICES.nothingNeedsYou
+        : PLANNING_NOTICES.nothingFilteredNeedsYou,
+    );
+  }
   const roadmapNotice = PLANNING_NOTICES.roadmapNotice(
     config,
     sections.roadmaps,
@@ -550,7 +790,11 @@ function renderText(
   );
   // What an agent's sections ask for is a command away; say which.
   if (agentSectionsWithEntries(sections).length > 0) {
-    blocks.push("Agent requests: vantage-check index --request");
+    blocks.push(
+      filter === null
+        ? "Agent requests: vantage-check index --request"
+        : `Agent requests: vantage-check index --request --filter ${shellQuote(filter.canonical)}`,
+    );
   }
 
   const roadmap =
