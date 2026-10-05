@@ -10,7 +10,9 @@ import {
   OQ_MISSING_MESSAGE,
 } from "../src/rules/directives.js";
 import {
+  FILTER_RELEASE_NAME,
   heldConfigPath,
+  predatesFilter,
   readsOnlyOq,
   releaseVersion,
   targetNotes,
@@ -337,6 +339,31 @@ describe("readsOnlyOq", () => {
 
   it("is false with no target", () => {
     expect(readsOnlyOq(null)).toBe(false);
+  });
+});
+
+// A viewer before the planning filter's release ignores `filter=` and shows
+// every entry, so `index --filter` cautions under its link
+// (docs/design/planning-filter.md §9.5).
+describe("predatesFilter", () => {
+  it.each([
+    ["0.7", true],
+    ["0.8", true],
+    ["0.8.1", true],
+    ["0.9", false],
+    ["0.9.1", false],
+    ["0.10", false],
+    ["1.0", false],
+  ])("target %s: %s", (written, expected) => {
+    expect(predatesFilter(declared(FILE, written).target)).toBe(expected);
+  });
+
+  it("is false with no target", () => {
+    expect(predatesFilter(null)).toBe(false);
+  });
+
+  it("names the release as a target writes it", () => {
+    expect(FILTER_RELEASE_NAME).toBe("0.9");
   });
 });
 
