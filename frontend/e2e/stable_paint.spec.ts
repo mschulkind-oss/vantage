@@ -400,17 +400,33 @@ test.describe("Referenced by fills the line reserved for it", () => {
       "Referenced by 3 documents · on the roadmap under Later",
       390,
     ],
-    // No frontmatter: its `oq` directives alone say what it is.
+    // No frontmatter: its `oq` directives alone say what it is. It holds
+    // questions, so the line ends with its link to the planning page
+    // (docs/design/planning-filter.md §7), which arrives with the rest.
     [
       "tree-badges/questions-only.md",
       "Questions only",
-      /open questions not on the roadmap$/,
+      /open questions not on the roadmap · its questions on the planning page$/,
       1440,
     ],
     [
       "tree-badges/questions-only.md",
       "Questions only",
-      /open questions not on the roadmap$/,
+      /open questions not on the roadmap · its questions on the planning page$/,
+      390,
+    ],
+    // The disclosure button and the link after it, on one line at a phone's
+    // width too.
+    [
+      "plans/paged.md",
+      "The paged plan",
+      "Referenced by 1 document · on the roadmap under Later · its questions on the planning page",
+      1440,
+    ],
+    [
+      "plans/paged.md",
+      "The paged plan",
+      "Referenced by 1 document · on the roadmap under Later · its questions on the planning page",
       390,
     ],
   ] as const) {

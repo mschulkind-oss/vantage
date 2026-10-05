@@ -9,7 +9,7 @@
  * a ready index.
  */
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BrowserRouter } from "react-router-dom";
 import type { PlanningIndex } from "vantage-md/planning";
 import {
@@ -446,7 +446,9 @@ describe("Referenced by (§7)", () => {
   it("counts a document's unrouted questions when nothing links to it", () => {
     seedReady(indexOf(TREE));
     renderViewer(FORGOTTEN, "docs/forgotten.md");
-    expect(surface()).toHaveTextContent(/^1 open question not on the roadmap$/);
+    expect(surface()).toHaveTextContent(
+      /^1 open question not on the roadmap · its questions on the planning page$/,
+    );
     expect(screen.queryByRole("button", { name: /roadmap/ })).toBeNull();
   });
 
@@ -477,6 +479,185 @@ describe("Referenced by (§7)", () => {
       </BrowserRouter>,
     );
     expect(surface()).toBeNull();
+  });
+
+  describe("its link to the filtered planning page (planning-filter.md §7)", () => {
+    const LINK = "its questions on the planning page";
+    const planningLink = () => screen.queryByRole("link", { name: LINK });
+    /** The line itself, without the list behind it, which is in the DOM, hidden. */
+    const lineRow = () => surface()?.firstElementChild ?? null;
+    const doc = (header: string, body: string) =>
+      `---\n${header}\n---\n\n# A plan\n\n${body}`;
+
+    afterEach(() => {
+      delete window.__VANTAGE_STATIC__;
+    });
+
+    it("is drawn for a live document holding a question, to the page filtered to it", () => {
+      seedReady(indexOf(TREE));
+      renderViewer(TARGET, "docs/design.md");
+      const link = planningLink()!;
+      // `path:/docs/design.md` in canonical text, which drops the `/`.
+      expect(link).toHaveAttribute(
+        "href",
+        "/.vantage/planning?filter=path:docs/design.md",
+      );
+      expect(toggle()).not.toContainElement(link);
+      expect(lineRow()).toHaveTextContent(
+        /^Referenced by 2 documents · on the roadmap under Rule these first · its questions on the planning page$/,
+      );
+      fireEvent.click(link);
+      expect(navigate).toHaveBeenCalledWith(
+        "/.vantage/planning?filter=path:docs/design.md",
+      );
+    });
+
+    it("keeps the `/` of a document at the root, and quotes a name a bare term cannot hold", () => {
+      const tree = {
+        "roadmap.md":
+          "# Roadmap\n\n## Now\n\n- [n](notes.md)\n- [s](my%20notes.md)\n",
+        "notes.md": doc("status: draft", question("OQ-N1")),
+        "my notes.md": doc("status: draft", question("OQ-S1")),
+      };
+      seedReady(indexOf(tree));
+      const { unmount } = renderViewer(tree["notes.md"], "notes.md");
+      expect(planningLink()).toHaveAttribute(
+        "href",
+        "/.vantage/planning?filter=path:/notes.md",
+      );
+      unmount();
+      renderViewer(tree["my notes.md"], "my notes.md");
+      expect(planningLink()).toHaveAttribute(
+        "href",
+        "/.vantage/planning?filter=path:%22/my+notes.md%22",
+      );
+    });
+
+    it("carries the repository, encoded, in daemon mode", () => {
+      const repo = "my repo#2";
+      useRepoStore.setState({ isMultiRepo: true, currentRepo: repo });
+      act(() => {
+        usePlanningStore.setState({
+          byRepo: {
+            [repo]: {
+              status: "ready",
+              index: indexOf(TREE),
+              version: ++version,
+              rescanning: false,
+              hashes: {},
+            },
+          },
+        });
+      });
+      renderViewer(TARGET, "docs/design.md");
+      expect(planningLink()).toHaveAttribute(
+        "href",
+        "/.vantage/planning/my%20repo%232?filter=path:docs/design.md",
+      );
+    });
+
+    it("is absent for a done stage, and for a document holding no question", () => {
+      const tree = {
+        "roadmap.md":
+          "# Roadmap\n\n## Now\n\n- [d](docs/done.md)\n- [q](docs/quiet.md)\n",
+        "docs/done.md": doc("stage: DONE", question("OQ-D1")),
+        "docs/quiet.md": doc("stage: DESIGN", "Nothing to ask.\n"),
+      };
+      seedReady(indexOf(tree, { stages: { DESIGN: "open", DONE: "done" } }));
+      // A done document is on no roadmap either (Plan Q11): the line keeps
+      // only its count.
+      const { unmount } = renderViewer(tree["docs/done.md"], "docs/done.md");
+      expect(lineRow()).toHaveTextContent(/^Referenced by 1 document$/);
+      expect(planningLink()).toBeNull();
+      unmount();
+      renderViewer(tree["docs/quiet.md"], "docs/quiet.md");
+      expect(lineRow()).toHaveTextContent(
+        /^Referenced by 1 document · on the roadmap under Now$/,
+      );
+      expect(planningLink()).toBeNull();
+    });
+
+    it("is absent in a static export, which has no planning page", () => {
+      window.__VANTAGE_STATIC__ = true;
+      // An export has no planning index either, so as it is today it draws
+      // no Referenced by at all.
+      const { unmount } = renderViewer(TARGET, "docs/design.md");
+      expect(planningLink()).toBeNull();
+      unmount();
+      // And were an index in hand, the line would still have no page to
+      // link: an index that lands after the store gave up on it.
+      renderViewer(FORGOTTEN, "docs/forgotten.md");
+      seedReady(indexOf(TREE));
+      expect(surface()).toHaveTextContent(
+        /^1 open question not on the roadmap$/,
+      );
+      expect(planningLink()).toBeNull();
+    });
+
+    it("is absent for a path no filter can name", () => {
+      // A control character is not understood even quoted (§5.5).
+      const path = "docs/bell\u0007.md";
+      seedReady(indexOf({ ...TREE, [path]: FORGOTTEN }));
+      renderViewer(FORGOTTEN, path);
+      expect(surface()).toHaveTextContent(
+        /^1 open question not on the roadmap$/,
+      );
+      expect(planningLink()).toBeNull();
+    });
+
+    it("is a line of its own when it is all the line would say", () => {
+      // No roadmap, so nothing is unrouted, and nothing links here.
+      const alone = doc("status: draft", question("OQ-A1"));
+      seedReady(indexOf({ "docs/alone.md": alone }));
+      renderViewer(alone, "docs/alone.md");
+      expect(surface()).toHaveTextContent(
+        /^its questions on the planning page$/,
+      );
+      expect(surface()?.querySelector("button")).toBeNull();
+      expect(planningLink()).toHaveAttribute(
+        "href",
+        "/.vantage/planning?filter=path:docs/alone.md",
+      );
+    });
+
+    it("fills the line reserved at first paint on one line, the link kept whole", () => {
+      const loading = () =>
+        act(() => {
+          usePlanningStore.setState({
+            byRepo: { "": { status: "loading", warm: false, progress: null } },
+          });
+        });
+      const reserved = () =>
+        document.querySelector(`[${REFERENCED_BY_RESERVED_ATTR}]`);
+      // Reserved by its frontmatter, and by its directives alone.
+      for (const [content, path] of [
+        [TARGET, "docs/design.md"],
+        [BARE, "docs/bare.md"],
+      ] as const) {
+        loading();
+        const { unmount } = renderViewer(content, path);
+        expect(reserved()).not.toBeNull();
+        seedReady(indexOf(TREE));
+        expect(reserved()).toBeNull();
+        const link = planningLink()!;
+        expect(link).toHaveClass("shrink-0", "whitespace-nowrap");
+        expect(lineRow()).toHaveClass("flex-nowrap");
+        expect(lineRow()).not.toHaveClass("flex-wrap");
+        expect(toggle().querySelector("span.min-w-0")).toHaveClass("truncate");
+        unmount();
+      }
+      // And a line holding only the link fills it too.
+      const alone = doc("status: draft", question("OQ-A1"));
+      loading();
+      renderViewer(alone, "docs/alone.md");
+      expect(reserved()).not.toBeNull();
+      seedReady(indexOf({ "docs/alone.md": alone }));
+      expect(reserved()).toBeNull();
+      expect(surface()).toHaveTextContent(
+        /^its questions on the planning page$/,
+      );
+      expect(planningLink()).toHaveClass("shrink-0", "whitespace-nowrap");
+    });
   });
 
   describe("when the index lands after the first paint (§12.2)", () => {

@@ -16,7 +16,7 @@ import { cn } from "../lib/utils";
 import { scrollToAnchor } from "../lib/anchorScroll";
 import { projectFor } from "../lib/cloneLinks";
 import { shouldHandleInternalNavigation } from "../lib/navigation";
-import { fragmentHref, routeHref } from "../lib/staticMode";
+import { fragmentHref, isStaticMode, routeHref } from "../lib/staticMode";
 import { readPreference, writePreference } from "../lib/preferences";
 import { useRepoStore } from "../stores/useRepoStore";
 import { useDeltaFlash } from "../hooks/useDeltaFlash";
@@ -35,7 +35,13 @@ import {
   rehypeMarkMarkdownLinks,
   usePlanningLinkBadges,
 } from "../hooks/usePlanningLinkBadges";
-import { findDocument, referenceSummary } from "vantage-md/planning";
+import {
+  documentFilter,
+  findDocument,
+  planningLink,
+  referenceSummary,
+} from "vantage-md/planning";
+import { planningPath } from "../lib/planningRoute";
 import { usePlanningIndex } from "../stores/usePlanningStore";
 import { PLANNING_BADGE_ATTR } from "./PlanningBadge";
 import { ReferencedBy, summaryLine } from "./ReferencedBy";
@@ -853,8 +859,23 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   // A planning document by its own frontmatter: known before the index is.
   const plannedByFrontmatter =
     Object.hasOwn(frontmatter, "status") || Object.hasOwn(frontmatter, "stage");
+  // Referenced by's last part (docs/design/planning-filter.md §7): the
+  // planning page filtered to this document, `path:/<its path>` in canonical
+  // text, at the page's own path, whose repository segment is encoded in
+  // daemon mode. The line links it only for a live document holding a
+  // question (`summaryLine`). A static export has no planning page, and a
+  // path no filter can name gets no link.
+  const planningHref = useMemo(() => {
+    if (isStaticMode()) return null;
+    const filter = documentFilter(currentPath);
+    return filter === null
+      ? null
+      : planningLink(filter, { path: planningPath(isMultiRepo, currentRepo) });
+  }, [currentPath, isMultiRepo, currentRepo]);
   const referencedByLine =
-    referenceSummaryHere === null ? null : summaryLine(referenceSummaryHere);
+    referenceSummaryHere === null
+      ? null
+      : summaryLine(referenceSummaryHere, planningHref);
   // Drawn after the first paint, it fills the one line reserved for it, so it
   // is one line at every width: wrapped on a phone, it moved the document.
   const referencedBy =
@@ -863,6 +884,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
         key={currentPath}
         summary={referenceSummaryHere}
         hrefFor={buildPath}
+        planningHref={planningHref}
         oneLine={!indexedAtFirstPaint}
       />
     ) : null;
