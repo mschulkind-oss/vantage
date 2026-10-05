@@ -207,6 +207,31 @@ export function readsOnlyOq(target: Target | null): boolean {
 }
 
 /**
+ * The release that added the planning filter (`docs/design/planning-filter.md`
+ * §9.5): a viewer before it keeps `filter=` and ignores it, so a filtered link
+ * opens the whole planning page there, and says nothing (§10.1).
+ *
+ * Not known for certain until the release is tagged: a feature is a minor, so
+ * this assumes the next one. Confirm it before the tag, since a wrong value
+ * cautions the wrong repositories.
+ */
+export const FILTER_RELEASE = [0, 9, 0] as const;
+
+/** `FILTER_RELEASE` as a target writes it: `0.9`, or `0.9.1` with a patch. */
+export const FILTER_RELEASE_NAME = (
+  FILTER_RELEASE[2] === 0 ? FILTER_RELEASE.slice(0, 2) : FILTER_RELEASE
+).join(".");
+
+/**
+ * Whether a target says some of the repository's readers run a viewer before
+ * `FILTER_RELEASE`, which shows every entry for a filtered link, so `index
+ * --filter` cautions under the link it prints (§9.5).
+ */
+export function predatesFilter(target: Target | null): boolean {
+  return target !== null && compare(target.version, FILTER_RELEASE) < 0;
+}
+
+/**
  * The file `style-guide` answers to: its project root's own, the one `index`
  * reads (the root is the working directory's, as `index` finds it).
  */

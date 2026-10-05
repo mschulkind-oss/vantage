@@ -113,6 +113,72 @@ describe("parseArgs", () => {
     });
   });
 
+  // docs/design/planning-filter.md §8.1: given twice, the values join with one
+  // space, in order, which is what typing both into the Filter box gives.
+  it("parses index's --filter, every value joined with one space", () => {
+    expect(
+      parseArgs(["index", "--filter", "path:docs/a.md", "--filter=is:open"]),
+    ).toEqual({
+      kind: "index",
+      options: { format: "text", filter: "path:docs/a.md is:open" },
+    });
+    // Empty is still given: the command reads it as no filter.
+    expect(parseArgs(["index", "--filter", ""])).toEqual({
+      kind: "index",
+      options: { format: "text", filter: "" },
+    });
+    expect(parseArgs(["index", "--filter="])).toEqual({
+      kind: "index",
+      options: { format: "text", filter: "" },
+    });
+    expect(parseArgs(["index", "--filter", "", "--filter", "is:open"])).toEqual(
+      { kind: "index", options: { format: "text", filter: " is:open" } },
+    );
+  });
+
+  // The next argument is the value whatever it is, so a filter this release
+  // does not understand is the command's exit 2, never an unknown option.
+  it("takes the argument after --filter as its value, whatever it is", () => {
+    expect(parseArgs(["index", "--filter", "-path:x"])).toEqual({
+      kind: "index",
+      options: { format: "text", filter: "-path:x" },
+    });
+    expect(parseArgs(["index", "--filter", "--roadmap"])).toEqual({
+      kind: "index",
+      options: { format: "text", filter: "--roadmap" },
+    });
+    expect(
+      parseArgs([
+        "index",
+        "--request",
+        "ready",
+        "--filter",
+        "path:docs",
+        "--format=text",
+      ]),
+    ).toEqual({
+      kind: "index",
+      options: { format: "text", request: ["ready"], filter: "path:docs" },
+    });
+  });
+
+  it.each([
+    [
+      ["index", "--filter"],
+      "--filter needs a filter text, such as 'path:/docs/design/x.md is:open'",
+    ],
+    [
+      ["index", "--filter", "path:a", "--filter"],
+      "--filter needs a filter text, such as 'path:/docs/design/x.md is:open'",
+    ],
+    [
+      ["index", "--request", "--filter", "path:a", "--format", "json"],
+      "--request prints text, so it takes no --format json",
+    ],
+  ])("refuses %j", (argv, message) => {
+    expect(parseArgs(argv)).toEqual({ kind: "usage-error", message });
+  });
+
   it.each([
     [
       ["index", "--request", "needs-you"],
@@ -252,6 +318,53 @@ describe("run", () => {
     expect(code).toBe(EXIT_USAGE);
     expect(io.stdout).toBe("");
     expect(io.stderr).toContain("unknown option: --frobnicate");
+  });
+
+  // The help is where an agent learns the filter (planning-filter.md §9.5):
+  // its keys, how terms combine, and what to do with the link.
+  it("lists --filter and its keys among index's options, and its exit 2", async () => {
+    const { USAGE } = await import("../src/help.js");
+    const help = USAGE.replace(/\s+/g, " ");
+
+    expect(USAGE).toContain(
+      "\n  --filter <text>                    show only the entries the text keeps, as\n",
+    );
+    expect(USAGE).toMatch(/\n {39}path:<pattern> {2}a document: /);
+    expect(USAGE).toMatch(/\n {39}is:open {9}a question still open\n/);
+    expect(help).toContain(
+      "Terms with one key keep any of their matches; terms with different keys must all match.",
+    );
+    expect(help).toContain(
+      "Paste the link into the planning page's Filter box: press / there.",
+    );
+    expect(help).toContain(
+      "For index, also a --filter it does not understand, checked before anything is scanned, or one with a path: term that matches no path",
+    );
+    // Options for index, in order: --filter sits beside --roadmap.
+    const options = USAGE.split("Options for index:\n")[1]?.split("\n\n")[0];
+    expect(
+      (options ?? "")
+        .split("\n")
+        .filter((line) => /^ {2}-/.test(line))
+        .map((line) => line.trim().split(/\s{2,}/)[0]),
+    ).toEqual([
+      "--format text|json",
+      "--request [<section>...]",
+      "--roadmap <path>",
+      "--filter <text>",
+      "--config <path>",
+      "--no-config",
+    ]);
+  });
+
+  it("prints usage to stderr and exits 2 on --filter with no value", async () => {
+    const io = bufferIo();
+    const code = await run(["index", "--filter"], io);
+
+    expect(code).toBe(EXIT_USAGE);
+    expect(io.stdout).toBe("");
+    expect(io.stderr).toContain("vantage-check: --filter needs a filter text");
+    expect(io.stderr).toContain("Options for index:");
   });
 
   it("lists index and its options in the help", async () => {
