@@ -206,7 +206,8 @@ function filteredNotice(
 
   const others = summary.otherRoadmaps;
   if (others.length > 0) {
-    const total = others.reduce((sum, r) => sum + r.count, 0);
+    // Each question once, though two of the roadmaps may route it.
+    const total = summary.onOtherRoadmaps;
     const line: (string | { code: string })[] = [
       total === 1
         ? "1 more question it keeps is on "
@@ -222,7 +223,7 @@ function filteredNotice(
       reader === "page"
         ? one
           ? `. Choose that roadmap to see ${total === 1 ? "it" : "them"}; the filter stays.`
-          : ". Choose one to see them; the filter stays."
+          : `. Choose one to see ${total === 1 ? "it" : "them"}; the filter stays.`
         : one
           ? ". Rerun with --roadmap naming it."
           : ". Rerun with --roadmap naming one.",

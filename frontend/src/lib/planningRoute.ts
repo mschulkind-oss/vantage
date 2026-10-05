@@ -19,9 +19,13 @@ export const PLANNING_ROUTE = PLANNING_PAGE_PATH;
 /**
  * The planning page's URL: `/.vantage/planning`, or
  * `/.vantage/planning/<repo>` in daemon mode, where `repo` is the current one,
- * percent-encoded as one path segment. A repository's name is a directory
- * name, and may hold a space, `#`, `?` or `%`, which the server's startup tip
- * encodes the same way (`url.PathEscape`), and the route decodes.
+ * percent-encoded as one path segment with `encodeURIComponent`. A
+ * repository's name is a directory name, and may hold a space, `#`, `?` or
+ * `%`. The server's startup tip encodes the segment too, with Go's
+ * `url.PathEscape`, which writes some characters differently (`+ = @ : $ &`
+ * bare where this encodes them, `( ) ! * '` encoded where this leaves them
+ * bare). The route decodes either to the same name, so the two are the same
+ * page but not always the same string.
  */
 export function planningPath(
   isMultiRepo: boolean,
