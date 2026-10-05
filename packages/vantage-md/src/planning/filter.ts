@@ -757,6 +757,14 @@ export function documentFilter(path: string): string | null {
   return parsed.kind === "understood" ? parsed.canonical : null;
 }
 
+/**
+ * A planning link from its path on: what `encodePlanningQueryValue` leaves
+ * bare, the percent escapes and `+` it writes, and the URL's own `? & = #`.
+ */
+const LINK_RUN = /^[A-Za-z0-9\-._~:/%+?&=#]*/;
+/** Trailing punctuation GFM's extended autolinks leave out, of those a link can hold. */
+const TRAILING = /[?.,:_~]+$/;
+
 /** Where a planning link's path starts in a pasted run of text. */
 const PAGE_PATH_AT = new RegExp(
   `${PLANNING_PAGE_PATH.replace(/\./g, "\\.")}(?=[/?#]|$)`,
@@ -771,9 +779,12 @@ const PAGE_PATH_AT = new RegExp(
  * its `roadmap`, or `null`. Its repository segment, its page parameters and
  * its fragment are ignored.
  *
- * The run ends at the grammar's white space only, so a link wrapped in
- * backticks or followed by a period keeps them, and its filter then reads as
- * written. What counts as a pasted link may only widen (§10.3).
+ * The link ends where the run does, or earlier, at the first character a
+ * planning link never holds unencoded, so the backtick or the parenthesis a
+ * chat wraps it in is not read as part of it. Then the trailing punctuation
+ * GitHub's autolinks leave out (`?`, `.`, `,`, `:`, `_` and `~`; GFM's
+ * extended autolink rule) is dropped, so a sentence's period after it is too.
+ * What counts as a pasted link may only widen (§10.3).
  */
 export function readPastedPlanningLink(
   text: string,
@@ -792,9 +803,11 @@ export function readPastedPlanningLink(
   for (const candidate of runs) {
     const at = PAGE_PATH_AT.exec(candidate);
     if (at === null) continue;
+    const tail = candidate.slice(at.index);
+    const link = (LINK_RUN.exec(tail)?.[0] ?? "").replace(TRAILING, "");
     let url: URL;
     try {
-      url = new URL(candidate.slice(at.index), "http://vantage.invalid");
+      url = new URL(link, "http://vantage.invalid");
     } catch {
       continue;
     }
