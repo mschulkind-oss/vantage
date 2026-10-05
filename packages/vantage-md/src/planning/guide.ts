@@ -236,6 +236,37 @@ export interface PlanningAgentRequestOptions {
    * release now, for the checkers that read it later.
    */
   viewer?: string;
+  /**
+   * An applied planning filter (`docs/design/planning-filter.md` §6.6), with
+   * `sections` the filtered sections. `text` is the filter's canonical text
+   * less its unmatched terms, which a `Filter:` line after `Repository:`
+   * carries as a code span; `unfiltered` are the sections it was applied to,
+   * which every blocked-on fact is read from (§6.3), since a filter can keep a
+   * Ready row and leave out what Blocked holds it for. Absent, the request is
+   * byte for byte what it was before filters.
+   */
+  filter?: { text: string; unfiltered: PlanningSections };
+}
+
+/**
+ * A CommonMark code span holding `text` exactly: fenced with one more
+ * backtick than the longest run of backticks inside it, and padded with a
+ * space at both ends where it starts or ends with a backtick, or starts and
+ * ends with a space, since CommonMark strips one space from each end of a
+ * span that has one at both. So the punctuation after it can never be read
+ * as part of it.
+ */
+export function codeSpan(text: string): string {
+  const longest = Math.max(
+    0,
+    ...(text.match(/`+/g) ?? []).map((run) => run.length),
+  );
+  const fence = "`".repeat(longest + 1);
+  const pad =
+    text.startsWith("`") ||
+    text.endsWith("`") ||
+    (text.startsWith(" ") && text.endsWith(" ") && text.trim() !== "");
+  return pad ? `${fence} ${text} ${fence}` : `${fence}${text}${fence}`;
 }
 
 /**
@@ -265,9 +296,16 @@ export function planningAgentRequest(
 ): string | null {
   const ids = agentSectionsWithEntries(sections, options.ids);
   if (ids.length === 0) return null;
-  const blocks = ids.map((id) => requestBlock(index, sections, id));
+  const blockedFrom = options.filter?.unfiltered ?? sections;
+  const blocks = ids.map((id) =>
+    requestBlock(index, sections, blockedFrom, id),
+  );
+  const filter =
+    options.filter === undefined
+      ? ""
+      : `\nFilter: ${codeSpan(options.filter.text)}. Only the entries it keeps are listed.`;
   return [
-    `Repository: ${options.repository}`,
+    `Repository: ${options.repository}${filter}`,
     ...blocks,
     // Only Markdown: `vantage-check` reads any file it is given as Markdown,
     // so a code file's `§N` comments would read as broken references.
@@ -294,10 +332,15 @@ function checker(viewer: string | undefined): string {
 const SKIP_BLOCKED =
   " Skip any entry marked blocked: it waits on something else first.";
 
-/** One section's block: its heading line, then one line per entry. */
+/**
+ * One section's block: its heading line, then one line per entry. The entries
+ * are `sections`'; what each is blocked on is read from `blockedFrom`, the
+ * sections before any filter (§6.3 of `docs/design/planning-filter.md`).
+ */
 function requestBlock(
   index: PlanningIndex,
   sections: PlanningSections,
+  blockedFrom: PlanningSections,
   id: PlanningAgentSectionId,
 ): string {
   const { config } = index;
@@ -305,10 +348,10 @@ function requestBlock(
   /** Each document's line, and the skip clause when one of them is blocked. */
   const documents = (paths: readonly string[], open = false) => {
     const items = paths.map((path) =>
-      documentItem(index, sections, path, open),
+      documentItem(index, blockedFrom, path, open),
     );
     const blocked = paths.some(
-      (path) => blockedOn(index, sections, path).length > 0,
+      (path) => blockedOn(index, blockedFrom, path).length > 0,
     );
     return { items, skip: blocked ? SKIP_BLOCKED : "" };
   };
@@ -479,11 +522,12 @@ function blockedOn(
  * `- docs/c.md  (stage DECIDED)`; for a document Blocked also lists, what it
  * waits on: `(stage DECIDED; blocked on docs/a.md#OQ-A1, 🔒 OQ-C1)`; and with
  * `open`, the document's open questions: `(stage BUILT; open: OQ-E1, line
- * 20)`, a question with no id named by its line.
+ * 20)`, a question with no id named by its line. `blockedFrom` is the
+ * sections Blocked is read from, which are never filtered.
  */
 function documentItem(
   index: PlanningIndex,
-  sections: PlanningSections,
+  blockedFrom: PlanningSections,
   path: string,
   open = false,
 ): string {
@@ -492,7 +536,7 @@ function documentItem(
   if (doc !== undefined && doc.stage !== null) {
     facts.push(`stage ${doc.stage}`);
   }
-  const blocked = blockedOn(index, sections, path);
+  const blocked = blockedOn(index, blockedFrom, path);
   if (blocked.length > 0) facts.push(`blocked on ${blocked.join(", ")}`);
   if (open && doc !== undefined) {
     const named = doc.questions

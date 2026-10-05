@@ -18,7 +18,13 @@ import {
   type PlanningConfig,
   type StageRole,
 } from "./config.js";
-import { PLANNING_SECTION_TITLES } from "./guide.js";
+import type {
+  NotUnderstoodPlanningFilter,
+  PlanningFilterReason,
+  PlanningFilterSummary,
+} from "./filter.js";
+import { PLANNING_FILTER_LIMITS } from "./filterLimits.js";
+import { PLANNING_SECTION_TITLES, codeSpan } from "./guide.js";
 import { findDocument, type PlanningIndex } from "./model.js";
 import type {
   DependsOn,
@@ -123,9 +129,159 @@ function clauses(items: readonly string[]): string {
 const LISTS_EVERY_QUESTION =
   "so Needs you lists every open question by document.";
 
+/**
+ * One line of a notice whose text sets something off (§6.7 of
+ * `docs/design/planning-filter.md`): plain text, and `code` parts, which the
+ * page draws as code and the checker prints between backticks, so the `:`
+ * after a filter text cannot be read as part of it.
+ */
+export type PlanningNoticeLine = readonly (string | { code: string })[];
+
+/** Who reads a filter notice: its last words say how to see the rest. */
+export type PlanningNoticeReader = "page" | "checker";
+
+/** A notice line as the checker prints it: each code part through `codeSpan`. */
+export function noticeText(line: PlanningNoticeLine): string {
+  return line
+    .map((part) => (typeof part === "string" ? part : codeSpan(part.code)))
+    .join("");
+}
+
+const count = (n: number): string => n.toLocaleString("en-US");
+
+const plural = (n: number, one: string, many: string): string =>
+  `${count(n)} ${n === 1 ? one : many}`;
+
+/** `a`, `a and b`, `a, b, and c`: names, which hold no commas. */
+function names(items: readonly string[]): string {
+  if (items.length <= 2) return items.join(" and ");
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+
+/** What stands in for the term a not-understood filter cannot name. */
+function reasonPhrase(reason: PlanningFilterReason): string {
+  switch (reason) {
+    case "unclosed-quote":
+      return "an unclosed quote";
+    case "too-many-terms":
+      return `a filter past ${plural(PLANNING_FILTER_LIMITS.terms, "term", "terms")}`;
+    case "too-long":
+      return `a filter past ${plural(PLANNING_FILTER_LIMITS.codePoints, "code point", "code points")}`;
+  }
+}
+
+/** The term a not-understood filter names, as code, or its reason, as words. */
+const notUnderstoodPart = (
+  filter: NotUnderstoodPlanningFilter,
+): string | { code: string } =>
+  filter.term !== null
+    ? { code: filter.term }
+    : reasonPhrase(filter.reason ?? "unclosed-quote");
+
+/** The example the Not filtered notice gives of a filter this release reads. */
+const FILTER_EXAMPLE = "path:docs/design/*.md is:open";
+
+/** The filter notice's lines for an applied filter (§6.7), first to last. */
+function filteredNotice(
+  summary: PlanningFilterSummary,
+  reader: PlanningNoticeReader,
+): PlanningNoticeLine[] {
+  const { entries, documents, openQuestions } = summary;
+  const open =
+    openQuestions === 0
+      ? "none of them open questions"
+      : openQuestions === 1
+        ? "1 of them an open question"
+        : `${count(openQuestions)} of them open questions`;
+  const lines: PlanningNoticeLine[] = [
+    [
+      "Filtered by ",
+      { code: summary.canonical },
+      `: ${count(entries.shown)} of ${plural(entries.of, "entry", "entries")}, in ${count(documents.kept)} of ${plural(documents.of, "path", "paths")}, ${open}.`,
+    ],
+  ];
+  for (const term of summary.unmatched) {
+    lines.push([{ code: term }, " matches no path the index lists."]);
+  }
+
+  const others = summary.otherRoadmaps;
+  if (others.length > 0) {
+    const total = others.reduce((sum, r) => sum + r.count, 0);
+    const line: (string | { code: string })[] = [
+      total === 1
+        ? "1 more question it keeps is on "
+        : `${count(total)} more questions it keeps are on `,
+      others.length === 1 ? "another roadmap: " : "other roadmaps: ",
+    ];
+    others.forEach((roadmap, i) => {
+      if (i > 0) line.push(", ");
+      line.push({ code: roadmap.path }, ` (${count(roadmap.count)})`);
+    });
+    const one = others.length === 1;
+    line.push(
+      reader === "page"
+        ? one
+          ? `. Choose that roadmap to see ${total === 1 ? "it" : "them"}; the filter stays.`
+          : ". Choose one to see them; the filter stays."
+        : one
+          ? ". Rerun with --roadmap naming it."
+          : ". Rerun with --roadmap naming one.",
+    );
+    lines.push(line);
+  }
+
+  const blocked = summary.blockedLeftOut;
+  if (blocked > 0) {
+    lines.push([
+      blocked === 1
+        ? "1 of its questions is blocked and will need you later."
+        : `${count(blocked)} of its questions are blocked and will need you later.`,
+    ]);
+  }
+
+  // One line per kept document, naming every target it waits on outside.
+  const outside = new Map<string, string[]>();
+  for (const { path, target } of summary.waitsOutside) {
+    const targets = outside.get(path) ?? [];
+    targets.push(target);
+    outside.set(path, targets);
+  }
+  for (const [path, targets] of outside) {
+    lines.push([
+      `${path} waits on ${names(targets)}, which this filter leaves out.`,
+    ]);
+  }
+
+  const hidden = entries.of - entries.shown;
+  lines.push([
+    hidden === 0
+      ? "It hides no entry."
+      : reader === "page"
+        ? `Clear the filter to see the other ${count(hidden)}.`
+        : `Run without --filter to see the other ${count(hidden)}.`,
+  ]);
+  return lines;
+}
+
 /** One wording for the page and the CLI (P7). */
 export const PLANNING_NOTICES: {
   nothingNeedsYou: string;
+  /** *Nothing needs you* under a filter (§6.2): no open question it keeps. */
+  nothingFilteredNeedsYou: string;
+  /**
+   * The filter notice of an applied filter (§6.7): the first line with its
+   * counts, one line per unmatched term, the clauses that apply (other
+   * roadmaps, blocked questions left out, waits on a document left out), and
+   * a last line saying how to see the rest, in `reader`'s words.
+   */
+  filtered(
+    summary: PlanningFilterSummary,
+    reader: PlanningNoticeReader,
+  ): PlanningNoticeLine[];
+  /** The page's notice for a filter it does not understand, and so does not apply. */
+  notFiltered(filter: NotUnderstoodPlanningFilter): PlanningNoticeLine;
+  /** The checker's exit-2 message for a filter it does not understand, unprefixed. */
+  filterNotUnderstood(filter: NotUnderstoodPlanningFilter): string;
   /**
    * The roadmap notice of §6.8, or null: the No roadmap line when none
    * routes, the Not read as a roadmap line when a listed one is missing,
@@ -141,6 +297,17 @@ export const PLANNING_NOTICES: {
   refused(candidateCount: number, maxCandidates: number): string;
 } = {
   nothingNeedsYou: "Nothing needs you.",
+  nothingFilteredNeedsYou: "Nothing this filter keeps needs you.",
+  filtered: filteredNotice,
+  notFiltered: (filter) => [
+    "Not filtered: this Vantage does not understand ",
+    notUnderstoodPart(filter),
+    ". It reads path: and is: terms, such as ",
+    { code: FILTER_EXAMPLE },
+    ". Every entry is shown.",
+  ],
+  filterNotUnderstood: (filter) =>
+    `this checker does not understand ${noticeText([notUnderstoodPart(filter)])}; it reads path: and is: terms`,
   roadmapNotice(config, roadmaps) {
     const unread = roadmaps.filter(
       (r): r is PlanningRoadmap & { state: Exclude<RoadmapState, "routes"> } =>
@@ -205,8 +372,12 @@ function roleOf(index: PlanningIndex, doc: PlanningDocument): StageRole | null {
   return Object.hasOwn(stages, doc.stage) ? (stages[doc.stage] ?? null) : null;
 }
 
-/** A `done` document is not a live proposal and contributes to no section. */
-const isLive = (index: PlanningIndex, doc: PlanningDocument): boolean =>
+/**
+ * A `done` document is not a live proposal and contributes to no section.
+ * Exported for the filter's recount of *Nothing needs you*, and not from
+ * `planning/index.ts`.
+ */
+export const isLive = (index: PlanningIndex, doc: PlanningDocument): boolean =>
   roleOf(index, doc) !== "done";
 
 const refOf = (q: PlanningQuestion): QuestionRef => ({
@@ -558,6 +729,13 @@ export interface ReferenceSummary {
    * decides the line's wording, and what a label must tell apart.
    */
   roadmaps: string[];
+  /**
+   * Its stage has no `done` role and it holds at least one question: the
+   * line then links to the planning page filtered to this document
+   * (`docs/design/planning-filter.md` §7). `false` for a path the index
+   * holds no document at.
+   */
+  hasLiveQuestions: boolean;
 }
 
 /**
@@ -602,5 +780,13 @@ export function referenceSummary(
           [doc],
           routes.flatMap((route) => route.routed),
         ).length;
-  return { sources: [...first, ...rest], onRoadmaps, unrouted, roadmaps };
+  const hasLiveQuestions =
+    doc !== undefined && isLive(index, doc) && doc.questions.length > 0;
+  return {
+    sources: [...first, ...rest],
+    onRoadmaps,
+    unrouted,
+    roadmaps,
+    hasLiveQuestions,
+  };
 }

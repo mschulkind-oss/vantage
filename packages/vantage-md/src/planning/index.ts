@@ -72,6 +72,7 @@ export {
   PLANNING_NOTICES,
   ROADMAP_STATE_PHRASES,
   derivePlanningSections,
+  noticeText,
   questionFor,
   referenceSummary,
   referencedBy,
@@ -80,6 +81,8 @@ export {
 } from "./sections.js";
 export type {
   OtherRoadmapQuestion,
+  PlanningNoticeLine,
+  PlanningNoticeReader,
   PlanningRoadmap,
   PlanningSections,
   QuestionRef,
@@ -97,6 +100,7 @@ export {
   PLANNING_SECTION_TITLES,
   agentSectionCount,
   agentSectionsWithEntries,
+  codeSpan,
   dependsOnLabel,
   isPlanningAgentSectionId,
   planningAgentRequest,
@@ -112,3 +116,26 @@ export type {
   PlanningSectionKey,
 } from "./guide.js";
 export { cardBlockFor } from "./cardSource.js";
+export {
+  PLANNING_FILTER_LIMITS,
+  PLANNING_FILTER_PARAM,
+  PLANNING_PAGE_PATH,
+  PLANNING_ROADMAP_PARAM,
+  applyPlanningFilter,
+  documentFilter,
+  encodePlanningQueryValue,
+  filterKeepsQuestion,
+  parsePlanningFilter,
+  planningLink,
+  readPastedPlanningLink,
+} from "./filter.js";
+export type {
+  FilteredPlanningSections,
+  NotUnderstoodPlanningFilter,
+  PlanningFilter,
+  PlanningFilterLimits,
+  PlanningFilterReason,
+  PlanningFilterSummary,
+  PlanningFilterTerm,
+  UnderstoodPlanningFilter,
+} from "./filter.js";
