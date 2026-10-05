@@ -12,6 +12,9 @@
       "roadmap.md": "# Roadmap\n\n## Now\n\n- [The design](docs/design/a.md)\n",
       "x/roadmap.md": "# Another roadmap\n\n- [C's first](../docs/design/sub/c.md#OQ-C1)\n",
       "a.md": "---\nstatus: draft\n---\n\n# A root document with no questions\n\n",
+      "my notes.md": "---\nstatus: draft\n---\n\n# A root document whose name needs quoting\n\n",
+      "y/a.md/inner.md": "---\nstatus: draft\n---\n\n# In a folder named like a file elsewhere\n\n",
+      "y/my notes.md/inner.md": "---\nstatus: draft\n---\n\n# In a folder named like a file elsewhere, with a space\n\n",
       "docs/design/a.md": "---\nstatus: draft\nstage: DESIGN\n---\n\n# The design\n\n1. \ud83d\udcac **OQ-A1: The first?**\n\n   <!-- vantage: question id=OQ-A1 leaning=\"Yes.\" -->\n\n   _Leaning:_ yes.\n\n2. \ud83d\udd12 \u23f8 **OQ-A2: Paused on an outside event?**\n\n   <!-- vantage: question id=OQ-A2 -->\n\n   Settled or waiting.\n\n3. \ud83d\udcac **OQ-A3: The outer one?**\n\n   <!-- vantage: question id=OQ-A3 leaning=\"Yes.\" -->\n\n   _Leaning:_ yes.\n\n   1. \u2705 **OQ-A4: The inner one, ruled?**\n\n      <!-- vantage: question id=OQ-A4 -->\n\n      Settled or waiting.\n",
       "docs/design/a-plan.md": "---\nstatus: draft\nstage: SKETCH\ndepends-on:\n  - a.md\n---\n\n# The design's plan\n\n",
       "docs/design/sub/c.md": "---\nstatus: draft\nstage: DESIGN\n---\n\n# A design in a subfolder\n\n1. \ud83d\udcac **OQ-C1: Routed by another roadmap?**\n\n   <!-- vantage: question id=OQ-C1 leaning=\"Yes.\" -->\n\n   _Leaning:_ yes.\n\n2. \ud83d\udcac **OQ-C2: On no roadmap?**\n\n   <!-- vantage: question id=OQ-C2 leaning=\"Yes.\" -->\n\n   _Leaning:_ yes.\n",
@@ -142,7 +145,8 @@
       "documents": [
         "a.md",
         "docs/design/a.md",
-        "x/docs/design/a.md"
+        "x/docs/design/a.md",
+        "y/a.md/inner.md"
       ],
       "keeps": [
         "needs-you docs/design/a.md#OQ-A1",
@@ -264,6 +268,24 @@
       "unmatched": []
     },
     {
+      "text": "path:a.md/",
+      "canonical": "path:a.md/",
+      "documents": [
+        "y/a.md/inner.md"
+      ],
+      "keeps": [],
+      "unmatched": []
+    },
+    {
+      "text": "path:docs/design/a.md/",
+      "canonical": "path:docs/design/a.md/",
+      "documents": [],
+      "keeps": [],
+      "unmatched": [
+        "path:docs/design/a.md/"
+      ]
+    },
+    {
       "text": "path:notes",
       "canonical": "path:notes",
       "documents": [
@@ -329,10 +351,12 @@
       "canonical": "path:*notes*",
       "documents": [
         "docs/my notes.md",
+        "my notes.md",
         "notes/b.md",
         "notes/broken.md",
         "notes/e.md",
-        "notes/f.md"
+        "notes/f.md",
+        "y/my notes.md/inner.md"
       ],
       "keeps": [
         "unrouted docs/my notes.md#OQ-N1",
@@ -358,6 +382,7 @@
         "docs/design/sub/c.md",
         "docs/designx/d.md",
         "docs/my notes.md",
+        "my notes.md",
         "notes/b.md",
         "notes/broken.md",
         "notes/e.md",
@@ -365,7 +390,9 @@
         "ref/r.md",
         "roadmap.md",
         "x/docs/design/a.md",
-        "x/roadmap.md"
+        "x/roadmap.md",
+        "y/a.md/inner.md",
+        "y/my notes.md/inner.md"
       ],
       "keeps": [
         "needs-you docs/design/a.md#OQ-A1",
@@ -395,7 +422,8 @@
       "documents": [
         "a.md",
         "docs/design/a.md",
-        "x/docs/design/a.md"
+        "x/docs/design/a.md",
+        "y/a.md/inner.md"
       ],
       "keeps": [
         "needs-you docs/design/a.md#OQ-A1",
@@ -469,12 +497,50 @@
       "text": "path:\"my notes.md\"",
       "canonical": "path:\"my notes.md\"",
       "documents": [
-        "docs/my notes.md"
+        "docs/my notes.md",
+        "my notes.md",
+        "y/my notes.md/inner.md"
       ],
       "keeps": [
         "unrouted docs/my notes.md#OQ-N1"
       ],
       "unmatched": []
+    },
+    {
+      "text": "path:\"/my notes.md\"",
+      "canonical": "path:\"/my notes.md\"",
+      "documents": [
+        "my notes.md"
+      ],
+      "keeps": [],
+      "unmatched": []
+    },
+    {
+      "text": "path:\"./my notes.md\"",
+      "canonical": "path:\"/my notes.md\"",
+      "documents": [
+        "my notes.md"
+      ],
+      "keeps": [],
+      "unmatched": []
+    },
+    {
+      "text": "path:\"my notes.md/\"",
+      "canonical": "path:\"my notes.md/\"",
+      "documents": [
+        "y/my notes.md/inner.md"
+      ],
+      "keeps": [],
+      "unmatched": []
+    },
+    {
+      "text": "path:\"docs/my notes.md/\"",
+      "canonical": "path:\"docs/my notes.md/\"",
+      "documents": [],
+      "keeps": [],
+      "unmatched": [
+        "path:\"docs/my notes.md/\""
+      ]
     },
     {
       "text": "path:\"docs/caf\u00e9.md\"",
@@ -662,6 +728,7 @@
         "docs/design/sub/c.md",
         "docs/designx/d.md",
         "docs/my notes.md",
+        "my notes.md",
         "notes/b.md",
         "notes/broken.md",
         "notes/e.md",
@@ -669,7 +736,9 @@
         "ref/r.md",
         "roadmap.md",
         "x/docs/design/a.md",
-        "x/roadmap.md"
+        "x/roadmap.md",
+        "y/a.md/inner.md",
+        "y/my notes.md/inner.md"
       ],
       "keeps": [
         "needs-you docs/design/a.md#OQ-A1",
@@ -737,6 +806,7 @@
         "docs/design/sub/c.md",
         "docs/designx/d.md",
         "docs/my notes.md",
+        "my notes.md",
         "notes/b.md",
         "notes/broken.md",
         "notes/e.md",
@@ -744,7 +814,9 @@
         "ref/r.md",
         "roadmap.md",
         "x/docs/design/a.md",
-        "x/roadmap.md"
+        "x/roadmap.md",
+        "y/a.md/inner.md",
+        "y/my notes.md/inner.md"
       ],
       "keeps": [
         "needs-you docs/design/a.md#OQ-A1",

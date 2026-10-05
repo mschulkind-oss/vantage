@@ -3,9 +3,20 @@
  * repository segment in daemon mode, which `docs/design/planning-filter.md`
  * §9.4 needs encoded so a filtered link can be put after it.
  */
+import { matchRoutes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { PLANNING_PAGE_PATH } from "vantage-md/planning";
 import { PLANNING_ROUTE, planningPath } from "./planningRoute";
+
+/**
+ * The repository a planning URL names, read as the page reads it: the first
+ * segment of the splat of App.tsx's one `${PLANNING_ROUTE}/*` route, which
+ * React Router decodes.
+ */
+function repositoryOf(pathname: string): string | undefined {
+  const match = matchRoutes([{ path: `${PLANNING_ROUTE}/*` }], pathname);
+  return match?.[0]?.params["*"]?.split("/").filter(Boolean)[0];
+}
 
 describe("planningPath", () => {
   it("is the planning module's path, which the checker's link starts with", () => {
@@ -36,8 +47,27 @@ describe("planningPath", () => {
     expect(planningPath(true, "caf\u00e9")).toBe(
       "/.vantage/planning/caf%C3%A9",
     );
-    // The route decodes it back to the name.
-    const segment = planningPath(true, "a#b?c%d").split("/").at(-1)!;
-    expect(decodeURIComponent(segment)).toBe("a#b?c%d");
+  });
+
+  it("is read back to the name through the route", () => {
+    for (const name of [
+      "alpha",
+      "my repo",
+      "a#b?c%d",
+      "caf\u00e9",
+      "a+b=c@d:e$f&g (h)!*'",
+    ]) {
+      expect(repositoryOf(planningPath(true, name)), name).toBe(name);
+    }
+  });
+
+  // cmd/vantage/tips.go writes the segment with Go's url.PathEscape, which
+  // differs from encodeURIComponent on `+ = @ : $ &` and `( ) ! * '`: the
+  // same page, by another string.
+  it("names the same repository as the startup tip's encoding", () => {
+    const name = "a+b=c@d:e$f&g (h)!*'";
+    const tip = `${PLANNING_ROUTE}/a+b=c@d:e$f&g%20%28h%29%21%2A%27`;
+    expect(planningPath(true, name)).not.toBe(tip);
+    expect(repositoryOf(tip)).toBe(name);
   });
 });

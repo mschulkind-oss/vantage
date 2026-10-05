@@ -71,7 +71,8 @@ export interface PlanningFilterSummary {
   documents: { kept: number; of: number };
   openQuestions: number;
   blockedLeftOut: number;
-  otherRoadmaps: { path: string; count: number }[]; // roadmap order
+  onOtherRoadmaps: number; // the filtered onOtherRoadmaps' length: each question once, the notice's total
+  otherRoadmaps: { path: string; count: number }[]; // roadmap order; a question two roadmaps route counts under both
   waitsOutside: { path: string; target: string }[]; // target as dependsOnLabel writes it
   unmatched: string[]; // canonical term texts, in order
 }

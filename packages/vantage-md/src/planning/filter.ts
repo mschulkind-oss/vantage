@@ -144,18 +144,6 @@ function isExcluded(c: string): boolean {
   return EXCLUDED.some(([lo, hi]) => cp >= lo && cp <= hi);
 }
 
-/** Whether `text` has more than `limit` code points, counted no further. */
-function longerThan(text: string, limit: number): boolean {
-  if (text.length <= limit) return false;
-  let n = 0;
-  for (let i = 0; i < text.length; i++) {
-    // A surrogate pair is one code point; a lone surrogate is one too.
-    if ((text.codePointAt(i) ?? 0) > 0xffff) i++;
-    if (++n > limit) return true;
-  }
-  return false;
-}
-
 /** Whether `text` is empty or white space alone, read no further than needed. */
 function isBlank(text: string): boolean {
   for (const c of text) if (!isSpace(c)) return false;
@@ -169,16 +157,34 @@ interface RawTerm {
 }
 
 /**
- * The text split at white space outside double quotes (§5.2). Inside quotes a
- * `\` takes the character after it with it, so `\"` does not close them, and
- * an unclosed quote runs to the end of the text.
+ * The text's first `limit` code points split at white space outside double
+ * quotes (§5.2), and whether the text went on past them (`cut`). Inside
+ * quotes a `\` takes the character after it with it, so `\"` does not close
+ * them, and an unclosed quote runs to the end of the text.
+ *
+ * Nothing past the limit is read but the one code point after it, which says
+ * whether the term the limit falls in ends there. A term the limit cuts off is
+ * left out, since what it would have been cannot be known without reading on.
  */
-function splitTerms(text: string): RawTerm[] {
+function splitTerms(
+  text: string,
+  limit: number,
+): { terms: RawTerm[]; cut: boolean } {
   const terms: RawTerm[] = [];
   let current = "";
   let quoted = false;
   let escaped = false;
+  // Code points as string iteration yields them: a surrogate pair is one, and
+  // so is a lone surrogate.
+  let read = 0;
   for (const c of text) {
+    if (read === limit) {
+      if (current !== "" && !quoted && isSpace(c)) {
+        terms.push({ text: current, closed: true });
+      }
+      return { terms, cut: true };
+    }
+    read++;
     if (quoted) {
       current += c;
       if (escaped) escaped = false;
@@ -195,7 +201,7 @@ function splitTerms(text: string): RawTerm[] {
     if (c === '"') quoted = true;
   }
   if (current !== "") terms.push({ text: current, closed: !quoted });
-  return terms;
+  return { terms, cut: false };
 }
 
 /**
@@ -324,9 +330,11 @@ function readTerm(raw: string): PlanningFilterTerm | null {
  * joined with one space (§5.1). `limits` is for tests, which configure the
  * limits down rather than build long inputs.
  *
- * The limits are checked first, so no more than `limits.codePoints` code
- * points are ever split; then the terms in order, the first one this release
- * cannot read naming the whole filter not understood.
+ * A not-understood filter names the first term this release cannot read
+ * (§10.2), and gives a reason only where there is no term to name (§6.7):
+ * past the code-point limit, then past the term limit (repeats counted), then
+ * an unclosed quote. So no more than `limits.codePoints` code points are ever
+ * split, and only the terms that end within them can be named.
  */
 export function parsePlanningFilter(
   text: string,
@@ -337,21 +345,25 @@ export function parsePlanningFilter(
     term: string | null,
     reason: PlanningFilterReason | null,
   ): PlanningFilter => ({ kind: "not-understood", text, term, reason });
-  if (longerThan(text, limits.codePoints)) {
-    return notUnderstood(null, "too-long");
-  }
-  const raw = splitTerms(text);
-  if (raw.length > limits.terms) return notUnderstood(null, "too-many-terms");
+  const { terms: raw, cut } = splitTerms(text, limits.codePoints);
   const terms: PlanningFilterTerm[] = [];
   const seen = new Set<string>();
+  let unclosed = false;
   for (const { text: written, closed } of raw) {
-    if (!closed) return notUnderstood(null, "unclosed-quote");
+    // An unclosed quote runs to the end, so it is the last term.
+    if (!closed) {
+      unclosed = true;
+      break;
+    }
     const term = readTerm(written);
     if (term === null) return notUnderstood(written, null);
     if (seen.has(term.text)) continue;
     seen.add(term.text);
     terms.push(term);
   }
+  if (cut) return notUnderstood(null, "too-long");
+  if (raw.length > limits.terms) return notUnderstood(null, "too-many-terms");
+  if (unclosed) return notUnderstood(null, "unclosed-quote");
   return {
     kind: "understood",
     canonical: terms.map((term) => term.text).join(" "),
@@ -479,7 +491,18 @@ export interface PlanningFilterSummary {
   openQuestions: number;
   /** 🔒 questions in kept documents that an `is:` term leaves out. */
   blockedLeftOut: number;
-  /** Kept questions other roadmaps route, counted per roadmap, in roadmap order. */
+  /**
+   * Kept questions that need you and that other roadmaps route and the chosen
+   * one does not, each once: the filtered `onOtherRoadmaps`, and the total the
+   * notice's Other roadmaps clause gives.
+   */
+  onOtherRoadmaps: number;
+  /**
+   * Each roadmap other than the chosen one that routes any of those
+   * questions, in roadmap order, with how many of them it routes. A question
+   * two roadmaps route is counted under both, so the counts can sum to more
+   * than `onOtherRoadmaps`.
+   */
   otherRoadmaps: { path: string; count: number }[];
   /**
    * Each target a kept document's Blocked row, in the unfiltered sections,
@@ -495,6 +518,9 @@ export interface FilteredPlanningSections {
   sections: PlanningSections;
   summary: PlanningFilterSummary;
 }
+
+/** One question's identity: its line is unique within its document. */
+const questionKey = (ref: QuestionRef): string => `${ref.path}\n${ref.line}`;
 
 /** How many entries a set of sections lists: the section bar's sum. */
 function entryCount(sections: PlanningSections): number {
@@ -544,19 +570,27 @@ export function applyPlanningFilter(
   const onOtherRoadmaps = sections.onOtherRoadmaps.filter(keepsRef);
   const unrouted =
     sections.unrouted === null ? null : sections.unrouted.filter(keepsRef);
-  const filtered: PlanningSections = {
-    roadmaps: sections.roadmaps.map((roadmap) => {
-      if (roadmap.state !== "routes") return roadmap;
-      const needsYouCount = routeQuestions(index, roadmap.path).filter(
-        (ref) => {
+  /** Each routing roadmap's kept questions that need you, in its order. */
+  const keptRoutes = new Map(
+    sections.roadmaps
+      .filter((roadmap) => roadmap.state === "routes")
+      .map(({ path }) => [
+        path,
+        routeQuestions(index, path).filter((ref) => {
           const state = questionFor(index, ref)?.state;
           return (
             (state === "open" || state === "answered") &&
             filterKeepsQuestion(filter, { path: ref.path, state })
           );
-        },
-      ).length;
-      return { ...roadmap, needsYouCount };
+        }),
+      ]),
+  );
+  const filtered: PlanningSections = {
+    roadmaps: sections.roadmaps.map((roadmap) => {
+      const kept = keptRoutes.get(roadmap.path);
+      return kept === undefined
+        ? roadmap
+        : { ...roadmap, needsYouCount: kept.length };
     }),
     chosenRoadmap: sections.chosenRoadmap,
     stagesDeclared: sections.stagesDeclared,
@@ -600,8 +634,15 @@ export function applyPlanningFilter(
 
   const isOpenRef = (ref: QuestionRef) =>
     questionFor(index, ref)?.state === "open";
+  // Every roadmap but the chosen one that routes a kept question the chosen
+  // one does not list, with how many it routes (§6.2). A question two of them
+  // route counts once in `onOtherRoadmaps` and once under each roadmap here.
+  const elsewhere = new Set(onOtherRoadmaps.map(questionKey));
   const otherRoadmaps = sections.roadmaps.flatMap(({ path }) => {
-    const count = onOtherRoadmaps.filter((q) => q.roadmap === path).length;
+    if (path === sections.chosenRoadmap) return [];
+    const count = (keptRoutes.get(path) ?? []).filter((ref) =>
+      elsewhere.has(questionKey(ref)),
+    ).length;
     return count === 0 ? [] : [{ path, count }];
   });
   const waitsOutside: PlanningFilterSummary["waitsOutside"] = [];
@@ -635,6 +676,7 @@ export function applyPlanningFilter(
       openQuestions: [...needsYou, ...(unrouted ?? [])].filter(isOpenRef)
         .length,
       blockedLeftOut,
+      onOtherRoadmaps: onOtherRoadmaps.length,
       otherRoadmaps,
       waitsOutside,
       unmatched,
