@@ -449,11 +449,16 @@ test.describe("several roadmaps", () => {
     await expect(line).toHaveText(
       "Referenced by 2 documents · on roadmap.md under Now and 1 other roadmap",
     );
-    // Nothing links here, so the line is text with nothing to open.
+    // Nothing links here, so the line is text with nothing to open, and
+    // its link to the planning page filtered to it (planning-filter.md §7),
+    // which names no roadmap: the page shows the one it would anyway.
     await openWithIndex(page, "/designs/gamma.md");
     await expect(surface).toHaveText(
-      "1 open question not on any roadmap",
+      "1 open question not on any roadmap · its questions on the planning page",
     );
+    await expect(
+      surface.getByRole("link", { name: "its questions on the planning page" }),
+    ).toHaveAttribute("href", "/.vantage/planning?filter=path:designs/gamma.md");
   });
 
   /** A comment typed on `id`'s title in `doc`, filed on the real server. */
