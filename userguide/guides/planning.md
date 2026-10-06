@@ -943,8 +943,9 @@ filter keeps needs you* in place of *Nothing needs you*.
   everything, as `-m` does when every path ends in `.md`, the page keeps the
   last results. Once you stop for 300 ms the text applies, and the notice
   says it keeps 0 entries and that nothing it keeps needs you. A gap that long
-  between two keys counts as stopping, so a slow typist sees the page empty
-  until the next key. Enter, ✕, a paste and leaving the box apply it at once.
+  between two keys counts as stopping, so a slow typist sees the page empty,
+  and it stays empty until a key brings back a text that keeps something.
+  Enter, ✕, a paste and leaving the box apply it at once.
 - **Enter** applies the box's text and writes it into the address at once,
   and the box then shows it in its [canonical text](#the-address). On a text
   Vantage does not understand, Enter is how you see why: the page shows every

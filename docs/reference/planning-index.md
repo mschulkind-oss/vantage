@@ -3,7 +3,7 @@ title: "The planning index — planning facts written once, and shown wherever t
 status: accepted
 stage: CURRENT
 verified: 2026-10-06
-verified_commit: b759024
+verified_commit: 09a0914
 covers:
   - packages/vantage-md/src/planning/
   - internal/planning/
@@ -45,8 +45,8 @@ summary: "Vantage reads a repository's planning documents as a set — frontmatt
 
 # The planning index — planning facts written once, and shown wherever they are linked
 
-**Status:** Verified 2026-10-06 against `b759024`, the tree the planning filter's
-design graduated from into this document. The filter's principles, terms and
+**Status:** Verified 2026-10-06 against `09a0914`. The planning filter's design
+graduated into this document from `b759024`: the filter's principles, terms and
 sections ([§1.4](#14-principles-of-the-planning-filter),
 [§6.11](#611-the-planning-filter) to [§6.19](#619-across-releases),
 [§13.4](#134-vantage-check-index---filter) and
@@ -56,7 +56,10 @@ the commit after it, were written in as this document landed: a `**` that is a
 whole folder name matching zero or more folders, a `path:` matcher that never
 backtracks ([§6.13](#613-path-patterns)), and a key that leaves a held text's
 canonical text as it was keeping its page on screen
-([§6.16](#616-typing-and-the-url)). The rest was verified on
+([§6.16](#616-typing-and-the-url)). Those passages, the filter's rows of
+[Current values](#current-values), and the code comments and test titles that
+cite them were then checked against `09a0914`'s code, whose perimeter differs
+from `b759024`'s only by `b5a0860` and by comments. The rest was verified on
 2026-09-30 against `0a872d9`, the commit that added this document, and amended
 since by each commit that changed what it describes, in that commit. Of the
 perimeter's other commits since, `06e8797`, `ffb1676`, `6b62ed1`, `db5c01f` and
@@ -301,7 +304,8 @@ git.
   wins. A text that keeps no entry at all waits for the idle pause instead, so the
   page does not empty under a half-typed word while the keys keep coming. The pause
   is 300 ms, and a gap that long between two keys is a pause too: the page then
-  empties until the next key ([§6.16](#616-typing-and-the-url)).
+  empties, and stays empty until a key types a text that keeps an entry
+  ([§6.16](#616-typing-and-the-url)).
 
 ---
 
@@ -1016,8 +1020,8 @@ The exact sizes are in [Current values](#current-values).
   so a second Next during that wait asks for the page after the one asked for.
 - **The URL carries the pages**, `/.vantage/planning?needs-you=3&waiting=2`,
   1-based, with page 1 left out, and the chosen roadmap as `roadmap=` when there
-  is a choice. Under a filter, `filter=` comes first, and the pages are read against
-  the filtered sections; a change of the filter puts every section back on its
+  is a choice. Under a filter the pages are read against the filtered sections, and
+  a change of the filter writes `filter=` first and puts every section back on its
   first page ([§6.16](#616-typing-and-the-url)). Every other parameter is kept and
   ignored. A flip replaces the history entry, so Back from a document the
   page opened in this tab returns to the same pages and scroll position, and
@@ -1422,7 +1426,7 @@ paints with the section bar and changes when it does
   entry once its sections are in, where the click would have, and so does one
   whose query the page rewrites as it opens: the rewrite keeps the fragment.
   Under a filter the outline is drawn from the filtered sections, and every link
-  carries the whole query, `filter=` first in the link encoding
+  carries the whole query, `filter=` in the link encoding
   ([§13.5](#135-handing-the-human-a-filtered-page)), so its address reads back
   whole when pasted into the box.
 - **The roadmap picker** stands at its head when two or more roadmaps route, its
@@ -1485,8 +1489,8 @@ the page's `filter` URL parameter, and `vantage-check index --filter`
   lowercased once per question, document and entry object of the index, each kept
   beside its object in a `WeakMap`. So typing lowercases nothing twice, and an index
   update that keeps an object keeps its fields.
-- **The predicate is cheap and the cards are not.** Matching takes about a
-  millisecond even at 20,000 questions, so no keystroke waits on it; what a
+- **The predicate is cheap and the cards are not.** Matching takes a few
+  milliseconds even at 20,000 questions, so no keystroke waits on it; what a
   keystroke costs is laying the page out and rendering the cards it brings in
   ([§18](#18-scale-targets-and-what-has-been-measured)).
 
@@ -1793,13 +1797,15 @@ handed the unfiltered sections for those facts, beside the filtered ones it list
     box, the page goes on showing the filter it applied last (`lastApplied`). So
     `-m`, which every `.md` path holds, or a half word that matches nothing, does not
     empty the page between two keystrokes less than 300 ms apart. A longer gap is the
-    pause, and the page then empties until the next key: at about 30 words a minute,
-    a key every 400 ms, it can at `pat` and `path` on the way to `path:`, where no
-    entry holds those words. Once typing stops, the notice says the filter keeps 0
-    entries, followed by *Nothing this filter keeps needs you*
-    ([§6.18](#618-the-filter-notice)). The page judges it in the render the
-    keystroke's transition runs, through the same cache its sections come from, never
-    in the keystroke's own task (F7). A text whose only matches are questions on
+    pause, and the page then empties, and stays empty until a key types a text that
+    keeps an entry, since the filter it applied last is now one that keeps none: at
+    about 30 words a minute, a key every 400 ms, it can empty at `pat` on the way to
+    `path:`, where no entry holds either word, and stay empty through `path` and
+    `path:`. Once typing stops, the notice says the filter keeps 0 entries, followed
+    by *Nothing this filter keeps needs you* unless an open question it keeps is on
+    another roadmap ([§6.18](#618-the-filter-notice)). The page judges it in the
+    render the keystroke's transition runs, through the same cache its sections come
+    from, never in the keystroke's own task (F7). A text whose only matches are questions on
     other roadmaps keeps no entry, since those are counted and not listed.
   - **A text with the canonical text the box typed last,** such as one with a space
     added, changes nothing, and the page inputs are not told of it: `followFilter`
@@ -1864,9 +1870,10 @@ handed the unfiltered sections for those facts, beside the filtered ones it list
   replace, and each writes `filter` in the link encoding, so the address bar never
   shows the form encoding's bare `*`, and a copy of it pasted into the box reads back
   whole. A press that lands before the render of the reader's last keystroke carries
-  that keystroke's text instead (`typedPast`), so the URL never takes an older
-  filter than the page goes on to show: a pick keeps its roadmap, and a flip or an
-  outline jump flips nothing, since its page is the old filter's.
+  that keystroke's text instead (`typedPast`), and so does a press while a typed text
+  that keeps no entry is held back, which the press then applies. So the URL never
+  takes an older filter than the page goes on to show: a pick keeps its roadmap, and
+  a flip or an outline jump flips nothing, since its page is the old filter's.
 - **`g p` and the sidebar entry open the bare page** and drop the filter, as they
   drop page parameters and `roadmap=`. A filter belongs to a link, never to the
   document the reader came from; Back returns to the filtered URL, and the box
@@ -1928,8 +1935,8 @@ cost what Back relies on:
 
 > [!WARNING]
 > **`navigate({ search })` writes the string as given,** so every write goes through
-> `planningQuery`, which writes `filter` in the link encoding, first; the form
-> encoding of `setSearch` leaves a bare `*`, where the paste reader stops. And write
+> `planningQuery`, which writes `filter` in the link encoding; the form encoding of
+> `useSearchParams`' setter leaves a bare `*`, where the paste reader stops. And write
 > once per pause, never per keystroke: the scroll saver carries the scroll position
 > to each replaced history key, so a write per keystroke would grow its map per
 > keystroke.
@@ -2079,7 +2086,7 @@ after it cannot be read as part of it. It takes four forms:
 | Form | Says |
 | :--- | :--- |
 | Applied | A first line: the canonical text, then entries shown of the unfiltered total, kept documents of the paths the index lists when its path terms leave a path out, and how many kept entries are open questions, as ``Filtered by `path:/docs/design/x.md is:open`: 5 of 15 entries, in 1 of 20 paths, 5 of them open questions.`` Then one line per clause below that applies. Last, the page's *Clear the filter to see the other 10.* or the checker's *Run without --filter to see the other 10.*, or *It hides no entry.* when it hides none |
-| Applied, nothing kept | The same, with none shown, followed by *Nothing this filter keeps needs you* |
+| Applied, nothing kept | The same, with none shown, followed by *Nothing this filter keeps needs you*, unless an open question it keeps is on another roadmap, which the *Other roadmaps* clause then counts |
 | Unmatched term | One line per term, under the first: `` `path:docs/desing` matches no path the index lists. `` |
 | Not understood | ``Not filtered: this Vantage cannot read `<term>`.``, then what the language reads, with a real example, and *Every entry is shown.* Where there is no term to name, the reason stands in its place: an unclosed quote, or a filter past the term or code-point limit |
 
@@ -2187,13 +2194,17 @@ things stay, for reasons of their own:
   review mode in `frontend/src/compat/notation.ts`. No 0.8.x build is run.
 
 > [!WARNING]
-> **An edit to `filterForms.json` alone runs no unit tests at commit.**
-> `just check-fast` sees a `.json` under `packages/vantage-md/src/` as no module, so
-> run the planning-filter suites by hand, the page's
-> (`frontend/src/lib/planningFilter.test.ts`) and the checker's
-> (`packages/vantage-check/test/index.test.ts`). The file is hashed into the scanner
-> id too ([§11.2](#112-the-scanner-id-and-the-owner)), so each edit costs one cold
-> scan, in a release that pays one anyway.
+> **An edit to `filterForms.json` alone runs none of the suites that read it at
+> commit.** `just check-fast` sees a `.json` under `packages/vantage-md/src/` as no
+> module, so of the unit tests it runs only the frontend's that read files with
+> `node:fs`, and leaves out those that read the repository through
+> `frontend/src/test/planning.ts`, which is how every frontend suite loads the
+> fixture. Run them by hand: the checker's
+> (`packages/vantage-check/test/index.test.ts`) and each frontend suite that calls
+> `filterForms`, `frontend/src/lib/planningFilter.test.ts` and the page's parity
+> test in `frontend/src/pages/PlanningPage.test.tsx` among them. The file is hashed
+> into the scanner id too ([§11.2](#112-the-scanner-id-and-the-owner)), so each edit
+> costs one cold scan, in a release that pays one anyway.
 
 ---
 
@@ -3362,10 +3373,11 @@ UTF-8, and writes a space as `+`:
 `URLSearchParams` on the page reads that query back to exactly the canonical text,
 so opening the link triggers no rewrite, and a round trip over every understood form
 in the fixture of forms pins it. Every write of the page's URL uses the same
-encoding, with `filter` first (`planningQuery`), and so do a flip, a roadmap pick and
-the outline's links, so a typed filter's address matches an agent's link. A roadmap
-in a folder is the exception: the page writes its `/` as `%2F`, and both spellings
-read alike.
+encoding (`planningQuery`), a flip's, a roadmap pick's and the outline's links
+included, and a change of the filter writes `filter` first (`withFilter`), so a
+typed filter's address matches an agent's link. Other writes keep the order the URL
+has. One difference from an agent's link remains: the page writes a roadmap in a
+folder with its `/` as `%2F`, and both spellings read alike.
 
 > [!WARNING]
 > **`encodeURIComponent` leaves `! ' ( ) *` bare**, so it is not the link encoding:
@@ -3876,8 +3888,11 @@ its verdict is a weak one. Times are in ms.
   filter.
 
 **The planning filter's criteria.** The filter was built to sixteen criteria,
-numbered because test names cite them as *criterion N*, and each is held by the
-test that names it. The tree is a copy of the end-to-end fixture
+numbered because test names and code comments cite them as *criterion N*. Criteria
+1 to 4 and 8 to 14 are held by the tests that name them. 5 to 7 and 15 are
+covered by the checker's and the page's tests of the same behavior, on trees of
+their own, which do not name them, and 16 by this document's Status. The tree is a
+copy of the end-to-end fixture
 [`frontend/e2e/fixtures/test_repo/`](../../frontend/e2e/fixtures/test_repo/), checked
 and served as its own root, whose roadmap routes `plans/design.md`'s two open
 questions, [OQ-E1](../../frontend/e2e/fixtures/test_repo/plans/design.md#OQ-E1) and
@@ -3937,7 +3952,7 @@ questions, [OQ-E1](../../frontend/e2e/fixtures/test_repo/plans/design.md#OQ-E1) 
 
 ## Current values
 
-Verified at `b759024`. The prose above explains what each of these is for; this table
+Verified at `09a0914`. The prose above explains what each of these is for; this table
 is the only place most of the numbers are stated.
 
 | Value | Setting | Defined in |
@@ -3963,8 +3978,8 @@ is the only place most of the numbers are stated.
 | Parsed filters kept / filtered sections kept per derivation | 16 / 16, the last used last out | `FILTERS_KEPT`, `FILTERED_KEPT` in `frontend/src/lib/planningPages.ts` |
 | The typing slot | 2 sets: the one on screen and the newest | `dropTyped` in `frontend/src/hooks/usePlanningPageInputs.ts` |
 | The release a filtered link's caution names | 0.9.0, assumed until it is tagged: confirm before the tag | `FILTER_RELEASE` in `packages/vantage-check/src/core/target.ts` |
-| The fixture of forms | 173 `read` and 47 `notUnderstood` entries, over an index of 18 files and one *Too large* path | `packages/vantage-md/src/planning/filterForms.json` |
-| The typing flow | `generator is:open`, a key every 150 ms; the burst, a key every 30 ms | `--query`, `--burst-gap` defaults in `frontend/perf/planning/run.ts` |
+| The fixture of forms | 179 `read` and 47 `notUnderstood` entries, over an index of 18 files and one *Too large* path | `packages/vantage-md/src/planning/filterForms.json` |
+| The typing flow | `generator is:open`, a key every 150 ms; the burst, a key every 30 ms | `--query`, `--type-gap` and `--burst-gap` defaults in `frontend/perf/planning/run.ts` |
 | Section titles | Needs you, Not on a roadmap, Blocked, Ready to build, Ready to graduate, Stage conflict, Too large, Unreadable | `PLANNING_SECTION_GUIDE`, same file |
 | Agent sections | `unrouted`, `ready`, `graduate`, `disagrees` | `PLANNING_AGENT_SECTION_IDS`, same file |
 | Remembered roadmap | `localStorage` key `vantage:planningRoadmap:<repo>` | `PLANNING_ROADMAP_FAMILY` in `frontend/src/lib/preferences.ts` |
@@ -4033,7 +4048,7 @@ into the text above or are in git.
 | OQ-PF3 | No address is stored or printed, so there is no `VANTAGE_PLANNING_URL` and the server prints no ready-to-paste address: an address is a fact about a machine, with no right home, and one machine may open a repository at several. The checker prints a root-relative link, and pasting it into the Filter box, alone or with the lines around it, applies its filter ([§13.5](#135-handing-the-human-a-filtered-page), [§6.17](#617-the-filter-line)) | 2026-10-05 |
 | OQ-PF4 | Besides typing, `/` focuses the box, and a document's Referenced by line links to the page filtered to that document. No per-card *show only this document* toggle, which would add a control to every card and row ([§6.17](#617-the-filter-line), [§7.1](#71-referenced-by)) | 2026-10-05 |
 | OQ-PF5 | The filter line is always on the page: one fixed-height row in every state, from first paint. Behind a Filter button it would be a state of its own and a layout-shift case, and a filter a person operates has to be seen to be learned ([§6.17](#617-the-filter-line)) | 2026-10-05 |
-| OQ-PF6 | The page applies the filter as the reader types, basically instantly, ruled in conversation over applying it on Enter only. Typing never adds a history entry; the URL follows after the idle pause and at once on Enter, ✕ or a paste; the box is never rewritten while the reader types; a text not understood mid-typing keeps the results on screen; and "instant" is held to T1 to T4. Amended on 2026-10-06: a typed text that keeps no entry at all applies only once the idle pause ends, the last results staying until then, so `-m` or a half word does not empty the page between keys less than the pause apart; Enter, ✕, a paste and leaving the box apply at once, empty or not. No debounce of the results otherwise: matching takes about a millisecond, so any wait would be the whole delay ([§6.16](#616-typing-and-the-url), [§18](#18-scale-targets-and-what-has-been-measured)) | 2026-10-05, 2026-10-06 |
+| OQ-PF6 | The page applies the filter as the reader types, basically instantly, ruled in conversation over applying it on Enter only. Typing never adds a history entry; the URL follows after the idle pause and at once on Enter, ✕ or a paste; the box is never rewritten while the reader types; a text not understood mid-typing keeps the results on screen; and "instant" is held to T1 to T4. Amended on 2026-10-06: a typed text that keeps no entry at all applies only once the idle pause ends, the last results staying until then, so `-m` or a half word does not empty the page between keys less than the pause apart; Enter, ✕, a paste and leaving the box apply at once, empty or not. No debounce of the results otherwise: matching takes a few milliseconds, so any wait would be the whole delay ([§6.16](#616-typing-and-the-url), [§18](#18-scale-targets-and-what-has-been-measured)) | 2026-10-05, 2026-10-06 |
 | OQ-PF7 | No freeze across releases, ruled in conversation: a filter text may match differently in a later release, so nothing compares the fixture of forms with an earlier release's, and "not understood" keeps no form free for later. P0 still governs what lives in files or feeds scripts, roadmap order never changes, and the page and the checker agree within one release ([§6.19](#619-across-releases)) | 2026-10-05 |
 | Plan Q1 | Patterns keep the server's matcher, its quirks and RE2 dialect included; the checker ports it, and one shared fixture pins both readers ([§3.1](#31-candidates-and-planning-documents)) | 2026-09-28 |
 | Plan Q2 | A listed roadmap is read whenever it exists, even when `include` or `exclude` rules it out — per entry, since several roadmaps ([§4.1](#41-which-files-are-roadmaps)) | 2026-09-28 |
