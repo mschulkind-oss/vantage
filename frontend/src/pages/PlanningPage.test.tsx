@@ -6454,6 +6454,55 @@ describe("the planning filter (planning-index.md §6.11)", () => {
       expect(filterOf()).toBeNull();
     });
 
+    // A slow typist: the pause has emptied the page, so the filter applied
+    // last is one that keeps nothing, and a held text that keeps nothing too
+    // goes on showing it rather than the results from before the pause.
+    it("keeps Nothing matches up through a further key that keeps nothing, and applies a key that keeps something at once (§6.16)", async () => {
+      limits({ filterIdleMs: 300 });
+      await renderPage();
+      box().focus();
+      await typeKeys("oq-d3x", "oq-d");
+      expect(cardsIn("Needs you")).toEqual([D3]);
+      await idle(300);
+      expect(filterOf()).toBe("oq-d3x");
+      expect(nothingMatchesLines()?.[0]).toBe("Nothing matches oq-d3x.");
+      // Every commit from here on, as the DOM has it: no frame between two
+      // keys shows a card while the text keeps nothing.
+      const seen: { nothing: boolean; cards: number }[] = [];
+      const observer = new MutationObserver(() => {
+        seen.push({
+          nothing: nothingMatches() !== null,
+          cards: screen.queryAllByRole("article").length,
+        });
+      });
+      observer.observe(document.body, {
+        childList: true,
+        characterData: true,
+        subtree: true,
+      });
+      await typeKeys("oq-d3xy", "oq-d3x");
+      await type("oq-d3x");
+      await settle();
+      expect(seen.every(({ nothing, cards }) => nothing && cards === 0)).toBe(
+        true,
+      );
+      expect(nothingMatchesLines()?.[0]).toBe("Nothing matches oq-d3x.");
+      expect(querySection("Needs you")).toBeNull();
+      expect(filterOf()).toBe("oq-d3x");
+      observer.disconnect();
+      // A key whose text keeps an entry applies with no pause, and the URL
+      // takes it after one.
+      await type("oq-d3");
+      await settle();
+      expect(nothingMatches()).toBeNull();
+      expect(cardsIn("Needs you")).toEqual([D3]);
+      expect(noticeLines()[0]).toMatch(/^Filtered by oq-d3: 1 of 10 entries,/);
+      expect(filterOf()).toBe("oq-d3x");
+      await idle(300);
+      expect(filterOf()).toBe("oq-d3");
+      expect(cardsIn("Needs you")).toEqual([D3]);
+    });
+
     it("speaks a typed filter's notice once, after the reader stops, though the URL takes each text a slow typist pauses on (§6.17)", async () => {
       limits({ filterIdleMs: 300, filterSpeechMs: 1000 });
       await renderPage();

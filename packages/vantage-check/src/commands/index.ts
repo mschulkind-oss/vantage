@@ -45,9 +45,11 @@ import {
 } from "../core/config.js";
 import {
   FILTER_RELEASE_NAME,
+  PLANNING_PAGE_RELEASE_NAME,
   declaredTargets,
   noteTargets,
   predatesFilter,
+  predatesPlanningPage,
   refuseTargets,
   type DeclaredTarget,
 } from "../core/target.js";
@@ -379,7 +381,9 @@ function isLinkedWorktree(root: string): boolean {
  * filter notice, its clauses included, then the `Planning page:` line and its
  * hint lines (§13.5). A second hint says when the root is a linked worktree,
  * since the page shows the checkout the human's Vantage serves, and a third
- * when the run's `target` names a release before the filter's (§13.5).
+ * when the run's `target` names a release before the filter's, which says
+ * too that a viewer has no planning page at all when it names one before the
+ * page's (§13.5).
  */
 function filterHead(
   project: ScannedProject,
@@ -398,7 +402,14 @@ function filterHead(
       `  ${codeSpan(project.root)} is a linked worktree: the page shows the checkout your Vantage serves, which may not hold these documents as they are here.`,
     );
   }
-  if (targets.some(({ target }) => predatesFilter(target))) {
+  // The oldest reader decides: one before the planning page has no page to
+  // open, and the readers after it, up to the filter's release, see every
+  // entry.
+  if (targets.some(({ target }) => predatesPlanningPage(target))) {
+    lines.push(
+      `  A Vantage viewer before ${PLANNING_PAGE_RELEASE_NAME} has no planning page, and one before ${FILTER_RELEASE_NAME} ignores this filter and shows every entry.`,
+    );
+  } else if (targets.some(({ target }) => predatesFilter(target))) {
     lines.push(
       `  A Vantage viewer before ${FILTER_RELEASE_NAME} ignores this filter and shows every entry.`,
     );

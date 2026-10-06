@@ -11,8 +11,10 @@ import {
 } from "../src/rules/directives.js";
 import {
   FILTER_RELEASE_NAME,
+  PLANNING_PAGE_RELEASE_NAME,
   heldConfigPath,
   predatesFilter,
+  predatesPlanningPage,
   readsOnlyOq,
   releaseVersion,
   targetNotes,
@@ -364,6 +366,31 @@ describe("predatesFilter", () => {
 
   it("names the release as a target writes it", () => {
     expect(FILTER_RELEASE_NAME).toBe("0.9");
+  });
+});
+
+// A viewer before 0.8 has no planning page at all, so `index --filter`
+// cautions that it has none, rather than only that it ignores the filter
+// (docs/reference/planning-index.md §13.5).
+describe("predatesPlanningPage", () => {
+  it.each([
+    ["0.6", true],
+    ["0.7", true],
+    ["0.7.9", true],
+    ["0.8", false],
+    ["0.8.1", false],
+    ["0.9", false],
+    ["1.0", false],
+  ])("target %s: %s", (written, expected) => {
+    expect(predatesPlanningPage(declared(FILE, written).target)).toBe(expected);
+  });
+
+  it("is false with no target", () => {
+    expect(predatesPlanningPage(null)).toBe(false);
+  });
+
+  it("names the release as a target writes it", () => {
+    expect(PLANNING_PAGE_RELEASE_NAME).toBe("0.8");
   });
 });
 

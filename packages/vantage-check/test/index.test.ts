@@ -1627,26 +1627,33 @@ describe("index --filter, as text", () => {
   });
 
   // §13.5: a viewer before the filter's release ignores `filter=` and shows
-  // every entry, so a target before it says so under the link.
+  // every entry, so a target before it says so under the link. One before
+  // 0.8 has no planning page at all, so a target before that says so first.
+  const ignores =
+    "  A Vantage viewer before 0.9 ignores this filter and shows every entry.";
+  const noPage =
+    "  A Vantage viewer before 0.8 has no planning page, and one before 0.9 ignores this filter and shows every entry.";
   it.each([
-    ["0.8", true],
-    ["0.8.1", true],
-    ["0.9", false],
-    ["1.0", false],
-  ])("cautions under the link for target %s: %s", async (written, cautions) => {
+    ["0.7", noPage],
+    ["0.7.9", noPage],
+    ["0.8", ignores],
+    ["0.8.1", ignores],
+    ["0.9", null],
+    ["1.0", null],
+  ])("cautions under the link for target %s", async (written, caution) => {
     const root = makeTree({
       ".git/HEAD": "",
       ".vantage.toml": `target = "${written}"\n`,
       "a.md": doc("status: draft", questions("A", OPEN)),
     });
     const { code, stdout } = await index(root, "--filter", "path:a.md");
-    const caution =
-      "  A Vantage viewer before 0.9 ignores this filter and shows every entry.";
 
     expect(code).toBe(EXIT_OK);
     const head = stdout.split("\n\n")[0]?.split("\n") ?? [];
     expect(head.slice(-2)).toEqual(
-      cautions ? [PASTE_HINT, caution] : [expect.any(String), PASTE_HINT],
+      caution === null
+        ? [expect.any(String), PASTE_HINT]
+        : [PASTE_HINT, caution],
     );
   });
 });
