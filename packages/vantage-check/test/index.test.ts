@@ -1126,12 +1126,16 @@ function understood(text: string): UnderstoodPlanningFilter {
 const notUnderstood = (named: string) =>
   `vantage-check: --filter: this checker does not understand ${named}; it reads path: and is: terms\n`;
 
-/** Exit 2's message for a term that matches no path the index lists. */
+/**
+ * Exit 2's message for a term that matches no path the index lists: the
+ * notice's wording, from the planning module (§6.7, §8.2), whose own tests pin
+ * its words.
+ */
 const unmatched = (...terms: string[]) =>
   terms
     .map(
       (term) =>
-        `vantage-check: --filter: ${codeSpan(term)} matches no path the index lists\n`,
+        `vantage-check: --filter: ${PLANNING_NOTICES.filterUnmatched(term)}\n`,
     )
     .join("");
 
@@ -1469,13 +1473,18 @@ describe("index --filter, as text", () => {
   });
 
   // §9.2: the page shows the checkout the human's Vantage serves, so a link
-  // made in a linked worktree may open other versions of these documents.
+  // made in a linked worktree may open other versions of these documents. The
+  // line sets the root off as code, as §9.2 quotes it, so a root holding a
+  // space reads as one path.
   it("cautions under the link in a linked worktree, and only there", async () => {
     const files = { "a.md": doc("status: draft", questions("A", OPEN)) };
-    const worktree = makeTree({
-      ...files,
-      ".git": "gitdir: /elsewhere/.git/worktrees/a\n",
-    });
+    const worktree = join(
+      makeTree({
+        "my tree/a.md": files["a.md"],
+        "my tree/.git": "gitdir: /elsewhere/.git/worktrees/a\n",
+      }),
+      "my tree",
+    );
     const main = makeTree({ ...files, ".git/HEAD": "" });
     const configOnly = makeTree({ ...files, ".vantage.toml": "" });
     const head = async (root: string) =>
@@ -1487,7 +1496,7 @@ describe("index --filter, as text", () => {
         "It hides no entry.",
         "Planning page: /.vantage/planning?filter=path:/a.md",
         PASTE_HINT,
-        `  ${worktree} is a linked worktree: the page shows the checkout your Vantage serves, which may not hold these documents as they are here.`,
+        `  \`${worktree}\` is a linked worktree: the page shows the checkout your Vantage serves, which may not hold these documents as they are here.`,
       ].join("\n"),
     );
     expect(await head(main)).not.toContain("linked worktree");

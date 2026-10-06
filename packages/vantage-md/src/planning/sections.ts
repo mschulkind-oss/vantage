@@ -178,6 +178,12 @@ const notUnderstoodPart = (
     ? { code: filter.term }
     : reasonPhrase(filter.reason ?? "unclosed-quote");
 
+/**
+ * What follows an unmatched term, in the notice's line for it (§6.7) and in
+ * the checker's exit-2 message (§8.2), so the two cannot drift apart.
+ */
+const MATCHES_NO_PATH = " matches no path the index lists";
+
 /** The example the Not filtered notice gives of a filter this release reads. */
 const FILTER_EXAMPLE = "path:docs/design/*.md is:open";
 
@@ -201,7 +207,7 @@ function filteredNotice(
     ],
   ];
   for (const term of summary.unmatched) {
-    lines.push([{ code: term }, " matches no path the index lists."]);
+    lines.push([{ code: term }, `${MATCHES_NO_PATH}.`]);
   }
 
   const others = summary.otherRoadmaps;
@@ -284,6 +290,11 @@ export const PLANNING_NOTICES: {
   /** The checker's exit-2 message for a filter it does not understand, unprefixed. */
   filterNotUnderstood(filter: NotUnderstoodPlanningFilter): string;
   /**
+   * The checker's exit-2 message for a term that matches no path the index
+   * lists (§8.2), unprefixed: the notice's line for it, without its period.
+   */
+  filterUnmatched(term: string): string;
+  /**
    * The roadmap notice of §6.8, or null: the No roadmap line when none
    * routes, the Not read as a roadmap line when a listed one is missing,
    * skipped or unreadable while another routes, and null otherwise.
@@ -309,6 +320,7 @@ export const PLANNING_NOTICES: {
   ],
   filterNotUnderstood: (filter) =>
     `this checker does not understand ${noticeText([notUnderstoodPart(filter)])}; it reads path: and is: terms`,
+  filterUnmatched: (term) => noticeText([{ code: term }, MATCHES_NO_PATH]),
   roadmapNotice(config, roadmaps) {
     const unread = roadmaps.filter(
       (r): r is PlanningRoadmap & { state: Exclude<RoadmapState, "routes"> } =>
