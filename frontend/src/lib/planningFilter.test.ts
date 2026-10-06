@@ -1302,6 +1302,24 @@ describe("the filter notice (§6.7)", () => {
     );
   });
 
+  // §8.2: the checker exits 2 on an unmatched term, in the notice's words
+  // for it, so the page and the checker cannot word it two ways (§6.7).
+  it("words exit 2 for an unmatched term as the notice's line for it", () => {
+    expect(PLANNING_NOTICES.filterUnmatched("path:docs/desing")).toBe(
+      "`path:docs/desing` matches no path the index lists",
+    );
+    // A term holding a backtick still reads as one code span.
+    expect(PLANNING_NOTICES.filterUnmatched('path:"a`b"')).toBe(
+      '``path:"a`b"`` matches no path the index lists',
+    );
+    const { summary } = apply("path:docs/desing path:notes/e.md path:x/y");
+    expect(summary.unmatched).toEqual(["path:docs/desing", "path:x/y"]);
+    const lines = checker(summary);
+    for (const term of summary.unmatched) {
+      expect(lines).toContain(`${PLANNING_NOTICES.filterUnmatched(term)}.`);
+    }
+  });
+
   it("gives the checker's exit 2 a message of its own, unprefixed", () => {
     expect(
       PLANNING_NOTICES.filterNotUnderstood(notUnderstood("Path:docs/x.md")),

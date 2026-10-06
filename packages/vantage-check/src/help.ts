@@ -73,8 +73,11 @@ ${REQUEST_SECTION_LIST}
                                                        pattern as in
                                                        .gitignore. Start a
                                                        root file's path with
-                                                       /, and put a path with
-                                                       a space in "quotes"
+                                                       /. Put a path holding
+                                                       any character but
+                                                       A-Z a-z 0-9 . _ - / in
+                                                       "quotes", which match
+                                                       it as written
                                        is:open         a question still open
                                      Terms with one key keep any of their
                                      matches; terms with different keys must

@@ -224,7 +224,7 @@ export function indexCommand(options: IndexOptions, io: Io): number {
   if (applied !== null && applied.filtered.summary.unmatched.length > 0) {
     for (const term of applied.filtered.summary.unmatched) {
       io.err(
-        `vantage-check: --filter: ${codeSpan(term)} matches no path the index lists\n`,
+        `vantage-check: --filter: ${PLANNING_NOTICES.filterUnmatched(term)}\n`,
       );
     }
     return EXIT_USAGE;
@@ -382,8 +382,10 @@ function filterHead(
   ).map(noticeText);
   lines.push(`Planning page: ${applied.link}`, `  ${PASTE_HINT}`);
   if (isLinkedWorktree(project.root)) {
+    // The root as code, as §9.2 quotes the line, so a path holding a space
+    // or a `:` reads as one.
     lines.push(
-      `  ${project.root} is a linked worktree: the page shows the checkout your Vantage serves, which may not hold these documents as they are here.`,
+      `  ${codeSpan(project.root)} is a linked worktree: the page shows the checkout your Vantage serves, which may not hold these documents as they are here.`,
     );
   }
   if (targets.some(({ target }) => predatesFilter(target))) {
