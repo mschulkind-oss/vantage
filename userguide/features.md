@@ -286,7 +286,7 @@ Press **r** to list the recently changed files in the current project, with who 
 
 Press **Shift+P** to open the project picker and quickly switch between repos.
 
-Press **?** to see all keyboard shortcuts, including sidebar toggle (**b**), vim-style scrolling (**j**/**k**), and quick navigation (**g h** for home, **g r** for recent files, **g p** for the [planning page](guides/planning.md#the-planning-page)).
+Press **?** to see all keyboard shortcuts, including sidebar toggle (**b**), vim-style scrolling (**j**/**k**), and quick navigation (**g h** for home, **g r** for recent files, **g p** for the [planning page](guides/planning.md#the-planning-page)). On the planning page, **/** puts the focus in its [Filter box](guides/planning.md#filtering-the-page).
 
 ## Multi-Repo Mode
 
