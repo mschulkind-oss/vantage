@@ -1,6 +1,6 @@
 # Roadmap
 
-**Updated:** 2026-10-05
+**Updated:** 2026-10-06
 
 The order is the one thing this file holds that no other document can. Each entry is a link and the reason it sits where it does. What the linked document owns, its status, its stage and its open questions, is not copied here: Vantage shows it in a badge beside the link, and on GitHub it is one click away in that document's frontmatter. Prose beneath an entry holds only what has no other home. What a link here routes, and how `vantage-check index` finds the questions this file misses: [Planning Documents](userguide/guides/planning.md#the-roadmap).
 
@@ -8,7 +8,7 @@ The order is the one thing this file holds that no other document can. Each entr
 
 ## 📦 Up Next
 
-1. [A planning page filtered to one piece of work](docs/design/planning-filter.md), first, because it is built and graduates into the planning reference next.
+1. [A planning page filtered to one piece of work](docs/design/planning-filter.md), first, because its live search is being built now, and the design graduates into the planning reference once that lands.
 
 2. [Forward-compatible notation for 0.8.0](docs/design/checker-version-skew.md), next, because 0.8.0 is tagged next and the author's agent instructions outside this repository still teach the old question names until [their owner updates them](docs/design/checker-version-skew-plan.md#hand-off-agent-instructions-outside-this-repository). Once the tag is out, the design graduates into a reference.
 
