@@ -691,7 +691,7 @@ How it works:
 | `--format text\|json` | Output format. Default `text`. |
 | `--request [<section>…]` | Print the [agent request](#agent-requests) for these sections instead: `unrouted` (*Not on a roadmap*), `ready` (*Ready to build*), `graduate` (*Ready to graduate*) or `disagrees` (*Stage conflict*), any of them, separated by spaces. Default: all four. Takes no `--format json`. |
 | `--roadmap <path>` | The roadmap *Needs you* follows, and whose source is printed. Relative to the project root, with one leading `./` dropped; given twice, the last wins. Default: the nearest the root of the roadmaps it can follow, which are those it can read whose stage has no `done` role. |
-| `--filter <text>` | Show only the entries a [planning filter](planning.md#filtering-the-page) keeps, the text the planning page's Filter box takes, such as `'path:/docs/design/search.md is:open'` or `'generator is:open'`, and print a link to the page filtered the same way ([Filtering](#filtering)). Also `--filter=<text>`. Given twice, the texts join with a space; an empty one is no filter. Works with `--format json`, `--request` and `--roadmap`. |
+| `--filter <text>` | Show only the entries a [planning filter](planning.md#filtering-the-page) keeps, the text the planning page's Filter box takes, such as `'path:/docs/design/search.md is:open'` or `'generator is:open'`, and print a link to the page filtered the same way ([Filtering](#filtering)). Also `--filter=<text>`. Given twice, the texts join with a space; an empty one is no filter. Works with `--format json`, `--request` and `--roadmap`. The first run that prints a link writes `.vantage/space` ([What `--filter` writes](#what---filter-writes)). |
 | `--config <path>` | Read this `.vantage.toml`. It never changes which project is scanned. |
 | `--no-config` | Ignore `.vantage.toml` and use the built-in defaults. |
 
@@ -868,8 +868,9 @@ Filtered by `path:/docs/design/search.md path:/docs/design/search-plan.md is:ope
 1 of its questions is blocked and will need you later.
 docs/design/search.md waits on docs/design/indexing.md, which this filter leaves out.
 Run without --filter to see the other 4.
-Planning page: /.vantage/planning?filter=path:/docs/design/search.md+path:/docs/design/search-plan.md+is:open
+Planning page: /.vantage/planning?filter=path:/docs/design/search.md+path:/docs/design/search-plan.md+is:open&space=q4zmuykxw2a7hbne
   Press / on the planning page and paste this line, or put the scheme, host and port you open Vantage at in front of the link.
+  space= is this checkout's id, kept in .vantage/space: with an address in front, the link opens this project's page even where one Vantage serves several.
 
 Needs you (3) · for the human
 Open or answered questions on this roadmap, in its order. Rule each open one, then Copy answers.
@@ -891,7 +892,14 @@ Open or answered questions on this roadmap, in its order. Rule each open one, th
   puts their address in front. When two or more roadmaps route, the link
   names the chosen one with `&roadmap=`, so the human's *Needs you* follows the
   roadmap you checked.
-- **Two more lines can follow the hint.** In a linked worktree, one saying
+- **It ends with `&space=`, this checkout's space id,** and the second hint
+  line says so. A Vantage serving several projects names each its own way, so
+  the link names the checkout instead, and with an address in front it opens
+  this project's page rather than asking which project
+  ([What `--filter` writes](#what---filter-writes)). Pasted into the Filter
+  box, the line works as it always did: the box takes the filter and the
+  roadmap, and leaves `space=` alone.
+- **Two more lines can follow the hints.** In a linked worktree, one saying
   that the page shows the checkout the human's Vantage serves, which may not
   hold these documents as they are here. And when `.vantage.toml`'s `target`
   names a release from before the filter, one saying that a viewer before the
@@ -922,8 +930,9 @@ Open or answered questions on this roadmap, in its order. Rule each open one, th
   $ vantage-check index --filter 'path:/docs/design/search.md is:open'
   Filtered by `path:/docs/design/search.md is:open`: 0 of 5 entries, in 1 of 5 paths, none of them open questions.
   Run without --filter to see the other 5.
-  Planning page: /.vantage/planning?filter=path:/docs/design/search.md+is:open
+  Planning page: /.vantage/planning?filter=path:/docs/design/search.md+is:open&space=q4zmuykxw2a7hbne
     Press / on the planning page and paste this line, or put the scheme, host and port you open Vantage at in front of the link.
+    space= is this checkout's id, kept in .vantage/space: with an address in front, the link opens this project's page even where one Vantage serves several.
 
   Nothing matches `path:/docs/design/search.md is:open`.
   Without `is:open` it would keep 1 entry, and it is not an open question.
@@ -944,7 +953,7 @@ sections emptied:
   "filter": {
     "text": "path:/docs/design/search.md is:open",
     "canonical": "path:/docs/design/search.md is:open",
-    "link": "/.vantage/planning?filter=path:/docs/design/search.md+is:open",
+    "link": "/.vantage/planning?filter=path:/docs/design/search.md+is:open&space=q4zmuykxw2a7hbne",
     "documents": { "kept": 1, "of": 5 },
     "entries": { "shown": 2, "of": 7 },
     "openQuestions": 2,
@@ -960,7 +969,8 @@ sections emptied:
 ```
 
 - **`text`** is the filter as given, and **`canonical`** as the page writes it.
-  **`link`** is always root-relative.
+  **`link`** is always root-relative, and ends with the checkout's space id
+  when it has one.
 - **`documents`** is the documents the filter keeps, of every path the index
   lists; **`entries`** the entries shown, of every entry the unfiltered
   sections hold; **`openQuestions`** how many of those shown are open
@@ -986,6 +996,34 @@ the key is new and no existing one changed.
 entries the filter keeps, with the `Filter:` line the planning page's **Copy
 agent request** adds on a filtered page. With nothing the filter keeps to ask
 for, it prints nothing, says so on stderr, and exits `0`.
+
+#### What `--filter` writes
+
+`index --filter` writes one file, and only when it prints a link, in text or
+JSON: never under `--request`, nor when it exits `2` or `3`. The file is
+`.vantage/space` at the project root, holding the checkout's **space id**:
+sixteen random characters from `a` to `z` and `2` to `7`, and a newline. The
+link carries it as `&space=`, and Vantage reads the same file in every project
+it serves, so a link made where Vantage is called `vantage`, in a container
+that calls the checkout `/workspace`, still opens the right project. Nothing
+asks a server: the file is the whole channel, as `.vantage/inbox` is for
+review answers.
+
+- **It is made once and kept.** The first link makes it; every later run
+  reuses it and never rewrites it, since every link you handed over names it.
+- **It is never committed.** When the checker makes `.vantage` itself, it
+  writes `.vantage/.gitignore` beside the id, holding `*` under a one-line
+  comment, so every clone makes an id of its own. A `.vantage` that was
+  already there, which may hold the review inbox, keeps whatever ignore rules
+  it had.
+- **A file that holds no id is left alone.** The link is printed without
+  `&space=`, and stderr says so: remove the file and rerun to have a new one
+  made. So too when the file cannot be made, with the reason.
+- **In a linked worktree, the id is the main checkout's.** Vantage serves the
+  main checkout, so the id lives in its `.vantage/`, and the hint line names
+  that checkout. The worktree caution still follows it.
+
+Older viewers ignore `space=`: the link opens as it did before.
 
 ### Agent requests
 
@@ -1104,7 +1142,7 @@ What you hand over can be as short as this:
 Four questions about search need your rulings. On your planning page, press /
 and paste this line:
 
-Planning page: /.vantage/planning?filter=path:/docs/design/search.md+path:/docs/design/search-plan.md+path:/docs/design/indexing.md+is:open
+Planning page: /.vantage/planning?filter=path:/docs/design/search.md+path:/docs/design/search-plan.md+path:/docs/design/indexing.md+is:open&space=q4zmuykxw2a7hbne
 
 It filters to `path:/docs/design/search.md path:/docs/design/search-plan.md path:/docs/design/indexing.md is:open`:
 4 open questions in 3 documents. One more is blocked and will need you later.

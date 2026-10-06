@@ -68,6 +68,7 @@ import (
 	"github.com/mschulkind-oss/vantage/internal/perf"
 	"github.com/mschulkind-oss/vantage/internal/repoconfig"
 	"github.com/mschulkind-oss/vantage/internal/review"
+	"github.com/mschulkind-oss/vantage/internal/spaceid"
 	"github.com/mschulkind-oss/vantage/internal/starred"
 )
 
@@ -100,6 +101,10 @@ type repoServices struct {
 	// wiring it anywhere else is correct at startup and silently leaves every
 	// discovered repository without a config.
 	cfg *repoconfig.Config
+	// space reads this repository's .vantage/space, the space id a planning
+	// link names it by (see [spaceid]). Attached in newRepoServices for the
+	// reason cfg is.
+	space *spaceid.File
 }
 
 // Server is the assembled application. Construct it with [NewServer]; expose its
@@ -266,6 +271,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		DefaultTheme:   defaultTheme,
 		ThemeDefaults:  s.themeDefaults,
 		Degraded:       s.degradedList,
+		SpaceRepo:      s.spaceRepo,
 	})
 
 	s.router = s.buildRouter(handlers)
@@ -346,6 +352,7 @@ func (s *Server) newRepoServices(rc config.RepoConfig) *repoServices {
 		root:  fsSvc.RootPath(),
 		loose: rc.Loose,
 		cfg:   repoconfig.New(fsSvc.RootPath()),
+		space: spaceid.New(fsSvc.RootPath()),
 	}
 }
 
@@ -396,6 +403,34 @@ func (s *Server) promoted() []starred.Listed {
 	// first. Their stored bookmarks beat both, and the handler puts those ahead of
 	// whatever this returns.
 	return starred.MergeListed(s.userPromoted(), repoRows)
+}
+
+// spaceRepo answers GET /api/spaces/{id}: the name of the first repository, in
+// registration order, whose .vantage/space holds id ("" in single-repo mode),
+// and false when none does. Wired to api.Deps.SpaceRepo, which hands it only an
+// id [spaceid.Valid] accepts.
+//
+// Each repository's file is stat'ed on every call and re-read only when it
+// changed ([spaceid.File]), so a file a checker made a moment ago is found, and
+// one removed or rewritten is not held to its old id. Two repositories holding
+// one id is a checkout copied whole, .vantage included; the first one wins and
+// the copy is named in the log, since nothing in the request can choose.
+func (s *Server) spaceRepo(id string) (string, bool) {
+	found := ""
+	ok := false
+	for _, rs := range s.repoList() {
+		held, has := rs.space.ID()
+		if !has || held != id {
+			continue
+		}
+		if ok {
+			s.logger.Warn("server: two projects hold one space id; planning links name the first",
+				"first", found, "also", rs.name, "file", rs.space.Path())
+			continue
+		}
+		found, ok = rs.name, true
+	}
+	return found, ok
 }
 
 // themeDefaults collects the color theme each repository offers, keyed the way

@@ -131,6 +131,15 @@ export {
   planningLink,
   readPastedPlanningLink,
 } from "./filter.js";
+export {
+  PLANNING_SPACE_FILE,
+  PLANNING_SPACE_ID_LENGTH,
+  PLANNING_SPACE_ID_PATTERN,
+  PLANNING_SPACE_PARAM,
+  isPlanningSpaceId,
+  parsePlanningSpaceFile,
+  planningSpaceFileText,
+} from "./space.js";
 export type {
   FilteredPlanningSections,
   NotUnderstoodPlanningFilter,

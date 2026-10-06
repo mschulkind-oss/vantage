@@ -93,7 +93,12 @@ ${REQUEST_SECTION_LIST}
                                      every other term must match. Given
                                      twice, the texts join. Paste the link
                                      into the planning page's Filter box:
-                                     press / there.
+                                     press / there. The link ends with
+                                     space=, this checkout's id, which the
+                                     first --filter writes to .vantage/space
+                                     (and .vantage/.gitignore, when it
+                                     makes .vantage), so a Vantage serving
+                                     several projects opens this one.
   --config <path>                    use this .vantage.toml
   --no-config                        ignore .vantage.toml entirely
 

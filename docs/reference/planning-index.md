@@ -397,6 +397,7 @@ Their text is in git; this is now where the terms are defined.
 | **Planning link** | A URL to the planning page that carries a planning filter, as `--filter` prints it ([§13.5](#135-handing-the-human-a-filtered-page)) | the address bar after a flip, which may also hold page parameters | the planning-filter design |
 | **Root-relative link** | A planning link that starts at `/.vantage/planning`, with no scheme, host or port, because the checker does not know them: what [RFC 3986 §4.2](https://www.rfc-editor.org/rfc/rfc3986#section-4.2) calls an absolute-path reference | a relative Markdown link; it is never resolved against the page it is opened from | the planning-filter design |
 | **Pasted link** | A planning link, whole or root-relative, pasted into the Filter box on its own or inside the lines the checker prints around it. The box applies its filter at once ([§6.17](#617-the-filter-line)) | filter text: `filter=` and `--filter` never read a link | the planning-filter design |
+| **Space id** | One random id per checkout, kept as the single line of its `.vantage/space`, which a planning link carries as `space=` so a server serving many projects can open the one the link was made in ([§13.6](#136-the-space-id)) | a project's name, which is the server's; an address; anything committed | coined for this feature from the user's word *space*, 2026-10-06 |
 | **T1** to **T4** | The planning filter's typing targets ([§18](#18-scale-targets-and-what-has-been-measured)) | measurements: they are requirements | the planning-filter design, 2026-10-05 |
 
 A **long task** is a main-thread task over 50 ms
@@ -3385,7 +3386,7 @@ filtered view is a new last key, present only with `--filter`:
   "filter": {
     "text": "path:./docs/design/x.md is:open",
     "canonical": "path:/docs/design/x.md is:open",
-    "link": "/.vantage/planning?filter=path:/docs/design/x.md+is:open",
+    "link": "/.vantage/planning?filter=path:/docs/design/x.md+is:open&space=q4zmuykxw2a7hbne",
     "documents": { "kept": 1, "of": 20 },
     "entries": { "shown": 5, "of": 15 },
     "openQuestions": 5,
@@ -3399,7 +3400,8 @@ filtered view is a new last key, present only with `--filter`:
 ```
 
 `text` is the text as given, every `--filter` value joined; `canonical` its
-canonical text; `link` the root-relative link, always. `documents` counts kept
+canonical text; `link` the root-relative link, always, ending with the checkout's
+[space id](#136-the-space-id) when it has one. `documents` counts kept
 documents of every path the index lists, and `entries` kept entries of the
 unfiltered total. `blockedLeftOut`, `otherRoadmaps` and `waitsOutside` are the
 notice's *Blocked*, *Other roadmaps* and *Waits on* clauses, `waitsOutside[].target`
@@ -3435,25 +3437,30 @@ repository at several addresses at once.
 **The link it prints:**
 
 ```text
-Planning page: /.vantage/planning?filter=path:/docs/design/x.md+is:open
+Planning page: /.vantage/planning?filter=path:/docs/design/x.md+is:open&space=q4zmuykxw2a7hbne
   Press / on the planning page and paste this line, or put the scheme, host and port you open Vantage at in front of the link.
+  space= is this checkout's id, kept in .vantage/space: with an address in front, the link opens this project's page even where one Vantage serves several.
 ```
 
 - **One line, two ways to use it.** Pasted into the Filter box
   ([§6.17](#617-the-filter-line)), the line works on any origin, in any mode and
   through any tunnel, because the box reads only the link's query. With an address
-  in front it is a link to click, and in daemon mode it then reaches *Choose a
-  project*, which keeps the filter (below). The filter's readable text is in the
-  notice above it, for typing.
+  in front it is a link to click. Its `space=` names the checkout it was made in
+  ([§13.6](#136-the-space-id)), so in daemon mode a viewer that reads it can open
+  that project's page; one that does not reaches *Choose a project*, which keeps
+  the filter (below). The filter's readable text is in the notice above it, for
+  typing.
 - **The query** carries `roadmap=<chosen>` whenever two or more roadmaps route, so
   the human's *Needs you* follows the roadmap the agent checked, whatever they last
-  picked; pasting the link chooses that roadmap too. The link never carries a page
-  parameter or a fragment.
-- **A linked worktree.** When the project root's `.git` is a file, a second hint line
+  picked; pasting the link chooses that roadmap too. Then it carries
+  `space=<id>`, last, whenever the checkout has a space id, with the hint line
+  that says what it does. The link never carries a page parameter or a fragment.
+- **A linked worktree.** When the project root's `.git` is a file, a hint line
   sets the root off as code and says it is a linked worktree, whose page shows the
   checkout the human's Vantage serves, which may not hold these documents as they
   are here. The checker cannot tell which checkout a server serves, but it can tell
-  when its own is not a repository's main one. A submodule's `.git` is a file too,
+  when its own is not a repository's main one, and its link names the main
+  checkout's space id ([§13.6](#136-the-space-id)). A submodule's `.git` is a file too,
   so the caution names a submodule a linked worktree as well; a root found by its
   `.vantage.toml` alone gets none.
 - **An older viewer.** When `.vantage.toml`'s `target` names a release before the
@@ -3493,9 +3500,10 @@ folder with its `/` as `%2F`, and both spellings read alike.
 > reader stops. Write a filter into a URL with `encodePlanningQueryValue` alone, and
 > never by hand: a raw `+`, `#` or `&` cuts the filter short.
 
-**Daemon mode.** A root-relative link has no repository segment. In daemon mode,
-`/.vantage/planning` with no segment shows *Choose a project*, and a wrong segment
-shows *Repository not found*. Both list each served project as
+**Daemon mode.** A root-relative link has no repository segment; its `space=` is
+how a viewer that reads it finds the project ([§13.6](#136-the-space-id)). Without
+one, in daemon mode, `/.vantage/planning` with no segment shows *Choose a project*,
+and a wrong segment shows *Repository not found*. Both list each served project as
 `/.vantage/planning/<encoded name>?<the same query>`, so a root-relative link with an
 address in front costs the human one click instead of losing its filter. Pasted into
 the Filter box of a project's page, it needs no click at all.
@@ -3543,6 +3551,76 @@ held to a filter the parser understands by
 checker and so never teaches a flag the reader's checker lacks, from the
 [vantage-check guide](../../userguide/guides/vantage-check.md#handing-the-human-a-filtered-planning-page),
 and from [`agent-cli.md` §3.3](agent-cli.md#33-index-version-and-help).
+
+### 13.6 The space id
+
+A **space id**, a term coined for this feature from the user's word *space*, is one
+random id per checkout: 16 characters of lowercase
+[RFC 4648](https://www.rfc-editor.org/rfc/rfc4648#section-6) base32 (`a` to `z`,
+`2` to `7`), 80 bits from a cryptographic source, kept as the single line of
+`<checkout>/.vantage/space`. A planning link carries it as `space=`. The checker
+cannot learn the name a server gives a project ([§13.5](#135-handing-the-human-a-filtered-page)):
+an agent in a container sees `/workspace` where the host's daemon names the
+directory `vantage`. But it already writes into the checkout, as an agent delivers
+review answers into `.vantage/inbox`, and the server reads that checkout, so the id
+travels through the filesystem alone and nothing matches names or contents.
+
+**The file** is the id and one newline. A reader drops one trailing `\n`, and a `\r`
+before it, and takes what is left only when it is an id whole: white space around
+it, a second line or a byte order mark holds none. A file over 64 bytes is not
+read, and a symlink is not followed. The names live in
+`packages/vantage-md/src/planning/space.ts` (`PLANNING_SPACE_PARAM`,
+`PLANNING_SPACE_ID_PATTERN`, `PLANNING_SPACE_FILE`); the server has its own reader
+(`internal/spaceid`), and `internal/spaceid/testdata/space-files.json` holds the two
+to one answer.
+
+**`vantage-check index --filter` writes it**, and only when it prints a link: the
+text and the JSON, never `--request`, an exit `2` or an exit `3`. It contacts no
+server ([`agent-cli.md` P1](agent-cli.md#11-principles)).
+
+- **No file:** it makes one. When `.vantage` is not there either, it makes the
+  directory with a `.gitignore` holding `*` after a one-line comment, so nothing in
+  it is committed and every clone makes an id of its own. A `.vantage` that is there
+  keeps the ignore state its owner gave it, since it may hold the review inbox.
+- **A file holding an id:** reused, and never rewritten, since every link already
+  handed over names it.
+- **A file holding none:** left as it is, and the link is printed without `space=`,
+  with a warning on stderr. So it is when the file cannot be made.
+- **Two runs at once** never overwrite or half-read each other's id: it is written to
+  a scratch name and hard-linked into place, which fails where a file already is.
+- **In a linked worktree**, whose `.git` is a file naming a gitdir that has a
+  `commondir`, the id is the main checkout's, the parent of git's common directory,
+  because that is the checkout a Vantage serves; the worktree caution still prints,
+  and the hint line names the main checkout. A submodule, whose gitdir has no
+  `commondir`, and a worktree of a bare repository are checkouts of their own.
+
+**The link** ends with `space=<id>`, after `roadmap=` when there is one. The id is
+then the link's last value, so it is the one whose end
+[the encoding](#135-handing-the-human-a-filtered-page) would escape, and an id
+never needs it. The hint line under `Planning page:` says what it does, and in a
+linked worktree it names the main checkout: *space= is the id of the main checkout
+`/…`, kept in its .vantage/space: …*. The JSON's `filter.link` carries it too. The
+paste reader ignores it: pasted into a project's Filter box, the link applies its
+filter there.
+
+**The server** answers `GET /api/spaces/{id}`, a global route
+(`Handlers.Space`, `Server.spaceRepo`):
+
+| Request | Answer |
+| :--- | :--- |
+| `{id}` is not an id | `400` `{"error": "Not a space id"}`, before any file is looked at |
+| A served project's `.vantage/space` holds it | `200` `{"repo": "<name>"}`; in single-project mode `{"repo": ""}`, the single-repo sentinel |
+| None does | `200` `{"repo": null}` |
+
+Every answer but the `400` is sent `no-store`. Each served root's file is
+stat'ed on every lookup and read again only when its size, modification time or
+inode changed, so a file a checker made a moment ago is found and one that was
+removed is not. Two projects holding one id, a checkout copied whole, answer the
+first in registration order, and the log names the other. It parses no Markdown
+and writes nothing.
+
+**Older viewers** ignore `space=`: 0.9.0 keeps it in the URL and reads no meaning
+into it, so the link opens as a 0.9.0 link does.
 
 ---
 
@@ -4167,6 +4245,7 @@ into the text above or are in git.
 | OQ-PF5 | The filter line is always on the page: one fixed-height row in every state, from first paint. Behind a Filter button it would be a state of its own and a layout-shift case, and a filter a person operates has to be seen to be learned ([§6.17](#617-the-filter-line)) | 2026-10-05 |
 | OQ-PF6 | The page applies the filter as the reader types, basically instantly, ruled in conversation over applying it on Enter only. Typing never adds a history entry; the URL follows after the idle pause and at once on Enter, ✕ or a paste; the box is never rewritten while the reader types; a text not understood mid-typing keeps the results on screen; and "instant" is held to T1 to T4. Amended on 2026-10-06: a typed text that keeps no entry at all applies only once the idle pause ends, the last results staying until then, so `-m` or a half word does not empty the page between keys less than the pause apart; Enter, ✕, a paste and leaving the box apply at once, empty or not. No debounce of the results otherwise: matching takes a few milliseconds, so any wait would be the whole delay ([§6.16](#616-typing-and-the-url), [§18](#18-scale-targets-and-what-has-been-measured)) | 2026-10-05, 2026-10-06 |
 | OQ-PF7 | No freeze across releases, ruled in conversation: a filter text may match differently in a later release, so nothing compares the fixture of forms with an earlier release's, and "not understood" keeps no form free for later. P0 still governs what lives in files or feeds scripts, roadmap order never changes, and the page and the checker agree within one release ([§6.19](#619-across-releases)) | 2026-10-05 |
+| OQ-PF8 | A link names the checkout it was made in by a random space id the checker keeps in `.vantage/space` and the server reads, ruled in conversation over matching the checker's root against served names or contents: an agent is already in the checkout, as the review inbox shows, so the filesystem carries the id and *Choose a project* need never show for an agent's link ([§13.6](#136-the-space-id)) | 2026-10-06 |
 | Plan Q1 | Patterns keep the server's matcher, its quirks and RE2 dialect included; the checker ports it, and one shared fixture pins both readers ([§3.1](#31-candidates-and-planning-documents)) | 2026-09-28 |
 | Plan Q2 | A listed roadmap is read whenever it exists, even when `include` or `exclude` rules it out — per entry, since several roadmaps ([§4.1](#41-which-files-are-roadmaps)) | 2026-09-28 |
 | Plan Q3 | A static export gets no badges and no planning index; its planning page says so ([§15](#15-failure-modes)) | 2026-09-28 |

@@ -50,6 +50,7 @@ import {
   PLANNING_FILTER_LIMITS,
   type PlanningFilterLimits,
 } from "./filterLimits.js";
+import { PLANNING_SPACE_PARAM } from "./space.js";
 
 export { PLANNING_FILTER_LIMITS };
 export type { PlanningFilterLimits };
@@ -1369,26 +1370,29 @@ export function encodePlanningQueryValue(value: string, ends = false): string {
 /**
  * A link to the planning page filtered by `canonical`: `path`, by default the
  * root-relative `/.vantage/planning`, then `?filter=<canonical>`, then
- * `&roadmap=<roadmap>` when one is given, each written by
- * `encodePlanningQueryValue`, the last as the link's end. An empty
- * `canonical` is no filter, and gets no parameter (§6.11).
+ * `&roadmap=<roadmap>` when one is given, then `&space=<space>` when one is
+ * given (§13.6), each written by `encodePlanningQueryValue`, the last as the
+ * link's end. An empty `canonical` is no filter, and gets no parameter
+ * (§6.11).
  */
 export function planningLink(
   canonical: string,
-  options: { roadmap?: string | null; path?: string } = {},
+  options: {
+    roadmap?: string | null;
+    space?: string | null;
+    path?: string;
+  } = {},
 ): string {
+  const values: [string, string][] = [];
+  if (canonical !== "") values.push([PLANNING_FILTER_PARAM, canonical]);
   const roadmap = options.roadmap ?? null;
-  const params: string[] = [];
-  if (canonical !== "") {
-    params.push(
-      `${PLANNING_FILTER_PARAM}=${encodePlanningQueryValue(canonical, roadmap === null)}`,
-    );
-  }
-  if (roadmap !== null) {
-    params.push(
-      `${PLANNING_ROADMAP_PARAM}=${encodePlanningQueryValue(roadmap, true)}`,
-    );
-  }
+  if (roadmap !== null) values.push([PLANNING_ROADMAP_PARAM, roadmap]);
+  const space = options.space ?? null;
+  if (space !== null) values.push([PLANNING_SPACE_PARAM, space]);
+  const params = values.map(
+    ([name, value], i) =>
+      `${name}=${encodePlanningQueryValue(value, i === values.length - 1)}`,
+  );
   const base = options.path ?? PLANNING_PAGE_PATH;
   return params.length === 0 ? base : `${base}?${params.join("&")}`;
 }
@@ -1436,8 +1440,9 @@ const PAGE_PATH_AT = new RegExp(
  * `/.vantage/planning`, whatever comes before it in the run (a scheme, a
  * host, a port), with its query after. Its `filter` values joined with one
  * space, `""` when it has none, decoded as the page decodes its own URL; and
- * its `roadmap`, or `null`. Its repository segment, its page parameters and
- * its fragment are ignored.
+ * its `roadmap`, or `null`. Its repository segment, its page parameters, its
+ * `space` (§13.6), which names a checkout and so says nothing on a page that
+ * is already open, and its fragment are ignored.
  *
  * The link ends where the run does, or earlier, at the first character a
  * planning link never holds unencoded, so the backtick or the parenthesis a

@@ -54,6 +54,7 @@ import {
   type DeclaredTarget,
 } from "../core/target.js";
 import { repositoryRoot } from "../core/projectRoot.js";
+import { ensureSpace, spaceIdOf, type Space } from "../core/space.js";
 import { oneLine } from "../core/text.js";
 import { EXIT_ENVIRONMENT, EXIT_OK, EXIT_USAGE } from "../exit.js";
 import type { Io } from "../io.js";
@@ -80,7 +81,9 @@ import { VERSION } from "../version.js";
  * `--filter` shows only the entries a planning filter keeps, as the page's
  * Filter box does, and prints a root-relative link to that filtered page
  * (§13.4). The filter is parsed, applied and linked by vantage-md's planning
- * module, the page's own reader (F1).
+ * module, the page's own reader (F1). The link carries the checkout's space id
+ * (§13.6), which the command makes in `.vantage/space` the first time it
+ * prints one: the one file it ever writes.
  *
  * It reports and does not judge, so it never exits 1: 0 when it ran, 2 for bad
  * arguments or a bad config, a filter it cannot read or one with a `path:`
@@ -235,6 +238,14 @@ export function indexCommand(options: IndexOptions, io: Io): number {
     return EXIT_USAGE;
   }
 
+  // A link is about to be printed, so the checkout's space id is found or
+  // made now, and never for a run that prints none: `--request`, an
+  // unmatched term, a refused project (§13.6).
+  if (applied !== null && options.request === undefined) {
+    applied.space = spaceOut(project.root, io);
+    applied.link = linkFor(applied.filtered, applied.unfiltered, applied.space);
+  }
+
   if (options.request !== undefined) {
     if (sections !== null) {
       requestOut(project, sections, options.request, io, applied);
@@ -336,9 +347,15 @@ interface AppliedFilter {
   /**
    * The root-relative link to the filtered planning page (§13.5), naming the
    * chosen roadmap when two or more roadmaps can be chosen, so the human's
-   * Needs you follows the roadmap the agent checked, whatever they last picked.
+   * Needs you follows the roadmap the agent checked, whatever they last picked,
+   * and then the checkout's space id once `space` holds one (§13.6).
    */
   link: string;
+  /**
+   * The checkout's space, found or made just before the link is printed, and
+   * `null` until then.
+   */
+  space: Space | null;
 }
 
 function appliedFilter(
@@ -346,15 +363,46 @@ function appliedFilter(
   filtered: FilteredPlanningSections,
   unfiltered: PlanningSections,
 ): AppliedFilter {
-  const routing = unfiltered.roadmaps.filter((r) => r.state === "routes");
   return {
     text,
     filtered,
     unfiltered,
-    link: planningLink(filtered.summary.canonical, {
-      roadmap: routing.length >= 2 ? unfiltered.chosenRoadmap : null,
-    }),
+    link: linkFor(filtered, unfiltered, null),
+    space: null,
   };
+}
+
+/** The link to the filtered page, with `space`'s id when it has one. */
+function linkFor(
+  filtered: FilteredPlanningSections,
+  unfiltered: PlanningSections,
+  space: Space | null,
+): string {
+  const routing = unfiltered.roadmaps.filter((r) => r.state === "routes");
+  return planningLink(filtered.summary.canonical, {
+    roadmap: routing.length >= 2 ? unfiltered.chosenRoadmap : null,
+    space: spaceIdOf(space),
+  });
+}
+
+/**
+ * The checkout's space (§13.6), found or made, with a warning on stderr when
+ * it has no id to give the link: a `.vantage/space` that holds none, which is
+ * left as it is, or one that could not be made. The link is printed without
+ * `space=` then, as a checker before the space id printed it.
+ */
+function spaceOut(root: string, io: Io): Space {
+  const space = ensureSpace(root);
+  if (space.kind === "malformed") {
+    io.err(
+      `vantage-check: warning: ${space.file} does not hold a space id, so the planning link names no checkout. Remove the file to have a new one made.\n`,
+    );
+  } else if (space.kind === "unwritable") {
+    io.err(
+      `vantage-check: warning: could not make ${space.file}, so the planning link names no checkout: ${space.reason}\n`,
+    );
+  }
+  return space;
 }
 
 /**
@@ -363,6 +411,19 @@ function appliedFilter(
  */
 const PASTE_HINT =
   "Press / on the planning page and paste this line, or put the scheme, host and port you open Vantage at in front of the link.";
+
+/**
+ * The hint line under it when the link carries a space id (§13.6), which says
+ * what `space=` does: with an address in front, a Vantage serving several
+ * projects opens the one whose `.vantage/space` holds it, which is the main
+ * checkout's for a linked worktree.
+ */
+function spaceHint(root: string, space: Space): string | null {
+  if (spaceIdOf(space) === null) return null;
+  return space.checkout === root
+    ? "space= is this checkout's id, kept in .vantage/space: with an address in front, the link opens this project's page even where one Vantage serves several."
+    : `space= is the id of the main checkout ${codeSpan(space.checkout)}, kept in its .vantage/space: with an address in front, the link opens that project's page even where one Vantage serves several.`;
+}
 
 /**
  * Whether `root` is a linked worktree: its `.git` is a file, not a directory.
@@ -379,11 +440,12 @@ function isLinkedWorktree(root: string): boolean {
 /**
  * What the text prints before everything else under a filter (§13.4): the
  * filter notice, its clauses included, then the `Planning page:` line and its
- * hint lines (§13.5). A second hint says when the root is a linked worktree,
- * since the page shows the checkout the human's Vantage serves, and a third
- * when the run's `target` names a release before the filter's, which says
- * too that a viewer has no planning page at all when it names one before the
- * page's (§13.5).
+ * hint lines (§13.5). A second hint says what `space=` does when the link
+ * carries one (§13.6), a third when the root is a linked worktree, since the
+ * page shows the checkout the human's Vantage serves, and a fourth when the
+ * run's `target` names a release before the filter's, which says too that a
+ * viewer has no planning page at all when it names one before the page's
+ * (§13.5).
  */
 function filterHead(
   project: ScannedProject,
@@ -395,6 +457,9 @@ function filterHead(
     "checker",
   ).map(noticeText);
   lines.push(`Planning page: ${applied.link}`, `  ${PASTE_HINT}`);
+  const space =
+    applied.space === null ? null : spaceHint(project.root, applied.space);
+  if (space !== null) lines.push(`  ${space}`);
   if (isLinkedWorktree(project.root)) {
     // The root as code, as §13.5 quotes the line, so a path holding a space
     // or a `:` reads as one.
@@ -587,7 +652,7 @@ function renderJson(
  * `onOtherRoadmaps`) that are not keys of it, and a script reads these keys,
  * so each keeps its meaning (P0, §6.19). `unknownKeys` lists the words alone,
  * which the summary pairs with the terms they open. `link` is always
- * root-relative.
+ * root-relative, and carries the checkout's space id when it has one (§13.6).
  */
 function filterJson(applied: AppliedFilter) {
   const { summary, sections } = applied.filtered;

@@ -20,6 +20,7 @@ import {
   PLANNING_NOTICES,
   PLANNING_PAGE_PATH,
   PLANNING_ROADMAP_PARAM,
+  PLANNING_SPACE_PARAM,
   applyPlanningFilter,
   codeSpan,
   derivePlanningSections,
@@ -1806,6 +1807,48 @@ describe("the link (§13.5)", () => {
     expect(planningLink("path:a.md")).toBe(
       "/.vantage/planning?filter=path:a.md",
     );
+  });
+
+  // §13.6: the checker ends its link with the checkout's space id, which is
+  // the link's end then, so the values before it are written bare.
+  it("ends with the space id when given, after the roadmap (§13.6)", () => {
+    const space = "abcdefghijklmnop";
+    expect(PLANNING_SPACE_PARAM).toBe("space");
+    expect(planningLink("is:open", { space })).toBe(
+      `/.vantage/planning?filter=is:open&space=${space}`,
+    );
+    expect(
+      planningLink("is:open", { roadmap: "docs/my roadmap.md", space }),
+    ).toBe(
+      `/.vantage/planning?filter=is:open&roadmap=docs/my+roadmap.md&space=${space}`,
+    );
+    expect(planningLink("path:docs/x_", { space })).toBe(
+      `/.vantage/planning?filter=path:docs/x_&space=${space}`,
+    );
+    expect(planningLink("path:docs/x_", { roadmap: "r_", space })).toBe(
+      `/.vantage/planning?filter=path:docs/x_&roadmap=r_&space=${space}`,
+    );
+    expect(planningLink("path:docs/x_", { space: null })).toBe(
+      "/.vantage/planning?filter=path:docs/x%5F",
+    );
+    // The paste reader takes the filter and the roadmap, and ignores the id,
+    // which says nothing on a page that is already open.
+    for (const roadmap of [null, "roadmap.md"]) {
+      const link = planningLink("path:docs/x_ is:open", { roadmap, space });
+      expect(queryOf(link).get(PLANNING_SPACE_PARAM)).toBe(space);
+      for (const pasted of [
+        link,
+        `${link}.`,
+        `(${link})`,
+        `http://localhost:8001${link}`,
+        `Planning page: ${link}\n  Press / on the planning page`,
+      ]) {
+        expect(readPastedPlanningLink(pasted), pasted).toEqual({
+          filter: "path:docs/x_ is:open",
+          roadmap,
+        });
+      }
+    }
   });
 
   it("names one document as path:/<path>, in canonical text", () => {

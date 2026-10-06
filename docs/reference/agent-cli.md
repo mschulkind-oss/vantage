@@ -307,6 +307,20 @@ the two ways to use it: paste it into the Filter box, which reads only its
 query, or put an address in front
 ([`planning-index.md` §13.5](planning-index.md#135-handing-the-human-a-filtered-page)).
 
+**The link ends with `space=<id>`, and that is the one file the checker
+writes.** A daemon names a project by its own rule, so the link names the
+checkout instead: by a *space id*, one random id per checkout that `--filter`
+makes in `<checkout>/.vantage/space` the first time it prints a link, and
+reuses after, and that the server reads for every project it serves. P1 holds,
+since the file is the channel: the checker asks no server, and the server
+answers `GET /api/spaces/{id}` from the files alone. When the checker makes
+`.vantage` itself, it writes `.vantage/.gitignore` holding `*` beside the id,
+so no clone inherits another's; a `.vantage` that was there, which may hold
+the review inbox, is left as it was. A file that holds no id is left alone and
+the link printed without one, and in a linked worktree the id is the main
+checkout's
+([`planning-index.md` §13.6](planning-index.md#136-the-space-id)).
+
 `version` names the release a binary was stamped with, or says
 `development build` and names the commit for one built from the manifest's
 placeholder version ([§8](#8-one-binary-built-and-shipped)). `help` prints the
@@ -760,7 +774,10 @@ checker handed to other people's agents has to pass the tree it ships from.
 - **Not an npm CLI.** No `npx` entry point and no npm package, beside the binary
   or instead of it ([OQ-A1](#why-its-this-way), [OQ-A2](#why-its-this-way)).
 - **Not editing anyone's agent configuration.** No `AGENTS.md`, `CLAUDE.md` or
-  `.gitignore` writes, and no file writes at all.
+  `.gitignore` writes, and no file writes but one: `index --filter` keeps the
+  checkout's space id in `.vantage/space`, Vantage's own directory, with a
+  `.vantage/.gitignore` when it made that directory
+  ([§3.3](#33-index-version-and-help)).
 - **Not a writing assistant.** No prose restructuring, no generated frontmatter
   values, no editorial judgment, and no `--fix`. A `--fix` is not built and not
   planned; were one ever added, it makes only mechanical, unambiguous rewrites
