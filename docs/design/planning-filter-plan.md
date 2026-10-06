@@ -2,17 +2,17 @@
 title: "Planning filter: implementation sketch"
 date: 2026-10-05
 status: accepted
-stage: BUILT
-next: "Graduate with the design into docs/reference/planning-index.md, moving the traps that proved real into its warnings, then delete this file"
+stage: DECIDED
+next: "Build WP-6: text terms, exclusions and the colon rule in the shared module and the checker"
 depends-on:
   - planning-filter.md
 tags: [planning, vantage-check, agents, url, sketch]
-summary: "How to build the planning filter: five work packages, the exported API of the shared module that the checker, the page and the viewer build against, and each package's files, tests, checks and traps, read from the tree at f8fda54."
+summary: "How to build the planning filter: nine work packages, the exported API of the shared module that the checker, the page and the viewer build against, and each package's files, tests, checks and traps. WP-1 to WP-5 were read from the tree at f8fda54 and are built; WP-6 to WP-9, live search, were read from 519cd66 and are not."
 ---
 
 # Planning filter: implementation sketch
 
-**Status:** 2026-10-05 (`d22eedc`). Built: WP-1 to WP-4 landed from `29b07c8` to `d22eedc`, and WP-5 in the commit after it. Written against `f8fda54` after reading the tree, with every question of the design ruled; [As built](#as-built) records where the tree departs from it, and the tree wins. MEASURED: a cold filtered link and an Enter shift nothing painted, leave `history.length` as it was, and make at most two review requests through a clear (`frontend/e2e/planning_filter.spec.ts`). UNMEASURED: criterion 8's long tasks ([risk 6](#risks-and-where-to-stop-and-ask)), reported by that spec and not asserted, and the rest the design's status line lists.
+**Status:** 2026-10-06. WP-1 to WP-5 are built: WP-1 to WP-4 landed from `29b07c8` to `d22eedc`, WP-5 in `9e02e2a`, and QA's fixes in `e92787c`. They were written against `f8fda54`, and [As built](#as-built) records where the tree departs from them; the tree wins. WP-6 to WP-9, [live search](#live-search-wp-6-to-wp-9), are not built. They were written against `519cd66` after reading the tree, for the rulings of 2026-10-05 ([OQ-PF1](planning-filter.md#decision-ledger), [OQ-PF6](planning-filter.md#decision-ledger), [OQ-PF7](planning-filter.md#decision-ledger)), with every question of the design ruled. MEASURED, for what is built: a cold filtered link and an Enter shift nothing painted, leave `history.length` as it was, and make at most two review requests through a clear (`frontend/e2e/planning_filter.spec.ts`). UNMEASURED: the design's typing targets, T1 to T4, which WP-8 reads; criterion 8's long tasks ([risk 6](#risks-and-where-to-stop-and-ask)); and the rest the design's status line lists.
 
 **Design:** [`planning-filter.md`](planning-filter.md). It wins on behavior, the tree wins on fact, and this file is advice and the first thing to be wrong: never twist the code to match it. Every line here is a **must** (a fact of the repository) or a default with its reason. Where the design is silent, the implementer decides, and the default is named.
 
@@ -27,6 +27,10 @@ A **work package** (WP, coined here) is one unit of this build, landing as one c
 | WP-3 Page | the planning page and the shell's `/` | WP-1; its parity test also needs WP-2 |
 | WP-4 Viewer | Referenced by's link | WP-1 |
 | WP-5 Docs | user guide, references, style guide, `CHANGELOG.md`, the design | WP-2, WP-3, WP-4 |
+| [WP-6](#wp-6-core-and-checker-the-language) Core and checker | text terms, exclusions and the colon rule in the filter module, its fixture and notices, and the checker's JSON and help | WP-1 to WP-5 |
+| [WP-7](#wp-7-page-applying-as-you-type) Page | applying as you type, the idle write, the caches and the review request | WP-6 |
+| [WP-8](#wp-8-harness-the-typing-flow) Harness | the typing flow that reads T1 to T4 | WP-7 |
+| [WP-9](#wp-9-docs) Docs | the guides, the checker's reference, `CHANGELOG.md`, the design once measured | WP-6, WP-7, WP-8 |
 
 ## The WP-1 API
 
@@ -125,7 +129,7 @@ export interface ReferenceSummary {
 | Path | Change |
 | :--- | :--- |
 | `packages/vantage-md/src/planning/filter.ts` | new: grammar, not understood, canonical text, matching, `applyPlanningFilter`, link, paste reader |
-| `packages/vantage-md/src/planning/filterForms.json` | new: the fixture of forms ([§10.4](planning-filter.md#104-how-p0-is-checked)) |
+| `packages/vantage-md/src/planning/filterForms.json` | new: the fixture of forms ([§10.4](planning-filter.md#104-how-it-is-checked)) |
 | `packages/vantage-md/src/planning/sections.ts:127-199` | the four `PLANNING_NOTICES` members (type and object), and `noticeText` |
 | `…/sections.ts:537-606` | `hasLiveQuestions`, set in `referenceSummary` from `isLive` |
 | `…/guide.ts:215-276`, `:298-314`, `:458-503` | `filter` option and `codeSpan`; `requestBlock`, `documentItem` and `blockedOn` take the sections blocked-on reads |
@@ -139,7 +143,6 @@ export interface ReferenceSummary {
 - `compileIgnorePatterns([pattern])` (`patterns.ts:103`), compiled once per bare term, with `/` prefixed to an anchored one ([§5.4](planning-filter.md#54-path-patterns)). Never for a quoted value.
 - `routeQuestions`, `questionFor`, `findDocument`, `dependsOnLabel`. `waitsOutside[].target` is `dependsOnLabel(entry)`, fragment included.
 - The 0.8.x model: copy `pageSearch` and `planningSearch` from `git show v0.8.1:frontend/src/lib/planningPages.ts` into the test, as `questionOffersTake` models 0.7.1 (`frontend/src/compat/notation.ts:117-133`).
-- The previous tag: `pickPreviousRelease` (`frontend/src/compat/previousRelease.ts:63`) over `git tag --list 'v[0-9]*'`, with the tags' own versions as `published`, picks the newest tag offline.
 
 **Traps.**
 
@@ -152,9 +155,8 @@ export interface ReferenceSummary {
 - `entries.of` sums the unfiltered entry arrays (`needsYou`, `unrouted`, `waiting`, `ready`, `graduate`, `disagrees`, `skipped`, `unreadable`); `onOtherRoadmaps` is counted and never an entry. `documents.of` counts `documents`, `skipped` and `unreadable`.
 - `needsYouCount` and `nothingNeedsYou` are recounted from the index: `routeQuestions(index, path)` and the live documents. `isLive` is private to `sections.ts`: export it from there, not from `index.ts`.
 - `just check-fast` sees a `.json` under `packages/vantage-md/src/` as no module (`scripts/check-fast.sh:78-83`, `:140-155`), so a fixture-only edit runs no vitest at commit: run the suites by hand. It is hashed into the scanner id (`frontend/src/planningScan/scannerId.ts:57-79`), costing one cold scan in a release that pays it anyway.
-- The fixture has no copy at `v0.8.1`: the comparison skips and says so when the tag, or the file at it, is absent.
 
-**Fixture shape** (default): `{ index: { stages, files: { <path>: <markdown> } }, read: [{ text, canonical, keeps }], notUnderstood: [{ text, term } | { text, reason }] }`, with `keeps` in page order as `"<section id> <path>"` for a row and `"<section id> <path>#<OQ-id>"` for a question. Beside what [§10.4](planning-filter.md#104-how-p0-is-checked) lists, the index declares stages, has a routing roadmap and an unrouted question, so WP-3's parity test has requests to compare. The `keeps` of path forms come from `git check-ignore --no-index` over a scratch repository of the fixture's paths; the test's header says the command.
+**Fixture shape** (default): `{ index: { stages, files: { <path>: <markdown> } }, read: [{ text, canonical, keeps }], notUnderstood: [{ text, term } | { text, reason }] }`, with `keeps` in page order as `"<section id> <path>"` for a row and `"<section id> <path>#<OQ-id>"` for a question. Beside what [§10.4](planning-filter.md#104-how-it-is-checked) lists, the index declares stages, has a routing roadmap and an unrouted question, so WP-3's parity test has requests to compare. The `keeps` of path forms come from `git check-ignore --no-index` over a scratch repository of the fixture's paths; the test's header says the command.
 
 **Tests** (`frontend/src/lib/planningFilter.test.ts`, new, unless named):
 
@@ -166,7 +168,6 @@ export interface ReferenceSummary {
 - `readPastedPlanningLink`: bare, whole URL, daemon segment, the checker's two-line block, `localhost:8000/.vantage/planning?…` with no scheme, no `filter`, `roadmap`, fragment and page parameters ignored, no link. Default: read from the index of `/.vantage/planning` on, against a dummy base, because `new URL("localhost:8000/…")` takes `localhost:` for a scheme.
 - `documentFilter`: `roadmap.md` → `path:/roadmap.md`, `plans/design.md` → `path:plans/design.md`, a space or `*` → quoted, a control character → `null`.
 - Every notice form and clause, in both readers.
-- The fixture against the previous tag: no `read` entry edited or removed.
 - `frontend/src/lib/planningRoute.test.ts` (new): an odd name encoded, a plain one unchanged. `frontend/src/compat/planningLink.test.ts` (new): every link of a `read` text passes the 0.8.1 model with `filter` untouched and no page parameter.
 - **Rewrite**, not repair: `planningSections.test.ts:1035`'s `toEqual` of `referenceSummary` gains `hasLiveQuestions`.
 
@@ -239,7 +240,7 @@ export interface ReferenceSummary {
 - `/` typed in the box is a path character, and already safe: the shell ignores keys while an input has the focus (`useKeyboardShortcuts.ts:67-77`). On a document `/` must not `preventDefault`, because Firefox's quick find uses it.
 - Never register `PageShortcuts` here: it lists `d`, `h` and `y` in the help (`useShellPage.ts:128`).
 - `navigate({ search })` writes the string as given, so Enter, ✕, paste and the open rewrite build it with `planningQuery`. Flips and picks kept `setSearch`'s form encoding until QA, which left a bare `*` in the address for the paste reader to stop at; they use `planningQuery` too now ([As built](#as-built)).
-- Miss one identity of [§6.5](planning-filter.md#65-identities) and two filters share a set.
+- Miss one identity of [§6.5](planning-filter.md#65-identities-and-what-typing-must-not-churn) and two filters share a set.
 - The second reviews request reads the unfiltered sections' documents, so no filter change asks for a third: that is what keeps [D11](../reference/planning-index.md#18-scale-targets-and-what-has-been-measured) at two.
 - `data-reserve` draws nothing outside a ghost (`index.css:193-220`). A slot that holds room has a fixed width or uses `ReservedLabel`.
 - Copy answers keeps "Copy answers" first in its accessible name: tests find it by `/Copy answers/` (`PlanningPage.test.tsx:1621`, `:2495`).
@@ -292,9 +293,136 @@ export interface ReferenceSummary {
 - `packages/vantage-check/test/styleGuidePlanning.test.ts`: a test that the bullet's filter text is understood.
 - **Checks:** `just cli`, then `packages/vantage-check/dist/vantage-check` over every changed Markdown file; `just compat-previous` after the style guide changes (it needs the network); `just done` last.
 
+## Live search: WP-6 to WP-9
+
+Read from the tree at `519cd66`, for the design's [OQ-PF1](planning-filter.md#decision-ledger), [OQ-PF6](planning-filter.md#decision-ledger) and [OQ-PF7](planning-filter.md#decision-ledger). These packages change behavior WP-1 to WP-3 built, so a test that pins the old behavior is **rewritten** to the new rule, never loosened to pass.
+
+### WP-6 Core and checker: the language
+
+| Path | Change |
+| :--- | :--- |
+| `packages/vantage-md/src/planning/filter.ts:56-63` | `PlanningFilterTerm` gains `{ key: "text"; text; value; quoted }`, and every term an `exclude: boolean`; `text` is the canonical term, its `-` included |
+| `filter.ts:310-326` (`readTerm`) | the colon rule of [§5.2](planning-filter.md#52-grammar): a term is a qualifier only when the part before its first `:` is `path` or `is`; any other is a text term, and an unknown key's word is noted |
+| `filter.ts:339-372` (`parsePlanningFilter`) | the leading `-` and a lone `-`; a `"` only around a whole value; `""`; an excluded code point in any term, not only inside quotes. `UnderstoodPlanningFilter` gains `unknownKeys: readonly string[]` |
+| `filter.ts:415-450` (`Compiled`, `compiled`) | text needles lowercased once; the exclusions; `keepsPath` honoring `-path:` |
+| `filter.ts:457-466` (`filterKeepsQuestion`) | takes a `PlanningQuestion`, since a text term reads its id, title and leaning; the four tests of [§5.3](planning-filter.md#53-what-a-term-matches-and-how-terms-combine) |
+| `filter.ts:552-685` (`applyPlanningFilter`) | a row by its path, `stage` and `next` (`findDocument`), Too large and Unreadable by path; `blockedLeftOut` as [§6.7](planning-filter.md#67-the-filter-notice) counts it; `unmatched` includes `-path:`; `requestText` is `null` only when every `path:` term without a `-` is unmatched; the summary gains `unknownKeys` |
+| `filter.ts:1-27`, `:796-815` | the header's "what a later release may never change" and the paste reader's "may only widen" go: nothing is frozen now ([§10.3](planning-filter.md#103-later-releases)) |
+| `packages/vantage-md/src/planning/sections.ts:160-322` | `notFiltered` and `filterNotUnderstood` say what the language reads now; `filteredNotice` gains the *Not a key* line after the unmatched lines; `FILTER_EXAMPLE` (`:188`) may gain a word |
+| `packages/vantage-md/src/planning/filterForms.json` | the entries below move from `notUnderstood` to `read`, with their `documents`, `questions` and `keeps`; the text cases of the design's [§10.4](planning-filter.md#104-how-it-is-checked) are added; every `read` entry gains `unknownKeys` |
+| `frontend/src/lib/planningFilter.test.ts:266-332` | delete the comparison with the previous tag, the imports only it uses (`execFileSync`, `pickPreviousRelease`, `:19`, `:45`), and the header's last sentence (`:16-18`) |
+| `frontend/src/lib/planningPages.ts:382-401` | bound `filteredSectionsOf`'s map per derivation, as `understoodFilter` keeps 16 (`:413`): typing applies a text per keystroke |
+| `packages/vantage-check/src/commands/index.ts:566-591` (`filterJson`) | `unknownKeys` before `sections`; its comment's "may only widen" becomes P0's "keeps its meaning" ([§10.3](planning-filter.md#103-later-releases)) |
+| `packages/vantage-check/src/help.ts:68-86`, `:100-105` | the row of the design's [§8.3](planning-filter.md#83-output); exit 2's line names a `-path:` term too |
+| `packages/vantage-check/src/cli.ts:166-173` | the comment on `--filter -path:x`: an exclusion now, and still a value |
+
+**What moves to `read`.** Of today's `notUnderstood`, these 14 are understood now: `Path:docs/design`, `PATH:docs/design`, `title:planning` and the fixture's `id:` entry (both with a hint), `docs/design`, `path:docs/design OR is:open`, `path:docs/design AND is:open`, `NOT path:docs/design`, `(path:docs/design)`, `"path:docs/design"`, `-path:docs/design`, `!path:docs/design`, `path:docs/design -is:open` and `path:docs/design Path:x OR`. Every other entry stays, the U+00A0 and U+2003 ones included: those characters sit inside a `path:` pattern.
+
+**Reuse.**
+
+- `findDocument` (`sections.ts`) for a row's `stage` and `next`; `questionFor` for a question entry's fields, as `keepsRef` already does.
+- The lowercased fields: a module `WeakMap` from the `PlanningIndex` to them, built on the first text term. The research's 1 to 12 ms at 20,000 questions is a once-per-index cost.
+- `notUnderstoodPart` (`sections.ts:173-178`) and `noticeText` (`:144`) for the new notice words.
+
+**Traps.**
+
+- **`toLowerCase` on both sides, per field.** Never join the fields into one string: a term would then match across two of them.
+- **A text term's canonical form keeps its case** (rule 4 of [§5.6](planning-filter.md#56-canonical-text)), so `Generator` and `generator` are two terms, both kept. Only a repeat of the same canonical text is dropped.
+- **`-is:open` drops no row.** A row has no state; `keepsRow` must not treat the exclusion as an `is:` term.
+- **The hint's rule is exact:** one or more ASCII lowercase letters before the first `:`, not a key, and no `/` right after it. `http://x` draws none.
+- **Unmatched for exit 2 now includes `-path:`.** The page shows it as a notice line either way.
+- **The fixture is still the P7 check.** Both suites load it; only the cross-release rule goes.
+- `just check-fast` sees `filterForms.json` as no module, so an edit to it alone runs no vitest at commit: run the suites by hand (`scripts/check-fast.sh:78-83`).
+
+**Tests** (`frontend/src/lib/planningFilter.test.ts`, unless named):
+
+- Each test of [§5.3](planning-filter.md#53-what-a-term-matches-and-how-terms-combine): every field alone, case, a phrase against the same words apart, NFC against NFD, `*` literal, two terms in two fields, never across one join.
+- Each exclusion, `-is:open` keeping a row, `--x`, a lone `-`, `a"b"`, `""`, an excluded code point in a word, and the limits configured down.
+- The hint: `stage:ready`, `-title:x`, and none for `http://x`, `Note:`, `Path:x` or a quoted phrase.
+- Canonical rules 4 and 5, and the round trip through `planningLink` for every new `read` text.
+- `applyPlanningFilter`: a Ready row kept by its `stage` while its 🔒 questions drop, with the request's blocked-on read from the unfiltered sections ([§6.3](planning-filter.md#63-blocked-on-reads-the-unfiltered-sections)); `blockedLeftOut` under a text term; `requestText` with an unmatched `-path:`.
+- `packages/vantage-check/test/index.test.ts:1200-1229`: **rewrite** the not-understood cases, since `OR`, `Path:docs/design` and `-path:docs/a.md` are understood now; use `is:closed`, `a"b"` and an unclosed quote. Add: a text term matching nothing exits 0; `stage:ready` prints the hint and lists `unknownKeys`; an unmatched `-path:` exits 2.
+- `packages/vantage-check/test/cli.test.ts:143-145` stays: `-path:x` is still a value.
+
+**Checks:** `cd frontend && npx vitest run src/lib/planningFilter.test.ts src/lib/planningGuide.test.ts src/lib/planningPages.test.ts`, then `cd packages/vantage-check && npx vitest run test/index.test.ts test/cli.test.ts`, then `npx tsc --build frontend` and both packages' `npm run typecheck`. `just cli` before running the checker over this repository.
+
+### WP-7 Page: applying as you type
+
+| Path | Change |
+| :--- | :--- |
+| `frontend/src/components/PlanningFilterLine.tsx:163` | `onChange` reports each text to the page, except while an input method composes; `compositionend` reports the composed text |
+| `PlanningFilterLine.tsx:119`, `:40`, `:208` | *not applied* is a not-understood text the reader has not entered, not "differs from the URL"; `FILTER_HINT` gets its words |
+| `PlanningFilterLine.tsx:164-169` | Esc puts back the applied filter's text over a text that is not applied |
+| `PlanningFilterLine.tsx`, new `onBlur` | asks the page to write the URL at once |
+| `PlanningFilterLine.tsx:99-108` | a push or a pop still resets the box; a replace resets it only while it lacks the focus **and** its text does not read as the URL's filter (compare canonical texts, never strings), so no write of the box's own filter touches it, the blur's included |
+| `frontend/src/pages/PlanningPage.tsx:1244-1254` | the applied filter: the box's newest understood text while it leads the URL, else the URL's |
+| `PlanningPage.tsx:1314-1366` | `replaceSearch`, `pickRoadmap` and `flip` write the applied filter into the query they write, and cancel the idle timer |
+| `PlanningPage.tsx:1347-1351` (`askedIsFlip`) | compares the shown layout's filter with the applied filter's layout, not the URL's |
+| `PlanningPage.tsx:2016-2053` (`applyFilter`) | split in two: apply, on each understood text; and write, on the idle pause, Enter, ✕, a paste and the box's blur. Only Enter rewrites the box |
+| `PlanningPage.tsx:2073-2126` | the live region speaks when a write lands, never per keystroke |
+| `PlanningPage.tsx:1452-1455` | `readRest` also once the reader has changed the filter |
+| `frontend/src/planningScan/limits.ts:83-135` | `filterIdleMs: 300` beside `spinnerMs`, so tests lower it through `setPlanningLimitsForTests` (`:152`) |
+| `frontend/src/hooks/usePlanningPageInputs.ts:369-400` (`loadPageInputs`) | a set laid out for a text the reader has typed past leaves the cache once superseded, so typing holds at most two of the eight |
+| `usePlanningPageInputs.ts:268-276` (`gather`) | a typed text's reviews wait on the visit's second request; `fetchPlanningReviews` already waits on a path in flight (`usePlanningReviews.ts:156-159`) |
+
+**Traps.**
+
+- **The echo is urgent and the results are not.** The box's text is local state, so its render is urgent already. Set the page's applied filter inside `startTransition`. A plain `setState` of it in the change handler puts the whole layout into the keystroke's task, and T1 fails.
+- **The keyed remount is T2's likeliest miss.** `frameFilterKey` (`PlanningPage.tsx:1657-1658`) keys the sections' box (`:2314`), the section bar (`:2429`) and the frame's notices (`:2486`). It exists because Enter once shifted painted content by 0.078, and under typing it mounts every card again, Markdown and all, on each keystroke. Measure it with WP-8 before keeping it. If it must go, keep the cards that both texts show mounted, and hold T4 another way.
+- **CLS forgives a shift only within 500 ms of the input** (`hadRecentInput`), so results that land later count against T4. Do not lean on the exclusion.
+- **A push or a pop cancels a pending write.** Otherwise the timer writes the old text onto the entry Back just went to. `useNavigationType()` on a `location.key` change tells them apart, as `PlanningFilterLine` already does.
+- **One write per pause.** `useScrollRestore` (`PlanningPage.tsx:232`) carries the scroll position to each replaced history key, so a write per keystroke would grow its map per keystroke.
+- **Composition.** React fires `onChange` mid-composition. Read `nativeEvent.isComposing`, or track `compositionstart` and `compositionend`, and report on the end.
+- **`navigate({ search })` writes the string as given**, so every write goes through `planningQuery`, as now.
+- **Before the index is ready** there are no sections: the applied filter is recorded and the URL written, and the first layout uses it.
+
+**Tests:**
+
+- `frontend/src/components/PlanningFilterLine.test.tsx`: **rewrite** `:36-81`, which assume only Enter, ✕ and a paste apply. New: each change reported, nothing during composition, Esc over a not-understood text, a blur asking for a write, the hint.
+- `frontend/src/pages/PlanningPage.test.tsx`, beside `describe("the planning filter …")` (`:4393`). **Rewrite** `:5010` ("applies nothing when the focus leaves it, and says Enter applies the text it holds"), `:5434` and `:5482` ("takes any other paste as text, applied on Enter"). New, with `filterIdleMs` lowered: a narrowing per keystroke; no history entry; one write after the pause and at once on Enter, ✕, a paste and a blur; the caret and selection unchanged by a write; a not-understood text keeping the page; a push or a pop cancelling a write; the live region after a write only; a flip and a pick carrying a pending filter; criterion 14.
+- `frontend/src/hooks/usePlanningPageInputs.test.ts`: typing past a dozen texts leaves another history entry's set cached.
+- Beside `PlanningPage.test.tsx:5709`: typing before and after the second request goes makes no third.
+- `frontend/e2e/planning_filter.spec.ts`: criterion 13, typed with `page.keyboard.type` and a delay, with the layout-shift observer and `history.length`; **rewrite** `:183` ("applies typed text on Enter") as typing, then Enter.
+
+**Checks:** `cd frontend && npx vitest run src/components/PlanningFilterLine.test.tsx src/pages/PlanningPage.test.tsx src/hooks/usePlanningPageInputs.test.ts src/lib/planningPages.test.ts`; then the e2e specs of WP-3 under the lock the task gives, and `just e2e` before the commit.
+
+### WP-8 Harness: the typing flow
+
+| Path | Change |
+| :--- | :--- |
+| `frontend/perf/planning/scenarios.ts` | `typingRun`: the design's [§16](planning-filter.md#16-typing-targets-and-how-they-are-read) flow. On a page whose index, first pages and second review request are in, `/`, then `generator is:open` at 150 ms a key, a second's wait, ✕ |
+| `frontend/perf/planning/probe.ts:211`, `:227` | beside the long-animation-frame observer: an `event` observer with `durationThreshold: 16`, grouped by `interactionId`, for T1; and the paint probe for T2 |
+| `frontend/perf/planning/run.ts` | targets `T1` to `T4` and `--targets typing`; p95 over the pooled keystrokes of every run; the load average already in the JSON |
+| `frontend/perf/planning/README.md` | four rows in *How each target is read* |
+| `frontend/src/pages/PlanningPage.tsx:2314` | `data-planning-filter` on the sections' box: the shown layout's canonical filter, which the paint probe reads |
+
+**Traps.**
+
+- **Time each key from the page.** T2 starts at the keydown's own `timeStamp`, never at the moment Node sent the key.
+- **Event Timing rounds `duration` to 8 ms**, so T1's 32 ms is four steps of it.
+- **The word must be in the fixture.** The copies' titles come from four sources at `SOURCES_COMMIT` (`fixture.ts:52`); *generator* is in two of [`agent-bootstrap.md`](agent-bootstrap.md)'s titles there, so every copy of it narrows the page. Assert that after the fixture is written, as its averages already are.
+- **Ports.** The harness takes kernel ports already; never 8000, 8101, 8200, 8201 or 5201.
+- Not part of the gate or CI: timings on a busy machine are noise.
+
+**Checks:** `just planning-perf --targets typing --runs 10` on both cells, with the load average recorded, and once more in alternation with `519cd66` for a paired comparison.
+
+### WP-9 Docs
+
+| Path | Change |
+| :--- | :--- |
+| `userguide/guides/planning.md:784-938` | *Filtering the page*: as you type; *Writing a filter* (`:798`): words, phrases, the searched fields, exclusion, the colon rule and its hint, what is not understood now; *Using the box* (`:879`): Enter, ✕, Esc, leaving the box, the idle pause |
+| `userguide/guides/vantage-check.md:694`, `:837-975`, `:976` | the option row, *Filtering* with a word in its example, `unknownKeys`, and the exit codes: an unmatched `-path:` exits 2, a text that matches nothing exits 0 |
+| `docs/reference/agent-cli.md:281-290` | "a `path:` term that matches no path" gains "with or without its `-`" |
+| `CHANGELOG.md:13-32` | the unreleased entry: the box narrows as you type, and finds words |
+| `packages/vantage-md/src/styleGuide.ts` | unchanged: `path:` and `is:open` are still the loop agents run |
+| `docs/design/planning-filter.md` | once built and measured: `stage: BUILT`, the ledger's Built column from the tree, and a Status whose measurement clause gives T1 to T4 with the load average |
+| this file | [As built](#as-built) for WP-6 to WP-9 |
+
+**Checks:** `just cli`, then `packages/vantage-check/dist/vantage-check` over every changed Markdown file; `just compat-previous` if the style guide changes after all; `just done` last.
+
 ## Risks, and where to stop and ask
 
-1. **`is:"open"`.** [§5.3](planning-filter.md#53-keys-and-how-terms-combine) lists the quoted form for `path:` only. Default: not understood, the reversible reading, since a later release may move a `notUnderstood` entry to `read` and never back. Stop and ask before putting it in `read`.
+1. **`is:"open"`.** Settled: not understood. The design's [§5.5](planning-filter.md#55-what-is-not-understood) lists it among the `is:` values the language does not read.
 2. **A lone surrogate** in the box's text: no excluded range covers it, and `encodeURIComponent` throws on it. Default: not understood, for the same reason; pin it in the fixture.
 3. **A pasted link wrapped in backticks or followed by a period.** Settled on 2026-10-05 in the design's [§7](planning-filter.md#7-the-filter-line): the link ends at the first character a link never holds unencoded, and loses the trailing punctuation GitHub's autolinks drop. Built in WP-1.
 4. **The release the target caution names** is not known. Default `FILTER_RELEASE = 0.9.0`, since a feature is a minor; confirm it before the tag, because a wrong value cautions the wrong repositories.
@@ -302,12 +430,15 @@ export interface ReferenceSummary {
 6. **Criterion 8's long tasks.** A CI runner's long tasks are noise. Default: observe them in the e2e flow and report the figure, and keep the design's Status UNMEASURED if no stable assertion holds.
 7. **macOS CI** (`ci.yml:55-57`) writes the fixture's NFC path to disk for the parity test. APFS preserves the form; HFS+ would not.
 8. **`planningPath` now encodes**, which changes `g p` and the sidebar entry for a name holding `#`, `?`, `%` or a space, all broken today. Stop and ask if a test pins such a name unencoded.
+9. **T1 to T4 on a loaded machine.** A batch that began above a load average of 4 is reported, never judged ([§16](planning-filter.md#16-typing-targets-and-how-they-are-read)). If a quiet machine still misses a target, report the figure in the design's Status and stop and ask; do not move the target to fit.
+10. **The keyed remount ([WP-7](#wp-7-page-applying-as-you-type)).** If removing it costs a layout shift that no other change avoids, stop and ask before trading T4 for T2.
 
 ## Don't
 
 - Filter the index before deriving: it breaks *Blocked* and routing ([§3](planning-filter.md#3-what-exists-today)).
 - Copy the parser into `frontend/src` or `packages/vantage-check`: one implementation, three readers ([F1](planning-filter.md#1-verdict-and-the-principles)).
-- Apply as the reader types, or debounce: [§12](planning-filter.md#12-alternatives-with-verdicts) rejects it.
+- Debounce the results: only the URL waits for the idle pause, and [§12](planning-filter.md#12-alternatives-with-verdicts) rejects a wait before applying.
+- Rewrite the box's text while the reader types, or add a history entry per filter ([§6.4](planning-filter.md#64-typing-and-the-url)).
 - Store anything: `preferences.test.ts` fails a new preference that has no follower, and the design stores nothing.
 - Change `index`, `sections` or `roadmaps` in the JSON under `--filter`, or bump `INDEX_FORMAT_VERSION` or `SCAN_CACHE_SCHEMA`.
 - Touch Go, `.vantage/inbox`, or `type="search"`.
