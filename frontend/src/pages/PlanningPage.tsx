@@ -20,18 +20,18 @@
  * the request for every entry of the section, or of every such section, on
  * every page, generated from the index on screen when it is pressed.
  *
- * Filtered (`docs/design/planning-filter.md`): a filter line at the top of the
- * column holds the Filter box, whose text is the URL's `filter=`, read and
- * applied by the shared planning module to the sections derived from the
- * whole index (F1, F2). The page follows the box as the reader types, and
- * the URL follows it in one replace navigation after an idle pause, or at
- * once on Enter, ✕, a paste or the focus leaving the box (§6.4); the filter
- * notice, first of the frame's notices, says what it hides. A typed text
- * that keeps no entry at all waits for the URL to take it, so a half-typed
- * word does not empty the page between two keystrokes that come within the
- * idle pause of each other. A filter this
- * release does not understand is applied not at all: typed, it leaves the
- * page as it was, and entered, the notice names its term (F3).
+ * Filtered (`docs/reference/planning-index.md` §6.11): a filter line at the
+ * top of the column holds the Filter box, whose text is the URL's `filter=`,
+ * read and applied by the shared planning module to the sections derived
+ * from the whole index (F1, F2). The page follows the box as the reader
+ * types, and the URL follows it in one replace navigation after an idle
+ * pause, or at once on Enter, ✕, a paste or the focus leaving the box
+ * (§6.16); the filter notice, first of the frame's notices, says what it
+ * hides. A typed text that keeps no entry at all waits for the URL to take
+ * it, so a half-typed word does not empty the page between two keystrokes
+ * that come within the idle pause of each other. A filter this release does
+ * not understand is applied not at all: typed, it leaves the page as it was,
+ * and entered, the notice names its term (F3).
  *
  * Several roadmaps (`planning-index.md` §6.8): when two or more route, the
  * roadmap line above the section bar offers a picker, and *Needs you* follows
@@ -571,7 +571,7 @@ const Section: React.FC<{
   // on: a reader who flipped hears where it went, and focus left on Next
   // says nothing of the entries that changed below it. A filter applied is
   // no flip, whatever page it puts the section on: the filter's own live
-  // region speaks its notice (planning-filter.md §7).
+  // region speaks its notice (§6.17).
   const [landed, setLanded] = useState({
     page: section.page,
     filter,
@@ -842,7 +842,7 @@ const ProgressLine: React.FC<{
   </p>
 );
 
-/** A notice line's parts, its code parts drawn as code (§6.7). */
+/** A notice line's parts, its code parts drawn as code (§6.18). */
 const NoticeLine: React.FC<{ line: PlanningNoticeLine }> = ({ line }) => (
   <>
     {line.map((part, i) =>
@@ -863,7 +863,7 @@ const spokenLine = (line: PlanningNoticeLine): string =>
 const FILTER_CLEARED = "The filter is cleared. Every entry is shown.";
 
 /**
- * The filter notice (`planning-filter.md` §6.7), the first of the frame's
+ * The filter notice (§6.18), the first of the frame's
  * notices: what an applied filter shows of the unfiltered total and the
  * clauses that apply, or, for a filter this release does not understand,
  * that nothing is filtered and why. It prints, so a printout always says it
@@ -908,7 +908,7 @@ function filterNoticeLines(
 
 /**
  * The notices under the section bar (§6.2): each only when it applies. The
- * filter notice comes first (`planning-filter.md` §6.7). The roadmap notice
+ * filter notice comes first (§6.18). The roadmap notice
  * names what the page looked for when no roadmap routes, or a listed roadmap
  * it could not read while another routes (§6.8).
  */
@@ -917,11 +917,11 @@ const Notices: React.FC<{
   config: PlanningConfig;
   /** The filter notice, drawn first, when a filter is applied or not understood. */
   filterNotice: React.ReactNode;
-  /** A filter is applied: *Nothing needs you* takes its filtered words (§6.2). */
+  /** A filter is applied: *Nothing needs you* takes filtered words (§6.15). */
   filtered: boolean;
   /**
    * The filtered *Nothing needs you*'s id, which describes the Filter box
-   * with the filter notice (`planning-filter.md` §6.7).
+   * with the filter notice (§6.18).
    */
   nothingId?: string;
 }> = ({ sections, config, filterNotice, filtered, nothingId }) => {
@@ -1025,10 +1025,9 @@ const RoadmapLine: React.FC<{
   othersLeft?: number;
   /**
    * The room the counts are drawn in: each roadmap's count, and `others`, in
-   * the unfiltered sections, which no filter can raise (planning-filter.md
-   * F2). So a filter applied as the reader types, which changes the counts,
-   * moves nothing on the line, as answers lowering them do not. Without it,
-   * the counts given.
+   * the unfiltered sections, which no filter can raise (F2). So a filter
+   * applied as the reader types, which changes the counts, moves nothing on
+   * the line, as answers lowering them do not. Without it, the counts given.
    */
   rooms?: { roadmaps: ReadonlyMap<string, number>; others: number };
   busy: boolean;
@@ -1277,9 +1276,9 @@ export const PlanningPage: React.FC = () => {
           askedRoadmap,
           rememberedRoadmap,
         );
-  // The filter, from the URL (planning-filter.md §6.4): every `filter` value
+  // The filter, from the URL (§6.16): every `filter` value
   // joined with a space, applied only when it is understood (F3). Its
-  // canonical text names what the page shows, as the roadmap does (§6.5); a
+  // canonical text names what the page shows, as the roadmap does (§6.16); a
   // filter that is not understood shows what none does.
   const filterText = useMemo(() => readFilterRequest(search), [search]);
   const urlFilter = useMemo(
@@ -1295,7 +1294,7 @@ export const PlanningPage: React.FC = () => {
         ? ""
         : filterText;
   // The box's newest understood text, as its canonical text, set as the
-  // reader types it (§6.4). It leads the URL until the URL has taken it,
+  // reader types it (§6.16). It leads the URL until the URL has taken it,
   // which the idle pause's write, an Enter, ✕ or a paste, or a flip or a
   // pick carrying it all do; a push or a pop drops it, since a navigation
   // the box did not cause wins over the box. Set in a transition, so the
@@ -1319,7 +1318,7 @@ export const PlanningPage: React.FC = () => {
   // The applied filter (§2): the box's while it leads, else the URL's. A
   // typed text that keeps no entry at all is held back until the URL takes
   // it, on the idle pause, or at once on an Enter, ✕, paste or the focus
-  // leaving the box (§6.4): until then the page goes on showing the filter
+  // leaving the box (§6.16): until then the page goes on showing the filter
   // it last applied, so a half-typed word or a lone `-m` does not empty the
   // page between two keystrokes within the pause of each other, and the
   // notice still counts 0 entries as soon as typing stops. The rest of the
@@ -1382,7 +1381,7 @@ export const PlanningPage: React.FC = () => {
   // A page past a section's end, a malformed page and an explicit page 1 are
   // rewritten in place, and so is the roadmap: named when two or more route,
   // gone when fewer do; and an understood filter, as its canonical text, in
-  // the link encoding (planning-filter.md §6.4). The fragment stays: a link
+  // the link encoding (§6.16). The fragment stays: a link
   // to a card or a section that needs its query rewritten still goes where
   // it points, once the sections are in (below). Setting the query alone
   // would drop it.
@@ -1411,7 +1410,7 @@ export const PlanningPage: React.FC = () => {
     page: number;
     target: string;
   } | null>(null);
-  // The idle pause's write still owed (planning-filter.md §6.4), and the
+  // The idle pause's write still owed (§6.16), and the
   // newest understood text typed, as its canonical text: set at once, as
   // the reader types, ahead of the render that applies it, so a write made
   // in the same event writes it. `null` once nothing typed is owed.
@@ -1431,7 +1430,7 @@ export const PlanningPage: React.FC = () => {
   // a paste or the focus leaving the box: the filter it holds for it, and
   // the location it was written from. Held until the page it asks for is on
   // screen under a URL as the page writes it, when the live region speaks
-  // its notice: once per write, and never as the page opens (§7). Matched
+  // its notice: once per write, and never as the page opens (§6.17). Matched
   // by its filter, not its query, since the in-place rewrite and an index
   // still building may change the rest.
   const [announceFor, setAnnounceFor] = useState<{
@@ -1446,10 +1445,10 @@ export const PlanningPage: React.FC = () => {
   // commits the URL, and the page its new inputs, in transitions, and an
   // update a timer makes while one renders commits only with it, so a
   // spinner a timer asked for showed only once it was no longer needed
-  // (planning-filter.md §6.4).
+  // (§6.16).
   const [applying, setApplying] = useState<string | null>(null);
   // The notice of what the idle pause last wrote, still to be said, and the
-  // timer saying it (§7). The pause is short, so a slow typist's every key
+  // timer saying it (§6.17). The pause is short, so a slow typist's every key
   // is followed by a write; the region speaks only once the box has been
   // still for `filterSpeechMs`, so never per keystroke, and at once when
   // the focus leaves the box or a paste writes.
@@ -1473,7 +1472,7 @@ export const PlanningPage: React.FC = () => {
     // still a change, and is said.
     setAnnouncement("");
   }, [dropSpeech]);
-  // A push or a pop wins over the box (§6.4): it drops a write the idle
+  // A push or a pop wins over the box (§6.16): it drops a write the idle
   // pause still owes, which would otherwise write the old text onto the
   // entry the reader went to, and the text it was owed for. Back and
   // Forward are heard as they happen, before the router renders them; a
@@ -1498,7 +1497,7 @@ export const PlanningPage: React.FC = () => {
     dropSpeech();
     typedRef.current = null;
   }, [location.key, navigationType, cancelIdle, dropSpeech]);
-  // The URL takes the filter typed (§6.4): one replace navigation, as Enter
+  // The URL takes the filter typed (§6.16): one replace navigation, as Enter
   // writes it, made on the idle pause, on a paste and when the focus leaves
   // the box. Nothing is written when the URL already holds it. Its notice
   // is owed until `speak`.
@@ -1535,7 +1534,7 @@ export const PlanningPage: React.FC = () => {
   }, [writeTyped, speak]);
   // The focus left the box: a write still owed is made now, so an address
   // copied right after typing holds the filter on screen, and what the URL
-  // took is said (§7).
+  // took is said (§6.17).
   const flushFilter = useCallback(() => {
     if (idleRef.current !== null) writeTyped();
     speak();
@@ -1543,7 +1542,7 @@ export const PlanningPage: React.FC = () => {
   // The page's own replace navigations, a flip, a pick and an outline jump,
   // write the query as Enter does, `filter` in a planning link's encoding,
   // so the address bar shows what an agent's link shows and a copy of it
-  // pasted into the box reads back whole (planning-filter.md §7, §9.2).
+  // pasted into the box reads back whole (§6.17, §13.5).
   // Each goes on from the applied filter's query, so a filter the idle
   // pause still owes is written in the same replace, and none is owed after.
   const replaceSearch = useCallback(
@@ -1558,7 +1557,7 @@ export const PlanningPage: React.FC = () => {
   // applied it: a press that lands while a keystroke's layout renders. The
   // handler then goes on from that text, not from the render's, so the URL
   // never takes an older filter than the one the page goes on to show
-  // (planning-filter.md §6.4).
+  // (§6.16).
   const typedPast = useCallback(
     (): string | null =>
       typedRef.current !== null && typedRef.current !== appliedFilter
@@ -1591,7 +1590,7 @@ export const PlanningPage: React.FC = () => {
   // The inputs of the pages shown (§6.5). The sections render only from a
   // complete set, and keep the last one on screen until the next is complete.
   // A layout the box leads with is laid out for a text the reader may type
-  // past at once, so its inputs never take a place Back relies on (§6.5).
+  // past at once, so its inputs never take a place Back relies on (§6.16).
   const inputs = usePlanningPageInputs(
     onThisRepo ? repo : null,
     ready,
@@ -1604,7 +1603,7 @@ export const PlanningPage: React.FC = () => {
       : null;
   // Told the filter each change of the reader's asks for, as they make it,
   // so a set laid out for a text they have typed past is never shown
-  // (planning-filter.md §6.4); and, once a push or a pop has committed, that
+  // (§6.16); and, once a push or a pop has committed, that
   // the URL's filter is the one that counts again.
   const followFilter = inputs.follow;
   useEffect(() => {
@@ -1621,14 +1620,14 @@ export const PlanningPage: React.FC = () => {
   // are laid out under one filter. Another filter's is no flip: the old page
   // stays up whole, its pagers included, until the new page's inputs are in,
   // and only the filter line's own slot says it is on its way
-  // (planning-filter.md §6.4, §7).
+  // (§6.16, §6.17).
   const askedIsFlip =
     shown === null ||
     layout === null ||
     shown.inputs.layout.filter === layout.filter;
   // A flip, and a pager's prefetch, go on from the URL's layout. While
   // another filter's page is on its way, the pagers on screen are the old
-  // filter's, and the URL's sections are all on their first page (§6.4), so
+  // filter's, and the URL's sections are all on their first page (§6.16), so
   // the old page's pagers flip and prefetch nothing until the new page is in.
   const flip = useCallback<OnFlip>(
     (id, page, place) => {
@@ -1687,7 +1686,7 @@ export const PlanningPage: React.FC = () => {
   );
   // The filter the page on screen is laid out under: the shown set's, until
   // the next one is in, as the frame is (below), so what Copy answers and the
-  // need-you numbers count is what is on screen (planning-filter.md §6.6).
+  // need-you numbers count is what is on screen (§6.7).
   const frameFilter = (shown?.inputs.layout ?? layout)?.filter ?? "";
   const frameKeeps = useMemo((): KeepsQuestion | undefined => {
     const filter = understoodFilter(frameFilter);
@@ -1711,7 +1710,7 @@ export const PlanningPage: React.FC = () => {
 
   // Every question with a card, on any page, unfiltered: what Copy answers
   // places comments over, before it narrows them to what the filter keeps
-  // (planning-filter.md §6.6).
+  // (§6.7).
   const listedQuestions = useMemo(
     () =>
       index === null || unfilteredSections === null
@@ -1721,7 +1720,7 @@ export const PlanningPage: React.FC = () => {
   );
   // Every document the unfiltered sections list, their rows' too, so that no
   // filter change, nor a flip to a later page of rows, asks for a third
-  // request (§6.6).
+  // request (§6.7).
   const listedPaths = useMemo(
     () =>
       index === null || unfilteredSections === null
@@ -1778,7 +1777,7 @@ export const PlanningPage: React.FC = () => {
   // it; placement decides for a question with none, never both.
   // Under a filter, the comments are placed over every listed question and
   // then narrowed to those it keeps; how many it leaves out is said in the
-  // button's tooltip and name, never in text that moves (§6.6).
+  // button's tooltip and name, never in text that moves (§6.7).
   const { groups: pendingGroups, leftOut: pendingLeftOut } = useMemo(
     () => pendingAnswers(listedQuestions, reviews.byPath, scoped, frameKeeps),
     [scoped, listedQuestions, reviews.byPath, frameKeeps],
@@ -1837,7 +1836,7 @@ export const PlanningPage: React.FC = () => {
   // Exact only once the reviews of every listed question's document are in
   // (§6.7). The rows' documents, which the second request reads too, hold
   // no listed question, so no answer, and the count never waits on them
-  // (planning-filter.md §6.6).
+  // (§6.7).
   const countKnown = useMemo(
     () =>
       index !== null &&
@@ -1894,8 +1893,8 @@ export const PlanningPage: React.FC = () => {
 
   // The frame follows the sections on screen once there are any: an index
   // update, or a filter applied, changes the section bar and the notices in
-  // the commit that changes the sections, not before it (§6.5;
-  // planning-filter.md §6.4). Before, it is the index's.
+  // the commit that changes the sections, not before it (§6.5,
+  // §6.16). Before, it is the index's.
   const frameLayout = shown?.inputs.layout ?? layout;
   const frameSections =
     shown !== null
@@ -1906,8 +1905,7 @@ export const PlanningPage: React.FC = () => {
         )
       : sections;
   // The same, unfiltered: what Copy answers places comments over, and what
-  // an agent request reads every blocked-on fact from (planning-filter.md
-  // §6.3).
+  // an agent request reads every blocked-on fact from (§6.15).
   const frameUnfiltered =
     shown !== null
       ? sectionsOf(shown.inputs.index, shown.inputs.layout.roadmap)
@@ -1937,7 +1935,7 @@ export const PlanningPage: React.FC = () => {
   // What names the frame's filter and its notice: the section bar's box and
   // the notices are drawn anew when it changes, and the sections' box is put
   // back where it stands (below), so a filter applied removes and inserts
-  // them rather than moving them (planning-filter.md §7). A canonical text
+  // them rather than moving them (§6.16). A canonical text
   // holds no line break.
   const frameFilterKey =
     frameNotUnderstood === null ? frameFilter : `\n${frameNotUnderstood.text}`;
@@ -2028,12 +2026,12 @@ export const PlanningPage: React.FC = () => {
 
   // A filter applied puts the sections' box back where it stands, in the
   // commit that changes the sections and before the browser paints them
-  // (planning-filter.md §7, §16 T4). Re-inserted, every box in it is a new
+  // (§6.16, and T4 of §18). Re-inserted, every box in it is a new
   // one to the browser, as a box drawn anew is, so the cards a filter keeps
   // move up into the room of those it hides as an insertion, which scores
   // no layout shift, rather than as a move, which would. Unlike drawing them
   // anew, it keeps every card the new filter still shows mounted, so a
-  // keystroke renders only the cards it brings in (§6.5). The focus, were it
+  // keystroke renders only the cards it brings in (§6.16). The focus, were it
   // in the box, is put back where it was.
   const placedFor = useRef(frameFilterKey);
   useLayoutEffect(() => {
@@ -2062,7 +2060,7 @@ export const PlanningPage: React.FC = () => {
   //
   // Under a filter they count kept questions alone, from the filtered
   // sections, with the comments placed over the unfiltered listed questions
-  // first (planning-filter.md §6.2, §6.6).
+  // first (§6.15, §6.7).
   const frameNeedYou = useMemo(() => {
     if (
       frameIndex === null ||
@@ -2121,8 +2119,7 @@ export const PlanningPage: React.FC = () => {
   // Under a filter, a request lists the kept entries, says so in its
   // `Filter:` line, whose text leaves out the unmatched terms, and reads every
   // blocked-on fact from the unfiltered sections; with every `path:` term
-  // unmatched nothing is kept, and there is no request (planning-filter.md
-  // §6.6, §6.3).
+  // unmatched nothing is kept, and there is no request (§6.2, §6.15).
   const requestOf = useCallback<AgentRequestOf>(
     (ids) => {
       if (frameIndex === null || frameSections === null || repo === null) {
@@ -2312,7 +2309,7 @@ export const PlanningPage: React.FC = () => {
 
   const headerRef = useHeaderFit();
 
-  // The filter line (planning-filter.md §7), drawn in every state but a
+  // The filter line (§6.17), drawn in every state but a
   // static export, which has no planning page to filter.
   const filterLineShown = !isStaticMode();
   const filterInputRef = useRef<HTMLInputElement>(null);
@@ -2329,9 +2326,9 @@ export const PlanningPage: React.FC = () => {
   // The visit's second review request goes once the reader changes the
   // filter, if the sections have not painted yet, and before the typed
   // text's inputs ask for anything: they then wait for its answer rather
-  // than make a third (§6.5).
+  // than make a third (§6.7).
   const restAskedRef = useRef(false);
-  // The box's text changed (§6.4): an understood text whose canonical text
+  // The box's text changed (§6.16): an understood text whose canonical text
   // is not the applied filter's becomes it, in a transition, so the box's
   // own echo never waits on the layout; a text that is not understood
   // changes nothing on the page. Either way the idle pause starts again.
@@ -2343,7 +2340,7 @@ export const PlanningPage: React.FC = () => {
         // A key that leaves the canonical text as it was, such as a space,
         // types nothing newer, so the inputs are not told of it: while a
         // text is held back, they wait for the page it leaves on screen, and
-        // its own text would turn that page down (§6.4).
+        // its own text would turn that page down (§6.16).
         if (canonical !== (typedRef.current ?? latestRef.current.urlValue)) {
           followFilter(canonical);
           typedRef.current = canonical;
@@ -2383,7 +2380,7 @@ export const PlanningPage: React.FC = () => {
       followFilter,
     ],
   );
-  // Enter, ✕ or a pasted link (§6.4): one replace navigation, written with
+  // Enter, ✕ or a pasted link (§6.16): one replace navigation, written with
   // the link encoding for `filter`, every section back on its first page,
   // `roadmap` and every unknown parameter kept, the fragment dropped. A
   // text that is not understood is applied as written. The text already
@@ -2460,7 +2457,7 @@ export const PlanningPage: React.FC = () => {
   const noticeShown = frameReady && filterNotice !== null;
   // Applied, nothing kept, and any applied filter whose sections hold
   // nothing that needs the human: the notice, then the filtered *Nothing
-  // needs you*, which the frame draws after it as a notice of its own (§6.7).
+  // needs you*, which the frame draws after it as a notice of its own (§6.18).
   // The box is described by both, and the region says both.
   const nothingFiltered =
     frameFilter !== "" && frameSections?.nothingNeedsYou === true;
@@ -2628,7 +2625,7 @@ export const PlanningPage: React.FC = () => {
             onClick={copyAnswers}
             disabled={!countKnown || pendingCount === 0 || quotesLoading}
             // Under a filter, how many pending answers it leaves out: in the
-            // name and the tooltip, never in text that moves (§6.6).
+            // name and the tooltip, never in text that moves (§6.7).
             aria-label={
               countKnown && pendingLeftOut > 0
                 ? `${copied ? "Copied" : "Copy answers"} ${pendingCount}, not counting ${leftOutAnswers(pendingLeftOut)} the filter leaves out`
@@ -2728,7 +2725,7 @@ export const PlanningPage: React.FC = () => {
                 fullWidth ? "max-w-none" : "max-w-4xl",
               )}
             >
-              {/* The filter line (planning-filter.md §7): first, above every
+              {/* The filter line (§6.17): first, above every
                   state of the route, and the same height in each, so
                   nothing is ever inserted above it. */}
               {filterLineShown && (
@@ -2826,7 +2823,7 @@ export const PlanningPage: React.FC = () => {
                           applied: a shorter bar, or one with no Copy all
                           agent requests, moved its controls, and the
                           notice the frame gains moved the sections
-                          (planning-filter.md §7). */}
+                          (§6.16). */}
                   <div
                     key={
                       frameReady && frameLayout !== null
@@ -2884,7 +2881,7 @@ export const PlanningPage: React.FC = () => {
                   {/* Keyed so too, the notices and the sections' box: the
                       spinner a cold open paints in that box sat under the
                       progress line, and the notice the frame lands with
-                      above it moved it down (planning-filter.md §15,
+                      above it moved it down (§18,
                       criterion 8). A filter applied draws the notices anew
                       and puts the sections' box back where it stands
                       (`placedFor`, above), so its cards are kept. */}
@@ -2987,7 +2984,7 @@ export const PlanningPage: React.FC = () => {
 
 /**
  * Daemon mode's way on from *Choose a project* and *Repository not found*
- * (`planning-filter.md` §9.4): each served project's planning page, with the
+ * (§13.5): each served project's planning page, with the
  * same query, so a root-relative link with an address in front keeps its
  * filter and costs one click.
  */

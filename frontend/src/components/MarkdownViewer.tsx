@@ -859,7 +859,7 @@ const MarkdownViewerInner: React.FC<MarkdownViewerProps> = ({
   // A planning document by its own frontmatter: known before the index is.
   const plannedByFrontmatter =
     Object.hasOwn(frontmatter, "status") || Object.hasOwn(frontmatter, "stage");
-  // Referenced by's last part (docs/design/planning-filter.md §7): the
+  // Referenced by's last part (docs/reference/planning-index.md §7.1): the
   // planning page filtered to this document, `path:/<its path>` in canonical
   // text, at the page's own path, whose repository segment is encoded in
   // daemon mode. The line links it only for a live document holding a

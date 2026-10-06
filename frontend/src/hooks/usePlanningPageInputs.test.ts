@@ -235,7 +235,7 @@ describe("one set of inputs", () => {
     expect(asked).toHaveLength(2);
   });
 
-  // planning-filter.md §6.5: the applied filter joins the set's identity.
+  // planning-index.md §6.16: the applied filter joins the set's identity.
   it("keeps the same pages under another filter as another set", async () => {
     const asked = serve();
     const ready = readyOf();
@@ -376,7 +376,7 @@ describe("the cache of sets", () => {
   });
 });
 
-// planning-filter.md §6.5: typing lays out a page per keystroke, and none of
+// planning-index.md §6.16: typing lays out a page per keystroke, and none of
 // that may cost what Back relies on.
 describe("the sets of a filter being typed", () => {
   const typedLayout = (

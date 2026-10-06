@@ -1,7 +1,7 @@
 /**
  * The Referenced by line and the list behind it
  * (`docs/reference/planning-index.md` §7), and the line's link to the planning
- * page filtered to the document (`docs/design/planning-filter.md` §7), rendered
+ * page filtered to the document (§7.1), rendered
  * from summaries the planning module derives from real trees. Where it sits in
  * a document, the link's address, and when it is shown at all, is
  * `MarkdownViewerPlanning.test.tsx`'s.

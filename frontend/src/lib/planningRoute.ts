@@ -12,7 +12,7 @@ import { PLANNING_PAGE_PATH } from "vantage-md/planning";
 /**
  * The planning page's route, before any repository segment: the planning
  * module's, which the checker's root-relative link starts with too
- * (`docs/design/planning-filter.md` §9.2).
+ * (`docs/reference/planning-index.md` §13.5).
  */
 export const PLANNING_ROUTE = PLANNING_PAGE_PATH;
 

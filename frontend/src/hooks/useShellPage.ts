@@ -63,9 +63,9 @@ export interface ShellPage {
   shortcuts?: PageShortcuts;
   /**
    * Focus the page's filter box and select its text, for `/`: the planning
-   * page's Filter box (`docs/design/planning-filter.md` §7, OQ-PF4). A page
-   * without one leaves it out, and `/` does nothing there, not even stop the
-   * browser's own use of it, such as Firefox's quick find.
+   * page's Filter box (`docs/reference/planning-index.md` §6.17, OQ-PF4). A
+   * page without one leaves it out, and `/` does nothing there, not even stop
+   * the browser's own use of it, such as Firefox's quick find.
    */
   onFocusFilter?: () => void;
 }

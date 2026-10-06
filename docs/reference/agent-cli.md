@@ -279,13 +279,14 @@ the planning page copies for an agent. It is documented in
 shares the CLI's dispatch, configuration loader and exit codes, and takes no
 paths.
 
-`index --filter <text>` shows only the entries a planning filter keeps, and
-prints a link to the planning page filtered the same way. The text is the one
-the page's Filter box and its `filter=` parameter take, read by the same
-parser in `vantage-md`'s planning module, so a link an agent hands over is a
-filter the human could have typed
-([`planning-filter.md`](../design/planning-filter.md), until it graduates into
-[`planning-index.md`](planning-index.md)). Words and quoted phrases search the
+`index --filter <text>` shows only the entries a
+[planning filter](planning-index.md#611-the-planning-filter) keeps, and prints a
+link to the planning page filtered the same way. The text is the one the page's
+Filter box and its `filter=` parameter take, read by the same parser in
+`vantage-md`'s planning module, so a link an agent hands over is a filter the
+human could have typed
+([`planning-index.md` §13.4](planning-index.md#134-vantage-check-index---filter)).
+Words and quoted phrases search the
 index's facts about each entry, `path:` and `is:open` narrow, and a leading `-`
 excludes. A text it does not understand exits `2` before the scan, and a
 `path:` term that matches no path, with or without its `-`, exits `2` after
@@ -303,7 +304,8 @@ container puts the agent's `localhost` on another machine. Nothing stores the
 address either, since one machine can serve a repository at several at once.
 So the checker prints the link without an origin, and the line it prints says
 the two ways to use it: paste it into the Filter box, which reads only its
-query, or put an address in front.
+query, or put an address in front
+([`planning-index.md` §13.5](planning-index.md#135-handing-the-human-a-filtered-page)).
 
 `version` names the release a binary was stamped with, or says
 `development build` and names the commit for one built from the manifest's

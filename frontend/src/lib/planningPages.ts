@@ -25,14 +25,14 @@
  * remembers for the repository, so the page, its inputs and every prefetch
  * resolve it alike; `planningSearch` rewrites the URL to name it.
  *
- * A planning filter (`docs/design/planning-filter.md`) narrows the sections,
- * as `?filter=path:docs/design/x.md+is:open`: the planning module parses and
- * applies it (F1), to the sections derived from the whole index under the
- * chosen roadmap (F2), and this file is the page's one reader and writer of
- * the parameter, beside `roadmap=` (§6.4). The applied filter's canonical
- * text joins every identity a layout has (§6.5): the derived sections are
- * cached by index, roadmap and filter, and a layout names its filter as it
- * names its roadmap.
+ * A planning filter (`docs/reference/planning-index.md` §6.11) narrows the
+ * sections, as `?filter=path:docs/design/x.md+is:open`: the planning module
+ * parses and applies it (F1), to the sections derived from the whole index
+ * under the chosen roadmap (F2), and this file is the page's one reader and
+ * writer of the parameter, beside `roadmap=` (§6.16). The applied filter's
+ * canonical text joins every identity a layout has (§6.16): the derived
+ * sections are cached by index, roadmap and filter, and a layout names its
+ * filter as it names its roadmap.
  *
  * Pure functions of the index and the limits module, so the page, its inputs
  * and the viewer's prefetch lay a page out identically.
@@ -124,7 +124,7 @@ export interface PlanningLayout {
   /**
    * The applied planning filter's canonical text: `""` for none, and for a
    * filter that is not understood, which is not applied and so shows what no
-   * filter does (`planning-filter.md` §6.5). Part of what names a layout.
+   * filter does (§6.16). Part of what names a layout.
    */
   filter: string;
   /** The non-empty sections, top to bottom. */
@@ -283,7 +283,7 @@ export function pageBounds(section: SectionEntries): number[] {
  * for, clamped to the section's last. `sections` are `sectionsOf(index,
  * roadmap, filter)`, and `filter` the canonical text they were filtered by,
  * which the layout names: a filtered link's page parameters are read against
- * the filtered sections (`planning-filter.md` §6.4).
+ * the filtered sections (§6.16).
  */
 export function layoutPlanningPage(
   index: PlanningIndex,
@@ -332,7 +332,7 @@ export function layoutPlanningPage(
  * it chose as well as the one asked for: asking for the default by name or by
  * `null` is one derivation, and one object. A filter applies to that
  * derivation, over the whole index (F2), so it is cached under the
- * derivation's object: index, then roadmap, then filter (§6.5). Each
+ * derivation's object: index, then roadmap, then filter (§6.16). Each
  * derivation keeps the `FILTERED_KEPT` filters used last, since the page
  * applies a filter per keystroke and the map would otherwise grow with them.
  */
@@ -380,7 +380,7 @@ const FILTERED_KEPT = 16;
 
 /**
  * The sections `filter` keeps of `sectionsOf(index, roadmap)`, and what the
- * filter notice says of them (`planning-filter.md` §6.7), from the same
+ * filter notice says of them (§6.18), from the same
  * cache as `sectionsOf`; `null` when `filter` applies nothing: `""`, or a
  * text that is not understood.
  */
@@ -510,7 +510,7 @@ export function rememberRoadmap(repo: string, path: string): void {
  * one is shown, and removed when fewer do, as a page parameter naming page 1
  * is. An applied filter is named by its canonical text as one parameter, an
  * empty one is removed, and one that is not understood is left exactly as
- * written, so it can be fixed (`planning-filter.md` §6.4, §5.5).
+ * written, so it can be fixed (§6.16, §6.14).
  */
 export function planningSearch(
   search: URLSearchParams,
@@ -546,14 +546,14 @@ export function planningSearch(
 /**
  * The filter the URL asks for, as one text: every `filter` value joined with
  * one space, in order, which is what typing them all into the box gives
- * (`planning-filter.md` §5.1). `""` when there is none.
+ * (§6.11). `""` when there is none.
  */
 export function readFilterRequest(search: URLSearchParams): string {
   return search.getAll(PLANNING_FILTER_PARAM).join(" ");
 }
 
 /**
- * The `filter` value a text is written as (§6.4): its canonical text when it
+ * The `filter` value a text is written as (§6.16): its canonical text when it
  * is understood, the text as typed when it is not, and `""`, no parameter,
  * when it is empty or white space alone.
  */
@@ -568,13 +568,13 @@ export function filterValue(text: string): string {
 
 /**
  * `search` with the filter `text` applied, by Enter, ✕ or a pasted link
- * (`planning-filter.md` §6.4): `filter` set to `filterValue(text)`, first, as
+ * (§6.16): `filter` set to `filterValue(text)`, first, as
  * a planning link writes it, or removed when that is empty; every section's
  * page parameter deleted, as a roadmap pick deletes Needs you's, since the
  * pages were another filter's; and `roadmap` set to the one a pasted link
  * names, if it names one. Every other parameter stays, in its order after
  * `filter`, `roadmap` and unknown ones included. So the address after Enter
- * is the agent's link for the same filter and roadmap (§9.2).
+ * is the agent's link for the same filter and roadmap (§13.5).
  */
 export function withFilter(
   search: URLSearchParams,
@@ -601,7 +601,7 @@ const isSectionId = (key: string): boolean =>
  * `search` written as the page writes every query it navigates to itself,
  * with no `?`: form encoding, as `URLSearchParams` writes it, except for
  * `filter`, which is written as a planning link writes it
- * (`encodePlanningQueryValue`, `planning-filter.md` §9.2), its last character
+ * (`encodePlanningQueryValue`, §13.5), its last character
  * escaped when it ends the query. So the address bar shows what an agent's
  * link shows, after Enter, a flip or a roadmap pick alike, and a pasted copy
  * of it reads back whole. Both encodings read back to the same text.
@@ -706,7 +706,7 @@ export function listedQuestions(
  * the document of every Blocked row and every stage row (Ready to build,
  * Ready to graduate, Stage conflict), in page order. Over the unfiltered
  * sections, what a visit's second reviews request reads
- * (`planning-filter.md` §6.6), so no filter change, nor a flip to a later
+ * (§6.7), so no filter change, nor a flip to a later
  * page of rows, asks for a third.
  */
 export function listedDocuments(

@@ -595,7 +595,7 @@ describe("Referenced by (§7)", () => {
     });
 
     it("is absent for a path no filter can name", () => {
-      // A control character is not understood even quoted (§5.5).
+      // A control character is not understood even quoted (§6.14).
       const path = "docs/bell\u0007.md";
       seedReady(indexOf({ ...TREE, [path]: FORGOTTEN }));
       renderViewer(FORGOTTEN, path);

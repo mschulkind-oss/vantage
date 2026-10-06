@@ -541,7 +541,7 @@ describe("the planning filter (planning-filter.md §6.4, §6.5)", () => {
     expect(filterSummaryOf(index, null, DESIGN)?.canonical).toBe(DESIGN);
   });
 
-  // Typing applies a text per keystroke (§6.5), so a derivation keeps only
+  // Typing applies a text per keystroke (§6.16), so a derivation keeps only
   // the filters used last, and the one on screen, used with every layout,
   // stays among them.
   it("keeps the filtered sections of the last sixteen filters per derivation", () => {

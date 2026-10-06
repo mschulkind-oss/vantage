@@ -77,8 +77,8 @@ import { VERSION } from "../version.js";
  *
  * `--filter` shows only the entries a planning filter keeps, as the page's
  * Filter box does, and prints a root-relative link to that filtered page
- * (`docs/design/planning-filter.md` §8). The filter is parsed, applied and
- * linked by vantage-md's planning module, the page's own reader (F1).
+ * (§13.4). The filter is parsed, applied and linked by vantage-md's planning
+ * module, the page's own reader (F1).
  *
  * It reports and does not judge, so it never exits 1: 0 when it ran, 2 for bad
  * arguments or a bad config, a filter it cannot read or one with a `path:`
@@ -107,7 +107,7 @@ export interface IndexOptions {
   request?: PlanningAgentSectionId[];
   /**
    * `--filter`: a planning filter's text, every value given joined with one
-   * space (`docs/design/planning-filter.md` §8.1). Empty, or white space
+   * space (`docs/reference/planning-index.md` §13.4). Empty, or white space
    * alone, is no filter, and the output is byte for byte a run without it.
    */
   filter?: string;
@@ -167,7 +167,7 @@ export function indexCommand(options: IndexOptions, io: Io): number {
 
   // What a filter's text means depends on nothing in the tree, so one it
   // cannot read is refused before the scan, past max-candidates too, and
-  // never partly applied (F3, §8.2). The message is the whole answer, as
+  // never partly applied (F3, §13.4). The message is the whole answer, as
   // `--roadmap`'s is: it says what the language reads.
   const parsed =
     options.filter === undefined ? null : parsePlanningFilter(options.filter);
@@ -211,7 +211,7 @@ export function indexCommand(options: IndexOptions, io: Io): number {
 
   // Applied to the sections of the whole index, never to the index (F2).
   // Past max-candidates there are no sections, so nothing is applied and no
-  // term is held to the tree: the refusal is the answer (§8.2).
+  // term is held to the tree: the refusal is the answer (§13.4).
   const applied =
     sections === null || filter === null
       ? null
@@ -223,7 +223,7 @@ export function indexCommand(options: IndexOptions, io: Io): number {
   // The page applies an unmatched term, keeps nothing or excludes nothing, and
   // names it. Here it is the agent's likeliest mistake, a mistyped path, so it
   // stops before the human is handed an empty page, or a fuller one than the
-  // agent meant (F5, §8.2). A text term that matches nothing is not one.
+  // agent meant (F5, §13.4). A text term that matches nothing is not one.
   if (applied !== null && applied.filtered.summary.unmatched.length > 0) {
     for (const term of applied.filtered.summary.unmatched) {
       io.err(
@@ -322,10 +322,10 @@ interface AppliedFilter {
   /** The text as given: every `--filter` value, joined with one space. */
   text: string;
   filtered: FilteredPlanningSections;
-  /** The sections it was applied to, which a request's blocked-on facts read (§6.3). */
+  /** The sections it was applied to, which a request's blocked-on facts read (§6.15). */
   unfiltered: PlanningSections;
   /**
-   * The root-relative link to the filtered planning page (§9.2), naming the
+   * The root-relative link to the filtered planning page (§13.5), naming the
    * chosen roadmap when two or more roadmaps can be chosen, so the human's
    * Needs you follows the roadmap the agent checked, whatever they last picked.
    */
@@ -349,7 +349,7 @@ function appliedFilter(
 }
 
 /**
- * The checker cannot learn the address the human opens Vantage at (§9.1), so
+ * The checker cannot learn the address the human opens Vantage at (§13.5), so
  * the link is root-relative, and this says the two ways to use it.
  */
 const PASTE_HINT =
@@ -368,11 +368,11 @@ function isLinkedWorktree(root: string): boolean {
 }
 
 /**
- * What the text prints before everything else under a filter (§8.3): the
+ * What the text prints before everything else under a filter (§13.4): the
  * filter notice, its clauses included, then the `Planning page:` line and its
- * hint lines (§9.2). A second hint says when the root is a linked worktree,
+ * hint lines (§13.5). A second hint says when the root is a linked worktree,
  * since the page shows the checkout the human's Vantage serves, and a third
- * when the run's `target` names a release before the filter's (§9.5).
+ * when the run's `target` names a release before the filter's (§13.5).
  */
 function filterHead(
   project: ScannedProject,
@@ -385,7 +385,7 @@ function filterHead(
   ).map(noticeText);
   lines.push(`Planning page: ${applied.link}`, `  ${PASTE_HINT}`);
   if (isLinkedWorktree(project.root)) {
-    // The root as code, as §9.2 quotes the line, so a path holding a space
+    // The root as code, as §13.5 quotes the line, so a path holding a space
     // or a `:` reads as one.
     lines.push(
       `  ${codeSpan(project.root)} is a linked worktree: the page shows the checkout your Vantage serves, which may not hold these documents as they are here.`,
@@ -411,7 +411,7 @@ function shellQuote(text: string): string {
  * page shows no button, and stderr says why.
  *
  * Under a filter, the request covers the filtered sections and carries the
- * `Filter:` line, as Copy agent request does on the filtered page (§6.6).
+ * `Filter:` line, as Copy agent request does on the filtered page (§6.2).
  */
 function requestOut(
   project: ScannedProject,
@@ -427,7 +427,7 @@ function requestOut(
   };
   if (applied !== null) {
     // The `Filter:` line carries the canonical text less its unmatched terms
-    // (§6.6). Here there are none, or the command has already exited 2.
+    // (§6.2). Here there are none, or the command has already exited 2.
     const { requestText, canonical } = applied.filtered.summary;
     options.filter = {
       text: requestText ?? canonical,
@@ -523,7 +523,7 @@ function roadmapLinks(
  * order, each with the links version 1 printed as `roadmap`; they are empty
  * unless the file was read, which is the `routes` and `done` states.
  *
- * `filter` is the last key, and only under `--filter` (§8.3): `undefined`
+ * `filter` is the last key, and only under `--filter` (§13.4): `undefined`
  * leaves it out, so every key before it is byte for byte a run without the
  * flag, and `null` is a refused project's, which has no sections to filter.
  * Every existing key keeps its meaning under a filter: `sections` and
@@ -564,10 +564,10 @@ function renderJson(
 }
 
 /**
- * The JSON `filter` key's value (§8.3), in the design's key order, built key
+ * The JSON `filter` key's value (§13.4), in its documented key order, built key
  * by key: the summary holds names (`requestText`, `unmatched`,
  * `onOtherRoadmaps`) that are not keys of it, and a script reads these keys,
- * so each keeps its meaning (P0, §10.3). `unknownKeys` lists the words alone,
+ * so each keeps its meaning (P0, §6.19). `unknownKeys` lists the words alone,
  * which the summary pairs with the terms they open. `link` is always
  * root-relative.
  */
@@ -690,7 +690,7 @@ function roadmapLine(roadmap: PlanningRoadmap, chosen: string | null): string {
  * you; with one or none there is no such block.
  *
  * Under a filter, `sections` are the filtered ones and `filter.head` is
- * `filterHead`'s, printed first (§8.3). Everything after it is the same
+ * `filterHead`'s, printed first (§13.4). Everything after it is the same
  * layout over the filtered sections: *Nothing needs you* in its filtered form,
  * the Roadmaps block with the filtered counts, and a `--request` line that
  * carries the filter, shell-quoted. The roadmap's source is the index's, and

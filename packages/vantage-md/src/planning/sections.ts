@@ -130,10 +130,10 @@ const LISTS_EVERY_QUESTION =
   "so Needs you lists every open question by document.";
 
 /**
- * One line of a notice whose text sets something off (§6.7 of
- * `docs/design/planning-filter.md`): plain text, and `code` parts, which the
- * page draws as code and the checker prints between backticks, so the `:`
- * after a filter text cannot be read as part of it.
+ * One line of a notice whose text sets something off (the filter notice,
+ * §6.18): plain text, and `code` parts, which the page draws as code and the
+ * checker prints between backticks, so the `:` after a filter text cannot be
+ * read as part of it.
  */
 export type PlanningNoticeLine = readonly (string | { code: string })[];
 
@@ -179,8 +179,8 @@ const notUnderstoodPart = (
     : reasonPhrase(filter.reason ?? "unclosed-quote");
 
 /**
- * What follows an unmatched term, in the notice's line for it (§6.7) and in
- * the checker's exit-2 message (§8.2), so the two cannot drift apart.
+ * What follows an unmatched term, in the notice's line for it (§6.18) and in
+ * the checker's exit-2 message (§13.4), so the two cannot drift apart.
  */
 const MATCHES_NO_PATH = " matches no path the index lists";
 
@@ -188,13 +188,13 @@ const MATCHES_NO_PATH = " matches no path the index lists";
 const FILTER_EXAMPLE = "generator path:docs/design/*.md is:open";
 
 /**
- * What the language reads (§5.2), as the Not filtered notice and the
+ * What the language reads (§6.12), as the Not filtered notice and the
  * checker's exit-2 message both say it after the term they cannot read.
  */
 const FILTER_LANGUAGE =
   'words, "quoted phrases", path: and is:open terms, and a - before any of them to leave out what it matches';
 
-/** The filter notice's lines for an applied filter (§6.7), first to last. */
+/** The filter notice's lines for an applied filter (§6.18), first to last. */
 function filteredNotice(
   summary: PlanningFilterSummary,
   reader: PlanningNoticeReader,
@@ -208,7 +208,7 @@ function filteredNotice(
         : `${count(openQuestions)} of them open questions`;
   // The paths only where the filter's path terms leave one out: a filter
   // with none keeps every path, and saying so of a word that keeps nothing
-  // reads as a contradiction (planning-filter.md §6.7).
+  // reads as a contradiction (§6.18).
   const paths =
     documents.kept < documents.of
       ? ` in ${count(documents.kept)} of ${plural(documents.of, "path", "paths")},`
@@ -306,10 +306,10 @@ function filteredNotice(
 /** One wording for the page and the CLI (P7). */
 export const PLANNING_NOTICES: {
   nothingNeedsYou: string;
-  /** *Nothing needs you* under a filter (§6.2): no open question it keeps. */
+  /** *Nothing needs you* under a filter (§6.15): no open question it keeps. */
   nothingFilteredNeedsYou: string;
   /**
-   * The filter notice of an applied filter (§6.7): the first line with its
+   * The filter notice of an applied filter (§6.18): the first line with its
    * counts, one line per unmatched term, one per unknown key, the clauses
    * that apply (other roadmaps, blocked questions left out, waits on a
    * document left out), and a last line saying how to see the rest, in
@@ -325,7 +325,7 @@ export const PLANNING_NOTICES: {
   filterNotUnderstood(filter: NotUnderstoodPlanningFilter): string;
   /**
    * The checker's exit-2 message for a term that matches no path the index
-   * lists (§8.2), unprefixed: the notice's line for it, without its period.
+   * lists (§13.4), unprefixed: the notice's line for it, without its period.
    */
   filterUnmatched(term: string): string;
   /**
@@ -778,9 +778,8 @@ export interface ReferenceSummary {
   roadmaps: string[];
   /**
    * Its stage has no `done` role and it holds at least one question: the
-   * line then links to the planning page filtered to this document
-   * (`docs/design/planning-filter.md` §7). `false` for a path the index
-   * holds no document at.
+   * line then links to the planning page filtered to this document (§7.1).
+   * `false` for a path the index holds no document at.
    */
   hasLiveQuestions: boolean;
 }

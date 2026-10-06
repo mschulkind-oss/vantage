@@ -1,10 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
 
 // The planning filter in a real browser, against test_repo
-// (docs/design/planning-filter.md §15). Its roadmap routes plans/design.md's
-// two open questions, OQ-E1 and OQ-E2, which `path:/plans/design.md is:open`
-// keeps and nothing else: criterion 2's page. Unfiltered, Needs you holds
-// them and paged.md's twelve, ten to a page.
+// (docs/reference/planning-index.md §18, its criteria). Its roadmap routes
+// plans/design.md's two open questions, OQ-E1 and OQ-E2, which
+// `path:/plans/design.md is:open` keeps and nothing else: criterion 2's page.
+// Unfiltered, Needs you holds them and paged.md's twelve, ten to a page.
 
 const FILTER = "path:/plans/design.md is:open";
 const FILTERED = "/.vantage/planning?filter=path:/plans/design.md+is:open";
@@ -90,7 +90,7 @@ const shiftsOf = (page: Page) =>
       ),
   );
 
-/** Criterion 8's long tasks, reported rather than asserted (sketch risk 6). */
+/** Criterion 8's long tasks, reported, not asserted (planning-index.md §18). */
 async function reportLongTasks(page: Page, what: string): Promise<void> {
   const tasks = await page.evaluate(
     () => (window as unknown as { __longTasks: number[] }).__longTasks,
@@ -310,10 +310,10 @@ test.describe("the planning filter", () => {
     await reportLongTasks(page, "Enter");
   });
 
-  // §6.4: a typed text that keeps no entry applies only once the idle pause
-  // has written it into the address, so the sections never take its filter
-  // before the URL does. Every test_repo path ends in `.md`, so `-m` keeps
-  // nothing.
+  // planning-index.md §6.16: a typed text that keeps no entry applies only
+  // once the idle pause has written it into the address, so the sections
+  // never take its filter before the URL does. Every test_repo path ends in
+  // `.md`, so `-m` keeps nothing.
   test("holds a typed text that keeps nothing until the idle pause, so the page never empties under it", async ({
     page,
   }) => {
