@@ -13,27 +13,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **A planning page filtered to one piece of work.** The planning page has a
 **Filter** box at its top, there as soon as the page opens, and the page
 narrows as you type. A word, such as `generator`, finds the questions whose id,
-title, leaning or path holds it, in any case, and the documents whose path,
+title, leaning or path holds it, ignoring case, and the documents whose path,
 stage or `next` does. `path:` finds its text anywhere in a path, as GitHub's
-code search does, with `*` and `**` as wildcards. `is:open` keeps only open
-questions, as in `path:/docs/design/search.md is:open`, and a `-` before a term
-leaves out what it matches. The page keeps its order, and a notice says what
-the filter hides. See
-[Filtering the page](userguide/guides/planning.md#filtering-the-page).
+code search does, with `*` and `**` as wildcards, and a leading `/` ties it to
+the start of the path. `is:open` keeps only open questions, as in
+`path:/docs/design/search.md is:open`, and a `-` before a term leaves out what
+it matches. The page keeps its order, and a notice says what the filter hides.
+See [Filtering the page](userguide/guides/planning.md#filtering-the-page).
 
 Press `/` to reach the box. Paste a link to a planning page into it, as a whole
 address or as the line `vantage-check index --filter` prints, and the link's
-filter applies at once to the project on screen, whatever address the link was
-made for. The page's address follows the box without adding to your history.
-**Copy answers** and **Copy agent request** cover only what the filter keeps,
-and the agent request names the filter on a `Filter:` line.
+filter, and its roadmap if it names one, apply at once to the project on
+screen, whatever address the link was made for. The page's address follows the
+box without adding to your history. **Copy answers** and
+**Copy agent request** cover only what the filter keeps, and the agent request
+names the filter on a `Filter:` line.
 
 A planning document that holds a question now ends its Referenced by line with
 *its questions on the planning page*, a link to the planning page filtered to
 that document, unless its stage has the
-[`done` role](userguide/guides/planning.md#stage-roles). A document that had no
-line, because nothing links to it and the roadmap misses none of its questions,
-now shows a line with only that link. See
+[`done` role](userguide/guides/planning.md#stage-roles). Such a document that
+nothing links to gets a line holding only that link where it had none: one with
+no open question, or any in a repository where no roadmap routes. See
 [Referenced by](userguide/guides/planning.md#referenced-by).
 
 **`vantage-check index --filter`** takes the same text, prints only what it
@@ -41,11 +42,16 @@ keeps, and prints a `Planning page:` line for your agent to hand you.
 `vantage-check style-guide` now tells agents to hand you that line when they
 need your rulings. The checker cannot know the address you open Vantage at, so
 the link starts at `/.vantage/planning`: press `/` on your planning page and
-paste the line, or put your address in front. In daemon mode, opening it lists
-each project's planning page with the filter kept. If your `.vantage.toml` sets
-a `target` before 0.9, a line under the link says that an older Vantage shows
-every entry. With `--format json`, the output gains a `filter` key, and the
-format version stays 2.
+paste the line, or put your address in front. In daemon mode, where the link
+names no project, the planning page with no project named, or one not found,
+now lists a link to each project's planning page, keeping any filter. Run in a
+linked worktree, `--filter` adds a line under the link saying that the page
+shows the checkout your Vantage serves, which may not hold the documents as
+they are in the worktree. If your `.vantage.toml` sets a `target` before 0.9,
+another line says that an older Vantage shows every entry. With
+`--format json`, the filtered sections are under a new `filter` key. Every
+other key, `sections` included, is what it is without the flag, and the format
+version stays 2.
 
 `--filter` exits `2` on a filter it cannot read, such as one with an unclosed
 quote, and on a `path:` or `-path:` term that matches no path. A word that
